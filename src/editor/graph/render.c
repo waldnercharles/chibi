@@ -2,7 +2,7 @@
 #include "editor/panels/shader_inline.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
-#include "graph/model/local.h"
+#include "graph/compiler/behavior_program.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -99,7 +99,7 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
         int offset = ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, p) - 1;
         const pin_spec *spec = &n->input_pins[p];
         if (ed_vector_width(spec) && !(spec->flags & PIN_FLAG_COLOR) &&
-            (!inline_source || ed_vector_source(e, n, p))) {
+            !spec->binding && (!inline_source || ed_vector_source(e, n, p))) {
             offset = 1;
         }
         ImVec2 pos = { view->min.x + ED_PAD * e->zoom,
@@ -305,6 +305,148 @@ static void ed_draw_call_open(editor *e, ImDrawList *dl, const ed_node_view *v)
     ImGui_SetCursorScreenPos(cursor);
 }
 
+static const char *ed_event_batch_status_title(const behavior_event_batch_info *info)
+{
+    if (!info->found) {
+        return "Batch status unavailable";
+    }
+    if (info->duplicate) {
+        return "Batch unavailable: duplicate event";
+    }
+    if (info->program_diagnostic) {
+        return "Batch unavailable: compile error";
+    }
+    if (info->function_diagnostic) {
+        return "Batch unavailable: compile exclusion";
+    }
+    switch (info->reason) {
+        case BEHAVIOR_BATCH_READY: return "Batch path ready";
+        case BEHAVIOR_BATCH_EVENT_PAYLOAD:
+            return "Per activation: event has payload";
+        case BEHAVIOR_BATCH_GRAPH_RETURN:
+            return "Per activation: graph returns";
+        case BEHAVIOR_BATCH_WAITS: return "Per activation: contains a wait";
+        case BEHAVIOR_BATCH_BREAKPOINTS:
+            return "Per activation: breakpoint enabled";
+        case BEHAVIOR_BATCH_UNSUPPORTED_OPERATION:
+            return "Per activation: unsupported operation";
+        case BEHAVIOR_BATCH_NOT_EVENT: return "Batch unavailable: not an event";
+        case BEHAVIOR_BATCH_UNAVAILABLE: return "Batch status unavailable";
+    }
+    return "Batch status unavailable";
+}
+
+static const char *ed_event_batch_diagnostic(const behavior_event_batch_info *info)
+{
+    if (info->program_diagnostic) {
+        return info->program_diagnostic->message;
+    }
+    if (info->function_diagnostic) {
+        return info->function_diagnostic->reason;
+    }
+    return NULL;
+}
+
+static ImVec4 ed_event_batch_status_color(const behavior_event_batch_info *info)
+{
+    if (info->reason == BEHAVIOR_BATCH_READY) {
+        return (ImVec4){ 0.34f, 0.86f, 0.57f, 1.0f };
+    }
+    if (info->program_diagnostic || info->function_diagnostic ||
+        info->duplicate || !info->found) {
+        return (ImVec4){ 0.96f, 0.40f, 0.38f, 1.0f };
+    }
+    return (ImVec4){ 1.0f, 0.70f, 0.30f, 1.0f };
+}
+
+static void ed_draw_event_status(editor *e, ImDrawList *dl, const ed_node_view *v)
+{
+    node *n = v->n;
+    if (n->desc->flow_kind != NODE_FLOW_EVENT || e->zoom < 0.5f) {
+        return;
+    }
+    behavior_event_batch_info info = { 0 };
+    behavior_program_event_batch_info(behavior_program_publish(e->asset), n, &info);
+    bool ready = info.reason == BEHAVIOR_BATCH_READY;
+    editor_icon icon = ready ? EDITOR_ICON_FA_TACHOMETER : EDITOR_ICON_FA_WARNING;
+    ImVec4 status_color = ed_event_batch_status_color(&info);
+    float size = 20.0f * e->zoom;
+    float slot = ed_event_status_width(n) * e->zoom;
+    ImVec2 center = { v->max.x - ED_PAD * e->zoom - slot * 0.5f,
+                      v->min.y + v->title_height * 0.5f };
+    ImVec2 button_min = { center.x - size * 0.5f, center.y - size * 0.5f };
+    ImVec2 cursor = ImGui_GetCursorScreenPos();
+    ImGui_SetCursorScreenPos(button_min);
+    char id[64];
+    snprintf(id, sizeof id, "graph.event.status.%llu", (unsigned long long)n->id);
+    bool pressed = editor_ui_icon_button_sized(id, icon, true, size);
+    editor_ui_track_item(id);
+    bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
+    e->controls_hovered |= hovered || ImGui_IsItemActive();
+    ImDrawList_AddRectEx(
+        dl,
+        button_min,
+        (ImVec2){ button_min.x + size, button_min.y + size },
+        ed_color(status_color),
+        4.0f * e->zoom,
+        ImDrawFlags_RoundCornersAll,
+        1.5f * e->zoom
+    );
+    ed_draw_centered_icon(
+        dl,
+        e->icon_font,
+        12.0f * e->zoom,
+        button_min,
+        (ImVec2){ button_min.x + size, button_min.y + size },
+        ed_color(status_color),
+        icon
+    );
+    const char *title = ed_event_batch_status_title(&info);
+    const char *diagnostic = ed_event_batch_diagnostic(&info);
+    if (hovered) {
+        ImGui_SetItemTooltip("%s", title);
+    }
+    if (pressed) {
+        ImGui_SetNextWindowPos(
+            (ImVec2){ button_min.x, button_min.y + size + 6.0f * e->zoom },
+            ImGuiCond_Appearing
+        );
+        editor_ui_open_popup(id);
+    }
+    ImGui_SetCursorScreenPos(cursor);
+    if (!editor_ui_begin_popup(id)) {
+        return;
+    }
+    ImGui_TextColored(status_color, "%s", title);
+    ImGui_Text("Backend: %s", behavior_backend_name(info.backend));
+    if (info.function) {
+        const char *execution = "Per activation";
+        if (ready) {
+            execution = behavior_function_parallel(info.function)
+                          ? "Parallel-capable batch"
+                          : "Ordered batch";
+        }
+        ImGui_Text("Execution: %s", execution);
+    }
+    if (diagnostic) {
+        ImGui_TextWrapped("%s", diagnostic);
+    }
+    int unused = info.reason == BEHAVIOR_BATCH_EVENT_PAYLOAD
+                   ? ed_event_unused_payload_count(e, n)
+                   : 0;
+    if (unused) {
+        ImGui_Separator();
+        ImGui_Text("Unused payloads: %d", unused);
+        if (ImGui_Button("Remove unused payload pins")) {
+            if (ed_repair_event_payloads(e, n) > 0) {
+                ImGui_CloseCurrentPopup();
+            }
+        }
+        editor_ui_track_item("graph.event.status.repair");
+    }
+    editor_ui_end_popup();
+}
+
 typedef struct
 {
     float min_x;
@@ -422,23 +564,6 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         title = ed_dim_color(title, 0.60f);
     }
     ImDrawList_AddRectFilledEx(dl, v->min, v->max, bg, 5.0f * e->zoom, ImDrawFlags_RoundCornersAll);
-    float local_y = v->max.y;
-    for (int p = n->output_count - 1; p >= 0; p--) {
-        const graph_local *local = graph_output_local(e->active_graph, n, p);
-        if (local) {
-            local_y -= (ImGui_GetTextLineHeight() + 4.0f) * e->zoom;
-            char marker[192];
-            snprintf(marker, sizeof marker, "let %s", local->name);
-            ed_draw_text(
-                e,
-                dl,
-                (ImVec2){ v->min.x + ED_PAD * e->zoom, local_y },
-                IM_COL32(151, 193, 210, 255),
-                marker
-            );
-        }
-    }
-
     ImDrawList_AddRectFilledEx(
         dl,
         v->min,
@@ -501,6 +626,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         ed_node_title(e, n, node_title, sizeof node_title)
     );
 
+    ed_draw_event_status(e, dl, v);
     ed_draw_field_disclosure(e, dl, v);
     ed_draw_call_open(e, dl, v);
 

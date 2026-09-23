@@ -1,5 +1,29 @@
 const entries = [
   {
+    name: "buildField", operation: "edit_graph", adapter: "authoring",
+    title: "Build or edit a procedural field",
+    description: "Create or edit a pure scalar field using native field nodes and scalar library functions. Inspect nodes and assets first. Edits are atomic, hash-checked and automatically arranged.",
+    intentTerms: ["build", "field"], candidates: ["buildField"], legacyName: "edit_graph",
+    nextSteps: ["Call validateAsset with the field selector.", "Call previewField to inspect the baked contour."],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+  },
+  {
+    name: "buildSystem", operation: "edit_graph", adapter: "authoring",
+    title: "Build or edit a standalone System",
+    description: "Create or edit a standalone System graph and its ECS query. Inspect the query, nodes and effects first. Edits are atomic, hash-checked and automatically arranged.",
+    intentTerms: ["build", "system"], candidates: ["buildSystem"], legacyName: "edit_graph",
+    nextSteps: ["Call inspectSystem to check the query and inferred effects.", "Call getExecutionStatus to verify the selected backend."],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+  },
+  {
+    name: "previewField", operation: "preview_field", adapter: "authoring",
+    title: "Preview a procedural field",
+    description: "Bake a pure scalar field with a seed, cell size and parameter overrides. Return a deterministic CPU PNG, scalar range and hash without a graphics context.",
+    intentTerms: ["preview", "field"], candidates: ["previewField"], legacyName: "preview_field",
+    nextSteps: ["Use buildField to edit the field, then preview it again."],
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+  },
+  {
     name: "buildShader",
     operation: "edit_graph",
     adapter: "authoring",

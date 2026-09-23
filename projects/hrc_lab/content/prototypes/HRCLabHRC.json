@@ -1,0 +1,44 @@
+{
+  "name": "HRCLabHRC",
+  "identity": "prototype-79df6cb9f3a1bed4",
+  "components": {
+    "GAME.GameHRC2D": {
+      "adaptive": false,
+      "ambient": 0.0,
+      "bounce_hysteresis": 0.800000011920929,
+      "bounce_intensity": 1.0,
+      "debug_view": 0,
+      "falloff": 1.0,
+      "feedback": true,
+      "fog": 0.20000000298023224,
+      "fps_tolerance": 0.10000000149011612,
+      "intensity": 7.5,
+      "max_scale": 1.0,
+      "min_scale": 0.10000000149011612,
+      "particle_focal_length": 300.0,
+      "radiance_hysteresis": 0.800000011920929,
+      "scale": 1.0,
+      "shadow_floor": 0.0,
+      "target_fps": 60.0,
+      "trace_levels": 3,
+      "upscale_mode": 1,
+      "upscale_threshold": 0.10000000149011612
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.MaterialFluidWorld": {
+      "buffer": 192.0,
+      "chunk_size": 256.0,
+      "gas_cell_size": 20.0,
+      "gas_drag": 0.10000000149011612,
+      "gas_vorticity": 2.0,
+      "kernel": 10.0,
+      "particle_limit": 32768
+    },
+    "GAME.MaterialDestructionWorld": {
+      "fragment_limit": 96
+    }
+  }
+}

@@ -3,6 +3,8 @@
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"
 
+#include <string.h>
+
 static pin_spec event_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },
 };
@@ -102,7 +104,7 @@ static pin_spec print_text_outputs[] = {
 };
 
 static pin_spec get_variable_outputs[] = {
-    { "Value", PIN_I32, "int", PIN_DATA },
+    { "Value", PIN_I32, "int", PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_I32 }, 0, PIN_FLAG_REFERENCE },
 };
 static pin_spec set_variable_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
@@ -379,12 +381,49 @@ static int flow_call_function(node *n, flow_context *ctx)
     return flow_execute_function(n, ctx, 0);
 }
 
+static int flow_behavior_expression(node *n, flow_context *ctx)
+{
+    int true_pin = -1, false_pin = -1, value_pin = -1;
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].kind == PIN_EXEC && n->output_pins[i].name) {
+            if (!strcmp(n->output_pins[i].name, "True")) {
+                true_pin = i;
+            } else if (!strcmp(n->output_pins[i].name, "False")) {
+                false_pin = i;
+            }
+        } else if (
+            n->output_pins[i].kind == PIN_DATA && n->output_pins[i].name &&
+            !strcmp(n->output_pins[i].name, "Result")
+        ) {
+            value_pin = i;
+        }
+    }
+    if (true_pin >= 0 || false_pin >= 0) {
+        if (true_pin < 0 || false_pin < 0 || value_pin < 0) {
+            return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "branch expression signature is incomplete");
+        }
+        pin_value value;
+        int result = flow_context_eval_output(ctx, value_pin, &value);
+        if (result) {
+            return result;
+        }
+        if (value.type != PIN_BOOL) {
+            return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "branch expression Result is not bool");
+        }
+        return flow_context_continue(ctx, value.b ? true_pin : false_pin);
+    }
+    return flow_execute_function(n, ctx, 0);
+}
+
 static int flow_call_macro(node *n, flow_context *ctx)
 {
     return flow_execute_function(n, ctx, 1);
 }
 
+static const node_access control_access = { 0 };
+
 node_desc NODE_Event = {
+    .access = &control_access,
     .name = "Event",
     .input_count = 0,
     .output_count = 1,
@@ -395,6 +434,7 @@ node_desc NODE_Event = {
     .display_class = NODE_DISPLAY_EVENT,
 };
 node_desc NODE_Branch = {
+    .access = &control_access,
     .name = "Branch",
     .input_count = 2,
     .output_count = 2,
@@ -405,6 +445,7 @@ node_desc NODE_Branch = {
     .display_class = NODE_DISPLAY_FLOW,
 };
 node_desc NODE_Sequence = {
+    .access = &control_access,
     .name = "Sequence",
     .input_count = 1,
     .output_count = 2,
@@ -528,6 +569,7 @@ node_desc NODE_Self = {
     .display_class = NODE_DISPLAY_PURE,
 };
 node_desc NODE_FunctionEntry = {
+    .access = &control_access,
     .name = "Function Entry",
     .input_count = 0,
     .output_count = 1,
@@ -537,6 +579,7 @@ node_desc NODE_FunctionEntry = {
     .display_class = NODE_DISPLAY_EVENT,
 };
 node_desc NODE_Return = {
+    .access = &control_access,
     .name = "Return",
     .input_count = 1,
     .output_count = 0,
@@ -546,6 +589,7 @@ node_desc NODE_Return = {
     .display_class = NODE_DISPLAY_EVENT,
 };
 node_desc NODE_CallFunction = {
+    .access = &control_access,
     .name = "Call Function",
     .input_count = 1,
     .output_count = 1,
@@ -556,13 +600,26 @@ node_desc NODE_CallFunction = {
     .display_class = NODE_DISPLAY_FUNCTION,
 };
 node_desc NODE_CallPureFunction = {
+    .access = &control_access,
     .name = "Call Pure Function",
     .input_count = 0,
     .output_count = 0,
     .pure_kind = NODE_PURE_FUNCTION,
     .display_class = NODE_DISPLAY_FUNCTION,
 };
+node_desc NODE_BehaviorExpression = {
+    .access = &control_access,
+    .name = "Behavior Expression",
+    .input_count = 0,
+    .output_count = 0,
+    .pure_kind = NODE_PURE_FUNCTION,
+    .flow = flow_behavior_expression,
+    .display_class = NODE_DISPLAY_FUNCTION,
+    .category = "Math",
+    .keywords = "behavior expression formula assignment condition branch",
+};
 node_desc NODE_CallMacro = {
+    .access = &control_access,
     .name = "Call Macro",
     .input_count = 1,
     .output_count = 1,
@@ -592,6 +649,7 @@ node_desc *const FLOW_NODES[] = {
     &NODE_Return,
     &NODE_CallFunction,
     &NODE_CallPureFunction,
+    &NODE_BehaviorExpression,
     &NODE_CallMacro,
 };
 const int FLOW_NODE_COUNT = sizeof FLOW_NODES / sizeof FLOW_NODES[0];

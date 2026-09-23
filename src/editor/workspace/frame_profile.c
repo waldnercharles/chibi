@@ -1,7 +1,6 @@
 #include "editor/workspace/frame_profile.h"
 
 #include "editor/ui/ui_shell.h"
-#include "editor/workspace/scene_authoring.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -260,7 +259,6 @@ static void draw_behaviors(const editor_frame_profile *p, const editor_frame_sam
         ImGui_EndTable();
     }
     ImGui_TextDisabled("%d frames", p->count);
-    ImGui_SetItemTooltip("Nested events counted once; parallel durations may overlap.");
 }
 
 const editor_frame_sample *editor_frame_latest(const editor_frame_profile *p)
@@ -319,10 +317,9 @@ static void draw_history(const editor_frame_profile *p, double ceiling)
             ImGui_EndTooltip();
         }
     }
-    ImGui_TextDisabled("240 frames · %.0f ms scale · white line: 16.67 ms", ceiling);
 }
 
-void editor_frame_profile_draw(editor_frame_profile *p, app_scene_authoring *scene)
+void editor_frame_profile_draw(editor_frame_profile *p)
 {
     if (!editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE)) {
         return;
@@ -336,7 +333,6 @@ void editor_frame_profile_draw(editor_frame_profile *p, app_scene_authoring *sce
     }
     ImGui_Checkbox("Freeze capture", &p->frozen);
     editor_ui_track_item("performance.freeze");
-    app_scene_authoring_draw_render_settings(scene);
     if (p->count) {
         bool wide = ImGui_GetContentRegionAvail().x >= 900.0f;
         if (wide) {
@@ -414,7 +410,6 @@ void editor_frame_profile_draw(editor_frame_profile *p, app_scene_authoring *sce
             last->event_backlog,
             last->dropped_seconds
         );
-        ImGui_SetItemTooltip("CPU time; Present includes GPU and display waits.");
         if (columns) {
             ImGui_EndChild();
             ImGui_EndTable();

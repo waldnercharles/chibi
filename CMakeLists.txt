@@ -260,6 +260,7 @@ set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
     SHADER_PACK
+    FIELD_NODE_PACK
     CORE_EVENT_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
@@ -347,11 +348,15 @@ endif()
 
 # --- headless automation controller ----------------------------------------
 
-add_library(automation STATIC src/automation/controller.c
-    src/automation/graph_edit.c src/automation/graph_optimize.c
+add_library(authoring_graph STATIC src/automation/graph_edit.c)
+target_include_directories(authoring_graph PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(authoring_graph PUBLIC core)
+
+add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
+    src/automation/graph_optimize.c
     src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(automation PUBLIC runtime_support core)
+target_link_libraries(automation PUBLIC runtime_support core authoring_graph)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c
@@ -379,14 +384,16 @@ chibi_enable_tracy(engine)
 add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
 add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(editor PRIVATE runtime_support core cute)
+target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph)
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
 set(APP_REGISTRY_PACKS
     SHADER_BINDING_PACK
     SHADER_PACK
+    FIELD_NODE_PACK
     CORE_EVENT_PACK
+    GAME_MATERIAL_PACK
     GAME_ENTITY_PACK
     GAME_SAVE_PACK
     GAME_AUDIO_PACK
@@ -479,10 +486,21 @@ if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_SKIP_GPU=1
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
+        DEPENDS chibi_ctl
+        VERBATIM)
+    add_custom_target(check-mcp-gpu
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
         DEPENDS chibi_ctl
@@ -490,6 +508,9 @@ if(NODE_EXECUTABLE)
 else()
     add_custom_target(check-mcp
         COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP protocol check"
+        VERBATIM)
+    add_custom_target(check-mcp-gpu
+        COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP GPU check"
         VERBATIM)
 endif()
 
@@ -597,6 +618,7 @@ add_executable(test_suite
     test/material.c
     test/wave.c
     test/radiance.c
+    test/radiance_intervals.c
     test/interior_border.c
     test/sdf_coverage.c
     test/draw_backend.cpp
@@ -772,4 +794,24 @@ else()
         COMMAND "$<TARGET_FILE:behavior_backend_smoke>"
         COMMAND "$<TARGET_FILE:runtime_backend_smoke>"
         DEPENDS behavior_backend_smoke runtime_backend_smoke VERBATIM)
+endif()
+
+# The same material/field/schedule contracts run natively and in Web bytecode.
+add_executable(material_engine_smoke test/material_engine_smoke.c
+    test/runtime/materials.c test/runtime/reference_cave.c test/runtime/fields.c
+    test/runtime/system_schedule.c ${APP_REGISTRY})
+target_include_directories(material_engine_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(material_engine_smoke PRIVATE engine runtime_support)
+target_compile_options(material_engine_smoke PRIVATE -UNDEBUG)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_options(material_engine_smoke PRIVATE "-g2" "-sSTACK_SIZE=524288" "-sASSERTIONS=1" "-sSTACK_OVERFLOW_CHECK=2" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "--embed-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content@projects/arena2d/content")
+    add_custom_target(check-material-engine
+        COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:material_engine_smoke>"
+        DEPENDS material_engine_smoke VERBATIM)
+else()
+    add_custom_target(check-material-engine COMMAND material_engine_smoke
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS material_engine_smoke VERBATIM)
 endif()

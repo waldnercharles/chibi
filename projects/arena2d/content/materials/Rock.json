@@ -1,0 +1,442 @@
+{
+  "version": 3,
+  "name": "Rock",
+  "domain": "material",
+  "id_counter": 41,
+  "description": "Continuous world-space fractal rock grain. Occupancy and damage come from terrain cells.",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Shader Surface Output",
+          "x": 930.0,
+          "y": 128.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 2,
+              "name": "Base Color",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 64,
+              "group": 0,
+              "default": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              }
+            },
+            {
+              "id": 3,
+              "name": "Emission",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 64,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              }
+            },
+            {
+              "id": 4,
+              "name": "Roughness",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.949999988079071
+            },
+            {
+              "id": 5,
+              "name": "Metallic",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 6,
+              "name": "Normal",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              }
+            },
+            {
+              "id": 7,
+              "name": "Opacity",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 1.0
+            },
+            {
+              "id": 8,
+              "name": "Unlit",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 9,
+          "type": "Shader WorldPosition",
+          "x": 0.0,
+          "y": 288.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 10,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "Shader Fractal Noise",
+          "x": 310.0,
+          "y": 288.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 12,
+              "name": "Position",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 13,
+              "name": "Scale",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.04500000178813934
+            },
+            {
+              "id": 14,
+              "name": "Detail",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 3.0
+            },
+            {
+              "id": 15,
+              "name": "Roughness",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.550000011920929
+            }
+          ],
+          "outputs": [
+            {
+              "id": 16,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "Shader Vector3",
+          "x": 310.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 18,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.02500000037252903
+            },
+            {
+              "id": 19,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.03999999910593033
+            },
+            {
+              "id": 20,
+              "name": "Z",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.054999999701976776
+            }
+          ],
+          "outputs": [
+            {
+              "id": 21,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "type": "Shader Vector3",
+          "x": 310.0,
+          "y": 144.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 23,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.1599999964237213
+            },
+            {
+              "id": 24,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.2199999988079071
+            },
+            {
+              "id": 25,
+              "name": "Z",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.27000001072883606
+            }
+          ],
+          "outputs": [
+            {
+              "id": 26,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "type": "Shader Mix",
+          "x": 620.0,
+          "y": 128.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 28,
+              "name": "A",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 29,
+              "name": "B",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 30,
+              "name": "Alpha",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 31,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 9,
+          "from_pin": 10,
+          "to": 11,
+          "to_pin": 12,
+          "kind": "data"
+        },
+        {
+          "from": 11,
+          "from_pin": 16,
+          "to": 27,
+          "to_pin": 30,
+          "kind": "data"
+        },
+        {
+          "from": 17,
+          "from_pin": 21,
+          "to": 27,
+          "to_pin": 28,
+          "kind": "data"
+        },
+        {
+          "from": 22,
+          "from_pin": 26,
+          "to": 27,
+          "to_pin": 29,
+          "kind": "data"
+        },
+        {
+          "from": 27,
+          "from_pin": 31,
+          "to": 1,
+          "to_pin": 2,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

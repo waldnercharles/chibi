@@ -53,8 +53,10 @@ jobs:
           cmake -S . -B build $LOCAL_CMAKE_FLAGS
           -DLIBCLANG_ROOT=/usr/lib/llvm-18
           -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-      - name: Build and run tests
-        run: xvfb-run -a make test
+      - name: Build and run headless tests
+        run: make test
+      - name: Run render tests
+        run: xvfb-run -a make test-render
       - name: Verify parallel Arena scaling
         if: matrix.build_type == 'RelWithDebInfo'
         run: >-

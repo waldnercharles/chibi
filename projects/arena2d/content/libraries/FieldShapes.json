@@ -1,0 +1,621 @@
+{
+  "version": 3,
+  "name": "FieldShapes",
+  "domain": "library",
+  "id_counter": 46,
+  "description": "",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [],
+      "edges": []
+    },
+    {
+      "id": 1,
+      "kind": "function",
+      "name": "Islands",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "entry_id": 2,
+      "return_id": 4,
+      "call_depth_limit": 64,
+      "nodes": [
+        {
+          "id": 2,
+          "type": "Function Entry",
+          "x": 0.0,
+          "y": 194.5,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 6,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 7,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "Return",
+          "x": 1550.0,
+          "y": 16.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 8,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 9,
+          "type": "Field Add",
+          "x": 310.0,
+          "y": 8.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 10,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 11,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 90.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 12,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "Field Circle",
+          "x": 620.0,
+          "y": 16.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 14,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 15,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 16,
+              "name": "Radius",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 65.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 17,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "Field Subtract",
+          "x": 310.0,
+          "y": 123.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 19,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 20,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 60.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 21,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "type": "Field Box",
+          "x": 620.0,
+          "y": 219.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 23,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 24,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 25,
+              "name": "Half Width",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 55.0
+            },
+            {
+              "id": 26,
+              "name": "Half Height",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 85.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 27,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "type": "Field Capsule",
+          "x": 930.0,
+          "y": 120.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 29,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 30,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 31,
+              "name": "AX",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": -90.0
+            },
+            {
+              "id": 32,
+              "name": "AY",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 33,
+              "name": "BX",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 60.0
+            },
+            {
+              "id": 34,
+              "name": "BY",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 35,
+              "name": "Radius",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 18.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 36,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 37,
+          "type": "Field Min",
+          "x": 930.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 38,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 39,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 40,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "type": "Field Smooth Union",
+          "x": 1240.0,
+          "y": 24.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 42,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 43,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 44,
+              "name": "Radius",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 15.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 45,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 2,
+          "from_pin": 6,
+          "to": 9,
+          "to_pin": 10,
+          "kind": "data"
+        },
+        {
+          "from": 2,
+          "from_pin": 6,
+          "to": 18,
+          "to_pin": 19,
+          "kind": "data"
+        },
+        {
+          "from": 2,
+          "from_pin": 6,
+          "to": 28,
+          "to_pin": 29,
+          "kind": "data"
+        },
+        {
+          "from": 2,
+          "from_pin": 7,
+          "to": 13,
+          "to_pin": 15,
+          "kind": "data"
+        },
+        {
+          "from": 2,
+          "from_pin": 7,
+          "to": 22,
+          "to_pin": 24,
+          "kind": "data"
+        },
+        {
+          "from": 2,
+          "from_pin": 7,
+          "to": 28,
+          "to_pin": 30,
+          "kind": "data"
+        },
+        {
+          "from": 9,
+          "from_pin": 12,
+          "to": 13,
+          "to_pin": 14,
+          "kind": "data"
+        },
+        {
+          "from": 13,
+          "from_pin": 17,
+          "to": 37,
+          "to_pin": 38,
+          "kind": "data"
+        },
+        {
+          "from": 18,
+          "from_pin": 21,
+          "to": 22,
+          "to_pin": 23,
+          "kind": "data"
+        },
+        {
+          "from": 22,
+          "from_pin": 27,
+          "to": 37,
+          "to_pin": 39,
+          "kind": "data"
+        },
+        {
+          "from": 28,
+          "from_pin": 36,
+          "to": 41,
+          "to_pin": 43,
+          "kind": "data"
+        },
+        {
+          "from": 37,
+          "from_pin": 40,
+          "to": 41,
+          "to_pin": 42,
+          "kind": "data"
+        },
+        {
+          "from": 41,
+          "from_pin": 45,
+          "to": 4,
+          "to_pin": 8,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

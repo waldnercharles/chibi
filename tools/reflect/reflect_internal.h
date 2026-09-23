@@ -38,6 +38,19 @@ typedef struct
 typedef struct
 {
     char *name;
+    char *label;
+    int value;
+} enum_value_info;
+
+typedef struct
+{
+    char *name;
+    enum_value_info *values;
+} enum_info;
+
+typedef struct
+{
+    char *name;
     char *ret;           /* return type spelling */
     const char *ret_pin; /* pin_type enum name for the return, or NULL for void */
     int read; /* contextual pure read returning const char * on error */
@@ -68,6 +81,7 @@ typedef struct
 {
     struct_info *structs;
     fn_info *fns;
+    enum_info *enums;
 } collect_ctx;
 
 extern int g_failed;

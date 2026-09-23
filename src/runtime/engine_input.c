@@ -289,10 +289,13 @@ static int apply_aim_sample(engine_input *input)
             direction.y -= position->y;
         }
         float length = hypotf(direction.x, direction.y);
-        aim->manual = length > .1f;
-        if (aim->manual) {
-            aim->direction = (CF_V2){ direction.x / length, direction.y / length };
+        if (length <= .1f) {
+            /* Releasing aim ends manual control but keeps the last facing. */
+            aim->manual = false;
+            continue;
         }
+        aim->manual = true;
+        aim->direction = (CF_V2){ direction.x / length, direction.y / length };
     }
     ecs_query_end(&query);
     return FLOW_OK;

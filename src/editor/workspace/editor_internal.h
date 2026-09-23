@@ -108,7 +108,7 @@ struct editor
     char *math_saved;
     size_t math_capacity;
     uint64_t math_node_id;
-    math_expression_error math_error;
+    behavior_expression_error expression_error;
     ed_graph_view *graph_views;
     ed_graph_caller *graph_callers;
     eval_view *ev;
@@ -250,6 +250,12 @@ struct editor
     void *open_asset_user;
     const char **prototype_catalog; /* Owned array, borrowed project names. */
     const behavior_asset **asset_catalog; /* Owned array, borrowed project assets. */
+    uint64_t field_preview_identity, field_preview_catalog;
+    unsigned field_preview_revision;
+    float field_values[64 * 64], field_cell_size;
+    int field_seed;
+    bool field_preview_valid;
+    char field_error[256];
     struct app_scene_renderer *shader_preview;
     struct engine_viewport *shader_viewport;
     bool shader_preview_paused;
@@ -339,6 +345,7 @@ bool ed_is_graph_call(const node *n);
 ed_node_presentation ed_node_appearance(const node_desc *desc);
 const char *ed_node_prefix(const node_desc *desc, char icon[4]);
 float ed_node_title_inset(const node *n);
+float ed_event_status_width(const node *n);
 float ed_node_title_padding(const node *n);
 float ed_node_body_padding(const node *n);
 const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap);
@@ -350,6 +357,9 @@ ImVec2 ed_world_to_screen(const editor *e, float x, float y);
 ImVec2 ed_screen_to_world(const editor *e, ImVec2 p);
 int ed_edge_index(const editor *e, const ed_link_ref *link);
 int ed_pin_rows(const editor *e, const graph *g, const node *n, int kind, int pin);
+const editor_flags *ed_pin_flags(const editor *e, const node *n, int output, int index);
+const editor_choices *ed_pin_choices(editor *e, node *n, int output, int index);
+bool ed_pin_color_input(const editor *e, const node *n, int output, int index);
 bool ed_node_has_advanced_inputs(const node *n);
 float ed_node_options_height(const node *n);
 int ed_pin_editable(const graph *g, const node *n, int kind, int pin);
@@ -428,6 +438,8 @@ ImVec2 ed_view_center_world(const editor *e);
 void ed_show_error(editor *e, const char *message);
 void ed_draw_details_behavior_asset(editor *e);
 int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature);
+int ed_event_unused_payload_count(const editor *e, const node *n);
+int ed_repair_event_payloads(editor *e, node *n);
 void ed_draw_details(editor *e);
 node *ed_place_graph_call_at(editor *e, graph *target, ImVec2 world);
 void ed_finish_settings(editor *e);
@@ -469,7 +481,7 @@ bool ed_simplify_component_getter(
 );
 int ed_optimize_graph(editor *e);
 void ed_arrange_in_transaction(editor *e);
-void ed_refresh_stale_math_expressions(editor *e);
+void ed_refresh_stale_behavior_expressions(editor *e);
 void ed_open_context_menu(editor *e, ImVec2 mouse);
 void ed_request_extraction(editor *e);
 void ed_draw_extract_popup(editor *e);

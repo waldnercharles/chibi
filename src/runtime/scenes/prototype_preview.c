@@ -189,8 +189,8 @@ int game_prototype_preview_launch(
         return ECS_ERR_ARGUMENT;
     }
     clear_entity(preview);
-    game_behavior_set_deferred(preview->live->behaviors, false);
-    engine_set_playing(preview->runtime, true);
+    engine_set_playing(preview->runtime, false);
+    game_behavior_set_deferred(preview->live->behaviors, true);
     int result = game_prototype_spawn(
         prototype,
         preview->world,
@@ -200,9 +200,23 @@ int game_prototype_preview_launch(
         error_size
     );
     if (result != ECS_OK) {
+        game_behavior_set_deferred(preview->live->behaviors, false);
         engine_set_playing(preview->runtime, false);
     } else {
         apush(preview->entities, preview->entity);
+        if (game_entities_rebuild_global_bindings(preview->live->entities) != 0) {
+            snprintf(error, error_size, "global binding names must be unique");
+            game_behavior_set_deferred(preview->live->behaviors, false);
+            clear_entity(preview);
+            return ECS_ERR_COMPONENT;
+        }
+        game_behavior_set_deferred(preview->live->behaviors, false);
+        if (game_behavior_begin_pending(preview->live->behaviors) != 0) {
+            snprintf(error, error_size, "prototype behavior Begin failed");
+            clear_entity(preview);
+            return ECS_ERR_COMMAND;
+        }
+        engine_set_playing(preview->runtime, true);
     }
     return result;
 }
@@ -277,6 +291,12 @@ int game_prototype_preview_launch_scene(
         if (!preview->entity.slot) {
             preview->entity = entity;
         }
+    }
+    if (game_entities_rebuild_global_bindings(preview->live->entities) != 0) {
+        snprintf(error, error_size, "global binding names must be unique");
+        game_behavior_set_deferred(preview->live->behaviors, false);
+        clear_entity(preview);
+        return ECS_ERR_COMPONENT;
     }
     game_behavior_set_deferred(preview->live->behaviors, false);
     if (game_behavior_begin_pending(preview->live->behaviors) != 0) {
@@ -390,4 +410,15 @@ behavior_instance *game_prototype_preview_instance(game_prototype_preview *previ
         return NULL;
     }
     return game_behavior_instance(preview->live->behaviors, preview->entity, asset_name);
+}
+
+int game_prototype_preview_register_system(
+    game_prototype_preview *preview,
+    const char *name,
+    const char *json,
+    char *error,
+    size_t size
+)
+{
+    return game_live_register_system(preview->live, name, json, error, size);
 }

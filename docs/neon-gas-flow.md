@@ -10,7 +10,7 @@ not MPM. Liquids retain the existing particle density-relaxation solver.
 
 `src/runtime/material_flow.c` owns the field independently of combat, rendering,
 and Box2D. `material_fluid` supplies particles, active indices and collider data.
-`GameMaterialWorld` enables it with three fields:
+`MaterialFluidWorld` enables it with three fields:
 
 | Field | NeonSwarm | Meaning |
 | --- | --- | --- |

@@ -125,6 +125,54 @@ const behavior_function *behavior_program_batch_event(
     return NULL;
 }
 
+void behavior_program_event_batch_info(
+    const behavior_program *program,
+    const node *entry,
+    behavior_event_batch_info *out
+)
+{
+    assert(out);
+    *out = (behavior_event_batch_info){
+        .entry = entry,
+        .backend = behavior_program_backend(program),
+        .reason = BEHAVIOR_BATCH_UNAVAILABLE,
+    };
+    if (!program || !entry || !entry->reference_name) {
+        return;
+    }
+    bool duplicate = false;
+    node *found = behavior_program_event(program, entry->reference_name, &duplicate);
+    out->found = found != NULL;
+    out->duplicate = duplicate;
+    out->entry = found;
+    if (!found || duplicate || found != entry) {
+        return;
+    }
+    out->program_diagnostic = behavior_program_diagnostic(program);
+    if (out->program_diagnostic) {
+        return;
+    }
+    const behavior_graph_program *graph_program = NULL;
+    for (int i = 0; i < acount(program->graphs) && !graph_program; i++) {
+        graph *source = program->graphs[i].source;
+        for (int j = 0; j < acount(source->nodes); j++) {
+            if (source->nodes[j] == entry) {
+                graph_program = &program->graphs[i];
+                break;
+            }
+        }
+    }
+    if (!graph_program) {
+        return;
+    }
+    out->function = behavior_program_function(graph_program, entry);
+    if (!out->function) {
+        out->function_diagnostic = behavior_program_function_diagnostic(graph_program, entry);
+        return;
+    }
+    out->reason = behavior_function_batch_reason(out->function, graph_program->source, entry);
+}
+
 const char *behavior_backend_name(behavior_backend backend)
 {
     switch (backend) {
@@ -269,7 +317,11 @@ static graph_ir_control lower_control(graph *g, node *n)
     if (n->desc == &NODE_Return) {
         op = GRAPH_IR_FUNCTION_RETURN;
     }
-    if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallMacro) {
+    graph *expression = n->desc == &NODE_BehaviorExpression && g->owner
+                          ? behavior_asset_find_graph(g->owner, n->reference_id)
+                          : NULL;
+    if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallMacro ||
+        (expression && expression->expression_mode == GRAPH_EXPRESSION_ACTION)) {
         op = GRAPH_IR_FUNCTION_CALL;
     }
     if (n->desc == &NODE_WhileLoop) {

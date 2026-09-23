@@ -1,3 +1,4 @@
+#include "graph/compiler/behavior_program.h"
 #include "test/suite_internal.h"
 
 void run_graph_compile_checks()
@@ -44,6 +45,52 @@ void run_graph_compile_checks()
         free(before);
         free(after);
         compile_report_free(&rep);
+        behavior_asset_free(asset);
+    }
+
+    /* PERF-1: event batch status explains the same eligibility proof used by
+     * publication and exposes the common repairable payload case. */
+    {
+        behavior_asset *asset = behavior_asset_new("PERF1");
+        node *event = graph_add_node(asset->graph, &NODE_Event);
+        graph_set_event_name(asset->graph, event, "Tick");
+        behavior_event_batch_info info;
+        behavior_program *program = behavior_program_publish(asset);
+        behavior_program_event_batch_info(program, event, &info);
+        test_check(
+            info.found && !info.duplicate && info.function &&
+                info.reason == BEHAVIOR_BATCH_READY &&
+                behavior_program_backend(program) != BEHAVIOR_UNAVAILABLE,
+            "a parameterless event reports a ready batch path"
+        );
+        pin_spec payload = { "Unused", PIN_F32, "float", PIN_DATA };
+        test_check(graph_add_pin(asset->graph, event, 1, &payload) >= 0, "an event can expose a payload pin");
+        program = behavior_program_publish(asset);
+        behavior_program_event_batch_info(program, event, &info);
+        test_check(
+            info.reason == BEHAVIOR_BATCH_EVENT_PAYLOAD &&
+                behavior_program_batch_event(program, "Tick", NULL) == NULL,
+            "an event payload reports why batching is unavailable"
+        );
+        node *duplicate = graph_add_node(asset->graph, &NODE_Event);
+        graph_set_event_name(asset->graph, duplicate, "Tick");
+        program = behavior_program_publish(asset);
+        behavior_program_event_batch_info(program, event, &info);
+        test_check(info.found && info.duplicate, "duplicate event names report an ambiguous batch status");
+        behavior_asset_free(asset);
+    }
+
+    /* PERF-2: latent flow remains visible as an activation path rather than
+     * being mistaken for a fast batch. */
+    {
+        behavior_asset *asset = behavior_asset_new("PERF2");
+        node *event = graph_add_node(asset->graph, &NODE_Event);
+        graph_set_event_name(asset->graph, event, "Go");
+        node *delay = graph_add_node(asset->graph, &NODE_Delay);
+        graph_connect_exec(asset->graph, event, 0, delay, 0, 0);
+        behavior_event_batch_info info;
+        behavior_program_event_batch_info(behavior_program_publish(asset), event, &info);
+        test_check(info.reason == BEHAVIOR_BATCH_WAITS, "a latent event reports its wait blocker");
         behavior_asset_free(asset);
     }
 
@@ -438,13 +485,14 @@ void run_graph_compile_checks()
         behavior_asset *asset = behavior_asset_new("CMPL20");
         static pin_spec nominal_in[] = {
             { "CF_V3In", PIN_STRUCT, "CF_V3", PIN_DATA },
+            { "Control", PIN_ENUM, "GameControl", PIN_DATA },
         };
         static pin_spec nominal_out[] = {
             { "Handle", PIN_HANDLE, "MissingType", PIN_DATA },
         };
         static node_desc nominal_desc = {
             .name = "Nominal",
-            .input_count = 1,
+            .input_count = 2,
             .output_count = 1,
             .inputs = nominal_in,
             .outputs = nominal_out,
@@ -453,7 +501,7 @@ void run_graph_compile_checks()
         graph_add_node(asset->graph, &nominal_desc);
         compile_report rep;
         compile_report_init(&rep);
-        test_check(behavior_asset_compile(asset, &rep) == 1, "a registry-known struct pin compiles, an unknown handle name errors");
+        test_check(behavior_asset_compile(asset, &rep) == 1, "registered struct and enum pins compile; an unknown handle name errors");
         test_check(
             rep.items[0].rule == CMPL_RULE_UNKNOWN_NOMINAL_TYPE &&
                 strstr(rep.items[0].message, "MissingType") != NULL,

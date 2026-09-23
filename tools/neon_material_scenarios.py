@@ -17,20 +17,20 @@ def scenario(name):
     frames = 240
     if name == 'dense-fog':
         frames, inputs = 60, [sample(0)]
-        operations.append(entity('Benchmark atmosphere', 'NeonSwarmCloud', -200, 0,
+        operations.append(entity('Benchmark atmosphere', 'Cloud', -200, 0,
             GameFluidVolume=dict(width=1000, height=600, spacing=5)))
     if name == 'ignition':
         frames, inputs = 90, [sample(0, fire=True)]
         for i, x in enumerate([-180, 0, 180]):
-            operations.append(entity(f'Benchmark fuel {i}', 'NeonSwarmFuelCloud', x, 0,
+            operations.append(entity(f'Benchmark fuel {i}', 'FuelCloud', x, 0,
                 GameFluidVolume=dict(width=180, height=180, spacing=7), GameFuel=dict(amount=8)))
-            operations.append(entity(f'Benchmark igniter {i}', 'NeonSwarmProjectile', x, 0,
+            operations.append(entity(f'Benchmark igniter {i}', 'Projectile', x, 0,
                 GameVelocity=dict(x=0, y=0), GameCollider=dict(radius=8),
                 GameIgniter=dict(heat=2.5)))
     if name == 'destruction':
         frames, inputs = 90, [sample(0, fire=True)]
         for i in range(24):
-            operations.append(entity(f'Benchmark pillar {i}', 'NeonSwarmHardRock', -250 + i * 18, 0,
+            operations.append(entity(f'Benchmark pillar {i}', 'HardRock', -250 + i * 18, 0,
                 GameAppearance=dict(width=8, height=56),
                 GameCollider=dict(width=8, height=56), GameOrientation=dict(radians=0),
                 GameDestructible=dict(cell_size=2, min_fragment_cells=2),

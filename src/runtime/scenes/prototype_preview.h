@@ -89,3 +89,11 @@ ecs_entity game_prototype_preview_entity_at(const game_prototype_preview *previe
 behavior_instance *game_prototype_preview_instance(game_prototype_preview *preview, const char *asset_name);
 
 #endif
+
+int game_prototype_preview_register_system(
+    game_prototype_preview *preview,
+    const char *name,
+    const char *json,
+    char *error,
+    size_t size
+);

@@ -45,6 +45,7 @@ typedef struct
     ecs_entity target;
     char *name;
     pin_value *values;
+    arena storage;
 } event_request;
 
 enum
@@ -62,6 +63,19 @@ typedef struct
     uint64_t handle;
 } nearest_target;
 
+typedef struct
+{
+    char *name;
+    ecs_entity entity;
+} global_binding;
+
+typedef struct
+{
+    char *name;
+    pin_value value;
+    arena storage;
+} global_value;
+
 struct game_entities
 {
     ecs_world *world;
@@ -75,6 +89,8 @@ struct game_entities
     nearest_candidates nearest[NEAREST_CACHE_MAX];
     int nearest_count;
     nearest_target *parallel_candidates[32];
+    global_binding *global_bindings;
+    global_value *global_values;
     bool parallel_queries;
     bool query_scope, profile_queries;
     game_entity_query_profile query_profile;
@@ -202,12 +218,250 @@ bool game_entities_owns(const game_entities *entities, ecs_entity entity)
     return false;
 }
 
+static void clear_global_bindings(game_entities *entities)
+{
+    for (int i = 0; i < acount(entities->global_bindings); i++) {
+        free(entities->global_bindings[i].name);
+    }
+    afree(entities->global_bindings);
+}
+
+static void clear_global_values(game_entities *entities)
+{
+    for (int i = 0; i < acount(entities->global_values); i++) {
+        global_value *value = &entities->global_values[i];
+        arena_free(&value->storage);
+        free(value->name);
+    }
+    aclear(entities->global_values);
+}
+
+static global_binding *find_global_binding(game_entities *entities, const char *name)
+{
+    for (int i = 0; i < acount(entities->global_bindings); i++) {
+        global_binding *binding = &entities->global_bindings[i];
+        if (strcmp(binding->name, name) != 0) {
+            continue;
+        }
+        return binding;
+    }
+    return NULL;
+}
+
+static const global_binding *find_global_binding_const(const game_entities *entities, const char *name)
+{
+    for (int i = 0; i < acount(entities->global_bindings); i++) {
+        const global_binding *binding = &entities->global_bindings[i];
+        if (!strcmp(binding->name, name)) {
+            return binding;
+        }
+    }
+    return NULL;
+}
+
+static global_value *find_global_value(game_entities *entities, const char *name)
+{
+    for (int i = 0; i < acount(entities->global_values); i++) {
+        global_value *value = &entities->global_values[i];
+        if (!strcmp(value->name, name)) {
+            return value;
+        }
+    }
+    return NULL;
+}
+
+static const global_value *find_global_value_const(const game_entities *entities, const char *name)
+{
+    for (int i = 0; i < acount(entities->global_values); i++) {
+        const global_value *value = &entities->global_values[i];
+        if (!strcmp(value->name, name)) {
+            return value;
+        }
+    }
+    return NULL;
+}
+
+int game_entities_global_name_count(const game_entities *entities)
+{
+    if (!entities) {
+        return 0;
+    }
+    int count = acount(entities->global_bindings);
+    for (int i = 0; i < acount(entities->global_values); i++) {
+        if (!find_global_binding_const(entities, entities->global_values[i].name)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+const char *game_entities_global_name_at(const game_entities *entities, int index)
+{
+    if (!entities || index < 0) {
+        return NULL;
+    }
+    if (index < acount(entities->global_bindings)) {
+        return entities->global_bindings[index].name;
+    }
+    index -= acount(entities->global_bindings);
+    for (int i = 0; i < acount(entities->global_values); i++) {
+        const char *name = entities->global_values[i].name;
+        if (find_global_binding_const(entities, name)) {
+            continue;
+        }
+        if (index-- == 0) {
+            return name;
+        }
+    }
+    return NULL;
+}
+
+static bool global_value_type_matches(const pin_value *left, const pin_value *right)
+{
+    return left->type == right->type && left->container == right->container &&
+           ((!left->type_name && !right->type_name) ||
+            (left->type_name && right->type_name &&
+             !strcmp(left->type_name, right->type_name)));
+}
+
+static bool is_entity_value(const pin_value *value)
+{
+    return value->type == PIN_HANDLE && value->container == PIN_CONTAINER_SINGLE &&
+           value->type_name && !strcmp(value->type_name, "ecs.entity");
+}
+
+static int set_global_binding(game_entities *entities, const char *name, ecs_entity entity, bool reject_duplicate)
+{
+    if (!name || !name[0]) {
+        return -1;
+    }
+    global_binding *binding = find_global_binding(entities, name);
+    if (binding) {
+        if (reject_duplicate && binding->entity.slot &&
+            ecs_entity_is_alive(entities->world, binding->entity) &&
+            ecs_entity_to_u64(binding->entity) != ecs_entity_to_u64(entity)) {
+            return -1;
+        }
+        binding->entity = entity;
+        return 0;
+    }
+    apush(entities->global_bindings, ((global_binding){ .name = xstrdup(name), .entity = entity }));
+    return 0;
+}
+
+int game_entities_rebuild_global_bindings(game_entities *entities)
+{
+    if (!entities) {
+        return -1;
+    }
+    global_binding *previous = entities->global_bindings;
+    entities->global_bindings = NULL;
+    if (!ecs_world_component(entities->world, GAME_COMPONENT_GameGlobalBinding.id)) {
+        entities->global_bindings = previous;
+        clear_global_bindings(entities);
+        return 0;
+    }
+    ecs_query query;
+    if (ecs_query_begin(
+            entities->world,
+            &query,
+            &(ecs_component_id){ GAME_COMPONENT_GameGlobalBinding.id },
+            1
+        ) != ECS_OK) {
+        clear_global_bindings(entities);
+        entities->global_bindings = previous;
+        return -1;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameGlobalBinding
+            *binding = GAME_GameGlobalBinding_get_const(entities->world, entity);
+        if (binding->name && binding->name[0] &&
+            set_global_binding(entities, binding->name, entity, true) != 0) {
+            ecs_query_end(&query);
+            clear_global_bindings(entities);
+            entities->global_bindings = previous;
+            return -1;
+        }
+    }
+    ecs_query_end(&query);
+    global_binding *rebuilt = entities->global_bindings;
+    entities->global_bindings = previous;
+    clear_global_bindings(entities);
+    entities->global_bindings = rebuilt;
+    return 0;
+}
+
+int game_entities_get_global_value(
+    const game_entities *entities,
+    const char *name,
+    arena *storage,
+    pin_value *out
+)
+{
+    if (!entities || !name || !name[0] || !storage || !out) {
+        return -1;
+    }
+    const global_value *value = find_global_value_const(entities, name);
+    if (value) {
+        if (pin_value_snapshot_to_arena(storage, out, &value->value) != 0) {
+            return -1;
+        }
+        if (is_entity_value(out)) {
+            ecs_entity entity = ecs_entity_from_u64(out->u64);
+            if (!entity.slot || !ecs_entity_is_alive(entities->world, entity) ||
+                game_entities_is_retiring(entities, entity)) {
+                out->u64 = 0;
+            }
+        }
+        return 0;
+    }
+    const global_binding *binding = find_global_binding_const(entities, name);
+    if (!binding) {
+        return -1;
+    }
+    ecs_entity entity = binding->entity;
+    if (!entity.slot || !ecs_entity_is_alive(entities->world, entity) ||
+        game_entities_is_retiring(entities, entity)) {
+        entity = (ecs_entity){ 0 };
+    }
+    *out = (pin_value){ .type = PIN_HANDLE,
+                        .type_name = "ecs.entity",
+                        .u64 = ecs_entity_to_u64(entity) };
+    return 0;
+}
+
+int game_entities_set_global_value(game_entities *entities, const char *name, const pin_value *value)
+{
+    if (!entities || !name || !name[0] || !value || value->type == PIN_FLOW ||
+        (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
+         value->ptr && !registry_type_by_name(value->type_name))) {
+        return -1;
+    }
+    const global_binding *binding = find_global_binding_const(entities, name);
+    if (binding && !is_entity_value(value)) {
+        return -1;
+    }
+    global_value *stored = find_global_value(entities, name);
+    if (stored && !global_value_type_matches(&stored->value, value)) {
+        return -1;
+    }
+    if (!stored) {
+        apush(entities->global_values, ((global_value){ .name = xstrdup(name) }));
+        stored = &alast(entities->global_values);
+    }
+    arena_reset(&stored->storage);
+    if (pin_value_snapshot_to_arena(&stored->storage, &stored->value, value) != 0) {
+        arena_reset(&stored->storage);
+        stored->value = (pin_value){ 0 };
+        return -1;
+    }
+    return 0;
+}
+
 static void release_event(event_request *event)
 {
-    for (int i = 0; i < acount(event->values); i++) {
-        free((void *)event->values[i].type_name);
-        pin_value_destroy(&event->values[i]);
-    }
+    arena_free(&event->storage);
     afree(event->values);
     free(event->name);
 }
@@ -215,6 +469,8 @@ static void release_event(event_request *event)
 void game_entities_reset(game_entities *entities)
 {
     game_entities_query_scope(entities, NULL);
+    clear_global_bindings(entities);
+    clear_global_values(entities);
     for (int i = 0; i < acount(entities->events); i++) {
         release_event(&entities->events[i]);
     }
@@ -249,6 +505,8 @@ void game_entities_free(game_entities *entities)
     afree(entities->spawns);
     afree(entities->owned);
     afree(entities->destroy);
+    afree(entities->global_bindings);
+    afree(entities->global_values);
     afree(entities->events);
     for (int i = 0; i < NEAREST_CACHE_MAX; i++) {
         afree(entities->nearest[i].entities);
@@ -367,19 +625,17 @@ int game_entities_request_event(game_entities *entities, ecs_entity target, cons
         return FLOW_ERR_ARGUMENT;
     }
     for (int i = 0; i < inputs.count; i++) {
-        if (inputs.values[i].type == PIN_STRUCT ||
-            inputs.values[i].container != PIN_CONTAINER_SINGLE) {
+        if (inputs.values[i].container != PIN_CONTAINER_SINGLE) {
             return FLOW_ERR_ARGUMENT;
         }
     }
     event_request event = { .target = target, .name = xstrdup(name) };
     for (int i = 0; i < inputs.count; i++) {
         pin_value copy;
-        if (pin_value_copy(&copy, &inputs.values[i]) != 0) {
+        if (pin_value_snapshot_to_arena(&event.storage, &copy, &inputs.values[i]) != 0) {
             release_event(&event);
             return FLOW_ERR_ARGUMENT;
         }
-        copy.type_name = copy.type_name ? xstrdup(copy.type_name) : NULL;
         apush(event.values, copy);
     }
     apush(entities->events, event);
@@ -490,6 +746,10 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
             return -1;
         }
         apush(entities->owned, request->entity);
+        if (game_entities_rebuild_global_bindings(entities) != 0) {
+            flow_host_cancel(request->wait);
+            return -1;
+        }
         pin_value value = { .type = PIN_HANDLE,
                             .type_name = "ecs.entity",
                             .u64 = ecs_entity_to_u64(request->entity) };
@@ -560,6 +820,24 @@ int game_entities_flush(game_entities *entities)
     }
     afree(entities->spawns);
     entities->spawns = pending;
+    /* A completed child can resume a root that destroys its own entity.
+     * Finalize earlier siblings before that destruction cancels the root's
+     * continuations; their initialized entities now have independent lives. */
+    for (int i = acount(entities->spawns) - 1; i >= 0; i--) {
+        /* Begin can append spawns and reallocate the queue. */
+        spawn_request request = entities->spawns[i];
+        flow_run *run = flow_host_run(request.wait);
+        if (!request.entity.slot || !run || flow_run_status(run) != FLOW_COMPLETED) {
+            continue;
+        }
+        int result = finish_spawn(entities, &request);
+        assert(result <= 0);
+        if (result < 0 && ecs_entity_is_alive(entities->world, request.entity)) {
+            game_behavior_destroy_entity(entities->behaviors, request.entity);
+        }
+        release_request(&request);
+        adel(entities->spawns, i);
+    }
     if (acount(entities->destroy)) {
         int result = game_behavior_destroy_entities(
             entities->behaviors,
@@ -880,6 +1158,90 @@ static const node_access NEAREST_PARALLEL_ACCESS = { .read_refs = nearest_reads,
                                                      .flags = NODE_EFFECT_WORLD_READ |
                                                               NODE_EFFECT_PARALLEL };
 
+static const char *get_global_variable(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *storage,
+    pin_value *out
+)
+{
+    game_entities *entities = eval_context_service(ctx, "game.entities");
+    if (!entities) {
+        return "Get Global Variable requires a game world";
+    }
+    if (game_entities_get_global_value(entities, inputs[0].str, storage, out) != 0) {
+        return "Get Global Variable references an unknown value";
+    }
+    return NULL;
+}
+
+static int set_global_variable_node(node *, flow_context *ctx)
+{
+    game_entities *entities = flow_context_service(ctx, "game.entities");
+    if (!entities) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Set Global Variable requires a game world");
+    }
+    pin_value name, value;
+    int result = flow_context_eval_data(ctx, 1, &name);
+    if (result < 0) {
+        return result;
+    }
+    result = flow_context_eval_data(ctx, 2, &value);
+    if (result < 0) {
+        return result;
+    }
+    if (game_entities_set_global_value(entities, name.str, &value) != 0) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Set Global Variable received an invalid value");
+    }
+    *flow_context_output_value(ctx, 1) = value;
+    return flow_context_continue(ctx, 0);
+}
+
+static const node_access GLOBAL_VARIABLE_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+static const node_access GLOBAL_VARIABLE_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+static pin_spec GET_GLOBAL_VARIABLE_IN[] = {
+    { .name = "Name", .type = PIN_NAME, .type_name = "name" }
+};
+static pin_spec GET_GLOBAL_VARIABLE_OUT[] = { { .name = "Value",
+                                                .type = PIN_FLOW,
+                                                .kind = PIN_DATA,
+                                                .flags = PIN_FLAG_WILDCARD,
+                                                .group = 1 } };
+static node_desc GET_GLOBAL_VARIABLE_NODE = {
+    .name = "Get Global Variable",
+    .input_count = 1,
+    .inputs = GET_GLOBAL_VARIABLE_IN,
+    .output_count = 1,
+    .outputs = GET_GLOBAL_VARIABLE_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = get_global_variable,
+    .category = "Global",
+    .keywords = "global shared variable binding reference entity value",
+    .access = &GLOBAL_VARIABLE_READ_ACCESS,
+};
+static pin_spec SET_GLOBAL_VARIABLE_IN[] = {
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Name", .type = PIN_NAME, .type_name = "name" },
+    { .name = "Value", .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD, .group = 1 },
+};
+static pin_spec SET_GLOBAL_VARIABLE_OUT[] = {
+    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Value", .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD, .group = 1 },
+};
+static node_desc SET_GLOBAL_VARIABLE_NODE = {
+    .name = "Set Global Variable",
+    .input_count = 3,
+    .inputs = SET_GLOBAL_VARIABLE_IN,
+    .output_count = 2,
+    .outputs = SET_GLOBAL_VARIABLE_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = set_global_variable_node,
+    .display_class = NODE_DISPLAY_VARIABLE,
+    .category = "Global",
+    .keywords = "global shared variable binding reference entity value publish",
+    .access = &GLOBAL_VARIABLE_WRITE_ACCESS,
+};
+
 static const ecs_component_desc *query_component(game_entities *entities, const char *key)
 {
     for (int i = 0; key && i < ecs_world_component_count(entities->world); i++) {
@@ -1098,15 +1460,14 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &DESTROY_NODE,
                                            &DAMAGE_NODE,
                                            &NEAREST_NODE,
+                                           &GET_GLOBAL_VARIABLE_NODE,
+                                           &SET_GLOBAL_VARIABLE_NODE,
                                            &HAS_ENTITIES_NODE,
                                            &NODE_Normalize_Vector_2,
                                            &FIND_ENTITIES_NODE,
                                            &NODE_Count_Matching_Entities,
                                            &GAME_NODE_GetContactEntities,
                                            &GAME_NODE_Raycast,
-                                           &GAME_NODE_CarveMaterial,
-                                           &GAME_NODE_ReleaseMaterial,
-                                           &GAME_NODE_IsMaterialFragment,
                                            &NODE_Direction_To,
                                            &NODE_Atan2,
                                            &NODE_Random_Range_Vector,

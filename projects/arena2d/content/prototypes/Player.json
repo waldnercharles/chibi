@@ -1,0 +1,110 @@
+{
+  "name": "Player",
+  "identity": "prototype-b77c334d33bb1c24",
+  "components": {
+    "GAME.GameActionBinding": {
+      "action": "Dash",
+      "disabled": false,
+      "firing": false,
+      "pressed": false,
+      "source": 3
+    },
+    "GAME.GameAim": {
+      "direction": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "firing": false,
+      "manual": false
+    },
+    "GAME.GameAppearance": {
+      "antialias": 1.0,
+      "border_color": 0,
+      "border_width": 0.0,
+      "color": 4294967295,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 18.0,
+      "layer": 0,
+      "shape": 4,
+      "stroke_width": 1.0,
+      "width": 20.0
+    },
+    "GAME.GameBody": {
+      "angular_velocity": 0.0,
+      "continuous": true,
+      "type": 1
+    },
+    "GAME.GameCollider": {
+      "category": 1,
+      "friction": 0.0,
+      "height": 0.0,
+      "ignore_entity": null,
+      "mask": 10,
+      "pierce_fragments": false,
+      "radius": 10.0,
+      "restitution": 0.0,
+      "sensor": false,
+      "shape": 0,
+      "width": 0.0
+    },
+    "GAME.GameDrive": {
+      "acceleration": 800.0,
+      "target": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    "GAME.GameGlobalBinding": {
+      "name": "Player"
+    },
+    "game.GameHealth": {
+      "current": 20,
+      "maximum": 20
+    },
+    "game.GameInput": {
+      "move": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    "GAME.GameMaterial": {
+      "absorption": 1.0,
+      "albedo": 437918234,
+      "border_albedo": 0,
+      "border_emission_color": 0,
+      "border_filter": 0,
+      "border_scene": 0,
+      "edge_light": 0.0,
+      "emission_color": 2823094271,
+      "emission_intensity": 0.10000000149011612,
+      "emission_multiplier": 1.0,
+      "filter": 0,
+      "scene": 4294967295
+    },
+    "game.GameMovement": {
+      "speed": 120.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameWeapon": {
+      "cooldown": 0.125,
+      "damage": 1
+    }
+  },
+  "behaviors": [
+    "MaterialImpactHealth",
+    "Movement",
+    "PlayerEffects",
+    "Weapon"
+  ]
+}

@@ -26,6 +26,20 @@ typedef struct game_live_definition
     compile_report diagnostics;
 } game_live_definition;
 
+typedef struct
+{
+    char *name, *json;
+    unsigned revision;
+} game_live_system_asset;
+int game_live_register_system(
+    game_live_world *world,
+    const char *name,
+    const char *json,
+    char *error,
+    size_t size
+);
+const game_live_system_asset *game_live_find_system(const game_live_world *world, const char *name);
+
 struct game_live_world
 {
     ecs_world *ecs;
@@ -36,6 +50,7 @@ struct game_live_world
     game_materials *materials;
     game_visibility *visibility;
     game_live_definition **definitions;
+    game_live_system_asset *systems;
 };
 
 game_live_definition *game_live_definition_new(const char *asset_name, behavior_asset *working);

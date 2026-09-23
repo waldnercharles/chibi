@@ -69,7 +69,10 @@ int behavior_lower_successor(builder *b, node *n, int pin, int after)
                 .frame = b->frame,
                 .loop = b->loop,
                 .input = index,
-                .from = b->recording && !immediate && n->desc != &NODE_CallFunction ? n : NULL,
+                .from = b->recording && !immediate && n->desc != &NODE_CallFunction &&
+                                n->desc != &NODE_BehaviorExpression
+                          ? n
+                          : NULL,
                 .output = pin }
     );
 }
@@ -271,7 +274,7 @@ static bool block(builder *b, int index)
         next = behavior_lower_successor(b, n, 0, t.after);
     } else if (n->desc == &NODE_Return && n->id == b->graph->return_id) {
         return return_values(b, n);
-    } else if (n->desc == &NODE_CallFunction) {
+    } else if (n->desc == &NODE_CallFunction || behavior_expression_mode_for(b, n) == GRAPH_EXPRESSION_ACTION) {
         next = call(b, n, t.after);
         if (next < -1) {
             return false;
@@ -335,8 +338,21 @@ static bool block(builder *b, int index)
         next = behavior_lower_switch(b, t);
     } else if (behavior_lower_is_state(n->desc)) {
         next = behavior_lower_state(b, t);
-    } else if (n->desc == &NODE_Branch) {
-        int condition = behavior_lower_input(b, n, 1);
+    } else if (n->desc == &NODE_Branch || behavior_expression_mode_for(b, n) == GRAPH_EXPRESSION_BRANCH) {
+        int condition;
+        if (n->desc == &NODE_Branch) {
+            condition = behavior_lower_input(b, n, 1);
+        } else {
+            int result_pin = -1;
+            for (int i = 0; i < n->output_count; i++) {
+                if (n->output_pins[i].kind == PIN_DATA && n->output_pins[i].name &&
+                    !strcmp(n->output_pins[i].name, "Result")) {
+                    result_pin = i;
+                    break;
+                }
+            }
+            condition = result_pin < 0 ? -1 : behavior_lower_output(b, n, result_pin);
+        }
         if (condition < 0 || b->function->slots[condition] != PIN_BOOL) {
             return false;
         }
@@ -366,8 +382,9 @@ static bool block(builder *b, int index)
     if (next < -1) {
         return false;
     }
-    if (n->desc != &NODE_CallFunction && n->desc != &NODE_Delay &&
-        !behavior_lower_is_state(n->desc) &&
+    if (n->desc != &NODE_CallFunction &&
+        behavior_expression_mode_for(b, n) != GRAPH_EXPRESSION_ACTION &&
+        n->desc != &NODE_Delay && !behavior_lower_is_state(n->desc) &&
         !(n->desc->command && n->desc->command->begin)) {
         behavior_lower_capture(b, n, t.continuation);
     }
@@ -499,18 +516,40 @@ static bool batch_operation(behavior_function_op op)
         default: return false;
     }
 }
-static bool batch_event(const behavior_function *f, const graph *g, const node *entry)
+behavior_batch_reason behavior_function_batch_reason(
+    const behavior_function *f,
+    const graph *g,
+    const node *entry
+)
 {
-    if (entry->desc->flow_kind != NODE_FLOW_EVENT || entry->output_count != 1 ||
-        g->return_id || f->waits || f->breakpoints) {
-        return false;
+    if (!f || !g || !entry || !entry->desc) {
+        return BEHAVIOR_BATCH_UNAVAILABLE;
+    }
+    if (entry->desc->flow_kind != NODE_FLOW_EVENT) {
+        return BEHAVIOR_BATCH_NOT_EVENT;
+    }
+    if (entry->output_count != 1) {
+        return BEHAVIOR_BATCH_EVENT_PAYLOAD;
+    }
+    if (g->return_id) {
+        return BEHAVIOR_BATCH_GRAPH_RETURN;
+    }
+    if (f->waits) {
+        return BEHAVIOR_BATCH_WAITS;
+    }
+    if (f->breakpoints) {
+        return BEHAVIOR_BATCH_BREAKPOINTS;
     }
     for (int i = 0; i < acount(f->instructions); i++) {
         if (!batch_operation(f->instructions[i].op)) {
-            return false;
+            return BEHAVIOR_BATCH_UNSUPPORTED_OPERATION;
         }
     }
-    return true;
+    return BEHAVIOR_BATCH_READY;
+}
+static bool batch_event(const behavior_function *f, const graph *g, const node *entry)
+{
+    return behavior_function_batch_reason(f, g, entry) == BEHAVIOR_BATCH_READY;
 }
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
@@ -723,7 +762,8 @@ static bool recursive(const behavior_asset *asset, graph *g, graph ***path, grap
     apush(*path, g);
     for (int i = 0; i < acount(g->nodes); i++) {
         const node *n = g->nodes[i];
-        if (n->desc != &NODE_CallFunction && n->desc != &NODE_CallPureFunction) {
+        if (n->desc != &NODE_CallFunction && n->desc != &NODE_CallPureFunction &&
+            n->desc != &NODE_BehaviorExpression) {
             continue;
         }
         graph *target = behavior_asset_find_graph(asset, n->reference_id);

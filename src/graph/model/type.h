@@ -23,6 +23,20 @@ typedef struct
     const char *alias_of; /* optional underlying nominal type name */
 } type_desc;
 
+typedef struct
+{
+    int value;
+    const char *name;
+    const char *label;
+} enum_value_desc;
+
+typedef struct
+{
+    const char *name;
+    const enum_value_desc *values;
+    int value_count;
+} enum_desc;
+
 /* Hash the reflected storage layout on the current target. */
 uint64_t type_layout_hash(const type_desc *type);
 /* Every field is inline and contains no managed string or container. */

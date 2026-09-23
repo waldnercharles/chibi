@@ -1,0 +1,327 @@
+#include "runtime/material_stream.h"
+
+#include "runtime/material_terrain.h"
+#include "support/array.h"
+#include "support/xalloc.h"
+
+#include <assert.h>
+#include <float.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct
+{
+    uint64_t key;
+    long offset;
+} stored_tile;
+struct material_stream
+{
+    material_stream_desc desc;
+    material_stream_tile *tiles;
+    stored_tile *stored;
+    FILE *file;
+    int columns, rows;
+    material_stream_state state;
+};
+
+material_stream *material_stream_new(material_stream_desc desc)
+{
+    assert(desc.grid.cell_size > 0);
+    assert(
+        (desc.grid.width == 0 && desc.grid.height == 0) ||
+        (desc.grid.width > 0 && desc.grid.height > 0)
+    );
+    material_stream *s = xcalloc(1, sizeof *s);
+    s->desc = desc;
+    s->desc.field = xstrdup(desc.field);
+    s->desc.parameters = xstrdup(desc.parameters ? desc.parameters : "");
+    s->columns = (desc.grid.width + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                 MATERIAL_TERRAIN_CHUNK_CELLS;
+    s->rows = (desc.grid.height + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+              MATERIAL_TERRAIN_CHUNK_CELLS;
+    return s;
+}
+
+static void free_tile(material_stream_tile tile)
+{
+    material_mask_free(tile.mask);
+    free(tile.mask);
+}
+
+void material_stream_free(material_stream *s)
+{
+    for (int i = 0; i < acount(s->tiles); i++) {
+        free_tile(s->tiles[i]);
+    }
+    afree(s->tiles);
+    afree(s->stored);
+    if (s->file) {
+        fclose(s->file);
+    }
+    free((char *)s->desc.field);
+    free((char *)s->desc.parameters);
+    free(s);
+}
+
+static field_grid tile_grid(const material_stream *s, uint64_t key)
+{
+    if (!s->columns) {
+        int x = (int32_t)(uint32_t)key;
+        int y = (int32_t)(uint32_t)(key >> 32);
+        float span = s->desc.grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
+        return (field_grid){ MATERIAL_TERRAIN_CHUNK_CELLS,
+                             MATERIAL_TERRAIN_CHUNK_CELLS,
+                             s->desc.grid.cell_size,
+                             s->desc.grid.center_x + (x + .5f) * span,
+                             s->desc.grid.center_y + (y + .5f) * span };
+    }
+    int x = (int)(key % s->columns) * MATERIAL_TERRAIN_CHUNK_CELLS;
+    int y = (int)(key / s->columns) * MATERIAL_TERRAIN_CHUNK_CELLS;
+    field_grid g = s->desc.grid;
+    int w = g.width - x < MATERIAL_TERRAIN_CHUNK_CELLS ? g.width - x
+                                                       : MATERIAL_TERRAIN_CHUNK_CELLS;
+    int h = g.height - y < MATERIAL_TERRAIN_CHUNK_CELLS
+              ? g.height - y
+              : MATERIAL_TERRAIN_CHUNK_CELLS;
+    return (field_grid){ w,
+                         h,
+                         g.cell_size,
+                         g.center_x + (x + w * .5f - g.width * .5f) * g.cell_size,
+                         g.center_y + (y + h * .5f - g.height * .5f) * g.cell_size };
+}
+
+static float view_distance(field_grid grid, material_stream_view view)
+{
+    float dx = fmaxf(0, fabsf(grid.center_x - view.x) - grid.width * grid.cell_size * .5f);
+    float dy = fmaxf(0, fabsf(grid.center_y - view.y) - grid.height * grid.cell_size * .5f);
+    return fmaxf(dx, dy) - view.radius;
+}
+
+static bool wanted(field_grid grid, const material_stream_view *views, int count, float margin)
+{
+    for (int i = 0; i < count; i++) {
+        if (view_distance(grid, views[i]) <= margin) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int stored_index(const material_stream *s, uint64_t key)
+{
+    for (int i = 0; i < acount(s->stored); i++) {
+        if (s->stored[i].key == key) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool store_tile(material_stream *s, material_stream_tile tile)
+{
+    if (!s->file) {
+        s->file = tmpfile();
+        if (!s->file) {
+            return false;
+        }
+    }
+    int index = stored_index(s, tile.key);
+    bool append = index < 0;
+    if (fseek(s->file, append ? 0 : s->stored[index].offset, append ? SEEK_END : SEEK_SET)) {
+        return false;
+    }
+    long offset = ftell(s->file);
+    if (offset < 0) {
+        return false;
+    }
+    material_mask *m = tile.mask;
+    int cells = tile.grid.width * tile.grid.height;
+    /* Fixed record size permits rewriting a tile without growing the file.
+     * Preserve partial damage even when no occupancy cell has changed yet. */
+    float *data = xcalloc((size_t)cells * 2, sizeof(float));
+    unsigned char *occupancy = xcalloc((size_t)cells, 1);
+    if (m->width) {
+        memcpy(occupancy, m->cells, (size_t)cells);
+        memcpy(data, m->distance, (size_t)cells * sizeof(float));
+        if (m->damage) {
+            memcpy(data + cells, m->damage, (size_t)cells * sizeof(float));
+        }
+    }
+    bool ok = fwrite(occupancy, 1, (size_t)cells, s->file) == (size_t)cells &&
+              fwrite(data, sizeof(float), (size_t)cells * 2, s->file) ==
+                  (size_t)cells * 2;
+    free(occupancy);
+    free(data);
+    if (ok && append) {
+        apush(s->stored, ((stored_tile){ tile.key, offset }));
+        s->state.stored_bytes += (size_t)cells * (1 + 2 * sizeof(float));
+    }
+    return ok;
+}
+
+static bool load_tile(material_stream *s, const material_fields *fields, uint64_t key, char *error, size_t size)
+{
+    field_grid grid = tile_grid(s, key);
+    int cells = grid.width * grid.height;
+    float *samples = xmalloc((size_t)cells * sizeof(float));
+    int index = stored_index(s, key);
+    material_mask mask = { 0 };
+    bool ok = false;
+    if (index < 0) {
+        ok = material_field_bake(
+            fields,
+            s->desc.field,
+            s->desc.parameters,
+            s->desc.seed,
+            grid,
+            samples,
+            error,
+            size
+        );
+        if (ok) {
+            mask = material_mask_from_field(grid.width, grid.height, grid.cell_size, samples);
+        }
+    } else {
+        unsigned char *occupancy = xmalloc((size_t)cells);
+        float *damage = xmalloc((size_t)cells * sizeof(float));
+        ok = !fseek(s->file, s->stored[index].offset, SEEK_SET) &&
+             fread(occupancy, 1, (size_t)cells, s->file) == (size_t)cells &&
+             fread(samples, sizeof(float), (size_t)cells, s->file) == (size_t)cells &&
+             fread(damage, sizeof(float), (size_t)cells, s->file) == (size_t)cells;
+        if (ok) {
+            mask = material_mask_from_field(grid.width, grid.height, grid.cell_size, samples);
+            memcpy(mask.cells, occupancy, (size_t)cells);
+            mask.count = 0;
+            for (int i = 0; i < cells; i++) {
+                mask.count += occupancy[i] != 0;
+            }
+            mask.damage = damage;
+            material_mask_rebuild(&mask);
+        } else {
+            free(damage);
+            snprintf(error, size, "Cannot restore streamed terrain");
+        }
+        free(occupancy);
+    }
+    free(samples);
+    if (!ok) {
+        return false;
+    }
+    material_mask *owned = xmalloc(sizeof *owned);
+    *owned = mask;
+    apush(s->tiles, ((material_stream_tile){ key, grid, owned }));
+    s->state.loaded++;
+    return true;
+}
+
+static bool resident(const material_stream *s, uint64_t key)
+{
+    for (int i = 0; i < acount(s->tiles); i++) {
+        if (s->tiles[i].key == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool next_tile(const material_stream *s, const material_stream_view *views, int count, uint64_t *key)
+{
+    float best = FLT_MAX;
+    bool found = false;
+    field_grid grid = s->desc.grid;
+    float span = grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
+    float left = grid.center_x - grid.width * grid.cell_size * .5f;
+    float top = grid.center_y - grid.height * grid.cell_size * .5f;
+    for (int v = 0; v < count; v++) {
+        material_stream_view view = views[v];
+        int x0 = (int)floorf((view.x - view.radius - left) / span);
+        int y0 = (int)floorf((view.y - view.radius - top) / span);
+        int x1 = (int)floorf((view.x + view.radius - left) / span);
+        int y1 = (int)floorf((view.y + view.radius - top) / span);
+        if (s->columns) {
+            x0 = x0 < 0 ? 0 : x0;
+            y0 = y0 < 0 ? 0 : y0;
+            x1 = x1 >= s->columns ? s->columns - 1 : x1;
+            y1 = y1 >= s->rows ? s->rows - 1 : y1;
+        }
+        for (int y = y0; y <= y1; y++) {
+            for (int x = x0; x <= x1; x++) {
+                uint64_t candidate = s->columns
+                                       ? (uint64_t)y * s->columns + x
+                                       : (uint64_t)(uint32_t)y << 32 | (uint32_t)x;
+                if (resident(s, candidate)) {
+                    continue;
+                }
+                field_grid g = tile_grid(s, candidate);
+                float distance = hypotf(g.center_x - view.x, g.center_y - view.y);
+                if (distance < best || (distance == best && candidate < *key)) {
+                    best = distance;
+                    *key = candidate;
+                    found = true;
+                }
+            }
+        }
+    }
+    return found;
+}
+
+bool material_stream_update(
+    material_stream *s,
+    const material_fields *fields,
+    const material_stream_view *views,
+    int count,
+    int budget,
+    char *error,
+    size_t size
+)
+{
+    assert(count >= 0 && budget > 0);
+    float margin = s->desc.grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
+    for (int i = acount(s->tiles) - 1; i >= 0; i--) {
+        material_stream_tile tile = s->tiles[i];
+        if (wanted(tile.grid, views, count, margin)) {
+            continue;
+        }
+        if (!store_tile(s, tile)) {
+            snprintf(error, size, "Cannot preserve streamed terrain");
+            return false;
+        }
+        free_tile(tile);
+        adel(s->tiles, i);
+        s->state.unloaded++;
+    }
+    for (int i = 0; i < budget; i++) {
+        uint64_t key = 0;
+        if (!next_tile(s, views, count, &key)) {
+            break;
+        }
+        if (!load_tile(s, fields, key, error, size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+const material_stream_tile *material_stream_tiles(const material_stream *s, int *count)
+{
+    *count = acount(s->tiles);
+    return s->tiles;
+}
+
+material_stream_state material_stream_inspect(const material_stream *s)
+{
+    material_stream_state state = s->state;
+    state.resident = acount(s->tiles);
+    state.stored = acount(s->stored);
+    for (int i = 0; i < acount(s->tiles); i++) {
+        material_mask *m = s->tiles[i].mask;
+        state.resident_bytes += sizeof *m +
+                                (size_t)m->width * m->height *
+                                    (1 + sizeof(float) * (m->damage ? 2 : 1)) +
+                                (size_t)acount(m->rects) * sizeof(material_rect) +
+                                (size_t)acount(m->surface) * sizeof(material_polygon);
+    }
+    return state;
+}

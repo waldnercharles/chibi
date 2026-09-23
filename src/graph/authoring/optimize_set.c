@@ -42,7 +42,8 @@ static bool reads_before_effects(const node *n)
     const node_desc *d = n->desc;
     return d == &NODE_SetVariable || d == &NODE_Branch || d == &NODE_ForLoop ||
            d == &NODE_ForEach || d == &NODE_Delay || d == &NODE_Return ||
-           d == &NODE_CallFunction || d == &NODE_CallMacro;
+           d == &NODE_CallFunction || d == &NODE_BehaviorExpression ||
+           d == &NODE_CallMacro;
 }
 
 static bool reached_after_set(set_proof *proof, const node *n)

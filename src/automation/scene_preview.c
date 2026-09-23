@@ -305,8 +305,8 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             continue;
         }
         if (!yyjson_is_int(value) || yyjson_get_sint(value) < 64 ||
-            yyjson_get_sint(value) > 2048) {
-            snprintf(error, sizeof error, "%s must be an integer between 64 and 2048", keys[i]);
+            yyjson_get_sint(value) > 4096) {
+            snprintf(error, sizeof error, "%s must be an integer between 64 and 4096", keys[i]);
             break;
         }
         *sides[i] = (int)yyjson_get_sint(value);

@@ -10,6 +10,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 
@@ -28,13 +29,20 @@ static pin_spec ed_math_inputs[] = { { .name = "a", .type = PIN_F64 },
                                      { .name = "b", .type = PIN_F64 } };
 static pin_spec ed_math_outputs[] = { { .name = "Result", .type = PIN_F64 } };
 static const node_desc ed_math_desc = {
-    .name = "Math Expression",
+    .name = "Behavior Expression",
     .category = "Math",
     .keywords = "formula expression equation calculate",
     .inputs = ed_math_inputs,
     .input_count = 2,
     .outputs = ed_math_outputs,
     .output_count = 1
+};
+
+static const node_desc ed_comment_box_desc = {
+    .name = "Comment Box",
+    .category = "Basic",
+    .keywords = "comment note annotation",
+    .display_class = NODE_DISPLAY_PURE
 };
 
 static int ed_desc_score(const node_desc *desc, const char *filter)
@@ -95,6 +103,7 @@ static bool ed_node_can_inline(const editor *e, const node *n)
     if (!ed_source_scope_available(e) || !g || !n || !n->desc || n->inline_source ||
         n->disabled || node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
         n->desc->flow_kind != NODE_FLOW_NONE || n->desc == &NODE_CallFunction ||
+        n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression ||
         n->desc == &NODE_CallMacro || !ed_inline_inputs_default(n)) {
         return false;
     }
@@ -173,6 +182,12 @@ void ed_open_context_menu(editor *e, ImVec2 mouse)
 static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate)
 {
     if ((source->flags | candidate->flags) & PIN_FLAG_SETTING) {
+        return 0;
+    }
+    if ((candidate->flags & PIN_FLAG_REFERENCE) &&
+        (!(source->flags & PIN_FLAG_REFERENCE) ||
+         (!(candidate->flags & PIN_FLAG_WILDCARD) &&
+          (source->type != candidate->type || source->container != candidate->container)))) {
         return 0;
     }
     if (source->kind == PIN_EXEC) {
@@ -310,6 +325,9 @@ static int ed_compact_system_node(editor *e, node *n)
 
 static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
 {
+    if (desc == &ed_comment_box_desc) {
+        return e->ui_context != EDITOR_UI_CONTEXT_SYSTEM && !e->spawn_link_pending;
+    }
     if ((e->asset->domain == BEHAVIOR_DOMAIN_LIBRARY ||
          e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) &&
         !behavior_library_node_allowed(e->asset->domain, desc)) {
@@ -318,6 +336,14 @@ static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
     bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    bool field_node = desc->category && !strcmp(desc->category, "Procedural Field");
+    if (e->asset->domain == BEHAVIOR_DOMAIN_FIELD && !field_node) {
+        return 0;
+    }
+    if (field_node && e->asset->domain != BEHAVIOR_DOMAIN_FIELD &&
+        e->asset->domain != BEHAVIOR_DOMAIN_LIBRARY) {
+        return 0;
+    }
     bool shader_node = desc->category && !strncmp(desc->category, "Shader", 6);
     if (shader != shader_node) {
         return 0;
@@ -326,7 +352,7 @@ static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
         return 0;
     }
     if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction ||
-        desc == &NODE_CallMacro) {
+        desc == &NODE_BehaviorExpression || desc == &NODE_CallMacro) {
         return 0;
     }
     if (!e->spawn_link_pending) {
@@ -495,6 +521,10 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
         return matches;
     }
+    ed_search_match comment = { .name = "Comment Box",
+                                .desc = &ed_comment_box_desc,
+                                .category = ed_desc_category(&ed_comment_box_desc) };
+    ed_add_search_match(e, &matches, comment, &ed_comment_box_desc, filter);
     bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
@@ -521,7 +551,32 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
             if (!entry || !ret) {
                 continue;
             }
-            const char *category = shader ? "Shader/Functions"
+            bool field = e->asset->domain == BEHAVIOR_DOMAIN_FIELD;
+            if (field) {
+                bool compatible = ret->input_count == 1;
+                for (int side = 0; side < 2; side++) {
+                    const pin_spec *pins = side ? ret->input_pins : entry->output_pins;
+                    int count = side ? ret->input_count : entry->output_count;
+                    for (int p = 0; p < count; p++) {
+                        compatible &= pins[p].kind == PIN_DATA &&
+                                      pins[p].type == PIN_F32 &&
+                                      pins[p].container == PIN_CONTAINER_SINGLE;
+                    }
+                }
+                for (int n = 0; n < acount(function->nodes); n++) {
+                    const node_desc *desc = function->nodes[n]->desc;
+                    compatible &= desc == &NODE_FunctionEntry ||
+                                  desc == &NODE_Return ||
+                                  desc == &NODE_CallPureFunction ||
+                                  (desc->category &&
+                                   !strcmp(desc->category, "Procedural Field"));
+                }
+                if (!compatible) {
+                    continue;
+                }
+            }
+            const char *category = field  ? "Procedural Field"
+                                 : shader ? "Shader/Functions"
                                  : function->kind == GRAPH_MACRO ? "Macros"
                                                                  : "Functions";
             bool executable = false;
@@ -617,7 +672,7 @@ node *ed_spawn_match(editor *e, const ed_search_match *match)
                    );
     }
     if (match->desc == &ed_math_desc) {
-        return math_expression_add(e->asset, g, "a + b", NULL);
+        return behavior_expression_add(e->asset, g, "a + b", NULL);
     }
     if (!strcmp(match->desc->name, "Shader Surface Output")) {
         return shader_graph_add_output(g, false);
@@ -881,6 +936,22 @@ static const char *ed_extract_selection(editor *e)
     return NULL;
 }
 
+static node *ed_convert_behavior_expression_selection(
+    editor *e,
+    node *const *selection,
+    int count,
+    behavior_expression_error *error
+)
+{
+    ed_snapshot_before(e);
+    node *call = behavior_expression_convert_selection(e->asset, e->active_graph, selection, count, error);
+    if (!call) {
+        return NULL;
+    }
+    ed_select_node(e, call, 0);
+    return call;
+}
+
 void ed_draw_extract_popup(editor *e)
 {
     if (e->extract_requested) {
@@ -954,6 +1025,28 @@ void ed_handle_popups(editor *e)
             }
             ed_request_extraction(e);
         }
+        const char *expression_reason = behavior_expression_can_convert_selection(
+            e->asset,
+            e->active_graph,
+            selection,
+            selection_count
+        );
+        if (ImGui_MenuItemEx(
+                "Convert to Behavior Expression",
+                NULL,
+                false,
+                !expression_reason && e->ui_context != EDITOR_UI_CONTEXT_SYSTEM
+            )) {
+            behavior_expression_error error;
+            node *call = ed_convert_behavior_expression_selection(e, selection, selection_count, &error);
+            if (!call) {
+                ed_show_error(e, error.message[0] ? error.message : "Could not convert the selection to a Behavior Expression.");
+            }
+            ImGui_CloseCurrentPopup();
+            ImGui_EndPopup();
+            return;
+        }
+        editor_ui_track_item("graph.node.convert_math");
         ImGui_Separator();
         if (ed_is_graph_call(n)) {
             graph *target = behavior_asset_find_graph(e->asset, n->reference_id);
@@ -1083,19 +1176,6 @@ void ed_handle_popups(editor *e)
             e->search_selected = 0;
             reveal_result = true;
         }
-        bool create_math = false;
-        if (!e->search[0] && ed_spawn_desc_compatible(e, &ed_math_desc)) {
-            create_math = ImGui_MenuItem("Math Expression");
-            editor_ui_track_item("graph.add.math_expression");
-        }
-        if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM &&
-            ImGui_MenuItem("Add Comment Box")) {
-            ed_snapshot_before(e);
-            graph_add_comment_box(e->active_graph, "Comment", e->popup_x, e->popup_y, 320.0f, 160.0f);
-            e->spawn_link_pending = 0;
-            ImGui_CloseCurrentPopup();
-        }
-        ImGui_Separator();
         ed_search_match *matches = ed_search_matches(e, e->search);
         int match_count = acount(matches);
         if (match_count == 0) {
@@ -1148,8 +1228,15 @@ void ed_handle_popups(editor *e)
                 editor_ui_track_item("graph.node_search.selected");
             }
             ImGui_PopID();
-            if (clicked || (activate && m == e->search_selected) ||
-                (create_math && desc == &ed_math_desc)) {
+            if (clicked || (activate && m == e->search_selected)) {
+                if (desc == &ed_comment_box_desc) {
+                    ed_snapshot_before(e);
+                    graph_add_comment_box(e->active_graph, "Comment", e->popup_x, e->popup_y, 320.0f, 160.0f);
+                    e->search[0] = '\0';
+                    e->search_selected = 0;
+                    ImGui_CloseCurrentPopup();
+                    continue;
+                }
                 if (!e->spawn_link_pending) {
                     ed_snapshot_before(e);
                 }

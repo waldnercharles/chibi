@@ -83,7 +83,12 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     }
     for (int i = 0; i < node_count; i++) {
         node *n = tmp->nodes[i];
+        for (int p = 0; p < n->input_count; p++) {
+            n->input_pins[p].split_parent = remap_id(n->input_pins[p].split_parent, old_ids, new_ids, k);
+        }
         for (int p = 0; p < n->output_count; p++) {
+            n->output_pins[p]
+                .split_parent = remap_id(n->output_pins[p].split_parent, old_ids, new_ids, k);
             n->output_pins[p]
                 .field_source = remap_id(n->output_pins[p].field_source, old_ids, new_ids, k);
         }
@@ -119,6 +124,19 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
             pin_binding *b = tmp->nodes[i]->input_pins[p].binding;
             if (b && b->kind == PIN_BINDING_LOCAL) {
                 b->local_id = remap_id(b->local_id, old_ids, new_ids, k);
+            }
+            if (b && b->kind == PIN_BINDING_EVENT_OUTPUT) {
+                b->event_node_id = remap_id(b->event_node_id, old_ids, new_ids, k);
+                b->event_pin_id = remap_id(b->event_pin_id, old_ids, new_ids, k);
+                node *event = graph_node_by_id(tmp, b->event_node_id);
+                int output = 0;
+                const pin_spec *event_pin = event
+                                              ? graph_pin_by_id(event, b->event_pin_id, &output, NULL)
+                                              : NULL;
+                if (!event || event->desc->flow_kind != NODE_FLOW_EVENT ||
+                    !output || !event_pin || event_pin->kind != PIN_DATA) {
+                    tmp->nodes[i]->input_pins[p].binding = NULL;
+                }
             }
         }
     }

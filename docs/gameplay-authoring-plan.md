@@ -199,7 +199,8 @@ Begin event. Collect pairs during queries, then dispatch after queries end in a
 deterministic order, revalidating entity handles. Reset clears contact history.
 Native detection must not subtract health or decide projectile lifetime.
 
-Use the existing typed behavior event inputs for `Contact Begin(Other)` and
+Use the existing typed behavior event inputs for `Contact Begin(Other, Point)`
+where `Point` is a `CF_V2` world-space position, and
 queued entity-targeted delivery for `Damage(Amount, Source)`. Projectile graphs
 send damage and destroy themselves; Health graphs guard living state, subtract
 and clamp health, then perform the death response. An Apply Damage node that

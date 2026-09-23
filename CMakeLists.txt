@@ -477,6 +477,7 @@ chibi_enable_tracy(chibi_ctl)
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
+        COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/tools/mcp/laya.test.mjs
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>

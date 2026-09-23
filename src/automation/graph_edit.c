@@ -1609,9 +1609,25 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
             yyjson_val *named = yyjson_obj_get(op, "type_name");
             if (type_from_value(type_json, &type, &type_name) ||
                 (named && !string_value(named, &type_name)) ||
-                (type == PIN_STRUCT && !type_name) ||
-                graph_set_pin_type(ctx->graph, n, output, index, type, type_name)) {
+                (type == PIN_STRUCT && !type_name)) {
                 result = -1;
+            }
+            int declared_count = output ? n->desc->output_count : n->desc->input_count;
+            const pin_spec *declared = output ? n->desc->outputs : n->desc->inputs;
+            if (!result && index < declared_count && declared[index].type != PIN_FLOW &&
+                !(declared[index].flags & PIN_FLAG_WILDCARD) &&
+                type != declared[index].type) {
+                set_error(
+                    ctx,
+                    "%s.%s has a fixed type; use a matching node or a "
+                    "conversion",
+                    n->desc->name,
+                    pin->name
+                );
+                return -1;
+            }
+            if (!result) {
+                result = graph_set_pin_type(ctx->graph, n, output, index, type, type_name);
             }
         }
         yyjson_val *container_json = yyjson_obj_get(op, "container");

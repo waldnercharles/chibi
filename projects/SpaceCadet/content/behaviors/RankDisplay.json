@@ -1,0 +1,243 @@
+{
+  "version": 3,
+  "name": "RankDisplay",
+  "domain": "behavior",
+  "id_counter": 17,
+  "description": "",
+  "owner_type": "ecs.entity",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Event",
+          "x": 310.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "reference_name": "Tick",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 3,
+              "name": "DeltaSeconds",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "Get Global Variable",
+          "x": 0.0,
+          "y": 144.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 5,
+              "name": "Name",
+              "type": 12,
+              "type_name": "name",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "Rank"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 6,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "Format Text",
+          "x": 310.0,
+          "y": 120.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 8,
+              "name": "Format",
+              "type": 13,
+              "type_name": "const char *",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "RANK   {:.0f}"
+            },
+            {
+              "id": 9,
+              "name": "Arg0",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 10,
+              "name": "Result",
+              "type": 13,
+              "type_name": "const char *",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": ""
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "Set_GameWidget_text",
+          "x": 620.0,
+          "y": 40.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 12,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 13,
+              "name": "Value",
+              "type": 13,
+              "type_name": "const char *",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": ""
+            },
+            {
+              "id": 14,
+              "name": "Target",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 32,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 15,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 16,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameWidget",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "from_pin": 2,
+          "to": 11,
+          "to_pin": 12,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 4,
+          "from_pin": 6,
+          "to": 7,
+          "to_pin": 9,
+          "kind": "data"
+        },
+        {
+          "from": 7,
+          "from_pin": 10,
+          "to": 11,
+          "to_pin": 13,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

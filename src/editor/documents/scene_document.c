@@ -212,13 +212,18 @@ int app_scene_authoring_load_content(app_scene_authoring *scene)
     if (loaded < 0) {
         loaded = 0;
     }
+    bool has_assets = false;
     for (int i = 0; i < acount(scene->content); i++) {
-        if (!scene->content[i].directory &&
-            content_path_in_folder(scene, scene->content[i].path, "prototypes")) {
+        if (scene->content[i].directory ||
+            content_path_in_folder(scene, scene->content[i].path, "scenes")) {
+            continue;
+        }
+        has_assets = true;
+        if (content_path_in_folder(scene, scene->content[i].path, "prototypes")) {
             loaded += load_content_prototype(scene, scene->content[i].path);
         }
     }
-    return loaded ? 0 : -1;
+    return loaded || !has_assets ? 0 : -1;
 }
 
 static scene_prototype_asset *ensure_prototype(app_scene_authoring *scene, const char *name)
@@ -278,7 +283,7 @@ static int validate_scene_behaviors(app_scene_authoring *scene, char **names)
     return 0;
 }
 
-static int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity)
+int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity)
 {
     scene_retained_component *retained = NULL;
     bool valid = scene_retention_load(entity->retained_json, &retained) == 0 &&

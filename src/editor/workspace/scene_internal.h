@@ -1,5 +1,6 @@
 #ifndef CHIBI_SCENE_INTERNAL_H
 #define CHIBI_SCENE_INTERNAL_H
+#include "assets/scene_document.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/ui/color.h"
@@ -194,6 +195,7 @@ struct app_scene_authoring
     int next_scene_key;
     int close_tab;
     bool tabs_transitioning;
+    bool scene_tab_restoring;
     scene_behavior_source *behavior_sources;
     char **external_behavior_changes;
     bool external_behavior_prompt_open;
@@ -203,6 +205,7 @@ struct app_scene_authoring
 
 /* Document I/O is shared by disk commands and module checkpoints. */
 char *scene_authoring_scene_json(app_scene_authoring *scene);
+int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity);
 int scene_authoring_load_json(app_scene_authoring *scene, const char *json, const char *path);
 int scene_authoring_sync_document(app_scene_authoring *scene);
 void scene_authoring_select_document(

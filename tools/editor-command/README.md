@@ -137,6 +137,35 @@ Bound operations use the native validator directly. Their author already supplie
 | `panel` | observed panel `target`, boolean visibility `value` |
 | `runtime` | `target: "scene"` or `"preview"`; `value: "play"`, `"pause"`, or `"stop"` |
 | `save`, `undo`, `redo` | no extra fields; submit separately |
+| `create_project` | unique `name`; creates `projects/<name>/project.json` and an empty Main scene in a native editor |
+| `create_asset` | unique `name`, `kind`, `definition`; validates, saves and opens the new asset |
+| `edit_graph` | observed open graph asset `target`, `definition` containing semantic graph operations; one Undo step, save separately |
+| `set_start_scene` | observed scene `target`; updates the project's startup scene |
+| `input` | bound `action`, `pressed` boolean, optional `frames` (1–600, default 1); playing scene only |
+| `capture` | local PNG `path`; captures the native editor framebuffer |
+
+Submit creation, graph edits, startup selection, input and capture separately.
+Use `dry_run: true` to validate creation and graph edits before publishing.
+Creation saves a new asset and has no document Undo. `create_project` leaves the
+current project open; launch the created project with `--project-root projects/<name>`.
+
+Prototype definitions contain `components` and `behaviors`. Scene definitions
+contain `entities` with `name`, `prototype`, component overrides and `behaviors`.
+Graph definitions contain `owner_type` and `operations`. `add_node` uses `type`
+for the reflected node name and `ref` for a batch-local identity. `connect` uses
+`from`, `from_pin`, `to`, `to_pin` and `kind` (`data` or `exec`). `add_variable`
+uses `name`, `type` and `default`. `set_pin` can specialize wildcard pins; fixed
+native pin types cannot be changed. Inspect with `kinds: ["nodes"]` or
+`kinds: ["components"]` and an optional `query` before building definitions.
+
+Input holds the authored control for the requested number of frame samples,
+then releases it. Stop clears held input. Native sessions started with
+`CHIBI_EDITOR_SOCKET` render into a capturable framebuffer.
+
+MCP inspections return a successful catalog. Task responses expose `status`,
+`task_id` and `message` in both the visible result and `structuredContent`.
+`ready` means a dry run passed; `applied` means the command ran. A `failed`
+response retains its diagnostic. Poll only pending tasks.
 
 Reset and relative operations resolve to typed `set` values from the captured
 catalog. Assertions check preserved values without adding an edit. Property

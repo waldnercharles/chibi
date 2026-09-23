@@ -568,7 +568,9 @@ int editor_commands_apply(
     yyjson_val *current = yyjson_doc_get_root(fresh_doc);
     yyjson_val *ops = yyjson_obj_get(proposal, "operations");
     bool playback = yyjson_arr_size(ops) == 1 &&
-                    !strcmp(command_string(yyjson_arr_get(ops, 0), "op"), "runtime");
+                    (!strcmp(command_string(yyjson_arr_get(ops, 0), "op"), "runtime") ||
+                     !strcmp(command_string(yyjson_arr_get(ops, 0), "op"), "input") ||
+                     !strcmp(command_string(yyjson_arr_get(ops, 0), "op"), "capture"));
     bool revision_matches = !strcmp(
         command_string(catalog, "revision"),
         command_string(current, "revision")
@@ -584,6 +586,20 @@ int editor_commands_apply(
         message = "Invalid command JSON";
     } else if (!revision_matches || strcmp(command_string(catalog, "revision"), command_string(proposal, "revision"))) {
         message = "Editor changed. Run the command again.";
+    } else if (yyjson_arr_size(ops) == 1 && command_authoring_operation(command_string(yyjson_arr_get(ops, 0), "op"))) {
+        int status = command_authoring_apply(
+            scene,
+            catalog,
+            yyjson_arr_get(ops, 0),
+            yyjson_get_bool(yyjson_obj_get(proposal, "dry_run")),
+            error,
+            size
+        );
+        yyjson_doc_free(catalog_doc);
+        yyjson_doc_free(proposal_doc);
+        yyjson_doc_free(fresh_doc);
+        free(fresh);
+        return status;
     } else {
         message = prepare(scene, catalog, ops, &edits);
     }

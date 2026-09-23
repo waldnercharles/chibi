@@ -2,6 +2,7 @@
 #include "editor/ui/command_transport.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL.h>
@@ -30,9 +31,30 @@ struct editor_command_runtime
 {
     command_task **tasks;
     command_task *active, *latest;
-    char *context;
+    char *context, *observation;
     unsigned serial;
+    int control_frames[GAME_CONTROL_COUNT];
 };
+
+uint64_t editor_commands_controls(app_scene_authoring *scene)
+{
+    struct editor_command_runtime *state = scene->command_runtime;
+    if (!state) {
+        return 0;
+    }
+    if (!scene->runtime_playing) {
+        memset(state->control_frames, 0, sizeof state->control_frames);
+        return 0;
+    }
+    uint64_t controls = 0;
+    for (int i = 1; i < GAME_CONTROL_COUNT; i++) {
+        if (state->control_frames[i] > 0) {
+            controls |= UINT64_C(1) << i;
+            state->control_frames[i]--;
+        }
+    }
+    return controls;
+}
 
 static struct editor_command_runtime *runtime(app_scene_authoring *scene)
 {
@@ -40,6 +62,42 @@ static struct editor_command_runtime *runtime(app_scene_authoring *scene)
         scene->command_runtime = xcalloc(1, sizeof *scene->command_runtime);
     }
     return scene->command_runtime;
+}
+
+int command_input(app_scene_authoring *scene, yyjson_val *operation, bool dry, char *error, int size)
+{
+    const char *action = command_string(operation, "action");
+    yyjson_val *pressed = yyjson_obj_get(operation, "pressed");
+    yyjson_val *duration = yyjson_obj_get(operation, "frames");
+    int frames = duration ? (int)yyjson_get_int(duration) : 1;
+    if (!scene->runtime_playing || scene->active_runtime_target != APP_RUNTIME_SCENE ||
+        !*action || !yyjson_is_bool(pressed) || frames < 1 || frames > 600 ||
+        (duration && !yyjson_is_int(duration))) {
+        snprintf(error, size, "Input requires a playing scene, action, pressed boolean and optional frames (1-600)");
+        return -1;
+    }
+    uint64_t controls = 0;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        const GameActionBinding *binding = GAME_GameActionBinding_get_const(
+            scene->world,
+            scene->actors[i].entity
+        );
+        if (binding && !binding->disabled && binding->action &&
+            !strcmp(binding->action, action) && binding->source > GAME_CONTROL_NONE &&
+            binding->source < GAME_CONTROL_COUNT) {
+            controls |= UINT64_C(1) << binding->source;
+        }
+    }
+    if (!controls) {
+        snprintf(error, size, "No enabled scene action binding for %s", action);
+        return -1;
+    }
+    for (int i = 1; !dry && i < GAME_CONTROL_COUNT; i++) {
+        if (controls & (UINT64_C(1) << i)) {
+            runtime(scene)->control_frames[i] = yyjson_get_bool(pressed) ? frames : 0;
+        }
+    }
+    return 0;
 }
 
 static char *response(const char *status, const char *message)
@@ -83,7 +141,7 @@ static void describe(command_task *task, yyjson_mut_doc *doc, yyjson_val *propos
             sizeof line,
             "%s %s%s%s%s%s",
             command_string(op, "op"),
-            command_string(object, "name"),
+            object ? command_string(object, "name") : command_string(op, "name"),
             field ? " · " : "",
             command_string(field, "label"),
             literal ? " → " : "",
@@ -186,9 +244,12 @@ static void execute(app_scene_authoring *scene, command_task *task)
     yyjson_val *ops = yyjson_obj_get(yyjson_doc_get_root(read), "operations");
     const char *first = command_string(yyjson_arr_get(ops, 0), "op");
     bool content = !strcmp(first, "set") || !strcmp(first, "assert") ||
-                   !strcmp(first, "duplicate") || !strcmp(first, "connect");
+                   !strcmp(first, "duplicate") || !strcmp(first, "connect") ||
+                   !strcmp(first, "edit_graph");
     yyjson_mut_obj_add_bool(doc, root, "undoable", applied && !task->dry && content && changed);
     char *after = editor_commands_catalog(scene);
+    free(runtime(scene)->observation);
+    runtime(scene)->observation = xstrdup(after);
     yyjson_doc *after_doc = yyjson_read(after, strlen(after), 0);
     yyjson_mut_obj_add_strcpy(
         doc,
@@ -335,7 +396,9 @@ char *editor_commands_api(app_scene_authoring *scene, const char *request)
     char *result = NULL;
     command_task *task = find_task(state, command_string(root, "task_id"));
     if (!strcmp(operation, "inspect")) {
-        result = editor_commands_catalog(scene);
+        result = command_inspect(scene, command_string(root, "query"), yyjson_obj_get(root, "kinds"));
+        free(state->observation);
+        state->observation = xstrdup(result);
     } else if (!strcmp(operation, "status")) {
         result = task ? xstrdup(task->result) : response("failed", "Unknown task");
     } else if (!strcmp(operation, "cancel")) {
@@ -437,6 +500,21 @@ char *editor_commands_api(app_scene_authoring *scene, const char *request)
             task->input = xstrdup(request);
             task->started = SDL_GetTicks();
             task->catalog = editor_commands_catalog(scene);
+            if (state->observation && *command_string(root, "revision")) {
+                yyjson_doc *observed = yyjson_read(
+                    state->observation,
+                    strlen(state->observation),
+                    0
+                );
+                if (!strcmp(
+                        command_string(yyjson_doc_get_root(observed), "revision"),
+                        command_string(root, "revision")
+                    )) {
+                    free(task->catalog);
+                    task->catalog = xstrdup(state->observation);
+                }
+                yyjson_doc_free(observed);
+            }
             task->dry = yyjson_get_bool(yyjson_obj_get(root, "dry_run"));
             task->packet = yyjson_doc_mut_copy(doc, NULL);
             yyjson_doc *catalog = yyjson_read(task->catalog, strlen(task->catalog), 0);
@@ -494,6 +572,7 @@ void editor_commands_free(app_scene_authoring *scene)
     }
     afree(state->tasks);
     free(state->context);
+    free(state->observation);
     free(state);
     scene->command_runtime = NULL;
 }

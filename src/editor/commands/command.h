@@ -7,6 +7,7 @@
 char *editor_commands_catalog(app_scene_authoring *scene);
 char *editor_commands_api(app_scene_authoring *scene, const char *request);
 void editor_commands_frame(app_scene_authoring *scene);
+uint64_t editor_commands_controls(app_scene_authoring *scene);
 void editor_commands_free(app_scene_authoring *scene);
 const char *editor_commands_result(app_scene_authoring *scene);
 int editor_commands_apply(

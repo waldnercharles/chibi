@@ -5,7 +5,51 @@ import http from 'node:http';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {spawn} from 'node:child_process';
 import {editorCommand} from './editor-command.mjs';
+
+test('MCP reports inspections and task results without hiding status or diagnostics', async t=>{
+  const path=join(await directory(t),'editor.sock');
+  const replies=[
+    {revision:'observed-1',objects:[],capabilities:['open']},
+    {ok:true,status:'applied',task_id:'saved',message:'Saved scene'},
+    {ok:false,status:'failed',task_id:'bad-pin',message:'Operation 3: incompatible pin types'},
+  ];
+  const server=net.createServer(socket=>{
+    socket.once('data',()=>socket.end(JSON.stringify(replies.shift())+'\n'));
+  });
+  await new Promise(resolve=>server.listen(path,resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const child=spawn(process.execPath,[new URL('./server.mjs',import.meta.url).pathname],{stdio:['pipe','pipe','pipe']});
+  t.after(()=>child.kill());
+  let pending='';
+  const responses=[];
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data',chunk=>{
+    pending+=chunk;
+    let newline;
+    while((newline=pending.indexOf('\n'))>=0){
+      responses.shift()(JSON.parse(pending.slice(0,newline)));
+      pending=pending.slice(newline+1);
+    }
+  });
+  async function call(operation){
+    const received=new Promise(resolve=>responses.push(resolve));
+    child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:operation,method:'tools/call',params:{name:'editorCommand',arguments:{socket:path,operation}}})+'\n');
+    return (await received).result;
+  }
+  const inspected=await call('inspect');
+  assert.equal(inspected.isError,false);
+  assert.equal(JSON.parse(inspected.content[0].text).revision,'observed-1');
+  const applied=await call('submit');
+  assert.equal(applied.isError,false);
+  assert.equal(JSON.parse(applied.content[0].text).status,'applied');
+  assert.equal(JSON.parse(applied.content[0].text).task_id,'saved');
+  const failed=await call('status');
+  assert.equal(failed.isError,true);
+  assert.equal(JSON.parse(failed.content[0].text).message,'Operation 3: incompatible pin types');
+  assert.equal(failed.structuredContent.task_id,'bad-pin');
+});
 
 async function directory(t) {
   const path=await mkdtemp(join(tmpdir(),'chibi-editor-api-'));

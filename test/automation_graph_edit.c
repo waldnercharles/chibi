@@ -117,6 +117,23 @@ void test_automation_graph_edit(void)
     free(edited);
 
     edited = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"compare\",\"type\":"
+        "\"Equal\"},"
+        "{\"op\":\"set_pin\",\"node\":\"compare\",\"pin\":\"A\",\"type\":"
+        "\"uint\"}]}",
+        &edited,
+        NULL
+    );
+    test_check(status != CHIBI_AUTOMATION_OK && !edited, "MCP rejects retyping a fixed native pin before a runtime assertion");
+    free(edited);
+
+    edited = NULL;
     response = NULL;
     status = edit_request(
         source,

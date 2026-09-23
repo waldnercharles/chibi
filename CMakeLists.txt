@@ -355,11 +355,15 @@ endif()
 
 # --- headless automation controller ----------------------------------------
 
+add_library(authoring_graph STATIC src/automation/graph_edit.c)
+target_include_directories(authoring_graph PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(authoring_graph PUBLIC core)
+
 add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
-    src/automation/graph_edit.c src/automation/graph_optimize.c
+    src/automation/graph_optimize.c
     src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(automation PUBLIC runtime_support core)
+target_link_libraries(automation PUBLIC runtime_support core authoring_graph)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c
@@ -387,7 +391,7 @@ chibi_enable_tracy(engine)
 add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
 add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(editor PRIVATE runtime_support core cute)
+target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph)
 set_source_files_properties(src/editor/ui/command_transport.c PROPERTIES
     COMPILE_DEFINITIONS "CHIBI_COMMAND_WORKER=\"${CMAKE_CURRENT_SOURCE_DIR}/tools/editor-command/resolve.py\"")
 
@@ -576,6 +580,8 @@ add_executable(test_suite
     src/editor/ui/interaction.c
     src/editor/panels/command_palette.c
     src/editor/commands/catalog.c
+    src/editor/commands/creation.c
+    src/editor/commands/inspect.c
     src/editor/commands/execute.c
     src/editor/commands/task.c
     src/editor/workspace/asset_index.c

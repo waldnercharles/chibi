@@ -999,6 +999,17 @@ function defaultNextSteps(name) {
 }
 
 function responseNextSteps(name, response) {
+  if (name === "editorCommand") {
+    switch (response.status) {
+      case "resolving": return ["Poll status with the returned task_id."];
+      case "needs_review": return ["Review the proposed operations, then respond with the task_id."];
+      case "needs_clarification": return ["Choose a listed option or browser session."];
+      case "failed": return ["Read the message, correct the request, and inspect the current revision before retrying."];
+      case "ready": return ["Dry run passed. Submit the operations with dry_run false and the current revision to apply."];
+      case "applied": case "cancelled": case "undone": return [];
+      default: return ["Use this revision and the observed objects for the next command."];
+    }
+  }
   const code = response?.error?.code;
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
@@ -1053,6 +1064,21 @@ function withToolGuidance(name, response) {
 
 function toolResult(name, response) {
   const guidedResponse = withToolGuidance(name, response);
+  if (name === "editorCommand") {
+    // Inspections are catalogs, while commands return task records. Both use
+    // top-level fields rather than the offline controller's result envelope.
+    const ok = response.ok ?? typeof response.revision === "string";
+    const summary = { ok, tool: name };
+    for (const key of ["status", "task_id", "revision", "after_revision", "message", "error", "summary", "choices", "sessions"]) {
+      if (Object.hasOwn(response, key)) summary[key] = response[key];
+    }
+    if (guidedResponse.next_steps) summary.next_steps = guidedResponse.next_steps;
+    return {
+      content: [{ type: "text", text: boundedJson(summary, "editor task") }],
+      structuredContent: { ...guidedResponse, ok },
+      isError: !ok && response.status !== "needs_clarification",
+    };
+  }
   if (computerToolDefinitions.some((tool) => tool.name === name)) {
     return { content: [{ type: "text", text: boundedJson(guidedResponse, "computer task") }],
       structuredContent: guidedResponse, isError: guidedResponse.ok !== true };

@@ -48,6 +48,7 @@ typedef struct
     const char *screenshot_path;
     int capture_error;
     int headless;
+    bool framebuffer;
     double monotonic_time;
     double fixed_dt;
     const chibi_host *host;
@@ -84,7 +85,7 @@ static int app_frame(app_loop *loop)
     CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input");
     app_input_frame();
     CHIBI_TRACE_ZONE_END(input_zone);
-    if (loop->headless || loop->game) {
+    if (loop->headless || loop->framebuffer) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
     loop->monotonic_time += loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME;
@@ -415,18 +416,20 @@ static void application_activate(void *state)
 {
     editor_control_open();
     app_loop *loop = state;
-    editor_ui_initialize(!loop->game && !loop->headless && !loop->screenshot_path);
+    loop->framebuffer = loop->screenshot_path || loop->game ||
+                        getenv("CHIBI_EDITOR_SOCKET");
+    editor_ui_initialize(!loop->framebuffer && !loop->headless);
     if (loop->workspace) {
         editor_ui_restore_checkpoint(loop->workspace);
         free(loop->workspace);
         loop->workspace = NULL;
     }
-    editor_ui_set_framebuffer_target(loop->screenshot_path != NULL || loop->game != NULL);
-    if (loop->headless || loop->game) {
+    editor_ui_set_framebuffer_target(loop->framebuffer);
+    if (loop->headless || loop->framebuffer) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
 #ifndef __EMSCRIPTEN__
-    if (loop->screenshot_path || loop->game) {
+    if (loop->framebuffer) {
         cf_app_set_imgui_render_target(cf_app_get_canvas());
     }
 #endif

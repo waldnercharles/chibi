@@ -24,10 +24,12 @@ Evaluate conditions against observed values. Use assert for properties the user 
 Colors use six-digit #RRGGBB. Omit alpha to preserve opacity; only provide the separate alpha byte (0-255) when requested. The editor's purple is #8000ff, green #00ff00, orange #ff8000, pink #ff80c0.
 Choice values must be the listed underlying value. Text fields accept literal or newly generated text when requested.
 Only entity objects can be selected, framed or duplicated. To edit a copy, duplicate with result='copy', then set using the ORIGINAL target ID and result_target='copy'. A set without result_target always changes the original; when editing a copy, result_target must match the preceding duplicate's result.
-connect uses target/field for the source output and to/input for the destination input. Graph creation/deletion is not supported.
+connect uses target/field for the source output and to/input for the destination input. Asset deletion is not supported.
 panel uses an ID from panels as target and true/false as value. runtime uses target='scene' or 'preview' and value='play', 'pause' or 'stop'. save/undo/redo have only op, no target or value. These commands do not need object properties.
 Include explicitly requested sets even when the value is already equal, so the editor can verify the complete request.
 Content mutations must share one document. Navigation cannot be mixed with content changes. Playback, save, undo and redo each require a separate request.
+create_project creates a new native project named name under projects/. create_asset creates one new asset of kind with name and definition. Prototype definitions contain components and behaviors; scene definitions contain entities; graph definitions contain owner_type and semantic operations. edit_graph targets an observed open graph asset and takes a definition of semantic operations. Run each authoring operation separately. Native code validates the complete request before publishing.
+set_start_scene uses an observed scene target. capture uses a local PNG path. input uses a bound action name, pressed boolean and frames (1-600, default 1) while playing. Input releases automatically after those frames. Submit each separately.
 Ask a question when essential information is missing. Return unsupported when the requested capability is unavailable.
 Output compact JSON with no indentation. Omit unused properties. Do not explain successful operations; the editor displays their verified results."""
 

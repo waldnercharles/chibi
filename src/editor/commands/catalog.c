@@ -262,6 +262,14 @@ static void component_fields(
     }
 }
 
+static char *entity_identity(const char *scene_id, ecs_entity entity)
+{
+    size_t size = strlen(scene_id) + 32;
+    char *id = xmalloc(size);
+    snprintf(id, size, "entity:%s:%llu", scene_id, (unsigned long long)ecs_entity_to_u64(entity));
+    return id;
+}
+
 char *editor_commands_catalog(app_scene_authoring *scene)
 {
     app_scene_authoring_refresh_asset_index(scene);
@@ -274,9 +282,24 @@ char *editor_commands_catalog(app_scene_authoring *scene)
     }
     yyjson_mut_obj_add_uint(doc, root, "incarnation", scene->command_incarnation);
     yyjson_mut_val *capabilities = yyjson_mut_obj_add_arr(doc, root, "capabilities");
-    const char *verbs[] = { "open",      "select",  "set",   "assert",
-                            "duplicate", "connect", "panel", "frame",
-                            "runtime",   "save",    "undo",  "redo" };
+    const char *verbs[] = { "open",
+                            "select",
+                            "set",
+                            "assert",
+                            "duplicate",
+                            "connect",
+                            "panel",
+                            "frame",
+                            "runtime",
+                            "save",
+                            "undo",
+                            "redo",
+                            "set_start_scene",
+                            "create_project",
+                            "create_asset",
+                            "edit_graph",
+                            "input",
+                            "capture" };
     for (int i = 0; i < (int)(sizeof verbs / sizeof verbs[0]); i++) {
         yyjson_mut_arr_add_str(doc, capabilities, verbs[i]);
     }
@@ -328,14 +351,7 @@ char *editor_commands_catalog(app_scene_authoring *scene)
     }
     for (int i = 0; i < acount(scene->actors); i++) {
         const scene_actor *actor = &scene->actors[i];
-        char id[128];
-        snprintf(
-            id,
-            sizeof id,
-            "entity:%s:%llu",
-            scene_id,
-            (unsigned long long)ecs_entity_to_u64(actor->entity)
-        );
+        char *id = entity_identity(scene_id, actor->entity);
         yyjson_mut_val *object = add_object(
             doc,
             objects,
@@ -349,6 +365,7 @@ char *editor_commands_catalog(app_scene_authoring *scene)
         yyjson_mut_obj_add_strcpy(doc, object, "prototype", actor->prototype_name);
         yyjson_mut_obj_add_uint(doc, object, "entity", ecs_entity_to_u64(actor->entity));
         component_fields(scene, doc, object, actor->base, actor);
+        free(id);
     }
     editor *editor = scene->graph_editor;
     graph *graph = editor ? editor->active_graph : NULL;
@@ -450,18 +467,12 @@ char *editor_commands_catalog(app_scene_authoring *scene)
                 strcmp(asset->name, actor->prototype_name)) {
                 continue;
             }
-            char id[128];
-            snprintf(
-                id,
-                sizeof id,
-                "entity:%s:%llu",
-                scene_id,
-                (unsigned long long)ecs_entity_to_u64(actor->entity)
-            );
+            char *id = entity_identity(scene_id, actor->entity);
             yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, references);
             yyjson_mut_obj_add_strcpy(doc, item, "source", id);
             yyjson_mut_obj_add_strcpy(doc, item, "target", asset->identity);
             yyjson_mut_obj_add_str(doc, item, "label", "prototype");
+            free(id);
         }
     }
     yyjson_mut_val *panels = yyjson_mut_obj_add_arr(doc, root, "panels");

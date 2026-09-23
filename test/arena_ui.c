@@ -2919,6 +2919,135 @@ static void command_playback_document_guard(arena_fixture *f)
     puts("command playback guard PASS: a different scene tab rejects the observed command");
 }
 
+static void command_create_scene(arena_fixture *f)
+{
+    assert(!app_scene_authoring_register_prototype(
+        f->scene,
+        "{\"name\":\"CommandInputMarker\",\"components\":{\"GameTransform\":{},"
+        "\"GameActionBinding\":{\"source\":7,\"action\":\"TestAction\"}},"
+        "\"behaviors\":[]}",
+        "/tmp/chibi-command-input-marker.json"
+    ));
+    char directory[] = "/tmp/"
+                       "chibi-command-create-in-a-long-worktree-directory-with-"
+                       "untruncated-entity-identities-XXXXXX";
+    assert(mkdtemp(directory));
+    char *original_root = f->scene->content_root;
+    f->scene->content_root = xstrdup(directory);
+    char main_path[256];
+    snprintf(main_path, sizeof main_path, "%s/SceneWithALongWorktreePathThatMustNotTruncateEntityIdentitiesWhenItIsUsedByTheCommandPalette.json", directory);
+    assert(
+        !scene_authoring_load_json(f->scene, "{\"version\":1,\"name\":\"Main\",\"entities\":[]}", main_path)
+    );
+    assert(!app_scene_authoring_open_prototype(f->scene, "BoostEmitter"));
+    char *catalog = editor_commands_catalog(f->scene);
+    yyjson_doc *doc = yyjson_read(catalog, strlen(catalog), 0);
+    const char *revision = yyjson_get_str(
+        yyjson_obj_get(yyjson_doc_get_root(doc), "revision")
+    );
+    char request[1024], path[256], folder[256];
+    snprintf(folder, sizeof folder, "%s/scenes", directory);
+    snprintf(path, sizeof path, "%s/scenes/CommandScene.json", directory);
+    snprintf(
+        request,
+        sizeof request,
+        "{\"operation\":\"submit\",\"revision\":\"%s\",\"dry_run\":true,"
+        "\"operations\":[{"
+        "\"op\":\"create_asset\",\"kind\":\"scene\",\"name\":\"CommandScene\","
+        "\"definition\":{"
+        "\"entities\":[{\"name\":\"Marker\",\"prototype\":"
+        "\"CommandInputMarker\","
+        "\"components\":{\"GameTransform\":{\"x\":42}},\"behaviors\":[]},"
+        "{\"name\":\"Other\",\"prototype\":\"CommandInputMarker\","
+        "\"components\":{},"
+        "\"behaviors\":[]}]}}]}",
+        revision
+    );
+    int before = acount(f->scene->actors);
+    char *result = editor_commands_api(f->scene, request);
+    assert(strstr(result, "\"status\":\"ready\""));
+    assert(access(path, F_OK) != 0 && acount(f->scene->actors) == before);
+    free(result);
+    yyjson_doc *read = yyjson_read(request, strlen(request), 0);
+    yyjson_mut_doc *apply = yyjson_doc_mut_copy(read, NULL);
+    yyjson_mut_set_bool(yyjson_mut_obj_get(yyjson_mut_doc_get_root(apply), "dry_run"), false);
+    char *packet = yyjson_mut_write(apply, 0, NULL);
+    result = editor_commands_api(f->scene, packet);
+    free(packet);
+    yyjson_mut_doc_free(apply);
+    yyjson_doc_free(read);
+    assert(strstr(result, "\"status\":\"applied\""));
+    assert(acount(f->scene->actors) == 2);
+    assert(!strcmp(f->scene->actors[0].name, "Marker"));
+    assert(GAME_GameTransform_get(f->world, f->scene->actors[0].entity)->x == 42);
+    assert(!strcmp(f->scene->scene_path, path));
+    char *created_catalog = editor_commands_catalog(f->scene);
+    yyjson_doc *created = yyjson_read(created_catalog, strlen(created_catalog), 0);
+    yyjson_val *objects = yyjson_obj_get(yyjson_doc_get_root(created), "objects");
+    const char *first_id = NULL;
+    for (int i = 0; i < (int)yyjson_arr_size(objects); i++) {
+        yyjson_val *object = yyjson_arr_get(objects, i);
+        if (strcmp(yyjson_get_str(yyjson_obj_get(object, "kind")), "entity")) {
+            continue;
+        }
+        const char *id = yyjson_get_str(yyjson_obj_get(object, "id"));
+        assert(!first_id || strcmp(first_id, id));
+        first_id = id;
+    }
+    yyjson_doc_free(created);
+    free(created_catalog);
+    int created_tab = f->scene->active_tab;
+    int empty_tab = -1;
+    for (int i = 0; i < acount(f->scene->tabs); i++) {
+        if (f->scene->tabs[i].path && !strcmp(f->scene->tabs[i].path, main_path)) {
+            empty_tab = i;
+        }
+    }
+    assert(empty_tab >= 0 && empty_tab != created_tab);
+    assert(!scene_tabs_activate(f->scene, empty_tab));
+    assert(acount(f->scene->actors) == 0);
+    assert(!scene_tabs_activate(f->scene, created_tab));
+    assert(acount(f->scene->actors) == 2);
+    assert(GAME_GameTransform_get(f->world, f->scene->actors[0].entity)->x == 42);
+    assert(!app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY));
+    frame(f);
+    char *playing_catalog = editor_commands_api(f->scene, "{\"operation\":\"inspect\"}");
+    yyjson_doc *playing = yyjson_read(playing_catalog, strlen(playing_catalog), 0);
+    /* A simulation tick changes values between inspect and playback input. */
+    GAME_GameTransform_get(f->world, f->scene->actors[0].entity)->x = 43;
+    snprintf(
+        request,
+        sizeof request,
+        "{\"operation\":\"submit\",\"revision\":\"%s\",\"operations\":[{"
+        "\"op\":\"input\",\"action\":\"TestAction\",\"pressed\":true,"
+        "\"frames\":3}]}",
+        yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(playing), "revision"))
+    );
+    char *input_result = editor_commands_api(f->scene, request);
+    assert(strstr(input_result, "\"status\":\"applied\""));
+    free(input_result);
+    yyjson_doc_free(playing);
+    free(playing_catalog);
+    for (int i = 0; i < 4; i++) {
+        app_gameplay_sample(f->scene, false, NULL);
+        frame(f);
+        assert(
+            GAME_GameActionBinding_get(f->world, f->scene->actors[0].entity)->pressed ==
+            (i < 3)
+        );
+    }
+    assert(!app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP));
+    free(result);
+    yyjson_doc_free(doc);
+    free(catalog);
+    free(f->scene->content_root);
+    f->scene->content_root = original_root;
+    unlink(path);
+    rmdir(folder);
+    rmdir(directory);
+    puts("command asset creation PASS: dry run has no side effects; scene opens from prototype tab");
+}
+
 static void command_palette(arena_fixture *f)
 {
     const char *prototype = "{\"name\":\"BoostEmitter\",\"components\":{"
@@ -3067,6 +3196,7 @@ int arena_ui_run(const char *program, bool profile_only)
     }
     if (commands_only) {
         command_palette(&f);
+        command_create_scene(&f);
         goto cleanup;
     }
     if (agent_only) {

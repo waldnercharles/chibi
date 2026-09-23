@@ -9,11 +9,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class Operation(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
-    op: Literal['set', 'assert', 'duplicate', 'connect', 'open', 'select', 'frame', 'panel', 'runtime', 'save', 'undo', 'redo']
+    op: Literal['set', 'assert', 'duplicate', 'connect', 'open', 'select', 'frame', 'panel', 'runtime', 'save', 'undo', 'redo', 'create_project', 'create_asset', 'edit_graph', 'set_start_scene', 'input', 'capture']
     target: str = Field(default='', description='Object ID; panel ID for panel; scene or preview for runtime')
     field: str = Field(default='', description='Observed field ID for set/assert or source output pin for connect')
     value: str | bool | int | float | None = Field(default=None, description='Final typed value. Colors: #RRGGBB. Panel: boolean visibility. Runtime: play, pause or stop.')
     alpha: int | None = Field(default=None, ge=0, le=255, description='Color opacity byte. Omit to preserve opacity; supply only when explicitly requested.')
+    name: str = Field(default='', max_length=100)
+    kind: str = ''
+    definition: dict = Field(default_factory=dict, description='Prototype components/behaviors, scene entities/physics, or graph semantic operations. Native editor validates before applying.')
+    action: str = ''
+    pressed: bool = False
+    frames: int = Field(default=1, ge=1, le=600)
+    path: str = Field(default='', max_length=1024)
     to: str = ''
     input: str = ''
     result: str = ''
@@ -109,6 +116,36 @@ class Observation:
             obj = self.objects.get(target)
             if verb not in self.catalog.get('capabilities', []):
                 raise ValueError('The editor does not support this operation')
+            if verb in {'set_start_scene', 'input', 'capture'}:
+                if len(proposed) != 1:
+                    raise ValueError('Submit this operation separately')
+                if verb == 'set_start_scene':
+                    if obj is None or obj['kind'] != 'scene':
+                        raise ValueError('Choose an observed scene asset')
+                    operations.append({'op': verb, 'target': obj['id']})
+                elif verb == 'input':
+                    if not item.action or not self.catalog.get('playing'):
+                        raise ValueError('Input needs a playing scene and action name')
+                    operations.append({'op': verb, 'action': item.action, 'pressed': item.pressed, 'frames': item.frames})
+                else:
+                    if not item.path:
+                        raise ValueError('Capture needs a PNG path')
+                    operations.append({'op': verb, 'path': item.path})
+                continue
+            if verb in {'create_project', 'create_asset', 'edit_graph'}:
+                if len(proposed) != 1 or self.catalog.get('playing') or self.catalog.get('preview_playing'):
+                    raise ValueError('Run one authoring operation while stopped')
+                if verb == 'edit_graph':
+                    if obj is None or obj['kind'] not in {'behavior', 'library', 'event', 'material', 'shape', 'field', 'shader-library'}:
+                        raise ValueError('Choose an observed graph asset')
+                    operations.append({'op': verb, 'target': obj['id'], 'definition': item.definition})
+                else:
+                    if not re.fullmatch(r'[A-Za-z0-9 _-]{1,100}', item.name) or not item.name.strip():
+                        raise ValueError('Use a valid unique name')
+                    if verb == 'create_asset' and item.kind not in {'prototype', 'scene', 'behavior', 'library', 'event', 'material', 'shape', 'field', 'shader-library'}:
+                        raise ValueError('Choose a supported asset kind')
+                    operations.append({'op': verb, 'name': item.name, **({'kind': item.kind, 'definition': item.definition} if verb == 'create_asset' else {})})
+                continue
             if verb in {'save', 'undo', 'redo', 'runtime'} and len(proposed) != 1:
                 raise ValueError('Run playback, history and save commands separately')
             if verb in {'set', 'assert', 'duplicate', 'connect', 'select', 'frame', 'open'}:

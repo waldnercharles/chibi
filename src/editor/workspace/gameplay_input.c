@@ -1,5 +1,6 @@
 #include "editor/workspace/gameplay_input.h"
 
+#include "editor/commands/command.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
@@ -12,8 +13,11 @@ void app_gameplay_sample(app_scene_authoring *scene, bool accepts_input, const C
                         ? game_prototype_preview_runtime(scene->prototype_preview)
                         : scene->runtime;
     bool firing = false;
-    if (engine_sample_controls(runtime, accepts_input ? app_input_controls() : 0, &firing) <
-        0) {
+    uint64_t controls = accepts_input ? app_input_controls() : 0;
+    if (scene->active_runtime_target == APP_RUNTIME_SCENE) {
+        controls |= editor_commands_controls(scene);
+    }
+    if (engine_sample_controls(runtime, controls, &firing) < 0) {
         snprintf(scene->message, sizeof scene->message, "Action binding requires a source and event name.");
     }
     if (!accepts_input) {

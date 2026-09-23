@@ -124,14 +124,16 @@ char *editor_command_response_body(const char *response, char *error, int error_
 struct editor_command_request
 {
     Uint64 started;
+    char *immediate;
+    bool local;
 #ifdef __EMSCRIPTEN__
     int id;
 #else
     char *url;
     char *body;
     char *output;
-    SDL_Thread *thread;
     SDL_Mutex *mutex;
+    SDL_AtomicInt references;
     int socket;
     bool cancelled, complete, done;
 #endif
@@ -342,6 +344,22 @@ static char *http_post(editor_command_request *request)
     return result ? result : error_response(message);
 }
 
+static void request_destroy(editor_command_request *request)
+{
+    SDL_DestroyMutex(request->mutex);
+    free(request->url);
+    free(request->body);
+    free(request->output);
+    free(request);
+}
+
+static void request_release(editor_command_request *request)
+{
+    if (SDL_AtomicDecRef(&request->references)) {
+        request_destroy(request);
+    }
+}
+
 static int model_thread(void *data)
 {
     editor_command_request *request = data;
@@ -354,6 +372,7 @@ static int model_thread(void *data)
     }
     request->done = true;
     SDL_UnlockMutex(request->mutex);
+    request_release(request);
     return 0;
 }
 
@@ -373,6 +392,17 @@ editor_command_request *editor_command_request_start(const char *json)
 {
     editor_command_request *request = xcalloc(1, sizeof *request);
     request->started = SDL_GetTicks();
+    yyjson_doc *local_doc = yyjson_read(json, strlen(json), 0);
+    const char *local = yyjson_get_str(
+        yyjson_obj_get(yyjson_doc_get_root(local_doc), "local_response")
+    );
+    if (local) {
+        request->immediate = xstrdup(local);
+        request->local = true;
+        yyjson_doc_free(local_doc);
+        return request;
+    }
+    yyjson_doc_free(local_doc);
 #ifdef __EMSCRIPTEN__
     request->id = web_start(json);
     if (!request->id) {
@@ -400,20 +430,28 @@ editor_command_request *editor_command_request_start(const char *json)
         free(request);
         return NULL;
     }
-    request->thread = SDL_CreateThread(model_thread, "chibi-command-model", request);
-    if (!request->thread) {
+    /* DNS and connect can block outside socket timeouts, so cleanup cannot join. */
+    SDL_SetAtomicInt(&request->references, 2);
+    SDL_Thread *thread = SDL_CreateThread(model_thread, "chibi-command-model", request);
+    if (!thread) {
         SDL_DestroyMutex(request->mutex);
         free(request->url);
         free(request->body);
         free(request);
         return NULL;
     }
+    SDL_DetachThread(thread);
 #endif
     return request;
 }
 
 char *editor_command_request_poll(editor_command_request *request)
 {
+    if (request->local) {
+        char *result = request->immediate;
+        request->immediate = NULL;
+        return result;
+    }
     if (SDL_GetTicks() - request->started > 30000) {
 #ifdef __EMSCRIPTEN__
         return xstrdup("{\"ok\":false,\"error\":\"Command model timed out\"}");
@@ -443,17 +481,18 @@ void editor_command_request_free(editor_command_request *request)
     if (!request) {
         return;
     }
+    if (request->local) {
+        free(request->immediate);
+        free(request);
+        return;
+    }
 #ifdef __EMSCRIPTEN__
     web_cancel(request->id);
+    free(request);
 #else
     if (!request->complete) {
         cancel(request);
     }
-    SDL_WaitThread(request->thread, NULL);
-    SDL_DestroyMutex(request->mutex);
-    free(request->url);
-    free(request->body);
-    free(request->output);
+    request_release(request);
 #endif
-    free(request);
 }

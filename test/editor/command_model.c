@@ -119,6 +119,22 @@ void test_editor_command_model()
                 strstr(body, "Appearance Color") && !strstr(body, "Other.json"),
             "native Ollama prompt focuses the named entity and its prototype"
         );
+        yyjson_val *target_enum = yyjson_obj_get(
+            yyjson_obj_get(
+                yyjson_obj_get(yyjson_obj_get(yyjson_obj_get(native_body_root, "format"), "properties"), "operations"),
+                "items"
+            ),
+            "properties"
+        );
+        target_enum = yyjson_obj_get(yyjson_obj_get(target_enum, "target"), "enum");
+        bool scout = false, ship = false, other = false;
+        for (size_t i = 0; i < yyjson_arr_size(target_enum); i++) {
+            const char *id = yyjson_get_str(yyjson_arr_get(target_enum, i));
+            scout |= id && !strcmp(id, "entity:1");
+            ship |= id && !strcmp(id, "/project/content/prototypes/Ship.json");
+            other |= id && !strcmp(id, "/project/content/prototypes/Other.json");
+        }
+        test_check(scout && ship && !other, "command schema limits targets to observed focused IDs");
         test_check(
             native_body_root &&
                 yyjson_get_str(yyjson_obj_get(native_body_root, "think")) &&
@@ -193,10 +209,7 @@ void test_editor_command_model()
             "command model identifies the selected provider without a sidecar "
             "resolver"
         );
-        test_check(
-            yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x00ff000cu,
-            "command model normalizes color values before execution"
-        );
+        test_check(yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x00ff0044u, "command model grounds named colors and preserves the observed alpha");
         yyjson_doc_free(result_doc);
     }
 
@@ -263,7 +276,7 @@ void test_editor_command_model()
         yyjson_doc *result_doc = NULL;
         yyjson_val *result_root = test_json_root(result, &result_doc);
         yyjson_val *operation = yyjson_arr_get(yyjson_obj_get(result_root, "operations"), 0);
-        test_check(yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x0000ff44u, "command model preserves RGB and existing alpha from tool-call output");
+        test_check(yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x00ff0044u, "command model keeps the requested named color over a conflicting tool value");
         yyjson_doc_free(result_doc);
     }
 
@@ -295,6 +308,25 @@ void test_editor_command_model()
             "command model validates clarification choices against the catalog"
         );
         yyjson_doc_free(result_doc);
+    }
+
+    const char
+        *wrong_color_response = "{\"choices\":[{\"message\":{\"content\":\"{"
+                                "\\\"decision\\\":\\\"act\\\","
+                                "\\\"operations\\\":[{\\\"op\\\":\\\"set\\\","
+                                "\\\"target\\\":\\\"object:1\\\","
+                                "\\\"field\\\":\\\"color\\\",\\\"value\\\":0}]}"
+                                "\"}}]}";
+    free(result);
+    result = editor_command_model_result(packet, wrong_color_response, error, sizeof error);
+    if (result) {
+        yyjson_doc *result_doc = NULL;
+        yyjson_val *result_root = test_json_root(result, &result_doc);
+        yyjson_val *operation = yyjson_arr_get(yyjson_obj_get(result_root, "operations"), 0);
+        test_check(yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x00ff0044u, "command model grounds a named color in the catalog despite a wrong model literal");
+        yyjson_doc_free(result_doc);
+    } else {
+        test_check(false, "command model parses a named color proposal");
     }
 
     free(result);

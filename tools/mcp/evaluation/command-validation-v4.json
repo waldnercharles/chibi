@@ -1,0 +1,68 @@
+{
+  "native_default_scope": "prototype",
+  "native_scoring_contract": {
+    "operation_cases": "native_expected_operations is an exact, order-independent set. A supported task must reach needs_review, be approved, apply, and read back every listed field or panel value. native_unchanged values must remain unchanged.",
+    "single_set_cases": "A case without native_expected_operations but with expected_target/component/field/value expects one prototype set operation.",
+    "no_operation_cases": "native_expected_status requires that exact unsupported or needs_clarification status with no proposed operations."
+  },
+  "observation": "The headless scene has Player and Enemy prototypes used by Ship and Foe. Each prototype starts with white GameAppearance.color, GameAppearance.width 32, GameAppearance.height 24, and a Box GameCollider with width 32 and height 24. Neither scene entity is selected. By default, requests naming Ship or Foe edit their prototype; requests explicitly scoped to an instance should preserve that prototype. The scene contains no particle emitter, sound event, or other entity.",
+  "actions": [
+    { "id": "player_appearance", "target": "Player", "scope": "prototype", "component": "GameAppearance", "description": "Edit Player appearance fields" },
+    { "id": "player_collider", "target": "Player", "scope": "prototype", "component": "GameCollider", "description": "Edit Player collider fields" },
+    { "id": "enemy_appearance", "target": "Enemy", "scope": "prototype", "component": "GameAppearance", "description": "Edit Enemy appearance fields" },
+    { "id": "enemy_collider", "target": "Enemy", "scope": "prototype", "component": "GameCollider", "description": "Edit Enemy collider fields" },
+    { "id": "ship_instance", "target": "Ship", "scope": "instance", "description": "Edit only Ship" },
+    { "id": "foe_instance", "target": "Foe", "scope": "instance", "description": "Edit only Foe" },
+    { "id": "editor_panel", "target": "panel:<id>", "scope": "editor", "description": "Show or hide a catalog panel" }
+  ],
+  "cases": [
+    { "id": "v401", "category": "color_exact", "goal": "Give the Enemy template a violet coat, RGBA #5C2E91E6.", "expected_target": "Enemy", "expected_component": "GameAppearance", "expected_field": "color", "expected_value": 1546555878 },
+    { "id": "v402", "category": "color_exact", "goal": "Warm Player's paint to #E7A13BFF and keep it fully opaque.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "color", "expected_value": 3886103551 },
+    { "id": "v403", "category": "appearance_height", "goal": "Make Ship's inherited artwork 36 units tall.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "height", "expected_value": 36 },
+    { "id": "v404", "category": "collider_height", "goal": "Set the Enemy box hitbox height field to 28.", "expected_target": "Enemy", "expected_component": "GameCollider", "expected_field": "height", "expected_value": 28 },
+    { "id": "v405", "category": "appearance_width", "goal": "Set Player's displayed width to 60 pixels.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "width", "expected_value": 60 },
+    { "id": "v406", "category": "collider_shape", "goal": "Use a circular collider for the Foe through its Enemy template.", "expected_target": "Enemy", "expected_component": "GameCollider", "expected_field": "shape", "expected_value": 0 },
+    { "id": "v407", "category": "color_alpha_edge", "goal": "Set Player GameAppearance.color to the exact RGBA value #1B2C3D4E.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "color", "expected_value": 455884110 },
+    { "id": "v408", "category": "collider_width", "goal": "Make Enemy's collider 52 units wide; its art should stay 32 wide.", "expected_target": "Enemy", "expected_component": "GameCollider", "expected_field": "width", "expected_value": 52, "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "width", "value": 32 }] },
+
+    { "id": "v409", "category": "relative_appearance_width", "goal": "Increase Player's render width by half from the current 32, giving 48.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "width", "expected_value": 48 },
+    { "id": "v410", "category": "relative_collider_height", "goal": "Take 8 units off Enemy's 24-unit box collider height; leave the art alone.", "expected_target": "Enemy", "expected_component": "GameCollider", "expected_field": "height", "expected_value": 16, "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "height", "value": 24 }] },
+    { "id": "v411", "category": "relative_appearance_height", "goal": "Raise Ship's inherited drawing height by 25% from 24 to 30.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "height", "expected_value": 30 },
+    { "id": "v412", "category": "relative_appearance_width", "goal": "Cut Foe's inherited artwork width in half, 32 down to 16.", "expected_target": "Enemy", "expected_component": "GameAppearance", "expected_field": "width", "expected_value": 16 },
+    { "id": "v413", "category": "instance_relative_collider", "goal": "Narrow only this Foe instance's collider by one quarter: 32 becomes 24. Preserve Enemy defaults.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Foe", "component": "GameCollider", "field": "width", "value": 24 }], "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameCollider", "field": "width", "value": 32 }] },
+    { "id": "v414", "category": "relative_collider_width", "goal": "Increase Player's box hitbox width by 25% (32 to 40), without resizing its sprite.", "expected_target": "Player", "expected_component": "GameCollider", "expected_field": "width", "expected_value": 40, "native_unchanged": [{ "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "width", "value": 32 }] },
+
+    { "id": "v415", "category": "compound_prototype", "goal": "On the Player template, set the artwork to #2DAB57FF and its width to 46.", "native_expected_operations": [{ "op": "set", "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "color", "value": 766203903 }, { "op": "set", "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "width", "value": 46 }] },
+    { "id": "v416", "category": "compound_prototype", "goal": "For Enemy, make the collider round and set the artwork height to 38.", "native_expected_operations": [{ "op": "set", "scope": "prototype", "target": "Enemy", "component": "GameCollider", "field": "shape", "value": 0 }, { "op": "set", "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "height", "value": 38 }] },
+    { "id": "v417", "category": "compound_instance", "goal": "Change just Foe's instance: use tint #8936F1B0 and height 30. Do not change Enemy's template.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Foe", "component": "GameAppearance", "field": "color", "value": 2302079408 }, { "op": "set", "scope": "instance", "target": "Foe", "component": "GameAppearance", "field": "height", "value": 30 }], "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "color", "value": 4294967295 }, { "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "height", "value": 24 }] },
+    { "id": "v418", "category": "compound_instance", "goal": "Only Ship itself should change: turn its collider circular and color it #14A8C3FF; Player stays Box and white.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Ship", "component": "GameCollider", "field": "shape", "value": 0 }, { "op": "set", "scope": "instance", "target": "Ship", "component": "GameAppearance", "field": "color", "value": 346604543 }], "native_unchanged": [{ "scope": "prototype", "target": "Player", "component": "GameCollider", "field": "shape", "value": 1 }, { "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "color", "value": 4294967295 }] },
+    { "id": "v419", "category": "compound_prototype", "goal": "Update Enemy's shared sprite width to 58 and its collider height to 18 in one edit.", "native_expected_operations": [{ "op": "set", "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "width", "value": 58 }, { "op": "set", "scope": "prototype", "target": "Enemy", "component": "GameCollider", "field": "height", "value": 18 }] },
+    { "id": "v420", "category": "cross_prototype_compound", "goal": "In one request, set Player's appearance width to 48 and Enemy's collider width to 44.", "native_expected_status": "unsupported" },
+
+    { "id": "v421", "category": "instance_scope", "goal": "Override only Ship's color with #B14E2AFF; keep Player's shared color white.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Ship", "component": "GameAppearance", "field": "color", "value": 2974690047 }], "native_unchanged": [{ "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "color", "value": 4294967295 }] },
+    { "id": "v422", "category": "instance_scope", "goal": "Set this Foe instance's artwork height to 30, leaving the Enemy template at 24.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Foe", "component": "GameAppearance", "field": "height", "value": 30 }], "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameAppearance", "field": "height", "value": 24 }] },
+    { "id": "v423", "category": "prototype_scope", "goal": "Make every Ship inherit a 54-unit Player template width.", "expected_target": "Player", "expected_component": "GameAppearance", "expected_field": "width", "expected_value": 54 },
+    { "id": "v424", "category": "instance_scope", "goal": "Set just the Foe instance's collider to Circle. Enemy's own shape stays Box.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Foe", "component": "GameCollider", "field": "shape", "value": 0 }], "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameCollider", "field": "shape", "value": 1 }] },
+    { "id": "v425", "category": "instance_scope", "goal": "Make Ship itself 33 units tall; do not change Player's template height.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Ship", "component": "GameAppearance", "field": "height", "value": 33 }], "native_unchanged": [{ "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "height", "value": 24 }] },
+
+    { "id": "v426", "category": "panel", "goal": "Dismiss the Compiler panel.", "native_expected_operations": [{ "op": "panel", "target": "panel:6", "value": false }] },
+    { "id": "v427", "category": "panel", "goal": "Bring Performance back into view.", "native_expected_operations": [{ "op": "panel", "target": "panel:8", "value": true }] },
+    { "id": "v428", "category": "panel", "goal": "Fold away the Behavior panel.", "native_expected_operations": [{ "op": "panel", "target": "panel:2", "value": false }] },
+    { "id": "v429", "category": "panel", "goal": "Show the Scene panel again.", "native_expected_operations": [{ "op": "panel", "target": "panel:5", "value": true }] },
+
+    { "id": "v430", "category": "ambiguous", "goal": "Make Player look rounder.", "native_expected_status": "needs_clarification" },
+    { "id": "v431", "category": "ambiguous", "goal": "Enlarge Enemy.", "native_expected_status": "needs_clarification" },
+    { "id": "v432", "category": "ambiguous", "goal": "Paint it gold.", "native_expected_status": "needs_clarification" },
+    { "id": "v433", "category": "ambiguous", "goal": "Set Ship's width to 45.", "native_expected_status": "needs_clarification" },
+    { "id": "v434", "category": "selection_scope", "goal": "Change the selected object's collider to Circle.", "native_expected_status": "needs_clarification" },
+    { "id": "v435", "category": "ambiguous", "goal": "Make Foe more visible.", "native_expected_status": "needs_clarification" },
+
+    { "id": "v436", "category": "unsupported_behavior", "goal": "When Player is defeated, restore its health and restart the level.", "native_expected_status": "unsupported" },
+    { "id": "v437", "category": "unsupported_behavior", "goal": "Play a sound whenever Foe collides with a wall.", "native_expected_status": "unsupported" },
+    { "id": "v438", "category": "unsupported_project_setting", "goal": "Set project-wide gravity to 3.7.", "native_expected_status": "unsupported" },
+    { "id": "v439", "category": "unsupported_external_action", "goal": "Build the project for iOS and upload it to the store.", "native_expected_status": "unsupported" },
+    { "id": "v440", "category": "unsupported_creation", "goal": "Create a new button that restarts the game when clicked.", "native_expected_status": "unsupported" },
+    { "id": "v441", "category": "unsupported_missing_component", "goal": "Raise the particle emitter's start speed to 20; this scene has no emitter.", "native_expected_status": "unsupported" },
+    { "id": "v442", "category": "unsupported_shape", "goal": "Replace Enemy's Box collider with a capsule shape.", "native_expected_status": "unsupported" }
+  ]
+}

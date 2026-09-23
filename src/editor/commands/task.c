@@ -6,6 +6,7 @@
 #include "support/xalloc.h"
 
 #include <SDL3/SDL.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,7 @@ typedef struct
     yyjson_mut_doc *packet;
     editor_command_request *request;
     Uint64 started, elapsed;
+    int model_calls;
     bool dry, measuring;
 } command_task;
 
@@ -115,6 +117,7 @@ static void set_result(command_task *task, char *json)
     yyjson_mut_obj_remove_key(root, "task_id");
     yyjson_mut_obj_add_str(doc, root, "task_id", task->id);
     yyjson_mut_obj_remove_key(root, "elapsed_ms");
+    yyjson_mut_obj_remove_key(root, "model_calls");
     Uint64 now = SDL_GetTicks();
     if (task->measuring) {
         task->elapsed += now - task->started;
@@ -122,6 +125,7 @@ static void set_result(command_task *task, char *json)
     task->started = now;
     task->measuring = !strcmp(command_string(yyjson_doc_get_root(read), "status"), "pending");
     yyjson_mut_obj_add_uint(doc, root, "elapsed_ms", task->elapsed);
+    yyjson_mut_obj_add_int(doc, root, "model_calls", task->model_calls);
     free(task->result);
     task->result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
@@ -157,6 +161,43 @@ static void trace(command_task *task)
     yyjson_mut_doc_free(doc);
 }
 
+static bool same_value(yyjson_val *actual, yyjson_val *expected, yyjson_val *field)
+{
+    if (!yyjson_is_num(actual) || !yyjson_is_num(expected)) {
+        return yyjson_equals(actual, expected);
+    }
+    double a = yyjson_get_num(actual), b = yyjson_get_num(expected);
+    if (yyjson_get_bool(yyjson_obj_get(field, "integer")) ||
+        (!yyjson_is_real(actual) && !yyjson_is_real(expected))) {
+        return a == b;
+    }
+    return fabs(a - b) <= 1e-5 * fmax(1, fabs(b));
+}
+
+static bool verify_sets(yyjson_val *operations, yyjson_val *catalog)
+{
+    yyjson_val *objects = yyjson_obj_get(catalog, "objects");
+    if (!yyjson_arr_size(operations)) {
+        return false;
+    }
+    for (size_t i = 0; i < yyjson_arr_size(operations); i++) {
+        yyjson_val *operation = yyjson_arr_get(operations, i);
+        if (strcmp(command_string(operation, "op"), "set")) {
+            return false;
+        }
+        yyjson_val *object = command_find(objects, command_string(operation, "target"));
+        yyjson_val *field = command_find(
+            yyjson_obj_get(object, "fields"),
+            command_string(operation, "field")
+        );
+        if (!field ||
+            !same_value(yyjson_obj_get(field, "value"), yyjson_obj_get(operation, "value"), field)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void execute(app_scene_authoring *scene, command_task *task)
 {
     task->started = SDL_GetTicks();
@@ -186,11 +227,20 @@ static void execute(app_scene_authoring *scene, command_task *task)
     free(history_after);
     yyjson_val *ops = yyjson_obj_get(yyjson_doc_get_root(read), "operations");
     const char *first = command_string(yyjson_arr_get(ops, 0), "op");
+    bool check_readback = yyjson_arr_size(ops) > 0;
+    for (size_t i = 0; i < yyjson_arr_size(ops); i++) {
+        check_readback &= !strcmp(command_string(yyjson_arr_get(ops, i), "op"), "set");
+    }
     bool content = !strcmp(first, "set") || !strcmp(first, "assert") ||
                    !strcmp(first, "duplicate") || !strcmp(first, "connect");
     yyjson_mut_obj_add_bool(doc, root, "undoable", applied && !task->dry && content && changed);
     char *after = editor_commands_catalog(scene);
     yyjson_doc *after_doc = yyjson_read(after, strlen(after), 0);
+    bool verified = applied && !task->dry && check_readback &&
+                    verify_sets(ops, yyjson_doc_get_root(after_doc));
+    if (applied && !task->dry && check_readback) {
+        yyjson_mut_obj_add_bool(doc, root, "verified", verified);
+    }
     yyjson_mut_obj_add_strcpy(
         doc,
         root,
@@ -226,11 +276,28 @@ static void execute(app_scene_authoring *scene, command_task *task)
     yyjson_mut_obj_remove_key(root, "status");
     yyjson_mut_obj_remove_key(root, "message");
     yyjson_mut_obj_remove_key(root, "ok");
-    yyjson_mut_obj_add_bool(doc, root, "ok", applied);
-    yyjson_mut_obj_add_str(doc, root, "status", applied ? task->dry ? "ready" : "applied" : "failed");
-    yyjson_mut_obj_add_str(doc, root, "message", applied && task->dry ? "Validated" : error);
+    yyjson_mut_obj_add_bool(doc, root, "ok", applied && (!check_readback || task->dry || verified));
+    yyjson_mut_obj_add_str(
+        doc,
+        root,
+        "status",
+        !applied                      ? "failed"
+        : task->dry                   ? "ready"
+        : check_readback && !verified ? "unverified"
+                                      : "applied"
+    );
+    yyjson_mut_obj_add_str(
+        doc,
+        root,
+        "message",
+        !applied    ? error
+        : task->dry ? "Validated"
+        : check_readback && !verified
+            ? "Applied, but readback did not match. Review or undo the change."
+            : ""
+    );
     set_result(task, yyjson_mut_write(doc, 0, NULL));
-    if (applied && !task->dry) {
+    if (applied && !task->dry && (!check_readback || verified)) {
         free(runtime(scene)->context);
         runtime(scene)->context = context ? yyjson_mut_val_write(context, 0, NULL)
                                           : NULL;
@@ -249,7 +316,16 @@ static void start(command_task *task)
     char *packet = yyjson_mut_write(task->packet, 0, NULL);
     char *model_request = editor_command_model_prepare(packet, error, sizeof error);
     free(packet);
+    yyjson_doc *request_doc = model_request
+                                ? yyjson_read(model_request, strlen(model_request), 0)
+                                : NULL;
+    bool local = yyjson_obj_get(yyjson_doc_get_root(request_doc), "local_response") !=
+                 NULL;
+    yyjson_doc_free(request_doc);
     task->request = model_request ? editor_command_request_start(model_request) : NULL;
+    if (task->request && !local) {
+        task->model_calls++;
+    }
     free(model_request);
     set_result(
         task,
@@ -260,6 +336,42 @@ static void start(command_task *task)
                           : "Could not start model request"
         )
     );
+}
+
+static bool validate_review(app_scene_authoring *scene, command_task *task)
+{
+    yyjson_doc *read = yyjson_read(task->result, strlen(task->result), 0);
+    const char *status = command_string(yyjson_doc_get_root(read), "status");
+    if (strcmp(status, "needs_review") && strcmp(status, "ready")) {
+        yyjson_doc_free(read);
+        return true;
+    }
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_obj_remove_key(root, "dry_run");
+    yyjson_mut_obj_add_bool(doc, root, "dry_run", true);
+    char *proposal = yyjson_mut_write(doc, 0, NULL);
+    char error[256] = { 0 };
+    bool valid = !editor_commands_apply(scene, task->catalog, proposal, error, sizeof error);
+    free(proposal);
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read);
+    if (!valid) {
+        if (getenv("CHIBI_COMMAND_DEBUG_PROPOSAL")) {
+            fprintf(stderr, "Rejected command proposal: %s\n", task->result);
+        }
+        set_result(
+            task,
+            response(
+                !strcmp(error, "Changes span multiple documents") ||
+                        !strcmp(error, "Choose a listed property value")
+                    ? "unsupported"
+                    : "failed",
+                error
+            )
+        );
+    }
+    return valid;
 }
 
 const char *editor_commands_result(app_scene_authoring *scene)
@@ -317,6 +429,11 @@ void editor_commands_frame(app_scene_authoring *scene)
         result = response("failed", error[0] ? error : "Could not parse the model command");
     }
     set_result(task, result);
+    if (!validate_review(scene, task)) {
+        runtime(scene)->active = NULL;
+        trace(task);
+        return;
+    }
     yyjson_doc *doc = yyjson_read(task->result, strlen(task->result), 0);
     const char *status = command_string(yyjson_doc_get_root(doc), "status");
     if (!strcmp(status, "ready")) {
@@ -424,7 +541,11 @@ char *editor_commands_api(app_scene_authoring *scene, const char *request)
                         bindings = yyjson_mut_obj_add_obj(task->packet, packet, "bindings");
                     }
                     yyjson_mut_obj_remove_key(bindings, binding);
-                    yyjson_mut_obj_add_strcpy(task->packet, bindings, binding, value);
+                    yyjson_mut_obj_add(
+                        bindings,
+                        yyjson_mut_strcpy(task->packet, binding),
+                        yyjson_mut_strcpy(task->packet, value)
+                    );
                     start(task);
                 }
             } else {

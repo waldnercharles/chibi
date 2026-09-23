@@ -129,6 +129,10 @@ static void draw_settings(editor_command_palette *p)
     ImGui_Text("Model");
     ImGui_SetNextItemWidth(360.0f);
     ImGui_InputText("##command_model", p->model, sizeof p->model, 0);
+    bool json_schema = editor_command_model_json_schema();
+    if (ImGui_Checkbox("JSON schema", &json_schema)) {
+        editor_command_model_set_json_schema(json_schema);
+    }
     if (ImGui_Button("Save")) {
         char error[128];
         if (editor_command_model_set_settings(p->host, p->model, error, sizeof error)) {

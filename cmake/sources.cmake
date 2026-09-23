@@ -184,6 +184,7 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/command_palette.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/catalog.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/quick_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c

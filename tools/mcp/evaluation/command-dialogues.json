@@ -1,0 +1,32 @@
+{
+  "observation": "The scene has Player and Enemy prototypes, Ship and Foe instances, and no selection. Named instances default to their prototype unless explicitly scoped to the instance.",
+  "cases": [
+    {
+      "id": "dialog01",
+      "goal": "Make it blue.",
+      "native_reply": "Ship",
+      "expected_target": "Player",
+      "expected_component": "GameAppearance",
+      "expected_field": "color",
+      "expected_value": 65535
+    },
+    {
+      "id": "dialog02",
+      "goal": "Turn Player circular and recolor it cyan (#00CED1FF).",
+      "native_reply": "Change the collider to Circle and recolor the appearance as requested.",
+      "native_expected_operations": [
+        { "op": "set", "scope": "prototype", "target": "Player", "component": "GameCollider", "field": "shape", "value": 0 },
+        { "op": "set", "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "color", "value": 13554175 }
+      ]
+    },
+    {
+      "id": "dialog03",
+      "goal": "Make Player bigger.",
+      "native_reply": "Set the Player appearance width to 48.",
+      "expected_target": "Player",
+      "expected_component": "GameAppearance",
+      "expected_field": "width",
+      "expected_value": 48
+    }
+  ]
+}

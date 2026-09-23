@@ -51,6 +51,7 @@ void test_asset_index();
 void test_input_bindings();
 void test_graph_optimizer();
 void test_editor_command_model();
+void test_editor_command_quick_edit();
 int scene_documents_run(const char *program);
 
 static int fails;
@@ -184,6 +185,20 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--command-model")) {
         registry_validate();
         test_editor_command_model();
+        return fails ? 1 : 0;
+    }
+    if (argc == 4 && !strcmp(argv[1], "--command-live")) {
+        extern int test_editor_command_live(const char *provider, const char *path);
+        registry_validate();
+        return test_editor_command_live(argv[2], argv[3]);
+    }
+    if (argc == 4 && !strcmp(argv[1], "--command-project-live")) {
+        extern int test_editor_command_project_live(const char *provider, const char *project);
+        registry_validate();
+        return test_editor_command_project_live(argv[2], argv[3]);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--command-quick-edit")) {
+        test_editor_command_quick_edit();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {

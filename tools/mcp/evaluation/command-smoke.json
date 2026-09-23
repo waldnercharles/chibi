@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "id": "ship-blue",
+      "goal": "Change the Ship's color to blue",
+      "native_expected": {
+        "scope": "prototype",
+        "target": "Player",
+        "component": "GameAppearance",
+        "field": "color",
+        "value": 65535
+      }
+    },
+    {
+      "id": "player-circle-hitbox",
+      "goal": "Change the player's hitbox to a circle",
+      "native_expected": {
+        "scope": "prototype",
+        "target": "Player",
+        "component": "GameCollider",
+        "field": "shape",
+        "value": 0
+      }
+    }
+  ]
+}

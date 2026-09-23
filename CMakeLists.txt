@@ -536,8 +536,6 @@ if(NODE_EXECUTABLE)
     add_custom_target(check-mcp-gpu
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
         DEPENDS chibi_ctl

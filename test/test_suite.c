@@ -50,6 +50,7 @@ void test_system_arithmetic();
 void test_asset_index();
 void test_input_bindings();
 void test_graph_optimizer();
+void test_editor_command_model();
 int scene_documents_run(const char *program);
 
 static int fails;
@@ -156,6 +157,7 @@ TEST_CASE(all_checks)
     run_ecs_migration_checks();
     run_scene_checks();
     run_editor_command_checks();
+    test_editor_command_model();
     test_editor_checkpoint();
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
     test_check(test_ui_scroll_smoothing(), "smooth scrolling is refresh-rate independent");
@@ -177,6 +179,11 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
         registry_validate();
         test_math_expression();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--command-model")) {
+        registry_validate();
+        test_editor_command_model();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {

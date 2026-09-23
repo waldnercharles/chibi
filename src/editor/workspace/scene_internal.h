@@ -173,6 +173,9 @@ struct app_scene_authoring
     int quick_open_selected;
     bool quick_open;
     bool quick_open_focus;
+    struct editor_command_palette *commands;
+    struct editor_command_runtime *command_runtime;
+    uint64_t command_incarnation;
     asset_index_kind content_kind;
     double content_scan_time;
     unsigned asset_index_editor_revision;

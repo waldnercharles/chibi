@@ -180,6 +180,12 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_inspector.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_navigator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/command_transport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/command_palette.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/catalog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/model.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/game_presentation.c

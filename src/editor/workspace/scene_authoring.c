@@ -1,8 +1,10 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
+#include "editor/commands/command.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
+#include "editor/panels/command_palette.h"
 #include "editor/panels/scene_properties.h"
 #include "editor/ui/choices.h"
 #include "editor/ui/color.h"
@@ -1539,6 +1541,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     editor_ui_set_graph_debug_header(NULL, NULL);
+    editor_command_palette_free(scene->commands);
+    editor_commands_free(scene);
     scene_debug_clear(&scene->debug);
     editor_set_inspection_blocked(scene->graph_editor, false);
     app_scene_renderer_free(scene->renderer);
@@ -1840,6 +1844,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         app_scene_authoring_refresh_asset_index(scene);
     }
     draw_quick_open(scene);
+    editor_command_palette_draw(scene);
     draw_navigator(scene);
     draw_asset_document_overview(scene);
     int navigation = editor_ui_take_navigation();

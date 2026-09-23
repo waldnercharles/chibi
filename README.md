@@ -61,6 +61,13 @@ LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
 dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
 
+When ccache is installed, native `Release` builds under the source tree can
+reuse compiled objects across worktrees with the same relative build directory
+such as `build-release`. Each worktree still has its own fetched sources and
+linked libraries. The cache checks source, headers, compiler, and flags before
+reusing an object. Run `ccache --show-stats` to check hits. Debug, sanitizer,
+Tracy, reload, and web builds do not use this Release path normalization.
+
 `make dev ARGS="--fps 60"` starts the native development host. Save a source file
 to build a new generation. Build diagnostics go to `.chibi/build.log`.
 A failed build or rejected import leaves the current generation running. A

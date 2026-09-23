@@ -50,6 +50,11 @@ leave the current editor running. Application changes replace code in the same
 process. Host, framework, resident font and shader changes report that a restart
 is required. Close the editor and run `make dev` again to apply those changes.
 
+Staging retains the eight newest generations and the generation named by
+`.chibi/application.current`. Loaded application and resident libraries hold a
+lease until unload or host exit, so staging also preserves any older generation
+still in use. The next successful stage removes older unused generations.
+
 Application filenames are unique across generations as well as their directories.
 This prevents macOS library search paths from reopening an older application with
 the same filename.

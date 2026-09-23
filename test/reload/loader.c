@@ -2,9 +2,13 @@
 #include "src/host/state_file.h"
 
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 static void expect(chibi_module *module, const char *value)
@@ -77,5 +81,31 @@ int main(int argc, char **argv)
     module.api->frame(module.state);
     expect(&module, "2");
     chibi_module_close(&module);
+    char root[] = "/tmp/chibi-lease-XXXXXX";
+    assert(mkdtemp(root));
+    char state_dir[512], generations[512], directory[512], staged[512],
+        lease_path[512];
+    snprintf(state_dir, sizeof state_dir, "%s/.chibi", root);
+    snprintf(generations, sizeof generations, "%s/generations", state_dir);
+    snprintf(directory, sizeof directory, "%s/20200101-000000-0000000000000000", generations);
+    snprintf(staged, sizeof staged, "%s/application.so", directory);
+    snprintf(lease_path, sizeof lease_path, "%s/.lease", directory);
+    assert(
+        mkdir(state_dir, 0700) == 0 && mkdir(generations, 0700) == 0 &&
+        mkdir(directory, 0700) == 0 && symlink(argv[1], staged) == 0
+    );
+    assert(chibi_module_replace(&module, staged, &host, NULL, error, sizeof error));
+    int lease = open(lease_path, O_RDWR);
+    assert(
+        lease >= 0 && flock(lease, LOCK_EX | LOCK_NB) == -1 &&
+        (errno == EWOULDBLOCK || errno == EAGAIN)
+    );
+    chibi_module_close(&module);
+    assert(flock(lease, LOCK_EX | LOCK_NB) == 0);
+    assert(flock(lease, LOCK_UN) == 0 && close(lease) == 0);
+    assert(
+        unlink(staged) == 0 && unlink(lease_path) == 0 && rmdir(directory) == 0 &&
+        rmdir(generations) == 0 && rmdir(state_dir) == 0 && rmdir(root) == 0
+    );
     puts("PASS: real library replacement, rejection, repeated generations and checkpoint restart");
 }

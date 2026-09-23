@@ -1,6 +1,7 @@
 # MCP readiness for Space Jobs
 
-Reviewed against `docs/game-design.md`, draft 0.1, on September 12, 2026.
+Reviewed against the former Space Jobs design draft, draft 0.1, on September
+12, 2026.
 
 The existing MCP could inspect and edit much of the engine, but it could not
 support this design end to end. The largest missing capabilities were authored

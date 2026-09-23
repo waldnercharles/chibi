@@ -124,6 +124,42 @@ int editor_reload_behavior_asset(editor *e, const behavior_asset *source, uint64
     return 0;
 }
 
+int editor_reload_behavior_asset_document(editor *e, const behavior_asset *source, const char *key)
+{
+    if (!e || !source || !key) {
+        return -1;
+    }
+    if (e->document_key && !strcmp(e->document_key, key)) {
+        const graph *graph = editor_active_graph(e);
+        return graph && behavior_asset_find_graph(source, graph->graph_id)
+                 ? editor_reload_behavior_asset(e, source, graph->graph_id, key)
+                 : -1;
+    }
+    for (int i = 0; i < acount(e->documents); i++) {
+        ed_document_history *history = &e->documents[i];
+        if (strcmp(history->key, key) != 0) {
+            continue;
+        }
+        char *json = behavior_asset_save_json(source);
+        if (!json) {
+            return -1;
+        }
+        free(history->json);
+        history->json = json;
+        free(history->saved);
+        history->saved = xstrdup(json);
+        ed_free_string_stack(&history->undo);
+        ed_free_string_stack(&history->redo);
+        afree(history->views);
+        free(history->location.nodes);
+        history->location = (editor_location){ 0 };
+        afree(history->links);
+        history->owner_identity = source->identity;
+        return 0;
+    }
+    return 0;
+}
+
 bool editor_can_visit_location(
     const editor *e,
     const behavior_asset *source,

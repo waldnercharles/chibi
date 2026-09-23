@@ -105,7 +105,17 @@ static int direct_binding(
             !same_string(source->output_pins[0].type_name, source->desc->type->name)) {
             return GRAPH_OPTIMIZE_SEMANTICS;
         }
-        if (conversion) {
+        pin_spec value = field ? (pin_spec){ .kind = PIN_DATA,
+                                             .type = field->type,
+                                             .type_name = field->type_name,
+                                             .container = PIN_CONTAINER_SINGLE }
+                               : source->output_pins[0];
+        bool unwrap_conversion = false;
+        if (conversion && field) {
+            if (!conversion_matches_pins(&value, input, conversion)) {
+                return GRAPH_OPTIMIZE_CONVERSION;
+            }
+        } else if (conversion) {
             char unwrap[160];
             snprintf(unwrap, sizeof unwrap, "Unwrap_%s", source->desc->type->name);
             if (field || source->desc->type->field_count != 1 ||
@@ -113,12 +123,14 @@ static int direct_binding(
                 return GRAPH_OPTIMIZE_CONVERSION;
             }
             field = &source->desc->type->fields[0];
+            unwrap_conversion = true;
+            value = (pin_spec){ .kind = PIN_DATA,
+                                .type = field->type,
+                                .type_name = field->type_name,
+                                .container = PIN_CONTAINER_SINGLE };
         }
-        pin_spec value = field ? (pin_spec){ .kind = PIN_DATA,
-                                             .type = field->type,
-                                             .type_name = field->type_name }
-                               : source->output_pins[0];
-        if (!pin_types_compatible(&value, input)) {
+        if ((!conversion && !pin_types_compatible(&value, input)) ||
+            (unwrap_conversion && !pin_types_compatible(&value, input))) {
             return GRAPH_OPTIMIZE_CONVERSION;
         }
         *binding = (pin_binding){ .kind = field ? PIN_BINDING_COMPONENT_FIELD
@@ -127,7 +139,8 @@ static int direct_binding(
                                   .field_name = field ? field->name : NULL };
         return -1;
     }
-    if (conversion || !pin_types_compatible(output, input)) {
+    if ((conversion && !conversion_matches_pins(output, input, conversion)) ||
+        (!conversion && !pin_types_compatible(output, input))) {
         return GRAPH_OPTIMIZE_CONVERSION;
     }
     bool setter = source->desc == &NODE_SetVariable;

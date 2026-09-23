@@ -4,6 +4,7 @@
 #include "ecs/ecs.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/components.h"
+#include "runtime/systems/schedule.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -42,14 +43,14 @@ typedef struct
     uint32_t command_apply_count;
 } engine_frame_timing;
 
-typedef void (*engine_system_fn)(ecs_world *world, double simulation_time, void *user);
 typedef void (*engine_render_fn)(void *user);
 
 engine *engine_new(ecs_world *world, game_live_world *live);
 void engine_free(engine *engine);
 /* Reset time and input before recreating authored entities and their Begin runs. */
 void engine_reset(engine *engine);
-int engine_add_system(engine *engine, engine_system_fn fn, void *user);
+int engine_register_system(engine *engine, const engine_system_desc *desc);
+const system_schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);
 int engine_set_focus(engine *engine, engine_focus focus);
 engine_focus engine_get_focus(const engine *engine);

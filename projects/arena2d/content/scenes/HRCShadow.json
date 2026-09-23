@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "name": "HRCShadow",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "Camera",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "HRC",
+      "prototype": "HRC",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Source",
+      "prototype": "Crystal",
+      "components": {
+        "GameTransform": {
+          "x": -330,
+          "y": -130
+        },
+        "GameAppearance": {
+          "width": 30,
+          "height": 30,
+          "color": 4294967295
+        },
+        "GameMaterial": {
+          "emission_color": 4294967295,
+          "emission_intensity": 0.1,
+          "absorption": 0,
+          "scene": 4294967295,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Occluder",
+      "prototype": "HardRock",
+      "components": {
+        "GameTransform": {
+          "x": -30,
+          "y": -10
+        },
+        "GameAppearance": {
+          "width": 80,
+          "height": 180
+        },
+        "GameMaterial": {
+          "absorption": 1,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Receiver",
+      "prototype": "HardRock",
+      "components": {
+        "GameTransform": {
+          "x": 270,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 260,
+          "height": 400
+        },
+        "GameMaterial": {
+          "absorption": 0.25,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Floor",
+      "prototype": "HardRock",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -220
+        },
+        "GameAppearance": {
+          "width": 700,
+          "height": 24
+        },
+        "GameMaterial": {
+          "absorption": 0.5,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

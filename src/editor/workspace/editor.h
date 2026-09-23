@@ -5,7 +5,7 @@
 #include "editor/ui/choices.h"
 #include "editor/ui/flags.h"
 #include "graph/model/behavior_asset.h"
-#include "graph/nodes/math_expression.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/instance.h"
 
 typedef struct editor editor;
@@ -207,6 +207,8 @@ int editor_reload_behavior_asset(
     uint64_t graph_id,
     const char *key
 );
+/* Reloads a cached document without changing the visible document. */
+int editor_reload_behavior_asset_document(editor *e, const behavior_asset *source, const char *key);
 
 /* Replaces the editable Behavior Asset with a copy of source and opens graph_id. */
 int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id);
@@ -290,8 +292,14 @@ int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id);
 /* Adds a node of type desc to the graph at canvas (x, y) and returns the core
  * node for wiring, or NULL on allocation failure. */
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y);
-node *editor_add_math_expression(editor *e, const char *source, float x, float y, math_expression_error *error);
-int editor_set_math_expression(editor *e, node *call, const char *source, math_expression_error *error);
+node *editor_add_behavior_expression(
+    editor *e,
+    const char *source,
+    float x,
+    float y,
+    behavior_expression_error *error
+);
+int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error);
 
 /* Save the behavior_asset to `path` as JSON and update the editor's saved
  * baseline used by dirty queries. Returns 0 on success, -1 on error. */

@@ -1,0 +1,23 @@
+{
+  "name": "Table",
+  "identity": "prototype-0000000000000008",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 0.0,
+      "border_color": 2443621631,
+      "border_width": 6.0,
+      "color": 624185599,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 678.0,
+      "layer": -30,
+      "shape": 0,
+      "stroke_width": 0.0,
+      "width": 466.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

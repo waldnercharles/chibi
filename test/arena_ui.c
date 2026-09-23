@@ -68,7 +68,7 @@ static void draw_frame(arena_fixture *f)
     editor_frame_mark(&f->profile, EDITOR_FRAME_SCENE);
     app_scene_authoring_draw(f->scene);
     editor_draw(f->graph);
-    editor_frame_profile_draw(&f->profile, NULL);
+    editor_frame_profile_draw(&f->profile);
     editor_frame_mark(&f->profile, EDITOR_FRAME_UI);
     cf_app_draw_onto_screen(true);
     editor_frame_mark(&f->profile, EDITOR_FRAME_PRESENT);
@@ -2573,6 +2573,55 @@ static void performance_panel(arena_fixture *f)
     puts("performance UI PASS: View menu, live history, behavior/event expansion, owned labels, freeze and resume");
 }
 
+static void event_batch_status(arena_fixture *f)
+{
+    editor *e = f->graph;
+    behavior_asset *asset = behavior_asset_new("Event status");
+    assert(editor_open_behavior_asset(e, asset, asset->graph->graph_id) == 0);
+    behavior_asset_free(asset);
+    graph *g = e->active_graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(graph_set_event_name(g, event, "Tick") == 0);
+    pin_spec payload = { "Unused", PIN_F32, "float", PIN_DATA };
+    assert(graph_add_pin(g, event, 1, &payload) >= 0);
+    event->x = 80;
+    event->y = 80;
+    editor_set_graph_visible(e, true);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+    e->zoom = 1;
+    e->pan = (ImVec2){ 40, 40 };
+    e->view_initialized = true;
+    e->fit_mode = false;
+    e->arrange_pending = false;
+    e->camera_moving = false;
+    frame(f);
+    frame(f);
+    frame(f);
+    char status_id[96];
+    snprintf(
+        status_id,
+        sizeof status_id,
+        "graph.event.status.%llu",
+        (unsigned long long)event->id
+    );
+    editor_ui_rect status, repair;
+    assert(editor_ui_item_rect(status_id, &status));
+    assert(ed_event_unused_payload_count(e, event) == 1);
+    click_item(f, status_id);
+    frame(f);
+    assert(editor_ui_item_rect("graph.event.status.repair", &repair));
+    assert(repair.y > status.y + status.height);
+    click_item(f, "graph.event.status.repair");
+    behavior_event_batch_info info;
+    behavior_program_event_batch_info(behavior_program_publish(e->asset), event, &info);
+    assert(event->output_count == 1 && info.reason == BEHAVIOR_BATCH_READY);
+    puts("event batch status PASS: warning, popup placement and payload repair");
+}
+
 int arena_ui_run(const char *program, bool profile_only)
 {
     CF_Result result = cf_make_app(
@@ -2597,13 +2646,18 @@ int arena_ui_run(const char *program, bool profile_only)
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
     bool input_only = getenv("CHIBI_ARENA_INPUT_ONLY") != NULL;
-    if (!input_only && !profile_only) {
+    bool event_only = getenv("CHIBI_EVENT_BATCH_STATUS_ONLY") != NULL;
+    if (!input_only && !profile_only && !event_only) {
         assert(test_arena_input() == 0);
     }
     fflush(stdout);
     arena_fixture f = fixture_new();
     for (int i = 0; i < 30; i++) {
         frame(&f);
+    }
+    if (event_only) {
+        event_batch_status(&f);
+        goto cleanup;
     }
     key_event(SDL_SCANCODE_SPACE, true);
     key_event(SDL_SCANCODE_SPACE, false);
@@ -2679,6 +2733,7 @@ int arena_ui_run(const char *program, bool profile_only)
     spatial_authoring(&f);
     standalone_play(&f);
     performance_panel(&f);
+    event_batch_status(&f);
 cleanup:
     editor_frame_profile_free(&f.profile);
     app_scene_authoring_free(f.scene);
@@ -2687,12 +2742,12 @@ cleanup:
     game_live_world_free(f.live);
     editor_free(f.graph);
     ecs_world_free(f.world);
-    if (!input_only && !profile_only) {
+    if (!input_only && !profile_only && !event_only) {
         test_navigation_runtime();
     }
     app_input_shutdown();
     cf_destroy_app();
-    if (!input_only && !profile_only) {
+    if (!input_only && !profile_only && !event_only) {
         puts("arena UI PASS: scene save/reload, independent preview projection, actual pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, component dropdown/Undo/Redo/save/reload, spatial-only fit/marquee/preview/placement");
     }
     return 0;

@@ -314,7 +314,7 @@ try {
   const operationProperties = shaderTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
-  assert(tools.length === 26, `public tool catalog has ${tools.length} tools instead of 26`);
+  assert(tools.length === 29, `public tool catalog has ${tools.length} tools instead of 29`);
   assert(shaderTool?.inputSchema?.properties?.kind?.enum?.join(",") === "material,shape,shader-library" &&
     behaviorTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library", "shader and behavior kind selectors are not separated");
   assert(shaderTool?.title && shaderTool.description.includes("material") && shaderTool.description.includes("shader") &&

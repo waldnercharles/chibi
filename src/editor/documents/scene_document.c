@@ -212,13 +212,18 @@ int app_scene_authoring_load_content(app_scene_authoring *scene)
     if (loaded < 0) {
         loaded = 0;
     }
+    bool has_assets = false;
     for (int i = 0; i < acount(scene->content); i++) {
-        if (!scene->content[i].directory &&
-            content_path_in_folder(scene, scene->content[i].path, "prototypes")) {
+        if (scene->content[i].directory ||
+            content_path_in_folder(scene, scene->content[i].path, "scenes")) {
+            continue;
+        }
+        has_assets = true;
+        if (content_path_in_folder(scene, scene->content[i].path, "prototypes")) {
             loaded += load_content_prototype(scene, scene->content[i].path);
         }
     }
-    return loaded ? 0 : -1;
+    return loaded || !has_assets ? 0 : -1;
 }
 
 static scene_prototype_asset *ensure_prototype(app_scene_authoring *scene, const char *name)
@@ -407,6 +412,11 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
                 return -1;
             }
         }
+    }
+    if (game_entities_rebuild_global_bindings(scene->live->entities) != 0) {
+        game_scene_document_free(document);
+        snprintf(scene->message, sizeof scene->message, "Global binding names must be unique.");
+        return -1;
     }
     scene->perspective = document->perspective;
     game_scene_document_free(document);

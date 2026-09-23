@@ -70,6 +70,7 @@ typedef struct eval_context
     int runtime_owned;
     unsigned call_depth;
     double delta_seconds;
+    const node *event_entry; /* active event root for event-output bindings */
 } eval_context;
 
 uint64_t eval_oracle_calls();

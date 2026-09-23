@@ -422,7 +422,8 @@ int test_arena_input()
     assert(app_scene_authoring_aim(f.scene, (CF_V2){ 0 }, false) == FLOW_OK);
     steps(&f, 5);
     assert(arena_shots(f.world, &shot) == 3);
-    assert(GAME_GameAim_get_const(f.world, player)->direction.y == 1);
+    aim = GAME_GameAim_get_const(f.world, player);
+    assert(!aim->manual && aim->direction.x == 0 && aim->direction.y == 1);
 
     assert(app_scene_authoring_aim(f.scene, (CF_V2){ 0, -1 }, true) == FLOW_OK);
     engine_viewport *unfocused = engine_viewport_new(32, 32);

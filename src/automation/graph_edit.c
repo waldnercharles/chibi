@@ -10,6 +10,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/array.h"
@@ -257,7 +258,7 @@ static int container_from_value(yyjson_val *value, pin_container *container)
 
 static behavior_domain domain_from_kind(const char *kind)
 {
-    if (!kind || !strcmp(kind, "behavior")) {
+    if (!kind || !strcmp(kind, "behavior") || !strcmp(kind, "system")) {
         return BEHAVIOR_DOMAIN_EVENT;
     }
     if (!strcmp(kind, "event")) {
@@ -268,6 +269,9 @@ static behavior_domain domain_from_kind(const char *kind)
     }
     if (!strcmp(kind, "material") || !strcmp(kind, "shader")) {
         return BEHAVIOR_DOMAIN_MATERIAL;
+    }
+    if (!strcmp(kind, "field")) {
+        return BEHAVIOR_DOMAIN_FIELD;
     }
     if (!strcmp(kind, "shape")) {
         return BEHAVIOR_DOMAIN_SHAPE;
@@ -313,8 +317,8 @@ static const graph *reference_graph(const edit_context *ctx, uint64_t id, const 
 
 static int refresh_call_reference(edit_context *ctx, node *call, uint64_t reference_id, const char *reference_asset)
 {
-    if (call->desc != &NODE_CallFunction &&
-        call->desc != &NODE_CallPureFunction && call->desc != &NODE_CallMacro) {
+    if (call->desc != &NODE_CallFunction && call->desc != &NODE_CallPureFunction &&
+        call->desc != &NODE_BehaviorExpression && call->desc != &NODE_CallMacro) {
         return 0;
     }
     const graph *target = reference_graph(ctx, reference_id, reference_asset);
@@ -384,13 +388,10 @@ static int refresh_event(edit_context *ctx, node *n)
             return -1;
         }
         if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_CONTACT_BEGIN)) {
-            const char *names[] = { "Point X", "Point Y" };
-            for (int i = 0; i < 2; i++) {
-                pin_spec point = { .name = names[i], .type = PIN_F32, .type_name = "float" };
-                if (graph_add_pin(ctx->graph, n, true, &point) < 0) {
-                    set_error(ctx, "could not apply contact point payload");
-                    return -1;
-                }
+            pin_spec point = { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" };
+            if (graph_add_pin(ctx->graph, n, true, &point) < 0) {
+                set_error(ctx, "could not apply contact point payload");
+                return -1;
             }
         }
     }
@@ -751,6 +752,25 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "unknown node type '%s'", type);
         return -1;
     }
+    yyjson_val *source_json = yyjson_obj_get(op, "source");
+    if (desc == &NODE_BehaviorExpression) {
+        const char *source = NULL;
+        if (!source_json || !string_value(source_json, &source) || !source[0]) {
+            set_error(ctx, "Behavior Expression add_node.source is required");
+            return -1;
+        }
+        behavior_expression_error error = { 0 };
+        node *expression = behavior_expression_add(ctx->asset, ctx->graph, source, &error);
+        if (!expression) {
+            set_error(ctx, "%s", error.message[0] ? error.message : "could not add Behavior Expression");
+            return -1;
+        }
+        if (add_node_ref(ctx, yyjson_obj_get(op, "ref"), expression) ||
+            add_node_inputs(ctx, expression, yyjson_obj_get(op, "inputs"))) {
+            return -1;
+        }
+        return 0;
+    }
     node *n = graph_add_node(ctx->graph, desc);
     if (!n) {
         set_error(ctx, "could not add node '%s'", type);
@@ -810,6 +830,23 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
     return 0;
 }
 
+static int operation_set_expression(edit_context *ctx, yyjson_val *op)
+{
+    node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
+    const char *source = NULL;
+    if (!n || n->desc != &NODE_BehaviorExpression ||
+        !string_value(yyjson_obj_get(op, "source"), &source) || !source[0]) {
+        set_error(ctx, "set_expression requires a Behavior Expression node and source text");
+        return -1;
+    }
+    behavior_expression_error error = { 0 };
+    if (behavior_expression_set(ctx->asset, n, source, &error) != 0) {
+        set_error(ctx, "%s", error.message[0] ? error.message : "could not set Behavior Expression source");
+        return -1;
+    }
+    return 0;
+}
+
 static int operation_remove_node(edit_context *ctx, yyjson_val *op)
 {
     node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
@@ -825,6 +862,29 @@ static int operation_remove_node(edit_context *ctx, yyjson_val *op)
         if (ctx->nodes[i].node == n) {
             adel(ctx->nodes, i);
         }
+    }
+    return 0;
+}
+
+static int refresh_expression_connection(edit_context *ctx, node *from, node *to)
+{
+    node *expression = (from->desc == &NODE_CallPureFunction ||
+                        from->desc == &NODE_BehaviorExpression)
+                         ? from
+                     : (to->desc == &NODE_CallPureFunction ||
+                        to->desc == &NODE_BehaviorExpression)
+                         ? to
+                         : NULL;
+    graph *generated = expression
+                         ? behavior_asset_find_graph(ctx->asset, expression->reference_id)
+                         : NULL;
+    if (!generated || !generated->math_expression) {
+        return 0;
+    }
+    behavior_expression_error error = { 0 };
+    if (behavior_expression_refresh(ctx->asset, expression, &error) != 0) {
+        set_error(ctx, "%s", error.message[0] ? error.message : "could not refresh behavior expression");
+        return -1;
     }
     return 0;
 }
@@ -941,6 +1001,9 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             } else {
                 set_error(ctx, "data connection was rejected");
             }
+            return -1;
+        }
+        if (refresh_expression_connection(ctx, from, to) != 0) {
             return -1;
         }
         return 0;
@@ -1546,9 +1609,25 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
             yyjson_val *named = yyjson_obj_get(op, "type_name");
             if (type_from_value(type_json, &type, &type_name) ||
                 (named && !string_value(named, &type_name)) ||
-                (type == PIN_STRUCT && !type_name) ||
-                graph_set_pin_type(ctx->graph, n, output, index, type, type_name)) {
+                (type == PIN_STRUCT && !type_name)) {
                 result = -1;
+            }
+            int declared_count = output ? n->desc->output_count : n->desc->input_count;
+            const pin_spec *declared = output ? n->desc->outputs : n->desc->inputs;
+            if (!result && index < declared_count && declared[index].type != PIN_FLOW &&
+                !(declared[index].flags & PIN_FLAG_WILDCARD) &&
+                type != declared[index].type) {
+                set_error(
+                    ctx,
+                    "%s.%s has a fixed type; use a matching node or a "
+                    "conversion",
+                    n->desc->name,
+                    pin->name
+                );
+                return -1;
+            }
+            if (!result) {
+                result = graph_set_pin_type(ctx->graph, n, output, index, type, type_name);
             }
         }
         yyjson_val *container_json = yyjson_obj_get(op, "container");
@@ -1583,6 +1662,13 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
             binding.source_asset = ctx->asset->name;
         } else if (!strcmp(kind, "delta_time")) {
             binding.kind = PIN_BINDING_DELTA_TIME;
+        } else if (!strcmp(kind, "event_output")) {
+            binding.kind = PIN_BINDING_EVENT_OUTPUT;
+            if (!value_uint(yyjson_obj_get(op, "event_node_id"), &binding.event_node_id) ||
+                !value_uint(yyjson_obj_get(op, "event_pin_id"), &binding.event_pin_id)) {
+                set_error(ctx, "event_output binding requires event_node_id and event_pin_id");
+                return -1;
+            }
         } else if (!strcmp(kind, "component")) {
             if (!string_value(yyjson_obj_get(op, "component"), &binding.component_key)) {
                 set_error(ctx, "component binding requires the reflected stable component key");
@@ -1595,10 +1681,28 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
             }
             binding.kind = field ? PIN_BINDING_COMPONENT_FIELD : PIN_BINDING_COMPONENT;
         } else {
-            set_error(ctx, "binding kind must be variable, component, or delta_time");
+            set_error(ctx, "binding kind must be variable, component, delta_time, or event_output");
             return -1;
         }
-        result = graph_set_pin_binding(ctx->graph, n, 0, index, &binding);
+        bool reference_source_removed = true;
+        if (n->input_pins[index].flags & PIN_FLAG_REFERENCE) {
+            node *source = NULL;
+            int source_pin = -1;
+            if (graph_input_source(ctx->graph, n, index, &source, &source_pin) &&
+                graph_remove_edge(ctx->graph, source, source_pin, n, index) != 0) {
+                reference_source_removed = false;
+            }
+        }
+        result = reference_source_removed
+                   ? graph_set_pin_binding(ctx->graph, n, 0, index, &binding)
+                   : -1;
+        if (!result && n->desc == &NODE_BehaviorExpression) {
+            behavior_expression_error error = { 0 };
+            if (behavior_expression_refresh(ctx->asset, n, &error) != 0) {
+                set_error(ctx, "%s", error.message[0] ? error.message : "could not refresh behavior expression");
+                result = -1;
+            }
+        }
     }
     if (result < 0) {
         set_error(ctx, "%s could not be applied to the selected pin", operation);
@@ -1707,6 +1811,9 @@ static int apply_operation(edit_context *ctx, yyjson_val *op)
     }
     if (!strcmp(name, "add_node")) {
         return operation_add_node(ctx, op);
+    }
+    if (!strcmp(name, "set_expression")) {
+        return operation_set_expression(ctx, op);
     }
     if (!strcmp(name, "remove_node")) {
         return operation_remove_node(ctx, op);

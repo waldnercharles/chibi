@@ -47,6 +47,24 @@ const behavior_function *behavior_program_batch_event(
     const char *name,
     node **entry
 );
+typedef struct
+{
+    bool found;
+    bool duplicate;
+    const node *entry;
+    const behavior_function *function;
+    const compile_diagnostic *program_diagnostic;
+    const behavior_function_diagnostic *function_diagnostic;
+    behavior_backend backend;
+    behavior_batch_reason reason;
+} behavior_event_batch_info;
+/* Describes the static execution path for an authored event. Runtime dispatch
+ * can still fall back when tracing, inspection, or active continuations apply. */
+void behavior_program_event_batch_info(
+    const behavior_program *program,
+    const node *entry,
+    behavior_event_batch_info *out
+);
 const behavior_graph_program *behavior_program_graph(const behavior_program *program, const graph *g);
 const graph_ir *behavior_graph_ir(const behavior_graph_program *program);
 

@@ -2,6 +2,7 @@
 
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/nodes.h"
 #include "graph/runtime/behavior_data.h"
 #include "graph/runtime/flow_internal.h"
@@ -46,7 +47,7 @@ static int eval_copy_struct(arena *a, pin_value *value)
     return 0;
 }
 
-static int eval_value_matches(pin_value *value, const pin_spec *spec)
+static int eval_value_matches(pin_value *value, const pin_spec *spec, arena *a)
 {
     pin_spec source = {
         .type = value->type,
@@ -55,9 +56,22 @@ static int eval_value_matches(pin_value *value, const pin_spec *spec)
         .kind = PIN_DATA,
     };
     if (!pin_compatible(&source, spec)) {
-        return 0;
+        const node_desc *conversion = conversion_for_pins(&source, spec);
+        if (!conversion || !conversion->fn) {
+            return 0;
+        }
+        *value = conversion->fn(value, 1, a);
     }
     pin_coerce(value, spec);
+    if (!pin_compatible(
+            &(pin_spec){ .type = value->type,
+                         .type_name = value->type_name,
+                         .container = value->container,
+                         .kind = PIN_DATA },
+            spec
+        )) {
+        return 0;
+    }
     value->type_name = spec->type_name;
     value->container = spec->container;
     return 1;
@@ -104,10 +118,44 @@ static const char *eval_resolve_component(
     if (pin_value_copy_to_arena(a, out, out) || eval_copy_struct(a, out)) {
         return "component binding value could not be copied";
     }
-    if (!eval_value_matches(out, spec)) {
+    if (!eval_value_matches(out, spec, a)) {
         return "component binding type is incompatible with the input";
     }
     return NULL;
+}
+
+static const char *eval_resolve_event_output(
+    const eval_context *ctx,
+    const pin_spec *spec,
+    const pin_binding *binding,
+    arena *a,
+    pin_value *out
+)
+{
+    if (!ctx->event_entry || !ctx->runtime ||
+        ctx->event_entry->id != binding->event_node_id) {
+        return "event output belongs to a different active event";
+    }
+    const graph *g = runtime_store_graph(ctx->runtime);
+    node *event = graph_node_by_id(g, binding->event_node_id);
+    int output = 0;
+    int pin = -1;
+    const pin_spec *source = event
+                               ? graph_pin_by_id(event, binding->event_pin_id, &output, &pin)
+                               : NULL;
+    if (!event || event != ctx->event_entry || !output || !source ||
+        source->kind != PIN_DATA) {
+        return "event output binding references a missing output";
+    }
+    if (eval_context_output(ctx, event, pin, out)) {
+        return "event output is unavailable before the event executes";
+    }
+    if (pin_value_copy_to_arena(a, out, out) || eval_copy_struct(a, out)) {
+        return "event output value could not be copied";
+    }
+    return eval_value_matches(out, spec, a)
+             ? NULL
+             : "event output type is incompatible with the input";
 }
 
 const char *eval_context_resolve_input(
@@ -127,7 +175,7 @@ const char *eval_context_resolve_input(
                 return "Self requires an instance";
             }
             pin_value owner = behavior_instance_owner(ctx->instance);
-            if (!eval_value_matches(&owner, spec)) {
+            if (!eval_value_matches(&owner, spec, a)) {
                 return "Target requires Self or an explicit entity";
             }
             *out = owner;
@@ -150,7 +198,7 @@ const char *eval_context_resolve_input(
                 0) {
                 return "variable binding references a lost variable";
             }
-            return eval_value_matches(out, spec)
+            return eval_value_matches(out, spec, a)
                      ? NULL
                      : "variable binding type is incompatible with the input";
         case PIN_BINDING_COMPONENT_FIELD:
@@ -165,9 +213,11 @@ const char *eval_context_resolve_input(
                                 .container = PIN_CONTAINER_SINGLE,
                                 .type_name = "float",
                                 .f = (float)ctx->delta_seconds };
-            return eval_value_matches(out, spec)
+            return eval_value_matches(out, spec, a)
                      ? NULL
                      : "Delta Time type is incompatible with the input";
+        case PIN_BINDING_EVENT_OUTPUT:
+            return eval_resolve_event_output(ctx, spec, binding, a, out);
         case PIN_BINDING_LOCAL:
             return "local use is missing its source dependency";
         default: return "unknown input binding kind";
@@ -306,6 +356,10 @@ static int eval_pure_function(const graph *g, node *n, arena *a, eval_context *c
     for (int i = 0; i < entry->output_count; i++) {
         if (entry->output_pins[i].kind != PIN_DATA || entry->output_pins[i].field_source) {
             continue;
+        }
+        while (argument < n->input_count && (n->input_pins[argument].kind != PIN_DATA ||
+                                             n->input_pins[argument].field_source)) {
+            argument++;
         }
         if (argument >= n->input_count) {
             result = fail(ctx, n, i, NODE_EVAL_INVALID, "pure function argument count mismatch");

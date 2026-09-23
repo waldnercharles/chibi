@@ -1,0 +1,29 @@
+{
+  "name": "FuelCloud",
+  "identity": "prototype-918ca8bda9ed3a12",
+  "components": {
+    "GAME.GameFluidVolume": {
+      "absorption": 0.012000000104308128,
+      "color": 4290328256,
+      "emission": 0.0,
+      "height": 120.0,
+      "kind": 0,
+      "mass": 0.0005000000237487257,
+      "refraction": 0.0,
+      "spacing": 5.0,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "visibility": 0.06499999761581421,
+      "width": 120.0
+    },
+    "GAME.GameFuel": {
+      "amount": 1.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

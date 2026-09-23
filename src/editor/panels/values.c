@@ -58,7 +58,7 @@ static int ed_edit_hit(const editor *e, ImVec2 mouse, ImVec2 pos, float width)
     );
 }
 
-static const editor_flags *ed_pin_flags(editor *e, node *n, int output, int index)
+const editor_flags *ed_pin_flags(const editor *e, const node *n, int output, int index)
 {
     if (output || !e->flags_resolver) {
         return NULL;
@@ -70,17 +70,22 @@ static const editor_flags *ed_pin_flags(editor *e, node *n, int output, int inde
     return e->flags_resolver(n, output, index, e->flags_user);
 }
 
-static const editor_choices *ed_pin_choices(editor *e, node *n, int output, int index)
+const editor_choices *ed_pin_choices(editor *e, node *n, int output, int index)
 {
-    if (output || !e->choices_resolver) {
+    if (output) {
         return NULL;
     }
     const pin_spec *spec = &n->input_pins[index];
-    if ((spec->type != PIN_I32 && spec->type != PIN_NAME) ||
+    if ((spec->type != PIN_I32 && spec->type != PIN_ENUM && spec->type != PIN_NAME) ||
         spec->container != PIN_CONTAINER_SINGLE) {
         return NULL;
     }
-    return e->choices_resolver(n, output, index, e->choices_user);
+    const editor_choices *choices = e->choices_resolver
+                                      ? e->choices_resolver(n, output, index, e->choices_user)
+                                      : NULL;
+    return choices                ? choices
+         : spec->type == PIN_ENUM ? editor_choices_for_enum(spec->type_name)
+                                  : NULL;
 }
 
 static bool ed_draw_choice_input(node *n, int index, pin_value *value, const editor_choices *choices, bool details)
@@ -94,12 +99,30 @@ static bool ed_draw_choice_input(node *n, int index, pin_value *value, const edi
         (unsigned long long)n->id,
         index
     );
-    return value->type == PIN_NAME
-             ? editor_choices_draw_name(id, &value->str, choices)
-             : editor_choices_draw(id, &value->i, choices);
+    if (value->type == PIN_NAME) {
+        return editor_choices_draw_name(id, &value->str, choices);
+    }
+    return editor_choices_draw(id, value->type == PIN_ENUM ? &value->e : &value->i, choices);
 }
 
-static bool ed_pin_color_input(editor *e, node *n, int output, int index)
+static void ed_begin_labeled_input(const editor *e, ImVec2 pos, float width, const char *label)
+{
+    float gap = 4.0f * e->zoom;
+    float label_width = ImGui_CalcTextSize(label).x;
+    float input_width = width - label_width - gap;
+    if (input_width < 1.0f) {
+        input_width = 1.0f;
+    }
+    ImGui_SetCursorScreenPos(pos);
+    ImGui_SetNextItemWidth(-1.0f);
+    ImGui_AlignTextToFramePadding();
+    ImGui_TextUnformatted(label);
+    ImGui_SameLine();
+    ImGui_SetCursorScreenPos((ImVec2){ pos.x + label_width + gap, pos.y });
+    ImGui_SetNextItemWidth(input_width);
+}
+
+bool ed_pin_color_input(const editor *e, const node *n, int output, int index)
 {
     const pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
     return spec->type == PIN_U32 && spec->container == PIN_CONTAINER_SINGLE &&
@@ -304,6 +327,20 @@ static int ed_draw_vector_value(editor *e, node *n, int kind, int index, ed_valu
     }
     const char *context = source ? NULL : input_context(n, output, index);
     if (context) {
+        float context_width = layout.width;
+        bool compact_context = !output && !spec->default_value.ptr &&
+                               ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, index) ==
+                                   1;
+        char pin_label[256];
+        if (compact_context) {
+            ed_pin_label(n, spec, pin_label, sizeof pin_label);
+            float gap = 4.0f * e->zoom;
+            float label_width = ImGui_CalcTextSize(pin_label).x;
+            context_width = layout.width - label_width - gap;
+            if (context_width < 1.0f) {
+                context_width = 1.0f;
+            }
+        }
         ImGui_SetCursorScreenPos(pos);
         ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
         ImGui_PushStyleVarImVec2(
@@ -312,7 +349,10 @@ static int ed_draw_vector_value(editor *e, node *n, int kind, int index, ed_valu
         );
         ImGui_PushIDPtr(n);
         ImGui_PushIDInt(index);
-        bool changed = draw_context_choice(e, n, index, context, layout.width, false);
+        if (compact_context) {
+            ed_begin_labeled_input(e, pos, layout.width, pin_label);
+        }
+        bool changed = draw_context_choice(e, n, index, context, context_width, false);
         ImGui_PopID();
         ImGui_PopID();
         ImGui_PopStyleVar();
@@ -431,7 +471,8 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layou
         !bound_spec->binding && (!inline_source || ed_vector_source(e, n, index))) {
         return ed_draw_vector_value(e, n, kind, index, layout);
     }
-    if (kind == ED_PIN_INPUT && (bound_spec->binding || inline_source)) {
+    if (kind == ED_PIN_INPUT && (bound_spec->binding || inline_source ||
+                                 (bound_spec->flags & PIN_FLAG_REFERENCE))) {
         return ed_draw_bound_input(e, n, index, layout);
     }
     pin_value authored = *ed_pin_authored(n, kind, index);
@@ -491,12 +532,22 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layou
             break;
         case PIN_I32:
             if (choices) {
+                if (value_label[0]) {
+                    ed_begin_labeled_input(e, pos, control_width, value_label);
+                }
                 changed = ed_draw_choice_input(n, index, v, choices, false);
                 break;
             }
             changed = ed_draw_scalar(id, value_label, ImGuiDataType_S32, &v->i, .1f);
             break;
         case PIN_ENUM:
+            if (choices) {
+                if (value_label[0]) {
+                    ed_begin_labeled_input(e, pos, control_width, value_label);
+                }
+                changed = ed_draw_choice_input(n, index, v, choices, false);
+                break;
+            }
             changed = ed_draw_scalar(id, value_label, ImGuiDataType_S32, &v->e, .1f);
             break;
         case PIN_U32:
@@ -546,6 +597,9 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layou
                 e->edit_text_kind = kind;
                 e->edit_text_index = index;
             }
+            if (value_label[0]) {
+                ed_begin_labeled_input(e, pos, control_width, value_label);
+            }
             changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
             if (changed) {
                 char *copy = graph_own_str(e->active_graph, e->edit_text, strlen(e->edit_text));
@@ -560,6 +614,9 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layou
         }
         case PIN_NAME: {
             if (choices) {
+                if (value_label[0]) {
+                    ed_begin_labeled_input(e, pos, control_width, value_label);
+                }
                 changed = ed_draw_choice_input(n, index, v, choices, false);
                 break;
             }
@@ -569,6 +626,9 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layou
                 e->edit_text_node = n;
                 e->edit_text_kind = kind;
                 e->edit_text_index = index;
+            }
+            if (value_label[0]) {
+                ed_begin_labeled_input(e, pos, control_width, value_label);
             }
             changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
             if (changed) {
@@ -813,7 +873,10 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
         case PIN_F64:
             changed = ImGui_InputDoubleEx(id, &value.d, 0.1, 0.0, "%.12g", 0);
             break;
-        case PIN_ENUM: changed = ImGui_InputInt(id, &value.e); break;
+        case PIN_ENUM:
+            changed = choices ? ed_draw_choice_input(n, index, &value, choices, true)
+                              : ImGui_InputInt(id, &value.e);
+            break;
         case PIN_STR: {
             snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
             changed = ImGui_InputTextMultilineEx(
@@ -881,7 +944,10 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
 void ed_draw_details_pin(editor *e, node *n, int output, int index)
 {
     pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
-    if (spec->kind == PIN_EXEC || (spec->flags & PIN_FLAG_SETTING)) {
+    bool expression_assignment = !output && n->desc == &NODE_BehaviorExpression &&
+                                 (spec->flags & PIN_FLAG_REFERENCE);
+    if (spec->kind == PIN_EXEC ||
+        ((spec->flags & PIN_FLAG_SETTING) && !expression_assignment)) {
         return;
     }
     char pin_label[256];
@@ -1010,7 +1076,11 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
         if (!output && ed_source_scope_available(e)) {
             editor_ui_track_item("inspector.input.binding.open");
         }
-        ed_draw_details_default(e, n, output, index);
+        if (expression_assignment) {
+            ImGui_TextDisabled("Choose a writable target");
+        } else {
+            ed_draw_details_default(e, n, output, index);
+        }
     }
     ImGui_PopID();
 }

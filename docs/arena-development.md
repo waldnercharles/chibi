@@ -13,7 +13,7 @@ For an intentional game-only capture:
 
 ```sh
 env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/chibi --play \
-  --project-root projects/arena2d --scene scenes/NeonSwarmSandbox.json \
+  --project-root projects/arena2d --scene scenes/Sandbox.json \
   --frames 120 --fixed-dt 0.016666667 \
   --screenshot /tmp/arena-game.png
 ```
@@ -22,14 +22,14 @@ Normal play uses elapsed time. `--fixed-dt` supplies the given wall-clock
 increment per display frame for repeatable verification. The shared engine
 consumes it in 1/60-second simulation steps; `--frames` alone only limits
 the run. Screenshots are opt-in and native-only. A web build supports
-`chibi.html?play&project-root=projects/arena2d&scene=scenes/NeonSwarmSandbox.json` through
+`chibi.html?play&project-root=projects/arena2d&scene=scenes/Sandbox.json` through
 the same launch parser. Launching the editor with `--project-root PATH` opens
 that project's start scene; `--scene PATH` selects another scene inside it
 without starting Play. The Make targets expose the same selection: `make run
 PROJECT=. SCENE=scenes/Arena3D.json` opens the 3D reference, while the defaults
 open Arena2D.
 
-Open `projects/arena2d/content/scenes/NeonSwarmSandbox.json` from Files after starting
+Open `projects/arena2d/content/scenes/Sandbox.json` from Files after starting
 the editor with `--project-root projects/arena2d`. Arena3D remains in the root
 project at `content/scenes/Arena3D.json`. Play from the scene toolbar and focus
 the scene to control the player. Move with WASD or arrows, aim with the mouse,
@@ -51,11 +51,9 @@ colliders are authored separately. Arena2D saves its `presentation` as `2d`;
 Arena3D remains available as a visual and gameplay reference scene.
 
 Arena2D's desktop renderer uses the physical HRC channels `scene`, `emission`,
-`absorption` and `albedo`, plus SDF-derived planar normals. Open View →
-Performance to tune the live transport: Work scale ranges from 0.1 to 1.0 of viewport resolution, Trace levels range from 1 to 5, and One bounce feedback
-controls the temporal indirect color bleed. Lower work scale and fewer trace
-levels reduce GPU time; feedback is the quality switch for multibounce history.
-The panel also reports the frame history and p95 timing. The prototype Inspector's
+`absorption` and `albedo`, plus SDF-derived planar normals. The Scene Inspector's
+Radiance Cascades section edits Work scale, Trace levels and Feedback. The
+Performance pane reports frame history and p95 timing. The prototype Inspector's
 `GameHRC2D` fields tune transport and composition. HRC transport
 uses a fixed work grid, so its dispatch cost does not grow with the number of
 entities. The 2D path feeds material emission directly into HRC and does not allocate or run a point-light field.
@@ -733,7 +731,7 @@ completion and suspension. Visual Motion removes continuous enemy rotation
 from authored Tick events; idle combat feedback avoids inactive effect work.
 
 Both complete native test suites pass. Optimized validation also found and
-fixed a stale graph-lifetime cache, plus graph extraction, Math Expression and
+fixed a stale graph-lifetime cache, plus graph extraction, Behavior Expression and
 query-construction operations previously hidden inside assertions. The CI
 matrix now checks Debug and optimized native configurations. Native behavior
 JIT is still unfinished in reopened #8; compiled-System arithmetic is fixed

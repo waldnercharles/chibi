@@ -36,13 +36,42 @@ the filtered emission RGB, scalar absorption, bounce input, and RGB radiance
 probes all use the half-resolution work grid before full-resolution gather and
 composite. A `.25` run is the same arrangement at quarter scale.
 
-The current implementation does not have independent luminance and color
-scales. It also does not store a separate luminance transport buffer: the
-transport probe is RGB, while absorption is the scalar field. Therefore we have
-not yet tested “half luminance plus quarter-resolution color” as a real split
-channel configuration. That requires separate resource sizes and a new
-reconstruction path; the scale sweep below measures the supported shared-scale
-options first.
+`GameHRC2D.luminance_scale` enables an experimental split path. The RGB HRC
+uses `scale`; a second monochrome HRC uses `luminance_scale`. At composite time,
+the monochrome result supplies brightness while the RGB result supplies local
+color ratios:
+
+```glsl
+float Y = texture(luminance_tex, uv).r;
+float coarseY = dot(fluence, vec3(0.2126, 0.7152, 0.0722));
+vec3 reconstructed = coarseY > 1e-8
+    ? fluence * (Y / coarseY)
+    : vec3(Y);
+```
+
+Set `luminance_scale` to zero to retain the single RGB HRC. A useful first
+experiment is `--scale .25 --luminance-scale .5`. In the scalar-luminance
+variant, the filtered emission and bounce, canvas bounce, gathered radiance,
+and radiance history textures use `R16F`; the hierarchy interval and frustum
+buffers still use the shared packed RGB layouts. Gather, filter, and bounce
+still run at canvas resolution for each transport pass, so the split path has
+two transport pipelines and its value depends on the RGB work scale. The
+benchmark matrix measures that tradeoff directly.
+
+`luminance_mode` selects how the scalar half of a split run is produced:
+It is independent of `upscale_mode`, which controls RGB reconstruction.
+
+| Mode | Behavior |
+| ---: | --- |
+| 0 | Independent monochrome HRC transport. The child builds its own hierarchy, traces, gathers, bounces, and filters at `luminance_scale`. |
+| 1 | Transport reuse experiment. The RGB HRC runs once; the child derives scalar luminance from the parent's final full-resolution gathered radiance and runs only the scalar temporal/edge filter. The child hierarchy and transport dispatches are skipped. |
+
+Mode 1 is the performance experiment requested here. It removes the duplicated
+prefilter, trace, extend, merge, gather, and bounce work, but its luminance comes
+from the same low-resolution RGB transport. In the matched opaque-interior run,
+that made its image error track the color-only result. `luminance_scale` remains
+in the configuration for comparison and future derived-filter sizing, but mode
+1 does not create an independent higher-resolution luminance hierarchy.
 
 ## Clean fixtures
 
@@ -63,6 +92,14 @@ do not yet have a separate one-way transport path that illuminates an interior
 while preserving a fully blocking exterior. That proposed behavior can be
 judged against this scene without changing the other fixtures.
 
+The supplied Discord references were used as qualitative targets for the clean
+fixtures: `HRCLabColorBoundary` checks colored transport through a constrained
+opening, `HRCLabVolume` checks attenuation through participating media, and
+`HRCLabOpaqueInterior` checks the current solid and interior behavior. We have
+not yet run a dedicated caustics fixture or compared against a path-traced
+ground truth. In particular, the proposed one-way opaque-solid transport is
+still an experiment to design, not an implemented feature.
+
 Zero ambient makes an opaque pixel with zero received light black. A gray region
 around a source can still be real HRC fluence or bounce; it is no longer caused
 by the unconditional `scene.rgb * ambient` term. The shadow floor is also zero.
@@ -75,6 +112,7 @@ python3 tools/benchmark_hrc_lab.py \
   --project projects/hrc_lab \
   --hrc-prototype HRCLabHRC \
   --scale 1 .5 \
+  --luminance-mode 0 \
   --trace-levels 3 \
   --upscale-mode 1 \
   --width 960 --height 540 \
@@ -83,9 +121,20 @@ python3 tools/benchmark_hrc_lab.py \
 ```
 
 Use `--scale 1 .75 .5 .25` to capture the supported full, three-quarter,
-half, and quarter HRC work grids. Use `--upscale-mode 0`, `1`, `2`, or `3` to
-compare the reconstruction modes. Every generated summary row links to its
-PNG and reports its mean RGB error against that run's full-scale reference.
+half, and quarter HRC work grids. Add `--luminance-scale .5` to run the split
+experiment with a half-resolution monochrome transport pass. Use
+`--luminance-mode 1` to skip the independent monochrome transport and derive the
+scalar signal from the RGB pass. Use `--upscale-mode 0`, `1`, `2`, or `3` to
+compare the reconstruction modes. Every generated summary row links to its PNG
+and reports its mean RGB error against that run's full-scale reference.
+
+Each run also writes `gallery.md`, which embeds every captured PNG using an
+absolute local path so the Markdown can be opened directly in the desktop app.
+It also writes `compare.html`, a local before-and-after slider that compares
+the full-scale row with each lower-scale row. Markdown can embed the PNGs, but
+the draggable comparison requires the HTML page.
+The current opaque-interior comparison is also available as the self-contained
+[`hrc-lab-compare.html`](hrc-lab-compare.html) snapshot in this directory.
 
 The runner copies the project into each case directory, disables adaptive scale,
 validates the edited prototype and scene, warms the renderer for 240 frames,
@@ -118,6 +167,65 @@ the low source calibration above. Mean error is mean absolute RGB difference in
 Mode 3 is useful for difficult shadow edges, but it is not uniformly closer to
 the full-resolution reference and can cost extra work in volume scenes. Keep
 mode 1 as the default until a larger matched workload shows a consistent win.
+
+## Split-scale result
+
+The split matrix at 960×540 used `luminance_scale = .5`, color scales `1`, `.5`
+and `.25`, trace level 3, and mode 1. The quality comparison here uses the
+existing unified full-resolution captures as the reference; it is separate from
+the within-split reference numbers in the generated summary.
+
+| Color scale | Mean frame median | Mean RGB error vs unified full | Interpretation |
+| ---: | ---: | ---: | --- |
+| 1.0 | 7.83 ms | 0.25 | Split luminance adds cost even when color remains full resolution. |
+| 0.5 | 5.99 ms | 0.26 | Preserves most scene structure while reducing RGB transport work. |
+| 0.25 | 5.46 ms | 0.32 | Lowest tested split cost; color-boundary and opaque-interior scenes show the largest error. |
+
+For comparison, repeating the lower-color-scale runs with full-resolution
+luminance produced 8.00 ms / 0.15 error at color `.5`, and 7.88 ms / 0.24
+error at color `.25`. Full luminance recovers some brightness edge accuracy, but
+the extra full-resolution gather and filter pass removes most of the performance
+benefit.
+
+### Post-fix colored-bounce validation
+
+The matrix above predates the colored-bounce correction. Its bounce-active
+opaque-interior error values are historical. The monochrome bounce path now
+computes `dot(albedo * rgb_bounce, LUMA)` and uses the parent RGB raw bounce
+field, preserving the channel interaction before luminance reduction.
+
+On the same 960×540 opaque-interior fixture after that correction, full RGB and
+full luminance matched the unified reference to a maximum of 1 sRGB byte, with
+zero pixels above a 3-byte difference. The corrected color `.25` / luminance
+`.5` run measured 4.68 ms versus 6.78 ms for unified full resolution, with mean
+RGB error 0.61, maximum error 21, and 3.23% of pixels above 3. The old near-black
+slab came from the invalid luminance approximation; the remaining low-resolution
+error is the expected color-scale tradeoff.
+
+### 1080p split transport follow-up
+
+The matched `HRCLabOpaqueInterior` run used 1920×1080, trace level 3, mode 1,
+180 measured frames, and the same Metal backend for every row. Error is mean
+absolute RGB difference in 8-bit space against the unified full-resolution
+image.
+
+| Configuration | Median | p95 | p99 | Mean RGB error | Maximum error | Pixels above 3 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Unified color 1.0 / mode 0 | 24.74 ms | 25.40 ms | 26.37 ms | — | — | — |
+| Color 0.25 / no split | 6.16 ms | 8.84 ms | 9.81 ms | 0.921 | 29 | 6.65% |
+| Independent split color 0.25 / luminance 0.5 / mode 0 | 10.89 ms | 11.31 ms | 11.49 ms | 0.706 | 28 | 5.07% |
+| Reuse mode 1, color 0.25 / luminance setting 0.5 | 7.11 ms | 11.02 ms | 12.58 ms | 0.920 | 29 | 6.69% |
+
+The reuse mode is about 71% faster than unified HRC at the median and 35%
+faster than the independent split. It does not retain the quality advantage of
+the independent `.5` luminance transport in this fixture: deriving luminance
+from the quarter-resolution RGB gather makes its error essentially the same as
+color-only. The independent `.25/.5` split is the better quality/performance
+point here when the extra 3.78 ms median is acceptable.
+
+The captures are in the matched benchmark directories under
+`/private/tmp/hrc-*-1080-20260920-rerun2/`. The self-contained slider with the
+same images and measurements is [`hrc-lab-compare-1080.html`](hrc-lab-compare-1080.html).
 
 ## GPU phase attribution
 

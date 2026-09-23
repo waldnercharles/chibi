@@ -281,6 +281,9 @@ static int same_binding(
 {
     return left && right && left->kind == right->kind &&
            left->variable_id == right->variable_id &&
+           left->local_id == right->local_id &&
+           left->event_node_id == right->event_node_id &&
+           left->event_pin_id == right->event_pin_id &&
            !strcmp(
                left->source_asset ? left->source_asset : "",
                right->source_asset ? right->source_asset : ""
@@ -503,45 +506,43 @@ static const char *build_function(
             }
         }
     }
-    if (!exec) {
-        for (int i = 0; i < count && !error; i++) {
-            const node *original = ordered[i];
-            for (int p = 0; p < original->input_count; p++) {
-                const pin_spec *pin = &original->input_pins[p];
-                node *driver = NULL;
-                int driver_pin = -1;
-                if (pin->kind != PIN_DATA || !pin->binding ||
-                    graph_input_source(source, original, p, &driver, &driver_pin)) {
-                    continue;
+    for (int i = 0; i < count && !error; i++) {
+        const node *original = ordered[i];
+        for (int p = 0; p < original->input_count; p++) {
+            const pin_spec *pin = &original->input_pins[p];
+            node *driver = NULL;
+            int driver_pin = -1;
+            if (pin->kind != PIN_DATA || !pin->binding ||
+                graph_input_source(source, original, p, &driver, &driver_pin) ||
+                (exec && pin->binding->kind != PIN_BINDING_EVENT_OUTPUT)) {
+                continue;
+            }
+            int existing = -1;
+            for (int b = 0; b < acount(bindings); b++) {
+                const binding_port *candidate = &bindings[b];
+                const node *candidate_node = graph_node_by_id(source, candidate->node_id);
+                int candidate_pin_index = candidate_node ? pin_index(
+                                                               candidate_node,
+                                                               candidate->pin_id
+                                                           )
+                                                         : -1;
+                const pin_spec *candidate_pin = candidate_node &&
+                                                        candidate_pin_index >= 0
+                                                  ? &candidate_node->input_pins[candidate_pin_index]
+                                                  : NULL;
+                if (candidate_pin &&
+                    same_binding(pin->binding, candidate_pin->binding, pin, candidate_pin)) {
+                    existing = candidate->index;
+                    break;
                 }
-                int existing = -1;
-                for (int b = 0; b < acount(bindings); b++) {
-                    const binding_port *candidate = &bindings[b];
-                    const node
-                        *candidate_node = graph_node_by_id(source, candidate->node_id);
-                    int candidate_pin_index = candidate_node ? pin_index(
-                                                                   candidate_node,
-                                                                   candidate->pin_id
-                                                               )
-                                                             : -1;
-                    const pin_spec *candidate_pin = candidate_node &&
-                                                            candidate_pin_index >= 0
-                                                      ? &candidate_node->input_pins[candidate_pin_index]
-                                                      : NULL;
-                    if (candidate_pin &&
-                        same_binding(pin->binding, candidate_pin->binding, pin, candidate_pin)) {
-                        existing = candidate->index;
-                        break;
-                    }
-                }
+            }
+            if (existing < 0) {
+                existing = add_port(function, entry, 1, pin, pin->name);
                 if (existing < 0) {
-                    existing = add_port(function, entry, 1, pin, pin->name);
-                    if (existing < 0) {
-                        error = "Could not preserve an input binding.";
-                        break;
-                    }
-                    apush(bindings, ((binding_port){ original->id, pin->id, existing }));
+                    error = "Could not preserve an input binding.";
+                    break;
                 }
+                apush(bindings, ((binding_port){ original->id, pin->id, existing }));
             }
         }
     }

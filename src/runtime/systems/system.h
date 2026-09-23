@@ -53,4 +53,9 @@ int game_system_uses_sljit_simd(const game_system *system);
 const graph_ir *game_system_graph_ir(const game_system *system);
 const graph_program *game_system_program(const game_system *system);
 
+/* Scheduler preparation runs on the host thread before disjoint systems run.
+ * It binds columns and snapshots query membership without concurrent ECS queries. */
+int game_system_prepare_snapshot(game_system *system, flow_error *error);
+int game_system_run_snapshot(game_system *system, double time, double delta, flow_error *error);
+
 #endif

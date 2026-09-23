@@ -28,6 +28,12 @@ static uint64_t held_controls;
 static uint64_t pressed_controls, frame_controls;
 static uint64_t raw_controls();
 
+static void add_gameplay_stick_y(CF_AxisBinding binding, CF_JoypadAxis axis, float threshold)
+{
+    /* Cute's stick helpers make Y positive up; gameplay coordinates make Y positive down. */
+    cf_axis_binding_add_triggers(binding, axis, axis, threshold);
+}
+
 /* Preserve a tap whose down and up events arrive between rendered frames. */
 static void key_changed(CF_KeyButton key, bool down)
 {
@@ -89,11 +95,11 @@ void app_input_initialize()
     cf_axis_binding_add_keys(vertical, CF_KEY_W, CF_KEY_S);
     cf_axis_binding_add_keys(vertical, CF_KEY_UP, CF_KEY_DOWN);
     cf_axis_binding_add_left_stick_x(horizontal, 0.18f);
-    cf_axis_binding_add_left_stick_y(vertical, 0.18f);
+    add_gameplay_stick_y(vertical, CF_JOYPAD_AXIS_LEFTY, 0.18f);
     aim_horizontal = cf_make_axis_binding(0);
     aim_vertical = cf_make_axis_binding(0);
     cf_axis_binding_add_right_stick_x(aim_horizontal, 0.18f);
-    cf_axis_binding_add_right_stick_y(aim_vertical, 0.18f);
+    add_gameplay_stick_y(aim_vertical, CF_JOYPAD_AXIS_RIGHTY, 0.18f);
     cf_axis_binding_set_conflict(horizontal, CF_AXIS_CONFLICT_CANCEL);
     cf_axis_binding_set_conflict(vertical, CF_AXIS_CONFLICT_CANCEL);
     first_frame = true;

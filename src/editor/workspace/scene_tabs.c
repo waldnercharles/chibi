@@ -418,6 +418,10 @@ void scene_tabs_document_selected(
     const char *id
 )
 {
+    /* Loading actors must not navigate back to the previous scene tab. */
+    if (scene->scene_tab_restoring) {
+        return;
+    }
     int previous = scene->active_tab;
     const char *path = kind == APP_EDITOR_DOCUMENT_SCENE  ? scene->scene_path
                      : kind == APP_EDITOR_DOCUMENT_SYSTEM ? scene->system_path
@@ -505,7 +509,11 @@ static int restore_scene_tab_contents(app_scene_authoring *scene, scene_document
     assert(tab->kind == APP_EDITOR_DOCUMENT_SCENE && tab->scene_json);
     uint64_t *old = tab->scene_entities;
     int count = tab->scene_entity_count;
-    if (scene_authoring_load_json(scene, tab->scene_json, tab->path) != 0) {
+    assert(!scene->scene_tab_restoring);
+    scene->scene_tab_restoring = true;
+    int loaded = scene_authoring_load_json(scene, tab->scene_json, tab->path);
+    scene->scene_tab_restoring = false;
+    if (loaded != 0) {
         return -1;
     }
     uint64_t *replacement = NULL;

@@ -9,6 +9,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/generated.h"
@@ -71,7 +72,13 @@ static int ed_binding_compatible(const pin_spec *target, pin_type type, const ch
         .kind = PIN_DATA,
         .container = PIN_CONTAINER_SINGLE,
     };
-    return pin_compatible(&source, target);
+    return pin_compatible(&source, target) || conversion_for_pins(&source, target);
+}
+
+static bool ed_reference_target_untyped(const pin_spec *target)
+{
+    return target && (target->flags & PIN_FLAG_REFERENCE) &&
+           (target->flags & PIN_FLAG_WILDCARD);
 }
 
 bool ed_source_scope_available(const editor *e)
@@ -88,6 +95,7 @@ bool ed_source_scope_available(const editor *e)
         case BEHAVIOR_DOMAIN_SHAPE:
         case BEHAVIOR_DOMAIN_EVENT_DEFINITION:
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return true;
+        case BEHAVIOR_DOMAIN_FIELD: return false;
     }
     return false;
 }
@@ -163,7 +171,8 @@ static void ed_add_component_field_choice(
 )
 {
     if (!field || !field->name ||
-        !ed_binding_compatible(target, field->type, field->type_name)) {
+        (!ed_reference_target_untyped(target) &&
+         !ed_binding_compatible(target, field->type, field->type_name))) {
         return;
     }
     char path_label[128];
@@ -270,7 +279,9 @@ static bool ed_source_pin_defaults(const ed_search_match *match)
 static bool ed_source_match_allowed(const ed_search_match *match)
 {
     if (!match || !match->desc || match->desc == &NODE_CallMacro ||
-        match->desc == &NODE_CallFunction || match->desc->flow_kind != NODE_FLOW_NONE ||
+        match->desc == &NODE_CallFunction || match->desc == &NODE_CallPureFunction ||
+        match->desc == &NODE_BehaviorExpression ||
+        match->desc->flow_kind != NODE_FLOW_NONE ||
         !node_desc_is_pure(match->desc) || !ed_source_pin_defaults(match)) {
         return false;
     }
@@ -342,6 +353,52 @@ static void ed_source_choices(
     }
 }
 
+static void ed_event_output_choices(const editor *e, const pin_spec *target, ed_binding_choice **out)
+{
+    if (!ed_binding_scope_available(e) || !e->active_graph ||
+        e->active_graph->kind != GRAPH_EVENT) {
+        return;
+    }
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        const node *event = e->active_graph->nodes[i];
+        if (!event->desc || event->desc->flow_kind != NODE_FLOW_EVENT) {
+            continue;
+        }
+        const char *event_name = event->reference_name && event->reference_name[0]
+                                   ? event->reference_name
+                                   : "Event";
+        for (int p = 0; p < event->output_count; p++) {
+            const pin_spec *source = &event->output_pins[p];
+            if (source->kind != PIN_DATA || (!pin_compatible(source, target) &&
+                                             !conversion_for_pins(source, target))) {
+                continue;
+            }
+            ed_binding_choice choice = {
+                .binding = { .kind = PIN_BINDING_EVENT_OUTPUT,
+                             .event_node_id = event->id,
+                             .event_pin_id = source->id },
+                .group = "Event Outputs",
+            };
+            snprintf(
+                choice.label,
+                sizeof choice.label,
+                "On %s.%s",
+                event_name,
+                source->name ? source->name : "Value"
+            );
+            snprintf(
+                choice.search,
+                sizeof choice.search,
+                "Event %s %s %s",
+                event_name,
+                source->name ? source->name : "Value",
+                source->type_name ? source->type_name : pin_type_name(source->type)
+            );
+            apush(*out, choice);
+        }
+    }
+}
+
 static void ed_binding_choices(
     const editor *e,
     const pin_spec *target,
@@ -351,10 +408,16 @@ static void ed_binding_choices(
 {
     *matches_out = NULL;
     if (ed_binding_scope_available(e)) {
+        bool reference_target = target->flags & PIN_FLAG_REFERENCE;
+        if (!reference_target) {
+            ed_event_output_choices(e, target, out);
+        }
         for (int i = 0; i < acount(e->asset->variables); i++) {
             const behavior_variable *variable = &e->asset->variables[i];
-            if (variable->container != target->container ||
-                !ed_binding_compatible(target, variable->type, variable->type_name)) {
+            if ((!ed_reference_target_untyped(target) &&
+                 variable->container != target->container) ||
+                (!ed_reference_target_untyped(target) &&
+                 !ed_binding_compatible(target, variable->type, variable->type_name))) {
                 continue;
             }
             ed_binding_choice choice = {
@@ -379,7 +442,8 @@ static void ed_binding_choices(
             }
             char component_label[128];
             editor_component_label(component->name, component_label, sizeof component_label);
-            if (ed_binding_compatible(target, PIN_STRUCT, type->name)) {
+            if (ed_reference_target_untyped(target) ||
+                ed_binding_compatible(target, PIN_STRUCT, type->name)) {
                 ed_binding_choice choice = {
                     .binding = { .kind = PIN_BINDING_COMPONENT,
                                  .component_key = component->key },
@@ -407,7 +471,7 @@ static void ed_binding_choices(
                 );
             }
         }
-        if (target->container == PIN_CONTAINER_SINGLE &&
+        if (!reference_target && target->container == PIN_CONTAINER_SINGLE &&
             (target->type == PIN_F32 || target->type == PIN_F64)) {
             ed_binding_choice choice = {
                 .binding = { .kind = PIN_BINDING_DELTA_TIME },
@@ -455,6 +519,21 @@ const char *ed_binding_label(const editor *e, const pin_binding *binding, char *
     }
     if (binding->kind == PIN_BINDING_DELTA_TIME) {
         return "Delta Time";
+    }
+    if (binding->kind == PIN_BINDING_EVENT_OUTPUT) {
+        node *event = graph_node_by_id(e->active_graph, binding->event_node_id);
+        int output = 0;
+        const pin_spec *pin = event
+                                ? graph_pin_by_id(event, binding->event_pin_id, &output, NULL)
+                                : NULL;
+        snprintf(
+            buf,
+            cap,
+            "On %s.%s",
+            event && event->reference_name ? event->reference_name : "Event",
+            pin && output && pin->name ? pin->name : "Value"
+        );
+        return buf;
     }
     if (binding->kind == PIN_BINDING_COMPONENT) {
         const ecs_component_desc *component = ed_component_by_key(binding->component_key);
@@ -887,6 +966,19 @@ static int ed_choose_binding(editor *e, node *target, int index, const ed_bindin
     char *before = ed_snapshot(e);
     node *owner = graph_inline_owner(e->active_graph, target);
     node *created = NULL;
+    node *old_reference_source = NULL;
+    int old_reference_pin = -1;
+    bool old_reference_inline = false;
+    bool reference_target = target->input_pins[index].flags & PIN_FLAG_REFERENCE;
+    if (reference_target &&
+        graph_input_source(e->active_graph, target, index, &old_reference_source, &old_reference_pin)) {
+        old_reference_inline = graph_node_is_inline(e->active_graph, old_reference_source);
+        if (graph_remove_edge(e->active_graph, old_reference_source, old_reference_pin, target, index) !=
+            0) {
+            free(before);
+            return -1;
+        }
+    }
     if (e->binding_axis >= 0) {
         bool existed = ed_vector_source(e, target, index) != NULL;
         target = ed_make_inline_vector(e, target, index);
@@ -904,11 +996,27 @@ static int ed_choose_binding(editor *e, node *target, int index, const ed_bindin
         result = ed_remove_inline_source(e, target, index);
     }
     if (result != 0) {
-        if (created) {
+        if (reference_target && before) {
+            (void)ed_adopt_behavior_asset(e, before);
+        } else if (created) {
             graph_remove_node(e->active_graph, created);
         }
         free(before);
         return result;
+    }
+    if (target->desc == &NODE_BehaviorExpression) {
+        behavior_expression_error error = { 0 };
+        if (behavior_expression_refresh(e->asset, target, &error) != 0) {
+            if (before) {
+                (void)ed_adopt_behavior_asset(e, before);
+            }
+            e->expression_error = error;
+            free(before);
+            return -1;
+        }
+    }
+    if (old_reference_inline && old_reference_source && old_reference_source != created) {
+        (void)graph_remove_node(e->active_graph, old_reference_source);
     }
     ed_push_string(&e->undo, before);
     ed_free_string_stack(&e->redo);
@@ -1346,13 +1454,14 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
     const char *axis = layout.label                        ? layout.label
                      : graph_node_is_vector_constructor(n) ? axes[index]
                                                            : NULL;
+    bool reference = n->input_pins[index].flags & PIN_FLAG_REFERENCE;
     char input_label[256];
     ed_pin_label(n, &n->input_pins[index], input_label, sizeof input_label);
     const char *value_label = axis ? axis : input_label;
     node *inline_source = NULL;
     int inline_pin = -1;
     bool has_inline_source = ed_inline_source_for(e, n, index, &inline_source, &inline_pin);
-    if (has_inline_source &&
+    if (!reference && has_inline_source &&
         (inline_source->desc->display_class == NODE_DISPLAY_LITERAL ||
          ed_pin_editable(e->active_graph, inline_source, ED_PIN_OUTPUT, inline_pin)) &&
         !ed_vector_width(&inline_source->output_pins[inline_pin])) {
@@ -1370,30 +1479,43 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
         return changed;
     }
     const pin_binding *binding = n->input_pins[index].binding;
+    node *connected_source = NULL;
+    int connected_pin = -1;
+    bool connected = graph_input_source(e->active_graph, n, index, &connected_source, &connected_pin);
     char source[256];
+    char title[256];
     char chip[128];
     char fitted[128];
     const char *full_label = binding
                                ? ed_binding_label(e, binding, source, sizeof source)
+                           : connected
+                               ? ed_node_title(e, connected_source, title, sizeof title)
+                           : reference
+                               ? "Choose writable target"
                                : ed_inline_source_label(e, n, index, source, sizeof source);
+    if (connected && connected_source->output_count > 1 && connected_pin >= 0) {
+        char pin_label[128];
+        ed_pin_label(connected_source, &connected_source->output_pins[connected_pin], pin_label, sizeof pin_label);
+        snprintf(source, sizeof source, "%s.%s", full_label, pin_label);
+        full_label = source;
+    }
     const char *short_label = ed_binding_chip_label(e, binding, full_label, chip, sizeof chip);
     char component_label[160];
     if (axis) {
         snprintf(component_label, sizeof component_label, "%s: %s", axis, short_label);
         short_label = component_label;
     }
-    bool compact_inline = has_inline_source && !binding && !axis &&
-                          ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, index) == 1;
+    bool compact = !axis &&
+                   ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, index) == 1;
     ImGui_SetCursorScreenPos(pos);
     ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
     ImGui_PushStyleVarImVec2(
         ImGuiStyleVar_FramePadding,
         ed_scale(ImGui_GetStyle()->FramePadding, e->zoom)
     );
-    float fit_width = compact_inline
-                        ? width - 2.0f * ImGui_GetStyle()->FramePadding.x -
-                              ImGui_CalcTextSize(input_label).x
-                        : width;
+    float fit_width = compact ? width - 2.0f * ImGui_GetStyle()->FramePadding.x -
+                                    ImGui_CalcTextSize(input_label).x
+                              : width;
     const char *label = ed_binding_fit_chip_label(short_label, fit_width, fitted, sizeof fitted);
     ImGui_SetNextItemWidth(width);
     char button[320];
@@ -1401,12 +1523,12 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
         button,
         sizeof button,
         "%s###graph.input.binding.%llu.%d",
-        compact_inline ? "" : label,
+        compact ? "" : label,
         (unsigned long long)n->id,
         index
     );
     bool clicked = ImGui_ButtonEx(button, (ImVec2){ width, ImGui_GetFrameHeight() });
-    if (compact_inline) {
+    if (compact) {
         editor_ui_value_label(input_label, label);
     }
     char id[96];

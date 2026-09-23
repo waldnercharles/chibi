@@ -2,7 +2,8 @@
 // Builds the ray interval hierarchy T_0 .. T_N (Sec 4.1).
 //
 // Each level doubles ray length by chaining two T_{n-1} intervals end-to-end.
-// Stores τ (optical depth) — merge is additive.
+// Stores optical depth. Serial segments add depths; alternative paths average
+// transmission (Sec 4.1, Eq 20), then convert back to optical depth.
 //
 // Buffer layout:
 //   width  = ceil(world_w / 2^n) * (2^n + 1)
@@ -31,6 +32,14 @@ Interval merge(Interval a, Interval b)
 		a.rad + exp(-a.tau) * b.rad,
 		a.tau + b.tau
 	);
+}
+
+float blend_tau(float a, float b)
+{
+	// -log((exp(-a) + exp(-b)) / 2), without underflow for opaque paths.
+	// Equal depths also cover two half-float infinities without inf - inf.
+	if (a == b) return a;
+	return min(a, b) - log(0.5 + 0.5 * exp(-abs(a - b)));
 }
 
 Interval T_load_prev(int probe_x, int k, int y)
@@ -77,7 +86,7 @@ Interval extend(int probe_x, int k, int y)
 
 	return Interval(
 		(A.rad + B.rad) * 0.5,
-		(A.tau + B.tau) * 0.5
+		blend_tau(A.tau, B.tau)
 	);
 }
 

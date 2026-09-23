@@ -37,6 +37,9 @@ static int ed_text_matches(const char *text, const char *filter)
 static const char *ed_graph_display_name(const graph *g)
 {
     if (g->graph_id == 0 && g->kind == GRAPH_EVENT) {
+        if (g->owner && g->owner->domain == BEHAVIOR_DOMAIN_FIELD) {
+            return "Field";
+        }
         if (g->owner && g->owner->domain == BEHAVIOR_DOMAIN_MATERIAL) {
             return "Material";
         }
@@ -149,7 +152,8 @@ int editor_delete_graph(editor *e, uint64_t graph_id)
             graph *g = e->asset->graphs[i];
             for (int j = acount(g->nodes) - 1; j >= 0; j--) {
                 node *n = g->nodes[j];
-                if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction) &&
+                if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction ||
+                     n->desc == &NODE_BehaviorExpression) &&
                     !n->reference_asset && n->reference_id == graph_id) {
                     int removed = graph_remove_node(g, n);
                     assert(removed == 0);
@@ -453,6 +457,18 @@ static void add_payload_parameter(editor *e)
 static void ed_draw_add_popup(editor *e)
 {
     if (!ImGui_BeginPopup("my_behavior_asset_add", 0)) {
+        return;
+    }
+    if (e->asset->domain == BEHAVIOR_DOMAIN_FIELD) {
+        if (ImGui_MenuItem("Parameter")) {
+            add_payload_parameter(e);
+            ImGui_CloseCurrentPopup();
+        }
+        if (ImGui_MenuItem("Pure Function")) {
+            (void)ed_create_graph(e, GRAPH_FUNCTION, 1);
+            ImGui_CloseCurrentPopup();
+        }
+        ImGui_EndPopup();
         return;
     }
     if (e->asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {

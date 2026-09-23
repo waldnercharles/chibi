@@ -82,6 +82,51 @@ void emit(FILE *out, const collect_ctx *ctx)
     fputs("};\n", out);
     fprintf(out, "const int %s_REGISTRY_TYPE_COUNT = %d;\n\n", g_prefix, acount(ctx->structs));
 
+    for (int i = 0; i < acount(ctx->enums); i++) {
+        const enum_info *enumeration = &ctx->enums[i];
+        fprintf(
+            out,
+            "static const enum_value_desc %s_ENUM_%s_VALUES[] = {\n",
+            g_prefix,
+            enumeration->name
+        );
+        for (int j = 0; j < acount(enumeration->values); j++) {
+            const enum_value_info *value = &enumeration->values[j];
+            fprintf(
+                out,
+                "    { %d, \"%s\", \"%s\" },\n",
+                value->value,
+                value->name,
+                value->label
+            );
+        }
+        fprintf(out, "};\n");
+        fprintf(
+            out,
+            "static const enum_desc %s_ENUM_%s = {\n"
+            "    .name = \"%s\",\n"
+            "    .values = %s_ENUM_%s_VALUES,\n"
+            "    .value_count = %d,\n"
+            "};\n\n",
+            g_prefix,
+            enumeration->name,
+            enumeration->name,
+            g_prefix,
+            enumeration->name,
+            acount(enumeration->values)
+        );
+    }
+    if (acount(ctx->enums)) {
+        fprintf(out, "const enum_desc *const %s_REGISTRY_ENUMS[] = {\n", g_prefix);
+        for (int i = 0; i < acount(ctx->enums); i++) {
+            fprintf(out, "    &%s_ENUM_%s,\n", g_prefix, ctx->enums[i].name);
+        }
+        fputs("};\n", out);
+    } else {
+        fprintf(out, "const enum_desc *const %s_REGISTRY_ENUMS[1] = { NULL };\n", g_prefix);
+    }
+    fprintf(out, "const int %s_REGISTRY_ENUM_COUNT = %d;\n\n", g_prefix, acount(ctx->enums));
+
     int component_count = 0;
     for (int i = 0; i < acount(ctx->structs); i++) {
         if (ctx->structs[i].component) {
@@ -295,5 +340,7 @@ void emit(FILE *out, const collect_ctx *ctx)
     fprintf(out, "    .service_count = %d,\n", service_count);
     fprintf(out, "    .operators = %s_REGISTRY_OPERATORS,\n", g_prefix);
     fprintf(out, "    .operator_count = %d,\n", operator_count);
+    fprintf(out, "    .enums = %s_REGISTRY_ENUMS,\n", g_prefix);
+    fprintf(out, "    .enum_count = %d,\n", acount(ctx->enums));
     fputs("};\n", out);
 }

@@ -28,14 +28,15 @@ typedef struct
 
 static bool call_node(const node *n)
 {
-    return n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction;
+    return n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction ||
+           n->desc == &NODE_BehaviorExpression;
 }
 
 bool behavior_library_node_allowed(behavior_domain domain, const node_desc *desc)
 {
     if (domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
         return desc == &NODE_FunctionEntry || desc == &NODE_Return ||
-               desc == &NODE_CallPureFunction ||
+               desc == &NODE_CallPureFunction || desc == &NODE_BehaviorExpression ||
                (desc->category && !strncmp(desc->category, "Shader", 6) &&
                 strcmp(desc->name, "Shader Surface Output") &&
                 strcmp(desc->name, "Shader Shape Output") &&
@@ -150,7 +151,13 @@ const char *graph_library_refresh_call(graph *caller, node *call, const graph *t
     for (int i = 0; i < entry->output_count; i++) {
         execution |= entry->output_pins[i].kind == PIN_EXEC;
     }
-    if (execution != (call->desc == &NODE_CallFunction)) {
+    bool expression_action = call->desc == &NODE_BehaviorExpression &&
+                             target->expression_mode == GRAPH_EXPRESSION_ACTION;
+    bool expression_branch = call->desc == &NODE_BehaviorExpression &&
+                             target->expression_mode == GRAPH_EXPRESSION_BRANCH;
+    if (execution != (call->desc == &NODE_CallFunction ||
+                      call->desc == &NODE_CallMacro || expression_action) &&
+        !expression_branch) {
         return "The function execution kind changed; replace this call.";
     }
     for (int side = 0; side < 2; side++) {
@@ -181,7 +188,7 @@ const char *graph_library_refresh_call(graph *caller, node *call, const graph *t
                 graph_remove_pin(caller, call, side, p);
             }
         }
-        int position = execution ? 1 : 0;
+        int position = execution ? 1 : expression_branch ? (side ? 2 : 1) : 0;
         for (int p = 0; p < count; p++) {
             const pin_spec *source = &expected[p];
             if (source->kind != PIN_DATA || source->field_source) {

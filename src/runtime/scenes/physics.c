@@ -39,7 +39,7 @@ typedef struct
     GameBody settings;
     int proxy;
     float angle, stop_fraction;
-    bool seen, fragment;
+    bool seen, pierceable_fragment;
 } physics_body;
 
 typedef struct
@@ -394,7 +394,7 @@ static int geometry_count(const physics_body *body)
     if (body->parts) {
         return acount(body->parts);
     }
-    return body->mask ? acount(body->mask->rects) : 1;
+    return body->mask ? material_mask_collision(body->mask).count : 1;
 }
 
 static b2ShapeProxy geometry_at(const physics_body *body, int index)
@@ -403,7 +403,7 @@ static b2ShapeProxy geometry_at(const physics_body *body, int index)
         return body->parts[index];
     }
     if (body->mask) {
-        b2Polygon box = rect_polygon(body->mask->rects[index]);
+        b2Polygon box = rect_polygon(material_mask_collision(body->mask).rects[index]);
         return b2MakeProxy(box.vertices, box.count, box.radius);
     }
     return body->geometry;
@@ -468,8 +468,8 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     );
     body->mask_revision = mask ? mask->revision : 0;
     if (mask) {
-        for (int i = 0; i < acount(mask->rects); i++) {
-            b2Polygon box = rect_polygon(mask->rects[i]);
+        for (int i = 0; i < material_mask_collision(mask).count; i++) {
+            b2Polygon box = rect_polygon(material_mask_collision(mask).rects[i]);
             body->shape = b2CreatePolygonShape(body->body, &shape, &box);
             apush(body->parts, b2MakeProxy(box.vertices, box.count, box.radius));
         }
@@ -540,7 +540,10 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     body->collider = collider;
     body->settings = settings;
     body->seen = true;
-    body->fragment = game_materials_is_fragment(game_entities_materials(physics->entities), entity);
+    body->pierceable_fragment = game_materials_is_pierceable_fragment(
+        game_entities_materials(physics->entities),
+        entity
+    );
     b2Vec2 point = { position.x, position.y };
     if (!body->body.index1) {
         create_body(physics, body, point, angle);
@@ -770,11 +773,12 @@ int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entitie
             if (shape.circle) {
                 shape.disk.radius = body.collider.radius;
             } else {
-                shape.box = body.mask ? rect_polygon(body.mask->rects[i])
-                                      : b2MakeBox(
-                                            body.collider.width * .5f,
-                                            body.collider.height * .5f
-                                        );
+                shape.box = body.mask
+                              ? rect_polygon(material_mask_collision(body.mask).rects[i])
+                              : b2MakeBox(
+                                    body.collider.width * .5f,
+                                    body.collider.height * .5f
+                                );
             }
             physics_body part = { .geometry = geometry_at(&body, i) };
             b2DynamicTree_CreateProxy(
@@ -1159,7 +1163,7 @@ static bool sweep_candidate(int, uint64_t slot, void *user)
             return true;
         }
     }
-    if (a->collider.pierce_fragments && b->fragment) {
+    if (a->collider.pierce_fragments && b->pierceable_fragment) {
         contact_pair *pair = add_pair(query->pairs, a, b);
         pair->fraction = fraction;
         pair->point = point;
@@ -1302,16 +1306,16 @@ static int compare_pairs(const void *left, const void *right)
 
 static int queue_contact(game_physics *physics, uint64_t target, uint64_t other, b2Vec2 point)
 {
+    CF_V2 position = { point.x, point.y };
     pin_value values[] = {
         { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = other },
-        { .type = PIN_F32, .type_name = "float", .f = point.x },
-        { .type = PIN_F32, .type_name = "float", .f = point.y },
+        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
     };
     return game_entities_request_event(
         physics->entities,
         ecs_entity_from_u64(target),
         "Contact Begin",
-        (flow_inputs){ .values = values, .count = 3 }
+        (flow_inputs){ .values = values, .count = 2 }
     );
 }
 

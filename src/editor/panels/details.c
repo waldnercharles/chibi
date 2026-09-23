@@ -1,7 +1,10 @@
+#include "editor/panels/field_details.h"
 #include "editor/panels/shader_details.h"
+#include "editor/ui/choices.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
+#include "graph/model/local.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -79,7 +82,13 @@ static int ed_draw_variable_default(editor *e, behavior_variable *v)
         case PIN_F64:
             changed = ImGui_InputDoubleEx(id, &value.d, 0.1, 0.0, "%.12g", 0);
             break;
-        case PIN_ENUM: changed = ImGui_InputInt(id, &value.e); break;
+        case PIN_ENUM: {
+            const editor_choices *choices = editor_choices_for_enum(value.type_name);
+            changed = choices
+                        ? editor_choices_draw("variable.enum", &value.e, choices)
+                        : ImGui_InputInt(id, &value.e);
+            break;
+        }
         case PIN_STR: {
             snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
             changed = ImGui_InputTextMultilineEx(
@@ -267,6 +276,73 @@ static int ed_event_param_count(const node *n)
     return count;
 }
 
+static bool ed_event_payload_used(const graph *g, const node *n, int pin)
+{
+    uint64_t pin_id = n->output_pins[pin].id;
+    if (graph_output_local(g, n, pin)) {
+        return true;
+    }
+    for (int i = 0; i < acount(g->edges); i++) {
+        if (g->edges[i].from_id == n->id && g->edges[i].from_pin_id == pin_id) {
+            return true;
+        }
+    }
+    for (int i = 0; i < acount(g->nodes); i++) {
+        const node *target = g->nodes[i];
+        for (int j = 0; j < target->input_count; j++) {
+            const pin_binding *binding = graph_pin_binding(g, target, 0, j);
+            if (binding && binding->kind == PIN_BINDING_EVENT_OUTPUT &&
+                binding->event_node_id == n->id && binding->event_pin_id == pin_id) {
+                return true;
+            }
+        }
+    }
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].field_source == pin_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int ed_event_unused_payload_count(const editor *e, const node *n)
+{
+    if (!e || !e->active_graph || !n || n->desc->flow_kind != NODE_FLOW_EVENT ||
+        !n->reference_name || !graph_event_host_name(n->reference_name)) {
+        return 0;
+    }
+    int count = 0;
+    for (int i = 1; i < n->output_count; i++) {
+        count += n->output_pins[i].kind == PIN_DATA &&
+                 !ed_event_payload_used(e->active_graph, n, i);
+    }
+    return count;
+}
+
+int ed_repair_event_payloads(editor *e, node *n)
+{
+    if (!e || !e->active_graph || !n || graph_node_by_id(e->active_graph, n->id) != n ||
+        n->desc->flow_kind != NODE_FLOW_EVENT || !n->reference_name ||
+        !graph_event_host_name(n->reference_name) || e->active_graph->flow_pause_count) {
+        return -1;
+    }
+    int unused = ed_event_unused_payload_count(e, n);
+    if (!unused) {
+        return 0;
+    }
+    ed_snapshot_before(e);
+    int removed = 0;
+    for (int i = n->output_count - 1; i > 0; i--) {
+        if (n->output_pins[i].kind != PIN_DATA ||
+            ed_event_payload_used(e->active_graph, n, i) ||
+            graph_remove_pin(e->active_graph, n, 1, i)) {
+            continue;
+        }
+        removed++;
+    }
+    return removed;
+}
+
 /* Appends only the declared parameters this event is still missing, so no
  * existing pin is retyped or removed and no edge is invalidated under EVT-5. */
 int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature)
@@ -421,7 +497,7 @@ static void ed_draw_math_graph_name(editor *e, graph *g)
 
 static void ed_draw_math_source(editor *e, node *n)
 {
-    const char *source = math_expression_source(e->asset, n);
+    const char *source = behavior_expression_source(e->asset, n);
     if (!source) {
         return;
     }
@@ -432,7 +508,7 @@ static void ed_draw_math_source(editor *e, node *n)
         e->math_capacity = strlen(source) + 256;
         e->math_text = xrealloc(e->math_text, e->math_capacity);
         snprintf(e->math_text, e->math_capacity, "%s", source);
-        e->math_error = (math_expression_error){ 0 };
+        e->expression_error = (behavior_expression_error){ 0 };
     }
     graph *generated = behavior_asset_find_graph(e->asset, n->reference_id);
     assert(generated && generated->math_expression);
@@ -449,7 +525,7 @@ static void ed_draw_math_source(editor *e, node *n)
     );
     editor_ui_track_item("math.expression");
     if (ImGui_IsItemEdited()) {
-        e->math_error = (math_expression_error){ 0 };
+        e->expression_error = (behavior_expression_error){ 0 };
     }
     bool changed = strcmp(e->math_text, source) != 0;
     ImGui_SameLine();
@@ -458,10 +534,14 @@ static void ed_draw_math_source(editor *e, node *n)
     }
     editor_ui_track_item("math.inspect");
     if (apply && changed) {
-        editor_set_math_expression(e, n, e->math_text, &e->math_error);
+        editor_set_behavior_expression(e, n, e->math_text, &e->expression_error);
     }
-    if (e->math_error.message[0]) {
-        ImGui_TextWrapped("%s (column %d)", e->math_error.message, e->math_error.offset + 1);
+    if (e->expression_error.message[0]) {
+        ImGui_TextWrapped(
+            "%s (column %d)",
+            e->expression_error.message,
+            e->expression_error.offset + 1
+        );
         editor_ui_track_item("math.error");
     }
 }
@@ -480,7 +560,7 @@ void ed_draw_details(editor *e)
         return;
     }
     if (e->active_graph->math_expression) {
-        ImGui_TextUnformatted("Generated math graph · Read-only");
+        ImGui_TextUnformatted("Generated Behavior Expression graph · Read-only");
         ed_draw_math_graph_name(e, e->active_graph);
         ImGui_TextWrapped("%s", e->active_graph->math_expression);
         ImGui_End();
@@ -488,6 +568,7 @@ void ed_draw_details(editor *e)
     }
     if (!e->selected_variable && !acount(e->selected) && !acount(e->selected_links)) {
         ed_draw_shader_details(e, NULL);
+        ed_draw_field_details(e);
         if (e->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
             e->asset->domain != BEHAVIOR_DOMAIN_SHAPE &&
             e->asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {

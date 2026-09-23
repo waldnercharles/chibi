@@ -65,8 +65,9 @@ static bool draw_prototype_field(
             if (choices) {
                 editor_ui_property_label(label, 0.0f);
             }
+            int *choice_value = value.type == PIN_ENUM ? &value.e : &value.i;
             changed = choices
-                        ? editor_choices_draw("prototype.shape", &value.i, choices)
+                        ? editor_choices_draw("prototype.shape", choice_value, choices)
                         : property_number(label, ImGuiDataType_S32, &value.i, false);
             break;
         }

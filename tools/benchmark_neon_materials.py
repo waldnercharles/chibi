@@ -33,23 +33,23 @@ def prepare(build, output, fixture, scale, trace_levels):
     project = output / 'project'
     shutil.copytree(PROJECT, project, ignore=shutil.ignore_patterns('.chibi', 'build'))
     runner = Runner(build, output, project)
-    asset = runner.author('readAsset', dict(kind='prototype', name='NeonSwarmHRC'))
-    runner.author('buildPrototype', dict(kind='prototype', name='NeonSwarmHRC',
+    asset = runner.author('readAsset', dict(kind='prototype', name='HRC'))
+    runner.author('buildPrototype', dict(kind='prototype', name='HRC',
         expected_hash=asset['hash'], operations=[
             dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
             dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
             dict(op='set_field', component='GameHRC2D', field='trace_levels', value=trace_levels)]))
-    runner.author('validateAsset', dict(kind='prototype', name='NeonSwarmHRC'))
+    runner.author('validateAsset', dict(kind='prototype', name='HRC'))
     if fixture['operations']:
-        asset = runner.author('readAsset', dict(kind='scene', name='NeonSwarmSandbox'))
-        runner.author('buildScene', dict(kind='scene', name='NeonSwarmSandbox',
+        asset = runner.author('readAsset', dict(kind='scene', name='Sandbox'))
+        runner.author('buildScene', dict(kind='scene', name='Sandbox',
             expected_hash=asset['hash'], operations=fixture['operations']))
-    runner.author('validateAsset', dict(kind='scene', name='NeonSwarmSandbox'))
+    runner.author('validateAsset', dict(kind='scene', name='Sandbox'))
     return runner
 
 
 def snapshot(runner, frames, inputs):
-    return runner.call('runtime_snapshot', kind='scene', name='NeonSwarmSandbox', frames=frames,
+    return runner.call('runtime_snapshot', kind='scene', name='Sandbox', frames=frames,
         input_timeline=[s for s in inputs if s['frame'] < frames],
         entity_limit=16, component_limit=64, field_limit=64)
 
@@ -99,7 +99,7 @@ def run_case(args, name, mode, scale, repeat, provenance):
     initial_frames = fixture['frames'] + (args.render_frames if frozen else 0)
     final_frames = initial_frames + (0 if frozen else args.render_frames)
     inputs = [s for s in fixture['input_timeline'] if s['frame'] < final_frames]
-    request = dict(contract=1, operation='preview_scene', kind='scene', name='NeonSwarmSandbox',
+    request = dict(contract=1, operation='preview_scene', kind='scene', name='Sandbox',
         frames=initial_frames, render_frames=args.render_frames, freeze_simulation=frozen,
         width=args.width, height=args.height, input_timeline=inputs)
     environment = {}

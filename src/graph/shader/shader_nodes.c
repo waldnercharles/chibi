@@ -8,22 +8,29 @@
 
 #define FLOAT_PIN(label)                                                       \
     {                                                                          \
-        .name = label, .type = PIN_F32, .default_value = { .type = PIN_F32 }   \
+        .name = label, .type = PIN_F32, .default_value = {.type = PIN_F32 }    \
     }
 #define FLOAT_DEFAULT(label, number)                                           \
     {                                                                          \
-        .name = label, .type = PIN_F32,                                        \
-        .default_value = { .type = PIN_F32, .f = number }                      \
+        .name = label, .type = PIN_F32, .default_value = {                     \
+            .type = PIN_F32,                                                   \
+            .f = number                                                        \
+        }                                                                      \
     }
 #define VECTOR_PIN(label, w)                                                   \
     {                                                                          \
         .name = label, .type = PIN_STRUCT, .type_name = "ShaderVec" #w,        \
-        .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec" #w }   \
+        .default_value = {                                                     \
+            .type = PIN_STRUCT,                                                \
+            .type_name = "ShaderVec" #w                                        \
+        }                                                                      \
     }
 #define ANY_PIN(label)                                                         \
     {                                                                          \
         .name = label, .type = PIN_F32, .flags = PIN_FLAG_WILDCARD,            \
-        .group = 1, .default_value = { .type = PIN_F32 }                       \
+        .group = 1, .default_value = {                                         \
+            .type = PIN_F32                                                    \
+        }                                                                      \
     }
 static const type_field fields[] = {
     { .name = "x", .type = PIN_F32, .type_name = "float", .offset = 0, .size = 4 },

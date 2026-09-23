@@ -16,6 +16,11 @@ const fieldLabels = {
   shape: "collider hitbox shape",
   width: "visible sprite width",
 };
+const observedFields = {
+  color: "Appearance Color, current #FFFFFFFF",
+  shape: "Collider Shape, current Box",
+  width: "Sprite Width, current 32",
+};
 
 function options(entries, order) {
   return order === "reverse" ? [...entries].reverse() : entries;
@@ -27,10 +32,10 @@ function namedTarget(goal) {
   return player === enemy ? null : player ? "player" : "enemy";
 }
 
-async function choose(testCase, instruction, entries) {
+async function choose(testCase, instruction, entries, observation = fixture.observation) {
   const criteria = Object.fromEntries(entries.map((entry, index) => [String(index), entry.label]));
   const request = {
-    state: { goal: testCase.goal, observation: fixture.observation },
+    state: { goal: testCase.goal, observation },
     questions: { action: { type: "choice", instructions: instruction, criteria } },
   };
   const start = performance.now();
@@ -102,25 +107,28 @@ async function run(testCase, mode, order) {
     raw = result.id;
     confidence = result.confidence;
     calls = 1;
-  } else if (["scoped", "scoped_compact", "scoped_no_defer", "scoped_noul"].includes(mode)) {
+  } else if (["scoped", "scoped_compact", "scoped_no_defer", "scoped_observed", "scoped_noul"].includes(mode)) {
     const target = namedTarget(testCase.goal);
     if (target) {
       const compact = mode === "scoped_compact" || mode === "scoped_no_defer";
+      const observed = mode === "scoped_observed";
       const fields = options([
         ...Object.entries(fieldLabels).map(([id, label]) => ({
           id: `${target}_${id}`,
-          label: compact ? `Change ${label}` : `Change ${targetLabels[target]}: ${label}`,
+          label: observed ? observedFields[id] : compact ? `Change ${label}` : `Change ${targetLabels[target]}: ${label}`,
         })),
-        ...(mode === "scoped_no_defer" ? [] : [
+        ...(mode === "scoped_no_defer" || observed ? [] : [
           { ...deferral, label: compact ? "None of these edits" : deferral.label },
         ]),
       ], order);
       const result = mode === "scoped_noul"
         ? await scoreFields(testCase, target, order)
         : await choose(testCase,
-          compact ? `Which single change to ${target} fulfills the request?` :
-            `Which one property edit on the ${target} prototype fully satisfies the request? Defer if none does.`,
-          fields);
+          observed ? "Which property best fulfills the user's request?" :
+            compact ? `Which single change to ${target} fulfills the request?` :
+              `Which one property edit on the ${target} prototype fully satisfies the request? Defer if none does.`,
+          fields,
+          observed ? `Current target: ${target === "player" ? "Player prototype, used by Ship" : "Enemy prototype, used by Foe"}. Choices reflect current editor values.` : fixture.observation);
       raw = result.id;
       confidence = result.confidence;
       calls = 1;

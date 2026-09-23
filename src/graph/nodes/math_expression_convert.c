@@ -724,12 +724,15 @@ node *behavior_expression_convert_selection(
         expression_input *input = &build.inputs[i];
         int pin = call_input(call, input->name);
         assert(pin >= 0);
-        assert(graph_set_pin_type(source, call, 0, pin, input->type, input->type_name) == 0);
+        int result = graph_set_pin_type(source, call, 0, pin, input->type, input->type_name);
+        assert(result == 0);
+        (void)result;
         if (input->binding) {
-            assert(graph_set_pin_binding(source, call, 0, pin, input->binding) == 0);
+            result = graph_set_pin_binding(source, call, 0, pin, input->binding);
         } else {
-            assert(graph_connect_data(source, input->source, input->source_pin, call, pin) == 0);
+            result = graph_connect_data(source, input->source, input->source_pin, call, pin);
         }
+        assert(result == 0);
     }
     if (behavior_expression_refresh(asset, call, error) != 0) {
         free_build(&build);
@@ -741,12 +744,16 @@ node *behavior_expression_convert_selection(
         int target_output = 0, target_pin = -1;
         const pin_spec *target_spec = graph_pin_by_id(target, output->target_pin_id, &target_output, &target_pin);
         assert(target_spec && !target_output);
-        assert(graph_connect_data(source, call, 0, target, target_pin) == 0);
+        int result = graph_connect_data(source, call, 0, target, target_pin);
+        assert(result == 0);
+        (void)result;
     }
     for (int i = 0; i < build.selection_count; i++) {
         node *n = graph_node_by_id(source, build.selection[i]->id);
         if (n) {
-            assert(graph_remove_node(source, n) == 0);
+            int result = graph_remove_node(source, n);
+            assert(result == 0);
+            (void)result;
         }
     }
     free_build(&build);

@@ -1671,6 +1671,10 @@ static behavior_instance *make_instance(game_system *system)
 
 static int rebuild(game_system *system)
 {
+    program_free(system->program);
+    system->program = NULL;
+    behavior_instance_destroy(system->instance);
+    system->instance = NULL;
     compile_report_free(&system->compile);
     compile_report_init(&system->compile);
     behavior_asset_compile_for_system(system->definition, &system->compile);

@@ -223,7 +223,7 @@ static void clear_global_bindings(game_entities *entities)
     for (int i = 0; i < acount(entities->global_bindings); i++) {
         free(entities->global_bindings[i].name);
     }
-    aclear(entities->global_bindings);
+    afree(entities->global_bindings);
 }
 
 static void clear_global_values(game_entities *entities)

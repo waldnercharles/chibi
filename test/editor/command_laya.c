@@ -291,6 +291,24 @@ void test_editor_command_laya()
     yyjson_doc_free(read);
     free(result);
 
+    const char *unsupported_goals[] = {
+        "Make Ship blue if health is low",
+        "Make Player and Enemy blue",
+        "Make Ship red or blue",
+    };
+    for (size_t i = 0; i < sizeof unsupported_goals / sizeof unsupported_goals[0]; i++) {
+        char *unsupported_packet = command_packet(packet, unsupported_goals[i]);
+        result = local_result(unsupported_packet);
+        read = result ? yyjson_read(result, strlen(result), 0) : NULL;
+        test_check(
+            read && !strcmp(command_string(yyjson_doc_get_root(read), "status"), "unsupported"),
+            "Laya fast path does not flatten a conditional or compound request"
+        );
+        yyjson_doc_free(read);
+        free(result);
+        free(unsupported_packet);
+    }
+
     char *target_packet = bound_packet(packet, "prototype:player", NULL);
     result = local_result(target_packet);
     read = result ? yyjson_read(result, strlen(result), 0) : NULL;

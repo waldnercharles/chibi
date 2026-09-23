@@ -273,6 +273,11 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
     if (!*goal || !yyjson_is_arr(objects)) {
         return "Command or editor catalog is missing";
     }
+    if (word(goal, "if") || word(goal, "when") || word(goal, "unless") ||
+        word(goal, "while") || word(goal, "and") || word(goal, "also") ||
+        word(goal, "or") || word(goal, "but")) {
+        return "Command needs multiple or conditional edits";
+    }
     if (*target_id) {
         menu->target = command_find(objects, target_id);
         if (!menu->target) {

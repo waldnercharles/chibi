@@ -2,7 +2,7 @@
   "version": 3,
   "name": "PulseRing",
   "domain": "material",
-  "id_counter": 43,
+  "id_counter": 44,
   "description": "An emissive ring surface. Flash remains the named DamageFlashBehavior override; pulse and ring masking use ShaderMath.",
   "variables": [],
   "graphs": [
@@ -113,6 +113,17 @@
               "flags": 0,
               "group": 0,
               "default": true
+            },
+            {
+              "id": 44,
+              "name": "Height",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ],
           "outputs": []

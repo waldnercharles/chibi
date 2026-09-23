@@ -50,15 +50,17 @@ char *render_shader_fragment_source()
         "values[32], result[8];\n"
         " int shape=int(sg_entity[4].z), material=int(sg_entity[4].y); float "
         "time=sg_entity[19].x;\n"
-        " if(shape>0) { for(int i=0;i<32;i++) values[i]=sg_entity[52+i]; "
-        "sg_dispatch_2d(shape,p,wp,half_size,time,values,result); "
+        " e.material_frame=sg_entity[20]; vec2 "
+        "mp=material_position(e,p,wp);\n"
+        " if(shape>0) { for(int i=0;i<32;i++) values[i]=sg_entity[53+i]; "
+        "sg_dispatch_2d(shape,p,mp,half_size,time,values,result); "
         "d=result[0].x; }\n"
         " vec4 "
         "sc=sg_entity[9],em=sg_entity[10],bs=sg_entity[13],be=sg_entity[14];\n"
-        " if(material>0) { for(int i=0;i<32;i++) values[i]=sg_entity[20+i]; "
-        "sg_dispatch_2d(material,p,wp,half_size,time,values,result); "
+        " if(material>0) { for(int i=0;i<32;i++) values[i]=sg_entity[21+i]; "
+        "sg_dispatch_2d(material,p,mp,half_size,time,values,result); "
         "sc=result[0]; "
-        "em=result[1]; bs=result[4]; be=result[5]; }\n"
+        "em=result[1]; bs=result[0]; be=result[1]; }\n"
         " float aa=max(e.aa,0.001), coverage=1.0-smoothstep(0.0,aa,d);\n"
         " float "
         "fill=e.border_thickness>0.0?1.0-smoothstep(-e.border_thickness,-e."
@@ -111,12 +113,12 @@ void render_shader_fragment_draw(
     CF_V2 lighting
 )
 {
-    float data[336];
+    float data[sizeof *entity / sizeof(float)];
     memcpy(data, entity, sizeof data);
     data[8] = (float)entity->shape_type;
     data[13] = (float)entity->point_count;
     render_programs_bind2d(programs, program);
-    cf_draw_set_uniform("sg_entity", data, CF_UNIFORM_TYPE_FLOAT4, 84);
+    cf_draw_set_uniform("sg_entity", data, CF_UNIFORM_TYPE_FLOAT4, (int)(sizeof data / 16));
     cf_draw_set_uniform("sg_lighting", &lighting, CF_UNIFORM_TYPE_FLOAT2, 1);
     CF_Aabb bounds = {
         { entity->pos[0] - entity->extent[0], entity->pos[1] - entity->extent[1] },

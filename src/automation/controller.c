@@ -3902,6 +3902,7 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
         yyjson_mut_obj_add_int(doc, material, "solids", state.solids);
         yyjson_mut_obj_add_int(doc, material, "cells", state.cells);
         yyjson_mut_obj_add_int(doc, material, "fragments", state.fragments);
+        yyjson_mut_obj_add_int(doc, material, "chunks", state.chunks);
         add_hash_named(doc, material, "hash", state.hash);
     }
     GameFog fog;

@@ -2,7 +2,7 @@
   "version": 3,
   "name": "ArenaRim",
   "domain": "material",
-  "id_counter": 36,
+  "id_counter": 37,
   "description": "A metallic cyan boundary with a slow, restrained pulse in its emission.",
   "variables": [],
   "graphs": [
@@ -113,6 +113,17 @@
               "flags": 0,
               "group": 0,
               "default": false
+            },
+            {
+              "id": 37,
+              "name": "Height",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ],
           "outputs": []

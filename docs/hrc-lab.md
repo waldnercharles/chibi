@@ -27,7 +27,19 @@ reconstructed at canvas resolution:
 | 3 | Five-tap cross: the center probe plus its four axial neighbors. |
 
 Mode 1 is the current default. Mode 3 is the five-tap experiment; it preserves
-small emissive probes well, but its quality change depends on the fixture.
+small emissive probes well, but its quality change depends on the fixture. In
+the basalt Sandbox at 1080p it matched mode 1 at scales 0.5 and 0.35 while
+costing about 0.6 ms more.
+
+## Split transport
+
+`split_frames` solves the four light directions over 1, 2 or 4 frames. Each
+frame solves its share of the frusta; gather reads the others from earlier
+frames, moved with the view to the nearest work pixel. At 1080p in the basalt
+Sandbox, splitting over two frames halves the cascade cost (4.3 to 2.2 ms at
+scale 0.5; a 31 to 21 ms frame at scale 1.0), and moving captures stay within
+the temporal filter's noise. New or fast lights take one to three extra frames
+to reach every direction.
 
 ## Scale meaning
 

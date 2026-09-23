@@ -60,6 +60,7 @@ Every material ends in **Surface Output**:
 | Normal | World-space shading normal; zero uses the solid's geometry normal. |
 | Opacity | Zero is invisible; one is opaque. |
 | Unlit | Shows Base Color and Emission without the lighting response. |
+| Height | World units of relief above the surface. 2D solids cast its shadows. |
 
 Material previews use a sphere with diameter 100 and the same shading path as
 3D actors. The geometry normal and camera are real, so view-dependent effects
@@ -203,8 +204,10 @@ It does not implement those engines' full post-processing feature sets.
 
 On desktop, the 2D renderer translates Surface values into its internal scene,
 emission, albedo and absorption buffers for radiance cascades. Designers do not
-wire those buffers themselves. Roughness and Normal do not add 3D lighting to
-that path. On web, a fragment shader draws the 2D material and shape graphs;
+wire those buffers themselves. Normal still faces the camera along +Y; its X and
+Z tilt the surface sideways and up, and Roughness sets gloss. Solids light that
+relief from the directions of light received around them, and Height casts short
+shadows across it. On web, a fragment shader draws the 2D material and shape graphs;
 2D radiance cascades are not implemented there. The 3D Surface path is shared
 across native and WebGL. Invalid graph edits preserve valid rendering and expose
 diagnostics.

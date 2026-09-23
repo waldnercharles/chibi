@@ -57,6 +57,8 @@ layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
 layout(set = 1, binding = 2, rgba16f) uniform image2D u_absorption;
 layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
 layout(set = 1, binding = 4, rgba16f) uniform image2D u_normal;
+// Relief: x = height times coverage (world units), y = coverage.
+layout(set = 1, binding = 5, rgba16f) uniform image2D u_relief;
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -141,6 +143,15 @@ float sdf_polygon_filled(vec2 p, Entity e)
     return (winding != 0.0) ? -min_d : min_d;
 }
 
+// Where a material samples the world: the laid-out frame when the entity
+// carries one, so patterns stay attached to moving fragments.
+vec2 material_position(Entity e, vec2 local_p, vec2 world_pos)
+{
+    vec4 f = e.material_frame;
+    if (f.z == 0.0 && f.w == 0.0) return world_pos;
+    return f.xy + vec2(f.z * local_p.x - f.w * local_p.y, f.w * local_p.x + f.z * local_p.y);
+}
+
 vec2 shader_half_size(Entity e)
 {
     if (e.shape_type == SHAPE_CIRCLE)
@@ -196,17 +207,6 @@ float evaluate_sdf(vec2 local_p, Entity e)
     return d;
 }
 
-vec2 sdf_normal(vec2 p, Entity e, float epsilon)
-{
-    float dx = evaluate_sdf(p + vec2(epsilon, 0.0), e) -
-               evaluate_sdf(p - vec2(epsilon, 0.0), e);
-    float dy = evaluate_sdf(p + vec2(0.0, epsilon), e) -
-               evaluate_sdf(p - vec2(0.0, epsilon), e);
-    vec2 gradient = vec2(dx, dy);
-    float length_gradient = length(gradient);
-    return length_gradient > 1e-5 ? gradient / length_gradient : vec2(0.0);
-}
-
 #include "color.shd"
 
 vec4 unpack_color(vec4 p) { return p; }
@@ -237,6 +237,7 @@ void main()
     vec4 absorption_acc = u_accumulate != 0 ? imageLoad(u_absorption, pixel) : vec4(0, 0, 0, 0);
     vec4 albedo_acc = u_accumulate != 0 ? imageLoad(u_albedo, pixel) : vec4(0, 0, 0, 1);
     vec4 normal_acc = u_accumulate != 0 ? imageLoad(u_normal, pixel) : vec4(0, 0, 0, 0);
+    vec4 relief_acc = u_accumulate != 0 ? imageLoad(u_relief, pixel) : vec4(0, 0, 0, 0);
 
     // Metaball group accumulators.
     #define MAX_METABALL_GROUPS 1
@@ -251,7 +252,9 @@ void main()
     vec4 mb_border_albedo[MAX_METABALL_GROUPS];
     float mb_aa[MAX_METABALL_GROUPS];
     float mb_border_thickness[MAX_METABALL_GROUPS];
-    float mb_edge_light[MAX_METABALL_GROUPS];
+    // Solid surface: xy bump tilt (world axes, y up), z edge light, w gloss.
+    vec4 mb_surface[MAX_METABALL_GROUPS];
+    float mb_height[MAX_METABALL_GROUPS];
     bool mb_active[MAX_METABALL_GROUPS];
     for (int g = 0; g < MAX_METABALL_GROUPS; g++) {
         mb_sdf[g] = 1e30;
@@ -265,7 +268,8 @@ void main()
         mb_border_albedo[g] = vec4(0);
         mb_aa[g] = 0.0;
         mb_border_thickness[g] = 0.0;
-        mb_edge_light[g] = 0.0;
+        mb_surface[g] = vec4(0);
+        mb_height[g] = 0.0;
         mb_active[g] = false;
     }
 
@@ -328,20 +332,28 @@ void main()
 
         float sdf = evaluate_sdf(local_p, e);
         vec2 half_size = shader_half_size(e);
+        vec2 material_pos = material_position(e, local_p, world_pos);
         vec4 graph_output[8];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
-            sg_dispatch_2d(int(e.reserved1), local_p, world_pos, half_size, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
+        float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
+        // Uncovered pixels need no material; metaballs still blend beyond their edge.
+        if (e.metaball_group == 0u && sdf >= aa) continue;
+        vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
+        float height = 0.0;
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
-            sg_dispatch_2d(int(e.reserved0), local_p, world_pos, half_size, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];
-            e.border_scene=graph_output[4]; e.border_emission=graph_output[5];
-            e.border_albedo=graph_output[6]; e.border_absorption=graph_output[7];
+            e.border_scene=graph_output[0]; e.border_emission=graph_output[1];
+            e.border_albedo=graph_output[2]; e.border_absorption=graph_output[3];
+            surface.xyw = graph_output[4].xyz;
+            height = graph_output[4].w;
         }
 
         if (e.metaball_group > 0u) {
@@ -371,7 +383,8 @@ void main()
                         mb_border_albedo[g] = e_balbedo;
                         mb_aa[g] = e.aa;
                         mb_border_thickness[g] = e.border_thickness;
-                        mb_edge_light[g] = e.reserved2;
+                        mb_surface[g] = surface;
+                        mb_height[g] = height;
                     }
                 } else {
                     float h = clamp(0.5 + 0.5 * (sdf - mb_sdf[g]) / k, 0.0, 1.0);
@@ -386,7 +399,8 @@ void main()
                     mb_border_albedo[g] = mix(e_balbedo, mb_border_albedo[g], h);
                     mb_aa[g] = mix(e.aa, mb_aa[g], h);
                     mb_border_thickness[g] = mix(e.border_thickness, mb_border_thickness[g], h);
-                    mb_edge_light[g] = mix(e.reserved2, mb_edge_light[g], h);
+                    mb_surface[g] = mix(surface, mb_surface[g], h);
+                    mb_height[g] = mix(height, mb_height[g], h);
                 }
                 mb_active[g] = true;
             }
@@ -394,22 +408,7 @@ void main()
         }
 
         // Normal entity (metaball_group == 0).
-        float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
         float bt = e.border_thickness;
-        float normal_epsilon = max(max(u_unit_per_px.x, u_unit_per_px.y) * 0.75, 0.25);
-        vec2 normal_local = sdf_normal(local_p, e, normal_epsilon);
-        vec2 normal_world = vec2(
-            e.inv_rot.x * normal_local.x + e.inv_rot.z * normal_local.y,
-            e.inv_rot.y * normal_local.x + e.inv_rot.w * normal_local.y
-        );
-        float normal_confidence = 1.0 - smoothstep(
-            normal_epsilon * 2.0,
-            normal_epsilon * 6.0,
-            abs(sdf)
-        );
-        normal_confidence *= dot(normal_world, normal_world) > 0.5 ? 1.0 : 0.0;
-        normal_acc.rgb += vec3(normal_world, 0.0) * normal_confidence * (1.0 - normal_acc.a);
-        normal_acc.a += normal_confidence * (1.0 - normal_acc.a);
 
         if (bt > 0.0) {
             // Border rendering: fill is interior, border is edge band.
@@ -422,7 +421,9 @@ void main()
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= fill_coverage;
             vec4 bsc = unpack_color(e.border_scene); bsc.rgb *= bsc.a; bsc *= border_coverage;
             scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
-            normal_acc.z = mix(normal_acc.z, e.reserved2, bsc.a + sc.a * (1.0 - bsc.a));
+            float cover = bsc.a + sc.a * (1.0 - bsc.a);
+            normal_acc = mix(normal_acc, surface, cover);
+            relief_acc.xy = mix(relief_acc.xy, vec2(height, 1.0), cover);
 
             // Emission.
             vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= fill_coverage;
@@ -447,7 +448,8 @@ void main()
 
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= coverage;
             scene_acc = alpha_over(sc, scene_acc);
-            normal_acc.z = mix(normal_acc.z, e.reserved2, sc.a);
+            normal_acc = mix(normal_acc, surface, sc.a);
+            relief_acc.xy = mix(relief_acc.xy, vec2(height, 1.0), sc.a);
 
             vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= coverage;
             emission_acc = alpha_over(em, emission_acc);
@@ -477,7 +479,9 @@ void main()
             vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= fill_coverage;
             vec4 bsc = mb_border_scene[g]; bsc.rgb *= bsc.a; bsc *= border_coverage;
             scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
-            normal_acc.z = mix(normal_acc.z, mb_edge_light[g], bsc.a + sc.a * (1.0 - bsc.a));
+            float cover = bsc.a + sc.a * (1.0 - bsc.a);
+            normal_acc = mix(normal_acc, mb_surface[g], cover);
+            relief_acc.xy = mix(relief_acc.xy, vec2(mb_height[g], 1.0), cover);
 
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= fill_coverage;
             vec4 bem = mb_border_emission[g]; bem.rgb *= bem.a; bem *= border_coverage;
@@ -498,7 +502,8 @@ void main()
 
             vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= coverage;
             scene_acc = alpha_over(sc, scene_acc);
-            normal_acc.z = mix(normal_acc.z, mb_edge_light[g], sc.a);
+            normal_acc = mix(normal_acc, mb_surface[g], sc.a);
+            relief_acc.xy = mix(relief_acc.xy, vec2(mb_height[g], 1.0), sc.a);
 
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= coverage;
             emission_acc = alpha_over(em, emission_acc);
@@ -517,4 +522,5 @@ void main()
     imageStore(u_absorption, pixel, absorption_acc);
     imageStore(u_albedo, pixel, albedo_acc);
     imageStore(u_normal, pixel, normal_acc);
+    imageStore(u_relief, pixel, relief_acc);
 }

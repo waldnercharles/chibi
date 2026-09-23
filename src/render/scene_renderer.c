@@ -7,8 +7,10 @@
 #include "render/fluid_raster.h"
 #include "render/fog.h"
 #include "render/geometry_2d.h"
+#include "render/gpu_timing.h"
 #include "render/material.h"
 #include "render/material_raster.h"
+#include "render/post_2d.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
 #include "render/sdf_motion.h"
@@ -41,6 +43,9 @@ struct app_scene_renderer
     render_material_raster *raster;
     render_fluid_raster *fluid;
     render_radiance *radiance;
+    /* HDR presentation for tone-mapped 2D scenes. */
+    render_post_2d *hdr;
+    GameHRC2D lighting;
     render_reflections *reflections;
     render_reflection *reflectors;
     CF_Canvas output, background;
@@ -101,6 +106,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_fluid_raster_free(renderer->fluid);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
+    render_post_2d_free(renderer->hdr);
     render_fog_free(renderer->fog);
     render_radiance_free(renderer->radiance);
     render_reflections_free(renderer->reflections);
@@ -570,6 +576,84 @@ static void collect_order(app_scene_renderer *renderer, ecs_world *world)
     }
 }
 
+/* Crater chunks draw as small rock polygons in their source's material, with
+ * the pattern of the rock they left. */
+static void collect_chunks(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const engine *runtime,
+    render_material_view view
+)
+{
+    int count;
+    const material_chunk *chunks = game_materials_chunks(engine_materials(runtime), &count);
+    uint64_t cached = 0;
+    const GameMaterial *material = NULL;
+    const GameAppearance *look = NULL;
+    const MaterialBreakProfile *profile = NULL;
+    int shader = 0;
+    float parameters[32][4] = { 0 };
+    for (int i = 0; i < count; i++) {
+        const material_chunk *chunk = &chunks[i];
+        float scale = material_chunk_scale(chunk), radius = chunk->radius * scale;
+        if (radius <= .05f || chunk->position.x + radius < view.min_x ||
+            chunk->position.x - radius > view.min_x + view.width ||
+            -chunk->position.y + radius < view.max_y - view.height ||
+            -chunk->position.y - radius > view.max_y) {
+            continue;
+        }
+        if (chunk->source != cached) {
+            cached = chunk->source;
+            ecs_entity source = ecs_entity_from_u64(chunk->source);
+            bool alive = ecs_entity_is_alive(world, source);
+            material = alive ? GAME_GameMaterial_get_const(world, source) : NULL;
+            look = alive ? GAME_GameAppearance_get_const(world, source) : NULL;
+            profile = alive ? GAME_MaterialBreakProfile_get_const(world, source) : NULL;
+            const GameShader *binding = alive ? GAME_GameShader_get_const(world, source)
+                                              : NULL;
+            shader = binding ? render_shader_find(binding->material) : 0;
+            if (shader && render_shader_is_shape(shader)) {
+                shader = 0;
+            }
+            if (shader) {
+                render_shader_parameters(shader, world, source, binding->parameters, parameters);
+            }
+        }
+        GameTransform position = { chunk->position.x, chunk->position.y };
+        GameAppearance part = { .width = 2 * radius,
+                                .height = 2 * radius,
+                                .shape = GAME_SHAPE_BOX,
+                                .color = look ? look->color : 0x4a4744ffu,
+                                .antialias = look ? look->antialias : 0 };
+        /* A hot chunk glows in its material's spark color until it cools
+         * enough to show the material's pattern. */
+        bool hot = profile && chunk->heat > .05f;
+        GameMaterial glow = material ? *material : (GameMaterial){ 0 };
+        if (hot) {
+            glow.emission_color = profile->spark_color;
+            glow.emission_intensity = chunk->heat * profile->spark_emission;
+            glow.emission_multiplier = 1;
+        }
+        if (!append_entity(renderer, &position, &part, -chunk->angle, NULL, hot ? &glow : material)) {
+            continue;
+        }
+        render_material_entity *draw = &alast(renderer->entities);
+        draw->shape_type = RENDER_SHAPE_POLY_FILL;
+        draw->point_count = (uint32_t)chunk->count;
+        for (int k = 0; k < chunk->count; k++) {
+            draw->points[2 * k] = chunk->points[2 * k] * scale;
+            draw->points[2 * k + 1] = -chunk->points[2 * k + 1] * scale;
+        }
+        draw->reserved[0] = hot ? 0 : (float)shader;
+        memcpy(draw->material_parameters, parameters, sizeof parameters);
+        /* The pattern stays where the chunk was carved and turns with it. */
+        draw->material_frame[0] = chunk->origin.x;
+        draw->material_frame[1] = -chunk->origin.y;
+        draw->material_frame[2] = 1;
+        draw->material_frame[3] = 0;
+    }
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -639,6 +723,7 @@ static void collect(
             if (shader && !render_shader_is_shape(shader)) {
                 render_shader_parameters(shader, world, entity, binding->parameters, parameters);
             }
+            const GameMaterialFrame *frame = GAME_GameMaterialFrame_get_const(world, entity);
             const GameReflection *reflection = GAME_GameReflection_get_const(world, entity);
             if (reflection) {
                 for (int i = 0; i < material_mask_collision(mask).count; i++) {
@@ -697,6 +782,14 @@ static void collect(
                 }
                 draw->reserved[0] = render_shader_is_shape(shader) ? 0 : (float)shader;
                 memcpy(draw->material_parameters, parameters, sizeof parameters);
+                if (frame) {
+                    /* The piece's centre and axes where its material was laid out. */
+                    float c = cosf(frame->radians), s = sinf(frame->radians);
+                    draw->material_frame[0] = frame->x + c * rect.x - s * rect.y;
+                    draw->material_frame[1] = -(frame->y + s * rect.x + c * rect.y);
+                    draw->material_frame[2] = c;
+                    draw->material_frame[3] = -s;
+                }
             }
             mask_edges(renderer, mask, position, heading, &appearance, GAME_GameMaterial_get_const(world, entity));
             continue;
@@ -726,6 +819,7 @@ static void collect(
             }
         }
     }
+    collect_chunks(renderer, world, runtime, view);
     const game_particle *items = game_particles_data(particles);
     for (int i = 0; i < game_particles_count(particles); i++) {
         const game_particle *particle = &items[i];
@@ -768,7 +862,10 @@ static void collect(
                     age
                 )
             };
+            /* Particles are matter: they reflect received light as well as
+             * emitting their own. */
             GameMaterial material = { .scene = appearance.color,
+                                      .albedo = appearance.color,
                                       .emission_color = appearance.color,
                                       .border_scene = color,
                                       .border_emission_color = color,
@@ -887,6 +984,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
                                         ? lighting.particle_focal_length
                                         : 300;
     *flat = (CF_V2){ lighting.ambient, lighting.intensity };
+    renderer->lighting = lighting;
     if (renderer->radiance) {
         if (!render_radiance_set_lighting(renderer->radiance, lighting)) {
             snprintf(renderer->error, sizeof renderer->error, "Invalid HRC configuration.");
@@ -1062,6 +1160,7 @@ bool app_scene_renderer_draw(
     collect(renderer, world, particles, runtime, view);
     CHIBI_TRACE_ZONE_END(collect_zone);
     CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
+    render_gpu_timing_start();
     bool drawn = render_material_raster_draw(
         renderer->raster,
         renderer->entities,
@@ -1078,6 +1177,7 @@ bool app_scene_renderer_draw(
     if (!drawn) {
         return false;
     }
+    render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
     const game_materials *materials = engine_materials(runtime);
     if (materials && game_materials_fluid(materials)) {
@@ -1095,6 +1195,7 @@ bool app_scene_renderer_draw(
             snprintf(renderer->error, sizeof renderer->error, "Fluid raster could not allocate or draw its visible material field");
             return false;
         }
+        render_gpu_timing_mark("Fluid raster");
     }
     render_radiance_inputs inputs = { textures.scene,
                                       textures.emission,
@@ -1102,11 +1203,35 @@ bool app_scene_renderer_draw(
                                       textures.albedo,
                                       textures.normal };
     inputs.background = scene_background(renderer, world, &camera);
+    render_gpu_timing_mark("Background");
+    inputs.relief = textures.relief;
     if (materials && game_materials_fluid(materials)) {
         inputs.visibility = render_fluid_raster_visibility(renderer->fluid);
     }
-    if (!render_radiance_draw(renderer->radiance, inputs, view, renderer->output)) {
+    bool hdr = renderer->lighting.tone_mapping > 0;
+    CF_Canvas composite = renderer->output;
+    if (hdr) {
+        if (!renderer->hdr) {
+            renderer->hdr = render_post_2d_new();
+        }
+        if (!renderer->hdr || !render_post_2d_resize(renderer->hdr, width, height)) {
+            snprintf(renderer->error, sizeof renderer->error, "Tone mapping requires filterable RGBA16F render targets");
+            return false;
+        }
+        composite = render_post_2d_target(renderer->hdr);
+    }
+    if (!render_radiance_draw(renderer->radiance, inputs, view, composite)) {
         return false;
+    }
+    if (hdr) {
+        render_post_2d_present(
+            renderer->hdr,
+            renderer->output,
+            renderer->lighting.exposure,
+            renderer->lighting.bloom,
+            fmodf(renderer->time * 60, 64)
+        );
+        render_gpu_timing_mark("Tone map and bloom");
     }
     CF_Canvas output = renderer->output;
     if (acount(renderer->reflectors)) {

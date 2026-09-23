@@ -484,14 +484,16 @@ static float *bind_parameters(const field_program *p, field_context ctx, char *e
     return values;
 }
 
-/* Keep X-only and constant instructions across rows. A row's working set is
- * bounded by width * instruction count, independent of grid height. */
+/* Keep X-only and constant instructions across rows; reuse is zero on the first
+ * row a buffer sees. A row's working set is bounded by width * instruction
+ * count, independent of grid height. */
 static bool bake_row(
     const field_program *p,
     float *slots,
     const float *parameters,
     unsigned seed,
     field_grid grid,
+    int reuse,
     int row
 )
 {
@@ -499,7 +501,7 @@ static bool bake_row(
     float y = grid.center_y + (row + .5f - grid.height * .5f) * grid.cell_size;
     for (int i = 0; i < stride; i++) {
         field_ir ir = p->code[i];
-        if (row && !(ir.spatial & 2)) {
+        if (reuse && !(ir.spatial & 2)) {
             continue;
         }
         int count = ir.spatial & 1 ? grid.width : 1;
@@ -520,11 +522,57 @@ static bool bake_row(
     return true;
 }
 
+typedef struct
+{
+    const field_program *program;
+    const float *parameters;
+    unsigned seed;
+    field_grid grid;
+    float *out;
+    int rows_per_band;
+    /* Set by any failing band; bands are independent otherwise. */
+    bool invalid;
+} bake_job;
+
+static void bake_bands(int start, int end, uint32_t, void *context)
+{
+    bake_job *job = context;
+    int stride = acount(job->program->code);
+    float *slots = xcalloc((size_t)stride * job->grid.width, sizeof(float));
+    for (int band = start; band < end; band++) {
+        int first = band * job->rows_per_band;
+        int last = first + job->rows_per_band < job->grid.height
+                     ? first + job->rows_per_band
+                     : job->grid.height;
+        /* Each band recomputes its row-invariant instructions on its first row. */
+        for (int y = first; y < last; y++) {
+            if (!bake_row(
+                    job->program,
+                    slots,
+                    job->parameters,
+                    job->seed,
+                    job->grid,
+                    y - first == 0 ? 0 : y,
+                    y
+                )) {
+                job->invalid = true;
+                break;
+            }
+            for (int x = 0; x < job->grid.width; x++) {
+                job->out[y * job->grid.width + x] = slots
+                    [x * stride + job->program->output];
+            }
+        }
+    }
+    free(slots);
+}
+
 bool field_program_bake(
     const field_program *p,
     field_context ctx,
     field_grid grid,
     float *out,
+    const game_task_system *tasks,
     char *error,
     size_t size
 )
@@ -539,21 +587,23 @@ bool field_program_bake(
     if (!parameters) {
         return false;
     }
-    int stride = acount(p->code);
-    float *slots = xcalloc((size_t)stride * grid.width, sizeof(float));
-    bool valid = true;
-    for (int y = 0; y < grid.height && valid; y++) {
-        valid = bake_row(p, slots, parameters, ctx.seed, grid, y);
-        for (int x = 0; x < grid.width && valid; x++) {
-            out[y * grid.width + x] = slots[x * stride + p->output];
-        }
+    bool parallel = tasks && tasks->workers > 1 && grid.height >= 32;
+    bake_job job = { p,    parameters, ctx.seed,
+                     grid, out,        parallel ? 8 : grid.height,
+                     false };
+    int bands = (grid.height + job.rows_per_band - 1) / job.rows_per_band;
+    void *task = parallel ? tasks->enqueue(bake_bands, bands, 1, &job, tasks->user)
+                          : NULL;
+    if (task) {
+        tasks->finish(task, tasks->user);
+    } else if (!parallel) {
+        bake_bands(0, bands, 0, &job);
     }
-    if (!valid) {
+    if (job.invalid) {
         fail(error, size, "Field evaluation produced an invalid scalar");
     }
-    free(slots);
     free(parameters);
-    return valid;
+    return !job.invalid;
 }
 
 bool field_program_sample(
@@ -566,5 +616,5 @@ bool field_program_sample(
     size_t size
 )
 {
-    return field_program_bake(p, ctx, (field_grid){ 1, 1, 1, x, y }, out, error, size);
+    return field_program_bake(p, ctx, (field_grid){ 1, 1, 1, x, y }, out, NULL, error, size);
 }

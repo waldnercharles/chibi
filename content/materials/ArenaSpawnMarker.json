@@ -2,7 +2,7 @@
   "version": 3,
   "name": "ArenaSpawnMarker",
   "domain": "material",
-  "id_counter": 16,
+  "id_counter": 17,
   "description": "Thin rose arrival outline, matching the incoming enemy and pointing toward the arena center.",
   "variables": [],
   "graphs": [
@@ -113,6 +113,17 @@
               "flags": 0,
               "group": 0,
               "default": true
+            },
+            {
+              "id": 17,
+              "name": "Height",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ],
           "outputs": []

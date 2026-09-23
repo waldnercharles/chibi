@@ -622,7 +622,7 @@ void test_shader_graph()
     graph_init(&material);
     shader_graph_add_output(&material, false);
     assert(shader_graph_from_graph(&material, &ir, &error));
-    assert(ir.output_count == 7);
+    assert(ir.output_count == 8);
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 1);
     near(outputs[0][1], 1);
@@ -633,6 +633,7 @@ void test_shader_graph()
     near(outputs[4][0], 0);
     near(outputs[5][0], 1);
     near(outputs[6][0], 0);
+    near(outputs[7][0], 0);
     graph_free(&material);
     shader_graph_free(&ir);
     /* Editing a scalar default before connecting a vector must discard the old union bits. */

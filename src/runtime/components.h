@@ -93,16 +93,41 @@ MaterialFluidWorld;
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialDestructionWorld)
 {
     int fragment_limit;
+    /* Small rock chunks thrown from craters; zero disables them. */
+    int debris_limit;
 }
 MaterialDestructionWorld;
 
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
 {
     float chip_speed, fragment_speed, blast_speed, release_speed;
+    /* Grit sprays from each crater around its outward surface normal: at
+     * most dust_limit grains, one per crumbled cell. */
     int dust_limit;
     float dust_speed_min, dust_speed_max;
     float dust_lifetime_min, dust_lifetime_max;
     float dust_size_min, dust_size_max;
+    /* Grit color; zero uses the source appearance color. */
+    unsigned dust_color;
+    /* Hot strikes add spark_density sparks per crumbled cell per unit of the
+     * striker's heat. Sparks start in the striker's light color, cool through
+     * spark_color and fade. */
+    float spark_density;
+    unsigned spark_color;
+    float spark_emission;
+    /* Rock chunks thrown per crater: one per chunk_cells crumbled cells, at
+     * most chunk_limit. Sizes are world-unit radii. */
+    int chunk_limit;
+    float chunk_cells;
+    float chunk_size_min, chunk_size_max;
+    float chunk_speed_min, chunk_speed_max;
+    float chunk_lifetime;
+    /* Gas parcels released into the fluid world per crater; zero disables. */
+    int smoke_count;
+    unsigned smoke_color;
+    float smoke_lifetime;
+    /* Outward drift speed of the released gas in world units per second. */
+    float smoke_speed;
 }
 MaterialBreakProfile;
 
@@ -181,6 +206,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFragmentGlow)
 }
 GameFragmentGlow;
 
+/* Where an entity's local frame sat when its material was laid out. Fragments
+ * keep their source's frame, so world-space material patterns stay attached to
+ * a broken piece as it moves and rotates. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialFrame)
+{
+    float x;
+    float y;
+    float radians;
+}
+GameMaterialFrame;
+
 /* Authored, axis-aligned procedural terrain. Appearance and Material on the
  * source style its chunks; collision and destruction use the generated cells. */
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
@@ -201,6 +237,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
      * is limited to stream_budget tiles per boundary. */
     float stream_radius;
     int stream_budget;
+    /* Solid islands and air pockets smaller than this many cells that lie
+     * wholly inside a tile are removed at generation; zero keeps them. */
+    int island_cells;
 }
 MaterialTerrain;
 
@@ -320,7 +359,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
     unsigned border_emission_color;
     unsigned border_albedo;
     unsigned border_filter;
-    /* Received-light gain near silhouettes. Zero disables; no unlit outline. */
+    /* Gain of light received near the surface of a solid, reaching
+     * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
     float edge_light;
 }
 GameMaterial;
@@ -770,6 +810,27 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float particle_focal_length;
     int trace_levels;
     bool feedback;
+    /* Frames over which the four light directions are solved: 1, 2 or 4. Above
+     * one, each frame solves a share and reuses the rest from earlier frames,
+     * shifted with the camera. */
+    int split_frames;
+    /* World units that light received near a solid's surface reaches into it,
+     * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
+    float surface_radius;
+    /* Sideways reach of nearby light relative to its height above the plane;
+     * larger values deepen normal-mapped relief. */
+    float surface_relief;
+    /* Outward tilt of solid normals near silhouettes, which catches rim light. */
+    float surface_bevel;
+    /* Gain of glossy highlights on solids with low material roughness. */
+    float specular;
+    /* 0 clamps the composite to the display range. 1 keeps it in HDR and
+     * presents it with bloom, exposure and AgX tone mapping. */
+    int tone_mapping;
+    /* Exposure in EV before tone mapping. */
+    float exposure;
+    /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
+    float bloom;
 }
 GameHRC2D;
 
@@ -793,7 +854,12 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .upscale_threshold = .1f,
                         .particle_focal_length = 300,
                         .trace_levels = 3,
-                        .feedback = true };
+                        .feedback = true,
+                        .split_frames = 1,
+                        .surface_radius = 24,
+                        .surface_relief = 1.5f,
+                        .surface_bevel = 1,
+                        .specular = 1 };
 }
 
 /* Stored map positions for landmarks and objectives. Hidden until explored,

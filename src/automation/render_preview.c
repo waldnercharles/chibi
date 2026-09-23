@@ -569,12 +569,13 @@ static char *base64(const void *data, size_t size)
     return output;
 }
 
-bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
+/* Waits for the current frame's pixels; the caller frees them. */
+static CF_Pixel *read_pixels(int width, int height, char *error, size_t error_size)
 {
     CF_Readback readback = cf_canvas_readback(cf_app_get_canvas());
     if (!readback.id) {
         set_error(error, error_size, "GPU readback could not be started");
-        return false;
+        return NULL;
     }
     int size = cf_readback_size(readback);
     size_t expected = (size_t)width * (size_t)height * sizeof(CF_Pixel);
@@ -583,7 +584,7 @@ bool chibi_preview_readback(int width, int height, char **encoded, char *error, 
         if (error_size) {
             snprintf(error, error_size, "GPU readback returned %d bytes; expected %zu", size, expected);
         }
-        return false;
+        return NULL;
     }
     CF_Pixel *pixels = xmalloc((size_t)size);
     uint64_t start = cf_get_ticks();
@@ -592,27 +593,54 @@ bool chibi_preview_readback(int width, int height, char **encoded, char *error, 
             free(pixels);
             cf_destroy_readback(readback);
             set_error(error, error_size, "GPU readback timed out");
-            return false;
+            return NULL;
         }
         cf_sleep(1);
     }
     bool ok = cf_readback_data(readback, pixels, size) == size;
-    if (ok) {
-        CF_Image image = { width, height, pixels };
-        void *png = NULL;
-        int png_size = 0;
-        ok = !cf_is_error(cf_image_save_png_to_memory(&image, &png, &png_size)) &&
-             png && png_size > 0;
-        if (ok) {
-            *encoded = base64(png, (size_t)png_size);
-            ok = *encoded != NULL;
-        }
-        cf_free(png);
-    }
-    free(pixels);
     cf_destroy_readback(readback);
     if (!ok) {
+        free(pixels);
+        set_error(error, error_size, "GPU readback returned incomplete data");
+        return NULL;
+    }
+    return pixels;
+}
+
+bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
+{
+    CF_Pixel *pixels = read_pixels(width, height, error, error_size);
+    if (!pixels) {
+        return false;
+    }
+    CF_Image image = { width, height, pixels };
+    void *png = NULL;
+    int png_size = 0;
+    bool ok = !cf_is_error(cf_image_save_png_to_memory(&image, &png, &png_size)) &&
+              png && png_size > 0;
+    if (ok) {
+        *encoded = base64(png, (size_t)png_size);
+        ok = *encoded != NULL;
+    }
+    cf_free(png);
+    free(pixels);
+    if (!ok) {
         set_error(error, error_size, "GPU readback could not be encoded as PNG");
+    }
+    return ok;
+}
+
+bool chibi_preview_readback_raw(int width, int height, FILE *out, char *error, size_t error_size)
+{
+    CF_Pixel *pixels = read_pixels(width, height, error, error_size);
+    if (!pixels) {
+        return false;
+    }
+    size_t count = (size_t)width * (size_t)height;
+    bool ok = fwrite(pixels, sizeof *pixels, count, out) == count;
+    free(pixels);
+    if (!ok) {
+        set_error(error, error_size, "Could not write captured frame");
     }
     return ok;
 }

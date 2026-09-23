@@ -61,7 +61,11 @@ For reproducible rendering measurements, `previewScene` accepts
 `freeze_simulation` and an `input_timeline` spanning preparation and advancing
 render frames. Results include initial/final runtime state and the active GPU
 backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
-supported Macs. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+supported Macs. Without vendor tools, `pass_timing` waits for the GPU after each
+render pass and reports average milliseconds per pass, and `capture_frames`
+writes every measured frame to a raw RGBA8 file for judging motion and temporal
+effects. Both serialize or read back each frame, so their frame totals are not
+benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 
 Use the MCP for authored content whenever it is available. Route requests by
 domain:

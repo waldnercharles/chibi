@@ -610,10 +610,17 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         "emission=max(result[1].rgb,vec3(0));\n"
         " float opacity=clamp(result[5].x,0.0,1.0); float "
         "metallic=clamp(result[3].x,0.0,1.0); bool unlit=result[6].x>0.5;\n"
+        " float gloss=1.0-clamp(result[2].x,0.0,1.0);\n"
+        /* The surface normal faces the camera along +Y; its XZ tilt becomes
+         * world X and up. A normal facing away keeps a maximal tilt. */
+        " vec3 n=result[4].xyz; float n2=dot(n,n); vec2 tilt=vec2(0);\n"
+        " if(n2>1e-8) { tilt=n.xz*inversesqrt(n2); float t2=dot(tilt,tilt); "
+        "if(n.y<=0.0&&t2>1e-8) tilt*=0.999*inversesqrt(t2); }\n"
         " result[0]=vec4(base,opacity); result[1]=vec4(emission,opacity);\n"
         " result[2]=vec4(unlit?vec3(0):base*(1.0-metallic),opacity); "
         "result[3]=vec4(vec3(opacity),opacity);\n"
-        " for(int i=0;i<4;i++)result[i+4]=result[i];\n}\n"
+        " result[4]=unlit?vec4(0):vec4(tilt,gloss,result[7].x);\n"
+        " result[5]=vec4(0); result[6]=vec4(0); result[7]=vec4(0);\n}\n"
     );
     return text;
 }

@@ -17,6 +17,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
@@ -129,9 +130,12 @@ static const editor_choices *resolve_pin_choices(const node *n, int output, int 
         n->desc == registry_node_by_name("Shader Image Texture")) {
         return &scene->image_choices;
     }
-    if (!output && pin == 0 &&
-        (n->desc == registry_node_by_name("Has Entities With Component") ||
-         n->desc == registry_node_by_name("Find Entities With Component"))) {
+    component_node_kind component = component_node_kind_of(n->desc);
+    if (!output &&
+        ((component && pin == component_node_setting(component)) ||
+         (pin == 0 &&
+          (n->desc == registry_node_by_name("Has Entities With Component") ||
+           n->desc == registry_node_by_name("Find Entities With Component"))))) {
         return &scene->component_choices;
     }
     if (!output && pin == 1 && n->desc == registry_node_by_name("Spawn Prototype")) {

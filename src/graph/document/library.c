@@ -3,6 +3,7 @@
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/state_nodes.h"
 
 #include <stdio.h>
@@ -75,7 +76,8 @@ const char *behavior_asset_validate_library(const behavior_asset *asset)
         }
         for (int i = 0; i < acount(graph->nodes); i++) {
             const node *n = graph->nodes[i];
-            if (!behavior_library_node_allowed(asset->domain, n->desc)) {
+            if (!behavior_library_node_allowed(asset->domain, n->desc) ||
+                component_node_self(graph, n)) {
                 return "This operation is unavailable in a function library.";
             }
             if (asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
@@ -499,5 +501,9 @@ behavior_asset *behavior_asset_link_libraries(
         }
     }
     afree(link.imports);
+    if (result && behavior_asset_lower_component_nodes(result, error, error_size)) {
+        behavior_asset_free(result);
+        result = NULL;
+    }
     return result;
 }

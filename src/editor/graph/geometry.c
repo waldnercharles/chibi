@@ -6,6 +6,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/math.h"
@@ -229,6 +230,14 @@ static int ed_data_rows(const editor *e, const graph *g, const node *n, int kind
 
 void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap)
 {
+    /* A generated field setter reads like Set Component showing that field. */
+    if (n->desc->component_kind == NODE_COMPONENT_SET_FIELD && n->input_count == 3 &&
+        (pin == &n->input_pins[1] || pin == &n->input_pins[2])) {
+        const type_desc *type = n->desc->component->type;
+        const char *field = type->fields[n->desc->component_field].name;
+        editor_identifier_label(pin == &n->input_pins[1] ? field : "Entity", buf, cap);
+        return;
+    }
     editor_identifier_label(pin->name ? pin->name : "Pin", buf, cap);
     if (!pin->field_source) {
         return;

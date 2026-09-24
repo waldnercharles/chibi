@@ -4,6 +4,10 @@ set -eu
 build_dir=$1
 shift
 source_dir=$(pwd -P)
+# Commits run the clang-format CI checks (.githooks/pre-commit).
+if [ -z "$(git -C "$source_dir" config --get core.hooksPath 2>/dev/null)" ]; then
+	git -C "$source_dir" config core.hooksPath .githooks 2>/dev/null || :
+fi
 package_prefix=
 if [ -f "$source_dir/tools/sdl_package.sh" ]; then
 	package_prefix=$(sh "$source_dir/tools/sdl_package.sh" path "$@" 2>/dev/null) || package_prefix=

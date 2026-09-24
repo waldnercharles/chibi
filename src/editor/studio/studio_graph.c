@@ -312,7 +312,7 @@ static value_kind value_kind_of(const studio *s, node *n, int output, int p)
     if (spec->container != PIN_CONTAINER_SINGLE) {
         return VALUE_NONE;
     }
-    if (choices && choices->count > 0) {
+    if (choices && editor_choices_count(choices) > 0) {
         return VALUE_CHOICE;
     }
     if (spec->type == PIN_BOOL) {
@@ -2126,24 +2126,33 @@ static void emit_value_in(studio *s, kit *k, node *n, int output, int p)
     double number = 0;
     float vector[4] = { 0 };
     char text[256];
-    if (choices && choices->count > 0) {
-        const char *labels[64];
-        int count = choices->count < 64 ? choices->count : 64, index = 0;
+    int count = choices ? editor_choices_count(choices) : 0;
+    if (count > 0) {
+        /* Name catalogs, such as a component setting, match by name. */
+        const char **labels = NULL;
+        int index = -1;
         for (int i = 0; i < count; i++) {
-            labels[i] = choices->items[i].label;
-            if (choices->items[i].value ==
-                (spec->type == PIN_ENUM ? value.e : value.i)) {
-                index = i;
-            }
+            editor_choice choice = editor_choice_at(choices, i);
+            apush(labels, choice.label);
+            bool selected = spec->type == PIN_NAME
+                              ? value.str && choice.name &&
+                                    !strcmp(value.str, choice.name)
+                              : choice.value ==
+                                    (spec->type == PIN_ENUM ? value.e : value.i);
+            index = selected ? i : index;
         }
         if (kit_choice(k, "v", &index, labels, count, flags)) {
-            if (spec->type == PIN_ENUM) {
-                value.e = (int32_t)choices->items[index].value;
+            editor_choice choice = editor_choice_at(choices, index);
+            if (spec->type == PIN_NAME) {
+                value.str = choice.name;
+            } else if (spec->type == PIN_ENUM) {
+                value.e = choice.value;
             } else {
-                value.i = (int32_t)choices->items[index].value;
+                value.i = choice.value;
             }
             changed = true;
         }
+        afree(labels);
     } else if (spec->type == PIN_BOOL) {
         bool b = value.b;
         if (kit_checkbox(k, "v", &b, NULL, flags)) {

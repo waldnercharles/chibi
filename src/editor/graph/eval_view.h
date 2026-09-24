@@ -29,6 +29,9 @@ void eval_view_set_catalog(eval_view *v, const behavior_asset *const *assets, in
 void eval_view_set_run(eval_view *v, const flow_run *run);
 void eval_view_set_instance(eval_view *v, const behavior_instance *bi);
 const char *eval_view_error(const eval_view *v);
+/* The graph previews run: g, or its linked and lowered copy when the asset
+ * references libraries or holds component nodes. NULL when linking fails. */
+graph *eval_view_graph(eval_view *v, graph *g);
 
 /* Formatted value for a DATA output pin, or "" for EXEC/bad pins. */
 const char *eval_view_output(const eval_view *v, const node *n, int pin);

@@ -10,6 +10,7 @@
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/generated.h"
@@ -1098,8 +1099,7 @@ int ed_convert_binding(editor *e)
     }
     char *before = ed_snapshot(e);
     node *getter = NULL;
-    node *break_node = NULL;
-    int break_pin = -1;
+    int getter_pin = 0;
     if (binding->kind == PIN_BINDING_VARIABLE) {
         if ((binding->source_asset && e->asset->name &&
              strcmp(binding->source_asset, e->asset->name) != 0)) {
@@ -1134,71 +1134,41 @@ int ed_convert_binding(editor *e)
                 getter = NULL;
             }
         }
-    } else if (binding->kind == PIN_BINDING_COMPONENT) {
-        const ecs_component_desc *component = ed_component_by_key(binding->component_key);
-        char name[128];
-        if (component) {
-            snprintf(name, sizeof name, "Get_%s", component->name);
-            const node_desc *desc = registry_node_by_name(name);
-            if (desc) {
-                getter = graph_add_node(e->active_graph, desc);
-            }
-        }
-    } else if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
-        const ecs_component_desc *component = ed_component_by_key(binding->component_key);
-        const type_field *field = ed_binding_component_field(binding);
-        if (!component || !field || strchr(binding->field_name, '.')) {
+    } else if (binding->kind == PIN_BINDING_COMPONENT || binding->kind == PIN_BINDING_COMPONENT_FIELD) {
+        /* A field reads through a Get Component showing only that field. */
+        if (!ed_binding_can_convert(e, binding)) {
             free(before);
             return -1;
         }
-        char get_name[128];
-        char break_name[128];
-        snprintf(get_name, sizeof get_name, "Get_%s", component->name);
-        snprintf(break_name, sizeof break_name, "Break_%s", component->name);
-        const node_desc *get_desc = registry_node_by_name(get_name);
-        const node_desc *break_desc = registry_node_by_name(break_name);
-        if (!get_desc || !break_desc) {
-            free(before);
-            return -1;
+        const ecs_component_desc *component = ed_component_by_key(binding->component_key);
+        pin_value key = { .type = PIN_NAME, .str = component->key };
+        getter = graph_add_node(e->active_graph, &NODE_GetComponent);
+        bool field = binding->kind == PIN_BINDING_COMPONENT_FIELD;
+        if (graph_set_pin_default(e->active_graph, getter, 0, 0, &key) ||
+            (field && graph_expose_output_fields(e->active_graph, getter, 0))) {
+            graph_remove_node(e->active_graph, getter);
+            getter = NULL;
         }
-        getter = graph_add_node(e->active_graph, get_desc);
-        break_node = graph_add_node(e->active_graph, break_desc);
-        if (getter && break_node &&
-            graph_connect_data(e->active_graph, getter, 0, break_node, 0) == 0) {
-            for (int i = 0; i < break_node->output_count; i++) {
-                if (break_node->output_pins[i].name &&
-                    !strcmp(break_node->output_pins[i].name, field->name)) {
-                    break_pin = i;
-                    break;
-                }
+        for (int i = 1; field && getter && i < getter->output_count; i++) {
+            if (!strcmp(getter->output_pins[i].field_name, binding->field_name)) {
+                getter_pin = i;
             }
         }
     } else if (binding->kind == PIN_BINDING_DELTA_TIME) {
         getter = graph_add_node(e->active_graph, &NODE_DeltaTime);
     }
     if (!before || !getter ||
-        (binding->kind == PIN_BINDING_COMPONENT_FIELD &&
-         (!break_node || break_pin < 0 ||
-          graph_connect_data(e->active_graph, break_node, break_pin, target, e->binding_pin) !=
-              0)) ||
-        (binding->kind != PIN_BINDING_COMPONENT_FIELD &&
-         graph_connect_data(e->active_graph, getter, 0, target, e->binding_pin) != 0) ||
-        graph_set_pin_binding(e->active_graph, target, 0, e->binding_pin, NULL) != 0) {
-        if (break_node) {
-            graph_remove_node(e->active_graph, break_node);
-        }
+        graph_connect_data(e->active_graph, getter, getter_pin, target, e->binding_pin) != 0 ||
+        graph_set_pin_binding(e->active_graph, target, 0, e->binding_pin, NULL) != 0 ||
+        (getter_pin && graph_hide_output_fields(e->active_graph, getter, 0) != 0)) {
         if (getter) {
             graph_remove_node(e->active_graph, getter);
         }
         free(before);
         return -1;
     }
-    getter->x = target->x - (break_node ? 260.0f : 190.0f);
+    getter->x = target->x - 190.0f;
     getter->y = target->y;
-    if (break_node) {
-        break_node->x = target->x - 110.0f;
-        break_node->y = target->y;
-    }
     e->edit_pending = 1;
     ed_push_string(&e->undo, before);
     ed_free_string_stack(&e->redo);
@@ -1235,25 +1205,12 @@ bool ed_binding_can_convert(const editor *e, const pin_binding *binding)
     }
     if (binding->kind == PIN_BINDING_COMPONENT) {
         const ecs_component_desc *component = ed_component_by_key(binding->component_key);
-        if (!component) {
-            return false;
-        }
-        char name[128];
-        snprintf(name, sizeof name, "Get_%s", component->name);
-        return registry_node_by_name(name) != NULL;
+        return component && component_by_key(component->key);
     }
     if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
-        const type_field *field = ed_binding_component_field(binding);
         const ecs_component_desc *component = ed_component_by_key(binding->component_key);
-        if (!field || !component || !component->name ||
-            strchr(binding->field_name, '.')) {
-            return false;
-        }
-        char get_name[128];
-        char break_name[128];
-        snprintf(get_name, sizeof get_name, "Get_%s", component->name);
-        snprintf(break_name, sizeof break_name, "Break_%s", component->name);
-        return registry_node_by_name(get_name) && registry_node_by_name(break_name);
+        return ed_binding_component_field(binding) && component &&
+               component_by_key(component->key) && !strchr(binding->field_name, '.');
     }
     return binding->kind == PIN_BINDING_DELTA_TIME;
 }

@@ -10,12 +10,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static int editor_choices_count(const editor_choices *choices)
+int editor_choices_count(const editor_choices *choices)
 {
     return choices->enumeration ? choices->enumeration->value_count : choices->count;
 }
 
-static editor_choice editor_choice_at(const editor_choices *choices, int index)
+editor_choice editor_choice_at(const editor_choices *choices, int index)
 {
     if (!choices->enumeration) {
         return choices->items[index];

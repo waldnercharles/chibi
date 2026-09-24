@@ -87,7 +87,9 @@ static arrange_score arrange_measure_links(
 
 static void arrange_measure_checks()
 {
-    const arrange_point grid[] = { { 0, 0 }, { 0, 300 }, { 600, 0 }, { 600, 300 } };
+    /* Skewed so the wires do not cross exactly on a shared sample point,
+     * which the strict segment test only resolves under fused rounding. */
+    const arrange_point grid[] = { { 0, 0 }, { 0, 300 }, { 600, 0 }, { 600, 240 } };
     const arrange_link swapped[] = { { .from = 0, .to = 3 }, { .from = 1, .to = 2 } };
     const arrange_link parallel[] = { { .from = 0, .to = 2 }, { .from = 1, .to = 3 } };
     const arrange_link fanned[] = { { .from = 0, .to = 2 }, { .from = 0, .to = 3 } };

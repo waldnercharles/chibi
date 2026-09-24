@@ -428,6 +428,7 @@ static void authoring()
     int source_pin = -1;
     assert(graph_input_source(f.g, set, 2, &source, &source_pin) && source == f.event);
     assert(component_node_show_field(f.g, set, "y", true) == 0);
+    assert(graph_recombine_pin(f.g, set, 0, 2) == -1 && component_node_split(set));
     assert(graph_recombine_pin(f.g, set, 0, 3) == 3 && !component_node_split(set));
 
     /* An Entity binding reads another entity, so it lowers to the entity form. */
@@ -475,9 +476,33 @@ static void authoring()
     behavior_asset_free(f.asset);
 
     assert(!behavior_asset_load_json(
-        "version: 3\nname: Unknown\ngraphs:\n- kind: event\n  nodes:\n"
+        "version: 3\nname: Unknown\nid_counter: 10\ngraphs:\n- kind: event\n  "
+        "name: \"\"\n  nodes:\n"
         "  - {id: 1, type: Get Component, inputs: {Component: GameNothing}}\n"
     ));
+    assert(strstr(graph_last_error(), "unknown component"));
+    assert(!behavior_asset_load_json(
+        "version: 3\nname: Unknown field\nid_counter: 10\ngraphs:\n- kind: "
+        "event\n  name: \"\"\n  nodes:\n"
+        "  - {id: 1, type: Set Component, inputs: {Component: GameHealth, "
+        "bogus: 1}}\n"
+    ));
+    assert(strstr(graph_last_error(), "has no pin bogus"));
+    /* A document may name the component and write only field inputs. */
+    behavior_asset *named = behavior_asset_load_json(
+        "version: 3\nname: Named\nid_counter: 10\ngraphs:\n- kind: event\n  "
+        "name: \"\"\n  nodes:\n"
+        "  - {id: 1, type: Set Component, inputs: {Component: GameHealth, "
+        "current: 4}}\n"
+    );
+    assert(named);
+    node *written = named->graph->nodes[0];
+    assert(!strcmp(component_node_key(written), "game.GameHealth"));
+    assert(
+        component_node_split(written) && written->input_count == 4 &&
+        written->input_pins[3].default_value.i == 4
+    );
+    behavior_asset_free(named);
 
     /* Libraries take explicit entities; a Self read belongs to a behavior. */
     behavior_asset *library = behavior_asset_new("Component library");

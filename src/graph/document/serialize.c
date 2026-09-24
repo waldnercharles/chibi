@@ -549,12 +549,13 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
 }
 
 /* A component node's Value pins follow its Component setting, and a Set that
- * names field inputs writes those fields instead of Value. */
-static int prepare_component_node(graph *g, node *n, yyjson_val *v)
+ * names field inputs writes those fields instead of Value. Documents may name
+ * the component; the setting stores its key. */
+static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
     if (!kind) {
-        return 0;
+        return load_node_pins(g, n, v, refs);
     }
     yyjson_val *inputs = yyjson_obj_get(v, "inputs");
     if (inputs && !yyjson_is_obj(inputs)) {
@@ -582,6 +583,13 @@ static int prepare_component_node(graph *g, node *n, yyjson_val *v)
         serialize_error_set("unknown component \"%s\"", component);
         return -1;
     }
+    if (load_node_pins(g, n, v, refs)) {
+        return -1;
+    }
+    const ecs_component_desc *found = component_by_key(component);
+    n->input_pins[component_node_setting(kind)].default_value.str = found
+                                                                      ? found->key
+                                                                      : "";
     return 0;
 }
 
@@ -655,7 +663,7 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
         n->breakpoint_enabled = breakpoint_enabled &&
                                 yyjson_is_bool(breakpoint_enabled) &&
                                 yyjson_get_bool(breakpoint_enabled);
-        if (prepare_component_node(g, n, v) || load_node_pins(g, n, v, refs)) {
+        if (load_component_pins(g, n, v, refs)) {
             return -1;
         }
         if (n->id == 0) {

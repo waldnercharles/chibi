@@ -1829,11 +1829,12 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
     }
     component_node_kind component = component_node_kind_of(n->desc);
     if (component) {
-        /* Set's Value follows Exec, Component and Entity. */
-        return !output && component_node_split(n) && index >= 0 &&
+        /* Set's field inputs, and Value, follow Exec, Component and Entity. */
+        int first = component_node_setting(component) + 2;
+        return !output && component_node_split(n) && index >= first &&
                        index < n->input_count &&
                        !component_node_split_value(g, n, false)
-                 ? component_node_setting(component) + 2
+                 ? first
                  : -1;
     }
     pin_spec *pins = output ? n->output_pins : n->input_pins;

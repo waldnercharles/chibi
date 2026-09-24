@@ -4,11 +4,6 @@ domain: event
 id_counter: 4
 description: An entity reached zero health. Source identifies the accepted lethal damage source.
 variables:
-- id: 3
-  name: Source
-  type: handle
-  type_name: ecs.entity
-  category: Payload
+- {id: 3, name: Source, type: handle, type_name: ecs.entity, category: Payload}
 graphs:
-- kind: event
-  name: Events
+- {kind: event, name: Events}

@@ -202,6 +202,8 @@ pin_value graph_pin_initial_default(const pin_spec *template_pin);
  * connected projections. Struct outputs include event and local function
  * signatures and can expose nested struct fields. */
 const type_desc *graph_output_struct(const node *n, int output_index);
+/* The pin that exposes one field of the struct output at source_index. */
+pin_spec graph_field_pin(const node *n, int source_index, const type_field *field);
 int graph_expose_output_fields(graph *g, node *n, int output_index);
 int graph_hide_output_fields(graph *g, node *n, int output_index);
 const type_field *graph_output_field(const node *n, int output_index, int *source_index);

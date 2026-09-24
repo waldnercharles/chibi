@@ -7,79 +7,30 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Begin
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Begin}
   - id: 3
     type: Event
     reference_name: Damage
     outputs:
-    - 4
-    - id: 5
-      declaration_id: 2
-      name: Amount
-      type: int
-      kind: data
-    - id: 6
-      declaration_id: 3
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
   - id: 7
     type: Self
     outputs:
-    - id: 8
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 9
     type: Set Material Parameter
-    inputs:
-    - 10
-    - 11
-    - id: 12
-      default: Flash
-    - id: 13
-      default: 3.0
-    outputs: [14]
+    inputs: {Name: Flash, Value: 3.0}
   - id: 15
     type: Delay
-    inputs:
-    - 16
-    - id: 17
-      default: 0.18
-    outputs: [18]
+    inputs: {Duration: 0.18}
   - id: 19
     type: Set Material Parameter
-    inputs:
-    - 20
-    - 21
-    - id: 22
-      default: Flash
-    - 23
-    outputs: [24]
+    inputs: {Name: Flash}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 9
-    to_pin: 10
-  - from: 3
-    from_pin: 4
-    to: 9
-    to_pin: 10
-  - from: 7
-    from_pin: 8
-    to: 9
-    to_pin: 11
-  - from: 7
-    from_pin: 8
-    to: 19
-    to_pin: 21
-  - from: 9
-    from_pin: 14
-    to: 15
-    to_pin: 16
-  - from: 15
-    from_pin: 18
-    to: 19
-    to_pin: 20
+  - {from: 1.Then, to: 9.Exec}
+  - {from: 3.Then, to: 9.Exec}
+  - {from: 7.Self, to: 9.Entity}
+  - {from: 7.Self, to: 19.Entity}
+  - {from: 9.Then, to: 15.Exec}
+  - {from: 15.Completed, to: 19.Exec}

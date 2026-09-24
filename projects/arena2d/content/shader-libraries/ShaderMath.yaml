@@ -4,8 +4,7 @@ domain: shader-library
 id_counter: 163
 description: Shared pulse and ring masking functions with explicit inputs.
 graphs:
-- kind: event
-  name: Functions
+- {kind: event, name: Functions}
 - id: 56
   kind: function
   name: Pulse
@@ -16,71 +15,27 @@ graphs:
   - id: 57
     type: Function Entry
     outputs:
-    - id: 61
-      name: Time
-      type: float
-      type_name: null
-      kind: data
-    - id: 62
-      name: Speed
-      type: float
-      type_name: null
-      kind: data
+    - {id: 61, name: Time, type: float, type_name: null, kind: data}
+    - {id: 62, name: Speed, type: float, type_name: null, kind: data}
   - id: 59
     type: Return
     inputs:
-    - id: 63
-      name: Brightness
-      type: float
-      type_name: null
-      kind: data
-  - id: 64
-    type: Shader Multiply
-    inputs: [65, 66]
-    outputs: [67]
-  - id: 68
-    type: Shader Sin
-    inputs: [69]
-    outputs: [70]
+    - {id: 63, name: Brightness, type: float, type_name: null, kind: data}
+  - {id: 64, type: Shader Multiply}
+  - {id: 68, type: Shader Sin}
   - id: 71
     type: Shader Add
-    inputs:
-    - 72
-    - id: 73
-      default: 1.0
-    outputs: [74]
+    inputs: {B: 1.0}
   - id: 75
     type: Shader Multiply
-    inputs:
-    - 76
-    - id: 77
-      default: 0.5
-    outputs: [78]
+    inputs: {B: 0.5}
   edges:
-  - from: 57
-    from_pin: 61
-    to: 64
-    to_pin: 65
-  - from: 57
-    from_pin: 62
-    to: 64
-    to_pin: 66
-  - from: 64
-    from_pin: 67
-    to: 68
-    to_pin: 69
-  - from: 68
-    from_pin: 70
-    to: 71
-    to_pin: 72
-  - from: 71
-    from_pin: 74
-    to: 75
-    to_pin: 76
-  - from: 75
-    from_pin: 78
-    to: 59
-    to_pin: 63
+  - {from: 57.Time, to: 64.A}
+  - {from: 57.Speed, to: 64.B}
+  - {from: 64.Value, to: 68.Value}
+  - {from: 68.Value, to: 71.A}
+  - {from: 71.Value, to: 75.A}
+  - {from: 75.Value, to: 59.Brightness}
 - id: 102
   kind: function
   name: Ring Mask
@@ -96,133 +51,63 @@ graphs:
       type: struct
       type_name: ShaderVec2
       kind: data
-      default:
-        x: 0.0
-        "y": 0.0
+      default: {x: 0.0, "y": 0.0}
     - id: 105
       name: Radius
       type: float
       type_name: null
       kind: data
       default: 35.0
-    - id: 106
-      name: Width
-      type: float
-      type_name: null
-      kind: data
-      default: 3.0
+    - {id: 106, name: Width, type: float, type_name: null, kind: data, default: 3.0}
   - id: 107
     type: Return
     inputs:
-    - id: 108
-      name: Mask
-      type: float
-      type_name: null
-      kind: data
+    - {id: 108, name: Mask, type: float, type_name: null, kind: data}
   - id: 110
     type: Shader Circle
     inputs:
-    - id: 111
-      default:
-        x: 0.0
-        "y": 0.0
-    - 112
-    outputs: [113]
+      Position:
+        default: {x: 0.0, "y": 0.0}
   - id: 114
     type: Shader Abs
     inputs:
-    - id: 115
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
     outputs:
-    - id: 116
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
   - id: 117
     type: Shader Max
     inputs:
-    - id: 118
-      flags: 0
-      group: 0
-    - id: 119
-      flags: 0
-      group: 0
-      default: 0.0010000000474974513
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 0.0010000000474974513}
     outputs:
-    - id: 120
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
   - id: 121
     type: Shader Divide
     inputs:
-    - id: 122
-      flags: 0
-      group: 0
-    - id: 123
-      flags: 0
-      group: 0
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
     outputs:
-    - id: 124
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
   - id: 125
     type: Shader Subtract
     inputs:
-    - id: 126
-      flags: 0
-      group: 0
-      default: 1.0
-    - id: 127
-      flags: 0
-      group: 0
+      A: {flags: 0, group: 0, default: 1.0}
+      B: {flags: 0, group: 0}
     outputs:
-    - id: 128
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
   - id: 129
     type: Shader Saturate
     inputs:
-    - id: 130
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
     outputs:
-    - id: 131
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
   edges:
-  - from: 103
-    from_pin: 104
-    to: 110
-    to_pin: 111
-  - from: 103
-    from_pin: 105
-    to: 110
-    to_pin: 112
-  - from: 103
-    from_pin: 106
-    to: 117
-    to_pin: 118
-  - from: 110
-    from_pin: 113
-    to: 114
-    to_pin: 115
-  - from: 114
-    from_pin: 116
-    to: 121
-    to_pin: 122
-  - from: 117
-    from_pin: 120
-    to: 121
-    to_pin: 123
-  - from: 121
-    from_pin: 124
-    to: 125
-    to_pin: 127
-  - from: 125
-    from_pin: 128
-    to: 129
-    to_pin: 130
-  - from: 129
-    from_pin: 131
-    to: 107
-    to_pin: 108
+  - {from: 103.Position, to: 110.Position}
+  - {from: 103.Radius, to: 110.Radius}
+  - {from: 103.Width, to: 117.A}
+  - {from: 110.Value, to: 114.Value}
+  - {from: 114.Value, to: 121.A}
+  - {from: 117.Value, to: 121.B}
+  - {from: 121.Value, to: 125.B}
+  - {from: 125.Value, to: 129.Value}
+  - {from: 129.Value, to: 107.Mask}

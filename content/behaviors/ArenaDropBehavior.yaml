@@ -10,218 +10,139 @@ graphs:
   - id: 476
     type: Event
     reference_name: Begin
-    outputs: [475]
+    outputs:
+      Then: {id: 475}
   - id: 483
     type: Integer Equal
     inputs:
-    - id: 480
-      binding:
-        kind: component_field
-        component: GAME.GamePickup
-        field: state
-    - id: 481
-      default: 3
-    outputs: [482]
+      A:
+        id: 480
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
+      B: 3
   - id: 488
     type: Branch
-    inputs: [484, 485]
-    outputs: [486, 487]
+    inputs:
+      Exec: {id: 484}
   - id: 493
     type: Call Function
     reference_id: 1
     reference_name: Spawn Surface Pulse
     inputs:
-    - 489
-    - id: 490
-      declaration_id: 3
-      name: Prototype
-      type: name
-      kind: data
-      default: ArenaDeathPulse
-    - id: 491
-      declaration_id: 4
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    outputs: [492]
+      Exec: {id: 489}
+      Prototype: {declaration_id: 3, type: name, kind: data, default: ArenaDeathPulse}
+      Position: {declaration_id: 4, type: struct, type_name: GameTransform, kind: data}
   - id: 502
     type: Call Function
     reference_id: 102
     reference_name: Emit Source Frame
     inputs:
-    - 496
-    - id: 497
-      declaration_id: 104
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-      binding:
-        kind: component
-        component: game.GameTransform
-    - id: 498
-      declaration_id: 105
-      name: Appearance
-      type: struct
-      type_name: GameGeometry3D
-      kind: data
-      binding:
-        kind: component
-        component: GAME.GameGeometry3D
-    - id: 499
-      declaration_id: 106
-      name: Material
-      type: struct
-      type_name: GameShader
-      kind: data
-      binding:
-        kind: component
-        component: GAME.GameShader
-    - id: 500
-      declaration_id: 107
-      name: Orientation
-      type: struct
-      type_name: GameOrientation
-      kind: data
-      binding:
-        kind: component
-        component: GAME.GameOrientation
-    - id: 544
-      declaration_id: 543
-      name: Visual
-      type: struct
-      type_name: GameVisualTransform
-      kind: data
-      binding:
-        kind: component
-        component: GAME.GameVisualTransform
-    outputs: [501]
+      Exec: {id: 496}
+      Position:
+        declaration_id: 104
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
+      Appearance:
+        declaration_id: 105
+        type: struct
+        type_name: GameGeometry3D
+        kind: data
+        binding: {kind: component, component: GAME.GameGeometry3D}
+      Material:
+        declaration_id: 106
+        type: struct
+        type_name: GameShader
+        kind: data
+        binding: {kind: component, component: GAME.GameShader}
+      Orientation:
+        declaration_id: 107
+        type: struct
+        type_name: GameOrientation
+        kind: data
+        binding: {kind: component, component: GAME.GameOrientation}
+      Visual:
+        id: 544
+        declaration_id: 543
+        type: struct
+        type_name: GameVisualTransform
+        kind: data
+        binding: {kind: component, component: GAME.GameVisualTransform}
+    outputs:
+      Then: {id: 501}
   - id: 518
     type: SetEntity_GameGeometry3D
     inputs:
-    - 513
-    - 514
-    - id: 515
-      default:
-        primitive: 9
-        width: 5.0
-        depth: 5.0
-        height: 0.10000000149011612
-        elevation: 5.0
-    outputs: [516, 517]
+      Exec: {id: 513}
+      Value:
+        default:
+          primitive: 9
+          width: 5.0
+          depth: 5.0
+          height: 0.10000000149011612
+          elevation: 5.0
   - id: 524
     type: SetEntity_GameShader
     inputs:
-    - 519
-    - 520
-    - id: 521
-      default:
-        material: ArenaExperience
-        shape: ""
-        parameters: '{}'
-        bounds_x: 0.0
-        bounds_y: 0.0
-    outputs: [522, 523]
+      Exec: {id: 519}
+      Value:
+        default:
+          material: ArenaExperience
+          shape: ""
+          parameters: '{}'
+          bounds_x: 0.0
+          bounds_y: 0.0
   - id: 530
     type: Set_GameOrientation_radians
-    inputs: [525, 526, 527]
-    outputs: [528, 529]
+    inputs:
+      Exec: {id: 525}
   - id: 536
     type: Set_GameVisualTransform_scale
     inputs:
-    - 531
-    - id: 532
-      default: 1.0
-    - 533
-    outputs: [534, 535]
+      Exec: {id: 531}
+      Value: 1.0
   - id: 542
     type: Set_GamePickup_state
-    inputs: [537, 538, 539]
-    outputs: [540, 541]
+    inputs:
+      Exec: {id: 537}
   - id: 869
     type: Set_GameVisualTransform_pitch
-    inputs: [864, 865, 866]
-    outputs: [867, 868]
+    inputs:
+      Exec: {id: 864}
   - id: 875
     type: Set_GameVisualTransform_roll
-    inputs: [870, 871, 872]
-    outputs: [873, 874]
+    inputs:
+      Exec: {id: 870}
   - id: 916
     type: Self
     inline_source: true
     outputs:
-    - id: 917
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 918
     type: Self
     inline_source: true
     outputs:
-    - id: 919
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 922
     type: Get_GameTransform
     inline_source: true
     outputs:
-    - id: 923
-      flags: 0
+      Value: {flags: 0}
   edges:
-  - from: 476
-    from_pin: 475
-    to: 488
-    to_pin: 484
-  - from: 483
-    from_pin: 482
-    to: 488
-    to_pin: 485
-  - from: 488
-    from_pin: 486
-    to: 493
-    to_pin: 489
-  - from: 493
-    from_pin: 492
-    to: 502
-    to_pin: 496
-  - from: 502
-    from_pin: 501
-    to: 518
-    to_pin: 513
-  - from: 518
-    from_pin: 516
-    to: 524
-    to_pin: 519
-  - from: 524
-    from_pin: 522
-    to: 530
-    to_pin: 525
-  - from: 530
-    from_pin: 528
-    to: 536
-    to_pin: 531
-  - from: 536
-    from_pin: 534
-    to: 869
-    to_pin: 864
-  - from: 869
-    from_pin: 867
-    to: 875
-    to_pin: 870
-  - from: 875
-    from_pin: 873
-    to: 542
-    to_pin: 537
-  - from: 916
-    from_pin: 917
-    to: 518
-    to_pin: 514
-  - from: 918
-    from_pin: 919
-    to: 524
-    to_pin: 520
-  - from: 922
-    from_pin: 923
-    to: 493
-    to_pin: 491
+  - {from: 476.Then, to: 488.Exec}
+  - {from: 483.Result, to: 488.Condition}
+  - {from: 488.True, to: 493.Exec}
+  - {from: 493.Then, to: 502.Exec}
+  - {from: 502.Then, to: 518.Exec}
+  - {from: 518.Then, to: 524.Exec}
+  - {from: 524.Then, to: 530.Exec}
+  - {from: 530.Then, to: 536.Exec}
+  - {from: 536.Then, to: 869.Exec}
+  - {from: 869.Then, to: 875.Exec}
+  - {from: 875.Then, to: 542.Exec}
+  - {from: 916.Self, to: 518.Entity}
+  - {from: 918.Self, to: 524.Entity}
+  - {from: 922.Value, to: 493.Position}
 - id: 102
   kind: function
   name: Emit Source Frame
@@ -232,23 +153,10 @@ graphs:
   - id: 108
     type: Function Entry
     outputs:
-    - id: 103
-      name: Then
-    - id: 104
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    - id: 105
-      name: Appearance
-      type: struct
-      type_name: GameGeometry3D
-      kind: data
-    - id: 106
-      name: Material
-      type: struct
-      type_name: GameShader
-      kind: data
+    - {id: 103, name: Then}
+    - {id: 104, name: Position, type: struct, type_name: GameTransform, kind: data}
+    - {id: 105, name: Appearance, type: struct, type_name: GameGeometry3D, kind: data}
+    - {id: 106, name: Material, type: struct, type_name: GameShader, kind: data}
     - id: 107
       name: Orientation
       type: struct
@@ -261,180 +169,66 @@ graphs:
       kind: data
   - id: 110
     type: Return
-    inputs: [109]
+    inputs:
+      Exec: {id: 109}
   - id: 583
     type: Call Function
     reference_id: 556
     reference_name: Spawn Source Beam
     inputs:
-    - 571
-    - id: 572
-      declaration_id: 558
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    - id: 573
-      declaration_id: 559
-      name: Appearance
-      type: struct
-      type_name: GameGeometry3D
-      kind: data
-    - id: 574
-      declaration_id: 560
-      name: Material
-      type: struct
-      type_name: GameShader
-      kind: data
-    - id: 575
-      declaration_id: 561
-      name: Orientation
-      type: struct
-      type_name: GameOrientation
-      kind: data
-    - id: 576
-      declaration_id: 562
-      name: Visual
-      type: struct
-      type_name: GameVisualTransform
-      kind: data
-    - id: 577
-      declaration_id: 563
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 578
-      declaration_id: 564
-      name: Center Y
-      type: float
-      kind: data
-    - id: 579
-      declaration_id: 565
-      name: Width
-      type: float
-      kind: data
-    - id: 580
-      declaration_id: 566
-      name: Height
-      type: float
-      kind: data
-    - id: 581
-      declaration_id: 567
-      name: Depth
-      type: float
-      kind: data
-    - id: 877
-      name: Primitive
-      type: int
-      kind: data
-    outputs: [582]
+      Exec: {id: 571}
+      Position: {declaration_id: 558, type: struct, type_name: GameTransform, kind: data}
+      Appearance: {declaration_id: 559, type: struct, type_name: GameGeometry3D, kind: data}
+      Material: {declaration_id: 560, type: struct, type_name: GameShader, kind: data}
+      Orientation: {declaration_id: 561, type: struct, type_name: GameOrientation, kind: data}
+      Visual: {declaration_id: 562, type: struct, type_name: GameVisualTransform, kind: data}
+      Center: {declaration_id: 563, type: struct, type_name: CF_V2, kind: data}
+      Center Y: {declaration_id: 564, type: float, kind: data}
+      Width: {declaration_id: 565, type: float, kind: data}
+      Height: {declaration_id: 566, type: float, kind: data}
+      Depth: {declaration_id: 567, type: float, kind: data}
+      Primitive: {id: 877, type: int, kind: data}
+    outputs:
+      Then: {id: 582}
   - id: 894
     type: Primitive Part
-    inputs: [885, 886]
-    outputs: [887, 888, 889, 890, 891, 892, 893]
+    inputs:
+      Appearance: {id: 885}
   - id: 904
     type: Primitive Part
-    inputs: [895, 896]
-    outputs: [897, 898, 899, 900, 901, 902, 903]
+    inputs:
+      Appearance: {id: 895}
   - id: 908
     type: Subtract
     inputs:
-    - id: 905
-      type: int
-      flags: 0
-      group: 0
-    - id: 906
-      type: int
-      flags: 0
-      group: 0
-      default: 1
+      A: {id: 905, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0, default: 1}
     outputs:
-    - id: 907
-      type: int
-      flags: 0
-      group: 0
+      Result: {type: int, flags: 0, group: 0}
   - id: 915
     type: ForLoop
-    inputs: [909, 910, 911]
-    outputs: [912, 913, 914]
+    inputs:
+      Exec: {id: 909}
   edges:
-  - from: 108
-    from_pin: 103
-    to: 915
-    to_pin: 909
-  - from: 108
-    from_pin: 104
-    to: 583
-    to_pin: 572
-  - from: 108
-    from_pin: 105
-    to: 583
-    to_pin: 573
-  - from: 108
-    from_pin: 105
-    to: 894
-    to_pin: 885
-  - from: 108
-    from_pin: 105
-    to: 904
-    to_pin: 895
-  - from: 108
-    from_pin: 106
-    to: 583
-    to_pin: 574
-  - from: 108
-    from_pin: 107
-    to: 583
-    to_pin: 575
-  - from: 108
-    from_pin: 543
-    to: 583
-    to_pin: 576
-  - from: 894
-    from_pin: 887
-    to: 908
-    to_pin: 905
-  - from: 904
-    from_pin: 898
-    to: 583
-    to_pin: 877
-  - from: 904
-    from_pin: 899
-    to: 583
-    to_pin: 577
-  - from: 904
-    from_pin: 900
-    to: 583
-    to_pin: 578
-  - from: 904
-    from_pin: 901
-    to: 583
-    to_pin: 579
-  - from: 904
-    from_pin: 902
-    to: 583
-    to_pin: 580
-  - from: 904
-    from_pin: 903
-    to: 583
-    to_pin: 581
-  - from: 908
-    from_pin: 907
-    to: 915
-    to_pin: 911
-  - from: 915
-    from_pin: 912
-    to: 583
-    to_pin: 571
-  - from: 915
-    from_pin: 913
-    to: 904
-    to_pin: 896
-  - from: 915
-    from_pin: 914
-    to: 110
-    to_pin: 109
+  - {from: 108.Then, to: 915.Exec}
+  - {from: 108.Position, to: 583.Position}
+  - {from: 108.Appearance, to: 583.Appearance}
+  - {from: 108.Appearance, to: 894.Appearance}
+  - {from: 108.Appearance, to: 904.Appearance}
+  - {from: 108.Material, to: 583.Material}
+  - {from: 108.Orientation, to: 583.Orientation}
+  - {from: 108.Visual, to: 583.Visual}
+  - {from: 894.Count, to: 908.A}
+  - {from: 904.Primitive, to: 583.Primitive}
+  - {from: 904.Center, to: 583.Center}
+  - {from: 904.Elevation, to: 583.Center Y}
+  - {from: 904.Width, to: 583.Width}
+  - {from: 904.Height, to: 583.Height}
+  - {from: 904.Depth, to: 583.Depth}
+  - {from: 908.Result, to: 915.LastIndex}
+  - {from: 915.Body, to: 583.Exec}
+  - {from: 915.Index, to: 904.Index}
+  - {from: 915.Completed, to: 110.Exec}
 - id: 1
   kind: function
   name: Spawn Surface Pulse
@@ -445,58 +239,29 @@ graphs:
   - id: 5
     type: Function Entry
     outputs:
-    - id: 2
-      name: Then
-    - id: 3
-      name: Prototype
-      type: name
-      kind: data
-      default: ArenaHitPulse
-    - id: 4
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
+    - {id: 2, name: Then}
+    - {id: 3, name: Prototype, type: name, kind: data, default: ArenaHitPulse}
+    - {id: 4, name: Position, type: struct, type_name: GameTransform, kind: data}
   - id: 10
     type: Spawn Prototype
     inputs:
-    - 6
-    - id: 7
-      type_name: name
-      default: ArenaHitPulse
-    outputs: [8, 9]
+      Exec: {id: 6}
+      Prototype: {type_name: name, default: ArenaHitPulse}
   - id: 16
     type: SetEntity_GameTransform
-    inputs: [11, 12, 13]
-    outputs: [14, 15]
+    inputs:
+      Exec: {id: 11}
   - id: 18
     type: Return
-    inputs: [17]
+    inputs:
+      Exec: {id: 17}
   edges:
-  - from: 5
-    from_pin: 2
-    to: 10
-    to_pin: 6
-  - from: 5
-    from_pin: 3
-    to: 10
-    to_pin: 7
-  - from: 5
-    from_pin: 4
-    to: 16
-    to_pin: 13
-  - from: 10
-    from_pin: 8
-    to: 16
-    to_pin: 11
-  - from: 10
-    from_pin: 9
-    to: 16
-    to_pin: 12
-  - from: 16
-    from_pin: 14
-    to: 18
-    to_pin: 17
+  - {from: 5.Then, to: 10.Exec}
+  - {from: 5.Prototype, to: 10.Prototype}
+  - {from: 5.Position, to: 16.Value}
+  - {from: 10.Then, to: 16.Exec}
+  - {from: 10.Entity, to: 16.Entity}
+  - {from: 16.Then, to: 18.Exec}
 - id: 556
   kind: function
   name: Spawn Source Beam
@@ -507,23 +272,10 @@ graphs:
   - id: 568
     type: Function Entry
     outputs:
-    - id: 557
-      name: Then
-    - id: 558
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    - id: 559
-      name: Appearance
-      type: struct
-      type_name: GameGeometry3D
-      kind: data
-    - id: 560
-      name: Material
-      type: struct
-      type_name: GameShader
-      kind: data
+    - {id: 557, name: Then}
+    - {id: 558, name: Position, type: struct, type_name: GameTransform, kind: data}
+    - {id: 559, name: Appearance, type: struct, type_name: GameGeometry3D, kind: data}
+    - {id: 560, name: Material, type: struct, type_name: GameShader, kind: data}
     - id: 561
       name: Orientation
       type: struct
@@ -534,43 +286,14 @@ graphs:
       type: struct
       type_name: GameVisualTransform
       kind: data
-    - id: 563
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 564
-      name: Center Y
-      type: float
-      kind: data
-    - id: 565
-      name: Width
-      type: float
-      kind: data
-    - id: 566
-      name: Height
-      type: float
-      kind: data
-    - id: 567
-      name: Depth
-      type: float
-      kind: data
-    - id: 878
-      name: Primitive
-      type: int
-      kind: data
-    - id: 727
-      name: x
-      type: float
-      kind: data
-      field_source: 558
-      field_name: x
-    - id: 728
-      name: "y"
-      type: float
-      kind: data
-      field_source: 558
-      field_name: "y"
+    - {id: 563, name: Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 564, name: Center Y, type: float, kind: data}
+    - {id: 565, name: Width, type: float, kind: data}
+    - {id: 566, name: Height, type: float, kind: data}
+    - {id: 567, name: Depth, type: float, kind: data}
+    - {id: 878, name: Primitive, type: int, kind: data}
+    - {id: 727, name: x, type: float, kind: data, field_source: 558, field_name: x}
+    - {id: 728, name: "y", type: float, kind: data, field_source: 558, field_name: "y"}
     - id: 732
       name: elevation
       type: float
@@ -585,357 +308,151 @@ graphs:
       field_name: radians
   - id: 570
     type: Return
-    inputs: [569]
+    inputs:
+      Exec: {id: 569}
   - id: 754
     type: Transform Visual Offset
-    inputs: [748, 749, 750, 751]
+    inputs:
+      Offset: {id: 748}
     outputs:
-    - 752
-    - 753
-    - id: 759
-      name: x
-      field_source: 752
-      field_name: x
-    - id: 760
-      name: "y"
-      field_source: 752
-      field_name: "y"
+      Offset.x: {id: 759}
+      Offset.y: {}
   - id: 765
     type: Spawn Prototype
     inputs:
-    - 761
-    - id: 762
-      type_name: name
-      default: ArenaEnemyShard
-    outputs: [763, 764]
+      Exec: {id: 761}
+      Prototype: {type_name: name, default: ArenaEnemyShard}
   - id: 769
     type: Add
     inputs:
-    - id: 766
-      type: double
-      flags: 0
-      group: 0
-    - id: 767
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 766, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 768
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 773
     type: Add
     inputs:
-    - id: 770
-      type: double
-      flags: 0
-      group: 0
-    - id: 771
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 770, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 772
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 777
     type: Add
     inputs:
-    - id: 774
-      type: double
-      flags: 0
-      group: 0
-    - id: 775
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 774, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 776
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 793
     type: Multiply
     inputs:
-    - id: 790
-      type: double
-      flags: 0
-      group: 0
-    - id: 791
-      type: double
-      flags: 0
-      group: 0
-      default: 5.0
+      A: {id: 790, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 5.0}
     outputs:
-    - id: 792
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 797
     type: Multiply
     inputs:
-    - id: 794
-      type: double
-      flags: 0
-      group: 0
-    - id: 795
-      type: double
-      flags: 0
-      group: 0
-      default: 5.0
+      A: {id: 794, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 5.0}
     outputs:
-    - id: 796
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 803
     type: Set_GameTransform_x
-    inputs: [798, 799, 800]
-    outputs: [801, 802]
+    inputs:
+      Exec: {id: 798}
   - id: 809
     type: Set_GameTransform_y
-    inputs: [804, 805, 806]
-    outputs: [807, 808]
+    inputs:
+      Exec: {id: 804}
   - id: 815
     type: Set_GameGeometry3D_elevation
-    inputs: [810, 811, 812]
-    outputs: [813, 814]
+    inputs:
+      Exec: {id: 810}
   - id: 821
     type: Set_GameGeometry3D_width
-    inputs: [816, 817, 818]
-    outputs: [819, 820]
+    inputs:
+      Exec: {id: 816}
   - id: 827
     type: Set_GameGeometry3D_height
-    inputs: [822, 823, 824]
-    outputs: [825, 826]
+    inputs:
+      Exec: {id: 822}
   - id: 833
     type: Set_GameGeometry3D_depth
-    inputs: [828, 829, 830]
-    outputs: [831, 832]
+    inputs:
+      Exec: {id: 828}
   - id: 839
     type: Set_GameVelocity_x
-    inputs: [834, 835, 836]
-    outputs: [837, 838]
+    inputs:
+      Exec: {id: 834}
   - id: 845
     type: Set_GameVelocity_y
-    inputs: [840, 841, 842]
-    outputs: [843, 844]
+    inputs:
+      Exec: {id: 840}
   - id: 851
     type: SetEntity_GameShader
-    inputs: [846, 847, 848]
-    outputs: [849, 850]
+    inputs:
+      Exec: {id: 846}
   - id: 857
     type: SetEntity_GameOrientation
-    inputs: [852, 853, 854]
-    outputs: [855, 856]
+    inputs:
+      Exec: {id: 852}
   - id: 863
     type: SetEntity_GameVisualTransform
-    inputs: [858, 859, 860]
-    outputs: [861, 862]
+    inputs:
+      Exec: {id: 858}
   - id: 884
     type: Set_GameGeometry3D_primitive
-    inputs: [879, 880, 881]
-    outputs: [882, 883]
+    inputs:
+      Exec: {id: 879}
   edges:
-  - from: 568
-    from_pin: 557
-    to: 765
-    to_pin: 761
-  - from: 568
-    from_pin: 560
-    to: 851
-    to_pin: 848
-  - from: 568
-    from_pin: 561
-    to: 857
-    to_pin: 854
-  - from: 568
-    from_pin: 562
-    to: 754
-    to_pin: 751
-  - from: 568
-    from_pin: 562
-    to: 863
-    to_pin: 860
-  - from: 568
-    from_pin: 563
-    to: 754
-    to_pin: 748
-  - from: 568
-    from_pin: 564
-    to: 754
-    to_pin: 749
-  - from: 568
-    from_pin: 565
-    to: 821
-    to_pin: 817
-  - from: 568
-    from_pin: 566
-    to: 827
-    to_pin: 823
-  - from: 568
-    from_pin: 567
-    to: 833
-    to_pin: 829
-  - from: 568
-    from_pin: 727
-    to: 769
-    to_pin: 766
-  - from: 568
-    from_pin: 728
-    to: 773
-    to_pin: 770
-  - from: 568
-    from_pin: 732
-    to: 777
-    to_pin: 774
-  - from: 568
-    from_pin: 733
-    to: 754
-    to_pin: 750
-  - from: 568
-    from_pin: 878
-    to: 884
-    to_pin: 880
-  - from: 754
-    from_pin: 753
-    to: 777
-    to_pin: 775
-  - from: 754
-    from_pin: 759
-    to: 769
-    to_pin: 767
-  - from: 754
-    from_pin: 759
-    to: 793
-    to_pin: 790
-  - from: 754
-    from_pin: 760
-    to: 773
-    to_pin: 771
-  - from: 754
-    from_pin: 760
-    to: 797
-    to_pin: 794
-  - from: 765
-    from_pin: 763
-    to: 803
-    to_pin: 798
-  - from: 765
-    from_pin: 764
-    to: 803
-    to_pin: 800
-  - from: 765
-    from_pin: 764
-    to: 809
-    to_pin: 806
-  - from: 765
-    from_pin: 764
-    to: 815
-    to_pin: 812
-  - from: 765
-    from_pin: 764
-    to: 821
-    to_pin: 818
-  - from: 765
-    from_pin: 764
-    to: 827
-    to_pin: 824
-  - from: 765
-    from_pin: 764
-    to: 833
-    to_pin: 830
-  - from: 765
-    from_pin: 764
-    to: 839
-    to_pin: 836
-  - from: 765
-    from_pin: 764
-    to: 845
-    to_pin: 842
-  - from: 765
-    from_pin: 764
-    to: 851
-    to_pin: 847
-  - from: 765
-    from_pin: 764
-    to: 857
-    to_pin: 853
-  - from: 765
-    from_pin: 764
-    to: 863
-    to_pin: 859
-  - from: 765
-    from_pin: 764
-    to: 884
-    to_pin: 881
-  - from: 769
-    from_pin: 768
-    to: 803
-    to_pin: 799
-  - from: 773
-    from_pin: 772
-    to: 809
-    to_pin: 805
-  - from: 777
-    from_pin: 776
-    to: 815
-    to_pin: 811
-  - from: 793
-    from_pin: 792
-    to: 839
-    to_pin: 835
-  - from: 797
-    from_pin: 796
-    to: 845
-    to_pin: 841
-  - from: 803
-    from_pin: 801
-    to: 809
-    to_pin: 804
-  - from: 809
-    from_pin: 807
-    to: 815
-    to_pin: 810
-  - from: 815
-    from_pin: 813
-    to: 821
-    to_pin: 816
-  - from: 821
-    from_pin: 819
-    to: 827
-    to_pin: 822
-  - from: 827
-    from_pin: 825
-    to: 833
-    to_pin: 828
-  - from: 833
-    from_pin: 831
-    to: 884
-    to_pin: 879
-  - from: 839
-    from_pin: 837
-    to: 845
-    to_pin: 840
-  - from: 845
-    from_pin: 843
-    to: 851
-    to_pin: 846
-  - from: 851
-    from_pin: 849
-    to: 857
-    to_pin: 852
-  - from: 857
-    from_pin: 855
-    to: 863
-    to_pin: 858
-  - from: 863
-    from_pin: 861
-    to: 570
-    to_pin: 569
-  - from: 884
-    from_pin: 882
-    to: 839
-    to_pin: 834
+  - {from: 568.Then, to: 765.Exec}
+  - {from: 568.Material, to: 851.Value}
+  - {from: 568.Orientation, to: 857.Value}
+  - {from: 568.Visual, to: 754.Visual}
+  - {from: 568.Visual, to: 863.Value}
+  - {from: 568.Center, to: 754.Offset}
+  - {from: 568.Center Y, to: 754.Elevation}
+  - {from: 568.Width, to: 821.Value}
+  - {from: 568.Height, to: 827.Value}
+  - {from: 568.Depth, to: 833.Value}
+  - {from: 568.Position.x, to: 769.A}
+  - {from: 568.Position.y, to: 773.A}
+  - {from: 568.Appearance.elevation, to: 777.A}
+  - {from: 568.Orientation.radians, to: 754.Heading}
+  - {from: 568.Primitive, to: 884.Value}
+  - {from: 754.Elevation, to: 777.B}
+  - {from: 754.Offset.x, to: 769.B}
+  - {from: 754.Offset.x, to: 793.A}
+  - {from: 754.Offset.y, to: 773.B}
+  - {from: 754.Offset.y, to: 797.A}
+  - {from: 765.Then, to: 803.Exec}
+  - {from: 765.Entity, to: 803.Target}
+  - {from: 765.Entity, to: 809.Target}
+  - {from: 765.Entity, to: 815.Target}
+  - {from: 765.Entity, to: 821.Target}
+  - {from: 765.Entity, to: 827.Target}
+  - {from: 765.Entity, to: 833.Target}
+  - {from: 765.Entity, to: 839.Target}
+  - {from: 765.Entity, to: 845.Target}
+  - {from: 765.Entity, to: 851.Entity}
+  - {from: 765.Entity, to: 857.Entity}
+  - {from: 765.Entity, to: 863.Entity}
+  - {from: 765.Entity, to: 884.Target}
+  - {from: 769.Result, to: 803.Value}
+  - {from: 773.Result, to: 809.Value}
+  - {from: 777.Result, to: 815.Value}
+  - {from: 793.Result, to: 839.Value}
+  - {from: 797.Result, to: 845.Value}
+  - {from: 803.Then, to: 809.Exec}
+  - {from: 809.Then, to: 815.Exec}
+  - {from: 815.Then, to: 821.Exec}
+  - {from: 821.Then, to: 827.Exec}
+  - {from: 827.Then, to: 833.Exec}
+  - {from: 833.Then, to: 884.Exec}
+  - {from: 839.Then, to: 845.Exec}
+  - {from: 845.Then, to: 851.Exec}
+  - {from: 851.Then, to: 857.Exec}
+  - {from: 857.Then, to: 863.Exec}
+  - {from: 863.Then, to: 570.Exec}
+  - {from: 884.Then, to: 839.Exec}

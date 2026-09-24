@@ -11,197 +11,108 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Find Nearest Entity
     inputs:
-    - id: 5
-      binding:
-        kind: component
-        component: game.GameTransform
-    - id: 6
-      default: 600.0
-    - id: 7
-      default: 1
-    - 8
-    outputs: [9, 10, 11, 12]
-  - id: 13
-    type: Branch
-    inputs: [14, 15]
-    outputs: [16, 17]
+      Position:
+        binding: {kind: component, component: game.GameTransform}
+      Radius: 600.0
+      Categories: 1
+  - {id: 13, type: Branch}
   - id: 18
     type: Direction To
     inputs:
-    - id: 19
-      binding:
-        kind: component
-        component: game.GameTransform
-    - 20
-    outputs: [21]
+      Origin:
+        binding: {kind: component, component: game.GameTransform}
   - id: 44
     type: Behavior Expression
     reference_id: 22
     reference_name: direction * speed - vec2(vx, vy)
     inputs:
-    - id: 45
-      declaration_id: 27
-      name: direction
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 1
-    - id: 46
-      declaration_id: 28
-      name: speed
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: game.GameMovement
-        field: speed
-    - id: 47
-      declaration_id: 29
-      name: vx
-      type: float
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: x
-    - id: 48
-      declaration_id: 30
-      name: vy
-      type: float
-      flags: 2
-      group: 4
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: "y"
+      direction: {declaration_id: 27, type: struct, type_name: CF_V2, flags: 2, group: 1}
+      speed:
+        declaration_id: 28
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: game.GameMovement, field: speed}
+      vx:
+        declaration_id: 29
+        type: float
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
+      vy:
+        declaration_id: 30
+        type: float
+        flags: 2
+        group: 4
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
     outputs:
-    - id: 49
-      declaration_id: 31
-      name: Result
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 5
+      Result: {declaration_id: 31, type: struct, type_name: CF_V2, flags: 2, group: 5}
   - id: 160
     type: Behavior Expression
     reference_id: 138
     reference_name: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
     inputs:
-    - id: 166
-      name: Exec
-      kind: exec
-    - id: 161
-      declaration_id: 143
-      name: velocity
-      type: struct
-      type_name: GameVelocity
-      flags: 6
-      group: 1
-      binding:
-        kind: component
-        component: GAME.GameVelocity
-    - id: 162
-      declaration_id: 144
-      name: delta
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 2
-    - id: 163
-      declaration_id: 145
-      name: acceleration
-      type: double
-      flags: 2
-      group: 3
-      default: 120.0
-    - id: 164
-      declaration_id: 146
-      name: dt
-      type: double
-      flags: 2
-      group: 4
-      binding:
-        kind: delta_time
+      Exec: {id: 166, kind: exec}
+      velocity:
+        id: 161
+        declaration_id: 143
+        type: struct
+        type_name: GameVelocity
+        flags: 6
+        group: 1
+        binding: {kind: component, component: GAME.GameVelocity}
+      delta: {declaration_id: 144, type: struct, type_name: CF_V2, flags: 2, group: 2}
+      acceleration: {declaration_id: 145, type: double, flags: 2, group: 3, default: 120.0}
+      dt:
+        declaration_id: 146
+        type: double
+        flags: 2
+        group: 4
+        binding: {kind: delta_time}
     outputs:
-    - id: 167
-      name: Then
-      kind: exec
-    - id: 165
-      declaration_id: 147
-      name: Result
-      type: struct
-      type_name: GameVelocity
-      flags: 2
-      group: 5
+      Then: {id: 167, kind: exec}
+      Result:
+        id: 165
+        declaration_id: 147
+        type: struct
+        type_name: GameVelocity
+        flags: 2
+        group: 5
   - id: 323
     type: Behavior Expression
     reference_id: 306
     reference_name: velocity = vec2(0, 0)
     inputs:
-    - id: 326
-      name: Exec
-      kind: exec
-    - id: 324
-      declaration_id: 311
-      name: velocity
-      type: struct
-      type_name: GameVelocity
-      flags: 6
-      group: 1
-      binding:
-        kind: component
-        component: GAME.GameVelocity
+      Exec: {id: 326, kind: exec}
+      velocity:
+        id: 324
+        declaration_id: 311
+        type: struct
+        type_name: GameVelocity
+        flags: 6
+        group: 1
+        binding: {kind: component, component: GAME.GameVelocity}
     outputs:
-    - id: 327
-      name: Then
-      kind: exec
-    - id: 325
-      declaration_id: 312
-      name: Result
-      type: struct
-      type_name: GameVelocity
-      flags: 2
-      group: 2
+      Then: {id: 327, kind: exec}
+      Result:
+        id: 325
+        declaration_id: 312
+        type: struct
+        type_name: GameVelocity
+        flags: 2
+        group: 2
   edges:
-  - from: 1
-    from_pin: 2
-    to: 13
-    to_pin: 14
-  - from: 4
-    from_pin: 9
-    to: 13
-    to_pin: 15
-  - from: 4
-    from_pin: 11
-    to: 18
-    to_pin: 20
-    conversion: game_transform_to_cf
-  - from: 13
-    from_pin: 16
-    to: 160
-    to_pin: 166
-  - from: 13
-    from_pin: 17
-    to: 323
-    to_pin: 326
-  - from: 18
-    from_pin: 21
-    to: 44
-    to_pin: 45
-  - from: 44
-    from_pin: 49
-    to: 160
-    to_pin: 162
+  - {from: 1.Then, to: 13.Exec}
+  - {from: 4.Found, to: 13.Condition}
+  - {from: 4.Position, to: 18.Target, conversion: game_transform_to_cf}
+  - {from: 13.True, to: 160.Exec}
+  - {from: 13.False, to: 323.Exec}
+  - {from: 18.Direction, to: 44.direction}
+  - {from: 44.Result, to: 160.delta}
 - id: 22
   kind: function
   name: direction * speed - vec2(vx, vy)
@@ -221,24 +132,9 @@ graphs:
       kind: data
       flags: 2
       group: 1
-    - id: 228
-      name: speed
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 229
-      name: vx
-      type: float
-      kind: data
-      flags: 2
-      group: 3
-    - id: 230
-      name: vy
-      type: float
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 228, name: speed, type: double, kind: data, flags: 2, group: 2}
+    - {id: 229, name: vx, type: float, kind: data, flags: 2, group: 3}
+    - {id: 230, name: vy, type: float, kind: data, flags: 2, group: 4}
   - id: 225
     type: Return
     inputs:
@@ -252,61 +148,26 @@ graphs:
   - id: 232
     type: Multiply
     inputs:
-    - id: 233
-      type: struct
-      type_name: CF_V2
-    - id: 234
-      type: double
+      A: {type: struct, type_name: CF_V2}
+      B: {type: double}
     outputs:
-    - id: 235
-      type: struct
-      type_name: CF_V2
-  - id: 236
-    type: Make_CF_V2
-    inputs: [237, 238]
-    outputs: [239]
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 236, type: Make_CF_V2}
   - id: 240
     type: Subtract
     inputs:
-    - id: 241
-      type: struct
-      type_name: CF_V2
-    - id: 242
-      type: struct
-      type_name: CF_V2
+      A: {type: struct, type_name: CF_V2}
+      B: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 243
-      type: struct
-      type_name: CF_V2
+      Result: {type: struct, type_name: CF_V2}
   edges:
-  - from: 223
-    from_pin: 227
-    to: 232
-    to_pin: 233
-  - from: 223
-    from_pin: 228
-    to: 232
-    to_pin: 234
-  - from: 223
-    from_pin: 229
-    to: 236
-    to_pin: 237
-  - from: 223
-    from_pin: 230
-    to: 236
-    to_pin: 238
-  - from: 232
-    from_pin: 235
-    to: 240
-    to_pin: 241
-  - from: 236
-    from_pin: 239
-    to: 240
-    to_pin: 242
-  - from: 240
-    from_pin: 243
-    to: 225
-    to_pin: 231
+  - {from: 223.direction, to: 232.A}
+  - {from: 223.speed, to: 232.B}
+  - {from: 223.vx, to: 236.x}
+  - {from: 223.vy, to: 236.y}
+  - {from: 232.Result, to: 240.A}
+  - {from: 236.CF_V2, to: 240.B}
+  - {from: 240.Result, to: 225.Result}
 - id: 138
   kind: function
   name: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
@@ -319,250 +180,98 @@ graphs:
   - id: 245
     type: Function Entry
     outputs:
-    - 246
-    - id: 249
-      name: velocity
-      type: struct
-      type_name: GameVelocity
-      kind: data
-      group: 1
-    - id: 250
-      name: delta
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 2
-    - id: 251
-      name: acceleration
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 252
-      name: dt
-      type: double
-      kind: data
-      flags: 2
-      group: 4
-    - id: 261
-      name: x
-      type: float
-      kind: data
-      field_source: 250
-      field_name: x
-    - id: 262
-      name: "y"
-      type: float
-      kind: data
-      field_source: 250
-      field_name: "y"
+      velocity: {id: 249, type: struct, type_name: GameVelocity, kind: data, group: 1}
+      delta: {type: struct, type_name: CF_V2, kind: data, flags: 2, group: 2}
+      acceleration: {type: double, kind: data, flags: 2, group: 3}
+      dt: {type: double, kind: data, flags: 2, group: 4}
+      delta.x: {id: 261}
+      delta.y: {}
   - id: 247
     type: Return
     inputs:
-    - 248
-    - id: 253
-      name: Result
-      type: struct
-      type_name: GameVelocity
-      kind: data
-      flags: 2
-      group: 5
+      Result: {id: 253, type: struct, type_name: GameVelocity, kind: data, flags: 2, group: 5}
   - id: 254
     type: Real
-    inputs:
-    - id: 255
-      default: 1.0
-    outputs: [256]
+    inputs: {Value: 1.0}
   - id: 257
     type: Multiply
     inputs:
-    - id: 258
-      type: double
-    - id: 259
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 260
-      type: double
-  - id: 263
-    type: Multiply
-    inputs: [264, 265]
-    outputs: [266]
-  - id: 267
-    type: Multiply
-    inputs: [268, 269]
-    outputs: [270]
+      Result: {type: double}
+  - {id: 263, type: Multiply}
+  - {id: 267, type: Multiply}
   - id: 271
     type: Add
     inputs:
-    - id: 272
-      type: double
-    - 273
+      A: {type: double}
     outputs:
-    - id: 274
-      type: double
-  - id: 275
-    type: Square Root
-    inputs: [276]
-    outputs: [277]
+      Result: {type: double}
+  - {id: 275, type: Square Root}
   - id: 278
     type: Real
-    inputs:
-    - id: 279
-      default: 0.0001
-    outputs: [280]
+    inputs: {Value: 0.0001}
   - id: 281
     type: Max
     inputs:
-    - id: 282
-      type: double
-    - id: 283
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 284
-      type: double
+      Result: {type: double}
   - id: 285
     type: Divide
     inputs:
-    - id: 286
-      type: double
-    - id: 287
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 288
-      type: double
+      Result: {type: double}
   - id: 289
     type: Min
     inputs:
-    - id: 290
-      type: double
-    - id: 291
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 292
-      type: double
+      Result: {type: double}
   - id: 293
     type: Multiply
     inputs:
-    - id: 294
-      type: struct
-      type_name: CF_V2
-    - id: 295
-      type: double
+      A: {type: struct, type_name: CF_V2}
+      B: {type: double}
     outputs:
-    - id: 296
-      type: struct
-      type_name: CF_V2
+      Result: {type: struct, type_name: CF_V2}
   - id: 297
     type: Add
     inputs:
-    - id: 298
-      type: struct
-      type_name: GameVelocity
-    - id: 299
-      type: struct
-      type_name: CF_V2
+      A: {type: struct, type_name: GameVelocity}
+      B: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 300
-      type: struct
-      type_name: GameVelocity
-  - id: 301
-    type: Set_GameVelocity
-    inputs: [302, 303]
-    outputs: [304, 305]
+      Result: {type: struct, type_name: GameVelocity}
+  - {id: 301, type: Set_GameVelocity}
   edges:
-  - from: 245
-    from_pin: 246
-    to: 301
-    to_pin: 302
-  - from: 245
-    from_pin: 249
-    to: 297
-    to_pin: 298
-  - from: 245
-    from_pin: 250
-    to: 293
-    to_pin: 294
-  - from: 245
-    from_pin: 251
-    to: 257
-    to_pin: 258
-  - from: 245
-    from_pin: 252
-    to: 257
-    to_pin: 259
-  - from: 245
-    from_pin: 261
-    to: 263
-    to_pin: 264
-  - from: 245
-    from_pin: 261
-    to: 263
-    to_pin: 265
-  - from: 245
-    from_pin: 262
-    to: 267
-    to_pin: 268
-  - from: 245
-    from_pin: 262
-    to: 267
-    to_pin: 269
-  - from: 254
-    from_pin: 256
-    to: 289
-    to_pin: 290
-  - from: 257
-    from_pin: 260
-    to: 285
-    to_pin: 286
-  - from: 263
-    from_pin: 266
-    to: 271
-    to_pin: 272
-  - from: 267
-    from_pin: 270
-    to: 271
-    to_pin: 273
-  - from: 271
-    from_pin: 274
-    to: 275
-    to_pin: 276
-  - from: 275
-    from_pin: 277
-    to: 281
-    to_pin: 282
-  - from: 278
-    from_pin: 280
-    to: 281
-    to_pin: 283
-  - from: 281
-    from_pin: 284
-    to: 285
-    to_pin: 287
-  - from: 285
-    from_pin: 288
-    to: 289
-    to_pin: 291
-  - from: 289
-    from_pin: 292
-    to: 293
-    to_pin: 295
-  - from: 293
-    from_pin: 296
-    to: 297
-    to_pin: 299
-  - from: 297
-    from_pin: 300
-    to: 301
-    to_pin: 303
-  - from: 301
-    from_pin: 304
-    to: 247
-    to_pin: 248
-  - from: 301
-    from_pin: 305
-    to: 247
-    to_pin: 253
+  - {from: 245.Exec, to: 301.Exec}
+  - {from: 245.velocity, to: 297.A}
+  - {from: 245.delta, to: 293.A}
+  - {from: 245.acceleration, to: 257.A}
+  - {from: 245.dt, to: 257.B}
+  - {from: 245.delta.x, to: 263.A}
+  - {from: 245.delta.x, to: 263.B}
+  - {from: 245.delta.y, to: 267.A}
+  - {from: 245.delta.y, to: 267.B}
+  - {from: 254.Value, to: 289.A}
+  - {from: 257.Result, to: 285.A}
+  - {from: 263.Result, to: 271.A}
+  - {from: 267.Result, to: 271.B}
+  - {from: 271.Result, to: 275.Value}
+  - {from: 275.Result, to: 281.A}
+  - {from: 278.Value, to: 281.B}
+  - {from: 281.Result, to: 285.B}
+  - {from: 285.Result, to: 289.B}
+  - {from: 289.Result, to: 293.B}
+  - {from: 293.Result, to: 297.B}
+  - {from: 297.Result, to: 301.Value}
+  - {from: 301.Then, to: 247.Exec}
+  - {from: 301.Value, to: 247.Result}
 - id: 306
   kind: function
   name: velocity = vec2(0, 0)
@@ -575,62 +284,19 @@ graphs:
   - id: 329
     type: Function Entry
     outputs:
-    - 330
-    - id: 333
-      name: velocity
-      type: struct
-      type_name: GameVelocity
-      kind: data
-      group: 1
+      velocity: {id: 333, type: struct, type_name: GameVelocity, kind: data, group: 1}
   - id: 331
     type: Return
     inputs:
-    - 332
-    - id: 334
-      name: Result
-      type: struct
-      type_name: GameVelocity
-      kind: data
-      flags: 2
-      group: 2
-  - id: 335
-    type: Real
-    inputs: [336]
-    outputs: [337]
-  - id: 338
-    type: Real
-    inputs: [339]
-    outputs: [340]
-  - id: 341
-    type: Make_CF_V2
-    inputs: [342, 343]
-    outputs: [344]
-  - id: 345
-    type: Set_GameVelocity
-    inputs: [346, 347]
-    outputs: [348, 349]
+      Result: {id: 334, type: struct, type_name: GameVelocity, kind: data, flags: 2, group: 2}
+  - {id: 335, type: Real}
+  - {id: 338, type: Real}
+  - {id: 341, type: Make_CF_V2}
+  - {id: 345, type: Set_GameVelocity}
   edges:
-  - from: 329
-    from_pin: 330
-    to: 345
-    to_pin: 346
-  - from: 335
-    from_pin: 337
-    to: 341
-    to_pin: 342
-  - from: 338
-    from_pin: 340
-    to: 341
-    to_pin: 343
-  - from: 341
-    from_pin: 344
-    to: 345
-    to_pin: 347
-  - from: 345
-    from_pin: 348
-    to: 331
-    to_pin: 332
-  - from: 345
-    from_pin: 349
-    to: 331
-    to_pin: 334
+  - {from: 329.Exec, to: 345.Exec}
+  - {from: 335.Value, to: 341.x}
+  - {from: 338.Value, to: 341.y}
+  - {from: 341.CF_V2, to: 345.Value}
+  - {from: 345.Then, to: 331.Exec}
+  - {from: 345.Value, to: 331.Result}

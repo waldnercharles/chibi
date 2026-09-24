@@ -3,8 +3,7 @@ name: FieldShapes
 domain: library
 id_counter: 46
 graphs:
-- kind: event
-  name: ""
+- {kind: event, name: ""}
 - id: 1
   kind: function
   name: Islands
@@ -15,132 +14,42 @@ graphs:
   - id: 2
     type: Function Entry
     outputs:
-    - id: 6
-      name: X
-      type: float
-      type_name: null
-      kind: data
-    - id: 7
-      name: "Y"
-      type: float
-      type_name: null
-      kind: data
+    - {id: 6, name: X, type: float, type_name: null, kind: data}
+    - {id: 7, name: "Y", type: float, type_name: null, kind: data}
   - id: 4
     type: Return
     inputs:
-    - id: 8
-      name: Value
-      type: float
-      type_name: null
-      kind: data
+    - {id: 8, name: Value, type: float, type_name: null, kind: data}
   - id: 9
     type: Field Add
-    inputs:
-    - 10
-    - id: 11
-      default: 90.0
-    outputs: [12]
+    inputs: {B: 90.0}
   - id: 13
     type: Field Circle
-    inputs:
-    - 14
-    - 15
-    - id: 16
-      default: 65.0
-    outputs: [17]
+    inputs: {Radius: 65.0}
   - id: 18
     type: Field Subtract
-    inputs:
-    - 19
-    - id: 20
-      default: 60.0
-    outputs: [21]
+    inputs: {B: 60.0}
   - id: 22
     type: Field Box
-    inputs:
-    - 23
-    - 24
-    - id: 25
-      default: 55.0
-    - id: 26
-      default: 85.0
-    outputs: [27]
+    inputs: {Half Width: 55.0, Half Height: 85.0}
   - id: 28
     type: Field Capsule
-    inputs:
-    - 29
-    - 30
-    - id: 31
-      default: -90.0
-    - 32
-    - id: 33
-      default: 60.0
-    - 34
-    - id: 35
-      default: 18.0
-    outputs: [36]
-  - id: 37
-    type: Field Min
-    inputs: [38, 39]
-    outputs: [40]
+    inputs: {AX: -90.0, BX: 60.0, Radius: 18.0}
+  - {id: 37, type: Field Min}
   - id: 41
     type: Field Smooth Union
-    inputs:
-    - 42
-    - 43
-    - id: 44
-      default: 15.0
-    outputs: [45]
+    inputs: {Radius: 15.0}
   edges:
-  - from: 2
-    from_pin: 6
-    to: 9
-    to_pin: 10
-  - from: 2
-    from_pin: 6
-    to: 18
-    to_pin: 19
-  - from: 2
-    from_pin: 6
-    to: 28
-    to_pin: 29
-  - from: 2
-    from_pin: 7
-    to: 13
-    to_pin: 15
-  - from: 2
-    from_pin: 7
-    to: 22
-    to_pin: 24
-  - from: 2
-    from_pin: 7
-    to: 28
-    to_pin: 30
-  - from: 9
-    from_pin: 12
-    to: 13
-    to_pin: 14
-  - from: 13
-    from_pin: 17
-    to: 37
-    to_pin: 38
-  - from: 18
-    from_pin: 21
-    to: 22
-    to_pin: 23
-  - from: 22
-    from_pin: 27
-    to: 37
-    to_pin: 39
-  - from: 28
-    from_pin: 36
-    to: 41
-    to_pin: 43
-  - from: 37
-    from_pin: 40
-    to: 41
-    to_pin: 42
-  - from: 41
-    from_pin: 45
-    to: 4
-    to_pin: 8
+  - {from: 2.X, to: 9.A}
+  - {from: 2.X, to: 18.A}
+  - {from: 2.X, to: 28.X}
+  - {from: 2.Y, to: 13.Y}
+  - {from: 2.Y, to: 22.Y}
+  - {from: 2.Y, to: 28.Y}
+  - {from: 9.Value, to: 13.X}
+  - {from: 13.Value, to: 37.A}
+  - {from: 18.Value, to: 22.X}
+  - {from: 22.Value, to: 37.B}
+  - {from: 28.Value, to: 41.B}
+  - {from: 37.Value, to: 41.A}
+  - {from: 41.Value, to: 4.Value}

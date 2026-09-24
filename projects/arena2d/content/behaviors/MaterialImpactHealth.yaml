@@ -10,171 +10,63 @@ graphs:
     type: Event
     reference_name: Material Impact
     outputs:
-    - 2
-    - id: 3
-      declaration_id: 1
-      name: Energy
-      type: float
-      type_name: null
-      kind: data
-    - id: 4
-      declaration_id: 2
-      name: Cause
-      type: int
-      type_name: null
-      kind: data
-    - id: 5
-      declaration_id: 3
-      name: Point
-      type: struct
-      type_name: CF_V2
-      kind: data
-      default:
-        x: 0.0
-        "y": 0.0
+      Energy: {declaration_id: 1, type: float, type_name: null, kind: data}
+      Cause: {declaration_id: 2, type: int, type_name: null, kind: data}
+      Point:
+        declaration_id: 3
+        type: struct
+        type_name: CF_V2
+        kind: data
+        default: {x: 0.0, "y": 0.0}
   - id: 6
     type: Get_GameHealth
     outputs:
-    - 7
-    - id: 8
-      name: current
-      type: int
-      field_source: 7
-      field_name: current
-    - id: 9
-      name: maximum
-      type: int
-      field_source: 7
-      field_name: maximum
+      Value.current: {}
+      Value.maximum: {}
   - id: 32
     type: Behavior Expression
     reference_id: 10
     reference_name: max(current - damage, 0)
     inputs:
-    - id: 33
-      declaration_id: 15
-      name: current
-      type: int
-      flags: 2
-      group: 1
-    - id: 34
-      declaration_id: 16
-      name: damage
-      type: int
-      flags: 2
-      group: 2
+      current: {declaration_id: 15, type: int, flags: 2, group: 1}
+      damage: {declaration_id: 16, type: int, flags: 2, group: 2}
     outputs:
-    - id: 35
-      declaration_id: 17
-      name: Result
-      type: int
-      flags: 2
-      group: 3
+      Result: {declaration_id: 17, type: int, flags: 2, group: 3}
   - id: 80
     type: Set_GameHealth_current
-    inputs: [81, 82, 83]
     outputs:
-    - 84
-    - 85
-    - id: 108
-      name: current
-      type: int
-      field_source: 85
-      field_name: current
-    - id: 109
-      name: maximum
-      type: int
-      field_source: 85
-      field_name: maximum
+      Value.current: {id: 108}
+      Value.maximum: {}
   - id: 124
     type: Behavior Expression
     reference_id: 110
     reference_name: current <= 0
     inputs:
-    - id: 127
-      name: Exec
-      kind: exec
-    - id: 125
-      declaration_id: 115
-      name: current
-      type: double
-      group: 1
+      Exec: {id: 127, kind: exec}
+      current: {id: 125, declaration_id: 115, type: double, group: 1}
     outputs:
-    - id: 128
-      name: "True"
-      kind: exec
-    - id: 129
-      name: "False"
-      kind: exec
-    - id: 126
-      declaration_id: 116
-      name: Result
-      type: bool
-      flags: 2
-      group: 2
+      "True": {id: 128, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 126, declaration_id: 116, type: bool, flags: 2, group: 2}
   - id: 144
     type: Self
     outputs:
-    - id: 145
-      type_name: ecs.entity
-  - id: 146
-    type: Destroy Entity
-    inputs: [147, 148]
-    outputs: [149]
-  - id: 191
-    type: Ceiling
-    inputs: [192]
-    outputs: [193]
-  - id: 194
-    type: To Integer
-    inputs: [195]
-    outputs: [196]
+      Self: {type_name: ecs.entity}
+  - {id: 146, type: Destroy Entity}
+  - {id: 191, type: Ceiling}
+  - {id: 194, type: To Integer}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 80
-    to_pin: 81
-  - from: 1
-    from_pin: 3
-    to: 191
-    to_pin: 192
-  - from: 6
-    from_pin: 8
-    to: 32
-    to_pin: 33
-  - from: 32
-    from_pin: 35
-    to: 80
-    to_pin: 82
-  - from: 80
-    from_pin: 84
-    to: 124
-    to_pin: 127
-  - from: 80
-    from_pin: 108
-    to: 124
-    to_pin: 125
-    conversion: To Real
-  - from: 124
-    from_pin: 128
-    to: 146
-    to_pin: 147
-  - from: 144
-    from_pin: 145
-    to: 80
-    to_pin: 83
-  - from: 144
-    from_pin: 145
-    to: 146
-    to_pin: 148
-  - from: 191
-    from_pin: 193
-    to: 194
-    to_pin: 195
-  - from: 194
-    from_pin: 196
-    to: 32
-    to_pin: 34
+  - {from: 1.Then, to: 80.Exec}
+  - {from: 1.Energy, to: 191.Value}
+  - {from: 6.Value.current, to: 32.current}
+  - {from: 32.Result, to: 80.Value}
+  - {from: 80.Then, to: 124.Exec}
+  - {from: 80.Value.current, to: 124.current, conversion: To Real}
+  - {from: 124.True, to: 146.Exec}
+  - {from: 144.Self, to: 80.Target}
+  - {from: 144.Self, to: 146.Entity}
+  - {from: 191.Result, to: 194.Value}
+  - {from: 194.Integer, to: 32.damage}
 - id: 10
   kind: function
   name: max(current - damage, 0)
@@ -187,72 +79,33 @@ graphs:
   - id: 198
     type: Function Entry
     outputs:
-    - id: 202
-      name: current
-      type: int
-      kind: data
-      flags: 2
-      group: 1
-    - id: 203
-      name: damage
-      type: int
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 202, name: current, type: int, kind: data, flags: 2, group: 1}
+    - {id: 203, name: damage, type: int, kind: data, flags: 2, group: 2}
   - id: 200
     type: Return
     inputs:
-    - id: 204
-      name: Result
-      type: int
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 204, name: Result, type: int, kind: data, flags: 2, group: 3}
   - id: 205
     type: Subtract
     inputs:
-    - id: 206
-      type: int
-    - id: 207
-      type: int
+      A: {type: int}
+      B: {type: int}
     outputs:
-    - id: 208
-      type: int
-  - id: 209
-    type: Real
-    inputs: [210]
-    outputs: [211]
+      Result: {type: int}
+  - {id: 209, type: Real}
   - id: 212
     type: Max
     inputs:
-    - id: 213
-      type: int
-    - id: 214
-      type: double
+      A: {type: int}
+      B: {type: double}
     outputs:
-    - id: 215
-      type: int
+      Result: {type: int}
   edges:
-  - from: 198
-    from_pin: 202
-    to: 205
-    to_pin: 206
-  - from: 198
-    from_pin: 203
-    to: 205
-    to_pin: 207
-  - from: 205
-    from_pin: 208
-    to: 212
-    to_pin: 213
-  - from: 209
-    from_pin: 211
-    to: 212
-    to_pin: 214
-  - from: 212
-    from_pin: 215
-    to: 200
-    to_pin: 204
+  - {from: 198.current, to: 205.A}
+  - {from: 198.damage, to: 205.B}
+  - {from: 205.Result, to: 212.A}
+  - {from: 209.Value, to: 212.B}
+  - {from: 212.Result, to: 200.Result}
 - id: 110
   kind: function
   name: current <= 0
@@ -265,42 +118,18 @@ graphs:
   - id: 131
     type: Function Entry
     outputs:
-    - id: 135
-      name: current
-      type: double
-      kind: data
-      group: 1
+    - {id: 135, name: current, type: double, kind: data, group: 1}
   - id: 133
     type: Return
     inputs:
-    - id: 136
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 2
-  - id: 137
-    type: Real
-    inputs: [138]
-    outputs: [139]
+    - {id: 136, name: Result, type: bool, kind: data, flags: 2, group: 2}
+  - {id: 137, type: Real}
   - id: 140
     type: Less Or Equal
     inputs:
-    - id: 141
-      type: double
-    - id: 142
-      type: double
-    outputs: [143]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 131
-    from_pin: 135
-    to: 140
-    to_pin: 141
-  - from: 137
-    from_pin: 139
-    to: 140
-    to_pin: 142
-  - from: 140
-    from_pin: 143
-    to: 133
-    to_pin: 136
+  - {from: 131.current, to: 140.A}
+  - {from: 137.Value, to: 140.B}
+  - {from: 140.Result, to: 133.Result}

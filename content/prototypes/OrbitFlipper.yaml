@@ -1,9 +1,7 @@
 name: OrbitFlipper
 identity: prototype-00000000000004a4
 components:
-  GAME.GameActionBinding:
-    action: FlipLeft
-    source: Z
+  GAME.GameActionBinding: {action: FlipLeft, source: Z}
   GAME.GameAppearance:
     antialias: 1.0
     border_color: 4293970943
@@ -12,19 +10,9 @@ components:
     height: 16.0
     shape: Capsule
     width: 92.0
-  GAME.GameBody:
-    type: Kinematic
-  GAME.GameCollider:
-    category: 8
-    height: 16.0
-    mask: 1
-    restitution: 0.75
-    shape: Box
-    width: 92.0
-  GAME.GameOrientation:
-    radians: 0.3499999940395355
-  game.GameTransform:
-    x: -72.41999816894531
-    "y": -68.27999877929688
+  GAME.GameBody: {type: Kinematic}
+  GAME.GameCollider: {category: 8, height: 16.0, mask: 1, restitution: 0.75, shape: Box, width: 92.0}
+  GAME.GameOrientation: {radians: 0.3499999940395355}
+  game.GameTransform: {x: -72.41999816894531, "y": -68.27999877929688}
   GAME.GameVelocity: {}
 behaviors: [OrbitFlipperMotion]

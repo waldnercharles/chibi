@@ -7,21 +7,13 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Fire
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Fire}
   - id: 14
     type: Set_GameVelocity
     inputs:
-    - 15
-    - id: 16
-      default:
-        x: 1.0
-        "y": 0.0
-    outputs: [17, 35]
+      Value:
+        default: {x: 1.0, "y": 0.0}
+    outputs:
+      Value: {id: 35}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 14
-    to_pin: 15
+  - {from: 1.Then, to: 14.Exec}

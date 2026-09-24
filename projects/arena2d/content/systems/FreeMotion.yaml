@@ -10,75 +10,26 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
-  - id: 4
-    type: Get_GameTransform
-    outputs: [5]
-  - id: 6
-    type: Get_GameVelocity
-    outputs: [7]
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 4, type: Get_GameTransform}
+  - {id: 6, type: Get_GameVelocity}
   - id: 25
     type: Behavior Expression
     reference_id: 8
     reference_name: position + velocity * dt
     inputs:
-    - id: 26
-      declaration_id: 13
-      name: position
-      type: struct
-      type_name: GameTransform
-      flags: 2
-      group: 1
-    - id: 27
-      declaration_id: 14
-      name: velocity
-      type: struct
-      type_name: GameVelocity
-      flags: 2
-      group: 2
-    - id: 28
-      declaration_id: 15
-      name: dt
-      type: float
-      flags: 2
-      group: 3
+      position: {declaration_id: 13, type: struct, type_name: GameTransform, flags: 2, group: 1}
+      velocity: {declaration_id: 14, type: struct, type_name: GameVelocity, flags: 2, group: 2}
+      dt: {declaration_id: 15, type: float, flags: 2, group: 3}
     outputs:
-    - id: 29
-      declaration_id: 16
-      name: Result
-      type: struct
-      type_name: GameTransform
-      flags: 2
-      group: 4
-  - id: 81
-    type: Set_GameTransform
-    inputs: [82, 83]
-    outputs: [84, 85]
+      Result: {declaration_id: 16, type: struct, type_name: GameTransform, flags: 2, group: 4}
+  - {id: 81, type: Set_GameTransform}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 81
-    to_pin: 82
-  - from: 1
-    from_pin: 3
-    to: 25
-    to_pin: 28
-  - from: 4
-    from_pin: 5
-    to: 25
-    to_pin: 26
-  - from: 6
-    from_pin: 7
-    to: 25
-    to_pin: 27
-  - from: 25
-    from_pin: 29
-    to: 81
-    to_pin: 83
+  - {from: 1.Then, to: 81.Exec}
+  - {from: 1.DeltaSeconds, to: 25.dt}
+  - {from: 4.Value, to: 25.position}
+  - {from: 6.Value, to: 25.velocity}
+  - {from: 25.Result, to: 81.Value}
 - id: 8
   kind: function
   name: position + velocity * dt
@@ -105,12 +56,7 @@ graphs:
       kind: data
       flags: 2
       group: 2
-    - id: 93
-      name: dt
-      type: float
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 93, name: dt, type: float, kind: data, flags: 2, group: 3}
   - id: 89
     type: Return
     inputs:
@@ -124,62 +70,31 @@ graphs:
   - id: 95
     type: Multiply
     inputs:
-    - id: 96
-      type: struct
-      type_name: GameVelocity
-    - 97
+      A: {type: struct, type_name: GameVelocity}
     outputs:
-    - id: 98
-      type: struct
-      type_name: GameVelocity
+      Result: {type: struct, type_name: GameVelocity}
   - id: 99
     type: Add
     inputs:
-    - id: 100
-      type: struct
-      type_name: GameTransform
-    - id: 101
-      type: struct
-      type_name: GameVelocity
+      A: {type: struct, type_name: GameTransform}
+      B: {type: struct, type_name: GameVelocity}
     outputs:
-    - id: 102
-      type: struct
-      type_name: GameTransform
+      Result: {type: struct, type_name: GameTransform}
   edges:
-  - from: 87
-    from_pin: 91
-    to: 99
-    to_pin: 100
-  - from: 87
-    from_pin: 92
-    to: 95
-    to_pin: 96
-  - from: 87
-    from_pin: 93
-    to: 95
-    to_pin: 97
-  - from: 95
-    from_pin: 98
-    to: 99
-    to_pin: 101
-  - from: 99
-    from_pin: 102
-    to: 89
-    to_pin: 94
+  - {from: 87.position, to: 99.A}
+  - {from: 87.velocity, to: 95.A}
+  - {from: 87.dt, to: 95.B}
+  - {from: 95.Result, to: 99.B}
+  - {from: 99.Result, to: 89.Result}
 query:
   op: all
   terms:
-  - op: has
-    component: game.GameTransform
-  - op: has
-    component: GAME.GameVelocity
-  - op: has
-    component: GAME.GameAppearance
+  - {op: has, component: game.GameTransform}
+  - {op: has, component: GAME.GameVelocity}
+  - {op: has, component: GAME.GameAppearance}
   - op: not
     terms:
-    - op: has
-      component: GAME.GameCollider
+    - {op: has, component: GAME.GameCollider}
   - op: not
     terms:
-    - op: has
-      component: GAME.GameBody
+    - {op: has, component: GAME.GameBody}

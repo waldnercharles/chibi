@@ -37,27 +37,11 @@ components:
     color_b: 2572025855
     color_c: 869072895
     color_d: 3436838911
-    far_layer:
-      w: 0.4000000059604645
-      x: 100.0
-      "y": 1.2000000476837158
-      z: 0.18000000715255737
-    middle_layer:
-      w: 0.699999988079071
-      x: 140.0
-      "y": 1.5
-      z: 0.15000000596046448
-    near_layer:
-      w: 1.0
-      x: 200.0
-      "y": 2.0
-      z: 0.11999999731779099
-    parallax:
-      x: 0.10000000149011612
-      "y": 0.30000001192092896
-      z: 0.6000000238418579
-  GAME.MaterialDestructionWorld:
-    fragment_limit: 96
+    far_layer: {w: 0.4000000059604645, x: 100.0, "y": 1.2000000476837158, z: 0.18000000715255737}
+    middle_layer: {w: 0.699999988079071, x: 140.0, "y": 1.5, z: 0.15000000596046448}
+    near_layer: {w: 1.0, x: 200.0, "y": 2.0, z: 0.11999999731779099}
+    parallax: {x: 0.10000000149011612, "y": 0.30000001192092896, z: 0.6000000238418579}
+  GAME.MaterialDestructionWorld: {fragment_limit: 96}
   GAME.MaterialFluidWorld:
     buffer: 192.0
     chunk_size: 256.0

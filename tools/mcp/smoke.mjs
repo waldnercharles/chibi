@@ -494,7 +494,7 @@ try {
     const notes = result?.diagnostics?.filter((item) => item.rule_name === "PERF-QUERY-FUSION");
     if (!result?.valid || result.notes !== 4 || result.warnings !== 0 || notes?.length !== 4 ||
         notes.some((item) => item.severity !== "note" || item.graph !== query.id ||
-          !nodes.some((node) => node.id === item.node && node.inputs.some((pin) => pin.id === item.pin)))) {
+          !nodes.some((node) => node.id === item.node) || !String(item.pin).startsWith(`${item.node}.`))) {
       throw new Error(`query fusion diagnostics lost severity or source identity: ${JSON.stringify(result)}`);
     }
   }

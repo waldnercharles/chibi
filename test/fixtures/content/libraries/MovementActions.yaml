@@ -4,8 +4,7 @@ domain: library
 id_counter: 355
 description: Shared movement intent in project units per second.
 graphs:
-- kind: event
-  name: Events
+- {kind: event, name: Events}
 - id: 93
   kind: function
   name: Movement Velocity
@@ -45,25 +44,10 @@ graphs:
   - id: 343
     type: Multiply
     inputs:
-    - id: 344
-      type: struct
-      type_name: CF_V2
-    - 345
+      A: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 346
-      type: struct
-      type_name: CF_V2
+      Result: {type: struct, type_name: CF_V2}
   edges:
-  - from: 334
-    from_pin: 339
-    to: 343
-    to_pin: 344
-  - from: 334
-    from_pin: 340
-    to: 343
-    to_pin: 345
-    conversion: Unwrap_GameMovement
-  - from: 343
-    from_pin: 346
-    to: 336
-    to_pin: 342
+  - {from: 334.direction, to: 343.A}
+  - {from: 334.speed, to: 343.B, conversion: Unwrap_GameMovement}
+  - {from: 343.Result, to: 336.Velocity}

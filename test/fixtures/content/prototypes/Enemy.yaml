@@ -10,15 +10,9 @@ components:
     height: 28.0
     shape: Diamond
     width: 28.0
-  GAME.GameBody:
-    type: Dynamic
-  GAME.GameCollider:
-    category: 2
-    mask: 13
-    radius: 12.0
-  game.GameHealth:
-    current: 50
-    maximum: 50
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 13, radius: 12.0}
+  game.GameHealth: {current: 50, maximum: 50}
   GAME.GameMaterial:
     absorption: 1.0
     border_emission_color: 4291559679
@@ -27,13 +21,8 @@ components:
     emission_intensity: 0.009999999776482582
     emission_multiplier: 0.5
     scene: 336527615
-  game.GameMovement:
-    speed: 90.0
-  GAME.GameSdfMotion:
-    angular_frequency: 4.0
-    temporal_frequency: 3.0
-  game.GameTransform:
-    x: 640.0
-    "y": 180.0
+  game.GameMovement: {speed: 90.0}
+  GAME.GameSdfMotion: {angular_frequency: 4.0, temporal_frequency: 3.0}
+  game.GameTransform: {x: 640.0, "y": 180.0}
   GAME.GameVelocity: {}
 behaviors: [EnemyBehavior, HealthBehavior]

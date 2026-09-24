@@ -4,26 +4,10 @@ id_counter: 559
 description: The twelve original box-frame beams keep their source pose and material, separate outward, tumble at independent rates, arc above the floor, and shrink away after 0.55 seconds.
 owner_type: ecs.entity
 variables:
-- id: 1
-  name: Age
-  type: float
-  type_name: float
-  category: State
-- id: 124
-  name: Pitch Rate
-  type: float
-  type_name: float
-  category: State
-- id: 142
-  name: Roll Rate
-  type: float
-  type_name: float
-  category: State
-- id: 160
-  name: Lift
-  type: float
-  type_name: float
-  category: State
+- {id: 1, name: Age, type: float, type_name: float, category: State}
+- {id: 124, name: Pitch Rate, type: float, type_name: float, category: State}
+- {id: 142, name: Roll Rate, type: float, type_name: float, category: State}
+- {id: 160, name: Lift, type: float, type_name: float, category: State}
 - id: 209
   name: Birth Scale
   type: float
@@ -37,257 +21,119 @@ graphs:
   - id: 3
     type: Event
     reference_name: Tick
-    outputs: [2]
+    outputs:
+      Then: {id: 2}
   - id: 5
     type: Delta Time
-    outputs: [4]
+    outputs:
+      Seconds: {id: 4}
   - id: 7
     type: Get Variable
     reference_id: 1
     outputs:
-    - id: 6
-      type: float
-      flags: 0
+      Value: {id: 6, type: float, flags: 0}
   - id: 12
     type: Set Variable
     reference_id: 1
     inputs:
-    - 8
-    - id: 9
-      type: float
+      Exec: {id: 8}
+      Value: {type: float}
     outputs:
-    - 10
-    - id: 11
-      type: float
+      Value: {type: float}
   - id: 24
     type: Greater Or Equal
     inputs:
-    - 21
-    - id: 22
-      default: 1.0
-    outputs: [23]
+      A: {id: 21}
+      B: 1.0
   - id: 29
     type: Branch
-    inputs: [25, 26]
-    outputs: [27, 28]
+    inputs:
+      Exec: {id: 25}
   - id: 33
     type: Destroy Entity
-    inputs: [30, 31]
-    outputs: [32]
+    inputs:
+      Exec: {id: 30}
   - id: 35
     type: Self
     outputs:
-    - id: 34
-      name: Entity
-      type_name: ecs.entity
+    - {id: 34, name: Entity, type_name: ecs.entity}
   - id: 123
     type: Event
     reference_name: Begin
-    outputs: [122]
+    outputs:
+      Then: {id: 122}
   - id: 210
     type: Get_GameVisualTransform
     outputs:
-    - id: 211
-      flags: 0
-    - id: 212
-      name: scale
-      type: float
-      field_source: 211
-      field_name: scale
-      flags: 0
+      Value: {flags: 0}
+      Value.scale: {}
   - id: 237
     type: Behavior Expression
     reference_id: 225
     reference_name: Updated Age
     inputs:
-    - id: 238
-      declaration_id: 230
-      name: Age
-      type: float
-      flags: 2
-      group: 1
-    - id: 239
-      declaration_id: 231
-      name: Delta
-      type: float
-      flags: 2
-      group: 2
+      Age: {declaration_id: 230, type: float, flags: 2, group: 1}
+      Delta: {declaration_id: 231, type: float, flags: 2, group: 2}
     outputs:
-    - id: 240
-      declaration_id: 232
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 232, type: double, flags: 2, group: 3}
   - id: 260
     type: Behavior Expression
     reference_id: 241
     reference_name: Age Phase
     inputs:
-    - id: 261
-      declaration_id: 246
-      name: Age
-      type: float
-      flags: 2
-      group: 1
-    - id: 262
-      declaration_id: 247
-      name: Delta
-      type: float
-      flags: 2
-      group: 2
+      Age: {declaration_id: 246, type: float, flags: 2, group: 1}
+      Delta: {declaration_id: 247, type: float, flags: 2, group: 2}
     outputs:
-    - id: 263
-      declaration_id: 248
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 248, type: double, flags: 2, group: 3}
   - id: 380
     type: Random Range
-    inputs:
-    - id: 381
-      default: -6.0
-    - id: 382
-      default: 6.0
-    outputs: [383]
+    inputs: {Min: -6.0, Max: 6.0}
   - id: 384
     type: Random Range
-    inputs:
-    - id: 385
-      default: -7.0
-    - id: 386
-      default: 7.0
-    outputs: [387]
+    inputs: {Min: -7.0, Max: 7.0}
   - id: 388
     type: Random Range
-    inputs:
-    - id: 389
-      default: 18.0
-    - id: 390
-      default: 42.0
-    outputs: [391]
+    inputs: {Min: 18.0, Max: 42.0}
   - id: 425
     type: Call Function
     reference_id: 396
     reference_name: Initialize Shard
     inputs:
-    - 426
-    - id: 428
-      declaration_id: 421
-      name: scale
-      type: float
-      kind: data
-    - id: 429
-      declaration_id: 422
-      name: Pitch Rate
-      type: double
-      kind: data
-    - id: 430
-      declaration_id: 423
-      name: Roll Rate
-      type: double
-      kind: data
-    - id: 431
-      declaration_id: 424
-      name: Lift
-      type: double
-      kind: data
-    outputs: [427]
+      scale: {id: 428, declaration_id: 421, type: float, kind: data}
+      Pitch Rate: {declaration_id: 422, type: double, kind: data}
+      Roll Rate: {declaration_id: 423, type: double, kind: data}
+      Lift: {declaration_id: 424, type: double, kind: data}
+    outputs:
+      Then: {id: 427}
   - id: 544
     type: Call Function
     reference_id: 436
     reference_name: Advance Shard Motion
     inputs:
-    - 545
-    - id: 547
-      declaration_id: 542
-      name: Seconds
-      type: float
-      kind: data
-    - id: 548
-      declaration_id: 543
-      name: Age
-      type: float
-      kind: data
-    outputs: [546]
+      Seconds: {id: 547, declaration_id: 542, type: float, kind: data}
+      Age: {declaration_id: 543, type: float, kind: data}
+    outputs:
+      Then: {id: 546}
   edges:
-  - from: 3
-    from_pin: 2
-    to: 12
-    to_pin: 8
-  - from: 5
-    from_pin: 4
-    to: 237
-    to_pin: 239
-  - from: 5
-    from_pin: 4
-    to: 260
-    to_pin: 262
-  - from: 5
-    from_pin: 4
-    to: 544
-    to_pin: 547
-  - from: 7
-    from_pin: 6
-    to: 237
-    to_pin: 238
-  - from: 12
-    from_pin: 10
-    to: 29
-    to_pin: 25
-  - from: 12
-    from_pin: 11
-    to: 260
-    to_pin: 261
-  - from: 12
-    from_pin: 11
-    to: 544
-    to_pin: 548
-  - from: 24
-    from_pin: 23
-    to: 29
-    to_pin: 26
-  - from: 29
-    from_pin: 27
-    to: 33
-    to_pin: 30
-  - from: 29
-    from_pin: 28
-    to: 544
-    to_pin: 545
-  - from: 35
-    from_pin: 34
-    to: 33
-    to_pin: 31
-  - from: 123
-    from_pin: 122
-    to: 425
-    to_pin: 426
-  - from: 210
-    from_pin: 212
-    to: 425
-    to_pin: 428
-  - from: 237
-    from_pin: 240
-    to: 12
-    to_pin: 9
-  - from: 260
-    from_pin: 263
-    to: 24
-    to_pin: 21
-  - from: 380
-    from_pin: 383
-    to: 425
-    to_pin: 429
-  - from: 384
-    from_pin: 387
-    to: 425
-    to_pin: 430
-  - from: 388
-    from_pin: 391
-    to: 425
-    to_pin: 431
+  - {from: 3.Then, to: 12.Exec}
+  - {from: 5.Seconds, to: 237.Delta}
+  - {from: 5.Seconds, to: 260.Delta}
+  - {from: 5.Seconds, to: 544.Seconds}
+  - {from: 7.Value, to: 237.Age}
+  - {from: 12.Then, to: 29.Exec}
+  - {from: 12.Value, to: 260.Age}
+  - {from: 12.Value, to: 544.Age}
+  - {from: 24.Result, to: 29.Condition}
+  - {from: 29.True, to: 33.Exec}
+  - {from: 29.False, to: 544.Exec}
+  - {from: 35.Entity, to: 33.Entity}
+  - {from: 123.Then, to: 425.Exec}
+  - {from: 210.Value.scale, to: 425.scale}
+  - {from: 237.Result, to: 12.Value}
+  - {from: 260.Result, to: 24.A}
+  - {from: 380.Result, to: 425.Pitch Rate}
+  - {from: 384.Result, to: 425.Roll Rate}
+  - {from: 388.Result, to: 425.Lift}
 - id: 225
   kind: function
   name: Updated Age
@@ -300,50 +146,23 @@ graphs:
   - id: 226
     type: Function Entry
     outputs:
-    - id: 230
-      name: Age
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 231
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 230, name: Age, type: double, kind: data, flags: 2, group: 1}
+    - {id: 231, name: Delta, type: double, kind: data, flags: 2, group: 2}
   - id: 228
     type: Return
     inputs:
-    - id: 232
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 232, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 233
     type: Add
     inputs:
-    - id: 234
-      type: double
-    - id: 235
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 236
-      type: double
+      Result: {type: double}
   edges:
-  - from: 226
-    from_pin: 230
-    to: 233
-    to_pin: 234
-  - from: 226
-    from_pin: 231
-    to: 233
-    to_pin: 235
-  - from: 233
-    from_pin: 236
-    to: 228
-    to_pin: 232
+  - {from: 226.Age, to: 233.A}
+  - {from: 226.Delta, to: 233.B}
+  - {from: 233.Result, to: 228.Result}
 - id: 241
   kind: function
   name: Age Phase
@@ -356,74 +175,35 @@ graphs:
   - id: 242
     type: Function Entry
     outputs:
-    - id: 246
-      name: Age
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 247
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 246, name: Age, type: double, kind: data, flags: 2, group: 1}
+    - {id: 247, name: Delta, type: double, kind: data, flags: 2, group: 2}
   - id: 244
     type: Return
     inputs:
-    - id: 248
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 248, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 249
     type: Add
     inputs:
-    - id: 250
-      type: double
-    - id: 251
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 252
-      type: double
+      Result: {type: double}
   - id: 253
     type: Real
-    inputs:
-    - id: 254
-      default: 0.55
-    outputs: [255]
+    inputs: {Value: 0.55}
   - id: 256
     type: Divide
     inputs:
-    - id: 257
-      type: double
-    - id: 258
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 259
-      type: double
+      Result: {type: double}
   edges:
-  - from: 242
-    from_pin: 246
-    to: 249
-    to_pin: 250
-  - from: 242
-    from_pin: 247
-    to: 249
-    to_pin: 251
-  - from: 249
-    from_pin: 252
-    to: 256
-    to_pin: 257
-  - from: 253
-    from_pin: 255
-    to: 256
-    to_pin: 258
-  - from: 256
-    from_pin: 259
-    to: 244
-    to_pin: 248
+  - {from: 242.Age, to: 249.A}
+  - {from: 242.Delta, to: 249.B}
+  - {from: 249.Result, to: 256.A}
+  - {from: 253.Value, to: 256.B}
+  - {from: 256.Result, to: 244.Result}
 - id: 264
   kind: function
   name: Fade
@@ -436,92 +216,46 @@ graphs:
   - id: 265
     type: Function Entry
     outputs:
-    - id: 269
-      name: Normalized
-      type: double
-      kind: data
-      flags: 2
-      group: 1
+    - {id: 269, name: Normalized, type: double, kind: data, flags: 2, group: 1}
   - id: 267
     type: Return
     inputs:
-    - id: 270
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 270, name: Result, type: double, kind: data, flags: 2, group: 2}
   - id: 271
     type: Real
-    inputs:
-    - id: 272
-      default: 1.0
-    outputs: [273]
+    inputs: {Value: 1.0}
   - id: 274
     type: Subtract
     inputs:
-    - id: 275
-      type: double
-    - id: 276
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 277
-      type: double
+      Result: {type: double}
   - id: 278
     type: Real
-    inputs:
-    - id: 279
-      default: 1.0
-    outputs: [280]
+    inputs: {Value: 1.0}
   - id: 281
     type: Subtract
     inputs:
-    - id: 282
-      type: double
-    - id: 283
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 284
-      type: double
+      Result: {type: double}
   - id: 285
     type: Multiply
     inputs:
-    - id: 286
-      type: double
-    - id: 287
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 288
-      type: double
+      Result: {type: double}
   edges:
-  - from: 265
-    from_pin: 269
-    to: 274
-    to_pin: 276
-  - from: 265
-    from_pin: 269
-    to: 281
-    to_pin: 283
-  - from: 271
-    from_pin: 273
-    to: 274
-    to_pin: 275
-  - from: 274
-    from_pin: 277
-    to: 285
-    to_pin: 286
-  - from: 278
-    from_pin: 280
-    to: 281
-    to_pin: 282
-  - from: 281
-    from_pin: 284
-    to: 285
-    to_pin: 287
-  - from: 285
-    from_pin: 288
-    to: 267
-    to_pin: 270
+  - {from: 265.Normalized, to: 274.B}
+  - {from: 265.Normalized, to: 281.B}
+  - {from: 271.Value, to: 274.A}
+  - {from: 274.Result, to: 285.A}
+  - {from: 278.Value, to: 281.A}
+  - {from: 281.Result, to: 285.B}
+  - {from: 285.Result, to: 267.Result}
 - id: 292
   kind: function
   name: Position X
@@ -534,74 +268,33 @@ graphs:
   - id: 293
     type: Function Entry
     outputs:
-    - id: 297
-      name: PositionX
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 298
-      name: VelocityX
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 299
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 297, name: PositionX, type: double, kind: data, flags: 2, group: 1}
+    - {id: 298, name: VelocityX, type: double, kind: data, flags: 2, group: 2}
+    - {id: 299, name: Delta, type: double, kind: data, flags: 2, group: 3}
   - id: 295
     type: Return
     inputs:
-    - id: 300
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 300, name: Result, type: double, kind: data, flags: 2, group: 4}
   - id: 301
     type: Multiply
     inputs:
-    - id: 302
-      type: double
-    - id: 303
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 304
-      type: double
+      Result: {type: double}
   - id: 305
     type: Add
     inputs:
-    - id: 306
-      type: double
-    - id: 307
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 308
-      type: double
+      Result: {type: double}
   edges:
-  - from: 293
-    from_pin: 297
-    to: 305
-    to_pin: 306
-  - from: 293
-    from_pin: 298
-    to: 301
-    to_pin: 302
-  - from: 293
-    from_pin: 299
-    to: 301
-    to_pin: 303
-  - from: 301
-    from_pin: 304
-    to: 305
-    to_pin: 307
-  - from: 305
-    from_pin: 308
-    to: 295
-    to_pin: 300
+  - {from: 293.PositionX, to: 305.A}
+  - {from: 293.VelocityX, to: 301.A}
+  - {from: 293.Delta, to: 301.B}
+  - {from: 301.Result, to: 305.B}
+  - {from: 305.Result, to: 295.Result}
 - id: 314
   kind: function
   name: Position Y
@@ -614,74 +307,33 @@ graphs:
   - id: 315
     type: Function Entry
     outputs:
-    - id: 319
-      name: PositionY
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 320
-      name: VelocityY
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 321
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 319, name: PositionY, type: double, kind: data, flags: 2, group: 1}
+    - {id: 320, name: VelocityY, type: double, kind: data, flags: 2, group: 2}
+    - {id: 321, name: Delta, type: double, kind: data, flags: 2, group: 3}
   - id: 317
     type: Return
     inputs:
-    - id: 322
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 322, name: Result, type: double, kind: data, flags: 2, group: 4}
   - id: 323
     type: Multiply
     inputs:
-    - id: 324
-      type: double
-    - id: 325
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 326
-      type: double
+      Result: {type: double}
   - id: 327
     type: Add
     inputs:
-    - id: 328
-      type: double
-    - id: 329
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 330
-      type: double
+      Result: {type: double}
   edges:
-  - from: 315
-    from_pin: 319
-    to: 327
-    to_pin: 328
-  - from: 315
-    from_pin: 320
-    to: 323
-    to_pin: 324
-  - from: 315
-    from_pin: 321
-    to: 323
-    to_pin: 325
-  - from: 323
-    from_pin: 326
-    to: 327
-    to_pin: 329
-  - from: 327
-    from_pin: 330
-    to: 317
-    to_pin: 322
+  - {from: 315.PositionY, to: 327.A}
+  - {from: 315.VelocityY, to: 323.A}
+  - {from: 315.Delta, to: 323.B}
+  - {from: 323.Result, to: 327.B}
+  - {from: 327.Result, to: 317.Result}
 - id: 336
   kind: function
   name: Pitch
@@ -694,74 +346,33 @@ graphs:
   - id: 337
     type: Function Entry
     outputs:
-    - id: 341
-      name: Pitch
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 342
-      name: PitchRate
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 343
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 341, name: Pitch, type: double, kind: data, flags: 2, group: 1}
+    - {id: 342, name: PitchRate, type: double, kind: data, flags: 2, group: 2}
+    - {id: 343, name: Delta, type: double, kind: data, flags: 2, group: 3}
   - id: 339
     type: Return
     inputs:
-    - id: 344
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 344, name: Result, type: double, kind: data, flags: 2, group: 4}
   - id: 345
     type: Multiply
     inputs:
-    - id: 346
-      type: double
-    - id: 347
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 348
-      type: double
+      Result: {type: double}
   - id: 349
     type: Add
     inputs:
-    - id: 350
-      type: double
-    - id: 351
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 352
-      type: double
+      Result: {type: double}
   edges:
-  - from: 337
-    from_pin: 341
-    to: 349
-    to_pin: 350
-  - from: 337
-    from_pin: 342
-    to: 345
-    to_pin: 346
-  - from: 337
-    from_pin: 343
-    to: 345
-    to_pin: 347
-  - from: 345
-    from_pin: 348
-    to: 349
-    to_pin: 351
-  - from: 349
-    from_pin: 352
-    to: 339
-    to_pin: 344
+  - {from: 337.Pitch, to: 349.A}
+  - {from: 337.PitchRate, to: 345.A}
+  - {from: 337.Delta, to: 345.B}
+  - {from: 345.Result, to: 349.B}
+  - {from: 349.Result, to: 339.Result}
 - id: 358
   kind: function
   name: Roll
@@ -774,74 +385,33 @@ graphs:
   - id: 359
     type: Function Entry
     outputs:
-    - id: 363
-      name: Roll
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 364
-      name: RollRate
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 365
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 363, name: Roll, type: double, kind: data, flags: 2, group: 1}
+    - {id: 364, name: RollRate, type: double, kind: data, flags: 2, group: 2}
+    - {id: 365, name: Delta, type: double, kind: data, flags: 2, group: 3}
   - id: 361
     type: Return
     inputs:
-    - id: 366
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 366, name: Result, type: double, kind: data, flags: 2, group: 4}
   - id: 367
     type: Multiply
     inputs:
-    - id: 368
-      type: double
-    - id: 369
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 370
-      type: double
+      Result: {type: double}
   - id: 371
     type: Add
     inputs:
-    - id: 372
-      type: double
-    - id: 373
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 374
-      type: double
+      Result: {type: double}
   edges:
-  - from: 359
-    from_pin: 363
-    to: 371
-    to_pin: 372
-  - from: 359
-    from_pin: 364
-    to: 367
-    to_pin: 368
-  - from: 359
-    from_pin: 365
-    to: 367
-    to_pin: 369
-  - from: 367
-    from_pin: 370
-    to: 371
-    to_pin: 373
-  - from: 371
-    from_pin: 374
-    to: 361
-    to_pin: 366
+  - {from: 359.Roll, to: 371.A}
+  - {from: 359.RollRate, to: 367.A}
+  - {from: 359.Delta, to: 367.B}
+  - {from: 367.Result, to: 371.B}
+  - {from: 371.Result, to: 361.Result}
 - id: 396
   kind: function
   name: Initialize Shard
@@ -852,107 +422,49 @@ graphs:
   - id: 397
     type: Function Entry
     outputs:
-    - 398
-    - id: 421
-      name: scale
-      type: float
-      kind: data
-    - id: 422
-      name: Pitch Rate
-      type: double
-      kind: data
-    - id: 423
-      name: Roll Rate
-      type: double
-      kind: data
-    - id: 424
-      name: Lift
-      type: double
-      kind: data
-  - id: 399
-    type: Return
-    inputs: [400]
+      scale: {id: 421, type: float, kind: data}
+      Pitch Rate: {type: double, kind: data}
+      Roll Rate: {type: double, kind: data}
+      Lift: {type: double, kind: data}
+  - {id: 399, type: Return}
   - id: 401
     type: Set Variable
     reference_id: 124
     inputs:
-    - 402
-    - id: 403
-      type: float
+      Value: {type: float}
     outputs:
-    - 404
-    - id: 405
-      type: float
+      Value: {type: float}
   - id: 406
     type: Set Variable
     reference_id: 142
     inputs:
-    - 407
-    - id: 408
-      type: float
+      Value: {type: float}
     outputs:
-    - 409
-    - id: 410
-      type: float
+      Value: {type: float}
   - id: 411
     type: Set Variable
     reference_id: 160
     inputs:
-    - 412
-    - id: 413
-      type: float
+      Value: {type: float}
     outputs:
-    - 414
-    - id: 415
-      type: float
+      Value: {type: float}
   - id: 416
     type: Set Variable
     reference_id: 209
     inputs:
-    - 417
-    - id: 418
-      type: float
+      Value: {type: float}
     outputs:
-    - 419
-    - id: 420
-      type: float
+      Value: {type: float}
   edges:
-  - from: 397
-    from_pin: 398
-    to: 416
-    to_pin: 417
-  - from: 397
-    from_pin: 421
-    to: 416
-    to_pin: 418
-  - from: 397
-    from_pin: 422
-    to: 401
-    to_pin: 403
-  - from: 397
-    from_pin: 423
-    to: 406
-    to_pin: 408
-  - from: 397
-    from_pin: 424
-    to: 411
-    to_pin: 413
-  - from: 401
-    from_pin: 404
-    to: 406
-    to_pin: 407
-  - from: 406
-    from_pin: 409
-    to: 411
-    to_pin: 412
-  - from: 411
-    from_pin: 414
-    to: 399
-    to_pin: 400
-  - from: 416
-    from_pin: 419
-    to: 401
-    to_pin: 402
+  - {from: 397.Exec, to: 416.Exec}
+  - {from: 397.scale, to: 416.Value}
+  - {from: 397.Pitch Rate, to: 401.Value}
+  - {from: 397.Roll Rate, to: 406.Value}
+  - {from: 397.Lift, to: 411.Value}
+  - {from: 401.Then, to: 406.Exec}
+  - {from: 406.Then, to: 411.Exec}
+  - {from: 411.Then, to: 399.Exec}
+  - {from: 416.Then, to: 401.Exec}
 - id: 436
   kind: function
   name: Advance Shard Motion
@@ -963,533 +475,192 @@ graphs:
   - id: 437
     type: Function Entry
     outputs:
-    - 438
-    - id: 542
-      name: Seconds
-      type: float
-      kind: data
-    - id: 543
-      declaration_id: 248
-      name: Age
-      type: float
-      kind: data
-  - id: 439
-    type: Return
-    inputs: [440]
+      Seconds: {id: 542, type: float, kind: data}
+      Age: {declaration_id: 248, type: float, kind: data}
+  - {id: 439, type: Return}
   - id: 441
     type: Get_GameTransform
     outputs:
-    - id: 442
-      flags: 0
-    - id: 443
-      name: x
-      type: float
-      field_source: 442
-      field_name: x
-      flags: 0
-    - id: 444
-      name: "y"
-      type: float
-      field_source: 442
-      field_name: "y"
-      flags: 0
+      Value: {flags: 0}
+      Value.x: {}
+      Value.y: {}
   - id: 445
     type: Get_GameVelocity
     outputs:
-    - id: 446
-      flags: 0
-    - id: 447
-      name: x
-      type: float
-      field_source: 446
-      field_name: x
-      flags: 0
-    - id: 448
-      name: "y"
-      type: float
-      field_source: 446
-      field_name: "y"
-      flags: 0
-  - id: 449
-    type: Set_GameTransform_x
-    inputs: [450, 451, 452]
-    outputs: [453, 454]
-  - id: 455
-    type: Set_GameTransform_y
-    inputs: [456, 457, 458]
-    outputs: [459, 460]
+      Value: {flags: 0}
+      Value.x: {}
+      Value.y: {}
+  - {id: 449, type: Set_GameTransform_x}
+  - {id: 455, type: Set_GameTransform_y}
   - id: 461
     type: Get_GameVisualTransform
     outputs:
-    - id: 462
-      flags: 0
-    - id: 463
-      name: pitch
-      type: float
-      field_source: 462
-      field_name: pitch
-      flags: 0
-    - id: 464
-      name: roll
-      type: float
-      field_source: 462
-      field_name: roll
-      flags: 0
-  - id: 465
-    type: Set_GameVisualTransform_pitch
-    inputs: [466, 467, 468]
-    outputs: [469, 470]
-  - id: 471
-    type: Set_GameVisualTransform_roll
-    inputs: [472, 473, 474]
-    outputs: [475, 476]
-  - id: 477
-    type: Set_GameVisualTransform_scale
-    inputs: [478, 479, 480]
-    outputs: [481, 482]
+      Value: {flags: 0}
+      Value.pitch: {}
+      Value.roll: {}
+  - {id: 465, type: Set_GameVisualTransform_pitch}
+  - {id: 471, type: Set_GameVisualTransform_roll}
+  - {id: 477, type: Set_GameVisualTransform_scale}
   - id: 483
     type: Get Variable
     reference_id: 124
     outputs:
-    - id: 484
-      type: float
-      flags: 0
+      Value: {type: float, flags: 0}
   - id: 485
     type: Get Variable
     reference_id: 142
     outputs:
-    - id: 486
-      type: float
-      flags: 0
+      Value: {type: float, flags: 0}
   - id: 487
     type: Get Variable
     reference_id: 160
     outputs:
-    - id: 488
-      type: float
-      flags: 0
+      Value: {type: float, flags: 0}
   - id: 489
     type: Get_GameGeometry3D
     outputs:
-    - id: 490
-      flags: 0
-    - id: 491
-      name: elevation
-      type: float
-      field_source: 490
-      field_name: elevation
-      flags: 0
+      Value: {flags: 0}
+      Value.elevation: {}
   - id: 492
     type: Multiply
     inputs:
-    - id: 493
-      type: double
-      flags: 0
-      group: 0
-    - id: 494
-      type: double
-      flags: 0
-      group: 0
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 495
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 496
     type: Add
     inputs:
-    - id: 497
-      type: double
-      flags: 0
-      group: 0
-    - id: 498
-      type: double
-      flags: 0
-      group: 0
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 499
-      type: double
-      flags: 0
-      group: 0
-  - id: 500
-    type: Set_GameGeometry3D_elevation
-    inputs: [501, 502, 503]
-    outputs: [504, 505]
+      Result: {type: double, flags: 0, group: 0}
+  - {id: 500, type: Set_GameGeometry3D_elevation}
   - id: 506
     type: Set Variable
     reference_id: 160
     inputs:
-    - 507
-    - id: 508
-      type: float
+      Value: {type: float}
     outputs:
-    - 509
-    - id: 510
-      type: float
+      Value: {type: float}
   - id: 511
     type: Multiply
     inputs:
-    - id: 512
-      type: double
-      flags: 0
-      group: 0
-    - id: 513
-      type: double
-      flags: 0
-      group: 0
-      default: 90.0
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 90.0}
     outputs:
-    - id: 514
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 515
     type: Subtract
     inputs:
-    - id: 516
-      type: double
-      flags: 0
-      group: 0
-    - id: 517
-      type: double
-      flags: 0
-      group: 0
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 518
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 519
     type: Behavior Expression
     reference_id: 264
     reference_name: Fade
     inputs:
-    - id: 520
-      declaration_id: 269
-      name: Normalized
-      type: double
-      flags: 2
-      group: 1
+      Normalized: {declaration_id: 269, type: double, flags: 2, group: 1}
     outputs:
-    - id: 521
-      declaration_id: 270
-      name: Result
-      type: double
-      flags: 2
-      group: 2
+      Result: {declaration_id: 270, type: double, flags: 2, group: 2}
   - id: 522
     type: Behavior Expression
     reference_id: 292
     reference_name: Position X
     inputs:
-    - id: 523
-      declaration_id: 297
-      name: PositionX
-      type: float
-      flags: 2
-      group: 1
-    - id: 524
-      declaration_id: 298
-      name: VelocityX
-      type: float
-      flags: 2
-      group: 2
-    - id: 525
-      declaration_id: 299
-      name: Delta
-      type: float
-      flags: 2
-      group: 3
+      PositionX: {declaration_id: 297, type: float, flags: 2, group: 1}
+      VelocityX: {declaration_id: 298, type: float, flags: 2, group: 2}
+      Delta: {declaration_id: 299, type: float, flags: 2, group: 3}
     outputs:
-    - id: 526
-      declaration_id: 300
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Result: {declaration_id: 300, type: double, flags: 2, group: 4}
   - id: 527
     type: Behavior Expression
     reference_id: 314
     reference_name: Position Y
     inputs:
-    - id: 528
-      declaration_id: 319
-      name: PositionY
-      type: float
-      flags: 2
-      group: 1
-    - id: 529
-      declaration_id: 320
-      name: VelocityY
-      type: float
-      flags: 2
-      group: 2
-    - id: 530
-      declaration_id: 321
-      name: Delta
-      type: float
-      flags: 2
-      group: 3
+      PositionY: {declaration_id: 319, type: float, flags: 2, group: 1}
+      VelocityY: {declaration_id: 320, type: float, flags: 2, group: 2}
+      Delta: {declaration_id: 321, type: float, flags: 2, group: 3}
     outputs:
-    - id: 531
-      declaration_id: 322
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Result: {declaration_id: 322, type: double, flags: 2, group: 4}
   - id: 532
     type: Behavior Expression
     reference_id: 336
     reference_name: Pitch
     inputs:
-    - id: 533
-      declaration_id: 341
-      name: Pitch
-      type: float
-      flags: 2
-      group: 1
-    - id: 534
-      declaration_id: 342
-      name: PitchRate
-      type: float
-      flags: 2
-      group: 2
-    - id: 535
-      declaration_id: 343
-      name: Delta
-      type: float
-      flags: 2
-      group: 3
+      Pitch: {declaration_id: 341, type: float, flags: 2, group: 1}
+      PitchRate: {declaration_id: 342, type: float, flags: 2, group: 2}
+      Delta: {declaration_id: 343, type: float, flags: 2, group: 3}
     outputs:
-    - id: 536
-      declaration_id: 344
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Result: {declaration_id: 344, type: double, flags: 2, group: 4}
   - id: 537
     type: Behavior Expression
     reference_id: 358
     reference_name: Roll
     inputs:
-    - id: 538
-      declaration_id: 363
-      name: Roll
-      type: float
-      flags: 2
-      group: 1
-    - id: 539
-      declaration_id: 364
-      name: RollRate
-      type: float
-      flags: 2
-      group: 2
-    - id: 540
-      declaration_id: 365
-      name: Delta
-      type: float
-      flags: 2
-      group: 3
+      Roll: {declaration_id: 363, type: float, flags: 2, group: 1}
+      RollRate: {declaration_id: 364, type: float, flags: 2, group: 2}
+      Delta: {declaration_id: 365, type: float, flags: 2, group: 3}
     outputs:
-    - id: 541
-      declaration_id: 366
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Result: {declaration_id: 366, type: double, flags: 2, group: 4}
   - id: 549
     type: Behavior Expression
     reference_id: 241
     reference_name: Age Phase
     inputs:
-    - id: 550
-      declaration_id: 246
-      name: Age
-      type: float
-      flags: 2
-      group: 1
-    - id: 551
-      declaration_id: 247
-      name: Delta
-      type: float
-      flags: 2
-      group: 2
+      Age: {declaration_id: 246, type: float, flags: 2, group: 1}
+      Delta: {declaration_id: 247, type: float, flags: 2, group: 2}
     outputs:
-    - id: 552
-      declaration_id: 248
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 248, type: double, flags: 2, group: 3}
   - id: 553
     type: Get Variable
     reference_id: 209
     reference_name: Birth Scale
     outputs:
-    - id: 554
-      type: float
-      flags: 0
+      Value: {type: float, flags: 0}
   - id: 555
     type: Multiply
     inputs:
-    - 556
-    - id: 557
-      type: double
-    outputs: [558]
+      B: {type: double}
   edges:
-  - from: 437
-    from_pin: 438
-    to: 449
-    to_pin: 450
-  - from: 437
-    from_pin: 542
-    to: 492
-    to_pin: 494
-  - from: 437
-    from_pin: 542
-    to: 511
-    to_pin: 512
-  - from: 437
-    from_pin: 542
-    to: 522
-    to_pin: 525
-  - from: 437
-    from_pin: 542
-    to: 527
-    to_pin: 530
-  - from: 437
-    from_pin: 542
-    to: 532
-    to_pin: 535
-  - from: 437
-    from_pin: 542
-    to: 537
-    to_pin: 540
-  - from: 437
-    from_pin: 542
-    to: 549
-    to_pin: 551
-  - from: 437
-    from_pin: 543
-    to: 549
-    to_pin: 550
-  - from: 441
-    from_pin: 443
-    to: 522
-    to_pin: 523
-  - from: 441
-    from_pin: 444
-    to: 527
-    to_pin: 528
-  - from: 445
-    from_pin: 447
-    to: 522
-    to_pin: 524
-  - from: 445
-    from_pin: 448
-    to: 527
-    to_pin: 529
-  - from: 449
-    from_pin: 453
-    to: 455
-    to_pin: 456
-  - from: 455
-    from_pin: 459
-    to: 465
-    to_pin: 466
-  - from: 461
-    from_pin: 463
-    to: 532
-    to_pin: 533
-  - from: 461
-    from_pin: 464
-    to: 537
-    to_pin: 538
-  - from: 465
-    from_pin: 469
-    to: 471
-    to_pin: 472
-  - from: 471
-    from_pin: 475
-    to: 477
-    to_pin: 478
-  - from: 477
-    from_pin: 481
-    to: 500
-    to_pin: 501
-  - from: 483
-    from_pin: 484
-    to: 532
-    to_pin: 534
-  - from: 485
-    from_pin: 486
-    to: 537
-    to_pin: 539
-  - from: 487
-    from_pin: 488
-    to: 492
-    to_pin: 493
-  - from: 487
-    from_pin: 488
-    to: 515
-    to_pin: 516
-  - from: 489
-    from_pin: 491
-    to: 496
-    to_pin: 497
-  - from: 492
-    from_pin: 495
-    to: 496
-    to_pin: 498
-  - from: 496
-    from_pin: 499
-    to: 500
-    to_pin: 502
-  - from: 500
-    from_pin: 504
-    to: 506
-    to_pin: 507
-  - from: 506
-    from_pin: 509
-    to: 439
-    to_pin: 440
-  - from: 511
-    from_pin: 514
-    to: 515
-    to_pin: 517
-  - from: 515
-    from_pin: 518
-    to: 506
-    to_pin: 508
-  - from: 519
-    from_pin: 521
-    to: 555
-    to_pin: 557
-  - from: 522
-    from_pin: 526
-    to: 449
-    to_pin: 451
-  - from: 527
-    from_pin: 531
-    to: 455
-    to_pin: 457
-  - from: 532
-    from_pin: 536
-    to: 465
-    to_pin: 467
-  - from: 537
-    from_pin: 541
-    to: 471
-    to_pin: 473
-  - from: 549
-    from_pin: 552
-    to: 519
-    to_pin: 520
-  - from: 553
-    from_pin: 554
-    to: 555
-    to_pin: 556
-  - from: 555
-    from_pin: 558
-    to: 477
-    to_pin: 479
+  - {from: 437.Exec, to: 449.Exec}
+  - {from: 437.Seconds, to: 492.B}
+  - {from: 437.Seconds, to: 511.A}
+  - {from: 437.Seconds, to: 522.Delta}
+  - {from: 437.Seconds, to: 527.Delta}
+  - {from: 437.Seconds, to: 532.Delta}
+  - {from: 437.Seconds, to: 537.Delta}
+  - {from: 437.Seconds, to: 549.Delta}
+  - {from: 437.Age, to: 549.Age}
+  - {from: 441.Value.x, to: 522.PositionX}
+  - {from: 441.Value.y, to: 527.PositionY}
+  - {from: 445.Value.x, to: 522.VelocityX}
+  - {from: 445.Value.y, to: 527.VelocityY}
+  - {from: 449.Then, to: 455.Exec}
+  - {from: 455.Then, to: 465.Exec}
+  - {from: 461.Value.pitch, to: 532.Pitch}
+  - {from: 461.Value.roll, to: 537.Roll}
+  - {from: 465.Then, to: 471.Exec}
+  - {from: 471.Then, to: 477.Exec}
+  - {from: 477.Then, to: 500.Exec}
+  - {from: 483.Value, to: 532.PitchRate}
+  - {from: 485.Value, to: 537.RollRate}
+  - {from: 487.Value, to: 492.A}
+  - {from: 487.Value, to: 515.A}
+  - {from: 489.Value.elevation, to: 496.A}
+  - {from: 492.Result, to: 496.B}
+  - {from: 496.Result, to: 500.Value}
+  - {from: 500.Then, to: 506.Exec}
+  - {from: 506.Then, to: 439.Exec}
+  - {from: 511.Result, to: 515.B}
+  - {from: 515.Result, to: 506.Value}
+  - {from: 519.Result, to: 555.B}
+  - {from: 522.Result, to: 449.Value}
+  - {from: 527.Result, to: 455.Value}
+  - {from: 532.Result, to: 465.Value}
+  - {from: 537.Result, to: 471.Value}
+  - {from: 549.Result, to: 519.Normalized}
+  - {from: 553.Value, to: 555.A}
+  - {from: 555.Result, to: 477.Value}

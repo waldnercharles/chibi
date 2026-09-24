@@ -6,172 +6,76 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Dash
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Dash}
   - id: 3
     type: Set_GameTransform
     inputs:
-    - 4
-    - id: 5
-      default:
-        x: 166.0
-        "y": -165.0
-    outputs: [6, 7]
+      Value:
+        default: {x: 166.0, "y": -165.0}
   - id: 8
     type: Set_GameVelocity
     inputs:
-    - 9
-    - id: 10
-      default:
-        x: -65.0
-        "y": -740.0
-    outputs: [11, 12]
+      Value:
+        default: {x: -65.0, "y": -740.0}
   - id: 13
     type: Event
     reference_name: Contact Begin
     outputs:
-    - 14
-    - id: 15
-      name: Other
-      type: handle
-      type_name: ecs.entity
-      kind: data
-    - id: 160
-      name: Point
-      type: struct
-      type_name: CF_V2
-      kind: data
-  - id: 16
-    type: Set_GameWidget_value
-    inputs: [17, 18, 19]
-    outputs: [20, 21]
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {id: 160, type: struct, type_name: CF_V2, kind: data}
+  - {id: 16, type: Set_GameWidget_value}
   - id: 22
     type: Add
     inputs:
-    - id: 23
-      binding:
-        kind: component_field
-        component: GAME.GameWidget
-        field: value
-    - id: 24
-      default: 100.0
-    outputs: [25]
-  - id: 29
-    type: Set_GameWidget_text
-    inputs: [30, 31, 32]
-    outputs: [33, 34]
+      A:
+        binding: {kind: component_field, component: GAME.GameWidget, field: value}
+      B: 100.0
+  - {id: 29, type: Set_GameWidget_text}
   - id: 59
     type: Format Text
     inputs:
-    - id: 60
-      default: '{:.0f}'
-    - id: 61
-      type: float
-    - id: 63
-      name: Arg1
-    outputs: [62]
-  - id: 64
-    type: Set_GameWidget_value
-    inputs: [65, 66, 67]
-    outputs: [68, 69]
+      Format: '{:.0f}'
+      Arg0: {type: float}
+      Arg1: {id: 63}
+    outputs:
+      Result: {id: 62}
+  - {id: 64, type: Set_GameWidget_value}
   - id: 70
     type: Set_GameWidget_text
-    inputs:
-    - 71
-    - id: 72
-      default: "0"
-    - 73
-    outputs: [74, 75]
+    inputs: {Value: "0"}
   - id: 76
     type: Event
     reference_name: Tick
     outputs:
-    - 77
-    - id: 78
-      name: DeltaSeconds
-      type: float
-      kind: data
-  - id: 79
-    type: Set_GameVelocity_y
-    inputs: [80, 81, 82]
-    outputs: [83, 84]
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 79, type: Set_GameVelocity_y}
   - id: 97
     type: Behavior Expression
     reference_id: 85
     reference_name: v + 350 * dt
     inputs:
-    - id: 120
-      name: v
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: "y"
-    - id: 121
-      name: dt
-      type: float
-      flags: 2
-      group: 2
+      v:
+        id: 120
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      dt: {type: float, flags: 2, group: 2}
     outputs:
-    - id: 100
-      declaration_id: 92
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {id: 100, declaration_id: 92, type: double, flags: 2, group: 3}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 3
-    to_pin: 4
-  - from: 3
-    from_pin: 6
-    to: 8
-    to_pin: 9
-  - from: 8
-    from_pin: 11
-    to: 64
-    to_pin: 65
-  - from: 13
-    from_pin: 14
-    to: 29
-    to_pin: 30
-  - from: 22
-    from_pin: 25
-    to: 16
-    to_pin: 18
-  - from: 22
-    from_pin: 25
-    to: 59
-    to_pin: 61
-  - from: 29
-    from_pin: 33
-    to: 16
-    to_pin: 17
-  - from: 59
-    from_pin: 62
-    to: 29
-    to_pin: 31
-  - from: 64
-    from_pin: 68
-    to: 70
-    to_pin: 71
-  - from: 76
-    from_pin: 77
-    to: 79
-    to_pin: 80
-  - from: 76
-    from_pin: 78
-    to: 97
-    to_pin: 121
-  - from: 97
-    from_pin: 100
-    to: 79
-    to_pin: 81
+  - {from: 1.Then, to: 3.Exec}
+  - {from: 3.Then, to: 8.Exec}
+  - {from: 8.Then, to: 64.Exec}
+  - {from: 13.Then, to: 29.Exec}
+  - {from: 22.Result, to: 16.Value}
+  - {from: 22.Result, to: 59.Arg0}
+  - {from: 29.Then, to: 16.Exec}
+  - {from: 59.Result, to: 29.Value}
+  - {from: 64.Then, to: 70.Exec}
+  - {from: 76.Then, to: 79.Exec}
+  - {from: 76.DeltaSeconds, to: 97.dt}
+  - {from: 97.Result, to: 79.Value}
 - id: 85
   kind: function
   name: v + 350 * dt
@@ -184,70 +88,31 @@ graphs:
   - id: 142
     type: Function Entry
     outputs:
-    - id: 146
-      name: v
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 147
-      name: dt
-      type: float
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 146, name: v, type: double, kind: data, flags: 2, group: 1}
+    - {id: 147, name: dt, type: float, kind: data, flags: 2, group: 2}
   - id: 144
     type: Return
     inputs:
-    - id: 148
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 148, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 149
     type: Real
-    inputs:
-    - id: 150
-      default: 350.0
-    outputs: [151]
+    inputs: {Value: 350.0}
   - id: 152
     type: Multiply
     inputs:
-    - id: 153
-      type: double
-    - 154
+      A: {type: double}
     outputs:
-    - id: 155
-      type: double
+      Result: {type: double}
   - id: 156
     type: Add
     inputs:
-    - id: 157
-      type: double
-    - id: 158
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 159
-      type: double
+      Result: {type: double}
   edges:
-  - from: 142
-    from_pin: 146
-    to: 156
-    to_pin: 157
-  - from: 142
-    from_pin: 147
-    to: 152
-    to_pin: 154
-  - from: 149
-    from_pin: 151
-    to: 152
-    to_pin: 153
-  - from: 152
-    from_pin: 155
-    to: 156
-    to_pin: 158
-  - from: 156
-    from_pin: 159
-    to: 144
-    to_pin: 148
+  - {from: 142.v, to: 156.A}
+  - {from: 142.dt, to: 152.B}
+  - {from: 149.Value, to: 152.A}
+  - {from: 152.Result, to: 156.B}
+  - {from: 156.Result, to: 144.Result}

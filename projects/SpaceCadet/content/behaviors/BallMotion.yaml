@@ -10,267 +10,124 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Get Global Variable
-    inputs:
-    - id: 5
-      default: Ready
+    inputs: {Name: Ready}
     outputs:
-    - id: 6
-      type: double
+      Value: {type: double}
   - id: 21
     type: Behavior Expression
     reference_id: 7
     reference_name: ready < 0.5
     inputs:
-    - id: 24
-      name: Exec
-      kind: exec
-    - id: 22
-      declaration_id: 12
-      name: ready
-      type: double
-      group: 1
+      Exec: {id: 24, kind: exec}
+      ready: {id: 22, declaration_id: 12, type: double, group: 1}
     outputs:
-    - id: 25
-      name: "True"
-      kind: exec
-    - id: 26
-      name: "False"
-      kind: exec
-    - id: 23
-      declaration_id: 13
-      name: Result
-      type: bool
-      flags: 2
-      group: 2
+      "True": {id: 25, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 23, declaration_id: 13, type: bool, flags: 2, group: 2}
   - id: 74
     type: Behavior Expression
     reference_id: 41
     reference_name: clamp(v + 480 * dt, -1150, 1000)
     inputs:
-    - id: 75
-      declaration_id: 46
-      name: v
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: "y"
-    - id: 76
-      declaration_id: 47
-      name: dt
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: delta_time
+      v:
+        declaration_id: 46
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      dt:
+        declaration_id: 47
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
     outputs:
-    - id: 77
-      declaration_id: 48
-      name: Result
-      type: double
-      flags: 2
-      group: 3
-  - id: 144
-    type: Set_GameVelocity_y
-    inputs: [145, 146, 147]
-    outputs: [148, 149]
+      Result: {declaration_id: 48, type: double, flags: 2, group: 3}
+  - {id: 144, type: Set_GameVelocity_y}
   - id: 197
     type: Behavior Expression
     reference_id: 183
     reference_name: y > 345
     inputs:
-    - id: 200
-      name: Exec
-      kind: exec
-    - id: 198
-      declaration_id: 188
-      name: "y"
-      type: double
-      group: 1
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: "y"
+      Exec: {id: 200, kind: exec}
+      "y":
+        id: 198
+        declaration_id: 188
+        type: double
+        group: 1
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-    - id: 201
-      name: "True"
-      kind: exec
-    - id: 202
-      name: "False"
-      kind: exec
-    - id: 199
-      declaration_id: 189
-      name: Result
-      type: bool
-      flags: 2
-      group: 2
+      "True": {id: 201, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 199, declaration_id: 189, type: bool, flags: 2, group: 2}
   - id: 217
     type: Get Global Variable
-    inputs:
-    - id: 218
-      default: Lives
+    inputs: {Name: Lives}
     outputs:
-    - id: 219
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 241
     type: Behavior Expression
     reference_id: 220
     reference_name: max(lives-1,0)
     inputs:
-    - id: 242
-      declaration_id: 225
-      name: lives
-      type: float
-      type_name: null
-      flags: 2
-      group: 1
+      lives: {declaration_id: 225, type: float, type_name: null, flags: 2, group: 1}
     outputs:
-    - id: 243
-      declaration_id: 226
-      name: Result
-      type: float
-      type_name: null
-      flags: 2
-      group: 2
+      Result: {declaration_id: 226, type: float, type_name: null, flags: 2, group: 2}
   - id: 265
     type: Set Global Variable
     inputs:
-    - 266
-    - id: 267
-      default: Lives
-    - id: 268
-      type: float
-      type_name: null
+      Name: Lives
+      Value: {type: float, type_name: null}
     outputs:
-    - 269
-    - id: 270
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 292
     type: Set Global Variable
     inputs:
-    - 293
-    - id: 294
-      default: Ready
-    - id: 295
-      type: float
-      type_name: null
-      default: 1.0
+      Name: Ready
+      Value: {type: float, type_name: null, default: 1.0}
     outputs:
-    - 296
-    - id: 297
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 298
     type: Set Global Variable
     inputs:
-    - 299
-    - id: 300
-      default: Charge
-    - id: 301
-      type: float
-      type_name: null
+      Name: Charge
+      Value: {type: float, type_name: null}
     outputs:
-    - 302
-    - id: 303
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 304
     type: Set_GameTransform
     inputs:
-    - 305
-    - id: 306
-      default:
-        x: 196.0
-        "y": 260.0
-    outputs: [307, 308]
+      Value:
+        default: {x: 196.0, "y": 260.0}
   - id: 309
     type: Set_GameVelocity
     inputs:
-    - 310
-    - id: 311
-      default:
-        x: 0.0
-        "y": 0.0
-    outputs: [312, 313]
+      Value:
+        default: {x: 0.0, "y": 0.0}
   - id: 314
     type: Play Sound
     inputs:
-    - 315
-    - id: 316
-      default: 190.0
-    - id: 317
-      default: 55.0
-    - id: 318
-      default: 0.4000000059604645
-    - id: 319
-      default: 0.4000000059604645
-    - 320
-    - 321
-    outputs: [322]
+      Frequency: 190.0
+      End Frequency: 55.0
+      Duration: 0.4000000059604645
+      Volume: 0.4000000059604645
   edges:
-  - from: 1
-    from_pin: 2
-    to: 21
-    to_pin: 24
-  - from: 4
-    from_pin: 6
-    to: 21
-    to_pin: 22
-  - from: 21
-    from_pin: 25
-    to: 144
-    to_pin: 145
-  - from: 74
-    from_pin: 77
-    to: 144
-    to_pin: 146
-  - from: 144
-    from_pin: 148
-    to: 197
-    to_pin: 200
-  - from: 197
-    from_pin: 201
-    to: 265
-    to_pin: 266
-  - from: 217
-    from_pin: 219
-    to: 241
-    to_pin: 242
-  - from: 241
-    from_pin: 243
-    to: 265
-    to_pin: 268
-  - from: 265
-    from_pin: 269
-    to: 292
-    to_pin: 293
-  - from: 292
-    from_pin: 296
-    to: 298
-    to_pin: 299
-  - from: 298
-    from_pin: 302
-    to: 304
-    to_pin: 305
-  - from: 304
-    from_pin: 307
-    to: 309
-    to_pin: 310
-  - from: 309
-    from_pin: 312
-    to: 314
-    to_pin: 315
+  - {from: 1.Then, to: 21.Exec}
+  - {from: 4.Value, to: 21.ready}
+  - {from: 21.True, to: 144.Exec}
+  - {from: 74.Result, to: 144.Value}
+  - {from: 144.Then, to: 197.Exec}
+  - {from: 197.True, to: 265.Exec}
+  - {from: 217.Value, to: 241.lives}
+  - {from: 241.Result, to: 265.Value}
+  - {from: 265.Then, to: 292.Exec}
+  - {from: 292.Then, to: 298.Exec}
+  - {from: 298.Then, to: 304.Exec}
+  - {from: 304.Then, to: 309.Exec}
+  - {from: 309.Then, to: 314.Exec}
 - id: 7
   kind: function
   name: ready < 0.5
@@ -283,47 +140,23 @@ graphs:
   - id: 28
     type: Function Entry
     outputs:
-    - id: 32
-      name: ready
-      type: double
-      kind: data
-      group: 1
+    - {id: 32, name: ready, type: double, kind: data, group: 1}
   - id: 30
     type: Return
     inputs:
-    - id: 33
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 33, name: Result, type: bool, kind: data, flags: 2, group: 2}
   - id: 34
     type: Real
-    inputs:
-    - id: 35
-      default: 0.5
-    outputs: [36]
+    inputs: {Value: 0.5}
   - id: 37
     type: Less
     inputs:
-    - id: 38
-      type: double
-    - id: 39
-      type: double
-    outputs: [40]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 28
-    from_pin: 32
-    to: 37
-    to_pin: 38
-  - from: 34
-    from_pin: 36
-    to: 37
-    to_pin: 39
-  - from: 37
-    from_pin: 40
-    to: 30
-    to_pin: 33
+  - {from: 28.ready, to: 37.A}
+  - {from: 34.Value, to: 37.B}
+  - {from: 37.Result, to: 30.Result}
 - id: 41
   kind: function
   name: clamp(v + 480 * dt, -1150, 1000)
@@ -336,122 +169,59 @@ graphs:
   - id: 151
     type: Function Entry
     outputs:
-    - id: 155
-      name: v
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 156
-      name: dt
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 155, name: v, type: double, kind: data, flags: 2, group: 1}
+    - {id: 156, name: dt, type: double, kind: data, flags: 2, group: 2}
   - id: 153
     type: Return
     inputs:
-    - id: 157
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 157, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 158
     type: Real
-    inputs:
-    - id: 159
-      default: 480.0
-    outputs: [160]
+    inputs: {Value: 480.0}
   - id: 161
     type: Multiply
     inputs:
-    - id: 162
-      type: double
-    - id: 163
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 164
-      type: double
+      Result: {type: double}
   - id: 165
     type: Add
     inputs:
-    - id: 166
-      type: double
-    - id: 167
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 168
-      type: double
+      Result: {type: double}
   - id: 169
     type: Real
-    inputs:
-    - id: 170
-      default: 1150.0
-    outputs: [171]
+    inputs: {Value: 1150.0}
   - id: 172
     type: Negate
     inputs:
-    - id: 173
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 174
-      type: double
+      Result: {type: double}
   - id: 175
     type: Real
-    inputs:
-    - id: 176
-      default: 1000.0
-    outputs: [177]
+    inputs: {Value: 1000.0}
   - id: 178
     type: Clamp
     inputs:
-    - id: 179
-      type: double
-    - id: 180
-      type: double
-    - id: 181
-      type: double
+      Value: {type: double}
+      Min: {type: double}
+      Max: {type: double}
     outputs:
-    - id: 182
-      type: double
+      Result: {type: double}
   edges:
-  - from: 151
-    from_pin: 155
-    to: 165
-    to_pin: 166
-  - from: 151
-    from_pin: 156
-    to: 161
-    to_pin: 163
-  - from: 158
-    from_pin: 160
-    to: 161
-    to_pin: 162
-  - from: 161
-    from_pin: 164
-    to: 165
-    to_pin: 167
-  - from: 165
-    from_pin: 168
-    to: 178
-    to_pin: 179
-  - from: 169
-    from_pin: 171
-    to: 172
-    to_pin: 173
-  - from: 172
-    from_pin: 174
-    to: 178
-    to_pin: 180
-  - from: 175
-    from_pin: 177
-    to: 178
-    to_pin: 181
-  - from: 178
-    from_pin: 182
-    to: 153
-    to_pin: 157
+  - {from: 151.v, to: 165.A}
+  - {from: 151.dt, to: 161.B}
+  - {from: 158.Value, to: 161.A}
+  - {from: 161.Result, to: 165.B}
+  - {from: 165.Result, to: 178.Value}
+  - {from: 169.Value, to: 172.Value}
+  - {from: 172.Result, to: 178.Min}
+  - {from: 175.Value, to: 178.Max}
+  - {from: 178.Result, to: 153.Result}
 - id: 183
   kind: function
   name: y > 345
@@ -464,47 +234,23 @@ graphs:
   - id: 204
     type: Function Entry
     outputs:
-    - id: 208
-      name: "y"
-      type: double
-      kind: data
-      group: 1
+    - {id: 208, name: "y", type: double, kind: data, group: 1}
   - id: 206
     type: Return
     inputs:
-    - id: 209
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 209, name: Result, type: bool, kind: data, flags: 2, group: 2}
   - id: 210
     type: Real
-    inputs:
-    - id: 211
-      default: 345.0
-    outputs: [212]
+    inputs: {Value: 345.0}
   - id: 213
     type: Greater
     inputs:
-    - id: 214
-      type: double
-    - id: 215
-      type: double
-    outputs: [216]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 204
-    from_pin: 208
-    to: 213
-    to_pin: 214
-  - from: 210
-    from_pin: 212
-    to: 213
-    to_pin: 215
-  - from: 213
-    from_pin: 216
-    to: 206
-    to_pin: 209
+  - {from: 204.y, to: 213.A}
+  - {from: 210.Value, to: 213.B}
+  - {from: 213.Result, to: 206.Result}
 - id: 220
   kind: function
   name: max(lives-1,0)
@@ -536,52 +282,25 @@ graphs:
       group: 2
   - id: 278
     type: Real
-    inputs:
-    - id: 279
-      default: 1.0
-    outputs: [280]
+    inputs: {Value: 1.0}
   - id: 281
     type: Subtract
     inputs:
-    - id: 282
-      type_name: null
-    - id: 283
-      type: double
+      A: {type_name: null}
+      B: {type: double}
     outputs:
-    - id: 284
-      type_name: null
-  - id: 285
-    type: Real
-    inputs: [286]
-    outputs: [287]
+      Result: {type_name: null}
+  - {id: 285, type: Real}
   - id: 288
     type: Max
     inputs:
-    - id: 289
-      type_name: null
-    - id: 290
-      type: double
+      A: {type_name: null}
+      B: {type: double}
     outputs:
-    - id: 291
-      type_name: null
+      Result: {type_name: null}
   edges:
-  - from: 272
-    from_pin: 276
-    to: 281
-    to_pin: 282
-  - from: 278
-    from_pin: 280
-    to: 281
-    to_pin: 283
-  - from: 281
-    from_pin: 284
-    to: 288
-    to_pin: 289
-  - from: 285
-    from_pin: 287
-    to: 288
-    to_pin: 290
-  - from: 288
-    from_pin: 291
-    to: 274
-    to_pin: 277
+  - {from: 272.lives, to: 281.A}
+  - {from: 278.Value, to: 281.B}
+  - {from: 281.Result, to: 288.A}
+  - {from: 285.Value, to: 288.B}
+  - {from: 288.Result, to: 274.Result}

@@ -4,20 +4,12 @@ entities:
 - name: Floor
   prototype: ArenaFloor
   components:
-    GameTransform:
-      x: 220
-      "y": 300
-    GameAppearance:
-      width: 665.107510106449
-      height: 352
-      color: 320549119
-      shape: Box
+    GameTransform: {x: 220, "y": 300}
+    GameAppearance: {width: 665.107510106449, height: 352, color: 320549119, shape: Box}
 - name: Player
   prototype: ArenaPlayer
   components:
-    GameTransform:
-      x: 400
-      "y": 300
+    GameTransform: {x: 400, "y": 300}
     GameAppearance:
       width: 20
       height: 18
@@ -30,9 +22,7 @@ entities:
 - name: Enemy
   prototype: ArenaEnemy
   components:
-    GameTransform:
-      x: 580
-      "y": 300
+    GameTransform: {x: 580, "y": 300}
     GameAppearance:
       width: 11
       height: 11

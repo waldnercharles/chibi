@@ -1,8 +1,5 @@
 name: Camera
 identity: prototype-0000000000000002
 components:
-  GAME.GameCamera:
-    height: 720.0
-    width: 760.0
-  game.GameTransform:
-    x: 90.0
+  GAME.GameCamera: {height: 720.0, width: 760.0}
+  game.GameTransform: {x: 90.0}

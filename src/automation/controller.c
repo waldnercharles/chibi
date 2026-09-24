@@ -1934,7 +1934,32 @@ static int handle_describe_contract(response *result)
     return 0;
 }
 
-static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const compile_diagnostic *diagnostic)
+/* Diagnostics name their pin as <node>.<key> when the asset resolves it. */
+static void add_diagnostic_pin(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const behavior_asset *asset,
+    const compile_diagnostic *diagnostic
+)
+{
+    graph *g = asset ? behavior_asset_find_graph(asset, diagnostic->graph_id) : NULL;
+    node *n = g && diagnostic->pin_id ? graph_node_by_id(g, diagnostic->node_id) : NULL;
+    int output = 0, index = -1;
+    char ref[SERIALIZE_KEY_SIZE + 32];
+    if (n && graph_pin_by_id(n, diagnostic->pin_id, &output, &index) &&
+        serialize_pin_ref(n, output, index, ref, sizeof ref)) {
+        yyjson_mut_obj_add_strcpy(doc, object, "pin", ref);
+        return;
+    }
+    yyjson_mut_obj_add_uint(doc, object, "pin", diagnostic->pin_id);
+}
+
+static void add_diagnostic(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const behavior_asset *asset,
+    const compile_diagnostic *diagnostic
+)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
     yyjson_mut_obj_add_strcpy(
@@ -1945,7 +1970,7 @@ static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const com
     );
     yyjson_mut_obj_add_uint(doc, object, "graph", diagnostic->graph_id);
     yyjson_mut_obj_add_uint(doc, object, "node", diagnostic->node_id);
-    yyjson_mut_obj_add_uint(doc, object, "pin", diagnostic->pin_id);
+    add_diagnostic_pin(doc, object, asset, diagnostic);
     yyjson_mut_obj_add_int(doc, object, "rule", diagnostic->rule);
     yyjson_mut_obj_add_strcpy(
         doc,
@@ -2457,44 +2482,6 @@ static int inspect_item_compare(const void *left, const void *right)
     return a->id < b->id ? -1 : a->id > b->id ? 1 : 0;
 }
 
-static int inspect_edge_compare(const void *left, const void *right)
-{
-    const yyjson_val *a = ((const inspect_json_item *)left)->value;
-    const yyjson_val *b = ((const inspect_json_item *)right)->value;
-    const char *a_kind = request_string((yyjson_val *)a, "kind");
-    const char *b_kind = request_string((yyjson_val *)b, "kind");
-    uint64_t a_from = inspect_json_uint(yyjson_obj_get(a, "from"));
-    uint64_t b_from = inspect_json_uint(yyjson_obj_get(b, "from"));
-    uint64_t a_from_pin = inspect_json_uint(yyjson_obj_get(a, "from_pin"));
-    uint64_t b_from_pin = inspect_json_uint(yyjson_obj_get(b, "from_pin"));
-    uint64_t a_to = inspect_json_uint(yyjson_obj_get(a, "to"));
-    uint64_t b_to = inspect_json_uint(yyjson_obj_get(b, "to"));
-    uint64_t a_to_pin = inspect_json_uint(yyjson_obj_get(a, "to_pin"));
-    uint64_t b_to_pin = inspect_json_uint(yyjson_obj_get(b, "to_pin"));
-    int a_order = yyjson_is_num(yyjson_obj_get(a, "order"))
-                    ? (int)yyjson_get_sint(yyjson_obj_get(a, "order"))
-                    : 0;
-    int b_order = yyjson_is_num(yyjson_obj_get(b, "order"))
-                    ? (int)yyjson_get_sint(yyjson_obj_get(b, "order"))
-                    : 0;
-#define INSPECT_CMP(left_value, right_value)                                   \
-    if ((left_value) != (right_value))                                         \
-    return (left_value) < (right_value) ? -1 : 1
-    INSPECT_CMP(a_from, b_from);
-    INSPECT_CMP(a_from_pin, b_from_pin);
-    INSPECT_CMP(a_to, b_to);
-    INSPECT_CMP(a_to_pin, b_to_pin);
-    int kind = strcmp(a_kind ? a_kind : "", b_kind ? b_kind : "");
-    if (kind) {
-        return kind;
-    }
-    INSPECT_CMP(a_order, b_order);
-    const char *a_conversion = request_string((yyjson_val *)a, "conversion");
-    const char *b_conversion = request_string((yyjson_val *)b, "conversion");
-    return strcmp(a_conversion ? a_conversion : "", b_conversion ? b_conversion : "");
-#undef INSPECT_CMP
-}
-
 static void inspect_add_sorted_array(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,
@@ -2517,11 +2504,14 @@ static void inspect_add_sorted_array(
     {
         items[item_count++] = (inspect_json_item){
             .value = item,
-            .id = edges ? inspect_json_uint(yyjson_obj_get(item, "from"))
+            .id = edges ? (uint64_t)index
                         : inspect_json_uint(yyjson_obj_get(item, "id")),
         };
     }
-    qsort(items, (size_t)item_count, sizeof *items, edges ? inspect_edge_compare : inspect_item_compare);
+    /* Documents already order edges canonically. */
+    if (!edges) {
+        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_val *copy = yyjson_val_mut_copy(doc, items[i].value);
         if (!include_layout) {
@@ -2742,7 +2732,12 @@ static void inspect_add_variables(yyjson_mut_doc *doc, yyjson_mut_val *object, y
     free(items);
 }
 
-static void inspect_add_validation(yyjson_mut_doc *doc, yyjson_mut_val *object, const compile_report *report)
+static void inspect_add_validation(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const behavior_asset *asset,
+    const compile_report *report
+)
 {
     yyjson_mut_val *validation = yyjson_mut_obj_add_obj(doc, object, "validation");
     yyjson_mut_obj_add_bool(doc, validation, "valid", report->error_count == 0);
@@ -2751,7 +2746,7 @@ static void inspect_add_validation(yyjson_mut_doc *doc, yyjson_mut_val *object, 
     yyjson_mut_obj_add_int(doc, validation, "notes", report->note_count);
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, validation, "diagnostics");
     for (int i = 0; i < acount(report->items); i++) {
-        add_diagnostic(doc, diagnostics, &report->items[i]);
+        add_diagnostic(doc, diagnostics, asset, &report->items[i]);
     }
     inspect_add_effects(doc, validation, report);
 }
@@ -2864,7 +2859,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
             inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout)
         );
     }
-    inspect_add_validation(result->doc, value, &report);
+    inspect_add_validation(result->doc, value, asset, &report);
     int errors = report.error_count;
     compile_report_free(&report);
     yyjson_doc_free(source_document);
@@ -2968,7 +2963,7 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
     compile_report report;
     compile_report_init(&report);
     behavior_asset_compile_for_system(asset, &report);
-    inspect_add_validation(result->doc, value, &report);
+    inspect_add_validation(result->doc, value, asset, &report);
     int errors = report.error_count;
     compile_report_free(&report);
     game_system_document_free(document);
@@ -3145,7 +3140,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         compile_report report;
         compile_report_init(&report);
         behavior_asset_compile(asset, &report);
-        inspect_add_validation(result->doc, value, &report);
+        inspect_add_validation(result->doc, value, asset, &report);
         int errors = report.error_count;
         compile_report_free(&report);
         add_execution_status(
@@ -3249,9 +3244,9 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         );
         yyjson_mut_val *execution = yyjson_mut_obj_get(value, "execution");
         yyjson_mut_obj_add_bool(result->doc, execution, "query_failed", true);
-        inspect_add_validation(result->doc, value, game_system_compile(system));
+        inspect_add_validation(result->doc, value, NULL, game_system_compile(system));
     } else {
-        inspect_add_validation(result->doc, value, game_system_compile(system));
+        inspect_add_validation(result->doc, value, NULL, game_system_compile(system));
     }
     if (system) {
         game_system_free(system);
@@ -3644,7 +3639,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             warnings = report.warning_count;
             notes = report.note_count;
             for (int i = 0; i < acount(report.items); i++) {
-                add_diagnostic(result->doc, diagnostics, &report.items[i]);
+                add_diagnostic(result->doc, diagnostics, asset, &report.items[i]);
             }
             compile_report_free(&report);
             behavior_asset_free(asset);
@@ -3687,7 +3682,12 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             errors = report.error_count;
             warnings = report.warning_count;
             for (int i = 0; i < acount(report.items); i++) {
-                add_diagnostic(result->doc, diagnostics, &report.items[i]);
+                add_diagnostic(
+                    result->doc,
+                    diagnostics,
+                    game_system_document_behavior_asset(document),
+                    &report.items[i]
+                );
             }
             compile_report_free(&report);
             game_system_document_free(document);
@@ -6134,7 +6134,7 @@ static void add_snapshot_behavior(
         const compile_diagnostic *d = &report->items[i];
         if (d->rule == CMPL_RULE_QUERY_FUSION ||
             d->rule == CMPL_RULE_QUERY_SCAN || d->rule == CMPL_RULE_CONTAINER) {
-            add_diagnostic(doc, performance, d);
+            add_diagnostic(doc, performance, info.instance->asset, d);
         }
     }
     const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
@@ -8080,7 +8080,7 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
             compile_report report;
             compile_report_init(&report);
             behavior_asset_compile(asset, &report);
-            inspect_add_validation(result->doc, value, &report);
+            inspect_add_validation(result->doc, value, asset, &report);
             if (report.error_count) {
                 snprintf(error, sizeof error, "optimized graph asset failed validation");
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;

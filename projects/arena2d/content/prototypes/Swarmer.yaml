@@ -9,26 +9,15 @@ components:
     height: 20.0
     shape: Circle
     width: 20.0
-  GAME.GameBody:
-    type: Dynamic
-  GAME.GameCollider:
-    category: 2
-    height: 20.0
-    mask: 15
-    radius: 10.0
-    shape: Box
-    width: 20.0
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, height: 20.0, mask: 15, radius: 10.0, shape: Box, width: 20.0}
   GAME.GameDestructible:
     cell_size: 1.0
     min_fragment_cells: 3
     pierceable_fragments: true
     release_fraction: 0.30000001192092896
-  GAME.GameFragmentGlow:
-    duration: 3.5
-    flicker: 0.3499999940395355
-  game.GameHealth:
-    current: 3
-    maximum: 3
+  GAME.GameFragmentGlow: {duration: 3.5, flicker: 0.3499999940395355}
+  game.GameHealth: {current: 3, maximum: 3}
   GAME.GameMaterial:
     absorption: 1.0
     border_emission_color: 4279900927
@@ -36,13 +25,9 @@ components:
     emission_intensity: 0.6000000238418579
     emission_multiplier: 0.5
     scene: 335741951
-  game.GameMovement:
-    speed: 75.0
+  game.GameMovement: {speed: 75.0}
   GAME.GameOrientation: {}
-  GAME.GameSubstance:
-    blast_multiplier: 1.0
-    hardness: 1.0
-    retain_chips: true
+  GAME.GameSubstance: {blast_multiplier: 1.0, hardness: 1.0, retain_chips: true}
   game.GameTransform: {}
   GAME.GameVelocity: {}
   GAME.MaterialBreakProfile:

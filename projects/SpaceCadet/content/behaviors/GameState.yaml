@@ -6,165 +6,70 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Begin
-    outputs: [2]
-  - id: 3
-    type: Event
-    reference_name: Restart
-    outputs: [4]
+  - {id: 1, type: Event, reference_name: Begin}
+  - {id: 3, type: Event, reference_name: Restart}
   - id: 5
     type: Set Global Variable
     inputs:
-    - 6
-    - id: 7
-      default: Score
-    - id: 8
-      type: float
-      type_name: null
+      Name: Score
+      Value: {type: float, type_name: null}
     outputs:
-    - 9
-    - id: 10
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 11
     type: Set Global Variable
     inputs:
-    - 12
-    - id: 13
-      default: Lives
-    - id: 14
-      type: float
-      type_name: null
-      default: 3.0
+      Name: Lives
+      Value: {type: float, type_name: null, default: 3.0}
     outputs:
-    - 15
-    - id: 16
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 17
     type: Set Global Variable
     inputs:
-    - 18
-    - id: 19
-      default: Hits
-    - id: 20
-      type: float
-      type_name: null
+      Name: Hits
+      Value: {type: float, type_name: null}
     outputs:
-    - 21
-    - id: 22
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 23
     type: Set Global Variable
     inputs:
-    - 24
-    - id: 25
-      default: Rank
-    - id: 26
-      type: float
-      type_name: null
-      default: 1.0
+      Name: Rank
+      Value: {type: float, type_name: null, default: 1.0}
     outputs:
-    - 27
-    - id: 28
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 29
     type: Set Global Variable
     inputs:
-    - 30
-    - id: 31
-      default: Ready
-    - id: 32
-      type: float
-      type_name: null
-      default: 1.0
+      Name: Ready
+      Value: {type: float, type_name: null, default: 1.0}
     outputs:
-    - 33
-    - id: 34
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 35
     type: Set Global Variable
     inputs:
-    - 36
-    - id: 37
-      default: Charge
-    - id: 38
-      type: float
-      type_name: null
+      Name: Charge
+      Value: {type: float, type_name: null}
     outputs:
-    - 39
-    - id: 40
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 41
     type: Set_GameTransform
     inputs:
-    - 42
-    - id: 43
-      default:
-        x: 196.0
-        "y": 260.0
-    outputs: [44, 45]
+      Value:
+        default: {x: 196.0, "y": 260.0}
   - id: 46
     type: Set_GameVelocity
     inputs:
-    - 47
-    - id: 48
-      default:
-        x: 0.0
-        "y": 0.0
-    outputs: [49, 50]
-  - id: 51
-    type: Event
-    reference_name: LeftFlip
-    outputs: [52]
-  - id: 53
-    type: Event
-    reference_name: RightFlip
-    outputs: [54]
-  - id: 55
-    type: Event
-    reference_name: Dash
-    outputs: [56]
+      Value:
+        default: {x: 0.0, "y": 0.0}
+  - {id: 51, type: Event, reference_name: LeftFlip}
+  - {id: 53, type: Event, reference_name: RightFlip}
+  - {id: 55, type: Event, reference_name: Dash}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 5
-    to_pin: 6
-  - from: 3
-    from_pin: 4
-    to: 5
-    to_pin: 6
-  - from: 5
-    from_pin: 9
-    to: 11
-    to_pin: 12
-  - from: 11
-    from_pin: 15
-    to: 17
-    to_pin: 18
-  - from: 17
-    from_pin: 21
-    to: 23
-    to_pin: 24
-  - from: 23
-    from_pin: 27
-    to: 29
-    to_pin: 30
-  - from: 29
-    from_pin: 33
-    to: 35
-    to_pin: 36
-  - from: 35
-    from_pin: 39
-    to: 41
-    to_pin: 42
-  - from: 41
-    from_pin: 44
-    to: 46
-    to_pin: 47
+  - {from: 1.Then, to: 5.Exec}
+  - {from: 3.Then, to: 5.Exec}
+  - {from: 5.Then, to: 11.Exec}
+  - {from: 11.Then, to: 17.Exec}
+  - {from: 17.Then, to: 23.Exec}
+  - {from: 23.Then, to: 29.Exec}
+  - {from: 29.Then, to: 35.Exec}
+  - {from: 35.Then, to: 41.Exec}
+  - {from: 41.Then, to: 46.Exec}

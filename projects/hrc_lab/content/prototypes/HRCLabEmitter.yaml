@@ -1,12 +1,7 @@
 name: HRCLabEmitter
 identity: prototype-8557318880912fad
 components:
-  GAME.GameAppearance:
-    antialias: 0.25
-    color: 4294967295
-    height: 36.0
-    shape: Circle
-    width: 36.0
+  GAME.GameAppearance: {antialias: 0.25, color: 4294967295, height: 36.0, shape: Circle, width: 36.0}
   GAME.GameMaterial:
     albedo: 4294967295
     emission_color: 4294967295

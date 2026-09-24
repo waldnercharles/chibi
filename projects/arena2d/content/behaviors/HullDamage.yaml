@@ -11,197 +11,99 @@ graphs:
     type: Event
     reference_name: Damage
     outputs:
-    - 2
-    - id: 3
-      declaration_id: 2
-      name: Amount
-      type: int
-      kind: data
-    - id: 4
-      declaration_id: 3
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
   - id: 17
     type: Behavior Expression
     reference_id: 5
     reference_name: health -= amount
     inputs:
-    - id: 21
-      name: Exec
-      kind: exec
-    - id: 18
-      declaration_id: 10
-      name: health
-      type: int
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: game.GameHealth
-        field: current
-    - id: 19
-      declaration_id: 11
-      name: amount
-      type: int
-      flags: 2
-      group: 2
+      Exec: {id: 21, kind: exec}
+      health:
+        id: 18
+        declaration_id: 10
+        type: int
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: game.GameHealth, field: current}
+      amount: {declaration_id: 11, type: int, flags: 2, group: 2}
     outputs:
-    - id: 22
-      name: Then
-      kind: exec
-    - id: 20
-      declaration_id: 12
-      name: Result
-      type: int
-      flags: 2
-      group: 3
+      Then: {id: 22, kind: exec}
+      Result: {id: 20, declaration_id: 12, type: int, flags: 2, group: 3}
   - id: 88
     type: Get_GameHealth
     outputs:
-    - 89
-    - id: 90
-      name: current
-      type: int
-      field_source: 89
-      field_name: current
-    - id: 91
-      name: maximum
-      type: int
-      field_source: 89
-      field_name: maximum
+      Value.current: {}
+      Value.maximum: {}
   - id: 106
     type: Behavior Expression
     reference_id: 92
     reference_name: health <= 0
     inputs:
-    - id: 109
-      name: Exec
-      kind: exec
-    - id: 107
-      declaration_id: 97
-      name: health
-      type: double
-      group: 1
+      Exec: {id: 109, kind: exec}
+      health: {id: 107, declaration_id: 97, type: double, group: 1}
     outputs:
-    - id: 110
-      name: "True"
-      kind: exec
-    - id: 111
-      name: "False"
-      kind: exec
-    - id: 108
-      declaration_id: 98
-      name: Result
-      type: bool
-      flags: 2
-      group: 2
+      "True": {id: 110, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 108, declaration_id: 98, type: bool, flags: 2, group: 2}
   - id: 137
     type: Self
     outputs:
-    - id: 138
-      type_name: ecs.entity
-  - id: 139
-    type: Release Material
-    inputs: [140, 141]
-    outputs: [142]
+      Self: {type_name: ecs.entity}
+  - {id: 139, type: Release Material}
   - id: 143
     type: Call Function
     reference_id: 256
     reference_name: Spawn Prototype At
     reference_asset: WeaponActions
     inputs:
-    - 144
-    - id: 146
-      declaration_id: 261
-      name: Prototype
-      type: name
-      type_name: null
-      kind: data
-      default: HitEmitter
-    - id: 147
-      declaration_id: 262
-      name: Transform
-      type: struct
-      type_name: GameTransform
-      kind: data
-      binding:
-        kind: component
-        component: game.GameTransform
+      Prototype:
+        id: 146
+        declaration_id: 261
+        type: name
+        type_name: null
+        kind: data
+        default: HitEmitter
+      Transform:
+        declaration_id: 262
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
     outputs:
-    - 145
-    - id: 148
-      declaration_id: 263
-      name: Entity
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 145}
+      Entity: {id: 148, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
   - id: 149
     type: Call Function
     reference_id: 256
     reference_name: Spawn Prototype At
     reference_asset: WeaponActions
     inputs:
-    - 150
-    - id: 152
-      declaration_id: 261
-      name: Prototype
-      type: name
-      type_name: null
-      kind: data
-      default: DeathEmitter
-    - id: 153
-      declaration_id: 262
-      name: Transform
-      type: struct
-      type_name: GameTransform
-      kind: data
-      binding:
-        kind: component
-        component: game.GameTransform
+      Prototype:
+        id: 152
+        declaration_id: 261
+        type: name
+        type_name: null
+        kind: data
+        default: DeathEmitter
+      Transform:
+        declaration_id: 262
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
     outputs:
-    - 151
-    - id: 154
-      declaration_id: 263
-      name: Entity
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 151}
+      Entity: {id: 154, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 17
-    to_pin: 21
-  - from: 1
-    from_pin: 3
-    to: 17
-    to_pin: 19
-  - from: 17
-    from_pin: 22
-    to: 143
-    to_pin: 144
-  - from: 88
-    from_pin: 90
-    to: 106
-    to_pin: 107
-    conversion: To Real
-  - from: 106
-    from_pin: 110
-    to: 149
-    to_pin: 150
-  - from: 137
-    from_pin: 138
-    to: 139
-    to_pin: 141
-  - from: 143
-    from_pin: 145
-    to: 106
-    to_pin: 109
-  - from: 149
-    from_pin: 151
-    to: 139
-    to_pin: 140
+  - {from: 1.Then, to: 17.Exec}
+  - {from: 1.Amount, to: 17.amount}
+  - {from: 17.Then, to: 143.Exec}
+  - {from: 88.Value.current, to: 106.health, conversion: To Real}
+  - {from: 106.True, to: 149.Exec}
+  - {from: 137.Self, to: 139.Entity}
+  - {from: 143.Then, to: 106.Exec}
+  - {from: 149.Then, to: 139.In}
 - id: 5
   kind: function
   name: health -= amount
@@ -214,90 +116,33 @@ graphs:
   - id: 51
     type: Function Entry
     outputs:
-    - 52
-    - id: 55
-      name: health
-      type: int
-      kind: data
-      group: 1
-    - id: 56
-      name: amount
-      type: int
-      kind: data
-      flags: 2
-      group: 2
+      health: {id: 55, type: int, kind: data, group: 1}
+      amount: {type: int, kind: data, flags: 2, group: 2}
   - id: 53
     type: Return
     inputs:
-    - 54
-    - id: 57
-      name: Result
-      type: int
-      kind: data
-      flags: 2
-      group: 3
+      Result: {id: 57, type: int, kind: data, flags: 2, group: 3}
   - id: 58
     type: Subtract
     inputs:
-    - id: 59
-      type: int
-    - id: 60
-      type: int
+      A: {type: int}
+      B: {type: int}
     outputs:
-    - id: 61
-      type: int
-  - id: 62
-    type: Get_GameHealth
-    outputs: [63]
-  - id: 64
-    type: Break_GameHealth
-    inputs: [65]
-    outputs: [66, 67]
-  - id: 68
-    type: Make_GameHealth
-    inputs: [69, 70]
-    outputs: [71]
-  - id: 72
-    type: Set_GameHealth
-    inputs: [73, 74]
-    outputs: [75, 76]
+      Result: {type: int}
+  - {id: 62, type: Get_GameHealth}
+  - {id: 64, type: Break_GameHealth}
+  - {id: 68, type: Make_GameHealth}
+  - {id: 72, type: Set_GameHealth}
   edges:
-  - from: 51
-    from_pin: 52
-    to: 72
-    to_pin: 73
-  - from: 51
-    from_pin: 55
-    to: 58
-    to_pin: 59
-  - from: 51
-    from_pin: 56
-    to: 58
-    to_pin: 60
-  - from: 58
-    from_pin: 61
-    to: 53
-    to_pin: 57
-  - from: 58
-    from_pin: 61
-    to: 68
-    to_pin: 69
-  - from: 62
-    from_pin: 63
-    to: 64
-    to_pin: 65
-  - from: 64
-    from_pin: 67
-    to: 68
-    to_pin: 70
-  - from: 68
-    from_pin: 71
-    to: 72
-    to_pin: 74
-  - from: 72
-    from_pin: 75
-    to: 53
-    to_pin: 54
+  - {from: 51.Exec, to: 72.Exec}
+  - {from: 51.health, to: 58.A}
+  - {from: 51.amount, to: 58.B}
+  - {from: 58.Result, to: 53.Result}
+  - {from: 58.Result, to: 68.current}
+  - {from: 62.Value, to: 64.GameHealth}
+  - {from: 64.maximum, to: 68.maximum}
+  - {from: 68.GameHealth, to: 72.Value}
+  - {from: 72.Then, to: 53.Exec}
 - id: 92
   kind: function
   name: health <= 0
@@ -310,42 +155,18 @@ graphs:
   - id: 113
     type: Function Entry
     outputs:
-    - id: 117
-      name: health
-      type: double
-      kind: data
-      group: 1
+    - {id: 117, name: health, type: double, kind: data, group: 1}
   - id: 115
     type: Return
     inputs:
-    - id: 118
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 2
-  - id: 119
-    type: Real
-    inputs: [120]
-    outputs: [121]
+    - {id: 118, name: Result, type: bool, kind: data, flags: 2, group: 2}
+  - {id: 119, type: Real}
   - id: 122
     type: Less Or Equal
     inputs:
-    - id: 123
-      type: double
-    - id: 124
-      type: double
-    outputs: [125]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 113
-    from_pin: 117
-    to: 122
-    to_pin: 123
-  - from: 119
-    from_pin: 121
-    to: 122
-    to_pin: 124
-  - from: 122
-    from_pin: 125
-    to: 115
-    to_pin: 118
+  - {from: 113.health, to: 122.A}
+  - {from: 119.Value, to: 122.B}
+  - {from: 122.Result, to: 115.Result}

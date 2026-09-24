@@ -4,11 +4,7 @@ id_counter: 131
 description: Enemy body contact deals 10 damage at most once per half second. Only new contacts can hit; continuing overlap never repeats.
 owner_type: ecs.entity
 variables:
-- id: 1
-  name: Remaining
-  type: float
-  type_name: float
-  category: Contact
+- {id: 1, name: Remaining, type: float, type_name: float, category: Contact}
 graphs:
 - kind: event
   name: ""
@@ -16,181 +12,92 @@ graphs:
   - id: 5
     type: Event
     reference_name: Tick
-    outputs: [4]
+    outputs:
+      Then: {id: 4}
   - id: 7
     type: Get Variable
     reference_id: 1
     outputs:
-    - id: 6
-      type: float
-      flags: 0
+      Value: {id: 6, type: float, flags: 0}
   - id: 9
     type: Delta Time
-    outputs: [8]
+    outputs:
+      Seconds: {id: 8}
   - id: 13
     type: Subtract
     inputs:
-    - id: 10
-      group: 0
-    - id: 11
-      group: 0
+      A: {id: 10, group: 0}
+      B: {group: 0}
     outputs:
-    - id: 12
-      group: 0
+      Result: {group: 0}
   - id: 17
     type: Max
     inputs:
-    - id: 14
-      group: 0
-    - id: 15
-      group: 0
+      A: {id: 14, group: 0}
+      B: {group: 0}
     outputs:
-    - id: 16
-      group: 0
+      Result: {group: 0}
   - id: 22
     type: Set Variable
     reference_id: 1
     inputs:
-    - 18
-    - id: 19
-      type: float
+      Exec: {id: 18}
+      Value: {type: float}
     outputs:
-    - 20
-    - id: 21
-      type: float
+      Value: {type: float}
   - id: 25
     type: Event
     reference_name: Contact Begin
     outputs:
-    - 23
-    - id: 24
-      name: Other
-      type: handle
-      type_name: ecs.entity
-      kind: data
-    - id: 129
-      name: Point
-      type: struct
-      type_name: CF_V2
-      kind: data
+      Then: {id: 23}
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {id: 129, type: struct, type_name: CF_V2, kind: data}
   - id: 27
     type: Get Variable
     reference_id: 1
     outputs:
-    - id: 26
-      type: float
-      flags: 0
+      Value: {id: 26, type: float, flags: 0}
   - id: 31
     type: Greater Or Equal
-    inputs: [28, 29]
-    outputs: [30]
+    inputs:
+      A: {id: 28}
   - id: 36
     type: Branch
-    inputs: [32, 33]
-    outputs: [34, 35]
+    inputs:
+      Exec: {id: 32}
   - id: 40
     type: Call Function
     reference_id: 2
     reference_name: Check Enemy Contact
     inputs:
-    - 37
-    - id: 38
-      name: Other
-      type: handle
-      type_name: ecs.entity
-      kind: data
-    outputs: [39]
-  - id: 110
-    type: Has_GameDash
-    outputs: [111]
-  - id: 112
-    type: Branch
-    inputs: [113, 114]
-    outputs: [115, 116]
+      Exec: {id: 37}
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+  - {id: 110, type: Has_GameDash}
+  - {id: 112, type: Branch}
   - id: 117
     type: Get_GameDash
     outputs:
-    - id: 118
-      flags: 0
-    - id: 119
-      name: remaining
-      type: float
-      field_source: 118
-      field_name: remaining
-      flags: 0
-  - id: 120
-    type: Less
-    inputs: [121, 122]
-    outputs: [123]
-  - id: 124
-    type: Branch
-    inputs: [125, 126]
-    outputs: [127, 128]
+      Value: {flags: 0}
+      Value.remaining: {}
+  - {id: 120, type: Less}
+  - {id: 124, type: Branch}
   edges:
-  - from: 5
-    from_pin: 4
-    to: 22
-    to_pin: 18
-  - from: 7
-    from_pin: 6
-    to: 13
-    to_pin: 10
-  - from: 9
-    from_pin: 8
-    to: 13
-    to_pin: 11
-  - from: 13
-    from_pin: 12
-    to: 17
-    to_pin: 14
-  - from: 17
-    from_pin: 16
-    to: 22
-    to_pin: 19
-  - from: 25
-    from_pin: 23
-    to: 112
-    to_pin: 113
-  - from: 25
-    from_pin: 24
-    to: 40
-    to_pin: 38
-  - from: 27
-    from_pin: 26
-    to: 31
-    to_pin: 29
-  - from: 31
-    from_pin: 30
-    to: 36
-    to_pin: 33
-  - from: 36
-    from_pin: 34
-    to: 40
-    to_pin: 37
-  - from: 110
-    from_pin: 111
-    to: 112
-    to_pin: 114
-  - from: 112
-    from_pin: 115
-    to: 124
-    to_pin: 125
-  - from: 112
-    from_pin: 116
-    to: 36
-    to_pin: 32
-  - from: 117
-    from_pin: 119
-    to: 120
-    to_pin: 122
-  - from: 120
-    from_pin: 123
-    to: 124
-    to_pin: 126
-  - from: 124
-    from_pin: 128
-    to: 36
-    to_pin: 32
+  - {from: 5.Then, to: 22.Exec}
+  - {from: 7.Value, to: 13.A}
+  - {from: 9.Seconds, to: 13.B}
+  - {from: 13.Result, to: 17.A}
+  - {from: 17.Result, to: 22.Value}
+  - {from: 25.Then, to: 112.Exec}
+  - {from: 25.Other, to: 40.Other}
+  - {from: 27.Value, to: 31.B}
+  - {from: 31.Result, to: 36.Condition}
+  - {from: 36.True, to: 40.Exec}
+  - {from: 110.Value, to: 112.Condition}
+  - {from: 112.True, to: 124.Exec}
+  - {from: 112.False, to: 36.Exec}
+  - {from: 117.Value.remaining, to: 120.B}
+  - {from: 120.Result, to: 124.Condition}
+  - {from: 124.False, to: 36.Exec}
 - id: 2
   kind: function
   name: Check Enemy Contact
@@ -201,172 +108,89 @@ graphs:
   - id: 43
     type: Function Entry
     outputs:
-    - id: 41
-      name: Then
-    - id: 42
-      name: Other
-      type: handle
-      type_name: ecs.entity
-      kind: data
+    - {id: 41, name: Then}
+    - {id: 42, name: Other, type: handle, type_name: ecs.entity, kind: data}
   - id: 45
     type: Return
-    inputs: [44]
+    inputs:
+      Exec: {id: 44}
   - id: 48
     type: HasEntity_GameCollider
-    inputs: [46]
-    outputs: [47]
+    inputs:
+      Entity: {id: 46}
   - id: 53
     type: Branch
-    inputs: [49, 50]
-    outputs: [51, 52]
+    inputs:
+      Exec: {id: 49}
   - id: 57
     type: GetEntity_GameCollider
-    inputs: [56]
+    inputs:
+      Entity: {id: 56}
     outputs:
-    - 54
-    - id: 55
-      name: category
-      type: uint
-      type_name: unsigned int
-      field_source: 54
-      field_name: category
+      Value: {id: 54}
+      Value.category: {}
   - id: 61
     type: Has Any Flags
     inputs:
-    - 58
-    - id: 59
-      default: 2
-    outputs: [60]
+      Value: {id: 58}
+      Flags: 2
   - id: 66
     type: Branch
-    inputs: [62, 63]
-    outputs: [64, 65]
+    inputs:
+      Exec: {id: 62}
   - id: 69
     type: HasEntity_GameHealth
-    inputs: [67]
-    outputs: [68]
+    inputs:
+      Entity: {id: 67}
   - id: 74
     type: Branch
-    inputs: [70, 71]
-    outputs: [72, 73]
+    inputs:
+      Exec: {id: 70}
   - id: 78
     type: GetEntity_GameHealth
-    inputs: [77]
+    inputs:
+      Entity: {id: 77}
     outputs:
-    - 75
-    - id: 76
-      name: current
-      type: int
-      field_source: 75
-      field_name: current
+      Value: {id: 75}
+      Value.current: {}
   - id: 82
     type: Integer Greater Or Equal
     inputs:
-    - 79
-    - id: 80
-      default: 1
-    outputs: [81]
+      A: {id: 79}
+      B: 1
   - id: 87
     type: Branch
-    inputs: [83, 84]
-    outputs: [85, 86]
+    inputs:
+      Exec: {id: 83}
   - id: 91
     type: Call Function
     reference_id: 3
     reference_name: Apply Contact Damage
     inputs:
-    - 88
-    - id: 89
-      name: Other
-      type: handle
-      type_name: ecs.entity
-      kind: data
-    outputs: [90]
+      Exec: {id: 88}
+      Other: {type: handle, type_name: ecs.entity, kind: data}
   edges:
-  - from: 43
-    from_pin: 41
-    to: 53
-    to_pin: 49
-  - from: 43
-    from_pin: 42
-    to: 48
-    to_pin: 46
-  - from: 43
-    from_pin: 42
-    to: 57
-    to_pin: 56
-  - from: 43
-    from_pin: 42
-    to: 69
-    to_pin: 67
-  - from: 43
-    from_pin: 42
-    to: 78
-    to_pin: 77
-  - from: 43
-    from_pin: 42
-    to: 91
-    to_pin: 89
-  - from: 48
-    from_pin: 47
-    to: 53
-    to_pin: 50
-  - from: 53
-    from_pin: 51
-    to: 66
-    to_pin: 62
-  - from: 53
-    from_pin: 52
-    to: 45
-    to_pin: 44
-  - from: 57
-    from_pin: 55
-    to: 61
-    to_pin: 58
-  - from: 61
-    from_pin: 60
-    to: 66
-    to_pin: 63
-  - from: 66
-    from_pin: 64
-    to: 74
-    to_pin: 70
-  - from: 66
-    from_pin: 65
-    to: 45
-    to_pin: 44
-  - from: 69
-    from_pin: 68
-    to: 74
-    to_pin: 71
-  - from: 74
-    from_pin: 72
-    to: 87
-    to_pin: 83
-  - from: 74
-    from_pin: 73
-    to: 45
-    to_pin: 44
-  - from: 78
-    from_pin: 76
-    to: 82
-    to_pin: 79
-  - from: 82
-    from_pin: 81
-    to: 87
-    to_pin: 84
-  - from: 87
-    from_pin: 85
-    to: 91
-    to_pin: 88
-  - from: 87
-    from_pin: 86
-    to: 45
-    to_pin: 44
-  - from: 91
-    from_pin: 90
-    to: 45
-    to_pin: 44
+  - {from: 43.Then, to: 53.Exec}
+  - {from: 43.Other, to: 48.Entity}
+  - {from: 43.Other, to: 57.Entity}
+  - {from: 43.Other, to: 69.Entity}
+  - {from: 43.Other, to: 78.Entity}
+  - {from: 43.Other, to: 91.Other}
+  - {from: 48.Value, to: 53.Condition}
+  - {from: 53.True, to: 66.Exec}
+  - {from: 53.False, to: 45.Exec}
+  - {from: 57.Value.category, to: 61.Value}
+  - {from: 61.Result, to: 66.Condition}
+  - {from: 66.True, to: 74.Exec}
+  - {from: 66.False, to: 45.Exec}
+  - {from: 69.Value, to: 74.Condition}
+  - {from: 74.True, to: 87.Exec}
+  - {from: 74.False, to: 45.Exec}
+  - {from: 78.Value.current, to: 82.A}
+  - {from: 82.Result, to: 87.Condition}
+  - {from: 87.True, to: 91.Exec}
+  - {from: 87.False, to: 45.Exec}
+  - {from: 91.Then, to: 45.Exec}
 - id: 3
   kind: function
   name: Apply Contact Damage
@@ -377,66 +201,34 @@ graphs:
   - id: 94
     type: Function Entry
     outputs:
-    - id: 92
-      name: Then
-    - id: 93
-      name: Other
-      type: handle
-      type_name: ecs.entity
-      kind: data
+    - {id: 92, name: Then}
+    - {id: 93, name: Other, type: handle, type_name: ecs.entity, kind: data}
   - id: 99
     type: Set Variable
     reference_id: 1
     inputs:
-    - 95
-    - id: 96
-      type: float
-      default: 0.5
+      Exec: {id: 95}
+      Value: {type: float, default: 0.5}
     outputs:
-    - 97
-    - id: 98
-      type: float
+      Value: {type: float}
   - id: 101
     type: Self
     outputs:
-    - id: 100
-      type_name: ecs.entity
+      Self: {id: 100, type_name: ecs.entity}
   - id: 107
     type: Send Event
     reference_name: Damage
     inputs:
-    - 102
-    - 103
-    - id: 104
-      declaration_id: 2
-      name: Amount
-      type: int
-      default: 10
-    - id: 105
-      declaration_id: 3
-      name: Source
-    outputs: [106]
+      Exec: {id: 102}
+      Amount: {declaration_id: 2, type: int, default: 10}
+      Source: {declaration_id: 3}
   - id: 109
     type: Return
-    inputs: [108]
+    inputs:
+      Exec: {id: 108}
   edges:
-  - from: 94
-    from_pin: 92
-    to: 99
-    to_pin: 95
-  - from: 94
-    from_pin: 93
-    to: 107
-    to_pin: 105
-  - from: 99
-    from_pin: 97
-    to: 107
-    to_pin: 102
-  - from: 101
-    from_pin: 100
-    to: 107
-    to_pin: 103
-  - from: 107
-    from_pin: 106
-    to: 109
-    to_pin: 108
+  - {from: 94.Then, to: 99.Exec}
+  - {from: 94.Other, to: 107.Source}
+  - {from: 99.Then, to: 107.Exec}
+  - {from: 101.Self, to: 107.Entity}
+  - {from: 107.Then, to: 109.Exec}

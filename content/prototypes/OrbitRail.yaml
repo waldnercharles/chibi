@@ -1,10 +1,7 @@
 name: OrbitRail
 identity: prototype-000000000000007d
 components:
-  GAME.GameAppearance:
-    color: 3101482495
-    height: 580.0
-    width: 12.0
+  GAME.GameAppearance: {color: 3101482495, height: 580.0, width: 12.0}
   GAME.GameCollider:
     category: 8
     height: 580.0
@@ -13,8 +10,6 @@ components:
     shape: Box
     width: 12.0
   GAME.GameOrientation: {}
-  game.GameTransform:
-    x: -190.0
-    "y": -390.0
+  game.GameTransform: {x: -190.0, "y": -390.0}
 detached_components:
   GAME.GameBody: {}

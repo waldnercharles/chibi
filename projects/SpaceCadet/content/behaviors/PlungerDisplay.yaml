@@ -10,29 +10,13 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Get Global Variable
-    inputs:
-    - id: 5
-      default: Charge
+    inputs: {Name: Charge}
     outputs:
-    - id: 6
-      type: float
-  - id: 7
-    type: Set_GameWidget_value
-    inputs: [8, 9, 10]
-    outputs: [11, 12]
+      Value: {type: float}
+  - {id: 7, type: Set_GameWidget_value}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 7
-    to_pin: 8
-  - from: 4
-    from_pin: 6
-    to: 7
-    to_pin: 9
+  - {from: 1.Then, to: 7.Exec}
+  - {from: 4.Value, to: 7.Value}

@@ -8,9 +8,7 @@ entities:
       values:
         GAME.GameWidget:
           accent: 0
-          anchor:
-            x: 0.0
-            "y": 0.0
+          anchor: {x: 0.0, "y": 0.0}
           background: 0
           block_input: false
           color: 0
@@ -23,17 +21,11 @@ entities:
           kind: 0
           maximum: 0.0
           minimum: 0.0
-          offset:
-            x: 0.0
-            "y": 0.0
+          offset: {x: 0.0, "y": 0.0}
           order: 0
-          pivot:
-            x: 0.0
-            "y": 0.0
+          pivot: {x: 0.0, "y": 0.0}
           rounding: 0.0
-          size:
-            x: 0.0
-            "y": 0.0
+          size: {x: 0.0, "y": 0.0}
           text: ""
           tooltip: ""
           value: 0.0
@@ -50,176 +42,100 @@ entities:
 - name: ArenaExperience_1
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
-    game.GameTransform:
-      x: 150.0
-      "y": -95.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
+    game.GameTransform: {x: 150.0, "y": -95.0}
   behaviors: [ArenaPickupBehavior, ArenaDropBehavior]
 - name: ArenaExperience_2
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
-    game.GameTransform:
-      x: 320.0
-      "y": -65.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
+    game.GameTransform: {x: 320.0, "y": -65.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaExperience_3
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
-    game.GameTransform:
-      x: 490.0
-      "y": -95.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
+    game.GameTransform: {x: 490.0, "y": -95.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaExperience_4
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
-    GAME.GameShader:
-      parameters: '{"Color":[1.0,0.18000000715255737,0.5],"Glow":[1.5]}'
-    game.GameTransform:
-      x: 550.0
-      "y": -180.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
+    GAME.GameShader: {parameters: '{"Color":[1.0,0.18000000715255737,0.5],"Glow":[1.5]}'}
+    game.GameTransform: {x: 550.0, "y": -180.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaExperience_5
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
     GAME.GameShader:
       parameters: '{"Color":[1.0,0.3199999928474426,0.07999999821186066],"Glow":[1.5]}'
-    game.GameTransform:
-      x: 490.0
-      "y": -265.0
+    game.GameTransform: {x: 490.0, "y": -265.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaExperience_6
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
-    GAME.GameShader:
-      parameters: '{"Color":[0.6200000047683716,0.2800000011920929,1.0],"Glow":[1.5]}'
-    game.GameTransform:
-      x: 320.0
-      "y": -295.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
+    GAME.GameShader: {parameters: '{"Color":[0.6200000047683716,0.2800000011920929,1.0],"Glow":[1.5]}'}
+    game.GameTransform: {x: 320.0, "y": -295.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaExperience_7
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
     GAME.GameShader:
       parameters: '{"Color":[0.10000000149011612,0.6499999761581421,1.0],"Glow":[1.5]}'
-    game.GameTransform:
-      x: 150.0
-      "y": -265.0
+    game.GameTransform: {x: 150.0, "y": -265.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaExperience_8
   prototype: ArenaExperience
   components:
-    GAME.GameGeometry3D:
-      width: 22.0
-      depth: 22.0
-      height: 4.0
-    GAME.GamePickup:
-      lifetime: 999.0
+    GAME.GameGeometry3D: {width: 22.0, depth: 22.0, height: 4.0}
+    GAME.GamePickup: {lifetime: 999.0}
     GAME.GameShader:
       parameters: '{"Color":[0.10000000149011612,1.0,0.6000000238418579],"Glow":[1.5]}'
-    game.GameTransform:
-      x: 90.0
-      "y": -180.0
+    game.GameTransform: {x: 90.0, "y": -180.0}
   behaviors: [ArenaDropBehavior, ArenaPickupBehavior]
 - name: ArenaWallHorizontal_1
   prototype: ArenaWallHorizontal
   components:
-    GAME.GameCollider:
-      width: 620.0
-    GAME.GameGeometry3D:
-      width: 620.0
-      depth: 3.0
-    GAME.GameShader:
-      parameters: '{"Glow":[2.0]}'
-    game.GameTransform:
-      "y": -350.0
+    GAME.GameCollider: {width: 620.0}
+    GAME.GameGeometry3D: {width: 620.0, depth: 3.0}
+    GAME.GameShader: {parameters: '{"Glow":[2.0]}'}
+    game.GameTransform: {"y": -350.0}
 - name: ArenaWallHorizontal_2
   prototype: ArenaWallHorizontal
   components:
-    GAME.GameCollider:
-      width: 620.0
-    GAME.GameGeometry3D:
-      width: 620.0
-      depth: 3.0
-    GAME.GameShader:
-      parameters: '{"Glow":[2.0]}'
-    game.GameTransform:
-      "y": -10.0
+    GAME.GameCollider: {width: 620.0}
+    GAME.GameGeometry3D: {width: 620.0, depth: 3.0}
+    GAME.GameShader: {parameters: '{"Glow":[2.0]}'}
+    game.GameTransform: {"y": -10.0}
 - name: ArenaWallHorizontal_3
   prototype: ArenaWallHorizontal
   components:
-    GAME.GameCollider:
-      width: 3.0
-      height: 340.0
-    GAME.GameGeometry3D:
-      width: 3.0
-      depth: 340.0
-    GAME.GameShader:
-      parameters: '{"Glow":[2.0]}'
-    game.GameTransform:
-      x: 10.0
-      "y": -180.0
+    GAME.GameCollider: {width: 3.0, height: 340.0}
+    GAME.GameGeometry3D: {width: 3.0, depth: 340.0}
+    GAME.GameShader: {parameters: '{"Glow":[2.0]}'}
+    game.GameTransform: {x: 10.0, "y": -180.0}
 - name: ArenaWallHorizontal_4
   prototype: ArenaWallHorizontal
   components:
-    GAME.GameCollider:
-      width: 3.0
-      height: 340.0
-    GAME.GameGeometry3D:
-      width: 3.0
-      depth: 340.0
-    GAME.GameShader:
-      parameters: '{"Glow":[2.0]}'
-    game.GameTransform:
-      x: 630.0
-      "y": -180.0
-- name: BloomCircuitGuide_1
-  prototype: BloomCircuitGuide
+    GAME.GameCollider: {width: 3.0, height: 340.0}
+    GAME.GameGeometry3D: {width: 3.0, depth: 340.0}
+    GAME.GameShader: {parameters: '{"Glow":[2.0]}'}
+    game.GameTransform: {x: 630.0, "y": -180.0}
+- {name: BloomCircuitGuide_1, prototype: BloomCircuitGuide}
 - name: ArenaEnemy_1
   prototype: ArenaEnemy
   components:
-    game.GameMovement:
-      speed: 105.0
+    game.GameMovement: {speed: 105.0}
   behaviors:
   - HealthBehavior
   - EnemyBehavior
@@ -229,10 +145,8 @@ entities:
 - name: ArenaEnemy_2
   prototype: ArenaEnemy
   components:
-    game.GameMovement:
-      speed: 105.0
-    game.GameTransform:
-      x: 160.0
+    game.GameMovement: {speed: 105.0}
+    game.GameTransform: {x: 160.0}
   behaviors:
   - ArenaEnemyVisualBehavior
   - ArenaImpactFeedback

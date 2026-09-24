@@ -1,8 +1,6 @@
 name: Camera
 identity: prototype-ce9ccb0324189e92
 components:
-  GAME.GameCamera:
-    height: 540.0
-    width: 960.0
+  GAME.GameCamera: {height: 540.0, width: 960.0}
   game.GameTransform: {}
 behaviors: [CameraFollow]

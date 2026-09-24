@@ -2,240 +2,92 @@ version: 3
 name: PhaseWardenBehavior
 id_counter: 82
 variables:
-- id: 1
-  name: Orbit Radius
-  type: float
-  category: Tuning
-  default: 72.0
-- id: 2
-  name: Move Speed
-  type: float
-  category: Tuning
-  default: 55.0
+- {id: 1, name: Orbit Radius, type: float, category: Tuning, default: 72.0}
+- {id: 2, name: Move Speed, type: float, category: Tuning, default: 55.0}
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 3
-    type: Event
-    reference_name: Tick
-    outputs: [4]
+  - {id: 3, type: Event, reference_name: Tick}
   - id: 5
     type: Get_GameTransform
     outputs:
-    - id: 6
-      flags: 0
+      Value: {flags: 0}
   - id: 7
     type: Find Nearest Entity
-    inputs:
-    - 8
-    - id: 9
-      default: 2000.0
-    - id: 10
-      default: 1
-    - 11
-    outputs: [12, 13, 14, 15]
-  - id: 16
-    type: Branch
-    inputs: [17, 18]
-    outputs: [19, 20]
-  - id: 21
-    type: Scene Rhythm
-    outputs: [22, 23, 24, 25]
-  - id: 26
-    type: Cosine
-    inputs: [27]
-    outputs: [28]
-  - id: 29
-    type: Sine
-    inputs: [30]
-    outputs: [31]
+    inputs: {Radius: 2000.0, Categories: 1}
+  - {id: 16, type: Branch}
+  - {id: 21, type: Scene Rhythm}
+  - {id: 26, type: Cosine}
+  - {id: 29, type: Sine}
   - id: 32
     type: Multiply
     inputs:
-    - 33
-    - id: 34
-      type_name: null
-    outputs: [35]
+      B: {type_name: null}
   - id: 36
     type: Multiply
     inputs:
-    - 37
-    - id: 38
-      type_name: null
-    outputs: [39]
-  - id: 40
-    type: Make_CF_V2
-    inputs: [41, 42]
-    outputs: [43]
+      B: {type_name: null}
+  - {id: 40, type: Make_CF_V2}
   - id: 44
     type: Add
     inputs:
-    - id: 45
-      type: struct
-      type_name: CF_V2
-    - id: 46
-      type: struct
-      type_name: CF_V2
+      A: {type: struct, type_name: CF_V2}
+      B: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 47
-      type: struct
-      type_name: CF_V2
-  - id: 48
-    type: Direction To
-    inputs: [49, 50]
-    outputs: [51]
-  - id: 52
-    type: Break_CF_V2
-    inputs: [53]
-    outputs: [54, 55]
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 48, type: Direction To}
+  - {id: 52, type: Break_CF_V2}
   - id: 56
     type: Multiply
     inputs:
-    - 57
-    - id: 58
-      type_name: null
-    outputs: [59]
+      B: {type_name: null}
   - id: 60
     type: Multiply
     inputs:
-    - 61
-    - id: 62
-      type_name: null
-    outputs: [63]
-  - id: 64
-    type: Make_GameVelocity
-    inputs: [65, 66]
-    outputs: [67]
-  - id: 68
-    type: Set_GameVelocity
-    inputs: [69, 70]
-    outputs: [71, 72]
+      B: {type_name: null}
+  - {id: 64, type: Make_GameVelocity}
+  - {id: 68, type: Set_GameVelocity}
   - id: 73
     type: Set_GameVelocity
     inputs:
-    - 74
-    - id: 75
-      default:
-        x: 0.0
-        "y": 0.0
-    outputs: [76, 77]
+      Value:
+        default: {x: 0.0, "y": 0.0}
   - id: 78
     type: Get Variable
     reference_id: 1
     reference_name: Orbit Radius
     outputs:
-    - id: 79
-      type: float
-      type_name: null
-      flags: 0
+      Value: {type: float, type_name: null, flags: 0}
   - id: 80
     type: Get Variable
     reference_id: 2
     reference_name: Move Speed
     outputs:
-    - id: 81
-      type: float
-      type_name: null
-      flags: 0
+      Value: {type: float, type_name: null, flags: 0}
   edges:
-  - from: 3
-    from_pin: 4
-    to: 16
-    to_pin: 17
-  - from: 5
-    from_pin: 6
-    to: 7
-    to_pin: 8
-  - from: 5
-    from_pin: 6
-    to: 48
-    to_pin: 49
-  - from: 7
-    from_pin: 12
-    to: 16
-    to_pin: 18
-  - from: 7
-    from_pin: 14
-    to: 44
-    to_pin: 45
-  - from: 16
-    from_pin: 19
-    to: 68
-    to_pin: 69
-  - from: 16
-    from_pin: 20
-    to: 73
-    to_pin: 74
-  - from: 21
-    from_pin: 22
-    to: 26
-    to_pin: 27
-  - from: 21
-    from_pin: 22
-    to: 29
-    to_pin: 30
-  - from: 26
-    from_pin: 28
-    to: 32
-    to_pin: 33
-  - from: 29
-    from_pin: 31
-    to: 36
-    to_pin: 37
-  - from: 32
-    from_pin: 35
-    to: 40
-    to_pin: 41
-  - from: 36
-    from_pin: 39
-    to: 40
-    to_pin: 42
-  - from: 40
-    from_pin: 43
-    to: 44
-    to_pin: 46
-  - from: 44
-    from_pin: 47
-    to: 48
-    to_pin: 50
-  - from: 48
-    from_pin: 51
-    to: 52
-    to_pin: 53
-  - from: 52
-    from_pin: 54
-    to: 56
-    to_pin: 57
-  - from: 52
-    from_pin: 55
-    to: 60
-    to_pin: 61
-  - from: 56
-    from_pin: 59
-    to: 64
-    to_pin: 65
-  - from: 60
-    from_pin: 63
-    to: 64
-    to_pin: 66
-  - from: 64
-    from_pin: 67
-    to: 68
-    to_pin: 70
-  - from: 78
-    from_pin: 79
-    to: 32
-    to_pin: 34
-  - from: 78
-    from_pin: 79
-    to: 36
-    to_pin: 38
-  - from: 80
-    from_pin: 81
-    to: 56
-    to_pin: 58
-  - from: 80
-    from_pin: 81
-    to: 60
-    to_pin: 62
+  - {from: 3.Then, to: 16.Exec}
+  - {from: 5.Value, to: 7.Position}
+  - {from: 5.Value, to: 48.Origin}
+  - {from: 7.Found, to: 16.Condition}
+  - {from: 7.Position, to: 44.A}
+  - {from: 16.True, to: 68.Exec}
+  - {from: 16.False, to: 73.Exec}
+  - {from: 21.Phase, to: 26.Value}
+  - {from: 21.Phase, to: 29.Value}
+  - {from: 26.Result, to: 32.A}
+  - {from: 29.Result, to: 36.A}
+  - {from: 32.Result, to: 40.x}
+  - {from: 36.Result, to: 40.y}
+  - {from: 40.CF_V2, to: 44.B}
+  - {from: 44.Result, to: 48.Target}
+  - {from: 48.Direction, to: 52.CF_V2}
+  - {from: 52.x, to: 56.A}
+  - {from: 52.y, to: 60.A}
+  - {from: 56.Result, to: 64.x}
+  - {from: 60.Result, to: 64.y}
+  - {from: 64.GameVelocity, to: 68.Value}
+  - {from: 78.Value, to: 32.B}
+  - {from: 78.Value, to: 36.B}
+  - {from: 80.Value, to: 56.B}
+  - {from: 80.Value, to: 60.B}

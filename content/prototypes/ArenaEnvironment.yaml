@@ -5,6 +5,4 @@ components:
     bloom_radius: 0.012000000104308128
     bloom_strength: 0.18000000715255737
     bloom_threshold: 1.0
-  GAME.GameRhythm:
-    bpm: 120.0
-    pulse_width: 0.18000000715255737
+  GAME.GameRhythm: {bpm: 120.0, pulse_width: 0.18000000715255737}

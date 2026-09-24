@@ -19,8 +19,7 @@ components:
     upscale_mode: 1
     upscale_threshold: 0.10000000149011612
   game.GameTransform: {}
-  GAME.MaterialDestructionWorld:
-    fragment_limit: 96
+  GAME.MaterialDestructionWorld: {fragment_limit: 96}
   GAME.MaterialFluidWorld:
     buffer: 192.0
     chunk_size: 256.0

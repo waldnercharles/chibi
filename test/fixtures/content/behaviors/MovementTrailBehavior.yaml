@@ -4,11 +4,7 @@ id_counter: 171
 description: Movement emits a rear-facing ship trail at 64 particles per second; idle clears fractional carry. Frame contribution is bounded to 0.1 seconds.
 owner_type: ecs.entity
 variables:
-- id: 1
-  name: Particle Carry
-  type: float
-  type_name: float
-  category: Trail
+- {id: 1, name: Particle Carry, type: float, type_name: float, category: Trail}
 graphs:
 - kind: event
   name: ""
@@ -17,77 +13,36 @@ graphs:
     type: Event
     reference_name: Input
     outputs:
-    - 12
-    - id: 13
-      name: Direction
-      type: struct
-      type_name: CF_V2
-      kind: data
+      Direction: {type: struct, type_name: CF_V2, kind: data}
   - id: 21
     type: Call Function
     reference_id: 2
     reference_name: Emit Movement Trail
     inputs:
-    - 22
-    - id: 23
-      name: Direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-    outputs: [24]
-  - id: 41
-    type: Branch
-    inputs: [42, 43]
-    outputs: [44, 45]
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - {id: 41, type: Branch}
   - id: 46
     type: Set Variable
     reference_id: 1
     inputs:
-    - 47
-    - id: 48
-      type: float
+      Value: {type: float}
     outputs:
-    - 49
-    - id: 50
-      type: float
+      Value: {type: float}
   - id: 165
     type: Call Pure Function
     reference_id: 158
     reference_name: Is Stationary
     inputs:
-    - id: 166
-      name: Direction
-      type: struct
-      type_name: CF_V2
+      Direction: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 167
-      name: Stationary
-      type: bool
+      Stationary: {type: bool}
   edges:
-  - from: 11
-    from_pin: 12
-    to: 41
-    to_pin: 42
-  - from: 11
-    from_pin: 13
-    to: 21
-    to_pin: 23
-  - from: 11
-    from_pin: 13
-    to: 165
-    to_pin: 166
-  - from: 41
-    from_pin: 44
-    to: 46
-    to_pin: 47
-  - from: 41
-    from_pin: 45
-    to: 21
-    to_pin: 22
-  - from: 165
-    from_pin: 167
-    to: 41
-    to_pin: 43
+  - {from: 11.Then, to: 41.Exec}
+  - {from: 11.Direction, to: 21.Direction}
+  - {from: 11.Direction, to: 165.Direction}
+  - {from: 41.True, to: 46.Exec}
+  - {from: 41.False, to: 21.Exec}
+  - {from: 165.Stationary, to: 41.Condition}
 - id: 2
   kind: function
   name: Emit Movement Trail
@@ -98,273 +53,109 @@ graphs:
   - id: 14
     type: Function Entry
     outputs:
-    - id: 15
-      name: Then
-    - id: 16
-      name: Direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-  - id: 17
-    type: Return
-    inputs: [18]
-  - id: 51
-    type: Delta Time
-    outputs: [52]
+    - {id: 15, name: Then}
+    - {id: 16, name: Direction, type: struct, type_name: CF_V2, kind: data}
+  - {id: 17, type: Return}
+  - {id: 51, type: Delta Time}
   - id: 62
     type: Get Variable
     reference_id: 1
     outputs:
-    - id: 63
-      type: float
-      flags: 0
+      Value: {type: float, flags: 0}
   - id: 64
     type: Add
     inputs:
-    - id: 65
-      name: a
-      flags: 0
-      group: 0
-    - id: 66
-      name: b
-      flags: 0
-      group: 0
+    - {id: 65, name: a, flags: 0, group: 0}
+    - {id: 66, name: b, flags: 0, group: 0}
     outputs:
-    - id: 67
-      flags: 0
-      group: 0
+      Result: {flags: 0, group: 0}
   - id: 68
     type: Set Variable
     reference_id: 1
     inputs:
-    - 69
-    - id: 70
-      type: float
+      Value: {type: float}
     outputs:
-    - 71
-    - id: 72
-      type: float
+      Value: {type: float}
   - id: 73
     type: Greater Or Equal
-    inputs:
-    - 74
-    - id: 75
-      default: 1.0
-    outputs: [76]
-  - id: 77
-    type: WhileLoop
-    inputs: [78, 79]
-    outputs: [80, 81]
-  - id: 82
-    type: Normalize Vector 2
-    inputs: [83]
-    outputs: [84]
+    inputs: {B: 1.0}
+  - {id: 77, type: WhileLoop}
+  - {id: 82, type: Normalize Vector 2}
   - id: 85
     type: Multiply
     inputs:
-    - id: 86
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
-    - id: 87
-      flags: 0
-      group: 0
-      default: -1.0
+      A: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: -1.0}
     outputs:
-    - id: 88
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
   - id: 89
     type: Multiply
     inputs:
-    - id: 90
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
-    - id: 91
-      flags: 0
-      group: 0
-      default: 9.0
+      A: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 9.0}
     outputs:
-    - id: 92
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
   - id: 93
     type: Get_GameTransform
     outputs:
-    - id: 94
-      flags: 0
+      Value: {flags: 0}
   - id: 95
     type: Add
     inputs:
-    - id: 96
-      name: a
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
-    - id: 97
-      name: b
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
+    - {id: 96, name: a, type: struct, type_name: CF_V2, flags: 0, group: 0}
+    - {id: 97, name: b, type: struct, type_name: CF_V2, flags: 0, group: 0}
     outputs:
-    - id: 98
-      type: struct
-      type_name: CF_V2
-      flags: 0
-      group: 0
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
   - id: 99
     type: Emit Directed Particles
     inputs:
-    - 100
-    - 101
-    - 102
-    - 103
-    - 104
-    - 105
-    - 106
-    - 107
-    - 108
-    - 109
-    - 110
-    - 111
-    - 112
-    - 113
-    - 114
-    - 115
-    - 116
-    - 117
-    - 169
-    - id: 170
-      flags: 0
-    outputs: [118]
+      Elevation: {id: 169}
+      Shape: {flags: 0}
+    outputs:
+      Then: {id: 118}
   - id: 119
     type: Subtract
     inputs:
-    - id: 120
-      flags: 0
-      group: 0
-    - id: 121
-      flags: 0
-      group: 0
-      default: 1.0
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 1.0}
     outputs:
-    - id: 122
-      flags: 0
-      group: 0
+      Result: {flags: 0, group: 0}
   - id: 123
     type: Set Variable
     reference_id: 1
     inputs:
-    - 124
-    - id: 125
-      type: float
+      Value: {type: float}
     outputs:
-    - 126
-    - id: 127
-      type: float
+      Value: {type: float}
   - id: 153
     type: Behavior Expression
     reference_id: 128
     reference_name: Emission Budget
     inputs:
-    - id: 154
-      name: dt
-      type: double
+      dt: {type: double}
     outputs:
-    - id: 155
-      name: Result
-      type: double
+      Result: {type: double}
   edges:
-  - from: 14
-    from_pin: 15
-    to: 68
-    to_pin: 69
-  - from: 14
-    from_pin: 16
-    to: 82
-    to_pin: 83
-  - from: 51
-    from_pin: 52
-    to: 153
-    to_pin: 154
-  - from: 62
-    from_pin: 63
-    to: 64
-    to_pin: 65
-  - from: 62
-    from_pin: 63
-    to: 73
-    to_pin: 74
-  - from: 62
-    from_pin: 63
-    to: 119
-    to_pin: 120
-  - from: 64
-    from_pin: 67
-    to: 68
-    to_pin: 70
-  - from: 68
-    from_pin: 71
-    to: 77
-    to_pin: 78
-  - from: 73
-    from_pin: 76
-    to: 77
-    to_pin: 79
-  - from: 77
-    from_pin: 80
-    to: 99
-    to_pin: 100
-  - from: 77
-    from_pin: 81
-    to: 17
-    to_pin: 18
-  - from: 82
-    from_pin: 84
-    to: 85
-    to_pin: 86
-  - from: 85
-    from_pin: 88
-    to: 89
-    to_pin: 90
-  - from: 85
-    from_pin: 88
-    to: 99
-    to_pin: 102
-  - from: 89
-    from_pin: 92
-    to: 95
-    to_pin: 97
-  - from: 93
-    from_pin: 94
-    to: 95
-    to_pin: 96
-    conversion: game_transform_to_cf
-  - from: 95
-    from_pin: 98
-    to: 99
-    to_pin: 101
-  - from: 99
-    from_pin: 118
-    to: 123
-    to_pin: 124
-  - from: 119
-    from_pin: 122
-    to: 123
-    to_pin: 125
-  - from: 153
-    from_pin: 155
-    to: 64
-    to_pin: 66
+  - {from: 14.Then, to: 68.Exec}
+  - {from: 14.Direction, to: 82.Value}
+  - {from: 51.Seconds, to: 153.dt}
+  - {from: 62.Value, to: 64.a}
+  - {from: 62.Value, to: 73.A}
+  - {from: 62.Value, to: 119.A}
+  - {from: 64.Result, to: 68.Value}
+  - {from: 68.Then, to: 77.Exec}
+  - {from: 73.Result, to: 77.Condition}
+  - {from: 77.Body, to: 99.Exec}
+  - {from: 77.Completed, to: 17.Exec}
+  - {from: 82.Result, to: 85.A}
+  - {from: 85.Result, to: 89.A}
+  - {from: 85.Result, to: 99.Direction}
+  - {from: 89.Result, to: 95.b}
+  - {from: 93.Value, to: 95.a, conversion: game_transform_to_cf}
+  - {from: 95.Result, to: 99.Position}
+  - {from: 99.Then, to: 123.Exec}
+  - {from: 119.Result, to: 123.Value}
+  - {from: 153.Result, to: 64.b}
 - id: 128
   kind: function
   name: Emission Budget
@@ -377,80 +168,40 @@ graphs:
   - id: 129
     type: Function Entry
     outputs:
-    - id: 133
-      name: dt
-      type: double
-      kind: data
+    - {id: 133, name: dt, type: double, kind: data}
   - id: 131
     type: Return
     inputs:
-    - id: 134
-      name: Result
-      type: double
-      kind: data
-  - id: 135
-    type: Real
-    inputs: [136]
-    outputs: [137]
+    - {id: 134, name: Result, type: double, kind: data}
+  - {id: 135, type: Real}
   - id: 138
     type: Real
-    inputs:
-    - id: 139
-      default: 0.10000000149011612
-    outputs: [140]
+    inputs: {Value: 0.10000000149011612}
   - id: 141
     type: Clamp
     inputs:
-    - id: 142
-      type: double
-    - id: 143
-      type: double
-    - id: 144
-      type: double
+      Value: {type: double}
+      Min: {type: double}
+      Max: {type: double}
     outputs:
-    - id: 145
-      type: double
+      Result: {type: double}
   - id: 146
     type: Real
-    inputs:
-    - id: 147
-      default: 64.0
-    outputs: [148]
+    inputs: {Value: 64.0}
   - id: 149
     type: Multiply
     inputs:
-    - id: 150
-      type: double
-    - id: 151
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 152
-      type: double
+      Result: {type: double}
   edges:
-  - from: 129
-    from_pin: 133
-    to: 141
-    to_pin: 142
-  - from: 135
-    from_pin: 137
-    to: 141
-    to_pin: 143
-  - from: 138
-    from_pin: 140
-    to: 141
-    to_pin: 144
-  - from: 141
-    from_pin: 145
-    to: 149
-    to_pin: 150
-  - from: 146
-    from_pin: 148
-    to: 149
-    to_pin: 151
-  - from: 149
-    from_pin: 152
-    to: 131
-    to_pin: 134
+  - {from: 129.dt, to: 141.Value}
+  - {from: 135.Value, to: 141.Min}
+  - {from: 138.Value, to: 141.Max}
+  - {from: 141.Result, to: 149.A}
+  - {from: 146.Value, to: 149.B}
+  - {from: 149.Result, to: 131.Result}
 - id: 158
   kind: function
   name: Is Stationary
@@ -461,105 +212,41 @@ graphs:
   - id: 25
     type: Multiply
     inputs:
-    - id: 26
-      flags: 0
-      group: 0
-    - id: 27
-      flags: 0
-      group: 0
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
     outputs:
-    - id: 28
-      flags: 0
-      group: 0
+      Result: {flags: 0, group: 0}
   - id: 29
     type: Multiply
     inputs:
-    - id: 30
-      flags: 0
-      group: 0
-    - id: 31
-      flags: 0
-      group: 0
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
     outputs:
-    - id: 32
-      flags: 0
-      group: 0
+      Result: {flags: 0, group: 0}
   - id: 33
     type: Add
     inputs:
-    - id: 34
-      name: a
-      flags: 0
-      group: 0
-    - id: 35
-      name: b
-      flags: 0
-      group: 0
+    - {id: 34, name: a, flags: 0, group: 0}
+    - {id: 35, name: b, flags: 0, group: 0}
     outputs:
-    - id: 36
-      flags: 0
-      group: 0
-  - id: 37
-    type: Greater Or Equal
-    inputs: [38, 39]
-    outputs: [40]
+      Result: {flags: 0, group: 0}
+  - {id: 37, type: Greater Or Equal}
   - id: 159
     type: Function Entry
     outputs:
-    - id: 160
-      name: Direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 161
-      name: x
-      type: float
-      kind: data
-      field_source: 160
-      field_name: x
-    - id: 162
-      name: "y"
-      type: float
-      kind: data
-      field_source: 160
-      field_name: "y"
+    - {id: 160, name: Direction, type: struct, type_name: CF_V2, kind: data}
+    - {id: 161, name: x, type: float, kind: data, field_source: 160, field_name: x}
+    - {id: 162, name: "y", type: float, kind: data, field_source: 160, field_name: "y"}
   - id: 163
     type: Return
     inputs:
-    - id: 164
-      name: Stationary
-      type: bool
-      kind: data
+    - {id: 164, name: Stationary, type: bool, kind: data}
   edges:
-  - from: 25
-    from_pin: 28
-    to: 33
-    to_pin: 34
-  - from: 29
-    from_pin: 32
-    to: 33
-    to_pin: 35
-  - from: 33
-    from_pin: 36
-    to: 37
-    to_pin: 39
-  - from: 37
-    from_pin: 40
-    to: 163
-    to_pin: 164
-  - from: 159
-    from_pin: 161
-    to: 25
-    to_pin: 26
-  - from: 159
-    from_pin: 161
-    to: 25
-    to_pin: 27
-  - from: 159
-    from_pin: 162
-    to: 29
-    to_pin: 30
-  - from: 159
-    from_pin: 162
-    to: 29
-    to_pin: 31
+  - {from: 25.Result, to: 33.a}
+  - {from: 29.Result, to: 33.b}
+  - {from: 33.Result, to: 37.B}
+  - {from: 37.Result, to: 163.Stationary}
+  - {from: 159.Direction.x, to: 25.A}
+  - {from: 159.Direction.x, to: 25.B}
+  - {from: 159.Direction.y, to: 29.A}
+  - {from: 159.Direction.y, to: 29.B}

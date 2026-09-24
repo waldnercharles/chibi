@@ -10,53 +10,25 @@ graphs:
   - id: 2
     type: Event
     reference_name: Begin
-    outputs: [1]
+    outputs:
+      Then: {id: 1}
   - id: 4
     type: Random Range Vector
     inputs:
-    - 5
-    - id: 6
-      default:
-        x: 6.2831854820251465
-        "y": 6.2831854820251465
-        z: 6.2831854820251465
-    outputs: [7]
-  - id: 8
-    type: Set_GameVisualMotion_rotation
-    inputs: [9, 10, 11]
-    outputs: [12, 13]
+      Max:
+        default: {x: 6.2831854820251465, "y": 6.2831854820251465, z: 6.2831854820251465}
+  - {id: 8, type: Set_GameVisualMotion_rotation}
   - id: 14
     type: Random Range Vector
     inputs:
-    - id: 15
-      default:
-        x: -10.0
-        "y": -10.0
-        z: -10.0
-    - id: 16
-      default:
-        x: 10.0
-        "y": 10.0
-        z: 10.0
-    outputs: [17]
+      Min:
+        default: {x: -10.0, "y": -10.0, z: -10.0}
+      Max:
+        default: {x: 10.0, "y": 10.0, z: 10.0}
   - id: 18
     type: Set_GameVisualMotion_angular_velocity
-    inputs: [19, 20, 21]
-    outputs: [22, 23]
   edges:
-  - from: 2
-    from_pin: 1
-    to: 8
-    to_pin: 9
-  - from: 4
-    from_pin: 7
-    to: 8
-    to_pin: 10
-  - from: 8
-    from_pin: 12
-    to: 18
-    to_pin: 19
-  - from: 14
-    from_pin: 17
-    to: 18
-    to_pin: 20
+  - {from: 2.Then, to: 8.Exec}
+  - {from: 4.Result, to: 8.Value}
+  - {from: 8.Then, to: 18.Exec}
+  - {from: 14.Result, to: 18.Value}

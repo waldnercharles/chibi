@@ -4,5 +4,4 @@ domain: event
 id_counter: 2
 description: Invite waiting experience pickups to fly to the player after combat ends.
 graphs:
-- kind: event
-  name: Events
+- {kind: event, name: Events}

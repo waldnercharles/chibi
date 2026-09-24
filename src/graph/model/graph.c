@@ -1636,6 +1636,18 @@ const type_field *graph_output_field(const node *n, int index, int *source_index
     return NULL;
 }
 
+pin_spec graph_field_pin(const node *n, int source_index, const type_field *field)
+{
+    const pin_spec *source = &n->output_pins[source_index];
+    return (pin_spec){ .name = field->name,
+                       .type = field->type,
+                       .type_name = field->type_name,
+                       .kind = PIN_DATA,
+                       .field_source = source->id,
+                       .field_name = field->name,
+                       .flags = source->flags & PIN_FLAG_REFERENCE };
+}
+
 int graph_expose_output_fields(graph *g, node *n, int index)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
@@ -1657,13 +1669,7 @@ int graph_expose_output_fields(graph *g, node *n, int index)
         if (exists) {
             continue;
         }
-        pin_spec pin = { .name = field->name,
-                         .type = field->type,
-                         .type_name = field->type_name,
-                         .kind = PIN_DATA,
-                         .field_source = source,
-                         .field_name = field->name,
-                         .flags = n->output_pins[index].flags & PIN_FLAG_REFERENCE };
+        pin_spec pin = graph_field_pin(n, index, field);
         if (graph_add_pin(g, n, 1, &pin) < 0) {
             return -1;
         }

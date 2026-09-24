@@ -11,65 +11,38 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: GetEntity_GameActionBinding
     inputs:
-    - id: 5
-      binding:
-        kind: component_field
-        component: GAME.GameParticleEmitter
-        field: parent
-    outputs: [6]
+      Entity:
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: parent}
   - id: 15
     type: Behavior Expression
     reference_id: 7
     reference_name: active = action.pressed
     inputs:
-    - id: 19
-      name: Exec
-      kind: exec
-    - id: 16
-      declaration_id: 12
-      name: active
-      type: bool
-      type_name: _Bool
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameParticleEmitter
-        field: active
-    - id: 17
-      declaration_id: 13
-      name: action
-      type: struct
-      type_name: GameActionBinding
-      flags: 2
-      group: 2
+      Exec: {id: 19, kind: exec}
+      active:
+        id: 16
+        declaration_id: 12
+        type: bool
+        type_name: _Bool
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
+      action:
+        declaration_id: 13
+        type: struct
+        type_name: GameActionBinding
+        flags: 2
+        group: 2
     outputs:
-    - id: 20
-      name: Then
-      kind: exec
-    - id: 18
-      declaration_id: 14
-      name: Result
-      type: bool
-      flags: 2
-      group: 3
+      Then: {id: 20, kind: exec}
+      Result: {id: 18, declaration_id: 14, type: bool, flags: 2, group: 3}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 15
-    to_pin: 19
-  - from: 4
-    from_pin: 6
-    to: 15
-    to_pin: 17
+  - {from: 1.Then, to: 15.Exec}
+  - {from: 4.Value, to: 15.action}
 - id: 7
   kind: function
   name: active = action.pressed
@@ -82,260 +55,51 @@ graphs:
   - id: 168
     type: Function Entry
     outputs:
-    - 169
-    - id: 172
-      name: active
-      type: bool
-      type_name: _Bool
-      kind: data
-      group: 1
-    - id: 173
-      name: action
-      type: struct
-      type_name: GameActionBinding
-      kind: data
-      flags: 2
-      group: 2
-    - id: 175
-      name: source
-      type: enum
-      type_name: GameControl
-      kind: data
-      field_source: 173
-      field_name: source
-    - id: 176
-      name: action
-      type: const char *
-      kind: data
-      field_source: 173
-      field_name: action
-    - id: 177
-      name: firing
-      type: bool
-      type_name: _Bool
-      kind: data
-      field_source: 173
-      field_name: firing
-    - id: 178
-      name: disabled
-      type: bool
-      type_name: _Bool
-      kind: data
-      field_source: 173
-      field_name: disabled
-    - id: 179
-      name: pressed
-      type: bool
-      type_name: _Bool
-      kind: data
-      field_source: 173
-      field_name: pressed
+      active: {id: 172, type: bool, type_name: _Bool, kind: data, group: 1}
+      action: {type: struct, type_name: GameActionBinding, kind: data, flags: 2, group: 2}
+      action.source: {id: 175}
+      action.action: {}
+      action.firing: {}
+      action.disabled: {}
+      action.pressed: {}
   - id: 170
     type: Return
     inputs:
-    - 171
-    - id: 174
-      name: Result
-      type: bool
-      type_name: _Bool
-      kind: data
-      flags: 2
-      group: 3
-  - id: 180
-    type: Get_GameParticleEmitter
-    outputs: [181]
-  - id: 182
-    type: Break_GameParticleEmitter
-    inputs: [183]
-    outputs:
-    - 184
-    - 185
-    - 186
-    - 187
-    - 188
-    - 189
-    - 190
-    - 191
-    - 192
-    - 193
-    - 194
-    - 195
-    - 196
-    - 197
-    - 198
-    - 199
-    - 200
-    - 201
-    - 202
-    - 203
-    - 204
-    - 205
-    - 206
-    - 207
-    - 208
-    - 209
-    - 210
-  - id: 211
-    type: Make_GameParticleEmitter
-    inputs:
-    - 212
-    - 213
-    - 214
-    - 215
-    - 216
-    - 217
-    - 218
-    - 219
-    - 220
-    - 221
-    - 222
-    - 223
-    - 224
-    - 225
-    - 226
-    - 227
-    - 228
-    - 229
-    - 230
-    - 231
-    - 232
-    - 233
-    - 234
-    - 235
-    - 236
-    - 237
-    - 238
-    outputs: [239]
-  - id: 240
-    type: Set_GameParticleEmitter
-    inputs: [241, 242]
-    outputs: [243, 244]
+      Result: {id: 174, type: bool, type_name: _Bool, kind: data, flags: 2, group: 3}
+  - {id: 180, type: Get_GameParticleEmitter}
+  - {id: 182, type: Break_GameParticleEmitter}
+  - {id: 211, type: Make_GameParticleEmitter}
+  - {id: 240, type: Set_GameParticleEmitter}
   edges:
-  - from: 168
-    from_pin: 169
-    to: 240
-    to_pin: 241
-  - from: 168
-    from_pin: 179
-    to: 170
-    to_pin: 174
-  - from: 168
-    from_pin: 179
-    to: 211
-    to_pin: 233
-  - from: 180
-    from_pin: 181
-    to: 182
-    to_pin: 183
-  - from: 182
-    from_pin: 184
-    to: 211
-    to_pin: 212
-  - from: 182
-    from_pin: 185
-    to: 211
-    to_pin: 213
-  - from: 182
-    from_pin: 186
-    to: 211
-    to_pin: 214
-  - from: 182
-    from_pin: 187
-    to: 211
-    to_pin: 215
-  - from: 182
-    from_pin: 188
-    to: 211
-    to_pin: 216
-  - from: 182
-    from_pin: 189
-    to: 211
-    to_pin: 217
-  - from: 182
-    from_pin: 190
-    to: 211
-    to_pin: 218
-  - from: 182
-    from_pin: 191
-    to: 211
-    to_pin: 219
-  - from: 182
-    from_pin: 192
-    to: 211
-    to_pin: 220
-  - from: 182
-    from_pin: 193
-    to: 211
-    to_pin: 221
-  - from: 182
-    from_pin: 194
-    to: 211
-    to_pin: 222
-  - from: 182
-    from_pin: 195
-    to: 211
-    to_pin: 223
-  - from: 182
-    from_pin: 196
-    to: 211
-    to_pin: 224
-  - from: 182
-    from_pin: 197
-    to: 211
-    to_pin: 225
-  - from: 182
-    from_pin: 198
-    to: 211
-    to_pin: 226
-  - from: 182
-    from_pin: 199
-    to: 211
-    to_pin: 227
-  - from: 182
-    from_pin: 200
-    to: 211
-    to_pin: 228
-  - from: 182
-    from_pin: 201
-    to: 211
-    to_pin: 229
-  - from: 182
-    from_pin: 202
-    to: 211
-    to_pin: 230
-  - from: 182
-    from_pin: 203
-    to: 211
-    to_pin: 231
-  - from: 182
-    from_pin: 204
-    to: 211
-    to_pin: 232
-  - from: 182
-    from_pin: 206
-    to: 211
-    to_pin: 234
-  - from: 182
-    from_pin: 207
-    to: 211
-    to_pin: 235
-  - from: 182
-    from_pin: 208
-    to: 211
-    to_pin: 236
-  - from: 182
-    from_pin: 209
-    to: 211
-    to_pin: 237
-  - from: 182
-    from_pin: 210
-    to: 211
-    to_pin: 238
-  - from: 211
-    from_pin: 239
-    to: 240
-    to_pin: 242
-  - from: 240
-    from_pin: 243
-    to: 170
-    to_pin: 171
+  - {from: 168.Exec, to: 240.Exec}
+  - {from: 168.action.pressed, to: 170.Result}
+  - {from: 168.action.pressed, to: 211.active}
+  - {from: 180.Value, to: 182.GameParticleEmitter}
+  - {from: 182.shape, to: 211.shape}
+  - {from: 182.color, to: 211.color}
+  - {from: 182.end_color, to: 211.end_color}
+  - {from: 182.rate, to: 211.rate}
+  - {from: 182.burst_count, to: 211.burst_count}
+  - {from: 182.lifetime, to: 211.lifetime}
+  - {from: 182.speed, to: 211.speed}
+  - {from: 182.size, to: 211.size}
+  - {from: 182.spread, to: 211.spread}
+  - {from: 182.drag, to: 211.drag}
+  - {from: 182.emission, to: 211.emission}
+  - {from: 182.antialias, to: 211.antialias}
+  - {from: 182.absorption, to: 211.absorption}
+  - {from: 182.metaball_group, to: 211.metaball_group}
+  - {from: 182.metaball_blend, to: 211.metaball_blend}
+  - {from: 182.velocity_align, to: 211.velocity_align}
+  - {from: 182.stretch, to: 211.stretch}
+  - {from: 182.velocity_inherit, to: 211.velocity_inherit}
+  - {from: 182.offset, to: 211.offset}
+  - {from: 182.direction, to: 211.direction}
+  - {from: 182.parent, to: 211.parent}
+  - {from: 182.planar, to: 211.planar}
+  - {from: 182.heading_only, to: 211.heading_only}
+  - {from: 182.fluid, to: 211.fluid}
+  - {from: 182.fluid_kind, to: 211.fluid_kind}
+  - {from: 182.fluid_mass, to: 211.fluid_mass}
+  - {from: 211.GameParticleEmitter, to: 240.Value}
+  - {from: 240.Then, to: 170.Exec}

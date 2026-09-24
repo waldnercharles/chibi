@@ -7,132 +7,55 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Tick
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Tick}
   - id: 3
     type: Get_GameTransform
     outputs:
-    - id: 4
-      flags: 0
+      Value: {flags: 0}
   - id: 5
     type: Self
     outputs:
-    - id: 6
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 7
     type: Find Nearest Entity
-    inputs:
-    - 8
-    - id: 9
-      default: 2000.0
-    - id: 10
-      default: 1
-    - 11
-    outputs: [12, 13, 14, 15]
-  - id: 16
-    type: Branch
-    inputs: [17, 18]
-    outputs: [19, 20]
+    inputs: {Radius: 2000.0, Categories: 1}
+  - {id: 16, type: Branch}
   - id: 28
     type: Get_GameMovement
     outputs:
-    - id: 29
-      flags: 0
-  - id: 52
-    type: Set_GameVelocity
-    inputs: [53, 54]
-    outputs: [55, 56]
+      Value: {flags: 0}
+  - {id: 52, type: Set_GameVelocity}
   - id: 66
     type: Call Pure Function
     reference_id: 57
     reference_name: Pursuit Velocity
     inputs:
-    - id: 67
-      name: Position
-      type: struct
-      type_name: CF_V2
-    - id: 68
-      name: Target
-      type: struct
-      type_name: CF_V2
-    - id: 69
-      name: Speed
-      type: float
-    - id: 70
-      name: Delta Seconds
-      type: float
-    - id: 71
-      name: Distance
-      type: float
+      Position: {type: struct, type_name: CF_V2}
+      Target: {type: struct, type_name: CF_V2}
+      Speed: {type: float}
+      Delta Seconds: {type: float}
+      Distance: {type: float}
     outputs:
-    - id: 72
-      name: Velocity
-      type: struct
-      type_name: GameVelocity
+      Velocity: {type: struct, type_name: GameVelocity}
   - id: 73
     type: Set_GameVelocity
     inputs:
-    - 74
-    - id: 75
-      default:
-        x: 0.0
-        "y": 0.0
-    outputs: [76, 77]
-  - id: 78
-    type: Delta Time
-    outputs: [79]
+      Value:
+        default: {x: 0.0, "y": 0.0}
+  - {id: 78, type: Delta Time}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 16
-    to_pin: 17
-  - from: 3
-    from_pin: 4
-    to: 7
-    to_pin: 8
-  - from: 3
-    from_pin: 4
-    to: 66
-    to_pin: 67
-  - from: 5
-    from_pin: 6
-    to: 7
-    to_pin: 11
-  - from: 7
-    from_pin: 12
-    to: 16
-    to_pin: 18
-  - from: 7
-    from_pin: 14
-    to: 66
-    to_pin: 68
-  - from: 7
-    from_pin: 15
-    to: 66
-    to_pin: 71
-  - from: 16
-    from_pin: 19
-    to: 52
-    to_pin: 53
-  - from: 16
-    from_pin: 20
-    to: 73
-    to_pin: 74
-  - from: 28
-    from_pin: 29
-    to: 66
-    to_pin: 69
-    conversion: Unwrap_GameMovement
-  - from: 66
-    from_pin: 72
-    to: 52
-    to_pin: 54
-  - from: 78
-    from_pin: 79
-    to: 66
-    to_pin: 70
+  - {from: 1.Then, to: 16.Exec}
+  - {from: 3.Value, to: 7.Position}
+  - {from: 3.Value, to: 66.Position}
+  - {from: 5.Self, to: 7.Exclude}
+  - {from: 7.Found, to: 16.Condition}
+  - {from: 7.Position, to: 66.Target}
+  - {from: 7.Distance, to: 66.Distance}
+  - {from: 16.True, to: 52.Exec}
+  - {from: 16.False, to: 73.Exec}
+  - {from: 28.Value, to: 66.Speed, conversion: Unwrap_GameMovement}
+  - {from: 66.Velocity, to: 52.Value}
+  - {from: 78.Seconds, to: 66.Delta Seconds}
 - id: 57
   kind: function
   name: Pursuit Velocity
@@ -143,131 +66,52 @@ graphs:
   - id: 21
     type: Subtract
     inputs:
-    - id: 22
-      type: struct
-      type_name: CF_V2
-    - id: 23
-      type: struct
-      type_name: CF_V2
+      A: {type: struct, type_name: CF_V2}
+      B: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 24
-      type: struct
-      type_name: CF_V2
-  - id: 25
-    type: Normalize Vector 2
-    inputs: [26]
-    outputs: [27]
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 25, type: Normalize Vector 2}
   - id: 44
     type: Multiply
     inputs:
-    - id: 45
-      type: struct
-      type_name: GameVelocity
-    - 46
+      A: {type: struct, type_name: GameVelocity}
     outputs:
-    - id: 47
-      type: struct
-      type_name: GameVelocity
+      Result: {type: struct, type_name: GameVelocity}
   - id: 58
     type: Function Entry
     outputs:
-    - id: 59
-      name: Position
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 60
-      name: Target
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 61
-      name: Speed
-      type: float
-      kind: data
-    - id: 62
-      name: Delta Seconds
-      type: float
-      kind: data
-    - id: 63
-      name: Distance
-      type: float
-      kind: data
+    - {id: 59, name: Position, type: struct, type_name: CF_V2, kind: data}
+    - {id: 60, name: Target, type: struct, type_name: CF_V2, kind: data}
+    - {id: 61, name: Speed, type: float, kind: data}
+    - {id: 62, name: Delta Seconds, type: float, kind: data}
+    - {id: 63, name: Distance, type: float, kind: data}
   - id: 64
     type: Return
     inputs:
-    - id: 65
-      name: Velocity
-      type: struct
-      type_name: GameVelocity
-      kind: data
+    - {id: 65, name: Velocity, type: struct, type_name: GameVelocity, kind: data}
   - id: 80
     type: Divide
     inputs:
-    - id: 81
-      flags: 0
-      group: 0
-    - id: 82
-      flags: 0
-      group: 0
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
     outputs:
-    - id: 83
-      flags: 0
-      group: 0
+      Result: {flags: 0, group: 0}
   - id: 84
     type: Clamp
     inputs:
-    - id: 85
-      flags: 0
-      group: 0
-    - id: 86
-      flags: 0
-      group: 0
-    - id: 87
-      flags: 0
-      group: 0
+      Value: {flags: 0, group: 0}
+      Min: {flags: 0, group: 0}
+      Max: {flags: 0, group: 0}
     outputs:
-    - id: 88
-      flags: 0
-      group: 0
+      Result: {flags: 0, group: 0}
   edges:
-  - from: 21
-    from_pin: 24
-    to: 25
-    to_pin: 26
-  - from: 25
-    from_pin: 27
-    to: 44
-    to_pin: 45
-  - from: 44
-    from_pin: 47
-    to: 64
-    to_pin: 65
-  - from: 58
-    from_pin: 59
-    to: 21
-    to_pin: 23
-  - from: 58
-    from_pin: 60
-    to: 21
-    to_pin: 22
-  - from: 58
-    from_pin: 61
-    to: 84
-    to_pin: 85
-  - from: 58
-    from_pin: 62
-    to: 80
-    to_pin: 82
-  - from: 58
-    from_pin: 63
-    to: 80
-    to_pin: 81
-  - from: 80
-    from_pin: 83
-    to: 84
-    to_pin: 87
-  - from: 84
-    from_pin: 88
-    to: 44
-    to_pin: 46
+  - {from: 21.Result, to: 25.Value}
+  - {from: 25.Result, to: 44.A}
+  - {from: 44.Result, to: 64.Velocity}
+  - {from: 58.Position, to: 21.B}
+  - {from: 58.Target, to: 21.A}
+  - {from: 58.Speed, to: 84.Value}
+  - {from: 58.Delta Seconds, to: 80.B}
+  - {from: 58.Distance, to: 80.A}
+  - {from: 80.Result, to: 84.Max}
+  - {from: 84.Result, to: 44.B}

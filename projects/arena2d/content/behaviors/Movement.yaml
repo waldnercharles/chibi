@@ -11,275 +11,169 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 17
     type: Behavior Expression
     reference_id: 4
     reference_name: heading = atan2(y, x)
     inputs:
-    - id: 22
-      name: Exec
-      kind: exec
-    - id: 18
-      declaration_id: 9
-      name: heading
-      type: float
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 19
-      declaration_id: 10
-      name: "y"
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameAim
-        field: direction.y
-    - id: 20
-      declaration_id: 11
-      name: x
-      type: double
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: GAME.GameAim
-        field: direction.x
+      Exec: {id: 22, kind: exec}
+      heading:
+        id: 18
+        declaration_id: 9
+        type: float
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      "y":
+        declaration_id: 10
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameAim, field: direction.y}
+      x:
+        declaration_id: 11
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameAim, field: direction.x}
     outputs:
-    - id: 23
-      name: Then
-      kind: exec
-    - id: 21
-      declaration_id: 12
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Then: {id: 23, kind: exec}
+      Result: {id: 21, declaration_id: 12, type: double, flags: 2, group: 4}
   - id: 102
     type: Branch
     inputs:
-    - 103
-    - id: 104
-      binding:
-        kind: component_field
-        component: GAME.GameActionBinding
-        field: pressed
-    outputs: [105, 106]
+      Condition:
+        binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
   - id: 137
     type: Behavior Expression
     reference_id: 107
     reference_name: target = vec2(cos(heading), sin(heading)) * speed * 2
     inputs:
-    - id: 142
-      name: Exec
-      kind: exec
-    - id: 138
-      declaration_id: 112
-      name: target
-      type: struct
-      type_name: CF_V2
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameDrive
-        field: target
-    - id: 139
-      declaration_id: 113
-      name: heading
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 140
-      declaration_id: 114
-      name: speed
-      type: double
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: game.GameMovement
-        field: speed
+      Exec: {id: 142, kind: exec}
+      target:
+        id: 138
+        declaration_id: 112
+        type: struct
+        type_name: CF_V2
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      heading:
+        declaration_id: 113
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      speed:
+        declaration_id: 114
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: game.GameMovement, field: speed}
     outputs:
-    - id: 143
-      name: Then
-      kind: exec
-    - id: 141
-      declaration_id: 115
-      name: Result
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 4
+      Then: {id: 143, kind: exec}
+      Result:
+        id: 141
+        declaration_id: 115
+        type: struct
+        type_name: CF_V2
+        flags: 2
+        group: 4
   - id: 306
     type: Behavior Expression
     reference_id: 279
     reference_name: x * x + y * y > 0.01
     inputs:
-    - id: 310
-      name: Exec
-      kind: exec
-    - id: 307
-      declaration_id: 284
-      name: x
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: component_field
-        component: game.GameInput
-        field: move.x
-    - id: 308
-      declaration_id: 285
-      name: "y"
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: game.GameInput
-        field: move.y
+      Exec: {id: 310, kind: exec}
+      x:
+        id: 307
+        declaration_id: 284
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: game.GameInput, field: move.x}
+      "y":
+        declaration_id: 285
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: game.GameInput, field: move.y}
     outputs:
-    - id: 311
-      name: "True"
-      kind: exec
-    - id: 312
-      name: "False"
-      kind: exec
-    - id: 309
-      declaration_id: 286
-      name: Result
-      type: bool
-      flags: 2
-      group: 3
+      "True": {id: 311, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 309, declaration_id: 286, type: bool, flags: 2, group: 3}
   - id: 385
     type: Behavior Expression
     reference_id: 367
     reference_name: target = vec2(x, y) * speed
     inputs:
-    - id: 391
-      name: Exec
-      kind: exec
-    - id: 386
-      declaration_id: 372
-      name: target
-      type: struct
-      type_name: CF_V2
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameDrive
-        field: target
-    - id: 387
-      declaration_id: 373
-      name: x
-      type: float
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: game.GameInput
-        field: move.x
-    - id: 388
-      declaration_id: 374
-      name: "y"
-      type: float
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: game.GameInput
-        field: move.y
-    - id: 389
-      declaration_id: 375
-      name: speed
-      type: double
-      flags: 2
-      group: 4
-      binding:
-        kind: component_field
-        component: game.GameMovement
-        field: speed
+      Exec: {id: 391, kind: exec}
+      target:
+        id: 386
+        declaration_id: 372
+        type: struct
+        type_name: CF_V2
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      x:
+        declaration_id: 373
+        type: float
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: game.GameInput, field: move.x}
+      "y":
+        declaration_id: 374
+        type: float
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: game.GameInput, field: move.y}
+      speed:
+        declaration_id: 375
+        type: double
+        flags: 2
+        group: 4
+        binding: {kind: component_field, component: game.GameMovement, field: speed}
     outputs:
-    - id: 392
-      name: Then
-      kind: exec
-    - id: 390
-      declaration_id: 376
-      name: Result
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 5
+      Then: {id: 392, kind: exec}
+      Result:
+        id: 390
+        declaration_id: 376
+        type: struct
+        type_name: CF_V2
+        flags: 2
+        group: 5
   - id: 542
     type: Behavior Expression
     reference_id: 525
     reference_name: target = vec2(0, 0)
     inputs:
-    - id: 545
-      name: Exec
-      kind: exec
-    - id: 543
-      declaration_id: 530
-      name: target
-      type: struct
-      type_name: CF_V2
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameDrive
-        field: target
+      Exec: {id: 545, kind: exec}
+      target:
+        id: 543
+        declaration_id: 530
+        type: struct
+        type_name: CF_V2
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
     outputs:
-    - id: 546
-      name: Then
-      kind: exec
-    - id: 544
-      declaration_id: 531
-      name: Result
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 2
+      Then: {id: 546, kind: exec}
+      Result:
+        id: 544
+        declaration_id: 531
+        type: struct
+        type_name: CF_V2
+        flags: 2
+        group: 2
   edges:
-  - from: 1
-    from_pin: 2
-    to: 17
-    to_pin: 22
-  - from: 17
-    from_pin: 23
-    to: 102
-    to_pin: 103
-  - from: 102
-    from_pin: 105
-    to: 137
-    to_pin: 142
-  - from: 102
-    from_pin: 106
-    to: 306
-    to_pin: 310
-  - from: 306
-    from_pin: 311
-    to: 385
-    to_pin: 391
-  - from: 306
-    from_pin: 312
-    to: 542
-    to_pin: 545
+  - {from: 1.Then, to: 17.Exec}
+  - {from: 17.Then, to: 102.Exec}
+  - {from: 102.True, to: 137.Exec}
+  - {from: 102.False, to: 306.Exec}
+  - {from: 306.True, to: 385.Exec}
+  - {from: 306.False, to: 542.Exec}
 - id: 4
   kind: function
   name: heading = atan2(y, x)
@@ -292,86 +186,27 @@ graphs:
   - id: 77
     type: Function Entry
     outputs:
-    - 78
-    - id: 81
-      name: heading
-      type: float
-      kind: data
-      group: 1
-    - id: 82
-      name: "y"
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 83
-      name: x
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+      heading: {id: 81, type: float, kind: data, group: 1}
+      "y": {type: double, kind: data, flags: 2, group: 2}
+      x: {type: double, kind: data, flags: 2, group: 3}
   - id: 79
     type: Return
     inputs:
-    - 80
-    - id: 84
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
-  - id: 85
-    type: Arc Tangent 2
-    inputs: [86, 87]
-    outputs: [88]
-  - id: 89
-    type: Get_GameOrientation
-    outputs: [90]
-  - id: 91
-    type: Break_GameOrientation
-    inputs: [92]
-    outputs: [93]
-  - id: 94
-    type: Make_GameOrientation
-    inputs: [95]
-    outputs: [96]
-  - id: 97
-    type: Set_GameOrientation
-    inputs: [98, 99]
-    outputs: [100, 101]
+      Result: {id: 84, type: double, kind: data, flags: 2, group: 4}
+  - {id: 85, type: Arc Tangent 2}
+  - {id: 89, type: Get_GameOrientation}
+  - {id: 91, type: Break_GameOrientation}
+  - {id: 94, type: Make_GameOrientation}
+  - {id: 97, type: Set_GameOrientation}
   edges:
-  - from: 77
-    from_pin: 78
-    to: 97
-    to_pin: 98
-  - from: 77
-    from_pin: 82
-    to: 85
-    to_pin: 86
-  - from: 77
-    from_pin: 83
-    to: 85
-    to_pin: 87
-  - from: 85
-    from_pin: 88
-    to: 79
-    to_pin: 84
-  - from: 85
-    from_pin: 88
-    to: 94
-    to_pin: 95
-  - from: 89
-    from_pin: 90
-    to: 91
-    to_pin: 92
-  - from: 94
-    from_pin: 96
-    to: 97
-    to_pin: 99
-  - from: 97
-    from_pin: 100
-    to: 79
-    to_pin: 80
+  - {from: 77.Exec, to: 97.Exec}
+  - {from: 77.y, to: 85.A}
+  - {from: 77.x, to: 85.B}
+  - {from: 85.Result, to: 79.Result}
+  - {from: 85.Result, to: 94.radians}
+  - {from: 89.Value, to: 91.GameOrientation}
+  - {from: 94.GameOrientation, to: 97.Value}
+  - {from: 97.Then, to: 79.Exec}
 - id: 107
   kind: function
   name: target = vec2(cos(heading), sin(heading)) * speed * 2
@@ -384,154 +219,53 @@ graphs:
   - id: 235
     type: Function Entry
     outputs:
-    - 236
-    - id: 239
-      name: target
-      type: struct
-      type_name: CF_V2
-      kind: data
-      group: 1
-    - id: 240
-      name: heading
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 241
-      name: speed
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+      target: {id: 239, type: struct, type_name: CF_V2, kind: data, group: 1}
+      heading: {type: double, kind: data, flags: 2, group: 2}
+      speed: {type: double, kind: data, flags: 2, group: 3}
   - id: 237
     type: Return
     inputs:
-    - 238
-    - id: 242
-      name: Result
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 4
-  - id: 243
-    type: Cosine
-    inputs: [244]
-    outputs: [245]
-  - id: 246
-    type: Sine
-    inputs: [247]
-    outputs: [248]
-  - id: 249
-    type: Make_CF_V2
-    inputs: [250, 251]
-    outputs: [252]
+      Result: {id: 242, type: struct, type_name: CF_V2, kind: data, flags: 2, group: 4}
+  - {id: 243, type: Cosine}
+  - {id: 246, type: Sine}
+  - {id: 249, type: Make_CF_V2}
   - id: 253
     type: Multiply
     inputs:
-    - id: 254
-      type: struct
-      type_name: CF_V2
-    - id: 255
-      type: double
+      A: {type: struct, type_name: CF_V2}
+      B: {type: double}
     outputs:
-    - id: 256
-      type: struct
-      type_name: CF_V2
+      Result: {type: struct, type_name: CF_V2}
   - id: 257
     type: Real
-    inputs:
-    - id: 258
-      default: 2.0
-    outputs: [259]
+    inputs: {Value: 2.0}
   - id: 260
     type: Multiply
     inputs:
-    - id: 261
-      type: struct
-      type_name: CF_V2
-    - id: 262
-      type: double
+      A: {type: struct, type_name: CF_V2}
+      B: {type: double}
     outputs:
-    - id: 263
-      type: struct
-      type_name: CF_V2
-  - id: 264
-    type: Get_GameDrive
-    outputs: [265]
-  - id: 266
-    type: Break_GameDrive
-    inputs: [267]
-    outputs: [268, 269]
-  - id: 270
-    type: Make_GameDrive
-    inputs: [271, 272]
-    outputs: [273]
-  - id: 274
-    type: Set_GameDrive
-    inputs: [275, 276]
-    outputs: [277, 278]
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 264, type: Get_GameDrive}
+  - {id: 266, type: Break_GameDrive}
+  - {id: 270, type: Make_GameDrive}
+  - {id: 274, type: Set_GameDrive}
   edges:
-  - from: 235
-    from_pin: 236
-    to: 274
-    to_pin: 275
-  - from: 235
-    from_pin: 240
-    to: 243
-    to_pin: 244
-  - from: 235
-    from_pin: 240
-    to: 246
-    to_pin: 247
-  - from: 235
-    from_pin: 241
-    to: 253
-    to_pin: 255
-  - from: 243
-    from_pin: 245
-    to: 249
-    to_pin: 250
-  - from: 246
-    from_pin: 248
-    to: 249
-    to_pin: 251
-  - from: 249
-    from_pin: 252
-    to: 253
-    to_pin: 254
-  - from: 253
-    from_pin: 256
-    to: 260
-    to_pin: 261
-  - from: 257
-    from_pin: 259
-    to: 260
-    to_pin: 262
-  - from: 260
-    from_pin: 263
-    to: 237
-    to_pin: 242
-  - from: 260
-    from_pin: 263
-    to: 270
-    to_pin: 271
-  - from: 264
-    from_pin: 265
-    to: 266
-    to_pin: 267
-  - from: 266
-    from_pin: 269
-    to: 270
-    to_pin: 272
-  - from: 270
-    from_pin: 273
-    to: 274
-    to_pin: 276
-  - from: 274
-    from_pin: 277
-    to: 237
-    to_pin: 238
+  - {from: 235.Exec, to: 274.Exec}
+  - {from: 235.heading, to: 243.Value}
+  - {from: 235.heading, to: 246.Value}
+  - {from: 235.speed, to: 253.B}
+  - {from: 243.Result, to: 249.x}
+  - {from: 246.Result, to: 249.y}
+  - {from: 249.CF_V2, to: 253.A}
+  - {from: 253.Result, to: 260.A}
+  - {from: 257.Value, to: 260.B}
+  - {from: 260.Result, to: 237.Result}
+  - {from: 260.Result, to: 270.target}
+  - {from: 264.Value, to: 266.GameDrive}
+  - {from: 266.acceleration, to: 270.acceleration}
+  - {from: 270.GameDrive, to: 274.Value}
+  - {from: 274.Then, to: 237.Exec}
 - id: 279
   kind: function
   name: x * x + y * y > 0.01
@@ -544,108 +278,51 @@ graphs:
   - id: 341
     type: Function Entry
     outputs:
-    - id: 345
-      name: x
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 346
-      name: "y"
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 345, name: x, type: double, kind: data, flags: 2, group: 1}
+    - {id: 346, name: "y", type: double, kind: data, flags: 2, group: 2}
   - id: 343
     type: Return
     inputs:
-    - id: 347
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 347, name: Result, type: bool, kind: data, flags: 2, group: 3}
   - id: 348
     type: Multiply
     inputs:
-    - id: 349
-      type: double
-    - id: 350
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 351
-      type: double
+      Result: {type: double}
   - id: 352
     type: Multiply
     inputs:
-    - id: 353
-      type: double
-    - id: 354
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 355
-      type: double
+      Result: {type: double}
   - id: 356
     type: Add
     inputs:
-    - id: 357
-      type: double
-    - id: 358
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 359
-      type: double
+      Result: {type: double}
   - id: 360
     type: Real
-    inputs:
-    - id: 361
-      default: 0.01
-    outputs: [362]
+    inputs: {Value: 0.01}
   - id: 363
     type: Greater
     inputs:
-    - id: 364
-      type: double
-    - id: 365
-      type: double
-    outputs: [366]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 341
-    from_pin: 345
-    to: 348
-    to_pin: 349
-  - from: 341
-    from_pin: 345
-    to: 348
-    to_pin: 350
-  - from: 341
-    from_pin: 346
-    to: 352
-    to_pin: 353
-  - from: 341
-    from_pin: 346
-    to: 352
-    to_pin: 354
-  - from: 348
-    from_pin: 351
-    to: 356
-    to_pin: 357
-  - from: 352
-    from_pin: 355
-    to: 356
-    to_pin: 358
-  - from: 356
-    from_pin: 359
-    to: 363
-    to_pin: 364
-  - from: 360
-    from_pin: 362
-    to: 363
-    to_pin: 365
-  - from: 363
-    from_pin: 366
-    to: 343
-    to_pin: 347
+  - {from: 341.x, to: 348.A}
+  - {from: 341.x, to: 348.B}
+  - {from: 341.y, to: 352.A}
+  - {from: 341.y, to: 352.B}
+  - {from: 348.Result, to: 356.A}
+  - {from: 352.Result, to: 356.B}
+  - {from: 356.Result, to: 363.A}
+  - {from: 360.Value, to: 363.B}
+  - {from: 363.Result, to: 343.Result}
 - id: 367
   kind: function
   name: target = vec2(x, y) * speed
@@ -658,118 +335,38 @@ graphs:
   - id: 493
     type: Function Entry
     outputs:
-    - 494
-    - id: 497
-      name: target
-      type: struct
-      type_name: CF_V2
-      kind: data
-      group: 1
-    - id: 498
-      name: x
-      type: float
-      kind: data
-      flags: 2
-      group: 2
-    - id: 499
-      name: "y"
-      type: float
-      kind: data
-      flags: 2
-      group: 3
-    - id: 500
-      name: speed
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+      target: {id: 497, type: struct, type_name: CF_V2, kind: data, group: 1}
+      x: {type: float, kind: data, flags: 2, group: 2}
+      "y": {type: float, kind: data, flags: 2, group: 3}
+      speed: {type: double, kind: data, flags: 2, group: 4}
   - id: 495
     type: Return
     inputs:
-    - 496
-    - id: 501
-      name: Result
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 5
-  - id: 502
-    type: Make_CF_V2
-    inputs: [503, 504]
-    outputs: [505]
+      Result: {id: 501, type: struct, type_name: CF_V2, kind: data, flags: 2, group: 5}
+  - {id: 502, type: Make_CF_V2}
   - id: 506
     type: Multiply
     inputs:
-    - id: 507
-      type: struct
-      type_name: CF_V2
-    - id: 508
-      type: double
+      A: {type: struct, type_name: CF_V2}
+      B: {type: double}
     outputs:
-    - id: 509
-      type: struct
-      type_name: CF_V2
-  - id: 510
-    type: Get_GameDrive
-    outputs: [511]
-  - id: 512
-    type: Break_GameDrive
-    inputs: [513]
-    outputs: [514, 515]
-  - id: 516
-    type: Make_GameDrive
-    inputs: [517, 518]
-    outputs: [519]
-  - id: 520
-    type: Set_GameDrive
-    inputs: [521, 522]
-    outputs: [523, 524]
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 510, type: Get_GameDrive}
+  - {id: 512, type: Break_GameDrive}
+  - {id: 516, type: Make_GameDrive}
+  - {id: 520, type: Set_GameDrive}
   edges:
-  - from: 493
-    from_pin: 494
-    to: 520
-    to_pin: 521
-  - from: 493
-    from_pin: 498
-    to: 502
-    to_pin: 503
-  - from: 493
-    from_pin: 499
-    to: 502
-    to_pin: 504
-  - from: 493
-    from_pin: 500
-    to: 506
-    to_pin: 508
-  - from: 502
-    from_pin: 505
-    to: 506
-    to_pin: 507
-  - from: 506
-    from_pin: 509
-    to: 495
-    to_pin: 501
-  - from: 506
-    from_pin: 509
-    to: 516
-    to_pin: 517
-  - from: 510
-    from_pin: 511
-    to: 512
-    to_pin: 513
-  - from: 512
-    from_pin: 515
-    to: 516
-    to_pin: 518
-  - from: 516
-    from_pin: 519
-    to: 520
-    to_pin: 522
-  - from: 520
-    from_pin: 523
-    to: 495
-    to_pin: 496
+  - {from: 493.Exec, to: 520.Exec}
+  - {from: 493.x, to: 502.x}
+  - {from: 493.y, to: 502.y}
+  - {from: 493.speed, to: 506.B}
+  - {from: 502.CF_V2, to: 506.A}
+  - {from: 506.Result, to: 495.Result}
+  - {from: 506.Result, to: 516.target}
+  - {from: 510.Value, to: 512.GameDrive}
+  - {from: 512.acceleration, to: 516.acceleration}
+  - {from: 516.GameDrive, to: 520.Value}
+  - {from: 520.Then, to: 495.Exec}
 - id: 525
   kind: function
   name: target = vec2(0, 0)
@@ -782,85 +379,25 @@ graphs:
   - id: 548
     type: Function Entry
     outputs:
-    - 549
-    - id: 552
-      name: target
-      type: struct
-      type_name: CF_V2
-      kind: data
-      group: 1
+      target: {id: 552, type: struct, type_name: CF_V2, kind: data, group: 1}
   - id: 550
     type: Return
     inputs:
-    - 551
-    - id: 553
-      name: Result
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 2
-  - id: 554
-    type: Real
-    inputs: [555]
-    outputs: [556]
-  - id: 557
-    type: Real
-    inputs: [558]
-    outputs: [559]
-  - id: 560
-    type: Make_CF_V2
-    inputs: [561, 562]
-    outputs: [563]
-  - id: 564
-    type: Get_GameDrive
-    outputs: [565]
-  - id: 566
-    type: Break_GameDrive
-    inputs: [567]
-    outputs: [568, 569]
-  - id: 570
-    type: Make_GameDrive
-    inputs: [571, 572]
-    outputs: [573]
-  - id: 574
-    type: Set_GameDrive
-    inputs: [575, 576]
-    outputs: [577, 578]
+      Result: {id: 553, type: struct, type_name: CF_V2, kind: data, flags: 2, group: 2}
+  - {id: 554, type: Real}
+  - {id: 557, type: Real}
+  - {id: 560, type: Make_CF_V2}
+  - {id: 564, type: Get_GameDrive}
+  - {id: 566, type: Break_GameDrive}
+  - {id: 570, type: Make_GameDrive}
+  - {id: 574, type: Set_GameDrive}
   edges:
-  - from: 548
-    from_pin: 549
-    to: 574
-    to_pin: 575
-  - from: 554
-    from_pin: 556
-    to: 560
-    to_pin: 561
-  - from: 557
-    from_pin: 559
-    to: 560
-    to_pin: 562
-  - from: 560
-    from_pin: 563
-    to: 550
-    to_pin: 553
-  - from: 560
-    from_pin: 563
-    to: 570
-    to_pin: 571
-  - from: 564
-    from_pin: 565
-    to: 566
-    to_pin: 567
-  - from: 566
-    from_pin: 569
-    to: 570
-    to_pin: 572
-  - from: 570
-    from_pin: 573
-    to: 574
-    to_pin: 576
-  - from: 574
-    from_pin: 577
-    to: 550
-    to_pin: 551
+  - {from: 548.Exec, to: 574.Exec}
+  - {from: 554.Value, to: 560.x}
+  - {from: 557.Value, to: 560.y}
+  - {from: 560.CF_V2, to: 550.Result}
+  - {from: 560.CF_V2, to: 570.target}
+  - {from: 564.Value, to: 566.GameDrive}
+  - {from: 566.acceleration, to: 570.acceleration}
+  - {from: 570.GameDrive, to: 574.Value}
+  - {from: 574.Then, to: 550.Exec}

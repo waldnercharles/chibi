@@ -11,85 +11,45 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: GetEntity_GameActionBinding
     inputs:
-    - id: 5
-      binding:
-        kind: component_field
-        component: GAME.GameParticleEmitter
-        field: parent
-    outputs: [6]
+      Entity:
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: parent}
   - id: 7
     type: GetEntity_GameInput
     inputs:
-    - id: 8
-      binding:
-        kind: component_field
-        component: GAME.GameParticleEmitter
-        field: parent
-    outputs: [9]
+      Entity:
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: parent}
   - id: 23
     type: Behavior Expression
     reference_id: 10
     reference_name: active = !action.pressed && (input.move.x * input.move.x + input.move.y * input.move.y > 0.01)
     inputs:
-    - id: 28
-      name: Exec
-      kind: exec
-    - id: 24
-      declaration_id: 15
-      name: active
-      type: bool
-      type_name: _Bool
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameParticleEmitter
-        field: active
-    - id: 25
-      declaration_id: 16
-      name: action
-      type: struct
-      type_name: GameActionBinding
-      flags: 2
-      group: 2
-    - id: 26
-      declaration_id: 17
-      name: input
-      type: struct
-      type_name: GameInput
-      flags: 2
-      group: 3
+      Exec: {id: 28, kind: exec}
+      active:
+        id: 24
+        declaration_id: 15
+        type: bool
+        type_name: _Bool
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
+      action:
+        declaration_id: 16
+        type: struct
+        type_name: GameActionBinding
+        flags: 2
+        group: 2
+      input: {declaration_id: 17, type: struct, type_name: GameInput, flags: 2, group: 3}
     outputs:
-    - id: 29
-      name: Then
-      kind: exec
-    - id: 27
-      declaration_id: 18
-      name: Result
-      type: bool
-      flags: 2
-      group: 4
+      Then: {id: 29, kind: exec}
+      Result: {id: 27, declaration_id: 18, type: bool, flags: 2, group: 4}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 23
-    to_pin: 28
-  - from: 4
-    from_pin: 6
-    to: 23
-    to_pin: 25
-  - from: 7
-    from_pin: 9
-    to: 23
-    to_pin: 26
+  - {from: 1.Then, to: 23.Exec}
+  - {from: 4.Value, to: 23.action}
+  - {from: 7.Value, to: 23.input}
 - id: 10
   kind: function
   name: active = !action.pressed && (input.move.x * input.move.x + input.move.y * input.move.y > 0.01)
@@ -102,368 +62,84 @@ graphs:
   - id: 265
     type: Function Entry
     outputs:
-    - 266
-    - id: 269
-      name: active
-      type: bool
-      type_name: _Bool
-      kind: data
-      group: 1
-    - id: 270
-      name: action
-      type: struct
-      type_name: GameActionBinding
-      kind: data
-      flags: 2
-      group: 2
-    - id: 271
-      name: input
-      type: struct
-      type_name: GameInput
-      kind: data
-      flags: 2
-      group: 3
-    - id: 273
-      name: source
-      type: enum
-      type_name: GameControl
-      kind: data
-      field_source: 270
-      field_name: source
-    - id: 274
-      name: action
-      type: const char *
-      kind: data
-      field_source: 270
-      field_name: action
-    - id: 275
-      name: firing
-      type: bool
-      type_name: _Bool
-      kind: data
-      field_source: 270
-      field_name: firing
-    - id: 276
-      name: disabled
-      type: bool
-      type_name: _Bool
-      kind: data
-      field_source: 270
-      field_name: disabled
-    - id: 277
-      name: pressed
-      type: bool
-      type_name: _Bool
-      kind: data
-      field_source: 270
-      field_name: pressed
-    - id: 281
-      name: move
-      type: struct
-      type_name: CF_V2
-      kind: data
-      field_source: 271
-      field_name: move
-    - id: 282
-      name: x
-      type: float
-      kind: data
-      field_source: 281
-      field_name: x
-    - id: 283
-      name: "y"
-      type: float
-      kind: data
-      field_source: 281
-      field_name: "y"
+      active: {id: 269, type: bool, type_name: _Bool, kind: data, group: 1}
+      action: {type: struct, type_name: GameActionBinding, kind: data, flags: 2, group: 2}
+      input: {type: struct, type_name: GameInput, kind: data, flags: 2, group: 3}
+      action.source: {id: 273}
+      action.action: {}
+      action.firing: {}
+      action.disabled: {}
+      action.pressed: {}
+      input.move: {id: 281}
+      input.move.x: {}
+      input.move.y: {}
   - id: 267
     type: Return
     inputs:
-    - 268
-    - id: 272
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 4
-  - id: 278
-    type: Not
-    inputs: [279]
-    outputs: [280]
-  - id: 284
-    type: Multiply
-    inputs: [285, 286]
-    outputs: [287]
-  - id: 288
-    type: Multiply
-    inputs: [289, 290]
-    outputs: [291]
+      Result: {id: 272, type: bool, kind: data, flags: 2, group: 4}
+  - {id: 278, type: Not}
+  - {id: 284, type: Multiply}
+  - {id: 288, type: Multiply}
   - id: 292
     type: Add
     inputs:
-    - id: 293
-      type: double
-    - 294
+      A: {type: double}
     outputs:
-    - id: 295
-      type: double
+      Result: {type: double}
   - id: 296
     type: Real
-    inputs:
-    - id: 297
-      default: 0.01
-    outputs: [298]
+    inputs: {Value: 0.01}
   - id: 299
     type: Greater
     inputs:
-    - id: 300
-      type: double
-    - id: 301
-      type: double
-    outputs: [302]
-  - id: 303
-    type: And
-    inputs: [304, 305]
-    outputs: [306]
-  - id: 307
-    type: Get_GameParticleEmitter
-    outputs: [308]
-  - id: 309
-    type: Break_GameParticleEmitter
-    inputs: [310]
-    outputs:
-    - 311
-    - 312
-    - 313
-    - 314
-    - 315
-    - 316
-    - 317
-    - 318
-    - 319
-    - 320
-    - 321
-    - 322
-    - 323
-    - 324
-    - 325
-    - 326
-    - 327
-    - 328
-    - 329
-    - 330
-    - 331
-    - 332
-    - 333
-    - 334
-    - 335
-    - 336
-    - 337
-  - id: 338
-    type: Make_GameParticleEmitter
-    inputs:
-    - 339
-    - 340
-    - 341
-    - 342
-    - 343
-    - 344
-    - 345
-    - 346
-    - 347
-    - 348
-    - 349
-    - 350
-    - 351
-    - 352
-    - 353
-    - 354
-    - 355
-    - 356
-    - 357
-    - 358
-    - 359
-    - 360
-    - 361
-    - 362
-    - 363
-    - 364
-    - 365
-    outputs: [366]
-  - id: 367
-    type: Set_GameParticleEmitter
-    inputs: [368, 369]
-    outputs: [370, 371]
+      A: {type: double}
+      B: {type: double}
+  - {id: 303, type: And}
+  - {id: 307, type: Get_GameParticleEmitter}
+  - {id: 309, type: Break_GameParticleEmitter}
+  - {id: 338, type: Make_GameParticleEmitter}
+  - {id: 367, type: Set_GameParticleEmitter}
   edges:
-  - from: 265
-    from_pin: 266
-    to: 367
-    to_pin: 368
-  - from: 265
-    from_pin: 277
-    to: 278
-    to_pin: 279
-  - from: 265
-    from_pin: 282
-    to: 284
-    to_pin: 285
-  - from: 265
-    from_pin: 282
-    to: 284
-    to_pin: 286
-  - from: 265
-    from_pin: 283
-    to: 288
-    to_pin: 289
-  - from: 265
-    from_pin: 283
-    to: 288
-    to_pin: 290
-  - from: 278
-    from_pin: 280
-    to: 303
-    to_pin: 304
-  - from: 284
-    from_pin: 287
-    to: 292
-    to_pin: 293
-  - from: 288
-    from_pin: 291
-    to: 292
-    to_pin: 294
-  - from: 292
-    from_pin: 295
-    to: 299
-    to_pin: 300
-  - from: 296
-    from_pin: 298
-    to: 299
-    to_pin: 301
-  - from: 299
-    from_pin: 302
-    to: 303
-    to_pin: 305
-  - from: 303
-    from_pin: 306
-    to: 267
-    to_pin: 272
-  - from: 303
-    from_pin: 306
-    to: 338
-    to_pin: 360
-  - from: 307
-    from_pin: 308
-    to: 309
-    to_pin: 310
-  - from: 309
-    from_pin: 311
-    to: 338
-    to_pin: 339
-  - from: 309
-    from_pin: 312
-    to: 338
-    to_pin: 340
-  - from: 309
-    from_pin: 313
-    to: 338
-    to_pin: 341
-  - from: 309
-    from_pin: 314
-    to: 338
-    to_pin: 342
-  - from: 309
-    from_pin: 315
-    to: 338
-    to_pin: 343
-  - from: 309
-    from_pin: 316
-    to: 338
-    to_pin: 344
-  - from: 309
-    from_pin: 317
-    to: 338
-    to_pin: 345
-  - from: 309
-    from_pin: 318
-    to: 338
-    to_pin: 346
-  - from: 309
-    from_pin: 319
-    to: 338
-    to_pin: 347
-  - from: 309
-    from_pin: 320
-    to: 338
-    to_pin: 348
-  - from: 309
-    from_pin: 321
-    to: 338
-    to_pin: 349
-  - from: 309
-    from_pin: 322
-    to: 338
-    to_pin: 350
-  - from: 309
-    from_pin: 323
-    to: 338
-    to_pin: 351
-  - from: 309
-    from_pin: 324
-    to: 338
-    to_pin: 352
-  - from: 309
-    from_pin: 325
-    to: 338
-    to_pin: 353
-  - from: 309
-    from_pin: 326
-    to: 338
-    to_pin: 354
-  - from: 309
-    from_pin: 327
-    to: 338
-    to_pin: 355
-  - from: 309
-    from_pin: 328
-    to: 338
-    to_pin: 356
-  - from: 309
-    from_pin: 329
-    to: 338
-    to_pin: 357
-  - from: 309
-    from_pin: 330
-    to: 338
-    to_pin: 358
-  - from: 309
-    from_pin: 331
-    to: 338
-    to_pin: 359
-  - from: 309
-    from_pin: 333
-    to: 338
-    to_pin: 361
-  - from: 309
-    from_pin: 334
-    to: 338
-    to_pin: 362
-  - from: 309
-    from_pin: 335
-    to: 338
-    to_pin: 363
-  - from: 309
-    from_pin: 336
-    to: 338
-    to_pin: 364
-  - from: 309
-    from_pin: 337
-    to: 338
-    to_pin: 365
-  - from: 338
-    from_pin: 366
-    to: 367
-    to_pin: 369
-  - from: 367
-    from_pin: 370
-    to: 267
-    to_pin: 268
+  - {from: 265.Exec, to: 367.Exec}
+  - {from: 265.action.pressed, to: 278.Value}
+  - {from: 265.input.move.x, to: 284.A}
+  - {from: 265.input.move.x, to: 284.B}
+  - {from: 265.input.move.y, to: 288.A}
+  - {from: 265.input.move.y, to: 288.B}
+  - {from: 278.Result, to: 303.A}
+  - {from: 284.Result, to: 292.A}
+  - {from: 288.Result, to: 292.B}
+  - {from: 292.Result, to: 299.A}
+  - {from: 296.Value, to: 299.B}
+  - {from: 299.Result, to: 303.B}
+  - {from: 303.Result, to: 267.Result}
+  - {from: 303.Result, to: 338.active}
+  - {from: 307.Value, to: 309.GameParticleEmitter}
+  - {from: 309.shape, to: 338.shape}
+  - {from: 309.color, to: 338.color}
+  - {from: 309.end_color, to: 338.end_color}
+  - {from: 309.rate, to: 338.rate}
+  - {from: 309.burst_count, to: 338.burst_count}
+  - {from: 309.lifetime, to: 338.lifetime}
+  - {from: 309.speed, to: 338.speed}
+  - {from: 309.size, to: 338.size}
+  - {from: 309.spread, to: 338.spread}
+  - {from: 309.drag, to: 338.drag}
+  - {from: 309.emission, to: 338.emission}
+  - {from: 309.antialias, to: 338.antialias}
+  - {from: 309.absorption, to: 338.absorption}
+  - {from: 309.metaball_group, to: 338.metaball_group}
+  - {from: 309.metaball_blend, to: 338.metaball_blend}
+  - {from: 309.velocity_align, to: 338.velocity_align}
+  - {from: 309.stretch, to: 338.stretch}
+  - {from: 309.velocity_inherit, to: 338.velocity_inherit}
+  - {from: 309.offset, to: 338.offset}
+  - {from: 309.direction, to: 338.direction}
+  - {from: 309.parent, to: 338.parent}
+  - {from: 309.planar, to: 338.planar}
+  - {from: 309.heading_only, to: 338.heading_only}
+  - {from: 309.fluid, to: 338.fluid}
+  - {from: 309.fluid_kind, to: 338.fluid_kind}
+  - {from: 309.fluid_mass, to: 338.fluid_mass}
+  - {from: 338.GameParticleEmitter, to: 367.Value}
+  - {from: 367.Then, to: 267.Exec}

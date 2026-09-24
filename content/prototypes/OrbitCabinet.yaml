@@ -7,8 +7,5 @@ components:
     color: 288176639
     height: 750.0
     width: 430.0
-  GAME.GameCamera:
-    height: 850.0
-    width: 500.0
-  game.GameTransform:
-    "y": -340.0
+  GAME.GameCamera: {height: 850.0, width: 500.0}
+  game.GameTransform: {"y": -340.0}

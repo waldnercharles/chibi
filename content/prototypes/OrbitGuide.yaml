@@ -3,18 +3,13 @@ identity: prototype-0000000000000f03
 components:
   game.GameTransform: {}
   GAME.GameWidget:
-    anchor:
-      x: 0.5
+    anchor: {x: 0.5}
     center_text: true
     drop_group: ""
     event: ""
     font_size: 30.0
-    offset:
-      "y": 120.0
-    pivot:
-      x: 0.5
-    size:
-      x: 236.0
-      "y": 44.0
+    offset: {"y": 120.0}
+    pivot: {x: 0.5}
+    size: {x: 236.0, "y": 44.0}
     text: ORBIT PINBALL
     tooltip: ""

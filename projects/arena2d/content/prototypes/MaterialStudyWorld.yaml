@@ -17,5 +17,4 @@ components:
     trace_levels: 1
     upscale_mode: 1
     upscale_threshold: 0.10000000149011612
-  GAME.MaterialDestructionWorld:
-    fragment_limit: 64
+  GAME.MaterialDestructionWorld: {fragment_limit: 64}

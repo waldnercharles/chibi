@@ -11,209 +11,113 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 16
     type: Behavior Expression
     reference_id: 4
     reference_name: age += dt
     inputs:
-    - id: 20
-      name: Exec
-      kind: exec
-    - id: 17
-      declaration_id: 9
-      name: age
-      type: float
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameProjectile
-        field: age
-    - id: 18
-      declaration_id: 10
-      name: dt
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: delta_time
+      Exec: {id: 20, kind: exec}
+      age:
+        id: 17
+        declaration_id: 9
+        type: float
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      dt:
+        declaration_id: 10
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
     outputs:
-    - id: 21
-      name: Then
-      kind: exec
-    - id: 19
-      declaration_id: 11
-      name: Result
-      type: float
-      flags: 2
-      group: 3
+      Then: {id: 21, kind: exec}
+      Result: {id: 19, declaration_id: 11, type: float, flags: 2, group: 3}
   - id: 96
     type: Behavior Expression
     reference_id: 84
     reference_name: age >= lifetime
     inputs:
-    - id: 100
-      name: Exec
-      kind: exec
-    - id: 97
-      declaration_id: 89
-      name: age
-      type: double
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameProjectile
-        field: age
-    - id: 98
-      declaration_id: 90
-      name: lifetime
-      type: double
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameProjectile
-        field: lifetime
+      Exec: {id: 100, kind: exec}
+      age:
+        id: 97
+        declaration_id: 89
+        type: double
+        group: 1
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      lifetime:
+        declaration_id: 90
+        type: double
+        group: 2
+        binding: {kind: component_field, component: GAME.GameProjectile, field: lifetime}
     outputs:
-    - id: 101
-      name: "True"
-      kind: exec
-    - id: 102
-      name: "False"
-      kind: exec
-    - id: 99
-      declaration_id: 91
-      name: Result
-      type: bool
-      flags: 2
-      group: 3
+      "True": {id: 101, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 99, declaration_id: 91, type: bool, flags: 2, group: 3}
   - id: 127
     type: Self
     outputs:
-    - id: 128
-      type_name: ecs.entity
-  - id: 129
-    type: Destroy Entity
-    inputs: [130, 131]
-    outputs: [132]
+      Self: {type_name: ecs.entity}
+  - {id: 129, type: Destroy Entity}
   - id: 158
     type: Behavior Expression
     reference_id: 133
     reference_name: abs(vx) + abs(vy) > 0.0001
     inputs:
-    - id: 162
-      name: Exec
-      kind: exec
-    - id: 159
-      declaration_id: 138
-      name: vx
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: x
-    - id: 160
-      declaration_id: 139
-      name: vy
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: "y"
+      Exec: {id: 162, kind: exec}
+      vx:
+        id: 159
+        declaration_id: 138
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
+      vy:
+        declaration_id: 139
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
     outputs:
-    - id: 163
-      name: "True"
-      kind: exec
-    - id: 164
-      name: "False"
-      kind: exec
-    - id: 161
-      declaration_id: 140
-      name: Result
-      type: bool
-      flags: 2
-      group: 3
+      "True": {id: 163, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 161, declaration_id: 140, type: bool, flags: 2, group: 3}
   - id: 228
     type: Behavior Expression
     reference_id: 215
     reference_name: heading = atan2(vy, vx)
     inputs:
-    - id: 233
-      name: Exec
-      kind: exec
-    - id: 229
-      declaration_id: 220
-      name: heading
-      type: float
-      flags: 6
-      group: 1
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 230
-      declaration_id: 221
-      name: vy
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: "y"
-    - id: 231
-      declaration_id: 222
-      name: vx
-      type: double
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: GAME.GameVelocity
-        field: x
+      Exec: {id: 233, kind: exec}
+      heading:
+        id: 229
+        declaration_id: 220
+        type: float
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      vy:
+        declaration_id: 221
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      vx:
+        declaration_id: 222
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
     outputs:
-    - id: 234
-      name: Then
-      kind: exec
-    - id: 232
-      declaration_id: 223
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Then: {id: 234, kind: exec}
+      Result: {id: 232, declaration_id: 223, type: double, flags: 2, group: 4}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 16
-    to_pin: 20
-  - from: 16
-    from_pin: 21
-    to: 96
-    to_pin: 100
-  - from: 96
-    from_pin: 101
-    to: 129
-    to_pin: 130
-  - from: 96
-    from_pin: 102
-    to: 158
-    to_pin: 162
-  - from: 127
-    from_pin: 128
-    to: 129
-    to_pin: 131
-  - from: 158
-    from_pin: 163
-    to: 228
-    to_pin: 233
+  - {from: 1.Then, to: 16.Exec}
+  - {from: 16.Then, to: 96.Exec}
+  - {from: 96.True, to: 129.Exec}
+  - {from: 96.False, to: 158.Exec}
+  - {from: 127.Self, to: 129.Entity}
+  - {from: 158.True, to: 228.Exec}
 - id: 4
   kind: function
   name: age += dt
@@ -226,95 +130,32 @@ graphs:
   - id: 54
     type: Function Entry
     outputs:
-    - 55
-    - id: 58
-      name: age
-      type: float
-      kind: data
-      group: 1
-    - id: 59
-      name: dt
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+      age: {id: 58, type: float, kind: data, group: 1}
+      dt: {type: double, kind: data, flags: 2, group: 2}
   - id: 56
     type: Return
     inputs:
-    - 57
-    - id: 60
-      name: Result
-      type: float
-      kind: data
-      flags: 2
-      group: 3
+      Result: {id: 60, type: float, kind: data, flags: 2, group: 3}
   - id: 61
     type: Add
     inputs:
-    - 62
-    - id: 63
-      type: double
-    outputs: [64]
-  - id: 65
-    type: Get_GameProjectile
-    outputs: [66]
-  - id: 67
-    type: Break_GameProjectile
-    inputs: [68]
-    outputs: [69, 70, 71, 72]
-  - id: 73
-    type: Make_GameProjectile
-    inputs: [74, 75, 76, 77]
-    outputs: [78]
-  - id: 79
-    type: Set_GameProjectile
-    inputs: [80, 81]
-    outputs: [82, 83]
+      B: {type: double}
+  - {id: 65, type: Get_GameProjectile}
+  - {id: 67, type: Break_GameProjectile}
+  - {id: 73, type: Make_GameProjectile}
+  - {id: 79, type: Set_GameProjectile}
   edges:
-  - from: 54
-    from_pin: 55
-    to: 79
-    to_pin: 80
-  - from: 54
-    from_pin: 58
-    to: 61
-    to_pin: 62
-  - from: 54
-    from_pin: 59
-    to: 61
-    to_pin: 63
-  - from: 61
-    from_pin: 64
-    to: 56
-    to_pin: 60
-  - from: 61
-    from_pin: 64
-    to: 73
-    to_pin: 77
-  - from: 65
-    from_pin: 66
-    to: 67
-    to_pin: 68
-  - from: 67
-    from_pin: 69
-    to: 73
-    to_pin: 74
-  - from: 67
-    from_pin: 70
-    to: 73
-    to_pin: 75
-  - from: 67
-    from_pin: 71
-    to: 73
-    to_pin: 76
-  - from: 73
-    from_pin: 78
-    to: 79
-    to_pin: 81
-  - from: 79
-    from_pin: 82
-    to: 56
-    to_pin: 57
+  - {from: 54.Exec, to: 79.Exec}
+  - {from: 54.age, to: 61.A}
+  - {from: 54.dt, to: 61.B}
+  - {from: 61.Result, to: 56.Result}
+  - {from: 61.Result, to: 73.age}
+  - {from: 65.Value, to: 67.GameProjectile}
+  - {from: 67.speed, to: 73.speed}
+  - {from: 67.lifetime, to: 73.lifetime}
+  - {from: 67.damage, to: 73.damage}
+  - {from: 73.GameProjectile, to: 79.Value}
+  - {from: 79.Then, to: 56.Exec}
 - id: 84
   kind: function
   name: age >= lifetime
@@ -327,46 +168,21 @@ graphs:
   - id: 116
     type: Function Entry
     outputs:
-    - id: 120
-      name: age
-      type: double
-      kind: data
-      group: 1
-    - id: 121
-      name: lifetime
-      type: double
-      kind: data
-      group: 2
+    - {id: 120, name: age, type: double, kind: data, group: 1}
+    - {id: 121, name: lifetime, type: double, kind: data, group: 2}
   - id: 118
     type: Return
     inputs:
-    - id: 122
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 122, name: Result, type: bool, kind: data, flags: 2, group: 3}
   - id: 123
     type: Greater Or Equal
     inputs:
-    - id: 124
-      type: double
-    - id: 125
-      type: double
-    outputs: [126]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 116
-    from_pin: 120
-    to: 123
-    to_pin: 124
-  - from: 116
-    from_pin: 121
-    to: 123
-    to_pin: 125
-  - from: 123
-    from_pin: 126
-    to: 118
-    to_pin: 122
+  - {from: 116.age, to: 123.A}
+  - {from: 116.lifetime, to: 123.B}
+  - {from: 123.Result, to: 118.Result}
 - id: 133
   kind: function
   name: abs(vx) + abs(vy) > 0.0001
@@ -379,96 +195,47 @@ graphs:
   - id: 191
     type: Function Entry
     outputs:
-    - id: 195
-      name: vx
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 196
-      name: vy
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 195, name: vx, type: double, kind: data, flags: 2, group: 1}
+    - {id: 196, name: vy, type: double, kind: data, flags: 2, group: 2}
   - id: 193
     type: Return
     inputs:
-    - id: 197
-      name: Result
-      type: bool
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 197, name: Result, type: bool, kind: data, flags: 2, group: 3}
   - id: 198
     type: Abs
     inputs:
-    - id: 199
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 200
-      type: double
+      Result: {type: double}
   - id: 201
     type: Abs
     inputs:
-    - id: 202
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 203
-      type: double
+      Result: {type: double}
   - id: 204
     type: Add
     inputs:
-    - id: 205
-      type: double
-    - id: 206
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 207
-      type: double
+      Result: {type: double}
   - id: 208
     type: Real
-    inputs:
-    - id: 209
-      default: 0.0001
-    outputs: [210]
+    inputs: {Value: 0.0001}
   - id: 211
     type: Greater
     inputs:
-    - id: 212
-      type: double
-    - id: 213
-      type: double
-    outputs: [214]
+      A: {type: double}
+      B: {type: double}
   edges:
-  - from: 191
-    from_pin: 195
-    to: 198
-    to_pin: 199
-  - from: 191
-    from_pin: 196
-    to: 201
-    to_pin: 202
-  - from: 198
-    from_pin: 200
-    to: 204
-    to_pin: 205
-  - from: 201
-    from_pin: 203
-    to: 204
-    to_pin: 206
-  - from: 204
-    from_pin: 207
-    to: 211
-    to_pin: 212
-  - from: 208
-    from_pin: 210
-    to: 211
-    to_pin: 213
-  - from: 211
-    from_pin: 214
-    to: 193
-    to_pin: 197
+  - {from: 191.vx, to: 198.Value}
+  - {from: 191.vy, to: 201.Value}
+  - {from: 198.Result, to: 204.A}
+  - {from: 201.Result, to: 204.B}
+  - {from: 204.Result, to: 211.A}
+  - {from: 208.Value, to: 211.B}
+  - {from: 211.Result, to: 193.Result}
 - id: 215
   kind: function
   name: heading = atan2(vy, vx)
@@ -481,83 +248,24 @@ graphs:
   - id: 288
     type: Function Entry
     outputs:
-    - 289
-    - id: 292
-      name: heading
-      type: float
-      kind: data
-      group: 1
-    - id: 293
-      name: vy
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 294
-      name: vx
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+      heading: {id: 292, type: float, kind: data, group: 1}
+      vy: {type: double, kind: data, flags: 2, group: 2}
+      vx: {type: double, kind: data, flags: 2, group: 3}
   - id: 290
     type: Return
     inputs:
-    - 291
-    - id: 295
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
-  - id: 296
-    type: Arc Tangent 2
-    inputs: [297, 298]
-    outputs: [299]
-  - id: 300
-    type: Get_GameOrientation
-    outputs: [301]
-  - id: 302
-    type: Break_GameOrientation
-    inputs: [303]
-    outputs: [304]
-  - id: 305
-    type: Make_GameOrientation
-    inputs: [306]
-    outputs: [307]
-  - id: 308
-    type: Set_GameOrientation
-    inputs: [309, 310]
-    outputs: [311, 312]
+      Result: {id: 295, type: double, kind: data, flags: 2, group: 4}
+  - {id: 296, type: Arc Tangent 2}
+  - {id: 300, type: Get_GameOrientation}
+  - {id: 302, type: Break_GameOrientation}
+  - {id: 305, type: Make_GameOrientation}
+  - {id: 308, type: Set_GameOrientation}
   edges:
-  - from: 288
-    from_pin: 289
-    to: 308
-    to_pin: 309
-  - from: 288
-    from_pin: 293
-    to: 296
-    to_pin: 297
-  - from: 288
-    from_pin: 294
-    to: 296
-    to_pin: 298
-  - from: 296
-    from_pin: 299
-    to: 290
-    to_pin: 295
-  - from: 296
-    from_pin: 299
-    to: 305
-    to_pin: 306
-  - from: 300
-    from_pin: 301
-    to: 302
-    to_pin: 303
-  - from: 305
-    from_pin: 307
-    to: 308
-    to_pin: 310
-  - from: 308
-    from_pin: 311
-    to: 290
-    to_pin: 291
+  - {from: 288.Exec, to: 308.Exec}
+  - {from: 288.vy, to: 296.A}
+  - {from: 288.vx, to: 296.B}
+  - {from: 296.Result, to: 290.Result}
+  - {from: 296.Result, to: 305.radians}
+  - {from: 300.Value, to: 302.GameOrientation}
+  - {from: 305.GameOrientation, to: 308.Value}
+  - {from: 308.Then, to: 290.Exec}

@@ -4,10 +4,7 @@ id_counter: 367
 description: Aim at the nearest enemy when manual aim is absent; emit shots only while Fire is held.
 owner_type: ecs.entity
 variables:
-- id: 1
-  name: elapsed
-  type: float
-  default: 0.125
+- {id: 1, name: elapsed, type: float, default: 0.125}
 graphs:
 - kind: event
   name: ""
@@ -16,393 +13,196 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 3
-    - id: 4
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 5
     type: Branch
     inputs:
-    - 6
-    - id: 7
-      binding:
-        kind: component_field
-        component: GAME.GameAim
-        field: manual
-    outputs: [8, 9]
+      Condition:
+        binding: {kind: component_field, component: GAME.GameAim, field: manual}
   - id: 10
     type: Self
     outputs:
-    - id: 11
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 12
     type: Find Nearest Entity
     inputs:
-    - id: 13
-      binding:
-        kind: component
-        component: game.GameTransform
-    - id: 14
-      default: 2000.0
-    - id: 15
-      default: 2
-    - 16
-    outputs: [17, 18, 19, 20]
-  - id: 21
-    type: Branch
-    inputs: [22, 23]
-    outputs: [24, 25]
+      Position:
+        binding: {kind: component, component: game.GameTransform}
+      Radius: 2000.0
+      Categories: 2
+  - {id: 21, type: Branch}
   - id: 26
     type: Direction To
     inputs:
-    - id: 27
-      binding:
-        kind: component
-        component: game.GameTransform
-    - 28
-    outputs: [29]
-  - id: 30
-    type: Set_GameAim_direction
-    inputs: [31, 32, 33]
-    outputs: [34, 35]
+      Origin:
+        binding: {kind: component, component: game.GameTransform}
+  - {id: 30, type: Set_GameAim_direction}
   - id: 48
     type: Behavior Expression
     reference_id: 36
     reference_name: elapsed += dt
     inputs:
-    - id: 52
-      name: Exec
-      kind: exec
-    - id: 49
-      declaration_id: 41
-      name: elapsed
-      type: float
-      type_name: null
-      flags: 6
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: Weapon
-    - id: 50
-      declaration_id: 42
-      name: dt
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: delta_time
+      Exec: {id: 52, kind: exec}
+      elapsed:
+        id: 49
+        declaration_id: 41
+        type: float
+        type_name: null
+        flags: 6
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      dt:
+        declaration_id: 42
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
     outputs:
-    - id: 53
-      name: Then
-      kind: exec
-    - id: 51
-      declaration_id: 43
-      name: Result
-      type: float
-      type_name: null
-      flags: 2
-      group: 3
+      Then: {id: 53, kind: exec}
+      Result: {id: 51, declaration_id: 43, type: float, type_name: null, flags: 2, group: 3}
   - id: 88
     type: Branch
     inputs:
-    - 89
-    - id: 90
-      binding:
-        kind: component_field
-        component: GAME.GameAim
-        field: firing
-    outputs: [91, 92]
-  - id: 136
-    type: WhileLoop
-    inputs: [137, 138]
-    outputs: [139, 140]
+      Condition:
+        binding: {kind: component_field, component: GAME.GameAim, field: firing}
+  - {id: 136, type: WhileLoop}
   - id: 153
     type: Transform Visual Offset
     inputs:
-    - id: 154
-      default:
-        x: 16.0
-        "y": 0.0
-    - 155
-    - id: 156
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 157
-      default:
-        pitch: 0.0
-        yaw: 0.0
-        roll: 0.0
-        scale: 1.0
-    outputs: [158, 159]
+      Offset:
+        default: {x: 16.0, "y": 0.0}
+      Heading:
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      Visual:
+        default: {pitch: 0.0, yaw: 0.0, roll: 0.0, scale: 1.0}
   - id: 177
     type: Behavior Expression
     reference_id: 160
     reference_name: vec2(x, y) + offset
     inputs:
-    - id: 178
-      declaration_id: 165
-      name: x
-      type: float
-      flags: 2
-      group: 1
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: x
-    - id: 179
-      declaration_id: 166
-      name: "y"
-      type: float
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: "y"
-    - id: 180
-      declaration_id: 167
-      name: offset
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 3
+      x:
+        declaration_id: 165
+        type: float
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: game.GameTransform, field: x}
+      "y":
+        declaration_id: 166
+        type: float
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+      offset: {declaration_id: 167, type: struct, type_name: CF_V2, flags: 2, group: 3}
     outputs:
-    - id: 181
-      declaration_id: 168
-      name: Result
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 4
+      Result: {declaration_id: 168, type: struct, type_name: CF_V2, flags: 2, group: 4}
   - id: 233
     type: Call Function
     reference_id: 173
     reference_name: Fire Projectile
     reference_asset: WeaponActions
     inputs:
-    - 234
-    - id: 236
-      declaration_id: 176
-      name: Origin
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 237
-      declaration_id: 177
-      name: Direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-      binding:
-        kind: component_field
-        component: GAME.GameAim
-        field: direction
-    - id: 238
-      declaration_id: 178
-      name: Damage
-      type: int
-      kind: data
-      binding:
-        kind: component_field
-        component: GAME.GameWeapon
-        field: damage
-    - id: 239
-      declaration_id: 220
-      name: Prototype
-      type: name
-      kind: data
-      default: Projectile
-    - id: 240
-      declaration_id: 255
-      name: Shooter
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Origin: {id: 236, declaration_id: 176, type: struct, type_name: CF_V2, kind: data}
+      Direction:
+        declaration_id: 177
+        type: struct
+        type_name: CF_V2
+        kind: data
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
+      Damage:
+        declaration_id: 178
+        type: int
+        kind: data
+        binding: {kind: component_field, component: GAME.GameWeapon, field: damage}
+      Prototype: {declaration_id: 220, type: name, kind: data, default: Projectile}
+      Shooter: {declaration_id: 255, type: handle, type_name: ecs.entity, kind: data}
     outputs:
-    - 235
-    - id: 241
-      declaration_id: 181
-      name: Entity
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 235}
+      Entity: {id: 241, declaration_id: 181, type: handle, type_name: ecs.entity, kind: data}
   - id: 271
     type: Behavior Expression
     reference_id: 259
     reference_name: elapsed -= cooldown
     inputs:
-    - id: 275
-      name: Exec
-      kind: exec
-    - id: 272
-      declaration_id: 264
-      name: elapsed
-      type: float
-      type_name: null
-      flags: 6
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: Weapon
-    - id: 273
-      declaration_id: 265
-      name: cooldown
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameWeapon
-        field: cooldown
+      Exec: {id: 275, kind: exec}
+      elapsed:
+        id: 272
+        declaration_id: 264
+        type: float
+        type_name: null
+        flags: 6
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      cooldown:
+        declaration_id: 265
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
     outputs:
-    - id: 276
-      name: Then
-      kind: exec
-    - id: 274
-      declaration_id: 266
-      name: Result
-      type: float
-      type_name: null
-      flags: 2
-      group: 3
+      Then: {id: 276, kind: exec}
+      Result:
+        id: 274
+        declaration_id: 266
+        type: float
+        type_name: null
+        flags: 2
+        group: 3
   - id: 323
     type: Behavior Expression
     reference_id: 311
     reference_name: elapsed = min(elapsed, cooldown)
     inputs:
-    - id: 327
-      name: Exec
-      kind: exec
-    - id: 324
-      declaration_id: 316
-      name: elapsed
-      type: float
-      type_name: null
-      flags: 6
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: Weapon
-    - id: 325
-      declaration_id: 317
-      name: cooldown
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameWeapon
-        field: cooldown
+      Exec: {id: 327, kind: exec}
+      elapsed:
+        id: 324
+        declaration_id: 316
+        type: float
+        type_name: null
+        flags: 6
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      cooldown:
+        declaration_id: 317
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
     outputs:
-    - id: 328
-      name: Then
-      kind: exec
-    - id: 326
-      declaration_id: 318
-      name: Result
-      type: float
-      type_name: null
-      flags: 2
-      group: 3
+      Then: {id: 328, kind: exec}
+      Result:
+        id: 326
+        declaration_id: 318
+        type: float
+        type_name: null
+        flags: 2
+        group: 3
   - id: 363
     type: Greater Or Equal
     inputs:
-    - id: 364
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: Weapon
-    - id: 365
-      binding:
-        kind: component_field
-        component: GAME.GameWeapon
-        field: cooldown
-    outputs: [366]
+      A:
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      B:
+        binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
   edges:
-  - from: 2
-    from_pin: 3
-    to: 5
-    to_pin: 6
-  - from: 5
-    from_pin: 8
-    to: 48
-    to_pin: 52
-  - from: 5
-    from_pin: 9
-    to: 21
-    to_pin: 22
-  - from: 10
-    from_pin: 11
-    to: 12
-    to_pin: 16
-  - from: 10
-    from_pin: 11
-    to: 233
-    to_pin: 240
-  - from: 12
-    from_pin: 17
-    to: 21
-    to_pin: 23
-  - from: 12
-    from_pin: 19
-    to: 26
-    to_pin: 28
-    conversion: game_transform_to_cf
-  - from: 21
-    from_pin: 24
-    to: 30
-    to_pin: 31
-  - from: 21
-    from_pin: 25
-    to: 48
-    to_pin: 52
-  - from: 26
-    from_pin: 29
-    to: 30
-    to_pin: 32
-    conversion: game_transform_to_cf
-  - from: 30
-    from_pin: 34
-    to: 48
-    to_pin: 52
-  - from: 48
-    from_pin: 53
-    to: 88
-    to_pin: 89
-  - from: 88
-    from_pin: 91
-    to: 136
-    to_pin: 137
-  - from: 88
-    from_pin: 92
-    to: 323
-    to_pin: 327
-  - from: 136
-    from_pin: 139
-    to: 233
-    to_pin: 234
-  - from: 153
-    from_pin: 158
-    to: 177
-    to_pin: 180
-  - from: 177
-    from_pin: 181
-    to: 233
-    to_pin: 236
-  - from: 233
-    from_pin: 235
-    to: 271
-    to_pin: 275
-  - from: 363
-    from_pin: 366
-    to: 136
-    to_pin: 138
+  - {from: 2.Then, to: 5.Exec}
+  - {from: 5.True, to: 48.Exec}
+  - {from: 5.False, to: 21.Exec}
+  - {from: 10.Self, to: 12.Exclude}
+  - {from: 10.Self, to: 233.Shooter}
+  - {from: 12.Found, to: 21.Condition}
+  - {from: 12.Position, to: 26.Target, conversion: game_transform_to_cf}
+  - {from: 21.True, to: 30.Exec}
+  - {from: 21.False, to: 48.Exec}
+  - {from: 26.Direction, to: 30.Value, conversion: game_transform_to_cf}
+  - {from: 30.Then, to: 48.Exec}
+  - {from: 48.Then, to: 88.Exec}
+  - {from: 88.True, to: 136.Exec}
+  - {from: 88.False, to: 323.Exec}
+  - {from: 136.Body, to: 233.Exec}
+  - {from: 153.Offset, to: 177.offset}
+  - {from: 177.Result, to: 233.Origin}
+  - {from: 233.Then, to: 271.Exec}
+  - {from: 363.Result, to: 136.Condition}
 - id: 36
   kind: function
   name: elapsed += dt
@@ -415,79 +215,34 @@ graphs:
   - id: 72
     type: Function Entry
     outputs:
-    - 73
-    - id: 76
-      name: elapsed
-      type: float
-      type_name: null
-      kind: data
-      group: 1
-    - id: 77
-      name: dt
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+      elapsed: {id: 76, type: float, type_name: null, kind: data, group: 1}
+      dt: {type: double, kind: data, flags: 2, group: 2}
   - id: 74
     type: Return
     inputs:
-    - 75
-    - id: 78
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 3
+      Result: {id: 78, type: float, type_name: null, kind: data, flags: 2, group: 3}
   - id: 79
     type: Add
     inputs:
-    - id: 80
-      type_name: null
-    - id: 81
-      type: double
+      A: {type_name: null}
+      B: {type: double}
     outputs:
-    - id: 82
-      type_name: null
+      Result: {type_name: null}
   - id: 83
     type: Set Variable
     reference_id: 1
     reference_name: elapsed
     inputs:
-    - 84
-    - id: 85
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
     outputs:
-    - 86
-    - id: 87
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   edges:
-  - from: 72
-    from_pin: 73
-    to: 83
-    to_pin: 84
-  - from: 72
-    from_pin: 76
-    to: 79
-    to_pin: 80
-  - from: 72
-    from_pin: 77
-    to: 79
-    to_pin: 81
-  - from: 79
-    from_pin: 82
-    to: 83
-    to_pin: 85
-  - from: 83
-    from_pin: 86
-    to: 74
-    to_pin: 75
-  - from: 83
-    from_pin: 87
-    to: 74
-    to_pin: 78
+  - {from: 72.Exec, to: 83.Exec}
+  - {from: 72.elapsed, to: 79.A}
+  - {from: 72.dt, to: 79.B}
+  - {from: 79.Result, to: 83.Value}
+  - {from: 83.Then, to: 74.Exec}
+  - {from: 83.Value, to: 74.Result}
 - id: 311
   kind: function
   name: elapsed = min(elapsed, cooldown)
@@ -500,79 +255,34 @@ graphs:
   - id: 347
     type: Function Entry
     outputs:
-    - 348
-    - id: 351
-      name: elapsed
-      type: float
-      type_name: null
-      kind: data
-      group: 1
-    - id: 352
-      name: cooldown
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+      elapsed: {id: 351, type: float, type_name: null, kind: data, group: 1}
+      cooldown: {type: double, kind: data, flags: 2, group: 2}
   - id: 349
     type: Return
     inputs:
-    - 350
-    - id: 353
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 3
+      Result: {id: 353, type: float, type_name: null, kind: data, flags: 2, group: 3}
   - id: 354
     type: Min
     inputs:
-    - id: 355
-      type_name: null
-    - id: 356
-      type: double
+      A: {type_name: null}
+      B: {type: double}
     outputs:
-    - id: 357
-      type_name: null
+      Result: {type_name: null}
   - id: 358
     type: Set Variable
     reference_id: 1
     reference_name: elapsed
     inputs:
-    - 359
-    - id: 360
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
     outputs:
-    - 361
-    - id: 362
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   edges:
-  - from: 347
-    from_pin: 348
-    to: 358
-    to_pin: 359
-  - from: 347
-    from_pin: 351
-    to: 354
-    to_pin: 355
-  - from: 347
-    from_pin: 352
-    to: 354
-    to_pin: 356
-  - from: 354
-    from_pin: 357
-    to: 358
-    to_pin: 360
-  - from: 358
-    from_pin: 361
-    to: 349
-    to_pin: 350
-  - from: 358
-    from_pin: 362
-    to: 349
-    to_pin: 353
+  - {from: 347.Exec, to: 358.Exec}
+  - {from: 347.elapsed, to: 354.A}
+  - {from: 347.cooldown, to: 354.B}
+  - {from: 354.Result, to: 358.Value}
+  - {from: 358.Then, to: 349.Exec}
+  - {from: 358.Value, to: 349.Result}
 - id: 160
   kind: function
   name: vec2(x, y) + offset
@@ -585,18 +295,8 @@ graphs:
   - id: 243
     type: Function Entry
     outputs:
-    - id: 247
-      name: x
-      type: float
-      kind: data
-      flags: 2
-      group: 1
-    - id: 248
-      name: "y"
-      type: float
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 247, name: x, type: float, kind: data, flags: 2, group: 1}
+    - {id: 248, name: "y", type: float, kind: data, flags: 2, group: 2}
     - id: 249
       name: offset
       type: struct
@@ -614,44 +314,20 @@ graphs:
       kind: data
       flags: 2
       group: 4
-  - id: 251
-    type: Make_CF_V2
-    inputs: [252, 253]
-    outputs: [254]
+  - {id: 251, type: Make_CF_V2}
   - id: 255
     type: Add
     inputs:
-    - id: 256
-      type: struct
-      type_name: CF_V2
-    - id: 257
-      type: struct
-      type_name: CF_V2
+      A: {type: struct, type_name: CF_V2}
+      B: {type: struct, type_name: CF_V2}
     outputs:
-    - id: 258
-      type: struct
-      type_name: CF_V2
+      Result: {type: struct, type_name: CF_V2}
   edges:
-  - from: 243
-    from_pin: 247
-    to: 251
-    to_pin: 252
-  - from: 243
-    from_pin: 248
-    to: 251
-    to_pin: 253
-  - from: 243
-    from_pin: 249
-    to: 255
-    to_pin: 257
-  - from: 251
-    from_pin: 254
-    to: 255
-    to_pin: 256
-  - from: 255
-    from_pin: 258
-    to: 245
-    to_pin: 250
+  - {from: 243.x, to: 251.x}
+  - {from: 243.y, to: 251.y}
+  - {from: 243.offset, to: 255.B}
+  - {from: 251.CF_V2, to: 255.A}
+  - {from: 255.Result, to: 245.Result}
 - id: 259
   kind: function
   name: elapsed -= cooldown
@@ -664,76 +340,31 @@ graphs:
   - id: 295
     type: Function Entry
     outputs:
-    - 296
-    - id: 299
-      name: elapsed
-      type: float
-      type_name: null
-      kind: data
-      group: 1
-    - id: 300
-      name: cooldown
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+      elapsed: {id: 299, type: float, type_name: null, kind: data, group: 1}
+      cooldown: {type: double, kind: data, flags: 2, group: 2}
   - id: 297
     type: Return
     inputs:
-    - 298
-    - id: 301
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 3
+      Result: {id: 301, type: float, type_name: null, kind: data, flags: 2, group: 3}
   - id: 302
     type: Subtract
     inputs:
-    - id: 303
-      type_name: null
-    - id: 304
-      type: double
+      A: {type_name: null}
+      B: {type: double}
     outputs:
-    - id: 305
-      type_name: null
+      Result: {type_name: null}
   - id: 306
     type: Set Variable
     reference_id: 1
     reference_name: elapsed
     inputs:
-    - 307
-    - id: 308
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
     outputs:
-    - 309
-    - id: 310
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   edges:
-  - from: 295
-    from_pin: 296
-    to: 306
-    to_pin: 307
-  - from: 295
-    from_pin: 299
-    to: 302
-    to_pin: 303
-  - from: 295
-    from_pin: 300
-    to: 302
-    to_pin: 304
-  - from: 302
-    from_pin: 305
-    to: 306
-    to_pin: 308
-  - from: 306
-    from_pin: 309
-    to: 297
-    to_pin: 298
-  - from: 306
-    from_pin: 310
-    to: 297
-    to_pin: 301
+  - {from: 295.Exec, to: 306.Exec}
+  - {from: 295.elapsed, to: 302.A}
+  - {from: 295.cooldown, to: 302.B}
+  - {from: 302.Result, to: 306.Value}
+  - {from: 306.Then, to: 297.Exec}
+  - {from: 306.Value, to: 297.Result}

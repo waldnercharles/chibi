@@ -9,123 +9,50 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Shader Shape Output
-    inputs: [2]
-  - id: 3
-    type: Shader Position
-    outputs: [4]
+  - {id: 1, type: Shader Shape Output}
+  - {id: 3, type: Shader Position}
   - id: 5
     type: Shader Parameter
     reference_name: Radius
-    outputs:
-    - id: 6
-      default: 24.0
+    outputs: {Value: 24.0}
   - id: 7
     type: Shader Parameter
     reference_id: 1
     reference_name: Smoothness
-    outputs:
-    - id: 8
-      default: 12.0
+    outputs: {Value: 12.0}
   - id: 9
     type: Shader Vector2
-    inputs:
-    - id: 10
-      default: -18.0
-    - 11
-    outputs: [12]
+    inputs: {X: -18.0}
   - id: 13
     type: Shader Vector2
-    inputs:
-    - id: 14
-      default: 18.0
-    - 15
-    outputs: [16]
+    inputs: {X: 18.0}
   - id: 17
     type: Shader Subtract
     inputs:
-    - id: 18
-      type: struct
-      type_name: ShaderVec2
-    - id: 19
-      type: struct
-      type_name: ShaderVec2
+      A: {type: struct, type_name: ShaderVec2}
+      B: {type: struct, type_name: ShaderVec2}
     outputs:
-    - id: 20
-      type: struct
-      type_name: ShaderVec2
+      Value: {type: struct, type_name: ShaderVec2}
   - id: 21
     type: Shader Subtract
     inputs:
-    - id: 22
-      type: struct
-      type_name: ShaderVec2
-    - id: 23
-      type: struct
-      type_name: ShaderVec2
+      A: {type: struct, type_name: ShaderVec2}
+      B: {type: struct, type_name: ShaderVec2}
     outputs:
-    - id: 24
-      type: struct
-      type_name: ShaderVec2
-  - id: 25
-    type: Shader Circle
-    inputs: [26, 27]
-    outputs: [28]
-  - id: 29
-    type: Shader Circle
-    inputs: [30, 31]
-    outputs: [32]
-  - id: 33
-    type: Shader SmoothUnion
-    inputs: [34, 35, 36]
-    outputs: [37]
+      Value: {type: struct, type_name: ShaderVec2}
+  - {id: 25, type: Shader Circle}
+  - {id: 29, type: Shader Circle}
+  - {id: 33, type: Shader SmoothUnion}
   edges:
-  - from: 3
-    from_pin: 4
-    to: 17
-    to_pin: 18
-  - from: 3
-    from_pin: 4
-    to: 21
-    to_pin: 22
-  - from: 5
-    from_pin: 6
-    to: 25
-    to_pin: 27
-  - from: 5
-    from_pin: 6
-    to: 29
-    to_pin: 31
-  - from: 7
-    from_pin: 8
-    to: 33
-    to_pin: 36
-  - from: 9
-    from_pin: 12
-    to: 17
-    to_pin: 19
-  - from: 13
-    from_pin: 16
-    to: 21
-    to_pin: 23
-  - from: 17
-    from_pin: 20
-    to: 25
-    to_pin: 26
-  - from: 21
-    from_pin: 24
-    to: 29
-    to_pin: 30
-  - from: 25
-    from_pin: 28
-    to: 33
-    to_pin: 34
-  - from: 29
-    from_pin: 32
-    to: 33
-    to_pin: 35
-  - from: 33
-    from_pin: 37
-    to: 1
-    to_pin: 2
+  - {from: 3.Position, to: 17.A}
+  - {from: 3.Position, to: 21.A}
+  - {from: 5.Value, to: 25.Radius}
+  - {from: 5.Value, to: 29.Radius}
+  - {from: 7.Value, to: 33.Smoothness}
+  - {from: 9.Value, to: 17.B}
+  - {from: 13.Value, to: 21.B}
+  - {from: 17.Value, to: 25.Position}
+  - {from: 21.Value, to: 29.Position}
+  - {from: 25.Value, to: 33.A}
+  - {from: 29.Value, to: 33.B}
+  - {from: 33.Value, to: 1.Distance}

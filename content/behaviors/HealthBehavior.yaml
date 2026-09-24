@@ -11,162 +11,56 @@ graphs:
     type: Event
     reference_name: Damage
     outputs:
-    - 1016
-    - id: 1017
-      declaration_id: 2
-      name: Amount
-      type: int
-      kind: data
-    - id: 1018
-      declaration_id: 3
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
   - id: 1019
     type: Get_GameHealth
     outputs:
-    - id: 1020
-      flags: 0
-    - id: 1021
-      name: current
-      type: int
-      field_source: 1020
-      field_name: current
-      flags: 0
-    - id: 1022
-      name: maximum
-      type: int
-      field_source: 1020
-      field_name: maximum
-      flags: 0
-  - id: 1023
-    type: Integer Greater
-    inputs: [1024, 1025]
-    outputs: [1026]
-  - id: 1027
-    type: Branch
-    inputs: [1028, 1029]
-    outputs: [1030, 1031]
+      Value: {flags: 0}
+      Value.current: {}
+      Value.maximum: {}
+  - {id: 1023, type: Integer Greater}
+  - {id: 1027, type: Branch}
   - id: 1032
     type: Call Function
     reference_id: 1001
     reference_name: Apply Damage
     inputs:
-    - 1033
-    - id: 1034
-      declaration_id: 1004
-      name: Current
-      type: int
-      kind: data
-    - id: 1035
-      declaration_id: 1005
-      name: Maximum
-      type: int
-      kind: data
-    - id: 1036
-      declaration_id: 1006
-      name: Amount
-      type: int
-      kind: data
-    - id: 1037
-      declaration_id: 1007
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
-    outputs: [1038]
+      Current: {declaration_id: 1004, type: int, kind: data}
+      Maximum: {declaration_id: 1005, type: int, kind: data}
+      Amount: {declaration_id: 1006, type: int, kind: data}
+      Source: {declaration_id: 1007, type: handle, type_name: ecs.entity, kind: data}
   - id: 1142
     type: Event
     reference_name: Died
     outputs:
-    - 1143
-    - id: 1144
-      declaration_id: 3
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
-  - id: 1145
-    type: Integer Less Or Equal
-    inputs: [1146, 1147]
-    outputs: [1148]
-  - id: 1149
-    type: Branch
-    inputs: [1150, 1151]
-    outputs: [1152, 1153]
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
+  - {id: 1145, type: Integer Less Or Equal}
+  - {id: 1149, type: Branch}
   - id: 1154
     type: Call Function
     reference_id: 1010
     reference_name: Notify Encounter
-    inputs: [1155]
-    outputs: [1156]
   - id: 1157
     type: Self
     outputs:
-    - id: 1158
-      type_name: ecs.entity
-  - id: 1159
-    type: Destroy Entity
-    inputs: [1160, 1161]
-    outputs: [1162]
+      Self: {type_name: ecs.entity}
+  - {id: 1159, type: Destroy Entity}
   edges:
-  - from: 1015
-    from_pin: 1016
-    to: 1027
-    to_pin: 1028
-  - from: 1015
-    from_pin: 1017
-    to: 1023
-    to_pin: 1024
-  - from: 1015
-    from_pin: 1017
-    to: 1032
-    to_pin: 1036
-  - from: 1015
-    from_pin: 1018
-    to: 1032
-    to_pin: 1037
-  - from: 1019
-    from_pin: 1021
-    to: 1032
-    to_pin: 1034
-  - from: 1019
-    from_pin: 1021
-    to: 1145
-    to_pin: 1146
-  - from: 1019
-    from_pin: 1022
-    to: 1032
-    to_pin: 1035
-  - from: 1023
-    from_pin: 1026
-    to: 1027
-    to_pin: 1029
-  - from: 1027
-    from_pin: 1030
-    to: 1032
-    to_pin: 1033
-  - from: 1142
-    from_pin: 1143
-    to: 1149
-    to_pin: 1150
-  - from: 1145
-    from_pin: 1148
-    to: 1149
-    to_pin: 1151
-  - from: 1149
-    from_pin: 1152
-    to: 1154
-    to_pin: 1155
-  - from: 1154
-    from_pin: 1156
-    to: 1159
-    to_pin: 1160
-  - from: 1157
-    from_pin: 1158
-    to: 1159
-    to_pin: 1161
+  - {from: 1015.Then, to: 1027.Exec}
+  - {from: 1015.Amount, to: 1023.A}
+  - {from: 1015.Amount, to: 1032.Amount}
+  - {from: 1015.Source, to: 1032.Source}
+  - {from: 1019.Value.current, to: 1032.Current}
+  - {from: 1019.Value.current, to: 1145.A}
+  - {from: 1019.Value.maximum, to: 1032.Maximum}
+  - {from: 1023.Result, to: 1027.Condition}
+  - {from: 1027.True, to: 1032.Exec}
+  - {from: 1142.Then, to: 1149.Exec}
+  - {from: 1145.Result, to: 1149.Condition}
+  - {from: 1149.True, to: 1154.Exec}
+  - {from: 1154.Then, to: 1159.Exec}
+  - {from: 1157.Self, to: 1159.Entity}
 - id: 1001
   kind: function
   name: Apply Damage
@@ -176,285 +70,98 @@ graphs:
   - id: 1002
     type: Function Entry
     outputs:
-    - id: 1003
-      name: Then
-    - id: 1004
-      name: Current
-      type: int
-      kind: data
-    - id: 1005
-      name: Maximum
-      type: int
-      kind: data
-    - id: 1006
-      name: Amount
-      type: int
-      kind: data
-    - id: 1007
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
-  - id: 1008
-    type: Return
-    inputs: [1009]
-  - id: 1039
-    type: Integer Greater
-    inputs: [1040, 1041]
-    outputs: [1042]
-  - id: 1043
-    type: Branch
-    inputs: [1044, 1045]
-    outputs: [1046, 1047]
+    - {id: 1003, name: Then}
+    - {id: 1004, name: Current, type: int, kind: data}
+    - {id: 1005, name: Maximum, type: int, kind: data}
+    - {id: 1006, name: Amount, type: int, kind: data}
+    - {id: 1007, name: Source, type: handle, type_name: ecs.entity, kind: data}
+  - {id: 1008, type: Return}
+  - {id: 1039, type: Integer Greater}
+  - {id: 1043, type: Branch}
   - id: 1048
     type: Has_GameDash
     outputs:
-    - id: 1049
-      name: Has
-  - id: 1050
-    type: Branch
-    inputs: [1051, 1052]
-    outputs: [1053, 1054]
+    - {id: 1049, name: Has}
+  - {id: 1050, type: Branch}
   - id: 1055
     type: Get_GameDash
     outputs:
-    - id: 1056
-      flags: 0
-    - id: 1057
-      name: remaining
-      type: float
-      field_source: 1056
-      field_name: remaining
-      flags: 0
-  - id: 1058
-    type: Greater
-    inputs: [1059, 1060]
-    outputs: [1061]
-  - id: 1062
-    type: Branch
-    inputs: [1063, 1064]
-    outputs: [1065, 1066]
+      Value: {flags: 0}
+      Value.remaining: {}
+  - {id: 1058, type: Greater}
+  - {id: 1062, type: Branch}
   - id: 1067
     type: Behavior Expression
     reference_id: 63
     reference_name: Remaining Health
     inputs:
-    - id: 1068
-      name: current
-      type: double
-    - id: 1069
-      name: amount
-      type: double
-    - id: 1070
-      name: maximum
-      type: double
+      current: {type: double}
+      amount: {type: double}
+      maximum: {type: double}
     outputs:
-    - id: 1071
-      name: Result
-      type: double
+      Result: {type: double}
   - id: 1072
     type: Subtract
     inputs:
-    - id: 1073
-      type: int
-    - id: 1074
-      type: int
-      group: 1
+      A: {type: int}
+      B: {type: int, group: 1}
     outputs:
-    - id: 1075
-      type: int
-  - id: 1076
-    type: Integer Greater
-    inputs: [1077, 1078]
-    outputs: [1079]
-  - id: 1080
-    type: Branch
-    inputs: [1081, 1082]
-    outputs: [1083, 1084]
-  - id: 1085
-    type: Set_GameHealth_current
-    inputs: [1086, 1087, 1088]
-    outputs: [1089, 1090]
+      Result: {type: int}
+  - {id: 1076, type: Integer Greater}
+  - {id: 1080, type: Branch}
+  - {id: 1085, type: Set_GameHealth_current}
   - id: 1091
     type: Self
     outputs:
-    - id: 1092
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 1093
     type: Send Event
     reference_name: Damaged
     inputs:
-    - 1094
-    - 1095
-    - id: 1096
-      declaration_id: 2
-      name: Amount
-      type: int
-    - id: 1097
-      declaration_id: 3
-      name: Source
-    outputs: [1098]
-  - id: 1099
-    type: Integer Less Or Equal
-    inputs: [1100, 1101]
-    outputs: [1102]
-  - id: 1103
-    type: Branch
-    inputs: [1104, 1105]
-    outputs: [1106, 1107]
+      Amount: {declaration_id: 2, type: int}
+      Source: {declaration_id: 3}
+  - {id: 1099, type: Integer Less Or Equal}
+  - {id: 1103, type: Branch}
   - id: 1137
     type: Send Event
     reference_name: Died
     inputs:
-    - 1138
-    - 1139
-    - id: 1140
-      declaration_id: 3
-      name: Source
-    outputs: [1141]
+      Source: {declaration_id: 3}
   edges:
-  - from: 1002
-    from_pin: 1003
-    to: 1043
-    to_pin: 1044
-  - from: 1002
-    from_pin: 1004
-    to: 1039
-    to_pin: 1040
-  - from: 1002
-    from_pin: 1004
-    to: 1067
-    to_pin: 1068
-    conversion: To Real
-  - from: 1002
-    from_pin: 1004
-    to: 1072
-    to_pin: 1073
-  - from: 1002
-    from_pin: 1005
-    to: 1067
-    to_pin: 1070
-    conversion: To Real
-  - from: 1002
-    from_pin: 1006
-    to: 1067
-    to_pin: 1069
-    conversion: To Real
-  - from: 1002
-    from_pin: 1007
-    to: 1093
-    to_pin: 1097
-  - from: 1002
-    from_pin: 1007
-    to: 1137
-    to_pin: 1140
-  - from: 1039
-    from_pin: 1042
-    to: 1043
-    to_pin: 1045
-  - from: 1043
-    from_pin: 1046
-    to: 1050
-    to_pin: 1051
-  - from: 1043
-    from_pin: 1047
-    to: 1008
-    to_pin: 1009
-  - from: 1048
-    from_pin: 1049
-    to: 1050
-    to_pin: 1052
-  - from: 1050
-    from_pin: 1053
-    to: 1062
-    to_pin: 1063
-  - from: 1050
-    from_pin: 1054
-    to: 1080
-    to_pin: 1081
-  - from: 1055
-    from_pin: 1057
-    to: 1058
-    to_pin: 1059
-  - from: 1058
-    from_pin: 1061
-    to: 1062
-    to_pin: 1064
-  - from: 1062
-    from_pin: 1065
-    to: 1008
-    to_pin: 1009
-  - from: 1062
-    from_pin: 1066
-    to: 1080
-    to_pin: 1081
-  - from: 1067
-    from_pin: 1071
-    to: 1072
-    to_pin: 1074
-    conversion: To Integer
-  - from: 1067
-    from_pin: 1071
-    to: 1085
-    to_pin: 1087
-    conversion: To Integer
-  - from: 1067
-    from_pin: 1071
-    to: 1099
-    to_pin: 1100
-    conversion: To Integer
-  - from: 1072
-    from_pin: 1075
-    to: 1076
-    to_pin: 1077
-  - from: 1072
-    from_pin: 1075
-    to: 1093
-    to_pin: 1096
-  - from: 1076
-    from_pin: 1079
-    to: 1080
-    to_pin: 1082
-  - from: 1080
-    from_pin: 1083
-    to: 1085
-    to_pin: 1086
-  - from: 1080
-    from_pin: 1084
-    to: 1008
-    to_pin: 1009
-  - from: 1085
-    from_pin: 1089
-    to: 1093
-    to_pin: 1094
-  - from: 1091
-    from_pin: 1092
-    to: 1093
-    to_pin: 1095
-  - from: 1091
-    from_pin: 1092
-    to: 1137
-    to_pin: 1139
-  - from: 1093
-    from_pin: 1098
-    to: 1103
-    to_pin: 1104
-  - from: 1099
-    from_pin: 1102
-    to: 1103
-    to_pin: 1105
-  - from: 1103
-    from_pin: 1106
-    to: 1137
-    to_pin: 1138
-  - from: 1103
-    from_pin: 1107
-    to: 1008
-    to_pin: 1009
-  - from: 1137
-    from_pin: 1141
-    to: 1008
-    to_pin: 1009
+  - {from: 1002.Then, to: 1043.Exec}
+  - {from: 1002.Current, to: 1039.A}
+  - {from: 1002.Current, to: 1067.current, conversion: To Real}
+  - {from: 1002.Current, to: 1072.A}
+  - {from: 1002.Maximum, to: 1067.maximum, conversion: To Real}
+  - {from: 1002.Amount, to: 1067.amount, conversion: To Real}
+  - {from: 1002.Source, to: 1093.Source}
+  - {from: 1002.Source, to: 1137.Source}
+  - {from: 1039.Result, to: 1043.Condition}
+  - {from: 1043.True, to: 1050.Exec}
+  - {from: 1043.False, to: 1008.Exec}
+  - {from: 1048.Has, to: 1050.Condition}
+  - {from: 1050.True, to: 1062.Exec}
+  - {from: 1050.False, to: 1080.Exec}
+  - {from: 1055.Value.remaining, to: 1058.A}
+  - {from: 1058.Result, to: 1062.Condition}
+  - {from: 1062.True, to: 1008.Exec}
+  - {from: 1062.False, to: 1080.Exec}
+  - {from: 1067.Result, to: 1072.B, conversion: To Integer}
+  - {from: 1067.Result, to: 1085.Value, conversion: To Integer}
+  - {from: 1067.Result, to: 1099.A, conversion: To Integer}
+  - {from: 1072.Result, to: 1076.A}
+  - {from: 1072.Result, to: 1093.Amount}
+  - {from: 1076.Result, to: 1080.Condition}
+  - {from: 1080.True, to: 1085.Exec}
+  - {from: 1080.False, to: 1008.Exec}
+  - {from: 1085.Then, to: 1093.Exec}
+  - {from: 1091.Self, to: 1093.Entity}
+  - {from: 1091.Self, to: 1137.Entity}
+  - {from: 1093.Then, to: 1103.Exec}
+  - {from: 1099.Result, to: 1103.Condition}
+  - {from: 1103.True, to: 1137.Exec}
+  - {from: 1103.False, to: 1008.Exec}
+  - {from: 1137.Then, to: 1008.Exec}
 - id: 1010
   kind: function
   name: Notify Encounter
@@ -464,82 +171,41 @@ graphs:
   - id: 1011
     type: Function Entry
     outputs:
-    - id: 1012
-      name: Then
-  - id: 1013
-    type: Return
-    inputs: [1014]
+    - {id: 1012, name: Then}
+  - {id: 1013, type: Return}
   - id: 1115
     type: Has_GameEncounterMember
     outputs:
-    - id: 1116
-      name: Has
-  - id: 1117
-    type: Branch
-    inputs: [1118, 1119]
-    outputs: [1120, 1121]
+    - {id: 1116, name: Has}
+  - {id: 1117, type: Branch}
   - id: 1122
     type: Find Entities With Component
     inputs:
-    - id: 1123
-      type_name: name
-      default: GAME.GameEncounter
+      Component: {type_name: name, default: GAME.GameEncounter}
     outputs:
-    - id: 1124
-      default: []
+      Entities:
+        default: []
   - id: 1125
     type: ForEach
     inputs:
-    - 1126
-    - id: 1127
-      type: handle
-      type_name: ecs.entity
-      default: []
+      Array:
+        type: handle
+        type_name: ecs.entity
+        default: []
     outputs:
-    - 1128
-    - id: 1129
-      type: handle
-      type_name: ecs.entity
-    - 1130
-    - 1131
+      Array Element: {type: handle, type_name: ecs.entity}
   - id: 1132
     type: Send Event
     reference_name: RefreshEncounter
-    inputs: [1133, 1134]
-    outputs: [1135]
   edges:
-  - from: 1011
-    from_pin: 1012
-    to: 1117
-    to_pin: 1118
-  - from: 1115
-    from_pin: 1116
-    to: 1117
-    to_pin: 1119
-  - from: 1117
-    from_pin: 1120
-    to: 1125
-    to_pin: 1126
-  - from: 1117
-    from_pin: 1121
-    to: 1013
-    to_pin: 1014
-  - from: 1122
-    from_pin: 1124
-    to: 1125
-    to_pin: 1127
-  - from: 1125
-    from_pin: 1128
-    to: 1132
-    to_pin: 1133
-  - from: 1125
-    from_pin: 1129
-    to: 1132
-    to_pin: 1134
-  - from: 1125
-    from_pin: 1131
-    to: 1013
-    to_pin: 1014
+  - {from: 1011.Then, to: 1117.Exec}
+  - {from: 1115.Has, to: 1117.Condition}
+  - {from: 1117.True, to: 1125.Exec}
+  - {from: 1117.False, to: 1013.Exec}
+  - {from: 1122.Entities, to: 1125.Array}
+  - {from: 1125.Body, to: 1132.Exec}
+  - {from: 1125.Array Element, to: 1132.Entity}
+  - {from: 1125.Completed, to: 1013.Exec}
 - id: 63
   kind: function
   name: Remaining Health
@@ -552,85 +218,41 @@ graphs:
   - id: 64
     type: Function Entry
     outputs:
-    - id: 68
-      name: current
-      type: double
-      kind: data
-    - id: 69
-      name: amount
-      type: double
-      kind: data
-    - id: 70
-      name: maximum
-      type: double
-      kind: data
+    - {id: 68, name: current, type: double, kind: data}
+    - {id: 69, name: amount, type: double, kind: data}
+    - {id: 70, name: maximum, type: double, kind: data}
   - id: 66
     type: Return
     inputs:
-    - id: 71
-      name: Result
-      type: double
-      kind: data
+    - {id: 71, name: Result, type: double, kind: data}
   - id: 75
     type: Clamp
     inputs:
-    - id: 76
-      type: double
-    - id: 77
-      type: double
-    - id: 78
-      type: double
+      Value: {type: double}
+      Min: {type: double}
+      Max: {type: double}
     outputs:
-    - id: 79
-      type: double
+      Result: {type: double}
   - id: 80
     type: Subtract
     inputs:
-    - id: 81
-      type: double
-    - id: 82
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 83
-      type: double
+      Result: {type: double}
   - id: 87
     type: Clamp
     inputs:
-    - id: 88
-      type: double
-    - id: 89
-      type: double
-    - id: 90
-      type: double
+      Value: {type: double}
+      Min: {type: double}
+      Max: {type: double}
     outputs:
-    - id: 91
-      type: double
+      Result: {type: double}
   edges:
-  - from: 64
-    from_pin: 68
-    to: 75
-    to_pin: 78
-  - from: 64
-    from_pin: 68
-    to: 80
-    to_pin: 81
-  - from: 64
-    from_pin: 69
-    to: 75
-    to_pin: 76
-  - from: 64
-    from_pin: 70
-    to: 87
-    to_pin: 90
-  - from: 75
-    from_pin: 79
-    to: 80
-    to_pin: 82
-  - from: 80
-    from_pin: 83
-    to: 87
-    to_pin: 88
-  - from: 87
-    from_pin: 91
-    to: 66
-    to_pin: 71
+  - {from: 64.current, to: 75.Max}
+  - {from: 64.current, to: 80.A}
+  - {from: 64.amount, to: 75.Value}
+  - {from: 64.maximum, to: 87.Max}
+  - {from: 75.Result, to: 80.B}
+  - {from: 80.Result, to: 87.Value}
+  - {from: 87.Result, to: 66.Result}

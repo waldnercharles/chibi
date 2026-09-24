@@ -1,6 +1,4 @@
 name: InputBinding
 identity: prototype-0000000000000032
 components:
-  GAME.GameActionBinding:
-    action: Restart
-    source: R
+  GAME.GameActionBinding: {action: Restart, source: R}

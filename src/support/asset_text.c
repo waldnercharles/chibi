@@ -16,10 +16,11 @@
 static const char *const NULL_WORDS[] = { "", "~", "null", "Null", "NULL", NULL };
 static const char *const TRUE_WORDS[] = { "true", "True", "TRUE", NULL };
 static const char *const FALSE_WORDS[] = { "false", "False", "FALSE", NULL };
-static const char *const YAML11_WORDS[] = { "y",   "Y",  "yes", "Yes", "YES",
-                                            "n",   "N",  "no",  "No",  "NO",
-                                            "on",  "On", "ON",  "off", "Off",
-                                            "OFF", NULL };
+static const char *const YAML11_WORDS[] = {
+    "y",    "Y",    "yes",  "Yes",   "YES",  "n",    "N",    "no",
+    "No",   "NO",   "on",   "On",    "ON",   "off",  "Off",  "OFF",
+    ".inf", ".Inf", ".INF", "-.inf", ".nan", ".NaN", ".NAN", NULL
+};
 
 static bool is_word(const char *text, size_t length, const char *const *words)
 {
@@ -63,15 +64,47 @@ static bool is_json_number(const char *text, size_t length)
     return at == length;
 }
 
+static size_t skip_chars(const char *text, size_t length, size_t at, const char *allowed)
+{
+    while (at < length &&
+           (isdigit((unsigned char)text[at]) || strchr(allowed, text[at]))) {
+        at++;
+    }
+    return at;
+}
+
+/* YAML 1.1 also reads 0x/0b prefixes, underscores, sexagesimal colons and
+ * bare dots as numbers; strings of that shape stay quoted for such tools. */
+static bool numeric_looking(const char *text, size_t length)
+{
+    size_t at = length && (text[0] == '-' || text[0] == '+');
+    if (at + 1 < length && text[at] == '0' &&
+        (text[at + 1] == 'x' || text[at + 1] == 'b')) {
+        for (at += 2;
+             at < length && (isxdigit((unsigned char)text[at]) || text[at] == '_');
+             at++) {
+        }
+        return at == length;
+    }
+    size_t digits = skip_chars(text, length, at, "_.:");
+    if (digits == at) {
+        return false;
+    }
+    at = digits;
+    if (at < length && (text[at] == 'e' || text[at] == 'E')) {
+        at++;
+        at += at < length && (text[at] == '+' || text[at] == '-');
+        size_t exponent = skip_chars(text, length, at, "");
+        at = exponent > at ? exponent : length + 1;
+    }
+    return at == length;
+}
+
 static bool needs_quotes(const char *text, size_t length)
 {
-    if (is_word(text, length, NULL_WORDS) || is_word(text, length, TRUE_WORDS) ||
-        is_word(text, length, FALSE_WORDS) || is_word(text, length, YAML11_WORDS)) {
-        return true;
-    }
-    size_t at = length && (text[0] == '-' || text[0] == '+' || text[0] == '.');
-    return at < length &&
-           (isdigit((unsigned char)text[at]) || (at && text[at] == '.'));
+    return is_word(text, length, NULL_WORDS) || is_word(text, length, TRUE_WORDS) ||
+           is_word(text, length, FALSE_WORDS) ||
+           is_word(text, length, YAML11_WORDS) || numeric_looking(text, length);
 }
 
 /* --- YAML to JSON -------------------------------------------------------- */
@@ -243,20 +276,36 @@ static bool emit_scalar(yaml_emitter_t *emitter, const char *text, size_t length
     return yaml_emitter_emit(emitter, &event);
 }
 
-/* Short lists of scalars, such as pin IDs, read best on one line. */
-static bool flow_sequence(yyjson_val *array)
+static bool scalar_fits(yyjson_val *item, size_t *width)
+{
+    if (yyjson_is_ctn(item) ||
+        (yyjson_is_str(item) && strchr(yyjson_get_str(item), '\n'))) {
+        return false;
+    }
+    *width += (yyjson_is_str(item) || yyjson_is_raw(item) ? yyjson_get_len(item) : 5) + 2;
+    return true;
+}
+
+/* Short lists and mappings of plain values, such as edges, read best on one
+ * line. */
+static bool flow_style(yyjson_val *value)
 {
     size_t width = 0, i, count;
-    yyjson_val *item;
-    yyjson_arr_foreach(array, i, count, item)
+    yyjson_val *key, *item;
+    if (yyjson_is_arr(value)) {
+        yyjson_arr_foreach(value, i, count, item)
+        {
+            if (!scalar_fits(item, &width)) {
+                return false;
+            }
+        }
+        return width <= 80;
+    }
+    yyjson_obj_foreach(value, i, count, key, item)
     {
-        if (yyjson_is_ctn(item) ||
-            (yyjson_is_str(item) && strchr(yyjson_get_str(item), '\n'))) {
+        if (!scalar_fits(key, &width) || !scalar_fits(item, &width)) {
             return false;
         }
-        width += (yyjson_is_str(item) || yyjson_is_raw(item) ? yyjson_get_len(item)
-                                                             : 5) +
-                 2;
     }
     return width <= 80;
 }
@@ -267,17 +316,12 @@ static bool automatic_position(yyjson_val *object, const char *key)
            (!strcmp(key, "x") || !strcmp(key, "y") || !strcmp(key, "placed"));
 }
 
-static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value)
+static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value, bool root)
 {
     yaml_event_t event;
     if (yyjson_is_obj(value)) {
-        yaml_mapping_start_event_initialize(
-            &event,
-            NULL,
-            NULL,
-            1,
-            yyjson_obj_size(value) ? YAML_BLOCK_MAPPING_STYLE : YAML_FLOW_MAPPING_STYLE
-        );
+        bool flow = !yyjson_obj_size(value) || (!root && flow_style(value));
+        yaml_mapping_start_event_initialize(&event, NULL, NULL, 1, flow ? YAML_FLOW_MAPPING_STYLE : YAML_BLOCK_MAPPING_STYLE);
         if (!yaml_emitter_emit(emitter, &event)) {
             return false;
         }
@@ -288,7 +332,7 @@ static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value)
             if (automatic_position(value, yyjson_get_str(key))) {
                 continue;
             }
-            if (!emit_value(emitter, key) || !emit_value(emitter, item)) {
+            if (!emit_value(emitter, key, false) || !emit_value(emitter, item, false)) {
                 return false;
             }
         }
@@ -296,7 +340,7 @@ static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value)
         return yaml_emitter_emit(emitter, &event);
     }
     if (yyjson_is_arr(value)) {
-        bool flow = !yyjson_arr_size(value) || flow_sequence(value);
+        bool flow = !yyjson_arr_size(value) || flow_style(value);
         yaml_sequence_start_event_initialize(&event, NULL, NULL, 1, flow ? YAML_FLOW_SEQUENCE_STYLE : YAML_BLOCK_SEQUENCE_STYLE);
         if (!yaml_emitter_emit(emitter, &event)) {
             return false;
@@ -305,7 +349,7 @@ static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value)
         yyjson_val *item;
         yyjson_arr_foreach(value, i, count, item)
         {
-            if (!emit_value(emitter, item)) {
+            if (!emit_value(emitter, item, false)) {
                 return false;
             }
         }
@@ -355,7 +399,7 @@ char *asset_text_to_disk(const char *text, char *error, size_t error_size)
     bool ok = yaml_emitter_emit(&emitter, &event);
     yaml_document_start_event_initialize(&event, NULL, NULL, NULL, 1);
     ok = ok && yaml_emitter_emit(&emitter, &event) &&
-         emit_value(&emitter, yyjson_doc_get_root(doc));
+         emit_value(&emitter, yyjson_doc_get_root(doc), true);
     yaml_document_end_event_initialize(&event, 1);
     ok = ok && yaml_emitter_emit(&emitter, &event);
     yaml_stream_end_event_initialize(&event);

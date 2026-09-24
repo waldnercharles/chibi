@@ -28,26 +28,10 @@ variables:
   type_name: float
   category: Motion
   default: 1.0
-- id: 5
-  name: Roll Angle
-  type: float
-  type_name: float
-  category: State
-- id: 6
-  name: Roll Velocity
-  type: float
-  type_name: float
-  category: State
-- id: 7
-  name: Nose Position
-  type: float
-  type_name: float
-  category: State
-- id: 8
-  name: Nose Velocity
-  type: float
-  type_name: float
-  category: State
+- {id: 5, name: Roll Angle, type: float, type_name: float, category: State}
+- {id: 6, name: Roll Velocity, type: float, type_name: float, category: State}
+- {id: 7, name: Nose Position, type: float, type_name: float, category: State}
+- {id: 8, name: Nose Velocity, type: float, type_name: float, category: State}
 - id: 252
   name: Face Rocking
   type: float
@@ -66,11 +50,7 @@ variables:
   type_name: float
   category: Motion
   default: 0.11999999731779099
-- id: 255
-  name: Resting Face
-  type: float
-  type_name: float
-  category: State
+- {id: 255, name: Resting Face, type: float, type_name: float, category: State}
 graphs:
 - kind: event
   name: ""
@@ -78,334 +58,155 @@ graphs:
   - id: 10
     type: Event
     reference_name: Tick
-    outputs: [9]
+    outputs:
+      Then: {id: 9}
   - id: 185
     type: Delta Time
-    outputs: [184]
+    outputs:
+      Seconds: {id: 184}
   - id: 187
     type: Get Variable
     reference_id: 3
     outputs:
-    - id: 186
-      type: float
-      flags: 0
+      Value: {id: 186, type: float, flags: 0}
   - id: 189
     type: Get Variable
     reference_id: 4
     outputs:
-    - id: 188
-      type: float
-      flags: 0
+      Value: {id: 188, type: float, flags: 0}
   - id: 191
     type: Get Variable
     reference_id: 5
     outputs:
-    - id: 190
-      type: float
-      flags: 0
+      Value: {id: 190, type: float, flags: 0}
   - id: 193
     type: Get Variable
     reference_id: 6
     outputs:
-    - id: 192
-      type: float
-      flags: 0
+      Value: {id: 192, type: float, flags: 0}
   - id: 204
     type: Call Function
     reference_id: 79
     reference_name: Advance Damped Spring
     inputs:
-    - 194
-    - id: 195
-      declaration_id: 81
-      name: Position
-      type: float
-      kind: data
-    - id: 196
-      declaration_id: 82
-      name: Velocity
-      type: float
-      kind: data
-    - id: 197
-      declaration_id: 83
-      name: Target
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 255
-        source_asset: ArenaShipMotionBehavior
-    - id: 198
-      declaration_id: 84
-      name: Frequency
-      type: float
-      kind: data
-    - id: 199
-      declaration_id: 85
-      name: Damping
-      type: float
-      kind: data
-    - id: 200
-      declaration_id: 86
-      name: Delta
-      type: float
-      kind: data
+      Exec: {id: 194}
+      Position: {declaration_id: 81, type: float, kind: data}
+      Velocity: {declaration_id: 82, type: float, kind: data}
+      Target:
+        declaration_id: 83
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 255, source_asset: ArenaShipMotionBehavior}
+      Frequency: {declaration_id: 84, type: float, kind: data}
+      Damping: {declaration_id: 85, type: float, kind: data}
+      Delta: {declaration_id: 86, type: float, kind: data}
     outputs:
-    - 201
-    - id: 202
-      declaration_id: 89
-      name: Position
-      type: float
-      kind: data
-    - id: 203
-      declaration_id: 90
-      name: Velocity
-      type: float
-      kind: data
+      Position: {declaration_id: 89, type: float, kind: data}
+      Velocity: {declaration_id: 90, type: float, kind: data}
   - id: 209
     type: Set Variable
     reference_id: 5
     inputs:
-    - 205
-    - id: 206
-      type: float
+      Exec: {id: 205}
+      Value: {type: float}
     outputs:
-    - 207
-    - id: 208
-      type: float
+      Value: {type: float}
   - id: 214
     type: Set Variable
     reference_id: 6
     inputs:
-    - 210
-    - id: 211
-      type: float
+      Exec: {id: 210}
+      Value: {type: float}
     outputs:
-    - 212
-    - id: 213
-      type: float
+      Value: {type: float}
   - id: 361
     type: Branch
-    inputs: [357, 358]
-    outputs: [359, 360]
+    inputs:
+      Exec: {id: 357}
   - id: 364
     type: Abs
     inputs:
-    - id: 362
-      type: double
-      flags: 0
-      group: 0
+      Value: {id: 362, type: double, flags: 0, group: 0}
     outputs:
-    - id: 363
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 370
     type: Greater
     inputs:
-    - 367
-    - id: 368
-      binding:
-        kind: variable
-        variable_id: 254
-        source_asset: ArenaShipMotionBehavior
-    outputs: [369]
+      A: {id: 367}
+      B:
+        binding: {kind: variable, variable_id: 254, source_asset: ArenaShipMotionBehavior}
   - id: 636
     type: Call Pure Function
     reference_id: 579
     reference_name: Compute Aim Basis
     inputs:
-    - id: 637
-      declaration_id: 584
-      name: Move
-      type: struct
-      type_name: CF_V2
-      binding:
-        kind: component_field
-        component: game.GameInput
-        field: move
-    - id: 638
-      declaration_id: 585
-      name: Aim
-      type: struct
-      type_name: CF_V2
-      binding:
-        kind: component_field
-        component: GAME.GameAim
-        field: direction
+      Move:
+        declaration_id: 584
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: game.GameInput, field: move}
+      Aim:
+        declaration_id: 585
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
     outputs:
-    - id: 639
-      declaration_id: 586
-      name: Strafe
-      type: double
-    - id: 640
-      declaration_id: 587
-      name: Forward
-      type: double
+      Strafe: {declaration_id: 586, type: double}
+      Forward: {declaration_id: 587, type: double}
   - id: 772
     type: Call Function
     reference_id: 729
     reference_name: Advance Rolling Motion
     inputs:
-    - 773
-    - id: 775
-      declaration_id: 768
-      name: Delta
-      type: float
-      kind: data
-    - id: 776
-      declaration_id: 769
-      name: Position
-      type: float
-      kind: data
-    - id: 777
-      declaration_id: 770
-      name: Velocity
-      type: float
-      kind: data
-    - id: 778
-      declaration_id: 771
-      name: Strafe
-      type: double
-      kind: data
-    outputs: [774]
+      Delta: {id: 775, declaration_id: 768, type: float, kind: data}
+      Position: {declaration_id: 769, type: float, kind: data}
+      Velocity: {declaration_id: 770, type: float, kind: data}
+      Strafe: {declaration_id: 771, type: double, kind: data}
+    outputs:
+      Then: {id: 774}
   - id: 836
     type: Call Function
     reference_id: 783
     reference_name: Apply Ship Pose
     inputs:
-    - 837
-    - id: 839
-      declaration_id: 831
-      name: reverseNoseLift
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 2
-        source_asset: ArenaShipMotionBehavior
-    - id: 840
-      declaration_id: 832
-      name: Delta
-      type: float
-      kind: data
-    - id: 841
-      declaration_id: 833
-      name: Frequency
-      type: float
-      kind: data
-    - id: 842
-      declaration_id: 834
-      name: Damping
-      type: float
-      kind: data
-    - id: 843
-      declaration_id: 835
-      name: forward
-      type: double
-      kind: data
-    outputs: [838]
+      reverseNoseLift:
+        id: 839
+        declaration_id: 831
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 2, source_asset: ArenaShipMotionBehavior}
+      Delta: {declaration_id: 832, type: float, kind: data}
+      Frequency: {declaration_id: 833, type: float, kind: data}
+      Damping: {declaration_id: 834, type: float, kind: data}
+      forward: {declaration_id: 835, type: double, kind: data}
+    outputs:
+      Then: {id: 838}
   edges:
-  - from: 10
-    from_pin: 9
-    to: 361
-    to_pin: 357
-  - from: 185
-    from_pin: 184
-    to: 204
-    to_pin: 200
-  - from: 185
-    from_pin: 184
-    to: 772
-    to_pin: 775
-  - from: 185
-    from_pin: 184
-    to: 836
-    to_pin: 840
-  - from: 187
-    from_pin: 186
-    to: 204
-    to_pin: 198
-  - from: 187
-    from_pin: 186
-    to: 836
-    to_pin: 841
-  - from: 189
-    from_pin: 188
-    to: 204
-    to_pin: 199
-  - from: 189
-    from_pin: 188
-    to: 836
-    to_pin: 842
-  - from: 191
-    from_pin: 190
-    to: 204
-    to_pin: 195
-  - from: 191
-    from_pin: 190
-    to: 772
-    to_pin: 776
-  - from: 193
-    from_pin: 192
-    to: 204
-    to_pin: 196
-  - from: 193
-    from_pin: 192
-    to: 772
-    to_pin: 777
-  - from: 204
-    from_pin: 201
-    to: 209
-    to_pin: 205
-  - from: 204
-    from_pin: 202
-    to: 209
-    to_pin: 206
-  - from: 204
-    from_pin: 203
-    to: 214
-    to_pin: 211
-  - from: 209
-    from_pin: 207
-    to: 214
-    to_pin: 210
-  - from: 214
-    from_pin: 212
-    to: 836
-    to_pin: 837
-  - from: 361
-    from_pin: 359
-    to: 772
-    to_pin: 773
-  - from: 361
-    from_pin: 360
-    to: 204
-    to_pin: 194
-  - from: 364
-    from_pin: 363
-    to: 370
-    to_pin: 367
-  - from: 370
-    from_pin: 369
-    to: 361
-    to_pin: 358
-  - from: 636
-    from_pin: 639
-    to: 364
-    to_pin: 362
-  - from: 636
-    from_pin: 639
-    to: 772
-    to_pin: 778
-  - from: 636
-    from_pin: 640
-    to: 836
-    to_pin: 843
-  - from: 772
-    from_pin: 774
-    to: 836
-    to_pin: 837
+  - {from: 10.Then, to: 361.Exec}
+  - {from: 185.Seconds, to: 204.Delta}
+  - {from: 185.Seconds, to: 772.Delta}
+  - {from: 185.Seconds, to: 836.Delta}
+  - {from: 187.Value, to: 204.Frequency}
+  - {from: 187.Value, to: 836.Frequency}
+  - {from: 189.Value, to: 204.Damping}
+  - {from: 189.Value, to: 836.Damping}
+  - {from: 191.Value, to: 204.Position}
+  - {from: 191.Value, to: 772.Position}
+  - {from: 193.Value, to: 204.Velocity}
+  - {from: 193.Value, to: 772.Velocity}
+  - {from: 204.Then, to: 209.Exec}
+  - {from: 204.Position, to: 209.Value}
+  - {from: 204.Velocity, to: 214.Value}
+  - {from: 209.Then, to: 214.Exec}
+  - {from: 214.Then, to: 836.Exec}
+  - {from: 361.True, to: 772.Exec}
+  - {from: 361.False, to: 204.Exec}
+  - {from: 364.Result, to: 370.A}
+  - {from: 370.Result, to: 361.Condition}
+  - {from: 636.Strafe, to: 364.Value}
+  - {from: 636.Strafe, to: 772.Strafe}
+  - {from: 636.Forward, to: 836.forward}
+  - {from: 772.Then, to: 836.Exec}
 - id: 79
   kind: function
   name: Advance Damped Spring
@@ -416,93 +217,32 @@ graphs:
   - id: 87
     type: Function Entry
     outputs:
-    - id: 80
-      name: Then
-    - id: 81
-      name: Position
-      type: float
-      kind: data
-    - id: 82
-      name: Velocity
-      type: float
-      kind: data
-    - id: 83
-      name: Target
-      type: float
-      kind: data
-    - id: 84
-      name: Frequency
-      type: float
-      kind: data
-    - id: 85
-      name: Damping
-      type: float
-      kind: data
-    - id: 86
-      name: Delta
-      type: float
-      kind: data
+    - {id: 80, name: Then}
+    - {id: 81, name: Position, type: float, kind: data}
+    - {id: 82, name: Velocity, type: float, kind: data}
+    - {id: 83, name: Target, type: float, kind: data}
+    - {id: 84, name: Frequency, type: float, kind: data}
+    - {id: 85, name: Damping, type: float, kind: data}
+    - {id: 86, name: Delta, type: float, kind: data}
   - id: 91
     type: Return
     inputs:
-    - 88
-    - id: 89
-      name: Position
-      type: float
-      kind: data
-    - id: 90
-      name: Velocity
-      type: float
-      kind: data
+      Exec: {id: 88}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
   - id: 95
     type: Advance Damped Spring
-    inputs:
-    - 96
-    - 97
-    - 98
-    - id: 99
-      default: 0.0
-    - id: 100
-      default: 0.0
-    - 101
-    outputs: [102, 103]
+    inputs: {Frequency: 0.0, Damping: 0.0}
   edges:
-  - from: 87
-    from_pin: 80
-    to: 91
-    to_pin: 88
-  - from: 87
-    from_pin: 81
-    to: 95
-    to_pin: 96
-  - from: 87
-    from_pin: 82
-    to: 95
-    to_pin: 97
-  - from: 87
-    from_pin: 83
-    to: 95
-    to_pin: 98
-  - from: 87
-    from_pin: 84
-    to: 95
-    to_pin: 99
-  - from: 87
-    from_pin: 85
-    to: 95
-    to_pin: 100
-  - from: 87
-    from_pin: 86
-    to: 95
-    to_pin: 101
-  - from: 95
-    from_pin: 102
-    to: 91
-    to_pin: 89
-  - from: 95
-    from_pin: 103
-    to: 91
-    to_pin: 90
+  - {from: 87.Then, to: 91.Exec}
+  - {from: 87.Position, to: 95.Position}
+  - {from: 87.Velocity, to: 95.Velocity}
+  - {from: 87.Target, to: 95.Target}
+  - {from: 87.Frequency, to: 95.Frequency}
+  - {from: 87.Damping, to: 95.Damping}
+  - {from: 87.Delta, to: 95.Delta}
+  - {from: 95.Position, to: 91.Position}
+  - {from: 95.Velocity, to: 91.Velocity}
 - id: 256
   kind: function
   name: Advance Face Roll
@@ -513,245 +253,83 @@ graphs:
   - id: 265
     type: Function Entry
     outputs:
-    - id: 257
-      name: Then
-    - id: 258
-      name: Position
-      type: float
-      kind: data
-    - id: 259
-      name: Velocity
-      type: float
-      kind: data
-    - id: 260
-      name: Strafe
-      type: float
-      kind: data
-    - id: 261
-      name: Speed
-      type: float
-      kind: data
-    - id: 262
-      name: Rocking
-      type: float
-      kind: data
-    - id: 263
-      name: Acceleration
-      type: float
-      kind: data
-    - id: 264
-      name: Delta
-      type: float
-      kind: data
+    - {id: 257, name: Then}
+    - {id: 258, name: Position, type: float, kind: data}
+    - {id: 259, name: Velocity, type: float, kind: data}
+    - {id: 260, name: Strafe, type: float, kind: data}
+    - {id: 261, name: Speed, type: float, kind: data}
+    - {id: 262, name: Rocking, type: float, kind: data}
+    - {id: 263, name: Acceleration, type: float, kind: data}
+    - {id: 264, name: Delta, type: float, kind: data}
   - id: 270
     type: Return
     inputs:
-    - 266
-    - id: 267
-      name: Position
-      type: float
-      kind: data
-    - id: 268
-      name: Velocity
-      type: float
-      kind: data
-    - id: 269
-      name: Face
-      type: float
-      kind: data
+      Exec: {id: 266}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
+      Face: {type: float, kind: data}
   - id: 349
     type: Quantize Angle
-    inputs: [346, 347]
-    outputs: [348]
+    inputs:
+      Angle: {id: 346}
   - id: 433
     type: Behavior Expression
     reference_id: 407
     reference_name: Roll Gain
     inputs:
-    - id: 434
-      declaration_id: 412
-      name: Acceleration
-      type: float
-      flags: 2
-      group: 1
-    - id: 435
-      declaration_id: 413
-      name: Delta
-      type: float
-      flags: 2
-      group: 2
+      Acceleration: {declaration_id: 412, type: float, flags: 2, group: 1}
+      Delta: {declaration_id: 413, type: float, flags: 2, group: 2}
     outputs:
-    - id: 436
-      declaration_id: 414
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 414, type: double, flags: 2, group: 3}
   - id: 511
     type: Behavior Expression
     reference_id: 437
     reference_name: Desired Roll
     inputs:
-    - id: 512
-      declaration_id: 442
-      name: Strafe
-      type: float
-      flags: 2
-      group: 1
-    - id: 513
-      declaration_id: 443
-      name: Speed
-      type: float
-      flags: 2
-      group: 2
-    - id: 514
-      declaration_id: 444
-      name: Rocking
-      type: float
-      flags: 2
-      group: 3
-    - id: 515
-      declaration_id: 445
-      name: Position
-      type: float
-      flags: 2
-      group: 4
+      Strafe: {declaration_id: 442, type: float, flags: 2, group: 1}
+      Speed: {declaration_id: 443, type: float, flags: 2, group: 2}
+      Rocking: {declaration_id: 444, type: float, flags: 2, group: 3}
+      Position: {declaration_id: 445, type: float, flags: 2, group: 4}
     outputs:
-    - id: 516
-      declaration_id: 446
-      name: Result
-      type: double
-      flags: 2
-      group: 5
+      Result: {declaration_id: 446, type: double, flags: 2, group: 5}
   - id: 545
     type: Behavior Expression
     reference_id: 517
     reference_name: Roll Velocity
     inputs:
-    - id: 546
-      declaration_id: 522
-      name: Velocity
-      type: float
-      flags: 2
-      group: 1
-    - id: 547
-      declaration_id: 523
-      name: Gain
-      type: double
-      flags: 2
-      group: 2
-    - id: 548
-      declaration_id: 524
-      name: Desired
-      type: double
-      flags: 2
-      group: 3
+      Velocity: {declaration_id: 522, type: float, flags: 2, group: 1}
+      Gain: {declaration_id: 523, type: double, flags: 2, group: 2}
+      Desired: {declaration_id: 524, type: double, flags: 2, group: 3}
     outputs:
-    - id: 549
-      declaration_id: 525
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Result: {declaration_id: 525, type: double, flags: 2, group: 4}
   - id: 574
     type: Behavior Expression
     reference_id: 550
     reference_name: Roll Position
     inputs:
-    - id: 575
-      declaration_id: 555
-      name: Position
-      type: float
-      flags: 2
-      group: 1
-    - id: 576
-      declaration_id: 556
-      name: NewVelocity
-      type: double
-      flags: 2
-      group: 2
-    - id: 577
-      declaration_id: 557
-      name: Delta
-      type: float
-      flags: 2
-      group: 3
+      Position: {declaration_id: 555, type: float, flags: 2, group: 1}
+      NewVelocity: {declaration_id: 556, type: double, flags: 2, group: 2}
+      Delta: {declaration_id: 557, type: float, flags: 2, group: 3}
     outputs:
-    - id: 578
-      declaration_id: 558
-      name: Result
-      type: double
-      flags: 2
-      group: 4
+      Result: {declaration_id: 558, type: double, flags: 2, group: 4}
   edges:
-  - from: 265
-    from_pin: 257
-    to: 270
-    to_pin: 266
-  - from: 265
-    from_pin: 258
-    to: 511
-    to_pin: 515
-  - from: 265
-    from_pin: 258
-    to: 574
-    to_pin: 575
-  - from: 265
-    from_pin: 259
-    to: 545
-    to_pin: 546
-  - from: 265
-    from_pin: 260
-    to: 511
-    to_pin: 512
-  - from: 265
-    from_pin: 261
-    to: 511
-    to_pin: 513
-  - from: 265
-    from_pin: 262
-    to: 511
-    to_pin: 514
-  - from: 265
-    from_pin: 263
-    to: 433
-    to_pin: 434
-  - from: 265
-    from_pin: 264
-    to: 433
-    to_pin: 435
-  - from: 265
-    from_pin: 264
-    to: 574
-    to_pin: 577
-  - from: 349
-    from_pin: 348
-    to: 270
-    to_pin: 269
-  - from: 433
-    from_pin: 436
-    to: 545
-    to_pin: 547
-  - from: 511
-    from_pin: 516
-    to: 545
-    to_pin: 548
-  - from: 545
-    from_pin: 549
-    to: 270
-    to_pin: 268
-  - from: 545
-    from_pin: 549
-    to: 574
-    to_pin: 576
-  - from: 574
-    from_pin: 578
-    to: 270
-    to_pin: 267
-  - from: 574
-    from_pin: 578
-    to: 349
-    to_pin: 346
+  - {from: 265.Then, to: 270.Exec}
+  - {from: 265.Position, to: 511.Position}
+  - {from: 265.Position, to: 574.Position}
+  - {from: 265.Velocity, to: 545.Velocity}
+  - {from: 265.Strafe, to: 511.Strafe}
+  - {from: 265.Speed, to: 511.Speed}
+  - {from: 265.Rocking, to: 511.Rocking}
+  - {from: 265.Acceleration, to: 433.Acceleration}
+  - {from: 265.Delta, to: 433.Delta}
+  - {from: 265.Delta, to: 574.Delta}
+  - {from: 349.Result, to: 270.Face}
+  - {from: 433.Result, to: 545.Gain}
+  - {from: 511.Result, to: 545.Desired}
+  - {from: 545.Result, to: 270.Velocity}
+  - {from: 545.Result, to: 574.NewVelocity}
+  - {from: 574.Result, to: 270.Position}
+  - {from: 574.Result, to: 349.Angle}
 - id: 407
   kind: function
   name: Roll Gain
@@ -764,94 +342,43 @@ graphs:
   - id: 408
     type: Function Entry
     outputs:
-    - id: 412
-      name: Acceleration
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 413
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 412, name: Acceleration, type: double, kind: data, flags: 2, group: 1}
+    - {id: 413, name: Delta, type: double, kind: data, flags: 2, group: 2}
   - id: 410
     type: Return
     inputs:
-    - id: 414
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-  - id: 415
-    type: Real
-    inputs: [416]
-    outputs: [417]
+    - {id: 414, name: Result, type: double, kind: data, flags: 2, group: 3}
+  - {id: 415, type: Real}
   - id: 418
     type: Max
     inputs:
-    - id: 419
-      type: double
-    - id: 420
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 421
-      type: double
-  - id: 422
-    type: Real
-    inputs: [423]
-    outputs: [424]
+      Result: {type: double}
+  - {id: 422, type: Real}
   - id: 425
     type: Max
     inputs:
-    - id: 426
-      type: double
-    - id: 427
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 428
-      type: double
+      Result: {type: double}
   - id: 429
     type: Multiply
     inputs:
-    - id: 430
-      type: double
-    - id: 431
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 432
-      type: double
+      Result: {type: double}
   edges:
-  - from: 408
-    from_pin: 412
-    to: 418
-    to_pin: 419
-  - from: 408
-    from_pin: 413
-    to: 425
-    to_pin: 426
-  - from: 415
-    from_pin: 417
-    to: 418
-    to_pin: 420
-  - from: 418
-    from_pin: 421
-    to: 429
-    to_pin: 430
-  - from: 422
-    from_pin: 424
-    to: 425
-    to_pin: 427
-  - from: 425
-    from_pin: 428
-    to: 429
-    to_pin: 431
-  - from: 429
-    from_pin: 432
-    to: 410
-    to_pin: 414
+  - {from: 408.Acceleration, to: 418.A}
+  - {from: 408.Delta, to: 425.A}
+  - {from: 415.Value, to: 418.B}
+  - {from: 418.Result, to: 429.A}
+  - {from: 422.Value, to: 425.B}
+  - {from: 425.Result, to: 429.B}
+  - {from: 429.Result, to: 410.Result}
 - id: 437
   kind: function
   name: Desired Roll
@@ -864,270 +391,125 @@ graphs:
   - id: 438
     type: Function Entry
     outputs:
-    - id: 442
-      name: Strafe
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 443
-      name: Speed
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 444
-      name: Rocking
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 445
-      name: Position
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 442, name: Strafe, type: double, kind: data, flags: 2, group: 1}
+    - {id: 443, name: Speed, type: double, kind: data, flags: 2, group: 2}
+    - {id: 444, name: Rocking, type: double, kind: data, flags: 2, group: 3}
+    - {id: 445, name: Position, type: double, kind: data, flags: 2, group: 4}
   - id: 440
     type: Return
     inputs:
-    - id: 446
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 5
-  - id: 447
-    type: Real
-    inputs: [448]
-    outputs: [449]
+    - {id: 446, name: Result, type: double, kind: data, flags: 2, group: 5}
+  - {id: 447, type: Real}
   - id: 450
     type: Max
     inputs:
-    - id: 451
-      type: double
-    - id: 452
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 453
-      type: double
+      Result: {type: double}
   - id: 454
     type: Multiply
     inputs:
-    - id: 455
-      type: double
-    - id: 456
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 457
-      type: double
+      Result: {type: double}
   - id: 458
     type: Real
-    inputs:
-    - id: 459
-      default: 3.141592653589793
-    outputs: [460]
+    inputs: {Value: 3.141592653589793}
   - id: 461
     type: Real
-    inputs:
-    - id: 462
-      default: 180.0
-    outputs: [463]
+    inputs: {Value: 180.0}
   - id: 464
     type: Divide
     inputs:
-    - id: 465
-      type: double
-    - id: 466
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 467
-      type: double
+      Result: {type: double}
   - id: 468
     type: Multiply
     inputs:
-    - id: 469
-      type: double
-    - id: 470
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 471
-      type: double
+      Result: {type: double}
   - id: 472
     type: Real
-    inputs:
-    - id: 473
-      default: 1.0
-    outputs: [474]
-  - id: 475
-    type: Real
-    inputs: [476]
-    outputs: [477]
+    inputs: {Value: 1.0}
+  - {id: 475, type: Real}
   - id: 478
     type: Max
     inputs:
-    - id: 479
-      type: double
-    - id: 480
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 481
-      type: double
+      Result: {type: double}
   - id: 482
     type: Real
-    inputs:
-    - id: 483
-      default: 0.85
-    outputs: [484]
+    inputs: {Value: 0.85}
   - id: 485
     type: Min
     inputs:
-    - id: 486
-      type: double
-    - id: 487
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 488
-      type: double
+      Result: {type: double}
   - id: 489
     type: Real
-    inputs:
-    - id: 490
-      default: 4.0
-    outputs: [491]
+    inputs: {Value: 4.0}
   - id: 492
     type: Multiply
     inputs:
-    - id: 493
-      type: double
-    - id: 494
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 495
-      type: double
-  - id: 496
-    type: Cosine
-    inputs: [497]
-    outputs: [498]
+      Result: {type: double}
+  - {id: 496, type: Cosine}
   - id: 499
     type: Multiply
     inputs:
-    - id: 500
-      type: double
-    - id: 501
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 502
-      type: double
+      Result: {type: double}
   - id: 503
     type: Subtract
     inputs:
-    - id: 504
-      type: double
-    - id: 505
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 506
-      type: double
+      Result: {type: double}
   - id: 507
     type: Multiply
     inputs:
-    - id: 508
-      type: double
-    - id: 509
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 510
-      type: double
+      Result: {type: double}
   edges:
-  - from: 438
-    from_pin: 442
-    to: 454
-    to_pin: 455
-  - from: 438
-    from_pin: 443
-    to: 450
-    to_pin: 451
-  - from: 438
-    from_pin: 444
-    to: 478
-    to_pin: 479
-  - from: 438
-    from_pin: 445
-    to: 492
-    to_pin: 493
-  - from: 447
-    from_pin: 449
-    to: 450
-    to_pin: 452
-  - from: 450
-    from_pin: 453
-    to: 454
-    to_pin: 456
-  - from: 454
-    from_pin: 457
-    to: 468
-    to_pin: 469
-  - from: 458
-    from_pin: 460
-    to: 464
-    to_pin: 465
-  - from: 461
-    from_pin: 463
-    to: 464
-    to_pin: 466
-  - from: 464
-    from_pin: 467
-    to: 468
-    to_pin: 470
-  - from: 468
-    from_pin: 471
-    to: 507
-    to_pin: 508
-  - from: 472
-    from_pin: 474
-    to: 503
-    to_pin: 504
-  - from: 475
-    from_pin: 477
-    to: 478
-    to_pin: 480
-  - from: 478
-    from_pin: 481
-    to: 485
-    to_pin: 486
-  - from: 482
-    from_pin: 484
-    to: 485
-    to_pin: 487
-  - from: 485
-    from_pin: 488
-    to: 499
-    to_pin: 500
-  - from: 489
-    from_pin: 491
-    to: 492
-    to_pin: 494
-  - from: 492
-    from_pin: 495
-    to: 496
-    to_pin: 497
-  - from: 496
-    from_pin: 498
-    to: 499
-    to_pin: 501
-  - from: 499
-    from_pin: 502
-    to: 503
-    to_pin: 505
-  - from: 503
-    from_pin: 506
-    to: 507
-    to_pin: 509
-  - from: 507
-    from_pin: 510
-    to: 440
-    to_pin: 446
+  - {from: 438.Strafe, to: 454.A}
+  - {from: 438.Speed, to: 450.A}
+  - {from: 438.Rocking, to: 478.A}
+  - {from: 438.Position, to: 492.A}
+  - {from: 447.Value, to: 450.B}
+  - {from: 450.Result, to: 454.B}
+  - {from: 454.Result, to: 468.A}
+  - {from: 458.Value, to: 464.A}
+  - {from: 461.Value, to: 464.B}
+  - {from: 464.Result, to: 468.B}
+  - {from: 468.Result, to: 507.A}
+  - {from: 472.Value, to: 503.A}
+  - {from: 475.Value, to: 478.B}
+  - {from: 478.Result, to: 485.A}
+  - {from: 482.Value, to: 485.B}
+  - {from: 485.Result, to: 499.A}
+  - {from: 489.Value, to: 492.B}
+  - {from: 492.Result, to: 496.Value}
+  - {from: 496.Result, to: 499.B}
+  - {from: 499.Result, to: 503.B}
+  - {from: 503.Result, to: 507.B}
+  - {from: 507.Result, to: 440.Result}
 - id: 517
   kind: function
   name: Roll Velocity
@@ -1140,116 +522,54 @@ graphs:
   - id: 518
     type: Function Entry
     outputs:
-    - id: 522
-      name: Velocity
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 523
-      name: Gain
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 524
-      name: Desired
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 522, name: Velocity, type: double, kind: data, flags: 2, group: 1}
+    - {id: 523, name: Gain, type: double, kind: data, flags: 2, group: 2}
+    - {id: 524, name: Desired, type: double, kind: data, flags: 2, group: 3}
   - id: 520
     type: Return
     inputs:
-    - id: 525
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 525, name: Result, type: double, kind: data, flags: 2, group: 4}
   - id: 526
     type: Multiply
     inputs:
-    - id: 527
-      type: double
-    - id: 528
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 529
-      type: double
+      Result: {type: double}
   - id: 530
     type: Add
     inputs:
-    - id: 531
-      type: double
-    - id: 532
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 533
-      type: double
+      Result: {type: double}
   - id: 534
     type: Real
-    inputs:
-    - id: 535
-      default: 1.0
-    outputs: [536]
+    inputs: {Value: 1.0}
   - id: 537
     type: Add
     inputs:
-    - id: 538
-      type: double
-    - id: 539
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 540
-      type: double
+      Result: {type: double}
   - id: 541
     type: Divide
     inputs:
-    - id: 542
-      type: double
-    - id: 543
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 544
-      type: double
+      Result: {type: double}
   edges:
-  - from: 518
-    from_pin: 522
-    to: 530
-    to_pin: 531
-  - from: 518
-    from_pin: 523
-    to: 526
-    to_pin: 527
-  - from: 518
-    from_pin: 523
-    to: 537
-    to_pin: 539
-  - from: 518
-    from_pin: 524
-    to: 526
-    to_pin: 528
-  - from: 526
-    from_pin: 529
-    to: 530
-    to_pin: 532
-  - from: 530
-    from_pin: 533
-    to: 541
-    to_pin: 542
-  - from: 534
-    from_pin: 536
-    to: 537
-    to_pin: 538
-  - from: 537
-    from_pin: 540
-    to: 541
-    to_pin: 543
-  - from: 541
-    from_pin: 544
-    to: 520
-    to_pin: 525
+  - {from: 518.Velocity, to: 530.A}
+  - {from: 518.Gain, to: 526.A}
+  - {from: 518.Gain, to: 537.B}
+  - {from: 518.Desired, to: 526.B}
+  - {from: 526.Result, to: 530.B}
+  - {from: 530.Result, to: 541.A}
+  - {from: 534.Value, to: 537.A}
+  - {from: 537.Result, to: 541.B}
+  - {from: 541.Result, to: 520.Result}
 - id: 550
   kind: function
   name: Roll Position
@@ -1262,96 +582,43 @@ graphs:
   - id: 551
     type: Function Entry
     outputs:
-    - id: 555
-      name: Position
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 556
-      name: NewVelocity
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 557
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 555, name: Position, type: double, kind: data, flags: 2, group: 1}
+    - {id: 556, name: NewVelocity, type: double, kind: data, flags: 2, group: 2}
+    - {id: 557, name: Delta, type: double, kind: data, flags: 2, group: 3}
   - id: 553
     type: Return
     inputs:
-    - id: 558
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 4
-  - id: 559
-    type: Real
-    inputs: [560]
-    outputs: [561]
+    - {id: 558, name: Result, type: double, kind: data, flags: 2, group: 4}
+  - {id: 559, type: Real}
   - id: 562
     type: Max
     inputs:
-    - id: 563
-      type: double
-    - id: 564
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 565
-      type: double
+      Result: {type: double}
   - id: 566
     type: Multiply
     inputs:
-    - id: 567
-      type: double
-    - id: 568
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 569
-      type: double
+      Result: {type: double}
   - id: 570
     type: Add
     inputs:
-    - id: 571
-      type: double
-    - id: 572
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 573
-      type: double
+      Result: {type: double}
   edges:
-  - from: 551
-    from_pin: 555
-    to: 570
-    to_pin: 571
-  - from: 551
-    from_pin: 556
-    to: 566
-    to_pin: 567
-  - from: 551
-    from_pin: 557
-    to: 562
-    to_pin: 563
-  - from: 559
-    from_pin: 561
-    to: 562
-    to_pin: 564
-  - from: 562
-    from_pin: 565
-    to: 566
-    to_pin: 568
-  - from: 566
-    from_pin: 569
-    to: 570
-    to_pin: 572
-  - from: 570
-    from_pin: 573
-    to: 553
-    to_pin: 558
+  - {from: 551.Position, to: 570.A}
+  - {from: 551.NewVelocity, to: 566.A}
+  - {from: 551.Delta, to: 562.A}
+  - {from: 559.Value, to: 562.B}
+  - {from: 562.Result, to: 566.B}
+  - {from: 566.Result, to: 570.B}
+  - {from: 570.Result, to: 553.Result}
 - id: 579
   kind: function
   name: Compute Aim Basis
@@ -1362,104 +629,38 @@ graphs:
   - id: 580
     type: Function Entry
     outputs:
-    - id: 584
-      name: Move
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 585
-      name: Aim
-      type: struct
-      type_name: CF_V2
-      kind: data
+    - {id: 584, name: Move, type: struct, type_name: CF_V2, kind: data}
+    - {id: 585, name: Aim, type: struct, type_name: CF_V2, kind: data}
   - id: 582
     type: Return
     inputs:
-    - id: 586
-      name: Strafe
-      type: double
-      kind: data
-    - id: 587
-      name: Forward
-      type: double
-      kind: data
+    - {id: 586, name: Strafe, type: double, kind: data}
+    - {id: 587, name: Forward, type: double, kind: data}
   - id: 608
     type: Behavior Expression
     reference_id: 588
     reference_name: Aim Strafe
     inputs:
-    - id: 609
-      declaration_id: 593
-      name: move
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 1
-    - id: 610
-      declaration_id: 594
-      name: aim
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 2
+      move: {declaration_id: 593, type: struct, type_name: CF_V2, flags: 2, group: 1}
+      aim: {declaration_id: 594, type: struct, type_name: CF_V2, flags: 2, group: 2}
     outputs:
-    - id: 611
-      declaration_id: 595
-      name: Result
-      type: float
-      flags: 2
-      group: 3
+      Result: {declaration_id: 595, type: float, flags: 2, group: 3}
   - id: 632
     type: Behavior Expression
     reference_id: 612
     reference_name: Aim Forward
     inputs:
-    - id: 633
-      declaration_id: 617
-      name: move
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 1
-    - id: 634
-      declaration_id: 618
-      name: aim
-      type: struct
-      type_name: CF_V2
-      flags: 2
-      group: 2
+      move: {declaration_id: 617, type: struct, type_name: CF_V2, flags: 2, group: 1}
+      aim: {declaration_id: 618, type: struct, type_name: CF_V2, flags: 2, group: 2}
     outputs:
-    - id: 635
-      declaration_id: 619
-      name: Result
-      type: float
-      flags: 2
-      group: 3
+      Result: {declaration_id: 619, type: float, flags: 2, group: 3}
   edges:
-  - from: 580
-    from_pin: 584
-    to: 608
-    to_pin: 609
-  - from: 580
-    from_pin: 584
-    to: 632
-    to_pin: 633
-  - from: 580
-    from_pin: 585
-    to: 608
-    to_pin: 610
-  - from: 580
-    from_pin: 585
-    to: 632
-    to_pin: 634
-  - from: 608
-    from_pin: 611
-    to: 582
-    to_pin: 586
-  - from: 632
-    from_pin: 635
-    to: 582
-    to_pin: 587
+  - {from: 580.Move, to: 608.move}
+  - {from: 580.Move, to: 632.move}
+  - {from: 580.Aim, to: 608.aim}
+  - {from: 580.Aim, to: 632.aim}
+  - {from: 608.Result, to: 582.Strafe}
+  - {from: 632.Result, to: 582.Forward}
 - id: 588
   kind: function
   name: Aim Strafe
@@ -1486,80 +687,25 @@ graphs:
       kind: data
       flags: 2
       group: 2
-    - id: 688
-      name: x
-      type: float
-      kind: data
-      field_source: 686
-      field_name: x
-    - id: 689
-      name: "y"
-      type: float
-      kind: data
-      field_source: 686
-      field_name: "y"
-    - id: 690
-      name: x
-      type: float
-      kind: data
-      field_source: 687
-      field_name: x
-    - id: 691
-      name: "y"
-      type: float
-      kind: data
-      field_source: 687
-      field_name: "y"
+    - {id: 688, name: x, type: float, kind: data, field_source: 686, field_name: x}
+    - {id: 689, name: "y", type: float, kind: data, field_source: 686, field_name: "y"}
+    - {id: 690, name: x, type: float, kind: data, field_source: 687, field_name: x}
+    - {id: 691, name: "y", type: float, kind: data, field_source: 687, field_name: "y"}
   - id: 684
     type: Return
     inputs:
-    - id: 692
-      name: Result
-      type: float
-      kind: data
-      flags: 2
-      group: 3
-  - id: 693
-    type: Multiply
-    inputs: [694, 695]
-    outputs: [696]
-  - id: 697
-    type: Multiply
-    inputs: [698, 699]
-    outputs: [700]
-  - id: 701
-    type: Subtract
-    inputs: [702, 703]
-    outputs: [704]
+    - {id: 692, name: Result, type: float, kind: data, flags: 2, group: 3}
+  - {id: 693, type: Multiply}
+  - {id: 697, type: Multiply}
+  - {id: 701, type: Subtract}
   edges:
-  - from: 682
-    from_pin: 688
-    to: 697
-    to_pin: 698
-  - from: 682
-    from_pin: 689
-    to: 693
-    to_pin: 694
-  - from: 682
-    from_pin: 690
-    to: 693
-    to_pin: 695
-  - from: 682
-    from_pin: 691
-    to: 697
-    to_pin: 699
-  - from: 693
-    from_pin: 696
-    to: 701
-    to_pin: 702
-  - from: 697
-    from_pin: 700
-    to: 701
-    to_pin: 703
-  - from: 701
-    from_pin: 704
-    to: 684
-    to_pin: 692
+  - {from: 682.move.x, to: 697.A}
+  - {from: 682.move.y, to: 693.A}
+  - {from: 682.aim.x, to: 693.B}
+  - {from: 682.aim.y, to: 697.B}
+  - {from: 693.Result, to: 701.A}
+  - {from: 697.Result, to: 701.B}
+  - {from: 701.Result, to: 684.Result}
 - id: 612
   kind: function
   name: Aim Forward
@@ -1586,80 +732,25 @@ graphs:
       kind: data
       flags: 2
       group: 2
-    - id: 712
-      name: x
-      type: float
-      kind: data
-      field_source: 710
-      field_name: x
-    - id: 713
-      name: "y"
-      type: float
-      kind: data
-      field_source: 710
-      field_name: "y"
-    - id: 714
-      name: x
-      type: float
-      kind: data
-      field_source: 711
-      field_name: x
-    - id: 715
-      name: "y"
-      type: float
-      kind: data
-      field_source: 711
-      field_name: "y"
+    - {id: 712, name: x, type: float, kind: data, field_source: 710, field_name: x}
+    - {id: 713, name: "y", type: float, kind: data, field_source: 710, field_name: "y"}
+    - {id: 714, name: x, type: float, kind: data, field_source: 711, field_name: x}
+    - {id: 715, name: "y", type: float, kind: data, field_source: 711, field_name: "y"}
   - id: 708
     type: Return
     inputs:
-    - id: 716
-      name: Result
-      type: float
-      kind: data
-      flags: 2
-      group: 3
-  - id: 717
-    type: Multiply
-    inputs: [718, 719]
-    outputs: [720]
-  - id: 721
-    type: Multiply
-    inputs: [722, 723]
-    outputs: [724]
-  - id: 725
-    type: Add
-    inputs: [726, 727]
-    outputs: [728]
+    - {id: 716, name: Result, type: float, kind: data, flags: 2, group: 3}
+  - {id: 717, type: Multiply}
+  - {id: 721, type: Multiply}
+  - {id: 725, type: Add}
   edges:
-  - from: 706
-    from_pin: 712
-    to: 717
-    to_pin: 718
-  - from: 706
-    from_pin: 713
-    to: 721
-    to_pin: 722
-  - from: 706
-    from_pin: 714
-    to: 717
-    to_pin: 719
-  - from: 706
-    from_pin: 715
-    to: 721
-    to_pin: 723
-  - from: 717
-    from_pin: 720
-    to: 725
-    to_pin: 726
-  - from: 721
-    from_pin: 724
-    to: 725
-    to_pin: 727
-  - from: 725
-    from_pin: 728
-    to: 708
-    to_pin: 716
+  - {from: 706.move.x, to: 717.A}
+  - {from: 706.move.y, to: 721.A}
+  - {from: 706.aim.x, to: 717.B}
+  - {from: 706.aim.y, to: 721.B}
+  - {from: 717.Result, to: 725.A}
+  - {from: 721.Result, to: 725.B}
+  - {from: 725.Result, to: 708.Result}
 - id: 641
   kind: function
   name: Nose Lift Target
@@ -1672,132 +763,64 @@ graphs:
   - id: 642
     type: Function Entry
     outputs:
-    - id: 646
-      name: forward
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 647
-      name: reverseNoseLift
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 646, name: forward, type: double, kind: data, flags: 2, group: 1}
+    - {id: 647, name: reverseNoseLift, type: double, kind: data, flags: 2, group: 2}
   - id: 644
     type: Return
     inputs:
-    - id: 648
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 648, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 649
     type: Negate
     inputs:
-    - id: 650
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 651
-      type: double
-  - id: 652
-    type: Real
-    inputs: [653]
-    outputs: [654]
+      Result: {type: double}
+  - {id: 652, type: Real}
   - id: 655
     type: Max
     inputs:
-    - id: 656
-      type: double
-    - id: 657
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 658
-      type: double
+      Result: {type: double}
   - id: 659
     type: Multiply
     inputs:
-    - id: 660
-      type: double
-    - id: 661
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 662
-      type: double
+      Result: {type: double}
   - id: 663
     type: Real
-    inputs:
-    - id: 664
-      default: 3.141592653589793
-    outputs: [665]
+    inputs: {Value: 3.141592653589793}
   - id: 666
     type: Real
-    inputs:
-    - id: 667
-      default: 180.0
-    outputs: [668]
+    inputs: {Value: 180.0}
   - id: 669
     type: Divide
     inputs:
-    - id: 670
-      type: double
-    - id: 671
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 672
-      type: double
+      Result: {type: double}
   - id: 673
     type: Multiply
     inputs:
-    - id: 674
-      type: double
-    - id: 675
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 676
-      type: double
+      Result: {type: double}
   edges:
-  - from: 642
-    from_pin: 646
-    to: 649
-    to_pin: 650
-  - from: 642
-    from_pin: 647
-    to: 659
-    to_pin: 661
-  - from: 649
-    from_pin: 651
-    to: 655
-    to_pin: 656
-  - from: 652
-    from_pin: 654
-    to: 655
-    to_pin: 657
-  - from: 655
-    from_pin: 658
-    to: 659
-    to_pin: 660
-  - from: 659
-    from_pin: 662
-    to: 673
-    to_pin: 674
-  - from: 663
-    from_pin: 665
-    to: 669
-    to_pin: 670
-  - from: 666
-    from_pin: 668
-    to: 669
-    to_pin: 671
-  - from: 669
-    from_pin: 672
-    to: 673
-    to_pin: 675
-  - from: 673
-    from_pin: 676
-    to: 644
-    to_pin: 648
+  - {from: 642.forward, to: 649.Value}
+  - {from: 642.reverseNoseLift, to: 659.B}
+  - {from: 649.Result, to: 655.A}
+  - {from: 652.Value, to: 655.B}
+  - {from: 655.Result, to: 659.A}
+  - {from: 659.Result, to: 673.A}
+  - {from: 663.Value, to: 669.A}
+  - {from: 666.Value, to: 669.B}
+  - {from: 669.Result, to: 673.B}
+  - {from: 673.Result, to: 644.Result}
 - id: 729
   kind: function
   name: Advance Rolling Motion
@@ -1808,179 +831,73 @@ graphs:
   - id: 730
     type: Function Entry
     outputs:
-    - 731
-    - id: 768
-      name: Delta
-      type: float
-      kind: data
-    - id: 769
-      name: Position
-      type: float
-      kind: data
-    - id: 770
-      name: Velocity
-      type: float
-      kind: data
-    - id: 771
-      declaration_id: 586
-      name: Strafe
-      type: double
-      kind: data
-  - id: 732
-    type: Return
-    inputs: [733]
+      Delta: {id: 768, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
+      Strafe: {declaration_id: 586, type: double, kind: data}
+  - {id: 732, type: Return}
   - id: 736
     type: Call Function
     reference_id: 256
     reference_name: Advance Face Roll
     inputs:
-    - 737
-    - id: 738
-      declaration_id: 258
-      name: Position
-      type: float
-      kind: data
-    - id: 739
-      declaration_id: 259
-      name: Velocity
-      type: float
-      kind: data
-    - id: 740
-      declaration_id: 260
-      name: Strafe
-      type: float
-      kind: data
-    - id: 741
-      declaration_id: 261
-      name: Speed
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: ArenaShipMotionBehavior
-    - id: 742
-      declaration_id: 262
-      name: Rocking
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 252
-        source_asset: ArenaShipMotionBehavior
-    - id: 743
-      declaration_id: 263
-      name: Acceleration
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 253
-        source_asset: ArenaShipMotionBehavior
-    - id: 744
-      declaration_id: 264
-      name: Delta
-      type: float
-      kind: data
+      Position: {declaration_id: 258, type: float, kind: data}
+      Velocity: {declaration_id: 259, type: float, kind: data}
+      Strafe: {declaration_id: 260, type: float, kind: data}
+      Speed:
+        declaration_id: 261
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 1, source_asset: ArenaShipMotionBehavior}
+      Rocking:
+        declaration_id: 262
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 252, source_asset: ArenaShipMotionBehavior}
+      Acceleration:
+        declaration_id: 263
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 253, source_asset: ArenaShipMotionBehavior}
+      Delta: {declaration_id: 264, type: float, kind: data}
     outputs:
-    - 745
-    - id: 746
-      declaration_id: 267
-      name: Position
-      type: float
-      kind: data
-    - id: 747
-      declaration_id: 268
-      name: Velocity
-      type: float
-      kind: data
-    - id: 748
-      declaration_id: 269
-      name: Face
-      type: float
-      kind: data
+      Position: {declaration_id: 267, type: float, kind: data}
+      Velocity: {declaration_id: 268, type: float, kind: data}
+      Face: {declaration_id: 269, type: float, kind: data}
   - id: 753
     type: Set Variable
     reference_id: 5
     inputs:
-    - 754
-    - id: 755
-      type: float
+      Value: {type: float}
     outputs:
-    - 756
-    - id: 757
-      type: float
+      Value: {type: float}
   - id: 758
     type: Set Variable
     reference_id: 6
     inputs:
-    - 759
-    - id: 760
-      type: float
+      Value: {type: float}
     outputs:
-    - 761
-    - id: 762
-      type: float
+      Value: {type: float}
   - id: 763
     type: Set Variable
     reference_id: 255
     inputs:
-    - 764
-    - id: 765
-      type: float
+      Value: {type: float}
     outputs:
-    - 766
-    - id: 767
-      type: float
+      Value: {type: float}
   edges:
-  - from: 730
-    from_pin: 731
-    to: 736
-    to_pin: 737
-  - from: 730
-    from_pin: 768
-    to: 736
-    to_pin: 744
-  - from: 730
-    from_pin: 769
-    to: 736
-    to_pin: 738
-  - from: 730
-    from_pin: 770
-    to: 736
-    to_pin: 739
-  - from: 730
-    from_pin: 771
-    to: 736
-    to_pin: 740
-  - from: 736
-    from_pin: 745
-    to: 753
-    to_pin: 754
-  - from: 736
-    from_pin: 746
-    to: 753
-    to_pin: 755
-  - from: 736
-    from_pin: 747
-    to: 758
-    to_pin: 760
-  - from: 736
-    from_pin: 748
-    to: 763
-    to_pin: 765
-  - from: 753
-    from_pin: 756
-    to: 758
-    to_pin: 759
-  - from: 758
-    from_pin: 761
-    to: 763
-    to_pin: 764
-  - from: 763
-    from_pin: 766
-    to: 732
-    to_pin: 733
+  - {from: 730.Exec, to: 736.Exec}
+  - {from: 730.Delta, to: 736.Delta}
+  - {from: 730.Position, to: 736.Position}
+  - {from: 730.Velocity, to: 736.Velocity}
+  - {from: 730.Strafe, to: 736.Strafe}
+  - {from: 736.Then, to: 753.Exec}
+  - {from: 736.Position, to: 753.Value}
+  - {from: 736.Velocity, to: 758.Value}
+  - {from: 736.Face, to: 763.Value}
+  - {from: 753.Then, to: 758.Exec}
+  - {from: 758.Then, to: 763.Exec}
+  - {from: 763.Then, to: 732.Exec}
 - id: 783
   kind: function
   name: Apply Ship Pose
@@ -1991,206 +908,76 @@ graphs:
   - id: 784
     type: Function Entry
     outputs:
-    - 785
-    - id: 831
-      name: reverseNoseLift
-      type: float
-      kind: data
-    - id: 832
-      name: Delta
-      type: float
-      kind: data
-    - id: 833
-      name: Frequency
-      type: float
-      kind: data
-    - id: 834
-      name: Damping
-      type: float
-      kind: data
-    - id: 835
-      declaration_id: 587
-      name: forward
-      type: double
-      kind: data
-  - id: 786
-    type: Return
-    inputs: [787]
+      reverseNoseLift: {id: 831, type: float, kind: data}
+      Delta: {type: float, kind: data}
+      Frequency: {type: float, kind: data}
+      Damping: {type: float, kind: data}
+      forward: {declaration_id: 587, type: double, kind: data}
+  - {id: 786, type: Return}
   - id: 792
     type: Call Function
     reference_id: 79
     reference_name: Advance Damped Spring
     inputs:
-    - 793
-    - id: 794
-      declaration_id: 81
-      name: Position
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 7
-        source_asset: ArenaShipMotionBehavior
-    - id: 795
-      declaration_id: 82
-      name: Velocity
-      type: float
-      kind: data
-      binding:
-        kind: variable
-        variable_id: 8
-        source_asset: ArenaShipMotionBehavior
-    - id: 796
-      declaration_id: 83
-      name: Target
-      type: float
-      kind: data
-    - id: 797
-      declaration_id: 84
-      name: Frequency
-      type: float
-      kind: data
-    - id: 798
-      declaration_id: 85
-      name: Damping
-      type: float
-      kind: data
-    - id: 799
-      declaration_id: 86
-      name: Delta
-      type: float
-      kind: data
+      Position:
+        declaration_id: 81
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 7, source_asset: ArenaShipMotionBehavior}
+      Velocity:
+        declaration_id: 82
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 8, source_asset: ArenaShipMotionBehavior}
+      Target: {declaration_id: 83, type: float, kind: data}
+      Frequency: {declaration_id: 84, type: float, kind: data}
+      Damping: {declaration_id: 85, type: float, kind: data}
+      Delta: {declaration_id: 86, type: float, kind: data}
     outputs:
-    - 800
-    - id: 801
-      declaration_id: 89
-      name: Position
-      type: float
-      kind: data
-    - id: 802
-      declaration_id: 90
-      name: Velocity
-      type: float
-      kind: data
+      Position: {declaration_id: 89, type: float, kind: data}
+      Velocity: {declaration_id: 90, type: float, kind: data}
   - id: 803
     type: Set Variable
     reference_id: 7
     inputs:
-    - 804
-    - id: 805
-      type: float
+      Value: {type: float}
     outputs:
-    - 806
-    - id: 807
-      type: float
+      Value: {type: float}
   - id: 808
     type: Set Variable
     reference_id: 8
     inputs:
-    - 809
-    - id: 810
-      type: float
+      Value: {type: float}
     outputs:
-    - 811
-    - id: 812
-      type: float
+      Value: {type: float}
   - id: 813
     type: Set_GameVisualTransform_roll
     inputs:
-    - 814
-    - id: 815
-      binding:
-        kind: variable
-        variable_id: 5
-        source_asset: ArenaShipMotionBehavior
-    - 816
-    outputs: [817, 818]
-  - id: 819
-    type: Set_GameVisualTransform_pitch
-    inputs: [820, 821, 822]
-    outputs: [823, 824]
+      Value:
+        binding: {kind: variable, variable_id: 5, source_asset: ArenaShipMotionBehavior}
+  - {id: 819, type: Set_GameVisualTransform_pitch}
   - id: 827
     type: Behavior Expression
     reference_id: 641
     reference_name: Nose Lift Target
     inputs:
-    - id: 828
-      declaration_id: 646
-      name: forward
-      type: double
-      flags: 2
-      group: 1
-    - id: 829
-      declaration_id: 647
-      name: reverseNoseLift
-      type: float
-      flags: 2
-      group: 2
+      forward: {declaration_id: 646, type: double, flags: 2, group: 1}
+      reverseNoseLift: {declaration_id: 647, type: float, flags: 2, group: 2}
     outputs:
-    - id: 830
-      declaration_id: 648
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 648, type: double, flags: 2, group: 3}
   edges:
-  - from: 784
-    from_pin: 785
-    to: 792
-    to_pin: 793
-  - from: 784
-    from_pin: 831
-    to: 827
-    to_pin: 829
-  - from: 784
-    from_pin: 832
-    to: 792
-    to_pin: 799
-  - from: 784
-    from_pin: 833
-    to: 792
-    to_pin: 797
-  - from: 784
-    from_pin: 834
-    to: 792
-    to_pin: 798
-  - from: 784
-    from_pin: 835
-    to: 827
-    to_pin: 828
-  - from: 792
-    from_pin: 800
-    to: 803
-    to_pin: 804
-  - from: 792
-    from_pin: 801
-    to: 803
-    to_pin: 805
-  - from: 792
-    from_pin: 802
-    to: 808
-    to_pin: 810
-  - from: 803
-    from_pin: 806
-    to: 808
-    to_pin: 809
-  - from: 803
-    from_pin: 807
-    to: 819
-    to_pin: 821
-  - from: 808
-    from_pin: 811
-    to: 813
-    to_pin: 814
-  - from: 813
-    from_pin: 817
-    to: 819
-    to_pin: 820
-  - from: 819
-    from_pin: 823
-    to: 786
-    to_pin: 787
-  - from: 827
-    from_pin: 830
-    to: 792
-    to_pin: 796
+  - {from: 784.Exec, to: 792.Exec}
+  - {from: 784.reverseNoseLift, to: 827.reverseNoseLift}
+  - {from: 784.Delta, to: 792.Delta}
+  - {from: 784.Frequency, to: 792.Frequency}
+  - {from: 784.Damping, to: 792.Damping}
+  - {from: 784.forward, to: 827.forward}
+  - {from: 792.Then, to: 803.Exec}
+  - {from: 792.Position, to: 803.Value}
+  - {from: 792.Velocity, to: 808.Value}
+  - {from: 803.Then, to: 808.Exec}
+  - {from: 803.Value, to: 819.Value}
+  - {from: 808.Then, to: 813.Exec}
+  - {from: 813.Then, to: 819.Exec}
+  - {from: 819.Then, to: 786.Exec}
+  - {from: 827.Result, to: 792.Target}

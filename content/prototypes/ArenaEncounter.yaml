@@ -1,9 +1,6 @@
 name: ArenaEncounter
 identity: prototype-0000000000000003
 components:
-  GAME.GameEncounter:
-    total: 40
-  game.GameTransform:
-    x: 323.316162109375
-    "y": -176.0
+  GAME.GameEncounter: {total: 40}
+  game.GameTransform: {x: 323.316162109375, "y": -176.0}
 behaviors: [ArenaWaveBehavior]

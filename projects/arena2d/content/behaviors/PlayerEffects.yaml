@@ -6,67 +6,25 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Begin
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Begin}
   - id: 3
     type: Self
     outputs:
-    - id: 4
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 5
     type: Spawn Prototype
-    inputs:
-    - 6
-    - id: 7
-      default: MovementEmitter
-    outputs: [8, 9]
-  - id: 10
-    type: Set_GameParticleEmitter_parent
-    inputs: [11, 12, 13]
-    outputs: [14, 15]
+    inputs: {Prototype: MovementEmitter}
+  - {id: 10, type: Set_GameParticleEmitter_parent}
   - id: 16
     type: Spawn Prototype
-    inputs:
-    - 17
-    - id: 18
-      default: BoostEmitter
-    outputs: [19, 20]
-  - id: 21
-    type: Set_GameParticleEmitter_parent
-    inputs: [22, 23, 24]
-    outputs: [25, 26]
+    inputs: {Prototype: BoostEmitter}
+  - {id: 21, type: Set_GameParticleEmitter_parent}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 5
-    to_pin: 6
-  - from: 3
-    from_pin: 4
-    to: 10
-    to_pin: 12
-  - from: 3
-    from_pin: 4
-    to: 21
-    to_pin: 23
-  - from: 5
-    from_pin: 8
-    to: 10
-    to_pin: 11
-  - from: 5
-    from_pin: 9
-    to: 10
-    to_pin: 13
-  - from: 10
-    from_pin: 14
-    to: 16
-    to_pin: 17
-  - from: 16
-    from_pin: 19
-    to: 21
-    to_pin: 22
-  - from: 16
-    from_pin: 20
-    to: 21
-    to_pin: 24
+  - {from: 1.Then, to: 5.Exec}
+  - {from: 3.Self, to: 10.Value}
+  - {from: 3.Self, to: 21.Value}
+  - {from: 5.Then, to: 10.Exec}
+  - {from: 5.Entity, to: 10.Target}
+  - {from: 10.Then, to: 16.Exec}
+  - {from: 16.Then, to: 21.Exec}
+  - {from: 16.Entity, to: 21.Target}

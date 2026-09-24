@@ -10,42 +10,16 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Self
     outputs:
-    - id: 5
-      type_name: ecs.entity
-  - id: 6
-    type: Get_GameTransform
-    outputs: [7]
+      Self: {type_name: ecs.entity}
+  - {id: 6, type: Get_GameTransform}
   - id: 8
     type: Damage Material
-    inputs:
-    - 9
-    - 10
-    - 11
-    - id: 12
-      default: 24.0
-    - id: 13
-      default: 1.0
-    - 14
-    outputs: [15]
+    inputs: {Radius: 24.0, Energy: 1.0}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 8
-    to_pin: 9
-  - from: 4
-    from_pin: 5
-    to: 8
-    to_pin: 10
-  - from: 6
-    from_pin: 7
-    to: 8
-    to_pin: 11
-    conversion: game_transform_to_cf
+  - {from: 1.Then, to: 8.In}
+  - {from: 4.Self, to: 8.Entity}
+  - {from: 6.Value, to: 8.Point, conversion: game_transform_to_cf}

@@ -9,53 +9,20 @@ graphs:
   - id: 1
     type: Shader Surface Output
     inputs:
-    - id: 2
-      default:
-        x: 1.0
-        "y": 1.0
-        z: 1.0
-    - id: 3
-      default:
-        x: 0.0
-        "y": 0.0
-        z: 0.0
-    - id: 4
-      default: 0.2800000011920929
-    - id: 5
-      default: 0.6200000047683716
-    - id: 6
-      default:
-        x: 0.0
-        "y": 0.0
-        z: 0.0
-    - 7
-    - 8
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.2800000011920929
+      Metallic: 0.6200000047683716
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 9
     type: Shader Vector3
-    inputs:
-    - id: 10
-      default: 0.019999999552965164
-    - id: 11
-      default: 0.05000000074505806
-    - id: 12
-      default: 0.18000000715255737
-    outputs: [13]
+    inputs: {X: 0.019999999552965164, "Y": 0.05000000074505806, Z: 0.18000000715255737}
   - id: 14
     type: Shader Vector3
-    inputs:
-    - id: 15
-      default: 0.05000000074505806
-    - id: 16
-      default: 0.6499999761581421
-    - id: 17
-      default: 1.2000000476837158
-    outputs: [18]
+    inputs: {X: 0.05000000074505806, "Y": 0.6499999761581421, Z: 1.2000000476837158}
   edges:
-  - from: 9
-    from_pin: 13
-    to: 1
-    to_pin: 2
-  - from: 14
-    from_pin: 18
-    to: 1
-    to_pin: 3
+  - {from: 9.Value, to: 1.Base Color}
+  - {from: 14.Value, to: 1.Emission}

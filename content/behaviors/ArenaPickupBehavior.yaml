@@ -4,11 +4,7 @@ id_counter: 933
 description: Small flat outline pickups keep a random initial rotation, ease through the shared beat, fade smoothly at expiry and trace a short spiral into the player.
 owner_type: ecs.entity
 variables:
-- id: 447
-  name: Base Rotation
-  type: float
-  type_name: float
-  category: State
+- {id: 447, name: Base Rotation, type: float, type_name: float, category: State}
 graphs:
 - kind: event
   name: ""
@@ -16,170 +12,99 @@ graphs:
   - id: 12
     type: Event
     reference_name: Tick
-    outputs: [11]
+    outputs:
+      Then: {id: 11}
   - id: 14
     type: Get_GamePickup
     outputs:
-    - id: 13
-      flags: 0
-    - id: 15
-      name: state
-      type: int
-      field_source: 13
-      field_name: state
-      flags: 0
+      Value: {id: 13, flags: 0}
+      Value.state: {id: 15}
   - id: 19
     type: Integer Equal
-    inputs: [16, 17]
-    outputs: [18]
+    inputs:
+      A: {id: 16}
   - id: 24
     type: Branch
-    inputs: [20, 21]
-    outputs: [22, 23]
+    inputs:
+      Exec: {id: 20}
   - id: 27
     type: Call Function
     reference_id: 1
     reference_name: Wait and Pulse
-    inputs: [25]
-    outputs: [26]
+    inputs:
+      Exec: {id: 25}
   - id: 31
     type: Integer Equal
     inputs:
-    - 28
-    - id: 29
-      default: 1
-    outputs: [30]
+      A: {id: 28}
+      B: 1
   - id: 36
     type: Branch
-    inputs: [32, 33]
-    outputs: [34, 35]
+    inputs:
+      Exec: {id: 32}
   - id: 39
     type: Call Function
     reference_id: 6
     reference_name: Collect Along Spiral
-    inputs: [37]
-    outputs: [38]
+    inputs:
+      Exec: {id: 37}
   - id: 217
     type: Event
     reference_name: CollectExperience
-    outputs: [216]
+    outputs:
+      Then: {id: 216}
   - id: 221
     type: Call Function
     reference_id: 140
     reference_name: Start Collection
     inputs:
-    - 218
-    - id: 219
-      declaration_id: 145
-      name: Radius
-      type: float
-      kind: data
-      default: 10000.0
-    outputs: [220]
+      Exec: {id: 218}
+      Radius: {declaration_id: 145, type: float, kind: data, default: 10000.0}
   - id: 449
     type: Event
     reference_name: Begin
-    outputs: [448]
+    outputs:
+      Then: {id: 448}
   - id: 453
     type: Random Real
-    outputs: [452]
+    outputs:
+      Result: {id: 452}
   - id: 458
     type: Set Variable
     reference_id: 447
     inputs:
-    - 454
-    - id: 455
-      type: float
+      Exec: {id: 454}
+      Value: {type: float}
     outputs:
-    - 456
-    - id: 457
-      type: float
+      Value: {type: float}
   - id: 507
     type: Multiply
     inputs:
-    - id: 504
-      type: double
-      flags: 0
-      group: 0
-    - id: 505
-      type: double
-      flags: 0
-      group: 0
-      default: 6.283185307179586
+      A: {id: 504, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 6.283185307179586}
     outputs:
-    - id: 506
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 511
     type: Add
     inputs:
-    - id: 508
-      type: double
-      flags: 0
-      group: 0
-    - id: 509
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 508, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 510
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   edges:
-  - from: 12
-    from_pin: 11
-    to: 24
-    to_pin: 20
-  - from: 14
-    from_pin: 15
-    to: 19
-    to_pin: 16
-  - from: 14
-    from_pin: 15
-    to: 31
-    to_pin: 28
-  - from: 19
-    from_pin: 18
-    to: 24
-    to_pin: 21
-  - from: 24
-    from_pin: 22
-    to: 27
-    to_pin: 25
-  - from: 24
-    from_pin: 23
-    to: 36
-    to_pin: 32
-  - from: 31
-    from_pin: 30
-    to: 36
-    to_pin: 33
-  - from: 36
-    from_pin: 34
-    to: 39
-    to_pin: 37
-  - from: 217
-    from_pin: 216
-    to: 221
-    to_pin: 218
-  - from: 449
-    from_pin: 448
-    to: 458
-    to_pin: 454
-  - from: 453
-    from_pin: 452
-    to: 507
-    to_pin: 504
-  - from: 507
-    from_pin: 506
-    to: 511
-    to_pin: 509
-  - from: 511
-    from_pin: 510
-    to: 458
-    to_pin: 455
+  - {from: 12.Then, to: 24.Exec}
+  - {from: 14.Value.state, to: 19.A}
+  - {from: 14.Value.state, to: 31.A}
+  - {from: 19.Result, to: 24.Condition}
+  - {from: 24.True, to: 27.Exec}
+  - {from: 24.False, to: 36.Exec}
+  - {from: 31.Result, to: 36.Condition}
+  - {from: 36.True, to: 39.Exec}
+  - {from: 217.Then, to: 221.Exec}
+  - {from: 449.Then, to: 458.Exec}
+  - {from: 453.Result, to: 507.A}
+  - {from: 507.Result, to: 511.B}
+  - {from: 511.Result, to: 458.Value}
 - id: 1
   kind: function
   name: Wait and Pulse
@@ -190,369 +115,170 @@ graphs:
   - id: 3
     type: Function Entry
     outputs:
-    - id: 2
-      name: Then
+    - {id: 2, name: Then}
   - id: 5
     type: Return
-    inputs: [4]
+    inputs:
+      Exec: {id: 4}
   - id: 41
     type: Get_GamePickup
     outputs:
-    - id: 40
-      flags: 0
-    - id: 42
-      name: age
-      type: float
-      field_source: 40
-      field_name: age
-      flags: 0
-    - id: 43
-      name: lifetime
-      type: float
-      field_source: 40
-      field_name: lifetime
-      flags: 0
+      Value: {id: 40, flags: 0}
+      Value.age: {id: 42}
+      Value.lifetime: {}
   - id: 45
     type: Delta Time
-    outputs: [44]
+    outputs:
+      Seconds: {id: 44}
   - id: 49
     type: Add
     inputs:
-    - id: 46
-      type: double
-      flags: 0
-      group: 0
-    - id: 47
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 46, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 48
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 55
     type: Set_GamePickup_age
-    inputs: [50, 51, 52]
+    inputs:
+      Exec: {id: 50}
     outputs:
-    - 53
-    - 54
-    - id: 56
-      name: age
-      type: float
-      field_source: 54
-      field_name: age
+      Value.age: {id: 56}
   - id: 60
     type: Greater Or Equal
-    inputs: [57, 58]
-    outputs: [59]
+    inputs:
+      A: {id: 57}
   - id: 65
     type: Branch
-    inputs: [61, 62]
-    outputs: [63, 64]
+    inputs:
+      Exec: {id: 61}
   - id: 69
     type: Destroy Entity
-    inputs: [66, 67]
-    outputs: [68]
+    inputs:
+      Exec: {id: 66}
   - id: 71
     type: Self
     outputs:
-    - id: 70
-      name: Entity
-      type_name: ecs.entity
+    - {id: 70, name: Entity, type_name: ecs.entity}
   - id: 76
     type: Scene Rhythm
-    outputs: [72, 73, 74, 75]
+    outputs:
+      Phase: {id: 72}
   - id: 129
     type: Set_GameVisualTransform_yaw
-    inputs: [124, 125, 126]
-    outputs: [127, 128]
+    inputs:
+      Exec: {id: 124}
   - id: 139
     type: Set_GameVisualTransform_scale
-    inputs: [134, 135, 136]
-    outputs: [137, 138]
+    inputs:
+      Exec: {id: 134}
   - id: 149
     type: Call Function
     reference_id: 140
     reference_name: Start Collection
     inputs:
-    - 146
-    - id: 147
-      declaration_id: 145
-      name: Radius
-      type: float
-      kind: data
-      default: 48.0
-    outputs: [148]
+      Exec: {id: 146}
+      Radius: {declaration_id: 145, type: float, kind: data, default: 48.0}
   - id: 474
     type: Smooth Step
-    inputs: [471]
-    outputs: [473]
+    inputs:
+      Value: {id: 471}
+    outputs:
+      Result: {id: 473}
   - id: 484
     type: Multiply
     inputs:
-    - id: 481
-      type: double
-      flags: 0
-      group: 0
-    - id: 482
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 481, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 483
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 488
     type: Multiply
     inputs:
-    - id: 485
-      type: double
-      flags: 0
-      group: 0
-      default: 2.0
-    - id: 486
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 485, type: double, flags: 0, group: 0, default: 2.0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 487
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 492
     type: Subtract
     inputs:
-    - id: 489
-      type: double
-      flags: 0
-      group: 0
-      default: 3.0
-    - id: 490
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 489, type: double, flags: 0, group: 0, default: 3.0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 491
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 496
     type: Multiply
     inputs:
-    - id: 493
-      type: double
-      flags: 0
-      group: 0
-    - id: 494
-      type: double
-      flags: 0
-      group: 0
+      A: {id: 493, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
     outputs:
-    - id: 495
-      type: double
-      flags: 0
-      group: 0
+      Result: {type: double, flags: 0, group: 0}
   - id: 533
     type: Behavior Expression
     reference_id: 512
     reference_name: Pulse Angle
     inputs:
-    - id: 534
-      declaration_id: 517
-      name: Eased
-      type: double
-      flags: 2
-      group: 1
+      Eased: {declaration_id: 517, type: double, flags: 2, group: 1}
     outputs:
-    - id: 535
-      declaration_id: 518
-      name: Result
-      type: double
-      flags: 2
-      group: 2
+      Result: {declaration_id: 518, type: double, flags: 2, group: 2}
   - id: 569
     type: Behavior Expression
     reference_id: 536
     reference_name: Pulse Fade
     inputs:
-    - id: 570
-      declaration_id: 541
-      name: Lifetime
-      type: float
-      flags: 2
-      group: 1
-    - id: 571
-      declaration_id: 542
-      name: UpdatedAge
-      type: float
-      flags: 2
-      group: 2
+      Lifetime: {declaration_id: 541, type: float, flags: 2, group: 1}
+      UpdatedAge: {declaration_id: 542, type: float, flags: 2, group: 2}
     outputs:
-    - id: 572
-      declaration_id: 543
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 543, type: double, flags: 2, group: 3}
   - id: 585
     type: Behavior Expression
     reference_id: 573
     reference_name: Pulse Yaw
     inputs:
-    - id: 586
-      declaration_id: 578
-      name: Angle
-      type: double
-      flags: 2
-      group: 1
-    - id: 587
-      declaration_id: 579
-      name: BaseRotation
-      type: float
-      flags: 2
-      group: 2
-      binding:
-        kind: variable
-        variable_id: 447
-        source_asset: ArenaPickupBehavior
+      Angle: {declaration_id: 578, type: double, flags: 2, group: 1}
+      BaseRotation:
+        declaration_id: 579
+        type: float
+        flags: 2
+        group: 2
+        binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
     outputs:
-    - id: 588
-      declaration_id: 580
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 580, type: double, flags: 2, group: 3}
   - id: 618
     type: Behavior Expression
     reference_id: 589
     reference_name: Pulse Scale
     inputs:
-    - id: 619
-      declaration_id: 594
-      name: Angle
-      type: double
-      flags: 2
-      group: 1
-    - id: 620
-      declaration_id: 595
-      name: Fade
-      type: double
-      flags: 2
-      group: 2
+      Angle: {declaration_id: 594, type: double, flags: 2, group: 1}
+      Fade: {declaration_id: 595, type: double, flags: 2, group: 2}
     outputs:
-    - id: 621
-      declaration_id: 596
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 596, type: double, flags: 2, group: 3}
   edges:
-  - from: 3
-    from_pin: 2
-    to: 55
-    to_pin: 50
-  - from: 41
-    from_pin: 42
-    to: 49
-    to_pin: 46
-  - from: 41
-    from_pin: 43
-    to: 60
-    to_pin: 58
-  - from: 41
-    from_pin: 43
-    to: 569
-    to_pin: 570
-  - from: 45
-    from_pin: 44
-    to: 49
-    to_pin: 47
-  - from: 49
-    from_pin: 48
-    to: 55
-    to_pin: 51
-  - from: 55
-    from_pin: 53
-    to: 65
-    to_pin: 61
-  - from: 55
-    from_pin: 56
-    to: 60
-    to_pin: 57
-  - from: 55
-    from_pin: 56
-    to: 569
-    to_pin: 571
-  - from: 60
-    from_pin: 59
-    to: 65
-    to_pin: 62
-  - from: 65
-    from_pin: 63
-    to: 69
-    to_pin: 66
-  - from: 65
-    from_pin: 64
-    to: 129
-    to_pin: 124
-  - from: 71
-    from_pin: 70
-    to: 69
-    to_pin: 67
-  - from: 76
-    from_pin: 72
-    to: 474
-    to_pin: 471
-  - from: 129
-    from_pin: 127
-    to: 139
-    to_pin: 134
-  - from: 139
-    from_pin: 137
-    to: 149
-    to_pin: 146
-  - from: 149
-    from_pin: 148
-    to: 5
-    to_pin: 4
-  - from: 474
-    from_pin: 473
-    to: 533
-    to_pin: 534
-  - from: 484
-    from_pin: 483
-    to: 496
-    to_pin: 493
-  - from: 488
-    from_pin: 487
-    to: 492
-    to_pin: 490
-  - from: 492
-    from_pin: 491
-    to: 496
-    to_pin: 494
-  - from: 533
-    from_pin: 535
-    to: 585
-    to_pin: 586
-  - from: 533
-    from_pin: 535
-    to: 618
-    to_pin: 619
-  - from: 569
-    from_pin: 572
-    to: 618
-    to_pin: 620
-  - from: 585
-    from_pin: 588
-    to: 129
-    to_pin: 125
-  - from: 618
-    from_pin: 621
-    to: 139
-    to_pin: 135
+  - {from: 3.Then, to: 55.Exec}
+  - {from: 41.Value.age, to: 49.A}
+  - {from: 41.Value.lifetime, to: 60.B}
+  - {from: 41.Value.lifetime, to: 569.Lifetime}
+  - {from: 45.Seconds, to: 49.B}
+  - {from: 49.Result, to: 55.Value}
+  - {from: 55.Then, to: 65.Exec}
+  - {from: 55.Value.age, to: 60.A}
+  - {from: 55.Value.age, to: 569.UpdatedAge}
+  - {from: 60.Result, to: 65.Condition}
+  - {from: 65.True, to: 69.Exec}
+  - {from: 65.False, to: 129.Exec}
+  - {from: 71.Entity, to: 69.Entity}
+  - {from: 76.Phase, to: 474.Value}
+  - {from: 129.Then, to: 139.Exec}
+  - {from: 139.Then, to: 149.Exec}
+  - {from: 149.Then, to: 5.Exec}
+  - {from: 474.Result, to: 533.Eased}
+  - {from: 484.Result, to: 496.A}
+  - {from: 488.Result, to: 492.B}
+  - {from: 492.Result, to: 496.B}
+  - {from: 533.Result, to: 585.Angle}
+  - {from: 533.Result, to: 618.Angle}
+  - {from: 569.Result, to: 618.Fade}
+  - {from: 585.Result, to: 129.Value}
+  - {from: 618.Result, to: 139.Value}
 - id: 6
   kind: function
   name: Collect Along Spiral
@@ -563,624 +289,261 @@ graphs:
   - id: 8
     type: Function Entry
     outputs:
-    - id: 7
-      name: Then
+    - {id: 7, name: Then}
   - id: 10
     type: Return
-    inputs: [9]
+    inputs:
+      Exec: {id: 9}
   - id: 223
     type: Get_GamePickup
     outputs:
-    - id: 222
-      flags: 0
-    - id: 224
-      name: collection_age
-      type: float
-      field_source: 222
-      field_name: collection_age
-      flags: 0
-    - id: 225
-      name: target
-      type: handle
-      type_name: ecs.entity
-      field_source: 222
-      field_name: target
-      flags: 0
-    - id: 226
-      name: origin
-      type_name: CF_V2
-      field_source: 222
-      field_name: origin
-      flags: 0
-      default: null
-    - id: 227
-      name: value
-      type: int
-      field_source: 222
-      field_name: value
-      flags: 0
+      Value: {id: 222, flags: 0}
+      Value.collection_age: {id: 224}
+      Value.target: {}
+      Value.origin: {}
+      Value.value: {}
   - id: 232
     type: Contains
     inputs:
-    - id: 442
-      type: handle
-      type_name: ecs.entity
-      default: []
-    - id: 230
-      type: handle
-      type_name: ecs.entity
+      Array:
+        id: 442
+        type: handle
+        type_name: ecs.entity
+        default: []
+      Item: {id: 230, type: handle, type_name: ecs.entity}
     outputs:
-    - id: 231
-      name: Result
+    - {id: 231, name: Result}
   - id: 237
     type: Branch
-    inputs: [233, 234]
-    outputs: [235, 236]
+    inputs:
+      Exec: {id: 233}
   - id: 241
     type: Destroy Entity
-    inputs: [238, 239]
-    outputs: [240]
+    inputs:
+      Exec: {id: 238}
   - id: 243
     type: Self
     outputs:
-    - id: 242
-      name: Entity
-      type_name: ecs.entity
+    - {id: 242, name: Entity, type_name: ecs.entity}
   - id: 255
     type: Set_GamePickup_collection_age
-    inputs: [250, 251, 252]
+    inputs:
+      Exec: {id: 250}
     outputs:
-    - 253
-    - 254
-    - id: 256
-      name: collection_age
-      type: float
-      field_source: 254
-      field_name: collection_age
+      Value.collection_age: {id: 256}
   - id: 260
     type: Greater Or Equal
     inputs:
-    - 257
-    - id: 258
-      default: 0.6000000238418579
-    outputs: [259]
+      A: {id: 257}
+      B: 0.6000000238418579
   - id: 265
     type: Branch
-    inputs: [261, 262]
-    outputs: [263, 264]
+    inputs:
+      Exec: {id: 261}
   - id: 271
     type: Set_GamePickup_state
     inputs:
-    - 266
-    - id: 267
-      default: 2
-    - 268
-    outputs: [269, 270]
+      Exec: {id: 266}
+      Value: 2
   - id: 274
     type: GetEntity_GameExperience
-    inputs: [272]
+    inputs:
+      Entity: {id: 272}
     outputs:
-    - 273
-    - id: 275
-      name: current
-      type: int
-      field_source: 273
-      field_name: current
+      Value.current: {id: 275}
   - id: 279
     type: Add
     inputs:
-    - id: 276
-      type: int
-      flags: 0
-      group: 0
-    - id: 277
-      type: int
-      flags: 0
-      group: 0
+      A: {id: 276, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0}
     outputs:
-    - id: 278
-      type: int
-      flags: 0
-      group: 0
+      Result: {type: int, flags: 0, group: 0}
   - id: 285
     type: Set_GameExperience_current
-    inputs: [280, 281, 282]
-    outputs: [283, 284]
+    inputs:
+      Exec: {id: 280}
   - id: 289
     type: Destroy Entity
-    inputs: [286, 287]
-    outputs: [288]
+    inputs:
+      Exec: {id: 286}
   - id: 291
     type: Self
     outputs:
-    - id: 290
-      name: Entity
-      type_name: ecs.entity
+    - {id: 290, name: Entity, type_name: ecs.entity}
   - id: 328
     type: GetEntity_GameTransform
-    inputs: [326]
+    inputs:
+      Entity: {id: 326}
     outputs:
-    - 327
-    - id: 329
-      name: x
-      type: float
-      field_source: 327
-      field_name: x
-    - id: 330
-      name: "y"
-      type: float
-      field_source: 327
-      field_name: "y"
+      Value.x: {id: 329}
+      Value.y: {}
   - id: 384
     type: Set_GameTransform_x
-    inputs: [379, 380, 381]
-    outputs: [382, 383]
+    inputs:
+      Exec: {id: 379}
   - id: 390
     type: Set_GameTransform_y
-    inputs: [385, 386, 387]
-    outputs: [388, 389]
+    inputs:
+      Exec: {id: 385}
   - id: 396
     type: Set_GameVisualTransform_yaw
-    inputs: [391, 392, 393]
-    outputs: [394, 395]
+    inputs:
+      Exec: {id: 391}
   - id: 410
     type: Set_GameVisualTransform_scale
-    inputs: [405, 406, 407]
-    outputs: [408, 409]
+    inputs:
+      Exec: {id: 405}
   - id: 441
     type: Break_CF_V2
     inputs:
-    - id: 438
-      name: Value
-    outputs: [439, 440]
+    - {id: 438, name: Value}
   - id: 445
     type: Find Entities With Component
     inputs:
-    - id: 443
-      type_name: name
-      default: GAME.GameExperience
+      Component: {id: 443, type_name: name, default: GAME.GameExperience}
     outputs:
-    - id: 444
-      default: []
+      Entities:
+        default: []
   - id: 636
     type: Behavior Expression
     reference_id: 622
     reference_name: Spiral T
     inputs:
-    - id: 637
-      declaration_id: 627
-      name: CollectionAge
-      type: float
-      flags: 2
-      group: 1
+      CollectionAge: {declaration_id: 627, type: float, flags: 2, group: 1}
     outputs:
-    - id: 638
-      declaration_id: 628
-      name: Result
-      type: double
-      flags: 2
-      group: 2
+      Result: {declaration_id: 628, type: double, flags: 2, group: 2}
   - id: 660
     type: Behavior Expression
     reference_id: 639
     reference_name: Spiral Angle
     inputs:
-    - id: 661
-      declaration_id: 644
-      name: T
-      type: double
-      flags: 2
-      group: 1
+      T: {declaration_id: 644, type: double, flags: 2, group: 1}
     outputs:
-    - id: 662
-      declaration_id: 645
-      name: Result
-      type: double
-      flags: 2
-      group: 2
+      Result: {declaration_id: 645, type: double, flags: 2, group: 2}
   - id: 706
     type: Behavior Expression
     reference_id: 663
     reference_name: Spiral Weight
     inputs:
-    - id: 707
-      declaration_id: 668
-      name: T
-      type: double
-      flags: 2
-      group: 1
+      T: {declaration_id: 668, type: double, flags: 2, group: 1}
     outputs:
-    - id: 708
-      declaration_id: 669
-      name: Result
-      type: double
-      flags: 2
-      group: 2
+      Result: {declaration_id: 669, type: double, flags: 2, group: 2}
   - id: 784
     type: Behavior Expression
     reference_id: 709
     reference_name: Spiral X
     inputs:
-    - id: 785
-      declaration_id: 714
-      name: TargetX
-      type: float
-      flags: 2
-      group: 1
-    - id: 786
-      declaration_id: 715
-      name: Weight
-      type: double
-      flags: 2
-      group: 2
-    - id: 787
-      declaration_id: 716
-      name: OriginX
-      type: float
-      flags: 2
-      group: 3
-    - id: 788
-      declaration_id: 717
-      name: Theta
-      type: double
-      flags: 2
-      group: 4
-    - id: 789
-      declaration_id: 718
-      name: OriginY
-      type: float
-      flags: 2
-      group: 5
-    - id: 790
-      declaration_id: 719
-      name: TargetY
-      type: float
-      flags: 2
-      group: 6
-    - id: 791
-      declaration_id: 720
-      name: T
-      type: double
-      flags: 2
-      group: 7
+      TargetX: {declaration_id: 714, type: float, flags: 2, group: 1}
+      Weight: {declaration_id: 715, type: double, flags: 2, group: 2}
+      OriginX: {declaration_id: 716, type: float, flags: 2, group: 3}
+      Theta: {declaration_id: 717, type: double, flags: 2, group: 4}
+      OriginY: {declaration_id: 718, type: float, flags: 2, group: 5}
+      TargetY: {declaration_id: 719, type: float, flags: 2, group: 6}
+      T: {declaration_id: 720, type: double, flags: 2, group: 7}
     outputs:
-    - id: 792
-      declaration_id: 721
-      name: Result
-      type: double
-      flags: 2
-      group: 8
+      Result: {declaration_id: 721, type: double, flags: 2, group: 8}
   - id: 868
     type: Behavior Expression
     reference_id: 793
     reference_name: Spiral Y
     inputs:
-    - id: 869
-      declaration_id: 798
-      name: TargetY
-      type: float
-      flags: 2
-      group: 1
-    - id: 870
-      declaration_id: 799
-      name: Weight
-      type: double
-      flags: 2
-      group: 2
-    - id: 871
-      declaration_id: 800
-      name: OriginX
-      type: float
-      flags: 2
-      group: 3
-    - id: 872
-      declaration_id: 801
-      name: TargetX
-      type: float
-      flags: 2
-      group: 4
-    - id: 873
-      declaration_id: 802
-      name: Theta
-      type: double
-      flags: 2
-      group: 5
-    - id: 874
-      declaration_id: 803
-      name: OriginY
-      type: float
-      flags: 2
-      group: 6
-    - id: 875
-      declaration_id: 804
-      name: T
-      type: double
-      flags: 2
-      group: 7
+      TargetY: {declaration_id: 798, type: float, flags: 2, group: 1}
+      Weight: {declaration_id: 799, type: double, flags: 2, group: 2}
+      OriginX: {declaration_id: 800, type: float, flags: 2, group: 3}
+      TargetX: {declaration_id: 801, type: float, flags: 2, group: 4}
+      Theta: {declaration_id: 802, type: double, flags: 2, group: 5}
+      OriginY: {declaration_id: 803, type: float, flags: 2, group: 6}
+      T: {declaration_id: 804, type: double, flags: 2, group: 7}
     outputs:
-    - id: 876
-      declaration_id: 805
-      name: Result
-      type: double
-      flags: 2
-      group: 8
+      Result: {declaration_id: 805, type: double, flags: 2, group: 8}
   - id: 889
     type: Behavior Expression
     reference_id: 877
     reference_name: Spiral Yaw
     inputs:
-    - id: 890
-      declaration_id: 882
-      name: BaseRotation
-      type: float
-      flags: 2
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 447
-        source_asset: ArenaPickupBehavior
-    - id: 891
-      declaration_id: 883
-      name: Theta
-      type: double
-      flags: 2
-      group: 2
+      BaseRotation:
+        declaration_id: 882
+        type: float
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
+      Theta: {declaration_id: 883, type: double, flags: 2, group: 2}
     outputs:
-    - id: 892
-      declaration_id: 884
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 884, type: double, flags: 2, group: 3}
   - id: 914
     type: Behavior Expression
     reference_id: 893
     reference_name: Spiral Scale
     inputs:
-    - id: 915
-      declaration_id: 898
-      name: T
-      type: double
-      flags: 2
-      group: 1
+      T: {declaration_id: 898, type: double, flags: 2, group: 1}
     outputs:
-    - id: 916
-      declaration_id: 899
-      name: Result
-      type: double
-      flags: 2
-      group: 2
+      Result: {declaration_id: 899, type: double, flags: 2, group: 2}
   - id: 929
     type: Behavior Expression
     reference_id: 917
     reference_name: Collection Age
     inputs:
-    - id: 930
-      declaration_id: 922
-      name: CollectionAge
-      type: float
-      flags: 2
-      group: 1
-    - id: 931
-      declaration_id: 923
-      name: Delta
-      type: float
-      flags: 2
-      group: 2
-      binding:
-        kind: delta_time
+      CollectionAge: {declaration_id: 922, type: float, flags: 2, group: 1}
+      Delta:
+        declaration_id: 923
+        type: float
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
     outputs:
-    - id: 932
-      declaration_id: 924
-      name: Result
-      type: double
-      flags: 2
-      group: 3
+      Result: {declaration_id: 924, type: double, flags: 2, group: 3}
   edges:
-  - from: 8
-    from_pin: 7
-    to: 237
-    to_pin: 233
-  - from: 223
-    from_pin: 224
-    to: 929
-    to_pin: 930
-  - from: 223
-    from_pin: 225
-    to: 232
-    to_pin: 230
-  - from: 223
-    from_pin: 225
-    to: 274
-    to_pin: 272
-  - from: 223
-    from_pin: 225
-    to: 285
-    to_pin: 282
-  - from: 223
-    from_pin: 225
-    to: 328
-    to_pin: 326
-  - from: 223
-    from_pin: 226
-    to: 441
-    to_pin: 438
-  - from: 223
-    from_pin: 227
-    to: 279
-    to_pin: 277
-  - from: 232
-    from_pin: 231
-    to: 237
-    to_pin: 234
-  - from: 237
-    from_pin: 235
-    to: 255
-    to_pin: 250
-  - from: 237
-    from_pin: 236
-    to: 241
-    to_pin: 238
-  - from: 243
-    from_pin: 242
-    to: 241
-    to_pin: 239
-  - from: 255
-    from_pin: 253
-    to: 265
-    to_pin: 261
-  - from: 255
-    from_pin: 256
-    to: 260
-    to_pin: 257
-  - from: 255
-    from_pin: 256
-    to: 636
-    to_pin: 637
-  - from: 260
-    from_pin: 259
-    to: 265
-    to_pin: 262
-  - from: 265
-    from_pin: 263
-    to: 271
-    to_pin: 266
-  - from: 265
-    from_pin: 264
-    to: 384
-    to_pin: 379
-  - from: 271
-    from_pin: 269
-    to: 285
-    to_pin: 280
-  - from: 274
-    from_pin: 275
-    to: 279
-    to_pin: 276
-  - from: 279
-    from_pin: 278
-    to: 285
-    to_pin: 281
-  - from: 285
-    from_pin: 283
-    to: 289
-    to_pin: 286
-  - from: 291
-    from_pin: 290
-    to: 289
-    to_pin: 287
-  - from: 328
-    from_pin: 329
-    to: 784
-    to_pin: 785
-  - from: 328
-    from_pin: 329
-    to: 868
-    to_pin: 872
-  - from: 328
-    from_pin: 330
-    to: 784
-    to_pin: 790
-  - from: 328
-    from_pin: 330
-    to: 868
-    to_pin: 869
-  - from: 384
-    from_pin: 382
-    to: 390
-    to_pin: 385
-  - from: 390
-    from_pin: 388
-    to: 396
-    to_pin: 391
-  - from: 396
-    from_pin: 394
-    to: 410
-    to_pin: 405
-  - from: 410
-    from_pin: 408
-    to: 10
-    to_pin: 9
-  - from: 441
-    from_pin: 439
-    to: 784
-    to_pin: 787
-  - from: 441
-    from_pin: 439
-    to: 868
-    to_pin: 871
-  - from: 441
-    from_pin: 440
-    to: 784
-    to_pin: 789
-  - from: 441
-    from_pin: 440
-    to: 868
-    to_pin: 874
-  - from: 445
-    from_pin: 444
-    to: 232
-    to_pin: 442
-  - from: 636
-    from_pin: 638
-    to: 660
-    to_pin: 661
-  - from: 636
-    from_pin: 638
-    to: 706
-    to_pin: 707
-  - from: 636
-    from_pin: 638
-    to: 784
-    to_pin: 791
-  - from: 636
-    from_pin: 638
-    to: 868
-    to_pin: 875
-  - from: 636
-    from_pin: 638
-    to: 914
-    to_pin: 915
-  - from: 660
-    from_pin: 662
-    to: 784
-    to_pin: 788
-  - from: 660
-    from_pin: 662
-    to: 868
-    to_pin: 873
-  - from: 660
-    from_pin: 662
-    to: 889
-    to_pin: 891
-  - from: 706
-    from_pin: 708
-    to: 784
-    to_pin: 786
-  - from: 706
-    from_pin: 708
-    to: 868
-    to_pin: 870
-  - from: 784
-    from_pin: 792
-    to: 384
-    to_pin: 380
-  - from: 868
-    from_pin: 876
-    to: 390
-    to_pin: 386
-  - from: 889
-    from_pin: 892
-    to: 396
-    to_pin: 392
-  - from: 914
-    from_pin: 916
-    to: 410
-    to_pin: 406
-  - from: 929
-    from_pin: 932
-    to: 255
-    to_pin: 251
+  - {from: 8.Then, to: 237.Exec}
+  - {from: 223.Value.collection_age, to: 929.CollectionAge}
+  - {from: 223.Value.target, to: 232.Item}
+  - {from: 223.Value.target, to: 274.Entity}
+  - {from: 223.Value.target, to: 285.Target}
+  - {from: 223.Value.target, to: 328.Entity}
+  - {from: 223.Value.origin, to: 441.Value}
+  - {from: 223.Value.value, to: 279.B}
+  - {from: 232.Result, to: 237.Condition}
+  - {from: 237.True, to: 255.Exec}
+  - {from: 237.False, to: 241.Exec}
+  - {from: 243.Entity, to: 241.Entity}
+  - {from: 255.Then, to: 265.Exec}
+  - {from: 255.Value.collection_age, to: 260.A}
+  - {from: 255.Value.collection_age, to: 636.CollectionAge}
+  - {from: 260.Result, to: 265.Condition}
+  - {from: 265.True, to: 271.Exec}
+  - {from: 265.False, to: 384.Exec}
+  - {from: 271.Then, to: 285.Exec}
+  - {from: 274.Value.current, to: 279.A}
+  - {from: 279.Result, to: 285.Value}
+  - {from: 285.Then, to: 289.Exec}
+  - {from: 291.Entity, to: 289.Entity}
+  - {from: 328.Value.x, to: 784.TargetX}
+  - {from: 328.Value.x, to: 868.TargetX}
+  - {from: 328.Value.y, to: 784.TargetY}
+  - {from: 328.Value.y, to: 868.TargetY}
+  - {from: 384.Then, to: 390.Exec}
+  - {from: 390.Then, to: 396.Exec}
+  - {from: 396.Then, to: 410.Exec}
+  - {from: 410.Then, to: 10.Exec}
+  - {from: 441.x, to: 784.OriginX}
+  - {from: 441.x, to: 868.OriginX}
+  - {from: 441.y, to: 784.OriginY}
+  - {from: 441.y, to: 868.OriginY}
+  - {from: 445.Entities, to: 232.Array}
+  - {from: 636.Result, to: 660.T}
+  - {from: 636.Result, to: 706.T}
+  - {from: 636.Result, to: 784.T}
+  - {from: 636.Result, to: 868.T}
+  - {from: 636.Result, to: 914.T}
+  - {from: 660.Result, to: 784.Theta}
+  - {from: 660.Result, to: 868.Theta}
+  - {from: 660.Result, to: 889.Theta}
+  - {from: 706.Result, to: 784.Weight}
+  - {from: 706.Result, to: 868.Weight}
+  - {from: 784.Result, to: 384.Value}
+  - {from: 868.Result, to: 390.Value}
+  - {from: 889.Result, to: 396.Value}
+  - {from: 914.Result, to: 410.Value}
+  - {from: 929.Result, to: 255.Value}
 - id: 140
   kind: function
   name: Start Collection
@@ -1191,170 +554,89 @@ graphs:
   - id: 142
     type: Function Entry
     outputs:
-    - id: 141
-      name: Then
-    - id: 145
-      name: Radius
-      type: float
-      kind: data
-      default: 48.0
+    - {id: 141, name: Then}
+    - {id: 145, name: Radius, type: float, kind: data, default: 48.0}
   - id: 144
     type: Return
-    inputs: [143]
+    inputs:
+      Exec: {id: 143}
   - id: 156
     type: Integer Equal
     inputs:
-    - id: 153
-      binding:
-        kind: component_field
-        component: GAME.GamePickup
-        field: state
-    - 154
-    outputs: [155]
+      A:
+        id: 153
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
   - id: 161
     type: Branch
-    inputs: [157, 158]
-    outputs: [159, 160]
+    inputs:
+      Exec: {id: 157}
   - id: 163
     type: Get_GameTransform
     outputs:
-    - id: 162
-      flags: 0
+      Value: {id: 162, flags: 0}
   - id: 172
     type: Find Nearest Entity
     inputs:
-    - 164
-    - id: 165
-      default: 48.0
-    - id: 166
-      default: 1
-    - 167
-    outputs: [168, 169, 170, 171]
+      Position: {id: 164}
+      Radius: 48.0
+      Categories: 1
   - id: 177
     type: Branch
-    inputs: [173, 174]
-    outputs: [175, 176]
+    inputs:
+      Exec: {id: 173}
   - id: 180
     type: HasEntity_GameExperience
-    inputs: [178]
+    inputs:
+      Entity: {id: 178}
     outputs:
-    - id: 179
-      name: Result
+    - {id: 179, name: Result}
   - id: 185
     type: Branch
-    inputs: [181, 182]
-    outputs: [183, 184]
+    inputs:
+      Exec: {id: 181}
   - id: 191
     type: Set_GamePickup_target
-    inputs: [186, 187, 188]
-    outputs: [189, 190]
+    inputs:
+      Exec: {id: 186}
   - id: 197
     type: Set_GamePickup_origin
-    inputs: [192, 193, 194]
-    outputs: [195, 196]
+    inputs:
+      Exec: {id: 192}
   - id: 203
     type: Set_GamePickup_collection_age
-    inputs: [198, 199, 200]
-    outputs: [201, 202]
+    inputs:
+      Exec: {id: 198}
   - id: 209
     type: Set_GamePickup_state
     inputs:
-    - 204
-    - id: 205
-      default: 1
-    - 206
-    outputs: [207, 208]
+      Exec: {id: 204}
+      Value: 1
   - id: 215
     type: Set_GameTrail_width
     inputs:
-    - 210
-    - id: 211
-      default: 0.6499999761581421
-    - 212
-    outputs: [213, 214]
+      Exec: {id: 210}
+      Value: 0.6499999761581421
   edges:
-  - from: 142
-    from_pin: 141
-    to: 161
-    to_pin: 157
-  - from: 142
-    from_pin: 145
-    to: 172
-    to_pin: 165
-  - from: 156
-    from_pin: 155
-    to: 161
-    to_pin: 158
-  - from: 161
-    from_pin: 159
-    to: 177
-    to_pin: 173
-  - from: 161
-    from_pin: 160
-    to: 144
-    to_pin: 143
-  - from: 163
-    from_pin: 162
-    to: 172
-    to_pin: 164
-    conversion: game_transform_to_cf
-  - from: 163
-    from_pin: 162
-    to: 197
-    to_pin: 193
-    conversion: game_transform_to_cf
-  - from: 172
-    from_pin: 168
-    to: 177
-    to_pin: 174
-  - from: 172
-    from_pin: 169
-    to: 180
-    to_pin: 178
-  - from: 172
-    from_pin: 169
-    to: 191
-    to_pin: 187
-  - from: 177
-    from_pin: 175
-    to: 185
-    to_pin: 181
-  - from: 177
-    from_pin: 176
-    to: 144
-    to_pin: 143
-  - from: 180
-    from_pin: 179
-    to: 185
-    to_pin: 182
-  - from: 185
-    from_pin: 183
-    to: 191
-    to_pin: 186
-  - from: 185
-    from_pin: 184
-    to: 144
-    to_pin: 143
-  - from: 191
-    from_pin: 189
-    to: 197
-    to_pin: 192
-  - from: 197
-    from_pin: 195
-    to: 203
-    to_pin: 198
-  - from: 203
-    from_pin: 201
-    to: 209
-    to_pin: 204
-  - from: 209
-    from_pin: 207
-    to: 215
-    to_pin: 210
-  - from: 215
-    from_pin: 213
-    to: 144
-    to_pin: 143
+  - {from: 142.Then, to: 161.Exec}
+  - {from: 142.Radius, to: 172.Radius}
+  - {from: 156.Result, to: 161.Condition}
+  - {from: 161.True, to: 177.Exec}
+  - {from: 161.False, to: 144.Exec}
+  - {from: 163.Value, to: 172.Position, conversion: game_transform_to_cf}
+  - {from: 163.Value, to: 197.Value, conversion: game_transform_to_cf}
+  - {from: 172.Found, to: 177.Condition}
+  - {from: 172.Entity, to: 180.Entity}
+  - {from: 172.Entity, to: 191.Value}
+  - {from: 177.True, to: 185.Exec}
+  - {from: 177.False, to: 144.Exec}
+  - {from: 180.Result, to: 185.Condition}
+  - {from: 185.True, to: 191.Exec}
+  - {from: 185.False, to: 144.Exec}
+  - {from: 191.Then, to: 197.Exec}
+  - {from: 197.Then, to: 203.Exec}
+  - {from: 203.Then, to: 209.Exec}
+  - {from: 209.Then, to: 215.Exec}
+  - {from: 215.Then, to: 144.Exec}
 - id: 512
   kind: function
   name: Pulse Angle
@@ -1367,74 +649,37 @@ graphs:
   - id: 513
     type: Function Entry
     outputs:
-    - id: 517
-      name: Eased
-      type: double
-      kind: data
-      flags: 2
-      group: 1
+    - {id: 517, name: Eased, type: double, kind: data, flags: 2, group: 1}
   - id: 515
     type: Return
     inputs:
-    - id: 518
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 518, name: Result, type: double, kind: data, flags: 2, group: 2}
   - id: 519
     type: Real
-    inputs:
-    - id: 520
-      default: 2.0
-    outputs: [521]
+    inputs: {Value: 2.0}
   - id: 522
     type: Multiply
     inputs:
-    - id: 523
-      type: double
-    - id: 524
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 525
-      type: double
+      Result: {type: double}
   - id: 526
     type: Real
-    inputs:
-    - id: 527
-      default: 3.141592653589793
-    outputs: [528]
+    inputs: {Value: 3.141592653589793}
   - id: 529
     type: Multiply
     inputs:
-    - id: 530
-      type: double
-    - id: 531
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 532
-      type: double
+      Result: {type: double}
   edges:
-  - from: 513
-    from_pin: 517
-    to: 522
-    to_pin: 523
-  - from: 519
-    from_pin: 521
-    to: 522
-    to_pin: 524
-  - from: 522
-    from_pin: 525
-    to: 529
-    to_pin: 530
-  - from: 526
-    from_pin: 528
-    to: 529
-    to_pin: 531
-  - from: 529
-    from_pin: 532
-    to: 515
-    to_pin: 518
+  - {from: 513.Eased, to: 522.A}
+  - {from: 519.Value, to: 522.B}
+  - {from: 522.Result, to: 529.A}
+  - {from: 526.Value, to: 529.B}
+  - {from: 529.Result, to: 515.Result}
 - id: 536
   kind: function
   name: Pulse Fade
@@ -1447,120 +692,57 @@ graphs:
   - id: 537
     type: Function Entry
     outputs:
-    - id: 541
-      name: Lifetime
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 542
-      name: UpdatedAge
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 541, name: Lifetime, type: double, kind: data, flags: 2, group: 1}
+    - {id: 542, name: UpdatedAge, type: double, kind: data, flags: 2, group: 2}
   - id: 539
     type: Return
     inputs:
-    - id: 543
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 543, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 544
     type: Subtract
     inputs:
-    - id: 545
-      type: double
-    - id: 546
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 547
-      type: double
+      Result: {type: double}
   - id: 548
     type: Real
-    inputs:
-    - id: 549
-      default: 2.0
-    outputs: [550]
+    inputs: {Value: 2.0}
   - id: 551
     type: Divide
     inputs:
-    - id: 552
-      type: double
-    - id: 553
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 554
-      type: double
-  - id: 555
-    type: Real
-    inputs: [556]
-    outputs: [557]
+      Result: {type: double}
+  - {id: 555, type: Real}
   - id: 558
     type: Max
     inputs:
-    - id: 559
-      type: double
-    - id: 560
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 561
-      type: double
+      Result: {type: double}
   - id: 562
     type: Real
-    inputs:
-    - id: 563
-      default: 1.0
-    outputs: [564]
+    inputs: {Value: 1.0}
   - id: 565
     type: Min
     inputs:
-    - id: 566
-      type: double
-    - id: 567
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 568
-      type: double
+      Result: {type: double}
   edges:
-  - from: 537
-    from_pin: 541
-    to: 544
-    to_pin: 545
-  - from: 537
-    from_pin: 542
-    to: 544
-    to_pin: 546
-  - from: 544
-    from_pin: 547
-    to: 551
-    to_pin: 552
-  - from: 548
-    from_pin: 550
-    to: 551
-    to_pin: 553
-  - from: 551
-    from_pin: 554
-    to: 558
-    to_pin: 559
-  - from: 555
-    from_pin: 557
-    to: 558
-    to_pin: 560
-  - from: 558
-    from_pin: 561
-    to: 565
-    to_pin: 566
-  - from: 562
-    from_pin: 564
-    to: 565
-    to_pin: 567
-  - from: 565
-    from_pin: 568
-    to: 539
-    to_pin: 543
+  - {from: 537.Lifetime, to: 544.A}
+  - {from: 537.UpdatedAge, to: 544.B}
+  - {from: 544.Result, to: 551.A}
+  - {from: 548.Value, to: 551.B}
+  - {from: 551.Result, to: 558.A}
+  - {from: 555.Value, to: 558.B}
+  - {from: 558.Result, to: 565.A}
+  - {from: 562.Value, to: 565.B}
+  - {from: 565.Result, to: 539.Result}
 - id: 573
   kind: function
   name: Pulse Yaw
@@ -1573,50 +755,23 @@ graphs:
   - id: 574
     type: Function Entry
     outputs:
-    - id: 578
-      name: Angle
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 579
-      name: BaseRotation
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 578, name: Angle, type: double, kind: data, flags: 2, group: 1}
+    - {id: 579, name: BaseRotation, type: double, kind: data, flags: 2, group: 2}
   - id: 576
     type: Return
     inputs:
-    - id: 580
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 580, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 581
     type: Add
     inputs:
-    - id: 582
-      type: double
-    - id: 583
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 584
-      type: double
+      Result: {type: double}
   edges:
-  - from: 574
-    from_pin: 578
-    to: 581
-    to_pin: 582
-  - from: 574
-    from_pin: 579
-    to: 581
-    to_pin: 583
-  - from: 581
-    from_pin: 584
-    to: 576
-    to_pin: 580
+  - {from: 574.Angle, to: 581.A}
+  - {from: 574.BaseRotation, to: 581.B}
+  - {from: 581.Result, to: 576.Result}
 - id: 589
   kind: function
   name: Pulse Scale
@@ -1629,106 +784,49 @@ graphs:
   - id: 590
     type: Function Entry
     outputs:
-    - id: 594
-      name: Angle
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 595
-      name: Fade
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 594, name: Angle, type: double, kind: data, flags: 2, group: 1}
+    - {id: 595, name: Fade, type: double, kind: data, flags: 2, group: 2}
   - id: 592
     type: Return
     inputs:
-    - id: 596
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 596, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 597
     type: Real
-    inputs:
-    - id: 598
-      default: 0.9
-    outputs: [599]
+    inputs: {Value: 0.9}
   - id: 600
     type: Real
-    inputs:
-    - id: 601
-      default: 0.1
-    outputs: [602]
-  - id: 603
-    type: Cosine
-    inputs: [604]
-    outputs: [605]
+    inputs: {Value: 0.1}
+  - {id: 603, type: Cosine}
   - id: 606
     type: Multiply
     inputs:
-    - id: 607
-      type: double
-    - id: 608
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 609
-      type: double
+      Result: {type: double}
   - id: 610
     type: Add
     inputs:
-    - id: 611
-      type: double
-    - id: 612
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 613
-      type: double
+      Result: {type: double}
   - id: 614
     type: Multiply
     inputs:
-    - id: 615
-      type: double
-    - id: 616
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 617
-      type: double
+      Result: {type: double}
   edges:
-  - from: 590
-    from_pin: 594
-    to: 603
-    to_pin: 604
-  - from: 590
-    from_pin: 595
-    to: 614
-    to_pin: 616
-  - from: 597
-    from_pin: 599
-    to: 610
-    to_pin: 611
-  - from: 600
-    from_pin: 602
-    to: 606
-    to_pin: 607
-  - from: 603
-    from_pin: 605
-    to: 606
-    to_pin: 608
-  - from: 606
-    from_pin: 609
-    to: 610
-    to_pin: 612
-  - from: 610
-    from_pin: 613
-    to: 614
-    to_pin: 615
-  - from: 614
-    from_pin: 617
-    to: 592
-    to_pin: 596
+  - {from: 590.Angle, to: 603.Value}
+  - {from: 590.Fade, to: 614.B}
+  - {from: 597.Value, to: 610.A}
+  - {from: 600.Value, to: 606.A}
+  - {from: 603.Result, to: 606.B}
+  - {from: 606.Result, to: 610.B}
+  - {from: 610.Result, to: 614.A}
+  - {from: 614.Result, to: 592.Result}
 - id: 622
   kind: function
   name: Spiral T
@@ -1741,50 +839,25 @@ graphs:
   - id: 623
     type: Function Entry
     outputs:
-    - id: 627
-      name: CollectionAge
-      type: double
-      kind: data
-      flags: 2
-      group: 1
+    - {id: 627, name: CollectionAge, type: double, kind: data, flags: 2, group: 1}
   - id: 625
     type: Return
     inputs:
-    - id: 628
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 628, name: Result, type: double, kind: data, flags: 2, group: 2}
   - id: 629
     type: Real
-    inputs:
-    - id: 630
-      default: 0.6
-    outputs: [631]
+    inputs: {Value: 0.6}
   - id: 632
     type: Divide
     inputs:
-    - id: 633
-      type: double
-    - id: 634
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 635
-      type: double
+      Result: {type: double}
   edges:
-  - from: 623
-    from_pin: 627
-    to: 632
-    to_pin: 633
-  - from: 629
-    from_pin: 631
-    to: 632
-    to_pin: 634
-  - from: 632
-    from_pin: 635
-    to: 625
-    to_pin: 628
+  - {from: 623.CollectionAge, to: 632.A}
+  - {from: 629.Value, to: 632.B}
+  - {from: 632.Result, to: 625.Result}
 - id: 639
   kind: function
   name: Spiral Angle
@@ -1797,74 +870,37 @@ graphs:
   - id: 640
     type: Function Entry
     outputs:
-    - id: 644
-      name: T
-      type: double
-      kind: data
-      flags: 2
-      group: 1
+    - {id: 644, name: T, type: double, kind: data, flags: 2, group: 1}
   - id: 642
     type: Return
     inputs:
-    - id: 645
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 645, name: Result, type: double, kind: data, flags: 2, group: 2}
   - id: 646
     type: Real
-    inputs:
-    - id: 647
-      default: 2.5
-    outputs: [648]
+    inputs: {Value: 2.5}
   - id: 649
     type: Multiply
     inputs:
-    - id: 650
-      type: double
-    - id: 651
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 652
-      type: double
+      Result: {type: double}
   - id: 653
     type: Real
-    inputs:
-    - id: 654
-      default: 3.141592653589793
-    outputs: [655]
+    inputs: {Value: 3.141592653589793}
   - id: 656
     type: Multiply
     inputs:
-    - id: 657
-      type: double
-    - id: 658
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 659
-      type: double
+      Result: {type: double}
   edges:
-  - from: 640
-    from_pin: 644
-    to: 649
-    to_pin: 650
-  - from: 646
-    from_pin: 648
-    to: 649
-    to_pin: 651
-  - from: 649
-    from_pin: 652
-    to: 656
-    to_pin: 657
-  - from: 653
-    from_pin: 655
-    to: 656
-    to_pin: 658
-  - from: 656
-    from_pin: 659
-    to: 642
-    to_pin: 645
+  - {from: 640.T, to: 649.A}
+  - {from: 646.Value, to: 649.B}
+  - {from: 649.Result, to: 656.A}
+  - {from: 653.Value, to: 656.B}
+  - {from: 656.Result, to: 642.Result}
 - id: 663
   kind: function
   name: Spiral Weight
@@ -1877,158 +913,79 @@ graphs:
   - id: 664
     type: Function Entry
     outputs:
-    - id: 668
-      name: T
-      type: double
-      kind: data
-      flags: 2
-      group: 1
+    - {id: 668, name: T, type: double, kind: data, flags: 2, group: 1}
   - id: 666
     type: Return
     inputs:
-    - id: 669
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 669, name: Result, type: double, kind: data, flags: 2, group: 2}
   - id: 670
     type: Real
-    inputs:
-    - id: 671
-      default: 1.0
-    outputs: [672]
+    inputs: {Value: 1.0}
   - id: 673
     type: Subtract
     inputs:
-    - id: 674
-      type: double
-    - id: 675
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 676
-      type: double
+      Result: {type: double}
   - id: 677
     type: Real
-    inputs:
-    - id: 678
-      default: 1.0
-    outputs: [679]
+    inputs: {Value: 1.0}
   - id: 680
     type: Subtract
     inputs:
-    - id: 681
-      type: double
-    - id: 682
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 683
-      type: double
+      Result: {type: double}
   - id: 684
     type: Multiply
     inputs:
-    - id: 685
-      type: double
-    - id: 686
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 687
-      type: double
+      Result: {type: double}
   - id: 688
     type: Real
-    inputs:
-    - id: 689
-      default: 1.0
-    outputs: [690]
+    inputs: {Value: 1.0}
   - id: 691
     type: Real
-    inputs:
-    - id: 692
-      default: 5.0
-    outputs: [693]
+    inputs: {Value: 5.0}
   - id: 694
     type: Multiply
     inputs:
-    - id: 695
-      type: double
-    - id: 696
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 697
-      type: double
+      Result: {type: double}
   - id: 698
     type: Add
     inputs:
-    - id: 699
-      type: double
-    - id: 700
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 701
-      type: double
+      Result: {type: double}
   - id: 702
     type: Multiply
     inputs:
-    - id: 703
-      type: double
-    - id: 704
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 705
-      type: double
+      Result: {type: double}
   edges:
-  - from: 664
-    from_pin: 668
-    to: 673
-    to_pin: 675
-  - from: 664
-    from_pin: 668
-    to: 680
-    to_pin: 682
-  - from: 664
-    from_pin: 668
-    to: 694
-    to_pin: 696
-  - from: 670
-    from_pin: 672
-    to: 673
-    to_pin: 674
-  - from: 673
-    from_pin: 676
-    to: 684
-    to_pin: 685
-  - from: 677
-    from_pin: 679
-    to: 680
-    to_pin: 681
-  - from: 680
-    from_pin: 683
-    to: 684
-    to_pin: 686
-  - from: 684
-    from_pin: 687
-    to: 702
-    to_pin: 703
-  - from: 688
-    from_pin: 690
-    to: 698
-    to_pin: 699
-  - from: 691
-    from_pin: 693
-    to: 694
-    to_pin: 695
-  - from: 694
-    from_pin: 697
-    to: 698
-    to_pin: 700
-  - from: 698
-    from_pin: 701
-    to: 702
-    to_pin: 704
-  - from: 702
-    from_pin: 705
-    to: 666
-    to_pin: 669
+  - {from: 664.T, to: 673.B}
+  - {from: 664.T, to: 680.B}
+  - {from: 664.T, to: 694.B}
+  - {from: 670.Value, to: 673.A}
+  - {from: 673.Result, to: 684.A}
+  - {from: 677.Value, to: 680.A}
+  - {from: 680.Result, to: 684.B}
+  - {from: 684.Result, to: 702.A}
+  - {from: 688.Value, to: 698.A}
+  - {from: 691.Value, to: 694.A}
+  - {from: 694.Result, to: 698.B}
+  - {from: 698.Result, to: 702.B}
+  - {from: 702.Result, to: 666.Result}
 - id: 709
   kind: function
   name: Spiral X
@@ -2041,304 +998,132 @@ graphs:
   - id: 710
     type: Function Entry
     outputs:
-    - id: 714
-      name: TargetX
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 715
-      name: Weight
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 716
-      name: OriginX
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 717
-      name: Theta
-      type: double
-      kind: data
-      flags: 2
-      group: 4
-    - id: 718
-      name: OriginY
-      type: double
-      kind: data
-      flags: 2
-      group: 5
-    - id: 719
-      name: TargetY
-      type: double
-      kind: data
-      flags: 2
-      group: 6
-    - id: 720
-      name: T
-      type: double
-      kind: data
-      flags: 2
-      group: 7
+    - {id: 714, name: TargetX, type: double, kind: data, flags: 2, group: 1}
+    - {id: 715, name: Weight, type: double, kind: data, flags: 2, group: 2}
+    - {id: 716, name: OriginX, type: double, kind: data, flags: 2, group: 3}
+    - {id: 717, name: Theta, type: double, kind: data, flags: 2, group: 4}
+    - {id: 718, name: OriginY, type: double, kind: data, flags: 2, group: 5}
+    - {id: 719, name: TargetY, type: double, kind: data, flags: 2, group: 6}
+    - {id: 720, name: T, type: double, kind: data, flags: 2, group: 7}
   - id: 712
     type: Return
     inputs:
-    - id: 721
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 8
+    - {id: 721, name: Result, type: double, kind: data, flags: 2, group: 8}
   - id: 722
     type: Subtract
     inputs:
-    - id: 723
-      type: double
-    - id: 724
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 725
-      type: double
-  - id: 726
-    type: Cosine
-    inputs: [727]
-    outputs: [728]
+      Result: {type: double}
+  - {id: 726, type: Cosine}
   - id: 729
     type: Multiply
     inputs:
-    - id: 730
-      type: double
-    - id: 731
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 732
-      type: double
+      Result: {type: double}
   - id: 733
     type: Subtract
     inputs:
-    - id: 734
-      type: double
-    - id: 735
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 736
-      type: double
-  - id: 737
-    type: Sine
-    inputs: [738]
-    outputs: [739]
+      Result: {type: double}
+  - {id: 737, type: Sine}
   - id: 740
     type: Multiply
     inputs:
-    - id: 741
-      type: double
-    - id: 742
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 743
-      type: double
+      Result: {type: double}
   - id: 744
     type: Subtract
     inputs:
-    - id: 745
-      type: double
-    - id: 746
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 747
-      type: double
+      Result: {type: double}
   - id: 748
     type: Multiply
     inputs:
-    - id: 749
-      type: double
-    - id: 750
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 751
-      type: double
+      Result: {type: double}
   - id: 752
     type: Add
     inputs:
-    - id: 753
-      type: double
-    - id: 754
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 755
-      type: double
+      Result: {type: double}
   - id: 756
     type: Real
-    inputs:
-    - id: 757
-      default: 12.0
-    outputs: [758]
+    inputs: {Value: 12.0}
   - id: 759
     type: Real
-    inputs:
-    - id: 760
-      default: 3.141592653589793
-    outputs: [761]
+    inputs: {Value: 3.141592653589793}
   - id: 762
     type: Multiply
     inputs:
-    - id: 763
-      type: double
-    - id: 764
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 765
-      type: double
-  - id: 766
-    type: Sine
-    inputs: [767]
-    outputs: [768]
+      Result: {type: double}
+  - {id: 766, type: Sine}
   - id: 769
     type: Multiply
     inputs:
-    - id: 770
-      type: double
-    - id: 771
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 772
-      type: double
-  - id: 773
-    type: Cosine
-    inputs: [774]
-    outputs: [775]
+      Result: {type: double}
+  - {id: 773, type: Cosine}
   - id: 776
     type: Multiply
     inputs:
-    - id: 777
-      type: double
-    - id: 778
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 779
-      type: double
+      Result: {type: double}
   - id: 780
     type: Add
     inputs:
-    - id: 781
-      type: double
-    - id: 782
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 783
-      type: double
+      Result: {type: double}
   edges:
-  - from: 710
-    from_pin: 714
-    to: 722
-    to_pin: 724
-  - from: 710
-    from_pin: 714
-    to: 752
-    to_pin: 753
-  - from: 710
-    from_pin: 715
-    to: 748
-    to_pin: 749
-  - from: 710
-    from_pin: 716
-    to: 722
-    to_pin: 723
-  - from: 710
-    from_pin: 717
-    to: 726
-    to_pin: 727
-  - from: 710
-    from_pin: 717
-    to: 737
-    to_pin: 738
-  - from: 710
-    from_pin: 717
-    to: 773
-    to_pin: 774
-  - from: 710
-    from_pin: 718
-    to: 733
-    to_pin: 734
-  - from: 710
-    from_pin: 719
-    to: 733
-    to_pin: 735
-  - from: 710
-    from_pin: 720
-    to: 762
-    to_pin: 764
-  - from: 722
-    from_pin: 725
-    to: 729
-    to_pin: 730
-  - from: 726
-    from_pin: 728
-    to: 729
-    to_pin: 731
-  - from: 729
-    from_pin: 732
-    to: 744
-    to_pin: 745
-  - from: 733
-    from_pin: 736
-    to: 740
-    to_pin: 741
-  - from: 737
-    from_pin: 739
-    to: 740
-    to_pin: 742
-  - from: 740
-    from_pin: 743
-    to: 744
-    to_pin: 746
-  - from: 744
-    from_pin: 747
-    to: 748
-    to_pin: 750
-  - from: 748
-    from_pin: 751
-    to: 752
-    to_pin: 754
-  - from: 752
-    from_pin: 755
-    to: 780
-    to_pin: 781
-  - from: 756
-    from_pin: 758
-    to: 769
-    to_pin: 770
-  - from: 759
-    from_pin: 761
-    to: 762
-    to_pin: 763
-  - from: 762
-    from_pin: 765
-    to: 766
-    to_pin: 767
-  - from: 766
-    from_pin: 768
-    to: 769
-    to_pin: 771
-  - from: 769
-    from_pin: 772
-    to: 776
-    to_pin: 777
-  - from: 773
-    from_pin: 775
-    to: 776
-    to_pin: 778
-  - from: 776
-    from_pin: 779
-    to: 780
-    to_pin: 782
-  - from: 780
-    from_pin: 783
-    to: 712
-    to_pin: 721
+  - {from: 710.TargetX, to: 722.B}
+  - {from: 710.TargetX, to: 752.A}
+  - {from: 710.Weight, to: 748.A}
+  - {from: 710.OriginX, to: 722.A}
+  - {from: 710.Theta, to: 726.Value}
+  - {from: 710.Theta, to: 737.Value}
+  - {from: 710.Theta, to: 773.Value}
+  - {from: 710.OriginY, to: 733.A}
+  - {from: 710.TargetY, to: 733.B}
+  - {from: 710.T, to: 762.B}
+  - {from: 722.Result, to: 729.A}
+  - {from: 726.Result, to: 729.B}
+  - {from: 729.Result, to: 744.A}
+  - {from: 733.Result, to: 740.A}
+  - {from: 737.Result, to: 740.B}
+  - {from: 740.Result, to: 744.B}
+  - {from: 744.Result, to: 748.B}
+  - {from: 748.Result, to: 752.B}
+  - {from: 752.Result, to: 780.A}
+  - {from: 756.Value, to: 769.A}
+  - {from: 759.Value, to: 762.A}
+  - {from: 762.Result, to: 766.Value}
+  - {from: 766.Result, to: 769.B}
+  - {from: 769.Result, to: 776.A}
+  - {from: 773.Result, to: 776.B}
+  - {from: 776.Result, to: 780.B}
+  - {from: 780.Result, to: 712.Result}
 - id: 793
   kind: function
   name: Spiral Y
@@ -2351,304 +1136,132 @@ graphs:
   - id: 794
     type: Function Entry
     outputs:
-    - id: 798
-      name: TargetY
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 799
-      name: Weight
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 800
-      name: OriginX
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 801
-      name: TargetX
-      type: double
-      kind: data
-      flags: 2
-      group: 4
-    - id: 802
-      name: Theta
-      type: double
-      kind: data
-      flags: 2
-      group: 5
-    - id: 803
-      name: OriginY
-      type: double
-      kind: data
-      flags: 2
-      group: 6
-    - id: 804
-      name: T
-      type: double
-      kind: data
-      flags: 2
-      group: 7
+    - {id: 798, name: TargetY, type: double, kind: data, flags: 2, group: 1}
+    - {id: 799, name: Weight, type: double, kind: data, flags: 2, group: 2}
+    - {id: 800, name: OriginX, type: double, kind: data, flags: 2, group: 3}
+    - {id: 801, name: TargetX, type: double, kind: data, flags: 2, group: 4}
+    - {id: 802, name: Theta, type: double, kind: data, flags: 2, group: 5}
+    - {id: 803, name: OriginY, type: double, kind: data, flags: 2, group: 6}
+    - {id: 804, name: T, type: double, kind: data, flags: 2, group: 7}
   - id: 796
     type: Return
     inputs:
-    - id: 805
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 8
+    - {id: 805, name: Result, type: double, kind: data, flags: 2, group: 8}
   - id: 806
     type: Subtract
     inputs:
-    - id: 807
-      type: double
-    - id: 808
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 809
-      type: double
-  - id: 810
-    type: Sine
-    inputs: [811]
-    outputs: [812]
+      Result: {type: double}
+  - {id: 810, type: Sine}
   - id: 813
     type: Multiply
     inputs:
-    - id: 814
-      type: double
-    - id: 815
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 816
-      type: double
+      Result: {type: double}
   - id: 817
     type: Subtract
     inputs:
-    - id: 818
-      type: double
-    - id: 819
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 820
-      type: double
-  - id: 821
-    type: Cosine
-    inputs: [822]
-    outputs: [823]
+      Result: {type: double}
+  - {id: 821, type: Cosine}
   - id: 824
     type: Multiply
     inputs:
-    - id: 825
-      type: double
-    - id: 826
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 827
-      type: double
+      Result: {type: double}
   - id: 828
     type: Add
     inputs:
-    - id: 829
-      type: double
-    - id: 830
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 831
-      type: double
+      Result: {type: double}
   - id: 832
     type: Multiply
     inputs:
-    - id: 833
-      type: double
-    - id: 834
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 835
-      type: double
+      Result: {type: double}
   - id: 836
     type: Add
     inputs:
-    - id: 837
-      type: double
-    - id: 838
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 839
-      type: double
+      Result: {type: double}
   - id: 840
     type: Real
-    inputs:
-    - id: 841
-      default: 12.0
-    outputs: [842]
+    inputs: {Value: 12.0}
   - id: 843
     type: Real
-    inputs:
-    - id: 844
-      default: 3.141592653589793
-    outputs: [845]
+    inputs: {Value: 3.141592653589793}
   - id: 846
     type: Multiply
     inputs:
-    - id: 847
-      type: double
-    - id: 848
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 849
-      type: double
-  - id: 850
-    type: Sine
-    inputs: [851]
-    outputs: [852]
+      Result: {type: double}
+  - {id: 850, type: Sine}
   - id: 853
     type: Multiply
     inputs:
-    - id: 854
-      type: double
-    - id: 855
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 856
-      type: double
-  - id: 857
-    type: Sine
-    inputs: [858]
-    outputs: [859]
+      Result: {type: double}
+  - {id: 857, type: Sine}
   - id: 860
     type: Multiply
     inputs:
-    - id: 861
-      type: double
-    - id: 862
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 863
-      type: double
+      Result: {type: double}
   - id: 864
     type: Add
     inputs:
-    - id: 865
-      type: double
-    - id: 866
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 867
-      type: double
+      Result: {type: double}
   edges:
-  - from: 794
-    from_pin: 798
-    to: 817
-    to_pin: 819
-  - from: 794
-    from_pin: 798
-    to: 836
-    to_pin: 837
-  - from: 794
-    from_pin: 799
-    to: 832
-    to_pin: 833
-  - from: 794
-    from_pin: 800
-    to: 806
-    to_pin: 807
-  - from: 794
-    from_pin: 801
-    to: 806
-    to_pin: 808
-  - from: 794
-    from_pin: 802
-    to: 810
-    to_pin: 811
-  - from: 794
-    from_pin: 802
-    to: 821
-    to_pin: 822
-  - from: 794
-    from_pin: 802
-    to: 857
-    to_pin: 858
-  - from: 794
-    from_pin: 803
-    to: 817
-    to_pin: 818
-  - from: 794
-    from_pin: 804
-    to: 846
-    to_pin: 848
-  - from: 806
-    from_pin: 809
-    to: 813
-    to_pin: 814
-  - from: 810
-    from_pin: 812
-    to: 813
-    to_pin: 815
-  - from: 813
-    from_pin: 816
-    to: 828
-    to_pin: 829
-  - from: 817
-    from_pin: 820
-    to: 824
-    to_pin: 825
-  - from: 821
-    from_pin: 823
-    to: 824
-    to_pin: 826
-  - from: 824
-    from_pin: 827
-    to: 828
-    to_pin: 830
-  - from: 828
-    from_pin: 831
-    to: 832
-    to_pin: 834
-  - from: 832
-    from_pin: 835
-    to: 836
-    to_pin: 838
-  - from: 836
-    from_pin: 839
-    to: 864
-    to_pin: 865
-  - from: 840
-    from_pin: 842
-    to: 853
-    to_pin: 854
-  - from: 843
-    from_pin: 845
-    to: 846
-    to_pin: 847
-  - from: 846
-    from_pin: 849
-    to: 850
-    to_pin: 851
-  - from: 850
-    from_pin: 852
-    to: 853
-    to_pin: 855
-  - from: 853
-    from_pin: 856
-    to: 860
-    to_pin: 861
-  - from: 857
-    from_pin: 859
-    to: 860
-    to_pin: 862
-  - from: 860
-    from_pin: 863
-    to: 864
-    to_pin: 866
-  - from: 864
-    from_pin: 867
-    to: 796
-    to_pin: 805
+  - {from: 794.TargetY, to: 817.B}
+  - {from: 794.TargetY, to: 836.A}
+  - {from: 794.Weight, to: 832.A}
+  - {from: 794.OriginX, to: 806.A}
+  - {from: 794.TargetX, to: 806.B}
+  - {from: 794.Theta, to: 810.Value}
+  - {from: 794.Theta, to: 821.Value}
+  - {from: 794.Theta, to: 857.Value}
+  - {from: 794.OriginY, to: 817.A}
+  - {from: 794.T, to: 846.B}
+  - {from: 806.Result, to: 813.A}
+  - {from: 810.Result, to: 813.B}
+  - {from: 813.Result, to: 828.A}
+  - {from: 817.Result, to: 824.A}
+  - {from: 821.Result, to: 824.B}
+  - {from: 824.Result, to: 828.B}
+  - {from: 828.Result, to: 832.B}
+  - {from: 832.Result, to: 836.B}
+  - {from: 836.Result, to: 864.A}
+  - {from: 840.Value, to: 853.A}
+  - {from: 843.Value, to: 846.A}
+  - {from: 846.Result, to: 850.Value}
+  - {from: 850.Result, to: 853.B}
+  - {from: 853.Result, to: 860.A}
+  - {from: 857.Result, to: 860.B}
+  - {from: 860.Result, to: 864.B}
+  - {from: 864.Result, to: 796.Result}
 - id: 877
   kind: function
   name: Spiral Yaw
@@ -2661,54 +1274,27 @@ graphs:
   - id: 878
     type: Function Entry
     outputs:
-    - id: 882
-      name: BaseRotation
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 883
-      name: Theta
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 882, name: BaseRotation, type: double, kind: data, flags: 2, group: 1}
+    - {id: 883, name: Theta, type: double, kind: data, flags: 2, group: 2}
   - id: 880
     type: Return
     inputs:
-    - id: 884
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 884, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 885
     type: Add
     inputs:
-    - id: 886
-      type: double
-    - id: 887
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 888
-      type: double
+      Result: {type: double}
   edges:
-  - from: 878
-    from_pin: 882
-    to: 885
-    to_pin: 886
-  - from: 878
-    from_pin: 883
-    to: 885
-    to_pin: 887
-  - from: 885
-    from_pin: 888
-    to: 880
-    to_pin: 884
+  - {from: 878.BaseRotation, to: 885.A}
+  - {from: 878.Theta, to: 885.B}
+  - {from: 885.Result, to: 880.Result}
 - id: 893
   kind: function
   name: Spiral Scale
-  math_expression: "1-0.5*T"
+  math_expression: 1-0.5*T
   expression_mode: 1
   entry_id: 894
   return_id: 896
@@ -2717,74 +1303,37 @@ graphs:
   - id: 894
     type: Function Entry
     outputs:
-    - id: 898
-      name: T
-      type: double
-      kind: data
-      flags: 2
-      group: 1
+    - {id: 898, name: T, type: double, kind: data, flags: 2, group: 1}
   - id: 896
     type: Return
     inputs:
-    - id: 899
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 899, name: Result, type: double, kind: data, flags: 2, group: 2}
   - id: 900
     type: Real
-    inputs:
-    - id: 901
-      default: 1.0
-    outputs: [902]
+    inputs: {Value: 1.0}
   - id: 903
     type: Real
-    inputs:
-    - id: 904
-      default: 0.5
-    outputs: [905]
+    inputs: {Value: 0.5}
   - id: 906
     type: Multiply
     inputs:
-    - id: 907
-      type: double
-    - id: 908
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 909
-      type: double
+      Result: {type: double}
   - id: 910
     type: Subtract
     inputs:
-    - id: 911
-      type: double
-    - id: 912
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 913
-      type: double
+      Result: {type: double}
   edges:
-  - from: 894
-    from_pin: 898
-    to: 906
-    to_pin: 908
-  - from: 900
-    from_pin: 902
-    to: 910
-    to_pin: 911
-  - from: 903
-    from_pin: 905
-    to: 906
-    to_pin: 907
-  - from: 906
-    from_pin: 909
-    to: 910
-    to_pin: 912
-  - from: 910
-    from_pin: 913
-    to: 896
-    to_pin: 899
+  - {from: 894.T, to: 906.B}
+  - {from: 900.Value, to: 910.A}
+  - {from: 903.Value, to: 906.A}
+  - {from: 906.Result, to: 910.B}
+  - {from: 910.Result, to: 896.Result}
 - id: 917
   kind: function
   name: Collection Age
@@ -2797,47 +1346,20 @@ graphs:
   - id: 918
     type: Function Entry
     outputs:
-    - id: 922
-      name: CollectionAge
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 923
-      name: Delta
-      type: double
-      kind: data
-      flags: 2
-      group: 2
+    - {id: 922, name: CollectionAge, type: double, kind: data, flags: 2, group: 1}
+    - {id: 923, name: Delta, type: double, kind: data, flags: 2, group: 2}
   - id: 920
     type: Return
     inputs:
-    - id: 924
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 3
+    - {id: 924, name: Result, type: double, kind: data, flags: 2, group: 3}
   - id: 925
     type: Add
     inputs:
-    - id: 926
-      type: double
-    - id: 927
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 928
-      type: double
+      Result: {type: double}
   edges:
-  - from: 918
-    from_pin: 922
-    to: 925
-    to_pin: 926
-  - from: 918
-    from_pin: 923
-    to: 925
-    to_pin: 927
-  - from: 925
-    from_pin: 928
-    to: 920
-    to_pin: 924
+  - {from: 918.CollectionAge, to: 925.A}
+  - {from: 918.Delta, to: 925.B}
+  - {from: 925.Result, to: 920.Result}

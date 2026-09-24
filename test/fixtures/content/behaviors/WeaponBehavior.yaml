@@ -7,89 +7,40 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Fire
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Fire}
   - id: 8
     type: Get_GameTransform
     outputs:
-    - id: 9
-      flags: 0
+      Value: {flags: 0}
   - id: 21
     type: Get_GameWeapon
     outputs:
-    - id: 22
-      flags: 0
-    - id: 23
-      name: damage
-      type: int
-      field_source: 22
-      field_name: damage
-      flags: 0
+      Value: {flags: 0}
+      Value.damage: {}
   - id: 24
     type: Call Function
     reference_id: 173
     reference_name: Fire Projectile
     reference_asset: WeaponActions
     inputs:
-    - 25
-    - id: 26
-      name: Origin
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 27
-      name: Direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-      default:
-        x: 1.0
-        "y": 0.0
-    - id: 28
-      name: Damage
-      type: int
-      kind: data
-    - id: 29
-      declaration_id: 220
-      name: Prototype
-      type: name
-      kind: data
-      default: Projectile
-    - id: 33
-      declaration_id: 255
-      name: Shooter
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction:
+        type: struct
+        type_name: CF_V2
+        kind: data
+        default: {x: 1.0, "y": 0.0}
+      Damage: {type: int, kind: data}
+      Prototype: {declaration_id: 220, type: name, kind: data, default: Projectile}
+      Shooter: {id: 33, declaration_id: 255, type: handle, type_name: ecs.entity, kind: data}
     outputs:
-    - 30
-    - id: 31
-      name: Entity
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 30}
+      Entity: {type: handle, type_name: ecs.entity, kind: data}
   - id: 34
     type: Self
     outputs:
-    - id: 35
-      name: Entity
-      type_name: ecs.entity
+    - {id: 35, name: Entity, type_name: ecs.entity}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 24
-    to_pin: 25
-  - from: 8
-    from_pin: 9
-    to: 24
-    to_pin: 26
-  - from: 21
-    from_pin: 23
-    to: 24
-    to_pin: 28
-  - from: 34
-    from_pin: 35
-    to: 24
-    to_pin: 33
+  - {from: 1.Then, to: 24.Exec}
+  - {from: 8.Value, to: 24.Origin}
+  - {from: 21.Value.damage, to: 24.Damage}
+  - {from: 34.Entity, to: 24.Shooter}

@@ -50,61 +50,51 @@ bool scene_debug_resolve(
     return false;
 }
 
-/* Documents omit pin fields that match the node's template pin. Expand the
- * type name so alias spellings compare equal. */
-static void normalize_pins(yyjson_mut_doc *doc, yyjson_mut_val *node, const char *key, int output)
+static const char *resolved_alias(const char *name)
 {
-    yyjson_mut_val *pins = yyjson_mut_obj_get(node, key);
-    const node_desc *desc = registry_node_by_name(
-        yyjson_mut_get_str(yyjson_mut_obj_get(node, "type"))
-    );
-    if (!pins || !desc) {
-        return;
+    for (int depth = 0; name && depth < 16; depth++) {
+        const type_desc *type = registry_type_by_name(name);
+        if (!type || !type->alias_of || !strcmp(type->alias_of, name)) {
+            break;
+        }
+        name = type->alias_of;
     }
-    yyjson_mut_val *normalized = yyjson_mut_arr(doc);
-    size_t index, count;
-    yyjson_mut_val *source;
-    yyjson_mut_arr_foreach(pins, index, count, source)
-    {
-        yyjson_mut_val *pin = yyjson_mut_is_obj(source)
-                                ? yyjson_mut_val_mut_copy(doc, source)
-                                : yyjson_mut_obj(doc);
-        if (!yyjson_mut_is_obj(source)) {
-            yyjson_mut_obj_add_val(doc, pin, "id", yyjson_mut_val_mut_copy(doc, source));
-        }
-        yyjson_mut_arr_append(normalized, pin);
-        yyjson_mut_obj_remove_key(pin, "group");
-        yyjson_mut_val *type_name = yyjson_mut_obj_get(pin, "type_name");
-        const char *name = type_name
-                             ? yyjson_mut_get_str(type_name)
-                             : serialize_pin_template(desc, output, (int)index)->type_name;
-        if (!name) {
-            continue;
-        }
-        /* Linking resolves aliases; their spelling does not change execution. */
-        for (int depth = 0; depth < 16; depth++) {
-            const type_desc *type = registry_type_by_name(name);
-            if (!type || !type->alias_of || !strcmp(type->alias_of, name)) {
-                break;
-            }
-            name = type->alias_of;
-        }
-        yyjson_mut_obj_remove_key(pin, "type_name");
-        yyjson_mut_obj_add_strcpy(doc, pin, "type_name", name);
-    }
-    yyjson_mut_obj_remove_key(node, key);
-    yyjson_mut_obj_add_val(doc, node, key, normalized);
+    return name;
 }
 
-static yyjson_mut_doc *execution_json(const behavior_asset *asset)
+/* Linking resolves type aliases, and pin groups only guide editing; neither
+ * changes execution. */
+static void normalize_pins(behavior_asset *asset)
 {
-    char *json = behavior_asset_save_json(asset);
-    if (!json) {
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+            node *n = asset->graphs[g]->nodes[i];
+            for (int output = 0; output < 2; output++) {
+                pin_spec *pins = output ? n->output_pins : n->input_pins;
+                int count = output ? n->output_count : n->input_count;
+                for (int p = 0; p < count; p++) {
+                    pins[p].group = 0;
+                    pins[p].type_name = resolved_alias(pins[p].type_name);
+                }
+            }
+        }
+    }
+}
+
+static yyjson_mut_doc *execution_json(const behavior_asset *source_asset)
+{
+    char *json = behavior_asset_save_json(source_asset);
+    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+    free(json);
+    if (!asset) {
         return NULL;
     }
-    yyjson_doc *source = yyjson_read(json, strlen(json), 0);
+    normalize_pins(asset);
+    json = behavior_asset_save_json(asset);
+    yyjson_doc *source = json ? yyjson_read(json, strlen(json), 0) : NULL;
     free(json);
     if (!source) {
+        behavior_asset_free(asset);
         return NULL;
     }
     yyjson_mut_doc *doc = yyjson_doc_mut_copy(source, NULL);
@@ -128,8 +118,6 @@ static yyjson_mut_doc *execution_json(const behavior_asset *asset)
         yyjson_mut_val *node;
         yyjson_mut_arr_foreach(nodes, j, node_count, node)
         {
-            normalize_pins(doc, node, "inputs", 0);
-            normalize_pins(doc, node, "outputs", 1);
             yyjson_mut_obj_remove_key(node, "x");
             yyjson_mut_obj_remove_key(node, "y");
             yyjson_mut_obj_remove_key(node, "placed");
@@ -161,6 +149,7 @@ static yyjson_mut_doc *execution_json(const behavior_asset *asset)
             }
         }
     }
+    behavior_asset_free(asset);
     return doc;
 }
 

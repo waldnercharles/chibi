@@ -1,7 +1,4 @@
 name: FireMouse
 identity: prototype-6c698744bab839bc
 components:
-  GAME.GameActionBinding:
-    action: Fire
-    firing: true
-    source: Mouse Left
+  GAME.GameActionBinding: {action: Fire, firing: true, source: Mouse Left}

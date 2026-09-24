@@ -1,22 +1,15 @@
 version: 1
 name: Image Shader Demo
-presentation: "3d"
+presentation: 3d
 entities:
 - name: Energy Box
   prototype: ShaderEnergy
   components:
-    GameTransform:
-      x: -185
-      "y": 0
+    GameTransform: {x: -185, "y": 0}
 - name: Energy Prism
   prototype: ShaderEnergy
   components:
-    GameGeometry3D:
-      primitive: 4
-      width: 140
-      depth: 140
-      height: 24
-      elevation: 12
+    GameGeometry3D: {primitive: 4, width: 140, depth: 140, height: 24, elevation: 12}
     GameShader:
       material: EnergyCells
       shape: ""
@@ -26,15 +19,8 @@ entities:
 - name: Energy Sphere
   prototype: ShaderEnergy
   components:
-    GameTransform:
-      x: 185
-      "y": 0
-    GameGeometry3D:
-      primitive: 1
-      width: 110
-      depth: 110
-      height: 110
-      elevation: 55
+    GameTransform: {x: 185, "y": 0}
+    GameGeometry3D: {primitive: 1, width: 110, depth: 110, height: 110, elevation: 55}
     GameShader:
       material: EnergyCells
       shape: ""

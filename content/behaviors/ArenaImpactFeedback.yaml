@@ -4,11 +4,7 @@ id_counter: 606
 description: Accepted hits energize nearby floor cells. Death emits fragments and a wider rose floor pulse. Pulses are ordinary prototypes with an authored lifetime.
 owner_type: ecs.entity
 variables:
-- id: 70
-  name: Death Handled
-  type: bool
-  type_name: bool
-  category: State
+- {id: 70, name: Death Handled, type: bool, type_name: bool, category: State}
 graphs:
 - kind: event
   name: ""
@@ -17,296 +13,148 @@ graphs:
     type: Event
     reference_name: Damaged
     outputs:
-    - 19
-    - id: 20
-      declaration_id: 2
-      name: Amount
-      type: int
-      kind: data
-    - id: 21
-      declaration_id: 3
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 19}
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
   - id: 24
     type: Get_GameHealth
     outputs:
-    - id: 23
-      flags: 0
-    - id: 25
-      name: current
-      type: int
-      field_source: 23
-      field_name: current
-      flags: 0
+      Value: {id: 23, flags: 0}
+      Value.current: {id: 25}
   - id: 29
     type: Integer Greater
-    inputs: [26, 27]
-    outputs: [28]
+    inputs:
+      A: {id: 26}
   - id: 34
     type: Branch
-    inputs: [30, 31]
-    outputs: [32, 33]
+    inputs:
+      Exec: {id: 30}
   - id: 36
     type: Get_GameTransform
     outputs:
-    - id: 35
-      flags: 0
+      Value: {id: 35, flags: 0}
   - id: 41
     type: Call Function
     reference_id: 1
     reference_name: Spawn Surface Pulse
     inputs:
-    - 37
-    - id: 38
-      declaration_id: 3
-      name: Prototype
-      type: name
-      kind: data
-      default: ArenaHitPulse
-    - id: 39
-      declaration_id: 4
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    outputs: [40]
+      Exec: {id: 37}
+      Prototype: {declaration_id: 3, type: name, kind: data, default: ArenaHitPulse}
+      Position: {declaration_id: 4, type: struct, type_name: GameTransform, kind: data}
   - id: 44
     type: Event
     reference_name: Died
     outputs:
-    - 42
-    - id: 43
-      declaration_id: 3
-      name: Source
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 42}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
   - id: 69
     type: Call Function
     reference_id: 1
     reference_name: Spawn Surface Pulse
     inputs:
-    - 65
-    - id: 66
-      declaration_id: 3
-      name: Prototype
-      type: name
-      kind: data
-      default: ArenaDeathPulse
-    - id: 67
-      declaration_id: 4
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    outputs: [68]
+      Exec: {id: 65}
+      Prototype: {declaration_id: 3, type: name, kind: data, default: ArenaDeathPulse}
+      Position: {declaration_id: 4, type: struct, type_name: GameTransform, kind: data}
   - id: 72
     type: Get Variable
     reference_id: 70
     outputs:
-    - id: 71
-      type: bool
-      flags: 0
+      Value: {id: 71, type: bool, flags: 0}
   - id: 77
     type: Branch
-    inputs: [73, 74]
-    outputs: [75, 76]
+    inputs:
+      Exec: {id: 73}
   - id: 82
     type: Set Variable
     reference_id: 70
     inputs:
-    - 78
-    - id: 79
-      type: bool
-      default: true
+      Exec: {id: 78}
+      Value: {type: bool, default: true}
     outputs:
-    - 80
-    - id: 81
-      type: bool
+      Value: {type: bool}
   - id: 84
     type: Has_GameEncounterMember
     outputs:
-    - id: 83
-      name: Result
+    - {id: 83, name: Result}
   - id: 89
     type: Branch
-    inputs: [85, 86]
-    outputs: [87, 88]
+    inputs:
+      Exec: {id: 85}
   - id: 91
     type: Get_GameEncounterMember
     outputs:
-    - id: 90
-      flags: 0
-    - id: 92
-      name: role
-      type: int
-      field_source: 90
-      field_name: role
-      flags: 0
+      Value: {id: 90, flags: 0}
+      Value.role: {id: 92}
   - id: 96
     type: Integer Equal
     inputs:
-    - 93
-    - id: 94
-      default: 1
-    outputs: [95]
+      A: {id: 93}
+      B: 1
   - id: 101
     type: Branch
-    inputs: [97, 98]
-    outputs: [99, 100]
+    inputs:
+      Exec: {id: 97}
   - id: 117
     type: Call Function
     reference_id: 543
     reference_name: Prepare Enemy Experience
     inputs:
-    - 111
-    - id: 112
-      declaration_id: 545
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    - id: 113
-      declaration_id: 546
-      name: Appearance
-      type: struct
-      type_name: GameGeometry3D
-      kind: data
-    - id: 114
-      declaration_id: 547
-      name: Material
-      type: struct
-      type_name: GameShader
-      kind: data
-    - id: 115
-      declaration_id: 548
-      name: Orientation
-      type: struct
-      type_name: GameOrientation
-      kind: data
-    - id: 595
-      declaration_id: 594
-      name: Visual
-      type: struct
-      type_name: GameVisualTransform
-      kind: data
-    outputs: [116]
+      Exec: {id: 111}
+      Position: {declaration_id: 545, type: struct, type_name: GameTransform, kind: data}
+      Appearance: {declaration_id: 546, type: struct, type_name: GameGeometry3D, kind: data}
+      Material: {declaration_id: 547, type: struct, type_name: GameShader, kind: data}
+      Orientation: {declaration_id: 548, type: struct, type_name: GameOrientation, kind: data}
+      Visual:
+        id: 595
+        declaration_id: 594
+        type: struct
+        type_name: GameVisualTransform
+        kind: data
+    outputs:
+      Then: {id: 116}
   - id: 119
     type: Get_GameTransform
     outputs:
-    - id: 118
-      flags: 0
+      Value: {id: 118, flags: 0}
   - id: 121
     type: Get_GameGeometry3D
     outputs:
-    - id: 120
-      flags: 0
+      Value: {id: 120, flags: 0}
   - id: 123
     type: Get_GameShader
     outputs:
-    - id: 122
-      flags: 0
+      Value: {id: 122, flags: 0}
   - id: 125
     type: Get_GameOrientation
     outputs:
-    - id: 124
-      flags: 0
+      Value: {id: 124, flags: 0}
   - id: 597
     type: Get_GameVisualTransform
     outputs:
-    - id: 596
-      flags: 0
+      Value: {id: 596, flags: 0}
   edges:
-  - from: 22
-    from_pin: 19
-    to: 34
-    to_pin: 30
-  - from: 24
-    from_pin: 25
-    to: 29
-    to_pin: 26
-  - from: 29
-    from_pin: 28
-    to: 34
-    to_pin: 31
-  - from: 34
-    from_pin: 32
-    to: 41
-    to_pin: 37
-  - from: 36
-    from_pin: 35
-    to: 41
-    to_pin: 39
-  - from: 36
-    from_pin: 35
-    to: 69
-    to_pin: 67
-  - from: 44
-    from_pin: 42
-    to: 77
-    to_pin: 73
-  - from: 72
-    from_pin: 71
-    to: 77
-    to_pin: 74
-  - from: 77
-    from_pin: 76
-    to: 82
-    to_pin: 78
-  - from: 82
-    from_pin: 80
-    to: 89
-    to_pin: 85
-  - from: 84
-    from_pin: 83
-    to: 89
-    to_pin: 86
-  - from: 89
-    from_pin: 87
-    to: 101
-    to_pin: 97
-  - from: 89
-    from_pin: 88
-    to: 69
-    to_pin: 65
-  - from: 91
-    from_pin: 92
-    to: 96
-    to_pin: 93
-  - from: 96
-    from_pin: 95
-    to: 101
-    to_pin: 98
-  - from: 101
-    from_pin: 99
-    to: 117
-    to_pin: 111
-  - from: 101
-    from_pin: 100
-    to: 69
-    to_pin: 65
-  - from: 119
-    from_pin: 118
-    to: 117
-    to_pin: 112
-  - from: 121
-    from_pin: 120
-    to: 117
-    to_pin: 113
-  - from: 123
-    from_pin: 122
-    to: 117
-    to_pin: 114
-  - from: 125
-    from_pin: 124
-    to: 117
-    to_pin: 115
-  - from: 597
-    from_pin: 596
-    to: 117
-    to_pin: 595
+  - {from: 22.Then, to: 34.Exec}
+  - {from: 24.Value.current, to: 29.A}
+  - {from: 29.Result, to: 34.Condition}
+  - {from: 34.True, to: 41.Exec}
+  - {from: 36.Value, to: 41.Position}
+  - {from: 36.Value, to: 69.Position}
+  - {from: 44.Then, to: 77.Exec}
+  - {from: 72.Value, to: 77.Condition}
+  - {from: 77.False, to: 82.Exec}
+  - {from: 82.Then, to: 89.Exec}
+  - {from: 84.Result, to: 89.Condition}
+  - {from: 89.True, to: 101.Exec}
+  - {from: 89.False, to: 69.Exec}
+  - {from: 91.Value.role, to: 96.A}
+  - {from: 96.Result, to: 101.Condition}
+  - {from: 101.True, to: 117.Exec}
+  - {from: 101.False, to: 69.Exec}
+  - {from: 119.Value, to: 117.Position}
+  - {from: 121.Value, to: 117.Appearance}
+  - {from: 123.Value, to: 117.Material}
+  - {from: 125.Value, to: 117.Orientation}
+  - {from: 597.Value, to: 117.Visual}
 - id: 1
   kind: function
   name: Spawn Surface Pulse
@@ -317,58 +165,29 @@ graphs:
   - id: 5
     type: Function Entry
     outputs:
-    - id: 2
-      name: Then
-    - id: 3
-      name: Prototype
-      type: name
-      kind: data
-      default: ArenaHitPulse
-    - id: 4
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
+    - {id: 2, name: Then}
+    - {id: 3, name: Prototype, type: name, kind: data, default: ArenaHitPulse}
+    - {id: 4, name: Position, type: struct, type_name: GameTransform, kind: data}
   - id: 10
     type: Spawn Prototype
     inputs:
-    - 6
-    - id: 7
-      type_name: name
-      default: ArenaHitPulse
-    outputs: [8, 9]
+      Exec: {id: 6}
+      Prototype: {type_name: name, default: ArenaHitPulse}
   - id: 16
     type: SetEntity_GameTransform
-    inputs: [11, 12, 13]
-    outputs: [14, 15]
+    inputs:
+      Exec: {id: 11}
   - id: 18
     type: Return
-    inputs: [17]
+    inputs:
+      Exec: {id: 17}
   edges:
-  - from: 5
-    from_pin: 2
-    to: 10
-    to_pin: 6
-  - from: 5
-    from_pin: 3
-    to: 10
-    to_pin: 7
-  - from: 5
-    from_pin: 4
-    to: 16
-    to_pin: 13
-  - from: 10
-    from_pin: 8
-    to: 16
-    to_pin: 11
-  - from: 10
-    from_pin: 9
-    to: 16
-    to_pin: 12
-  - from: 16
-    from_pin: 14
-    to: 18
-    to_pin: 17
+  - {from: 5.Then, to: 10.Exec}
+  - {from: 5.Prototype, to: 10.Prototype}
+  - {from: 5.Position, to: 16.Value}
+  - {from: 10.Then, to: 16.Exec}
+  - {from: 10.Entity, to: 16.Entity}
+  - {from: 16.Then, to: 18.Exec}
 - id: 543
   kind: function
   name: Prepare Enemy Experience
@@ -379,23 +198,10 @@ graphs:
   - id: 549
     type: Function Entry
     outputs:
-    - id: 544
-      name: Then
-    - id: 545
-      name: Position
-      type: struct
-      type_name: GameTransform
-      kind: data
-    - id: 546
-      name: Appearance
-      type: struct
-      type_name: GameGeometry3D
-      kind: data
-    - id: 547
-      name: Material
-      type: struct
-      type_name: GameShader
-      kind: data
+    - {id: 544, name: Then}
+    - {id: 545, name: Position, type: struct, type_name: GameTransform, kind: data}
+    - {id: 546, name: Appearance, type: struct, type_name: GameGeometry3D, kind: data}
+    - {id: 547, name: Material, type: struct, type_name: GameShader, kind: data}
     - id: 548
       name: Orientation
       type: struct
@@ -408,117 +214,55 @@ graphs:
       kind: data
   - id: 551
     type: Return
-    inputs: [550]
+    inputs:
+      Exec: {id: 550}
   - id: 556
     type: Spawn Prototype
     inputs:
-    - 552
-    - id: 553
-      type_name: name
-      default: ArenaExperience
-    outputs: [554, 555]
+      Exec: {id: 552}
+      Prototype: {type_name: name, default: ArenaExperience}
   - id: 562
     type: SetEntity_GameTransform
-    inputs: [557, 558, 559]
-    outputs: [560, 561]
+    inputs:
+      Exec: {id: 557}
   - id: 568
     type: SetEntity_GameGeometry3D
-    inputs: [563, 564, 565]
-    outputs: [566, 567]
+    inputs:
+      Exec: {id: 563}
   - id: 574
     type: SetEntity_GameShader
-    inputs: [569, 570, 571]
-    outputs: [572, 573]
+    inputs:
+      Exec: {id: 569}
   - id: 580
     type: SetEntity_GameOrientation
-    inputs: [575, 576, 577]
-    outputs: [578, 579]
+    inputs:
+      Exec: {id: 575}
   - id: 592
     type: Set_GamePickup_state
     inputs:
-    - 587
-    - id: 588
-      default: 3
-    - 589
-    outputs: [590, 591]
+      Exec: {id: 587}
+      Value: 3
   - id: 603
     type: SetEntity_GameVisualTransform
-    inputs: [598, 599, 600]
-    outputs: [601, 602]
+    inputs:
+      Exec: {id: 598}
   edges:
-  - from: 549
-    from_pin: 544
-    to: 556
-    to_pin: 552
-  - from: 549
-    from_pin: 545
-    to: 562
-    to_pin: 559
-  - from: 549
-    from_pin: 546
-    to: 568
-    to_pin: 565
-  - from: 549
-    from_pin: 547
-    to: 574
-    to_pin: 571
-  - from: 549
-    from_pin: 548
-    to: 580
-    to_pin: 577
-  - from: 549
-    from_pin: 594
-    to: 603
-    to_pin: 600
-  - from: 556
-    from_pin: 554
-    to: 562
-    to_pin: 557
-  - from: 556
-    from_pin: 555
-    to: 562
-    to_pin: 558
-  - from: 556
-    from_pin: 555
-    to: 568
-    to_pin: 564
-  - from: 556
-    from_pin: 555
-    to: 574
-    to_pin: 570
-  - from: 556
-    from_pin: 555
-    to: 580
-    to_pin: 576
-  - from: 556
-    from_pin: 555
-    to: 592
-    to_pin: 589
-  - from: 556
-    from_pin: 555
-    to: 603
-    to_pin: 599
-  - from: 562
-    from_pin: 560
-    to: 568
-    to_pin: 563
-  - from: 568
-    from_pin: 566
-    to: 574
-    to_pin: 569
-  - from: 574
-    from_pin: 572
-    to: 580
-    to_pin: 575
-  - from: 580
-    from_pin: 578
-    to: 603
-    to_pin: 598
-  - from: 592
-    from_pin: 590
-    to: 551
-    to_pin: 550
-  - from: 603
-    from_pin: 601
-    to: 592
-    to_pin: 587
+  - {from: 549.Then, to: 556.Exec}
+  - {from: 549.Position, to: 562.Value}
+  - {from: 549.Appearance, to: 568.Value}
+  - {from: 549.Material, to: 574.Value}
+  - {from: 549.Orientation, to: 580.Value}
+  - {from: 549.Visual, to: 603.Value}
+  - {from: 556.Then, to: 562.Exec}
+  - {from: 556.Entity, to: 562.Entity}
+  - {from: 556.Entity, to: 568.Entity}
+  - {from: 556.Entity, to: 574.Entity}
+  - {from: 556.Entity, to: 580.Entity}
+  - {from: 556.Entity, to: 592.Target}
+  - {from: 556.Entity, to: 603.Entity}
+  - {from: 562.Then, to: 568.Exec}
+  - {from: 568.Then, to: 574.Exec}
+  - {from: 574.Then, to: 580.Exec}
+  - {from: 580.Then, to: 603.Exec}
+  - {from: 592.Then, to: 551.Exec}
+  - {from: 603.Then, to: 592.Exec}

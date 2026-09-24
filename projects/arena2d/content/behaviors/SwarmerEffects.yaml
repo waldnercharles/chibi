@@ -6,43 +6,28 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Begin
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Begin}
   - id: 14
     type: Call Function
     reference_id: 256
     reference_name: Spawn Prototype At
     reference_asset: WeaponActions
     inputs:
-    - 15
-    - id: 17
-      declaration_id: 261
-      name: Prototype
-      type: name
-      type_name: null
-      kind: data
-      default: SpawnEmitter
-    - id: 18
-      declaration_id: 262
-      name: Transform
-      type: struct
-      type_name: GameTransform
-      kind: data
-      binding:
-        kind: component
-        component: game.GameTransform
+      Prototype:
+        id: 17
+        declaration_id: 261
+        type: name
+        type_name: null
+        kind: data
+        default: SpawnEmitter
+      Transform:
+        declaration_id: 262
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
     outputs:
-    - 16
-    - id: 19
-      declaration_id: 263
-      name: Entity
-      type: handle
-      type_name: ecs.entity
-      kind: data
+      Then: {id: 16}
+      Entity: {id: 19, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 14
-    to_pin: 15
+  - {from: 1.Then, to: 14.Exec}

@@ -64,6 +64,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_adapter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_local.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_refs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_clipboard.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c

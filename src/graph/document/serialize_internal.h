@@ -9,6 +9,7 @@
 
 void serialize_error_set(const char *fmt, ...);
 bool serialize_same_value(const pin_value *a, const pin_value *b);
+
 /* Documents spell pin types by name; loading also accepts enum numbers. */
 const char *serialize_pin_type_name(pin_type type);
 bool serialize_read_pin_type(yyjson_val *value, pin_type *out);
@@ -33,6 +34,7 @@ int serialize_read_array(
     graph *g
 );
 int serialize_read_locals(graph *g, yyjson_val *obj);
+int serialize_resolve_locals(graph *g, yyjson_val *obj);
 int serialize_validate_locals(graph *g);
 void serialize_write_locals(
     yyjson_mut_doc *doc,

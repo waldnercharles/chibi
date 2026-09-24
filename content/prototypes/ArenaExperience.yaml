@@ -8,18 +8,9 @@ components:
     primitive: 9
     width: 5.0
   GAME.GameOrientation: {}
-  GAME.GamePickup:
-    lifetime: 12.0
-    value: 1
-  GAME.GameShader:
-    material: ArenaExperience
-    parameters: '{}'
-    shape: ""
-  GAME.GameTrail:
-    color: 3489624831
-    emission: 0.25
-    lifetime: 0.11999999731779099
+  GAME.GamePickup: {lifetime: 12.0, value: 1}
+  GAME.GameShader: {material: ArenaExperience, parameters: '{}', shape: ""}
+  GAME.GameTrail: {color: 3489624831, emission: 0.25, lifetime: 0.11999999731779099}
   game.GameTransform: {}
-  GAME.GameVisualTransform:
-    scale: 1.0
+  GAME.GameVisualTransform: {scale: 1.0}
 behaviors: [ArenaDropBehavior, ArenaPickupBehavior]

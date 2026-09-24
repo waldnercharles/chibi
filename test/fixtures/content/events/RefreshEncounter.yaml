@@ -4,5 +4,4 @@ domain: event
 id_counter: 2
 description: Recount encounter members after a lifecycle change.
 graphs:
-- kind: event
-  name: Events
+- {kind: event, name: Events}

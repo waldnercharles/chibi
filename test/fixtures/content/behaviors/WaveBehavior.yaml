@@ -4,12 +4,7 @@ id_counter: 148
 description: Spawns a bounded wave beside the Player at regular intervals, alternating left and right.
 owner_type: ecs.entity
 variables:
-- id: 1
-  name: CountLimit
-  type: int
-  type_name: int
-  category: Wave
-  default: 8
+- {id: 1, name: CountLimit, type: int, type_name: int, category: Wave, default: 8}
 - id: 2
   name: Interval
   type: float
@@ -22,16 +17,8 @@ variables:
   type_name: float
   category: Wave
   default: 260.0
-- id: 4
-  name: Elapsed
-  type: float
-  type_name: float
-  category: State
-- id: 5
-  name: Spawned
-  type: int
-  type_name: int
-  category: State
+- {id: 4, name: Elapsed, type: float, type_name: float, category: State}
+- {id: 5, name: Spawned, type: int, type_name: int, category: State}
 - id: 6
   name: Side
   type: float
@@ -46,108 +33,48 @@ graphs:
     type: Get Variable
     reference_id: 4
     outputs:
-    - id: 48
-      type: float
-      flags: 0
-  - id: 50
-    type: Delta Time
-    outputs: [51]
-  - id: 52
-    type: Add
-    inputs: [53, 54]
-    outputs: [55]
+      Value: {id: 48, type: float, flags: 0}
+  - {id: 50, type: Delta Time}
+  - {id: 52, type: Add}
   - id: 60
     type: Set Variable
     reference_id: 4
     inputs:
-    - 56
-    - id: 57
-      type: float
+      Exec: {id: 56}
+      Value: {type: float}
     outputs:
-    - 58
-    - id: 59
-      type: float
-  - id: 124
-    type: Event
-    reference_name: Tick
-    outputs: [125]
+      Value: {type: float}
+  - {id: 124, type: Event, reference_name: Tick}
   - id: 126
     type: Get_GameTransform
     outputs:
-    - id: 127
-      flags: 0
+      Value: {flags: 0}
   - id: 128
     type: Self
     outputs:
-    - id: 129
-      type_name: ecs.entity
+      Self: {type_name: ecs.entity}
   - id: 130
     type: Find Nearest Entity
-    inputs:
-    - 131
-    - id: 132
-      default: 1000000.0
-    - id: 133
-      default: 1
-    - 134
-    outputs: [135, 136, 137, 138]
-  - id: 139
-    type: Branch
-    inputs: [140, 141]
-    outputs: [142, 143]
+    inputs: {Radius: 1000000.0, Categories: 1}
+  - {id: 139, type: Branch}
   - id: 147
     type: Call Function
     reference_id: 42
     reference_name: Spawn Within Wave Limit
     inputs:
-    - 144
-    - id: 145
-      name: Player Position
-      type: struct
-      type_name: CF_V2
-      kind: data
-    outputs: [146]
+      Exec: {id: 144}
+      Player Position: {type: struct, type_name: CF_V2, kind: data}
   edges:
-  - from: 49
-    from_pin: 48
-    to: 52
-    to_pin: 53
-  - from: 50
-    from_pin: 51
-    to: 52
-    to_pin: 54
-  - from: 52
-    from_pin: 55
-    to: 60
-    to_pin: 57
-  - from: 60
-    from_pin: 58
-    to: 147
-    to_pin: 144
-  - from: 124
-    from_pin: 125
-    to: 139
-    to_pin: 140
-  - from: 126
-    from_pin: 127
-    to: 130
-    to_pin: 131
-  - from: 128
-    from_pin: 129
-    to: 130
-    to_pin: 134
-  - from: 130
-    from_pin: 135
-    to: 139
-    to_pin: 141
-  - from: 130
-    from_pin: 137
-    to: 147
-    to_pin: 145
-  - from: 139
-    from_pin: 142
-    to: 60
-    to_pin: 56
+  - {from: 49.Value, to: 52.A}
+  - {from: 50.Seconds, to: 52.B}
+  - {from: 52.Result, to: 60.Value}
+  - {from: 60.Then, to: 147.Exec}
+  - {from: 124.Then, to: 139.Exec}
+  - {from: 126.Value, to: 130.Position}
+  - {from: 128.Self, to: 130.Exclude}
+  - {from: 130.Found, to: 139.Condition}
+  - {from: 130.Position, to: 147.Player Position}
+  - {from: 139.True, to: 60.Exec}
 - id: 42
   kind: function
   name: Spawn Within Wave Limit
@@ -158,231 +85,107 @@ graphs:
   - id: 45
     type: Function Entry
     outputs:
-    - id: 43
-      name: Then
-    - id: 44
-      name: Player Position
-      type: struct
-      type_name: CF_V2
-      kind: data
+    - {id: 43, name: Then}
+    - {id: 44, name: Player Position, type: struct, type_name: CF_V2, kind: data}
   - id: 47
     type: Return
-    inputs: [46]
+    inputs:
+      Exec: {id: 46}
   - id: 62
     type: Get Variable
     reference_id: 2
     outputs:
-    - id: 61
-      type: float
-      flags: 0
-      default: 1.5
+      Value: {id: 61, type: float, flags: 0, default: 1.5}
   - id: 63
     type: Max
-    inputs:
-    - 64
-    - id: 65
-      default: 0.009999999776482582
-    outputs: [66]
+    inputs: {B: 0.009999999776482582}
   - id: 68
     type: Get Variable
     reference_id: 4
     outputs:
-    - id: 67
-      type: float
-      flags: 0
-  - id: 69
-    type: Greater Or Equal
-    inputs: [70, 71]
-    outputs: [72]
-  - id: 73
-    type: WhileLoop
-    inputs: [74, 75]
-    outputs: [76, 77]
+      Value: {id: 67, type: float, flags: 0}
+  - {id: 69, type: Greater Or Equal}
+  - {id: 73, type: WhileLoop}
   - id: 79
     type: Get Variable
     reference_id: 5
     outputs:
-    - id: 78
-      flags: 0
+      Value: {id: 78, flags: 0}
   - id: 81
     type: Get Variable
     reference_id: 1
     outputs:
-    - id: 80
-      flags: 0
-      default: 8
-  - id: 82
-    type: Integer Greater Or Equal
-    inputs: [83, 84]
-    outputs: [85]
-  - id: 86
-    type: Branch
-    inputs: [87, 88]
-    outputs: [89, 90]
-  - id: 91
-    type: Subtract
-    inputs: [92, 93]
-    outputs: [94]
+      Value: {id: 80, flags: 0, default: 8}
+  - {id: 82, type: Integer Greater Or Equal}
+  - {id: 86, type: Branch}
+  - {id: 91, type: Subtract}
   - id: 99
     type: Set Variable
     reference_id: 4
     inputs:
-    - 95
-    - id: 96
-      type: float
+      Exec: {id: 95}
+      Value: {type: float}
     outputs:
-    - 97
-    - id: 98
-      type: float
+      Value: {type: float}
   - id: 103
     type: Call Function
     reference_id: 7
     reference_name: Spawn Enemy
     inputs:
-    - 100
-    - id: 101
-      name: Player Position
-      type: struct
-      type_name: CF_V2
-      kind: data
-    outputs: [102]
+      Exec: {id: 100}
+      Player Position: {type: struct, type_name: CF_V2, kind: data}
   - id: 104
     type: Add
     inputs:
-    - id: 105
-      type: int
-    - id: 106
-      type: int
-      default: 1
+      A: {type: int}
+      B: {type: int, default: 1}
     outputs:
-    - id: 107
-      type: int
+      Result: {type: int}
   - id: 112
     type: Set Variable
     reference_id: 5
-    inputs: [108, 109]
-    outputs: [110, 111]
+    inputs:
+      Exec: {id: 108}
   - id: 114
     type: Get Variable
     reference_id: 6
     outputs:
-    - id: 113
-      type: float
-      flags: 0
-      default: -1.0
+      Value: {id: 113, type: float, flags: 0, default: -1.0}
   - id: 115
     type: Multiply
-    inputs:
-    - 116
-    - id: 117
-      default: -1.0
-    outputs: [118]
+    inputs: {B: -1.0}
   - id: 123
     type: Set Variable
     reference_id: 6
     inputs:
-    - 119
-    - id: 120
-      type: float
-      default: -1.0
+      Exec: {id: 119}
+      Value: {type: float, default: -1.0}
     outputs:
-    - 121
-    - id: 122
-      type: float
-      default: -1.0
+      Value: {type: float, default: -1.0}
   edges:
-  - from: 45
-    from_pin: 43
-    to: 73
-    to_pin: 74
-  - from: 45
-    from_pin: 44
-    to: 103
-    to_pin: 101
-  - from: 62
-    from_pin: 61
-    to: 63
-    to_pin: 64
-  - from: 63
-    from_pin: 66
-    to: 69
-    to_pin: 71
-  - from: 63
-    from_pin: 66
-    to: 91
-    to_pin: 93
-  - from: 68
-    from_pin: 67
-    to: 69
-    to_pin: 70
-  - from: 68
-    from_pin: 67
-    to: 91
-    to_pin: 92
-  - from: 69
-    from_pin: 72
-    to: 73
-    to_pin: 75
-  - from: 73
-    from_pin: 76
-    to: 86
-    to_pin: 87
-  - from: 73
-    from_pin: 77
-    to: 47
-    to_pin: 46
-  - from: 79
-    from_pin: 78
-    to: 82
-    to_pin: 83
-  - from: 79
-    from_pin: 78
-    to: 104
-    to_pin: 105
-  - from: 81
-    from_pin: 80
-    to: 82
-    to_pin: 84
-  - from: 82
-    from_pin: 85
-    to: 86
-    to_pin: 88
-  - from: 86
-    from_pin: 89
-    to: 47
-    to_pin: 46
-  - from: 86
-    from_pin: 90
-    to: 99
-    to_pin: 95
-  - from: 91
-    from_pin: 94
-    to: 99
-    to_pin: 96
-  - from: 99
-    from_pin: 97
-    to: 103
-    to_pin: 100
-  - from: 103
-    from_pin: 102
-    to: 112
-    to_pin: 108
-  - from: 104
-    from_pin: 107
-    to: 112
-    to_pin: 109
-  - from: 112
-    from_pin: 110
-    to: 123
-    to_pin: 119
-  - from: 114
-    from_pin: 113
-    to: 115
-    to_pin: 116
-  - from: 115
-    from_pin: 118
-    to: 123
-    to_pin: 120
+  - {from: 45.Then, to: 73.Exec}
+  - {from: 45.Player Position, to: 103.Player Position}
+  - {from: 62.Value, to: 63.A}
+  - {from: 63.Result, to: 69.B}
+  - {from: 63.Result, to: 91.B}
+  - {from: 68.Value, to: 69.A}
+  - {from: 68.Value, to: 91.A}
+  - {from: 69.Result, to: 73.Condition}
+  - {from: 73.Body, to: 86.Exec}
+  - {from: 73.Completed, to: 47.Exec}
+  - {from: 79.Value, to: 82.A}
+  - {from: 79.Value, to: 104.A}
+  - {from: 81.Value, to: 82.B}
+  - {from: 82.Result, to: 86.Condition}
+  - {from: 86.True, to: 47.Exec}
+  - {from: 86.False, to: 99.Exec}
+  - {from: 91.Result, to: 99.Value}
+  - {from: 99.Then, to: 103.Exec}
+  - {from: 103.Then, to: 112.Exec}
+  - {from: 104.Result, to: 112.Value}
+  - {from: 112.Then, to: 123.Exec}
+  - {from: 114.Value, to: 115.A}
+  - {from: 115.Result, to: 123.Value}
 - id: 7
   kind: function
   name: Spawn Enemy
@@ -393,112 +196,46 @@ graphs:
   - id: 10
     type: Function Entry
     outputs:
-    - id: 8
-      name: Then
-    - id: 9
-      name: Player Position
-      type: struct
-      type_name: CF_V2
-      kind: data
-    - id: 13
-      name: x
-      type: float
-      kind: data
-      field_source: 9
-      field_name: x
-    - id: 14
-      name: "y"
-      type: float
-      kind: data
-      field_source: 9
-      field_name: "y"
+    - {id: 8, name: Then}
+    - {id: 9, name: Player Position, type: struct, type_name: CF_V2, kind: data}
+    - {id: 13, name: x, type: float, kind: data, field_source: 9, field_name: x}
+    - {id: 14, name: "y", type: float, kind: data, field_source: 9, field_name: "y"}
   - id: 12
     type: Return
-    inputs: [11]
+    inputs:
+      Exec: {id: 11}
   - id: 16
     type: Get Variable
     reference_id: 6
     outputs:
-    - id: 15
-      type: float
-      flags: 0
-      default: -1.0
+      Value: {id: 15, type: float, flags: 0, default: -1.0}
   - id: 18
     type: Get Variable
     reference_id: 3
     outputs:
-    - id: 17
-      type: float
-      flags: 0
-      default: 260.0
-  - id: 19
-    type: Multiply
-    inputs: [20, 21]
-    outputs: [22]
-  - id: 23
-    type: Add
-    inputs: [24, 25]
-    outputs: [26]
+      Value: {id: 17, type: float, flags: 0, default: 260.0}
+  - {id: 19, type: Multiply}
+  - {id: 23, type: Add}
   - id: 30
     type: Make_GameTransform
-    inputs: [27, 28]
+    inputs:
+      x: {id: 27}
     outputs:
-    - id: 29
-      name: Value
+    - {id: 29, name: Value}
   - id: 31
     type: Spawn Prototype
     inputs:
-    - 32
-    - id: 33
-      type_name: name
-      default: Enemy
-    outputs: [34, 35]
-  - id: 36
-    type: SetEntity_GameTransform
-    inputs: [37, 38, 39]
-    outputs: [40, 41]
+      Prototype: {type_name: name, default: Enemy}
+  - {id: 36, type: SetEntity_GameTransform}
   edges:
-  - from: 10
-    from_pin: 8
-    to: 31
-    to_pin: 32
-  - from: 10
-    from_pin: 13
-    to: 23
-    to_pin: 24
-  - from: 10
-    from_pin: 14
-    to: 30
-    to_pin: 28
-  - from: 16
-    from_pin: 15
-    to: 19
-    to_pin: 20
-  - from: 18
-    from_pin: 17
-    to: 19
-    to_pin: 21
-  - from: 19
-    from_pin: 22
-    to: 23
-    to_pin: 25
-  - from: 23
-    from_pin: 26
-    to: 30
-    to_pin: 27
-  - from: 30
-    from_pin: 29
-    to: 36
-    to_pin: 39
-  - from: 31
-    from_pin: 34
-    to: 36
-    to_pin: 37
-  - from: 31
-    from_pin: 35
-    to: 36
-    to_pin: 38
-  - from: 36
-    from_pin: 40
-    to: 12
-    to_pin: 11
+  - {from: 10.Then, to: 31.Exec}
+  - {from: 10.Player Position.x, to: 23.A}
+  - {from: 10.Player Position.y, to: 30.y}
+  - {from: 16.Value, to: 19.A}
+  - {from: 18.Value, to: 19.B}
+  - {from: 19.Result, to: 23.B}
+  - {from: 23.Result, to: 30.x}
+  - {from: 30.Value, to: 36.Value}
+  - {from: 31.Then, to: 36.Exec}
+  - {from: 31.Entity, to: 36.Entity}
+  - {from: 36.Then, to: 12.Exec}

@@ -4,8 +4,7 @@ domain: library
 id_counter: 100
 description: Shared direction calculations.
 graphs:
-- kind: event
-  name: Events
+- {kind: event, name: Events}
 - id: 1
   kind: function
   name: Direction Orientation
@@ -16,51 +15,25 @@ graphs:
   - id: 2
     type: Function Entry
     outputs:
-    - id: 4
-      name: X
-      type: float
-      kind: data
-    - id: 5
-      name: "Y"
-      type: float
-      kind: data
+    - {id: 4, name: X, type: float, kind: data}
+    - {id: 5, name: "Y", type: float, kind: data}
   - id: 3
     type: Return
     inputs:
-    - id: 6
-      name: Orientation
-      type: struct
-      type_name: GameOrientation
-      kind: data
+    - {id: 6, name: Orientation, type: struct, type_name: GameOrientation, kind: data}
   - id: 75
     type: Atan2
     inputs:
-    - id: 72
-      type_name: float
-    - id: 73
-      type_name: float
+      "Y": {id: 72, type_name: float}
+      X: {type_name: float}
     outputs:
-    - id: 74
-      name: Result
-      type_name: float
+    - {id: 74, name: Result, type_name: float}
   - id: 78
     type: Make_GameOrientation
-    inputs: [76]
-    outputs: [77]
+    inputs:
+      radians: {id: 76}
   edges:
-  - from: 2
-    from_pin: 4
-    to: 75
-    to_pin: 73
-  - from: 2
-    from_pin: 5
-    to: 75
-    to_pin: 72
-  - from: 75
-    from_pin: 74
-    to: 78
-    to_pin: 76
-  - from: 78
-    from_pin: 77
-    to: 3
-    to_pin: 6
+  - {from: 2.X, to: 75.X}
+  - {from: 2.Y, to: 75.Y}
+  - {from: 75.Result, to: 78.radians}
+  - {from: 78.GameOrientation, to: 3.Orientation}

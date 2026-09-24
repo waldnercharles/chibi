@@ -9,6 +9,5 @@ components:
     spacing: 5.0
     visibility: 0.06499999761581421
     width: 120.0
-  GAME.GameFuel:
-    amount: 1.0
+  GAME.GameFuel: {amount: 1.0}
   game.GameTransform: {}

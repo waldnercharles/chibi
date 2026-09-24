@@ -9,15 +9,8 @@ components:
     height: 56.0
     shape: Circle
     width: 100.0
-  GAME.GameCollider:
-    category: 8
-    height: 56.0
-    mask: 15
-    shape: Box
-    width: 100.0
-  GAME.GameDestructible:
-    cell_size: 2.0
-    min_fragment_cells: 5
+  GAME.GameCollider: {category: 8, height: 56.0, mask: 15, shape: Box, width: 100.0}
+  GAME.GameDestructible: {cell_size: 2.0, min_fragment_cells: 5}
   GAME.GameMaterial:
     absorption: 1.0
     albedo: 2732320511
@@ -27,14 +20,8 @@ components:
     filter: 2246639615
     scene: 373974464
   GAME.GameOrientation: {}
-  GAME.GameReflection:
-    offset: -28.0
-    roughness: 0.11999999731779099
-    strength: 0.800000011920929
-  GAME.GameSubstance:
-    blast_multiplier: 4.0
-    hardness: 2.0
-    retain_chips: true
+  GAME.GameReflection: {offset: -28.0, roughness: 0.11999999731779099, strength: 0.800000011920929}
+  GAME.GameSubstance: {blast_multiplier: 4.0, hardness: 2.0, retain_chips: true}
   game.GameTransform: {}
   GAME.MaterialBreakProfile:
     blast_speed: 70.0

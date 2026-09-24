@@ -3,26 +3,10 @@ name: OrbitFlipperMotion
 id_counter: 613
 owner_type: ecs.entity
 variables:
-- id: 1
-  name: RestAngle
-  type: double
-  type_name: double
-  category: Default
-- id: 15
-  name: Stroke
-  type: double
-  type_name: double
-  category: Default
-- id: 497
-  name: RestX
-  type: float
-  type_name: float
-  category: Default
-- id: 503
-  name: RestY
-  type: float
-  type_name: float
-  category: Default
+- {id: 1, name: RestAngle, type: double, type_name: double, category: Default}
+- {id: 15, name: Stroke, type: double, type_name: double, category: Default}
+- {id: 497, name: RestX, type: float, type_name: float, category: Default}
+- {id: 503, name: RestY, type: float, type_name: float, category: Default}
 graphs:
 - kind: event
   name: ""
@@ -32,342 +16,172 @@ graphs:
     reference_id: 1
     reference_name: RestAngle
     inputs:
-    - 3
-    - id: 4
-      type: double
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
+      Value:
+        type: double
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
     outputs:
-    - 5
-    - id: 6
-      type: double
-  - id: 13
-    type: Event
-    reference_name: Begin
-    outputs: [14]
+      Value: {type: double}
+  - {id: 13, type: Event, reference_name: Begin}
   - id: 16
     type: Set Variable
     reference_id: 15
     reference_name: Stroke
     inputs:
-    - 17
-    - id: 18
-      type: double
-      default: 0.9
+      Value: {type: double, default: 0.9}
     outputs:
-    - 19
-    - id: 20
-      type: double
+      Value: {type: double}
   - id: 21
     type: Set Variable
     reference_id: 15
     reference_name: Stroke
     inputs:
-    - 22
-    - id: 23
-      type: double
+      Value: {type: double}
     outputs:
-    - 24
-    - id: 25
-      type: double
+      Value: {type: double}
   - id: 26
     type: Event
     reference_name: Tick
     outputs:
-    - 27
-    - id: 28
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 29
     type: Branch
     inputs:
-    - 30
-    - id: 31
-      binding:
-        kind: component_field
-        component: GAME.GameActionBinding
-        field: pressed
-    outputs: [32, 33]
-  - id: 34
-    type: Set_GameBody_angular_velocity
-    inputs: [35, 36, 37]
-    outputs: [38, 39]
+      Condition:
+        binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
+  - {id: 34, type: Set_GameBody_angular_velocity}
   - id: 52
     type: Behavior Expression
     reference_id: 40
     reference_name: Turn toward stroke
     inputs:
-    - id: 109
-      name: rest
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: OrbitFlipperMotion
-    - id: 110
-      name: stroke
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: variable
-        variable_id: 15
-        source_asset: OrbitFlipperMotion
-    - id: 111
-      name: angle
-      type: double
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 112
-      name: dt
-      type: float
-      flags: 2
-      group: 4
+      rest:
+        id: 109
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
+      stroke:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: variable, variable_id: 15, source_asset: OrbitFlipperMotion}
+      angle:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      dt: {type: float, flags: 2, group: 4}
     outputs:
-    - id: 55
-      declaration_id: 47
-      name: Result
-      type: double
-      flags: 2
-      group: 5
-  - id: 219
-    type: Set_GameVelocity_x
-    inputs: [220, 221, 222]
-    outputs: [223, 224]
-  - id: 225
-    type: Set_GameVelocity_y
-    inputs: [226, 227, 228]
-    outputs: [229, 230]
+      Result: {id: 55, declaration_id: 47, type: double, flags: 2, group: 5}
+  - {id: 219, type: Set_GameVelocity_x}
+  - {id: 225, type: Set_GameVelocity_y}
   - id: 243
     type: Behavior Expression
     reference_id: 231
     reference_name: Pivot velocity X
     inputs:
-    - id: 285
-      name: angle
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 286
-      name: speed
-      type: double
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: GAME.GameBody
-        field: angular_velocity
-    - id: 287
-      name: dt
-      type: float
-      flags: 2
-      group: 4
-    - id: 558
-      name: origin
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 497
-        source_asset: OrbitFlipperMotion
-    - id: 559
-      name: rest
-      type: double
-      flags: 2
-      group: 5
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: OrbitFlipperMotion
-    - id: 560
-      name: position
-      type: double
-      flags: 2
-      group: 6
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: x
+      angle:
+        id: 285
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      speed:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
+      dt: {type: float, flags: 2, group: 4}
+      origin:
+        id: 558
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 497, source_asset: OrbitFlipperMotion}
+      rest:
+        type: double
+        flags: 2
+        group: 5
+        binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
+      position:
+        type: double
+        flags: 2
+        group: 6
+        binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
-    - id: 246
-      declaration_id: 238
-      name: Result
-      type: double
-      flags: 2
-      group: 7
+      Result: {id: 246, declaration_id: 238, type: double, flags: 2, group: 7}
   - id: 376
     type: Behavior Expression
     reference_id: 364
     reference_name: Pivot velocity Y
     inputs:
-    - id: 418
-      name: angle
-      type: double
-      flags: 2
-      group: 2
-      binding:
-        kind: component_field
-        component: GAME.GameOrientation
-        field: radians
-    - id: 419
-      name: speed
-      type: double
-      flags: 2
-      group: 3
-      binding:
-        kind: component_field
-        component: GAME.GameBody
-        field: angular_velocity
-    - id: 420
-      name: dt
-      type: float
-      flags: 2
-      group: 4
-    - id: 610
-      name: origin
-      type: double
-      flags: 2
-      group: 1
-      binding:
-        kind: variable
-        variable_id: 503
-        source_asset: OrbitFlipperMotion
-    - id: 611
-      name: rest
-      type: double
-      flags: 2
-      group: 5
-      binding:
-        kind: variable
-        variable_id: 1
-        source_asset: OrbitFlipperMotion
-    - id: 612
-      name: position
-      type: double
-      flags: 2
-      group: 6
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: "y"
+      angle:
+        id: 418
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      speed:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
+      dt: {type: float, flags: 2, group: 4}
+      origin:
+        id: 610
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 503, source_asset: OrbitFlipperMotion}
+      rest:
+        type: double
+        flags: 2
+        group: 5
+        binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
+      position:
+        type: double
+        flags: 2
+        group: 6
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-    - id: 379
-      declaration_id: 371
-      name: Result
-      type: double
-      flags: 2
-      group: 7
+      Result: {id: 379, declaration_id: 371, type: double, flags: 2, group: 7}
   - id: 498
     type: Set Variable
     reference_id: 497
     reference_name: RestX
     inputs:
-    - 499
-    - id: 500
-      type: float
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: x
+      Value:
+        type: float
+        binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
-    - 501
-    - id: 502
-      type: float
+      Value: {type: float}
   - id: 504
     type: Set Variable
     reference_id: 503
     reference_name: RestY
     inputs:
-    - 505
-    - id: 506
-      type: float
-      binding:
-        kind: component_field
-        component: game.GameTransform
-        field: "y"
+      Value:
+        type: float
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-    - 507
-    - id: 508
-      type: float
+      Value: {type: float}
   edges:
-  - from: 2
-    from_pin: 5
-    to: 498
-    to_pin: 499
-  - from: 13
-    from_pin: 14
-    to: 2
-    to_pin: 3
-  - from: 16
-    from_pin: 19
-    to: 34
-    to_pin: 35
-  - from: 21
-    from_pin: 24
-    to: 34
-    to_pin: 35
-  - from: 26
-    from_pin: 27
-    to: 29
-    to_pin: 30
-  - from: 26
-    from_pin: 28
-    to: 52
-    to_pin: 112
-  - from: 26
-    from_pin: 28
-    to: 243
-    to_pin: 287
-  - from: 26
-    from_pin: 28
-    to: 376
-    to_pin: 420
-  - from: 29
-    from_pin: 32
-    to: 16
-    to_pin: 17
-  - from: 29
-    from_pin: 33
-    to: 21
-    to_pin: 22
-  - from: 34
-    from_pin: 38
-    to: 219
-    to_pin: 220
-  - from: 52
-    from_pin: 55
-    to: 34
-    to_pin: 36
-  - from: 219
-    from_pin: 223
-    to: 225
-    to_pin: 226
-  - from: 243
-    from_pin: 246
-    to: 219
-    to_pin: 221
-  - from: 376
-    from_pin: 379
-    to: 225
-    to_pin: 227
-  - from: 498
-    from_pin: 501
-    to: 504
-    to_pin: 505
+  - {from: 2.Then, to: 498.Exec}
+  - {from: 13.Then, to: 2.Exec}
+  - {from: 16.Then, to: 34.Exec}
+  - {from: 21.Then, to: 34.Exec}
+  - {from: 26.Then, to: 29.Exec}
+  - {from: 26.DeltaSeconds, to: 52.dt}
+  - {from: 26.DeltaSeconds, to: 243.dt}
+  - {from: 26.DeltaSeconds, to: 376.dt}
+  - {from: 29.True, to: 16.Exec}
+  - {from: 29.False, to: 21.Exec}
+  - {from: 34.Then, to: 219.Exec}
+  - {from: 52.Result, to: 34.Value}
+  - {from: 219.Then, to: 225.Exec}
+  - {from: 243.Result, to: 219.Value}
+  - {from: 376.Result, to: 225.Value}
+  - {from: 498.Then, to: 504.Exec}
 - id: 40
   kind: function
   name: Turn toward stroke
@@ -380,209 +194,95 @@ graphs:
   - id: 167
     type: Function Entry
     outputs:
-    - id: 171
-      name: rest
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 172
-      name: stroke
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 173
-      name: angle
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 174
-      name: dt
-      type: float
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 171, name: rest, type: double, kind: data, flags: 2, group: 1}
+    - {id: 172, name: stroke, type: double, kind: data, flags: 2, group: 2}
+    - {id: 173, name: angle, type: double, kind: data, flags: 2, group: 3}
+    - {id: 174, name: dt, type: float, kind: data, flags: 2, group: 4}
   - id: 169
     type: Return
     inputs:
-    - id: 175
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 5
-  - id: 176
-    type: Cosine
-    inputs: [177]
-    outputs: [178]
+    - {id: 175, name: Result, type: double, kind: data, flags: 2, group: 5}
+  - {id: 176, type: Cosine}
   - id: 179
     type: Multiply
     inputs:
-    - id: 180
-      type: double
-    - id: 181
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 182
-      type: double
-  - id: 183
-    type: Cosine
-    inputs: [184]
-    outputs: [185]
+      Result: {type: double}
+  - {id: 183, type: Cosine}
   - id: 186
     type: Abs
     inputs:
-    - id: 187
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 188
-      type: double
+      Result: {type: double}
   - id: 189
     type: Divide
     inputs:
-    - id: 190
-      type: double
-    - id: 191
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 192
-      type: double
+      Result: {type: double}
   - id: 193
     type: Subtract
     inputs:
-    - id: 194
-      type: double
-    - id: 195
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 196
-      type: double
+      Result: {type: double}
   - id: 197
     type: Subtract
     inputs:
-    - id: 198
-      type: double
-    - id: 199
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 200
-      type: double
+      Result: {type: double}
   - id: 201
     type: Divide
     inputs:
-    - id: 202
-      type: double
-    - 203
+      A: {type: double}
     outputs:
-    - id: 204
-      type: double
+      Result: {type: double}
   - id: 205
     type: Real
-    inputs:
-    - id: 206
-      default: 16.0
-    outputs: [207]
+    inputs: {Value: 16.0}
   - id: 208
     type: Negate
     inputs:
-    - id: 209
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 210
-      type: double
+      Result: {type: double}
   - id: 211
     type: Real
-    inputs:
-    - id: 212
-      default: 16.0
-    outputs: [213]
+    inputs: {Value: 16.0}
   - id: 214
     type: Clamp
     inputs:
-    - id: 215
-      type: double
-    - id: 216
-      type: double
-    - id: 217
-      type: double
+      Value: {type: double}
+      Min: {type: double}
+      Max: {type: double}
     outputs:
-    - id: 218
-      type: double
+      Result: {type: double}
   edges:
-  - from: 167
-    from_pin: 171
-    to: 176
-    to_pin: 177
-  - from: 167
-    from_pin: 171
-    to: 183
-    to_pin: 184
-  - from: 167
-    from_pin: 171
-    to: 193
-    to_pin: 194
-  - from: 167
-    from_pin: 172
-    to: 179
-    to_pin: 180
-  - from: 167
-    from_pin: 173
-    to: 197
-    to_pin: 199
-  - from: 167
-    from_pin: 174
-    to: 201
-    to_pin: 203
-  - from: 176
-    from_pin: 178
-    to: 179
-    to_pin: 181
-  - from: 179
-    from_pin: 182
-    to: 189
-    to_pin: 190
-  - from: 183
-    from_pin: 185
-    to: 186
-    to_pin: 187
-  - from: 186
-    from_pin: 188
-    to: 189
-    to_pin: 191
-  - from: 189
-    from_pin: 192
-    to: 193
-    to_pin: 195
-  - from: 193
-    from_pin: 196
-    to: 197
-    to_pin: 198
-  - from: 197
-    from_pin: 200
-    to: 201
-    to_pin: 202
-  - from: 201
-    from_pin: 204
-    to: 214
-    to_pin: 215
-  - from: 205
-    from_pin: 207
-    to: 208
-    to_pin: 209
-  - from: 208
-    from_pin: 210
-    to: 214
-    to_pin: 216
-  - from: 211
-    from_pin: 213
-    to: 214
-    to_pin: 217
-  - from: 214
-    from_pin: 218
-    to: 169
-    to_pin: 175
+  - {from: 167.rest, to: 176.Value}
+  - {from: 167.rest, to: 183.Value}
+  - {from: 167.rest, to: 193.A}
+  - {from: 167.stroke, to: 179.A}
+  - {from: 167.angle, to: 197.B}
+  - {from: 167.dt, to: 201.B}
+  - {from: 176.Result, to: 179.B}
+  - {from: 179.Result, to: 189.A}
+  - {from: 183.Result, to: 186.Value}
+  - {from: 186.Result, to: 189.B}
+  - {from: 189.Result, to: 193.B}
+  - {from: 193.Result, to: 197.A}
+  - {from: 197.Result, to: 201.A}
+  - {from: 201.Result, to: 214.Value}
+  - {from: 205.Value, to: 208.Value}
+  - {from: 208.Result, to: 214.Min}
+  - {from: 211.Value, to: 214.Max}
+  - {from: 214.Result, to: 169.Result}
 - id: 231
   kind: function
   name: Pivot velocity X
@@ -595,202 +295,86 @@ graphs:
   - id: 510
     type: Function Entry
     outputs:
-    - id: 514
-      name: angle
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 515
-      name: speed
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 516
-      name: dt
-      type: float
-      kind: data
-      flags: 2
-      group: 4
-    - id: 517
-      name: origin
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 518
-      name: rest
-      type: double
-      kind: data
-      flags: 2
-      group: 5
-    - id: 519
-      name: position
-      type: double
-      kind: data
-      flags: 2
-      group: 6
+    - {id: 514, name: angle, type: double, kind: data, flags: 2, group: 2}
+    - {id: 515, name: speed, type: double, kind: data, flags: 2, group: 3}
+    - {id: 516, name: dt, type: float, kind: data, flags: 2, group: 4}
+    - {id: 517, name: origin, type: double, kind: data, flags: 2, group: 1}
+    - {id: 518, name: rest, type: double, kind: data, flags: 2, group: 5}
+    - {id: 519, name: position, type: double, kind: data, flags: 2, group: 6}
   - id: 512
     type: Return
     inputs:
-    - id: 520
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 7
+    - {id: 520, name: Result, type: double, kind: data, flags: 2, group: 7}
   - id: 521
     type: Real
-    inputs:
-    - id: 522
-      default: 40.0
-    outputs: [523]
+    inputs: {Value: 40.0}
   - id: 524
     type: Multiply
     inputs:
-    - id: 525
-      type: double
-    - 526
+      A: {type: double}
     outputs:
-    - id: 527
-      type: double
+      Result: {type: double}
   - id: 528
     type: Add
     inputs:
-    - id: 529
-      type: double
-    - id: 530
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 531
-      type: double
-  - id: 532
-    type: Cosine
-    inputs: [533]
-    outputs: [534]
-  - id: 535
-    type: Cosine
-    inputs: [536]
-    outputs: [537]
+      Result: {type: double}
+  - {id: 532, type: Cosine}
+  - {id: 535, type: Cosine}
   - id: 538
     type: Subtract
     inputs:
-    - id: 539
-      type: double
-    - id: 540
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 541
-      type: double
+      Result: {type: double}
   - id: 542
     type: Multiply
     inputs:
-    - id: 543
-      type: double
-    - id: 544
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 545
-      type: double
+      Result: {type: double}
   - id: 546
     type: Add
     inputs:
-    - id: 547
-      type: double
-    - id: 548
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 549
-      type: double
+      Result: {type: double}
   - id: 550
     type: Subtract
     inputs:
-    - id: 551
-      type: double
-    - id: 552
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 553
-      type: double
+      Result: {type: double}
   - id: 554
     type: Divide
     inputs:
-    - id: 555
-      type: double
-    - 556
+      A: {type: double}
     outputs:
-    - id: 557
-      type: double
+      Result: {type: double}
   edges:
-  - from: 510
-    from_pin: 514
-    to: 528
-    to_pin: 529
-  - from: 510
-    from_pin: 515
-    to: 524
-    to_pin: 525
-  - from: 510
-    from_pin: 516
-    to: 524
-    to_pin: 526
-  - from: 510
-    from_pin: 516
-    to: 554
-    to_pin: 556
-  - from: 510
-    from_pin: 517
-    to: 546
-    to_pin: 547
-  - from: 510
-    from_pin: 518
-    to: 535
-    to_pin: 536
-  - from: 510
-    from_pin: 519
-    to: 550
-    to_pin: 552
-  - from: 521
-    from_pin: 523
-    to: 542
-    to_pin: 543
-  - from: 524
-    from_pin: 527
-    to: 528
-    to_pin: 530
-  - from: 528
-    from_pin: 531
-    to: 532
-    to_pin: 533
-  - from: 532
-    from_pin: 534
-    to: 538
-    to_pin: 539
-  - from: 535
-    from_pin: 537
-    to: 538
-    to_pin: 540
-  - from: 538
-    from_pin: 541
-    to: 542
-    to_pin: 544
-  - from: 542
-    from_pin: 545
-    to: 546
-    to_pin: 548
-  - from: 546
-    from_pin: 549
-    to: 550
-    to_pin: 551
-  - from: 550
-    from_pin: 553
-    to: 554
-    to_pin: 555
-  - from: 554
-    from_pin: 557
-    to: 512
-    to_pin: 520
+  - {from: 510.angle, to: 528.A}
+  - {from: 510.speed, to: 524.A}
+  - {from: 510.dt, to: 524.B}
+  - {from: 510.dt, to: 554.B}
+  - {from: 510.origin, to: 546.A}
+  - {from: 510.rest, to: 535.Value}
+  - {from: 510.position, to: 550.B}
+  - {from: 521.Value, to: 542.A}
+  - {from: 524.Result, to: 528.B}
+  - {from: 528.Result, to: 532.Value}
+  - {from: 532.Result, to: 538.A}
+  - {from: 535.Result, to: 538.B}
+  - {from: 538.Result, to: 542.B}
+  - {from: 542.Result, to: 546.B}
+  - {from: 546.Result, to: 550.A}
+  - {from: 550.Result, to: 554.A}
+  - {from: 554.Result, to: 512.Result}
 - id: 364
   kind: function
   name: Pivot velocity Y
@@ -803,199 +387,83 @@ graphs:
   - id: 562
     type: Function Entry
     outputs:
-    - id: 566
-      name: angle
-      type: double
-      kind: data
-      flags: 2
-      group: 2
-    - id: 567
-      name: speed
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 568
-      name: dt
-      type: float
-      kind: data
-      flags: 2
-      group: 4
-    - id: 569
-      name: origin
-      type: double
-      kind: data
-      flags: 2
-      group: 1
-    - id: 570
-      name: rest
-      type: double
-      kind: data
-      flags: 2
-      group: 5
-    - id: 571
-      name: position
-      type: double
-      kind: data
-      flags: 2
-      group: 6
+    - {id: 566, name: angle, type: double, kind: data, flags: 2, group: 2}
+    - {id: 567, name: speed, type: double, kind: data, flags: 2, group: 3}
+    - {id: 568, name: dt, type: float, kind: data, flags: 2, group: 4}
+    - {id: 569, name: origin, type: double, kind: data, flags: 2, group: 1}
+    - {id: 570, name: rest, type: double, kind: data, flags: 2, group: 5}
+    - {id: 571, name: position, type: double, kind: data, flags: 2, group: 6}
   - id: 564
     type: Return
     inputs:
-    - id: 572
-      name: Result
-      type: double
-      kind: data
-      flags: 2
-      group: 7
+    - {id: 572, name: Result, type: double, kind: data, flags: 2, group: 7}
   - id: 573
     type: Real
-    inputs:
-    - id: 574
-      default: 40.0
-    outputs: [575]
+    inputs: {Value: 40.0}
   - id: 576
     type: Multiply
     inputs:
-    - id: 577
-      type: double
-    - 578
+      A: {type: double}
     outputs:
-    - id: 579
-      type: double
+      Result: {type: double}
   - id: 580
     type: Add
     inputs:
-    - id: 581
-      type: double
-    - id: 582
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 583
-      type: double
-  - id: 584
-    type: Sine
-    inputs: [585]
-    outputs: [586]
-  - id: 587
-    type: Sine
-    inputs: [588]
-    outputs: [589]
+      Result: {type: double}
+  - {id: 584, type: Sine}
+  - {id: 587, type: Sine}
   - id: 590
     type: Subtract
     inputs:
-    - id: 591
-      type: double
-    - id: 592
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 593
-      type: double
+      Result: {type: double}
   - id: 594
     type: Multiply
     inputs:
-    - id: 595
-      type: double
-    - id: 596
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 597
-      type: double
+      Result: {type: double}
   - id: 598
     type: Add
     inputs:
-    - id: 599
-      type: double
-    - id: 600
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 601
-      type: double
+      Result: {type: double}
   - id: 602
     type: Subtract
     inputs:
-    - id: 603
-      type: double
-    - id: 604
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 605
-      type: double
+      Result: {type: double}
   - id: 606
     type: Divide
     inputs:
-    - id: 607
-      type: double
-    - 608
+      A: {type: double}
     outputs:
-    - id: 609
-      type: double
+      Result: {type: double}
   edges:
-  - from: 562
-    from_pin: 566
-    to: 580
-    to_pin: 581
-  - from: 562
-    from_pin: 567
-    to: 576
-    to_pin: 577
-  - from: 562
-    from_pin: 568
-    to: 576
-    to_pin: 578
-  - from: 562
-    from_pin: 568
-    to: 606
-    to_pin: 608
-  - from: 562
-    from_pin: 569
-    to: 598
-    to_pin: 599
-  - from: 562
-    from_pin: 570
-    to: 587
-    to_pin: 588
-  - from: 562
-    from_pin: 571
-    to: 602
-    to_pin: 604
-  - from: 573
-    from_pin: 575
-    to: 594
-    to_pin: 595
-  - from: 576
-    from_pin: 579
-    to: 580
-    to_pin: 582
-  - from: 580
-    from_pin: 583
-    to: 584
-    to_pin: 585
-  - from: 584
-    from_pin: 586
-    to: 590
-    to_pin: 591
-  - from: 587
-    from_pin: 589
-    to: 590
-    to_pin: 592
-  - from: 590
-    from_pin: 593
-    to: 594
-    to_pin: 596
-  - from: 594
-    from_pin: 597
-    to: 598
-    to_pin: 600
-  - from: 598
-    from_pin: 601
-    to: 602
-    to_pin: 603
-  - from: 602
-    from_pin: 605
-    to: 606
-    to_pin: 607
-  - from: 606
-    from_pin: 609
-    to: 564
-    to_pin: 572
+  - {from: 562.angle, to: 580.A}
+  - {from: 562.speed, to: 576.A}
+  - {from: 562.dt, to: 576.B}
+  - {from: 562.dt, to: 606.B}
+  - {from: 562.origin, to: 598.A}
+  - {from: 562.rest, to: 587.Value}
+  - {from: 562.position, to: 602.B}
+  - {from: 573.Value, to: 594.A}
+  - {from: 576.Result, to: 580.B}
+  - {from: 580.Result, to: 584.Value}
+  - {from: 584.Result, to: 590.A}
+  - {from: 587.Result, to: 590.B}
+  - {from: 590.Result, to: 594.B}
+  - {from: 594.Result, to: 598.B}
+  - {from: 598.Result, to: 602.A}
+  - {from: 602.Result, to: 606.A}
+  - {from: 606.Result, to: 564.Result}

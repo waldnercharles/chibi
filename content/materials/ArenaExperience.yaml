@@ -10,88 +10,49 @@ graphs:
   - id: 1
     type: Shader Surface Output
     inputs:
-    - id: 2
-      default:
-        x: 1.0
-        "y": 1.0
-        z: 1.0
-    - id: 3
-      default:
-        x: 0.0
-        "y": 0.0
-        z: 0.0
-    - id: 4
-      default: 0.10000000149011612
-    - 5
-    - id: 6
-      default:
-        x: 0.0
-        "y": 0.0
-        z: 0.0
-    - 7
-    - id: 8
-      default: true
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.10000000149011612
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Unlit: true
   - id: 9
     type: Shader Parameter
     reference_name: Color
     outputs:
-    - id: 10
-      type: struct
-      type_name: ShaderVec3
-      flags: 64
-      group: 0
-      default:
-        x: 0.9374018907546997
-        "y": 1.0
-        z: 0.028911888599395752
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 64
+        group: 0
+        default: {x: 0.9374018907546997, "y": 1.0, z: 0.028911888599395752}
   - id: 11
     type: Shader Parameter
     reference_id: 1
     reference_name: Glow
     outputs:
-    - id: 12
-      flags: 0
-      group: 0
-      default: 10.0
+      Value: {flags: 0, group: 0, default: 10.0}
   - id: 13
     type: Shader Multiply
     inputs:
-    - id: 14
-      type: struct
-      type_name: ShaderVec3
-      flags: 0
-      group: 0
-      default:
-        x: 0.0
-        "y": 0.0
-        z: 0.0
-    - id: 15
-      flags: 0
-      group: 0
+      A:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      B: {flags: 0, group: 0}
     outputs:
-    - id: 16
-      type: struct
-      type_name: ShaderVec3
-      flags: 0
-      group: 0
-      default:
-        x: 0.6499999761581421
-        "y": 1.0
-        z: 0.15000000596046448
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.6499999761581421, "y": 1.0, z: 0.15000000596046448}
   edges:
-  - from: 9
-    from_pin: 10
-    to: 1
-    to_pin: 2
-  - from: 9
-    from_pin: 10
-    to: 13
-    to_pin: 14
-  - from: 11
-    from_pin: 12
-    to: 13
-    to_pin: 15
-  - from: 13
-    from_pin: 16
-    to: 1
-    to_pin: 3
+  - {from: 9.Value, to: 1.Base Color}
+  - {from: 9.Value, to: 13.A}
+  - {from: 11.Value, to: 13.B}
+  - {from: 13.Value, to: 1.Emission}

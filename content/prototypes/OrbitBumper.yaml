@@ -11,11 +11,5 @@ components:
     height: 60.0
     shape: Circle
     width: 60.0
-  GAME.GameCollider:
-    category: 8
-    mask: 1
-    radius: 29.0
-    restitution: 1.0
-  game.GameTransform:
-    x: -85.0
-    "y": -430.0
+  GAME.GameCollider: {category: 8, mask: 1, radius: 29.0, restitution: 1.0}
+  game.GameTransform: {x: -85.0, "y": -430.0}

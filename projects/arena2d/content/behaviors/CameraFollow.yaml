@@ -11,88 +11,48 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Get Global Variable
-    inputs:
-    - id: 5
-      default: Player
+    inputs: {Name: Player}
     outputs:
-    - id: 6
-      type: handle
-      type_name: ecs.entity
-  - id: 7
-    type: GetEntity_GameTransform
-    inputs: [8]
-    outputs: [9]
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 7, type: GetEntity_GameTransform}
   - id: 49
     type: Behavior Expression
     reference_id: 10
     reference_name: position += (target - position) * (1 - exp(-rate * dt))
     inputs:
-    - id: 55
-      name: Exec
-      kind: exec
-    - id: 50
-      declaration_id: 15
-      name: position
-      type: struct
-      type_name: GameTransform
-      flags: 6
-      group: 1
-      binding:
-        kind: component
-        component: game.GameTransform
-    - id: 51
-      declaration_id: 16
-      name: target
-      type: struct
-      type_name: GameTransform
-      flags: 2
-      group: 2
-    - id: 52
-      declaration_id: 17
-      name: rate
-      type: double
-      flags: 2
-      group: 3
-      default: 6.0
-    - id: 53
-      declaration_id: 18
-      name: dt
-      type: double
-      flags: 2
-      group: 4
-      binding:
-        kind: delta_time
+      Exec: {id: 55, kind: exec}
+      position:
+        id: 50
+        declaration_id: 15
+        type: struct
+        type_name: GameTransform
+        flags: 6
+        group: 1
+        binding: {kind: component, component: game.GameTransform}
+      target: {declaration_id: 16, type: struct, type_name: GameTransform, flags: 2, group: 2}
+      rate: {declaration_id: 17, type: double, flags: 2, group: 3, default: 6.0}
+      dt:
+        declaration_id: 18
+        type: double
+        flags: 2
+        group: 4
+        binding: {kind: delta_time}
     outputs:
-    - id: 56
-      name: Then
-      kind: exec
-    - id: 54
-      declaration_id: 19
-      name: Result
-      type: struct
-      type_name: GameTransform
-      flags: 2
-      group: 5
+      Then: {id: 56, kind: exec}
+      Result:
+        id: 54
+        declaration_id: 19
+        type: struct
+        type_name: GameTransform
+        flags: 2
+        group: 5
   edges:
-  - from: 1
-    from_pin: 2
-    to: 49
-    to_pin: 55
-  - from: 4
-    from_pin: 6
-    to: 7
-    to_pin: 8
-  - from: 7
-    from_pin: 9
-    to: 49
-    to_pin: 51
+  - {from: 1.Then, to: 49.Exec}
+  - {from: 4.Value, to: 7.Entity}
+  - {from: 7.Value, to: 49.target}
 - id: 10
   kind: function
   name: position += (target - position) * (1 - exp(-rate * dt))
@@ -105,185 +65,80 @@ graphs:
   - id: 146
     type: Function Entry
     outputs:
-    - 147
-    - id: 150
-      name: position
-      type: struct
-      type_name: GameTransform
-      kind: data
-      group: 1
-    - id: 151
-      name: target
-      type: struct
-      type_name: GameTransform
-      kind: data
-      flags: 2
-      group: 2
-    - id: 152
-      name: rate
-      type: double
-      kind: data
-      flags: 2
-      group: 3
-    - id: 153
-      name: dt
-      type: double
-      kind: data
-      flags: 2
-      group: 4
+      position: {id: 150, type: struct, type_name: GameTransform, kind: data, group: 1}
+      target: {type: struct, type_name: GameTransform, kind: data, flags: 2, group: 2}
+      rate: {type: double, kind: data, flags: 2, group: 3}
+      dt: {type: double, kind: data, flags: 2, group: 4}
   - id: 148
     type: Return
     inputs:
-    - 149
-    - id: 154
-      name: Result
-      type: struct
-      type_name: GameTransform
-      kind: data
-      flags: 2
-      group: 5
+      Result:
+        id: 154
+        type: struct
+        type_name: GameTransform
+        kind: data
+        flags: 2
+        group: 5
   - id: 155
     type: Subtract
     inputs:
-    - id: 156
-      type: struct
-      type_name: GameTransform
-    - id: 157
-      type: struct
-      type_name: GameTransform
+      A: {type: struct, type_name: GameTransform}
+      B: {type: struct, type_name: GameTransform}
     outputs:
-    - id: 158
-      type: struct
-      type_name: GameTransform
+      Result: {type: struct, type_name: GameTransform}
   - id: 159
     type: Real
-    inputs:
-    - id: 160
-      default: 1.0
-    outputs: [161]
+    inputs: {Value: 1.0}
   - id: 162
     type: Negate
     inputs:
-    - id: 163
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 164
-      type: double
+      Result: {type: double}
   - id: 165
     type: Multiply
     inputs:
-    - id: 166
-      type: double
-    - id: 167
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 168
-      type: double
-  - id: 169
-    type: Exponential
-    inputs: [170]
-    outputs: [171]
+      Result: {type: double}
+  - {id: 169, type: Exponential}
   - id: 172
     type: Subtract
     inputs:
-    - id: 173
-      type: double
-    - id: 174
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 175
-      type: double
+      Result: {type: double}
   - id: 176
     type: Multiply
     inputs:
-    - id: 177
-      type: struct
-      type_name: GameTransform
-    - id: 178
-      type: double
+      A: {type: struct, type_name: GameTransform}
+      B: {type: double}
     outputs:
-    - id: 179
-      type: struct
-      type_name: GameTransform
+      Result: {type: struct, type_name: GameTransform}
   - id: 180
     type: Add
     inputs:
-    - id: 181
-      type: struct
-      type_name: GameTransform
-    - id: 182
-      type: struct
-      type_name: GameTransform
+      A: {type: struct, type_name: GameTransform}
+      B: {type: struct, type_name: GameTransform}
     outputs:
-    - id: 183
-      type: struct
-      type_name: GameTransform
-  - id: 184
-    type: Set_GameTransform
-    inputs: [185, 186]
-    outputs: [187, 188]
+      Result: {type: struct, type_name: GameTransform}
+  - {id: 184, type: Set_GameTransform}
   edges:
-  - from: 146
-    from_pin: 147
-    to: 184
-    to_pin: 185
-  - from: 146
-    from_pin: 150
-    to: 155
-    to_pin: 157
-  - from: 146
-    from_pin: 150
-    to: 180
-    to_pin: 181
-  - from: 146
-    from_pin: 151
-    to: 155
-    to_pin: 156
-  - from: 146
-    from_pin: 152
-    to: 162
-    to_pin: 163
-  - from: 146
-    from_pin: 153
-    to: 165
-    to_pin: 167
-  - from: 155
-    from_pin: 158
-    to: 176
-    to_pin: 177
-  - from: 159
-    from_pin: 161
-    to: 172
-    to_pin: 173
-  - from: 162
-    from_pin: 164
-    to: 165
-    to_pin: 166
-  - from: 165
-    from_pin: 168
-    to: 169
-    to_pin: 170
-  - from: 169
-    from_pin: 171
-    to: 172
-    to_pin: 174
-  - from: 172
-    from_pin: 175
-    to: 176
-    to_pin: 178
-  - from: 176
-    from_pin: 179
-    to: 180
-    to_pin: 182
-  - from: 180
-    from_pin: 183
-    to: 184
-    to_pin: 186
-  - from: 184
-    from_pin: 187
-    to: 148
-    to_pin: 149
-  - from: 184
-    from_pin: 188
-    to: 148
-    to_pin: 154
+  - {from: 146.Exec, to: 184.Exec}
+  - {from: 146.position, to: 155.B}
+  - {from: 146.position, to: 180.A}
+  - {from: 146.target, to: 155.A}
+  - {from: 146.rate, to: 162.Value}
+  - {from: 146.dt, to: 165.B}
+  - {from: 155.Result, to: 176.A}
+  - {from: 159.Value, to: 172.A}
+  - {from: 162.Result, to: 165.A}
+  - {from: 165.Result, to: 169.Value}
+  - {from: 169.Result, to: 172.B}
+  - {from: 172.Result, to: 176.B}
+  - {from: 176.Result, to: 180.B}
+  - {from: 180.Result, to: 184.Value}
+  - {from: 184.Then, to: 148.Exec}
+  - {from: 184.Value, to: 148.Result}

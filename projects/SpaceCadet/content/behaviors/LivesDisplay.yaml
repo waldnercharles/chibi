@@ -10,43 +10,19 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Get Global Variable
-    inputs:
-    - id: 5
-      default: Lives
+    inputs: {Name: Lives}
     outputs:
-    - id: 6
-      type: float
-      type_name: null
+      Value: {type: float, type_name: null}
   - id: 7
     type: Format Text
     inputs:
-    - id: 8
-      default: BALLS   {:.0f}
-    - id: 9
-      type: float
-      type_name: null
-    outputs: [10]
-  - id: 11
-    type: Set_GameWidget_text
-    inputs: [12, 13, 14]
-    outputs: [15, 16]
+      Format: BALLS   {:.0f}
+      Arg0: {type: float, type_name: null}
+  - {id: 11, type: Set_GameWidget_text}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 11
-    to_pin: 12
-  - from: 4
-    from_pin: 6
-    to: 7
-    to_pin: 9
-  - from: 7
-    from_pin: 10
-    to: 11
-    to_pin: 13
+  - {from: 1.Then, to: 11.Exec}
+  - {from: 4.Value, to: 7.Arg0}
+  - {from: 7.Result, to: 11.Value}

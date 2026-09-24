@@ -12,10 +12,6 @@ components:
     shape: Circle
     width: 46.0
   GAME.GameBody: {}
-  GAME.GameCollider:
-    category: 4
-    mask: 1
-    radius: 23.0
-    restitution: 1.0
+  GAME.GameCollider: {category: 4, mask: 1, radius: 23.0, restitution: 1.0}
   game.GameTransform: {}
 behaviors: [BumperKick]

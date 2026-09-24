@@ -52,12 +52,12 @@ try {
       const age = document.variables.find(v => v.name === "Age");
       const setter = graph.nodes.find(n => n.type === "Set Variable" && n.reference_id === age.id);
       assert(setter, "Optimize must retain the Age assignment");
-      // Compact pins may be bare IDs; the setter's first output is its exec pin.
-      const pinId = p => typeof p === "number" ? p : p.id;
-      assert(graph.edges.filter(e => e.from === setter.id).every(e => e.from_pin === pinId(setter.outputs[0])));
+      // Edges name pins as <node>.<pin>; the setter's data output must stay unwired.
+      assert(!graph.edges.some(e => e.from === `${setter.id}.Value`));
       assert(graph.nodes.some(n => n.type === "Self" && n.inline_source));
-      assert(graph.nodes.flatMap(n => n.inputs || []).filter(p =>
-        p.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);
+      const pins = node => Array.isArray(node.inputs) ? node.inputs : Object.values(node.inputs || {});
+      assert(graph.nodes.flatMap(pins).filter(p =>
+        p?.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);
     }
     assert.equal(document.variables.length, beforeDocument.variables.length);
     const noop = rpc("optimizeGraph", { path: file, dry_run: false, expected_hash: applied.result.after_hash }).result?.structuredContent;

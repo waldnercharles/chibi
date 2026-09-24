@@ -7,152 +7,58 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
-    type: Event
-    reference_name: Tick
-    outputs: [2]
+  - {id: 1, type: Event, reference_name: Tick}
   - id: 3
     type: Get_GameProjectile
     outputs:
-    - id: 4
-      flags: 0
-    - id: 8
-      name: lifetime
-      type: float
-      field_source: 4
-      field_name: lifetime
-      flags: 0
-    - id: 12
-      name: age
-      type: float
-      field_source: 4
-      field_name: age
-      flags: 0
-  - id: 13
-    type: Delta Time
-    outputs: [14]
-  - id: 39
-    type: Add
-    inputs: [40, 41]
-    outputs: [42]
+      Value: {flags: 0}
+      Value.lifetime: {id: 8}
+      Value.age: {id: 12}
+  - {id: 13, type: Delta Time}
+  - {id: 39, type: Add}
   - id: 51
     type: Set_GameProjectile_age
-    inputs: [52, 53, 154]
+    inputs:
+      Target: {id: 154}
     outputs:
-    - 54
-    - 55
-    - id: 59
-      name: lifetime
-      type: float
-      field_source: 55
-      field_name: lifetime
-    - id: 63
-      name: age
-      type: float
-      field_source: 55
-      field_name: age
-  - id: 64
-    type: Greater Or Equal
-    inputs: [65, 66]
-    outputs: [67]
-  - id: 68
-    type: Branch
-    inputs: [69, 70]
-    outputs: [71, 72]
+      Then: {id: 54}
+      Value.lifetime: {id: 59}
+      Value.age: {id: 63}
+  - {id: 64, type: Greater Or Equal}
+  - {id: 68, type: Branch}
   - id: 73
     type: Self
     outputs:
-    - id: 74
-      type_name: ecs.entity
-  - id: 75
-    type: Destroy Entity
-    inputs: [76, 77]
-    outputs: [78]
+      Self: {type_name: ecs.entity}
+  - {id: 75, type: Destroy Entity}
   - id: 131
     type: Call Function
     reference_id: 79
     reference_name: Face Direction
     inputs:
-    - 127
-    - id: 128
-      name: X
-      type: float
-      kind: data
-    - id: 129
-      name: "Y"
-      type: float
-      kind: data
-    outputs: [130]
+      Exec: {id: 127}
+      X: {type: float, kind: data}
+      "Y": {type: float, kind: data}
   - id: 157
     type: Get_GameVelocity
     outputs:
-    - id: 158
-      flags: 0
-    - id: 159
-      name: x
-      type: float
-      field_source: 158
-      field_name: x
-      flags: 0
-    - id: 160
-      name: "y"
-      type: float
-      field_source: 158
-      field_name: "y"
-      flags: 0
+      Value: {flags: 0}
+      Value.x: {}
+      Value.y: {}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 131
-    to_pin: 127
-  - from: 3
-    from_pin: 12
-    to: 39
-    to_pin: 40
-  - from: 13
-    from_pin: 14
-    to: 39
-    to_pin: 41
-  - from: 39
-    from_pin: 42
-    to: 51
-    to_pin: 53
-  - from: 51
-    from_pin: 54
-    to: 68
-    to_pin: 69
-  - from: 51
-    from_pin: 59
-    to: 64
-    to_pin: 66
-  - from: 51
-    from_pin: 63
-    to: 64
-    to_pin: 65
-  - from: 64
-    from_pin: 67
-    to: 68
-    to_pin: 70
-  - from: 68
-    from_pin: 71
-    to: 75
-    to_pin: 76
-  - from: 73
-    from_pin: 74
-    to: 75
-    to_pin: 77
-  - from: 131
-    from_pin: 130
-    to: 51
-    to_pin: 52
-  - from: 157
-    from_pin: 159
-    to: 131
-    to_pin: 128
-  - from: 157
-    from_pin: 160
-    to: 131
-    to_pin: 129
+  - {from: 1.Then, to: 131.Exec}
+  - {from: 3.Value.age, to: 39.A}
+  - {from: 13.Seconds, to: 39.B}
+  - {from: 39.Result, to: 51.Value}
+  - {from: 51.Then, to: 68.Exec}
+  - {from: 51.Value.lifetime, to: 64.B}
+  - {from: 51.Value.age, to: 64.A}
+  - {from: 64.Result, to: 68.Condition}
+  - {from: 68.True, to: 75.Exec}
+  - {from: 73.Self, to: 75.Entity}
+  - {from: 131.Then, to: 51.Exec}
+  - {from: 157.Value.x, to: 131.X}
+  - {from: 157.Value.y, to: 131.Y}
 - id: 79
   kind: function
   name: Face Direction
@@ -163,130 +69,67 @@ graphs:
   - id: 83
     type: Function Entry
     outputs:
-    - id: 80
-      name: Then
-    - id: 81
-      name: X
-      type: float
-      kind: data
-    - id: 82
-      name: "Y"
-      type: float
-      kind: data
+    - {id: 80, name: Then}
+    - {id: 81, name: X, type: float, kind: data}
+    - {id: 82, name: "Y", type: float, kind: data}
   - id: 85
     type: Return
-    inputs: [84]
+    inputs:
+      Exec: {id: 84}
   - id: 87
     type: Has_GameOrientation
-    outputs: [86]
+    outputs:
+      Value: {id: 86}
   - id: 92
     type: Branch
-    inputs: [88, 89]
-    outputs: [90, 91]
+    inputs:
+      Exec: {id: 88}
   - id: 106
     type: Greater Or Equal
-    inputs: [103, 104]
-    outputs: [105]
+    inputs:
+      A: {id: 103}
   - id: 111
     type: Branch
-    inputs: [107, 108]
-    outputs: [109, 110]
+    inputs:
+      Exec: {id: 107}
   - id: 114
     type: Call Pure Function
     reference_id: 1
     reference_name: Direction Orientation
     reference_asset: DirectionMath
     inputs:
-    - id: 112
-      declaration_id: 4
-      name: X
-      type: float
-    - id: 115
-      declaration_id: 5
-      name: "Y"
-      type: float
+      X: {id: 112, declaration_id: 4, type: float}
+      "Y": {id: 115, declaration_id: 5, type: float}
     outputs:
-    - id: 120
-      declaration_id: 6
-      name: Orientation
-      type: struct
-      type_name: GameOrientation
+      Orientation: {id: 120, declaration_id: 6, type: struct, type_name: GameOrientation}
   - id: 126
     type: Set_GameOrientation
-    inputs: [122, 123]
-    outputs: [124, 125]
+    inputs:
+      Exec: {id: 122}
   - id: 150
     type: Behavior Expression
     reference_id: 132
     reference_name: Direction Magnitude
     inputs:
-    - id: 151
-      name: x
-      type: double
-    - id: 152
-      name: "y"
-      type: double
+      x: {type: double}
+      "y": {type: double}
     outputs:
-    - id: 153
-      name: Result
-      type: double
+      Result: {type: double}
   edges:
-  - from: 83
-    from_pin: 80
-    to: 92
-    to_pin: 88
-  - from: 83
-    from_pin: 81
-    to: 114
-    to_pin: 112
-  - from: 83
-    from_pin: 81
-    to: 150
-    to_pin: 151
-  - from: 83
-    from_pin: 82
-    to: 114
-    to_pin: 115
-  - from: 83
-    from_pin: 82
-    to: 150
-    to_pin: 152
-  - from: 87
-    from_pin: 86
-    to: 92
-    to_pin: 89
-  - from: 92
-    from_pin: 90
-    to: 111
-    to_pin: 107
-  - from: 92
-    from_pin: 91
-    to: 85
-    to_pin: 84
-  - from: 106
-    from_pin: 105
-    to: 111
-    to_pin: 108
-  - from: 111
-    from_pin: 109
-    to: 85
-    to_pin: 84
-  - from: 111
-    from_pin: 110
-    to: 126
-    to_pin: 122
-  - from: 114
-    from_pin: 120
-    to: 126
-    to_pin: 123
-  - from: 126
-    from_pin: 124
-    to: 85
-    to_pin: 84
-  - from: 150
-    from_pin: 153
-    to: 106
-    to_pin: 104
+  - {from: 83.Then, to: 92.Exec}
+  - {from: 83.X, to: 114.X}
+  - {from: 83.X, to: 150.x}
+  - {from: 83.Y, to: 114.Y}
+  - {from: 83.Y, to: 150.y}
+  - {from: 87.Value, to: 92.Condition}
+  - {from: 92.True, to: 111.Exec}
+  - {from: 92.False, to: 85.Exec}
+  - {from: 106.Result, to: 111.Condition}
+  - {from: 111.True, to: 85.Exec}
+  - {from: 111.False, to: 126.Exec}
+  - {from: 114.Orientation, to: 126.Value}
+  - {from: 126.Then, to: 85.Exec}
+  - {from: 150.Result, to: 106.B}
 - id: 132
   kind: function
   name: Direction Magnitude
@@ -299,65 +142,34 @@ graphs:
   - id: 133
     type: Function Entry
     outputs:
-    - id: 137
-      name: x
-      type: double
-      kind: data
-    - id: 138
-      name: "y"
-      type: double
-      kind: data
+    - {id: 137, name: x, type: double, kind: data}
+    - {id: 138, name: "y", type: double, kind: data}
   - id: 135
     type: Return
     inputs:
-    - id: 139
-      name: Result
-      type: double
-      kind: data
+    - {id: 139, name: Result, type: double, kind: data}
   - id: 140
     type: Abs
     inputs:
-    - id: 141
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 142
-      type: double
+      Result: {type: double}
   - id: 143
     type: Abs
     inputs:
-    - id: 144
-      type: double
+      Value: {type: double}
     outputs:
-    - id: 145
-      type: double
+      Result: {type: double}
   - id: 146
     type: Add
     inputs:
-    - id: 147
-      type: double
-    - id: 148
-      type: double
+      A: {type: double}
+      B: {type: double}
     outputs:
-    - id: 149
-      type: double
+      Result: {type: double}
   edges:
-  - from: 133
-    from_pin: 137
-    to: 140
-    to_pin: 141
-  - from: 133
-    from_pin: 138
-    to: 143
-    to_pin: 144
-  - from: 140
-    from_pin: 142
-    to: 146
-    to_pin: 147
-  - from: 143
-    from_pin: 145
-    to: 146
-    to_pin: 148
-  - from: 146
-    from_pin: 149
-    to: 135
-    to_pin: 139
+  - {from: 133.x, to: 140.Value}
+  - {from: 133.y, to: 143.Value}
+  - {from: 140.Result, to: 146.A}
+  - {from: 143.Result, to: 146.B}
+  - {from: 146.Result, to: 135.Result}

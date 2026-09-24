@@ -1,7 +1,5 @@
 name: HRCLabCamera
 identity: prototype-76d41198db64752e
 components:
-  GAME.GameCamera:
-    height: 540.0
-    width: 960.0
+  GAME.GameCamera: {height: 540.0, width: 960.0}
   game.GameTransform: {}

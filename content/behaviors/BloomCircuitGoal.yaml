@@ -10,73 +10,27 @@ graphs:
     type: Event
     reference_name: Tick
     outputs:
-    - 2
-    - id: 3
-      name: DeltaSeconds
-      type: float
-      kind: data
+      DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Find Nearest Entity
     inputs:
-    - id: 5
-      default:
-        x: 0.0
-        "y": 2.509999990463257
-    - id: 6
-      default: 10000.0
-    - id: 7
-      default: 1
-    - 8
-    outputs: [9, 10, 11, 12]
-  - id: 13
-    type: GetEntity_GameExperience
-    inputs: [14]
-    outputs: [15]
-  - id: 16
-    type: Break_GameExperience
-    inputs: [17]
-    outputs: [18]
+      Position:
+        default: {x: 0.0, "y": 2.509999990463257}
+      Radius: 10000.0
+      Categories: 1
+  - {id: 13, type: GetEntity_GameExperience}
+  - {id: 16, type: Break_GameExperience}
   - id: 19
     type: Integer Greater Or Equal
-    inputs:
-    - 20
-    - id: 21
-      default: 8
-    outputs: [22]
-  - id: 23
-    type: Branch
-    inputs: [24, 25]
-    outputs: [26, 27]
+    inputs: {B: 8}
+  - {id: 23, type: Branch}
   - id: 28
     type: Set_GameWidget_text
-    inputs:
-    - 29
-    - id: 30
-      default: CIRCUIT COMPLETE!  All 8 blooms collected.
-    - 31
-    outputs: [32, 33]
+    inputs: {Value: CIRCUIT COMPLETE!  All 8 blooms collected.}
   edges:
-  - from: 1
-    from_pin: 2
-    to: 23
-    to_pin: 24
-  - from: 4
-    from_pin: 10
-    to: 13
-    to_pin: 14
-  - from: 13
-    from_pin: 15
-    to: 16
-    to_pin: 17
-  - from: 16
-    from_pin: 18
-    to: 19
-    to_pin: 20
-  - from: 19
-    from_pin: 22
-    to: 23
-    to_pin: 25
-  - from: 23
-    from_pin: 26
-    to: 28
-    to_pin: 29
+  - {from: 1.Then, to: 23.Exec}
+  - {from: 4.Entity, to: 13.Entity}
+  - {from: 13.Value, to: 16.GameExperience}
+  - {from: 16.current, to: 19.A}
+  - {from: 19.Result, to: 23.Condition}
+  - {from: 23.True, to: 28.Exec}

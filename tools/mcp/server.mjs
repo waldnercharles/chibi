@@ -103,7 +103,7 @@ function ensureController() {
   const controller = process.env.CHIBI_CTL;
   controllerBuild ??= new Promise((resolveBuild, rejectBuild) => {
     process.stderr.write("chibi MCP building native controllers\n");
-    const child = spawn("make", ["-C", serverRoot, "build", `BUILD_DIR=${dirname(controller)}`], {
+    const child = spawn("make", ["-C", serverRoot, "build", `BUILD_DIR=${dirname(controller)}`, "BUILD_TARGET=chibi_ctl"], {
       stdio: ["ignore", process.stderr, process.stderr],
     });
     child.on("error", rejectBuild);

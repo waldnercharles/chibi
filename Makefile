@@ -62,8 +62,11 @@ help:
 build:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
+# Publish only when this build refreshed chibi_ctl for the current sources.
 ifeq ($(LOCAL_CMAKE_FLAGS),$(SANITIZER_CMAKE_FLAGS))
+ifeq ($(filter-out chibi_ctl,$(BUILD_TARGET)),)
 	@sh tools/mcp/controller-cache.sh publish "$(BUILD_DIR)/chibi_ctl" || true
+endif
 endif
 
 build-debug:

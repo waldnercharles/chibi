@@ -15,14 +15,14 @@ graphs:
       declaration_id: 1
       name: Energy
       type: float
+      type_name: null
       kind: data
-      default: 0.0
     - id: 4
       declaration_id: 2
       name: Cause
       type: int
+      type_name: null
       kind: data
-      default: 0
     - id: 5
       declaration_id: 3
       name: Point
@@ -39,17 +39,13 @@ graphs:
     - id: 8
       name: current
       type: int
-      type_name: int
       field_source: 7
       field_name: current
-      default: 0
     - id: 9
       name: maximum
       type: int
-      type_name: int
       field_source: 7
       field_name: maximum
-      default: 0
   - id: 32
     type: Behavior Expression
     reference_id: 10
@@ -59,27 +55,21 @@ graphs:
       declaration_id: 15
       name: current
       type: int
-      type_name: int
       flags: 2
       group: 1
-      default: 0
     - id: 34
       declaration_id: 16
       name: damage
       type: int
-      type_name: int
       flags: 2
       group: 2
-      default: 0
     outputs:
     - id: 35
       declaration_id: 17
       name: Result
       type: int
-      type_name: int
       flags: 2
       group: 3
-      default: 0
   - id: 80
     type: Set_GameHealth_current
     inputs: [81, 82, 83]
@@ -89,17 +79,13 @@ graphs:
     - id: 108
       name: current
       type: int
-      type_name: int
       field_source: 85
       field_name: current
-      default: 0
     - id: 109
       name: maximum
       type: int
-      type_name: int
       field_source: 85
       field_name: maximum
-      default: 0
   - id: 124
     type: Behavior Expression
     reference_id: 110
@@ -112,9 +98,7 @@ graphs:
       declaration_id: 115
       name: current
       type: double
-      type_name: double
       group: 1
-      default: 0.0
     outputs:
     - id: 128
       name: "True"
@@ -126,10 +110,8 @@ graphs:
       declaration_id: 116
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 2
-      default: false
   - id: 144
     type: Self
     outputs:
@@ -208,46 +190,34 @@ graphs:
     - id: 202
       name: current
       type: int
-      type_name: int
       kind: data
       flags: 2
       group: 1
-      default: 0
     - id: 203
       name: damage
       type: int
-      type_name: int
       kind: data
       flags: 2
       group: 2
-      default: 0
   - id: 200
     type: Return
     inputs:
     - id: 204
       name: Result
       type: int
-      type_name: int
       kind: data
       flags: 2
       group: 3
-      default: 0
   - id: 205
     type: Subtract
     inputs:
     - id: 206
       type: int
-      type_name: int
-      default: 0
     - id: 207
       type: int
-      type_name: int
-      default: 0
     outputs:
     - id: 208
       type: int
-      type_name: int
-      default: 0
   - id: 209
     type: Real
     inputs: [210]
@@ -257,17 +227,11 @@ graphs:
     inputs:
     - id: 213
       type: int
-      type_name: int
-      default: 0
     - id: 214
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 215
       type: int
-      type_name: int
-      default: 0
   edges:
   - from: 198
     from_pin: 202
@@ -304,21 +268,17 @@ graphs:
     - id: 135
       name: current
       type: double
-      type_name: double
       kind: data
       group: 1
-      default: 0.0
   - id: 133
     type: Return
     inputs:
     - id: 136
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 2
-      default: false
   - id: 137
     type: Real
     inputs: [138]
@@ -328,12 +288,8 @@ graphs:
     inputs:
     - id: 141
       type: double
-      type_name: double
-      default: 0.0
     - id: 142
       type: double
-      type_name: double
-      default: 0.0
     outputs: [143]
   edges:
   - from: 131

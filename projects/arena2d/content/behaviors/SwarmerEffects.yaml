@@ -21,6 +21,7 @@ graphs:
       declaration_id: 261
       name: Prototype
       type: name
+      type_name: null
       kind: data
       default: SpawnEmitter
     - id: 18
@@ -32,7 +33,6 @@ graphs:
       binding:
         kind: component
         component: game.GameTransform
-      default: null
     outputs:
     - 16
     - id: 19
@@ -41,7 +41,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   edges:
   - from: 1
     from_pin: 2

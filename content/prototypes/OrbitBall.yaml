@@ -4,11 +4,11 @@ components:
   GAME.GameAppearance:
     color: 3942121471
     height: 18.0
-    shape: 1
+    shape: Circle
     width: 18.0
   GAME.GameBody:
     continuous: true
-    type: 1
+    type: Dynamic
   GAME.GameCollider:
     category: 1
     friction: 0.07999999821186066

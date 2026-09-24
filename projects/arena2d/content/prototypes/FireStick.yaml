@@ -4,4 +4,4 @@ components:
   GAME.GameActionBinding:
     action: Fire
     firing: true
-    source: 41
+    source: Aim Stick

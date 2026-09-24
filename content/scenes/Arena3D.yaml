@@ -37,7 +37,7 @@ entities:
       radius: 0
       category: 8
       mask: 7
-      shape: 1
+      shape: Box
       width: 208.2272947547483
       height: 4
       sensor: false
@@ -60,7 +60,7 @@ entities:
       radius: 0
       category: 8
       mask: 7
-      shape: 1
+      shape: Box
       width: 466.88021535170066
       height: 4
       sensor: false
@@ -83,7 +83,7 @@ entities:
       radius: 0
       category: 8
       mask: 7
-      shape: 1
+      shape: Box
       width: 208.2272947547483
       height: 4
       sensor: false
@@ -106,7 +106,7 @@ entities:
       radius: 0
       category: 8
       mask: 7
-      shape: 1
+      shape: Box
       width: 208.2272947547483
       height: 4
       sensor: false
@@ -129,7 +129,7 @@ entities:
       radius: 0
       category: 8
       mask: 7
-      shape: 1
+      shape: Box
       width: 466.88021535170066
       height: 4
       sensor: false
@@ -152,7 +152,7 @@ entities:
       radius: 0
       category: 8
       mask: 7
-      shape: 1
+      shape: Box
       width: 208.2272947547483
       height: 4
       sensor: false
@@ -163,42 +163,42 @@ entities:
   prototype: ActionBinding
   components:
     GameActionBinding:
-      source: 3
+      source: Space
       action: Dash
       firing: false
 - name: Shift Dash
   prototype: ActionBinding
   components:
     GameActionBinding:
-      source: 4
+      source: Shift
       action: Dash
       firing: false
 - name: Pad Dash
   prototype: ActionBinding
   components:
     GameActionBinding:
-      source: 33
+      source: Pad A
       action: Dash
       firing: false
 - name: Stick Fire
   prototype: ActionBinding
   components:
     GameActionBinding:
-      source: 41
+      source: Aim Stick
       action: Fire
       firing: true
 - name: Trigger Fire
   prototype: ActionBinding
   components:
     GameActionBinding:
-      source: 40
+      source: Pad Right Trigger
       action: Fire
       firing: true
 - name: Mouse Fire
   prototype: ActionBinding
   components:
     GameActionBinding:
-      source: 1
+      source: Mouse Left
       action: Fire
       firing: true
       disabled: false

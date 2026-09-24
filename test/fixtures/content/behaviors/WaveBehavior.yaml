@@ -48,9 +48,7 @@ graphs:
     outputs:
     - id: 48
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 50
     type: Delta Time
     outputs: [51]
@@ -65,14 +63,10 @@ graphs:
     - 56
     - id: 57
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 58
     - id: 59
       type: float
-      type_name: float
-      default: 0.0
   - id: 124
     type: Event
     reference_name: Tick
@@ -112,7 +106,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     outputs: [146]
   edges:
   - from: 49
@@ -172,7 +165,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 47
     type: Return
     inputs: [46]
@@ -182,7 +174,6 @@ graphs:
     outputs:
     - id: 61
       type: float
-      type_name: float
       flags: 0
       default: 1.5
   - id: 63
@@ -198,9 +189,7 @@ graphs:
     outputs:
     - id: 67
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 69
     type: Greater Or Equal
     inputs: [70, 71]
@@ -241,14 +230,10 @@ graphs:
     - 95
     - id: 96
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 97
     - id: 98
       type: float
-      type_name: float
-      default: 0.0
   - id: 103
     type: Call Function
     reference_id: 7
@@ -260,24 +245,18 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     outputs: [102]
   - id: 104
     type: Add
     inputs:
     - id: 105
       type: int
-      type_name: int
-      default: 0
     - id: 106
       type: int
-      type_name: int
       default: 1
     outputs:
     - id: 107
       type: int
-      type_name: int
-      default: 0
   - id: 112
     type: Set Variable
     reference_id: 5
@@ -289,7 +268,6 @@ graphs:
     outputs:
     - id: 113
       type: float
-      type_name: float
       flags: 0
       default: -1.0
   - id: 115
@@ -306,13 +284,11 @@ graphs:
     - 119
     - id: 120
       type: float
-      type_name: float
       default: -1.0
     outputs:
     - 121
     - id: 122
       type: float
-      type_name: float
       default: -1.0
   edges:
   - from: 45
@@ -424,23 +400,18 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 13
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 9
       field_name: x
-      default: 0.0
     - id: 14
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 9
       field_name: "y"
-      default: 0.0
   - id: 12
     type: Return
     inputs: [11]
@@ -450,7 +421,6 @@ graphs:
     outputs:
     - id: 15
       type: float
-      type_name: float
       flags: 0
       default: -1.0
   - id: 18
@@ -459,7 +429,6 @@ graphs:
     outputs:
     - id: 17
       type: float
-      type_name: float
       flags: 0
       default: 260.0
   - id: 19

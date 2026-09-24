@@ -194,10 +194,14 @@ static int parse_field(
             result = read_signed(json, &signed_value);
             value.i64 = signed_value;
             break;
-        case PIN_ENUM:
-            result = read_signed(json, &signed_value);
-            value.e = (int32_t)signed_value;
+        case PIN_ENUM: {
+            int label_value = 0;
+            bool label = yyjson_is_str(json) &&
+                         registry_enum_value(field->type_name, yyjson_get_str(json), &label_value);
+            result = label ? 0 : read_signed(json, &signed_value);
+            value.e = label ? label_value : (int32_t)signed_value;
             break;
+        }
         case PIN_U8:
             result = read_unsigned(json, &unsigned_value);
             value.u8 = (uint8_t)unsigned_value;
@@ -699,7 +703,11 @@ static yyjson_mut_val *write_value(
         case PIN_I16: return yyjson_mut_sint(doc, value.i16);
         case PIN_I32: return yyjson_mut_sint(doc, value.i);
         case PIN_I64: return yyjson_mut_sint(doc, value.i64);
-        case PIN_ENUM: return yyjson_mut_sint(doc, value.e);
+        case PIN_ENUM: {
+            const char *label = registry_enum_label(field->type_name, value.e);
+            return label ? yyjson_mut_strcpy(doc, label)
+                         : yyjson_mut_sint(doc, value.e);
+        }
         case PIN_U8: return yyjson_mut_uint(doc, value.u8);
         case PIN_U16: return yyjson_mut_uint(doc, value.u16);
         case PIN_U32: return yyjson_mut_uint(doc, value.u);

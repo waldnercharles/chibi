@@ -25,11 +25,9 @@ graphs:
     - id: 15
       name: state
       type: int
-      type_name: int
       field_source: 13
       field_name: state
       flags: 0
-      default: 0
   - id: 19
     type: Integer Equal
     inputs: [16, 17]
@@ -75,7 +73,6 @@ graphs:
       declaration_id: 145
       name: Radius
       type: float
-      type_name: float
       kind: data
       default: 10000.0
     outputs: [220]
@@ -93,58 +90,43 @@ graphs:
     - 454
     - id: 455
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 456
     - id: 457
       type: float
-      type_name: float
-      default: 0.0
   - id: 507
     type: Multiply
     inputs:
     - id: 504
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 505
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 6.283185307179586
     outputs:
     - id: 506
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 511
     type: Add
     inputs:
     - id: 508
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 509
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 510
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   edges:
   - from: 12
     from_pin: 11
@@ -221,19 +203,15 @@ graphs:
     - id: 42
       name: age
       type: float
-      type_name: float
       field_source: 40
       field_name: age
       flags: 0
-      default: 0.0
     - id: 43
       name: lifetime
       type: float
-      type_name: float
       field_source: 40
       field_name: lifetime
       flags: 0
-      default: 0.0
   - id: 45
     type: Delta Time
     outputs: [44]
@@ -242,23 +220,17 @@ graphs:
     inputs:
     - id: 46
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 47
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 48
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 55
     type: Set_GamePickup_age
     inputs: [50, 51, 52]
@@ -268,10 +240,8 @@ graphs:
     - id: 56
       name: age
       type: float
-      type_name: float
       field_source: 54
       field_name: age
-      default: 0.0
   - id: 60
     type: Greater Or Equal
     inputs: [57, 58]
@@ -311,7 +281,6 @@ graphs:
       declaration_id: 145
       name: Radius
       type: float
-      type_name: float
       kind: data
       default: 48.0
     outputs: [148]
@@ -324,89 +293,67 @@ graphs:
     inputs:
     - id: 481
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 482
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 483
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 488
     type: Multiply
     inputs:
     - id: 485
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 2.0
     - id: 486
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 487
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 492
     type: Subtract
     inputs:
     - id: 489
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 3.0
     - id: 490
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 491
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 496
     type: Multiply
     inputs:
     - id: 493
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 494
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 495
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 533
     type: Behavior Expression
     reference_id: 512
@@ -416,19 +363,15 @@ graphs:
       declaration_id: 517
       name: Eased
       type: double
-      type_name: double
       flags: 2
       group: 1
-      default: 0.0
     outputs:
     - id: 535
       declaration_id: 518
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
   - id: 569
     type: Behavior Expression
     reference_id: 536
@@ -438,27 +381,21 @@ graphs:
       declaration_id: 541
       name: Lifetime
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     - id: 571
       declaration_id: 542
       name: UpdatedAge
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 572
       declaration_id: 543
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   - id: 585
     type: Behavior Expression
     reference_id: 573
@@ -468,31 +405,25 @@ graphs:
       declaration_id: 578
       name: Angle
       type: double
-      type_name: double
       flags: 2
       group: 1
-      default: 0.0
     - id: 587
       declaration_id: 579
       name: BaseRotation
       type: float
-      type_name: float
       flags: 2
       group: 2
       binding:
         kind: variable
         variable_id: 447
         source_asset: ArenaPickupBehavior
-      default: 0.0
     outputs:
     - id: 588
       declaration_id: 580
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   - id: 618
     type: Behavior Expression
     reference_id: 589
@@ -502,27 +433,21 @@ graphs:
       declaration_id: 594
       name: Angle
       type: double
-      type_name: double
       flags: 2
       group: 1
-      default: 0.0
     - id: 620
       declaration_id: 595
       name: Fade
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 621
       declaration_id: 596
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   edges:
   - from: 3
     from_pin: 2
@@ -651,11 +576,9 @@ graphs:
     - id: 224
       name: collection_age
       type: float
-      type_name: float
       field_source: 222
       field_name: collection_age
       flags: 0
-      default: 0.0
     - id: 225
       name: target
       type: handle
@@ -663,7 +586,6 @@ graphs:
       field_source: 222
       field_name: target
       flags: 0
-      default: null
     - id: 226
       name: origin
       type_name: CF_V2
@@ -674,11 +596,9 @@ graphs:
     - id: 227
       name: value
       type: int
-      type_name: int
       field_source: 222
       field_name: value
       flags: 0
-      default: 0
   - id: 232
     type: Contains
     inputs:
@@ -689,7 +609,6 @@ graphs:
     - id: 230
       type: handle
       type_name: ecs.entity
-      default: null
     outputs:
     - id: 231
       name: Result
@@ -716,10 +635,8 @@ graphs:
     - id: 256
       name: collection_age
       type: float
-      type_name: float
       field_source: 254
       field_name: collection_age
-      default: 0.0
   - id: 260
     type: Greater Or Equal
     inputs:
@@ -747,32 +664,24 @@ graphs:
     - id: 275
       name: current
       type: int
-      type_name: int
       field_source: 273
       field_name: current
-      default: 0
   - id: 279
     type: Add
     inputs:
     - id: 276
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     - id: 277
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     outputs:
     - id: 278
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
   - id: 285
     type: Set_GameExperience_current
     inputs: [280, 281, 282]
@@ -795,17 +704,13 @@ graphs:
     - id: 329
       name: x
       type: float
-      type_name: float
       field_source: 327
       field_name: x
-      default: 0.0
     - id: 330
       name: "y"
       type: float
-      type_name: float
       field_source: 327
       field_name: "y"
-      default: 0.0
   - id: 384
     type: Set_GameTransform_x
     inputs: [379, 380, 381]
@@ -846,19 +751,15 @@ graphs:
       declaration_id: 627
       name: CollectionAge
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     outputs:
     - id: 638
       declaration_id: 628
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
   - id: 660
     type: Behavior Expression
     reference_id: 639
@@ -868,19 +769,15 @@ graphs:
       declaration_id: 644
       name: T
       type: double
-      type_name: double
       flags: 2
       group: 1
-      default: 0.0
     outputs:
     - id: 662
       declaration_id: 645
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
   - id: 706
     type: Behavior Expression
     reference_id: 663
@@ -890,19 +787,15 @@ graphs:
       declaration_id: 668
       name: T
       type: double
-      type_name: double
       flags: 2
       group: 1
-      default: 0.0
     outputs:
     - id: 708
       declaration_id: 669
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
   - id: 784
     type: Behavior Expression
     reference_id: 709
@@ -912,67 +805,51 @@ graphs:
       declaration_id: 714
       name: TargetX
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     - id: 786
       declaration_id: 715
       name: Weight
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     - id: 787
       declaration_id: 716
       name: OriginX
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
     - id: 788
       declaration_id: 717
       name: Theta
       type: double
-      type_name: double
       flags: 2
       group: 4
-      default: 0.0
     - id: 789
       declaration_id: 718
       name: OriginY
       type: float
-      type_name: float
       flags: 2
       group: 5
-      default: 0.0
     - id: 790
       declaration_id: 719
       name: TargetY
       type: float
-      type_name: float
       flags: 2
       group: 6
-      default: 0.0
     - id: 791
       declaration_id: 720
       name: T
       type: double
-      type_name: double
       flags: 2
       group: 7
-      default: 0.0
     outputs:
     - id: 792
       declaration_id: 721
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 8
-      default: 0.0
   - id: 868
     type: Behavior Expression
     reference_id: 793
@@ -982,67 +859,51 @@ graphs:
       declaration_id: 798
       name: TargetY
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     - id: 870
       declaration_id: 799
       name: Weight
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     - id: 871
       declaration_id: 800
       name: OriginX
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
     - id: 872
       declaration_id: 801
       name: TargetX
       type: float
-      type_name: float
       flags: 2
       group: 4
-      default: 0.0
     - id: 873
       declaration_id: 802
       name: Theta
       type: double
-      type_name: double
       flags: 2
       group: 5
-      default: 0.0
     - id: 874
       declaration_id: 803
       name: OriginY
       type: float
-      type_name: float
       flags: 2
       group: 6
-      default: 0.0
     - id: 875
       declaration_id: 804
       name: T
       type: double
-      type_name: double
       flags: 2
       group: 7
-      default: 0.0
     outputs:
     - id: 876
       declaration_id: 805
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 8
-      default: 0.0
   - id: 889
     type: Behavior Expression
     reference_id: 877
@@ -1052,31 +913,25 @@ graphs:
       declaration_id: 882
       name: BaseRotation
       type: float
-      type_name: float
       flags: 2
       group: 1
       binding:
         kind: variable
         variable_id: 447
         source_asset: ArenaPickupBehavior
-      default: 0.0
     - id: 891
       declaration_id: 883
       name: Theta
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 892
       declaration_id: 884
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   - id: 914
     type: Behavior Expression
     reference_id: 893
@@ -1086,19 +941,15 @@ graphs:
       declaration_id: 898
       name: T
       type: double
-      type_name: double
       flags: 2
       group: 1
-      default: 0.0
     outputs:
     - id: 916
       declaration_id: 899
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
   - id: 929
     type: Behavior Expression
     reference_id: 917
@@ -1108,29 +959,23 @@ graphs:
       declaration_id: 922
       name: CollectionAge
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     - id: 931
       declaration_id: 923
       name: Delta
       type: float
-      type_name: float
       flags: 2
       group: 2
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 932
       declaration_id: 924
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   edges:
   - from: 8
     from_pin: 7
@@ -1351,7 +1196,6 @@ graphs:
     - id: 145
       name: Radius
       type: float
-      type_name: float
       kind: data
       default: 48.0
   - id: 144
@@ -1526,22 +1370,18 @@ graphs:
     - id: 517
       name: Eased
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 515
     type: Return
     inputs:
     - id: 518
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 519
     type: Real
     inputs:
@@ -1553,17 +1393,11 @@ graphs:
     inputs:
     - id: 523
       type: double
-      type_name: double
-      default: 0.0
     - id: 524
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 525
       type: double
-      type_name: double
-      default: 0.0
   - id: 526
     type: Real
     inputs:
@@ -1575,17 +1409,11 @@ graphs:
     inputs:
     - id: 530
       type: double
-      type_name: double
-      default: 0.0
     - id: 531
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 532
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 513
     from_pin: 517
@@ -1622,46 +1450,34 @@ graphs:
     - id: 541
       name: Lifetime
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 542
       name: UpdatedAge
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 539
     type: Return
     inputs:
     - id: 543
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 544
     type: Subtract
     inputs:
     - id: 545
       type: double
-      type_name: double
-      default: 0.0
     - id: 546
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 547
       type: double
-      type_name: double
-      default: 0.0
   - id: 548
     type: Real
     inputs:
@@ -1673,17 +1489,11 @@ graphs:
     inputs:
     - id: 552
       type: double
-      type_name: double
-      default: 0.0
     - id: 553
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 554
       type: double
-      type_name: double
-      default: 0.0
   - id: 555
     type: Real
     inputs: [556]
@@ -1693,17 +1503,11 @@ graphs:
     inputs:
     - id: 559
       type: double
-      type_name: double
-      default: 0.0
     - id: 560
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 561
       type: double
-      type_name: double
-      default: 0.0
   - id: 562
     type: Real
     inputs:
@@ -1715,17 +1519,11 @@ graphs:
     inputs:
     - id: 566
       type: double
-      type_name: double
-      default: 0.0
     - id: 567
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 568
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 537
     from_pin: 541
@@ -1778,46 +1576,34 @@ graphs:
     - id: 578
       name: Angle
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 579
       name: BaseRotation
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 576
     type: Return
     inputs:
     - id: 580
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 581
     type: Add
     inputs:
     - id: 582
       type: double
-      type_name: double
-      default: 0.0
     - id: 583
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 584
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 574
     from_pin: 578
@@ -1846,30 +1632,24 @@ graphs:
     - id: 594
       name: Angle
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 595
       name: Fade
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 592
     type: Return
     inputs:
     - id: 596
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 597
     type: Real
     inputs:
@@ -1891,49 +1671,31 @@ graphs:
     inputs:
     - id: 607
       type: double
-      type_name: double
-      default: 0.0
     - id: 608
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 609
       type: double
-      type_name: double
-      default: 0.0
   - id: 610
     type: Add
     inputs:
     - id: 611
       type: double
-      type_name: double
-      default: 0.0
     - id: 612
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 613
       type: double
-      type_name: double
-      default: 0.0
   - id: 614
     type: Multiply
     inputs:
     - id: 615
       type: double
-      type_name: double
-      default: 0.0
     - id: 616
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 617
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 590
     from_pin: 594
@@ -1982,22 +1744,18 @@ graphs:
     - id: 627
       name: CollectionAge
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 625
     type: Return
     inputs:
     - id: 628
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 629
     type: Real
     inputs:
@@ -2009,17 +1767,11 @@ graphs:
     inputs:
     - id: 633
       type: double
-      type_name: double
-      default: 0.0
     - id: 634
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 635
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 623
     from_pin: 627
@@ -2048,22 +1800,18 @@ graphs:
     - id: 644
       name: T
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 642
     type: Return
     inputs:
     - id: 645
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 646
     type: Real
     inputs:
@@ -2075,17 +1823,11 @@ graphs:
     inputs:
     - id: 650
       type: double
-      type_name: double
-      default: 0.0
     - id: 651
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 652
       type: double
-      type_name: double
-      default: 0.0
   - id: 653
     type: Real
     inputs:
@@ -2097,17 +1839,11 @@ graphs:
     inputs:
     - id: 657
       type: double
-      type_name: double
-      default: 0.0
     - id: 658
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 659
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 640
     from_pin: 644
@@ -2144,22 +1880,18 @@ graphs:
     - id: 668
       name: T
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 666
     type: Return
     inputs:
     - id: 669
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 670
     type: Real
     inputs:
@@ -2171,17 +1903,11 @@ graphs:
     inputs:
     - id: 674
       type: double
-      type_name: double
-      default: 0.0
     - id: 675
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 676
       type: double
-      type_name: double
-      default: 0.0
   - id: 677
     type: Real
     inputs:
@@ -2193,33 +1919,21 @@ graphs:
     inputs:
     - id: 681
       type: double
-      type_name: double
-      default: 0.0
     - id: 682
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 683
       type: double
-      type_name: double
-      default: 0.0
   - id: 684
     type: Multiply
     inputs:
     - id: 685
       type: double
-      type_name: double
-      default: 0.0
     - id: 686
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 687
       type: double
-      type_name: double
-      default: 0.0
   - id: 688
     type: Real
     inputs:
@@ -2237,49 +1951,31 @@ graphs:
     inputs:
     - id: 695
       type: double
-      type_name: double
-      default: 0.0
     - id: 696
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 697
       type: double
-      type_name: double
-      default: 0.0
   - id: 698
     type: Add
     inputs:
     - id: 699
       type: double
-      type_name: double
-      default: 0.0
     - id: 700
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 701
       type: double
-      type_name: double
-      default: 0.0
   - id: 702
     type: Multiply
     inputs:
     - id: 703
       type: double
-      type_name: double
-      default: 0.0
     - id: 704
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 705
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 664
     from_pin: 668
@@ -2348,86 +2044,64 @@ graphs:
     - id: 714
       name: TargetX
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 715
       name: Weight
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 716
       name: OriginX
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 717
       name: Theta
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
     - id: 718
       name: OriginY
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 5
-      default: 0.0
     - id: 719
       name: TargetY
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 6
-      default: 0.0
     - id: 720
       name: T
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 7
-      default: 0.0
   - id: 712
     type: Return
     inputs:
     - id: 721
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 8
-      default: 0.0
   - id: 722
     type: Subtract
     inputs:
     - id: 723
       type: double
-      type_name: double
-      default: 0.0
     - id: 724
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 725
       type: double
-      type_name: double
-      default: 0.0
   - id: 726
     type: Cosine
     inputs: [727]
@@ -2437,33 +2111,21 @@ graphs:
     inputs:
     - id: 730
       type: double
-      type_name: double
-      default: 0.0
     - id: 731
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 732
       type: double
-      type_name: double
-      default: 0.0
   - id: 733
     type: Subtract
     inputs:
     - id: 734
       type: double
-      type_name: double
-      default: 0.0
     - id: 735
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 736
       type: double
-      type_name: double
-      default: 0.0
   - id: 737
     type: Sine
     inputs: [738]
@@ -2473,65 +2135,41 @@ graphs:
     inputs:
     - id: 741
       type: double
-      type_name: double
-      default: 0.0
     - id: 742
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 743
       type: double
-      type_name: double
-      default: 0.0
   - id: 744
     type: Subtract
     inputs:
     - id: 745
       type: double
-      type_name: double
-      default: 0.0
     - id: 746
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 747
       type: double
-      type_name: double
-      default: 0.0
   - id: 748
     type: Multiply
     inputs:
     - id: 749
       type: double
-      type_name: double
-      default: 0.0
     - id: 750
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 751
       type: double
-      type_name: double
-      default: 0.0
   - id: 752
     type: Add
     inputs:
     - id: 753
       type: double
-      type_name: double
-      default: 0.0
     - id: 754
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 755
       type: double
-      type_name: double
-      default: 0.0
   - id: 756
     type: Real
     inputs:
@@ -2549,17 +2187,11 @@ graphs:
     inputs:
     - id: 763
       type: double
-      type_name: double
-      default: 0.0
     - id: 764
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 765
       type: double
-      type_name: double
-      default: 0.0
   - id: 766
     type: Sine
     inputs: [767]
@@ -2569,17 +2201,11 @@ graphs:
     inputs:
     - id: 770
       type: double
-      type_name: double
-      default: 0.0
     - id: 771
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 772
       type: double
-      type_name: double
-      default: 0.0
   - id: 773
     type: Cosine
     inputs: [774]
@@ -2589,33 +2215,21 @@ graphs:
     inputs:
     - id: 777
       type: double
-      type_name: double
-      default: 0.0
     - id: 778
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 779
       type: double
-      type_name: double
-      default: 0.0
   - id: 780
     type: Add
     inputs:
     - id: 781
       type: double
-      type_name: double
-      default: 0.0
     - id: 782
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 783
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 710
     from_pin: 714
@@ -2740,86 +2354,64 @@ graphs:
     - id: 798
       name: TargetY
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 799
       name: Weight
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 800
       name: OriginX
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 801
       name: TargetX
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
     - id: 802
       name: Theta
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 5
-      default: 0.0
     - id: 803
       name: OriginY
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 6
-      default: 0.0
     - id: 804
       name: T
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 7
-      default: 0.0
   - id: 796
     type: Return
     inputs:
     - id: 805
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 8
-      default: 0.0
   - id: 806
     type: Subtract
     inputs:
     - id: 807
       type: double
-      type_name: double
-      default: 0.0
     - id: 808
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 809
       type: double
-      type_name: double
-      default: 0.0
   - id: 810
     type: Sine
     inputs: [811]
@@ -2829,33 +2421,21 @@ graphs:
     inputs:
     - id: 814
       type: double
-      type_name: double
-      default: 0.0
     - id: 815
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 816
       type: double
-      type_name: double
-      default: 0.0
   - id: 817
     type: Subtract
     inputs:
     - id: 818
       type: double
-      type_name: double
-      default: 0.0
     - id: 819
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 820
       type: double
-      type_name: double
-      default: 0.0
   - id: 821
     type: Cosine
     inputs: [822]
@@ -2865,65 +2445,41 @@ graphs:
     inputs:
     - id: 825
       type: double
-      type_name: double
-      default: 0.0
     - id: 826
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 827
       type: double
-      type_name: double
-      default: 0.0
   - id: 828
     type: Add
     inputs:
     - id: 829
       type: double
-      type_name: double
-      default: 0.0
     - id: 830
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 831
       type: double
-      type_name: double
-      default: 0.0
   - id: 832
     type: Multiply
     inputs:
     - id: 833
       type: double
-      type_name: double
-      default: 0.0
     - id: 834
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 835
       type: double
-      type_name: double
-      default: 0.0
   - id: 836
     type: Add
     inputs:
     - id: 837
       type: double
-      type_name: double
-      default: 0.0
     - id: 838
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 839
       type: double
-      type_name: double
-      default: 0.0
   - id: 840
     type: Real
     inputs:
@@ -2941,17 +2497,11 @@ graphs:
     inputs:
     - id: 847
       type: double
-      type_name: double
-      default: 0.0
     - id: 848
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 849
       type: double
-      type_name: double
-      default: 0.0
   - id: 850
     type: Sine
     inputs: [851]
@@ -2961,17 +2511,11 @@ graphs:
     inputs:
     - id: 854
       type: double
-      type_name: double
-      default: 0.0
     - id: 855
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 856
       type: double
-      type_name: double
-      default: 0.0
   - id: 857
     type: Sine
     inputs: [858]
@@ -2981,33 +2525,21 @@ graphs:
     inputs:
     - id: 861
       type: double
-      type_name: double
-      default: 0.0
     - id: 862
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 863
       type: double
-      type_name: double
-      default: 0.0
   - id: 864
     type: Add
     inputs:
     - id: 865
       type: double
-      type_name: double
-      default: 0.0
     - id: 866
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 867
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 794
     from_pin: 798
@@ -3132,46 +2664,34 @@ graphs:
     - id: 882
       name: BaseRotation
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 883
       name: Theta
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 880
     type: Return
     inputs:
     - id: 884
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 885
     type: Add
     inputs:
     - id: 886
       type: double
-      type_name: double
-      default: 0.0
     - id: 887
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 888
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 878
     from_pin: 882
@@ -3200,22 +2720,18 @@ graphs:
     - id: 898
       name: T
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 896
     type: Return
     inputs:
     - id: 899
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 900
     type: Real
     inputs:
@@ -3233,33 +2749,21 @@ graphs:
     inputs:
     - id: 907
       type: double
-      type_name: double
-      default: 0.0
     - id: 908
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 909
       type: double
-      type_name: double
-      default: 0.0
   - id: 910
     type: Subtract
     inputs:
     - id: 911
       type: double
-      type_name: double
-      default: 0.0
     - id: 912
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 913
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 894
     from_pin: 898
@@ -3296,46 +2800,34 @@ graphs:
     - id: 922
       name: CollectionAge
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 923
       name: Delta
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 920
     type: Return
     inputs:
     - id: 924
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 925
     type: Add
     inputs:
     - id: 926
       type: double
-      type_name: double
-      default: 0.0
     - id: 927
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 928
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 918
     from_pin: 922

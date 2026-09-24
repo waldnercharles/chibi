@@ -22,16 +22,13 @@ graphs:
       declaration_id: 2
       name: Amount
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 21
       declaration_id: 3
       name: Source
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 24
     type: Get_GameHealth
     outputs:
@@ -40,11 +37,9 @@ graphs:
     - id: 25
       name: current
       type: int
-      type_name: int
       field_source: 23
       field_name: current
       flags: 0
-      default: 0
   - id: 29
     type: Integer Greater
     inputs: [26, 27]
@@ -68,7 +63,6 @@ graphs:
       declaration_id: 3
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: ArenaHitPulse
     - id: 39
@@ -77,7 +71,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     outputs: [40]
   - id: 44
     type: Event
@@ -90,7 +83,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 69
     type: Call Function
     reference_id: 1
@@ -101,7 +93,6 @@ graphs:
       declaration_id: 3
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: ArenaDeathPulse
     - id: 67
@@ -110,7 +101,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     outputs: [68]
   - id: 72
     type: Get Variable
@@ -118,9 +108,7 @@ graphs:
     outputs:
     - id: 71
       type: bool
-      type_name: bool
       flags: 0
-      default: false
   - id: 77
     type: Branch
     inputs: [73, 74]
@@ -132,14 +120,11 @@ graphs:
     - 78
     - id: 79
       type: bool
-      type_name: bool
       default: true
     outputs:
     - 80
     - id: 81
       type: bool
-      type_name: bool
-      default: false
   - id: 84
     type: Has_GameEncounterMember
     outputs:
@@ -157,11 +142,9 @@ graphs:
     - id: 92
       name: role
       type: int
-      type_name: int
       field_source: 90
       field_name: role
       flags: 0
-      default: 0
   - id: 96
     type: Integer Equal
     inputs:
@@ -185,35 +168,30 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     - id: 113
       declaration_id: 546
       name: Appearance
       type: struct
       type_name: GameGeometry3D
       kind: data
-      default: null
     - id: 114
       declaration_id: 547
       name: Material
       type: struct
       type_name: GameShader
       kind: data
-      default: null
     - id: 115
       declaration_id: 548
       name: Orientation
       type: struct
       type_name: GameOrientation
       kind: data
-      default: null
     - id: 595
       declaration_id: 594
       name: Visual
       type: struct
       type_name: GameVisualTransform
       kind: data
-      default: null
     outputs: [116]
   - id: 119
     type: Get_GameTransform
@@ -344,7 +322,6 @@ graphs:
     - id: 3
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: ArenaHitPulse
     - id: 4
@@ -352,7 +329,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 10
     type: Spawn Prototype
     inputs:
@@ -410,31 +386,26 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     - id: 546
       name: Appearance
       type: struct
       type_name: GameGeometry3D
       kind: data
-      default: null
     - id: 547
       name: Material
       type: struct
       type_name: GameShader
       kind: data
-      default: null
     - id: 548
       name: Orientation
       type: struct
       type_name: GameOrientation
       kind: data
-      default: null
     - id: 594
       name: Visual
       type: struct
       type_name: GameVisualTransform
       kind: data
-      default: null
   - id: 551
     type: Return
     inputs: [550]

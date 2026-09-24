@@ -185,3 +185,27 @@ const enum_desc *registry_enum_by_name(const char *name)
     }
     return NULL;
 }
+
+const char *registry_enum_label(const char *enum_name, int value)
+{
+    const enum_desc *desc = registry_enum_by_name(enum_name);
+    for (int i = 0; desc && i < desc->value_count; i++) {
+        if (desc->values[i].value == value) {
+            return desc->values[i].label;
+        }
+    }
+    return NULL;
+}
+
+bool registry_enum_value(const char *enum_name, const char *text, int *out)
+{
+    const enum_desc *desc = registry_enum_by_name(enum_name);
+    for (int i = 0; desc && i < desc->value_count; i++) {
+        if (!strcmp(desc->values[i].label, text) ||
+            !strcmp(desc->values[i].name, text)) {
+            *out = desc->values[i].value;
+            return true;
+        }
+    }
+    return false;
+}

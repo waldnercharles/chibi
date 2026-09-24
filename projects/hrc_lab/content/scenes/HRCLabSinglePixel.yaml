@@ -22,7 +22,7 @@ entities:
     GameAppearance:
       width: 4
       height: 4
-      shape: 1
+      shape: Circle
 - name: Receiver
   prototype: HRCLabReceiver
   components:
@@ -41,7 +41,7 @@ entities:
     GameAppearance:
       width: 960
       height: 540
-      shape: 0
+      shape: Box
       layer: -100
     GameMaterial:
       absorption: 0

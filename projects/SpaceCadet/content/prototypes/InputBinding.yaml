@@ -3,4 +3,4 @@ identity: prototype-0000000000000032
 components:
   GAME.GameActionBinding:
     action: Restart
-    source: 24
+    source: R

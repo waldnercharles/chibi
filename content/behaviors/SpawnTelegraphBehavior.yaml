@@ -30,19 +30,15 @@ graphs:
     - id: 7
       name: delay
       type: float
-      type_name: float
       field_source: 5
       field_name: delay
       flags: 0
-      default: 0.0
     - id: 8
       name: prototype
       type: const char *
-      type_name: const char *
       field_source: 5
       field_name: prototype
       flags: 0
-      default: ""
   - id: 13
     type: Set Variable
     reference_id: 1
@@ -50,36 +46,27 @@ graphs:
     - 9
     - id: 10
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 11
     - id: 12
       type: float
-      type_name: float
-      default: 0.0
   - id: 17
     type: Max
     inputs:
     - id: 14
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 15
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 0.05
     outputs:
     - id: 16
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 37
     type: Event
     reference_name: Tick
@@ -90,9 +77,7 @@ graphs:
     outputs:
     - id: 38
       type: bool
-      type_name: bool
       flags: 0
-      default: false
   - id: 44
     type: Branch
     inputs: [40, 41]
@@ -106,9 +91,7 @@ graphs:
     outputs:
     - id: 47
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 53
     type: Set Variable
     reference_id: 1
@@ -116,36 +99,26 @@ graphs:
     - 49
     - id: 50
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 51
     - id: 52
       type: float
-      type_name: float
-      default: 0.0
   - id: 57
     type: Subtract
     inputs:
     - id: 54
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 55
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 56
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 61
     type: Less Or Equal
     inputs: [58, 59]
@@ -161,14 +134,11 @@ graphs:
     - 67
     - id: 68
       type: bool
-      type_name: bool
       default: true
     outputs:
     - 69
     - id: 70
       type: bool
-      type_name: bool
-      default: false
   - id: 73
     type: Get_GameTransform
     outputs:
@@ -184,16 +154,13 @@ graphs:
       declaration_id: 20
       name: Prototype
       type: name
-      type_name: name
       kind: data
-      default: ""
     - id: 76
       declaration_id: 21
       name: Position
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     outputs: [77]
   - id: 82
     type: Destroy Entity
@@ -210,23 +177,18 @@ graphs:
     inputs:
     - id: 85
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 86
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 10.0
     outputs:
     - id: 87
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 91
     type: Sine
     inputs: [89]
@@ -236,67 +198,51 @@ graphs:
     inputs:
     - id: 92
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 93
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 94
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 99
     type: Multiply
     inputs:
     - id: 96
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 0.2
     - id: 97
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 98
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 103
     type: Add
     inputs:
     - id: 100
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 0.8
     - id: 101
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 102
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 109
     type: Set_GameVisualTransform_scale
     inputs: [104, 105, 106]
@@ -422,15 +368,12 @@ graphs:
     - id: 20
       name: Prototype
       type: name
-      type_name: name
       kind: data
-      default: ""
     - id: 21
       name: Position
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 24
     type: Return
     inputs: [23]

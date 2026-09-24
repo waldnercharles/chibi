@@ -151,7 +151,7 @@ entities:
   prototype: OrbitFlipper
   components:
     GAME.GameActionBinding:
-      source: 19
+      source: M
       action: FlipRight
     GAME.GameOrientation:
       radians: 2.791593074798584

@@ -18,21 +18,21 @@ graphs:
     - id: 6
       name: X
       type: float
+      type_name: null
       kind: data
-      default: 0.0
     - id: 7
       name: "Y"
       type: float
+      type_name: null
       kind: data
-      default: 0.0
   - id: 4
     type: Return
     inputs:
     - id: 8
       name: Value
       type: float
+      type_name: null
       kind: data
-      default: 0.0
   - id: 9
     type: Field Add
     inputs:

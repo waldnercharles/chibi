@@ -65,10 +65,14 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
         yyjson_mut_obj_add_uint(doc, o, "declaration_id", p->declaration_id);
     }
     write_str_change(doc, o, "name", p->name, base->name);
-    if (p->type != base->type) {
+    bool retyped = p->type != base->type;
+    if (retyped) {
         yyjson_mut_obj_add_str(doc, o, "type", serialize_pin_type_name(p->type));
     }
-    write_str_change(doc, o, "type_name", p->type_name, base->type_name);
+    const char *type_name = retyped
+                              ? serialize_implied_type_name(p->type, base->type_name)
+                              : base->type_name;
+    write_str_change(doc, o, "type_name", p->type_name, type_name);
     if (p->kind != base->kind) {
         yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
     }
@@ -126,7 +130,9 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
         }
         yyjson_mut_obj_add_val(doc, o, "binding", binding);
     }
-    pin_value initial = graph_pin_initial_default(base);
+    pin_value initial = retyped
+                          ? serialize_zero_value(p->type, p->container, p->type_name)
+                          : graph_pin_initial_default(base);
     if (!serialize_same_value(&p->default_value, &initial)) {
         serialize_write_value(doc, o, "default", p->type, p->type_name, &p->default_value);
     }
@@ -470,11 +476,7 @@ static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const behav
         yyjson_mut_obj_add_str(doc, o, "category", v->category);
     }
     /* Matches the zero default a variable receives when none is serialized. */
-    pin_value zero = { .type = v->type, .container = v->container, .type_name = v->type_name };
-    if (v->container == PIN_CONTAINER_SINGLE &&
-        (v->type == PIN_STR || v->type == PIN_NAME)) {
-        zero.str = "";
-    }
+    pin_value zero = serialize_zero_value(v->type, v->container, v->type_name);
     if (!serialize_same_value(&v->default_value, &zero)) {
         serialize_write_value(doc, o, "default", v->type, v->type_name, &v->default_value);
     }

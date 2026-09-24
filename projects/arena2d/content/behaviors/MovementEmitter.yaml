@@ -15,9 +15,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: GetEntity_GameActionBinding
     inputs:
@@ -55,7 +53,6 @@ graphs:
         kind: component_field
         component: GAME.GameParticleEmitter
         field: active
-      default: false
     - id: 25
       declaration_id: 16
       name: action
@@ -63,7 +60,6 @@ graphs:
       type_name: GameActionBinding
       flags: 2
       group: 2
-      default: null
     - id: 26
       declaration_id: 17
       name: input
@@ -71,7 +67,6 @@ graphs:
       type_name: GameInput
       flags: 2
       group: 3
-      default: null
     outputs:
     - id: 29
       name: Then
@@ -80,10 +75,8 @@ graphs:
       declaration_id: 18
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 4
-      default: false
   edges:
   - from: 1
     from_pin: 2
@@ -116,7 +109,6 @@ graphs:
       type_name: _Bool
       kind: data
       group: 1
-      default: false
     - id: 270
       name: action
       type: struct
@@ -124,7 +116,6 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
     - id: 271
       name: input
       type: struct
@@ -132,7 +123,6 @@ graphs:
       kind: data
       flags: 2
       group: 3
-      default: null
     - id: 273
       name: source
       type: enum
@@ -140,15 +130,12 @@ graphs:
       kind: data
       field_source: 270
       field_name: source
-      default: 0
     - id: 274
       name: action
       type: const char *
-      type_name: const char *
       kind: data
       field_source: 270
       field_name: action
-      default: ""
     - id: 275
       name: firing
       type: bool
@@ -156,7 +143,6 @@ graphs:
       kind: data
       field_source: 270
       field_name: firing
-      default: false
     - id: 276
       name: disabled
       type: bool
@@ -164,7 +150,6 @@ graphs:
       kind: data
       field_source: 270
       field_name: disabled
-      default: false
     - id: 277
       name: pressed
       type: bool
@@ -172,7 +157,6 @@ graphs:
       kind: data
       field_source: 270
       field_name: pressed
-      default: false
     - id: 281
       name: move
       type: struct
@@ -180,23 +164,18 @@ graphs:
       kind: data
       field_source: 271
       field_name: move
-      default: null
     - id: 282
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 281
       field_name: x
-      default: 0.0
     - id: 283
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 281
       field_name: "y"
-      default: 0.0
   - id: 267
     type: Return
     inputs:
@@ -204,11 +183,9 @@ graphs:
     - id: 272
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 4
-      default: false
   - id: 278
     type: Not
     inputs: [279]
@@ -226,14 +203,10 @@ graphs:
     inputs:
     - id: 293
       type: double
-      type_name: double
-      default: 0.0
     - 294
     outputs:
     - id: 295
       type: double
-      type_name: double
-      default: 0.0
   - id: 296
     type: Real
     inputs:
@@ -245,12 +218,8 @@ graphs:
     inputs:
     - id: 300
       type: double
-      type_name: double
-      default: 0.0
     - id: 301
       type: double
-      type_name: double
-      default: 0.0
     outputs: [302]
   - id: 303
     type: And

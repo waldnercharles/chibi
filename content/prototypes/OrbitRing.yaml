@@ -7,7 +7,7 @@ components:
     border_width: 1.5
     height: 290.0
     layer: -50
-    shape: 1
+    shape: Circle
     width: 290.0
   game.GameTransform:
     x: -10.0

@@ -38,13 +38,11 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     - id: 160
       name: Point
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 16
     type: Set_GameWidget_value
     inputs: [17, 18, 19]
@@ -71,8 +69,6 @@ graphs:
       default: '{:.0f}'
     - id: 61
       type: float
-      type_name: float
-      default: 0.0
     - id: 63
       name: Arg1
     outputs: [62]
@@ -96,9 +92,7 @@ graphs:
     - id: 78
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 79
     type: Set_GameVelocity_y
     inputs: [80, 81, 82]
@@ -111,30 +105,24 @@ graphs:
     - id: 120
       name: v
       type: double
-      type_name: double
       flags: 2
       group: 1
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: "y"
-      default: 0.0
     - id: 121
       name: dt
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 100
       declaration_id: 92
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   edges:
   - from: 1
     from_pin: 2
@@ -199,30 +187,24 @@ graphs:
     - id: 146
       name: v
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 147
       name: dt
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 144
     type: Return
     inputs:
     - id: 148
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 149
     type: Real
     inputs:
@@ -234,30 +216,20 @@ graphs:
     inputs:
     - id: 153
       type: double
-      type_name: double
-      default: 0.0
     - 154
     outputs:
     - id: 155
       type: double
-      type_name: double
-      default: 0.0
   - id: 156
     type: Add
     inputs:
     - id: 157
       type: double
-      type_name: double
-      default: 0.0
     - id: 158
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 159
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 142
     from_pin: 146

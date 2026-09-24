@@ -131,6 +131,11 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         yyjson_val *type = yyjson_obj_get(v, "type");
         yyjson_val *kind = yyjson_obj_get(v, "kind");
         pin_type type_value = p->type;
+        bool retyped = type && serialize_read_pin_type(type, &type_value) &&
+                       type_value != p->type;
+        if (retyped) {
+            p->type_name = serialize_implied_type_name(type_value, p->type_name);
+        }
         if ((name && !yyjson_is_str(name)) || (kind && !yyjson_is_str(kind)) ||
             (type && !serialize_read_pin_type(type, &type_value)) ||
             read_pin_str(g, v, "type_name", &p->type_name) ||
@@ -182,6 +187,9 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
             p->group = (int)yyjson_get_sint(group);
         }
         yyjson_val *def = yyjson_obj_get(v, "default");
+        if (retyped && !def) {
+            p->default_value = serialize_zero_value(p->type, p->container, p->type_name);
+        }
         if (def) {
             pin_value pv;
             if (p->container >= PIN_CONTAINER_ARRAY) {

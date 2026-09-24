@@ -97,6 +97,7 @@ graphs:
       declaration_id: 277
       name: Tile Size
       type: float
+      type_name: null
       default: 20.0
     outputs:
     - id: 672
@@ -145,7 +146,7 @@ graphs:
       declaration_id: 628
       name: Strength
       type: float
-      default: 0.0
+      type_name: null
   - id: 679
     type: Shader Beat Pulse
     outputs: [680]
@@ -211,23 +212,26 @@ graphs:
       declaration_id: 504
       name: Tile Size
       type: float
+      type_name: null
       default: 16.0
     - id: 697
       declaration_id: 505
       name: Scale
       type: float
+      type_name: null
       default: 0.25
     - id: 698
       declaration_id: 506
       name: Width
       type: float
+      type_name: null
       default: 0.012000000104308128
     outputs:
     - id: 699
       declaration_id: 508
       name: Mask
       type: float
-      default: 0.0
+      type_name: null
   - id: 700
     type: Call Pure Function
     reference_id: 501
@@ -247,23 +251,26 @@ graphs:
       declaration_id: 504
       name: Tile Size
       type: float
+      type_name: null
       default: 16.0
     - id: 703
       declaration_id: 505
       name: Scale
       type: float
+      type_name: null
       default: 0.25
     - id: 704
       declaration_id: 506
       name: Width
       type: float
+      type_name: null
       default: 0.012000000104308128
     outputs:
     - id: 705
       declaration_id: 508
       name: Mask
       type: float
-      default: 0.0
+      type_name: null
   - id: 706
     type: Shader Multiply
     inputs:
@@ -441,23 +448,26 @@ graphs:
       declaration_id: 504
       name: Tile Size
       type: float
+      type_name: null
       default: 16.0
     - id: 742
       declaration_id: 505
       name: Scale
       type: float
+      type_name: null
       default: 1.0
     - id: 743
       declaration_id: 506
       name: Width
       type: float
+      type_name: null
       default: 0.012000000104308128
     outputs:
     - id: 744
       declaration_id: 508
       name: Mask
       type: float
-      default: 0.0
+      type_name: null
   - id: 745
     type: Shader Max
     inputs:
@@ -635,16 +645,19 @@ graphs:
     - id: 504
       name: Tile Size
       type: float
+      type_name: null
       kind: data
       default: 16.0
     - id: 505
       name: Scale
       type: float
+      type_name: null
       kind: data
       default: 0.25
     - id: 506
       name: Width
       type: float
+      type_name: null
       kind: data
       default: 0.012000000104308128
   - id: 507
@@ -653,8 +666,8 @@ graphs:
     - id: 508
       name: Mask
       type: float
+      type_name: null
       kind: data
-      default: 0.0
   - id: 509
     type: Shader X
     inputs:
@@ -1244,8 +1257,8 @@ graphs:
     - id: 628
       name: Strength
       type: float
+      type_name: null
       kind: data
-      default: 0.0
   - id: 629
     type: Shader X
     inputs:
@@ -1398,6 +1411,7 @@ graphs:
     - id: 277
       name: Tile Size
       type: float
+      type_name: null
       kind: data
       default: 20.0
   - id: 278

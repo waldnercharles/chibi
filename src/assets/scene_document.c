@@ -2,6 +2,8 @@
 
 #include "../third_party/yyjson/yyjson.h"
 #include "assets/physics_settings.h"
+#include "graph/model/registry.h"
+#include "runtime/generated.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -251,6 +253,52 @@ int game_scene_document_set_entity_retained(game_scene_document *document, int i
     return set_object_json(&document->entities[index].retained_json, json);
 }
 
+static const type_desc *component_type(const char *key)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if ((component->key && !strcmp(component->key, key)) ||
+            !strcmp(component->name, key)) {
+            return component->type;
+        }
+    }
+    return NULL;
+}
+
+static void label_enum_fields(yyjson_mut_val *object, const type_desc *type)
+{
+    for (int i = 0; type && i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        yyjson_mut_val *value = yyjson_mut_obj_get(object, field->name);
+        if (field->type == PIN_STRUCT && yyjson_mut_is_obj(value)) {
+            label_enum_fields(value, registry_type_by_name(field->type_name));
+            continue;
+        }
+        const char *label = field->type == PIN_ENUM && yyjson_mut_is_int(value)
+                              ? registry_enum_label(field->type_name, (int)yyjson_mut_get_sint(value))
+                              : NULL;
+        if (label) {
+            yyjson_mut_set_str(value, label);
+        }
+    }
+}
+
+/* Overrides keep the values they were loaded or captured with; documents
+ * spell reflected enums by label like prototypes do. */
+static yyjson_mut_val *components_value(yyjson_mut_doc *doc, yyjson_val *components)
+{
+    yyjson_mut_val *copy = yyjson_val_mut_copy(doc, components);
+    size_t i, count;
+    yyjson_mut_val *key, *value;
+    yyjson_mut_obj_foreach(copy, i, count, key, value)
+    {
+        if (yyjson_mut_is_obj(value)) {
+            label_enum_fields(value, component_type(yyjson_mut_get_str(key)));
+        }
+    }
+    return copy;
+}
+
 char *game_scene_document_save(const game_scene_document *document)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -277,7 +325,7 @@ char *game_scene_document_save(const game_scene_document *document)
         yyjson_val *components = components_doc ? yyjson_doc_get_root(components_doc)
                                                 : NULL;
         if (yyjson_is_obj(components) && yyjson_obj_size(components)) {
-            yyjson_mut_obj_add_val(json, value, "components", yyjson_val_mut_copy(json, components));
+            yyjson_mut_obj_add_val(json, value, "components", components_value(json, components));
         }
         yyjson_doc_free(components_doc);
         if (entity->retained_json) {
@@ -292,7 +340,7 @@ char *game_scene_document_save(const game_scene_document *document)
                     json,
                     value,
                     "retained_components",
-                    yyjson_val_mut_copy(json, yyjson_doc_get_root(retained))
+                    components_value(json, yyjson_doc_get_root(retained))
                 );
             }
             yyjson_doc_free(retained);

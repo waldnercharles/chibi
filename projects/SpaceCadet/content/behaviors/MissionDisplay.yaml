@@ -14,9 +14,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: Get Global Variable
     inputs:
@@ -25,8 +23,6 @@ graphs:
     outputs:
     - id: 6
       type: double
-      type_name: double
-      default: 0.0
   - id: 21
     type: Behavior Expression
     reference_id: 7
@@ -39,9 +35,7 @@ graphs:
       declaration_id: 12
       name: lives
       type: double
-      type_name: double
       group: 1
-      default: 0.0
     outputs:
     - id: 25
       name: "True"
@@ -53,10 +47,8 @@ graphs:
       declaration_id: 13
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 2
-      default: false
   - id: 41
     type: Set_GameWidget_text
     inputs:
@@ -73,7 +65,7 @@ graphs:
     outputs:
     - id: 49
       type: float
-      default: 0.0
+      type_name: null
   - id: 50
     type: Format Text
     inputs:
@@ -83,7 +75,7 @@ graphs:
         {:.0f} / 8 HITS
     - id: 52
       type: float
-      default: 0.0
+      type_name: null
     outputs: [53]
   - id: 54
     type: Set_GameWidget_text
@@ -129,21 +121,17 @@ graphs:
     - id: 32
       name: lives
       type: double
-      type_name: double
       kind: data
       group: 1
-      default: 0.0
   - id: 30
     type: Return
     inputs:
     - id: 33
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 2
-      default: false
   - id: 34
     type: Real
     inputs: [35]
@@ -153,12 +141,8 @@ graphs:
     inputs:
     - id: 38
       type: double
-      type_name: double
-      default: 0.0
     - id: 39
       type: double
-      type_name: double
-      default: 0.0
     outputs: [40]
   edges:
   - from: 28

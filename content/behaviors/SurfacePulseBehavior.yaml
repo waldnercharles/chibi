@@ -36,11 +36,9 @@ graphs:
     - id: 8
       name: strength
       type: float
-      type_name: float
       field_source: 6
       field_name: strength
       flags: 0
-      default: 0.0
   - id: 13
     type: Set Variable
     reference_id: 3
@@ -48,23 +46,17 @@ graphs:
     - 9
     - id: 10
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 11
     - id: 12
       type: float
-      type_name: float
-      default: 0.0
   - id: 15
     type: Get Variable
     reference_id: 1
     outputs:
     - id: 14
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 20
     type: Set Variable
     reference_id: 2
@@ -72,14 +64,10 @@ graphs:
     - 16
     - id: 17
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 18
     - id: 19
       type: float
-      type_name: float
-      default: 0.0
   - id: 22
     type: Event
     reference_name: Tick
@@ -90,9 +78,7 @@ graphs:
     outputs:
     - id: 23
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 26
     type: Delta Time
     outputs: [25]
@@ -116,14 +102,10 @@ graphs:
     - 31
     - id: 32
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 33
     - id: 34
       type: float
-      type_name: float
-      default: 0.0
   - id: 39
     type: Greater
     inputs: [36, 37]
@@ -148,9 +130,7 @@ graphs:
     outputs:
     - id: 51
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 56
     type: Max
     inputs:
@@ -197,9 +177,7 @@ graphs:
     outputs:
     - id: 65
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 70
     type: Multiply
     inputs:

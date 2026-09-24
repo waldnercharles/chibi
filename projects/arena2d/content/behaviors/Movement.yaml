@@ -15,9 +15,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 17
     type: Behavior Expression
     reference_id: 4
@@ -30,38 +28,32 @@ graphs:
       declaration_id: 9
       name: heading
       type: float
-      type_name: float
       flags: 6
       group: 1
       binding:
         kind: component_field
         component: GAME.GameOrientation
         field: radians
-      default: 0.0
     - id: 19
       declaration_id: 10
       name: "y"
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: GAME.GameAim
         field: direction.y
-      default: 0.0
     - id: 20
       declaration_id: 11
       name: x
       type: double
-      type_name: double
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: GAME.GameAim
         field: direction.x
-      default: 0.0
     outputs:
     - id: 23
       name: Then
@@ -70,10 +62,8 @@ graphs:
       declaration_id: 12
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 4
-      default: 0.0
   - id: 102
     type: Branch
     inputs:
@@ -103,31 +93,26 @@ graphs:
         kind: component_field
         component: GAME.GameDrive
         field: target
-      default: null
     - id: 139
       declaration_id: 113
       name: heading
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: GAME.GameOrientation
         field: radians
-      default: 0.0
     - id: 140
       declaration_id: 114
       name: speed
       type: double
-      type_name: double
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: game.GameMovement
         field: speed
-      default: 0.0
     outputs:
     - id: 143
       name: Then
@@ -139,7 +124,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 4
-      default: null
   - id: 306
     type: Behavior Expression
     reference_id: 279
@@ -152,26 +136,22 @@ graphs:
       declaration_id: 284
       name: x
       type: double
-      type_name: double
       flags: 2
       group: 1
       binding:
         kind: component_field
         component: game.GameInput
         field: move.x
-      default: 0.0
     - id: 308
       declaration_id: 285
       name: "y"
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: game.GameInput
         field: move.y
-      default: 0.0
     outputs:
     - id: 311
       name: "True"
@@ -183,10 +163,8 @@ graphs:
       declaration_id: 286
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 3
-      default: false
   - id: 385
     type: Behavior Expression
     reference_id: 367
@@ -206,43 +184,36 @@ graphs:
         kind: component_field
         component: GAME.GameDrive
         field: target
-      default: null
     - id: 387
       declaration_id: 373
       name: x
       type: float
-      type_name: float
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: game.GameInput
         field: move.x
-      default: 0.0
     - id: 388
       declaration_id: 374
       name: "y"
       type: float
-      type_name: float
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: game.GameInput
         field: move.y
-      default: 0.0
     - id: 389
       declaration_id: 375
       name: speed
       type: double
-      type_name: double
       flags: 2
       group: 4
       binding:
         kind: component_field
         component: game.GameMovement
         field: speed
-      default: 0.0
     outputs:
     - id: 392
       name: Then
@@ -254,7 +225,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 5
-      default: null
   - id: 542
     type: Behavior Expression
     reference_id: 525
@@ -274,7 +244,6 @@ graphs:
         kind: component_field
         component: GAME.GameDrive
         field: target
-      default: null
     outputs:
     - id: 546
       name: Then
@@ -286,7 +255,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 2
-      default: null
   edges:
   - from: 1
     from_pin: 2
@@ -328,26 +296,20 @@ graphs:
     - id: 81
       name: heading
       type: float
-      type_name: float
       kind: data
       group: 1
-      default: 0.0
     - id: 82
       name: "y"
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 83
       name: x
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 79
     type: Return
     inputs:
@@ -355,11 +317,9 @@ graphs:
     - id: 84
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
   - id: 85
     type: Arc Tangent 2
     inputs: [86, 87]
@@ -431,23 +391,18 @@ graphs:
       type_name: CF_V2
       kind: data
       group: 1
-      default: null
     - id: 240
       name: heading
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 241
       name: speed
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 237
     type: Return
     inputs:
@@ -459,7 +414,6 @@ graphs:
       kind: data
       flags: 2
       group: 4
-      default: null
   - id: 243
     type: Cosine
     inputs: [244]
@@ -478,16 +432,12 @@ graphs:
     - id: 254
       type: struct
       type_name: CF_V2
-      default: null
     - id: 255
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 256
       type: struct
       type_name: CF_V2
-      default: null
   - id: 257
     type: Real
     inputs:
@@ -500,16 +450,12 @@ graphs:
     - id: 261
       type: struct
       type_name: CF_V2
-      default: null
     - id: 262
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 263
       type: struct
       type_name: CF_V2
-      default: null
   - id: 264
     type: Get_GameDrive
     outputs: [265]
@@ -601,78 +547,54 @@ graphs:
     - id: 345
       name: x
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 346
       name: "y"
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 343
     type: Return
     inputs:
     - id: 347
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 3
-      default: false
   - id: 348
     type: Multiply
     inputs:
     - id: 349
       type: double
-      type_name: double
-      default: 0.0
     - id: 350
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 351
       type: double
-      type_name: double
-      default: 0.0
   - id: 352
     type: Multiply
     inputs:
     - id: 353
       type: double
-      type_name: double
-      default: 0.0
     - id: 354
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 355
       type: double
-      type_name: double
-      default: 0.0
   - id: 356
     type: Add
     inputs:
     - id: 357
       type: double
-      type_name: double
-      default: 0.0
     - id: 358
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 359
       type: double
-      type_name: double
-      default: 0.0
   - id: 360
     type: Real
     inputs:
@@ -684,12 +606,8 @@ graphs:
     inputs:
     - id: 364
       type: double
-      type_name: double
-      default: 0.0
     - id: 365
       type: double
-      type_name: double
-      default: 0.0
     outputs: [366]
   edges:
   - from: 341
@@ -747,31 +665,24 @@ graphs:
       type_name: CF_V2
       kind: data
       group: 1
-      default: null
     - id: 498
       name: x
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 499
       name: "y"
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 500
       name: speed
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
   - id: 495
     type: Return
     inputs:
@@ -783,7 +694,6 @@ graphs:
       kind: data
       flags: 2
       group: 5
-      default: null
   - id: 502
     type: Make_CF_V2
     inputs: [503, 504]
@@ -794,16 +704,12 @@ graphs:
     - id: 507
       type: struct
       type_name: CF_V2
-      default: null
     - id: 508
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 509
       type: struct
       type_name: CF_V2
-      default: null
   - id: 510
     type: Get_GameDrive
     outputs: [511]
@@ -883,7 +789,6 @@ graphs:
       type_name: CF_V2
       kind: data
       group: 1
-      default: null
   - id: 550
     type: Return
     inputs:
@@ -895,7 +800,6 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
   - id: 554
     type: Real
     inputs: [555]

@@ -48,32 +48,26 @@ graphs:
     - id: 18
       type: struct
       type_name: ShaderVec2
-      default: null
     - id: 19
       type: struct
       type_name: ShaderVec2
-      default: null
     outputs:
     - id: 20
       type: struct
       type_name: ShaderVec2
-      default: null
   - id: 21
     type: Shader Subtract
     inputs:
     - id: 22
       type: struct
       type_name: ShaderVec2
-      default: null
     - id: 23
       type: struct
       type_name: ShaderVec2
-      default: null
     outputs:
     - id: 24
       type: struct
       type_name: ShaderVec2
-      default: null
   - id: 25
     type: Shader Circle
     inputs: [26, 27]

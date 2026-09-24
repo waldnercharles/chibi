@@ -9,7 +9,7 @@ components:
     glow_radius: 5.0
     height: 46.0
     layer: 5
-    shape: 1
+    shape: Circle
     width: 46.0
   GAME.GameBody: {}
   GAME.GameCollider:

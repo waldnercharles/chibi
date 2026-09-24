@@ -14,9 +14,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: Get_GameTransform
     outputs: [5]
@@ -35,7 +33,6 @@ graphs:
       type_name: GameTransform
       flags: 2
       group: 1
-      default: null
     - id: 27
       declaration_id: 14
       name: velocity
@@ -43,15 +40,12 @@ graphs:
       type_name: GameVelocity
       flags: 2
       group: 2
-      default: null
     - id: 28
       declaration_id: 15
       name: dt
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
     outputs:
     - id: 29
       declaration_id: 16
@@ -60,7 +54,6 @@ graphs:
       type_name: GameTransform
       flags: 2
       group: 4
-      default: null
   - id: 81
     type: Set_GameTransform
     inputs: [82, 83]
@@ -105,7 +98,6 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 92
       name: velocity
       type: struct
@@ -113,15 +105,12 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
     - id: 93
       name: dt
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 89
     type: Return
     inputs:
@@ -132,36 +121,30 @@ graphs:
       kind: data
       flags: 2
       group: 4
-      default: null
   - id: 95
     type: Multiply
     inputs:
     - id: 96
       type: struct
       type_name: GameVelocity
-      default: null
     - 97
     outputs:
     - id: 98
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 99
     type: Add
     inputs:
     - id: 100
       type: struct
       type_name: GameTransform
-      default: null
     - id: 101
       type: struct
       type_name: GameVelocity
-      default: null
     outputs:
     - id: 102
       type: struct
       type_name: GameTransform
-      default: null
   edges:
   - from: 87
     from_pin: 91

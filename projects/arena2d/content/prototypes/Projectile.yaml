@@ -5,11 +5,11 @@ components:
     antialias: 1.0
     color: 16777215
     height: 4.0
-    shape: 5
+    shape: Capsule
     width: 16.0
   GAME.GameBody:
     continuous: true
-    type: 2
+    type: Kinematic
   GAME.GameCollider:
     category: 4
     mask: 10

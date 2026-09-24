@@ -9,7 +9,7 @@ components:
     glow_color: 3650368170
     glow_radius: 14.0
     height: 60.0
-    shape: 1
+    shape: Circle
     width: 60.0
   GAME.GameCollider:
     category: 8

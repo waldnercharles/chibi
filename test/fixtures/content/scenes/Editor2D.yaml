@@ -11,7 +11,7 @@ entities:
       width: 665.107510106449
       height: 352
       color: 320549119
-      shape: 0
+      shape: Box
 - name: Player
   prototype: ArenaPlayer
   components:
@@ -22,7 +22,7 @@ entities:
       width: 20
       height: 18
       color: 4294967295
-      shape: 4
+      shape: Stroked Chevron
       glow_radius: 8
       glow_color: 4294967120
       stroke_width: 1
@@ -37,7 +37,7 @@ entities:
       width: 11
       height: 11
       color: 336527615
-      shape: 2
+      shape: Diamond
       border_width: 2
       border_color: 4291559679
       glow_radius: 3

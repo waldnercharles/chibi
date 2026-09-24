@@ -20,13 +20,11 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     - id: 5
       name: Point
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 6
     type: Set Variable
     reference_id: 1
@@ -42,7 +40,6 @@ graphs:
     - id: 10
       type: float
       type_name: null
-      default: 0.0
   - id: 11
     type: GetEntity_GameTransform
     inputs: [12]
@@ -68,59 +65,47 @@ graphs:
       declaration_id: 30
       name: v
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     - id: 93
       declaration_id: 31
       name: x
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     - id: 94
       declaration_id: 32
       name: sx
       type: double
-      type_name: double
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: game.GameTransform
         field: x
-      default: 0.0
     - id: 95
       declaration_id: 33
       name: "y"
       type: float
-      type_name: float
       flags: 2
       group: 4
-      default: 0.0
     - id: 96
       declaration_id: 34
       name: sy
       type: double
-      type_name: double
       flags: 2
       group: 5
       binding:
         kind: component_field
         component: game.GameTransform
         field: "y"
-      default: 0.0
     outputs:
     - id: 97
       declaration_id: 35
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 6
-      default: 0.0
   - id: 428
     type: Set_GameVelocity_x
     inputs: [429, 430, 431]
@@ -134,59 +119,47 @@ graphs:
       declaration_id: 505
       name: v
       type: float
-      type_name: float
       flags: 2
       group: 1
-      default: 0.0
     - id: 568
       declaration_id: 506
       name: "y"
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     - id: 569
       declaration_id: 507
       name: sy
       type: double
-      type_name: double
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: game.GameTransform
         field: "y"
-      default: 0.0
     - id: 570
       declaration_id: 508
       name: x
       type: float
-      type_name: float
       flags: 2
       group: 4
-      default: 0.0
     - id: 571
       declaration_id: 509
       name: sx
       type: double
-      type_name: double
       flags: 2
       group: 5
       binding:
         kind: component_field
         component: game.GameTransform
         field: x
-      default: 0.0
     outputs:
     - id: 572
       declaration_id: 510
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 6
-      default: 0.0
   - id: 903
     type: Set_GameVelocity_y
     inputs: [904, 905, 906]
@@ -199,9 +172,7 @@ graphs:
     - id: 977
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 1004
     type: Behavior Expression
     reference_id: 978
@@ -211,33 +182,27 @@ graphs:
       declaration_id: 983
       name: pulse
       type: double
-      type_name: double
       flags: 2
       group: 1
       binding:
         kind: variable
         variable_id: 1
         source_asset: BumperKick
-      default: 0.0
     - id: 1006
       declaration_id: 984
       name: dt
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 1007
       declaration_id: 985
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   - id: 1060
     type: Set Variable
     reference_id: 1
@@ -247,13 +212,11 @@ graphs:
     - id: 1062
       type: float
       type_name: null
-      default: 0.0
     outputs:
     - 1063
     - id: 1064
       type: float
       type_name: null
-      default: 0.0
   - id: 1112
     type: Behavior Expression
     reference_id: 1091
@@ -263,23 +226,19 @@ graphs:
       declaration_id: 1096
       name: pulse
       type: double
-      type_name: double
       flags: 2
       group: 1
       binding:
         kind: variable
         variable_id: 1
         source_asset: BumperKick
-      default: 0.0
     outputs:
     - id: 1114
       declaration_id: 1097
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
   - id: 1136
     type: Set_GameAppearance_glow_radius
     inputs: [1137, 1138, 1139]
@@ -386,54 +345,42 @@ graphs:
     - id: 439
       name: v
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 440
       name: x
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 441
       name: sx
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 442
       name: "y"
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 4
-      default: 0.0
     - id: 443
       name: sy
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 5
-      default: 0.0
   - id: 437
     type: Return
     inputs:
     - id: 444
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 6
-      default: 0.0
   - id: 445
     type: Real
     inputs:
@@ -446,38 +393,26 @@ graphs:
     - 449
     - id: 450
       type: double
-      type_name: double
-      default: 0.0
     outputs: [451]
   - id: 452
     type: Multiply
     inputs:
     - id: 453
       type: double
-      type_name: double
-      default: 0.0
     - 454
     outputs:
     - id: 455
       type: double
-      type_name: double
-      default: 0.0
   - id: 456
     type: Subtract
     inputs:
     - id: 457
       type: double
-      type_name: double
-      default: 0.0
     - id: 458
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 459
       type: double
-      type_name: double
-      default: 0.0
   - id: 460
     type: Real
     inputs:
@@ -493,17 +428,11 @@ graphs:
     inputs:
     - id: 468
       type: double
-      type_name: double
-      default: 0.0
     - id: 469
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 470
       type: double
-      type_name: double
-      default: 0.0
   - id: 471
     type: Real
     inputs:
@@ -519,17 +448,11 @@ graphs:
     inputs:
     - id: 479
       type: double
-      type_name: double
-      default: 0.0
     - id: 480
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 481
       type: double
-      type_name: double
-      default: 0.0
   - id: 482
     type: Square Root
     inputs: [483]
@@ -545,41 +468,27 @@ graphs:
     inputs:
     - id: 489
       type: double
-      type_name: double
-      default: 0.0
     - id: 490
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 491
       type: double
-      type_name: double
-      default: 0.0
   - id: 492
     type: Divide
     inputs:
     - id: 493
       type: double
-      type_name: double
-      default: 0.0
     - id: 494
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 495
       type: double
-      type_name: double
-      default: 0.0
   - id: 496
     type: Add
     inputs:
     - 497
     - id: 498
       type: double
-      type_name: double
-      default: 0.0
     outputs: [499]
   edges:
   - from: 435
@@ -685,54 +594,42 @@ graphs:
     - id: 914
       name: v
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 915
       name: "y"
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 916
       name: sy
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 917
       name: x
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 4
-      default: 0.0
     - id: 918
       name: sx
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 5
-      default: 0.0
   - id: 912
     type: Return
     inputs:
     - id: 919
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 6
-      default: 0.0
   - id: 920
     type: Real
     inputs:
@@ -745,38 +642,26 @@ graphs:
     - 924
     - id: 925
       type: double
-      type_name: double
-      default: 0.0
     outputs: [926]
   - id: 927
     type: Multiply
     inputs:
     - id: 928
       type: double
-      type_name: double
-      default: 0.0
     - 929
     outputs:
     - id: 930
       type: double
-      type_name: double
-      default: 0.0
   - id: 931
     type: Subtract
     inputs:
     - id: 932
       type: double
-      type_name: double
-      default: 0.0
     - id: 933
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 934
       type: double
-      type_name: double
-      default: 0.0
   - id: 935
     type: Real
     inputs:
@@ -792,17 +677,11 @@ graphs:
     inputs:
     - id: 943
       type: double
-      type_name: double
-      default: 0.0
     - id: 944
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 945
       type: double
-      type_name: double
-      default: 0.0
   - id: 946
     type: Real
     inputs:
@@ -818,17 +697,11 @@ graphs:
     inputs:
     - id: 954
       type: double
-      type_name: double
-      default: 0.0
     - id: 955
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 956
       type: double
-      type_name: double
-      default: 0.0
   - id: 957
     type: Square Root
     inputs: [958]
@@ -844,41 +717,27 @@ graphs:
     inputs:
     - id: 964
       type: double
-      type_name: double
-      default: 0.0
     - id: 965
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 966
       type: double
-      type_name: double
-      default: 0.0
   - id: 967
     type: Divide
     inputs:
     - id: 968
       type: double
-      type_name: double
-      default: 0.0
     - id: 969
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 970
       type: double
-      type_name: double
-      default: 0.0
   - id: 971
     type: Add
     inputs:
     - 972
     - id: 973
       type: double
-      type_name: double
-      default: 0.0
     outputs: [974]
   edges:
   - from: 910
@@ -984,30 +843,24 @@ graphs:
     - id: 1070
       name: pulse
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 1071
       name: dt
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 1068
     type: Return
     inputs:
     - id: 1072
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 1073
     type: Real
     inputs:
@@ -1019,33 +872,21 @@ graphs:
     inputs:
     - id: 1077
       type: double
-      type_name: double
-      default: 0.0
     - id: 1078
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 1079
       type: double
-      type_name: double
-      default: 0.0
   - id: 1080
     type: Subtract
     inputs:
     - id: 1081
       type: double
-      type_name: double
-      default: 0.0
     - id: 1082
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 1083
       type: double
-      type_name: double
-      default: 0.0
   - id: 1084
     type: Real
     inputs: [1085]
@@ -1055,17 +896,11 @@ graphs:
     inputs:
     - id: 1088
       type: double
-      type_name: double
-      default: 0.0
     - id: 1089
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 1090
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 1066
     from_pin: 1070
@@ -1110,22 +945,18 @@ graphs:
     - id: 1147
       name: pulse
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 1145
     type: Return
     inputs:
     - id: 1148
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 1149
     type: Real
     inputs:
@@ -1143,33 +974,21 @@ graphs:
     inputs:
     - id: 1156
       type: double
-      type_name: double
-      default: 0.0
     - id: 1157
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 1158
       type: double
-      type_name: double
-      default: 0.0
   - id: 1159
     type: Add
     inputs:
     - id: 1160
       type: double
-      type_name: double
-      default: 0.0
     - id: 1161
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 1162
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 1143
     from_pin: 1147

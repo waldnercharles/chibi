@@ -19,19 +19,15 @@ graphs:
     - id: 8
       name: lifetime
       type: float
-      type_name: float
       field_source: 4
       field_name: lifetime
       flags: 0
-      default: 0.0
     - id: 12
       name: age
       type: float
-      type_name: float
       field_source: 4
       field_name: age
       flags: 0
-      default: 0.0
   - id: 13
     type: Delta Time
     outputs: [14]
@@ -48,17 +44,13 @@ graphs:
     - id: 59
       name: lifetime
       type: float
-      type_name: float
       field_source: 55
       field_name: lifetime
-      default: 0.0
     - id: 63
       name: age
       type: float
-      type_name: float
       field_source: 55
       field_name: age
-      default: 0.0
   - id: 64
     type: Greater Or Equal
     inputs: [65, 66]
@@ -85,15 +77,11 @@ graphs:
     - id: 128
       name: X
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 129
       name: "Y"
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     outputs: [130]
   - id: 157
     type: Get_GameVelocity
@@ -103,19 +91,15 @@ graphs:
     - id: 159
       name: x
       type: float
-      type_name: float
       field_source: 158
       field_name: x
       flags: 0
-      default: 0.0
     - id: 160
       name: "y"
       type: float
-      type_name: float
       field_source: 158
       field_name: "y"
       flags: 0
-      default: 0.0
   edges:
   - from: 1
     from_pin: 2
@@ -184,15 +168,11 @@ graphs:
     - id: 81
       name: X
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 82
       name: "Y"
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 85
     type: Return
     inputs: [84]
@@ -221,21 +201,16 @@ graphs:
       declaration_id: 4
       name: X
       type: float
-      type_name: float
-      default: 0.0
     - id: 115
       declaration_id: 5
       name: "Y"
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - id: 120
       declaration_id: 6
       name: Orientation
       type: struct
       type_name: GameOrientation
-      default: null
   - id: 126
     type: Set_GameOrientation
     inputs: [122, 123]
@@ -248,19 +223,13 @@ graphs:
     - id: 151
       name: x
       type: double
-      type_name: double
-      default: 0.0
     - id: 152
       name: "y"
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 153
       name: Result
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 83
     from_pin: 80
@@ -333,64 +302,44 @@ graphs:
     - id: 137
       name: x
       type: double
-      type_name: double
       kind: data
-      default: 0.0
     - id: 138
       name: "y"
       type: double
-      type_name: double
       kind: data
-      default: 0.0
   - id: 135
     type: Return
     inputs:
     - id: 139
       name: Result
       type: double
-      type_name: double
       kind: data
-      default: 0.0
   - id: 140
     type: Abs
     inputs:
     - id: 141
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 142
       type: double
-      type_name: double
-      default: 0.0
   - id: 143
     type: Abs
     inputs:
     - id: 144
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 145
       type: double
-      type_name: double
-      default: 0.0
   - id: 146
     type: Add
     inputs:
     - id: 147
       type: double
-      type_name: double
-      default: 0.0
     - id: 148
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 149
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 133
     from_pin: 137

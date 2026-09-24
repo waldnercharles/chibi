@@ -53,33 +53,24 @@ graphs:
       name: Position
       type: struct
       type_name: CF_V2
-      default: null
     - id: 68
       name: Target
       type: struct
       type_name: CF_V2
-      default: null
     - id: 69
       name: Speed
       type: float
-      type_name: float
-      default: 0.0
     - id: 70
       name: Delta Seconds
       type: float
-      type_name: float
-      default: 0.0
     - id: 71
       name: Distance
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - id: 72
       name: Velocity
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 73
     type: Set_GameVelocity
     inputs:
@@ -155,16 +146,13 @@ graphs:
     - id: 22
       type: struct
       type_name: CF_V2
-      default: null
     - id: 23
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 24
       type: struct
       type_name: CF_V2
-      default: null
   - id: 25
     type: Normalize Vector 2
     inputs: [26]
@@ -175,13 +163,11 @@ graphs:
     - id: 45
       type: struct
       type_name: GameVelocity
-      default: null
     - 46
     outputs:
     - id: 47
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 58
     type: Function Entry
     outputs:
@@ -190,31 +176,23 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 60
       name: Target
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 61
       name: Speed
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 62
       name: Delta Seconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 63
       name: Distance
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 64
     type: Return
     inputs:
@@ -223,7 +201,6 @@ graphs:
       type: struct
       type_name: GameVelocity
       kind: data
-      default: null
   - id: 80
     type: Divide
     inputs:

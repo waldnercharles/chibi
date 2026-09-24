@@ -3,7 +3,7 @@ identity: prototype-0000000000000001
 components:
   GAME.GameBody:
     continuous: true
-    type: 2
+    type: Kinematic
   GAME.GameCollider:
     category: 4
     mask: 10
@@ -42,7 +42,7 @@ components:
     offset:
       x: -6.5
     rate: 85.0
-    shape: 1
+    shape: Triangle
     size:
       exponent: 1.0
       start:

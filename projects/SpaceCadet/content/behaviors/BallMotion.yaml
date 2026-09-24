@@ -14,9 +14,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: Get Global Variable
     inputs:
@@ -25,8 +23,6 @@ graphs:
     outputs:
     - id: 6
       type: double
-      type_name: double
-      default: 0.0
   - id: 21
     type: Behavior Expression
     reference_id: 7
@@ -39,9 +35,7 @@ graphs:
       declaration_id: 12
       name: ready
       type: double
-      type_name: double
       group: 1
-      default: 0.0
     outputs:
     - id: 25
       name: "True"
@@ -53,10 +47,8 @@ graphs:
       declaration_id: 13
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 2
-      default: false
   - id: 74
     type: Behavior Expression
     reference_id: 41
@@ -66,33 +58,27 @@ graphs:
       declaration_id: 46
       name: v
       type: double
-      type_name: double
       flags: 2
       group: 1
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: "y"
-      default: 0.0
     - id: 76
       declaration_id: 47
       name: dt
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 77
       declaration_id: 48
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
   - id: 144
     type: Set_GameVelocity_y
     inputs: [145, 146, 147]
@@ -109,13 +95,11 @@ graphs:
       declaration_id: 188
       name: "y"
       type: double
-      type_name: double
       group: 1
       binding:
         kind: component_field
         component: game.GameTransform
         field: "y"
-      default: 0.0
     outputs:
     - id: 201
       name: "True"
@@ -127,10 +111,8 @@ graphs:
       declaration_id: 189
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 2
-      default: false
   - id: 217
     type: Get Global Variable
     inputs:
@@ -139,7 +121,7 @@ graphs:
     outputs:
     - id: 219
       type: float
-      default: 0.0
+      type_name: null
   - id: 241
     type: Behavior Expression
     reference_id: 220
@@ -149,17 +131,17 @@ graphs:
       declaration_id: 225
       name: lives
       type: float
+      type_name: null
       flags: 2
       group: 1
-      default: 0.0
     outputs:
     - id: 243
       declaration_id: 226
       name: Result
       type: float
+      type_name: null
       flags: 2
       group: 2
-      default: 0.0
   - id: 265
     type: Set Global Variable
     inputs:
@@ -168,12 +150,12 @@ graphs:
       default: Lives
     - id: 268
       type: float
-      default: 0.0
+      type_name: null
     outputs:
     - 269
     - id: 270
       type: float
-      default: 0.0
+      type_name: null
   - id: 292
     type: Set Global Variable
     inputs:
@@ -182,12 +164,13 @@ graphs:
       default: Ready
     - id: 295
       type: float
+      type_name: null
       default: 1.0
     outputs:
     - 296
     - id: 297
       type: float
-      default: 0.0
+      type_name: null
   - id: 298
     type: Set Global Variable
     inputs:
@@ -196,12 +179,12 @@ graphs:
       default: Charge
     - id: 301
       type: float
-      default: 0.0
+      type_name: null
     outputs:
     - 302
     - id: 303
       type: float
-      default: 0.0
+      type_name: null
   - id: 304
     type: Set_GameTransform
     inputs:
@@ -303,21 +286,17 @@ graphs:
     - id: 32
       name: ready
       type: double
-      type_name: double
       kind: data
       group: 1
-      default: 0.0
   - id: 30
     type: Return
     inputs:
     - id: 33
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 2
-      default: false
   - id: 34
     type: Real
     inputs:
@@ -329,12 +308,8 @@ graphs:
     inputs:
     - id: 38
       type: double
-      type_name: double
-      default: 0.0
     - id: 39
       type: double
-      type_name: double
-      default: 0.0
     outputs: [40]
   edges:
   - from: 28
@@ -364,30 +339,24 @@ graphs:
     - id: 155
       name: v
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 156
       name: dt
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 153
     type: Return
     inputs:
     - id: 157
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 158
     type: Real
     inputs:
@@ -399,33 +368,21 @@ graphs:
     inputs:
     - id: 162
       type: double
-      type_name: double
-      default: 0.0
     - id: 163
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 164
       type: double
-      type_name: double
-      default: 0.0
   - id: 165
     type: Add
     inputs:
     - id: 166
       type: double
-      type_name: double
-      default: 0.0
     - id: 167
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 168
       type: double
-      type_name: double
-      default: 0.0
   - id: 169
     type: Real
     inputs:
@@ -437,13 +394,9 @@ graphs:
     inputs:
     - id: 173
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 174
       type: double
-      type_name: double
-      default: 0.0
   - id: 175
     type: Real
     inputs:
@@ -455,21 +408,13 @@ graphs:
     inputs:
     - id: 179
       type: double
-      type_name: double
-      default: 0.0
     - id: 180
       type: double
-      type_name: double
-      default: 0.0
     - id: 181
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 182
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 151
     from_pin: 155
@@ -522,21 +467,17 @@ graphs:
     - id: 208
       name: "y"
       type: double
-      type_name: double
       kind: data
       group: 1
-      default: 0.0
   - id: 206
     type: Return
     inputs:
     - id: 209
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 2
-      default: false
   - id: 210
     type: Real
     inputs:
@@ -548,12 +489,8 @@ graphs:
     inputs:
     - id: 214
       type: double
-      type_name: double
-      default: 0.0
     - id: 215
       type: double
-      type_name: double
-      default: 0.0
     outputs: [216]
   edges:
   - from: 204
@@ -583,20 +520,20 @@ graphs:
     - id: 276
       name: lives
       type: float
+      type_name: null
       kind: data
       flags: 2
       group: 1
-      default: 0.0
   - id: 274
     type: Return
     inputs:
     - id: 277
       name: Result
       type: float
+      type_name: null
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 278
     type: Real
     inputs:
@@ -610,8 +547,6 @@ graphs:
       type_name: null
     - id: 283
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 284
       type_name: null
@@ -626,8 +561,6 @@ graphs:
       type_name: null
     - id: 290
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 291
       type_name: null

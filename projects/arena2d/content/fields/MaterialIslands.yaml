@@ -22,18 +22,18 @@ graphs:
       declaration_id: 6
       name: X
       type: float
-      default: 0.0
+      type_name: null
     - id: 51
       declaration_id: 7
       name: "Y"
       type: float
-      default: 0.0
+      type_name: null
     outputs:
     - id: 52
       declaration_id: 8
       name: Value
       type: float
-      default: 0.0
+      type_name: null
   - id: 53
     type: Field Output
     inputs: [54]

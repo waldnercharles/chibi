@@ -15,9 +15,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: Get Global Variable
     inputs:
@@ -27,7 +25,6 @@ graphs:
     - id: 6
       type: handle
       type_name: ecs.entity
-      default: null
   - id: 7
     type: GetEntity_GameTransform
     inputs: [8]
@@ -50,7 +47,6 @@ graphs:
       binding:
         kind: component
         component: game.GameTransform
-      default: null
     - id: 51
       declaration_id: 16
       name: target
@@ -58,12 +54,10 @@ graphs:
       type_name: GameTransform
       flags: 2
       group: 2
-      default: null
     - id: 52
       declaration_id: 17
       name: rate
       type: double
-      type_name: double
       flags: 2
       group: 3
       default: 6.0
@@ -71,12 +65,10 @@ graphs:
       declaration_id: 18
       name: dt
       type: double
-      type_name: double
       flags: 2
       group: 4
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 56
       name: Then
@@ -88,7 +80,6 @@ graphs:
       type_name: GameTransform
       flags: 2
       group: 5
-      default: null
   edges:
   - from: 1
     from_pin: 2
@@ -121,7 +112,6 @@ graphs:
       type_name: GameTransform
       kind: data
       group: 1
-      default: null
     - id: 151
       name: target
       type: struct
@@ -129,23 +119,18 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
     - id: 152
       name: rate
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 153
       name: dt
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
   - id: 148
     type: Return
     inputs:
@@ -157,23 +142,19 @@ graphs:
       kind: data
       flags: 2
       group: 5
-      default: null
   - id: 155
     type: Subtract
     inputs:
     - id: 156
       type: struct
       type_name: GameTransform
-      default: null
     - id: 157
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - id: 158
       type: struct
       type_name: GameTransform
-      default: null
   - id: 159
     type: Real
     inputs:
@@ -185,29 +166,19 @@ graphs:
     inputs:
     - id: 163
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 164
       type: double
-      type_name: double
-      default: 0.0
   - id: 165
     type: Multiply
     inputs:
     - id: 166
       type: double
-      type_name: double
-      default: 0.0
     - id: 167
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 168
       type: double
-      type_name: double
-      default: 0.0
   - id: 169
     type: Exponential
     inputs: [170]
@@ -217,49 +188,36 @@ graphs:
     inputs:
     - id: 173
       type: double
-      type_name: double
-      default: 0.0
     - id: 174
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 175
       type: double
-      type_name: double
-      default: 0.0
   - id: 176
     type: Multiply
     inputs:
     - id: 177
       type: struct
       type_name: GameTransform
-      default: null
     - id: 178
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 179
       type: struct
       type_name: GameTransform
-      default: null
   - id: 180
     type: Add
     inputs:
     - id: 181
       type: struct
       type_name: GameTransform
-      default: null
     - id: 182
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - id: 183
       type: struct
       type_name: GameTransform
-      default: null
   - id: 184
     type: Set_GameTransform
     inputs: [185, 186]

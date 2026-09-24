@@ -23,7 +23,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 21
     type: Call Function
     reference_id: 2
@@ -35,7 +34,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     outputs: [24]
   - id: 41
     type: Branch
@@ -48,14 +46,10 @@ graphs:
     - 47
     - id: 48
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 49
     - id: 50
       type: float
-      type_name: float
-      default: 0.0
   - id: 165
     type: Call Pure Function
     reference_id: 158
@@ -65,13 +59,10 @@ graphs:
       name: Direction
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 167
       name: Stationary
       type: bool
-      type_name: bool
-      default: false
   edges:
   - from: 11
     from_pin: 12
@@ -114,7 +105,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 17
     type: Return
     inputs: [18]
@@ -127,9 +117,7 @@ graphs:
     outputs:
     - id: 63
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 64
     type: Add
     inputs:
@@ -152,14 +140,10 @@ graphs:
     - 69
     - id: 70
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 71
     - id: 72
       type: float
-      type_name: float
-      default: 0.0
   - id: 73
     type: Greater Or Equal
     inputs:
@@ -183,7 +167,6 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
     - id: 87
       flags: 0
       group: 0
@@ -194,7 +177,6 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
   - id: 89
     type: Multiply
     inputs:
@@ -203,7 +185,6 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
     - id: 91
       flags: 0
       group: 0
@@ -214,7 +195,6 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
   - id: 93
     type: Get_GameTransform
     outputs:
@@ -229,21 +209,18 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
     - id: 97
       name: b
       type: struct
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
     outputs:
     - id: 98
       type: struct
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
   - id: 99
     type: Emit Directed Particles
     inputs:
@@ -290,14 +267,10 @@ graphs:
     - 124
     - id: 125
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 126
     - id: 127
       type: float
-      type_name: float
-      default: 0.0
   - id: 153
     type: Behavior Expression
     reference_id: 128
@@ -306,14 +279,10 @@ graphs:
     - id: 154
       name: dt
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 155
       name: Result
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 14
     from_pin: 15
@@ -411,18 +380,14 @@ graphs:
     - id: 133
       name: dt
       type: double
-      type_name: double
       kind: data
-      default: 0.0
   - id: 131
     type: Return
     inputs:
     - id: 134
       name: Result
       type: double
-      type_name: double
       kind: data
-      default: 0.0
   - id: 135
     type: Real
     inputs: [136]
@@ -438,21 +403,13 @@ graphs:
     inputs:
     - id: 142
       type: double
-      type_name: double
-      default: 0.0
     - id: 143
       type: double
-      type_name: double
-      default: 0.0
     - id: 144
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 145
       type: double
-      type_name: double
-      default: 0.0
   - id: 146
     type: Real
     inputs:
@@ -464,17 +421,11 @@ graphs:
     inputs:
     - id: 150
       type: double
-      type_name: double
-      default: 0.0
     - id: 151
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 152
       type: double
-      type_name: double
-      default: 0.0
   edges:
   - from: 129
     from_pin: 133
@@ -560,32 +511,25 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 161
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 160
       field_name: x
-      default: 0.0
     - id: 162
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 160
       field_name: "y"
-      default: 0.0
   - id: 163
     type: Return
     inputs:
     - id: 164
       name: Stationary
       type: bool
-      type_name: bool
       kind: data
-      default: false
   edges:
   - from: 25
     from_pin: 28

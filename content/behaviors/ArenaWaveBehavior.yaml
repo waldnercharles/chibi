@@ -71,11 +71,9 @@ graphs:
     - id: 2039
       name: status
       type: int
-      type_name: int
       field_source: 2038
       field_name: status
       flags: 0
-      default: 0
   - id: 2040
     type: Integer Equal
     inputs: [2041, 2042]
@@ -101,7 +99,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     outputs: [2054]
   edges:
   - from: 2027
@@ -155,27 +152,21 @@ graphs:
     - id: 2128
       name: status
       type: int
-      type_name: int
       field_source: 2127
       field_name: status
       flags: 0
-      default: 0
     - id: 2129
       name: spawned
       type: int
-      type_name: int
       field_source: 2127
       field_name: spawned
       flags: 0
-      default: 0
     - id: 2130
       name: total
       type: int
-      type_name: int
       field_source: 2127
       field_name: total
       flags: 0
-      default: 0
   - id: 2131
     type: Integer Not Equal
     inputs:
@@ -199,9 +190,7 @@ graphs:
     outputs:
     - id: 2144
       type: bool
-      type_name: bool
       flags: 0
-      default: false
   - id: 2145
     type: Branch
     inputs: [2146, 2147]
@@ -296,7 +285,6 @@ graphs:
     - id: 2379
       type: handle
       type_name: ecs.entity
-      default: null
     - 2380
     - 2381
   - id: 2386
@@ -310,9 +298,7 @@ graphs:
     outputs:
     - id: 2398
       type: bool
-      type_name: bool
       flags: 0
-      default: false
   - id: 2404
     type: Branch
     inputs: [2400, 2401]
@@ -495,23 +481,17 @@ graphs:
       declaration_id: 3344
       name: Enemy Count
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 3382
       declaration_id: 3345
       name: Player Alive
       type: bool
-      type_name: bool
       kind: data
-      default: false
     - id: 3383
       declaration_id: 3346
       name: Pending Deaths
       type: bool
-      type_name: bool
       kind: data
-      default: false
   - id: 3384
     type: Set Variable
     reference_id: 2003
@@ -526,14 +506,10 @@ graphs:
     - 3390
     - id: 3391
       type: bool
-      type_name: bool
-      default: false
     outputs:
     - 3392
     - id: 3393
       type: bool
-      type_name: bool
-      default: false
   - id: 3394
     type: Set Variable
     reference_id: 2387
@@ -542,14 +518,10 @@ graphs:
     - 3395
     - id: 3396
       type: bool
-      type_name: bool
-      default: false
     outputs:
     - 3397
     - id: 3398
       type: bool
-      type_name: bool
-      default: false
   edges:
   - from: 2011
     from_pin: 2012
@@ -599,7 +571,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 2019
     type: Return
     inputs: [2020]
@@ -611,27 +582,21 @@ graphs:
     - id: 2190
       name: spawned
       type: int
-      type_name: int
       field_source: 2189
       field_name: spawned
       flags: 0
-      default: 0
     - id: 2191
       name: total
       type: int
-      type_name: int
       field_source: 2189
       field_name: total
       flags: 0
-      default: 0
     - id: 2192
       name: alive
       type: int
-      type_name: int
       field_source: 2189
       field_name: alive
       flags: 0
-      default: 0
   - id: 2193
     type: Integer Less
     inputs: [2194, 2195]
@@ -646,9 +611,7 @@ graphs:
     outputs:
     - id: 2203
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 2204
     type: Delta Time
     outputs: [2205]
@@ -666,21 +629,16 @@ graphs:
     - 2211
     - id: 2212
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 2213
     - id: 2214
       type: float
-      type_name: float
-      default: 0.0
   - id: 2215
     type: Get Variable
     reference_id: 2001
     outputs:
     - id: 2216
       type: float
-      type_name: float
       flags: 0
       default: 0.6499999761581421
   - id: 2217
@@ -697,9 +655,7 @@ graphs:
     outputs:
     - id: 2222
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 2223
     type: Greater Or Equal
     inputs: [2224, 2225]
@@ -726,14 +682,10 @@ graphs:
     - 2242
     - id: 2243
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 2244
     - id: 2245
       type: float
-      type_name: float
-      default: 0.0
   - id: 2246
     type: Call Function
     reference_id: 2021
@@ -746,32 +698,24 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 3338
       declaration_id: 3337
       name: Index
       type: int
-      type_name: int
       kind: data
-      default: 0
     outputs: [2249]
   - id: 2250
     type: Add
     inputs:
     - id: 2251
       type: int
-      type_name: int
-      default: 0
     - id: 2252
       type: int
-      type_name: int
       group: 1
       default: 1
     outputs:
     - id: 2253
       type: int
-      type_name: int
-      default: 0
   - id: 2254
     type: Set_GameEncounter_spawned
     inputs: [2255, 2256, 2257]
@@ -781,18 +725,13 @@ graphs:
     inputs:
     - id: 2261
       type: int
-      type_name: int
-      default: 0
     - id: 2262
       type: int
-      type_name: int
       group: 1
       default: 1
     outputs:
     - id: 2263
       type: int
-      type_name: int
-      default: 0
   - id: 2264
     type: Set_GameEncounter_alive
     inputs: [2265, 2266, 2267]
@@ -974,29 +913,22 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 2270
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 2024
       field_name: x
-      default: 0.0
     - id: 2271
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 2024
       field_name: "y"
-      default: 0.0
     - id: 3337
       name: Index
       type: int
-      type_name: int
       kind: data
-      default: 0
   - id: 2025
     type: Return
     inputs: [2026]
@@ -1017,23 +949,18 @@ graphs:
     inputs:
     - id: 2337
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     - id: 2338
       type: int
-      type_name: int
       flags: 0
       group: 0
       default: 8
     outputs:
     - id: 2339
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
   - id: 2344
     type: Integer Equal
     inputs: [2341, 2342]
@@ -1066,21 +993,16 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 2602
       declaration_id: 2424
       name: Index
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 2603
       declaration_id: 2425
       name: Pattern
       type: int
-      type_name: int
       kind: data
-      default: 0
     outputs:
     - 2604
     - id: 2605
@@ -1089,133 +1011,101 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     - id: 2627
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 2605
       field_name: x
-      default: 0.0
     - id: 2628
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 2605
       field_name: "y"
-      default: 0.0
   - id: 2610
     type: Modulo
     inputs:
     - id: 2607
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     - id: 2608
       type: int
-      type_name: int
       flags: 0
       group: 0
       default: 8
     outputs:
     - id: 2609
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
   - id: 2614
     type: Divide
     inputs:
     - id: 2611
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     - id: 2612
       type: int
-      type_name: int
       flags: 0
       group: 0
       default: 8
     outputs:
     - id: 2613
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
   - id: 2618
     type: Modulo
     inputs:
     - id: 2615
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     - id: 2616
       type: int
-      type_name: int
       flags: 0
       group: 0
       default: 4
     outputs:
     - id: 2617
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
   - id: 2632
     type: Subtract
     inputs:
     - id: 2629
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 2630
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 2631
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 2636
     type: Subtract
     inputs:
     - id: 2633
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 2634
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 2635
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 2640
     type: Arc Tangent 2
     inputs: [2637, 2638]
@@ -1376,35 +1266,26 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 2424
       name: Index
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 2425
       name: Pattern
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 2433
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 2423
       field_name: x
-      default: 0.0
     - id: 2434
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 2423
       field_name: "y"
-      default: 0.0
   - id: 2429
     type: Return
     inputs:
@@ -1414,7 +1295,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 2432
     type: Get Variable
     reference_id: 2430
@@ -1423,7 +1303,6 @@ graphs:
       type: struct
       type_name: GameTransform
       flags: 0
-      default: null
   - id: 2449
     type: Integer Equal
     inputs: [2446, 2447]
@@ -1440,13 +1319,11 @@ graphs:
     - id: 2468
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - 2469
     - id: 2470
       type: struct
       type_name: GameTransform
-      default: null
   - id: 2475
     type: Integer Equal
     inputs:
@@ -1466,13 +1343,11 @@ graphs:
     - id: 2494
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - 2495
     - id: 2496
       type: struct
       type_name: GameTransform
-      default: null
   - id: 2501
     type: Integer Equal
     inputs:
@@ -1503,13 +1378,11 @@ graphs:
     - id: 2544
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - 2545
     - id: 2546
       type: struct
       type_name: GameTransform
-      default: null
   - id: 2560
     type: Set Variable
     reference_id: 2430
@@ -1518,13 +1391,11 @@ graphs:
     - id: 2557
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - 2558
     - id: 2559
       type: struct
       type_name: GameTransform
-      default: null
   - id: 2599
     type: Set Variable
     reference_id: 2430
@@ -1533,13 +1404,11 @@ graphs:
     - id: 2596
       type: struct
       type_name: GameTransform
-      default: null
     outputs:
     - 2597
     - id: 2598
       type: struct
       type_name: GameTransform
-      default: null
   - id: 3130
     type: Call Pure Function
     reference_id: 2651
@@ -1550,18 +1419,14 @@ graphs:
       name: Center
       type: struct
       type_name: CF_V2
-      default: null
     - id: 3132
       declaration_id: 2657
       name: Index
       type: double
-      type_name: double
-      default: 0.0
     - id: 3133
       declaration_id: 2658
       name: Direction
       type: float
-      type_name: float
       default: 1.0
     outputs:
     - id: 3134
@@ -1569,7 +1434,6 @@ graphs:
       name: Position
       type: struct
       type_name: GameTransform
-      default: null
   - id: 3135
     type: Call Pure Function
     reference_id: 2651
@@ -1580,18 +1444,14 @@ graphs:
       name: Center
       type: struct
       type_name: CF_V2
-      default: null
     - id: 3137
       declaration_id: 2657
       name: Index
       type: double
-      type_name: double
-      default: 0.0
     - id: 3138
       declaration_id: 2658
       name: Direction
       type: float
-      type_name: float
       default: -1.0
     outputs:
     - id: 3139
@@ -1599,7 +1459,6 @@ graphs:
       name: Position
       type: struct
       type_name: GameTransform
-      default: null
   - id: 3140
     type: Call Pure Function
     reference_id: 2777
@@ -1610,18 +1469,14 @@ graphs:
       name: Center
       type: struct
       type_name: CF_V2
-      default: null
     - id: 3142
       declaration_id: 2783
       name: Index
       type: double
-      type_name: double
-      default: 0.0
     - id: 3143
       declaration_id: 2784
       name: Side
       type: float
-      type_name: float
       default: -1.0
     outputs:
     - id: 3144
@@ -1629,7 +1484,6 @@ graphs:
       name: Position
       type: struct
       type_name: GameTransform
-      default: null
   - id: 3145
     type: Call Pure Function
     reference_id: 2777
@@ -1640,18 +1494,14 @@ graphs:
       name: Center
       type: struct
       type_name: CF_V2
-      default: null
     - id: 3147
       declaration_id: 2783
       name: Index
       type: double
-      type_name: double
-      default: 0.0
     - id: 3148
       declaration_id: 2784
       name: Side
       type: float
-      type_name: float
       default: 1.0
     outputs:
     - id: 3149
@@ -1659,7 +1509,6 @@ graphs:
       name: Position
       type: struct
       type_name: GameTransform
-      default: null
   - id: 3150
     type: Call Pure Function
     reference_id: 2906
@@ -1670,20 +1519,16 @@ graphs:
       name: Center
       type: struct
       type_name: CF_V2
-      default: null
     - id: 3152
       declaration_id: 2912
       name: Index
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3153
       declaration_id: 2913
       name: Position
       type: struct
       type_name: GameTransform
-      default: null
   - id: 3326
     type: To Real
     inputs: [3327]
@@ -1860,19 +1705,14 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 2657
       name: Index
       type: double
-      type_name: double
       kind: data
-      default: 0.0
     - id: 2658
       name: Direction
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 2654
     type: Return
     inputs:
@@ -1881,7 +1721,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 2691
     type: Behavior Expression
     reference_id: 2660
@@ -1894,32 +1733,25 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 2693
       declaration_id: 2666
       name: Direction
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     - id: 2694
       declaration_id: 2667
       name: Index
       type: double
-      type_name: double
       flags: 2
       group: 3
-      default: 0.0
     outputs:
     - id: 2695
       declaration_id: 2668
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 4
-      default: 0.0
   - id: 2715
     type: Behavior Expression
     reference_id: 2696
@@ -1932,24 +1764,19 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 2717
       declaration_id: 2702
       name: Direction
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 2718
       declaration_id: 2703
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
   - id: 2773
     type: Make_GameTransform
     inputs: [2774, 2775]
@@ -2006,50 +1833,39 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 3160
       name: Direction
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 3161
       name: Index
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 3162
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 3159
       field_name: x
-      default: 0.0
     - id: 3163
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 3159
       field_name: "y"
-      default: 0.0
   - id: 3157
     type: Return
     inputs:
     - id: 3164
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 4
-      default: 0.0
   - id: 3165
     type: Real
     inputs:
@@ -2062,8 +1878,6 @@ graphs:
     - 3169
     - id: 3170
       type: double
-      type_name: double
-      default: 0.0
     outputs: [3171]
   - id: 3172
     type: Real
@@ -2076,25 +1890,17 @@ graphs:
     inputs:
     - id: 3176
       type: double
-      type_name: double
-      default: 0.0
     - id: 3177
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3178
       type: double
-      type_name: double
-      default: 0.0
   - id: 3179
     type: Multiply
     inputs:
     - 3180
     - id: 3181
       type: double
-      type_name: double
-      default: 0.0
     outputs: [3182]
   - id: 3183
     type: Add
@@ -2156,42 +1962,33 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 2758
       name: Direction
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 2759
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 2757
       field_name: x
-      default: 0.0
     - id: 2760
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 2757
       field_name: "y"
-      default: 0.0
   - id: 2755
     type: Return
     inputs:
     - id: 2761
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 2762
     type: Real
     inputs:
@@ -2204,8 +2001,6 @@ graphs:
     - 2766
     - id: 2767
       type: double
-      type_name: double
-      default: 0.0
     outputs: [2768]
   - id: 2769
     type: Add
@@ -2247,19 +2042,14 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 2783
       name: Index
       type: double
-      type_name: double
       kind: data
-      default: 0.0
     - id: 2784
       name: Side
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 2780
     type: Return
     inputs:
@@ -2268,7 +2058,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 2805
     type: Behavior Expression
     reference_id: 2786
@@ -2281,24 +2070,19 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 2807
       declaration_id: 2792
       name: Side
       type: float
-      type_name: float
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 2808
       declaration_id: 2793
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
   - id: 2842
     type: Behavior Expression
     reference_id: 2809
@@ -2311,24 +2095,19 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 2844
       declaration_id: 2815
       name: Index
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 2845
       declaration_id: 2816
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
   - id: 2902
     type: Make_GameTransform
     inputs: [2903, 2904]
@@ -2381,42 +2160,33 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 2852
       name: Side
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 2853
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 2851
       field_name: x
-      default: 0.0
     - id: 2854
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 2851
       field_name: "y"
-      default: 0.0
   - id: 2849
     type: Return
     inputs:
     - id: 2855
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 2856
     type: Real
     inputs:
@@ -2429,8 +2199,6 @@ graphs:
     - 2860
     - id: 2861
       type: double
-      type_name: double
-      default: 0.0
     outputs: [2862]
   - id: 2863
     type: Add
@@ -2476,42 +2244,33 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 3193
       name: Index
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 3194
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 3192
       field_name: x
-      default: 0.0
     - id: 3195
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 3192
       field_name: "y"
-      default: 0.0
   - id: 3190
     type: Return
     inputs:
     - id: 3196
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 3197
     type: Real
     inputs:
@@ -2529,17 +2288,11 @@ graphs:
     inputs:
     - id: 3204
       type: double
-      type_name: double
-      default: 0.0
     - id: 3205
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3206
       type: double
-      type_name: double
-      default: 0.0
   - id: 3207
     type: Real
     inputs:
@@ -2551,41 +2304,27 @@ graphs:
     inputs:
     - id: 3211
       type: double
-      type_name: double
-      default: 0.0
     - id: 3212
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3213
       type: double
-      type_name: double
-      default: 0.0
   - id: 3214
     type: Multiply
     inputs:
     - id: 3215
       type: double
-      type_name: double
-      default: 0.0
     - id: 3216
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3217
       type: double
-      type_name: double
-      default: 0.0
   - id: 3218
     type: Add
     inputs:
     - 3219
     - id: 3220
       type: double
-      type_name: double
-      default: 0.0
     outputs: [3221]
   edges:
   - from: 3188
@@ -2639,13 +2378,10 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 2912
       name: Index
       type: double
-      type_name: double
       kind: data
-      default: 0.0
   - id: 2909
     type: Return
     inputs:
@@ -2654,7 +2390,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 2964
     type: Behavior Expression
     reference_id: 2914
@@ -2667,24 +2402,19 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 2966
       declaration_id: 2920
       name: Index
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 2967
       declaration_id: 2921
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
   - id: 3018
     type: Behavior Expression
     reference_id: 2968
@@ -2697,24 +2427,19 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 3020
       declaration_id: 2974
       name: Index
       type: double
-      type_name: double
       flags: 2
       group: 2
-      default: 0.0
     outputs:
     - id: 3021
       declaration_id: 2975
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
   - id: 3126
     type: Make_GameTransform
     inputs: [3127, 3128]
@@ -2767,42 +2492,33 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 3228
       name: Index
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 3229
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 3227
       field_name: x
-      default: 0.0
     - id: 3230
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 3227
       field_name: "y"
-      default: 0.0
   - id: 3225
     type: Return
     inputs:
     - id: 3231
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 3232
     type: Real
     inputs:
@@ -2820,17 +2536,11 @@ graphs:
     inputs:
     - id: 3239
       type: double
-      type_name: double
-      default: 0.0
     - id: 3240
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3241
       type: double
-      type_name: double
-      default: 0.0
   - id: 3242
     type: Real
     inputs:
@@ -2842,17 +2552,11 @@ graphs:
     inputs:
     - id: 3246
       type: double
-      type_name: double
-      default: 0.0
     - id: 3247
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3248
       type: double
-      type_name: double
-      default: 0.0
   - id: 3249
     type: Real
     inputs:
@@ -2870,33 +2574,21 @@ graphs:
     inputs:
     - id: 3256
       type: double
-      type_name: double
-      default: 0.0
     - id: 3257
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3258
       type: double
-      type_name: double
-      default: 0.0
   - id: 3259
     type: Add
     inputs:
     - id: 3260
       type: double
-      type_name: double
-      default: 0.0
     - id: 3261
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3262
       type: double
-      type_name: double
-      default: 0.0
   - id: 3263
     type: Cosine
     inputs: [3264]
@@ -2906,25 +2598,17 @@ graphs:
     inputs:
     - id: 3267
       type: double
-      type_name: double
-      default: 0.0
     - id: 3268
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3269
       type: double
-      type_name: double
-      default: 0.0
   - id: 3270
     type: Add
     inputs:
     - 3271
     - id: 3272
       type: double
-      type_name: double
-      default: 0.0
     outputs: [3273]
   edges:
   - from: 3223
@@ -3002,42 +2686,33 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 3280
       name: Index
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 3281
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 3279
       field_name: x
-      default: 0.0
     - id: 3282
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 3279
       field_name: "y"
-      default: 0.0
   - id: 3277
     type: Return
     inputs:
     - id: 3283
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 3284
     type: Real
     inputs:
@@ -3055,17 +2730,11 @@ graphs:
     inputs:
     - id: 3291
       type: double
-      type_name: double
-      default: 0.0
     - id: 3292
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3293
       type: double
-      type_name: double
-      default: 0.0
   - id: 3294
     type: Real
     inputs:
@@ -3077,17 +2746,11 @@ graphs:
     inputs:
     - id: 3298
       type: double
-      type_name: double
-      default: 0.0
     - id: 3299
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3300
       type: double
-      type_name: double
-      default: 0.0
   - id: 3301
     type: Real
     inputs:
@@ -3105,33 +2768,21 @@ graphs:
     inputs:
     - id: 3308
       type: double
-      type_name: double
-      default: 0.0
     - id: 3309
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3310
       type: double
-      type_name: double
-      default: 0.0
   - id: 3311
     type: Add
     inputs:
     - id: 3312
       type: double
-      type_name: double
-      default: 0.0
     - id: 3313
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3314
       type: double
-      type_name: double
-      default: 0.0
   - id: 3315
     type: Sine
     inputs: [3316]
@@ -3141,25 +2792,17 @@ graphs:
     inputs:
     - id: 3319
       type: double
-      type_name: double
-      default: 0.0
     - id: 3320
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 3321
       type: double
-      type_name: double
-      default: 0.0
   - id: 3322
     type: Add
     inputs:
     - 3323
     - id: 3324
       type: double
-      type_name: double
-      default: 0.0
     outputs: [3325]
   edges:
   - from: 3275
@@ -3235,21 +2878,15 @@ graphs:
     - id: 3344
       name: Enemy Count
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 3345
       name: Player Alive
       type: bool
-      type_name: bool
       kind: data
-      default: false
     - id: 3346
       name: Pending Deaths
       type: bool
-      type_name: bool
       kind: data
-      default: false
   - id: 3347
     type: Find Entities With Component
     inputs:
@@ -3327,17 +2964,11 @@ graphs:
     inputs:
     - id: 3367
       type: int
-      type_name: int
-      default: 0
     - id: 3368
       type: int
-      type_name: int
-      default: 0
     outputs:
     - id: 3369
       type: int
-      type_name: int
-      default: 0
   - id: 3370
     type: Integer Greater
     inputs: [3371, 3372]

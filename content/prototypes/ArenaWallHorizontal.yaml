@@ -6,7 +6,7 @@ components:
     category: 8
     height: 3.0
     mask: 7
-    shape: 1
+    shape: Box
     width: 640.0
   GAME.GameGeometry3D:
     depth: 1.399999976158142

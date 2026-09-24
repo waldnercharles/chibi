@@ -40,16 +40,13 @@ graphs:
       declaration_id: 2
       name: Amount
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 132
       declaration_id: 3
       name: Source
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 136
     type: Call Function
     reference_id: 11
@@ -78,9 +75,7 @@ graphs:
     outputs:
     - id: 145
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 150
     type: Greater
     inputs: [147, 148]
@@ -154,9 +149,7 @@ graphs:
     outputs:
     - id: 16
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 21
     type: Max
     inputs:
@@ -178,23 +171,17 @@ graphs:
     - 22
     - id: 23
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 24
     - id: 25
       type: float
-      type_name: float
-      default: 0.0
   - id: 28
     type: Get Variable
     reference_id: 2
     outputs:
     - id: 27
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 30
     type: Self
     outputs:
@@ -263,9 +250,7 @@ graphs:
     outputs:
     - id: 42
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 47
     type: Greater
     inputs: [44, 45]
@@ -310,23 +295,17 @@ graphs:
     - 63
     - id: 64
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 65
     - id: 66
       type: float
-      type_name: float
-      default: 0.0
   - id: 69
     type: Get Variable
     reference_id: 1
     outputs:
     - id: 68
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 73
     type: Max
     inputs:
@@ -360,9 +339,7 @@ graphs:
     outputs:
     - id: 78
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 83
     type: Multiply
     inputs:
@@ -497,19 +474,15 @@ graphs:
     - id: 105
       name: remaining
       type: float
-      type_name: float
       field_source: 104
       field_name: remaining
       flags: 0
-      default: 0.0
     - id: 106
       name: duration
       type: float
-      type_name: float
       field_source: 104
       field_name: duration
       flags: 0
-      default: 0.0
   - id: 111
     type: Max
     inputs:
@@ -543,9 +516,7 @@ graphs:
     outputs:
     - id: 116
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 121
     type: Multiply
     inputs:

@@ -3,7 +3,7 @@ identity: prototype-000000000000002c
 components:
   GAME.GameActionBinding:
     action: Dash
-    source: 3
+    source: Space
   GAME.GameAppearance:
     border_color: 1685425407
     border_width: 2.0
@@ -12,11 +12,11 @@ components:
     glow_radius: 2.0
     height: 15.0
     layer: 20
-    shape: 1
+    shape: Circle
     width: 15.0
   GAME.GameBody:
     continuous: true
-    type: 1
+    type: Dynamic
   GAME.GameCollider:
     category: 1
     friction: 0.07999999821186066

@@ -36,7 +36,6 @@ graphs:
       declaration_id: 3
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: ArenaDeathPulse
     - id: 491
@@ -45,7 +44,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     outputs: [492]
   - id: 502
     type: Call Function
@@ -62,7 +60,6 @@ graphs:
       binding:
         kind: component
         component: game.GameTransform
-      default: null
     - id: 498
       declaration_id: 105
       name: Appearance
@@ -72,7 +69,6 @@ graphs:
       binding:
         kind: component
         component: GAME.GameGeometry3D
-      default: null
     - id: 499
       declaration_id: 106
       name: Material
@@ -82,7 +78,6 @@ graphs:
       binding:
         kind: component
         component: GAME.GameShader
-      default: null
     - id: 500
       declaration_id: 107
       name: Orientation
@@ -92,7 +87,6 @@ graphs:
       binding:
         kind: component
         component: GAME.GameOrientation
-      default: null
     - id: 544
       declaration_id: 543
       name: Visual
@@ -102,7 +96,6 @@ graphs:
       binding:
         kind: component
         component: GAME.GameVisualTransform
-      default: null
     outputs: [501]
   - id: 518
     type: SetEntity_GameGeometry3D
@@ -246,31 +239,26 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     - id: 105
       name: Appearance
       type: struct
       type_name: GameGeometry3D
       kind: data
-      default: null
     - id: 106
       name: Material
       type: struct
       type_name: GameShader
       kind: data
-      default: null
     - id: 107
       name: Orientation
       type: struct
       type_name: GameOrientation
       kind: data
-      default: null
     - id: 543
       name: Visual
       type: struct
       type_name: GameVisualTransform
       kind: data
-      default: null
   - id: 110
     type: Return
     inputs: [109]
@@ -286,76 +274,60 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     - id: 573
       declaration_id: 559
       name: Appearance
       type: struct
       type_name: GameGeometry3D
       kind: data
-      default: null
     - id: 574
       declaration_id: 560
       name: Material
       type: struct
       type_name: GameShader
       kind: data
-      default: null
     - id: 575
       declaration_id: 561
       name: Orientation
       type: struct
       type_name: GameOrientation
       kind: data
-      default: null
     - id: 576
       declaration_id: 562
       name: Visual
       type: struct
       type_name: GameVisualTransform
       kind: data
-      default: null
     - id: 577
       declaration_id: 563
       name: Center
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 578
       declaration_id: 564
       name: Center Y
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 579
       declaration_id: 565
       name: Width
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 580
       declaration_id: 566
       name: Height
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 581
       declaration_id: 567
       name: Depth
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 877
       name: Primitive
       type: int
-      type_name: int
       kind: data
-      default: 0
     outputs: [582]
   - id: 894
     type: Primitive Part
@@ -370,23 +342,18 @@ graphs:
     inputs:
     - id: 905
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
     - id: 906
       type: int
-      type_name: int
       flags: 0
       group: 0
       default: 1
     outputs:
     - id: 907
       type: int
-      type_name: int
       flags: 0
       group: 0
-      default: 0
   - id: 915
     type: ForLoop
     inputs: [909, 910, 911]
@@ -483,7 +450,6 @@ graphs:
     - id: 3
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: ArenaHitPulse
     - id: 4
@@ -491,7 +457,6 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
   - id: 10
     type: Spawn Prototype
     inputs:
@@ -549,99 +514,75 @@ graphs:
       type: struct
       type_name: GameTransform
       kind: data
-      default: null
     - id: 559
       name: Appearance
       type: struct
       type_name: GameGeometry3D
       kind: data
-      default: null
     - id: 560
       name: Material
       type: struct
       type_name: GameShader
       kind: data
-      default: null
     - id: 561
       name: Orientation
       type: struct
       type_name: GameOrientation
       kind: data
-      default: null
     - id: 562
       name: Visual
       type: struct
       type_name: GameVisualTransform
       kind: data
-      default: null
     - id: 563
       name: Center
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 564
       name: Center Y
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 565
       name: Width
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 566
       name: Height
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 567
       name: Depth
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 878
       name: Primitive
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 727
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 558
       field_name: x
-      default: 0.0
     - id: 728
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 558
       field_name: "y"
-      default: 0.0
     - id: 732
       name: elevation
       type: float
-      type_name: float
       kind: data
       field_source: 559
       field_name: elevation
-      default: 0.0
     - id: 733
       name: radians
       type: float
-      type_name: float
       kind: data
       field_source: 561
       field_name: radians
-      default: 0.0
   - id: 570
     type: Return
     inputs: [569]
@@ -672,111 +613,83 @@ graphs:
     inputs:
     - id: 766
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 767
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 768
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 773
     type: Add
     inputs:
     - id: 770
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 771
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 772
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 777
     type: Add
     inputs:
     - id: 774
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 775
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 776
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 793
     type: Multiply
     inputs:
     - id: 790
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 791
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 5.0
     outputs:
     - id: 792
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 797
     type: Multiply
     inputs:
     - id: 794
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 795
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 5.0
     outputs:
     - id: 796
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 803
     type: Set_GameTransform_x
     inputs: [798, 799, 800]

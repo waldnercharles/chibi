@@ -70,20 +70,16 @@ graphs:
     - id: 28
       type: struct
       type_name: ShaderVec3
-      default: null
     - id: 29
       type: struct
       type_name: ShaderVec3
-      default: null
     - id: 30
       type: struct
       type_name: ShaderVec3
-      default: null
     outputs:
     - id: 31
       type: struct
       type_name: ShaderVec3
-      default: null
   edges:
   - from: 9
     from_pin: 10

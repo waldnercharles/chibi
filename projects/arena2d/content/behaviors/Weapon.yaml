@@ -20,9 +20,7 @@ graphs:
     - id: 4
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 5
     type: Branch
     inputs:
@@ -80,23 +78,21 @@ graphs:
       declaration_id: 41
       name: elapsed
       type: float
+      type_name: null
       flags: 6
       group: 1
       binding:
         kind: variable
         variable_id: 1
         source_asset: Weapon
-      default: 0.0
     - id: 50
       declaration_id: 42
       name: dt
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 53
       name: Then
@@ -105,9 +101,9 @@ graphs:
       declaration_id: 43
       name: Result
       type: float
+      type_name: null
       flags: 2
       group: 3
-      default: 0.0
   - id: 88
     type: Branch
     inputs:
@@ -151,26 +147,22 @@ graphs:
       declaration_id: 165
       name: x
       type: float
-      type_name: float
       flags: 2
       group: 1
       binding:
         kind: component_field
         component: game.GameTransform
         field: x
-      default: 0.0
     - id: 179
       declaration_id: 166
       name: "y"
       type: float
-      type_name: float
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: game.GameTransform
         field: "y"
-      default: 0.0
     - id: 180
       declaration_id: 167
       name: offset
@@ -178,7 +170,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 3
-      default: null
     outputs:
     - id: 181
       declaration_id: 168
@@ -187,7 +178,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 4
-      default: null
   - id: 233
     type: Call Function
     reference_id: 173
@@ -201,7 +191,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 237
       declaration_id: 177
       name: Direction
@@ -212,23 +201,19 @@ graphs:
         kind: component_field
         component: GAME.GameAim
         field: direction
-      default: null
     - id: 238
       declaration_id: 178
       name: Damage
       type: int
-      type_name: int
       kind: data
       binding:
         kind: component_field
         component: GAME.GameWeapon
         field: damage
-      default: 0
     - id: 239
       declaration_id: 220
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: Projectile
     - id: 240
@@ -237,7 +222,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     outputs:
     - 235
     - id: 241
@@ -246,7 +230,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 271
     type: Behavior Expression
     reference_id: 259
@@ -259,25 +242,23 @@ graphs:
       declaration_id: 264
       name: elapsed
       type: float
+      type_name: null
       flags: 6
       group: 1
       binding:
         kind: variable
         variable_id: 1
         source_asset: Weapon
-      default: 0.0
     - id: 273
       declaration_id: 265
       name: cooldown
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: GAME.GameWeapon
         field: cooldown
-      default: 0.0
     outputs:
     - id: 276
       name: Then
@@ -286,9 +267,9 @@ graphs:
       declaration_id: 266
       name: Result
       type: float
+      type_name: null
       flags: 2
       group: 3
-      default: 0.0
   - id: 323
     type: Behavior Expression
     reference_id: 311
@@ -301,25 +282,23 @@ graphs:
       declaration_id: 316
       name: elapsed
       type: float
+      type_name: null
       flags: 6
       group: 1
       binding:
         kind: variable
         variable_id: 1
         source_asset: Weapon
-      default: 0.0
     - id: 325
       declaration_id: 317
       name: cooldown
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: GAME.GameWeapon
         field: cooldown
-      default: 0.0
     outputs:
     - id: 328
       name: Then
@@ -328,9 +307,9 @@ graphs:
       declaration_id: 318
       name: Result
       type: float
+      type_name: null
       flags: 2
       group: 3
-      default: 0.0
   - id: 363
     type: Greater Or Equal
     inputs:
@@ -440,17 +419,15 @@ graphs:
     - id: 76
       name: elapsed
       type: float
+      type_name: null
       kind: data
       group: 1
-      default: 0.0
     - id: 77
       name: dt
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 74
     type: Return
     inputs:
@@ -458,10 +435,10 @@ graphs:
     - id: 78
       name: Result
       type: float
+      type_name: null
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 79
     type: Add
     inputs:
@@ -469,8 +446,6 @@ graphs:
       type_name: null
     - id: 81
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 82
       type_name: null
@@ -483,13 +458,11 @@ graphs:
     - id: 85
       type: float
       type_name: null
-      default: 0.0
     outputs:
     - 86
     - id: 87
       type: float
       type_name: null
-      default: 0.0
   edges:
   - from: 72
     from_pin: 73
@@ -531,17 +504,15 @@ graphs:
     - id: 351
       name: elapsed
       type: float
+      type_name: null
       kind: data
       group: 1
-      default: 0.0
     - id: 352
       name: cooldown
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 349
     type: Return
     inputs:
@@ -549,10 +520,10 @@ graphs:
     - id: 353
       name: Result
       type: float
+      type_name: null
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 354
     type: Min
     inputs:
@@ -560,8 +531,6 @@ graphs:
       type_name: null
     - id: 356
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 357
       type_name: null
@@ -574,13 +543,11 @@ graphs:
     - id: 360
       type: float
       type_name: null
-      default: 0.0
     outputs:
     - 361
     - id: 362
       type: float
       type_name: null
-      default: 0.0
   edges:
   - from: 347
     from_pin: 348
@@ -621,19 +588,15 @@ graphs:
     - id: 247
       name: x
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 248
       name: "y"
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 249
       name: offset
       type: struct
@@ -641,7 +604,6 @@ graphs:
       kind: data
       flags: 2
       group: 3
-      default: null
   - id: 245
     type: Return
     inputs:
@@ -652,7 +614,6 @@ graphs:
       kind: data
       flags: 2
       group: 4
-      default: null
   - id: 251
     type: Make_CF_V2
     inputs: [252, 253]
@@ -663,16 +624,13 @@ graphs:
     - id: 256
       type: struct
       type_name: CF_V2
-      default: null
     - id: 257
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 258
       type: struct
       type_name: CF_V2
-      default: null
   edges:
   - from: 243
     from_pin: 247
@@ -710,17 +668,15 @@ graphs:
     - id: 299
       name: elapsed
       type: float
+      type_name: null
       kind: data
       group: 1
-      default: 0.0
     - id: 300
       name: cooldown
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 297
     type: Return
     inputs:
@@ -728,10 +684,10 @@ graphs:
     - id: 301
       name: Result
       type: float
+      type_name: null
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 302
     type: Subtract
     inputs:
@@ -739,8 +695,6 @@ graphs:
       type_name: null
     - id: 304
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 305
       type_name: null
@@ -753,13 +707,11 @@ graphs:
     - id: 308
       type: float
       type_name: null
-      default: 0.0
     outputs:
     - 309
     - id: 310
       type: float
       type_name: null
-      default: 0.0
   edges:
   - from: 295
     from_pin: 296

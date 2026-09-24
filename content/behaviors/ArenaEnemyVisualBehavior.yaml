@@ -60,13 +60,11 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     - id: 160
       name: Point
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 27
     type: Call Function
     reference_id: 96
@@ -76,7 +74,6 @@ graphs:
     - id: 29
       name: Strength
       type: float
-      type_name: float
       kind: data
       default: 1.0
     outputs: [30]
@@ -89,16 +86,13 @@ graphs:
       declaration_id: 2
       name: Amount
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 34
       declaration_id: 3
       name: Source
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 35
     type: Call Function
     reference_id: 96
@@ -108,7 +102,6 @@ graphs:
     - id: 37
       name: Strength
       type: float
-      type_name: float
       kind: data
       default: 1.600000023841858
     outputs: [38]
@@ -152,7 +145,6 @@ graphs:
     - id: 100
       name: Strength
       type: float
-      type_name: float
       kind: data
       default: 1.0
   - id: 101
@@ -179,16 +171,12 @@ graphs:
     - id: 111
       type: struct
       type_name: CF_V3
-      default: null
     - id: 112
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 113
       type: struct
       type_name: CF_V3
-      default: null
   - id: 116
     type: Multiply
     inputs:

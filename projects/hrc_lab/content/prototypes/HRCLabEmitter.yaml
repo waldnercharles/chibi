@@ -5,7 +5,7 @@ components:
     antialias: 0.25
     color: 4294967295
     height: 36.0
-    shape: 1
+    shape: Circle
     width: 36.0
   GAME.GameMaterial:
     albedo: 4294967295

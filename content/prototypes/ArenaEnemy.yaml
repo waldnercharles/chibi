@@ -2,7 +2,7 @@ name: ArenaEnemy
 identity: prototype-0000000000000004
 components:
   GAME.GameBody:
-    type: 1
+    type: Dynamic
   GAME.GameCollider:
     category: 2
     mask: 15

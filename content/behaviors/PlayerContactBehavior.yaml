@@ -23,9 +23,7 @@ graphs:
     outputs:
     - id: 6
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 9
     type: Delta Time
     outputs: [8]
@@ -56,14 +54,10 @@ graphs:
     - 18
     - id: 19
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 20
     - id: 21
       type: float
-      type_name: float
-      default: 0.0
   - id: 25
     type: Event
     reference_name: Contact Begin
@@ -74,22 +68,18 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     - id: 129
       name: Point
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 27
     type: Get Variable
     reference_id: 1
     outputs:
     - id: 26
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 31
     type: Greater Or Equal
     inputs: [28, 29]
@@ -109,7 +99,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     outputs: [39]
   - id: 110
     type: Has_GameDash
@@ -126,11 +115,9 @@ graphs:
     - id: 119
       name: remaining
       type: float
-      type_name: float
       field_source: 118
       field_name: remaining
       flags: 0
-      default: 0.0
   - id: 120
     type: Less
     inputs: [121, 122]
@@ -221,7 +208,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 45
     type: Return
     inputs: [44]
@@ -244,7 +230,6 @@ graphs:
       type_name: unsigned int
       field_source: 54
       field_name: category
-      default: 0
   - id: 61
     type: Has Any Flags
     inputs:
@@ -272,10 +257,8 @@ graphs:
     - id: 76
       name: current
       type: int
-      type_name: int
       field_source: 75
       field_name: current
-      default: 0
   - id: 82
     type: Integer Greater Or Equal
     inputs:
@@ -298,7 +281,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     outputs: [90]
   edges:
   - from: 43
@@ -402,7 +384,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 99
     type: Set Variable
     reference_id: 1
@@ -410,14 +391,11 @@ graphs:
     - 95
     - id: 96
       type: float
-      type_name: float
       default: 0.5
     outputs:
     - 97
     - id: 98
       type: float
-      type_name: float
-      default: 0.0
   - id: 101
     type: Self
     outputs:
@@ -433,7 +411,6 @@ graphs:
       declaration_id: 2
       name: Amount
       type: int
-      type_name: int
       default: 10
     - id: 105
       declaration_id: 3

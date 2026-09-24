@@ -7,13 +7,13 @@ components:
     border_width: 1.0
     color: 813339135
     height: 56.0
-    shape: 1
+    shape: Circle
     width: 100.0
   GAME.GameCollider:
     category: 8
     height: 56.0
     mask: 15
-    shape: 1
+    shape: Box
     width: 100.0
   GAME.GameDestructible:
     cell_size: 2.0

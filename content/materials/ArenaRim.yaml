@@ -66,18 +66,18 @@ graphs:
       declaration_id: 61
       name: Time
       type: float
-      default: 0.0
+      type_name: null
     - id: 17
       declaration_id: 62
       name: Speed
       type: float
-      default: 0.0
+      type_name: null
     outputs:
     - id: 18
       declaration_id: 63
       name: Brightness
       type: float
-      default: 0.0
+      type_name: null
   - id: 19
     type: Shader Multiply
     inputs:

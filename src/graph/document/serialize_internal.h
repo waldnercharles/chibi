@@ -12,6 +12,10 @@ bool serialize_same_value(const pin_value *a, const pin_value *b);
 /* Documents spell pin types by name; loading also accepts enum numbers. */
 const char *serialize_pin_type_name(pin_type type);
 bool serialize_read_pin_type(yyjson_val *value, pin_type *out);
+/* A pin whose type differs from its template implies these unless written:
+ * primitive types name themselves, and values start at zero. */
+const char *serialize_implied_type_name(pin_type type, const char *template_name);
+pin_value serialize_zero_value(pin_type type, pin_container container, const char *type_name);
 void serialize_write_value(
     yyjson_mut_doc *doc,
     yyjson_mut_val *obj,

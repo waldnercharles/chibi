@@ -22,7 +22,7 @@ entities:
     GameAppearance:
       width: 24
       height: 24
-      shape: 1
+      shape: Circle
 - name: Upper occluder
   prototype: HRCLabOccluder
   components:
@@ -59,7 +59,7 @@ entities:
     GameAppearance:
       width: 960
       height: 540
-      shape: 0
+      shape: Box
       layer: -100
     GameMaterial:
       absorption: 0

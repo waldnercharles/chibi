@@ -7,7 +7,7 @@ components:
     color: 2360132607
     height: 100.0
     layer: 2
-    shape: 5
+    shape: Capsule
     width: 10.0
   GAME.GameBody: {}
   GAME.GameCollider:
@@ -16,7 +16,7 @@ components:
     height: 100.0
     mask: 1
     restitution: 0.7200000286102295
-    shape: 1
+    shape: Box
     width: 10.0
   GAME.GameOrientation: {}
   game.GameTransform: {}

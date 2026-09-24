@@ -4,4 +4,4 @@ components:
   GAME.GameActionBinding:
     action: Fire
     firing: true
-    source: 1
+    source: Mouse Left

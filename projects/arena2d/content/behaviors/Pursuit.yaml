@@ -15,9 +15,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: Find Nearest Entity
     inputs:
@@ -56,43 +54,36 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 46
       declaration_id: 28
       name: speed
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: game.GameMovement
         field: speed
-      default: 0.0
     - id: 47
       declaration_id: 29
       name: vx
       type: float
-      type_name: float
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: x
-      default: 0.0
     - id: 48
       declaration_id: 30
       name: vy
       type: float
-      type_name: float
       flags: 2
       group: 4
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: "y"
-      default: 0.0
     outputs:
     - id: 49
       declaration_id: 31
@@ -101,7 +92,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 5
-      default: null
   - id: 160
     type: Behavior Expression
     reference_id: 138
@@ -120,7 +110,6 @@ graphs:
       binding:
         kind: component
         component: GAME.GameVelocity
-      default: null
     - id: 162
       declaration_id: 144
       name: delta
@@ -128,12 +117,10 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 2
-      default: null
     - id: 163
       declaration_id: 145
       name: acceleration
       type: double
-      type_name: double
       flags: 2
       group: 3
       default: 120.0
@@ -141,12 +128,10 @@ graphs:
       declaration_id: 146
       name: dt
       type: double
-      type_name: double
       flags: 2
       group: 4
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 167
       name: Then
@@ -158,7 +143,6 @@ graphs:
       type_name: GameVelocity
       flags: 2
       group: 5
-      default: null
   - id: 323
     type: Behavior Expression
     reference_id: 306
@@ -177,7 +161,6 @@ graphs:
       binding:
         kind: component
         component: GAME.GameVelocity
-      default: null
     outputs:
     - id: 327
       name: Then
@@ -189,7 +172,6 @@ graphs:
       type_name: GameVelocity
       flags: 2
       group: 2
-      default: null
   edges:
   - from: 1
     from_pin: 2
@@ -239,31 +221,24 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 228
       name: speed
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 229
       name: vx
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 230
       name: vy
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 4
-      default: 0.0
   - id: 225
     type: Return
     inputs:
@@ -274,23 +249,18 @@ graphs:
       kind: data
       flags: 2
       group: 5
-      default: null
   - id: 232
     type: Multiply
     inputs:
     - id: 233
       type: struct
       type_name: CF_V2
-      default: null
     - id: 234
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 235
       type: struct
       type_name: CF_V2
-      default: null
   - id: 236
     type: Make_CF_V2
     inputs: [237, 238]
@@ -301,16 +271,13 @@ graphs:
     - id: 241
       type: struct
       type_name: CF_V2
-      default: null
     - id: 242
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 243
       type: struct
       type_name: CF_V2
-      default: null
   edges:
   - from: 223
     from_pin: 227
@@ -359,7 +326,6 @@ graphs:
       type_name: GameVelocity
       kind: data
       group: 1
-      default: null
     - id: 250
       name: delta
       type: struct
@@ -367,39 +333,30 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
     - id: 251
       name: acceleration
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
     - id: 252
       name: dt
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
     - id: 261
       name: x
       type: float
-      type_name: float
       kind: data
       field_source: 250
       field_name: x
-      default: 0.0
     - id: 262
       name: "y"
       type: float
-      type_name: float
       kind: data
       field_source: 250
       field_name: "y"
-      default: 0.0
   - id: 247
     type: Return
     inputs:
@@ -411,7 +368,6 @@ graphs:
       kind: data
       flags: 2
       group: 5
-      default: null
   - id: 254
     type: Real
     inputs:
@@ -423,17 +379,11 @@ graphs:
     inputs:
     - id: 258
       type: double
-      type_name: double
-      default: 0.0
     - id: 259
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 260
       type: double
-      type_name: double
-      default: 0.0
   - id: 263
     type: Multiply
     inputs: [264, 265]
@@ -447,14 +397,10 @@ graphs:
     inputs:
     - id: 272
       type: double
-      type_name: double
-      default: 0.0
     - 273
     outputs:
     - id: 274
       type: double
-      type_name: double
-      default: 0.0
   - id: 275
     type: Square Root
     inputs: [276]
@@ -470,81 +416,56 @@ graphs:
     inputs:
     - id: 282
       type: double
-      type_name: double
-      default: 0.0
     - id: 283
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 284
       type: double
-      type_name: double
-      default: 0.0
   - id: 285
     type: Divide
     inputs:
     - id: 286
       type: double
-      type_name: double
-      default: 0.0
     - id: 287
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 288
       type: double
-      type_name: double
-      default: 0.0
   - id: 289
     type: Min
     inputs:
     - id: 290
       type: double
-      type_name: double
-      default: 0.0
     - id: 291
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 292
       type: double
-      type_name: double
-      default: 0.0
   - id: 293
     type: Multiply
     inputs:
     - id: 294
       type: struct
       type_name: CF_V2
-      default: null
     - id: 295
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 296
       type: struct
       type_name: CF_V2
-      default: null
   - id: 297
     type: Add
     inputs:
     - id: 298
       type: struct
       type_name: GameVelocity
-      default: null
     - id: 299
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 300
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 301
     type: Set_GameVelocity
     inputs: [302, 303]
@@ -661,7 +582,6 @@ graphs:
       type_name: GameVelocity
       kind: data
       group: 1
-      default: null
   - id: 331
     type: Return
     inputs:
@@ -673,7 +593,6 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
   - id: 335
     type: Real
     inputs: [336]

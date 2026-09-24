@@ -14,9 +14,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 4
     type: Get Global Variable
     inputs:
@@ -25,8 +23,6 @@ graphs:
     outputs:
     - id: 6
       type: float
-      type_name: float
-      default: 0.0
   - id: 7
     type: Set_GameWidget_value
     inputs: [8, 9, 10]

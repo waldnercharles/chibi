@@ -73,18 +73,20 @@ graphs:
       declaration_id: 105
       name: Radius
       type: float
+      type_name: null
       default: 35.0
     - id: 18
       declaration_id: 106
       name: Width
       type: float
+      type_name: null
       default: 3.0
     outputs:
     - id: 19
       declaration_id: 108
       name: Mask
       type: float
-      default: 0.0
+      type_name: null
   - id: 20
     type: Shader Parameter
     reference_id: 2
@@ -129,18 +131,18 @@ graphs:
       declaration_id: 61
       name: Time
       type: float
-      default: 0.0
+      type_name: null
     - id: 30
       declaration_id: 62
       name: Speed
       type: float
-      default: 0.0
+      type_name: null
     outputs:
     - id: 31
       declaration_id: 63
       name: Brightness
       type: float
-      default: 0.0
+      type_name: null
   - id: 32
     type: Shader Add
     inputs:

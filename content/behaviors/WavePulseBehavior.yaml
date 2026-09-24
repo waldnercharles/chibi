@@ -23,9 +23,7 @@ graphs:
     outputs:
     - id: 4
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 7
     type: Delta Time
     outputs: [6]
@@ -36,58 +34,43 @@ graphs:
     - 8
     - id: 9
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 10
     - id: 11
       type: float
-      type_name: float
-      default: 0.0
   - id: 16
     type: Add
     inputs:
     - id: 13
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 14
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 15
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 20
     type: Divide
     inputs:
     - id: 17
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 18
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 0.8
     outputs:
     - id: 19
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 24
     type: Greater Or Equal
     inputs:
@@ -114,45 +97,35 @@ graphs:
     inputs:
     - id: 36
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 336.0
     - id: 37
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 38
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 43
     type: Add
     inputs:
     - id: 40
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 24.0
     - id: 41
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 42
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 49
     type: Set_GameSurfaceInfluence_radius
     inputs: [44, 45, 46]
@@ -162,45 +135,34 @@ graphs:
     inputs:
     - id: 50
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 51
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 28.0
     outputs:
     - id: 52
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 57
     type: Max
     inputs:
     - id: 54
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     - id: 55
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 56
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 63
     type: Set_GameSurfaceInfluence_inner_radius
     inputs: [58, 59, 60]
@@ -210,45 +172,35 @@ graphs:
     inputs:
     - id: 64
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 1.0
     - id: 65
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 66
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 71
     type: Multiply
     inputs:
     - id: 68
       type: double
-      type_name: double
       flags: 0
       group: 0
       default: 0.65
     - id: 69
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
     outputs:
     - id: 70
       type: double
-      type_name: double
       flags: 0
       group: 0
-      default: 0.0
   - id: 77
     type: Set_GameSurfaceInfluence_strength
     inputs: [72, 73, 74]

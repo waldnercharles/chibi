@@ -7,7 +7,7 @@ components:
     glow_color: 4294967120
     glow_radius: 8.0
     height: 18.0
-    shape: 4
+    shape: Stroked Chevron
     stroke_width: 1.0
     width: 20.0
   game.GameTransform:

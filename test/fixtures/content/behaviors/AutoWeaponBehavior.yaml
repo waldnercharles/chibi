@@ -49,11 +49,9 @@ graphs:
     - id: 46
       name: damage
       type: int
-      type_name: int
       field_source: 43
       field_name: damage
       flags: 0
-      default: 0
   - id: 145
     type: Direction To
     reference_name: Direction To
@@ -70,19 +68,15 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 200
       name: Direction
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 201
       name: Damage
       type: int
-      type_name: int
       kind: data
-      default: 0
     outputs: [202]
   edges:
   - from: 5
@@ -138,9 +132,7 @@ graphs:
     outputs:
     - id: 55
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 56
     type: Delta Time
     outputs: [57]
@@ -155,23 +147,17 @@ graphs:
     - 63
     - id: 64
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 65
     - id: 66
       type: float
-      type_name: float
-      default: 0.0
   - id: 71
     type: Get Variable
     reference_id: 1
     outputs:
     - id: 72
       type: float
-      type_name: float
       flags: 0
-      default: 0.0
   - id: 77
     type: WhileLoop
     inputs: [78, 79]
@@ -183,14 +169,10 @@ graphs:
     - 87
     - id: 88
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - 89
     - id: 90
       type: float
-      type_name: float
-      default: 0.0
   - id: 156
     type: Call Pure Function
     reference_id: 149
@@ -200,24 +182,16 @@ graphs:
     - id: 157
       name: Elapsed
       type: float
-      type_name: float
-      default: 0.0
     - id: 158
       name: Cooldown
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - id: 159
       name: Ready
       type: bool
-      type_name: bool
-      default: false
     - id: 160
       name: Remainder
       type: float
-      type_name: float
-      default: 0.0
   - id: 182
     type: Call Function
     reference_id: 173
@@ -230,24 +204,19 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 185
       name: Direction
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 186
       name: Damage
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 221
       declaration_id: 220
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: Projectile
     - id: 222
@@ -256,7 +225,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     outputs:
     - 187
     - id: 188
@@ -264,7 +232,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 190
     type: Function Entry
     outputs:
@@ -275,19 +242,15 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 193
       name: Direction
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 194
       name: Damage
       type: int
-      type_name: int
       kind: data
-      default: 0
   - id: 195
     type: Return
     inputs: [196]
@@ -299,11 +262,9 @@ graphs:
     - id: 209
       name: cooldown
       type: float
-      type_name: float
       field_source: 208
       field_name: cooldown
       flags: 0
-      default: 0.0
   - id: 223
     type: Self
     outputs:

@@ -15,9 +15,7 @@ graphs:
     - id: 3
       name: DeltaSeconds
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 16
     type: Behavior Expression
     reference_id: 4
@@ -30,24 +28,20 @@ graphs:
       declaration_id: 9
       name: age
       type: float
-      type_name: float
       flags: 6
       group: 1
       binding:
         kind: component_field
         component: GAME.GameProjectile
         field: age
-      default: 0.0
     - id: 18
       declaration_id: 10
       name: dt
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: delta_time
-      default: 0.0
     outputs:
     - id: 21
       name: Then
@@ -56,10 +50,8 @@ graphs:
       declaration_id: 11
       name: Result
       type: float
-      type_name: float
       flags: 2
       group: 3
-      default: 0.0
   - id: 96
     type: Behavior Expression
     reference_id: 84
@@ -72,24 +64,20 @@ graphs:
       declaration_id: 89
       name: age
       type: double
-      type_name: double
       group: 1
       binding:
         kind: component_field
         component: GAME.GameProjectile
         field: age
-      default: 0.0
     - id: 98
       declaration_id: 90
       name: lifetime
       type: double
-      type_name: double
       group: 2
       binding:
         kind: component_field
         component: GAME.GameProjectile
         field: lifetime
-      default: 0.0
     outputs:
     - id: 101
       name: "True"
@@ -101,10 +89,8 @@ graphs:
       declaration_id: 91
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 3
-      default: false
   - id: 127
     type: Self
     outputs:
@@ -126,26 +112,22 @@ graphs:
       declaration_id: 138
       name: vx
       type: double
-      type_name: double
       flags: 2
       group: 1
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: x
-      default: 0.0
     - id: 160
       declaration_id: 139
       name: vy
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: "y"
-      default: 0.0
     outputs:
     - id: 163
       name: "True"
@@ -157,10 +139,8 @@ graphs:
       declaration_id: 140
       name: Result
       type: bool
-      type_name: bool
       flags: 2
       group: 3
-      default: false
   - id: 228
     type: Behavior Expression
     reference_id: 215
@@ -173,38 +153,32 @@ graphs:
       declaration_id: 220
       name: heading
       type: float
-      type_name: float
       flags: 6
       group: 1
       binding:
         kind: component_field
         component: GAME.GameOrientation
         field: radians
-      default: 0.0
     - id: 230
       declaration_id: 221
       name: vy
       type: double
-      type_name: double
       flags: 2
       group: 2
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: "y"
-      default: 0.0
     - id: 231
       declaration_id: 222
       name: vx
       type: double
-      type_name: double
       flags: 2
       group: 3
       binding:
         kind: component_field
         component: GAME.GameVelocity
         field: x
-      default: 0.0
     outputs:
     - id: 234
       name: Then
@@ -213,10 +187,8 @@ graphs:
       declaration_id: 223
       name: Result
       type: double
-      type_name: double
       flags: 2
       group: 4
-      default: 0.0
   edges:
   - from: 1
     from_pin: 2
@@ -258,18 +230,14 @@ graphs:
     - id: 58
       name: age
       type: float
-      type_name: float
       kind: data
       group: 1
-      default: 0.0
     - id: 59
       name: dt
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 56
     type: Return
     inputs:
@@ -277,19 +245,15 @@ graphs:
     - id: 60
       name: Result
       type: float
-      type_name: float
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 61
     type: Add
     inputs:
     - 62
     - id: 63
       type: double
-      type_name: double
-      default: 0.0
     outputs: [64]
   - id: 65
     type: Get_GameProjectile
@@ -366,39 +330,29 @@ graphs:
     - id: 120
       name: age
       type: double
-      type_name: double
       kind: data
       group: 1
-      default: 0.0
     - id: 121
       name: lifetime
       type: double
-      type_name: double
       kind: data
       group: 2
-      default: 0.0
   - id: 118
     type: Return
     inputs:
     - id: 122
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 3
-      default: false
   - id: 123
     type: Greater Or Equal
     inputs:
     - id: 124
       type: double
-      type_name: double
-      default: 0.0
     - id: 125
       type: double
-      type_name: double
-      default: 0.0
     outputs: [126]
   edges:
   - from: 116
@@ -428,70 +382,50 @@ graphs:
     - id: 195
       name: vx
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 1
-      default: 0.0
     - id: 196
       name: vy
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
   - id: 193
     type: Return
     inputs:
     - id: 197
       name: Result
       type: bool
-      type_name: bool
       kind: data
       flags: 2
       group: 3
-      default: false
   - id: 198
     type: Abs
     inputs:
     - id: 199
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 200
       type: double
-      type_name: double
-      default: 0.0
   - id: 201
     type: Abs
     inputs:
     - id: 202
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 203
       type: double
-      type_name: double
-      default: 0.0
   - id: 204
     type: Add
     inputs:
     - id: 205
       type: double
-      type_name: double
-      default: 0.0
     - id: 206
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 207
       type: double
-      type_name: double
-      default: 0.0
   - id: 208
     type: Real
     inputs:
@@ -503,12 +437,8 @@ graphs:
     inputs:
     - id: 212
       type: double
-      type_name: double
-      default: 0.0
     - id: 213
       type: double
-      type_name: double
-      default: 0.0
     outputs: [214]
   edges:
   - from: 191
@@ -555,26 +485,20 @@ graphs:
     - id: 292
       name: heading
       type: float
-      type_name: float
       kind: data
       group: 1
-      default: 0.0
     - id: 293
       name: vy
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 2
-      default: 0.0
     - id: 294
       name: vx
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 290
     type: Return
     inputs:
@@ -582,11 +506,9 @@ graphs:
     - id: 295
       name: Result
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 4
-      default: 0.0
   - id: 296
     type: Arc Tangent 2
     inputs: [297, 298]

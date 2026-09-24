@@ -8,10 +8,10 @@ components:
     glow_color: 4291559488
     glow_radius: 6.0
     height: 28.0
-    shape: 2
+    shape: Diamond
     width: 28.0
   GAME.GameBody:
-    type: 1
+    type: Dynamic
   GAME.GameCollider:
     category: 2
     mask: 13

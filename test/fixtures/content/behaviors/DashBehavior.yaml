@@ -32,19 +32,15 @@ graphs:
     - id: 359
       name: cooldown_remaining
       type: float
-      type_name: float
       field_source: 358
       field_name: cooldown_remaining
       flags: 0
-      default: 0.0
     - id: 399
       name: remaining
       type: float
-      type_name: float
       field_source: 358
       field_name: remaining
       flags: 0
-      default: 0.0
   - id: 360
     type: Greater Or Equal
     inputs: [361, 362]
@@ -77,11 +73,9 @@ graphs:
     - id: 379
       name: remaining
       type: float
-      type_name: float
       field_source: 378
       field_name: remaining
       flags: 0
-      default: 0.0
   - id: 380
     type: Less
     inputs: [381, 382]
@@ -106,13 +100,11 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     - id: 411
       name: Point
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 395
     type: Call Function
     reference_id: 28
@@ -124,7 +116,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     outputs: [398]
   - id: 400
     type: Delta Time
@@ -391,24 +382,20 @@ graphs:
     - id: 96
       name: speed
       type: float
-      type_name: float
       field_source: 94
       field_name: speed
       flags: 0
-      default: 0.0
   - id: 97
     type: Multiply
     inputs:
     - id: 98
       type: struct
       type_name: GameVelocity
-      default: null
     - 99
     outputs:
     - id: 100
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 101
     type: Set_GameVelocity
     inputs: [102, 103]
@@ -428,19 +415,14 @@ graphs:
     - id: 111
       name: X
       type: float
-      type_name: float
-      default: 0.0
     - id: 112
       name: "Y"
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - id: 113
       name: Orientation
       type: struct
       type_name: GameOrientation
-      default: null
   - id: 114
     type: Set_GameOrientation
     inputs: [115, 116]
@@ -528,18 +510,15 @@ graphs:
       name: direction
       type: struct
       type_name: CF_V2
-      default: null
     - id: 126
       name: speed
       type: struct
       type_name: GameMovement
-      default: null
     outputs:
     - id: 127
       name: Velocity
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 128
     type: Set_GameVelocity
     inputs: [129, 130]
@@ -620,11 +599,9 @@ graphs:
     - id: 147
       name: remaining
       type: float
-      type_name: float
       field_source: 146
       field_name: remaining
       flags: 0
-      default: 0.0
   - id: 148
     type: Delta Time
     outputs: [149]
@@ -657,10 +634,8 @@ graphs:
     - id: 164
       name: remaining
       type: float
-      type_name: float
       field_source: 163
       field_name: remaining
-      default: 0.0
   - id: 165
     type: Less
     inputs: [166, 167]
@@ -741,9 +716,7 @@ graphs:
     outputs:
     - id: 178
       type: bool
-      type_name: bool
       flags: 0
-      default: false
   - id: 179
     type: Branch
     inputs: [180, 181]
@@ -755,14 +728,10 @@ graphs:
     - 185
     - id: 186
       type: bool
-      type_name: bool
-      default: false
     outputs:
     - 187
     - id: 188
       type: bool
-      type_name: bool
-      default: false
   - id: 189
     type: Get_GameDash
     outputs:
@@ -771,19 +740,15 @@ graphs:
     - id: 191
       name: cooldown_remaining
       type: float
-      type_name: float
       field_source: 190
       field_name: cooldown_remaining
       flags: 0
-      default: 0.0
     - id: 192
       name: remaining
       type: float
-      type_name: float
       field_source: 190
       field_name: remaining
       flags: 0
-      default: 0.0
   - id: 193
     type: Delta Time
     outputs: [194]
@@ -903,7 +868,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 32
     type: Return
     inputs: [33]
@@ -915,19 +879,15 @@ graphs:
     - id: 224
       name: remaining
       type: float
-      type_name: float
       field_source: 223
       field_name: remaining
       flags: 0
-      default: 0.0
     - id: 225
       name: damage
       type: int
-      type_name: int
       field_source: 223
       field_name: damage
       flags: 0
-      default: 0
   - id: 226
     type: Less
     inputs: [227, 228]
@@ -963,7 +923,6 @@ graphs:
       type_name: unsigned int
       field_source: 253
       field_name: category
-      default: 0
   - id: 255
     type: Has Any Flags
     inputs:
@@ -995,7 +954,6 @@ graphs:
     - id: 268
       type: handle
       type_name: ecs.entity
-      default: null
     outputs: [269]
   - id: 270
     type: Branch
@@ -1011,7 +969,6 @@ graphs:
     - id: 277
       type: handle
       type_name: ecs.entity
-      default: null
     outputs:
     - id: 278
       type: handle
@@ -1049,8 +1006,6 @@ graphs:
       declaration_id: 2
       name: Amount
       type: int
-      type_name: int
-      default: 0
     - id: 290
       declaration_id: 3
       name: Source
@@ -1222,7 +1177,6 @@ graphs:
     - id: 302
       type: handle
       type_name: ecs.entity
-      default: null
     - 303
     - 304
   - id: 305
@@ -1236,7 +1190,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     outputs: [308]
   edges:
   - from: 35
@@ -1286,11 +1239,9 @@ graphs:
     - id: 311
       name: current
       type: int
-      type_name: int
       field_source: 310
       field_name: current
       flags: 0
-      default: 0
   - id: 312
     type: Integer Greater Or Equal
     inputs:
@@ -1316,19 +1267,15 @@ graphs:
     - id: 326
       name: duration
       type: float
-      type_name: float
       field_source: 325
       field_name: duration
       flags: 0
-      default: 0.0
     - id: 327
       name: cooldown
       type: float
-      type_name: float
       field_source: 325
       field_name: cooldown
       flags: 0
-      default: 0.0
   - id: 328
     type: Set_GameDash_remaining
     inputs: [329, 330, 331]
@@ -1344,14 +1291,11 @@ graphs:
     - 343
     - id: 344
       type: bool
-      type_name: bool
       default: true
     outputs:
     - 345
     - id: 346
       type: bool
-      type_name: bool
-      default: false
   - id: 347
     type: Set Variable
     reference_id: 2

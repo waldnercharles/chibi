@@ -25,7 +25,6 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
     - id: 340
       name: speed
       type: struct
@@ -33,7 +32,6 @@ graphs:
       kind: data
       flags: 2
       group: 3
-      default: null
   - id: 336
     type: Return
     inputs:
@@ -44,20 +42,17 @@ graphs:
       kind: data
       flags: 2
       group: 5
-      default: null
   - id: 343
     type: Multiply
     inputs:
     - id: 344
       type: struct
       type_name: CF_V2
-      default: null
     - 345
     outputs:
     - id: 346
       type: struct
       type_name: CF_V2
-      default: null
   edges:
   - from: 334
     from_pin: 339

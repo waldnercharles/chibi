@@ -34,30 +34,22 @@ graphs:
     - id: 151
       name: Elapsed
       type: float
-      type_name: float
       kind: data
-      default: 0.0
     - id: 152
       name: Cooldown
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   - id: 153
     type: Return
     inputs:
     - id: 154
       name: Ready
       type: bool
-      type_name: bool
       kind: data
-      default: false
     - id: 155
       name: Remainder
       type: float
-      type_name: float
       kind: data
-      default: 0.0
   edges:
   - from: 67
     from_pin: 70
@@ -114,10 +106,8 @@ graphs:
     - id: 115
       name: speed
       type: float
-      type_name: float
       field_source: 112
       field_name: speed
-      default: 0.0
   - id: 133
     type: Set_GameProjectile_damage
     inputs: [134, 136, 135]
@@ -132,23 +122,18 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 177
       name: Direction
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
     - id: 178
       name: Damage
       type: int
-      type_name: int
       kind: data
-      default: 0
     - id: 220
       name: Prototype
       type: name
-      type_name: name
       kind: data
       default: Projectile
     - id: 255
@@ -156,7 +141,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 179
     type: Return
     inputs:
@@ -166,7 +150,6 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
   - id: 225
     type: Multiply
     inputs:
@@ -175,7 +158,6 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
     - id: 227
       flags: 0
       group: 0
@@ -185,7 +167,6 @@ graphs:
       type_name: CF_V2
       flags: 0
       group: 0
-      default: null
   - id: 229
     type: SetEntity_GameVelocity
     inputs: [230, 231, 232]
@@ -200,21 +181,16 @@ graphs:
       declaration_id: 4
       name: X
       type: float
-      type_name: float
-      default: 0.0
     - id: 237
       declaration_id: 5
       name: "Y"
       type: float
-      type_name: float
-      default: 0.0
     outputs:
     - id: 238
       declaration_id: 6
       name: Orientation
       type: struct
       type_name: GameOrientation
-      default: null
   - id: 239
     type: SetEntity_GameOrientation
     inputs: [240, 241, 242]
@@ -231,17 +207,13 @@ graphs:
     - id: 223
       name: x
       type: float
-      type_name: float
       field_source: 222
       field_name: x
-      default: 0.0
     - id: 224
       name: "y"
       type: float
-      type_name: float
       field_source: 222
       field_name: "y"
-      default: 0.0
   edges:
   - from: 91
     from_pin: 94

@@ -17,13 +17,11 @@ graphs:
       type: handle
       type_name: ecs.entity
       kind: data
-      default: null
     - id: 4
       name: Point
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 5
     type: Self
     outputs:
@@ -49,7 +47,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 1
-      default: null
     - id: 29
       declaration_id: 16
       name: direction
@@ -57,12 +54,10 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 2
-      default: null
     - id: 30
       declaration_id: 17
       name: inset
       type: double
-      type_name: double
       flags: 2
       group: 3
       default: 0.5
@@ -74,7 +69,6 @@ graphs:
       type_name: CF_V2
       flags: 2
       group: 4
-      default: null
   - id: 66
     type: Damage Material
     inputs:
@@ -105,12 +99,10 @@ graphs:
       declaration_id: 2
       name: Amount
       type: int
-      type_name: int
       binding:
         kind: component_field
         component: GAME.GameProjectile
         field: damage
-      default: 0
     - id: 104
       declaration_id: 3
       name: Source
@@ -191,7 +183,6 @@ graphs:
       kind: data
       flags: 2
       group: 1
-      default: null
     - id: 80
       name: direction
       type: struct
@@ -199,15 +190,12 @@ graphs:
       kind: data
       flags: 2
       group: 2
-      default: null
     - id: 81
       name: inset
       type: double
-      type_name: double
       kind: data
       flags: 2
       group: 3
-      default: 0.0
   - id: 77
     type: Return
     inputs:
@@ -218,39 +206,31 @@ graphs:
       kind: data
       flags: 2
       group: 4
-      default: null
   - id: 83
     type: Multiply
     inputs:
     - id: 84
       type: struct
       type_name: CF_V2
-      default: null
     - id: 85
       type: double
-      type_name: double
-      default: 0.0
     outputs:
     - id: 86
       type: struct
       type_name: CF_V2
-      default: null
   - id: 87
     type: Add
     inputs:
     - id: 88
       type: struct
       type_name: CF_V2
-      default: null
     - id: 89
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 90
       type: struct
       type_name: CF_V2
-      default: null
   edges:
   - from: 75
     from_pin: 79

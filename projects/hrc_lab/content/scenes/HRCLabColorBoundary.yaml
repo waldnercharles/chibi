@@ -22,7 +22,7 @@ entities:
     GameAppearance:
       width: 960
       height: 540
-      shape: 0
+      shape: Box
       layer: -100
     GameMaterial:
       absorption: 0
@@ -44,7 +44,7 @@ entities:
       glow_radius: 0
       height: 18
       layer: 0
-      shape: 1
+      shape: Circle
       stroke_width: 0
       width: 18
     GameMaterial:
@@ -75,7 +75,7 @@ entities:
       glow_radius: 0
       height: 18
       layer: 0
-      shape: 1
+      shape: Circle
       stroke_width: 0
       width: 18
     GameMaterial:
@@ -106,7 +106,7 @@ entities:
       glow_radius: 0
       height: 18
       layer: 0
-      shape: 1
+      shape: Circle
       stroke_width: 0
       width: 18
     GameMaterial:
@@ -137,7 +137,7 @@ entities:
       glow_radius: 0
       height: 200
       layer: 0
-      shape: 0
+      shape: Box
       stroke_width: 0
       width: 180
     GameMaterial:
@@ -168,7 +168,7 @@ entities:
       glow_radius: 0
       height: 200
       layer: 0
-      shape: 0
+      shape: Box
       stroke_width: 0
       width: 180
     GameMaterial:
@@ -199,7 +199,7 @@ entities:
       glow_radius: 0
       height: 420
       layer: 0
-      shape: 0
+      shape: Box
       stroke_width: 0
       width: 120
     GameMaterial:

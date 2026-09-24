@@ -74,16 +74,13 @@ graphs:
     - id: 45
       type: struct
       type_name: CF_V2
-      default: null
     - id: 46
       type: struct
       type_name: CF_V2
-      default: null
     outputs:
     - id: 47
       type: struct
       type_name: CF_V2
-      default: null
   - id: 48
     type: Direction To
     inputs: [49, 50]
@@ -132,7 +129,6 @@ graphs:
       type: float
       type_name: null
       flags: 0
-      default: 0.0
   - id: 80
     type: Get Variable
     reference_id: 2
@@ -142,7 +138,6 @@ graphs:
       type: float
       type_name: null
       flags: 0
-      default: 0.0
   edges:
   - from: 3
     from_pin: 4

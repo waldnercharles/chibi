@@ -17,7 +17,6 @@ graphs:
       type: struct
       type_name: CF_V2
       kind: data
-      default: null
   - id: 14
     type: Set_GameVelocity
     inputs: [15, 16]
@@ -32,18 +31,15 @@ graphs:
       name: direction
       type: struct
       type_name: CF_V2
-      default: null
     - id: 133
       name: speed
       type: struct
       type_name: GameMovement
-      default: null
     outputs:
     - id: 108
       name: Velocity
       type: struct
       type_name: GameVelocity
-      default: null
   - id: 356
     type: Event
     reference_name: Tick
@@ -58,29 +54,24 @@ graphs:
       declaration_id: 4
       name: X
       type: float
-      type_name: float
       binding:
         kind: component_field
         component: GAME.GameAim
         field: direction.x
-      default: 0.0
     - id: 369
       declaration_id: 5
       name: "Y"
       type: float
-      type_name: float
       binding:
         kind: component_field
         component: GAME.GameAim
         field: direction.y
-      default: 0.0
     outputs:
     - id: 370
       declaration_id: 6
       name: Orientation
       type: struct
       type_name: GameOrientation
-      default: null
   - id: 371
     type: Set_GameOrientation
     inputs: [372, 373]
@@ -121,11 +112,9 @@ graphs:
     - id: 408
       name: remaining
       type: float
-      type_name: float
       field_source: 407
       field_name: remaining
       flags: 0
-      default: 0.0
   - id: 409
     type: Less
     inputs: [410, 411]

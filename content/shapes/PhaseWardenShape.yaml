@@ -1,0 +1,33 @@
+version: 3
+name: PhaseWardenShape
+domain: shape
+bounds_x: 20.0
+bounds_y: 20.0
+id_counter: 23
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Shader Shape Output}
+  - {id: 3, type: Shader UV}
+  - id: 5
+    type: Shader Circle
+    inputs: {Radius: 0.4399999976158142}
+  - id: 9
+    type: Shader Circle
+    inputs: {Radius: 0.2800000011920929}
+  - {id: 13, type: Shader Difference}
+  - id: 17
+    type: Shader Mapping
+    inputs:
+      Offset:
+        default: {x: -0.5, "y": -0.5}
+      Scale:
+        default: {x: 1.0, "y": 1.0}
+  edges:
+  - {from: 3.Position, to: 17.Position}
+  - {from: 5.Value, to: 13.A}
+  - {from: 9.Value, to: 13.B}
+  - {from: 13.Value, to: 1.Distance}
+  - {from: 17.Value, to: 5.Position}
+  - {from: 17.Value, to: 9.Position}

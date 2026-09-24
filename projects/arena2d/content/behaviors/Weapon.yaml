@@ -1,0 +1,217 @@
+version: 3
+name: Weapon
+id_counter: 435
+description: Aim at the nearest enemy when manual aim is absent; emit shots only while Fire is held.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: elapsed, type: float, default: 0.125}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 2
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 5
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: component_field, component: GAME.GameAim, field: manual}
+  - id: 10
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 12
+    type: Find Nearest Entity
+    inputs:
+      Position:
+        binding: {kind: component, component: game.GameTransform}
+      Radius: 2000.0
+      Categories: 2
+  - {id: 21, type: Branch}
+  - id: 26
+    type: Direction To
+    inputs:
+      Origin:
+        binding: {kind: component, component: game.GameTransform}
+  - {id: 30, type: Set_GameAim_direction}
+  - id: 48
+    type: Behavior Expression
+    reference_id: 36
+    reference_name: elapsed += dt
+    inputs:
+      Exec: {id: 52, kind: exec}
+      elapsed:
+        id: 49
+        type: float
+        type_name: null
+        flags: 6
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      dt:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 53, kind: exec}
+      Result: {id: 51, type: float, type_name: null, flags: 2, group: 3}
+  - id: 88
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: component_field, component: GAME.GameAim, field: firing}
+  - {id: 136, type: WhileLoop}
+  - id: 153
+    type: Transform Visual Offset
+    inputs:
+      Offset:
+        default: {x: 16.0, "y": 0.0}
+      Heading:
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      Visual:
+        default: {pitch: 0.0, yaw: 0.0, roll: 0.0, scale: 1.0}
+  - id: 177
+    type: Behavior Expression
+    reference_id: 160
+    reference_name: vec2(x, y) + offset
+    inputs:
+      x:
+        type: float
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: game.GameTransform, field: x}
+      "y":
+        type: float
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+      offset: {flags: 2, group: 3}
+    outputs:
+      Result: {flags: 2, group: 4}
+  - id: 233
+    type: Call Function
+    reference_id: 173
+    reference_name: Fire Projectile
+    reference_asset: WeaponActions
+    inputs:
+      Origin: {id: 236, declaration_id: 176, type: struct, type_name: CF_V2, kind: data}
+      Direction:
+        declaration_id: 177
+        type: struct
+        type_name: CF_V2
+        kind: data
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
+      Damage:
+        declaration_id: 178
+        type: int
+        kind: data
+        binding: {kind: component_field, component: GAME.GameWeapon, field: damage}
+      Prototype: {declaration_id: 220, type: name, kind: data, default: Projectile}
+      Shooter: {declaration_id: 255, type: handle, type_name: ecs.entity, kind: data}
+    outputs:
+      Then: {id: 235}
+      Entity: {id: 241, declaration_id: 181, type: handle, type_name: ecs.entity, kind: data}
+  - id: 271
+    type: Behavior Expression
+    reference_id: 259
+    reference_name: elapsed -= cooldown
+    inputs:
+      Exec: {id: 275, kind: exec}
+      elapsed:
+        id: 272
+        type: float
+        type_name: null
+        flags: 6
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      cooldown:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
+    outputs:
+      Then: {id: 276, kind: exec}
+      Result: {id: 274, type: float, type_name: null, flags: 2, group: 3}
+  - id: 323
+    type: Behavior Expression
+    reference_id: 311
+    reference_name: elapsed = min(elapsed, cooldown)
+    inputs:
+      Exec: {id: 327, kind: exec}
+      elapsed:
+        id: 324
+        type: float
+        type_name: null
+        flags: 6
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      cooldown:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
+    outputs:
+      Then: {id: 328, kind: exec}
+      Result: {id: 326, type: float, type_name: null, flags: 2, group: 3}
+  - id: 363
+    type: Greater Or Equal
+    inputs:
+      A:
+        binding: {kind: variable, variable_id: 1, source_asset: Weapon}
+      B:
+        binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
+  edges:
+  - {from: 2.Then, to: 5.Exec}
+  - {from: 5.True, to: 48.Exec}
+  - {from: 5.False, to: 21.Exec}
+  - {from: 10.Self, to: 12.Exclude}
+  - {from: 10.Self, to: 233.Shooter}
+  - {from: 12.Found, to: 21.Condition}
+  - {from: 12.Position, to: 26.Target, conversion: game_transform_to_cf}
+  - {from: 21.True, to: 30.Exec}
+  - {from: 21.False, to: 48.Exec}
+  - {from: 26.Direction, to: 30.Value, conversion: game_transform_to_cf}
+  - {from: 30.Then, to: 48.Exec}
+  - {from: 48.Then, to: 88.Exec}
+  - {from: 88.True, to: 136.Exec}
+  - {from: 88.False, to: 323.Exec}
+  - {from: 136.Body, to: 233.Exec}
+  - {from: 153.Offset, to: 177.offset}
+  - {from: 177.Result, to: 233.Origin}
+  - {from: 233.Then, to: 271.Exec}
+  - {from: 363.Result, to: 136.Condition}
+- id: 36
+  kind: function
+  name: elapsed += dt
+  math_expression: elapsed += dt
+  expression_mode: 2
+  entry_id: 368
+  return_id: 370
+  call_depth_limit: 64
+- id: 311
+  kind: function
+  name: elapsed = min(elapsed, cooldown)
+  math_expression: elapsed = min(elapsed, cooldown)
+  expression_mode: 2
+  entry_id: 419
+  return_id: 421
+  call_depth_limit: 64
+- id: 160
+  kind: function
+  name: vec2(x, y) + offset
+  math_expression: vec2(x, y) + offset
+  expression_mode: 1
+  entry_id: 385
+  return_id: 387
+  call_depth_limit: 64
+- id: 259
+  kind: function
+  name: elapsed -= cooldown
+  math_expression: elapsed -= cooldown
+  expression_mode: 2
+  entry_id: 402
+  return_id: 404
+  call_depth_limit: 64

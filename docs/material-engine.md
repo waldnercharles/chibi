@@ -2,7 +2,7 @@
 
 Material algorithms operate on native grids and masks. Authored fields define
 geometry; reflected components define tuning; behaviors decide gameplay outcomes.
-`projects/arena2d/content/scenes/MaterialStudy.json` exercises this boundary with
+`projects/arena2d/content/scenes/MaterialStudy.yaml` exercises this boundary with
 two procedural specimens, a cut operation, and a moving marker. It has no fluid
 world, health, projectile, encounter, or combat configuration.
 
@@ -152,14 +152,14 @@ bytecode for its vector expression.
 
 ## Authoring and checks
 
-Use `buildField`, `buildSystem`, `inspectGraph`, `inspectSystem`, `validateAsset`
+Use `buildGraph`, `inspectGraph`, `inspectSystem`, `validateAsset`
 and `previewField` through Chibi MCP. Field previews return a deterministic CPU
 PNG, range and hash without a graphics context. Graph edits remain atomic,
 hash-checked and automatically arranged. The editor lists fields, filters their
 palette, exposes pure scalar library calls, and provides seed/cell-size controls
 and a field preview in Details.
 
-Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.json`.
+Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.yaml`.
 
 Useful checks:
 

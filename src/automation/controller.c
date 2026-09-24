@@ -10,6 +10,7 @@
 #include "automation/prototype_edit.h"
 #include "automation/scene_edit.h"
 #include "ecs/ecs.h"
+#include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_jit_sljit.h"
@@ -23,6 +24,7 @@
 #include "runtime/systems/system.h"
 #include "runtime/widgets.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -191,7 +193,6 @@ static const contract_field CONTRACT_LIST_ASSETS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
     { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
-    { "summary", "boolean", false, "Return compact asset records without relationship details." },
 };
 static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -206,6 +207,9 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
     { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
+};
+static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
+    { "sections", "string[]", false, "nodes, types, services, operators, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -241,7 +245,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
-    { "input_timeline", "array", false, "At most 600 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
@@ -249,13 +253,13 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
-    { "entity_limit", "uint64", false, "Maximum number of ordered entities; maximum 256." },
+    { "entity_limit", "uint64", false, "Maximum number of ordered entities; defaults to 32, maximum 256." },
     { "component_limit", "uint64", false, "Maximum number of components per entity; maximum 64." },
     { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
     { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
     { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
     { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
-    { "input_timeline", "array", false, "At most 600 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RECORD_SCENARIO[] = {
@@ -521,8 +525,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "describe_registry",
         "Return reflected graph, type, service, operator, and component "
         "metadata.",
-        CONTRACT_NO_FIELDS,
-        0,
+        CONTRACT_DESCRIBE_REGISTRY,
+        CONTRACT_FIELD_COUNT(CONTRACT_DESCRIBE_REGISTRY),
         1,
         true,
         true,
@@ -638,10 +642,10 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
 
 static const char *const CONTRACT_ERROR_CATEGORIES[] = {
     "invalid_request", "io_error",         "validation_failed",
-    "asset_not_found", "execution_failed",
+    "asset_not_found", "execution_failed", "asset_conflict",
 };
 
-static int handle_describe_registry(response *result);
+static int handle_describe_registry(yyjson_val *request, response *result, int *exit_code);
 static int handle_describe_contract(response *result);
 static int handle_describe_components(yyjson_val *request, response *result, int *exit_code);
 static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code);
@@ -719,8 +723,8 @@ static bool valid_asset_filename(const char *filename)
         return false;
     }
     size_t length = strlen(filename);
-    return length > sizeof ".json" - 1 &&
-           !strcmp(filename + length - (sizeof ".json" - 1), ".json");
+    return length > sizeof ASSET_EXTENSION - 1 &&
+           !strcmp(filename + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION);
 }
 
 static bool valid_relative_asset_path(const char *path)
@@ -967,15 +971,15 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
         strchr(name, '\\') || strstr(name, "..")) {
         return set_error(error, error_size, "asset requires a known kind and safe name");
     }
-    if (strstr(name, ".json")) {
+    if (strstr(name, ASSET_EXTENSION)) {
         if (!valid_asset_filename(name) || strlen(name) >= sizeof out->filename) {
             return set_error(error, error_size, "asset name is invalid");
         }
         snprintf(out->filename, sizeof out->filename, "%s", name);
-    } else if (strlen(name) + sizeof ".json" >= sizeof out->filename) {
+    } else if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof out->filename) {
         return set_error(error, error_size, "asset name is too long");
     } else {
-        snprintf(out->filename, sizeof out->filename, "%s.json", name);
+        snprintf(out->filename, sizeof out->filename, "%s" ASSET_EXTENSION, name);
     }
     snprintf(out->relative, sizeof out->relative, "content/%s/%s", out->family->folder, out->filename);
     return 0;
@@ -1057,7 +1061,7 @@ static void free_asset_entries(asset_entry *entries)
 
 static char *asset_name_from_filename(const char *filename)
 {
-    size_t length = strlen(filename) - (sizeof ".json" - 1);
+    size_t length = strlen(filename) - (sizeof ASSET_EXTENSION - 1);
     char *name = xmalloc(length + 1);
     memcpy(name, filename, length);
     name[length] = '\0';
@@ -1145,9 +1149,9 @@ static char *catalog_normalize_name(const char *value)
     const char *name = strrchr(value, '/');
     name = name ? name + 1 : value;
     size_t length = strlen(name);
-    if (length > sizeof ".json" - 1 &&
-        !strcmp(name + length - (sizeof ".json" - 1), ".json")) {
-        length -= sizeof ".json" - 1;
+    if (length > sizeof ASSET_EXTENSION - 1 &&
+        !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
+        length -= sizeof ASSET_EXTENSION - 1;
     }
     if (!length) {
         return NULL;
@@ -1514,6 +1518,14 @@ static void catalog_resolve_references(catalog_asset *assets)
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
 
+/* Parses asset file YAML or in-memory JSON where callers report their own
+ * error. */
+static yyjson_doc *parse_asset_text(const char *text)
+{
+    char error[160];
+    return asset_text_read(text, error, sizeof error);
+}
+
 static int load_catalog_asset(
     const char *root,
     const asset_entry *entry,
@@ -1543,7 +1555,7 @@ static int load_catalog_asset(
         free_catalog_assets(asset);
         return set_error(error, error_size, read_error);
     }
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     if (!document) {
         asset->valid = false;
         asset->errors = 1;
@@ -1776,7 +1788,7 @@ static void add_hash(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t hash)
 static yyjson_mut_val *add_asset_entry(yyjson_mut_doc *doc, yyjson_mut_val *array, const asset_entry *entry)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    size_t name_size = strlen(entry->filename) - (sizeof ".json" - 1) + 1;
+    size_t name_size = strlen(entry->filename) - (sizeof ASSET_EXTENSION - 1) + 1;
     char *name = xmalloc(name_size);
     memcpy(name, entry->filename, name_size - 1);
     name[name_size - 1] = '\0';
@@ -1922,7 +1934,32 @@ static int handle_describe_contract(response *result)
     return 0;
 }
 
-static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const compile_diagnostic *diagnostic)
+/* Diagnostics name their pin as <node>.<key> when the asset resolves it. */
+static void add_diagnostic_pin(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const behavior_asset *asset,
+    const compile_diagnostic *diagnostic
+)
+{
+    graph *g = asset ? behavior_asset_find_graph(asset, diagnostic->graph_id) : NULL;
+    node *n = g && diagnostic->pin_id ? graph_node_by_id(g, diagnostic->node_id) : NULL;
+    int output = 0, index = -1;
+    char ref[SERIALIZE_KEY_SIZE + 32];
+    if (n && graph_pin_by_id(n, diagnostic->pin_id, &output, &index) &&
+        serialize_pin_ref(n, output, index, ref, sizeof ref)) {
+        yyjson_mut_obj_add_strcpy(doc, object, "pin", ref);
+        return;
+    }
+    yyjson_mut_obj_add_uint(doc, object, "pin", diagnostic->pin_id);
+}
+
+static void add_diagnostic(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const behavior_asset *asset,
+    const compile_diagnostic *diagnostic
+)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
     yyjson_mut_obj_add_strcpy(
@@ -1933,7 +1970,7 @@ static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const com
     );
     yyjson_mut_obj_add_uint(doc, object, "graph", diagnostic->graph_id);
     yyjson_mut_obj_add_uint(doc, object, "node", diagnostic->node_id);
-    yyjson_mut_obj_add_uint(doc, object, "pin", diagnostic->pin_id);
+    add_diagnostic_pin(doc, object, asset, diagnostic);
     yyjson_mut_obj_add_int(doc, object, "rule", diagnostic->rule);
     yyjson_mut_obj_add_strcpy(
         doc,
@@ -1960,7 +1997,7 @@ static void add_asset_identity(
     uint64_t hash
 )
 {
-    size_t name_size = strlen(ref->filename) - (sizeof ".json" - 1) + 1;
+    size_t name_size = strlen(ref->filename) - (sizeof ASSET_EXTENSION - 1) + 1;
     char *name = xmalloc(name_size);
     memcpy(name, ref->filename, name_size - 1);
     name[name_size - 1] = '\0';
@@ -2168,23 +2205,9 @@ static int handle_catalog(const char *root, yyjson_val *request, response *resul
     for (uint64_t i = 0; i < count; i++) {
         add_catalog_asset(result->doc, asset_array, &assets[start + i], assets, acount(assets), page.summary);
     }
-    if (page.summary) {
-        yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
-        add_registry(result->doc, registry);
-    } else {
-        response registry = response_new("describe_registry");
-        handle_describe_registry(&registry);
-        yyjson_mut_val *registry_value = yyjson_mut_obj_get(registry.root, "result");
-        if (registry_value) {
-            yyjson_mut_obj_add_val(
-                result->doc,
-                value,
-                "registry",
-                yyjson_mut_val_mut_copy(result->doc, registry_value)
-            );
-        }
-        yyjson_mut_doc_free(registry.doc);
-    }
+    /* Registry counts only; describe_registry returns the registry itself. */
+    yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
+    add_registry(result->doc, registry);
     return 0;
 }
 
@@ -2459,44 +2482,6 @@ static int inspect_item_compare(const void *left, const void *right)
     return a->id < b->id ? -1 : a->id > b->id ? 1 : 0;
 }
 
-static int inspect_edge_compare(const void *left, const void *right)
-{
-    const yyjson_val *a = ((const inspect_json_item *)left)->value;
-    const yyjson_val *b = ((const inspect_json_item *)right)->value;
-    const char *a_kind = request_string((yyjson_val *)a, "kind");
-    const char *b_kind = request_string((yyjson_val *)b, "kind");
-    uint64_t a_from = inspect_json_uint(yyjson_obj_get(a, "from"));
-    uint64_t b_from = inspect_json_uint(yyjson_obj_get(b, "from"));
-    uint64_t a_from_pin = inspect_json_uint(yyjson_obj_get(a, "from_pin"));
-    uint64_t b_from_pin = inspect_json_uint(yyjson_obj_get(b, "from_pin"));
-    uint64_t a_to = inspect_json_uint(yyjson_obj_get(a, "to"));
-    uint64_t b_to = inspect_json_uint(yyjson_obj_get(b, "to"));
-    uint64_t a_to_pin = inspect_json_uint(yyjson_obj_get(a, "to_pin"));
-    uint64_t b_to_pin = inspect_json_uint(yyjson_obj_get(b, "to_pin"));
-    int a_order = yyjson_is_num(yyjson_obj_get(a, "order"))
-                    ? (int)yyjson_get_sint(yyjson_obj_get(a, "order"))
-                    : 0;
-    int b_order = yyjson_is_num(yyjson_obj_get(b, "order"))
-                    ? (int)yyjson_get_sint(yyjson_obj_get(b, "order"))
-                    : 0;
-#define INSPECT_CMP(left_value, right_value)                                   \
-    if ((left_value) != (right_value))                                         \
-    return (left_value) < (right_value) ? -1 : 1
-    INSPECT_CMP(a_from, b_from);
-    INSPECT_CMP(a_from_pin, b_from_pin);
-    INSPECT_CMP(a_to, b_to);
-    INSPECT_CMP(a_to_pin, b_to_pin);
-    int kind = strcmp(a_kind ? a_kind : "", b_kind ? b_kind : "");
-    if (kind) {
-        return kind;
-    }
-    INSPECT_CMP(a_order, b_order);
-    const char *a_conversion = request_string((yyjson_val *)a, "conversion");
-    const char *b_conversion = request_string((yyjson_val *)b, "conversion");
-    return strcmp(a_conversion ? a_conversion : "", b_conversion ? b_conversion : "");
-#undef INSPECT_CMP
-}
-
 static void inspect_add_sorted_array(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,
@@ -2519,11 +2504,14 @@ static void inspect_add_sorted_array(
     {
         items[item_count++] = (inspect_json_item){
             .value = item,
-            .id = edges ? inspect_json_uint(yyjson_obj_get(item, "from"))
+            .id = edges ? (uint64_t)index
                         : inspect_json_uint(yyjson_obj_get(item, "id")),
         };
     }
-    qsort(items, (size_t)item_count, sizeof *items, edges ? inspect_edge_compare : inspect_item_compare);
+    /* Documents already order edges canonically. */
+    if (!edges) {
+        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_val *copy = yyjson_val_mut_copy(doc, items[i].value);
         if (!include_layout) {
@@ -2539,10 +2527,7 @@ static void inspect_add_sorted_array(
                 }
             } else {
                 const char *const layout_keys[] = {
-                    "x",
-                    "y",
-                    "inline_source",
-                    "show_advanced",
+                    "x", "y", "placed", "inline_source", "show_advanced",
                 };
                 for (int layout = 0;
                      layout < (int)(sizeof layout_keys / sizeof *layout_keys);
@@ -2667,6 +2652,18 @@ static yyjson_mut_val *inspect_graph_value(
 )
 {
     char *serialized = graph_save_json(source);
+    if (include_layout && serialized) {
+        /* Asset files omit automatic positions; report the arranged ones. */
+        graph *arranged = graph_load_json(serialized);
+        free(serialized);
+        serialized = NULL;
+        if (arranged) {
+            graph_place_unplaced(arranged);
+            serialized = graph_save_json(arranged);
+            graph_free(arranged);
+            free(arranged);
+        }
+    }
     yyjson_doc *document = serialized
                              ? yyjson_read(serialized, strlen(serialized), 0)
                              : NULL;
@@ -2735,7 +2732,12 @@ static void inspect_add_variables(yyjson_mut_doc *doc, yyjson_mut_val *object, y
     free(items);
 }
 
-static void inspect_add_validation(yyjson_mut_doc *doc, yyjson_mut_val *object, const compile_report *report)
+static void inspect_add_validation(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const behavior_asset *asset,
+    const compile_report *report
+)
 {
     yyjson_mut_val *validation = yyjson_mut_obj_add_obj(doc, object, "validation");
     yyjson_mut_obj_add_bool(doc, validation, "valid", report->error_count == 0);
@@ -2744,7 +2746,7 @@ static void inspect_add_validation(yyjson_mut_doc *doc, yyjson_mut_val *object, 
     yyjson_mut_obj_add_int(doc, validation, "notes", report->note_count);
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, validation, "diagnostics");
     for (int i = 0; i < acount(report->items); i++) {
-        add_diagnostic(doc, diagnostics, &report->items[i]);
+        add_diagnostic(doc, diagnostics, asset, &report->items[i]);
     }
     inspect_add_effects(doc, validation, report);
 }
@@ -2772,7 +2774,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
         return -1;
     }
-    yyjson_doc *source_document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *source_document = parse_asset_text(json);
     behavior_asset *asset = behavior_asset_load_json(json);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
@@ -2857,7 +2859,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
             inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout)
         );
     }
-    inspect_add_validation(result->doc, value, &report);
+    inspect_add_validation(result->doc, value, asset, &report);
     int errors = report.error_count;
     compile_report_free(&report);
     yyjson_doc_free(source_document);
@@ -2961,7 +2963,7 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
     compile_report report;
     compile_report_init(&report);
     behavior_asset_compile_for_system(asset, &report);
-    inspect_add_validation(result->doc, value, &report);
+    inspect_add_validation(result->doc, value, asset, &report);
     int errors = report.error_count;
     compile_report_free(&report);
     game_system_document_free(document);
@@ -3138,7 +3140,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         compile_report report;
         compile_report_init(&report);
         behavior_asset_compile(asset, &report);
-        inspect_add_validation(result->doc, value, &report);
+        inspect_add_validation(result->doc, value, asset, &report);
         int errors = report.error_count;
         compile_report_free(&report);
         add_execution_status(
@@ -3242,9 +3244,9 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         );
         yyjson_mut_val *execution = yyjson_mut_obj_get(value, "execution");
         yyjson_mut_obj_add_bool(result->doc, execution, "query_failed", true);
-        inspect_add_validation(result->doc, value, game_system_compile(system));
+        inspect_add_validation(result->doc, value, NULL, game_system_compile(system));
     } else {
-        inspect_add_validation(result->doc, value, game_system_compile(system));
+        inspect_add_validation(result->doc, value, NULL, game_system_compile(system));
     }
     if (system) {
         game_system_free(system);
@@ -3392,17 +3394,17 @@ static int load_named_asset(
     }
     memset(ref, 0, sizeof *ref);
     ref->family = family;
-    if (strstr(name, ".json")) {
+    if (strstr(name, ASSET_EXTENSION)) {
         if (!valid_asset_filename(name) || strlen(name) >= sizeof ref->filename) {
             return set_error(error, error_size, "asset name is invalid"),
                    CHIBI_AUTOMATION_INVALID_REQUEST;
         }
         snprintf(ref->filename, sizeof ref->filename, "%s", name);
-    } else if (strlen(name) + sizeof ".json" >= sizeof ref->filename) {
+    } else if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof ref->filename) {
         return set_error(error, error_size, "asset name is too long"),
                CHIBI_AUTOMATION_INVALID_REQUEST;
     } else {
-        snprintf(ref->filename, sizeof ref->filename, "%s.json", name);
+        snprintf(ref->filename, sizeof ref->filename, "%s" ASSET_EXTENSION, name);
     }
     snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
     int directory_status = verify_asset_directory(root, family, error, error_size);
@@ -3425,6 +3427,126 @@ static int load_named_asset(
     return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
 }
 
+/* Replaces an edited in-memory document with its asset file text. */
+static int to_disk_text(char **edited, char *error, size_t error_size)
+{
+    char *text = asset_text_to_disk(*edited, error, error_size);
+    free(*edited);
+    *edited = text;
+    return text ? 0 : -1;
+}
+
+/* Owned canonical file text for one asset, produced by its native loader and
+ * saver. */
+static char *canonical_asset(const asset_family *family, const char *json, char *error, size_t error_size)
+{
+    switch (family->loader) {
+        case ASSET_GRAPH: {
+            behavior_asset *asset = behavior_asset_load_json(json);
+            if (!asset) {
+                set_error(error, error_size, graph_last_error());
+                return NULL;
+            }
+            char *text = behavior_asset_save_json(asset);
+            behavior_asset_free(asset);
+            return text;
+        }
+        case ASSET_SYSTEM: {
+            game_system_document *document = game_system_document_load(
+                json,
+                automation_query_component,
+                NULL,
+                error,
+                error_size
+            );
+            if (!document) {
+                return NULL;
+            }
+            char *text = game_system_document_save(
+                document,
+                automation_query_component,
+                automation_query_component_name,
+                NULL
+            );
+            game_system_document_free(document);
+            return text;
+        }
+        case ASSET_PROTOTYPE: {
+            game_prototype_registry registry = {
+                .components = GAME_REGISTRY_COMPONENTS,
+                .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+            };
+            game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
+            if (!prototype) {
+                return NULL;
+            }
+            char *text = game_prototype_save(prototype);
+            game_prototype_free(prototype);
+            return text;
+        }
+        case ASSET_SCENE: {
+            game_scene_document *scene = game_scene_document_load(json, error, error_size);
+            if (!scene) {
+                return NULL;
+            }
+            char *text = game_scene_document_save(scene);
+            game_scene_document_free(scene);
+            return text;
+        }
+    }
+    return NULL;
+}
+
+int chibi_automation_format_assets(const char *root, bool check)
+{
+    asset_entry *entries = NULL;
+    char error[256] = { 0 };
+    if (enumerate_assets(root, &entries, error, sizeof error)) {
+        fprintf(stderr, "chibi_ctl --format: %s\n", error);
+        return -1;
+    }
+    int differing = 0;
+    for (int i = 0; i < acount(entries) && differing >= 0; i++) {
+        size_t size = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(size);
+        snprintf(path, size, "%s/%s", root, entries[i].relative);
+        size_t bytes = 0;
+        uint64_t hash = 0;
+        char *json = read_file(path, &bytes, &hash, error, sizeof error);
+        char *text = json ? canonical_asset(entries[i].family, json, error, sizeof error)
+                          : NULL;
+        if (text && to_disk_text(&text, error, sizeof error)) {
+            text = NULL;
+        }
+        if (!text) {
+            fprintf(stderr, "chibi_ctl --format: %s: %s\n", entries[i].relative, error);
+            differing = -1;
+        } else if (strcmp(json, text)) {
+            differing++;
+            fprintf(
+                stderr,
+                "%s %s\n",
+                check ? "not canonical:" : "formatted",
+                entries[i].relative
+            );
+            FILE *file = check ? NULL : fopen(path, "wb");
+            if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
+                fprintf(
+                    stderr,
+                    "chibi_ctl --format: could not write %s\n",
+                    entries[i].relative
+                );
+                differing = -1;
+            }
+        }
+        free(text);
+        free(json);
+        free(path);
+    }
+    free_asset_entries(entries);
+    return differing;
+}
+
 static int handle_read_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -3437,7 +3559,7 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
         response_error(result, exit_code, status, error);
         return -1;
     }
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     if (!document) {
         free(json);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset is not valid JSON");
@@ -3517,7 +3639,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             warnings = report.warning_count;
             notes = report.note_count;
             for (int i = 0; i < acount(report.items); i++) {
-                add_diagnostic(result->doc, diagnostics, &report.items[i]);
+                add_diagnostic(result->doc, diagnostics, asset, &report.items[i]);
             }
             compile_report_free(&report);
             behavior_asset_free(asset);
@@ -3560,7 +3682,12 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             errors = report.error_count;
             warnings = report.warning_count;
             for (int i = 0; i < acount(report.items); i++) {
-                add_diagnostic(result->doc, diagnostics, &report.items[i]);
+                add_diagnostic(
+                    result->doc,
+                    diagnostics,
+                    game_system_document_behavior_asset(document),
+                    &report.items[i]
+                );
             }
             compile_report_free(&report);
             game_system_document_free(document);
@@ -3813,7 +3940,7 @@ static uint64_t scenario_world_hash(const ecs_world *world)
 
 static char *scenario_prototype_json(const char *json, uint64_t hash)
 {
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     if (!document) {
         return NULL;
     }
@@ -4465,6 +4592,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
 }
 
 #define RUNTIME_SNAPSHOT_MAX_ENTITIES 256
+#define RUNTIME_SNAPSHOT_DEFAULT_ENTITIES 32
 #define RUNTIME_SNAPSHOT_MAX_COMPONENTS 64
 #define RUNTIME_SNAPSHOT_MAX_FIELDS 128
 #define RUNTIME_SNAPSHOT_MAX_BEHAVIORS 64
@@ -5779,7 +5907,7 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_obj_add_strcpy(doc, recording, "id", id);
     yyjson_mut_obj_add_strcpy(doc, recording, "kind", context->scene_target ? "scene" : "prototype");
     size_t name_size = strlen(context->prototype_ref.filename) -
-                       (sizeof ".json" - 1) + 1;
+                       (sizeof ASSET_EXTENSION - 1) + 1;
     char *name = xmalloc(name_size);
     memcpy(name, context->prototype_ref.filename, name_size - 1);
     name[name_size - 1] = '\0';
@@ -6007,7 +6135,7 @@ static void add_snapshot_behavior(
         const compile_diagnostic *d = &report->items[i];
         if (d->rule == CMPL_RULE_QUERY_FUSION ||
             d->rule == CMPL_RULE_QUERY_SCAN || d->rule == CMPL_RULE_CONTAINER) {
-            add_diagnostic(doc, performance, d);
+            add_diagnostic(doc, performance, info.instance->asset, d);
         }
     }
     const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
@@ -6139,7 +6267,7 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
     if (!runtime_snapshot_limit(
             request,
             "entity_limit",
-            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            RUNTIME_SNAPSHOT_DEFAULT_ENTITIES,
             RUNTIME_SNAPSHOT_MAX_ENTITIES,
             &entity_limit
         ) ||
@@ -6317,7 +6445,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     if (!runtime_snapshot_limit(
             request,
             "entity_limit",
-            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            RUNTIME_SNAPSHOT_DEFAULT_ENTITIES,
             RUNTIME_SNAPSHOT_MAX_ENTITIES,
             &entity_limit
         ) ||
@@ -6902,77 +7030,135 @@ static int handle_describe_components(yyjson_val *request, response *result, int
     return 0;
 }
 
-static int handle_describe_registry(response *result)
+static const char *const REGISTRY_SECTIONS[] = {
+    "nodes", "types", "services", "operators", "components",
+};
+
+/* Nodes dominate the registry; searchNodes serves focused node lookups. */
+static bool registry_section(yyjson_val *sections, const char *name)
 {
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
-    for (int i = 0; i < registry_node_count(); i++) {
-        const node_desc *node = registry_node(i);
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, nodes);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", node->name);
-        yyjson_mut_obj_add_bool(result->doc, object, "pure", node_desc_is_pure(node));
-        yyjson_mut_obj_add_int(result->doc, object, "display_class", node->display_class);
-        if (node->category) {
-            yyjson_mut_obj_add_strcpy(result->doc, object, "category", node->category);
+    if (!sections) {
+        return strcmp(name, "nodes") != 0;
+    }
+    size_t i, count;
+    yyjson_val *section;
+    yyjson_arr_foreach(sections, i, count, section)
+    {
+        if (!strcmp(yyjson_get_str(section), name)) {
+            return true;
         }
-        if (node->keywords) {
-            yyjson_mut_obj_add_strcpy(result->doc, object, "keywords", node->keywords);
+    }
+    return false;
+}
+
+static bool valid_registry_sections(yyjson_val *sections)
+{
+    if (!sections) {
+        return true;
+    }
+    if (!yyjson_is_arr(sections)) {
+        return false;
+    }
+    size_t i, count;
+    yyjson_val *section;
+    yyjson_arr_foreach(sections, i, count, section)
+    {
+        bool known = false;
+        for (int s = 0;
+             yyjson_is_str(section) &&
+             s < (int)(sizeof REGISTRY_SECTIONS / sizeof *REGISTRY_SECTIONS);
+             s++) {
+            known |= !strcmp(yyjson_get_str(section), REGISTRY_SECTIONS[s]);
         }
-        add_pins(result->doc, object, "inputs", node->inputs, node->input_count);
-        add_pins(result->doc, object, "outputs", node->outputs, node->output_count);
+        if (!known) {
+            return false;
+        }
     }
-    yyjson_mut_val *types = yyjson_mut_obj_add_arr(result->doc, value, "types");
-    for (int i = 0; i < registry_type_count(); i++) {
-        add_type(result->doc, types, registry_type(i));
+    return true;
+}
+
+static int handle_describe_registry(yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *sections = request ? yyjson_obj_get(request, "sections") : NULL;
+    if (!valid_registry_sections(sections)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, operators, or components");
+        return -1;
     }
-    yyjson_mut_val *services = yyjson_mut_obj_add_arr(result->doc, value, "services");
-    for (int i = 0; i < registry_service_count(); i++) {
-        const service_desc *service = registry_service(i);
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, services);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", service->name);
-        yyjson_mut_obj_add_uint(result->doc, object, "stable_id", service->stable_id);
+    yyjson_mut_doc *doc = result->doc;
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
+    if (registry_section(sections, "nodes")) {
+        yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(doc, value, "nodes");
+        for (int i = 0; i < registry_node_count(); i++) {
+            const node_desc *node = registry_node(i);
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, nodes);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", node->name);
+            yyjson_mut_obj_add_bool(doc, object, "pure", node_desc_is_pure(node));
+            yyjson_mut_obj_add_int(doc, object, "display_class", node->display_class);
+            if (node->category) {
+                yyjson_mut_obj_add_strcpy(doc, object, "category", node->category);
+            }
+            if (node->keywords) {
+                yyjson_mut_obj_add_strcpy(doc, object, "keywords", node->keywords);
+            }
+            add_pins(doc, object, "inputs", node->inputs, node->input_count);
+            add_pins(doc, object, "outputs", node->outputs, node->output_count);
+        }
     }
-    yyjson_mut_val *operators = yyjson_mut_obj_add_arr(result->doc, value, "operators");
-    for (int i = 0; i < registry_operator_count(); i++) {
-        const operator_signature *signature = registry_operator(i);
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, operators);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", signature->name);
-        yyjson_mut_obj_add_strcpy(
-            result->doc,
-            object,
-            "left",
-            pin_json_name(signature->left)
-        );
-        yyjson_mut_obj_add_strcpy(
-            result->doc,
-            object,
-            "right",
-            pin_json_name(signature->right)
-        );
-        yyjson_mut_obj_add_strcpy(
-            result->doc,
-            object,
-            "result",
-            pin_json_name(signature->result)
-        );
-        yyjson_mut_obj_add_int(result->doc, object, "priority", signature->priority);
+    if (registry_section(sections, "types")) {
+        yyjson_mut_val *types = yyjson_mut_obj_add_arr(doc, value, "types");
+        for (int i = 0; i < registry_type_count(); i++) {
+            add_type(doc, types, registry_type(i));
+        }
     }
-    yyjson_mut_val *components = yyjson_mut_obj_add_arr(result->doc, value, "components");
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, components);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "key", component->key);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", component->name);
-        yyjson_mut_obj_add_uint(result->doc, object, "id", component->id);
-        yyjson_mut_obj_add_uint(result->doc, object, "bytes", component->element_size);
-        yyjson_mut_obj_add_uint(result->doc, object, "layout_hash", component->layout_hash);
-        if (component->type) {
+    if (registry_section(sections, "services")) {
+        yyjson_mut_val *services = yyjson_mut_obj_add_arr(doc, value, "services");
+        for (int i = 0; i < registry_service_count(); i++) {
+            const service_desc *service = registry_service(i);
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, services);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", service->name);
+            yyjson_mut_obj_add_uint(doc, object, "stable_id", service->stable_id);
+        }
+    }
+    if (registry_section(sections, "operators")) {
+        yyjson_mut_val *operators = yyjson_mut_obj_add_arr(doc, value, "operators");
+        for (int i = 0; i < registry_operator_count(); i++) {
+            const operator_signature *signature = registry_operator(i);
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, operators);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", signature->name);
             yyjson_mut_obj_add_strcpy(
-                result->doc,
+                doc,
                 object,
-                "type",
-                component->type->name
+                "left",
+                pin_json_name(signature->left)
             );
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                object,
+                "right",
+                pin_json_name(signature->right)
+            );
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                object,
+                "result",
+                pin_json_name(signature->result)
+            );
+            yyjson_mut_obj_add_int(doc, object, "priority", signature->priority);
+        }
+    }
+    if (registry_section(sections, "components")) {
+        yyjson_mut_val *components = yyjson_mut_obj_add_arr(doc, value, "components");
+        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+            const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, components);
+            yyjson_mut_obj_add_strcpy(doc, object, "key", component->key);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", component->name);
+            yyjson_mut_obj_add_uint(doc, object, "id", component->id);
+            yyjson_mut_obj_add_uint(doc, object, "bytes", component->element_size);
+            yyjson_mut_obj_add_uint(doc, object, "layout_hash", component->layout_hash);
+            if (component->type) {
+                yyjson_mut_obj_add_strcpy(doc, object, "type", component->type->name);
+            }
         }
     }
     return 0;
@@ -7249,7 +7435,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         );
     }
     if (status == CHIBI_AUTOMATION_OK && ref.family->loader == ASSET_SYSTEM) {
-        yyjson_doc *original = source ? yyjson_read(source, strlen(source), 0) : NULL;
+        yyjson_doc *original = source ? parse_asset_text(source) : NULL;
         yyjson_val *query = yyjson_obj_get(request, "query");
         if (!query && original) {
             query = yyjson_obj_get(yyjson_doc_get_root(original), "query");
@@ -7312,6 +7498,11 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         free(edited);
         return -1;
     }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
+        return -1;
+    }
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
@@ -7349,7 +7540,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
 
 static int validate_prototype_behaviors(const char *root, const char *json, char *error, size_t error_size)
 {
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     yyjson_val *root_value = document ? yyjson_doc_get_root(document) : NULL;
     yyjson_val *behaviors = root_value && yyjson_is_obj(root_value)
                               ? yyjson_obj_get(root_value, "behaviors")
@@ -7623,6 +7814,11 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         free(edited);
         return -1;
     }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
+        return -1;
+    }
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
@@ -7687,7 +7883,7 @@ static char *scene_request_defaults(const char *root, yyjson_val *request, char 
             valid = false;
             break;
         }
-        yyjson_doc *prototype = yyjson_read(json, strlen(json), 0);
+        yyjson_doc *prototype = parse_asset_text(json);
         yyjson_val *behaviors = yyjson_obj_get(yyjson_doc_get_root(prototype), "behaviors");
         yyjson_mut_obj_add_val(
             doc,
@@ -7789,6 +7985,11 @@ static int handle_edit_scene(const char *root, yyjson_val *request, response *re
         free(edited);
         return -1;
     }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
+        return -1;
+    }
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
@@ -7880,7 +8081,7 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
             compile_report report;
             compile_report_init(&report);
             behavior_asset_compile(asset, &report);
-            inspect_add_validation(result->doc, value, &report);
+            inspect_add_validation(result->doc, value, asset, &report);
             if (report.error_count) {
                 snprintf(error, sizeof error, "optimized graph asset failed validation");
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
@@ -7893,6 +8094,11 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
         response_error(result, exit_code, status, error);
         free(source);
         free(edited);
+        return -1;
+    }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
         return -1;
     }
     size_t after_bytes = strlen(edited);
@@ -8044,7 +8250,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else if (!strcmp(operation, "read_recording")) {
         handle_read_recording(root_value, &result, exit_code);
     } else {
-        handle_describe_registry(&result);
+        handle_describe_registry(root_value, &result, exit_code);
     }
     free(root);
     yyjson_doc_free(document);

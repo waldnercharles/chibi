@@ -273,8 +273,8 @@ static void authored_motion_checks()
         game_behavior_set_deferred(f.live->behaviors, true);
         ecs_entity flipper = authored_spawn(
             &f,
-            "content/behaviors/OrbitFlipperMotion.json",
-            "content/prototypes/OrbitFlipper.json"
+            "content/behaviors/OrbitFlipperMotion.yaml",
+            "content/prototypes/OrbitFlipper.yaml"
         );
         if (mirrored) {
             GAME_GameOrientation_get(f.world, flipper)->radians = 3.141593f - .35f;
@@ -316,7 +316,7 @@ static void authored_motion_checks()
     }
 
     clock_fixture f = clock_new(false, false);
-    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.json", "content/prototypes/OrbitBall.json");
+    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.yaml", "content/prototypes/OrbitBall.yaml");
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 1.0 / 60) == FLOW_OK);
     test_check(

@@ -1,0 +1,143 @@
+version: 3
+name: ProjectileLifecycle
+id_counter: 407
+description: Age and expire projectiles; face velocity while moving.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 16
+    type: Behavior Expression
+    reference_id: 4
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 20, kind: exec}
+      age:
+        id: 17
+        type: float
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      dt:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 21, kind: exec}
+      Result: {id: 19, type: float, flags: 2, group: 3}
+  - id: 96
+    type: Behavior Expression
+    reference_id: 84
+    reference_name: age >= lifetime
+    inputs:
+      Exec: {id: 100, kind: exec}
+      age:
+        id: 97
+        type: double
+        group: 1
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      lifetime:
+        type: double
+        group: 2
+        binding: {kind: component_field, component: GAME.GameProjectile, field: lifetime}
+    outputs:
+      "True": {id: 101, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 99, type: bool, flags: 2, group: 3}
+  - id: 127
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 129, type: Destroy Entity}
+  - id: 158
+    type: Behavior Expression
+    reference_id: 133
+    reference_name: abs(vx) + abs(vy) > 0.0001
+    inputs:
+      Exec: {id: 162, kind: exec}
+      vx:
+        id: 159
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
+      vy:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+    outputs:
+      "True": {id: 163, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 161, type: bool, flags: 2, group: 3}
+  - id: 228
+    type: Behavior Expression
+    reference_id: 215
+    reference_name: heading = atan2(vy, vx)
+    inputs:
+      Exec: {id: 233, kind: exec}
+      heading:
+        id: 229
+        type: float
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      vy:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      vx:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
+    outputs:
+      Then: {id: 234, kind: exec}
+      Result: {id: 232, type: double, flags: 2, group: 4}
+  edges:
+  - {from: 1.Then, to: 16.Exec}
+  - {from: 16.Then, to: 96.Exec}
+  - {from: 96.True, to: 129.Exec}
+  - {from: 96.False, to: 158.Exec}
+  - {from: 127.Self, to: 129.Entity}
+  - {from: 158.True, to: 228.Exec}
+- id: 4
+  kind: function
+  name: age += dt
+  math_expression: age += dt
+  expression_mode: 2
+  entry_id: 314
+  return_id: 316
+  call_depth_limit: 64
+- id: 84
+  kind: function
+  name: age >= lifetime
+  math_expression: age >= lifetime
+  expression_mode: 3
+  entry_id: 345
+  return_id: 347
+  call_depth_limit: 64
+- id: 133
+  kind: function
+  name: abs(vx) + abs(vy) > 0.0001
+  math_expression: abs(vx) + abs(vy) > 0.0001
+  expression_mode: 3
+  entry_id: 357
+  return_id: 359
+  call_depth_limit: 64
+- id: 215
+  kind: function
+  name: heading = atan2(vy, vx)
+  math_expression: heading = atan2(vy, vx)
+  expression_mode: 2
+  entry_id: 382
+  return_id: 384
+  call_depth_limit: 64

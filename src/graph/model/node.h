@@ -290,6 +290,9 @@ struct node
     char *reference_name;
     char *reference_asset; /* NULL for local calls; graph-owned library identity */
     float x, y;
+    /* Placed positions are saved. Arranging and loading a node without a
+     * position make it automatic, and the editor arranges automatic nodes. */
+    bool placed;
     unsigned disabled;
     bool inline_source;
     unsigned breakpoint;

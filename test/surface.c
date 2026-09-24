@@ -887,7 +887,7 @@ static void annular_influence()
 
 static void authored_floor()
 {
-    FILE *file = fopen("content/materials/ArenaFloor.json", "rb");
+    FILE *file = fopen("content/materials/ArenaFloor.yaml", "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
     long size = ftell(file);
     assert(size >= 0);

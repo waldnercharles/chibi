@@ -1,0 +1,19 @@
+version: 1
+name: MaterialStudy
+entities:
+- {name: Camera, prototype: MaterialStudyCamera}
+- {name: Materials, prototype: MaterialStudyWorld}
+- {name: Free motion, prototype: FreeMotionSystem}
+- name: Marker
+  prototype: DriftingMarker
+  components:
+    GameTransform: {x: -180, "y": 225}
+- name: Solid sample
+  prototype: MaterialSpecimen
+  components:
+    GameTransform: {x: 0, "y": 115}
+- name: Cut sample
+  prototype: MaterialSpecimen
+  components:
+    GameTransform: {x: 0, "y": -120}
+  behaviors: [CutMaterial]

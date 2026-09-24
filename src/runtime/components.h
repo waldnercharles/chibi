@@ -19,24 +19,24 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameGlobalBinding)
 }
 GameGlobalBinding;
 
-enum
+typedef enum
 {
     GAME_BODY_STATIC,
     GAME_BODY_DYNAMIC,
     GAME_BODY_KINEMATIC
-};
-enum
+} GameBodyType;
+typedef enum
 {
     GAME_COLLIDER_CIRCLE,
     GAME_COLLIDER_BOX
-};
+} GameColliderShape;
 
 /* All spatial values use project units. There are 32 project units per meter. */
 #define GAME_UNITS_PER_METER 32.0f
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
 {
-    int type;
+    GameBodyType type;
     bool continuous;
     float angular_velocity; /* Kinematic radians/second; requires Orientation. */
 }
@@ -47,7 +47,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
     float radius;
     unsigned category;
     unsigned mask;
-    int shape;
+    GameColliderShape shape;
     float width;
     float height;
     bool sensor;
@@ -297,7 +297,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
 }
 GameProjectile;
 
-enum
+typedef enum
 {
     GAME_SHAPE_BOX = 0,
     GAME_SHAPE_CIRCLE,
@@ -307,14 +307,14 @@ enum
     GAME_SHAPE_CAPSULE,
     GAME_SHAPE_TRIANGLE,
     GAME_SHAPE_STROKED_TRIANGLE,
-};
+} GameShape;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
 {
     float width;
     float height;
     unsigned color;
-    int shape;
+    GameShape shape;
     float border_width;
     unsigned border_color;
     float glow_radius;
@@ -539,9 +539,19 @@ typedef NODE_TYPE(GameParticleCurve)
 GameParticleCurve;
 
 /* A parent is optional. Each child emitter owns an independent seed and rate. */
+typedef enum
+{
+    GAME_PARTICLE_ROUND,
+    GAME_PARTICLE_TRIANGLE,
+    GAME_PARTICLE_TRIANGLE_OUTLINE,
+    GAME_PARTICLE_RING,
+    GAME_PARTICLE_STREAK,
+} GameParticleShape;
+#define GAME_PARTICLE_SHAPE_COUNT (GAME_PARTICLE_STREAK + 1)
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
 {
-    int shape;
+    GameParticleShape shape;
     unsigned color;
     unsigned end_color;
     float rate;

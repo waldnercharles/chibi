@@ -35,7 +35,7 @@ static void capture(const char *name)
 
 static behavior_asset *read_library()
 {
-    FILE *f = fopen("test/fixtures/content/shader-libraries/ShaderMath.json", "rb");
+    FILE *f = fopen("test/fixtures/content/shader-libraries/ShaderMath.yaml", "rb");
     assert(f);
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -68,8 +68,8 @@ static void shader_scene_frame(app_scene_authoring *scene, engine_viewport *view
 
 static void shader_files_inspector(app_scene_authoring *scene, engine_viewport *viewport)
 {
-    const char *paths[] = { "test/fixtures/content/materials/PulseRing.json",
-                            "test/fixtures/content/shapes/SmoothUnion.json" };
+    const char *paths[] = { "test/fixtures/content/materials/PulseRing.yaml",
+                            "test/fixtures/content/shapes/SmoothUnion.yaml" };
     editor *e = scene->graph_editor;
     for (int i = 0; i < 2; i++) {
         select_instance(scene, 0);
@@ -129,7 +129,7 @@ static void shader_scene_ui()
     );
     assert(app_scene_authoring_set_content_root(scene, "test/fixtures/content") == 0);
     assert(app_scene_authoring_load_content(scene) == 0);
-    assert(app_scene_authoring_load(scene, "test/fixtures/content/scenes/ShaderDemo.json") == 0);
+    assert(app_scene_authoring_load(scene, "test/fixtures/content/scenes/ShaderDemo.yaml") == 0);
     engine_viewport_set_render_callback(viewport, app_scene_authoring_render, scene);
     editor_ui_reset_layout();
     for (int frame = 0; frame < 30; frame++) {
@@ -1101,7 +1101,7 @@ static void shader_image_ui(editor *e)
     assert(!editor_ui_item_rect("shader.image.error", &rect));
     assert(abs(preview_center() - linear) < 3);
     char graph_path[256];
-    snprintf(graph_path, sizeof graph_path, "%s/Material.json", directory);
+    snprintf(graph_path, sizeof graph_path, "%s/Material.yaml", directory);
     assert(editor_save(e, graph_path) == 0 && editor_load(e, graph_path) == 0);
     select_node(e, id);
     image = graph_node_by_id(e->active_graph, id);
@@ -1212,9 +1212,9 @@ int shader_ui_run(const char *program)
     editor_set_graph_visible(e, 1);
     editor_set_ui_context(e, EDITOR_UI_CONTEXT_BEHAVIOR);
     const char *paths[] = {
-        "test/fixtures/content/materials/PulseRing.json",
-        "test/fixtures/content/materials/OutlineGradient.json",
-        "test/fixtures/content/shapes/SmoothUnion.json"
+        "test/fixtures/content/materials/PulseRing.yaml",
+        "test/fixtures/content/materials/OutlineGradient.yaml",
+        "test/fixtures/content/shapes/SmoothUnion.yaml"
     };
     for (int frame = 0; frame < 150; frame++) {
         cf_app_update(NULL);

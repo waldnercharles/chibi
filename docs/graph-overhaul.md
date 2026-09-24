@@ -71,9 +71,9 @@ edit their named parameters. Set Material Parameter changes an instance value
 at runtime. Parameters support scalar and vector values, with 32 slots per graph.
 Invalid shader edits keep the last valid rendering and show diagnostics.
 
-Open `content/scenes/ShaderDemo.json` and frame the scene to inspect PulseRing,
+Open `content/scenes/ShaderDemo.yaml` and frame the scene to inspect PulseRing,
 OutlineGradient, and SmoothUnion. Both materials call `ShaderMath.Pulse` from
-`content/shader-libraries/ShaderMath.json`. DamageFlashBehavior demonstrates a
+`content/shader-libraries/ShaderMath.yaml`. DamageFlashBehavior demonstrates a
 runtime parameter write followed by a delayed reset.
 
 The renderer uses material graphs for scene color and lighting channels on

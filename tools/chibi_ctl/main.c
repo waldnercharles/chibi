@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 #include "automation/render_preview.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,9 +13,13 @@ static void usage(const char *program)
         stderr,
         "Usage: %s [--project-root PATH] [--render]\n"
         "       %s --project-root PATH --render-request FILE\n"
+        "       %s --project-root PATH --format [--check]\n"
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
-        "With --render, read one preview request and produce one response.\n",
+        "With --render, read one preview request and produce one response.\n"
+        "With --format, rewrite authored assets in canonical form; --check\n"
+        "only lists assets that differ and fails when any do.\n",
+        program,
         program,
         program
     );
@@ -66,6 +71,7 @@ int main(int argc, char **argv)
     const char *project_root = ".";
     const char *request_path = NULL;
     int render = 0;
+    bool format = false, check = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
@@ -73,6 +79,11 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--render")) {
             render = 1;
+            continue;
+        }
+        if (!strcmp(argv[i], "--format") || !strcmp(argv[i], "--check")) {
+            format = true;
+            check |= !strcmp(argv[i], "--check");
             continue;
         }
         if (!strcmp(argv[i], "--render-request") && i + 1 < argc) {
@@ -90,6 +101,12 @@ int main(int argc, char **argv)
     }
     if (render) {
         return render_request(project_root, request_path);
+    }
+    if (format) {
+        int differing = chibi_automation_format_assets(project_root, check);
+        return differing < 0      ? CHIBI_AUTOMATION_IO_ERROR
+             : check && differing ? CHIBI_AUTOMATION_VALIDATION_ERROR
+                                  : CHIBI_AUTOMATION_OK;
     }
 
     char *line = NULL;

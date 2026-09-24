@@ -1,0 +1,167 @@
+version: 3
+name: BumperKick
+id_counter: 1342
+owner_type: ecs.entity
+variables:
+- {id: 1, name: pulse, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 2
+    type: Event
+    reference_name: Contact Begin
+    outputs:
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {type: struct, type_name: CF_V2, kind: data}
+  - id: 6
+    type: Set Variable
+    reference_id: 1
+    reference_name: pulse
+    inputs:
+      Value: {type: float, type_name: null, default: 1.0}
+    outputs:
+      Value: {type: float, type_name: null}
+  - {id: 11, type: GetEntity_GameTransform}
+  - {id: 14, type: GetEntity_GameVelocity}
+  - {id: 17, type: Break_GameTransform}
+  - {id: 21, type: Break_GameVelocity}
+  - id: 91
+    type: Behavior Expression
+    reference_id: 25
+    reference_name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
+    inputs:
+      v: {flags: 2, group: 1}
+      x: {flags: 2, group: 2}
+      sx:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: game.GameTransform, field: x}
+      "y": {flags: 2, group: 4}
+      sy:
+        type: double
+        flags: 2
+        group: 5
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+    outputs:
+      Result: {flags: 2, group: 6}
+  - {id: 428, type: Set_GameVelocity_x}
+  - id: 566
+    type: Behavior Expression
+    reference_id: 500
+    reference_name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
+    inputs:
+      v: {flags: 2, group: 1}
+      "y": {flags: 2, group: 2}
+      sy:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+      x: {flags: 2, group: 4}
+      sx:
+        type: double
+        flags: 2
+        group: 5
+        binding: {kind: component_field, component: game.GameTransform, field: x}
+    outputs:
+      Result: {flags: 2, group: 6}
+  - {id: 903, type: Set_GameVelocity_y}
+  - id: 975
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 1004
+    type: Behavior Expression
+    reference_id: 978
+    reference_name: max(pulse - dt*4,0)
+    inputs:
+      pulse:
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
+      dt:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: double, flags: 2, group: 3}
+  - id: 1060
+    type: Set Variable
+    reference_id: 1
+    reference_name: pulse
+    inputs:
+      Value: {type: float, type_name: null}
+    outputs:
+      Value: {type: float, type_name: null}
+  - id: 1112
+    type: Behavior Expression
+    reference_id: 1091
+    reference_name: 5+14*pulse
+    inputs:
+      pulse:
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
+    outputs:
+      Result: {type: double, flags: 2, group: 2}
+  - {id: 1136, type: Set_GameAppearance_glow_radius}
+  edges:
+  - {from: 2.Then, to: 6.Exec}
+  - {from: 2.Other, to: 11.Entity}
+  - {from: 2.Other, to: 14.Entity}
+  - {from: 2.Other, to: 428.Target}
+  - {from: 2.Other, to: 903.Target}
+  - {from: 6.Then, to: 428.Exec}
+  - {from: 11.Value, to: 17.GameTransform, conversion: game_transform_to_cf}
+  - {from: 14.Value, to: 21.GameVelocity, conversion: game_transform_to_cf}
+  - {from: 17.x, to: 91.x}
+  - {from: 17.x, to: 566.x}
+  - {from: 17.y, to: 91.y}
+  - {from: 17.y, to: 566.y}
+  - {from: 21.x, to: 91.v}
+  - {from: 21.y, to: 566.v}
+  - {from: 91.Result, to: 428.Value}
+  - {from: 428.Then, to: 903.Exec}
+  - {from: 566.Result, to: 903.Value}
+  - {from: 975.Then, to: 1060.Exec}
+  - {from: 1004.Result, to: 1060.Value}
+  - {from: 1060.Then, to: 1136.Exec}
+  - {from: 1112.Result, to: 1136.Value}
+- id: 25
+  kind: function
+  name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
+  math_expression: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
+  expression_mode: 1
+  entry_id: 1164
+  return_id: 1166
+  call_depth_limit: 64
+- id: 500
+  kind: function
+  name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
+  math_expression: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
+  expression_mode: 1
+  entry_id: 1230
+  return_id: 1232
+  call_depth_limit: 64
+- id: 978
+  kind: function
+  name: max(pulse - dt*4,0)
+  math_expression: max(pulse - dt*4,0)
+  expression_mode: 1
+  entry_id: 1296
+  return_id: 1298
+  call_depth_limit: 64
+- id: 1091
+  kind: function
+  name: 5+14*pulse
+  math_expression: 5+14*pulse
+  expression_mode: 1
+  entry_id: 1322
+  return_id: 1324
+  call_depth_limit: 64

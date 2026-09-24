@@ -48,10 +48,10 @@ polish remain unfinished.
 
 ## Verified starting point (before this slice)
 
-- `content/behaviors/InputBehavior.json` is the live movement path. It is attached
+- `content/behaviors/InputBehavior.yaml` is the live movement path. It is attached
   to the Player prototype and receives the typed `Input` event dispatched by
   `app/gameplay_input.c`; the graph writes the owning entity's transform.
-- `content/systems/MovementSystem.json` is a standalone system-authoring fixture
+- `content/systems/MovementSystem.yaml` is a standalone system-authoring fixture
   used by the System document editor and benchmark. It is not attached to the
   shipped Scene and is not run by the main gameplay host.
 - `content/gameplay/*.json` files are reflected authoring-data documents. The

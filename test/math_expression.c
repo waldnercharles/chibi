@@ -597,8 +597,10 @@ static void reference_assignment_expressions()
     int source_pin = -1;
     uint64_t call_id = call->id;
     uint64_t getter_id = getter->id;
+    const graph *generated = behavior_asset_find_graph(asset, call->reference_id);
     char *serialized = behavior_asset_save_json(asset);
-    assert(serialized);
+    /* The expression's body is rebuilt from its source rather than stored. */
+    assert(serialized && !strstr(serialized, "\"Function Entry\""));
     behavior_asset *reloaded = behavior_asset_load_json(serialized);
     free(serialized);
     assert(reloaded);
@@ -610,6 +612,11 @@ static void reference_assignment_expressions()
         reloaded_call->reference_id
     );
     assert(reloaded_generated && reloaded_generated->expression_mode == GRAPH_EXPRESSION_ACTION);
+    assert(reloaded_generated->entry_id == generated->entry_id);
+    assert(acount(reloaded_generated->nodes) == acount(generated->nodes));
+    for (int i = 0; i < acount(generated->nodes); i++) {
+        assert(graph_node_by_id(reloaded_generated, generated->nodes[i]->id));
+    }
     assert(graph_input_source(
         reloaded->graph,
         reloaded_call,

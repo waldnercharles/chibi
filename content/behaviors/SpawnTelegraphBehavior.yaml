@@ -1,0 +1,208 @@
+version: 3
+name: SpawnTelegraphBehavior
+id_counter: 110
+description: Display an authored arrival marker for the requested delay, then create exactly one configured prototype at the marked position and retire the marker.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: Remaining, type: float, type_name: float, category: State}
+- {id: 2, name: Dispatched, type: bool, type_name: bool, category: State}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 4
+    type: Event
+    reference_name: Begin
+    outputs:
+      Then: {id: 3}
+  - id: 6
+    type: Get_GameSpawnRequest
+    outputs:
+      Value: {id: 5, flags: 0}
+      Value.delay: {id: 7}
+      Value.prototype: {}
+  - id: 13
+    type: Set Variable
+    reference_id: 1
+    inputs:
+      Exec: {id: 9}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 17
+    type: Max
+    inputs:
+      A: {id: 14, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 0.05}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 37
+    type: Event
+    reference_name: Tick
+    outputs:
+      Then: {id: 36}
+  - id: 39
+    type: Get Variable
+    reference_id: 2
+    outputs:
+      Value: {id: 38, type: bool, flags: 0}
+  - id: 44
+    type: Branch
+    inputs:
+      Exec: {id: 40}
+  - id: 46
+    type: Delta Time
+    outputs:
+      Seconds: {id: 45}
+  - id: 48
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 47, type: float, flags: 0}
+  - id: 53
+    type: Set Variable
+    reference_id: 1
+    inputs:
+      Exec: {id: 49}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 57
+    type: Subtract
+    inputs:
+      A: {id: 54, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 61
+    type: Less Or Equal
+    inputs:
+      A: {id: 58}
+  - id: 66
+    type: Branch
+    inputs:
+      Exec: {id: 62}
+  - id: 71
+    type: Set Variable
+    reference_id: 2
+    inputs:
+      Exec: {id: 67}
+      Value: {type: bool, default: true}
+    outputs:
+      Value: {type: bool}
+  - id: 73
+    type: Get_GameTransform
+    outputs:
+      Value: {id: 72, flags: 0}
+  - id: 78
+    type: Call Function
+    reference_id: 18
+    reference_name: Arrive At Marker
+    inputs:
+      Exec: {id: 74}
+      Prototype: {type: name, kind: data}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+  - id: 82
+    type: Destroy Entity
+    inputs:
+      Exec: {id: 79}
+  - id: 84
+    type: Self
+    outputs:
+    - {id: 83, name: Entity, type_name: ecs.entity}
+  - id: 88
+    type: Multiply
+    inputs:
+      A: {id: 85, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 10.0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 91
+    type: Sine
+    inputs:
+      Value: {id: 89}
+  - id: 95
+    type: Multiply
+    inputs:
+      A: {id: 92, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 99
+    type: Multiply
+    inputs:
+      A: {id: 96, type: double, flags: 0, group: 0, default: 0.2}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 103
+    type: Add
+    inputs:
+      A: {id: 100, type: double, flags: 0, group: 0, default: 0.8}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 109
+    type: Set_GameVisualTransform_scale
+    inputs:
+      Exec: {id: 104}
+  edges:
+  - {from: 4.Then, to: 13.Exec}
+  - {from: 6.Value.delay, to: 17.A}
+  - {from: 6.Value.prototype, to: 78.Prototype, conversion: To Name}
+  - {from: 17.Result, to: 13.Value}
+  - {from: 37.Then, to: 44.Exec}
+  - {from: 39.Value, to: 44.Condition}
+  - {from: 44.False, to: 53.Exec}
+  - {from: 46.Seconds, to: 57.B}
+  - {from: 48.Value, to: 57.A}
+  - {from: 53.Then, to: 66.Exec}
+  - {from: 53.Value, to: 61.A}
+  - {from: 53.Value, to: 88.A}
+  - {from: 57.Result, to: 53.Value}
+  - {from: 61.Result, to: 66.Condition}
+  - {from: 66.True, to: 71.Exec}
+  - {from: 66.False, to: 109.Exec}
+  - {from: 71.Then, to: 78.Exec}
+  - {from: 73.Value, to: 78.Position}
+  - {from: 78.Then, to: 82.Exec}
+  - {from: 84.Entity, to: 82.Entity}
+  - {from: 88.Result, to: 91.Value}
+  - {from: 91.Result, to: 95.A}
+  - {from: 91.Result, to: 95.B}
+  - {from: 95.Result, to: 99.B}
+  - {from: 99.Result, to: 103.B}
+  - {from: 103.Result, to: 109.Value}
+- id: 18
+  kind: function
+  name: Arrive At Marker
+  entry_id: 22
+  return_id: 24
+  call_depth_limit: 64
+  nodes:
+  - id: 22
+    type: Function Entry
+    outputs:
+    - {id: 19, name: Then}
+    - {id: 20, name: Prototype, type: name, kind: data}
+    - {id: 21, name: Position, type: struct, type_name: GameTransform, kind: data}
+  - id: 24
+    type: Return
+    inputs:
+      Exec: {id: 23}
+  - id: 29
+    type: Spawn Prototype
+    inputs:
+      Exec: {id: 25}
+      Prototype: {type_name: name}
+  - id: 35
+    type: SetEntity_GameTransform
+    inputs:
+      Exec: {id: 30}
+  edges:
+  - {from: 22.Then, to: 29.Exec}
+  - {from: 22.Prototype, to: 29.Prototype}
+  - {from: 22.Position, to: 35.Value}
+  - {from: 29.Then, to: 35.Exec}
+  - {from: 29.Entity, to: 35.Entity}
+  - {from: 35.Then, to: 24.Exec}

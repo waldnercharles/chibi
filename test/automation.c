@@ -76,7 +76,7 @@ void run_automation_checks(void)
     response = chibi_ctl_handle(
         &context,
         "{\"version\":1,\"id\":\"read\",\"method\":\"asset.read\",\"params\":{"
-        "\"path\":\"content/behaviors/ArenaShipMotionBehavior.json\"}}",
+        "\"path\":\"content/behaviors/ArenaShipMotionBehavior.yaml\"}}",
         &status
     );
     bool read_ok = response && status == CHIBI_CTL_OK &&
@@ -88,7 +88,7 @@ void run_automation_checks(void)
         &context,
         "{\"version\":1,\"id\":\"validate\",\"method\":\"asset.validate\","
         "\"params\":{\"path\":\"content/behaviors/"
-        "ArenaShipMotionBehavior.json\"}}",
+        "ArenaShipMotionBehavior.yaml\"}}",
         &status
     );
     bool validate_ok = response && status == CHIBI_CTL_OK &&
@@ -100,7 +100,7 @@ void run_automation_checks(void)
     response = chibi_ctl_handle(
         &context,
         "{\"version\":1,\"id\":\"missing\",\"method\":\"asset.read\","
-        "\"params\":{\"path\":\"content/nope.json\"}}",
+        "\"params\":{\"path\":\"content/nope.yaml\"}}",
         &status
     );
     test_check(

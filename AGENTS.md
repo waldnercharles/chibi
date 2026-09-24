@@ -6,6 +6,7 @@
 - Keep debugging UI, capture/scenario tooling, and MCP adapters in clearly named modules and separate build targets where practical. Tooling consumes explicit runtime inspection/control APIs; shared runtime code stays independent of tooling and editor UI.
 - MCP graph edits express nodes, values, and connections; automatically arrange affected graphs so agents never need to choose node positions.
 - When Chibi MCP is available, use it as the default authoring interface for shaders, behavior and event graphs, prototypes, scenes, and authored assets. Search or inspect first, then use the matching `build*` tool, validate, and preview or run as needed. See `docs/mcp.md` for the public catalog and workflow.
+- After hand-editing asset YAML, run `build/chibi_ctl --project-root <root> --format`; `make test` fails on non-canonical assets.
 - Keep app UI free of tutorial and explanatory text. Use concise labels and values; do not add descriptive copy to menus, controls, graphs, or legends.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
 - Prefer `make build` when building, and `make test` to test.

@@ -1,0 +1,140 @@
+version: 3
+name: ProjectileBehavior
+id_counter: 179
+description: Face the current velocity and expire after the authored lifetime. Physics integrates movement.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Tick}
+  - id: 3
+    type: Get_GameProjectile
+    outputs:
+      Value: {flags: 0}
+      Value.lifetime: {id: 8}
+      Value.age: {id: 12}
+  - {id: 13, type: Delta Time}
+  - {id: 39, type: Add}
+  - id: 51
+    type: Set_GameProjectile_age
+    inputs:
+      Target: {id: 154}
+    outputs:
+      Then: {id: 54}
+      Value.lifetime: {id: 59}
+      Value.age: {id: 63}
+  - {id: 64, type: Greater Or Equal}
+  - {id: 68, type: Branch}
+  - id: 73
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 75, type: Destroy Entity}
+  - id: 131
+    type: Call Function
+    reference_id: 79
+    reference_name: Face Direction
+    inputs:
+      Exec: {id: 127}
+      X: {type: float, kind: data}
+      "Y": {type: float, kind: data}
+  - id: 157
+    type: Get_GameVelocity
+    outputs:
+      Value: {flags: 0}
+      Value.x: {}
+      Value.y: {}
+  edges:
+  - {from: 1.Then, to: 131.Exec}
+  - {from: 3.Value.age, to: 39.A}
+  - {from: 13.Seconds, to: 39.B}
+  - {from: 39.Result, to: 51.Value}
+  - {from: 51.Then, to: 68.Exec}
+  - {from: 51.Value.lifetime, to: 64.B}
+  - {from: 51.Value.age, to: 64.A}
+  - {from: 64.Result, to: 68.Condition}
+  - {from: 68.True, to: 75.Exec}
+  - {from: 73.Self, to: 75.Entity}
+  - {from: 131.Then, to: 51.Exec}
+  - {from: 157.Value.x, to: 131.X}
+  - {from: 157.Value.y, to: 131.Y}
+- id: 79
+  kind: function
+  name: Face Direction
+  entry_id: 83
+  return_id: 85
+  call_depth_limit: 64
+  nodes:
+  - id: 83
+    type: Function Entry
+    outputs:
+    - {id: 80, name: Then}
+    - {id: 81, name: X, type: float, kind: data}
+    - {id: 82, name: "Y", type: float, kind: data}
+  - id: 85
+    type: Return
+    inputs:
+      Exec: {id: 84}
+  - id: 87
+    type: Has_GameOrientation
+    outputs:
+      Value: {id: 86}
+  - id: 92
+    type: Branch
+    inputs:
+      Exec: {id: 88}
+  - id: 106
+    type: Greater Or Equal
+    inputs:
+      A: {id: 103}
+  - id: 111
+    type: Branch
+    inputs:
+      Exec: {id: 107}
+  - id: 114
+    type: Call Pure Function
+    reference_id: 1
+    reference_name: Direction Orientation
+    reference_asset: DirectionMath
+    inputs:
+      X: {id: 112, declaration_id: 4, type: float}
+      "Y": {id: 115, declaration_id: 5, type: float}
+    outputs:
+      Orientation: {id: 120, declaration_id: 6, type: struct, type_name: GameOrientation}
+  - id: 126
+    type: Set_GameOrientation
+    inputs:
+      Exec: {id: 122}
+  - id: 150
+    type: Behavior Expression
+    reference_id: 132
+    reference_name: Direction Magnitude
+    inputs:
+      x: {type: float, group: 1}
+      "y": {type: float, group: 2}
+    outputs:
+      Result: {type: float, group: 3}
+  edges:
+  - {from: 83.Then, to: 92.Exec}
+  - {from: 83.X, to: 114.X}
+  - {from: 83.X, to: 150.x}
+  - {from: 83.Y, to: 114.Y}
+  - {from: 83.Y, to: 150.y}
+  - {from: 87.Value, to: 92.Condition}
+  - {from: 92.True, to: 111.Exec}
+  - {from: 92.False, to: 85.Exec}
+  - {from: 106.Result, to: 111.Condition}
+  - {from: 111.True, to: 85.Exec}
+  - {from: 111.False, to: 126.Exec}
+  - {from: 114.Orientation, to: 126.Value}
+  - {from: 126.Then, to: 85.Exec}
+  - {from: 150.Result, to: 106.B}
+- id: 132
+  kind: function
+  name: Direction Magnitude
+  math_expression: abs(x) + abs(y)
+  expression_mode: 1
+  entry_id: 162
+  return_id: 164
+  call_depth_limit: 64

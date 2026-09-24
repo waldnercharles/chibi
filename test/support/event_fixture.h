@@ -10,11 +10,11 @@
 #include <stdlib.h>
 static inline void register_damage_event(game_live_world *world)
 {
-    const char *paths[] = { "content/events/Damage.json",
-                            "content/events/Damaged.json",
-                            "content/events/Died.json",
-                            "content/events/RefreshEncounter.json",
-                            "content/events/CollectExperience.json" };
+    const char *paths[] = { "content/events/Damage.yaml",
+                            "content/events/Damaged.yaml",
+                            "content/events/Died.yaml",
+                            "content/events/RefreshEncounter.yaml",
+                            "content/events/CollectExperience.yaml" };
     for (int i = 0; i < (int)(sizeof paths / sizeof *paths); i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
@@ -26,14 +26,14 @@ static inline void register_damage_event(game_live_world *world)
 }
 static inline behavior_asset *link_test_libraries(behavior_asset *asset)
 {
-    const char *paths[] = { "content/libraries/DirectionMath.json",
-                            "content/libraries/MovementActions.json",
-                            "content/libraries/WeaponActions.json",
-                            "content/events/Damage.json",
-                            "content/events/Damaged.json",
-                            "content/events/Died.json",
-                            "content/events/RefreshEncounter.json",
-                            "content/events/CollectExperience.json" };
+    const char *paths[] = { "content/libraries/DirectionMath.yaml",
+                            "content/libraries/MovementActions.yaml",
+                            "content/libraries/WeaponActions.yaml",
+                            "content/events/Damage.yaml",
+                            "content/events/Damaged.yaml",
+                            "content/events/Died.yaml",
+                            "content/events/RefreshEncounter.yaml",
+                            "content/events/CollectExperience.yaml" };
     enum
     {
         count = sizeof paths / sizeof *paths
@@ -66,14 +66,14 @@ static inline void register_test_preview_catalog(game_prototype_preview *preview
     if (!preview) {
         return;
     }
-    const char *paths[] = { "content/libraries/DirectionMath.json",
-                            "content/libraries/MovementActions.json",
-                            "content/libraries/WeaponActions.json",
-                            "content/events/Damage.json",
-                            "content/events/Damaged.json",
-                            "content/events/Died.json",
-                            "content/events/RefreshEncounter.json",
-                            "content/events/CollectExperience.json" };
+    const char *paths[] = { "content/libraries/DirectionMath.yaml",
+                            "content/libraries/MovementActions.yaml",
+                            "content/libraries/WeaponActions.yaml",
+                            "content/events/Damage.yaml",
+                            "content/events/Damaged.yaml",
+                            "content/events/Died.yaml",
+                            "content/events/RefreshEncounter.yaml",
+                            "content/events/CollectExperience.yaml" };
     for (int i = 0; i < (int)(sizeof paths / sizeof *paths); i++) {
         char *json = text_file_read(paths[i]);
         assert(json);

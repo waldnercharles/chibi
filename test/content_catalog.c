@@ -57,63 +57,63 @@ static bool folder_matches(
 void run_content_catalog_checks()
 {
     static const char *const behaviors[] = {
-        "ArenaDropBehavior.json",
-        "ArenaEnemyVisualBehavior.json",
-        "ArenaImpactFeedback.json",
-        "ArenaPickupBehavior.json",
-        "ArenaProjectileVisualBehavior.json",
-        "ArenaShardBehavior.json",
-        "ArenaShipMotionBehavior.json",
-        "ArenaWaveBehavior.json",
-        "BloomCircuitGoal.json",
-        "CombatFeedback.json",
-        "EnemyBehavior.json",
-        "HealthBehavior.json",
-        "OrbitLaunch.json",
-        "OrbitFlipperMotion.json",
-        "PhaseWardenBehavior.json",
-        "PlayerContactBehavior.json",
-        "ProjectileBehavior.json",
-        "ProjectileHitBehavior.json",
-        "SpawnTelegraphBehavior.json",
-        "SurfacePulseBehavior.json",
-        "TwinStickInputBehavior.json",
-        "TwinStickWeaponBehavior.json",
-        "WavePulseBehavior.json",
+        "ArenaDropBehavior.yaml",
+        "ArenaEnemyVisualBehavior.yaml",
+        "ArenaImpactFeedback.yaml",
+        "ArenaPickupBehavior.yaml",
+        "ArenaProjectileVisualBehavior.yaml",
+        "ArenaShardBehavior.yaml",
+        "ArenaShipMotionBehavior.yaml",
+        "ArenaWaveBehavior.yaml",
+        "BloomCircuitGoal.yaml",
+        "CombatFeedback.yaml",
+        "EnemyBehavior.yaml",
+        "HealthBehavior.yaml",
+        "OrbitLaunch.yaml",
+        "OrbitFlipperMotion.yaml",
+        "PhaseWardenBehavior.yaml",
+        "PlayerContactBehavior.yaml",
+        "ProjectileBehavior.yaml",
+        "ProjectileHitBehavior.yaml",
+        "SpawnTelegraphBehavior.yaml",
+        "SurfacePulseBehavior.yaml",
+        "TwinStickInputBehavior.yaml",
+        "TwinStickWeaponBehavior.yaml",
+        "WavePulseBehavior.yaml",
     };
     static const char *const events[] = {
-        "CollectExperience.json", "Damage.json", "Damaged.json", "Died.json",
-        "RefreshEncounter.json",
+        "CollectExperience.yaml", "Damage.yaml", "Damaged.yaml", "Died.yaml",
+        "RefreshEncounter.yaml",
     };
     static const char *const libraries[] = {
-        "DirectionMath.json",
-        "MovementActions.json",
-        "WeaponActions.json",
+        "DirectionMath.yaml",
+        "MovementActions.yaml",
+        "WeaponActions.yaml",
     };
     static const char *const materials[] = {
-        "ArenaEnemy.json",       "ArenaExperience.json",     "ArenaFloor.json",
-        "ArenaPlayer.json",      "ArenaProjectile.json",     "ArenaRim.json",
-        "ArenaSpawnMarker.json", "PhaseWardenMaterial.json",
+        "ArenaEnemy.yaml",       "ArenaExperience.yaml",     "ArenaFloor.yaml",
+        "ArenaPlayer.yaml",      "ArenaProjectile.yaml",     "ArenaRim.yaml",
+        "ArenaSpawnMarker.yaml", "PhaseWardenMaterial.yaml",
     };
     static const char *const prototypes[] = {
-        "ActionBinding.json",    "ArenaDeathPulse.json",
-        "ArenaEncounter.json",   "ArenaEnemy.json",
-        "ArenaEnemyShard.json",  "ArenaEnvironment.json",
-        "ArenaExperience.json",  "ArenaFloor.json",
-        "ArenaHitPulse.json",    "ArenaPlayer.json",
-        "ArenaProjectile.json",  "PhaseWarden.json",
-        "ArenaSpawnMarker.json", "ArenaWallHorizontal.json",
-        "ArenaWavePulse.json",   "BloomCircuitGuide.json",
-        "OrbitBall.json",        "OrbitBumper.json",
-        "OrbitCabinet.json",     "OrbitFlipper.json",
-        "OrbitRail.json",        "OrbitRing.json",
-        "OrbitGuide.json",       "OrbitControls.json",
-        "RotatingGate.json",
+        "ActionBinding.yaml",    "ArenaDeathPulse.yaml",
+        "ArenaEncounter.yaml",   "ArenaEnemy.yaml",
+        "ArenaEnemyShard.yaml",  "ArenaEnvironment.yaml",
+        "ArenaExperience.yaml",  "ArenaFloor.yaml",
+        "ArenaHitPulse.yaml",    "ArenaPlayer.yaml",
+        "ArenaProjectile.yaml",  "PhaseWarden.yaml",
+        "ArenaSpawnMarker.yaml", "ArenaWallHorizontal.yaml",
+        "ArenaWavePulse.yaml",   "BloomCircuitGuide.yaml",
+        "OrbitBall.yaml",        "OrbitBumper.yaml",
+        "OrbitCabinet.yaml",     "OrbitFlipper.yaml",
+        "OrbitRail.yaml",        "OrbitRing.yaml",
+        "OrbitGuide.yaml",       "OrbitControls.yaml",
+        "RotatingGate.yaml",
     };
-    static const char *const scenes[] = { "Arena3D.json",
-                                          "BloomCircuit.json",
-                                          "OrbitPinball.json" };
-    static const char *const shader_libraries[] = { "ShaderMath.json" };
+    static const char *const scenes[] = { "Arena3D.yaml",
+                                          "BloomCircuit.yaml",
+                                          "OrbitPinball.yaml" };
+    static const char *const shader_libraries[] = { "ShaderMath.yaml" };
     bool valid = folder_matches("content", "behaviors", behaviors, (int)(sizeof behaviors / sizeof *behaviors));
     valid &= folder_matches("content", "events", events, (int)(sizeof events / sizeof *events));
     valid &= folder_matches("content", "libraries", libraries, (int)(sizeof libraries / sizeof *libraries));
@@ -126,74 +126,74 @@ void run_content_catalog_checks()
         shader_libraries,
         (int)(sizeof shader_libraries / sizeof *shader_libraries)
     );
-    static const char *const shapes[] = { "PhaseWardenShape.json" };
+    static const char *const shapes[] = { "PhaseWardenShape.yaml" };
     valid &= folder_matches("content", "shapes", shapes, (int)(sizeof shapes / sizeof *shapes));
     valid &= folder_matches("content", "textures", NULL, 0);
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
     static const char *const arena2d_behaviors[] = {
-        "BoostEmitter.json",
-        "CameraFollow.json",
-        "CutMaterial.json",
-        "HullDamage.json",
-        "MaterialImpactHealth.json",
-        "Movement.json",
-        "MovementEmitter.json",
-        "PlayerEffects.json",
-        "ProjectileEffects.json",
-        "ProjectileHit.json",
-        "Pursuit.json",
-        "SwarmerEffects.json",
-        "Weapon.json",
-        "ProjectileLifecycle.json",
+        "BoostEmitter.yaml",
+        "CameraFollow.yaml",
+        "CutMaterial.yaml",
+        "HullDamage.yaml",
+        "MaterialImpactHealth.yaml",
+        "Movement.yaml",
+        "MovementEmitter.yaml",
+        "PlayerEffects.yaml",
+        "ProjectileEffects.yaml",
+        "ProjectileHit.yaml",
+        "Pursuit.yaml",
+        "SwarmerEffects.yaml",
+        "Weapon.yaml",
+        "ProjectileLifecycle.yaml",
     };
     static const char *const arena2d_materials[] = {
-        "Basalt.json",
+        "Basalt.yaml",
     };
     static const char *const arena2d_events[] = {
-        "CollectExperience.json", "Damage.json",
-        "Damaged.json",           "Died.json",
-        "Material Impact.json",   "Material Result.json",
-        "RefreshEncounter.json",
+        "CollectExperience.yaml", "Damage.yaml",
+        "Damaged.yaml",           "Died.yaml",
+        "Material Impact.yaml",   "Material Result.yaml",
+        "RefreshEncounter.yaml",
     };
     static const char *const arena2d_prototypes[] = {
-        "BoostEmitter.json",
-        "Camera.json",
-        "Cave.json",
-        "Cloud.json",
-        "Crystal.json",
-        "DeathEmitter.json",
-        "DriftingMarker.json",
-        "FireMouse.json",
-        "FireStick.json",
-        "FreeMotionSystem.json",
-        "FuelCloud.json",
-        "HardRock.json",
-        "HRC.json",
-        "HitEmitter.json",
-        "Liquid.json",
-        "MovementEmitter.json",
-        "MaterialSpecimen.json",
-        "MaterialStudyCamera.json",
-        "MaterialStudyWorld.json",
-        "Player.json",
-        "Projectile.json",
-        "SpawnEmitter.json",
-        "Swarmer.json",
-        "TrailEmitter.json",
+        "BoostEmitter.yaml",
+        "Camera.yaml",
+        "Cave.yaml",
+        "Cloud.yaml",
+        "Crystal.yaml",
+        "DeathEmitter.yaml",
+        "DriftingMarker.yaml",
+        "FireMouse.yaml",
+        "FireStick.yaml",
+        "FreeMotionSystem.yaml",
+        "FuelCloud.yaml",
+        "HardRock.yaml",
+        "HRC.yaml",
+        "HitEmitter.yaml",
+        "Liquid.yaml",
+        "MovementEmitter.yaml",
+        "MaterialSpecimen.yaml",
+        "MaterialStudyCamera.yaml",
+        "MaterialStudyWorld.yaml",
+        "Player.yaml",
+        "Projectile.yaml",
+        "SpawnEmitter.yaml",
+        "Swarmer.yaml",
+        "TrailEmitter.yaml",
     };
     static const char *const arena2d_scenes[] = {
-        "HRCBounce.json",      "HRCPinhole.json", "HRCShadow.json",
-        "HRCSinglePixel.json", "HRCVolume.json",  "MaterialStudy.json",
-        "Sandbox.json",
+        "HRCBounce.yaml",      "HRCPinhole.yaml", "HRCShadow.yaml",
+        "HRCSinglePixel.yaml", "HRCVolume.yaml",  "MaterialStudy.yaml",
+        "Sandbox.yaml",
     };
-    static const char *const arena2d_libraries[] = { "DirectionMath.json",
-                                                     "FieldShapes.json",
-                                                     "WeaponActions.json" };
-    static const char *const arena2d_fields[] = { "BasaltCave.json",
-                                                  "CaveField.json",
-                                                  "MaterialIslands.json" };
-    static const char *const arena2d_systems[] = { "FreeMotion.json" };
+    static const char *const arena2d_libraries[] = { "DirectionMath.yaml",
+                                                     "FieldShapes.yaml",
+                                                     "WeaponActions.yaml" };
+    static const char *const arena2d_fields[] = { "BasaltCave.yaml",
+                                                  "CaveField.yaml",
+                                                  "MaterialIslands.yaml" };
+    static const char *const arena2d_systems[] = { "FreeMotion.yaml" };
     const char *arena2d_root = "projects/arena2d/content";
     valid = folder_matches(
         arena2d_root,
@@ -273,11 +273,11 @@ void run_content_catalog_checks()
                          !strcmp(default_project.start_scene, arena2d.start_scene) &&
                          arena2d_content.name &&
                          !strcmp(arena2d_content.name, "arena2d") && arena3d_scene &&
-                         strstr(arena3d_scene, "/content/scenes/Arena3D.json") &&
+                         strstr(arena3d_scene, "/content/scenes/Arena3D.yaml") &&
                          arena2d_scene &&
-                         strstr(arena2d_scene, "/projects/arena2d/content/scenes/Sandbox.json") &&
+                         strstr(arena2d_scene, "/projects/arena2d/content/scenes/Sandbox.yaml") &&
                          arena2d_content_scene &&
-                         strstr(arena2d_content_scene, "/projects/arena2d/content/scenes/Sandbox.json");
+                         strstr(arena2d_content_scene, "/projects/arena2d/content/scenes/Sandbox.yaml");
     }
     test_check(projects_valid, "project roots and legacy content folders resolve independent scenes");
     free(arena3d_scene);

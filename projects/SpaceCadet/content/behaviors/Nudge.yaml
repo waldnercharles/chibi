@@ -1,0 +1,56 @@
+version: 3
+name: Nudge
+id_counter: 241
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Nudge}
+  - id: 44
+    type: Behavior Expression
+    reference_id: 3
+    reference_name: clamp(v + (rand()-0.5)*170, -900, 900)
+    inputs:
+      v:
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
+    outputs:
+      Result: {type: double, flags: 2, group: 2}
+  - {id: 88, type: Set_GameVelocity_x}
+  - id: 149
+    type: Behavior Expression
+    reference_id: 135
+    reference_name: v-100
+    inputs:
+      v:
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+    outputs:
+      Result: {type: double, flags: 2, group: 2}
+  - {id: 166, type: Set_GameVelocity_y}
+  edges:
+  - {from: 1.Then, to: 88.Exec}
+  - {from: 44.Result, to: 88.Value}
+  - {from: 88.Then, to: 166.Exec}
+  - {from: 149.Result, to: 166.Value}
+- id: 3
+  kind: function
+  name: clamp(v + (rand()-0.5)*170, -900, 900)
+  math_expression: clamp(v + (rand()-0.5)*170, -900, 900)
+  expression_mode: 1
+  entry_id: 187
+  return_id: 189
+  call_depth_limit: 64
+- id: 135
+  kind: function
+  name: v-100
+  math_expression: v-100
+  expression_mode: 1
+  entry_id: 228
+  return_id: 230
+  call_depth_limit: 64

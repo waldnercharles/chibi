@@ -15,7 +15,7 @@ static const struct
     const char *name;
     pin_value value;
 } style_edits[] = {
-    { "shape", { .type = PIN_I32, .type_name = "int", .i = 0 } },
+    { "shape", { .type = PIN_ENUM, .type_name = "GameShape", .e = GAME_SHAPE_BOX } },
     { "stroke_width", { .type = PIN_F32, .type_name = "float", .f = 2.25f } },
     { "border_width", { .type = PIN_F32, .type_name = "float", .f = 3.5f } },
     { "border_color", { .type = PIN_U32, .type_name = "unsigned int", .u = 0x11223344u } },
@@ -44,7 +44,7 @@ static void expect_edited_style(const GameAppearance *appearance)
 static game_prototype *read_prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.json", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.yaml", name);
     FILE *file = fopen(path, "rb");
     assert(file);
     fseek(file, 0, SEEK_END);
@@ -147,6 +147,7 @@ static void authored_roundtrip(
         assert(value.type == expected.type);
         switch (expected.type) {
             case PIN_I32: assert(value.i == expected.i); break;
+            case PIN_ENUM: assert(value.e == expected.e); break;
             case PIN_U32: assert(value.u == expected.u); break;
             case PIN_F32: assert(value.f == expected.f); break;
             default: assert(false);

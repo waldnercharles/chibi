@@ -1,0 +1,238 @@
+version: 3
+name: WaveBehavior
+id_counter: 148
+description: Spawns a bounded wave beside the Player at regular intervals, alternating left and right.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: CountLimit, type: int, type_name: int, category: Wave, default: 8}
+- id: 2
+  name: Interval
+  type: float
+  type_name: float
+  category: Wave
+  default: 1.5
+- id: 3
+  name: SpawnDistance
+  type: float
+  type_name: float
+  category: Wave
+  default: 260.0
+- {id: 4, name: Elapsed, type: float, type_name: float, category: State}
+- {id: 5, name: Spawned, type: int, type_name: int, category: State}
+- id: 6
+  name: Side
+  type: float
+  type_name: float
+  category: State
+  default: -1.0
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 49
+    type: Get Variable
+    reference_id: 4
+    outputs:
+      Value: {id: 48, type: float, flags: 0}
+  - {id: 50, type: Delta Time}
+  - {id: 52, type: Add}
+  - id: 60
+    type: Set Variable
+    reference_id: 4
+    inputs:
+      Exec: {id: 56}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - {id: 124, type: Event, reference_name: Tick}
+  - id: 126
+    type: Get_GameTransform
+    outputs:
+      Value: {flags: 0}
+  - id: 128
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 130
+    type: Find Nearest Entity
+    inputs: {Radius: 1000000.0, Categories: 1}
+  - {id: 139, type: Branch}
+  - id: 147
+    type: Call Function
+    reference_id: 42
+    reference_name: Spawn Within Wave Limit
+    inputs:
+      Exec: {id: 144}
+      Player Position: {type: struct, type_name: CF_V2, kind: data}
+  edges:
+  - {from: 49.Value, to: 52.A}
+  - {from: 50.Seconds, to: 52.B}
+  - {from: 52.Result, to: 60.Value}
+  - {from: 60.Then, to: 147.Exec}
+  - {from: 124.Then, to: 139.Exec}
+  - {from: 126.Value, to: 130.Position}
+  - {from: 128.Self, to: 130.Exclude}
+  - {from: 130.Found, to: 139.Condition}
+  - {from: 130.Position, to: 147.Player Position}
+  - {from: 139.True, to: 60.Exec}
+- id: 42
+  kind: function
+  name: Spawn Within Wave Limit
+  entry_id: 45
+  return_id: 47
+  call_depth_limit: 64
+  nodes:
+  - id: 45
+    type: Function Entry
+    outputs:
+    - {id: 43, name: Then}
+    - {id: 44, name: Player Position, type: struct, type_name: CF_V2, kind: data}
+  - id: 47
+    type: Return
+    inputs:
+      Exec: {id: 46}
+  - id: 62
+    type: Get Variable
+    reference_id: 2
+    outputs:
+      Value: {id: 61, type: float, flags: 0, default: 1.5}
+  - id: 63
+    type: Max
+    inputs: {B: 0.009999999776482582}
+  - id: 68
+    type: Get Variable
+    reference_id: 4
+    outputs:
+      Value: {id: 67, type: float, flags: 0}
+  - {id: 69, type: Greater Or Equal}
+  - {id: 73, type: WhileLoop}
+  - id: 79
+    type: Get Variable
+    reference_id: 5
+    outputs:
+      Value: {id: 78, flags: 0}
+  - id: 81
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 80, flags: 0, default: 8}
+  - {id: 82, type: Integer Greater Or Equal}
+  - {id: 86, type: Branch}
+  - {id: 91, type: Subtract}
+  - id: 99
+    type: Set Variable
+    reference_id: 4
+    inputs:
+      Exec: {id: 95}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 103
+    type: Call Function
+    reference_id: 7
+    reference_name: Spawn Enemy
+    inputs:
+      Exec: {id: 100}
+      Player Position: {type: struct, type_name: CF_V2, kind: data}
+  - id: 104
+    type: Add
+    inputs:
+      B: {type: int, default: 1}
+  - id: 112
+    type: Set Variable
+    reference_id: 5
+    inputs:
+      Exec: {id: 108}
+  - id: 114
+    type: Get Variable
+    reference_id: 6
+    outputs:
+      Value: {id: 113, type: float, flags: 0, default: -1.0}
+  - id: 115
+    type: Multiply
+    inputs: {B: -1.0}
+  - id: 123
+    type: Set Variable
+    reference_id: 6
+    inputs:
+      Exec: {id: 119}
+      Value: {type: float, default: -1.0}
+    outputs:
+      Value: {type: float, default: -1.0}
+  edges:
+  - {from: 45.Then, to: 73.Exec}
+  - {from: 45.Player Position, to: 103.Player Position}
+  - {from: 62.Value, to: 63.A}
+  - {from: 63.Result, to: 69.B}
+  - {from: 63.Result, to: 91.B}
+  - {from: 68.Value, to: 69.A}
+  - {from: 68.Value, to: 91.A}
+  - {from: 69.Result, to: 73.Condition}
+  - {from: 73.Body, to: 86.Exec}
+  - {from: 73.Completed, to: 47.Exec}
+  - {from: 79.Value, to: 82.A}
+  - {from: 79.Value, to: 104.A}
+  - {from: 81.Value, to: 82.B}
+  - {from: 82.Result, to: 86.Condition}
+  - {from: 86.True, to: 47.Exec}
+  - {from: 86.False, to: 99.Exec}
+  - {from: 91.Result, to: 99.Value}
+  - {from: 99.Then, to: 103.Exec}
+  - {from: 103.Then, to: 112.Exec}
+  - {from: 104.Result, to: 112.Value}
+  - {from: 112.Then, to: 123.Exec}
+  - {from: 114.Value, to: 115.A}
+  - {from: 115.Result, to: 123.Value}
+- id: 7
+  kind: function
+  name: Spawn Enemy
+  entry_id: 10
+  return_id: 12
+  call_depth_limit: 64
+  nodes:
+  - id: 10
+    type: Function Entry
+    outputs:
+    - {id: 8, name: Then}
+    - {id: 9, name: Player Position, type: struct, type_name: CF_V2, kind: data}
+    - {id: 13, name: x, type: float, kind: data, field_source: 9, field_name: x}
+    - {id: 14, name: "y", type: float, kind: data, field_source: 9, field_name: "y"}
+  - id: 12
+    type: Return
+    inputs:
+      Exec: {id: 11}
+  - id: 16
+    type: Get Variable
+    reference_id: 6
+    outputs:
+      Value: {id: 15, type: float, flags: 0, default: -1.0}
+  - id: 18
+    type: Get Variable
+    reference_id: 3
+    outputs:
+      Value: {id: 17, type: float, flags: 0, default: 260.0}
+  - {id: 19, type: Multiply}
+  - {id: 23, type: Add}
+  - id: 30
+    type: Make_GameTransform
+    inputs:
+      x: {id: 27}
+    outputs:
+    - {id: 29, name: Value}
+  - id: 31
+    type: Spawn Prototype
+    inputs:
+      Prototype: {type_name: name, default: Enemy}
+  - {id: 36, type: SetEntity_GameTransform}
+  edges:
+  - {from: 10.Then, to: 31.Exec}
+  - {from: 10.Player Position.x, to: 23.A}
+  - {from: 10.Player Position.y, to: 30.y}
+  - {from: 16.Value, to: 19.A}
+  - {from: 18.Value, to: 19.B}
+  - {from: 19.Result, to: 23.B}
+  - {from: 23.Result, to: 30.x}
+  - {from: 30.Value, to: 36.Value}
+  - {from: 31.Then, to: 36.Exec}
+  - {from: 31.Entity, to: 36.Entity}
+  - {from: 36.Then, to: 12.Exec}

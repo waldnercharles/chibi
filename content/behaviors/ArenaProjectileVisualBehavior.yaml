@@ -1,0 +1,34 @@
+version: 3
+name: ArenaProjectileVisualBehavior
+id_counter: 25
+description: Begin chooses a random orientation and spin from editable vector ranges. GameVisualMotion integrates the spin while the projectile is alive, and its emitter leaves the path trail.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 2
+    type: Event
+    reference_name: Begin
+    outputs:
+      Then: {id: 1}
+  - id: 4
+    type: Random Range Vector
+    inputs:
+      Max:
+        default: {x: 6.2831854820251465, "y": 6.2831854820251465, z: 6.2831854820251465}
+  - {id: 8, type: Set_GameVisualMotion_rotation}
+  - id: 14
+    type: Random Range Vector
+    inputs:
+      Min:
+        default: {x: -10.0, "y": -10.0, z: -10.0}
+      Max:
+        default: {x: 10.0, "y": 10.0, z: 10.0}
+  - id: 18
+    type: Set_GameVisualMotion_angular_velocity
+  edges:
+  - {from: 2.Then, to: 8.Exec}
+  - {from: 4.Result, to: 8.Value}
+  - {from: 8.Then, to: 18.Exec}
+  - {from: 14.Result, to: 18.Value}

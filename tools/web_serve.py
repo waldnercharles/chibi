@@ -9,6 +9,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import yaml
+
 
 def content_directory(project):
     manifest = json.loads((project / 'project.json').read_text())
@@ -20,10 +22,16 @@ def content_directory(project):
 
 def save_asset(project, content, request):
     path = (project / request['path'].lstrip('/')).resolve()
-    if not path.is_relative_to(content) or path.suffix != '.json':
-        raise ValueError('Saves must be JSON assets inside this project content directory')
+    if not path.is_relative_to(content) or path.suffix != '.yaml':
+        raise ValueError('Saves must be YAML assets inside this project content directory')
     text = request['text']
-    json.loads(text)
+    # The engine writes asset documents as YAML mappings; a save must reload.
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise ValueError(f'Saves must be YAML asset documents: {error}') from error
+    if not isinstance(document, dict):
+        raise ValueError('Saves must be YAML asset documents')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:
         temporary = Path(file.name)
@@ -75,7 +83,7 @@ def main():
                         self.send_error(403)
                         return
                     assets = {str(p.relative_to(project)): p.read_text()
-                              for p in content.rglob('*.json') if p.resolve().is_relative_to(content)}
+                              for p in content.rglob('*.yaml') if p.resolve().is_relative_to(content)}
                     assets['project.json'] = (project / 'project.json').read_text()
                     body = json.dumps(assets).encode()
                     self.send_response(200)

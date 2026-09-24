@@ -1,5 +1,6 @@
 #include "assets/project.h"
 
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <errno.h>
@@ -170,16 +171,16 @@ static void choose_start_scene(chibi_project *project)
     if (project->start_scene) {
         return;
     }
-    char *arena_2d = join_path(project->content, "scenes/Sandbox.json");
+    char *arena_2d = join_path(project->content, "scenes/Sandbox" ASSET_EXTENSION);
     if (is_file(arena_2d)) {
-        project->start_scene = xstrdup("scenes/Sandbox.json");
+        project->start_scene = xstrdup("scenes/Sandbox" ASSET_EXTENSION);
         free(arena_2d);
         return;
     }
     free(arena_2d);
-    char *arena_3d = join_path(project->content, "scenes/Arena3D.json");
+    char *arena_3d = join_path(project->content, "scenes/Arena3D" ASSET_EXTENSION);
     if (is_file(arena_3d)) {
-        project->start_scene = xstrdup("scenes/Arena3D.json");
+        project->start_scene = xstrdup("scenes/Arena3D" ASSET_EXTENSION);
     }
     free(arena_3d);
 }

@@ -1,0 +1,159 @@
+version: 3
+name: SurfacePulseBehavior
+id_counter: 77
+description: Capture the authored surface influence strength on Begin, fade it over Duration, then destroy the pulse. Color, radius and lingering floor response belong to the prototype.
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: Duration
+  type: float
+  type_name: float
+  category: Surface
+  default: 0.2800000011920929
+- {id: 2, name: Remaining, type: float, type_name: float, category: State}
+- {id: 3, name: Peak Strength, type: float, type_name: float, category: State}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 5
+    type: Event
+    reference_name: Begin
+    outputs:
+      Then: {id: 4}
+  - id: 7
+    type: Get_GameSurfaceInfluence
+    outputs:
+      Value: {id: 6, flags: 0}
+      Value.strength: {id: 8}
+  - id: 13
+    type: Set Variable
+    reference_id: 3
+    inputs:
+      Exec: {id: 9}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 15
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 14, type: float, flags: 0}
+  - id: 20
+    type: Set Variable
+    reference_id: 2
+    inputs:
+      Exec: {id: 16}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 22
+    type: Event
+    reference_name: Tick
+    outputs:
+      Then: {id: 21}
+  - id: 24
+    type: Get Variable
+    reference_id: 2
+    outputs:
+      Value: {id: 23, type: float, flags: 0}
+  - id: 26
+    type: Delta Time
+    outputs:
+      Seconds: {id: 25}
+  - id: 30
+    type: Subtract
+    inputs:
+      A: {id: 27, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 35
+    type: Set Variable
+    reference_id: 2
+    inputs:
+      Exec: {id: 31}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 39
+    type: Greater
+    inputs:
+      A: {id: 36}
+  - id: 44
+    type: Branch
+    inputs:
+      Exec: {id: 40}
+  - id: 46
+    type: Self
+    outputs:
+    - {id: 45, name: Entity, type_name: ecs.entity}
+  - id: 50
+    type: Destroy Entity
+    inputs:
+      Exec: {id: 47}
+  - id: 52
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 51, type: float, flags: 0}
+  - id: 56
+    type: Max
+    inputs:
+      A: {id: 53, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 60
+    type: Divide
+    inputs:
+      A: {id: 57, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 64
+    type: Multiply
+    inputs:
+      A: {id: 61, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 66
+    type: Get Variable
+    reference_id: 3
+    outputs:
+      Value: {id: 65, type: float, flags: 0}
+  - id: 70
+    type: Multiply
+    inputs:
+      A: {id: 67, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 76
+    type: Set_GameSurfaceInfluence_strength
+    inputs:
+      Exec: {id: 71}
+  edges:
+  - {from: 5.Then, to: 13.Exec}
+  - {from: 7.Value.strength, to: 13.Value}
+  - {from: 13.Then, to: 20.Exec}
+  - {from: 15.Value, to: 20.Value}
+  - {from: 22.Then, to: 35.Exec}
+  - {from: 24.Value, to: 30.A}
+  - {from: 26.Seconds, to: 30.B}
+  - {from: 30.Result, to: 35.Value}
+  - {from: 35.Then, to: 44.Exec}
+  - {from: 35.Value, to: 39.A}
+  - {from: 35.Value, to: 60.A}
+  - {from: 39.Result, to: 44.Condition}
+  - {from: 44.True, to: 76.Exec}
+  - {from: 44.False, to: 50.Exec}
+  - {from: 46.Entity, to: 50.Entity}
+  - {from: 52.Value, to: 56.A}
+  - {from: 56.Result, to: 60.B}
+  - {from: 60.Result, to: 64.A}
+  - {from: 60.Result, to: 64.B}
+  - {from: 64.Result, to: 70.A}
+  - {from: 66.Value, to: 70.B}
+  - {from: 70.Result, to: 76.Value}

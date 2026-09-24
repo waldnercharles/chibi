@@ -93,8 +93,8 @@ static void shader_scene_load()
     checkpoint_fixture f = fixture_new();
     assert(app_scene_authoring_set_content_root(f.scene, "test/fixtures/content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
-    const char *shared[] = { "content/behaviors/HealthBehavior.json",
-                             "content/behaviors/PlayerContactBehavior.json" };
+    const char *shared[] = { "content/behaviors/HealthBehavior.yaml",
+                             "content/behaviors/PlayerContactBehavior.yaml" };
     for (int i = 0; i < 2; i++) {
         char *json = read_scene_file(shared[i]);
         assert(json);
@@ -112,7 +112,7 @@ static void shader_scene_load()
             ) == 0
         );
     }
-    int loaded = app_scene_authoring_load(f.scene, "test/fixtures/content/scenes/ShaderDemo.json");
+    int loaded = app_scene_authoring_load(f.scene, "test/fixtures/content/scenes/ShaderDemo.yaml");
     if (loaded) {
         fprintf(stderr, "shader scene load: %s\n", app_scene_authoring_message(f.scene));
     }
@@ -206,8 +206,8 @@ static void scene_tabs_retain_authored_state()
         0
     );
     assert(app_scene_authoring_add_instance(f.scene, "ReloadPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-scene-a.json";
-    const char *second_path = "/tmp/chibi-39-scene-b.json";
+    const char *first_path = "/tmp/chibi-39-scene-a.yaml";
+    const char *second_path = "/tmp/chibi-39-scene-b.yaml";
     char *first_json = scene_authoring_scene_json(f.scene);
     assert(first_json && write_text_file_atomic(first_path, first_json) == 0);
     free(first_json);
@@ -253,8 +253,8 @@ static void scene_tabs_save_as_keeps_identity()
         0
     );
     assert(app_scene_authoring_add_instance(f.scene, "SaveAsPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-save-as-a.json";
-    const char *second_path = "/tmp/chibi-39-save-as-b.json";
+    const char *first_path = "/tmp/chibi-39-save-as-a.yaml";
+    const char *second_path = "/tmp/chibi-39-save-as-b.yaml";
     char *json = scene_authoring_scene_json(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
@@ -293,8 +293,8 @@ static void navigation_restores_underlying_scene_tab()
         0
     );
     assert(app_scene_authoring_add_instance(f.scene, "NavigationPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-navigation-a.json";
-    const char *second_path = "/tmp/chibi-39-navigation-c.json";
+    const char *first_path = "/tmp/chibi-39-navigation-a.yaml";
+    const char *second_path = "/tmp/chibi-39-navigation-c.yaml";
     char *json = scene_authoring_scene_json(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
@@ -342,8 +342,8 @@ static void scene_tabs_failed_restore_rolls_back()
         0
     );
     assert(app_scene_authoring_add_instance(f.scene, "RollbackPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-rollback-a.json";
-    const char *second_path = "/tmp/chibi-39-rollback-b.json";
+    const char *first_path = "/tmp/chibi-39-rollback-a.yaml";
+    const char *second_path = "/tmp/chibi-39-rollback-b.yaml";
     char *json = scene_authoring_scene_json(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
@@ -416,8 +416,8 @@ static void scene_tabs_discard_reverts_shared_assets()
 static void scene_tabs_close_underlying_scene_keeps_context()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-close-scene-a.json";
-    const char *second_path = "/tmp/chibi-39-close-scene-c.json";
+    const char *first_path = "/tmp/chibi-39-close-scene-a.yaml";
+    const char *second_path = "/tmp/chibi-39-close-scene-c.yaml";
     char *json = scene_authoring_scene_json(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
@@ -515,8 +515,8 @@ static void write_system_fixture(const char *path, const char *name)
 static void scene_tabs_retain_system_state()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-system-a.json";
-    const char *second_path = "/tmp/chibi-39-system-b.json";
+    const char *first_path = "/tmp/chibi-39-system-a.yaml";
+    const char *second_path = "/tmp/chibi-39-system-b.yaml";
     write_system_fixture(first_path, "SystemA");
     write_system_fixture(second_path, "SystemB");
     assert(app_scene_authoring_open_system(f.scene, first_path) == 0);
@@ -572,9 +572,9 @@ static void scene_tabs_retain_system_state()
 static void scene_tabs_system_save_as_navigation_identity()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-system-nav-a.json";
-    const char *other_path = "/tmp/chibi-39-system-nav-b.json";
-    const char *save_as_path = "/tmp/Scene.json";
+    const char *first_path = "/tmp/chibi-39-system-nav-a.yaml";
+    const char *other_path = "/tmp/chibi-39-system-nav-b.yaml";
+    const char *save_as_path = "/tmp/Scene.yaml";
     write_system_fixture(first_path, "SystemA");
     write_system_fixture(other_path, "SystemB");
     remove(save_as_path);
@@ -602,8 +602,8 @@ static void scene_tabs_system_save_as_navigation_identity()
 static void checkpoint_restores_next_scene_key()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-key-a.json";
-    const char *second_path = "/tmp/chibi-39-key-b.json";
+    const char *first_path = "/tmp/chibi-39-key-a.yaml";
+    const char *second_path = "/tmp/chibi-39-key-b.yaml";
     char *json = scene_authoring_scene_json(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
@@ -668,9 +668,9 @@ static void asset_references_follow_authored_edits()
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
     const asset_index *index = app_scene_authoring_asset_index(f.scene);
-    int arena = asset_index_find(index, ASSET_INDEX_SCENE, "content/scenes/Arena3D.json", 0);
+    int arena = asset_index_find(index, ASSET_INDEX_SCENE, "content/scenes/Arena3D.yaml", 0);
     assert(arena >= 0);
-    char *arena_path = realpath("content/scenes/Arena3D.json", NULL);
+    char *arena_path = realpath("content/scenes/Arena3D.yaml", NULL);
     assert(arena_path && asset_index_find(index, ASSET_INDEX_SCENE, arena_path, 0) == arena);
     free(arena_path);
     int player = indexed_asset(index, ASSET_INDEX_PROTOTYPE, "ArenaPlayer");
@@ -760,8 +760,8 @@ static void asset_references_follow_authored_edits()
     );
     scene_authoring_select_document(f.scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     assert(app_scene_authoring_add_instance(f.scene, "ReferencePrototype") == 0);
-    const char *first_path = "/tmp/chibi-40-references-a.json";
-    const char *second_path = "/tmp/chibi-40-references-b.json";
+    const char *first_path = "/tmp/chibi-40-references-a.yaml";
+    const char *second_path = "/tmp/chibi-40-references-b.yaml";
     assert(app_scene_authoring_save(f.scene, first_path) == 0);
     int first_tab = f.scene->active_tab;
     char *json = scene_authoring_scene_json(f.scene);
@@ -882,7 +882,7 @@ static void physics_settings_checkpoint()
 
 static void checkpoint_detects_external_behavior_change()
 {
-    const char *path = "/tmp/chibi-39-behavior-source.json";
+    const char *path = "/tmp/chibi-39-behavior-source.yaml";
     remove(path);
     checkpoint_fixture f = fixture_new();
     game_live_definition *definition = game_live_find_definition(f.live, "ReloadBehavior");

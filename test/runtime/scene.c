@@ -86,6 +86,23 @@ void run_prototype_checks(void)
         saved && strstr(saved, "GameTransform") && strstr(saved, "GameHealth"),
         "prototype output contains generic component values"
     );
+    game_prototype *plain = game_prototype_load("{\"name\":\"Plain\"}", &registry, error, sizeof error);
+    game_prototype *other = game_prototype_load("{\"name\":\"Other\"}", &registry, error, sizeof error);
+    char *saved_plain = plain ? game_prototype_save(plain) : NULL;
+    char *saved_renamed = plain && game_prototype_set_name(plain, "Renamed") == 0
+                            ? game_prototype_save(plain)
+                            : NULL;
+    test_check(
+        plain && other &&
+            strcmp(game_prototype_identity(plain), game_prototype_identity(other)) != 0 &&
+            saved_plain && !strstr(saved_plain, "identity") && saved_renamed &&
+            strstr(saved_renamed, game_prototype_identity(plain)),
+        "identity derives from the name and is written only after a rename"
+    );
+    free(saved_plain);
+    free(saved_renamed);
+    game_prototype_free(plain);
+    game_prototype_free(other);
     free(saved);
     free(saved_reordered);
     game_prototype_free(reordered);

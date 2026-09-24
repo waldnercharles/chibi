@@ -1,13 +1,13 @@
 # Neon Swarm material sandbox
 
 Neon Swarm lives in `projects/arena2d`. Its startup scene is
-`content/scenes/Sandbox.json`, selected by native launches and the Make targets.
+`content/scenes/Sandbox.yaml`, selected by native launches and the Make targets.
 Run `make play`, or build an optimized native version:
 
 ```sh
 make build-release
 ./build-release/chibi --project-root projects/arena2d \
-  --scene content/scenes/Sandbox.json --play
+  --scene content/scenes/Sandbox.yaml --play
 ```
 
 Move with WASD or the left stick, boost with Space, and aim/fire with the mouse

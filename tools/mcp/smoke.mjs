@@ -10,11 +10,8 @@ const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = process.env.CHIBI_CTL || resolve(root, "build/chibi_ctl");
 const expectedPublicNames = [
-  "buildField",
-  "buildSystem",
+  "buildGraph",
   "previewField",
-  "buildShader",
-  "buildBehavior",
   "buildPrototype",
   "buildScene",
   "optimizeGraph",
@@ -81,7 +78,7 @@ const requests = [
   { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validateAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describeRegistry", arguments: {} } },
+  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describeRegistry", arguments: { sections: ["nodes"] } } },
   { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describeContract", arguments: {} } },
   { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "listAssets", arguments: { limit: 2 } } },
   { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "getAssetCatalog", arguments: { limit: 1, summary: true } } },
@@ -105,7 +102,7 @@ const requests = [
   { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
   { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
   { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
-  { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildBehavior", arguments: {
+  { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildGraph", arguments: {
     kind: "behavior", name: "McpExpressionProbe", create: true, dry_run: true,
     operations: [
       { op: "add_node", ref: "expression", type: "Behavior Expression", source: "x + 1" },
@@ -154,7 +151,7 @@ if (responseById.get(1)?.result?.serverInfo?.name !== "chibi" ||
   throw new Error("initialize did not identify chibi");
 }
 if (typeof responseById.get(1)?.result?.instructions !== "string" ||
-    !responseById.get(1).result.instructions.includes("buildShader") ||
+    !responseById.get(1).result.instructions.includes("buildGraph") ||
     !responseById.get(1).result.instructions.includes("validateAsset")) {
   throw new Error("initialize did not expose server instructions");
 }
@@ -173,8 +170,8 @@ if (JSON.stringify(toolCatalog.map((entry) => entry.name)) !== JSON.stringify(ex
       Object.hasOwn(tool, "operation"))) {
   throw new Error("tools/list did not expose the deterministic public catalog");
 }
-if (listedTools.slice(0, 7).map((tool) => tool.name).join(",") !==
-    "buildField,buildSystem,previewField,buildShader,buildBehavior,buildPrototype,buildScene") {
+if (listedTools.slice(0, 4).map((tool) => tool.name).join(",") !==
+    "buildGraph,previewField,buildPrototype,buildScene") {
   throw new Error("tools/list did not put authoring tools first");
 }
 if (listedTools.some((tool) => tool.name.includes("_") || tool.name.includes("-") ||
@@ -205,7 +202,7 @@ if (!listedTools.some((tool) => tool.name === "validateAsset" &&
       tool.inputSchema?.properties?.inputs?.maxItems === 1800) ||
     !listedTools.some((tool) => tool.name === "replayScenario" &&
       tool.inputSchema?.oneOf?.length === 2 &&
-      tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
+      tool.inputSchema?.properties?.recording_path?.type === "string")) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
 const status = toolPayload(responseById.get(3));
@@ -252,8 +249,7 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !contract.result?.operations?.some((operation) => operation.name === "describe_contract" &&
       operation.public_tools?.includes("describeContract")) ||
     !contract.result?.operations?.some((operation) => operation.name === "edit_graph" &&
-      operation.public_tools?.includes("buildShader") &&
-      operation.public_tools?.includes("buildBehavior")) ||
+      operation.public_tools?.includes("buildGraph")) ||
     contract.result?.reflection?.nodes < 1 ||
     pagedAssets.ok !== true || pagedAssets.result?.count !== 2 ||
     pagedAssets.result?.has_more !== true || pagedAssets.result?.next_cursor !== 2 ||
@@ -416,8 +412,9 @@ if (linkedValidation.response.ok !== true || !linkedValidation.response.result?.
   throw new Error("validateAsset must link external library functions before compilation");
 }
 
-const nativeRegistry = nativeRequest("describe_registry");
-const nativeMissing = nativeRequest("read_asset", { path: "content/nope.json" });
+const nativeRegistry = nativeRequest("describe_registry", { sections: ["nodes"] });
+const defaultRegistry = nativeRequest("describe_registry");
+const nativeMissing = nativeRequest("read_asset", { path: "content/nope.yaml" });
 if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeAssets.response.result?.assets?.length < 1 ||
     nativeCatalog.response.ok !== true || !nativeCatalog.response.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -436,6 +433,8 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeRead.response.result?.name !== "HealthBehavior" ||
     nativeValidation.response.result?.valid !== true ||
     nativeRegistry.response.result?.nodes?.length < 1 ||
+    defaultRegistry.response.result?.nodes !== undefined ||
+    !(defaultRegistry.response.result?.components?.length > 0) ||
     nativeMissing.status !== 6 || nativeMissing.response.error?.code !== "asset_not_found") {
   throw new Error("native controller smoke checks failed");
 }
@@ -444,7 +443,8 @@ const systemRoot = mkdtempSync(join(tmpdir(), "chibi-system-"));
 try {
   const systemDirectory = join(systemRoot, "content", "systems");
   mkdirSync(systemDirectory, { recursive: true });
-  const systemPath = join(systemDirectory, "MovementSystem.json");
+  // Asset files are YAML, and loaders also accept JSON documents.
+  const systemPath = join(systemDirectory, "MovementSystem.yaml");
   const systemDocument = JSON.parse(readFileSync(
     resolve(root, "test/fixtures/systems/MovementSystem.json"),
     "utf8"
@@ -474,7 +474,7 @@ try {
 
 const queryRoot = mkdtempSync(join(tmpdir(), "chibi-query-fusion-"));
 try {
-  const document = JSON.parse(readFileSync(resolve(root, "content/behaviors/ArenaWaveBehavior.json"), "utf8"));
+  const document = nativeRequest("read_asset", { kind: "behavior", name: "ArenaWaveBehavior" }).response.result.document;
   const query = document.graphs.find((graph) => graph.name === "Count Members Snapshot");
   if (!query) throw new Error("query fusion fixture is missing");
   document.name = "QueryFusionCheck";
@@ -482,7 +482,7 @@ try {
   document.graphs = [{ ...document.graphs[0], nodes: [], edges: [] }, query];
   const directory = join(queryRoot, "content", "behaviors");
   mkdirSync(directory, { recursive: true });
-  writeFileSync(join(directory, "QueryFusionCheck.json"), JSON.stringify(document));
+  writeFileSync(join(directory, "QueryFusionCheck.yaml"), JSON.stringify(document));
   const inspected = nativeRequestAt(queryRoot, "inspect_graph", {
     kind: "behavior", name: "QueryFusionCheck", graph_name: query.name,
   });
@@ -494,7 +494,7 @@ try {
     const notes = result?.diagnostics?.filter((item) => item.rule_name === "PERF-QUERY-FUSION");
     if (!result?.valid || result.notes !== 4 || result.warnings !== 0 || notes?.length !== 4 ||
         notes.some((item) => item.severity !== "note" || item.graph !== query.id ||
-          !nodes.some((node) => node.id === item.node && node.inputs.some((pin) => pin.id === item.pin)))) {
+          !nodes.some((node) => node.id === item.node) || !String(item.pin).startsWith(`${item.node}.`))) {
       throw new Error(`query fusion diagnostics lost severity or source identity: ${JSON.stringify(result)}`);
     }
   }
@@ -506,18 +506,18 @@ const scenarioRoot = mkdtempSync(join(tmpdir(), "chibi-scenario-"));
 try {
   const prototypeDirectory = join(scenarioRoot, "content", "prototypes");
   mkdirSync(prototypeDirectory, { recursive: true });
-  const prototype = JSON.parse(readFileSync(
-    resolve(root, "test/fixtures/content/prototypes/Editor2DPreview.json"), "utf8"
-  ));
+  const prototype = nativeRequestAt(resolve(root, "test/fixtures"), "read_asset", {
+    kind: "prototype", name: "Editor2DPreview",
+  }).response.result.document;
   prototype.components.GameInput = { move: { x: 0, y: 0 } };
   prototype.components.GameVelocity = { x: 0, y: 0 };
   prototype.behaviors = ["ReplayInput"];
-  writeFileSync(join(prototypeDirectory, "Editor2DPreview.json"), JSON.stringify(prototype));
+  writeFileSync(join(prototypeDirectory, "Editor2DPreview.yaml"), JSON.stringify(prototype));
   const behaviorDirectory = join(scenarioRoot, "content", "behaviors");
   mkdirSync(behaviorDirectory, { recursive: true });
   writeFileSync(
-    join(behaviorDirectory, "ReplayInput.json"),
-    readFileSync(resolve(root, "test/fixtures/content/behaviors/ReplayInput.json"))
+    join(behaviorDirectory, "ReplayInput.yaml"),
+    readFileSync(resolve(root, "test/fixtures/content/behaviors/ReplayInput.yaml"))
   );
   const scenarioRequests = [
     {

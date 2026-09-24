@@ -1,16 +1,9 @@
 #ifndef CHIBI_GAME_PARTICLES_H
 #define CHIBI_GAME_PARTICLES_H
 
+#include "runtime/components.h"
+
 #define GAME_PARTICLE_LIMIT 2048
-enum
-{
-    GAME_PARTICLE_ROUND,
-    GAME_PARTICLE_TRIANGLE,
-    GAME_PARTICLE_TRIANGLE_OUTLINE,
-    GAME_PARTICLE_RING,
-    GAME_PARTICLE_STREAK,
-    GAME_PARTICLE_SHAPE_COUNT
-};
 
 typedef struct game_particles game_particles;
 

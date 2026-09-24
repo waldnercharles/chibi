@@ -2,7 +2,10 @@
 
 #include "../third_party/yyjson/yyjson.h"
 #include "assets/physics_settings.h"
+#include "graph/model/registry.h"
+#include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -250,6 +253,52 @@ int game_scene_document_set_entity_retained(game_scene_document *document, int i
     return set_object_json(&document->entities[index].retained_json, json);
 }
 
+static const type_desc *component_type(const char *key)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if ((component->key && !strcmp(component->key, key)) ||
+            !strcmp(component->name, key)) {
+            return component->type;
+        }
+    }
+    return NULL;
+}
+
+static void label_enum_fields(yyjson_mut_val *object, const type_desc *type)
+{
+    for (int i = 0; type && i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        yyjson_mut_val *value = yyjson_mut_obj_get(object, field->name);
+        if (field->type == PIN_STRUCT && yyjson_mut_is_obj(value)) {
+            label_enum_fields(value, registry_type_by_name(field->type_name));
+            continue;
+        }
+        const char *label = field->type == PIN_ENUM && yyjson_mut_is_int(value)
+                              ? registry_enum_label(field->type_name, (int)yyjson_mut_get_sint(value))
+                              : NULL;
+        if (label) {
+            yyjson_mut_set_str(value, label);
+        }
+    }
+}
+
+/* Overrides keep the values they were loaded or captured with; documents
+ * spell reflected enums by label like prototypes do. */
+static yyjson_mut_val *components_value(yyjson_mut_doc *doc, yyjson_val *components)
+{
+    yyjson_mut_val *copy = yyjson_val_mut_copy(doc, components);
+    size_t i, count;
+    yyjson_mut_val *key, *value;
+    yyjson_mut_obj_foreach(copy, i, count, key, value)
+    {
+        if (yyjson_mut_is_obj(value)) {
+            label_enum_fields(value, component_type(yyjson_mut_get_str(key)));
+        }
+    }
+    return copy;
+}
+
 char *game_scene_document_save(const game_scene_document *document)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -257,13 +306,13 @@ char *game_scene_document_save(const game_scene_document *document)
     yyjson_mut_doc_set_root(json, root);
     yyjson_mut_obj_add_uint(json, root, "version", 1);
     yyjson_mut_obj_add_strcpy(json, root, "name", document->name);
-    yyjson_mut_obj_add_str(json, root, "presentation", document->perspective ? "3d" : "2d");
-    yyjson_mut_obj_add_val(
-        json,
-        root,
-        "physics",
-        game_physics_settings_write(json, document->physics)
-    );
+    if (document->perspective) {
+        yyjson_mut_obj_add_str(json, root, "presentation", "3d");
+    }
+    yyjson_mut_val *physics = game_physics_settings_write(json, document->physics);
+    if (yyjson_mut_obj_size(physics)) {
+        yyjson_mut_obj_add_val(json, root, "physics", physics);
+    }
     yyjson_mut_val *entities = yyjson_mut_arr(json);
     for (int i = 0; i < acount(document->entities); i++) {
         const game_scene_entity *entity = &document->entities[i];
@@ -273,11 +322,11 @@ char *game_scene_document_save(const game_scene_document *document)
         const char *components_json = entity->components_json ? entity->components_json
                                                               : "{}";
         yyjson_doc *components_doc = yyjson_read(components_json, strlen(components_json), 0);
-        yyjson_mut_val *components = components_doc &&
-                                             yyjson_is_obj(yyjson_doc_get_root(components_doc))
-                                       ? yyjson_val_mut_copy(json, yyjson_doc_get_root(components_doc))
-                                       : yyjson_mut_obj(json);
-        yyjson_mut_obj_add_val(json, value, "components", components);
+        yyjson_val *components = components_doc ? yyjson_doc_get_root(components_doc)
+                                                : NULL;
+        if (yyjson_is_obj(components) && yyjson_obj_size(components)) {
+            yyjson_mut_obj_add_val(json, value, "components", components_value(json, components));
+        }
         yyjson_doc_free(components_doc);
         if (entity->retained_json) {
             yyjson_doc *retained = yyjson_read(
@@ -291,16 +340,17 @@ char *game_scene_document_save(const game_scene_document *document)
                     json,
                     value,
                     "retained_components",
-                    yyjson_val_mut_copy(json, yyjson_doc_get_root(retained))
+                    components_value(json, yyjson_doc_get_root(retained))
                 );
             }
             yyjson_doc_free(retained);
         }
-        yyjson_mut_val *behaviors = yyjson_mut_arr(json);
-        for (int j = 0; j < acount(entity->behaviors); j++) {
-            yyjson_mut_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
+        if (acount(entity->behaviors)) {
+            yyjson_mut_val *behaviors = yyjson_mut_obj_add_arr(json, value, "behaviors");
+            for (int j = 0; j < acount(entity->behaviors); j++) {
+                yyjson_mut_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
+            }
         }
-        yyjson_mut_obj_add_val(json, value, "behaviors", behaviors);
         yyjson_mut_arr_add_val(entities, value);
     }
     yyjson_mut_obj_add_val(json, root, "entities", entities);
@@ -322,9 +372,8 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
         set_error(error, error_size, "scene document is missing");
         return NULL;
     }
-    yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *parsed = asset_text_read(json, error, error_size);
     if (!parsed) {
-        set_error(error, error_size, "malformed scene document");
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(parsed);

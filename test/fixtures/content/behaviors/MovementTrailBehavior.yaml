@@ -1,0 +1,214 @@
+version: 3
+name: MovementTrailBehavior
+id_counter: 196
+description: Movement emits a rear-facing ship trail at 64 particles per second; idle clears fractional carry. Frame contribution is bounded to 0.1 seconds.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: Particle Carry, type: float, type_name: float, category: Trail}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 11
+    type: Event
+    reference_name: Input
+    outputs:
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - id: 21
+    type: Call Function
+    reference_id: 2
+    reference_name: Emit Movement Trail
+    inputs:
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - {id: 41, type: Branch}
+  - id: 46
+    type: Set Variable
+    reference_id: 1
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 165
+    type: Call Pure Function
+    reference_id: 158
+    reference_name: Is Stationary
+    inputs:
+      Direction: {type: struct, type_name: CF_V2}
+    outputs:
+      Stationary: {type: bool}
+  edges:
+  - {from: 11.Then, to: 41.Exec}
+  - {from: 11.Direction, to: 21.Direction}
+  - {from: 11.Direction, to: 165.Direction}
+  - {from: 41.True, to: 46.Exec}
+  - {from: 41.False, to: 21.Exec}
+  - {from: 165.Stationary, to: 41.Condition}
+- id: 2
+  kind: function
+  name: Emit Movement Trail
+  entry_id: 14
+  return_id: 17
+  call_depth_limit: 32
+  nodes:
+  - id: 14
+    type: Function Entry
+    outputs:
+    - {id: 15, name: Then}
+    - {id: 16, name: Direction, type: struct, type_name: CF_V2, kind: data}
+  - {id: 17, type: Return}
+  - {id: 51, type: Delta Time}
+  - id: 62
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {type: float, flags: 0}
+  - id: 64
+    type: Add
+    inputs:
+    - {id: 65, name: a, flags: 0, group: 0}
+    - {id: 66, name: b, flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 68
+    type: Set Variable
+    reference_id: 1
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 73
+    type: Greater Or Equal
+    inputs: {B: 1.0}
+  - {id: 77, type: WhileLoop}
+  - {id: 82, type: Normalize Vector 2}
+  - id: 85
+    type: Multiply
+    inputs:
+      A: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: -1.0}
+    outputs:
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+  - id: 89
+    type: Multiply
+    inputs:
+      A: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 9.0}
+    outputs:
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+  - id: 93
+    type: Get_GameTransform
+    outputs:
+      Value: {flags: 0}
+  - id: 95
+    type: Add
+    inputs:
+    - {id: 96, name: a, type: struct, type_name: CF_V2, flags: 0, group: 0}
+    - {id: 97, name: b, type: struct, type_name: CF_V2, flags: 0, group: 0}
+    outputs:
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+  - id: 99
+    type: Emit Directed Particles
+    inputs:
+      Elevation: {id: 169}
+      Shape: {flags: 0}
+    outputs:
+      Then: {id: 118}
+  - id: 119
+    type: Subtract
+    inputs:
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 1.0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 123
+    type: Set Variable
+    reference_id: 1
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 153
+    type: Behavior Expression
+    reference_id: 128
+    reference_name: Emission Budget
+    inputs:
+      dt: {type: float, group: 1}
+    outputs:
+      Result: {type: float, group: 2}
+  edges:
+  - {from: 14.Then, to: 68.Exec}
+  - {from: 14.Direction, to: 82.Value}
+  - {from: 51.Seconds, to: 153.dt}
+  - {from: 62.Value, to: 64.a}
+  - {from: 62.Value, to: 73.A}
+  - {from: 62.Value, to: 119.A}
+  - {from: 64.Result, to: 68.Value}
+  - {from: 68.Then, to: 77.Exec}
+  - {from: 73.Result, to: 77.Condition}
+  - {from: 77.Body, to: 99.Exec}
+  - {from: 77.Completed, to: 17.Exec}
+  - {from: 82.Result, to: 85.A}
+  - {from: 85.Result, to: 89.A}
+  - {from: 85.Result, to: 99.Direction}
+  - {from: 89.Result, to: 95.b}
+  - {from: 93.Value, to: 95.a, conversion: game_transform_to_cf}
+  - {from: 95.Result, to: 99.Position}
+  - {from: 99.Then, to: 123.Exec}
+  - {from: 119.Result, to: 123.Value}
+  - {from: 153.Result, to: 64.b}
+- id: 128
+  kind: function
+  name: Emission Budget
+  math_expression: clamp(dt, 0, 0.10000000149011612) * 64
+  expression_mode: 1
+  entry_id: 172
+  return_id: 174
+  call_depth_limit: 64
+- id: 158
+  kind: function
+  name: Is Stationary
+  entry_id: 159
+  return_id: 163
+  call_depth_limit: 32
+  nodes:
+  - id: 25
+    type: Multiply
+    inputs:
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 29
+    type: Multiply
+    inputs:
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 33
+    type: Add
+    inputs:
+    - {id: 34, name: a, flags: 0, group: 0}
+    - {id: 35, name: b, flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - {id: 37, type: Greater Or Equal}
+  - id: 159
+    type: Function Entry
+    outputs:
+    - {id: 160, name: Direction, type: struct, type_name: CF_V2, kind: data}
+    - {id: 161, name: x, type: float, kind: data, field_source: 160, field_name: x}
+    - {id: 162, name: "y", type: float, kind: data, field_source: 160, field_name: "y"}
+  - id: 163
+    type: Return
+    inputs:
+    - {id: 164, name: Stationary, type: bool, kind: data}
+  edges:
+  - {from: 25.Result, to: 33.a}
+  - {from: 29.Result, to: 33.b}
+  - {from: 33.Result, to: 37.B}
+  - {from: 37.Result, to: 163.Stationary}
+  - {from: 159.Direction.x, to: 25.A}
+  - {from: 159.Direction.x, to: 25.B}
+  - {from: 159.Direction.y, to: 29.A}
+  - {from: 159.Direction.y, to: 29.B}

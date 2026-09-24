@@ -10,7 +10,7 @@ From the repository root:
 CHIBI_EDITOR_SOCKET=/tmp/space-cadet.sock build/chibi --project-root projects/SpaceCadet
 ```
 
-The startup scene is `content/scenes/SpaceCadet.json`. Press Play and click the
+The startup scene is `content/scenes/SpaceCadet.yaml`. Press Play and click the
 Scene viewport to give it keyboard focus.
 
 | Control | Action |

@@ -62,9 +62,9 @@ static bool audit_entry(const behavior_asset *a, graph *g, node *entry, const ch
  * Shader libraries and event declarations are supporting systems. */
 int whole_function_audit()
 {
-    behavior_asset **assets = catalog("content/behaviors/*.json");
-    behavior_asset **libraries = catalog("content/libraries/*.json");
-    behavior_asset **events = catalog("content/events/*.json");
+    behavior_asset **assets = catalog("content/behaviors/*.yaml");
+    behavior_asset **libraries = catalog("content/libraries/*.yaml");
+    behavior_asset **events = catalog("content/events/*.yaml");
     for (int i = 0; i < acount(events); i++) {
         apush(libraries, events[i]);
     }

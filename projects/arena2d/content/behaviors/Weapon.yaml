@@ -45,21 +45,19 @@ graphs:
       Exec: {id: 52, kind: exec}
       elapsed:
         id: 49
-        declaration_id: 41
         type: float
         type_name: null
         flags: 6
         group: 1
         binding: {kind: variable, variable_id: 1, source_asset: Weapon}
       dt:
-        declaration_id: 42
         type: double
         flags: 2
         group: 2
         binding: {kind: delta_time}
     outputs:
       Then: {id: 53, kind: exec}
-      Result: {id: 51, declaration_id: 43, type: float, type_name: null, flags: 2, group: 3}
+      Result: {id: 51, type: float, type_name: null, flags: 2, group: 3}
   - id: 88
     type: Branch
     inputs:
@@ -81,20 +79,18 @@ graphs:
     reference_name: vec2(x, y) + offset
     inputs:
       x:
-        declaration_id: 165
         type: float
         flags: 2
         group: 1
         binding: {kind: component_field, component: game.GameTransform, field: x}
       "y":
-        declaration_id: 166
         type: float
         flags: 2
         group: 2
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
-      offset: {declaration_id: 167, flags: 2, group: 3}
+      offset: {flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 168, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 233
     type: Call Function
     reference_id: 173
@@ -126,27 +122,19 @@ graphs:
       Exec: {id: 275, kind: exec}
       elapsed:
         id: 272
-        declaration_id: 264
         type: float
         type_name: null
         flags: 6
         group: 1
         binding: {kind: variable, variable_id: 1, source_asset: Weapon}
       cooldown:
-        declaration_id: 265
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
     outputs:
       Then: {id: 276, kind: exec}
-      Result:
-        id: 274
-        declaration_id: 266
-        type: float
-        type_name: null
-        flags: 2
-        group: 3
+      Result: {id: 274, type: float, type_name: null, flags: 2, group: 3}
   - id: 323
     type: Behavior Expression
     reference_id: 311
@@ -155,27 +143,19 @@ graphs:
       Exec: {id: 327, kind: exec}
       elapsed:
         id: 324
-        declaration_id: 316
         type: float
         type_name: null
         flags: 6
         group: 1
         binding: {kind: variable, variable_id: 1, source_asset: Weapon}
       cooldown:
-        declaration_id: 317
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameWeapon, field: cooldown}
     outputs:
       Then: {id: 328, kind: exec}
-      Result:
-        id: 326
-        declaration_id: 318
-        type: float
-        type_name: null
-        flags: 2
-        group: 3
+      Result: {id: 326, type: float, type_name: null, flags: 2, group: 3}
   - id: 363
     type: Greater Or Equal
     inputs:

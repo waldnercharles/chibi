@@ -13,13 +13,12 @@ graphs:
     reference_name: clamp(v + (rand()-0.5)*170, -900, 900)
     inputs:
       v:
-        declaration_id: 8
         type: double
         flags: 2
         group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: x}
     outputs:
-      Result: {declaration_id: 9, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - {id: 88, type: Set_GameVelocity_x}
   - id: 149
     type: Behavior Expression
@@ -27,13 +26,12 @@ graphs:
     reference_name: v-100
     inputs:
       v:
-        declaration_id: 140
         type: double
         flags: 2
         group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
     outputs:
-      Result: {declaration_id: 141, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - {id: 166, type: Set_GameVelocity_y}
   edges:
   - {from: 1.Then, to: 88.Exec}

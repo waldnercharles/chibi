@@ -62,7 +62,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
       dt: {type: float, flags: 2, group: 2}
     outputs:
-      Result: {id: 100, declaration_id: 92, type: double, flags: 2, group: 3}
+      Result: {id: 100, type: double, flags: 2, group: 3}
   edges:
   - {from: 1.Then, to: 3.Exec}
   - {from: 3.Then, to: 8.Exec}

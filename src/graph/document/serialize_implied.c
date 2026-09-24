@@ -1,4 +1,6 @@
 #include "graph/document/serialize_internal.h"
+#include "graph/model/behavior_asset.h"
+#include "graph/model/registry.h"
 #include "support/array.h"
 
 #include <stdlib.h>
@@ -60,13 +62,11 @@ static bool candidate(const pin_spec *p, yyjson_mut_val *entry)
     return false;
 }
 
-static void strip_pin(yyjson_mut_val *node_obj, const node *n, int output, int index)
+/* Rewrites an entry that lost fields the way the writer would have written it. */
+static void tidy_entry(yyjson_mut_doc *doc, yyjson_mut_val *node_obj, const node *n, int output, int index)
 {
     yyjson_mut_val *side = pin_side(node_obj, output);
     yyjson_mut_val *entry = pin_entry(side, n, output, index);
-    for (int i = 0; i < 3; i++) {
-        yyjson_mut_obj_remove_key(entry, SHAPE_KEYS[i]);
-    }
     if (yyjson_mut_is_arr(side)) {
         /* A listed pin with nothing but its ID is written as the ID. */
         if (yyjson_mut_obj_size(entry) == 1 && yyjson_mut_obj_get(entry, "id")) {
@@ -74,16 +74,35 @@ static void strip_pin(yyjson_mut_val *node_obj, const node *n, int output, int i
         }
         return;
     }
+    char key[SERIALIZE_KEY_SIZE];
+    serialize_pin_key(n, output, index, key, sizeof key);
+    yyjson_mut_val *value = yyjson_mut_obj_get(entry, "default");
+    if (doc && yyjson_mut_obj_size(entry) == 1 && value && !yyjson_mut_is_ctn(value)) {
+        /* A pin with nothing but a scalar default is written as the value. */
+        yyjson_mut_obj_replace(
+            side,
+            yyjson_mut_strcpy(doc, key),
+            yyjson_mut_obj_remove_key(entry, "default")
+        );
+        return;
+    }
     int template_count = output ? n->desc->output_count : n->desc->input_count;
     if (yyjson_mut_obj_size(entry) || index >= template_count) {
         return;
     }
-    char key[SERIALIZE_KEY_SIZE];
-    serialize_pin_key(n, output, index, key, sizeof key);
     yyjson_mut_obj_remove_key(side, key);
     if (!yyjson_mut_obj_size(side)) {
         yyjson_mut_obj_remove_key(node_obj, output ? "outputs" : "inputs");
     }
+}
+
+static void strip_pin(yyjson_mut_val *node_obj, const node *n, int output, int index)
+{
+    yyjson_mut_val *entry = pin_entry(pin_side(node_obj, output), n, output, index);
+    for (int i = 0; i < 3; i++) {
+        yyjson_mut_obj_remove_key(entry, SHAPE_KEYS[i]);
+    }
+    tidy_entry(NULL, node_obj, n, output, index);
 }
 
 static const node *json_node(const graph *g, yyjson_mut_val *node_obj)
@@ -225,4 +244,122 @@ void serialize_omit_implied_shapes(yyjson_mut_val *obj, const graph *g)
     }
     strip(obj, g, refs);
     afree(refs);
+}
+
+bool serialize_local_call(const node *n)
+{
+    return !n->reference_asset &&
+           (n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction ||
+            n->desc == &NODE_BehaviorExpression);
+}
+
+uint64_t serialize_call_declaration(const behavior_asset *asset, const node *call, int output, int index)
+{
+    const graph *target = asset && serialize_local_call(call)
+                            ? behavior_asset_find_graph(asset, call->reference_id)
+                            : NULL;
+    const node *signature = target ? graph_node_by_id(
+                                         target,
+                                         output ? target->return_id : target->entry_id
+                                     )
+                                   : NULL;
+    const pin_spec *pin = output ? &call->output_pins[index]
+                                 : &call->input_pins[index];
+    if (!signature || pin->kind != PIN_DATA || pin->field_source || !pin->name) {
+        return 0;
+    }
+    const pin_spec *pins = output ? signature->input_pins : signature->output_pins;
+    int count = output ? signature->input_count : signature->output_count;
+    for (int i = 0; i < count; i++) {
+        if (pins[i].kind == PIN_DATA && !pins[i].field_source && pins[i].name &&
+            !strcmp(pins[i].name, pin->name)) {
+            return pins[i].id;
+        }
+    }
+    return 0;
+}
+
+void serialize_derive_declarations(behavior_asset *asset)
+{
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+            node *n = asset->graphs[g]->nodes[i];
+            for (int output = 0; output < 2; output++) {
+                pin_spec *pins = output ? n->output_pins : n->input_pins;
+                for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
+                    if (pins[p].declaration_id == SERIALIZE_DERIVED_DECLARATION) {
+                        pins[p].declaration_id = serialize_call_declaration(asset, n, output, p);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Loading derives a declaration the entry omits, so the entry records one only
+ * when it differs from the derived pin, including an explicit 0. */
+static void write_declaration(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *node_obj,
+    const node *n,
+    int output,
+    int index,
+    uint64_t derived
+)
+{
+    const pin_spec *p = output ? &n->output_pins[index] : &n->input_pins[index];
+    yyjson_mut_val *side = pin_side(node_obj, output);
+    yyjson_mut_val *entry = pin_entry(side, n, output, index);
+    if (!entry) {
+        return;
+    }
+    if (yyjson_mut_is_obj(entry)) {
+        if (p->declaration_id == derived) {
+            yyjson_mut_obj_remove_key(entry, "declaration_id");
+            tidy_entry(doc, node_obj, n, output, index);
+        } else if (!yyjson_mut_obj_get(entry, "declaration_id")) {
+            yyjson_mut_obj_add_uint(doc, entry, "declaration_id", p->declaration_id);
+        }
+        return;
+    }
+    if (p->declaration_id == derived) {
+        return;
+    }
+    yyjson_mut_val *expanded = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_val(
+        doc,
+        expanded,
+        yyjson_mut_is_arr(side) ? "id" : "default",
+        yyjson_mut_val_mut_copy(doc, entry)
+    );
+    yyjson_mut_obj_add_uint(doc, expanded, "declaration_id", p->declaration_id);
+    if (yyjson_mut_is_arr(side)) {
+        yyjson_mut_arr_replace(side, (size_t)index, expanded);
+        return;
+    }
+    char key[SERIALIZE_KEY_SIZE];
+    serialize_pin_key(n, output, index, key, sizeof key);
+    yyjson_mut_obj_replace(side, yyjson_mut_strcpy(doc, key), expanded);
+}
+
+void serialize_omit_derived_declarations(yyjson_mut_doc *doc, yyjson_mut_val *obj, const graph *g)
+{
+    size_t i, count;
+    yyjson_mut_val *node_obj;
+    yyjson_mut_arr_foreach(yyjson_mut_obj_get(obj, "nodes"), i, count, node_obj)
+    {
+        const node *n = json_node(g, node_obj);
+        for (int output = 0; serialize_local_call(n) && output < 2; output++) {
+            for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
+                write_declaration(
+                    doc,
+                    node_obj,
+                    n,
+                    output,
+                    p,
+                    serialize_call_declaration(g->owner, n, output, p)
+                );
+            }
+        }
+    }
 }

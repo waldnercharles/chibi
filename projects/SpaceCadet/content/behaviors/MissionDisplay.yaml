@@ -20,11 +20,11 @@ graphs:
     reference_name: lives <= 0
     inputs:
       Exec: {id: 24, kind: exec}
-      lives: {id: 22, declaration_id: 12, type: double, group: 1}
+      lives: {id: 22, type: double, group: 1}
     outputs:
       "True": {id: 25, kind: exec}
       "False": {kind: exec}
-      Result: {id: 23, declaration_id: 13, type: bool, flags: 2, group: 2}
+      Result: {id: 23, type: bool, flags: 2, group: 2}
   - id: 41
     type: Set_GameWidget_text
     inputs: {Value: GAME OVER}

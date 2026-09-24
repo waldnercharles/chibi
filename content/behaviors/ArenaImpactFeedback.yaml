@@ -39,8 +39,8 @@ graphs:
     reference_name: Spawn Surface Pulse
     inputs:
       Exec: {id: 37}
-      Prototype: {declaration_id: 3, type: name, kind: data, default: ArenaHitPulse}
-      Position: {declaration_id: 4, type: struct, type_name: GameTransform, kind: data}
+      Prototype: {type: name, kind: data, default: ArenaHitPulse}
+      Position: {type: struct, type_name: GameTransform, kind: data}
   - id: 44
     type: Event
     reference_name: Died
@@ -53,8 +53,8 @@ graphs:
     reference_name: Spawn Surface Pulse
     inputs:
       Exec: {id: 65}
-      Prototype: {declaration_id: 3, type: name, kind: data, default: ArenaDeathPulse}
-      Position: {declaration_id: 4, type: struct, type_name: GameTransform, kind: data}
+      Prototype: {type: name, kind: data, default: ArenaDeathPulse}
+      Position: {type: struct, type_name: GameTransform, kind: data}
   - id: 72
     type: Get Variable
     reference_id: 70
@@ -100,16 +100,11 @@ graphs:
     reference_name: Prepare Enemy Experience
     inputs:
       Exec: {id: 111}
-      Position: {declaration_id: 545, type: struct, type_name: GameTransform, kind: data}
-      Appearance: {declaration_id: 546, type: struct, type_name: GameGeometry3D, kind: data}
-      Material: {declaration_id: 547, type: struct, type_name: GameShader, kind: data}
-      Orientation: {declaration_id: 548, type: struct, type_name: GameOrientation, kind: data}
-      Visual:
-        id: 595
-        declaration_id: 594
-        type: struct
-        type_name: GameVisualTransform
-        kind: data
+      Position: {type: struct, type_name: GameTransform, kind: data}
+      Appearance: {type: struct, type_name: GameGeometry3D, kind: data}
+      Material: {type: struct, type_name: GameShader, kind: data}
+      Orientation: {type: struct, type_name: GameOrientation, kind: data}
+      Visual: {id: 595, type: struct, type_name: GameVisualTransform, kind: data}
     outputs:
       Then: {id: 116}
   - id: 119

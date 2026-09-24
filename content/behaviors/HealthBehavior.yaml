@@ -26,10 +26,10 @@ graphs:
     reference_id: 1001
     reference_name: Apply Damage
     inputs:
-      Current: {declaration_id: 1004, type: int, kind: data}
-      Maximum: {declaration_id: 1005, type: int, kind: data}
-      Amount: {declaration_id: 1006, type: int, kind: data}
-      Source: {declaration_id: 1007, type: handle, type_name: ecs.entity, kind: data}
+      Current: {type: int, kind: data}
+      Maximum: {type: int, kind: data}
+      Amount: {type: int, kind: data}
+      Source: {type: handle, type_name: ecs.entity, kind: data}
   - id: 1142
     type: Event
     reference_name: Died

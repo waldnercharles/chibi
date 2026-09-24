@@ -72,19 +72,19 @@ graphs:
     reference_id: 225
     reference_name: Updated Age
     inputs:
-      Age: {declaration_id: 230, flags: 2, group: 1}
-      Delta: {declaration_id: 231, flags: 2, group: 2}
+      Age: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 232, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - id: 260
     type: Behavior Expression
     reference_id: 241
     reference_name: Age Phase
     inputs:
-      Age: {declaration_id: 246, flags: 2, group: 1}
-      Delta: {declaration_id: 247, flags: 2, group: 2}
+      Age: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 248, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - id: 380
     type: Random Range
     inputs: {Min: -6.0, Max: 6.0}
@@ -99,10 +99,10 @@ graphs:
     reference_id: 396
     reference_name: Initialize Shard
     inputs:
-      scale: {id: 428, declaration_id: 421, type: float, kind: data}
-      Pitch Rate: {declaration_id: 422, type: double, kind: data}
-      Roll Rate: {declaration_id: 423, type: double, kind: data}
-      Lift: {declaration_id: 424, type: double, kind: data}
+      scale: {id: 428, type: float, kind: data}
+      Pitch Rate: {type: double, kind: data}
+      Roll Rate: {type: double, kind: data}
+      Lift: {type: double, kind: data}
     outputs:
       Then: {id: 427}
   - id: 544
@@ -110,8 +110,8 @@ graphs:
     reference_id: 436
     reference_name: Advance Shard Motion
     inputs:
-      Seconds: {id: 547, declaration_id: 542, type: float, kind: data}
-      Age: {declaration_id: 543, type: float, kind: data}
+      Seconds: {id: 547, type: float, kind: data}
+      Age: {type: float, kind: data}
     outputs:
       Then: {id: 546}
   edges:
@@ -340,58 +340,58 @@ graphs:
     reference_id: 264
     reference_name: Fade
     inputs:
-      Normalized: {declaration_id: 269, type: float, flags: 2, group: 1}
+      Normalized: {type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 270, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - id: 522
     type: Behavior Expression
     reference_id: 292
     reference_name: Position X
     inputs:
-      PositionX: {declaration_id: 297, flags: 2, group: 1}
-      VelocityX: {declaration_id: 298, flags: 2, group: 2}
-      Delta: {declaration_id: 299, flags: 2, group: 3}
+      PositionX: {flags: 2, group: 1}
+      VelocityX: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 300, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 527
     type: Behavior Expression
     reference_id: 314
     reference_name: Position Y
     inputs:
-      PositionY: {declaration_id: 319, flags: 2, group: 1}
-      VelocityY: {declaration_id: 320, flags: 2, group: 2}
-      Delta: {declaration_id: 321, flags: 2, group: 3}
+      PositionY: {flags: 2, group: 1}
+      VelocityY: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 322, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 532
     type: Behavior Expression
     reference_id: 336
     reference_name: Pitch
     inputs:
-      Pitch: {declaration_id: 341, flags: 2, group: 1}
-      PitchRate: {declaration_id: 342, flags: 2, group: 2}
-      Delta: {declaration_id: 343, flags: 2, group: 3}
+      Pitch: {flags: 2, group: 1}
+      PitchRate: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 344, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 537
     type: Behavior Expression
     reference_id: 358
     reference_name: Roll
     inputs:
-      Roll: {declaration_id: 363, flags: 2, group: 1}
-      RollRate: {declaration_id: 364, flags: 2, group: 2}
-      Delta: {declaration_id: 365, flags: 2, group: 3}
+      Roll: {flags: 2, group: 1}
+      RollRate: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 366, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 549
     type: Behavior Expression
     reference_id: 241
     reference_name: Age Phase
     inputs:
-      Age: {declaration_id: 246, flags: 2, group: 1}
-      Delta: {declaration_id: 247, flags: 2, group: 2}
+      Age: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 248, type: float, flags: 2, group: 3}
+      Result: {type: float, flags: 2, group: 3}
   - id: 553
     type: Get Variable
     reference_id: 209

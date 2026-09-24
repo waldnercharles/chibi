@@ -25,16 +25,15 @@ graphs:
       Exec: {id: 19, kind: exec}
       active:
         id: 16
-        declaration_id: 12
         type: bool
         type_name: _Bool
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
-      action: {declaration_id: 13, flags: 2, group: 2}
+      action: {flags: 2, group: 2}
     outputs:
       Then: {id: 20, kind: exec}
-      Result: {id: 18, declaration_id: 14, type: bool, flags: 2, group: 3}
+      Result: {id: 18, type: bool, flags: 2, group: 3}
   edges:
   - {from: 1.Then, to: 15.Exec}
   - {from: 4.Value, to: 15.action}

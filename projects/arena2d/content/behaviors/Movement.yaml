@@ -20,26 +20,23 @@ graphs:
       Exec: {id: 22, kind: exec}
       heading:
         id: 18
-        declaration_id: 9
         type: float
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       "y":
-        declaration_id: 10
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameAim, field: direction.y}
       x:
-        declaration_id: 11
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: GAME.GameAim, field: direction.x}
     outputs:
       Then: {id: 23, kind: exec}
-      Result: {id: 21, declaration_id: 12, type: double, flags: 2, group: 4}
+      Result: {id: 21, type: double, flags: 2, group: 4}
   - id: 102
     type: Branch
     inputs:
@@ -53,33 +50,24 @@ graphs:
       Exec: {id: 142, kind: exec}
       target:
         id: 138
-        declaration_id: 112
         type: struct
         type_name: CF_V2
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       heading:
-        declaration_id: 113
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
-        declaration_id: 114
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: game.GameMovement, field: speed}
     outputs:
       Then: {id: 143, kind: exec}
-      Result:
-        id: 141
-        declaration_id: 115
-        type: struct
-        type_name: CF_V2
-        flags: 2
-        group: 4
+      Result: {id: 141, type: struct, type_name: CF_V2, flags: 2, group: 4}
   - id: 306
     type: Behavior Expression
     reference_id: 279
@@ -88,13 +76,11 @@ graphs:
       Exec: {id: 310, kind: exec}
       x:
         id: 307
-        declaration_id: 284
         type: double
         flags: 2
         group: 1
         binding: {kind: component_field, component: game.GameInput, field: move.x}
       "y":
-        declaration_id: 285
         type: double
         flags: 2
         group: 2
@@ -102,7 +88,7 @@ graphs:
     outputs:
       "True": {id: 311, kind: exec}
       "False": {kind: exec}
-      Result: {id: 309, declaration_id: 286, type: bool, flags: 2, group: 3}
+      Result: {id: 309, type: bool, flags: 2, group: 3}
   - id: 385
     type: Behavior Expression
     reference_id: 367
@@ -111,39 +97,29 @@ graphs:
       Exec: {id: 391, kind: exec}
       target:
         id: 386
-        declaration_id: 372
         type: struct
         type_name: CF_V2
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       x:
-        declaration_id: 373
         type: float
         flags: 2
         group: 2
         binding: {kind: component_field, component: game.GameInput, field: move.x}
       "y":
-        declaration_id: 374
         type: float
         flags: 2
         group: 3
         binding: {kind: component_field, component: game.GameInput, field: move.y}
       speed:
-        declaration_id: 375
         type: double
         flags: 2
         group: 4
         binding: {kind: component_field, component: game.GameMovement, field: speed}
     outputs:
       Then: {id: 392, kind: exec}
-      Result:
-        id: 390
-        declaration_id: 376
-        type: struct
-        type_name: CF_V2
-        flags: 2
-        group: 5
+      Result: {id: 390, type: struct, type_name: CF_V2, flags: 2, group: 5}
   - id: 542
     type: Behavior Expression
     reference_id: 525
@@ -152,7 +128,6 @@ graphs:
       Exec: {id: 545, kind: exec}
       target:
         id: 543
-        declaration_id: 530
         type: struct
         type_name: CF_V2
         flags: 6
@@ -160,13 +135,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
     outputs:
       Then: {id: 546, kind: exec}
-      Result:
-        id: 544
-        declaration_id: 531
-        type: struct
-        type_name: CF_V2
-        flags: 2
-        group: 2
+      Result: {id: 544, type: struct, type_name: CF_V2, flags: 2, group: 2}
   edges:
   - {from: 1.Then, to: 17.Exec}
   - {from: 17.Then, to: 102.Exec}

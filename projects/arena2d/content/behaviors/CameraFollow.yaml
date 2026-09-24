@@ -24,29 +24,21 @@ graphs:
       Exec: {id: 55, kind: exec}
       position:
         id: 50
-        declaration_id: 15
         type: struct
         type_name: GameTransform
         flags: 6
         group: 1
         binding: {kind: component, component: game.GameTransform}
-      target: {declaration_id: 16, flags: 2, group: 2}
-      rate: {declaration_id: 17, type: double, flags: 2, group: 3, default: 6.0}
+      target: {flags: 2, group: 2}
+      rate: {type: double, flags: 2, group: 3, default: 6.0}
       dt:
-        declaration_id: 18
         type: double
         flags: 2
         group: 4
         binding: {kind: delta_time}
     outputs:
       Then: {id: 56, kind: exec}
-      Result:
-        id: 54
-        declaration_id: 19
-        type: struct
-        type_name: GameTransform
-        flags: 2
-        group: 5
+      Result: {id: 54, type: struct, type_name: GameTransform, flags: 2, group: 5}
   edges:
   - {from: 1.Then, to: 49.Exec}
   - {from: 4.Value, to: 7.Entity}

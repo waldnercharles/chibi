@@ -20,20 +20,18 @@ graphs:
       Exec: {id: 20, kind: exec}
       age:
         id: 17
-        declaration_id: 9
         type: float
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameProjectile, field: age}
       dt:
-        declaration_id: 10
         type: double
         flags: 2
         group: 2
         binding: {kind: delta_time}
     outputs:
       Then: {id: 21, kind: exec}
-      Result: {id: 19, declaration_id: 11, type: float, flags: 2, group: 3}
+      Result: {id: 19, type: float, flags: 2, group: 3}
   - id: 96
     type: Behavior Expression
     reference_id: 84
@@ -42,19 +40,17 @@ graphs:
       Exec: {id: 100, kind: exec}
       age:
         id: 97
-        declaration_id: 89
         type: double
         group: 1
         binding: {kind: component_field, component: GAME.GameProjectile, field: age}
       lifetime:
-        declaration_id: 90
         type: double
         group: 2
         binding: {kind: component_field, component: GAME.GameProjectile, field: lifetime}
     outputs:
       "True": {id: 101, kind: exec}
       "False": {kind: exec}
-      Result: {id: 99, declaration_id: 91, type: bool, flags: 2, group: 3}
+      Result: {id: 99, type: bool, flags: 2, group: 3}
   - id: 127
     type: Self
     outputs:
@@ -68,13 +64,11 @@ graphs:
       Exec: {id: 162, kind: exec}
       vx:
         id: 159
-        declaration_id: 138
         type: double
         flags: 2
         group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: x}
       vy:
-        declaration_id: 139
         type: double
         flags: 2
         group: 2
@@ -82,7 +76,7 @@ graphs:
     outputs:
       "True": {id: 163, kind: exec}
       "False": {kind: exec}
-      Result: {id: 161, declaration_id: 140, type: bool, flags: 2, group: 3}
+      Result: {id: 161, type: bool, flags: 2, group: 3}
   - id: 228
     type: Behavior Expression
     reference_id: 215
@@ -91,26 +85,23 @@ graphs:
       Exec: {id: 233, kind: exec}
       heading:
         id: 229
-        declaration_id: 220
         type: float
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       vy:
-        declaration_id: 221
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
       vx:
-        declaration_id: 222
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: GAME.GameVelocity, field: x}
     outputs:
       Then: {id: 234, kind: exec}
-      Result: {id: 232, declaration_id: 223, type: double, flags: 2, group: 4}
+      Result: {id: 232, type: double, flags: 2, group: 4}
   edges:
   - {from: 1.Then, to: 16.Exec}
   - {from: 16.Then, to: 96.Exec}

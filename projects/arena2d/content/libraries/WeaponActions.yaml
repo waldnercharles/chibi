@@ -98,11 +98,11 @@ graphs:
     reference_id: 256
     reference_name: Spawn Prototype At
     inputs:
-      Prototype: {id: 295, declaration_id: 261, type: name, type_name: null, kind: data}
-      Transform: {declaration_id: 262, type: struct, type_name: GameTransform, kind: data}
+      Prototype: {id: 295, type: name, type_name: null, kind: data}
+      Transform: {type: struct, type_name: GameTransform, kind: data}
     outputs:
       Then: {id: 294}
-      Entity: {id: 297, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
+      Entity: {id: 297, type: handle, type_name: ecs.entity, kind: data}
   edges:
   - {from: 110.Value.speed, to: 225.B}
   - {from: 133.Then, to: 247.Exec}

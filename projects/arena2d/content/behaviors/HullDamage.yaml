@@ -21,15 +21,14 @@ graphs:
       Exec: {id: 21, kind: exec}
       health:
         id: 18
-        declaration_id: 10
         type: int
         flags: 6
         group: 1
         binding: {kind: component_field, component: game.GameHealth, field: current}
-      amount: {declaration_id: 11, flags: 2, group: 2}
+      amount: {flags: 2, group: 2}
     outputs:
       Then: {id: 22, kind: exec}
-      Result: {id: 20, declaration_id: 12, type: int, flags: 2, group: 3}
+      Result: {id: 20, type: int, flags: 2, group: 3}
   - id: 88
     type: Get_GameHealth
     outputs:
@@ -41,11 +40,11 @@ graphs:
     reference_name: health <= 0
     inputs:
       Exec: {id: 109, kind: exec}
-      health: {id: 107, declaration_id: 97, type: double, group: 1}
+      health: {id: 107, type: double, group: 1}
     outputs:
       "True": {id: 110, kind: exec}
       "False": {kind: exec}
-      Result: {id: 108, declaration_id: 98, type: bool, flags: 2, group: 2}
+      Result: {id: 108, type: bool, flags: 2, group: 2}
   - id: 137
     type: Self
     outputs:

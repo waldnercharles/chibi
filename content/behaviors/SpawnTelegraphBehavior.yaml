@@ -100,8 +100,8 @@ graphs:
     reference_name: Arrive At Marker
     inputs:
       Exec: {id: 74}
-      Prototype: {declaration_id: 20, type: name, kind: data}
-      Position: {declaration_id: 21, type: struct, type_name: GameTransform, kind: data}
+      Prototype: {type: name, kind: data}
+      Position: {type: struct, type_name: GameTransform, kind: data}
   - id: 82
     type: Destroy Entity
     inputs:

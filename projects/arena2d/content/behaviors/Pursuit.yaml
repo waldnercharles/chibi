@@ -30,27 +30,24 @@ graphs:
     reference_id: 22
     reference_name: direction * speed - vec2(vx, vy)
     inputs:
-      direction: {declaration_id: 27, flags: 2, group: 1}
+      direction: {flags: 2, group: 1}
       speed:
-        declaration_id: 28
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: game.GameMovement, field: speed}
       vx:
-        declaration_id: 29
         type: float
         flags: 2
         group: 3
         binding: {kind: component_field, component: GAME.GameVelocity, field: x}
       vy:
-        declaration_id: 30
         type: float
         flags: 2
         group: 4
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
     outputs:
-      Result: {declaration_id: 31, type: struct, type_name: CF_V2, flags: 2, group: 5}
+      Result: {type: struct, type_name: CF_V2, flags: 2, group: 5}
   - id: 160
     type: Behavior Expression
     reference_id: 138
@@ -59,29 +56,21 @@ graphs:
       Exec: {id: 166, kind: exec}
       velocity:
         id: 161
-        declaration_id: 143
         type: struct
         type_name: GameVelocity
         flags: 6
         group: 1
         binding: {kind: component, component: GAME.GameVelocity}
-      delta: {declaration_id: 144, type: struct, type_name: CF_V2, flags: 2, group: 2}
-      acceleration: {declaration_id: 145, type: double, flags: 2, group: 3, default: 120.0}
+      delta: {type: struct, type_name: CF_V2, flags: 2, group: 2}
+      acceleration: {type: double, flags: 2, group: 3, default: 120.0}
       dt:
-        declaration_id: 146
         type: double
         flags: 2
         group: 4
         binding: {kind: delta_time}
     outputs:
       Then: {id: 167, kind: exec}
-      Result:
-        id: 165
-        declaration_id: 147
-        type: struct
-        type_name: GameVelocity
-        flags: 2
-        group: 5
+      Result: {id: 165, type: struct, type_name: GameVelocity, flags: 2, group: 5}
   - id: 323
     type: Behavior Expression
     reference_id: 306
@@ -90,7 +79,6 @@ graphs:
       Exec: {id: 326, kind: exec}
       velocity:
         id: 324
-        declaration_id: 311
         type: struct
         type_name: GameVelocity
         flags: 6
@@ -98,13 +86,7 @@ graphs:
         binding: {kind: component, component: GAME.GameVelocity}
     outputs:
       Then: {id: 327, kind: exec}
-      Result:
-        id: 325
-        declaration_id: 312
-        type: struct
-        type_name: GameVelocity
-        flags: 2
-        group: 2
+      Result: {id: 325, type: struct, type_name: GameVelocity, flags: 2, group: 2}
   edges:
   - {from: 1.Then, to: 13.Exec}
   - {from: 4.Found, to: 13.Condition}

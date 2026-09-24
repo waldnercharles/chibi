@@ -90,19 +90,18 @@ graphs:
     reference_name: Advance Damped Spring
     inputs:
       Exec: {id: 194}
-      Position: {declaration_id: 81, type: float, kind: data}
-      Velocity: {declaration_id: 82, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
       Target:
-        declaration_id: 83
         type: float
         kind: data
         binding: {kind: variable, variable_id: 255, source_asset: ArenaShipMotionBehavior}
-      Frequency: {declaration_id: 84, type: float, kind: data}
-      Damping: {declaration_id: 85, type: float, kind: data}
-      Delta: {declaration_id: 86, type: float, kind: data}
+      Frequency: {type: float, kind: data}
+      Damping: {type: float, kind: data}
+      Delta: {type: float, kind: data}
     outputs:
-      Position: {declaration_id: 89, type: float, kind: data}
-      Velocity: {declaration_id: 90, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
   - id: 209
     type: Set Variable
     reference_id: 5
@@ -141,27 +140,25 @@ graphs:
     reference_name: Compute Aim Basis
     inputs:
       Move:
-        declaration_id: 584
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: game.GameInput, field: move}
       Aim:
-        declaration_id: 585
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameAim, field: direction}
     outputs:
-      Strafe: {declaration_id: 586, type: double}
-      Forward: {declaration_id: 587, type: double}
+      Strafe: {type: double}
+      Forward: {type: double}
   - id: 772
     type: Call Function
     reference_id: 729
     reference_name: Advance Rolling Motion
     inputs:
-      Delta: {id: 775, declaration_id: 768, type: float, kind: data}
-      Position: {declaration_id: 769, type: float, kind: data}
-      Velocity: {declaration_id: 770, type: float, kind: data}
-      Strafe: {declaration_id: 771, type: double, kind: data}
+      Delta: {id: 775, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
+      Strafe: {type: double, kind: data}
     outputs:
       Then: {id: 774}
   - id: 836
@@ -171,14 +168,13 @@ graphs:
     inputs:
       reverseNoseLift:
         id: 839
-        declaration_id: 831
         type: float
         kind: data
         binding: {kind: variable, variable_id: 2, source_asset: ArenaShipMotionBehavior}
-      Delta: {declaration_id: 832, type: float, kind: data}
-      Frequency: {declaration_id: 833, type: float, kind: data}
-      Damping: {declaration_id: 834, type: float, kind: data}
-      forward: {declaration_id: 835, type: double, kind: data}
+      Delta: {type: float, kind: data}
+      Frequency: {type: float, kind: data}
+      Damping: {type: float, kind: data}
+      forward: {type: double, kind: data}
     outputs:
       Then: {id: 838}
   edges:
@@ -277,41 +273,41 @@ graphs:
     reference_id: 407
     reference_name: Roll Gain
     inputs:
-      Acceleration: {declaration_id: 412, flags: 2, group: 1}
-      Delta: {declaration_id: 413, flags: 2, group: 2}
+      Acceleration: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 414, type: float, flags: 2, group: 3}
+      Result: {type: float, flags: 2, group: 3}
   - id: 511
     type: Behavior Expression
     reference_id: 437
     reference_name: Desired Roll
     inputs:
-      Strafe: {declaration_id: 442, flags: 2, group: 1}
-      Speed: {declaration_id: 443, flags: 2, group: 2}
-      Rocking: {declaration_id: 444, flags: 2, group: 3}
-      Position: {declaration_id: 445, flags: 2, group: 4}
+      Strafe: {flags: 2, group: 1}
+      Speed: {flags: 2, group: 2}
+      Rocking: {flags: 2, group: 3}
+      Position: {flags: 2, group: 4}
     outputs:
-      Result: {declaration_id: 446, type: float, flags: 2, group: 5}
+      Result: {type: float, flags: 2, group: 5}
   - id: 545
     type: Behavior Expression
     reference_id: 517
     reference_name: Roll Velocity
     inputs:
-      Velocity: {declaration_id: 522, type: float, flags: 2, group: 1}
-      Gain: {declaration_id: 523, type: float, flags: 2, group: 2}
-      Desired: {declaration_id: 524, type: float, flags: 2, group: 3}
+      Velocity: {type: float, flags: 2, group: 1}
+      Gain: {type: float, flags: 2, group: 2}
+      Desired: {type: float, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 525, type: float, flags: 2, group: 4}
+      Result: {type: float, flags: 2, group: 4}
   - id: 574
     type: Behavior Expression
     reference_id: 550
     reference_name: Roll Position
     inputs:
-      Position: {declaration_id: 555, type: float, flags: 2, group: 1}
-      NewVelocity: {declaration_id: 556, type: float, flags: 2, group: 2}
-      Delta: {declaration_id: 557, type: float, flags: 2, group: 3}
+      Position: {type: float, flags: 2, group: 1}
+      NewVelocity: {type: float, flags: 2, group: 2}
+      Delta: {type: float, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 558, type: float, flags: 2, group: 4}
+      Result: {type: float, flags: 2, group: 4}
   edges:
   - {from: 265.Then, to: 270.Exec}
   - {from: 265.Position, to: 511.Position}
@@ -384,19 +380,19 @@ graphs:
     reference_id: 588
     reference_name: Aim Strafe
     inputs:
-      move: {declaration_id: 593, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      aim: {declaration_id: 594, type: struct, type_name: CF_V2, flags: 2, group: 2}
+      move: {type: struct, type_name: CF_V2, flags: 2, group: 1}
+      aim: {type: struct, type_name: CF_V2, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 595, type: float, flags: 2, group: 3}
+      Result: {type: float, flags: 2, group: 3}
   - id: 632
     type: Behavior Expression
     reference_id: 612
     reference_name: Aim Forward
     inputs:
-      move: {declaration_id: 617, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      aim: {declaration_id: 618, type: struct, type_name: CF_V2, flags: 2, group: 2}
+      move: {type: struct, type_name: CF_V2, flags: 2, group: 1}
+      aim: {type: struct, type_name: CF_V2, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 619, type: float, flags: 2, group: 3}
+      Result: {type: float, flags: 2, group: 3}
   edges:
   - {from: 580.Move, to: 608.move}
   - {from: 580.Move, to: 632.move}
@@ -448,29 +444,26 @@ graphs:
     reference_id: 256
     reference_name: Advance Face Roll
     inputs:
-      Position: {declaration_id: 258, type: float, kind: data}
-      Velocity: {declaration_id: 259, type: float, kind: data}
-      Strafe: {declaration_id: 260, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
+      Strafe: {type: float, kind: data}
       Speed:
-        declaration_id: 261
         type: float
         kind: data
         binding: {kind: variable, variable_id: 1, source_asset: ArenaShipMotionBehavior}
       Rocking:
-        declaration_id: 262
         type: float
         kind: data
         binding: {kind: variable, variable_id: 252, source_asset: ArenaShipMotionBehavior}
       Acceleration:
-        declaration_id: 263
         type: float
         kind: data
         binding: {kind: variable, variable_id: 253, source_asset: ArenaShipMotionBehavior}
-      Delta: {declaration_id: 264, type: float, kind: data}
+      Delta: {type: float, kind: data}
     outputs:
-      Position: {declaration_id: 267, type: float, kind: data}
-      Velocity: {declaration_id: 268, type: float, kind: data}
-      Face: {declaration_id: 269, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
+      Face: {type: float, kind: data}
   - id: 753
     type: Set Variable
     reference_id: 5
@@ -527,22 +520,20 @@ graphs:
     reference_name: Advance Damped Spring
     inputs:
       Position:
-        declaration_id: 81
         type: float
         kind: data
         binding: {kind: variable, variable_id: 7, source_asset: ArenaShipMotionBehavior}
       Velocity:
-        declaration_id: 82
         type: float
         kind: data
         binding: {kind: variable, variable_id: 8, source_asset: ArenaShipMotionBehavior}
-      Target: {declaration_id: 83, type: float, kind: data}
-      Frequency: {declaration_id: 84, type: float, kind: data}
-      Damping: {declaration_id: 85, type: float, kind: data}
-      Delta: {declaration_id: 86, type: float, kind: data}
+      Target: {type: float, kind: data}
+      Frequency: {type: float, kind: data}
+      Damping: {type: float, kind: data}
+      Delta: {type: float, kind: data}
     outputs:
-      Position: {declaration_id: 89, type: float, kind: data}
-      Velocity: {declaration_id: 90, type: float, kind: data}
+      Position: {type: float, kind: data}
+      Velocity: {type: float, kind: data}
   - id: 803
     type: Set Variable
     reference_id: 7
@@ -568,10 +559,10 @@ graphs:
     reference_id: 641
     reference_name: Nose Lift Target
     inputs:
-      forward: {declaration_id: 646, type: double, flags: 2, group: 1}
-      reverseNoseLift: {declaration_id: 647, type: float, flags: 2, group: 2}
+      forward: {type: double, flags: 2, group: 1}
+      reverseNoseLift: {type: float, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 648, type: double, flags: 2, group: 3}
+      Result: {type: double, flags: 2, group: 3}
   edges:
   - {from: 784.Exec, to: 792.Exec}
   - {from: 784.reverseNoseLift, to: 827.reverseNoseLift}

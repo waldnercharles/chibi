@@ -59,7 +59,7 @@ graphs:
     reference_name: Start Collection
     inputs:
       Exec: {id: 218}
-      Radius: {declaration_id: 145, type: float, kind: data, default: 10000.0}
+      Radius: {type: float, kind: data, default: 10000.0}
   - id: 449
     type: Event
     reference_name: Begin
@@ -177,7 +177,7 @@ graphs:
     reference_name: Start Collection
     inputs:
       Exec: {id: 146}
-      Radius: {declaration_id: 145, type: float, kind: data, default: 48.0}
+      Radius: {type: float, kind: data, default: 48.0}
   - id: 474
     type: Smooth Step
     inputs:
@@ -217,41 +217,40 @@ graphs:
     reference_id: 512
     reference_name: Pulse Angle
     inputs:
-      Eased: {declaration_id: 517, type: double, flags: 2, group: 1}
+      Eased: {type: double, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 518, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - id: 569
     type: Behavior Expression
     reference_id: 536
     reference_name: Pulse Fade
     inputs:
-      Lifetime: {declaration_id: 541, type: float, flags: 2, group: 1}
-      UpdatedAge: {declaration_id: 542, type: float, flags: 2, group: 2}
+      Lifetime: {type: float, flags: 2, group: 1}
+      UpdatedAge: {type: float, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 543, type: float, flags: 2, group: 3}
+      Result: {type: float, flags: 2, group: 3}
   - id: 585
     type: Behavior Expression
     reference_id: 573
     reference_name: Pulse Yaw
     inputs:
-      Angle: {declaration_id: 578, type: double, flags: 2, group: 1}
+      Angle: {type: double, flags: 2, group: 1}
       BaseRotation:
-        declaration_id: 579
         type: float
         flags: 2
         group: 2
         binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
     outputs:
-      Result: {declaration_id: 580, type: double, flags: 2, group: 3}
+      Result: {type: double, flags: 2, group: 3}
   - id: 618
     type: Behavior Expression
     reference_id: 589
     reference_name: Pulse Scale
     inputs:
-      Angle: {declaration_id: 594, type: double, flags: 2, group: 1}
-      Fade: {declaration_id: 595, type: float, flags: 2, group: 2}
+      Angle: {type: double, flags: 2, group: 1}
+      Fade: {type: float, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 596, type: double, flags: 2, group: 3}
+      Result: {type: double, flags: 2, group: 3}
   edges:
   - {from: 3.Then, to: 55.Exec}
   - {from: 41.Value.age, to: 49.A}
@@ -409,89 +408,87 @@ graphs:
     reference_id: 622
     reference_name: Spiral T
     inputs:
-      CollectionAge: {declaration_id: 627, type: float, flags: 2, group: 1}
+      CollectionAge: {type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 628, type: float, flags: 2, group: 2}
+      Result: {type: float, flags: 2, group: 2}
   - id: 660
     type: Behavior Expression
     reference_id: 639
     reference_name: Spiral Angle
     inputs:
-      T: {declaration_id: 644, type: float, flags: 2, group: 1}
+      T: {type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 645, type: float, flags: 2, group: 2}
+      Result: {type: float, flags: 2, group: 2}
   - id: 706
     type: Behavior Expression
     reference_id: 663
     reference_name: Spiral Weight
     inputs:
-      T: {declaration_id: 668, type: float, flags: 2, group: 1}
+      T: {type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 669, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - id: 784
     type: Behavior Expression
     reference_id: 709
     reference_name: Spiral X
     inputs:
-      TargetX: {declaration_id: 714, flags: 2, group: 1}
-      Weight: {declaration_id: 715, type: double, flags: 2, group: 2}
-      OriginX: {declaration_id: 716, flags: 2, group: 3}
-      Theta: {declaration_id: 717, type: float, flags: 2, group: 4}
-      OriginY: {declaration_id: 718, flags: 2, group: 5}
-      TargetY: {declaration_id: 719, flags: 2, group: 6}
-      T: {declaration_id: 720, type: float, flags: 2, group: 7}
+      TargetX: {flags: 2, group: 1}
+      Weight: {type: double, flags: 2, group: 2}
+      OriginX: {flags: 2, group: 3}
+      Theta: {type: float, flags: 2, group: 4}
+      OriginY: {flags: 2, group: 5}
+      TargetY: {flags: 2, group: 6}
+      T: {type: float, flags: 2, group: 7}
     outputs:
-      Result: {declaration_id: 721, flags: 2, group: 8}
+      Result: {flags: 2, group: 8}
   - id: 868
     type: Behavior Expression
     reference_id: 793
     reference_name: Spiral Y
     inputs:
-      TargetY: {declaration_id: 798, flags: 2, group: 1}
-      Weight: {declaration_id: 799, type: double, flags: 2, group: 2}
-      OriginX: {declaration_id: 800, flags: 2, group: 3}
-      TargetX: {declaration_id: 801, flags: 2, group: 4}
-      Theta: {declaration_id: 802, type: float, flags: 2, group: 5}
-      OriginY: {declaration_id: 803, flags: 2, group: 6}
-      T: {declaration_id: 804, type: float, flags: 2, group: 7}
+      TargetY: {flags: 2, group: 1}
+      Weight: {type: double, flags: 2, group: 2}
+      OriginX: {flags: 2, group: 3}
+      TargetX: {flags: 2, group: 4}
+      Theta: {type: float, flags: 2, group: 5}
+      OriginY: {flags: 2, group: 6}
+      T: {type: float, flags: 2, group: 7}
     outputs:
-      Result: {declaration_id: 805, flags: 2, group: 8}
+      Result: {flags: 2, group: 8}
   - id: 889
     type: Behavior Expression
     reference_id: 877
     reference_name: Spiral Yaw
     inputs:
       BaseRotation:
-        declaration_id: 882
         type: float
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
-      Theta: {declaration_id: 883, type: float, flags: 2, group: 2}
+      Theta: {type: float, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 884, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - id: 914
     type: Behavior Expression
     reference_id: 893
     reference_name: Spiral Scale
     inputs:
-      T: {declaration_id: 898, type: float, flags: 2, group: 1}
+      T: {type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 899, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - id: 929
     type: Behavior Expression
     reference_id: 917
     reference_name: Collection Age
     inputs:
-      CollectionAge: {declaration_id: 922, flags: 2, group: 1}
+      CollectionAge: {flags: 2, group: 1}
       Delta:
-        declaration_id: 923
         type: float
         flags: 2
         group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 924, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   edges:
   - {from: 8.Then, to: 237.Exec}
   - {from: 223.Value.collection_age, to: 929.CollectionAge}

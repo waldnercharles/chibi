@@ -27,11 +27,11 @@ graphs:
     reference_id: 10
     reference_name: point + direction * inset
     inputs:
-      point: {declaration_id: 15, flags: 2, group: 1}
-      direction: {declaration_id: 16, flags: 2, group: 2}
-      inset: {declaration_id: 17, type: double, flags: 2, group: 3, default: 0.5}
+      point: {flags: 2, group: 1}
+      direction: {flags: 2, group: 2}
+      inset: {type: double, flags: 2, group: 3, default: 0.5}
     outputs:
-      Result: {declaration_id: 18, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 66
     type: Damage Material
     inputs: {Radius: 4.0, Energy: 1.0}

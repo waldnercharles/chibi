@@ -57,7 +57,7 @@ graphs:
     reference_id: 2015
     reference_name: Advance Wave
     inputs:
-      Arena Center: {declaration_id: 2018, type: struct, type_name: CF_V2, kind: data}
+      Arena Center: {type: struct, type_name: CF_V2, kind: data}
   edges:
   - {from: 2027.Then, to: 2029.Exec}
   - {from: 2029.Then, to: 2044.Exec}
@@ -218,9 +218,9 @@ graphs:
     reference_id: 3339
     reference_name: Count Members Snapshot
     outputs:
-      Enemy Count: {declaration_id: 3344, type: int, kind: data}
-      Player Alive: {declaration_id: 3345, type: bool, kind: data}
-      Pending Deaths: {declaration_id: 3346, type: bool, kind: data}
+      Enemy Count: {type: int, kind: data}
+      Player Alive: {type: bool, kind: data}
+      Pending Deaths: {type: bool, kind: data}
   - id: 3384
     type: Set Variable
     reference_id: 2003
@@ -321,8 +321,8 @@ graphs:
     reference_id: 2021
     reference_name: Spawn Telegraph
     inputs:
-      Arena Center: {declaration_id: 2024, type: struct, type_name: CF_V2, kind: data}
-      Index: {id: 3338, declaration_id: 3337, type: int, kind: data}
+      Arena Center: {type: struct, type_name: CF_V2, kind: data}
+      Index: {id: 3338, type: int, kind: data}
     outputs:
       Then: {id: 2249}
   - id: 2250
@@ -435,11 +435,11 @@ graphs:
     reference_name: Formation Position
     inputs:
       Exec: {id: 2600}
-      Center: {declaration_id: 2423, type: struct, type_name: CF_V2, kind: data}
-      Index: {declaration_id: 2424, type: int, kind: data}
-      Pattern: {declaration_id: 2425, type: int, kind: data}
+      Center: {type: struct, type_name: CF_V2, kind: data}
+      Index: {type: int, kind: data}
+      Pattern: {type: int, kind: data}
     outputs:
-      Position: {declaration_id: 2428, type: struct, type_name: GameTransform, kind: data}
+      Position: {type: struct, type_name: GameTransform, kind: data}
       Position.x: {id: 2627}
       Position.y: {}
   - id: 2610
@@ -630,50 +630,50 @@ graphs:
     reference_id: 2651
     reference_name: Row Formation
     inputs:
-      Center: {declaration_id: 2656, type: struct, type_name: CF_V2}
-      Index: {declaration_id: 2657, type: double}
-      Direction: {declaration_id: 2658, type: float, default: 1.0}
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Direction: {type: float, default: 1.0}
     outputs:
-      Position: {declaration_id: 2659, type: struct, type_name: GameTransform}
+      Position: {type: struct, type_name: GameTransform}
   - id: 3135
     type: Call Pure Function
     reference_id: 2651
     reference_name: Row Formation
     inputs:
-      Center: {declaration_id: 2656, type: struct, type_name: CF_V2}
-      Index: {declaration_id: 2657, type: double}
-      Direction: {declaration_id: 2658, type: float, default: -1.0}
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Direction: {type: float, default: -1.0}
     outputs:
-      Position: {declaration_id: 2659, type: struct, type_name: GameTransform}
+      Position: {type: struct, type_name: GameTransform}
   - id: 3140
     type: Call Pure Function
     reference_id: 2777
     reference_name: Side Formation
     inputs:
-      Center: {declaration_id: 2782, type: struct, type_name: CF_V2}
-      Index: {declaration_id: 2783, type: double}
-      Side: {declaration_id: 2784, type: float, default: -1.0}
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Side: {type: float, default: -1.0}
     outputs:
-      Position: {declaration_id: 2785, type: struct, type_name: GameTransform}
+      Position: {type: struct, type_name: GameTransform}
   - id: 3145
     type: Call Pure Function
     reference_id: 2777
     reference_name: Side Formation
     inputs:
-      Center: {declaration_id: 2782, type: struct, type_name: CF_V2}
-      Index: {declaration_id: 2783, type: double}
-      Side: {declaration_id: 2784, type: float, default: 1.0}
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Side: {type: float, default: 1.0}
     outputs:
-      Position: {declaration_id: 2785, type: struct, type_name: GameTransform}
+      Position: {type: struct, type_name: GameTransform}
   - id: 3150
     type: Call Pure Function
     reference_id: 2906
     reference_name: Ellipse Formation
     inputs:
-      Center: {declaration_id: 2911, type: struct, type_name: CF_V2}
-      Index: {declaration_id: 2912, type: double}
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
     outputs:
-      Position: {declaration_id: 2913, type: struct, type_name: GameTransform}
+      Position: {type: struct, type_name: GameTransform}
   - {id: 3326, type: To Real}
   edges:
   - {from: 2426.Then, to: 2454.Exec}
@@ -737,20 +737,20 @@ graphs:
     reference_id: 2660
     reference_name: Row X
     inputs:
-      Center: {declaration_id: 2665, flags: 2, group: 1}
-      Direction: {declaration_id: 2666, flags: 2, group: 2}
-      Index: {declaration_id: 2667, flags: 2, group: 3}
+      Center: {flags: 2, group: 1}
+      Direction: {flags: 2, group: 2}
+      Index: {flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 2668, flags: 2, group: 4}
+      Result: {flags: 2, group: 4}
   - id: 2715
     type: Behavior Expression
     reference_id: 2696
     reference_name: Row Y
     inputs:
-      Center: {declaration_id: 2701, flags: 2, group: 1}
-      Direction: {declaration_id: 2702, flags: 2, group: 2}
+      Center: {flags: 2, group: 1}
+      Direction: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2703, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - {id: 2773, type: Make_GameTransform}
   edges:
   - {from: 2652.Center, to: 2691.Center}
@@ -799,19 +799,19 @@ graphs:
     reference_id: 2786
     reference_name: Side X
     inputs:
-      Center: {declaration_id: 2791, flags: 2, group: 1}
-      Side: {declaration_id: 2792, flags: 2, group: 2}
+      Center: {flags: 2, group: 1}
+      Side: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2793, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - id: 2842
     type: Behavior Expression
     reference_id: 2809
     reference_name: Side Y
     inputs:
-      Center: {declaration_id: 2814, flags: 2, group: 1}
-      Index: {declaration_id: 2815, flags: 2, group: 2}
+      Center: {flags: 2, group: 1}
+      Index: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2816, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - {id: 2902, type: Make_GameTransform}
   edges:
   - {from: 2778.Center, to: 2805.Center}
@@ -858,19 +858,19 @@ graphs:
     reference_id: 2914
     reference_name: Ellipse X
     inputs:
-      Center: {declaration_id: 2919, flags: 2, group: 1}
-      Index: {declaration_id: 2920, flags: 2, group: 2}
+      Center: {flags: 2, group: 1}
+      Index: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2921, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - id: 3018
     type: Behavior Expression
     reference_id: 2968
     reference_name: Ellipse Y
     inputs:
-      Center: {declaration_id: 2973, flags: 2, group: 1}
-      Index: {declaration_id: 2974, flags: 2, group: 2}
+      Center: {flags: 2, group: 1}
+      Index: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2975, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - {id: 3126, type: Make_GameTransform}
   edges:
   - {from: 2907.Center, to: 2964.Center}

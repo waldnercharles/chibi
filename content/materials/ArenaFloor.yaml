@@ -60,15 +60,13 @@ graphs:
     reference_name: Triangle Center
     inputs:
       Position:
-        declaration_id: 276
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {declaration_id: 277, type: float, type_name: null, default: 20.0}
+      Tile Size: {type: float, type_name: null, default: 20.0}
     outputs:
       Center:
-        declaration_id: 279
         type: struct
         type_name: ShaderVec3
         flags: 64
@@ -89,13 +87,12 @@ graphs:
     reference_name: Activity Strength
     inputs:
       Color:
-        declaration_id: 626
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
     outputs:
-      Strength: {declaration_id: 628, type: float, type_name: null}
+      Strength: {type: float, type_name: null}
   - {id: 679, type: Shader Beat Pulse}
   - id: 681
     type: Shader Mix
@@ -125,40 +122,30 @@ graphs:
     reference_name: Triangle Border
     inputs:
       Position:
-        declaration_id: 503
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {declaration_id: 504, type: float, type_name: null, default: 16.0}
-      Scale: {declaration_id: 505, type: float, type_name: null, default: 0.25}
-      Width:
-        declaration_id: 506
-        type: float
-        type_name: null
-        default: 0.012000000104308128
+      Tile Size: {type: float, type_name: null, default: 16.0}
+      Scale: {type: float, type_name: null, default: 0.25}
+      Width: {type: float, type_name: null, default: 0.012000000104308128}
     outputs:
-      Mask: {declaration_id: 508, type: float, type_name: null}
+      Mask: {type: float, type_name: null}
   - id: 700
     type: Call Pure Function
     reference_id: 501
     reference_name: Triangle Border
     inputs:
       Position:
-        declaration_id: 503
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {declaration_id: 504, type: float, type_name: null, default: 16.0}
-      Scale: {declaration_id: 505, type: float, type_name: null, default: 0.25}
-      Width:
-        declaration_id: 506
-        type: float
-        type_name: null
-        default: 0.012000000104308128
+      Tile Size: {type: float, type_name: null, default: 16.0}
+      Scale: {type: float, type_name: null, default: 0.25}
+      Width: {type: float, type_name: null, default: 0.012000000104308128}
     outputs:
-      Mask: {declaration_id: 508, type: float, type_name: null}
+      Mask: {type: float, type_name: null}
   - id: 706
     type: Shader Multiply
     inputs:
@@ -264,20 +251,15 @@ graphs:
     reference_name: Triangle Border
     inputs:
       Position:
-        declaration_id: 503
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {declaration_id: 504, type: float, type_name: null, default: 16.0}
-      Scale: {declaration_id: 505, type: float, type_name: null, default: 1.0}
-      Width:
-        declaration_id: 506
-        type: float
-        type_name: null
-        default: 0.012000000104308128
+      Tile Size: {type: float, type_name: null, default: 16.0}
+      Scale: {type: float, type_name: null, default: 1.0}
+      Width: {type: float, type_name: null, default: 0.012000000104308128}
     outputs:
-      Mask: {declaration_id: 508, type: float, type_name: null}
+      Mask: {type: float, type_name: null}
   - id: 745
     type: Shader Max
     inputs:

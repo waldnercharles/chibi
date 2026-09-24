@@ -709,6 +709,7 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     if (!derived_body(g)) {
         write_graph_body(doc, obj, g, NULL, 0);
         serialize_omit_implied_shapes(obj, g);
+        serialize_omit_derived_declarations(doc, obj, g);
     }
     yyjson_mut_arr_add_val(graphs, obj);
 }

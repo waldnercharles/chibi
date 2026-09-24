@@ -72,7 +72,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       dt: {type: float, flags: 2, group: 4}
     outputs:
-      Result: {id: 55, declaration_id: 47, type: double, flags: 2, group: 5}
+      Result: {id: 55, type: double, flags: 2, group: 5}
   - {id: 219, type: Set_GameVelocity_x}
   - {id: 225, type: Set_GameVelocity_y}
   - id: 243
@@ -109,7 +109,7 @@ graphs:
         group: 6
         binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
-      Result: {id: 246, declaration_id: 238, type: double, flags: 2, group: 7}
+      Result: {id: 246, type: double, flags: 2, group: 7}
   - id: 376
     type: Behavior Expression
     reference_id: 364
@@ -144,7 +144,7 @@ graphs:
         group: 6
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-      Result: {id: 379, declaration_id: 371, type: double, flags: 2, group: 7}
+      Result: {id: 379, type: double, flags: 2, group: 7}
   - id: 498
     type: Set Variable
     reference_id: 497

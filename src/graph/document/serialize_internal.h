@@ -48,6 +48,13 @@ int serialize_migrate_component_reads(graph *g);
 graph *serialize_load_graph_body(yyjson_val *obj, uint64_t id_counter);
 /* Drops wildcard pin shapes that loading the written graph reproduces. */
 void serialize_omit_implied_shapes(yyjson_mut_val *obj, const graph *g);
+/* A local call's pin declares the signature pin with its name. Asset loading
+ * marks pins whose document omits a declaration and then derives it. */
+#define SERIALIZE_DERIVED_DECLARATION UINT64_MAX
+bool serialize_local_call(const node *n);
+uint64_t serialize_call_declaration(const behavior_asset *asset, const node *call, int output, int index);
+void serialize_derive_declarations(behavior_asset *asset);
+void serialize_omit_derived_declarations(yyjson_mut_doc *doc, yyjson_mut_val *obj, const graph *g);
 int serialize_repair_math_calls(behavior_asset *asset);
 
 #endif

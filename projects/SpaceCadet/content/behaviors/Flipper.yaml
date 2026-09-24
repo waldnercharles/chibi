@@ -77,31 +77,27 @@ graphs:
     reference_name: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
     inputs:
       rest:
-        declaration_id: 45
         type: double
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       stroke:
-        declaration_id: 46
         type: double
         flags: 2
         group: 2
         binding: {kind: variable, variable_id: 4, source_asset: Flipper}
       angle:
-        declaration_id: 47
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       dt:
-        declaration_id: 48
         type: double
         flags: 2
         group: 4
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 49, type: double, flags: 2, group: 5}
+      Result: {type: double, flags: 2, group: 5}
   - {id: 346, type: Set_GameBody_angular_velocity}
   - id: 468
     type: Behavior Expression
@@ -109,43 +105,37 @@ graphs:
     reference_name: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
     inputs:
       origin:
-        declaration_id: 417
         type: double
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 2, source_asset: Flipper}
       angle:
-        declaration_id: 418
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
-        declaration_id: 419
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
       dt:
-        declaration_id: 420
         type: double
         flags: 2
         group: 4
         binding: {kind: delta_time}
       rest:
-        declaration_id: 421
         type: double
         flags: 2
         group: 5
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       position:
-        declaration_id: 422
         type: double
         flags: 2
         group: 6
         binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
-      Result: {declaration_id: 423, type: double, flags: 2, group: 7}
+      Result: {type: double, flags: 2, group: 7}
   - {id: 812, type: Set_GameVelocity_x}
   - id: 930
     type: Behavior Expression
@@ -153,43 +143,37 @@ graphs:
     reference_name: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
     inputs:
       origin:
-        declaration_id: 879
         type: double
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 3, source_asset: Flipper}
       angle:
-        declaration_id: 880
         type: double
         flags: 2
         group: 2
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
-        declaration_id: 881
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
       dt:
-        declaration_id: 882
         type: double
         flags: 2
         group: 4
         binding: {kind: delta_time}
       rest:
-        declaration_id: 883
         type: double
         flags: 2
         group: 5
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       position:
-        declaration_id: 884
         type: double
         flags: 2
         group: 6
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-      Result: {declaration_id: 885, type: double, flags: 2, group: 7}
+      Result: {type: double, flags: 2, group: 7}
   - {id: 1274, type: Set_GameVelocity_y}
   edges:
   - {from: 5.Then, to: 7.Exec}

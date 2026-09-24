@@ -23,12 +23,12 @@ graphs:
     reference_name: ready > 0.5 && lives > 0
     inputs:
       Exec: {id: 40, kind: exec}
-      ready: {id: 37, declaration_id: 15, type: double, group: 1}
-      lives: {declaration_id: 16, type: double, group: 2}
+      ready: {id: 37, type: double, group: 1}
+      lives: {type: double, group: 2}
     outputs:
       "True": {id: 41, kind: exec}
       "False": {kind: exec}
-      Result: {id: 39, declaration_id: 17, type: bool, flags: 2, group: 3}
+      Result: {id: 39, type: bool, flags: 2, group: 3}
   - id: 95
     type: Branch
     inputs:
@@ -44,15 +44,14 @@ graphs:
     reference_id: 103
     reference_name: min(charge + dt, 1)
     inputs:
-      charge: {declaration_id: 108, type: double, flags: 2, group: 1}
+      charge: {type: double, flags: 2, group: 1}
       dt:
-        declaration_id: 109
         type: double
         flags: 2
         group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 110, type: double, flags: 2, group: 3}
+      Result: {type: double, flags: 2, group: 3}
   - id: 164
     type: Set Global Variable
     inputs:
@@ -66,19 +65,19 @@ graphs:
     reference_name: charge > 0.01
     inputs:
       Exec: {id: 206, kind: exec}
-      charge: {id: 204, declaration_id: 194, type: double, group: 1}
+      charge: {id: 204, type: double, group: 1}
     outputs:
       "True": {id: 207, kind: exec}
       "False": {kind: exec}
-      Result: {id: 205, declaration_id: 195, type: bool, flags: 2, group: 2}
+      Result: {id: 205, type: bool, flags: 2, group: 2}
   - id: 247
     type: Behavior Expression
     reference_id: 223
     reference_name: -800 - 230 * charge
     inputs:
-      charge: {declaration_id: 228, type: double, flags: 2, group: 1}
+      charge: {type: double, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 229, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - {id: 274, type: Set_GameVelocity_y}
   - {id: 304, type: Set_GameVelocity_x}
   - id: 310

@@ -29,8 +29,8 @@ graphs:
     reference_name: Spawn Surface Pulse
     inputs:
       Exec: {id: 489}
-      Prototype: {declaration_id: 3, type: name, kind: data, default: ArenaDeathPulse}
-      Position: {declaration_id: 4, type: struct, type_name: GameTransform, kind: data}
+      Prototype: {type: name, kind: data, default: ArenaDeathPulse}
+      Position: {type: struct, type_name: GameTransform, kind: data}
   - id: 502
     type: Call Function
     reference_id: 102
@@ -38,32 +38,27 @@ graphs:
     inputs:
       Exec: {id: 496}
       Position:
-        declaration_id: 104
         type: struct
         type_name: GameTransform
         kind: data
         binding: {kind: component, component: game.GameTransform}
       Appearance:
-        declaration_id: 105
         type: struct
         type_name: GameGeometry3D
         kind: data
         binding: {kind: component, component: GAME.GameGeometry3D}
       Material:
-        declaration_id: 106
         type: struct
         type_name: GameShader
         kind: data
         binding: {kind: component, component: GAME.GameShader}
       Orientation:
-        declaration_id: 107
         type: struct
         type_name: GameOrientation
         kind: data
         binding: {kind: component, component: GAME.GameOrientation}
       Visual:
         id: 544
-        declaration_id: 543
         type: struct
         type_name: GameVisualTransform
         kind: data
@@ -177,16 +172,16 @@ graphs:
     reference_name: Spawn Source Beam
     inputs:
       Exec: {id: 571}
-      Position: {declaration_id: 558, type: struct, type_name: GameTransform, kind: data}
-      Appearance: {declaration_id: 559, type: struct, type_name: GameGeometry3D, kind: data}
-      Material: {declaration_id: 560, type: struct, type_name: GameShader, kind: data}
-      Orientation: {declaration_id: 561, type: struct, type_name: GameOrientation, kind: data}
-      Visual: {declaration_id: 562, type: struct, type_name: GameVisualTransform, kind: data}
-      Center: {declaration_id: 563, type: struct, type_name: CF_V2, kind: data}
-      Center Y: {declaration_id: 564, type: float, kind: data}
-      Width: {declaration_id: 565, type: float, kind: data}
-      Height: {declaration_id: 566, type: float, kind: data}
-      Depth: {declaration_id: 567, type: float, kind: data}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+      Appearance: {type: struct, type_name: GameGeometry3D, kind: data}
+      Material: {type: struct, type_name: GameShader, kind: data}
+      Orientation: {type: struct, type_name: GameOrientation, kind: data}
+      Visual: {type: struct, type_name: GameVisualTransform, kind: data}
+      Center: {type: struct, type_name: CF_V2, kind: data}
+      Center Y: {type: float, kind: data}
+      Width: {type: float, kind: data}
+      Height: {type: float, kind: data}
+      Depth: {type: float, kind: data}
       Primitive: {id: 877, type: int, kind: data}
     outputs:
       Then: {id: 582}

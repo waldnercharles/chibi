@@ -38,8 +38,8 @@ graphs:
     reference_id: 51
     reference_name: Impact Particles
     inputs:
-      Position: {declaration_id: 53, type: struct, type_name: GameTransform, kind: data}
-      Elevation: {id: 124, declaration_id: 54, type: float, kind: data}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+      Elevation: {id: 124, type: float, kind: data}
     outputs:
       Then: {id: 42}
   - id: 43
@@ -65,8 +65,8 @@ graphs:
     reference_id: 51
     reference_name: Impact Particles
     inputs:
-      Position: {declaration_id: 53, type: struct, type_name: GameTransform, kind: data}
-      Elevation: {declaration_id: 54, type: float, kind: data}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+      Elevation: {type: float, kind: data}
   edges:
   - {from: 1.Then, to: 46.Exec}
   - {from: 1.Other, to: 16.Entity}

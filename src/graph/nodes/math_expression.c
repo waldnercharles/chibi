@@ -1949,6 +1949,7 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
         }
         const pin_spec *entry_pin = &entry->output_pins[i];
         call->input_pins[parameter].group = entry_pin->group;
+        call->input_pins[parameter].declaration_id = entry_pin->id;
         bool retype = !(entry_pin->flags & PIN_FLAG_WILDCARD) &&
                       (call->input_pins[parameter].type != entry_pin->type ||
                        (call->input_pins[parameter].type == PIN_STRUCT &&
@@ -2024,6 +2025,7 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
             (void)rc;
         }
         call->output_pins[output].group = source->group;
+        call->output_pins[output].declaration_id = source->id;
         if (call->output_pins[output].type != source->type ||
             (source->type == PIN_STRUCT &&
              strcmp(

@@ -49,16 +49,15 @@ graphs:
     reference_id: 56
     reference_name: score + award * rank
     inputs:
-      score: {declaration_id: 61, type: float, type_name: null, flags: 2, group: 1}
+      score: {type: float, type_name: null, flags: 2, group: 1}
       award:
-        declaration_id: 62
         type: double
         flags: 2
         group: 2
         binding: {kind: variable, variable_id: 1, source_asset: Scoring}
-      rank: {declaration_id: 63, type: float, type_name: null, flags: 2, group: 3}
+      rank: {type: float, type_name: null, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 64, type: float, type_name: null, flags: 2, group: 4}
+      Result: {type: float, type_name: null, flags: 2, group: 4}
   - id: 129
     type: Set Global Variable
     inputs:
@@ -76,9 +75,9 @@ graphs:
     reference_id: 155
     reference_name: hits + 1
     inputs:
-      hits: {declaration_id: 160, type: double, flags: 2, group: 1}
+      hits: {type: double, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 161, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - id: 186
     type: Set Global Variable
     inputs:
@@ -99,20 +98,20 @@ graphs:
     reference_name: hits >= 8
     inputs:
       Exec: {id: 232, kind: exec}
-      hits: {id: 230, declaration_id: 220, type: double, group: 1}
+      hits: {id: 230, type: double, group: 1}
     outputs:
       "True": {id: 233, kind: exec}
       "False": {kind: exec}
-      Result: {id: 231, declaration_id: 221, type: bool, flags: 2, group: 2}
+      Result: {id: 231, type: bool, flags: 2, group: 2}
   - id: 268
     type: Behavior Expression
     reference_id: 249
     reference_name: score + 25000 * rank
     inputs:
-      score: {declaration_id: 254, type: float, type_name: null, flags: 2, group: 1}
-      rank: {declaration_id: 255, type: float, type_name: null, flags: 2, group: 2}
+      score: {type: float, type_name: null, flags: 2, group: 1}
+      rank: {type: float, type_name: null, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 256, type: float, type_name: null, flags: 2, group: 3}
+      Result: {type: float, type_name: null, flags: 2, group: 3}
   - id: 310
     type: Set Global Variable
     inputs:
@@ -125,9 +124,9 @@ graphs:
     reference_id: 335
     reference_name: min(rank+1,9)
     inputs:
-      rank: {declaration_id: 340, type: float, type_name: null, flags: 2, group: 1}
+      rank: {type: float, type_name: null, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 341, type: float, type_name: null, flags: 2, group: 2}
+      Result: {type: float, type_name: null, flags: 2, group: 2}
   - id: 380
     type: Set Global Variable
     inputs:

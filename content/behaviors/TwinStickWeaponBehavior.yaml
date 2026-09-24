@@ -43,7 +43,7 @@ graphs:
       Origin: {type: struct, type_name: CF_V2, kind: data}
       Direction: {type: struct, type_name: CF_V2, kind: data}
       Damage: {type: int, kind: data}
-      Prototype: {id: 235, declaration_id: 234, type: name, kind: data, default: ArenaProjectile}
+      Prototype: {id: 235, type: name, kind: data, default: ArenaProjectile}
     outputs:
       Then: {id: 202}
   - id: 211

@@ -77,26 +77,22 @@ graphs:
     reference_name: Horizontal Gradient
     inputs:
       Position:
-        declaration_id: 3
         type: struct
         type_name: ShaderVec2
         default: {x: 0.0, "y": 0.0}
       Color:
-        declaration_id: 4
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Color B:
-        declaration_id: 5
         type: struct
         type_name: ShaderVec3
         flags: 64
         default: {x: 1.0, "y": 1.0, z: 1.0}
-      Width: {declaration_id: 6, type: float, type_name: null, default: 100.0}
+      Width: {type: float, type_name: null, default: 100.0}
     outputs:
       Color:
-        declaration_id: 8
         type: struct
         type_name: ShaderVec3
         flags: 64

@@ -103,6 +103,13 @@ static int read_pin_default(graph *g, node *n, int output, int i, yyjson_val *de
 }
 
 /* Applies a pin's serialized fields over the pin it starts from. */
+static void mark_derived_declaration(const graph *g, const node *n, pin_spec *p)
+{
+    if (g->owner && serialize_local_call(n)) {
+        p->declaration_id = SERIALIZE_DERIVED_DECLARATION;
+    }
+}
+
 static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_refs *refs)
 {
     pin_spec *p = output ? &n->output_pins[i] : &n->input_pins[i];
@@ -159,6 +166,8 @@ static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_r
     yyjson_val *declaration = yyjson_obj_get(v, "declaration_id");
     if (declaration) {
         p->declaration_id = yyjson_get_uint(declaration);
+    } else {
+        mark_derived_declaration(g, n, p);
     }
     if (flags && yyjson_is_uint(flags)) {
         p->flags = (unsigned)yyjson_get_uint(flags);
@@ -321,6 +330,9 @@ static int load_pin_list(graph *g, node *n, yyjson_val *arr, int output, uint64_
             return -1;
         }
         set_explicit_id(ids, i, id);
+        if (!yyjson_is_obj(v)) {
+            mark_derived_declaration(g, n, output ? &n->output_pins[i] : &n->input_pins[i]);
+        }
         if (yyjson_is_obj(v) && apply_pin(g, n, output, i, v, refs)) {
             return -1;
         }
@@ -391,6 +403,9 @@ static int load_pin_map(graph *g, node *n, yyjson_val *map, int output, uint64_t
                                       : read_pin_default(g, n, output, i, v);
         if (failed) {
             return -1;
+        }
+        if (!yyjson_is_obj(v)) {
+            mark_derived_declaration(g, n, output ? &n->output_pins[i] : &n->input_pins[i]);
         }
     }
     return 0;
@@ -1313,6 +1328,7 @@ behavior_asset *behavior_asset_load_json(const char *json)
             goto fail;
         }
     }
+    serialize_derive_declarations(asset);
     if (serialize_repair_math_calls(asset)) {
         goto fail;
     }

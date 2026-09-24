@@ -31,46 +31,42 @@ graphs:
     reference_id: 25
     reference_name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
     inputs:
-      v: {declaration_id: 30, flags: 2, group: 1}
-      x: {declaration_id: 31, flags: 2, group: 2}
+      v: {flags: 2, group: 1}
+      x: {flags: 2, group: 2}
       sx:
-        declaration_id: 32
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: game.GameTransform, field: x}
-      "y": {declaration_id: 33, flags: 2, group: 4}
+      "y": {flags: 2, group: 4}
       sy:
-        declaration_id: 34
         type: double
         flags: 2
         group: 5
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-      Result: {declaration_id: 35, flags: 2, group: 6}
+      Result: {flags: 2, group: 6}
   - {id: 428, type: Set_GameVelocity_x}
   - id: 566
     type: Behavior Expression
     reference_id: 500
     reference_name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
     inputs:
-      v: {declaration_id: 505, flags: 2, group: 1}
-      "y": {declaration_id: 506, flags: 2, group: 2}
+      v: {flags: 2, group: 1}
+      "y": {flags: 2, group: 2}
       sy:
-        declaration_id: 507
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
-      x: {declaration_id: 508, flags: 2, group: 4}
+      x: {flags: 2, group: 4}
       sx:
-        declaration_id: 509
         type: double
         flags: 2
         group: 5
         binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
-      Result: {declaration_id: 510, flags: 2, group: 6}
+      Result: {flags: 2, group: 6}
   - {id: 903, type: Set_GameVelocity_y}
   - id: 975
     type: Event
@@ -83,19 +79,17 @@ graphs:
     reference_name: max(pulse - dt*4,0)
     inputs:
       pulse:
-        declaration_id: 983
         type: double
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
       dt:
-        declaration_id: 984
         type: double
         flags: 2
         group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 985, type: double, flags: 2, group: 3}
+      Result: {type: double, flags: 2, group: 3}
   - id: 1060
     type: Set Variable
     reference_id: 1
@@ -110,13 +104,12 @@ graphs:
     reference_name: 5+14*pulse
     inputs:
       pulse:
-        declaration_id: 1096
         type: double
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
     outputs:
-      Result: {declaration_id: 1097, type: double, flags: 2, group: 2}
+      Result: {type: double, flags: 2, group: 2}
   - {id: 1136, type: Set_GameAppearance_glow_radius}
   edges:
   - {from: 2.Then, to: 6.Exec}

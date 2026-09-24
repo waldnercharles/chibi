@@ -28,10 +28,10 @@ graphs:
     reference_id: 10
     reference_name: max(current - damage, 0)
     inputs:
-      current: {declaration_id: 15, flags: 2, group: 1}
-      damage: {declaration_id: 16, flags: 2, group: 2}
+      current: {flags: 2, group: 1}
+      damage: {flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 17, flags: 2, group: 3}
+      Result: {flags: 2, group: 3}
   - id: 80
     type: Set_GameHealth_current
     outputs:
@@ -43,11 +43,11 @@ graphs:
     reference_name: current <= 0
     inputs:
       Exec: {id: 127, kind: exec}
-      current: {id: 125, declaration_id: 115, type: double, group: 1}
+      current: {id: 125, type: double, group: 1}
     outputs:
       "True": {id: 128, kind: exec}
       "False": {kind: exec}
-      Result: {id: 126, declaration_id: 116, type: bool, flags: 2, group: 2}
+      Result: {id: 126, type: bool, flags: 2, group: 2}
   - id: 144
     type: Self
     outputs:

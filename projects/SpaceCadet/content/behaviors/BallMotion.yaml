@@ -20,30 +20,28 @@ graphs:
     reference_name: ready < 0.5
     inputs:
       Exec: {id: 24, kind: exec}
-      ready: {id: 22, declaration_id: 12, type: double, group: 1}
+      ready: {id: 22, type: double, group: 1}
     outputs:
       "True": {id: 25, kind: exec}
       "False": {kind: exec}
-      Result: {id: 23, declaration_id: 13, type: bool, flags: 2, group: 2}
+      Result: {id: 23, type: bool, flags: 2, group: 2}
   - id: 74
     type: Behavior Expression
     reference_id: 41
     reference_name: clamp(v + 480 * dt, -1150, 1000)
     inputs:
       v:
-        declaration_id: 46
         type: double
         flags: 2
         group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
       dt:
-        declaration_id: 47
         type: double
         flags: 2
         group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 48, type: double, flags: 2, group: 3}
+      Result: {type: double, flags: 2, group: 3}
   - {id: 144, type: Set_GameVelocity_y}
   - id: 197
     type: Behavior Expression
@@ -53,14 +51,13 @@ graphs:
       Exec: {id: 200, kind: exec}
       "y":
         id: 198
-        declaration_id: 188
         type: double
         group: 1
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
       "True": {id: 201, kind: exec}
       "False": {kind: exec}
-      Result: {id: 199, declaration_id: 189, type: bool, flags: 2, group: 2}
+      Result: {id: 199, type: bool, flags: 2, group: 2}
   - id: 217
     type: Get Global Variable
     inputs: {Name: Lives}
@@ -71,9 +68,9 @@ graphs:
     reference_id: 220
     reference_name: max(lives-1,0)
     inputs:
-      lives: {declaration_id: 225, type: float, type_name: null, flags: 2, group: 1}
+      lives: {type: float, type_name: null, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 226, type: float, type_name: null, flags: 2, group: 2}
+      Result: {type: float, type_name: null, flags: 2, group: 2}
   - id: 265
     type: Set Global Variable
     inputs:

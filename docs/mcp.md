@@ -69,7 +69,9 @@ event bindings name pins as `<node id>.<pin name>`, or
 `<node id>.<pin>.<field>` for an exposed struct field. Wildcard pins (math
 operators, reroutes, loops) omit the types their connections determine.
 Expression functions store their `math_expression` source; loading rebuilds
-their nodes. Enums are spelled by label. A node whose pin names repeat lists its pins with explicit IDs instead. `build/chibi_ctl --project-root <root> --format`
+their nodes. A call to a function in the same asset takes each pin's
+`declaration_id` from the signature pin with its name. Enums are spelled by
+label. A node whose pin names repeat lists its pins with explicit IDs instead. `build/chibi_ctl --project-root <root> --format`
 rewrites every asset in canonical form, and `--check` lists assets that
 differ. Prefer the build tools over hand edits; they keep IDs, hashes and
 layout consistent.

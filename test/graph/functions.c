@@ -185,6 +185,17 @@ void run_graph_functions_checks()
                 behavior_asset_find_graph_by_name(function_loaded, "PureIdentity") != NULL,
             "multiple graph definitions round-trip"
         );
+        node *loaded_call = function_loaded
+                              ? graph_node_by_id(function_loaded->graph, call->id)
+                              : NULL;
+        test_check(
+            function_json && !strstr(function_json, "declaration_id") && loaded_call &&
+                loaded_call->input_pins[1].declaration_id ==
+                    entry->output_pins[1].id &&
+                loaded_call->output_pins[1].declaration_id == ret->input_pins[1].id,
+            "local call pins derive their declarations from the signature by "
+            "name"
+        );
         test_check(fn->owner == asset, "function execution has an explicit local-state boundary");
         test_check(acount(asset->graphs) >= 3, "the Behavior Asset model lists event and function graphs");
         test_check(call->input_count == 2 && call->output_count == 2, "function call details expose its authored signature pins");

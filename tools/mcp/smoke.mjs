@@ -10,11 +10,8 @@ const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = process.env.CHIBI_CTL || resolve(root, "build/chibi_ctl");
 const expectedPublicNames = [
-  "buildField",
-  "buildSystem",
+  "buildGraph",
   "previewField",
-  "buildShader",
-  "buildBehavior",
   "buildPrototype",
   "buildScene",
   "optimizeGraph",
@@ -105,7 +102,7 @@ const requests = [
   { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
   { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
   { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
-  { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildBehavior", arguments: {
+  { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildGraph", arguments: {
     kind: "behavior", name: "McpExpressionProbe", create: true, dry_run: true,
     operations: [
       { op: "add_node", ref: "expression", type: "Behavior Expression", source: "x + 1" },
@@ -154,7 +151,7 @@ if (responseById.get(1)?.result?.serverInfo?.name !== "chibi" ||
   throw new Error("initialize did not identify chibi");
 }
 if (typeof responseById.get(1)?.result?.instructions !== "string" ||
-    !responseById.get(1).result.instructions.includes("buildShader") ||
+    !responseById.get(1).result.instructions.includes("buildGraph") ||
     !responseById.get(1).result.instructions.includes("validateAsset")) {
   throw new Error("initialize did not expose server instructions");
 }
@@ -173,8 +170,8 @@ if (JSON.stringify(toolCatalog.map((entry) => entry.name)) !== JSON.stringify(ex
       Object.hasOwn(tool, "operation"))) {
   throw new Error("tools/list did not expose the deterministic public catalog");
 }
-if (listedTools.slice(0, 7).map((tool) => tool.name).join(",") !==
-    "buildField,buildSystem,previewField,buildShader,buildBehavior,buildPrototype,buildScene") {
+if (listedTools.slice(0, 4).map((tool) => tool.name).join(",") !==
+    "buildGraph,previewField,buildPrototype,buildScene") {
   throw new Error("tools/list did not put authoring tools first");
 }
 if (listedTools.some((tool) => tool.name.includes("_") || tool.name.includes("-") ||
@@ -205,7 +202,7 @@ if (!listedTools.some((tool) => tool.name === "validateAsset" &&
       tool.inputSchema?.properties?.inputs?.maxItems === 1800) ||
     !listedTools.some((tool) => tool.name === "replayScenario" &&
       tool.inputSchema?.oneOf?.length === 2 &&
-      tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
+      tool.inputSchema?.properties?.recording_path?.type === "string")) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
 const status = toolPayload(responseById.get(3));
@@ -252,8 +249,7 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !contract.result?.operations?.some((operation) => operation.name === "describe_contract" &&
       operation.public_tools?.includes("describeContract")) ||
     !contract.result?.operations?.some((operation) => operation.name === "edit_graph" &&
-      operation.public_tools?.includes("buildShader") &&
-      operation.public_tools?.includes("buildBehavior")) ||
+      operation.public_tools?.includes("buildGraph")) ||
     contract.result?.reflection?.nodes < 1 ||
     pagedAssets.ok !== true || pagedAssets.result?.count !== 2 ||
     pagedAssets.result?.has_more !== true || pagedAssets.result?.next_cursor !== 2 ||

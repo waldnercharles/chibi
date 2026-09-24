@@ -22,7 +22,7 @@ const serverVersion = "0.2.0";
 const serverInstructions = [
   "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
   "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, describeComponents, or getProjectStatus.",
-  "2. Build with buildShader, buildBehavior, buildField, buildSystem, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
+  "2. Build with buildGraph, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
   "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
   "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
@@ -373,7 +373,6 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
         description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
@@ -415,7 +414,7 @@ function buildToolDefinitions() {
       fields: {
         type: "array",
         maxItems: 32,
-        items: { type: "string", maxLength: 128 },
+        items: { type: "string" },
         description: "Optional reflected field selectors such as GameTransform.x.",
       },
     },
@@ -432,7 +431,6 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
         description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
@@ -467,7 +465,6 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
         description: "Behavior or system asset name without the .yaml suffix.",
       },
     },
@@ -515,7 +512,6 @@ function buildToolDefinitions() {
     properties: {
       name: {
         type: "string",
-        maxLength: 64,
         description: "Normalized action name.",
       },
       pressed: {
@@ -529,8 +525,8 @@ function buildToolDefinitions() {
   const normalizedEvent = {
     type: "object",
     properties: {
-      name: { type: "string", maxLength: 128 },
-      target: { type: "string", minLength: 1, maxLength: 512, description: "Scene entity name; omit to target the prototype owner or first scene entity." },
+      name: { type: "string" },
+      target: { type: "string", description: "Scene entity name; omit to target the prototype owner or first scene entity." },
       values: {
         type: "array", maxItems: 16,
         items: {
@@ -552,9 +548,9 @@ function buildToolDefinitions() {
       controls: { type: "array", maxItems: 41, items: { type: "integer", minimum: 1, maximum: 41 },
         description: "Held physical GameControl codes, interpreted by authored action bindings." },
       ui: { type: "array", maxItems: 32, items: { type: "object", properties: {
-        target: { type: "string", minLength: 1, maxLength: 512 },
+        target: { type: "string" },
         action: { type: "string", enum: ["activate", "change", "drop"] },
-        source: { type: "string", minLength: 1, maxLength: 512 },
+        source: { type: "string" },
         value: { type: "number" },
       }, required: ["target", "action"], additionalProperties: false },
         description: "Player UI interactions. Change requires value; drop requires a source widget name. Uses normal widget validation and behavior events." },
@@ -581,7 +577,7 @@ function buildToolDefinitions() {
     items: normalizedInput,
     description: "One normalized input sample per fixed frame.",
   };
-  const savedState = { type: "object", maxProperties: 1024, additionalProperties: { type: "string", maxLength: 65536 },
+  const savedState = { type: "object", maxProperties: 1024, additionalProperties: { type: "string" },
     description: "Initial committed save values in an isolated scenario store. Use returned saved_state for the next run." };
   const scenePreview = authoringToolDefinitions().find(tool => tool.name === "previewScene");
   scenePreview.inputSchema.properties.inputs = normalizedInputs;
@@ -612,7 +608,6 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
         description: "Prototype asset name without the .yaml suffix.",
       },
       frames: {
@@ -639,7 +634,6 @@ function buildToolDefinitions() {
       recording,
       recording_path: {
         type: "string",
-        maxLength: 1024,
         description: "Safe recording artifact path returned by record_scenario.",
       },
     },
@@ -787,7 +781,7 @@ function buildToolDefinitions() {
           names: {
             type: "array",
             maxItems: 64,
-            items: { type: "string", maxLength: 256 },
+            items: { type: "string" },
             description: "Optional component names or stable keys; omit to describe every component.",
           },
         },
@@ -990,7 +984,7 @@ function responseNextSteps(name, response) {
   if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
     return ["Broaden the node query or remove a restrictive pin filter."];
   }
-  if ((name === "buildShader" || name === "buildBehavior" || name === "buildPrototype" || name === "buildScene") &&
+  if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
     return [
       "Review the dry-run diagnostics and proposed changes.",

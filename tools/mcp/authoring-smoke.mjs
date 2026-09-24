@@ -196,15 +196,15 @@ try {
     request(5, "searchNodes", { query: "Shader Shape Output", limit: 3 }),
     request(27, "searchNodes", { query: "Base Color", pin_type: "ShaderVec3", domain: "shader", limit: 3 }),
     request(6, "describeRegistry", { sections: ["nodes"] }),
-    request(7, "buildBehavior", {
+    request(7, "buildGraph", {
       kind: "behavior",
       name: behaviorName,
       create: true,
       operations: [{ op: "add_graph", name: "Smoke Function", kind: "function", ref: "function" }],
     }),
-    request(8, "buildShader", materialCreateArgs),
-    request(9, "buildShader", shapeCreateArgs),
-    request(13, "buildShader", shaderLibraryCreateArgs),
+    request(8, "buildGraph", materialCreateArgs),
+    request(9, "buildGraph", shapeCreateArgs),
+    request(13, "buildGraph", shaderLibraryCreateArgs),
     request(10, "readAsset", { kind: "behavior", name: behaviorName }),
     request(11, "readAsset", { kind: "material", name: materialName }),
     request(12, "readAsset", { kind: "shape", name: shapeName }),
@@ -275,8 +275,7 @@ try {
 
   const tools = first.get(2)?.result?.tools || [];
   const previewTool = tools.find((tool) => tool.name === "previewShader");
-  const shaderTool = tools.find((tool) => tool.name === "buildShader");
-  const behaviorTool = tools.find((tool) => tool.name === "buildBehavior");
+  const graphTool = tools.find((tool) => tool.name === "buildGraph");
   const editPrototypeTool = tools.find((tool) => tool.name === "buildPrototype");
   const editSceneTool = tools.find((tool) => tool.name === "buildScene");
   const optimizeTool = tools.find((tool) => tool.name === "optimizeGraph");
@@ -311,18 +310,16 @@ try {
   const shapeNode = shapeSearch.result?.nodes?.find((node) => node.name === "Shader Shape Output");
   const baseColorPin = surfaceNode?.inputs?.find((pin) => pin.name === "Base Color")?.name;
   const distancePin = shapeNode?.inputs?.find((pin) => pin.name === "Distance")?.name;
-  const operationProperties = shaderTool?.inputSchema?.properties?.operations?.items?.properties || {};
+  const operationProperties = graphTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
-  assert(tools.length === 29, `public tool catalog has ${tools.length} tools instead of 29`);
-  assert(shaderTool?.inputSchema?.properties?.kind?.enum?.join(",") === "material,shape,shader-library" &&
-    behaviorTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library", "shader and behavior kind selectors are not separated");
-  assert(shaderTool?.title && shaderTool.description.includes("material") && shaderTool.description.includes("shader") &&
-    behaviorTool?.title && behaviorTool.description.includes("behavior") && behaviorTool.description.includes("event"), "authoring descriptions do not expose their intent");
+  assert(tools.length === 26, `public tool catalog has ${tools.length} tools instead of 26`);
+  assert(graphTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library,material,shape,shader-library,field,system", "graph kind selector is incomplete");
+  assert(graphTool?.title && ["material", "shader", "behavior", "event", "field", "system"].every((term) => graphTool.description.includes(term)), "authoring description does not expose its intent");
   assert(previewTool?.inputSchema?.properties?.width?.maximum === 512, "preview width limit is missing");
   assert(previewTool?.inputSchema?.properties?.camera?.properties?.center && previewTool.inputSchema.properties.sample_grid?.properties?.uv_min, "preview camera or sample grid controls are missing");
   assert(!previewTool.inputSchema.properties.graph_id && !previewTool.inputSchema.properties.graph_name, "preview advertises unsupported graph selectors");
-  assert(!shaderTool.inputSchema.properties.layout && !operationProperties.x && !operationProperties.y, "graph placement controls should remain native and automatic");
+  assert(!graphTool.inputSchema.properties.layout && !operationProperties.x && !operationProperties.y, "graph placement controls should remain native and automatic");
   assert(editPrototypeTool?.inputSchema?.properties?.kind?.enum?.length === 1 && editPrototypeTool.inputSchema.properties.kind.enum[0] === "prototype", "prototype selector is missing");
   const sceneOperationProperties = editSceneTool?.inputSchema?.properties?.operations?.items?.properties || {};
   assert(editSceneTool?.inputSchema?.properties?.kind?.enum?.[0] === "scene" && editSceneTool?.annotations?.destructiveHint === true, "scene authoring tool is missing");
@@ -333,8 +330,7 @@ try {
   assert(prototypeOperationProperties.op?.enum?.includes("add_component") && prototypeOperationProperties.op?.enum?.includes("set_field") && prototypeOperationProperties.fields && prototypeOperationProperties.value, "prototype authoring operations are missing from the MCP operation schema");
   const movementDescription = componentDescription.result?.components?.[0];
   assert(movementDescription?.key === "game.GameMovement" && movementDescription.fields?.some((field) => field.name === "speed" && field.type === "float") && movementDescription.defaults?.speed === 0, "compact component schema omitted reflected field defaults");
-  assert(shaderTool?.annotations?.readOnlyHint === false && behaviorTool?.annotations?.readOnlyHint === false &&
-    shaderTool?.annotations?.destructiveHint === true && behaviorTool?.annotations?.destructiveHint === true, "shader and behavior mutation annotations are missing");
+  assert(graphTool?.annotations?.readOnlyHint === false && graphTool?.annotations?.destructiveHint === true, "graph mutation annotations are missing");
   assert(operationProperties.op?.enum?.includes("set_ramp") && operationProperties.op?.enum?.includes("set_bounds") && operationProperties.op?.enum?.includes("add_pin"), "shader authoring operations are missing from the MCP operation schema");
   assert(operationProperties.reference_asset && operationProperties.pure && operationProperties.side && operationProperties.stops?.maxItems === 16, "native graph edit fields are missing from the MCP operation schema");
   assert(search.ok === true && search.result?.count > 0 && search.result.count <= 3, `bounded shader search failed: ${JSON.stringify(search)}`);
@@ -394,7 +390,7 @@ try {
 
   const libraryConsumerRun = runMcp(projectRoot, [
     initialize(),
-    request(2, "buildShader", {
+    request(2, "buildGraph", {
       kind: "material",
       name: libraryConsumerName,
       create: true,
@@ -417,20 +413,20 @@ try {
 
   const behaviorFollowup = runMcp(projectRoot, [
     initialize(),
-    request(2, "buildBehavior", {
+    request(2, "buildGraph", {
       kind: "behavior",
       name: behaviorName,
       expected_hash: behaviorHash,
       dry_run: true,
       operations: [{ op: "add_graph", name: "Dry Run Function", kind: "function", ref: "dry" }],
     }),
-    request(3, "buildBehavior", {
+    request(3, "buildGraph", {
       kind: "behavior",
       name: behaviorName,
       expected_hash: behaviorHash,
       operations: [{ op: "add_graph", name: "Applied Function", kind: "function", ref: "applied" }],
     }),
-    request(4, "buildBehavior", {
+    request(4, "buildGraph", {
       kind: "behavior",
       name: behaviorName,
       expected_hash: behaviorHash,
@@ -459,7 +455,7 @@ try {
     publicValidation.next_steps?.some((step) => step.includes("validateAsset")), "validation failure omitted validateAsset guidance");
   const publicUnresolvedRun = runMcp(projectRoot, [
     initialize(),
-    request(2, "buildShader", {
+    request(2, "buildGraph", {
       kind: "material",
       name: materialName,
       expected_hash: materialRedHash,
@@ -511,7 +507,7 @@ try {
     expected_hash: materialRedHash,
     operations: [{ op: "set_input", node: materialOutputId, pin: baseColorPin, value: { x: 0, y: 0, z: 1 } }],
   };
-  const blueRun = runMcp(projectRoot, [initialize(), request(2, "buildShader", blueEditArgs)]);
+  const blueRun = runMcp(projectRoot, [initialize(), request(2, "buildGraph", blueEditArgs)]);
   const blueEdit = structured(blueRun.get(2));
   assert(blueEdit.ok === true && blueEdit.result?.published === true, `material color edit failed: ${JSON.stringify(blueEdit)}`);
   const materialBlueHash = blueEdit.result.after_hash;

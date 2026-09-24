@@ -80,14 +80,11 @@ supported Macs. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 Use the MCP for authored content whenever it is available. Route requests by
 domain:
 
-- Shader, material, shape, or shader-library work: search with `searchAssets` and
-  `searchNodes`, inspect with `inspectGraph`, then use `buildShader`.
-- Behavior, event, or behavior-library work: search with `searchAssets` and
-  `searchNodes`, inspect with `inspectGraph`, then use `buildBehavior`.
-- Procedural fields: inspect field nodes and libraries, then use `buildField` and
-  `previewField` (CPU evaluation, no GPU required).
-- Standalone Systems: use `buildSystem` for graph and query edits, then
-  `inspectSystem` and `getExecutionStatus`.
+- Graph work (behaviors, events, libraries, materials, shapes, shader
+  libraries, fields, and Systems): search with `searchAssets` and
+  `searchNodes`, inspect with `inspectGraph`, then use `buildGraph`. Check
+  shaders with `previewShader`, fields with `previewField` (CPU evaluation, no
+  GPU required), and Systems with `inspectSystem` and `getExecutionStatus`.
 - Prototype or prefab work: use `describeComponents` when field details are
   unclear, then use `buildPrototype`.
 - Scene or level composition: use `buildScene`.
@@ -99,11 +96,8 @@ Call `validateAsset` after every published change. Use `previewShader`,
 saving them. Tool results include complete `structuredContent` and
 `next_steps`.
 
-- `buildField`: create or edit pure scalar field graphs and library calls.
-- `buildSystem`: create or edit standalone System graphs and queries.
+- `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
-- `buildShader`: create or edit material, shape, and shader-library graphs.
-- `buildBehavior`: create or edit behavior, event, and behavior-library graphs.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
@@ -147,9 +141,8 @@ The client can also read these MCP resources:
 
 All public tools report safety metadata through `describeContract`. They do not
 provide arbitrary shell commands, network access, editor UI control, or access
-to files outside the project data needed by the native controller. `buildShader`
-and `buildBehavior` write authored graph assets after validation and an
-expected-hash check. They are marked as modifying tools. `recordScenario`
+to files outside the project data needed by the native controller. `buildGraph`
+writes authored graph assets after validation and an expected-hash check. They are marked as modifying tools. `recordScenario`
 writes only its bounded generated recording artifact under `/tmp`, and
 `replayScenario` accepts only a returned
 recording or a safe generated recording path.
@@ -179,8 +172,7 @@ enemy, and support entity without constructing a second JSON fixture by hand.
 
 Use `searchAssets` to find an asset, `inspectGraph` to read its graph and
 current hash, and `searchNodes` to fetch the few node signatures needed for
-an edit. Submit shader changes through `buildShader` and behavior changes
-through `buildBehavior`. The server
+an edit. Submit graph changes through `buildGraph`. The server
 assigns IDs, initializes typed pins, validates the resulting asset, and
 automatically arranges the affected graphs. The edit API has no node coordinates
 or layout controls.
@@ -191,7 +183,7 @@ metadata. `owner_type` is useful for behavior assets that expose `Self`; graph
 descriptions give functions and event graphs an authoring purpose that catalog
 search can surface.
 
-For example, these `buildShader` arguments create a material:
+For example, these `buildGraph` arguments create a material:
 
 ```json
 {

@@ -33,7 +33,6 @@ function object(properties, required = []) {
 const assetSelectorProperties = {
   path: {
     type: "string",
-    maxLength: 512,
     description: "Content-relative asset path, alternatively use kind and name.",
   },
   kind: {
@@ -43,7 +42,6 @@ const assetSelectorProperties = {
   },
   name: {
     type: "string",
-    maxLength: 256,
     description: "Asset name without the .yaml suffix.",
   },
 };
@@ -86,24 +84,21 @@ const operationProperties = {
   },
   ref: {
     type: "string",
-    maxLength: 64,
     description: "Request-local reference for a new node, graph, or variable; add_graph also exposes <ref>.entry and <ref>.return node aliases.",
   },
   node: {
     description: "Node ID or reference returned by add_node.",
   },
   graph: {
-    oneOf: [{ type: "integer", minimum: 0 }, { type: "string", maxLength: 128 }],
+    oneOf: [{ type: "integer", minimum: 0 }, { type: "string" }],
     description: "Graph ID, unique name, or request-local ref for select_graph, rename_graph, or remove_graph.",
   },
   component: {
     type: "string",
-    maxLength: 256,
     description: "Stable reflected component key for bind_input with kind component.",
   },
   field: {
     type: "string",
-    maxLength: 256,
     description: "Optional reflected field for a component binding; omission reads the whole component.",
   },
   type: {
@@ -111,7 +106,6 @@ const operationProperties = {
   },
   name: {
     type: "string",
-    maxLength: 128,
     description: "Node, pin, or event name.",
   },
   pin: {
@@ -131,12 +125,10 @@ const operationProperties = {
   },
   reference_name: {
     type: "string",
-    maxLength: 128,
     description: "Declaration reference name.",
   },
   reference_asset: {
     type: "string",
-    maxLength: 512,
     description: "Referenced asset name for a call or declaration node.",
   },
   from: {
@@ -153,7 +145,6 @@ const operationProperties = {
   },
   kind: {
     type: "string",
-    maxLength: 32,
     description: "Connection, graph, or variable-node kind.",
   },
   order: {
@@ -177,12 +168,10 @@ const operationProperties = {
   },
   event_name: {
     type: "string",
-    maxLength: 128,
     description: "Event node name.",
   },
   source: {
     type: "string",
-    minLength: 1,
     description: "Behavior Expression source for add_node or set_expression.",
   },
   variable: {
@@ -190,7 +179,6 @@ const operationProperties = {
   },
   type_name: {
     type: "string",
-    maxLength: 128,
     description: "Struct type name when type is struct.",
   },
   container: {
@@ -201,7 +189,6 @@ const operationProperties = {
   },
   category: {
     type: "string",
-    maxLength: 128,
     description: "Variable category.",
   },
   pure: {
@@ -246,7 +233,6 @@ const searchNodesDefinition = {
   inputSchema: object({
     query: {
       type: "string",
-      maxLength: 256,
       description: "Case-insensitive text matched against node names, categories, and keywords.",
     },
     domain: {
@@ -256,7 +242,6 @@ const searchNodesDefinition = {
     },
     pin_type: {
       type: "string",
-      maxLength: 128,
       description: "Require a matching pin type or struct type name, such as float or ShaderVec3.",
     },
     pin_container: {
@@ -306,7 +291,6 @@ function graphDefinition(name, kinds, kindDescription) {
       },
       expected_hash: {
         type: "string",
-        maxLength: 16,
         description: "Current 16-character content hash. Required when editing an existing asset.",
       },
       create: {
@@ -324,23 +308,18 @@ function graphDefinition(name, kinds, kindDescription) {
       },
       graph_name: {
         type: "string",
-        maxLength: 128,
         description: "Graph name to edit.",
       },
       description: {
         type: "string",
-        maxLength: 2048,
         description: "Top-level asset description; an empty string clears it.",
       },
       owner_type: {
         type: "string",
-        minLength: 1,
-        maxLength: 256,
         description: "Optional owner handle type for behavior and library assets.",
       },
       graph_description: {
         type: "string",
-        maxLength: 2048,
         description: "Description for the selected graph; an empty string clears it.",
       },
       operations: {
@@ -354,22 +333,10 @@ function graphDefinition(name, kinds, kindDescription) {
   };
 }
 
-const buildShaderDefinition = graphDefinition(
-  "buildShader",
-  SHADER_KINDS,
-  "Shader asset family: material, shape, or shader-library.",
-);
-const buildBehaviorDefinition = graphDefinition(
-  "buildBehavior",
-  ["behavior", "event", "library"],
-  "Behavior asset family: behavior, event, or behavior library.",
-);
-
-const buildFieldDefinition = graphDefinition("buildField", ["field"], "Pure procedural scalar field.");
-const buildSystemDefinition = graphDefinition("buildSystem", ["system"], "Standalone System graph and query.");
-buildSystemDefinition.inputSchema.properties.query = {
+const buildGraphDefinition = graphDefinition("buildGraph", GRAPH_KINDS, "Graph asset family.");
+buildGraphDefinition.inputSchema.properties.query = {
   type: ["object", "null"], additionalProperties: true,
-  description: "Replace the System's typed ECS query; null clears the explicit query.",
+  description: "System kind only: replace the typed ECS query; null clears it.",
 };
 const previewFieldDefinition = {
   name: "previewField", operation: "preview_field",
@@ -403,12 +370,10 @@ const prototypeOperationSchema = object({
   },
   component: {
     type: "string",
-    maxLength: 256,
     description: "Reflected component name or stable component key.",
   },
   field: {
     type: "string",
-    maxLength: 256,
     description: "Reflected field name within component.",
   },
   value: {
@@ -420,7 +385,6 @@ const prototypeOperationSchema = object({
   },
   behavior: {
     type: "string",
-    maxLength: 512,
     description: "Behavior asset name to attach or detach.",
   },
 }, ["op"]);
@@ -433,7 +397,6 @@ const editPrototypeDefinition = {
     ...prototypeAssetSelectorProperties,
     expected_hash: {
       type: "string",
-      maxLength: 16,
       description: "Current 16-character content hash. Required when editing an existing asset.",
     },
     create: {
@@ -481,28 +444,24 @@ const sceneOperationSchema = object({
   },
   name: {
     type: "string",
-    maxLength: 512,
     description: "Entity name for add_entity.",
   },
   entity: {
     type: "string",
-    maxLength: 512,
     description: "Existing entity name.",
   },
   prototype: {
     type: "string",
-    maxLength: 512,
     description: "Prototype asset name.",
   },
   behavior: {
     type: "string",
-    maxLength: 512,
     description: "Behavior asset name to attach or detach.",
   },
   behaviors: {
     type: "array",
     maxItems: MAX_SCENE_BEHAVIORS,
-    items: { type: "string", maxLength: 512 },
+    items: { type: "string" },
     description: "Ordered behavior asset names attached to an entity.",
   },
   components: {
@@ -528,7 +487,6 @@ const editSceneDefinition = {
     ...sceneAssetSelectorProperties,
     expected_hash: {
       type: "string",
-      maxLength: 16,
       description: "Current 16-character content hash. Required when editing an existing asset.",
     },
     create: {
@@ -557,7 +515,6 @@ const optimizeGraphDefinition = {
     ...assetSelectorProperties,
     expected_hash: {
       type: "string",
-      maxLength: 16,
       description: "Current 16-character content hash. Required when applying an optimization; optional for a dry run.",
     },
     dry_run: {
@@ -572,7 +529,6 @@ const optimizeGraphDefinition = {
     },
     graph_name: {
       type: "string",
-      maxLength: 128,
       description: "Graph name to optimize.",
     },
     fanout_threshold: {
@@ -606,7 +562,7 @@ const previewSceneDefinition = {
   name: "previewScene", operation: "preview_scene",
   description: "Render a running scene or prototype using the game renderer, authored camera, fog and player UI. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
   inputSchema: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: {
-    kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string", minLength: 1, maxLength: 512 },
+    kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string" },
     width: { type: "integer", minimum: 64, maximum: 2048, default: 640 },
     height: { type: "integer", minimum: 64, maximum: 2048, default: 360 },
     frames: { type: "integer", minimum: 0, maximum: 1800, default: 1 },
@@ -616,7 +572,7 @@ const previewSceneDefinition = {
       description: "Hold simulation and camera at the requested initial frame throughout rendering; lighting history still warms up." },
     input_timeline: { type: "array", maxItems: 1800, items: { type: "object" },
       description: "Sparse scenario inputs across initial and advancing render frames. Samples must have increasing frame indices." },
-    metal_capture: { type: "string", minLength: 10, maxLength: 4095,
+    metal_capture: { type: "string",
       description: "Optional absolute .gputrace output path on macOS. Launch with MTL_CAPTURE_ENABLED=1. Capture runs are instrumented, not benchmark results." },
     capture_frame: { type: "integer", minimum: 0, maximum: 3599, default: 16,
       description: "Zero-based rendered frame to capture, after warmup. Requires metal_capture." },
@@ -707,10 +663,7 @@ const previewShaderDefinition = {
 
 const definitions = [
   searchNodesDefinition,
-  buildShaderDefinition,
-  buildBehaviorDefinition,
-  buildFieldDefinition,
-  buildSystemDefinition,
+  buildGraphDefinition,
   previewFieldDefinition,
   editPrototypeDefinition,
   editSceneDefinition,
@@ -744,33 +697,7 @@ function hasAssetSelector(args) {
 }
 
 export function validateAuthoringArguments(name, args = {}) {
-  if (name === "buildShader" || name === "buildBehavior" || name === "buildField" || name === "buildSystem") {
-    if (!hasAssetSelector(args)) {
-      invalid("arguments requires path or both kind and name");
-    }
-    const create = args.create === true;
-    if (create && args.expected_hash !== undefined) {
-      invalid("arguments.expected_hash must be omitted when create is true");
-    }
-    if (!create && !/^[0-9a-f]{16}$/.test(args.expected_hash || "")) {
-      invalid("arguments.expected_hash must be the current 16-character lowercase content hash");
-    }
-    return;
-  }
-  if (name === "buildPrototype") {
-    if (!hasAssetSelector(args)) {
-      invalid("arguments requires path or both kind and name");
-    }
-    const create = args.create === true;
-    if (create && args.expected_hash !== undefined) {
-      invalid("arguments.expected_hash must be omitted when create is true");
-    }
-    if (!create && !/^[0-9a-f]{16}$/.test(args.expected_hash || "")) {
-      invalid("arguments.expected_hash must be the current 16-character lowercase content hash");
-    }
-    return;
-  }
-  if (name === "buildScene") {
+  if (name === "buildGraph" || name === "buildPrototype" || name === "buildScene") {
     if (!hasAssetSelector(args)) {
       invalid("arguments requires path or both kind and name");
     }

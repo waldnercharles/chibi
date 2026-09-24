@@ -130,7 +130,7 @@ bytecode for its vector expression.
 
 ## Authoring and checks
 
-Use `buildField`, `buildSystem`, `inspectGraph`, `inspectSystem`, `validateAsset`
+Use `buildGraph`, `inspectGraph`, `inspectSystem`, `validateAsset`
 and `previewField` through Chibi MCP. Field previews return a deterministic CPU
 PNG, range and hash without a graphics context. Graph edits remain atomic,
 hash-checked and automatically arranged. The editor lists fields, filters their

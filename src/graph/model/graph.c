@@ -873,6 +873,20 @@ int graph_inline_source(const graph *g, const node *target, int pin, node **src,
     return 1;
 }
 
+bool graph_pin_visible(const graph *g, const node *n, bool output, int pin)
+{
+    const pin_spec *spec = output ? &n->output_pins[pin] : &n->input_pins[pin];
+    if (spec->flags & PIN_FLAG_SETTING) {
+        return false;
+    }
+    node *src = NULL;
+    int src_pin = 0;
+    return output || n->show_advanced ||
+           (n->desc->category && !strncmp(n->desc->category, "Shader", 6)) ||
+           !(spec->flags & PIN_FLAG_ADVANCED) || spec->binding ||
+           graph_input_source(g, n, pin, &src, &src_pin);
+}
+
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin)
 {
     if (!g || !n || !src || !src_pin || pin < 0 || pin >= n->input_count) {

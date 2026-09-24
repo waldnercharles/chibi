@@ -1,5 +1,6 @@
 #include "graph/authoring/arrange.h"
 
+#include "graph/authoring/layout.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
 #include "test/suite_internal.h"
@@ -8,7 +9,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
-/* Mirrors graph_layout's input, fixed measurement, node-ID order and zeroed
+/* Mirrors graph_layout's input: its measurement, node-ID order and zeroed
  * seeds, so the benchmark times the layout alone. */
 typedef struct arrange_case
 {
@@ -57,9 +58,8 @@ static arrange_case arrange_case_of(const graph *g)
     asetlen(c.seeds, acount(g->nodes));
     for (int i = 0; i < acount(g->nodes); i++) {
         const node *n = g->nodes[i];
-        int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         int slot = arrange_node_slot(g, n->id);
-        c.boxes[slot] = (arrange_box){ .width = 220, .height = 36 + 24 * rows };
+        c.boxes[slot] = graph_layout_box(g, n);
         c.seeds[slot] = (arrange_point){ 0, 0 };
     }
     for (int i = 0; i < acount(g->edges); i++) {
@@ -75,8 +75,8 @@ static arrange_case arrange_case_of(const graph *g)
             c.links,
             ((arrange_link){ .from = arrange_node_slot(g, from->id),
                              .to = arrange_node_slot(g, to->id),
-                             .from_y = PIN_Y(from_pin),
-                             .to_y = PIN_Y(to_pin) })
+                             .from_y = graph_layout_pin_y(g, from, true, from_pin),
+                             .to_y = graph_layout_pin_y(g, to, false, to_pin) })
         );
     }
     if (acount(c.links)) {
@@ -150,13 +150,22 @@ static void arrange_measure_checks()
         test_check(fan.ink_length < fan.wire_length, "arrange counts a shared trunk once");
     }
 
-    /* A backward wire keeps its looping curve, straight through the middle. */
+    /* Authored handles on the pins draw a straight line, here through box 1. */
     const arrange_point row[] = { { 0, 0 }, { 400, -20 }, { 800, 0 } };
+    const arrange_link through[] = {
+        { .from = 0, .to = 2, .from_y = PIN_Y(0), .to_y = PIN_Y(0), .custom_handles = true }
+    };
+    arrange_score hit = arrange_measure_links(row, 3, through, 1, ARRANGE_ROUTE_CURVED);
+    test_check(hit.wire_node_hits == 1 && hit.node_overlaps == 0, "arrange counts a wire through an unrelated node");
+
+    /* A backward wire goes around a taller node between its ends. */
+    arrange_box tall[3] = { arrange_test_box, arrange_test_box, arrange_test_box };
+    tall[1].height = 300;
     const arrange_link back[] = { LINK(2, 0, 0, 0) };
-    arrange_score through = arrange_measure_links(row, 3, back, 1, ARRANGE_ROUTE_CURVED);
-    test_check(through.wire_node_hits == 1 && through.node_overlaps == 0, "arrange counts a wire through an unrelated node");
-    arrange_score loop = arrange_measure_links(row, 3, back, 1, ARRANGE_ROUTE_ORTHOGONAL);
-    test_check(loop.wire_node_hits == 0, "arrange loops an orthogonal backward wire under its boxes");
+    for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
+        arrange_score around = arrange_measure(&(arrange_graph){ tall, 3, back, 1 }, row, style);
+        test_check(around.wire_node_hits == 0, "arrange routes backward wires around the nodes between their ends");
+    }
 
     const arrange_point stacked[] = { { 0, 0 }, { 100, 40 } };
     test_check(
@@ -449,7 +458,9 @@ static void arrange_layout_checks()
         arrange_layout(&g, style, first);
         arrange_layout(&g, style, second);
         test_check(!memcmp(first, second, sizeof first), "arrange is deterministic");
-        test_check(arrange_measure(&g, first, style).node_overlaps == 0, "arrange leaves no overlapping nodes");
+        arrange_score cycle = arrange_measure(&g, first, style);
+        test_check(cycle.node_overlaps == 0, "arrange leaves no overlapping nodes");
+        test_check(cycle.wire_node_hits == 0, "arrange keeps cycles and self-loops off nodes");
         test_check(first[0].x < first[1].x && first[1].x < first[3].x, "arrange ranks sources before their targets");
 
         arrange_layout(&fanned, style, first);
@@ -577,10 +588,10 @@ static void arrange_content_checks()
         int bends;
         float ink;
     } ceiling[ARRANGE_ROUTE_STYLE_COUNT] = {
-        [ARRANGE_ROUTE_CURVED] = { 30, 370, 79500.0f },
-        [ARRANGE_ROUTE_ORTHOGONAL] = { 30, 372, 84300.0f },
-        [ARRANGE_ROUTE_STRAIGHT] = { 31, 370, 80000.0f },
-        [ARRANGE_ROUTE_SUBWAY] = { 23, 372, 81500.0f },
+        [ARRANGE_ROUTE_CURVED] = { 31, 376, 82200.0f },
+        [ARRANGE_ROUTE_ORTHOGONAL] = { 32, 376, 87400.0f },
+        [ARRANGE_ROUTE_STRAIGHT] = { 32, 376, 82800.0f },
+        [ARRANGE_ROUTE_SUBWAY] = { 26, 376, 84500.0f },
     };
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;

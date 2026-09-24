@@ -23,6 +23,7 @@
  * this many crossings. */
 #define AR_TRACK_OVERLAP_COST 64
 #define AR_CORNER_RADIUS 10.0f
+#define AR_LOOP_RADIUS 24.0f /* corners of a curved backward wire */
 #define AR_KAPPA                                                               \
     0.5523f             /* quarter-circle handle, as a fraction of the radius */
 #define AR_PIN_RUN 8.0f /* shortest level run at a pin before a corner */
@@ -212,7 +213,7 @@ static void ar_corners(const arrange_point *knot, int count, arrange_point **cor
 /* How far corner k's rounding or diagonal reaches along both of its runs. A
  * run between two corners gives each half; a run from a pin keeps a short
  * level stretch. Reversals stay sharp. */
-static float ar_corner_cut(arrange_route_style style, const arrange_point *p, int n, int k)
+static float ar_corner_cut(arrange_route_style style, float radius, const arrange_point *p, int n, int k)
 {
     arrange_point in = vec2_sub(p[k], p[k - 1]);
     arrange_point out = vec2_sub(p[k + 1], p[k]);
@@ -225,7 +226,7 @@ static float ar_corner_cut(arrange_route_style style, const arrange_point *p, in
                            : in_len * 0.5f;
     float out_room = k + 2 == n ? out_len - math_min(AR_PIN_RUN, out_len * 0.5f)
                                 : out_len * 0.5f;
-    float reach = AR_CORNER_RADIUS;
+    float reach = radius;
     if (style == ARRANGE_ROUTE_SUBWAY) {
         /* A vertical run barely longer than two diagonals becomes one. */
         float vertical = in.x == 0.0f ? in_room : out_room;
@@ -238,6 +239,7 @@ static float ar_corner_cut(arrange_route_style style, const arrange_point *p, in
  * at 45 degrees, so a short vertical run becomes a single diagonal. */
 static void ar_path_corners(
     arrange_route_style style,
+    float radius,
     const arrange_point *p,
     const int *segment,
     int n,
@@ -247,7 +249,7 @@ static void ar_path_corners(
     float cut_in = 0.0f;
     for (int k = 0; k + 1 < n; k++) {
         arrange_point dir = vec2_safe_norm(vec2_sub(p[k + 1], p[k]));
-        float cut = k + 2 < n ? ar_corner_cut(style, p, n, k + 1) : 0.0f;
+        float cut = k + 2 < n ? ar_corner_cut(style, radius, p, n, k + 1) : 0.0f;
         arrange_point a = vec2_add(p[k], vec2_scale(dir, cut_in));
         arrange_point b = vec2_sub(p[k + 1], vec2_scale(dir, cut));
         ar_push_line(pieces, a, b, segment[k]);
@@ -306,7 +308,13 @@ void arrange_path(
             knot[n - 2].y = to.y;
         }
     }
-    switch (style) {
+    /* A curved backward wire with waypoints loops through them on round
+     * corners. */
+    arrange_route_style shape = style == ARRANGE_ROUTE_CURVED && count && to.x < from.x
+                                  ? ARRANGE_ROUTE_ORTHOGONAL
+                                  : style;
+    float radius = style == ARRANGE_ROUTE_CURVED ? AR_LOOP_RADIUS : AR_CORNER_RADIUS;
+    switch (shape) {
         case ARRANGE_ROUTE_CURVED: ar_path_curved(knot, n, pieces); break;
         case ARRANGE_ROUTE_STRAIGHT: ar_path_straight(knot, n, pieces); break;
         case ARRANGE_ROUTE_ORTHOGONAL:
@@ -314,7 +322,7 @@ void arrange_path(
             arrange_point *corner = NULL;
             int *segment = NULL;
             ar_corners(knot, n, &corner, &segment);
-            ar_path_corners(style, corner, segment, acount(corner), pieces);
+            ar_path_corners(shape, radius, corner, segment, acount(corner), pieces);
             afree(corner);
             afree(segment);
             break;
@@ -2373,25 +2381,61 @@ static void ar_emit_route(arrange_routes *routes, const arrange_point *knot, int
     }
 }
 
-/* In the angular styles a backward wire loops under both of its boxes. */
-static void ar_emit_loop(
+/* A level beside a box, clear of its column's other boxes and lanes: above
+ * it when heading upward, below it otherwise. */
+static float ar_beside(const arrange_graph *g, const arrange_point *pos, int box, float toward)
+{
+    float top = pos[box].y;
+    float bottom = top + g->boxes[box].height;
+    return toward < (top + bottom) * 0.5f ? top - AR_LOOP_CLEAR : bottom + AR_LOOP_CLEAR;
+}
+
+/* A backward wire leaves its output rightward and turns past its own box on
+ * the side it heads for. It runs left through the lanes its columns reserve,
+ * passes its target's box the same way, and enters its input from the left.
+ * Its vertical runs sit just outside column edges, clear of the tracks. */
+static void ar_emit_backward(
     arrange_routes *routes,
     const arrange_graph *g,
     const arrange_point *pos,
-    const arrange_link *l
+    const ar_ctx *c,
+    const ar_lanes *lanes,
+    int link,
+    const int *column,
+    const float *left,
+    const float *right
 )
 {
+    const arrange_link *l = &g->links[link];
     arrange_point start = ar_link_start(g, pos, l);
     arrange_point end = ar_link_end(pos, l);
-    float below = math_max(
-                      pos[l->from].y + g->boxes[l->from].height,
-                      pos[l->to].y + g->boxes[l->to].height
-                  ) +
-                  AR_LOOP_CLEAR;
-    apush(routes->points, ((arrange_point){ start.x + AR_STUB, start.y }));
-    apush(routes->points, ((arrange_point){ start.x + AR_STUB, below }));
-    apush(routes->points, ((arrange_point){ end.x - AR_STUB, below }));
-    apush(routes->points, ((arrange_point){ end.x - AR_STUB, end.y }));
+    int from = column[l->from];
+    int to = column[l->to];
+    float edge = AR_TRACK_MARGIN * 0.5f;
+    /* Lanes run from the target's side: lane k sits in column to + 1 + k. */
+    int count = ar_lane_count(lanes, link);
+    const int *lane = lanes->lanes + lanes->start[link];
+    float y = ar_beside(g, pos, l->from, count ? ar_lane_y(c, lane[count - 1]) : end.y);
+    float x = right[from] + edge;
+    apush(routes->points, ((arrange_point){ x, start.y }));
+    apush(routes->points, ((arrange_point){ x, y }));
+    for (int k = count - 1; k >= 0; k--) {
+        x = left[to + 2 + k] - edge;
+        float level = ar_lane_y(c, lane[k]);
+        apush(routes->points, ((arrange_point){ x, y }));
+        apush(routes->points, ((arrange_point){ x, level }));
+        y = level;
+    }
+    if (l->to != l->from) {
+        float level = ar_beside(g, pos, l->to, y);
+        x = left[from == to ? to : to + 1] - edge;
+        apush(routes->points, ((arrange_point){ x, y }));
+        apush(routes->points, ((arrange_point){ x, level }));
+        y = level;
+    }
+    x = left[to] - edge;
+    apush(routes->points, ((arrange_point){ x, y }));
+    apush(routes->points, ((arrange_point){ x, end.y }));
 }
 
 /* The height a forward wire runs at in each column from its source's to its
@@ -2569,9 +2613,7 @@ void arrange_route(
             continue;
         }
         if (from >= to) {
-            if (style != ARRANGE_ROUTE_CURVED) {
-                ar_emit_loop(routes, g, pos, l);
-            }
+            ar_emit_backward(routes, g, pos, &c, &lanes, i, column, left, right);
             continue;
         }
         if (!ar_tracked(style)) {

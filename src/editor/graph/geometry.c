@@ -108,15 +108,7 @@ static bool ed_input_multivalue(const editor *e, const node *n, int pin)
 
 bool ed_pin_visible(const graph *g, const node *n, int kind, int pin)
 {
-    const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
-                                                : &n->output_pins[pin];
-    if (spec->flags & PIN_FLAG_SETTING) {
-        return false;
-    }
-    return kind != ED_PIN_INPUT || n->show_advanced ||
-           (n->desc->category && !strncmp(n->desc->category, "Shader", 6)) ||
-           !(n->input_pins[pin].flags & PIN_FLAG_ADVANCED) || spec->binding ||
-           ed_input_connected(g, n, pin);
+    return graph_pin_visible(g, n, kind == ED_PIN_OUTPUT, pin);
 }
 
 static bool editable_output(const node *n)

@@ -349,7 +349,9 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g,
     yyjson_mut_obj_add_str(doc, o, "type", n->desc->name);
     yyjson_mut_obj_add_float(doc, o, "x", n->x);
     yyjson_mut_obj_add_float(doc, o, "y", n->y);
-    if (!n->placed) {
+    /* Inline nodes have no box, so their positions are never authored. n may
+     * be a copy, so the predicate reads the graph's node. */
+    if (!n->placed || graph_node_is_inline(g, graph_node_by_id(g, n->id))) {
         yyjson_mut_obj_add_bool(doc, o, "placed", false);
     }
     if (n->reference_id) {
@@ -364,8 +366,8 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g,
     if (n->disabled) {
         yyjson_mut_obj_add_bool(doc, o, "disabled", true);
     }
-    if (n->inline_source) {
-        yyjson_mut_obj_add_bool(doc, o, "inline_source", true);
+    if (n->presentation != NODE_PRESENTATION_AUTO) {
+        yyjson_mut_obj_add_str(doc, o, "presentation", node_presentation_name(n->presentation));
     }
     if (n->show_advanced) {
         yyjson_mut_obj_add_bool(doc, o, "show_advanced", true);
@@ -419,8 +421,8 @@ static node **expand_inline_subset(const graph *g, node *const *subset, int coun
     for (int i = 0; i < count; i++) {
         expanded[i] = subset[i];
     }
-    for (int i = 0; i < count; i++) {
-        node *target = subset[i];
+    for (int i = 0; i < total; i++) {
+        node *target = expanded[i];
         if (!target) {
             continue;
         }

@@ -76,7 +76,7 @@ static void vector_binding_checks()
             &target->input_pins[0]
         );
         assert(graph_connect_data_conversion(&g, number, 0, target, 0, conversion) == 0);
-        assert(graph_set_node_inline(&g, number, true) == 0);
+        assert(graph_set_node_presentation(&g, number, NODE_PRESENTATION_INLINE) == 0);
         char *json = graph_save_json(&g);
         graph *copy = graph_load_json(json);
         assert(copy);
@@ -97,12 +97,12 @@ static void vector_binding_checks()
         graph_remove_node(&g, number);
         node *vector = graph_add_node(&g, graph_vector_constructor(&target->input_pins[0]));
         assert(graph_connect_data(&g, vector, 0, target, 0) == 0);
-        assert(graph_set_node_inline(&g, vector, true) == 0);
+        assert(graph_set_node_presentation(&g, vector, NODE_PRESENTATION_INLINE) == 0);
         graph_set_pin_default(&g, vector, false, 1, &(pin_value){ .type = PIN_F32, .f = 3 });
         number = graph_add_node(&g, registry_node_by_name("Real"));
         graph_set_pin_default(&g, number, false, 0, &(pin_value){ .type = PIN_F64, .d = 2 });
         assert(graph_connect_data(&g, number, 0, vector, 0) == 0);
-        assert(graph_set_node_inline(&g, number, true) == 0);
+        assert(graph_set_node_presentation(&g, number, NODE_PRESENTATION_INLINE) == 0);
         test_check(
             graph_node_is_inline(&g, vector) && graph_node_is_inline(&g, number) &&
                 graph_inline_owner(&g, number) == target,
@@ -129,7 +129,7 @@ static void vector_binding_checks()
         graph_free(copy);
         free(copy);
         free(json);
-        graph_remove_node(&g, target);
+        graph_remove_node_tree(&g, target);
         test_check(acount(g.nodes) == 0, "removing vector owner removes its nested inline sources");
         graph_free(&g);
     }

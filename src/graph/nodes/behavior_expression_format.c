@@ -1,0 +1,302 @@
+#include "graph/model/behavior_asset.h"
+#include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
+#include "graph/model/pin_fmt.h"
+#include "graph/nodes/behavior_expression.h"
+
+#include <assert.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+
+/* Anything that is not an operator: a literal, name or call. */
+#define ATOM_BINDING 100
+
+typedef struct text
+{
+    char *buf;
+    size_t cap;
+    size_t used;
+} text;
+
+static void put(text *t, const char *s)
+{
+    size_t length = strlen(s);
+    if (length > t->cap - 1 - t->used) {
+        length = t->cap - 1 - t->used;
+    }
+    memcpy(t->buf + t->used, s, length);
+    t->used += length;
+    t->buf[t->used] = '\0';
+}
+
+/* Lower snake case, so "Random Range" and "HasGameDash" read as calls. */
+static void put_identifier(text *t, const char *name)
+{
+    char out[128];
+    size_t used = 0;
+    for (size_t i = 0; name[i] && used + 2 < sizeof out; i++) {
+        unsigned char c = (unsigned char)name[i];
+        bool boundary = !isalnum(c) ||
+                        (i && isupper(c) && islower((unsigned char)name[i - 1]));
+        if (boundary && used && out[used - 1] != '_') {
+            out[used++] = '_';
+        }
+        if (isalnum(c)) {
+            out[used++] = (char)tolower(c);
+        }
+    }
+    while (used && out[used - 1] == '_') {
+        used--;
+    }
+    out[used] = '\0';
+    put(t, out);
+}
+
+/* Component keys are namespaced, as in `game.GameMovement`. */
+static const char *component_name(const char *key)
+{
+    const char *dot = key ? strrchr(key, '.') : NULL;
+    return dot ? dot + 1 : key ? key : "component";
+}
+
+static void put_binding(text *t, const graph *g, const pin_binding *binding)
+{
+    switch (binding->kind) {
+        case PIN_BINDING_VARIABLE: {
+            const behavior_variable *variable = g->owner
+                                                  ? behavior_asset_find_variable_by_id(
+                                                        g->owner,
+                                                        binding->variable_id
+                                                    )
+                                                  : NULL;
+            put(t, variable ? variable->name : "variable");
+            return;
+        }
+        case PIN_BINDING_COMPONENT_FIELD:
+        case PIN_BINDING_COMPONENT:
+            put(t, "Self.");
+            put(t, component_name(binding->component_key));
+            if (binding->kind == PIN_BINDING_COMPONENT_FIELD && binding->field_name) {
+                put(t, ".");
+                put(t, binding->field_name);
+            }
+            return;
+        case PIN_BINDING_DELTA_TIME: put(t, "delta_time"); return;
+        case PIN_BINDING_LOCAL: {
+            const graph_local *local = graph_local_by_id(g, binding->local_id);
+            put(t, local ? local->name : "local");
+            return;
+        }
+        case PIN_BINDING_EVENT_OUTPUT: {
+            node *event = graph_node_by_id(g, binding->event_node_id);
+            int output = 0;
+            const pin_spec *pin = event
+                                    ? graph_pin_by_id(event, binding->event_pin_id, &output, NULL)
+                                    : NULL;
+            put(t, event && event->reference_name ? event->reference_name : "event");
+            put(t, ".");
+            put(t, pin && output && pin->name ? pin->name : "value");
+            return;
+        }
+    }
+    assert(false);
+}
+
+static void put_value(text *t, const pin_spec *pin, const pin_value *value)
+{
+    int width = pin_vector_width(pin);
+    if (width && value->ptr && value->container == PIN_CONTAINER_SINGLE) {
+        char number[64];
+        snprintf(number, sizeof number, "vec%d(", width);
+        put(t, number);
+        for (int axis = 0; axis < width; axis++) {
+            snprintf(
+                number,
+                sizeof number,
+                "%s%g",
+                axis ? ", " : "",
+                (double)((const float *)value->ptr)[axis]
+            );
+            put(t, number);
+        }
+        put(t, ")");
+        return;
+    }
+    bool quoted = value->type == PIN_STR && value->container == PIN_CONTAINER_SINGLE;
+    put(t, quoted ? "\"" : "");
+    put(t, pin_value_to_string(value));
+    put(t, quoted ? "\"" : "");
+}
+
+static int binding_of(const node *n)
+{
+    int binding = 0;
+    const char *spelling = behavior_expression_spelling(n->desc, &binding);
+    int arity = binding == BEHAVIOR_EXPRESSION_PREFIX_BINDING ? 1 : 2;
+    return spelling && binding && n->input_count == arity ? binding : ATOM_BINDING;
+}
+
+static void put_node(text *t, const graph *g, const node *n, int output);
+
+/* Writes an input's value and returns how tightly its text binds. */
+static int put_operand(text *t, const graph *g, const node *n, int pin)
+{
+    const pin_spec *spec = &n->input_pins[pin];
+    node *source = NULL;
+    int source_pin = -1;
+    if (graph_inline_source(g, n, pin, &source, &source_pin)) {
+        put_node(t, g, source, source_pin);
+        return binding_of(source);
+    }
+    if (spec->binding) {
+        put_binding(t, g, spec->binding);
+        return ATOM_BINDING;
+    }
+    if ((spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
+        put(t, "Self");
+        return ATOM_BINDING;
+    }
+    put_value(t, spec, &spec->default_value);
+    return ATOM_BINDING;
+}
+
+/* Parenthesizes an operand that binds looser than `binding`; a negative
+ * number binds like a prefix minus. */
+static void put_input(text *t, const graph *g, const node *n, int pin, int binding)
+{
+    char operand[512];
+    text value = { operand, sizeof operand, 0 };
+    operand[0] = '\0';
+    int operand_binding = put_operand(&value, g, n, pin);
+    if (operand[0] == '-' && operand_binding > BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
+        operand_binding = BEHAVIOR_EXPRESSION_PREFIX_BINDING;
+    }
+    bool group = operand_binding < binding;
+    put(t, group ? "(" : "");
+    put(t, operand);
+    put(t, group ? ")" : "");
+}
+
+static void put_arguments(text *t, const graph *g, const node *n)
+{
+    put(t, "(");
+    bool first = true;
+    for (int p = 0; p < n->input_count; p++) {
+        if (n->input_pins[p].flags & PIN_FLAG_SERVICE) {
+            continue;
+        }
+        put(t, first ? "" : ", ");
+        put_input(t, g, n, p, 0);
+        first = false;
+    }
+    put(t, ")");
+}
+
+/* Reflected component reads, `Get_<Type>` of Self and `GetEntity_<Type>` of
+ * an entity, read like their bindings. */
+static bool put_component(text *t, const graph *g, const node *n, int output)
+{
+    const node_desc *desc = n->desc;
+    const char *name = desc->name;
+    size_t prefix = !strncmp(name, "Get_", 4)        ? 4
+                  : !strncmp(name, "GetEntity_", 10) ? 10
+                                                     : 0;
+    if (!prefix || !desc->type || strcmp(name + prefix, desc->type->name)) {
+        return false;
+    }
+    int entity = -1;
+    for (int p = 0; p < n->input_count && entity < 0; p++) {
+        entity = n->input_pins[p].type == PIN_HANDLE ? p : -1;
+    }
+    if (entity >= 0) {
+        put_input(t, g, n, entity, ATOM_BINDING);
+    } else {
+        put(t, "Self");
+    }
+    put(t, ".");
+    put(t, desc->type->name);
+    if (n->output_pins[output].field_source && n->output_pins[output].name) {
+        put(t, ".");
+        put(t, n->output_pins[output].name);
+    }
+    return true;
+}
+
+static void put_node(text *t, const graph *g, const node *n, int output)
+{
+    const node_desc *desc = n->desc;
+    int binding = binding_of(n);
+    if (binding == BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
+        put(t, behavior_expression_spelling(desc, &binding));
+        put_input(t, g, n, 0, binding);
+        return;
+    }
+    if (binding != ATOM_BINDING) {
+        const char *spelling = behavior_expression_spelling(desc, &binding);
+        bool right = !strcmp(spelling, "^");
+        put_input(t, g, n, 0, binding + right);
+        put(t, " ");
+        put(t, spelling);
+        put(t, " ");
+        put_input(t, g, n, 1, binding + !right);
+        return;
+    }
+    if (desc->pure_kind == NODE_PURE_SELF) {
+        put(t, "Self");
+        return;
+    }
+    if (desc->pure_kind == NODE_PURE_GET) {
+        const behavior_variable *variable = g->owner
+                                              ? behavior_asset_find_variable_by_id(g->owner, n->reference_id)
+                                              : NULL;
+        put(t,
+            variable            ? variable->name
+            : n->reference_name ? n->reference_name
+                                : "variable");
+        return;
+    }
+    if (desc->pure_kind == NODE_PURE_CONST ||
+        desc->display_class == NODE_DISPLAY_LITERAL) {
+        if (n->input_count == 1) {
+            put_input(t, g, n, 0, 0);
+        } else {
+            put_value(t, &n->output_pins[output], &n->output_pins[output].default_value);
+        }
+        return;
+    }
+    if (put_component(t, g, n, output)) {
+        return;
+    }
+    /* Named sources such as shader parameters read as their name. */
+    if (!n->input_count && n->reference_name && n->reference_name[0]) {
+        put(t, n->reference_name);
+        return;
+    }
+    const char *function = behavior_expression_spelling(desc, &binding);
+    char vector[8];
+    if (graph_node_is_vector_constructor(n)) {
+        snprintf(vector, sizeof vector, "vec%d", n->input_count);
+        function = vector;
+    }
+    if (function) {
+        put(t, function);
+    } else {
+        put_identifier(t, !strncmp(desc->name, "Shader ", 7) ? desc->name + 7 : desc->name);
+    }
+    if (n->input_count || function) {
+        put_arguments(t, g, n);
+    }
+    if (n->output_count > 1 && n->output_pins[output].name) {
+        put(t, ".");
+        put(t, n->output_pins[output].name);
+    }
+}
+
+void behavior_expression_format(const graph *g, const node *n, int output, char *buf, size_t cap)
+{
+    assert(cap && output >= 0 && output < n->output_count);
+    text t = { buf, cap, 0 };
+    buf[0] = '\0';
+    put_node(&t, g, n, output);
+}

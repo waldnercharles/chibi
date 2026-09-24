@@ -96,6 +96,53 @@ static const math_function functions[] = {
     { "vec3", "Make_CF_V3", 3 },
 };
 
+/* Infix operators by binding power; higher binds tighter. */
+typedef struct
+{
+    int token;
+    const char *symbol;
+    const char *node_name;
+    int binding;
+} math_operator;
+
+static const math_operator operators[] = {
+    { TOKEN_OR, "||", "Or", 1 },    { TOKEN_AND, "&&", "And", 2 },
+    { TOKEN_EQ, "==", "Equal", 3 }, { TOKEN_NE, "!=", "Not Equal", 3 },
+    { '<', "<", "Less", 4 },        { TOKEN_LE, "<=", "Less Or Equal", 4 },
+    { '>', ">", "Greater", 4 },     { TOKEN_GE, ">=", "Greater Or Equal", 4 },
+    { '+', "+", "Add", 10 },        { '-', "-", "Subtract", 10 },
+    { '*', "*", "Multiply", 20 },   { '/', "/", "Divide", 20 },
+    { '%', "%", "Modulo", 20 },     { '^', "^", "Power", 30 },
+};
+
+const char *behavior_expression_spelling(const node_desc *desc, int *binding)
+{
+    const char *name = desc->name;
+    if (!strncmp(name, "Integer ", 8)) {
+        name += 8;
+    }
+    *binding = BEHAVIOR_EXPRESSION_PREFIX_BINDING;
+    if (!strcmp(name, "Not")) {
+        return "!";
+    }
+    if (!strcmp(name, "Negate")) {
+        return "-";
+    }
+    for (size_t i = 0; i < sizeof operators / sizeof operators[0]; i++) {
+        if (!strcmp(operators[i].node_name, name)) {
+            *binding = operators[i].binding;
+            return operators[i].symbol;
+        }
+    }
+    *binding = 0;
+    for (size_t i = 0; i < sizeof functions / sizeof functions[0]; i++) {
+        if (!strcmp(functions[i].node_name, desc->name)) {
+            return functions[i].name;
+        }
+    }
+    return NULL;
+}
+
 static int fail(parser *p, const char *message)
 {
     if (!p->error->message[0]) {
@@ -349,7 +396,7 @@ static int primary(parser *p)
     if (p->token == '+' || p->token == '-' || p->token == '!') {
         if (p->token == '!') {
             next(p);
-            int argument = expression(p, 25);
+            int argument = expression(p, BEHAVIOR_EXPRESSION_PREFIX_BINDING);
             if (argument < 0) {
                 return -1;
             }
@@ -363,7 +410,7 @@ static int primary(parser *p)
         }
         bool negative = p->token == '-';
         next(p);
-        int argument = expression(p, 25);
+        int argument = expression(p, BEHAVIOR_EXPRESSION_PREFIX_BINDING);
         if (argument < 0 || !negative) {
             return argument;
         }
@@ -386,70 +433,13 @@ static int expression(parser *p, int precedence)
     }
     int left = primary(p);
     while (left >= 0) {
-        int binding;
-        const char *operation;
-        switch (p->token) {
-            case '+':
-                binding = 10;
-                operation = "Add";
-                break;
-            case '-':
-                binding = 10;
-                operation = "Subtract";
-                break;
-            case '*':
-                binding = 20;
-                operation = "Multiply";
-                break;
-            case '/':
-                binding = 20;
-                operation = "Divide";
-                break;
-            case '%':
-                binding = 20;
-                operation = "Modulo";
-                break;
-            case '^':
-                binding = 30;
-                operation = "Power";
-                break;
-            case TOKEN_OR:
-                binding = 1;
-                operation = "Or";
-                break;
-            case TOKEN_AND:
-                binding = 2;
-                operation = "And";
-                break;
-            case TOKEN_EQ:
-                binding = 3;
-                operation = "Equal";
-                break;
-            case TOKEN_NE:
-                binding = 3;
-                operation = "Not Equal";
-                break;
-            case '<':
-                binding = 4;
-                operation = "Less";
-                break;
-            case TOKEN_LE:
-                binding = 4;
-                operation = "Less Or Equal";
-                break;
-            case '>':
-                binding = 4;
-                operation = "Greater";
-                break;
-            case TOKEN_GE:
-                binding = 4;
-                operation = "Greater Or Equal";
-                break;
-            default:
-                binding = -1;
-                operation = NULL;
-                break;
+        const math_operator *operation = NULL;
+        for (size_t i = 0; i < sizeof operators / sizeof operators[0]; i++) {
+            if (operators[i].token == p->token) {
+                operation = &operators[i];
+            }
         }
+        int binding = operation ? operation->binding : -1;
         if (binding < precedence) {
             break;
         }
@@ -462,7 +452,7 @@ static int expression(parser *p, int precedence)
         }
         left = append(
             p,
-            (term){ .desc = registry_node_by_name(operation),
+            (term){ .desc = registry_node_by_name(operation->node_name),
                     .args = { left, right },
                     .count = 2,
                     .symbol = -1 }

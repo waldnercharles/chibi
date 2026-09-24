@@ -41,7 +41,8 @@ The editor hides the wires; the existing runtime, flow observer, effect analysis
 cycle checks, system register lowering, shader scope cache, and arrangement all
 follow the same dependencies. This avoids a second dependency graph or a new
 runtime value store. `graph_node_is_inline` still describes only a single owned
-consumer, and a local source never becomes inline.
+consumer, and a local source never becomes inline. A local input is a value, so
+a pure consumer of a local can still fold into its own consumer.
 
 Loading validates local identity and dependency consistency. Clipboard copies
 remap IDs and resolve name collisions. A partial copy discards references to

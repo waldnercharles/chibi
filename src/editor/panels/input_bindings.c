@@ -684,7 +684,8 @@ static node *ed_make_inline_vector(editor *e, node *target, int index)
     int result = graph_connect_data(e->active_graph, source, 0, target, index);
     assert(result == 0);
     (void)result;
-    result = graph_set_node_inline(e->active_graph, source, true);
+    /* Component sources grow the tree past what `auto` folds. */
+    result = graph_set_node_presentation(e->active_graph, source, NODE_PRESENTATION_INLINE);
     assert(result == 0);
     source->x = target->x - 190;
     source->y = target->y;
@@ -882,33 +883,7 @@ static int ed_remove_inline_source(editor *e, node *target, int index)
     if (!ed_inline_source_for(e, target, index, &source, &source_pin)) {
         return 0;
     }
-    bool owned = graph_node_is_inline(e->active_graph, source);
-    if (graph_remove_edge(e->active_graph, source, source_pin, target, index) != 0) {
-        return -1;
-    }
-    if (owned && graph_remove_node(e->active_graph, source) != 0) {
-        return -1;
-    }
-    return 0;
-}
-
-static const char *ed_inline_source_label(const editor *e, const node *target, int index, char *buf, size_t cap)
-{
-    node *source = NULL;
-    int source_pin = -1;
-    if (!ed_inline_source_for(e, target, index, &source, &source_pin)) {
-        return "Literal";
-    }
-    char title[192];
-    char pin[128];
-    ed_node_title(e, source, title, sizeof title);
-    ed_pin_label(source, &source->output_pins[source_pin], pin, sizeof pin);
-    if (source->output_count == 1) {
-        snprintf(buf, cap, "%s", title);
-    } else {
-        snprintf(buf, cap, "%s.%s", title, pin);
-    }
-    return buf;
+    return graph_remove_node_tree(e->active_graph, source);
 }
 
 static int ed_choose_source(editor *e, node *target, int target_pin, const ed_binding_choice *choice)
@@ -949,14 +924,14 @@ static int ed_choose_source(editor *e, node *target, int target_pin, const ed_bi
         return -1;
     }
     int cleared = graph_set_pin_binding(e->active_graph, target, 0, target_pin, NULL);
-    int folded = graph_set_node_inline(e->active_graph, source, true);
-    assert(cleared == 0 && folded == 0);
+    assert(cleared == 0);
     (void)cleared;
-    (void)folded;
+    /* A source that cannot fold stays an ordinary wired node. */
+    (void)graph_inline_node(e->active_graph, source);
     source->x = target->x - 190.0f;
     source->y = target->y;
     if (had_inline && old_source != source) {
-        graph_remove_node(e->active_graph, old_source);
+        graph_remove_node_tree(e->active_graph, old_source);
     }
     return 0;
 }
@@ -1016,7 +991,7 @@ static int ed_choose_binding(editor *e, node *target, int index, const ed_bindin
         }
     }
     if (old_reference_inline && old_reference_source && old_reference_source != created) {
-        (void)graph_remove_node(e->active_graph, old_reference_source);
+        (void)graph_remove_node_tree(e->active_graph, old_reference_source);
     }
     ed_push_string(&e->undo, before);
     ed_free_string_stack(&e->redo);
@@ -1033,7 +1008,8 @@ int ed_expand_inline_source(editor *e, node *target, int index)
         return -1;
     }
     ed_snapshot_before(e);
-    if (graph_set_node_inline(e->active_graph, source, false) != 0) {
+    if (graph_set_node_presentation(e->active_graph, source, NODE_PRESENTATION_EXPANDED) !=
+        0) {
         return -1;
     }
     source->x = target->x - ed_node_dimensions(e, e->active_graph, source).x - 60.0f;
@@ -1486,14 +1462,18 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
     char title[256];
     char chip[128];
     char fitted[128];
+    if (has_inline_source) {
+        behavior_expression_format(e->active_graph, inline_source, inline_pin, source, sizeof source);
+    }
     const char *full_label = binding
                                ? ed_binding_label(e, binding, source, sizeof source)
+                           : has_inline_source ? source
                            : connected
                                ? ed_node_title(e, connected_source, title, sizeof title)
-                           : reference
-                               ? "Choose writable target"
-                               : ed_inline_source_label(e, n, index, source, sizeof source);
-    if (connected && connected_source->output_count > 1 && connected_pin >= 0) {
+                           : reference ? "Choose writable target"
+                                       : "Literal";
+    if (!has_inline_source && connected && connected_source->output_count > 1 &&
+        connected_pin >= 0) {
         char pin_label[128];
         ed_pin_label(connected_source, &connected_source->output_pins[connected_pin], pin_label, sizeof pin_label);
         snprintf(source, sizeof source, "%s.%s", full_label, pin_label);

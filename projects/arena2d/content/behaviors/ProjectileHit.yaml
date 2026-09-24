@@ -23,8 +23,6 @@ graphs:
       Self: {type_name: ecs.entity}
   - id: 7
     type: Normalize Vector 2
-    x: 0.0
-    "y": 346.0
     inputs:
       Value:
         binding: {kind: component, component: GAME.GameVelocity}

@@ -27,8 +27,8 @@ static node **expand_inline_selection(const graph *g, node *const *selection, in
     for (int i = 0; i < count; i++) {
         expanded[i] = selection[i];
     }
-    for (int i = 0; i < count; i++) {
-        node *target = selection[i];
+    for (int i = 0; i < total; i++) {
+        node *target = expanded[i];
         if (!target || graph_node_by_id(g, target->id) != target) {
             continue;
         }

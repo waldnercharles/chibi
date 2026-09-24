@@ -21,15 +21,11 @@ graphs:
       Height: {id: 112}
   - id: 37
     type: Shader Position
-    x: 0.0
-    "y": 0.0
     outputs:
       Position:
         default: {x: 0.0, "y": 0.0}
   - id: 39
     type: Shader Mapping
-    x: 230.0
-    "y": 0.0
     inputs:
       Position:
         default: {x: 0.0, "y": 0.0}
@@ -74,8 +70,6 @@ graphs:
     inputs: {Power: 3.0}
   - id: 63
     type: Shader Parameter
-    x: 240.0
-    "y": 620.0
     reference_id: 2
     reference_name: Edge Glow
     outputs:
@@ -91,8 +85,6 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 69
     type: Shader Parameter
-    x: 500.0
-    "y": 650.0
     reference_id: 5
     reference_name: Body Glow
     outputs:
@@ -127,16 +119,12 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 79
     type: Shader Parameter
-    x: 1130.0
-    "y": 560.0
     reference_id: 3
     reference_name: Roughness
     outputs:
       Value: {flags: 0, group: 0, default: 0.3199999928474426}
   - id: 81
     type: Shader Parameter
-    x: 1130.0
-    "y": 735.0
     reference_id: 4
     reference_name: Metallic
     outputs:
@@ -229,16 +217,12 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 102
     type: Shader Parameter
-    x: 1650.0
-    "y": 860.0
     reference_id: 1
     reference_name: Dash Glow
     outputs:
       Value: {id: 101, type_name: float, flags: 0, group: 0}
   - id: 106
     type: Shader Multiply
-    x: 1910.0
-    "y": 650.0
     inputs:
       A:
         id: 103

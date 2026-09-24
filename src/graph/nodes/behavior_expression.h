@@ -36,6 +36,17 @@ graph *behavior_expression_rebuild(const behavior_asset *asset, const graph *gen
 int behavior_expression_restore(behavior_asset *asset, graph *generated);
 const char *behavior_expression_source(const behavior_asset *asset, const node *call);
 
+/* How Behavior Expression spells a node: an infix operator with its binding
+ * power (higher binds tighter), a prefix operator bound at
+ * BEHAVIOR_EXPRESSION_PREFIX_BINDING, or a function call with binding 0.
+ * NULL when the syntax has no spelling for it. */
+#define BEHAVIOR_EXPRESSION_PREFIX_BINDING 25
+const char *behavior_expression_spelling(const node_desc *desc, int *binding);
+/* Writes the inline tree rooted at `output` of n in Behavior Expression
+ * syntax, such as `Self.GameMovement.speed * 2`, truncated to cap. The text
+ * presents graph data for reading; it is never parsed back. */
+void behavior_expression_format(const graph *g, const node *n, int output, char *buf, size_t cap);
+
 /* A source-to-source authoring transform for a connected, pure numeric
  * calculation. The selected graph nodes are replaced by one expression call;
  * incoming wires and dormant bindings are retained on its inputs. */

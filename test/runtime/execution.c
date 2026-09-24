@@ -1019,6 +1019,7 @@ void run_runtime_execution_checks()
         graph_set_event_name(&gj, event, "Saved");
         graph_connect_exec(&gj, event, 0, branch, 0, 12);
         graph_connect_data(&gj, condition, 0, branch, 1);
+        graph_set_node_presentation(&gj, condition, NODE_PRESENTATION_EXPANDED);
         char *json = graph_save_json(&gj);
         test_check(
             json && strstr(json, "\"version\": 3") &&

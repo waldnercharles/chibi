@@ -1086,11 +1086,12 @@ static int operation_set_node(edit_context *ctx, yyjson_val *op)
             return -1;
         }
     }
-    yyjson_val *inline_source = yyjson_obj_get(op, "inline_source");
-    if (inline_source) {
-        if (!yyjson_is_bool(inline_source) ||
-            graph_set_node_inline(ctx->graph, n, yyjson_get_bool(inline_source))) {
-            set_error(ctx, "inline_source must be a boolean");
+    yyjson_val *presentation = yyjson_obj_get(op, "presentation");
+    if (presentation) {
+        int mode = graph_presentation_by_name(yyjson_get_str(presentation));
+        if (mode < 0 ||
+            graph_set_node_presentation(ctx->graph, n, (node_presentation)mode)) {
+            set_error(ctx, "presentation must be auto, inline or expanded");
             return -1;
         }
     }

@@ -11,6 +11,7 @@
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/array.h"
@@ -500,6 +501,11 @@ static int pin_index(edit_context *ctx, node *n, yyjson_val *selector, int outpu
             }
             found = i;
         }
+    }
+    /* Naming a field Set Component can write shows that field input. */
+    if (found < 0 && !output && component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
+        component_node_show_field(ctx->graph, n, name, true) == 0) {
+        return pin_index(ctx, n, selector, output, pin);
     }
     if (found < 0) {
         set_error(ctx, "unknown %s pin '%s'", output ? "output" : "input", name);
@@ -1256,6 +1262,14 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
     if (!n) {
         return -1;
     }
+    if (component_node_kind_of(n->desc)) {
+        set_error(
+            ctx,
+            "%s pins follow its Component; show or hide fields instead",
+            n->desc->name
+        );
+        return -1;
+    }
     const char *side = NULL;
     const char *name = NULL;
     if (!string_value(yyjson_obj_get(op, "side"), &side) ||
@@ -1575,6 +1589,20 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
     int index = pin_index(ctx, n, yyjson_obj_get(op, "pin"), output, &pin);
     if (index < 0) {
         return -1;
+    }
+    /* Removing a Set field input hides it; other component pins are fixed. */
+    if (component_node_kind_of(n->desc) &&
+        (!strcmp(operation, "remove_pin") || !strcmp(operation, "set_pin"))) {
+        if (strcmp(operation, "remove_pin") || output ||
+            component_node_show_field(ctx->graph, n, pin->name, false)) {
+            set_error(
+                ctx,
+                "%s pins follow its Component; show or hide fields instead",
+                n->desc->name
+            );
+            return -1;
+        }
+        return 0;
     }
     int result = -1;
     if (!strcmp(operation, "remove_pin")) {

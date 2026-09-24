@@ -6,9 +6,11 @@
 #include "graph/compiler/compile.h"
 
 #include "graph/compiler/field_program.h"
+#include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/arena.h"
@@ -1192,8 +1194,34 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
     return out->error_count;
 }
 
+/* Component nodes run as the generated descriptors they lower to. */
+static int compile_lowered(const behavior_asset *asset, compile_report *out)
+{
+    char *json = behavior_asset_save_json(asset);
+    behavior_asset *lowered = json ? behavior_asset_load_json(json) : NULL;
+    free(json);
+    char error[256] = "";
+    if (!lowered) {
+        snprintf(error, sizeof error, "%s", graph_last_error());
+    }
+    if (!lowered || behavior_asset_lower_component_nodes(lowered, error, sizeof error)) {
+        compile_report_free(out);
+        compile_report_init(out);
+        compile_graph_id = asset->graph->graph_id;
+        emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_MISSING_REFERENCE, "%s", error);
+        behavior_asset_free(lowered);
+        return out->error_count;
+    }
+    int errors = behavior_asset_compile(lowered, out);
+    behavior_asset_free(lowered);
+    return errors;
+}
+
 int behavior_asset_compile(const behavior_asset *asset, compile_report *out)
 {
+    if (behavior_asset_has_component_nodes(asset)) {
+        return compile_lowered(asset, out);
+    }
     if (asset->domain == BEHAVIOR_DOMAIN_FIELD) {
         compile_report_free(out);
         compile_report_init(out);

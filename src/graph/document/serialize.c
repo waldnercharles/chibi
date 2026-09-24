@@ -3,6 +3,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -366,6 +367,9 @@ static int keyed_template(node *n, int output, const char *key, pin_spec *out)
         }
         return -1;
     }
+    if (component_node_kind_of(n->desc)) {
+        return !output && component_node_field_pin(n, key, out) ? 0 : -1;
+    }
     int count = output ? n->output_count : n->input_count;
     *out = *serialize_pin_template(n->desc, output, count);
     out->name = key;
@@ -376,12 +380,19 @@ static int keyed_template(node *n, int output, const char *key, pin_spec *out)
  * their positions; other keys add pins in order. */
 static int load_pin_map(graph *g, node *n, yyjson_val *map, int output, uint64_t **ids, load_refs *refs)
 {
-    const pin_spec *template_pins = output ? n->desc->outputs : n->desc->inputs;
-    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    /* A component node's template is its prepared pins. */
+    bool component = component_node_kind_of(n->desc);
+    int template_count = component ? component_node_template_count(n, output)
+                       : output    ? n->desc->output_count
+                                   : n->desc->input_count;
     size_t at, max;
     yyjson_val *key, *v;
     yyjson_obj_foreach(map, at, max, key, v)
     {
+        const pin_spec *template_pins = component
+                                          ? (output ? n->output_pins : n->input_pins)
+                                      : output ? n->desc->outputs
+                                               : n->desc->inputs;
         const char *name = yyjson_get_str(key);
         int i = -1;
         for (int t = 0; t < template_count && i < 0; t++) {
@@ -537,6 +548,43 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
     return 0;
 }
 
+/* A component node's Value pins follow its Component setting, and a Set that
+ * names field inputs writes those fields instead of Value. */
+static int prepare_component_node(graph *g, node *n, yyjson_val *v)
+{
+    component_node_kind kind = component_node_kind_of(n->desc);
+    if (!kind) {
+        return 0;
+    }
+    yyjson_val *inputs = yyjson_obj_get(v, "inputs");
+    if (inputs && !yyjson_is_obj(inputs)) {
+        serialize_error_set(
+            "component node %llu must key its inputs",
+            (unsigned long long)n->id
+        );
+        return -1;
+    }
+    yyjson_val *setting = yyjson_obj_get(inputs, "Component");
+    yyjson_val *key = yyjson_is_obj(setting) ? yyjson_obj_get(setting, "default")
+                                             : setting;
+    const char *component = yyjson_get_str(key);
+    bool split = false;
+    size_t at, max;
+    yyjson_val *name, *entry;
+    if (inputs) {
+        yyjson_obj_foreach(inputs, at, max, name, entry)
+        {
+            split |= kind == COMPONENT_NODE_SET &&
+                     component_field_settable(component_by_key(component), yyjson_get_str(name));
+        }
+    }
+    if (component_node_prepare(g, n, component, split)) {
+        serialize_error_set("unknown component \"%s\"", component);
+        return -1;
+    }
+    return 0;
+}
+
 static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counter, load_refs *refs)
 {
     yyjson_arr_iter it;
@@ -607,7 +655,7 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
         n->breakpoint_enabled = breakpoint_enabled &&
                                 yyjson_is_bool(breakpoint_enabled) &&
                                 yyjson_get_bool(breakpoint_enabled);
-        if (load_node_pins(g, n, v, refs)) {
+        if (prepare_component_node(g, n, v) || load_node_pins(g, n, v, refs)) {
             return -1;
         }
         if (n->id == 0) {

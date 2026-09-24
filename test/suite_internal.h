@@ -139,6 +139,7 @@ extern void test_appearance();
 extern void test_retained_components();
 extern void test_editor_flow();
 extern void test_component_fields();
+extern void test_component_nodes();
 extern void test_scene_navigation();
 extern void test_scene_debug();
 extern void test_appearance_geometry();

@@ -2447,6 +2447,11 @@ static int command(kit *k, const kit_command_item *items, int count, bool ranked
     if (c.focus) {
         c.focus = false;
         static_cast<Rml::ElementFormControlInput *>(c.input)->SetValue("");
+    }
+    /* The dialog is modal: focus stays in its input (cmdk). A focus request made
+       while the input was being created can be refused, which dropped the
+       first typed characters. */
+    if (k->context->GetFocusElement() != c.input) {
         c.input->Focus(true);
     }
     /* Rank with command-score; groups order by their best match (cmdk). */

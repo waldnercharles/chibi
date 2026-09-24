@@ -939,7 +939,7 @@ void ed_request_extraction(editor *e)
     e->extract_requested = true;
 }
 
-static const char *ed_extract_selection(editor *e)
+const char *ed_extract_selection(editor *e)
 {
     if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
         return "Systems do not support extracted functions.";
@@ -976,7 +976,7 @@ static const char *ed_extract_selection(editor *e)
     return NULL;
 }
 
-static node *ed_convert_behavior_expression_selection(
+node *ed_convert_behavior_expression_selection(
     editor *e,
     node *const *selection,
     int count,

@@ -8,8 +8,11 @@
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/document/extract.h"
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
 #include "support/array.h"
 
@@ -1457,6 +1460,9 @@ static void pointer(studio *s)
 }
 
 /* Canvas shortcuts act on the area under the pointer or last clicked (Blender). */
+static void collapse_to_function(studio *s);
+static void convert_to_expression(studio *s);
+
 static void shortcuts(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -1499,6 +1505,8 @@ static void shortcuts(studio *s)
             delete_selection(s);
         } else if (mod && key == SDLK_V) {
             paste(s);
+        } else if (mod && key == SDLK_G && !graph_readonly(s) && acount(e->selected)) {
+            collapse_to_function(s);
         } else if ((shift && key == SDLK_A) || key == SDLK_TAB) {
             if (!graph_readonly(s)) {
                 g->spawn_pending = true;
@@ -1591,6 +1599,51 @@ static void find_unused(studio *s)
     free(used);
 }
 
+/* ---------- Refactoring ---------- */
+
+/* Ctrl+G: the selection becomes a call to a new function whose interface is
+   the wires crossing its edge (Blender, Unreal). */
+static void collapse_to_function(studio *s)
+{
+    editor *e = graph_editor(s);
+    for (int i = 1;; i++) {
+        snprintf(e->extract_name, sizeof e->extract_name, i == 1 ? "New Function" : "New Function %d", i);
+        if (!behavior_asset_find_graph_by_name(e->asset, e->extract_name)) {
+            break;
+        }
+    }
+    const char *error = ed_extract_selection(e);
+    if (error) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Can't collapse",
+                               .description = error }
+        );
+    }
+}
+
+static void convert_to_expression(studio *s)
+{
+    editor *e = graph_editor(s);
+    behavior_expression_error error = { 0 };
+    node **selection = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        apush(selection, e->selected[i]);
+    }
+    if (!ed_convert_behavior_expression_selection(e, selection, acount(selection), &error)) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Can't convert",
+                               .description = error.message[0] ? error.message : NULL }
+        );
+    }
+    afree(selection);
+}
+
 /* ---------- Menus ---------- */
 
 static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
@@ -1630,6 +1683,39 @@ void studio_graph_menus(studio *s)
         }
         if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
             delete_selection(s);
+        }
+        kit_menu_separator(k, "s1");
+        const char *extract = behavior_asset_can_extract_function(
+            e->asset,
+            gr,
+            e->selected,
+            acount(e->selected)
+        );
+        if (menu_item(
+                k,
+                "collapse",
+                "Collapse to Function",
+                KIT_ICON_FUNCTION,
+                "Ctrl G",
+                readonly || extract || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+            )) {
+            collapse_to_function(s);
+        }
+        const char *expression = behavior_expression_can_convert_selection(
+            e->asset,
+            gr,
+            e->selected,
+            acount(e->selected)
+        );
+        if (menu_item(
+                k,
+                "expression",
+                "Convert to Expression",
+                KIT_ICON_EXPRESSION,
+                NULL,
+                readonly || expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+            )) {
+            convert_to_expression(s);
         }
         kit_menu_separator(k, "s0");
         if (menu_item(
@@ -2586,6 +2672,37 @@ void studio_node_properties(studio *s)
     kit_pop(k);
     kit_pop(k);
     kit_pop(k);
+    const char *source = n->desc == &NODE_BehaviorExpression
+                           ? behavior_expression_source(e->asset, n)
+                           : NULL;
+    if (source) {
+        /* The expression is the node: edit it here, see errors in place. */
+        if (kit_panel_begin(k, "expression", "Expression", NULL, true)) {
+            studio_graph *g = &s->graph;
+            if (g->expression_node != n->id) {
+                snprintf(g->expression, sizeof g->expression, "%s", source);
+                g->expression_node = n->id;
+                g->expression_error[0] = '\0';
+            }
+            if (kit_text_field(k, "source", g->expression, sizeof g->expression, "a + b", readonly ? KIT_READONLY : 0)) {
+                behavior_expression_error error = { 0 };
+                if (editor_set_behavior_expression(e, n, g->expression, &error) != 0) {
+                    snprintf(
+                        g->expression_error,
+                        sizeof g->expression_error,
+                        "%s",
+                        error.message[0] ? error.message : "Invalid expression"
+                    );
+                } else {
+                    g->expression_error[0] = '\0';
+                }
+            }
+            if (g->expression_error[0]) {
+                kit_label(k, "error", "notice", g->expression_error);
+            }
+        }
+        kit_panel_end(k);
+    }
     if (n->input_count && kit_panel_begin(k, "inputs", "Inputs", NULL, true)) {
         for (int p = 0; p < n->input_count; p++) {
             const pin_spec *spec = &n->input_pins[p];

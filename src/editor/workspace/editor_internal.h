@@ -493,6 +493,16 @@ void ed_arrange_in_transaction(editor *e);
 void ed_refresh_stale_behavior_expressions(editor *e);
 void ed_open_context_menu(editor *e, ImVec2 mouse);
 void ed_request_extraction(editor *e);
+/* Replaces the selection with a call to a new function named e->extract_name;
+   returns why it could not, or NULL. */
+const char *ed_extract_selection(editor *e);
+/* Replaces a pure numeric selection with one Behavior Expression call. */
+node *ed_convert_behavior_expression_selection(
+    editor *e,
+    node *const *selection,
+    int count,
+    behavior_expression_error *error
+);
 void ed_draw_extract_popup(editor *e);
 void ed_handle_popups(editor *e);
 const flow_run *ed_display_run(const editor *e);

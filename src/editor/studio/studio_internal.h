@@ -191,6 +191,9 @@ typedef struct
     bool menu_request; /* open the context menu at menu_x, menu_y (window px) */
     float menu_x, menu_y;
     uint64_t *unused; /* nodes no event reaches or whose values nothing reads */
+    uint64_t expression_node; /* the expression being edited in Properties */
+    char expression[512];
+    char expression_error[192];
 } studio_graph;
 
 struct studio

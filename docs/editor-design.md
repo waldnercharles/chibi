@@ -1406,3 +1406,26 @@ Rotation layout, runtime output ownership, Target alignment and source picking,
 and scalar/integer/vector authoring with independent Undo/Redo. It also checks
 stacked component bounds, component and whole-vector sources, scalar broadcast,
 source replacement, and shader source editing with Inspector hidden.
+
+## Auto-arrange and wire lanes
+
+Arrange places nodes in layered columns and leaves a lane beside the nodes of
+every column a wire skips. The canvas draws those wires through their lanes
+instead of as one curve across the columns, so they no longer cut through
+nodes. `arrange_route` recomputes the lanes from node positions alone: it
+re-runs the layered layout with every node pinned in place, so it finds the
+lanes Arrange reserved and still gives hand-placed nodes reasonable lanes.
+Routes are never saved. The canvas rebuilds them when positions, sizes, or
+wires change. Authored reroutes and custom handles take precedence, and wires
+that run backward keep their looping curve.
+
+`test_suite --arrange-bench [repeats] [filter]`, run from the repository root,
+arranges and routes every graph under `content/` and `projects/*/content/`. It
+prints layout and routing time, crossings, wire-node hits, overlaps, waypoint
+count, length, cost, and a hash of the placed positions per graph.
+`--graph-arrange` runs the focused scoring, routing, and determinism checks.
+Across the 201 content graphs, arranged from zeroed seeds as `graph_layout`
+does, Arrange previously produced 4672 crossings and 774 wire-node hits; it now
+produces 3382 crossings and none. A Release build lays out and routes all of
+them in 12 ms, previously about 1.05 s for layout alone. The largest graph
+(BasaltCave, 425 nodes) takes 7 ms, previously 211 ms.

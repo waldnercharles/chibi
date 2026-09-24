@@ -16,6 +16,15 @@
 
 /* Layered auto-arrange. The measurement and the wire topology come from the
  * editor; the layout itself lives in arrange.c, which knows no ImGui. */
+typedef struct ed_arrange_input
+{
+    node **nodes;
+    arrange_box *boxes;
+    arrange_point *pos;
+    arrange_link *links;
+    int *edge_link; /* per edge: its link, or -1 */
+} ed_arrange_input;
+
 static int ed_node_index(node *const *nodes, const node *n)
 {
     for (int i = 0; i < acount(nodes); i++) {
@@ -26,40 +35,27 @@ static int ed_node_index(node *const *nodes, const node *n)
     return -1;
 }
 
-/* Placed nodes' positions override the arrangement when `keep_placed` is set;
- * only automatic nodes move. */
-static void ed_arrange(editor *e, bool history, bool keep_placed)
+/* Reads the measured layout, so ed_build_layout must have run for the graph. */
+static void ed_arrange_input_build(const editor *e, ed_arrange_input *in)
 {
     graph *g = e->active_graph;
-    node **nodes = NULL;
-    for (int i = 0; i < acount(g->nodes); i++) {
-        if (!graph_node_is_inline(g, g->nodes[i])) {
-            apush(nodes, g->nodes[i]);
-        }
-    }
-    int count = acount(nodes);
-    if (!count) {
-        afree(nodes);
-        return;
-    }
     float line = ImGui_GetTextLineHeight();
-    arrange_box *boxes = NULL;
-    arrange_point *pos = NULL;
-    arrange_link *links = NULL;
-    asetlen(boxes, count);
-    asetlen(pos, count);
-    for (int i = 0; i < count; i++) {
-        node *n = nodes[i];
-        ImVec2 size = ed_node_dimensions(e, g, n);
-        boxes[i] = (arrange_box){ size.x,
-                                  size.y,
-                                  line + 2.0f * ed_node_title_padding(n),
-                                  ed_row_height(n),
-                                  ed_node_body_padding(n) };
-        pos[i] = (arrange_point){ n->x, n->y };
+    for (int i = 0; i < acount(e->views); i++) {
+        node *n = e->views[i].n;
+        apush(in->nodes, n);
+        apush(
+            in->boxes,
+            ((arrange_box){ e->views[i].size.x,
+                            e->views[i].size.y,
+                            line + 2.0f * ed_node_title_padding(n),
+                            ed_row_height(n),
+                            ed_node_body_padding(n) })
+        );
+        apush(in->pos, ((arrange_point){ n->x, n->y }));
     }
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *ed = &g->edges[i];
+        apush(in->edge_link, -1);
         node *from = graph_node_by_id(g, ed->from_id);
         node *to = graph_node_by_id(g, ed->to_id);
         if (!from || !to) {
@@ -72,20 +68,91 @@ static void ed_arrange(editor *e, bool history, bool keep_placed)
         if (!graph_pin_by_id(to, ed->to_pin_id, &to_out, &to_pin) || to_out) {
             continue;
         }
-        int from_at = ed_node_index(nodes, from);
-        int to_at = ed_node_index(nodes, to);
+        int from_at = ed_node_index(in->nodes, from);
+        int to_at = ed_node_index(in->nodes, to);
         if (from_at < 0 || to_at < 0) {
             continue;
         }
-        apush(links, (arrange_link){ from_at, to_at, from_pin, to_pin });
+        in->edge_link[i] = acount(in->links);
+        apush(
+            in->links,
+            ((arrange_link){ .from = from_at,
+                             .to = to_at,
+                             .from_pin = ed_pin_row(e, from, ED_PIN_OUTPUT, from_pin),
+                             .to_pin = ed_pin_row(e, to, ED_PIN_INPUT, to_pin) })
+        );
     }
-    arrange_graph layout = { boxes, count, links, acount(links) };
-    arrange_layout(&layout, pos);
+}
+
+static void ed_arrange_input_free(ed_arrange_input *in)
+{
+    afree(in->nodes);
+    afree(in->boxes);
+    afree(in->pos);
+    afree(in->links);
+    afree(in->edge_link);
+}
+
+static arrange_graph ed_arrange_graph(const ed_arrange_input *in)
+{
+    return (arrange_graph){ in->boxes, acount(in->boxes), in->links, acount(in->links) };
+}
+
+static uint64_t ed_hash(uint64_t hash, const void *data, size_t size)
+{
+    const unsigned char *bytes = data;
+    for (size_t i = 0; i < size; i++) {
+        hash = (hash ^ bytes[i]) * 1099511628211ull;
+    }
+    return hash;
+}
+
+/* Routes depend only on the arrange input, so they are rebuilt when it
+ * changes rather than every frame. */
+void ed_route_wires(editor *e)
+{
+    ed_arrange_input in = { 0 };
+    ed_arrange_input_build(e, &in);
+    uint64_t key = 14695981039346656037ull;
+    for (int i = 0; i < acount(in.boxes); i++) {
+        key = ed_hash(key, &in.boxes[i], sizeof in.boxes[i]);
+        key = ed_hash(key, &in.pos[i], sizeof in.pos[i]);
+    }
+    for (int i = 0; i < acount(in.links); i++) {
+        const arrange_link *l = &in.links[i];
+        int fields[] = { l->from, l->to, l->from_pin, l->to_pin };
+        key = ed_hash(key, fields, sizeof fields);
+    }
+    if (key != e->wire_route_key || !e->wire_routes.start) {
+        arrange_graph layout = ed_arrange_graph(&in);
+        arrange_route(&layout, in.pos, &e->wire_routes);
+        e->wire_route_key = key;
+    }
+    afree(e->wire_route);
+    e->wire_route = in.edge_link;
+    in.edge_link = NULL;
+    ed_arrange_input_free(&in);
+}
+
+/* Placed nodes' positions override the arrangement when `keep_placed` is set;
+ * only automatic nodes move. */
+static void ed_arrange(editor *e, bool history, bool keep_placed)
+{
+    ed_build_layout(e);
+    ed_arrange_input in = { 0 };
+    ed_arrange_input_build(e, &in);
+    int count = acount(in.nodes);
+    if (!count) {
+        ed_arrange_input_free(&in);
+        return;
+    }
+    arrange_graph layout = ed_arrange_graph(&in);
+    arrange_layout(&layout, in.pos);
 
     int moved = 0;
     for (int i = 0; i < count && !moved; i++) {
-        moved = !(keep_placed && nodes[i]->placed) &&
-                (nodes[i]->x != pos[i].x || nodes[i]->y != pos[i].y);
+        moved = !(keep_placed && in.nodes[i]->placed) &&
+                (in.nodes[i]->x != in.pos[i].x || in.nodes[i]->y != in.pos[i].y);
     }
     /* An already arranged graph must not push a do-nothing undo entry, and
      * must not destroy the preview instance at the edit choke point. */
@@ -94,12 +161,12 @@ static void ed_arrange(editor *e, bool history, bool keep_placed)
             ed_snapshot_before(e);
         }
         for (int i = 0; i < count; i++) {
-            if (keep_placed && nodes[i]->placed) {
+            if (keep_placed && in.nodes[i]->placed) {
                 continue;
             }
-            nodes[i]->x = pos[i].x;
-            nodes[i]->y = pos[i].y;
-            nodes[i]->placed = false;
+            in.nodes[i]->x = in.pos[i].x;
+            in.nodes[i]->y = in.pos[i].y;
+            in.nodes[i]->placed = false;
         }
     }
     /* The arranged graph rarely still sits where the view was looking, so
@@ -111,10 +178,7 @@ static void ed_arrange(editor *e, bool history, bool keep_placed)
         ed_frame_initial_view(e);
     }
     ed_build_layout(e);
-    afree(links);
-    afree(pos);
-    afree(boxes);
-    afree(nodes);
+    ed_arrange_input_free(&in);
 }
 
 void ed_auto_arrange(editor *e)
@@ -172,9 +236,10 @@ static bool ed_wire_bounds(const editor *e, const edge *wire, ImVec2 *minimum, I
     }
     *minimum = p0;
     *maximum = p0;
-    for (int segment = 0; segment <= wire->reroute_count; segment++) {
+    int routes = ed_route_count(e, wire);
+    for (int segment = 0; segment <= routes; segment++) {
         ImVec2 a = p0, b = p1, c = p2, d = p3;
-        if (wire->reroute_count) {
+        if (routes) {
             ed_route_segment(e, wire, segment, p0, p3, &a, &b, &c, &d);
         }
         ed_curve_axis_bounds(a.x, b.x, c.x, d.x, &minimum->x, &maximum->x);

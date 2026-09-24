@@ -248,6 +248,11 @@ void ed_handle_input(editor *e)
             int index = ed_edge_index(e, &link);
             edge *ed = &e->active_graph->edges[index];
             if (ed->reroute_count < GRAPH_EDGE_MAX_REROUTES) {
+                /* A wire on its automatic lanes takes the point as its only
+                 * reroute. */
+                if (!ed->reroute_count) {
+                    segment = 0;
+                }
                 e->pending_snapshot = ed_snapshot(e);
                 for (int i = ed->reroute_count; i > segment; i--) {
                     ed->reroutes[i] = ed->reroutes[i - 1];

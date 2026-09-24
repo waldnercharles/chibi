@@ -170,6 +170,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keys.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c

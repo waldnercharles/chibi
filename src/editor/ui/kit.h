@@ -133,6 +133,8 @@ extern "C"
         bool on;
     } kit_class;
     const char *kit_classes(kit *k, const char *base, const kit_class *list, int count);
+    /* A copy of text that lives until kit_end, for labels built per frame. */
+    const char *kit_string(kit *k, const char *text);
 #define KIT_CX(k, base, ...)                                                   \
     kit_classes(                                                               \
         k,                                                                     \
@@ -417,6 +419,22 @@ extern "C"
     /* The last drawn curve of wire `index` as x, y pairs in the element's dp.
      * Returns the point count, which may exceed max. */
     int kit_wire_points(const kit *k, const char *path, int index, float *xy, int max);
+
+    /* A vector glyph that fills its box with one-pixel antialiasing at any
+     * scale: a node socket, a status dot. The ring is drawn inside the box. */
+    typedef enum kit_dot_shape
+    {
+        KIT_DOT_CIRCLE,
+        KIT_DOT_ARROW, /* pointing right */
+    } kit_dot_shape;
+    typedef struct kit_dot_desc
+    {
+        kit_dot_shape shape;
+        uint32_t fill; /* 0xRRGGBBAA */
+        uint32_t ring;
+        float ring_width; /* dp */
+    } kit_dot_desc;
+    void kit_dot(kit *k, const char *key, const char *cls, const kit_dot_desc *desc);
 
     /* Host queries. */
     bool kit_wants_keyboard(const kit *k);

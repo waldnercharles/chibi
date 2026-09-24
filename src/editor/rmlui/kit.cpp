@@ -1435,6 +1435,7 @@ extern "C" kit *kit_create(void *context, const char *document_path)
     k->doc->Show();
     register_chart_element();
     register_wires_element();
+    register_dot_element();
     k->listener = std::make_unique<KitListener>(k);
     const Rml::EventId events[] = {
         Rml::EventId::Mousedown, Rml::EventId::Mouseup,   Rml::EventId::Click,   Rml::EventId::Dblclick,
@@ -1773,6 +1774,12 @@ extern "C" unsigned kit_modifiers(const kit *k)
 }
 
 /* ---------- Controls ---------- */
+
+extern "C" const char *kit_string(kit *k, const char *text)
+{
+    k->strings.emplace_back(text ? text : "");
+    return k->strings.back().c_str();
+}
 
 extern "C" const char *kit_classes(kit *k, const char *base, const kit_class *list, int count)
 {
@@ -2277,19 +2284,38 @@ extern "C" bool kit_popup_begin(kit *k, const char *key, const char *cls)
     Node *n = emit_in(k, k->layer, node_key.c_str(), Kind::Popup, "div", c.c_str());
     presence(k, n);
     flag_element(n->el, "data-unplaced", !p.placed);
-    p.node = n;
+        p.node = n;
     p.items.clear();
+    p.content = 0;
     k->emitting.push_back(key);
     push_node(k, n);
     return true;
+}
+
+/* RmlUi sizes an absolutely positioned box from its block content and not from
+   flex rows, so a menu is widened here to its widest measured row. */
+static void fit_row(kit *k, float width)
+{
+    if (!k->emitting.empty()) {
+        Popup &p = k->popups[k->emitting.back()];
+        p.content = std::max(p.content, width);
+    }
 }
 
 extern "C" void kit_popup_end(kit *k)
 {
     assert(!k->emitting.empty());
     Popup &p = k->popups[k->emitting.back()];
-    if (p.keyboard && p.highlight < 0 && !p.items.empty()) {
+        if (p.keyboard && p.highlight < 0 && !p.items.empty()) {
         move_highlight(k, p, 1, true);
+    }
+    constexpr float kPopupChrome = 10, kMenuMin = 180, kMenuMax = 480;
+    float width = std::clamp(p.content + kPopupChrome, kMenuMin, kMenuMax);
+    if (p.content > 0 && p.node && width != p.content_shown) {
+        char value[32];
+        std::snprintf(value, sizeof value, "%.0fdp", width);
+        p.node->el->SetProperty("min-width", value);
+        p.content_shown = width;
     }
     k->emitting.pop_back();
     pop_node(k);
@@ -2320,8 +2346,11 @@ static Node *menu_row(kit *k, const char *key, Kind kind, const char *label, uin
         w.kbd_el->SetInnerRML(s);
         w.kbd_el->SetClassNames(kind == Kind::Submenu ? "icon chev" : "kbd");
     }
-    set_flag(n, "data-disabled", disabled);
+        set_flag(n, "data-disabled", disabled);
     set_flag(n, "data-checked", checked > 0);
+    /* Padding, lead icon and gaps, then the label and the shortcut or chevron. */
+    fit_row(k, 6 + 16 + 8 + kit_text_width(k, l.c_str(), 12, 400) + 8 +
+                   (kind == Kind::Submenu ? 20 : shortcut && shortcut[0] ? 24 + kit_text_width(k, shortcut, 11, 400) : 0));
     if (!k->emitting.empty()) {
         Popup &p = k->popups[k->emitting.back()];
         p.items.push_back(n);
@@ -2346,8 +2375,9 @@ extern "C" void kit_menu_separator(kit *k, const char *key)
 
 extern "C" void kit_menu_group(kit *k, const char *key, const char *label)
 {
-    Node *n = emit(k, key, Kind::Box, "div", "menu-group");
+        Node *n = emit(k, key, Kind::Box, "div", "menu-group");
     set_text(n, label);
+    fit_row(k, 12 + kit_text_width(k, label, 11, 400));
 }
 
 extern "C" bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon)

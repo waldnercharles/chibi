@@ -295,7 +295,7 @@ scrollbarcorner { background-color: transparent; }
 #layer { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; z-index: 10; }
 .popup {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
-    border-radius: var(--r-lg); padding: 4dp; min-width: 180dp; color: var(--fg);
+        border-radius: var(--r-lg); padding: 4dp; min-width: 180dp; max-width: 480dp; color: var(--fg);
     display: block; z-index: 20;
 }
 .popup[data-unplaced] { visibility: hidden; }
@@ -310,8 +310,8 @@ scrollbarcorner { background-color: transparent; }
     white-space: nowrap; color: var(--fg);
 }
 .menu-item .lead { color: var(--fg-2); }
-.menu-item .label { flex: 1 1 0dp; }
-.menu-item .kbd { margin-left: 24dp; }
+.menu-item .label { flex: 1 1 auto; overflow: hidden; }
+.menu-item .kbd { margin-left: 24dp; flex: 0 0 auto; }
 .menu-item .chev { color: var(--fg-3); font-size: 11dp; }
 .menu-item[data-highlighted] { background-color: var(--accent); color: var(--on-accent); }
 .menu-item[data-highlighted] .lead, .menu-item[data-highlighted] .kbd, .menu-item[data-highlighted] .chev { color: #ffffffcc; }

@@ -57,6 +57,20 @@ static editor_rml_key rml_key(SDL_Keycode key)
     }
 }
 
+static unsigned rml_modifiers(SDL_Keymod mod);
+
+/* On macOS, Command edits text (copy, paste, select all) where RmlUi expects
+   Control, so key events trade the two there. Pointer events keep them. */
+static unsigned rml_key_modifiers(const studio *s, SDL_Keymod mod)
+{
+    if (s->mac) {
+        mod = (SDL_Keymod)((mod & ~(SDL_KMOD_CTRL | SDL_KMOD_GUI)) |
+                           ((mod & SDL_KMOD_GUI) ? SDL_KMOD_CTRL : 0) |
+                           ((mod & SDL_KMOD_CTRL) ? SDL_KMOD_GUI : 0));
+    }
+    return rml_modifiers(mod);
+}
+
 static unsigned rml_modifiers(SDL_Keymod mod)
 {
     return ((mod & SDL_KMOD_CTRL) ? EDITOR_RML_MOD_CONTROL : 0u) |
@@ -159,7 +173,7 @@ static void forward_input(studio *s)
                                                            : EDITOR_RML_KEY_RELEASE;
                 input.key = rml_key(e->key.key);
                 s->mods = e->key.mod;
-                input.modifiers = rml_modifiers(e->key.mod);
+                input.modifiers = rml_key_modifiers(s, e->key.mod);
                 if (e->type == SDL_EVENT_KEY_DOWN) {
                     apush(s->keys, ((studio_key){ e->key.key, e->key.mod }));
                 }
@@ -169,6 +183,7 @@ static void forward_input(studio *s)
                 break;
             case SDL_EVENT_TEXT_INPUT:
                 input.type = EDITOR_RML_TEXT_INPUT;
+                input.modifiers = rml_key_modifiers(s, s->mods);
                 input.text = e->text.text;
                 input.text_size = strlen(e->text.text);
                 break;
@@ -340,6 +355,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     assert(s->kit);
     s->prefs = studio_prefs_load();
     s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
+    s->mac = studio_detect_mac();
     apply_prefs(s, true);
     s->mods = SDL_GetModState();
     s->tab = STUDIO_TAB_OBJECT;

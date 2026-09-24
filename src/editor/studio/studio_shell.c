@@ -6,13 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef __APPLE__
-#define MOD "\xe2\x8c\x98"
-#define SHIFT "\xe2\x87\xa7"
-#else
-#define MOD "Ctrl+"
-#define SHIFT "Shift+"
-#endif
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
     "Scene",  "Behavior", "Outliner",   "Properties",
@@ -359,11 +352,11 @@ static void menus(studio *s)
     app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
     kit_push(k, "menus", "nav", "menus");
     if (kit_menubar_trigger(k, "file", "File")) {
-        if (item(k, "search", "Search", KIT_ICON_SEARCH, MOD "K", false)) {
+        if (item(k, "search", "Search", KIT_ICON_SEARCH, studio_chord(s, "Mod+K"), false)) {
             kit_command_open(k, "Search objects, assets and commands");
         }
         kit_menu_separator(k, "s1");
-        if (item(k, "save", "Save", KIT_ICON_SAVE, MOD "S", !active_dirty(s))) {
+        if (item(k, "save", "Save", KIT_ICON_SAVE, studio_chord(s, "Mod+S"), !active_dirty(s))) {
             studio_save(s);
         }
         if (item(k, "reload", "Reload", 0, NULL, !can_edit)) {
@@ -372,14 +365,21 @@ static void menus(studio *s)
         kit_popup_end(k);
     }
     if (kit_menubar_trigger(k, "edit", "Edit")) {
-        if (item(k, "undo", "Undo", KIT_ICON_UNDO, MOD "Z", !can_edit || !can_replay(s, false))) {
+        if (item(k, "undo", "Undo", KIT_ICON_UNDO, studio_chord(s, "Mod+Z"), !can_edit || !can_replay(s, false))) {
             studio_history(s, false);
         }
-        if (item(k, "redo", "Redo", KIT_ICON_REDO, SHIFT MOD "Z", !can_edit || !can_replay(s, true))) {
+        if (item(
+                k,
+                "redo",
+                "Redo",
+                KIT_ICON_REDO,
+                studio_chord(s, "Mod+Shift+Z"),
+                !can_edit || !can_replay(s, true)
+            )) {
             studio_history(s, true);
         }
         kit_menu_separator(k, "s1");
-        if (item(k, "duplicate", "Duplicate", KIT_ICON_COPY, SHIFT "D", !can_edit || !selection)) {
+        if (item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), !can_edit || !selection)) {
             studio_duplicate(s);
         }
         if (item(k, "delete", "Delete", KIT_ICON_TRASH, "X", !can_edit || !selection)) {
@@ -399,7 +399,9 @@ static void menus(studio *s)
         static const studio_editor drawers[] = { STUDIO_EDITOR_ASSETS,
                                                  STUDIO_EDITOR_OUTPUT,
                                                  STUDIO_EDITOR_PERFORMANCE };
-        static const char *const drawer_keys[] = { SHIFT MOD "A", SHIFT MOD "U", NULL };
+        const char *const drawer_keys[] = { studio_chord(s, "Mod+Shift+A"),
+                                            studio_chord(s, "Mod+Shift+U"),
+                                            NULL };
         for (int i = 0; i < 3; i++) {
             char key[16];
             snprintf(key, sizeof key, "drawer%d", i);
@@ -428,7 +430,7 @@ static void menus(studio *s)
             add_menu_items(s);
             kit_submenu_end(k);
         }
-        if (item(k, "duplicate", "Duplicate", KIT_ICON_COPY, SHIFT "D", !can_edit || !selection)) {
+        if (item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), !can_edit || !selection)) {
             studio_duplicate(s);
         }
         if (item(k, "delete", "Delete", KIT_ICON_TRASH, "X", !can_edit || !selection)) {
@@ -656,7 +658,7 @@ static void topbar(studio *s)
     kit_button_desc search = { .label = "Search",
                                .icon = KIT_ICON_SEARCH,
                                .cls = "search-trigger",
-                               .shortcut = MOD "K" };
+                               .shortcut = studio_chord(s, "Mod+K") };
     if (kit_button(k, "search", &search)) {
         kit_command_open(k, "Search objects, assets and commands");
     }
@@ -851,9 +853,9 @@ static void statusbar(studio *s)
             break;
         case STUDIO_EDITOR_PROPERTIES:
             hint(k, "scrub", NULL, KIT_ICON_MOUSE, "Drag to scrub");
-            hint(k, "fine", "Alt", 0, "Fine");
-            hint(k, "coarse", "Shift", 0, "Coarse");
-            hint(k, "snap", "Ctrl", 0, "Snap");
+            hint(k, "fine", studio_chord(s, "Alt"), 0, "Fine");
+            hint(k, "coarse", studio_chord(s, "Shift"), 0, "Coarse");
+            hint(k, "snap", studio_chord(s, "Ctrl"), 0, "Snap");
             break;
         case STUDIO_EDITOR_OUTLINER:
             hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
@@ -862,7 +864,7 @@ static void statusbar(studio *s)
             break;
         default:
             hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
-            hint(k, "search", MOD "K", 0, "Search");
+            hint(k, "search", studio_chord(s, "Mod+K"), 0, "Search");
             break;
     }
     kit_pop(k);
@@ -884,12 +886,12 @@ static void statusbar(studio *s)
     }
     kit_leaf(k, "spacer2", NULL, "spacer");
     kit_push(k, "drawers", NULL, "drawers");
-    static const struct
+    const struct
     {
         studio_editor editor;
         const char *shortcut;
-    } toggles[] = { { STUDIO_EDITOR_ASSETS, SHIFT MOD "A" },
-                    { STUDIO_EDITOR_OUTPUT, SHIFT MOD "U" },
+    } toggles[] = { { STUDIO_EDITOR_ASSETS, studio_chord(s, "Mod+Shift+A") },
+                    { STUDIO_EDITOR_OUTPUT, studio_chord(s, "Mod+Shift+U") },
                     { STUDIO_EDITOR_PERFORMANCE, NULL } };
     for (size_t i = 0; i < sizeof toggles / sizeof *toggles; i++) {
         studio_editor e = toggles[i].editor;
@@ -955,13 +957,13 @@ static void palette(studio *s)
     app_scene_authoring *scene = s->scene;
     kit_command_item *items = NULL;
     const kit_command_item commands[COMMAND_COUNT] = {
-        { "Save", "Commands", NULL, MOD "S", NULL, KIT_ICON_SAVE },
-        { "Undo", "Commands", NULL, MOD "Z", NULL, KIT_ICON_UNDO },
-        { "Redo", "Commands", NULL, SHIFT MOD "Z", NULL, KIT_ICON_REDO },
+        { "Save", "Commands", NULL, studio_chord(s, "Mod+S"), NULL, KIT_ICON_SAVE },
+        { "Undo", "Commands", NULL, studio_chord(s, "Mod+Z"), NULL, KIT_ICON_UNDO },
+        { "Redo", "Commands", NULL, studio_chord(s, "Mod+Shift+Z"), NULL, KIT_ICON_REDO },
         { "Play", "Commands", NULL, "Space", "run start preview pause", KIT_ICON_PLAY },
         { "Stop", "Commands", NULL, NULL, NULL, KIT_ICON_STOP },
         { "Frame Selected", "Commands", NULL, "F", "focus zoom", KIT_ICON_FRAME },
-        { "Duplicate", "Commands", NULL, SHIFT "D", "copy", KIT_ICON_COPY },
+        { "Duplicate", "Commands", NULL, studio_chord(s, "Shift+D"), "copy", KIT_ICON_COPY },
         { "Delete", "Commands", NULL, "X", "remove", KIT_ICON_TRASH },
         { s->prefs.comfortable ? "Compact Density" : "Comfortable Density",
           "Commands",
@@ -981,11 +983,16 @@ static void palette(studio *s)
           NULL,
           "appearance color mode settings",
           s->light ? KIT_ICON_MOON : KIT_ICON_SUN },
-        { "Toggle Assets", "Commands", NULL, SHIFT MOD "A", "drawer browser content", KIT_ICON_ASSETS },
+        { "Toggle Assets",
+          "Commands",
+          NULL,
+          studio_chord(s, "Mod+Shift+A"),
+          "drawer browser content",
+          KIT_ICON_ASSETS },
         { "Toggle Output",
           "Commands",
           NULL,
-          SHIFT MOD "U",
+          studio_chord(s, "Mod+Shift+U"),
           "drawer log console problems diagnostics",
           KIT_ICON_OUTPUT },
         { "Toggle Performance", "Commands", NULL, NULL, "drawer profiler frame time fps", KIT_ICON_PERFORMANCE },
@@ -1124,7 +1131,7 @@ void studio_shortcuts(studio *s)
                                               : STUDIO_EDITOR_COUNT;
     for (int i = 0; i < acount(s->keys); i++) {
         SDL_Keycode key = s->keys[i].key;
-        bool mod = s->keys[i].mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI);
+        bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
         if (mod && shift && (key == SDLK_A || key == SDLK_U)) {
             studio_toggle_drawer(s, key == SDLK_A ? STUDIO_EDITOR_ASSETS : STUDIO_EDITOR_OUTPUT);

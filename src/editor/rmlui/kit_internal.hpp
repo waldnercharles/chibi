@@ -264,8 +264,10 @@ struct Popup
     double sub_hover_since = 0;
     std::vector<Node *> items;
     Node *node = nullptr;
-    std::string typed;
+        std::string typed;
     double typed_at = 0;
+    float content = 0;       /* widest row this frame, dp; sizes the menu */
+    float content_shown = 0; /* the width applied */
 };
 
 struct CommandState
@@ -378,6 +380,7 @@ void drag_end_frame(kit *k);
 void drag_cancel(kit *k);
 void register_chart_element();
 void register_wires_element();
+void register_dot_element();
 void text_frame(kit *k, double dt);
 void morph_label(kit *k, Node *n, Rml::Element *box, const char *text);
 void forget_motion(kit *k, Node *n);

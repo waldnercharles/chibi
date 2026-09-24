@@ -167,8 +167,6 @@ typedef struct
     int hover_kind, hover_pin; /* -1 without a socket */
     int hover_edge;            /* edge index under the pointer, or -1 */
     bool space;
-    bool trackpad;
-    double wheel_time;
     double value_edit_frame; /* a value gesture has an open undo snapshot */
     bool value_editing;
     uint64_t measured_key;
@@ -178,7 +176,7 @@ typedef struct
     struct
     {
         uint64_t id;
-        float w, h;
+        float w, h, label;
     } *sizes;           /* node sizes measured this frame */
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;
@@ -210,6 +208,7 @@ struct studio
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
     bool system_light;
+    bool mac; /* macOS conventions: Command shortcuts and ⌘ notation */
     bool light;
     int theme_switching; /* frames left with transitions suspended */
     bool drawer_dragging;
@@ -254,6 +253,11 @@ struct studio
     double status_time;
     double time;
 };
+
+/* Platform shortcuts (studio_keys.c). */
+bool studio_detect_mac();
+bool studio_primary(const studio *s, SDL_Keymod mod);
+const char *studio_chord(const studio *s, const char *chord);
 
 /* Preferences. */
 studio_prefs studio_prefs_default();

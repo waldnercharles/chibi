@@ -97,6 +97,8 @@ Behavior changed from the ImGui editor:
 - The transport target is a menu: the scene, or a preview of the open or selected prototype. Its label morphs when the target changes.
 - The Outliner root collapses, and Up and Down step the selection while the pointer is over it.
 - Prototypes dragged from Assets land where they are dropped in the Scene; behaviors dropped on an Outliner row attach to that object.
+- Shortcuts follow the platform, including the web build on a Mac: Command is the primary modifier, chords are written ⇧⌘Z, and Command edits text in fields.
+- Scrolling in the graph zooms, from a mouse or a trackpad.
 - The graph editor owns Undo, Redo and Save while its area has focus. Space and Shift D there no longer play the scene or duplicate objects.
 - A node spawned from a dragged wire lands with the wired socket at the drop point. The search lists exact type matches first, then conversions, then wildcards.
 - Nodes that no event reaches, or whose values nothing reads, are dimmed. Wires attached to the selection or the hovered node stand out, and the rest recede.

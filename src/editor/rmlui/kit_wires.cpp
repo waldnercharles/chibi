@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace kit_impl {
 
@@ -133,7 +134,8 @@ void stroke(Rml::Mesh &mesh, const std::vector<Point> &p, float width, Rml::Colo
 
 void disc(Rml::Mesh &mesh, Point c, float r, Rml::ColourbPremultiplied color, float px)
 {
-    constexpr int kSides = 16;
+    /* Enough sides that the edge stays round at any size. */
+    int kSides = std::clamp((int)(r * 1.5f), 12, 64);
     int base = (int)mesh.vertices.size();
     Rml::ColourbPremultiplied clear = { 0, 0, 0, 0 };
     mesh.vertices.push_back({ c, color, {} });
@@ -405,4 +407,107 @@ extern "C" int kit_wire_points(const kit *k, const char *path, int index, float 
         xy[i * 2 + 1] = points[(size_t)i].y;
     }
     return (int)points.size();
+}
+
+/* Dots (kit_dot): sockets and status marks drawn as geometry, because RmlUi's
+   rounded boxes carry no antialiasing and read as squares at small sizes. */
+namespace kit_impl {
+
+namespace {
+
+void triangle(Rml::Mesh &mesh, Point a, Point b, Point c, Rml::ColourbPremultiplied color)
+{
+    int base = (int)mesh.vertices.size();
+    mesh.vertices.push_back({ a, color, {} });
+    mesh.vertices.push_back({ b, color, {} });
+    mesh.vertices.push_back({ c, color, {} });
+    mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2 });
+}
+
+} // namespace
+
+class ElementDot final : public Rml::Element
+{
+public:
+    explicit ElementDot(const Rml::String &tag)
+      : Rml::Element(tag)
+    {
+    }
+
+    kit_dot_desc desc{};
+    bool dirty = true;
+
+protected:
+    void OnResize() override
+    {
+        dirty = true;
+    }
+
+    void OnRender() override
+    {
+        Rml::RenderManager *render = GetRenderManager();
+        if (!render) {
+            return;
+        }
+        if (dirty) {
+            dirty = false;
+            Rml::Mesh mesh;
+            build(mesh);
+            geometry_ = render->MakeGeometry(std::move(mesh));
+        }
+        geometry_.Render(GetAbsoluteOffset(Rml::BoxArea::Border));
+    }
+
+private:
+    void build(Rml::Mesh &mesh)
+    {
+        float dp = GetContext()->GetDensityIndependentPixelRatio();
+        Point size = GetBox().GetSize(Rml::BoxArea::Border);
+        float ring = desc.ring_width * dp;
+        auto fill = premultiply(desc.fill, 1), edge = premultiply(desc.ring, 1);
+        if (desc.shape == KIT_DOT_CIRCLE) {
+            Point c = size / 2;
+            float r = std::min(size.x, size.y) / 2 - 0.5f;
+            if (ring > 0) {
+                disc(mesh, c, r - 0.5f, edge, 1);
+            }
+            disc(mesh, c, std::max(r - ring - 0.5f, 0.0f), fill, ring > 0 ? 0.75f : 1);
+            return;
+        }
+        /* An arrow pointing right, inset by half a pixel for its feather. */
+        Point a = { 0.5f + size.x * 0.1f, 0.5f }, b = { size.x - 0.5f, size.y / 2 },
+              c = { 0.5f + size.x * 0.1f, size.y - 0.5f };
+        triangle(mesh, a, b, c, ring > 0 ? edge : fill);
+        if (ring > 0) {
+            Point center = (a + b + c) / 3;
+            float k = std::max(0.0f, 1 - 2.2f * ring / size.y);
+            triangle(mesh, center + (a - center) * k, center + (b - center) * k, center + (c - center) * k, fill);
+        }
+        stroke(mesh, { a, b, c, a }, 1, ring > 0 ? edge : fill, 1);
+    }
+
+    Rml::Geometry geometry_;
+};
+
+namespace {
+
+Rml::ElementInstancerGeneric<ElementDot> dot_instancer;
+
+} // namespace
+
+void register_dot_element()
+{
+    Rml::Factory::RegisterElementInstancer("kit-dot", &dot_instancer);
+}
+
+} // namespace kit_impl
+
+extern "C" void kit_dot(kit *k, const char *key, const char *cls, const kit_dot_desc *d)
+{
+    Node *n = emit(k, key, Kind::Box, "kit-dot", cls);
+    auto *el = static_cast<ElementDot *>(n->el);
+    if (std::memcmp(&el->desc, d, sizeof *d) != 0) {
+        el->desc = *d;
+        el->dirty = true;
+    }
 }

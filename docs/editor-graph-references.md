@@ -35,14 +35,7 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Continuous and anchored at the cursor: `zoom · 2^(−Δy · 0.002)` per pixel of wheel delta, which is about ×1.15 per mouse notch (xyflow).
   - The focal point stays fixed for the whole wheel gesture; a gesture ends 150 ms after its last event (d3, Node-RED).
   - Fitting never zooms past 1:1 (n8n, Rete).
-- **Mouse vs trackpad:**
-  - Mouse: the wheel zooms, as Blender and Unreal do.
-  - Trackpad: two-finger scrolling pans and pinch (a ctrl-flagged wheel event) zooms.
-  - Detection follows ComfyUI:
-    - Trackpad when a wheel event has both a horizontal and a vertical delta, or ctrl with |Δy| < 10.
-    - Mouse when |Δy| > 80.
-    - The detected mode switches only after a 500 ms pause.
-  - Settings ▸ Navigation overrides detection with Auto, Mouse or Trackpad (tldraw `inputMode`).
+- **Scrolling zooms,** from a mouse wheel or a trackpad alike, as Blender and Unreal do. One event never more than doubles or halves the zoom.
 - **Pan:**
   - The middle button always pans, even over nodes.
   - Space+drag pans.
@@ -84,10 +77,19 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Q straightens the selection (Unreal); L arranges it (Houdini).
 - **Undo:** each gesture is one undo step. The editor already snapshots per mutation; camera and selection changes never enter history.
 
+### Node rows
+
+- Rows follow Blender and our ImGui editor: execution pins pair up on the first rows (Unreal), then every data output, then every data input.
+- Inputs therefore always sit below outputs, wires never cross inside a node, and each input row has the full node width.
+- Input labels share one width per node, so their editors line up in a column.
+- Arrange numbers rows the same way.
+- Unreal, Unity and ComfyUI instead set inputs and outputs side by side. That is shorter, but it pairs unrelated pins and leaves editors half a node wide.
+
 ### Wires and sockets
 
 - **Pins:**
   - Exec pins are arrows; data pins are circles. Both are hollow while unconnected and filled once wired (Unreal).
+  - Sockets are drawn as antialiased geometry (`kit_dot`), since RmlUi's rounded boxes aren't antialiased and read as squares when small.
   - Colors follow the pin type; data wires take their source's color, and exec wires are white and thicker.
   - Muted wires draw red.
 - **Shape:**

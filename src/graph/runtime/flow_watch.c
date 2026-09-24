@@ -78,7 +78,19 @@ static const flow_watch *watch_find(const flow_run *run, const node *n, int outp
     }
     uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
     int index = run->watch_index[watch_slot(run, n->id, pin_id, output)];
-    return index ? &run->watches[index - 1] : NULL;
+    if (index) {
+        return &run->watches[index - 1];
+    }
+    /* Lowering can move a pin to a node of its own, keeping the pin's ID: a
+       multi-field Set's outputs belong to its last setter. Pin IDs are unique
+       within a graph, so the pin alone finds its watch. */
+    for (int i = 0; i < acount(run->watches); i++) {
+        const flow_watch *watch = &run->watches[i];
+        if (watch->pin_id == pin_id && watch->output == output) {
+            return watch;
+        }
+    }
+    return NULL;
 }
 
 static void watch_release(flow_watch *watch)

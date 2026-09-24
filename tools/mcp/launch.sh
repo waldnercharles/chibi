@@ -48,6 +48,11 @@ else
     printf '%s\n' 'chibi MCP requires Node.js 22 or newer' >&2
     exit 1
 fi
+# Controller responses keep 64-bit IDs exact with the Node 22 JSON reviver source.
+if ! "$node_bin" -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
+    printf '%s\n' "chibi MCP requires Node.js 22 or newer; $node_bin is $("$node_bin" --version)" >&2
+    exit 1
+fi
 
 # The server answers the handshake immediately and builds chibi_ctl on first use.
 printf '%s\n' "chibi MCP starting from project root $project_root" >&2

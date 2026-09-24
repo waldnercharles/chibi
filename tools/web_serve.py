@@ -2,13 +2,14 @@
 """Serve a consistent browser build with saves routed to the selected local project."""
 import argparse
 import json
-import re
 import secrets
 import shutil
 import tempfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import yaml
 
 
 def content_directory(project):
@@ -24,8 +25,12 @@ def save_asset(project, content, request):
     if not path.is_relative_to(content) or path.suffix != '.yaml':
         raise ValueError('Saves must be YAML assets inside this project content directory')
     text = request['text']
-    # The engine writes asset documents as YAML mappings.
-    if not re.match(r'[A-Za-z_][A-Za-z0-9_]*:', text):
+    # The engine writes asset documents as YAML mappings; a save must reload.
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise ValueError(f'Saves must be YAML asset documents: {error}') from error
+    if not isinstance(document, dict):
         raise ValueError('Saves must be YAML asset documents')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:

@@ -507,6 +507,7 @@ node *ed_convert_behavior_expression_selection(
 void ed_draw_extract_popup(editor *e);
 void ed_handle_popups(editor *e);
 const flow_run *ed_display_run(const editor *e);
+void ed_refresh_values(editor *e);
 void ed_compile(editor *e);
 void ed_draw_debug_menu(editor *e);
 void ed_rebuild_log_text(editor *e);

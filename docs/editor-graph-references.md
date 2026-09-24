@@ -68,7 +68,7 @@ These are our decisions, drawing on the references above. Distances are screen d
   - When several nodes move, the lead node is snapped and the rest move by the same offset (xyflow).
 - **Wires while dragging a node:**
   - Alt+drag detaches the node from its wires (Blender).
-  - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Neighbors shift 40 units aside over 0.25 s, and Alt skips the insert.
+  - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Alt skips the insert. Neighbors don't shift aside yet.
 - **Keys:**
   - X or Delete deletes; Ctrl+Delete deletes and reconnects matching wires through (Node-RED, ComfyUI).
   - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste.
@@ -124,7 +124,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
   - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
-  - Double-click a wire to add a reroute (Unreal).
+  - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
   - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
 
 ### Values, adding and structure
@@ -154,7 +154,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - The running node gets a 3 dp accent outline, and errors a red one (ComfyUI, Unity).
   - Branches that didn't run draw dashed (Rivet).
 - **Breakpoints:** F9 toggles a breakpoint, drawn as a red octagon; outlined means disabled (Unreal).
-- **Values:** watched pins show value bubbles, and hovering a pin shows its last value (Unreal, Blender).
+- **Values:** Watch Values in the node menu watches its data pins. Watched pins show value bubbles beside their sockets, and hovering a pin shows its value the same way (Unreal, Blender). Values come from the inspected run, such as one paused at a breakpoint, or from the preview for pins it can evaluate; previews can't read bindings.
 - **Timings:** an optional per-node timing overlay (Blender).
 
 ### Automatic layout

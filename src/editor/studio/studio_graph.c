@@ -473,7 +473,7 @@ static float value_width(const studio *s, const pin_parts *parts)
         case VALUE_TEXT: return 96;
         case VALUE_NUMBER: return 64;
         case VALUE_CHIP:
-            return fminf(text_width(s, parts->chip, 11, 400) + 12 + (parts->chip_icon ? 16 : 0), 150);
+            return fminf(text_width(s, parts->chip, 11, 400) + 12 + (parts->chip_icon ? 16 : 0), 200);
         default: return 0;
     }
 }
@@ -718,18 +718,26 @@ typedef struct
     uint64_t node;
     int kind; /* -1 on the node body */
     int pin;
-    uint64_t comment; /* a comment frame's title */
+    uint64_t comment;                /* a comment frame's title */
+    int reroute_edge, reroute_point; /* a wire's reroute point, or -1 */
 } graph_hit;
+
+static const graph_hit NO_HIT = { 0, -1, -1, 0, -1, -1 };
 
 static graph_hit parse_hit(const char *path)
 {
-    graph_hit hit = { 0, -1, -1, 0 };
+    graph_hit hit = NO_HIT;
     unsigned long long id;
     int used = 0;
     if (path && sscanf(path, "world/stage/c%llu/t", &id) == 1) {
         hit.comment = id;
         return hit;
     }
+    if (path &&
+        sscanf(path, "world/stage/r%d_%d", &hit.reroute_edge, &hit.reroute_point) == 2) {
+        return hit;
+    }
+    hit.reroute_edge = hit.reroute_point = -1;
     if (!path || sscanf(path, "world/stage/n%llu%n", &id, &used) != 1) {
         return hit;
     }
@@ -1256,6 +1264,13 @@ static float drag_distance(const studio_graph *g)
 }
 
 /* The wire under the pointer, from the curves drawn last frame. */
+static float segment_distance(float px, float py, float ax, float ay, float bx, float by)
+{
+    float dx = bx - ax, dy = by - ay;
+    float t = fmaxf(0, fminf(1, ((px - ax) * dx + (py - ay) * dy) / fmaxf(dx * dx + dy * dy, 1e-6f)));
+    return hypotf(px - ax - dx * t, py - ay - dy * t);
+}
+
 static int hit_wire(const studio *s)
 {
     const studio_graph *g = &s->graph;
@@ -1267,12 +1282,14 @@ static int hit_wire(const studio *s)
         int count = kit_wire_points(g->kit, "back/wires", w, points, CURVE_POINTS);
         count = count < CURVE_POINTS ? count : CURVE_POINTS;
         for (int i = 1; i < count; i++) {
-            float ax = points[i * 2 - 2], ay = points[i * 2 - 1];
-            float bx = points[i * 2], by = points[i * 2 + 1];
-            float dx = bx - ax, dy = by - ay, px = g->in.mouse_x - ax,
-                  py = g->in.mouse_y - ay;
-            float t = fmaxf(0, fminf(1, (px * dx + py * dy) / fmaxf(dx * dx + dy * dy, 1e-6f)));
-            float d = hypotf(px - dx * t, py - dy * t);
+            float d = segment_distance(
+                g->in.mouse_x,
+                g->in.mouse_y,
+                points[i * 2 - 2],
+                points[i * 2 - 1],
+                points[i * 2],
+                points[i * 2 + 1]
+            );
             if (d < best) {
                 best = d;
                 found = g->wire_edges[w];
@@ -1280,6 +1297,155 @@ static int hit_wire(const studio *s)
         }
     }
     return found < acount(gr->edges) ? found : -1;
+}
+
+static void socket_at(const studio *s, node *n, int kind, int pin, float *x, float *y);
+
+static bool edge_ends(const graph *gr, const edge *ed, node **from, int *from_pin, node **to, int *to_pin)
+{
+    int from_out = 0, to_out = 0;
+    *from = graph_node_by_id(gr, ed->from_id);
+    *to = graph_node_by_id(gr, ed->to_id);
+    return *from && *to &&
+           graph_pin_by_id(*from, ed->from_pin_id, &from_out, from_pin) && from_out &&
+           graph_pin_by_id(*to, ed->to_pin_id, &to_out, to_pin) && !to_out;
+}
+
+/* The wire's segment nearest the pointer, counting its reroutes in order. */
+static int reroute_segment(const studio *s, const edge *ed)
+{
+    const studio_graph *g = &s->graph;
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!ed->reroute_count ||
+        !edge_ends(active_graph(s), ed, &from, &from_pin, &to, &to_pin)) {
+        return 0;
+    }
+    float x[GRAPH_EDGE_MAX_REROUTES + 2], y[GRAPH_EDGE_MAX_REROUTES + 2];
+    int last = ed->reroute_count + 1;
+    socket_at(s, from, ED_PIN_OUTPUT, from_pin, &x[0], &y[0]);
+    for (int r = 0; r < ed->reroute_count; r++) {
+        x[r + 1] = ed->reroutes[r].x;
+        y[r + 1] = ed->reroutes[r].y;
+    }
+    socket_at(s, to, ED_PIN_INPUT, to_pin, &x[last], &y[last]);
+    int best = 0;
+    float nearest = INFINITY;
+    for (int i = 0; i < last; i++) {
+        float d = segment_distance(g->world_x, g->world_y, x[i], y[i], x[i + 1], y[i + 1]);
+        best = d < nearest ? i : best;
+        nearest = fminf(nearest, d);
+    }
+    return best;
+}
+
+static void remove_reroute(edge *ed, int point)
+{
+    ed->reroute_count--;
+    memmove(
+        &ed->reroutes[point],
+        &ed->reroutes[point + 1],
+        (size_t)(ed->reroute_count - point) * sizeof *ed->reroutes
+    );
+}
+
+/* Double-clicking a wire adds a reroute where it was clicked and drags it
+   (Unreal). A wire on arranged lanes takes it as its only point. */
+static bool add_reroute(studio *s, int index)
+{
+    studio_graph *g = &s->graph;
+    editor *e = graph_editor(s);
+    edge *ed = &active_graph(s)->edges[index];
+    if (ed->reroute_count >= GRAPH_EDGE_MAX_REROUTES) {
+        return false;
+    }
+    int at = reroute_segment(s, ed);
+    e->pending_snapshot = ed_snapshot(e);
+    memmove(
+        &ed->reroutes[at + 1],
+        &ed->reroutes[at],
+        (size_t)(ed->reroute_count - at) * sizeof *ed->reroutes
+    );
+    ed->reroutes[at].x = g->world_x;
+    ed->reroutes[at].y = g->world_y;
+    ed->reroute_count++;
+    g->gesture = STUDIO_GRAPH_REROUTE;
+    g->reroute_edge = index;
+    g->reroute_point = at;
+    g->reroute_added = true;
+    return true;
+}
+
+/* A reroute point drags; Alt+click removes it (Unreal). */
+static void press_reroute(studio *s, graph_hit hit)
+{
+    studio_graph *g = &s->graph;
+    editor *e = graph_editor(s);
+    graph *gr = active_graph(s);
+    if (graph_readonly(s) || hit.reroute_edge >= acount(gr->edges) ||
+        hit.reroute_point >= gr->edges[hit.reroute_edge].reroute_count) {
+        return;
+    }
+    edge *ed = &gr->edges[hit.reroute_edge];
+    if (g->in.modifiers & KIT_MOD_ALT) {
+        ed_snapshot_before(e);
+        remove_reroute(ed, hit.reroute_point);
+        return;
+    }
+    e->pending_snapshot = ed_snapshot(e);
+    g->gesture = STUDIO_GRAPH_REROUTE;
+    g->reroute_edge = hit.reroute_edge;
+    g->reroute_point = hit.reroute_point;
+    g->reroute_x = ed->reroutes[hit.reroute_point].x;
+    g->reroute_y = ed->reroutes[hit.reroute_point].y;
+    g->reroute_added = false;
+}
+
+/* A lone unwired node dragged over a wire offers to join it (Blender,
+   Node-RED); Alt keeps it out. */
+static int insert_target(const studio *s)
+{
+    const studio_graph *g = &s->graph;
+    graph *gr = active_graph(s);
+    node *n = acount(g->drag) == 1 ? node_by_id(s, g->drag[0].id) : NULL;
+    if (!n || (g->in.modifiers & KIT_MOD_ALT)) {
+        return -1;
+    }
+    for (int i = 0; i < acount(gr->edges); i++) {
+        if (gr->edges[i].from_id == n->id || gr->edges[i].to_id == n->id) {
+            return -1;
+        }
+    }
+    int wire = hit_wire(s);
+    node *from, *to;
+    int from_pin, to_pin;
+    if (wire < 0 || !edge_ends(gr, &gr->edges[wire], &from, &from_pin, &to, &to_pin)) {
+        return -1;
+    }
+    bool fits = body_target(gr, from, ED_PIN_OUTPUT, from_pin, n) >= 0 &&
+                body_target(gr, to, ED_PIN_INPUT, to_pin, n) >= 0;
+    return fits ? wire : -1;
+}
+
+/* Replaces the wire with two through n, inside the move's pending snapshot. */
+static bool insert_on_wire(studio *s, node *n, int index)
+{
+    editor *e = graph_editor(s);
+    graph *gr = active_graph(s);
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!edge_ends(gr, &gr->edges[index], &from, &from_pin, &to, &to_pin)) {
+        return false;
+    }
+    int in = body_target(gr, from, ED_PIN_OUTPUT, from_pin, n);
+    int out = body_target(gr, to, ED_PIN_INPUT, to_pin, n);
+    graph_remove_edge(gr, from, from_pin, to, to_pin);
+    ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin, { 0, 0 }, 0 };
+    ed_pin_view b = { n, ED_PIN_INPUT, in, { 0, 0 }, 0 };
+    ed_pin_view c = { n, ED_PIN_OUTPUT, out, { 0, 0 }, 0 };
+    ed_pin_view d = { to, ED_PIN_INPUT, to_pin, { 0, 0 }, 0 };
+    return ed_connect_with_inline(e, &a, &b, false) &&
+           ed_connect_with_inline(e, &c, &d, false);
 }
 
 static void link_ref_of(const edge *ed, ed_link_ref *out)
@@ -1411,6 +1577,10 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     g->press_comment = 0;
+    if (hit.reroute_edge >= 0) {
+        press_reroute(s, hit);
+        return;
+    }
     graph_comment_box *box = comment_by_id(s, hit.comment);
     if (box) {
         /* Dragging a frame's title carries what it frames; Shift moves the
@@ -1448,6 +1618,9 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     if (g->hover_edge >= 0 && g->hover_edge < acount(gr->edges)) {
+        if (g->double_click && !graph_readonly(s) && add_reroute(s, g->hover_edge)) {
+            return;
+        }
         ed_link_ref link;
         link_ref_of(&gr->edges[g->hover_edge], &link);
         if ((mods & KIT_MOD_ALT) && !graph_readonly(s)) {
@@ -1499,6 +1672,7 @@ static void drag(studio *s)
             /* fallthrough */
         case STUDIO_GRAPH_MOVE: {
             float dx = g->world_x - g->press_wx, dy = g->world_y - g->press_wy;
+            g->insert_edge = insert_target(s);
             graph_comment_box *box = comment_by_id(s, g->press_comment);
             if (box) {
                 box->x = g->comment_x + dx;
@@ -1524,6 +1698,12 @@ static void drag(studio *s)
                 g->gesture = STUDIO_GRAPH_PAN;
             }
             break;
+        case STUDIO_GRAPH_REROUTE: {
+            edge *ed = &active_graph(s)->edges[g->reroute_edge];
+            ed->reroutes[g->reroute_point].x = g->world_x;
+            ed->reroutes[g->reroute_point].y = g->world_y;
+            break;
+        }
         default: break;
     }
 }
@@ -1551,6 +1731,27 @@ static void release(studio *s, graph_hit hit)
                 node *n = node_by_id(s, g->drag[i].id);
                 moved |= n && (n->x != g->drag[i].x || n->y != g->drag[i].y);
             }
+            node *lone = acount(g->drag) == 1 ? node_by_id(s, g->drag[0].id) : NULL;
+            if (g->insert_edge >= 0 && lone &&
+                !insert_on_wire(s, lone, g->insert_edge)) {
+                /* Nothing half-inserted stays: the move is undone with it. */
+                ed_adopt_behavior_asset(e, e->pending_snapshot);
+                ed_cancel_snapshot(e);
+                show_error(s, e->connect_error[0] ? e->connect_error : "Can't insert the node here");
+                break;
+            }
+            if (moved) {
+                ed_commit_snapshot(e);
+            } else {
+                ed_cancel_snapshot(e);
+            }
+            break;
+        }
+        case STUDIO_GRAPH_REROUTE: {
+            const edge *ed = &active_graph(s)->edges[g->reroute_edge];
+            bool moved = g->reroute_added ||
+                         ed->reroutes[g->reroute_point].x != g->reroute_x ||
+                         ed->reroutes[g->reroute_point].y != g->reroute_y;
             if (moved) {
                 ed_commit_snapshot(e);
             } else {
@@ -1599,6 +1800,16 @@ static void cancel_gesture(studio *s)
                 n->x = g->drag[i].x;
                 n->y = g->drag[i].y;
             }
+        }
+        ed_cancel_snapshot(e);
+    }
+    if (g->gesture == STUDIO_GRAPH_REROUTE) {
+        edge *ed = &active_graph(s)->edges[g->reroute_edge];
+        if (g->reroute_added) {
+            remove_reroute(ed, g->reroute_point);
+        } else {
+            ed->reroutes[g->reroute_point].x = g->reroute_x;
+            ed->reroutes[g->reroute_point].y = g->reroute_y;
         }
         ed_cancel_snapshot(e);
     }
@@ -1719,7 +1930,10 @@ static void snap_link(studio *s, graph_hit *hit)
             float d = hypotf(x - g->world_x, y - g->world_y);
             if (d < best) {
                 best = d;
-                *hit = (graph_hit){ n->id, want, p, 0 };
+                *hit = NO_HIT;
+                hit->node = n->id;
+                hit->kind = want;
+                hit->pin = p;
             }
         }
     }
@@ -1769,14 +1983,16 @@ static void pointer(studio *s)
         &g->world_y
     );
     bool inside = g->in.mouse_x > -1e8f;
-    graph_hit hit = inside ? parse_hit(kit_hovered_path(g->kit))
-                           : (graph_hit){ 0, -1, -1, 0 };
+    graph_hit hit = inside ? parse_hit(kit_hovered_path(g->kit)) : NO_HIT;
     bool on_control = inside && kit_pointer_on_control(g->kit);
     node *hovered = node_by_id(s, hit.node);
     g->hover_node = hovered ? hovered->id : 0;
     g->hover_kind = hovered && !on_control ? hit.kind : -1;
     g->hover_pin = hovered && !on_control ? hit.pin : -1;
-    g->hover_edge = inside && !hovered && g->gesture == STUDIO_GRAPH_IDLE
+    g->hover_reroute = hit.reroute_edge >= 0
+                         ? hit.reroute_edge * GRAPH_EDGE_MAX_REROUTES + hit.reroute_point
+                         : -1;
+    g->hover_edge = inside && !hovered && hit.reroute_edge < 0 && g->gesture == STUDIO_GRAPH_IDLE
                       ? hit_wire(s)
                       : -1;
     if (g->press_button >= 0 && g->gesture == STUDIO_GRAPH_IDLE) {
@@ -2009,6 +2225,21 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon,
     return kit_menu_item(k, key, &d);
 }
 
+/* 1 when any data pin is watched, 0 when none is, -1 without data pins. */
+static int node_watched(const node *n)
+{
+    int watched = -1;
+    for (int p = 0; p < n->input_count + n->output_count; p++) {
+        const pin_spec *spec = p < n->input_count
+                                 ? &n->input_pins[p]
+                                 : &n->output_pins[p - n->input_count];
+        if (spec->kind == PIN_DATA) {
+            watched = watched > 0 || (spec->flags & PIN_FLAG_WATCH) ? 1 : 0;
+        }
+    }
+    return watched;
+}
+
 void studio_graph_menus(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -2087,12 +2318,34 @@ void studio_graph_menus(studio *s)
             ed_snapshot_before(e);
             graph_set_breakpoint(gr, n, !n->breakpoint);
         }
+        int watch = node_watched(n);
+        if (watch >= 0 &&
+            menu_item(k, "watch", watch ? "Stop Watching" : "Watch Values", KIT_ICON_TARGET, NULL, readonly)) {
+            ed_snapshot_before(e);
+            for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
+                int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
+                for (int p = 0; p < count; p++) {
+                    const pin_spec *spec = kind == ED_PIN_INPUT
+                                             ? &n->input_pins[p]
+                                             : &n->output_pins[p];
+                    if (spec->kind == PIN_DATA) {
+                        graph_set_pin_watch(gr, n, kind == ED_PIN_OUTPUT, p, !watch);
+                    }
+                }
+            }
+        }
     } else if (comment_by_id(s, g->menu_comment)) {
         if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
             ed_snapshot_before(e);
             graph_remove_comment_box(gr, g->menu_comment);
         }
     } else if (g->menu_edge >= 0 && g->menu_edge < acount(gr->edges)) {
+        edge *ed = &gr->edges[g->menu_edge];
+        if (ed->reroute_count &&
+            menu_item(k, "reroutes", "Clear Reroutes", KIT_ICON_RESET, NULL, readonly)) {
+            ed_snapshot_before(e);
+            ed->reroute_count = 0;
+        }
         if (menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, studio_chord(s, "Alt+Click"), readonly)) {
             ed_link_ref link;
             link_ref_of(&gr->edges[g->menu_edge], &link);
@@ -2309,6 +2562,20 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
             kit_style(k, "width", width);
         }
     }
+    /* Watched pins, and the pin under the pointer, show their last value
+       beside the socket unless an editor already shows it (Unreal). */
+    editor *e = graph_editor(s);
+    bool edited = parts.value != VALUE_NONE && parts.value != VALUE_CHIP;
+    /* Previews can't read bindings, so a bound input shows only a run's value. */
+    bool bound = input && parts.value == VALUE_CHIP && !parts.inline_source;
+    if (parts.spec->kind == PIN_DATA && !edited && (!bound || ed_display_run(e)) &&
+        ((parts.spec->flags & PIN_FLAG_WATCH) || hovered)) {
+        const char *value = input ? eval_view_input(e->ev, active_graph(s), n, p)
+                                  : eval_view_output(e->ev, n, p);
+        if (value && value[0]) {
+            kit_label(k, "w", "gwatch", value);
+        }
+    }
     if (input && parts.value == VALUE_CHIP) {
         kit_push(k, "c", NULL, parts.inline_source ? "chip source" : "chip");
         if (parts.chip_icon) {
@@ -2521,6 +2788,10 @@ static void emit_wires(studio *s)
         if (ed_link_selected(e, &ref)) {
             wire.color = 0xffa53aff;
         }
+        if (g->gesture == STUDIO_GRAPH_MOVE && g->insert_edge == i) {
+            wire.color = palette(s)->hot;
+            wire.width += 1;
+        }
         /* Authored reroutes win; otherwise the lanes arrange routes through. */
         int first = acount(via) / 2, count = 0;
         if (ed->reroute_count) {
@@ -2646,7 +2917,7 @@ static void emit_conversions(studio *s)
             mx = ed->reroutes[ed->reroute_count / 2].x;
             my = ed->reroutes[ed->reroute_count / 2].y;
         }
-        char key[32], text[96], value[32];
+        char key[32], text[96];
         const node_desc *c = ed->conversion;
         if (c->conversion_from && c->conversion_to) {
             snprintf(text, sizeof text, "%s \xe2\x86\x92 %s", c->conversion_from, c->conversion_to);
@@ -2655,10 +2926,45 @@ static void emit_conversions(studio *s)
         }
         snprintf(key, sizeof key, "x%d", i);
         kit_label(k, key, "gconversion", text);
-        snprintf(value, sizeof value, "%.1fdp", mx);
-        kit_style(k, "left", value);
-        snprintf(value, sizeof value, "%.1fdp", my);
-        kit_style(k, "top", value);
+        float width = ceilf(text_width(s, text, 10, 400)) + 14;
+        emit_dp(k, "left", mx);
+        emit_dp(k, "top", my);
+        emit_dp(k, "width", width);
+        emit_dp(k, "margin-left", -width / 2);
+    }
+}
+
+/* A wire's reroute points, drawn as dots in its color (Blender). */
+static void emit_reroutes(studio *s)
+{
+    studio_graph *g = &s->graph;
+    kit *k = g->kit;
+    graph *gr = active_graph(s);
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *ed = &gr->edges[i];
+        node *from, *to;
+        int from_pin, to_pin;
+        if (!ed->reroute_count || !edge_ends(gr, ed, &from, &from_pin, &to, &to_pin) ||
+            !node_visible(gr, from) || !node_visible(gr, to)) {
+            continue;
+        }
+        uint32_t color = pin_color(s, &from->output_pins[from_pin], 1);
+        for (int r = 0; r < ed->reroute_count; r++) {
+            char key[32];
+            snprintf(key, sizeof key, "r%d_%d", i, r);
+            bool hot = g->hover_reroute == i * GRAPH_EDGE_MAX_REROUTES + r ||
+                       (g->gesture == STUDIO_GRAPH_REROUTE &&
+                        g->reroute_edge == i && g->reroute_point == r);
+            kit_push(k, key, NULL, "greroute");
+            emit_dp(k, "left", ed->reroutes[r].x);
+            emit_dp(k, "top", ed->reroutes[r].y);
+            kit_dot_desc dot = { KIT_DOT_CIRCLE,
+                                 color,
+                                 hot ? palette(s)->hot : palette(s)->edge,
+                                 hot ? 2.0f : 1.0f };
+            kit_dot(k, "d", NULL, &dot);
+            kit_pop(k);
+        }
     }
 }
 
@@ -2705,6 +3011,7 @@ static void emit_canvas(studio *s)
         emit_comment(s, &gr->comment_boxes[i]);
     }
     emit_conversions(s);
+    emit_reroutes(s);
     for (int i = 0; i < acount(gr->nodes); i++) {
         if (node_visible(gr, gr->nodes[i])) {
             emit_node(s, gr->nodes[i]);
@@ -2798,6 +3105,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     kit_set_body_class(g->kit, "light", s->light);
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
     find_unused(s);
+    ed_refresh_values(e);
     kit_begin(g->kit, &g->in);
     emit_canvas(s);
     kit_end(g->kit);
@@ -2886,6 +3194,29 @@ static void create_graph(editor *e, graph_kind kind, const char *base)
     }
 }
 
+/* The graph's name as a field, in the picker's place (Blender's F2): Enter
+   or leaving the field renames, Escape keeps the name. */
+static void rename_field(studio *s, graph *gr)
+{
+    studio_graph *g = &s->graph;
+    kit *k = s->kit;
+    editor *e = graph_editor(s);
+    bool committed = kit_text_field(k, "rename", g->rename, sizeof g->rename, NULL, 0);
+    if (committed && g->rename[0] && (!gr->name || strcmp(gr->name, g->rename))) {
+        editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
+                                  .data.rename_graph = { gr->graph_id, g->rename } };
+        if (editor_command_apply(e, rename) != 0) {
+            kit_toast(k, 0, &(kit_toast_desc){ .type = KIT_TOAST_ERROR, .title = "A graph has that name" });
+        }
+    }
+    if (g->rename_focus) {
+        kit_focus(k);
+        g->rename_focus = false;
+    } else if (!kit_item_active(k)) {
+        g->renaming = false;
+    }
+}
+
 void studio_behavior_header(studio *s, int area)
 {
     kit *k = s->kit;
@@ -2911,12 +3242,17 @@ void studio_behavior_header(studio *s, int area)
         s->scene->graph_document_id,
         gr->name && gr->name[0] ? gr->name : "Event Graph"
     );
-    kit_button_desc pick = { .label = label,
-                             .icon = KIT_ICON_GRAPH,
-                             .cls = "graph-pick",
-                             .tip = "Graphs in this behavior" };
-    if (kit_button(k, "pick", &pick)) {
-        kit_popup_open(k, key);
+    studio_graph *g = &s->graph;
+    if (g->renaming && g->rename_graph == gr->graph_id) {
+        rename_field(s, gr);
+    } else {
+        kit_button_desc pick = { .label = label,
+                                 .icon = KIT_ICON_GRAPH,
+                                 .cls = "graph-pick",
+                                 .tip = "Graphs in this behavior" };
+        if (kit_button(k, "pick", &pick)) {
+            kit_popup_open(k, key);
+        }
     }
     if (kit_popup_begin(k, key, "menu")) {
         kit_menu_group(k, "group", "Graphs");
@@ -2948,6 +3284,21 @@ void studio_behavior_header(studio *s, int area)
         }
         if (menu_item(k, "macro", "New Macro", KIT_ICON_ADD, NULL, locked)) {
             create_graph(e, GRAPH_MACRO, "New Macro");
+        }
+        /* Functions and macros are named; the event graph is the behavior. */
+        if (gr->kind == GRAPH_FUNCTION || gr->kind == GRAPH_MACRO) {
+            kit_menu_separator(k, "s1");
+            if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, NULL, locked)) {
+                g->renaming = true;
+                g->rename_graph = gr->graph_id;
+                g->rename_focus = true;
+                snprintf(g->rename, sizeof g->rename, "%s", gr->name ? gr->name : "");
+            }
+            const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro"
+                                                         : "Delete Function";
+            if (menu_item(k, "delete", remove, KIT_ICON_TRASH, NULL, locked)) {
+                editor_delete_graph(e, gr->graph_id);
+            }
         }
         kit_popup_end(k);
     }

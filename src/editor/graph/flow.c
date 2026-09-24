@@ -211,21 +211,23 @@ static void ed_draw_reroute_markers(
     if (opacity <= 0.0f) {
         return;
     }
-    ImVec2 points[17 * 17];
-    int count = 0;
-    for (int segment = 0; segment <= ed->reroute_count; segment++) {
+    ImVec2 *points = NULL;
+    int routes = ed_route_count(e, ed);
+    for (int segment = 0; segment <= routes; segment++) {
         ImVec2 start, c1, c2, end;
         ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
         for (int sample = segment ? 1 : 0; sample <= 16; sample++) {
-            points[count++] = ed_bezier(start, c1, c2, end, (float)sample / 16.0f);
+            apush(points, ed_bezier(start, c1, c2, end, (float)sample / 16.0f));
         }
     }
+    int count = acount(points);
     float length = 0.0f;
     for (int i = 1; i < count; i++) {
         length += ed_distance(points[i - 1], points[i]);
     }
     float spacing = ED_FLOW_DOT_SPACING * e->zoom;
     if (length <= 0.0f || spacing <= 0.0f) {
+        afree(points);
         return;
     }
     float offset = fmodf((float)(flow_visual_marker(age, length / e->zoom) * length), spacing);
@@ -249,6 +251,7 @@ static void ed_draw_reroute_markers(
             walked += segment;
         }
     }
+    afree(points);
 }
 
 void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
@@ -282,10 +285,11 @@ void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     } else if (style.opacity > 0.0f) {
         color = ed_color(style.wire_color);
     }
-    if (!ed->reroute_count) {
+    int routes = ed_route_count(e, ed);
+    if (!routes) {
         ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
     } else {
-        for (int segment = 0; segment <= ed->reroute_count; segment++) {
+        for (int segment = 0; segment <= routes; segment++) {
             ImVec2 start, c1, c2, end;
             ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
             ImDrawList_AddBezierCubic(dl, start, c1, c2, end, color, style.thickness, 0);
@@ -312,7 +316,7 @@ void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
                                  ed_execution_pulse_active(e))
                           ? e->monotonic_time
                           : 0.0;
-    if (ed->reroute_count) {
+    if (routes) {
         ed_draw_reroute_markers(
             e,
             dl,

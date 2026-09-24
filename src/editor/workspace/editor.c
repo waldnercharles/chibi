@@ -166,6 +166,8 @@ void editor_free(editor *e)
     afree(e->graph_callers);
     afree(e->views);
     afree(e->pins);
+    arrange_routes_free(&e->wire_routes);
+    afree(e->wire_route);
     afree(e->selected);
     afree(e->selected_links);
     afree(e->drag_nodes);

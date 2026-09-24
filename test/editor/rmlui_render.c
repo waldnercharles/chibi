@@ -145,8 +145,9 @@ static void render_witness_frame(CF_Canvas witness)
 
     /* Rendering the retained UI must leave ordinary Cute layer-0 work queued. */
     cf_render_layers_to(witness, 0, 0, true);
-    assert(has_magenta(witness));
+    /* Submit the frame first: on Vulkan a readback only sees submitted work. */
     cf_app_draw_onto_screen(true);
+    assert(has_magenta(witness));
 }
 
 static int menu_command(editor_ui_command, void *)

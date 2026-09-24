@@ -113,6 +113,9 @@ int highlight_runs(highlight_language language, const char *text, int length, hi
                                                 "note",    "Note",    NULL };
     static const char *const EXPRESSION_WORDS[] = { "if", "then", "else", "and",
                                                     "or", "not",  "pi",   NULL };
+    if (max <= 0) {
+        return 0;
+    }
     int count = 0;
     int i = 0;
     while (i < length) {

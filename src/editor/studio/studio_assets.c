@@ -38,7 +38,10 @@ uint32_t studio_asset_kind_icon(int kind)
 
 static bool contains(const char *text, const char *filter)
 {
-    for (const char *t = text; *t || !filter[0]; t++) {
+    if (!filter[0]) {
+        return true;
+    }
+    for (const char *t = text; *t; t++) {
         const char *a = t, *b = filter;
         while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) {
             a++;

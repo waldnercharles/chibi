@@ -364,7 +364,9 @@ static void blasts(
                         point,
                         5,
                         settings.blast_damage * density * (1 - distance / radius),
-                        MATERIAL_DAMAGE_BLAST
+                        MATERIAL_DAMAGE_BLAST,
+                        (material_impact){ materials->combustion.flame_color,
+                                           materials->combustion.heat_release }
                     );
                     hit = true;
                     break;

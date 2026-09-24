@@ -3,6 +3,8 @@
 
 #include "ecs/ecs.h"
 #include "graph/model/node.h"
+#include "runtime/material_debris.h"
+#include "runtime/material_destruction.h"
 #include "runtime/material_field.h"
 #include "runtime/material_fluid.h"
 #include "runtime/material_mask.h"
@@ -13,7 +15,7 @@ struct game_particles;
 typedef struct game_materials game_materials;
 typedef struct
 {
-    int particles, active_particles, solids, cells, fragments;
+    int particles, active_particles, solids, cells, fragments, chunks;
     int fuel_particles, burning_particles;
     material_stream_state streaming;
     uint64_t hash;
@@ -40,7 +42,8 @@ void game_materials_damage(
     fluid_vec point,
     float radius,
     float energy,
-    int cause
+    int cause,
+    material_impact impact
 );
 /* Replace the remaining hull with unowned debris at the next physics boundary. */
 void game_materials_release(game_materials *materials, ecs_entity entity);
@@ -56,6 +59,8 @@ void game_materials_tick(
 const material_fluid *game_materials_fluid(const game_materials *materials);
 /* On-demand inspection includes simulation state outside the ECS columns. */
 game_material_state game_materials_inspect(const game_materials *materials);
+/* Borrowed crater debris; empty without a debris limit. */
+const material_chunk *game_materials_chunks(const game_materials *materials, int *count);
 /* Used by optional particle emitters. False at the retained population limit. */
 bool game_materials_emit(game_materials *materials, fluid_particle particle);
 

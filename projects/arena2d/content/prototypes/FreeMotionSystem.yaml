@@ -1,0 +1,3 @@
+name: FreeMotionSystem
+components:
+  GAME.EngineSystem: {asset: FreeMotion}

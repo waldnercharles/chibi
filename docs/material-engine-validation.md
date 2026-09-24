@@ -84,7 +84,7 @@ carved debris, excavation, finite fuel burnout, free travel and deterministic re
 Native tests use the macOS graphics and file-watching environment. Web checks run
 compiled WASM under Node; they are separate from browser or controller playtesting.
 The live MCP connection predates the new tool catalog; restart it to discover
-`buildField`, `buildSystem` and `previewField`. Fresh MCP server processes pass the
+`buildGraph` and `previewField`. Fresh MCP server processes pass the
 public protocol checks against the current controller.
 
 ## Repeated performance measurements

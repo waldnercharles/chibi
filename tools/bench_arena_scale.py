@@ -52,7 +52,7 @@ def main():
             parser.error("use optimized builds with sanitizers disabled")
     hashes = {k: digest(p) for k, p in binaries.items()}
     content = hashlib.sha256()
-    for path in sorted((root / "content").rglob("*.json")):
+    for path in sorted((root / "content").rglob("*.yaml")):
         content.update(str(path.relative_to(root)).encode())
         content.update(path.read_bytes())
     env = {k: v for k, v in os.environ.items() if not k.startswith("CBLUEPRINT_BENCH_")}

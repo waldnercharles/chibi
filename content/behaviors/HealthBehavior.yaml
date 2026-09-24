@@ -1,0 +1,211 @@
+version: 3
+name: HealthBehavior
+id_counter: 1192
+description: Applies accepted damage and reports actual health loss. Died handlers run before destruction; active dashes reject Damage.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1015
+    type: Event
+    reference_name: Damage
+    outputs:
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
+  - id: 1019
+    type: Get_GameHealth
+    outputs:
+      Value: {flags: 0}
+      Value.current: {}
+      Value.maximum: {}
+  - {id: 1023, type: Integer Greater}
+  - {id: 1027, type: Branch}
+  - id: 1032
+    type: Call Function
+    reference_id: 1001
+    reference_name: Apply Damage
+    inputs:
+      Current: {type: int, kind: data}
+      Maximum: {type: int, kind: data}
+      Amount: {type: int, kind: data}
+      Source: {type: handle, type_name: ecs.entity, kind: data}
+  - id: 1142
+    type: Event
+    reference_name: Died
+    outputs:
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
+  - {id: 1145, type: Integer Less Or Equal}
+  - {id: 1149, type: Branch}
+  - id: 1154
+    type: Call Function
+    reference_id: 1010
+    reference_name: Notify Encounter
+  - id: 1157
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 1159, type: Destroy Entity}
+  edges:
+  - {from: 1015.Then, to: 1027.Exec}
+  - {from: 1015.Amount, to: 1023.A}
+  - {from: 1015.Amount, to: 1032.Amount}
+  - {from: 1015.Source, to: 1032.Source}
+  - {from: 1019.Value.current, to: 1032.Current}
+  - {from: 1019.Value.current, to: 1145.A}
+  - {from: 1019.Value.maximum, to: 1032.Maximum}
+  - {from: 1023.Result, to: 1027.Condition}
+  - {from: 1027.True, to: 1032.Exec}
+  - {from: 1142.Then, to: 1149.Exec}
+  - {from: 1145.Result, to: 1149.Condition}
+  - {from: 1149.True, to: 1154.Exec}
+  - {from: 1154.Then, to: 1159.Exec}
+  - {from: 1157.Self, to: 1159.Entity}
+- id: 1001
+  kind: function
+  name: Apply Damage
+  entry_id: 1002
+  return_id: 1008
+  nodes:
+  - id: 1002
+    type: Function Entry
+    outputs:
+    - {id: 1003, name: Then}
+    - {id: 1004, name: Current, type: int, kind: data}
+    - {id: 1005, name: Maximum, type: int, kind: data}
+    - {id: 1006, name: Amount, type: int, kind: data}
+    - {id: 1007, name: Source, type: handle, type_name: ecs.entity, kind: data}
+  - {id: 1008, type: Return}
+  - {id: 1039, type: Integer Greater}
+  - {id: 1043, type: Branch}
+  - id: 1048
+    type: Has_GameDash
+    outputs:
+    - {id: 1049, name: Has}
+  - {id: 1050, type: Branch}
+  - id: 1055
+    type: Get_GameDash
+    outputs:
+      Value: {flags: 0}
+      Value.remaining: {}
+  - {id: 1058, type: Greater}
+  - {id: 1062, type: Branch}
+  - id: 1067
+    type: Behavior Expression
+    reference_id: 63
+    reference_name: Remaining Health
+    inputs:
+      current: {type: double, group: 1}
+      amount: {type: double, group: 2}
+      maximum: {type: double, group: 3}
+    outputs:
+      Result: {type: double, group: 4}
+  - id: 1072
+    type: Subtract
+    inputs:
+      B: {group: 1}
+  - {id: 1076, type: Integer Greater}
+  - {id: 1080, type: Branch}
+  - {id: 1085, type: Set_GameHealth_current}
+  - id: 1091
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1093
+    type: Send Event
+    reference_name: Damaged
+    inputs:
+      Amount: {declaration_id: 2, type: int}
+      Source: {declaration_id: 3}
+  - {id: 1099, type: Integer Less Or Equal}
+  - {id: 1103, type: Branch}
+  - id: 1137
+    type: Send Event
+    reference_name: Died
+    inputs:
+      Source: {declaration_id: 3}
+  edges:
+  - {from: 1002.Then, to: 1043.Exec}
+  - {from: 1002.Current, to: 1039.A}
+  - {from: 1002.Current, to: 1067.current, conversion: To Real}
+  - {from: 1002.Current, to: 1072.A}
+  - {from: 1002.Maximum, to: 1067.maximum, conversion: To Real}
+  - {from: 1002.Amount, to: 1067.amount, conversion: To Real}
+  - {from: 1002.Source, to: 1093.Source}
+  - {from: 1002.Source, to: 1137.Source}
+  - {from: 1039.Result, to: 1043.Condition}
+  - {from: 1043.True, to: 1050.Exec}
+  - {from: 1043.False, to: 1008.Exec}
+  - {from: 1048.Has, to: 1050.Condition}
+  - {from: 1050.True, to: 1062.Exec}
+  - {from: 1050.False, to: 1080.Exec}
+  - {from: 1055.Value.remaining, to: 1058.A}
+  - {from: 1058.Result, to: 1062.Condition}
+  - {from: 1062.True, to: 1008.Exec}
+  - {from: 1062.False, to: 1080.Exec}
+  - {from: 1067.Result, to: 1072.B, conversion: To Integer}
+  - {from: 1067.Result, to: 1085.Value, conversion: To Integer}
+  - {from: 1067.Result, to: 1099.A, conversion: To Integer}
+  - {from: 1072.Result, to: 1076.A}
+  - {from: 1072.Result, to: 1093.Amount}
+  - {from: 1076.Result, to: 1080.Condition}
+  - {from: 1080.True, to: 1085.Exec}
+  - {from: 1080.False, to: 1008.Exec}
+  - {from: 1085.Then, to: 1093.Exec}
+  - {from: 1091.Self, to: 1093.Entity}
+  - {from: 1091.Self, to: 1137.Entity}
+  - {from: 1093.Then, to: 1103.Exec}
+  - {from: 1099.Result, to: 1103.Condition}
+  - {from: 1103.True, to: 1137.Exec}
+  - {from: 1103.False, to: 1008.Exec}
+  - {from: 1137.Then, to: 1008.Exec}
+- id: 1010
+  kind: function
+  name: Notify Encounter
+  entry_id: 1011
+  return_id: 1013
+  nodes:
+  - id: 1011
+    type: Function Entry
+    outputs:
+    - {id: 1012, name: Then}
+  - {id: 1013, type: Return}
+  - id: 1115
+    type: Has_GameEncounterMember
+    outputs:
+    - {id: 1116, name: Has}
+  - {id: 1117, type: Branch}
+  - id: 1122
+    type: Find Entities With Component
+    inputs:
+      Component: {type_name: name, default: GAME.GameEncounter}
+    outputs:
+      Entities:
+        default: []
+  - id: 1125
+    type: ForEach
+    inputs:
+      Array:
+        type: handle
+        type_name: ecs.entity
+        default: []
+  - id: 1132
+    type: Send Event
+    reference_name: RefreshEncounter
+  edges:
+  - {from: 1011.Then, to: 1117.Exec}
+  - {from: 1115.Has, to: 1117.Condition}
+  - {from: 1117.True, to: 1125.Exec}
+  - {from: 1117.False, to: 1013.Exec}
+  - {from: 1122.Entities, to: 1125.Array}
+  - {from: 1125.Body, to: 1132.Exec}
+  - {from: 1125.Array Element, to: 1132.Entity}
+  - {from: 1125.Completed, to: 1013.Exec}
+- id: 63
+  kind: function
+  name: Remaining Health
+  math_expression: clamp(current - clamp(amount, 0, current), 0, maximum)
+  expression_mode: 1
+  entry_id: 1164
+  return_id: 1166
+  call_depth_limit: 64

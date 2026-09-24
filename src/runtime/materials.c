@@ -25,4 +25,5 @@ void game_materials_tick(
     }
     material_ecs_fade_fragments(materials, delta);
     material_ecs_tick_fluid(materials, delta, bodies, body_count, obstacles, obstacle_count);
+    material_ecs_tick_debris(materials, delta, bodies, body_count, obstacles, obstacle_count);
 }

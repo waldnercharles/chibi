@@ -1,0 +1,86 @@
+version: 3
+name: OrbitLaunch
+id_counter: 180
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Dash}
+  - id: 3
+    type: Set_GameTransform
+    inputs:
+      Value:
+        default: {x: 166.0, "y": -165.0}
+  - id: 8
+    type: Set_GameVelocity
+    inputs:
+      Value:
+        default: {x: -65.0, "y": -740.0}
+  - id: 13
+    type: Event
+    reference_name: Contact Begin
+    outputs:
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {id: 160, type: struct, type_name: CF_V2, kind: data}
+  - {id: 16, type: Set_GameWidget_value}
+  - id: 22
+    type: Add
+    inputs:
+      A:
+        binding: {kind: component_field, component: GAME.GameWidget, field: value}
+      B: 100.0
+  - {id: 29, type: Set_GameWidget_text}
+  - id: 59
+    type: Format Text
+    inputs:
+      Format: '{:.0f}'
+      Arg0: {type: float}
+      Arg1: {id: 63}
+    outputs:
+      Result: {id: 62}
+  - {id: 64, type: Set_GameWidget_value}
+  - id: 70
+    type: Set_GameWidget_text
+    inputs: {Value: "0"}
+  - id: 76
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 79, type: Set_GameVelocity_y}
+  - id: 97
+    type: Behavior Expression
+    reference_id: 85
+    reference_name: v + 350 * dt
+    inputs:
+      v:
+        id: 120
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      dt: {type: float, flags: 2, group: 2}
+    outputs:
+      Result: {id: 100, type: double, flags: 2, group: 3}
+  edges:
+  - {from: 1.Then, to: 3.Exec}
+  - {from: 3.Then, to: 8.Exec}
+  - {from: 8.Then, to: 64.Exec}
+  - {from: 13.Then, to: 29.Exec}
+  - {from: 22.Result, to: 16.Value}
+  - {from: 22.Result, to: 59.Arg0}
+  - {from: 29.Then, to: 16.Exec}
+  - {from: 59.Result, to: 29.Value}
+  - {from: 64.Then, to: 70.Exec}
+  - {from: 76.Then, to: 79.Exec}
+  - {from: 76.DeltaSeconds, to: 97.dt}
+  - {from: 97.Result, to: 79.Value}
+- id: 85
+  kind: function
+  name: v + 350 * dt
+  math_expression: v + 350 * dt
+  expression_mode: 1
+  entry_id: 162
+  return_id: 164
+  call_depth_limit: 64

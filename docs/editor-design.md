@@ -1005,7 +1005,7 @@ wait while editor and gameplay workflows improve.
 
 ## Authored encounter and restart
 
-The shipped `content/scenes/NeonSwarm.json` contains Player and a nonvisual
+The shipped `content/scenes/NeonSwarm.yaml` contains Player and a nonvisual
 Encounter controller. Scene files can be opened from Files. Other prototypes are
 available as assets rather than being instantiated automatically. Startup reports
 scene load errors instead of silently opening an empty scene. Native interaction
@@ -1424,8 +1424,8 @@ arranges and routes every graph under `content/` and `projects/*/content/`. It
 prints layout and routing time, crossings, wire-node hits, overlaps, waypoint
 count, length, cost, and a hash of the placed positions per graph.
 `--graph-arrange` runs the focused scoring, routing, and determinism checks.
-Across the 200 content graphs, Arrange previously produced 752 crossings and 69
-wire-node hits; it now produces 580 crossings and none. A Release build lays
-out and routes all of them in 2.4 ms, previously 1.05 s for layout alone. The
-slowest graph (ArenaDropBehavior function 3) takes 0.2 ms, previously 199 ms;
-the sanitizer Debug build takes 8 ms for it, previously about 10 s.
+Across the 201 content graphs, arranged from zeroed seeds as `graph_layout`
+does, Arrange previously produced 4672 crossings and 774 wire-node hits; it now
+produces 3382 crossings and none. A Release build lays out and routes all of
+them in 12 ms, previously about 1.05 s for layout alone. The largest graph
+(BasaltCave, 425 nodes) takes 7 ms, previously 211 ms.

@@ -1,0 +1,30 @@
+version: 3
+name: PlayerEffects
+id_counter: 27
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5
+    type: Spawn Prototype
+    inputs: {Prototype: MovementEmitter}
+  - {id: 10, type: Set_GameParticleEmitter_parent}
+  - id: 16
+    type: Spawn Prototype
+    inputs: {Prototype: BoostEmitter}
+  - {id: 21, type: Set_GameParticleEmitter_parent}
+  edges:
+  - {from: 1.Then, to: 5.Exec}
+  - {from: 3.Self, to: 10.Value}
+  - {from: 3.Self, to: 21.Value}
+  - {from: 5.Then, to: 10.Exec}
+  - {from: 5.Entity, to: 10.Target}
+  - {from: 10.Then, to: 16.Exec}
+  - {from: 16.Then, to: 21.Exec}
+  - {from: 16.Entity, to: 21.Target}

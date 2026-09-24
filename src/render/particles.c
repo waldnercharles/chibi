@@ -126,8 +126,10 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
         !range(spray->lifetime_min, spray->lifetime_max) ||
         spray->lifetime_min <= 0 || !range(spray->size_min, spray->size_max) ||
         spray->size_min <= 0 || !range(spray->drag_min, spray->drag_max) ||
-        !range(spray->emission_min, spray->emission_max) || !range(0, spray->spread) ||
-        !range(0, spray->size_exponent) || !isfinite(spray->elevation) ||
+        !range(spray->emission_min, spray->emission_max) ||
+        !range(0, spray->spread) || !range(0, spray->size_exponent) ||
+        !range(0, spray->emission_exponent) || !range(0, spray->stretch) ||
+        !range(0, spray->antialias) || !isfinite(spray->elevation) ||
         spray->shape < 0 || spray->shape >= GAME_PARTICLE_SHAPE_COUNT) {
         return -1;
     }
@@ -153,10 +155,12 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
             .size_exponent = spray->size_exponent,
             .drag = sample(particles, spray->drag_min, spray->drag_max),
             .emission = sample(particles, spray->emission_min, spray->emission_max),
+            .emission_exponent = spray->emission_exponent,
+            .stretch = spray->stretch,
             .elevation = spray->elevation,
             .shape = spray->shape,
             .angle = angle,
-            .antialias = 1.5f,
+            .antialias = spray->antialias,
             .absorption = .01f,
         };
         apush(particles->items, particle);

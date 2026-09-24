@@ -1,0 +1,157 @@
+version: 3
+name: BallMotion
+id_counter: 405
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 4
+    type: Get Global Variable
+    inputs: {Name: Ready}
+  - id: 21
+    type: Behavior Expression
+    reference_id: 7
+    reference_name: ready < 0.5
+    inputs:
+      Exec: {id: 24, kind: exec}
+      ready: {id: 22, type: double, group: 1}
+    outputs:
+      "True": {id: 25, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 23, type: bool, flags: 2, group: 2}
+  - id: 74
+    type: Behavior Expression
+    reference_id: 41
+    reference_name: clamp(v + 480 * dt, -1150, 1000)
+    inputs:
+      v:
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      dt:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: double, flags: 2, group: 3}
+  - {id: 144, type: Set_GameVelocity_y}
+  - id: 197
+    type: Behavior Expression
+    reference_id: 183
+    reference_name: y > 345
+    inputs:
+      Exec: {id: 200, kind: exec}
+      "y":
+        id: 198
+        type: double
+        group: 1
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+    outputs:
+      "True": {id: 201, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 199, type: bool, flags: 2, group: 2}
+  - id: 217
+    type: Get Global Variable
+    inputs: {Name: Lives}
+    outputs:
+      Value: {type: float, type_name: null}
+  - id: 241
+    type: Behavior Expression
+    reference_id: 220
+    reference_name: max(lives-1,0)
+    inputs:
+      lives: {type: float, type_name: null, flags: 2, group: 1}
+    outputs:
+      Result: {type: float, type_name: null, flags: 2, group: 2}
+  - id: 265
+    type: Set Global Variable
+    inputs:
+      Name: Lives
+      Value: {type: float, type_name: null}
+    outputs:
+      Value: {type: float, type_name: null}
+  - id: 292
+    type: Set Global Variable
+    inputs:
+      Name: Ready
+      Value: {type: float, type_name: null, default: 1.0}
+    outputs:
+      Value: {type: float, type_name: null}
+  - id: 298
+    type: Set Global Variable
+    inputs:
+      Name: Charge
+      Value: {type: float, type_name: null}
+    outputs:
+      Value: {type: float, type_name: null}
+  - id: 304
+    type: Set_GameTransform
+    inputs:
+      Value:
+        default: {x: 196.0, "y": 260.0}
+  - id: 309
+    type: Set_GameVelocity
+    inputs:
+      Value:
+        default: {x: 0.0, "y": 0.0}
+  - id: 314
+    type: Play Sound
+    inputs:
+      Frequency: 190.0
+      End Frequency: 55.0
+      Duration: 0.4000000059604645
+      Volume: 0.4000000059604645
+  edges:
+  - {from: 1.Then, to: 21.Exec}
+  - {from: 4.Value, to: 21.ready}
+  - {from: 21.True, to: 144.Exec}
+  - {from: 74.Result, to: 144.Value}
+  - {from: 144.Then, to: 197.Exec}
+  - {from: 197.True, to: 265.Exec}
+  - {from: 217.Value, to: 241.lives}
+  - {from: 241.Result, to: 265.Value}
+  - {from: 265.Then, to: 292.Exec}
+  - {from: 292.Then, to: 298.Exec}
+  - {from: 298.Then, to: 304.Exec}
+  - {from: 304.Then, to: 309.Exec}
+  - {from: 309.Then, to: 314.Exec}
+- id: 7
+  kind: function
+  name: ready < 0.5
+  math_expression: ready < 0.5
+  expression_mode: 3
+  entry_id: 324
+  return_id: 326
+  call_depth_limit: 64
+- id: 41
+  kind: function
+  name: clamp(v + 480 * dt, -1150, 1000)
+  math_expression: clamp(v + 480 * dt, -1150, 1000)
+  expression_mode: 1
+  entry_id: 338
+  return_id: 340
+  call_depth_limit: 64
+- id: 183
+  kind: function
+  name: y > 345
+  math_expression: y > 345
+  expression_mode: 3
+  entry_id: 371
+  return_id: 373
+  call_depth_limit: 64
+- id: 220
+  kind: function
+  name: max(lives-1,0)
+  math_expression: max(lives-1,0)
+  expression_mode: 1
+  entry_id: 385
+  return_id: 387
+  call_depth_limit: 64

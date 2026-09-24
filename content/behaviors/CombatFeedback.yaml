@@ -1,0 +1,340 @@
+version: 3
+name: CombatFeedback
+id_counter: 163
+description: Accepted damage restarts an authored hit flash; its final active tick clears the material parameter. Idle entities skip hit-flash work, and only entities with GameDash evaluate dash glow.
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: Hit Duration
+  type: float
+  type_name: float
+  category: Feedback
+  default: 0.14000000059604645
+- id: 2
+  name: Hit Strength
+  type: float
+  type_name: float
+  category: Feedback
+  default: 2.0
+- id: 3
+  name: Dash Strength
+  type: float
+  type_name: float
+  category: Feedback
+  default: 1.7999999523162842
+- {id: 4, name: Hit Remaining, type: float, type_name: float, category: State}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 133
+    type: Event
+    reference_name: Damaged
+    outputs:
+      Then: {id: 130}
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
+  - id: 136
+    type: Call Function
+    reference_id: 11
+    reference_name: Start Hit Flash
+    inputs:
+      Exec: {id: 134}
+  - id: 138
+    type: Event
+    reference_name: Tick
+    outputs:
+      Then: {id: 137}
+  - id: 141
+    type: Call Function
+    reference_id: 37
+    reference_name: Update Hit Flash
+    inputs:
+      Exec: {id: 139}
+  - id: 144
+    type: Call Function
+    reference_id: 92
+    reference_name: Update Dash Glow
+    inputs:
+      Exec: {id: 142}
+  - id: 146
+    type: Get Variable
+    reference_id: 4
+    outputs:
+      Value: {id: 145, type: float, flags: 0}
+  - id: 150
+    type: Greater
+    inputs:
+      A: {id: 147}
+  - id: 155
+    type: Branch
+    inputs:
+      Exec: {id: 151}
+  - id: 157
+    type: Has_GameDash
+    outputs:
+      Value: {id: 156}
+  - id: 162
+    type: Branch
+    inputs:
+      Exec: {id: 158}
+  edges:
+  - {from: 133.Then, to: 136.Exec}
+  - {from: 138.Then, to: 155.Exec}
+  - {from: 141.Then, to: 162.Exec}
+  - {from: 146.Value, to: 150.A}
+  - {from: 150.Result, to: 155.Condition}
+  - {from: 155.True, to: 141.Exec}
+  - {from: 155.False, to: 162.Exec}
+  - {from: 157.Value, to: 162.Condition}
+  - {from: 162.True, to: 144.Exec}
+- id: 11
+  kind: function
+  name: Start Hit Flash
+  entry_id: 13
+  return_id: 15
+  call_depth_limit: 64
+  nodes:
+  - id: 13
+    type: Function Entry
+    outputs:
+    - {id: 12, name: Then}
+  - id: 15
+    type: Return
+    inputs:
+      Exec: {id: 14}
+  - id: 17
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 16, type: float, flags: 0}
+  - id: 21
+    type: Max
+    inputs:
+      A: {id: 18, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 26
+    type: Set Variable
+    reference_id: 4
+    inputs:
+      Exec: {id: 22}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 28
+    type: Get Variable
+    reference_id: 2
+    outputs:
+      Value: {id: 27, type: float, flags: 0}
+  - id: 30
+    type: Self
+    outputs:
+      Self: {id: 29, type_name: ecs.entity}
+  - id: 36
+    type: Set Material Parameter
+    inputs:
+      Exec: {id: 31}
+      Name: {type_name: const char *, default: Hit Flash}
+      Value: {type_name: float, flags: 0, group: 0}
+  edges:
+  - {from: 13.Then, to: 26.Exec}
+  - {from: 17.Value, to: 21.A}
+  - {from: 21.Result, to: 26.Value}
+  - {from: 26.Then, to: 36.Exec}
+  - {from: 28.Value, to: 36.Value}
+  - {from: 30.Self, to: 36.Entity}
+  - {from: 36.Then, to: 15.Exec}
+- id: 37
+  kind: function
+  name: Update Hit Flash
+  entry_id: 39
+  return_id: 41
+  call_depth_limit: 64
+  nodes:
+  - id: 39
+    type: Function Entry
+    outputs:
+    - {id: 38, name: Then}
+  - id: 41
+    type: Return
+    inputs:
+      Exec: {id: 40}
+  - id: 43
+    type: Get Variable
+    reference_id: 4
+    outputs:
+      Value: {id: 42, type: float, flags: 0}
+  - id: 47
+    type: Greater
+    inputs:
+      A: {id: 44}
+  - id: 52
+    type: Branch
+    inputs:
+      Exec: {id: 48}
+  - id: 54
+    type: Delta Time
+    outputs:
+      Seconds: {id: 53}
+  - id: 58
+    type: Subtract
+    inputs:
+      A: {id: 55, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 62
+    type: Max
+    inputs:
+      A: {id: 59, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 67
+    type: Set Variable
+    reference_id: 4
+    inputs:
+      Exec: {id: 63}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 69
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 68, type: float, flags: 0}
+  - id: 73
+    type: Max
+    inputs:
+      A: {id: 70, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 77
+    type: Divide
+    inputs:
+      A: {id: 74, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 79
+    type: Get Variable
+    reference_id: 2
+    outputs:
+      Value: {id: 78, type: float, flags: 0}
+  - id: 83
+    type: Multiply
+    inputs:
+      A: {id: 80, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 85
+    type: Self
+    outputs:
+      Self: {id: 84, type_name: ecs.entity}
+  - id: 91
+    type: Set Material Parameter
+    inputs:
+      Exec: {id: 86}
+      Name: {type_name: const char *, default: Hit Flash}
+      Value: {type_name: float, flags: 0, group: 0}
+  edges:
+  - {from: 39.Then, to: 52.Exec}
+  - {from: 43.Value, to: 47.B}
+  - {from: 43.Value, to: 58.A}
+  - {from: 47.Result, to: 52.Condition}
+  - {from: 52.True, to: 41.Exec}
+  - {from: 52.False, to: 67.Exec}
+  - {from: 54.Seconds, to: 58.B}
+  - {from: 58.Result, to: 62.A}
+  - {from: 62.Result, to: 67.Value}
+  - {from: 67.Then, to: 91.Exec}
+  - {from: 67.Value, to: 77.A}
+  - {from: 69.Value, to: 73.A}
+  - {from: 73.Result, to: 77.B}
+  - {from: 77.Result, to: 83.A}
+  - {from: 79.Value, to: 83.B}
+  - {from: 83.Result, to: 91.Value}
+  - {from: 85.Self, to: 91.Entity}
+  - {from: 91.Then, to: 41.Exec}
+- id: 92
+  kind: function
+  name: Update Dash Glow
+  entry_id: 94
+  return_id: 96
+  call_depth_limit: 64
+  nodes:
+  - id: 94
+    type: Function Entry
+    outputs:
+    - {id: 93, name: Then}
+  - id: 96
+    type: Return
+    inputs:
+      Exec: {id: 95}
+  - id: 98
+    type: Has_GameDash
+    outputs:
+      Value: {id: 97}
+  - id: 103
+    type: Branch
+    inputs:
+      Exec: {id: 99}
+  - id: 107
+    type: Get_GameDash
+    outputs:
+      Value: {id: 104, flags: 0}
+      Value.remaining: {}
+      Value.duration: {}
+  - id: 111
+    type: Max
+    inputs:
+      A: {id: 108, flags: 0, group: 0}
+      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 115
+    type: Divide
+    inputs:
+      A: {id: 112, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 117
+    type: Get Variable
+    reference_id: 3
+    outputs:
+      Value: {id: 116, type: float, flags: 0}
+  - id: 121
+    type: Multiply
+    inputs:
+      A: {id: 118, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 123
+    type: Self
+    outputs:
+      Self: {id: 122, type_name: ecs.entity}
+  - id: 129
+    type: Set Material Parameter
+    inputs:
+      Exec: {id: 124}
+      Name: {type_name: const char *, default: Dash Glow}
+      Value: {type_name: float, flags: 0, group: 0}
+  edges:
+  - {from: 94.Then, to: 103.Exec}
+  - {from: 98.Value, to: 103.Condition}
+  - {from: 103.True, to: 129.Exec}
+  - {from: 103.False, to: 96.Exec}
+  - {from: 107.Value.remaining, to: 115.A}
+  - {from: 107.Value.duration, to: 111.A}
+  - {from: 111.Result, to: 115.B}
+  - {from: 115.Result, to: 121.A}
+  - {from: 117.Value, to: 121.B}
+  - {from: 121.Result, to: 129.Value}
+  - {from: 123.Self, to: 129.Entity}
+  - {from: 129.Then, to: 96.Exec}

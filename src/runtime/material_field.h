@@ -14,6 +14,7 @@ bool material_field_bake(
     unsigned seed,
     field_grid grid,
     float *out,
+    const game_task_system *tasks,
     char *error,
     size_t size
 );

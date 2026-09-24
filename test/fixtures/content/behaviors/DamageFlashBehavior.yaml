@@ -1,0 +1,36 @@
+version: 3
+name: DamageFlashBehavior
+id_counter: 25
+description: Begin and Damage flash the bound material for 0.18 seconds. The material exposes Flash as a scalar parameter.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: Event
+    reference_name: Damage
+    outputs:
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
+  - id: 7
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 9
+    type: Set Material Parameter
+    inputs: {Name: Flash, Value: 3.0}
+  - id: 15
+    type: Delay
+    inputs: {Duration: 0.18}
+  - id: 19
+    type: Set Material Parameter
+    inputs: {Name: Flash}
+  edges:
+  - {from: 1.Then, to: 9.Exec}
+  - {from: 3.Then, to: 9.Exec}
+  - {from: 7.Self, to: 9.Entity}
+  - {from: 7.Self, to: 19.Entity}
+  - {from: 9.Then, to: 15.Exec}
+  - {from: 15.Completed, to: 19.Exec}

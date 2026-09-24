@@ -1,0 +1,121 @@
+version: 3
+name: HullDamage
+id_counter: 196
+description: Apply damage, emit hit feedback, and release the hull when health reaches zero.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Damage
+    outputs:
+      Amount: {declaration_id: 2, type: int, kind: data}
+      Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
+  - id: 17
+    type: Behavior Expression
+    reference_id: 5
+    reference_name: health -= amount
+    inputs:
+      Exec: {id: 21, kind: exec}
+      health:
+        id: 18
+        type: int
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: game.GameHealth, field: current}
+      amount: {flags: 2, group: 2}
+    outputs:
+      Then: {id: 22, kind: exec}
+      Result: {id: 20, type: int, flags: 2, group: 3}
+  - id: 88
+    type: Get_GameHealth
+    outputs:
+      Value.current: {}
+      Value.maximum: {}
+  - id: 106
+    type: Behavior Expression
+    reference_id: 92
+    reference_name: health <= 0
+    inputs:
+      Exec: {id: 109, kind: exec}
+      health: {id: 107, type: double, group: 1}
+    outputs:
+      "True": {id: 110, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 108, type: bool, flags: 2, group: 2}
+  - id: 137
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 139, type: Release Material}
+  - id: 143
+    type: Call Function
+    reference_id: 256
+    reference_name: Spawn Prototype At
+    reference_asset: WeaponActions
+    inputs:
+      Prototype:
+        id: 146
+        declaration_id: 261
+        type: name
+        type_name: null
+        kind: data
+        default: HitEmitter
+      Transform:
+        declaration_id: 262
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
+    outputs:
+      Then: {id: 145}
+      Entity: {id: 148, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
+  - id: 149
+    type: Call Function
+    reference_id: 256
+    reference_name: Spawn Prototype At
+    reference_asset: WeaponActions
+    inputs:
+      Prototype:
+        id: 152
+        declaration_id: 261
+        type: name
+        type_name: null
+        kind: data
+        default: DeathEmitter
+      Transform:
+        declaration_id: 262
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
+    outputs:
+      Then: {id: 151}
+      Entity: {id: 154, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
+  edges:
+  - {from: 1.Then, to: 17.Exec}
+  - {from: 1.Amount, to: 17.amount}
+  - {from: 17.Then, to: 143.Exec}
+  - {from: 88.Value.current, to: 106.health, conversion: To Real}
+  - {from: 106.True, to: 149.Exec}
+  - {from: 137.Self, to: 139.Entity}
+  - {from: 143.Then, to: 106.Exec}
+  - {from: 149.Then, to: 139.In}
+- id: 5
+  kind: function
+  name: health -= amount
+  math_expression: health -= amount
+  expression_mode: 2
+  entry_id: 156
+  return_id: 158
+  call_depth_limit: 64
+- id: 92
+  kind: function
+  name: health <= 0
+  math_expression: health <= 0
+  expression_mode: 3
+  entry_id: 183
+  return_id: 185
+  call_depth_limit: 64

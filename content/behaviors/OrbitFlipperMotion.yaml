@@ -1,0 +1,208 @@
+version: 3
+name: OrbitFlipperMotion
+id_counter: 764
+owner_type: ecs.entity
+variables:
+- {id: 1, name: RestAngle, type: double, type_name: double, category: Default}
+- {id: 15, name: Stroke, type: double, type_name: double, category: Default}
+- {id: 497, name: RestX, type: float, type_name: float, category: Default}
+- {id: 503, name: RestY, type: float, type_name: float, category: Default}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 2
+    type: Set Variable
+    reference_id: 1
+    reference_name: RestAngle
+    inputs:
+      Value:
+        type: double
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+    outputs:
+      Value: {type: double}
+  - {id: 13, type: Event, reference_name: Begin}
+  - id: 16
+    type: Set Variable
+    reference_id: 15
+    reference_name: Stroke
+    inputs:
+      Value: {type: double, default: 0.9}
+    outputs:
+      Value: {type: double}
+  - id: 21
+    type: Set Variable
+    reference_id: 15
+    reference_name: Stroke
+    inputs:
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
+  - id: 26
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 29
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
+  - {id: 34, type: Set_GameBody_angular_velocity}
+  - id: 52
+    type: Behavior Expression
+    reference_id: 40
+    reference_name: Turn toward stroke
+    inputs:
+      rest:
+        id: 109
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
+      stroke:
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: variable, variable_id: 15, source_asset: OrbitFlipperMotion}
+      angle:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      dt: {type: float, flags: 2, group: 4}
+    outputs:
+      Result: {id: 55, type: double, flags: 2, group: 5}
+  - {id: 219, type: Set_GameVelocity_x}
+  - {id: 225, type: Set_GameVelocity_y}
+  - id: 243
+    type: Behavior Expression
+    reference_id: 231
+    reference_name: Pivot velocity X
+    inputs:
+      angle:
+        id: 285
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      speed:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
+      dt: {type: float, flags: 2, group: 4}
+      origin:
+        id: 558
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 497, source_asset: OrbitFlipperMotion}
+      rest:
+        type: double
+        flags: 2
+        group: 5
+        binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
+      position:
+        type: double
+        flags: 2
+        group: 6
+        binding: {kind: component_field, component: game.GameTransform, field: x}
+    outputs:
+      Result: {id: 246, type: double, flags: 2, group: 7}
+  - id: 376
+    type: Behavior Expression
+    reference_id: 364
+    reference_name: Pivot velocity Y
+    inputs:
+      angle:
+        id: 418
+        type: double
+        flags: 2
+        group: 2
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      speed:
+        type: double
+        flags: 2
+        group: 3
+        binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
+      dt: {type: float, flags: 2, group: 4}
+      origin:
+        id: 610
+        type: double
+        flags: 2
+        group: 1
+        binding: {kind: variable, variable_id: 503, source_asset: OrbitFlipperMotion}
+      rest:
+        type: double
+        flags: 2
+        group: 5
+        binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
+      position:
+        type: double
+        flags: 2
+        group: 6
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+    outputs:
+      Result: {id: 379, type: double, flags: 2, group: 7}
+  - id: 498
+    type: Set Variable
+    reference_id: 497
+    reference_name: RestX
+    inputs:
+      Value:
+        type: float
+        binding: {kind: component_field, component: game.GameTransform, field: x}
+    outputs:
+      Value: {type: float}
+  - id: 504
+    type: Set Variable
+    reference_id: 503
+    reference_name: RestY
+    inputs:
+      Value:
+        type: float
+        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+    outputs:
+      Value: {type: float}
+  edges:
+  - {from: 2.Then, to: 498.Exec}
+  - {from: 13.Then, to: 2.Exec}
+  - {from: 16.Then, to: 34.Exec}
+  - {from: 21.Then, to: 34.Exec}
+  - {from: 26.Then, to: 29.Exec}
+  - {from: 26.DeltaSeconds, to: 52.dt}
+  - {from: 26.DeltaSeconds, to: 243.dt}
+  - {from: 26.DeltaSeconds, to: 376.dt}
+  - {from: 29.True, to: 16.Exec}
+  - {from: 29.False, to: 21.Exec}
+  - {from: 34.Then, to: 219.Exec}
+  - {from: 52.Result, to: 34.Value}
+  - {from: 219.Then, to: 225.Exec}
+  - {from: 243.Result, to: 219.Value}
+  - {from: 376.Result, to: 225.Value}
+  - {from: 498.Then, to: 504.Exec}
+- id: 40
+  kind: function
+  name: Turn toward stroke
+  math_expression: clamp((rest - stroke * cos(rest) / abs(cos(rest)) - angle) / dt, -16, 16)
+  expression_mode: 1
+  entry_id: 614
+  return_id: 616
+  call_depth_limit: 64
+- id: 231
+  kind: function
+  name: Pivot velocity X
+  math_expression: (origin + 40 * (cos(angle + speed * dt) - cos(rest)) - position) / dt
+  expression_mode: 1
+  entry_id: 667
+  return_id: 669
+  call_depth_limit: 64
+- id: 364
+  kind: function
+  name: Pivot velocity Y
+  math_expression: (origin + 40 * (sin(angle + speed * dt) - sin(rest)) - position) / dt
+  expression_mode: 1
+  entry_id: 716
+  return_id: 718
+  call_depth_limit: 64

@@ -196,10 +196,14 @@ int graph_remove_comment_box(graph *g, uint64_t id);
 int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, uint32_t color);
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name);
 int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin);
+/* The default value a new pin receives from its template. */
+pin_value graph_pin_initial_default(const pin_spec *template_pin);
 /* Exposed fields append outputs while retaining the aggregate pin. Hide keeps
  * connected projections. Struct outputs include event and local function
  * signatures and can expose nested struct fields. */
 const type_desc *graph_output_struct(const node *n, int output_index);
+/* The pin that exposes one field of the struct output at source_index. */
+pin_spec graph_field_pin(const node *n, int source_index, const type_field *field);
 int graph_expose_output_fields(graph *g, node *n, int output_index);
 int graph_hide_output_fields(graph *g, node *n, int output_index);
 const type_field *graph_output_field(const node *n, int output_index, int *source_index);

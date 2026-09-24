@@ -42,15 +42,22 @@ typedef struct
     float border_scene[4], border_emission[4], border_absorption[4],
         border_albedo[4];
     float wobble[4], pluck[4], time[4];
+    /* Y-up position and cos/sin of the rotation where the local frame sat when
+     * the material was laid out. Zero cos and sin sample materials at the
+     * pixel's current world position. */
+    float material_frame[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
 } render_material_entity;
 
 typedef struct
 {
-    /* normal.xy = planar normal, w = confidence. Positive Z is solid edge-light
-     * gain; fluid drawing uses negative Z for liquid refraction strength. */
+    /* Solids: normal.xy = bump tilt in world axes (Y up), z = edge-light gain,
+     * w = gloss (one minus roughness). Liquids: xy = surface normal, negative
+     * z = refraction strength, w = surface confidence. */
     CF_Texture scene, emission, absorption, albedo, normal;
+    /* x = material height (world units) times coverage, y = coverage. */
+    CF_Texture relief;
 } render_material_textures;
 
 typedef render_view_2d render_material_view;

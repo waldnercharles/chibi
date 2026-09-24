@@ -21,6 +21,9 @@ layout(set = 1, binding = 1, r16f) uniform writeonly image2D u_out_bounce;
 #else
 layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D u_out;
 layout(set = 1, binding = 1, rgba16f) uniform writeonly image2D u_out_bounce;
+// Luminance of the light arriving from each quadrant: from +x, +y (down the
+// texture), -x and -y. Surface lighting shades relief from these directions.
+layout(set = 1, binding = 2, rgba16f) uniform writeonly image2D u_out_dirs;
 #endif
 
 layout(set = 2, binding = 0) uniform Params
@@ -33,6 +36,10 @@ layout(set = 2, binding = 0) uniform Params
 	float u_upscale_threshold;
 	float u_bounce_intensity;
 	int u_luminance_only;
+	// Work pixels each quadrant's frustum content has moved since it was
+	// solved; nonzero only for split transport while the view moves.
+	ivec4 u_shift_x;
+	ivec4 u_shift_y;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -45,6 +52,18 @@ vec3 transport_emission(vec3 value)
 	return u_luminance_only != 0 ? vec3(dot(value, luma)) : value;
 }
 
+const vec3 DIR_LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+vec4 add_direction(vec4 dirs, int rot, vec3 light)
+{
+	float l = dot(light, DIR_LUMA);
+	if (rot == 0) dirs.x += l;
+	else if (rot == 1) dirs.y += l;
+	else if (rot == 2) dirs.z += l;
+	else dirs.w += l;
+	return dirs;
+}
+
 vec3 transport_bounce(vec3 value)
 {
 	#ifdef HRC_LUMINANCE
@@ -52,6 +71,11 @@ vec3 transport_bounce(vec3 value)
 	#else
 	return value;
 	#endif
+}
+
+ivec2 shifted(ivec2 p, int rot)
+{
+	return p + ivec2(u_shift_x[rot], u_shift_y[rot]);
 }
 
 // Inverse of seed's rotate_pixel in integer pixel space.
@@ -79,7 +103,7 @@ vec3 F_load(int rot, ivec2 rp)
 
 vec3 F_world_load(int rot, ivec2 p)
 {
-	p = clamp(p, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+	p = clamp(shifted(p, rot), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
 	return F_load(rot, world_to_rotated(p, rot, u_work_w, u_work_h) + ivec2(1, 0));
 }
 
@@ -162,9 +186,12 @@ void main()
 		float opacity = 1.0 - trn;
 		vec3 near_rad = (opacity > 0.001 ? opacity * e : e) + opacity * bounce;
 		vec3 total = vec3(0.0), raw = vec3(0.0);
+		vec4 dirs = vec4(0.0);
 		for (int rot = 0; rot < 4; rot++) {
-			vec3 far_rad = F_load(rot, world_to_rotated(gid, rot, u_work_w, u_work_h) + ivec2(1, 0));
-			total += near_rad + trn * far_rad;
+			vec3 far_rad = F_load(rot, world_to_rotated(shifted(gid, rot), rot, u_work_w, u_work_h) + ivec2(1, 0));
+			vec3 quadrant = near_rad + trn * far_rad;
+			total += quadrant;
+			dirs = add_direction(dirs, rot, quadrant);
 			raw += far_rad;
 		}
 		#ifdef HRC_LUMINANCE
@@ -173,6 +200,7 @@ void main()
 		#else
 		imageStore(u_out, gid, vec4(total * 0.25, 1.0));
 		imageStore(u_out_bounce, gid, vec4(raw * 0.25, 1.0));
+		imageStore(u_out_dirs, gid, dirs * 0.25);
 		#endif
 		return;
 	}
@@ -230,11 +258,13 @@ void main()
 
 	vec3 total = vec3(0.0);
 	vec3 total_raw = vec3(0.0);
+	vec4 dirs = vec4(0.0);
 	for (int rot = 0; rot < 4; rot++) {
-		vec3 v00 = F_load(rot, world_to_rotated(g0,               rot, u_work_w, u_work_h) + ivec2(1,0));
-		vec3 v10 = F_load(rot, world_to_rotated(g0 + ivec2(1,0),  rot, u_work_w, u_work_h) + ivec2(1,0));
-		vec3 v01 = F_load(rot, world_to_rotated(g0 + ivec2(0,1),  rot, u_work_w, u_work_h) + ivec2(1,0));
-		vec3 v11 = F_load(rot, world_to_rotated(g0 + ivec2(1,1),  rot, u_work_w, u_work_h) + ivec2(1,0));
+		ivec2 s0 = shifted(g0, rot);
+		vec3 v00 = F_load(rot, world_to_rotated(s0,               rot, u_work_w, u_work_h) + ivec2(1,0));
+		vec3 v10 = F_load(rot, world_to_rotated(s0 + ivec2(1,0),  rot, u_work_w, u_work_h) + ivec2(1,0));
+		vec3 v01 = F_load(rot, world_to_rotated(s0 + ivec2(0,1),  rot, u_work_w, u_work_h) + ivec2(1,0));
+		vec3 v11 = F_load(rot, world_to_rotated(s0 + ivec2(1,1),  rot, u_work_w, u_work_h) + ivec2(1,0));
 
 		vec3 bilinear_r0 = mix(mix(v00, v10, frac.x), mix(v01, v11, frac.x), frac.y);
 
@@ -284,7 +314,9 @@ void main()
 		}
 
 		Interval cminus1 = trace_cminus1(gid, rot, center_rad, center_tau, center_T);
-		total += cminus1.rad + exp(-cminus1.tau) * r0;
+		vec3 quadrant = cminus1.rad + exp(-cminus1.tau) * r0;
+		total += quadrant;
+		dirs = add_direction(dirs, rot, quadrant);
 		total_raw += r0;
 	}
 
@@ -294,5 +326,6 @@ void main()
 	#else
 	imageStore(u_out, gid, vec4(total * 0.25, 1.0));
 	imageStore(u_out_bounce, gid, vec4(total_raw * 0.25, 1.0));
+	imageStore(u_out_dirs, gid, dirs * 0.25);
 	#endif
 }

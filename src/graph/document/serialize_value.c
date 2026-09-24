@@ -6,6 +6,44 @@
 #include <stdlib.h>
 #include <string.h>
 
+const char *serialize_pin_type_name(pin_type type)
+{
+    const char *name = pin_type_name(type);
+    return name ? name : "flow";
+}
+
+const char *serialize_implied_type_name(pin_type type, const char *template_name)
+{
+    bool primitive = (type >= PIN_BOOL && type <= PIN_F64) ||
+                     type == PIN_NAME || type == PIN_STR;
+    return primitive ? pin_type_name(type) : template_name;
+}
+
+pin_value serialize_zero_value(pin_type type, pin_container container, const char *type_name)
+{
+    pin_value value = { .type = type, .container = container, .type_name = type_name };
+    if (container == PIN_CONTAINER_SINGLE && (type == PIN_STR || type == PIN_NAME)) {
+        value.str = "";
+    }
+    return value;
+}
+
+bool serialize_read_pin_type(yyjson_val *value, pin_type *out)
+{
+    if (yyjson_is_int(value) && yyjson_get_sint(value) >= PIN_FLOW &&
+        yyjson_get_sint(value) <= PIN_ENUM) {
+        *out = (pin_type)yyjson_get_sint(value);
+        return true;
+    }
+    for (int type = PIN_FLOW; yyjson_is_str(value) && type <= PIN_ENUM; type++) {
+        if (!strcmp(yyjson_get_str(value), serialize_pin_type_name((pin_type)type))) {
+            *out = (pin_type)type;
+            return true;
+        }
+    }
+    return false;
+}
+
 void serialize_write_value(
     yyjson_mut_doc *doc,
     yyjson_mut_val *obj,
@@ -46,9 +84,14 @@ void serialize_write_value(
         case PIN_U32: value = yyjson_mut_uint(doc, v->u); break;
         case PIN_I64: value = yyjson_mut_sint(doc, v->i64); break;
         case PIN_U64: value = yyjson_mut_uint(doc, v->u64); break;
-        case PIN_F32: value = yyjson_mut_real(doc, v->f); break;
+        case PIN_F32: value = yyjson_mut_float(doc, v->f); break;
         case PIN_F64: value = yyjson_mut_real(doc, v->d); break;
-        case PIN_ENUM: value = yyjson_mut_sint(doc, v->e); break;
+        case PIN_ENUM: {
+            const char *label = registry_enum_label(type_name, v->e);
+            value = label ? yyjson_mut_strcpy(doc, label)
+                          : yyjson_mut_sint(doc, v->e);
+            break;
+        }
         case PIN_NAME:
         case PIN_STR:
             value = yyjson_mut_strcpy(doc, v->str ? v->str : "");
@@ -252,8 +295,12 @@ int serialize_read_value(pin_type t, const char *type_name, yyjson_val *v, pin_v
             }
             out->d = yyjson_get_num(v);
             break;
-        case PIN_ENUM:
-            if (yyjson_is_sint(v)) {
+        case PIN_ENUM: {
+            int label_value = 0;
+            if (yyjson_is_str(v) &&
+                registry_enum_value(type_name, yyjson_get_str(v), &label_value)) {
+                out->e = label_value;
+            } else if (yyjson_is_sint(v)) {
                 out->e = (int32_t)yyjson_get_sint(v);
             } else if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT32_MAX) {
                 out->e = (int32_t)yyjson_get_uint(v);
@@ -261,6 +308,7 @@ int serialize_read_value(pin_type t, const char *type_name, yyjson_val *v, pin_v
                 return -1;
             }
             break;
+        }
         case PIN_NAME:
         case PIN_STR:
             if (!yyjson_is_str(v)) {

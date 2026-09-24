@@ -3,6 +3,7 @@
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/generated.h"
+#include "support/asset_text.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -266,7 +267,7 @@ static int content_behavior_index(const app_scene_authoring *scene, const char *
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         const char *asset_name = game_live_definition_at(scene->live, i)->name;
         char filename[256];
-        snprintf(filename, sizeof filename, "%s.json", asset_name);
+        snprintf(filename, sizeof filename, "%s" ASSET_EXTENSION, asset_name);
         if (strcmp(name, asset_name) == 0 || strcmp(name, filename) == 0) {
             return i;
         }
@@ -349,7 +350,7 @@ int create_scene_asset(app_scene_authoring *scene, const char *name)
     char *directory = content_path_join(scene->content_root, "scenes");
     int result = ensure_directory(directory);
     char filename[160];
-    snprintf(filename, sizeof filename, "%s.json", name);
+    snprintf(filename, sizeof filename, "%s" ASSET_EXTENSION, name);
     char *path = content_path_join(directory, filename);
     free(directory);
     FILE *existing = fopen(path, "rb");
@@ -405,9 +406,9 @@ static char *document_default_path(app_scene_authoring *scene)
         free(directory);
         return NULL;
     }
-    size_t filename_size = strlen(name) + strlen(".json") + 1;
+    size_t filename_size = strlen(name) + strlen(ASSET_EXTENSION) + 1;
     char *filename = (char *)xmalloc(filename_size);
-    snprintf(filename, filename_size, "%s.json", name);
+    snprintf(filename, filename_size, "%s" ASSET_EXTENSION, name);
     char *path = content_path_join(directory, filename);
     free(filename);
     free(directory);

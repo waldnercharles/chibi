@@ -1,7 +1,8 @@
 #!/bin/sh
 # Auto-format staged C/C++ sources, then re-stage the result.
 # Refuses to touch files that have unstaged changes (git clang-format exits 2).
-files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.c' '*.h')
+# Vendored third_party sources stay byte-identical to upstream.
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.c' '*.h' ':!third_party/*')
 [ -z "$files" ] && exit 0
 
 if ! command -v git-clang-format >/dev/null 2>&1; then

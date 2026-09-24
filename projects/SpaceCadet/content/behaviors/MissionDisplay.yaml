@@ -1,0 +1,58 @@
+version: 3
+name: MissionDisplay
+id_counter: 74
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 4
+    type: Get Global Variable
+    inputs: {Name: Lives}
+  - id: 21
+    type: Behavior Expression
+    reference_id: 7
+    reference_name: lives <= 0
+    inputs:
+      Exec: {id: 24, kind: exec}
+      lives: {id: 22, type: double, group: 1}
+    outputs:
+      "True": {id: 25, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 23, type: bool, flags: 2, group: 2}
+  - id: 41
+    type: Set_GameWidget_text
+    inputs: {Value: GAME OVER}
+  - id: 47
+    type: Get Global Variable
+    inputs: {Name: Hits}
+    outputs:
+      Value: {type: float, type_name: null}
+  - id: 50
+    type: Format Text
+    inputs:
+      Format: |-
+        TARGET PRACTICE
+        {:.0f} / 8 HITS
+      Arg0: {type: float, type_name: null}
+  - {id: 54, type: Set_GameWidget_text}
+  edges:
+  - {from: 1.Then, to: 21.Exec}
+  - {from: 4.Value, to: 21.lives}
+  - {from: 21.True, to: 41.Exec}
+  - {from: 21.False, to: 54.Exec}
+  - {from: 47.Value, to: 50.Arg0}
+  - {from: 50.Result, to: 54.Value}
+- id: 7
+  kind: function
+  name: lives <= 0
+  math_expression: lives <= 0
+  expression_mode: 3
+  entry_id: 61
+  return_id: 63
+  call_depth_limit: 64

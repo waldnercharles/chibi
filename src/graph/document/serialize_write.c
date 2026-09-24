@@ -1,102 +1,338 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
+#include "graph/nodes/behavior_expression.h"
+#include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *p)
+const pin_spec *serialize_pin_template(const node_desc *desc, int output, int index)
 {
-    yyjson_mut_val *o = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_uint(doc, o, "id", p->id);
-    if (p->declaration_id) {
-        yyjson_mut_obj_add_uint(doc, o, "declaration_id", p->declaration_id);
+    static const pin_spec extension = { .name = "Pin", .type = PIN_FLOW, .kind = PIN_DATA };
+    const pin_spec *pins = output ? desc->outputs : desc->inputs;
+    int count = output ? desc->output_count : desc->input_count;
+    if (index < count) {
+        return &pins[index];
     }
-    yyjson_mut_obj_add_str(doc, o, "name", p->name ? p->name : "");
-    yyjson_mut_obj_add_int(doc, o, "type", p->type);
-    if (p->type_name) {
-        yyjson_mut_obj_add_str(doc, o, "type_name", p->type_name);
-    }
-    yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
-    yyjson_mut_obj_add_int(doc, o, "container", p->container);
-    yyjson_mut_obj_add_uint(doc, o, "split_parent", p->split_parent);
-    if (p->split_type_name) {
-        yyjson_mut_obj_add_str(doc, o, "split_type_name", p->split_type_name);
-    }
-    if (p->field_source) {
-        yyjson_mut_obj_add_uint(doc, o, "field_source", p->field_source);
-    }
-    if (p->field_name) {
-        yyjson_mut_obj_add_str(doc, o, "field_name", p->field_name);
-    }
-    yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
-    yyjson_mut_obj_add_int(doc, o, "group", p->group);
-    if (p->binding) {
-        const char *kind = p->binding->kind == PIN_BINDING_LOCAL    ? "local"
-                         : p->binding->kind == PIN_BINDING_VARIABLE ? "variable"
-                         : p->binding->kind == PIN_BINDING_COMPONENT_FIELD
-                             ? "component_field"
-                         : p->binding->kind == PIN_BINDING_COMPONENT
-                             ? "component"
-                         : p->binding->kind == PIN_BINDING_EVENT_OUTPUT
-                             ? "event_output"
-                             : "delta_time";
-        yyjson_mut_val *binding = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_str(doc, binding, "kind", kind);
-        if (p->binding->local_id) {
-            yyjson_mut_obj_add_uint(doc, binding, "local_id", p->binding->local_id);
-        }
-        if (p->binding->variable_id) {
-            yyjson_mut_obj_add_uint(doc, binding, "variable_id", p->binding->variable_id);
-        }
-        if (p->binding->event_node_id) {
-            yyjson_mut_obj_add_uint(doc, binding, "event_node_id", p->binding->event_node_id);
-        }
-        if (p->binding->event_pin_id) {
-            yyjson_mut_obj_add_uint(doc, binding, "event_pin_id", p->binding->event_pin_id);
-        }
-        if (p->binding->source_asset) {
-            yyjson_mut_obj_add_str(doc, binding, "source_asset", p->binding->source_asset);
-        }
-        if (p->binding->component_key) {
-            yyjson_mut_obj_add_str(doc, binding, "component", p->binding->component_key);
-        }
-        if (p->binding->field_name) {
-            yyjson_mut_obj_add_str(doc, binding, "field", p->binding->field_name);
-        }
-        yyjson_mut_obj_add_val(doc, o, "binding", binding);
-    }
-    serialize_write_value(doc, o, "default", p->type, p->type_name, &p->default_value);
-    yyjson_mut_arr_add_val(arr, o);
+    return count ? &pins[count - 1] : &extension;
 }
 
-static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
+static bool same_str(const char *a, const char *b)
+{
+    return a == b || (a && b && !strcmp(a, b));
+}
+
+/* Strings match the template when omitted; null clears a template string. */
+static void write_str_change(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *o,
+    const char *key,
+    const char *value,
+    const char *base
+)
+{
+    if (same_str(value, base)) {
+        return;
+    }
+    if (value) {
+        yyjson_mut_obj_add_str(doc, o, key, value);
+        return;
+    }
+    yyjson_mut_obj_add_null(doc, o, key);
+}
+
+bool serialize_same_value(const pin_value *a, const pin_value *b)
+{
+    if (a->type != b->type || a->container != b->container) {
+        return false;
+    }
+    if (a->container >= PIN_CONTAINER_ARRAY && (!a->ptr || !b->ptr)) {
+        return a->ptr == b->ptr;
+    }
+    if (a->container == PIN_CONTAINER_SINGLE &&
+        (a->type == PIN_FLOW || a->type == PIN_HANDLE)) {
+        return true;
+    }
+    return pin_value_equal(a, b);
+}
+
+static const char *binding_kind_name(pin_binding_kind kind)
+{
+    switch (kind) {
+        case PIN_BINDING_LOCAL: return "local";
+        case PIN_BINDING_VARIABLE: return "variable";
+        case PIN_BINDING_COMPONENT_FIELD: return "component_field";
+        case PIN_BINDING_COMPONENT: return "component";
+        case PIN_BINDING_EVENT_OUTPUT: return "event_output";
+        case PIN_BINDING_DELTA_TIME: return "delta_time";
+    }
+    return "delta_time";
+}
+
+/* Writes <key>: "<node>.<pin>", or the node and pin IDs when the pin's key is
+ * ambiguous on its node. */
+static void write_pin_ref(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *o,
+    const char *key,
+    const char *pin_key,
+    const graph *g,
+    uint64_t node_id,
+    uint64_t pin_id,
+    int output
+)
+{
+    node *n = graph_node_by_id(g, node_id);
+    int index = -1;
+    char ref[SERIALIZE_KEY_SIZE + 32];
+    if (n && graph_pin_by_id(n, pin_id, NULL, &index) &&
+        serialize_pin_ref(n, output, index, ref, sizeof ref)) {
+        yyjson_mut_obj_add_strcpy(doc, o, key, ref);
+        return;
+    }
+    yyjson_mut_obj_add_uint(doc, o, key, node_id);
+    yyjson_mut_obj_add_uint(doc, o, pin_key, pin_id);
+}
+
+static void write_binding(yyjson_mut_doc *doc, yyjson_mut_val *o, const graph *g, const pin_binding *b)
+{
+    yyjson_mut_val *binding = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_str(doc, binding, "kind", binding_kind_name(b->kind));
+    if (b->local_id) {
+        yyjson_mut_obj_add_uint(doc, binding, "local_id", b->local_id);
+    }
+    if (b->variable_id) {
+        yyjson_mut_obj_add_uint(doc, binding, "variable_id", b->variable_id);
+    }
+    if (b->event_node_id) {
+        write_pin_ref(doc, binding, "from", "event_pin_id", g, b->event_node_id, b->event_pin_id, 1);
+    }
+    if (b->source_asset) {
+        yyjson_mut_obj_add_str(doc, binding, "source_asset", b->source_asset);
+    }
+    if (b->component_key) {
+        yyjson_mut_obj_add_str(doc, binding, "component", b->component_key);
+    }
+    if (b->field_name) {
+        yyjson_mut_obj_add_str(doc, binding, "field", b->field_name);
+    }
+    yyjson_mut_obj_add_val(doc, o, "binding", binding);
+}
+
+/* Adds the fields where the pin differs from the pin loading starts from. */
+static void write_pin_fields(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *o,
+    const graph *g,
+    const pin_spec *p,
+    const pin_spec *base
+)
+{
+    if (p->declaration_id != base->declaration_id) {
+        yyjson_mut_obj_add_uint(doc, o, "declaration_id", p->declaration_id);
+    }
+    write_str_change(doc, o, "name", p->name, base->name);
+    bool retyped = p->type != base->type;
+    if (retyped) {
+        yyjson_mut_obj_add_str(doc, o, "type", serialize_pin_type_name(p->type));
+    }
+    const char *type_name = retyped
+                              ? serialize_implied_type_name(p->type, base->type_name)
+                              : base->type_name;
+    write_str_change(doc, o, "type_name", p->type_name, type_name);
+    if (p->kind != base->kind) {
+        yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
+    }
+    if (p->container != base->container) {
+        yyjson_mut_obj_add_int(doc, o, "container", p->container);
+    }
+    if (p->split_parent != base->split_parent) {
+        yyjson_mut_obj_add_uint(doc, o, "split_parent", p->split_parent);
+    }
+    write_str_change(doc, o, "split_type_name", p->split_type_name, base->split_type_name);
+    if (p->field_source != base->field_source) {
+        yyjson_mut_obj_add_uint(doc, o, "field_source", p->field_source);
+    }
+    write_str_change(doc, o, "field_name", p->field_name, base->field_name);
+    if (p->flags != base->flags) {
+        yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
+    }
+    if (p->group != base->group) {
+        yyjson_mut_obj_add_int(doc, o, "group", p->group);
+    }
+    if (p->binding) {
+        write_binding(doc, o, g, p->binding);
+    }
+    /* A pin whose type or container changed starts from that shape's zero. */
+    pin_value initial = retyped || p->container != base->container
+                          ? serialize_zero_value(p->type, p->container, p->type_name)
+                          : graph_pin_initial_default(base);
+    if (!serialize_same_value(&p->default_value, &initial)) {
+        serialize_write_value(doc, o, "default", p->type, p->type_name, &p->default_value);
+    }
+}
+
+/* A listed side is positional with explicit IDs. It is used when pins do not
+ * extend the node's template in order under unique names. */
+static void write_listed_pins(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *o,
+    const char *key,
+    const graph *g,
+    const node *n,
+    int output
+)
+{
+    int count = output ? n->output_count : n->input_count;
+    const pin_spec *pins = output ? n->output_pins : n->input_pins;
+    yyjson_mut_val *arr = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_val *pin = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_uint(doc, pin, "id", pins[i].id);
+        write_pin_fields(doc, pin, g, &pins[i], serialize_pin_template(n->desc, output, i));
+        if (yyjson_mut_obj_size(pin) == 1) {
+            yyjson_mut_arr_add_uint(doc, arr, pins[i].id);
+        } else {
+            yyjson_mut_arr_add_val(arr, pin);
+        }
+    }
+    yyjson_mut_obj_add_val(doc, o, key, arr);
+}
+
+/* The pin a keyed entry starts from: its template pin, the exposed field it
+ * names, or the extension template under its key. */
+static bool keyed_baseline(const node *n, int output, int index, pin_spec *out)
+{
+    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    const pin_spec *pin = output ? &n->output_pins[index] : &n->input_pins[index];
+    if (index < template_count) {
+        *out = output ? n->desc->outputs[index] : n->desc->inputs[index];
+        return true;
+    }
+    int source = -1;
+    const type_field *field = output && pin->field_source
+                                ? graph_output_field(n, index, &source)
+                                : NULL;
+    if (field) {
+        *out = graph_field_pin(n, source, field);
+        return true;
+    }
+    *out = *serialize_pin_template(n->desc, output, index);
+    out->name = pin->name;
+    return !pin->field_source && pin->name && !strchr(pin->name, '.');
+}
+
+static bool keyed_side(const node *n, int output)
+{
+    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    int count = output ? n->output_count : n->input_count;
+    if (count < template_count) {
+        return false;
+    }
+    for (int i = 0; i < count; i++) {
+        const pin_spec *pin = output ? &n->output_pins[i] : &n->input_pins[i];
+        pin_spec base;
+        char key[SERIALIZE_KEY_SIZE];
+        serialize_pin_key(n, output, i, key, sizeof key);
+        if (!keyed_baseline(n, output, i, &base) || !same_str(pin->name, base.name) ||
+            serialize_pin_by_key(n, output, key) != i) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool scalar_default(yyjson_mut_val *pin)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(pin, "default");
+    return yyjson_mut_obj_size(pin) == 1 && value &&
+           !yyjson_mut_is_ctn(value) && !yyjson_mut_is_null(value);
+}
+
+/* A keyed side maps pin keys to the fields that differ. Pins omitted from the
+ * map keep their template, and IDs continue from the node ID unless written. */
+static void write_keyed_pins(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *o,
+    const char *key,
+    const graph *g,
+    const node *n,
+    int output,
+    uint64_t *next_id
+)
+{
+    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    int count = output ? n->output_count : n->input_count;
+    const pin_spec *pins = output ? n->output_pins : n->input_pins;
+    yyjson_mut_val *map = yyjson_mut_obj(doc);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_val *pin = yyjson_mut_obj(doc);
+        if (pins[i].id != *next_id) {
+            yyjson_mut_obj_add_uint(doc, pin, "id", pins[i].id);
+        }
+        *next_id = pins[i].id + 1;
+        pin_spec base;
+        keyed_baseline(n, output, i, &base);
+        write_pin_fields(doc, pin, g, &pins[i], &base);
+        if (!yyjson_mut_obj_size(pin) && i < template_count) {
+            continue;
+        }
+        char pin_key[SERIALIZE_KEY_SIZE];
+        serialize_pin_key(n, output, i, pin_key, sizeof pin_key);
+        yyjson_mut_val *value = scalar_default(pin)
+                                  ? yyjson_mut_obj_get(pin, "default")
+                                  : pin;
+        yyjson_mut_obj_add(map, yyjson_mut_strcpy(doc, pin_key), value);
+    }
+    if (yyjson_mut_obj_size(map)) {
+        yyjson_mut_obj_add_val(doc, o, key, map);
+    }
+}
+
+static void write_pins(yyjson_mut_doc *doc, yyjson_mut_val *o, const graph *g, const node *n)
+{
+    uint64_t next_id = n->id + 1;
+    for (int output = 0; output < 2; output++) {
+        const char *key = output ? "outputs" : "inputs";
+        int count = output ? n->output_count : n->input_count;
+        if (keyed_side(n, output)) {
+            write_keyed_pins(doc, o, key, g, n, output, &next_id);
+        } else {
+            /* An empty list still records pins removed from the template. */
+            write_listed_pins(doc, o, key, g, n, output);
+            if (count) {
+                next_id = (output ? n->output_pins : n->input_pins)[count - 1].id + 1;
+            }
+        }
+    }
+}
+
+static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g, const edge *e)
 {
     yyjson_mut_val *o = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_uint(doc, o, "from", e->from_id);
-    yyjson_mut_obj_add_uint(doc, o, "from_pin", e->from_pin_id);
-    yyjson_mut_obj_add_uint(doc, o, "to", e->to_id);
-    yyjson_mut_obj_add_uint(doc, o, "to_pin", e->to_pin_id);
-    yyjson_mut_obj_add_str(doc, o, "kind", graph_edge_kind_name(e->kind));
+    write_pin_ref(doc, o, "from", "from_pin", g, e->from_id, e->from_pin_id, 1);
+    write_pin_ref(doc, o, "to", "to_pin", g, e->to_id, e->to_pin_id, 0);
+    /* The source pin kind implies the edge kind. */
     if (e->conversion) {
         yyjson_mut_obj_add_str(doc, o, "conversion", e->conversion->name);
     }
-    if (e->kind == GRAPH_EDGE_EXEC) {
+    if (e->kind == GRAPH_EDGE_EXEC && e->exec_order) {
         yyjson_mut_obj_add_int(doc, o, "order", e->exec_order);
     }
     if (e->custom_handles) {
-        yyjson_mut_obj_add_real(doc, o, "from_handle_x", e->from_handle_x);
-        yyjson_mut_obj_add_real(doc, o, "from_handle_y", e->from_handle_y);
-        yyjson_mut_obj_add_real(doc, o, "to_handle_x", e->to_handle_x);
-        yyjson_mut_obj_add_real(doc, o, "to_handle_y", e->to_handle_y);
+        yyjson_mut_obj_add_float(doc, o, "from_handle_x", e->from_handle_x);
+        yyjson_mut_obj_add_float(doc, o, "from_handle_y", e->from_handle_y);
+        yyjson_mut_obj_add_float(doc, o, "to_handle_x", e->to_handle_x);
+        yyjson_mut_obj_add_float(doc, o, "to_handle_y", e->to_handle_y);
     }
     if (e->reroute_count) {
         yyjson_mut_val *points = yyjson_mut_arr(doc);
         for (int i = 0; i < e->reroute_count; i++) {
             yyjson_mut_val *point = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_real(doc, point, "x", e->reroutes[i].x);
-            yyjson_mut_obj_add_real(doc, point, "y", e->reroutes[i].y);
+            yyjson_mut_obj_add_float(doc, point, "x", e->reroutes[i].x);
+            yyjson_mut_obj_add_float(doc, point, "y", e->reroutes[i].y);
             yyjson_mut_arr_add_val(points, point);
         }
         yyjson_mut_obj_add_val(doc, o, "reroutes", points);
@@ -104,40 +340,43 @@ static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
     yyjson_mut_arr_add_val(arr, o);
 }
 
-static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const node *n)
+/* In-memory documents keep every position. Automatic positions are marked so
+ * reloading keeps them automatic; asset files omit them. */
+static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g, const node *n)
 {
     yyjson_mut_val *o = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_uint(doc, o, "id", n->id);
     yyjson_mut_obj_add_str(doc, o, "type", n->desc->name);
-    yyjson_mut_obj_add_real(doc, o, "x", n->x);
-    yyjson_mut_obj_add_real(doc, o, "y", n->y);
-    yyjson_mut_obj_add_uint(doc, o, "reference_id", n->reference_id);
+    yyjson_mut_obj_add_float(doc, o, "x", n->x);
+    yyjson_mut_obj_add_float(doc, o, "y", n->y);
+    if (!n->placed) {
+        yyjson_mut_obj_add_bool(doc, o, "placed", false);
+    }
+    if (n->reference_id) {
+        yyjson_mut_obj_add_uint(doc, o, "reference_id", n->reference_id);
+    }
     if (n->reference_name) {
         yyjson_mut_obj_add_str(doc, o, "reference_name", n->reference_name);
     }
     if (n->reference_asset) {
         yyjson_mut_obj_add_str(doc, o, "reference_asset", n->reference_asset);
     }
-    yyjson_mut_obj_add_bool(doc, o, "disabled", n->disabled != 0);
+    if (n->disabled) {
+        yyjson_mut_obj_add_bool(doc, o, "disabled", true);
+    }
     if (n->inline_source) {
         yyjson_mut_obj_add_bool(doc, o, "inline_source", true);
     }
-    yyjson_mut_obj_add_bool(doc, o, "show_advanced", n->show_advanced);
-    yyjson_mut_obj_add_bool(doc, o, "breakpoint", n->breakpoint != 0);
-    yyjson_mut_obj_add_bool(doc, o, "breakpoint_enabled", n->breakpoint_enabled != 0);
-    yyjson_mut_val *ins = yyjson_mut_arr(doc), *outs = yyjson_mut_arr(doc);
-    for (int i = 0; i < n->input_count; i++) {
-        write_pin(doc, ins, &n->input_pins[i]);
+    if (n->show_advanced) {
+        yyjson_mut_obj_add_bool(doc, o, "show_advanced", true);
     }
-    for (int i = 0; i < n->output_count; i++) {
-        pin_spec p = n->output_pins[i];
-        if (n->desc->pure_kind == NODE_PURE_CONST) {
-            p.default_value = n->output_pins[i].default_value;
-        }
-        write_pin(doc, outs, &p);
+    if (n->breakpoint) {
+        yyjson_mut_obj_add_bool(doc, o, "breakpoint", true);
     }
-    yyjson_mut_obj_add_val(doc, o, "inputs", ins);
-    yyjson_mut_obj_add_val(doc, o, "outputs", outs);
+    if (n->breakpoint_enabled) {
+        yyjson_mut_obj_add_bool(doc, o, "breakpoint_enabled", true);
+    }
+    write_pins(doc, o, g, n);
     yyjson_mut_arr_add_val(arr, o);
 }
 
@@ -227,14 +466,20 @@ static void write_nodes(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
                                : NULL;
             for (int p = 0; p < copy.input_count; p++) {
                 pins[p] = copy.input_pins[p];
+                /* Bindings whose source stays behind cannot be named by the subset. */
                 const graph_local *local = graph_input_local(g, &copy, p);
-                if (subset && local &&
-                    !subset_contains(subset, count, graph_node_by_id(g, local->source_id))) {
+                const pin_binding *binding = pins[p].binding;
+                uint64_t source = local ? local->source_id
+                                : binding && binding->kind == PIN_BINDING_EVENT_OUTPUT
+                                    ? binding->event_node_id
+                                    : 0;
+                if (subset && source &&
+                    !subset_contains(subset, count, graph_node_by_id(g, source))) {
                     pins[p].binding = NULL;
                 }
             }
             copy.input_pins = pins;
-            write_node(doc, arr, &copy);
+            write_node(doc, arr, g, &copy);
             free(pins);
         }
     }
@@ -270,27 +515,65 @@ static void write_edges(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
         qsort(ordered_edges, (size_t)edge_total, sizeof *ordered_edges, compare_edges);
     }
     for (int i = 0; i < edge_total; i++) {
-        write_edge(doc, arr, &ordered_edges[i]);
+        write_edge(doc, arr, g, &ordered_edges[i]);
     }
     free(ordered_edges);
 }
 
 static void write_comment_boxes(yyjson_mut_doc *doc, yyjson_mut_val *obj, const graph *g)
 {
+    if (!acount(g->comment_boxes)) {
+        return;
+    }
     yyjson_mut_val *boxes = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, obj, "comment_boxes", boxes);
     for (int i = 0; i < acount(g->comment_boxes); i++) {
         const graph_comment_box *box = &g->comment_boxes[i];
         yyjson_mut_val *value = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_uint(doc, value, "id", box->id);
-        yyjson_mut_obj_add_real(doc, value, "x", box->x);
-        yyjson_mut_obj_add_real(doc, value, "y", box->y);
-        yyjson_mut_obj_add_real(doc, value, "width", box->width);
-        yyjson_mut_obj_add_real(doc, value, "height", box->height);
+        yyjson_mut_obj_add_float(doc, value, "x", box->x);
+        yyjson_mut_obj_add_float(doc, value, "y", box->y);
+        yyjson_mut_obj_add_float(doc, value, "width", box->width);
+        yyjson_mut_obj_add_float(doc, value, "height", box->height);
         yyjson_mut_obj_add_str(doc, value, "title", box->title ? box->title : "");
         yyjson_mut_obj_add_uint(doc, value, "color", box->color);
         yyjson_mut_arr_add_val(boxes, value);
     }
+}
+
+static void write_description(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *description)
+{
+    if (description && description[0]) {
+        yyjson_mut_obj_add_str(doc, obj, "description", description);
+    }
+}
+
+static void write_graph_body(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *obj,
+    const graph *g,
+    node *const *subset,
+    int count
+)
+{
+    if (!g->breakpoints_enabled) {
+        yyjson_mut_obj_add_bool(doc, obj, "breakpoints_enabled", false);
+    }
+    if (g->dataflow) {
+        yyjson_mut_obj_add_bool(doc, obj, "dataflow", true);
+    }
+    write_comment_boxes(doc, obj, g);
+    yyjson_mut_val *nodes = yyjson_mut_arr(doc);
+    write_nodes(doc, nodes, g, subset, count);
+    if (yyjson_mut_arr_size(nodes)) {
+        yyjson_mut_obj_add_val(doc, obj, "nodes", nodes);
+    }
+    yyjson_mut_val *edges = yyjson_mut_arr(doc);
+    write_edges(doc, edges, g, subset, count);
+    if (yyjson_mut_arr_size(edges)) {
+        yyjson_mut_obj_add_val(doc, obj, "edges", edges);
+    }
+    serialize_write_locals(doc, obj, g, subset, count);
 }
 
 static char *write_graph(const graph *g, node *const *subset, int count)
@@ -311,22 +594,14 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
     yyjson_mut_obj_add_uint(doc, root, "id_counter", g->id_counter);
     yyjson_mut_obj_add_str(doc, root, "name", g->name ? g->name : "");
-    yyjson_mut_obj_add_str(doc, root, "description", g->description ? g->description : "");
+    write_description(doc, root, g->description);
     if (g->owner) {
         yyjson_mut_obj_add_uint(doc, root, "binding_owner_id", g->owner->identity);
     }
-    yyjson_mut_obj_add_bool(doc, root, "breakpoints_enabled", g->breakpoints_enabled != 0);
-    if (g->dataflow) {
-        yyjson_mut_obj_add_bool(doc, root, "dataflow", true);
+    write_graph_body(doc, root, g, subset, count);
+    if (!subset) {
+        serialize_omit_implied_shapes(root, g);
     }
-    write_comment_boxes(doc, root, g);
-    yyjson_mut_val *nodes = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
-    write_nodes(doc, nodes, g, subset, count);
-    yyjson_mut_val *edges = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, root, "edges", edges);
-    write_edges(doc, edges, g, subset, count);
-    serialize_write_locals(doc, root, g, subset, count);
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
     free(expanded);
@@ -348,16 +623,61 @@ static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const behav
     yyjson_mut_val *o = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_uint(doc, o, "id", v->id);
     yyjson_mut_obj_add_str(doc, o, "name", v->name ? v->name : "");
-    yyjson_mut_obj_add_int(doc, o, "type", v->type);
+    yyjson_mut_obj_add_str(doc, o, "type", serialize_pin_type_name(v->type));
     if (v->type_name) {
         yyjson_mut_obj_add_str(doc, o, "type_name", v->type_name);
     }
-    yyjson_mut_obj_add_int(doc, o, "container", v->container);
+    if (v->container) {
+        yyjson_mut_obj_add_int(doc, o, "container", v->container);
+    }
     if (v->category) {
         yyjson_mut_obj_add_str(doc, o, "category", v->category);
     }
-    serialize_write_value(doc, o, "default", v->type, v->type_name, &v->default_value);
+    /* Matches the zero default a variable receives when none is serialized. */
+    pin_value zero = serialize_zero_value(v->type, v->container, v->type_name);
+    if (!serialize_same_value(&v->default_value, &zero)) {
+        serialize_write_value(doc, o, "default", v->type, v->type_name, &v->default_value);
+    }
     yyjson_mut_arr_add_val(arr, o);
+}
+
+/* Expression bodies are read-only; the editor arranges them. */
+static void drop_positions(yyjson_mut_val *obj)
+{
+    size_t i, count;
+    yyjson_mut_val *n;
+    yyjson_mut_arr_foreach(yyjson_mut_obj_get(obj, "nodes"), i, count, n)
+    {
+        yyjson_mut_obj_remove_key(n, "x");
+        yyjson_mut_obj_remove_key(n, "y");
+        yyjson_mut_obj_remove_key(n, "placed");
+    }
+}
+
+/* An expression function omits a body that rebuilding from its source
+ * reproduces. */
+static bool derived_body(const graph *g)
+{
+    graph *body = g->owner && g->math_expression
+                    ? behavior_expression_rebuild(g->owner, g)
+                    : NULL;
+    if (!body) {
+        return false;
+    }
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *written = yyjson_mut_obj(doc), *rebuilt = yyjson_mut_obj(doc);
+    write_graph_body(doc, written, g, NULL, 0);
+    write_graph_body(doc, rebuilt, body, NULL, 0);
+    drop_positions(written);
+    drop_positions(rebuilt);
+    bool same = body->entry_id == g->entry_id && body->return_id == g->return_id &&
+                body->expression_mode == g->expression_mode &&
+                body->call_depth_limit == g->call_depth_limit &&
+                yyjson_mut_equals(written, rebuilt);
+    yyjson_mut_doc_free(doc);
+    graph_free(body);
+    free(body);
+    return same;
 }
 
 static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, const graph *g)
@@ -368,11 +688,7 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     }
     yyjson_mut_obj_add_str(doc, obj, "kind", graph_kind_name(g->kind));
     yyjson_mut_obj_add_str(doc, obj, "name", g->name ? g->name : "");
-    yyjson_mut_obj_add_str(doc, obj, "description", g->description ? g->description : "");
-    yyjson_mut_obj_add_bool(doc, obj, "breakpoints_enabled", g->breakpoints_enabled != 0);
-    if (g->dataflow) {
-        yyjson_mut_obj_add_bool(doc, obj, "dataflow", true);
-    }
+    write_description(doc, obj, g->description);
     if (g->source_asset) {
         yyjson_mut_obj_add_str(doc, obj, "source_asset", g->source_asset);
         yyjson_mut_obj_add_uint(doc, obj, "source_graph_id", g->source_graph_id);
@@ -381,7 +697,6 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
         yyjson_mut_obj_add_str(doc, obj, "math_expression", g->math_expression);
         yyjson_mut_obj_add_int(doc, obj, "expression_mode", g->expression_mode);
     }
-    write_comment_boxes(doc, obj, g);
     if (g->entry_id) {
         yyjson_mut_obj_add_uint(doc, obj, "entry_id", g->entry_id);
     }
@@ -391,13 +706,11 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     if (g->call_depth_limit) {
         yyjson_mut_obj_add_int(doc, obj, "call_depth_limit", g->call_depth_limit);
     }
-    yyjson_mut_val *nodes = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, obj, "nodes", nodes);
-    write_nodes(doc, nodes, g, NULL, 0);
-    yyjson_mut_val *edges = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, obj, "edges", edges);
-    write_edges(doc, edges, g, NULL, 0);
-    serialize_write_locals(doc, obj, g, NULL, 0);
+    if (!derived_body(g)) {
+        write_graph_body(doc, obj, g, NULL, 0);
+        serialize_omit_implied_shapes(obj, g);
+        serialize_omit_derived_declarations(doc, obj, g);
+    }
     yyjson_mut_arr_add_val(graphs, obj);
 }
 
@@ -417,20 +730,24 @@ char *behavior_asset_save_json(const behavior_asset *asset)
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
     yyjson_mut_obj_add_str(doc, root, "name", asset->name ? asset->name : "");
-    yyjson_mut_obj_add_str(doc, root, "domain", behavior_domain_name(asset->domain));
+    if (asset->domain != BEHAVIOR_DOMAIN_EVENT) {
+        yyjson_mut_obj_add_str(doc, root, "domain", behavior_domain_name(asset->domain));
+    }
     if (asset->domain == BEHAVIOR_DOMAIN_SHAPE) {
-        yyjson_mut_obj_add_real(doc, root, "bounds_x", asset->bounds[0]);
-        yyjson_mut_obj_add_real(doc, root, "bounds_y", asset->bounds[1]);
+        yyjson_mut_obj_add_float(doc, root, "bounds_x", asset->bounds[0]);
+        yyjson_mut_obj_add_float(doc, root, "bounds_y", asset->bounds[1]);
     }
     yyjson_mut_obj_add_uint(doc, root, "id_counter", asset->graph->id_counter);
-    yyjson_mut_obj_add_str(doc, root, "description", asset->description ? asset->description : "");
+    write_description(doc, root, asset->description);
     if (asset->owner_type_name) {
         yyjson_mut_obj_add_str(doc, root, "owner_type", asset->owner_type_name);
     }
-    yyjson_mut_val *vars = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, root, "variables", vars);
-    for (int i = 0; i < acount(asset->variables); i++) {
-        write_variable(doc, vars, &asset->variables[i]);
+    if (acount(asset->variables)) {
+        yyjson_mut_val *vars = yyjson_mut_arr(doc);
+        yyjson_mut_obj_add_val(doc, root, "variables", vars);
+        for (int i = 0; i < acount(asset->variables); i++) {
+            write_variable(doc, vars, &asset->variables[i]);
+        }
     }
     yyjson_mut_val *graphs = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "graphs", graphs);

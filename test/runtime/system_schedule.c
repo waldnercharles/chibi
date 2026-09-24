@@ -168,7 +168,7 @@ static void live_system()
     ecs_world *world = world_new();
     game_live_world *live = game_live_world_new(world);
     engine *runtime = engine_new(world, live);
-    char *json = text_file_read("projects/arena2d/content/systems/FreeMotion.json");
+    char *json = text_file_read("projects/arena2d/content/systems/FreeMotion.yaml");
     assert(json);
     char error[256];
     assert(!game_live_register_system(live, "FreeMotion", json, error, sizeof error));
@@ -267,7 +267,7 @@ static uint64_t parallel_world(bool parallel, int count, int frames, double *ela
     assert(!ecs_world_apply_commands(world));
     game_system *motion = game_system_new(
         world,
-        copy_system("projects/arena2d/content/systems/FreeMotion.json", "motion")
+        copy_system("projects/arena2d/content/systems/FreeMotion.yaml", "motion")
     );
     game_system *health = health_system(world);
     assert(motion);

@@ -51,10 +51,24 @@ coarser gas simulation. Its population control is not verified as FPS-driven.
   light in the final composite. Faint cloud/fuel visibility floors add to that
   light instead of masking small changes. Neither exposure nor the visibility
   floor enters bounce history. Global light haze is reduced to 0.15.
-- **Terrain edges:** optional `GameMaterial.edge_light` draws received light
-  inward from the combined solid silhouette, over an eight-pixel band with
-  decreasing weight. Internal contour seams do not create edges. No incoming
-  light means no edge brightening. Rock remains nonemissive.
+- **Solid surfaces:** rock is shaded as a relief facing the camera. Light
+  received in the open space around a solid reaches `GameHRC2D.surface_radius`
+  world units into it, scaled by `GameMaterial.edge_light`. The HRC pass averages light over open space at a
+  coarse block size and blurs it; concave corners receive less. HRC keeps the
+  light arriving from each of its four quadrants, so several lights shade relief
+  from their own directions instead of cancelling. Material normals brighten
+  relief facing a light, and low roughness adds a highlight. Material `Height`
+  casts short shadows toward the strongest light by marching the relief. Near a
+  silhouette the surface turns toward the open side (`surface_bevel`) to catch
+  rim light. Diffuse is Lambertian and the highlight is a GGX dielectric with
+  Smith visibility and Schlick Fresnel; `GameHRC2D.specular` of one is
+  physically scaled. Internal contour seams do not create edges, and no incoming
+  light means no surface light. Basalt remains nonemissive.
+- **HDR presentation:** with `GameHRC2D.tone_mapping`, the composite stays in
+  linear HDR. A seven-level bloom (a 13-tap downsample that suppresses single
+  bright pixels, then tent upsampling) is mixed in by `bloom`, then `exposure`
+  and AgX tone mapping map it to the display. Highlights keep their colour
+  instead of clipping to white.
 - **Liquid:** the constant readable rim is removed. A faint teal body color
   helps identify liquid in shadow; fuel gas uses a stronger amber visibility
   floor, while ordinary fog remains cooler and dimmer. These are camera-only
@@ -91,8 +105,10 @@ HRC integrates emission and exponential attenuation in the 2D plane, with
 approximate diffuse redistribution. It has no cloud depth or directional phase
 function. Camera opacity fades sparse tails more strongly than transport
 absorption. Received-light exposure is a display adjustment, not extra physical
-scattering. Edge light bleed is also a screen-space approximation and may cross
-very thin geometry; its eight-pixel extent does not model material thickness.
+scattering. Surface light is also a screen-space approximation: it lights rock
+thinner than its radius from both sides, and near the screen edge the blur
+repeats edge values. Its direction is the net direction of nearby light, so two
+opposed lights cancel.
 
 Liquid distortion bends the background and incoming light, not foreground
 opaque entities. It does not solve Snell's law, Fresnel reflection, depth,

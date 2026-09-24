@@ -3,6 +3,10 @@
     "chibi": {
       "command": "sh",
       "args": ["tools/mcp/launch.sh"]
+    },
+    "zoom": {
+      "command": "uv",
+      "args": ["run", "--quiet", "--script", "tools/zoom/server.py"]
     }
   }
 }

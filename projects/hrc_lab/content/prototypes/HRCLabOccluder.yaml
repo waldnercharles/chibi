@@ -1,0 +1,10 @@
+name: HRCLabOccluder
+components:
+  GAME.GameAppearance: {antialias: 0.25, color: 2302559999, height: 100.0, width: 100.0}
+  GAME.GameMaterial:
+    absorption: 1.0
+    albedo: 2631721215
+    emission_multiplier: 1.0
+    scene: 286397183
+  GAME.GameOrientation: {}
+  game.GameTransform: {}

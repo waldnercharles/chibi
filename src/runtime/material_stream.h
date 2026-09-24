@@ -15,7 +15,9 @@ typedef struct
 } material_stream_tile;
 typedef struct
 {
-    float x, y, radius;
+    /* Tiles within radius prepare under the budget. Tiles within a positive
+     * required extent prepare immediately, so visible terrain never pops in. */
+    float x, y, radius, required;
 } material_stream_view;
 typedef struct
 {
@@ -23,6 +25,10 @@ typedef struct
     field_grid grid;
     const char *field, *parameters;
     unsigned seed;
+    int island_cells;
+    /* Optional borrowed executor for generation. The caller opens its
+     * submission scope around material_stream_update. */
+    const game_task_system *tasks;
 } material_stream_desc;
 typedef struct
 {
@@ -34,8 +40,9 @@ typedef struct
  * generation changes. Cold masks live in a temporary file owned by the run. */
 material_stream *material_stream_new(material_stream_desc desc);
 void material_stream_free(material_stream *stream);
-/* Outside mask consumers: evict distant tiles, then prepare at most budget
- * missing tiles, nearest view first. Hysteresis prevents boundary thrashing. */
+/* Outside mask consumers: evict distant tiles, prepare every missing required
+ * tile, then at most budget further tiles, nearest view first. Hysteresis
+ * prevents boundary thrashing. */
 bool material_stream_update(
     material_stream *stream,
     const material_fields *fields,

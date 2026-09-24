@@ -64,6 +64,8 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_adapter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_local.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_refs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_implied.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_clipboard.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c
@@ -109,6 +111,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/value_array.c
     src/graph/runtime/value_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
 )
@@ -211,6 +214,8 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_terrain.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_stream.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_fluid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_debris.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_debris.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/materials.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/particle_emitters.c

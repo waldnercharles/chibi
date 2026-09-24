@@ -1,0 +1,30 @@
+name: TrailEmitter
+components:
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    active: true
+    antialias:
+      end: {x: 1.0, "y": 1.0}
+      exponent: 1.0
+      start: {x: 2.0, "y": 3.0}
+    color: 16773375
+    direction: {x: -1.0}
+    drag:
+      start: {x: 2.0, "y": 3.0}
+    emission:
+      start: {x: 0.009999999776482582, "y": 0.019999999552965164}
+    end_color: 5013504
+    fluid_mass: 0.00019999999494757503
+    heading_only: true
+    lifetime: {x: 0.15000000596046448, "y": 0.30000001192092896}
+    offset: {x: -6.0}
+    planar: true
+    rate: 60.0
+    size:
+      start: {x: 0.25, "y": 0.25}
+    speed: {x: 20.0, "y": 40.0}
+    spread: 1.0471980571746826
+  GAME.GameProjectile: {lifetime: 1.5}
+  game.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [ProjectileLifecycle]

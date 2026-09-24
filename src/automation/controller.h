@@ -59,4 +59,9 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
  * method-shaped vocabulary used by the first controller prototype. */
 char *chibi_ctl_handle(const chibi_ctl_context *context, const char *request, int *exit_code);
 
+/* Rewrites every authored asset under root in the canonical form its loader
+ * and saver produce. With check, only reports differences. Returns the
+ * number of differing assets, or -1 when an asset cannot be loaded or written. */
+int chibi_automation_format_assets(const char *root, bool check);
+
 #endif

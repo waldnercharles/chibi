@@ -343,7 +343,7 @@ static bool prism_checks(CF_Pixel *pixels)
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_live_world *live = game_live_world_new(world);
-    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.json");
+    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.yaml");
     assert(json);
     behavior_asset *asset = behavior_asset_load_json(json);
     free(json);

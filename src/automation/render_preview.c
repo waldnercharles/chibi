@@ -9,9 +9,11 @@
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
+#include "render/shader_dir.h"
 #include "render/shader_images.h"
 #include "render/shader_preview.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -223,8 +225,8 @@ static bool safe_component(const char *value, size_t max)
 static bool valid_filename(const char *name)
 {
     size_t length = name ? strlen(name) : 0;
-    return length > sizeof ".json" - 1 && length < 256 &&
-           !strcmp(name + length - (sizeof ".json" - 1), ".json") &&
+    return length > sizeof ASSET_EXTENSION - 1 && length < 256 &&
+           !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION) &&
            safe_component(name, 256);
 }
 
@@ -286,18 +288,18 @@ static int resolve_preview_ref(yyjson_val *request, preview_ref *out, char *erro
         return PREVIEW_INVALID_REQUEST;
     }
     const char *name = yyjson_get_str(name_value);
-    if (strstr(name, ".json")) {
+    if (strstr(name, ASSET_EXTENSION)) {
         if (!valid_filename(name)) {
             set_error(error, error_size, "name is not a valid JSON asset filename");
             return PREVIEW_INVALID_REQUEST;
         }
         snprintf(out->filename, sizeof out->filename, "%s", name);
     } else {
-        if (strlen(name) + sizeof ".json" >= sizeof out->filename) {
+        if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof out->filename) {
             set_error(error, error_size, "name is too long");
             return PREVIEW_INVALID_REQUEST;
         }
-        snprintf(out->filename, sizeof out->filename, "%s.json", name);
+        snprintf(out->filename, sizeof out->filename, "%s" ASSET_EXTENSION, name);
     }
     snprintf(out->relative, sizeof out->relative, "content/%s/%s", out->family->folder, out->filename);
     return PREVIEW_OK;
@@ -472,8 +474,8 @@ static behavior_asset **load_libraries(const char *root)
             continue;
         }
         size_t name_length = strlen(entry->d_name);
-        if (name_length < sizeof ".json" - 1 ||
-            strcmp(entry->d_name + name_length - (sizeof ".json" - 1), ".json")) {
+        if (name_length < sizeof ASSET_EXTENSION - 1 ||
+            strcmp(entry->d_name + name_length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
             continue;
         }
         char file_path[PATH_MAX];
@@ -569,12 +571,13 @@ static char *base64(const void *data, size_t size)
     return output;
 }
 
-bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
+/* Waits for the current frame's pixels; the caller frees them. */
+static CF_Pixel *read_pixels(int width, int height, char *error, size_t error_size)
 {
     CF_Readback readback = cf_canvas_readback(cf_app_get_canvas());
     if (!readback.id) {
         set_error(error, error_size, "GPU readback could not be started");
-        return false;
+        return NULL;
     }
     int size = cf_readback_size(readback);
     size_t expected = (size_t)width * (size_t)height * sizeof(CF_Pixel);
@@ -583,7 +586,7 @@ bool chibi_preview_readback(int width, int height, char **encoded, char *error, 
         if (error_size) {
             snprintf(error, error_size, "GPU readback returned %d bytes; expected %zu", size, expected);
         }
-        return false;
+        return NULL;
     }
     CF_Pixel *pixels = xmalloc((size_t)size);
     uint64_t start = cf_get_ticks();
@@ -592,27 +595,54 @@ bool chibi_preview_readback(int width, int height, char **encoded, char *error, 
             free(pixels);
             cf_destroy_readback(readback);
             set_error(error, error_size, "GPU readback timed out");
-            return false;
+            return NULL;
         }
         cf_sleep(1);
     }
     bool ok = cf_readback_data(readback, pixels, size) == size;
-    if (ok) {
-        CF_Image image = { width, height, pixels };
-        void *png = NULL;
-        int png_size = 0;
-        ok = !cf_is_error(cf_image_save_png_to_memory(&image, &png, &png_size)) &&
-             png && png_size > 0;
-        if (ok) {
-            *encoded = base64(png, (size_t)png_size);
-            ok = *encoded != NULL;
-        }
-        cf_free(png);
-    }
-    free(pixels);
     cf_destroy_readback(readback);
     if (!ok) {
+        free(pixels);
+        set_error(error, error_size, "GPU readback returned incomplete data");
+        return NULL;
+    }
+    return pixels;
+}
+
+bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
+{
+    CF_Pixel *pixels = read_pixels(width, height, error, error_size);
+    if (!pixels) {
+        return false;
+    }
+    CF_Image image = { width, height, pixels };
+    void *png = NULL;
+    int png_size = 0;
+    bool ok = !cf_is_error(cf_image_save_png_to_memory(&image, &png, &png_size)) &&
+              png && png_size > 0;
+    if (ok) {
+        *encoded = base64(png, (size_t)png_size);
+        ok = *encoded != NULL;
+    }
+    cf_free(png);
+    free(pixels);
+    if (!ok) {
         set_error(error, error_size, "GPU readback could not be encoded as PNG");
+    }
+    return ok;
+}
+
+bool chibi_preview_readback_raw(int width, int height, FILE *out, char *error, size_t error_size)
+{
+    CF_Pixel *pixels = read_pixels(width, height, error, error_size);
+    if (!pixels) {
+        return false;
+    }
+    size_t count = (size_t)width * (size_t)height;
+    bool ok = fwrite(pixels, sizeof *pixels, count, out) == count;
+    free(pixels);
+    if (!ok) {
+        set_error(error, error_size, "Could not write captured frame");
     }
     return ok;
 }
@@ -751,7 +781,7 @@ static bool render_asset(
         cf_destroy_app();
         return false;
     }
-    cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
+    cf_fs_mount(render_shader_dir(), "/chibi-render", true);
     cf_shader_directory("/chibi-render");
     shader_error shader_error = { 0 };
     render_shader_preview *renderer = render_shader_preview_new(asset, width, height, options, &shader_error);

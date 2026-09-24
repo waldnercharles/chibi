@@ -42,7 +42,7 @@ static char *read_file(const char *path)
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.yaml", name);
     char *text = read_file(path);
     behavior_asset *asset = behavior_asset_load_json(text);
     if (asset) {
@@ -245,7 +245,7 @@ void test_enemy_attack()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_file("test/fixtures/content/prototypes/Player.json");
+    char *text = read_file("test/fixtures/content/prototypes/Player.yaml");
     char error[256];
     game_prototype *player = game_prototype_load(text, &registry, error, sizeof error);
     free(text);

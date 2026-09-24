@@ -49,11 +49,32 @@ are shared by MCP hosts and Codex.
 
 Codex can start the adapter automatically for this repository. Its project
 scoped registration lives in `.codex/config.toml`; it is loaded when Codex is
-started in this repository or one of its subdirectories. The launcher keeps
-build output on stderr, starts the stdio adapter on stdout, and builds
-`build/chibi_ctl` on first use if needed. Run
+started in this repository or one of its subdirectories. The launcher starts
+the stdio adapter immediately, so hosts with short connect timeouts can attach
+from a fresh worktree. When `build/chibi_ctl` is missing and no cached build
+of the same sources exists, the adapter builds it in the background with output
+on stderr, and the first tool call waits for it. A rebuilt controller replaces the running one on the
+next request. Run
 `make mcp-setup` to generate that machine-local registration. Restart Codex
 or open a new task after adding or changing project MCP configuration.
+
+## Asset files
+
+Authored assets under `content/` are YAML. Documents omit what loading
+reproduces: default values, pin fields that match the node type's template
+pin, and `x`/`y` for nodes the editor arranges when it opens a graph. Pins are
+keyed by name, and their IDs follow the node ID in order (inputs, then
+outputs); an `id` appears only where the sequence breaks. Edges, locals and
+event bindings name pins as `<node id>.<pin name>`, or
+`<node id>.<pin>.<field>` for an exposed struct field. Wildcard pins (math
+operators, reroutes, loops) omit the types their connections determine.
+Expression functions store their `math_expression` source; loading rebuilds
+their nodes. A call to a function in the same asset takes each pin's
+`declaration_id` from the signature pin with its name. Enums are spelled by
+label. A node whose pin names repeat lists its pins with explicit IDs instead. `build/chibi_ctl --project-root <root> --format`
+rewrites every asset in canonical form, and `--check` lists assets that
+differ. Prefer the build tools over hand edits; they keep IDs, hashes and
+layout consistent.
 
 ## Default authoring workflow
 
@@ -61,19 +82,20 @@ For reproducible rendering measurements, `previewScene` accepts
 `freeze_simulation` and an `input_timeline` spanning preparation and advancing
 render frames. Results include initial/final runtime state and the active GPU
 backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
-supported Macs. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+supported Macs. Without vendor tools, `pass_timing` waits for the GPU after each
+render pass and reports average milliseconds per pass, and `capture_frames`
+writes every measured frame to a raw RGBA8 file for judging motion and temporal
+effects. Both serialize or read back each frame, so their frame totals are not
+benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 
 Use the MCP for authored content whenever it is available. Route requests by
 domain:
 
-- Shader, material, shape, or shader-library work: search with `searchAssets` and
-  `searchNodes`, inspect with `inspectGraph`, then use `buildShader`.
-- Behavior, event, or behavior-library work: search with `searchAssets` and
-  `searchNodes`, inspect with `inspectGraph`, then use `buildBehavior`.
-- Procedural fields: inspect field nodes and libraries, then use `buildField` and
-  `previewField` (CPU evaluation, no GPU required).
-- Standalone Systems: use `buildSystem` for graph and query edits, then
-  `inspectSystem` and `getExecutionStatus`.
+- Graph work (behaviors, events, libraries, materials, shapes, shader
+  libraries, fields, and Systems): search with `searchAssets` and
+  `searchNodes`, inspect with `inspectGraph`, then use `buildGraph`. Check
+  shaders with `previewShader`, fields with `previewField` (CPU evaluation, no
+  GPU required), and Systems with `inspectSystem` and `getExecutionStatus`.
 - Prototype or prefab work: use `describeComponents` when field details are
   unclear, then use `buildPrototype`.
 - Scene or level composition: use `buildScene`.
@@ -85,11 +107,8 @@ Call `validateAsset` after every published change. Use `previewShader`,
 saving them. Tool results include complete `structuredContent` and
 `next_steps`.
 
-- `buildField`: create or edit pure scalar field graphs and library calls.
-- `buildSystem`: create or edit standalone System graphs and queries.
+- `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
-- `buildShader`: create or edit material, shape, and shader-library graphs.
-- `buildBehavior`: create or edit behavior, event, and behavior-library graphs.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
@@ -101,18 +120,18 @@ saving them. Tool results include complete `structuredContent` and
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
-- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry data.
+- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts.
 - `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies.
 - `getProjectStatus`: return project, asset, and reflection counts.
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
 - `getExecutionStatus`: report the backend selected for a behavior or system.
 - `runScenario`: run a bounded deterministic prototype or scene scenario.
-- `captureRuntimeSnapshot`: capture bounded ECS entities, reflected fields, behaviors, and timing.
+- `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, and timing.
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
-- `describeRegistry`: inspect reflected nodes, pins, types, services, operators, and components.
+- `describeRegistry`: inspect reflected types, services, operators, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
 
 ## Check adapter distribution
@@ -133,9 +152,8 @@ The client can also read these MCP resources:
 
 All public tools report safety metadata through `describeContract`. They do not
 provide arbitrary shell commands, network access, editor UI control, or access
-to files outside the project data needed by the native controller. `buildShader`
-and `buildBehavior` write authored graph assets after validation and an
-expected-hash check. They are marked as modifying tools. `recordScenario`
+to files outside the project data needed by the native controller. `buildGraph`
+writes authored graph assets after validation and an expected-hash check. They are marked as modifying tools. `recordScenario`
 writes only its bounded generated recording artifact under `/tmp`, and
 `replayScenario` accepts only a returned
 recording or a safe generated recording path.
@@ -165,8 +183,7 @@ enemy, and support entity without constructing a second JSON fixture by hand.
 
 Use `searchAssets` to find an asset, `inspectGraph` to read its graph and
 current hash, and `searchNodes` to fetch the few node signatures needed for
-an edit. Submit shader changes through `buildShader` and behavior changes
-through `buildBehavior`. The server
+an edit. Submit graph changes through `buildGraph`. The server
 assigns IDs, initializes typed pins, validates the resulting asset, and
 automatically arranges the affected graphs. The edit API has no node coordinates
 or layout controls.
@@ -177,7 +194,7 @@ metadata. `owner_type` is useful for behavior assets that expose `Self`; graph
 descriptions give functions and event graphs an authoring purpose that catalog
 search can surface.
 
-For example, these `buildShader` arguments create a material:
+For example, these `buildGraph` arguments create a material:
 
 ```json
 {

@@ -28,7 +28,7 @@ def main():
     binaries = {"before": args.before.resolve(), "after": args.after.resolve()}
     hashes = {version: digest(path) for version, path in binaries.items()}
     content = hashlib.sha256()
-    for path in sorted((root / "content").rglob("*.json")):
+    for path in sorted((root / "content").rglob("*.yaml")):
         content.update(str(path.relative_to(root)).encode())
         content.update(path.read_bytes())
     env = {key: value for key, value in os.environ.items()

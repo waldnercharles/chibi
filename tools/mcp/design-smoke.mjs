@@ -55,13 +55,7 @@ function request(name, args, expectError = false) {
 }
 
 function create(kind, name, operations, extra = {}) {
-  const tool = kind === "prototype"
-    ? "buildPrototype"
-    : kind === "scene"
-      ? "buildScene"
-      : ["material", "shape", "shader-library"].includes(kind)
-        ? "buildShader"
-        : "buildBehavior";
+  const tool = kind === "prototype" ? "buildPrototype" : kind === "scene" ? "buildScene" : "buildGraph";
   return request(tool,
     { kind, name, create: true, operations, ...extra });
 }

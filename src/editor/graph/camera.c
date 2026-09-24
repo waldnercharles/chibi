@@ -134,7 +134,9 @@ void ed_route_wires(editor *e)
     ed_arrange_input_free(&in);
 }
 
-static void ed_arrange(editor *e, bool history)
+/* Placed nodes' positions override the arrangement when `keep_placed` is set;
+ * only automatic nodes move. */
+static void ed_arrange(editor *e, bool history, bool keep_placed)
 {
     ed_build_layout(e);
     ed_arrange_input in = { 0 };
@@ -149,7 +151,8 @@ static void ed_arrange(editor *e, bool history)
 
     int moved = 0;
     for (int i = 0; i < count && !moved; i++) {
-        moved = in.nodes[i]->x != in.pos[i].x || in.nodes[i]->y != in.pos[i].y;
+        moved = !(keep_placed && in.nodes[i]->placed) &&
+                (in.nodes[i]->x != in.pos[i].x || in.nodes[i]->y != in.pos[i].y);
     }
     /* An already arranged graph must not push a do-nothing undo entry, and
      * must not destroy the preview instance at the edit choke point. */
@@ -158,8 +161,12 @@ static void ed_arrange(editor *e, bool history)
             ed_snapshot_before(e);
         }
         for (int i = 0; i < count; i++) {
+            if (keep_placed && in.nodes[i]->placed) {
+                continue;
+            }
             in.nodes[i]->x = in.pos[i].x;
             in.nodes[i]->y = in.pos[i].y;
+            in.nodes[i]->placed = false;
         }
     }
     /* The arranged graph rarely still sits where the view was looking, so
@@ -176,11 +183,15 @@ static void ed_arrange(editor *e, bool history)
 
 void ed_auto_arrange(editor *e)
 {
-    ed_arrange(e, true);
+    ed_arrange(e, true, false);
+}
+void ed_arrange_automatic(editor *e)
+{
+    ed_arrange(e, true, true);
 }
 void ed_arrange_in_transaction(editor *e)
 {
-    ed_arrange(e, false);
+    ed_arrange(e, false, false);
 }
 
 static void ed_curve_axis_bounds(float p0, float p1, float p2, float p3, float *minimum, float *maximum)

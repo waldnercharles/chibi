@@ -17,6 +17,8 @@ typedef struct
 typedef struct
 {
     CF_Texture scene, emission, absorption, albedo, normal, background, visibility;
+    /* Optional material relief (see render_material_textures). */
+    CF_Texture relief;
 } render_radiance_inputs;
 /* Requires a current Cute context and shader directory containing the hrc shader subdirectory. */
 render_radiance *render_radiance_new();

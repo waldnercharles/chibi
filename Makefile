@@ -27,7 +27,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-fast test-render sdl-package clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-fast test-render sdl-package clean
 
 all: build
 
@@ -52,6 +52,7 @@ help:
 		'make benchmark      Run optimized benchmarks with symbols' \
 		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
+		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build the browser application' \
 		'make web-serve      Serve the browser application locally' \
@@ -62,13 +63,22 @@ help:
 build:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
+# The MCP controller cache keys on sources alone: publish only default-profile
+# builds that refreshed chibi_ctl.
+ifeq ($(origin NATIVE_TOOLCHAIN_FLAGS) $(origin LOCAL_CMAKE_FLAGS) $(origin SANITIZER_CMAKE_FLAGS) $(origin SANITIZERS),file file file file)
+ifeq ($(filter-out chibi_ctl,$(BUILD_TARGET)),)
+	@sh tools/mcp/controller-cache.sh publish "$(BUILD_DIR)/chibi_ctl" || true
+endif
+endif
 
 build-debug:
 	$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
-mcp:
+mcp-controller:
 	@sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
 	@cmake --build "$(BUILD_DIR)" --target chibi_ctl --parallel $(JOBS) >&2
+
+mcp: mcp-controller
 	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
 	@sh tools/mcp/launch.sh
 
@@ -76,7 +86,7 @@ mcp-setup:
 	node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
 PROJECT ?= projects/arena2d
-SCENE ?= scenes/Sandbox.json
+SCENE ?= scenes/Sandbox.yaml
 
 run:
 	$(MAKE) build-release BUILD_TARGET=chibi
@@ -142,7 +152,7 @@ test:
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend test_suite --parallel $(JOBS)
+	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 

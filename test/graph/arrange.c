@@ -1,5 +1,6 @@
 #include "graph/authoring/arrange.h"
 
+#include "support/asset_text.h"
 #include "support/text_file.h"
 #include "test/suite_internal.h"
 
@@ -7,8 +8,8 @@
 #include <sys/stat.h>
 #include <time.h>
 
-/* Mirrors graph_layout's fixed measurement so the benchmark times the
- * layout alone. */
+/* Mirrors graph_layout's input, fixed measurement, node-ID order and zeroed
+ * seeds, so the benchmark times the layout alone. */
 typedef struct arrange_case
 {
     arrange_box *boxes;
@@ -16,43 +17,68 @@ typedef struct arrange_case
     arrange_point *seeds;
 } arrange_case;
 
-static int arrange_node_index(const graph *g, uint64_t id)
+static int arrange_node_slot(const graph *g, uint64_t id)
 {
+    int slot = 0;
+    bool found = false;
     for (int i = 0; i < acount(g->nodes); i++) {
-        if (g->nodes[i]->id == id) {
-            return i;
+        slot += g->nodes[i]->id < id;
+        found |= g->nodes[i]->id == id;
+    }
+    return found ? slot : -1;
+}
+
+static int arrange_compare_links(const void *a, const void *b)
+{
+    const arrange_link *x = a;
+    const arrange_link *y = b;
+    int keys[][2] = { { x->from, y->from },
+                      { x->from_pin, y->from_pin },
+                      { x->to, y->to },
+                      { x->to_pin, y->to_pin } };
+    for (int i = 0; i < 4; i++) {
+        if (keys[i][0] != keys[i][1]) {
+            return keys[i][0] < keys[i][1] ? -1 : 1;
         }
     }
-    return -1;
+    return 0;
 }
 
 static arrange_case arrange_case_of(const graph *g)
 {
     arrange_case c = { 0 };
+    asetlen(c.boxes, acount(g->nodes));
+    asetlen(c.seeds, acount(g->nodes));
     for (int i = 0; i < acount(g->nodes); i++) {
         const node *n = g->nodes[i];
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
-        apush(
-            c.boxes,
-            ((arrange_box){ .width = 220,
-                            .height = 36 + 24 * rows,
-                            .title_height = 28,
-                            .row_height = 24,
-                            .pad = 4 })
-        );
-        apush(c.seeds, ((arrange_point){ n->x, n->y }));
+        int slot = arrange_node_slot(g, n->id);
+        c.boxes[slot] = (arrange_box){ .width = 220,
+                                       .height = 36 + 24 * rows,
+                                       .title_height = 28,
+                                       .row_height = 24,
+                                       .pad = 4 };
+        c.seeds[slot] = (arrange_point){ 0, 0 };
     }
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
-        int from = arrange_node_index(g, e->from_id);
-        int to = arrange_node_index(g, e->to_id);
+        node *from = graph_node_by_id(g, e->from_id);
+        node *to = graph_node_by_id(g, e->to_id);
         int from_pin, to_pin;
-        if (from < 0 || to < 0 ||
-            !graph_pin_by_id(g->nodes[from], e->from_pin_id, NULL, &from_pin) ||
-            !graph_pin_by_id(g->nodes[to], e->to_pin_id, NULL, &to_pin)) {
+        if (!from || !to || !graph_pin_by_id(from, e->from_pin_id, NULL, &from_pin) ||
+            !graph_pin_by_id(to, e->to_pin_id, NULL, &to_pin)) {
             continue;
         }
-        apush(c.links, ((arrange_link){ .from = from, .to = to, .from_pin = from_pin, .to_pin = to_pin }));
+        apush(
+            c.links,
+            ((arrange_link){ .from = arrange_node_slot(g, from->id),
+                             .to = arrange_node_slot(g, to->id),
+                             .from_pin = from_pin,
+                             .to_pin = to_pin })
+        );
+    }
+    if (acount(c.links)) {
+        qsort(c.links, (size_t)acount(c.links), sizeof *c.links, arrange_compare_links);
     }
     return c;
 }
@@ -239,7 +265,8 @@ static void arrange_collect(const char *dir, char ***paths)
             continue;
         }
         size_t len = strlen(path);
-        if (len > 5 && !strcmp(path + len - 5, ".json")) {
+        size_t ext = strlen(ASSET_EXTENSION);
+        if (len > ext && !strcmp(path + len - ext, ASSET_EXTENSION)) {
             apush(*paths, strdup(path));
         }
     }
@@ -270,7 +297,7 @@ static char **arrange_content_paths()
 static behavior_asset *arrange_load(const char *path)
 {
     char *json = text_file_read(path);
-    if (!json || !strstr(json, "\"graphs\"")) {
+    if (!json || !strstr(json, "\ngraphs:")) {
         free(json);
         return NULL;
     }

@@ -1487,17 +1487,54 @@ instead of as one curve across the columns, so they no longer cut through
 nodes. `arrange_route` recomputes the lanes from node positions alone: it
 re-runs the layered layout with every node pinned in place, so it finds the
 lanes Arrange reserved and still gives hand-placed nodes reasonable lanes.
-Routes are never saved. The canvas rebuilds them when positions, sizes, or
-wires change. Authored reroutes and custom handles take precedence, and wires
-that run backward keep their looping curve.
+Routes are never saved. The canvas rebuilds them when positions, sizes, wires,
+or the wire style change. Authored reroutes and custom handles take
+precedence.
 
-`test_suite --arrange-bench [repeats] [filter]`, run from the repository root,
-arranges and routes every graph under `content/` and `projects/*/content/`. It
-prints layout and routing time, crossings, wire-node hits, overlaps, waypoint
-count, length, cost, and a hash of the placed positions per graph.
-`--graph-arrange` runs the focused scoring, routing, and determinism checks.
+Studio's Graph Wires preference picks one of four styles, shared by Arrange,
+routing, drawing, and scoring through `arrange_route_style`; the ImGui canvas
+draws curved wires:
+
+- Curved: cubics through the lanes. Backward wires keep their looping curve.
+- Orthogonal: level and vertical runs with rounded corners. Every vertical run
+  gets a track in the gap between two columns (channel routing): tracks are
+  ordered for the fewest crossings, runs that overlap vertically never share
+  one, and a staircase of wires that no order can separate doglegs. Arrange
+  widens a gap to fit its tracks. Backward wires loop under their nodes.
+- Straight: line segments between the waypoints, leaving and entering pins
+  level.
+- Subway: the orthogonal tracks with 45 degree diagonals for corners.
+
+`arrange_path` turns a wire's waypoints into cubic pieces in canvas units, so
+every renderer draws, hit-tests, and bounds wires the same way and the score
+measures what is drawn. Studio's `kit_wires` element reaches it through
+`kit_wire_shape` once each wire's ends resolve after layout; changing the style
+arranges automatic nodes again, since gaps depend on it. Wires from one output share a trunk: they share lanes
+through the columns they all skip, turn on one track in each gap, and curved
+and straight fan-outs leave the pin along one short level run. Crossings count
+where drawn wires cross, so a trunk crossed once counts once, and the score's
+ink length counts shared runs once.
+
+Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
+other host events such as input and contact, custom events, End, then
+everything else (`graph_layout_band`). Event chains that share nodes form one
+band. `arrange_long_links` reports links whose ends are three or more columns
+apart, or whose path crosses at least a given number of wires, so an editor can
+offer to name the value as a local; it changes nothing.
+
+`test_suite --arrange-bench [repeats] [filter] [style]`, run from the
+repository root, arranges and routes every graph under `content/` and
+`projects/*/content/` in every style, or in the one named. It prints layout and
+routing time, crossings, wire-node hits, node and wire overlaps, waypoint
+count, length, ink, cost, and a hash of the placed positions per graph and
+style, then totals per style. `--graph-arrange` runs the focused scoring,
+routing, and determinism checks, and scores the arena2d behaviors against a
+ceiling per style.
+
 Across the 201 content graphs, arranged from zeroed seeds as `graph_layout`
-does, Arrange previously produced 4672 crossings and 774 wire-node hits; it now
-produces 3382 crossings and none. A Release build lays out and routes all of
-them in 12 ms, previously about 1.05 s for layout alone. The largest graph
-(BasaltCave, 425 nodes) takes 7 ms, previously 211 ms.
+does, Arrange once produced 4672 crossings and 774 wire-node hits. Counted as
+drawn, lanes without trunks produce 3340 crossings and none; shared trunks
+bring curved wires to 2192 crossings and cut ink by 41%, and orthogonal wires
+cross 1886 times. A Release build lays out and routes all of them in about
+6 ms curved and 8 ms orthogonal; the largest graph (BasaltCave, 425 nodes)
+takes about 3 ms.

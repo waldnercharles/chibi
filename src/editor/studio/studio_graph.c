@@ -9,6 +9,7 @@
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/layout.h"
 #include "graph/document/extract.h"
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
@@ -949,7 +950,7 @@ static void arrange_input_build(const studio *s, arrange_input *in)
             continue;
         }
         apush(in->nodes, n);
-        apush(in->boxes, ((arrange_box){ box[2], box[3] }));
+        apush(in->boxes, ((arrange_box){ box[2], box[3], graph_layout_band(n) }));
         apush(in->pos, ((arrange_point){ n->x, n->y }));
     }
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -1007,13 +1008,14 @@ static void update_routes(studio *s)
     studio_graph *g = &s->graph;
     arrange_input in = { 0 };
     arrange_input_build(s, &in);
-    uint64_t key = 14695981039346656037ull;
+    uint64_t
+        key = hash(14695981039346656037ull, &s->prefs.wires, sizeof s->prefs.wires);
     key = hash(key, in.boxes, sizeof *in.boxes * (size_t)acount(in.boxes));
     key = hash(key, in.pos, sizeof *in.pos * (size_t)acount(in.pos));
     key = hash(key, in.links, sizeof *in.links * (size_t)acount(in.links));
     if (key != g->measured_key || !g->routes.start) {
         arrange_graph layout = arrange_of(&in);
-        arrange_route(&layout, in.pos, &g->routes);
+        arrange_route(&layout, in.pos, (arrange_route_style)s->prefs.wires, &g->routes);
         g->measured_key = key;
     }
     afree(g->edge_route);
@@ -1031,7 +1033,7 @@ static void arrange(studio *s, bool automatic_only)
     arrange_input in = { 0 };
     arrange_input_build(s, &in);
     arrange_graph layout = arrange_of(&in);
-    arrange_layout(&layout, in.pos);
+    arrange_layout(&layout, (arrange_route_style)s->prefs.wires, in.pos);
     bool moved = false;
     for (int i = 0; i < acount(in.nodes) && !moved; i++) {
         moved = !(automatic_only && in.nodes[i]->placed) &&
@@ -2748,9 +2750,10 @@ void studio_graph_frame(studio *s, double delta_seconds)
     if (!follow_graph(s)) {
         e->arrange_pending = false;
     }
-    /* Node settings change node sizes, so automatic nodes arrange again. */
+    /* Node settings change node sizes and the wire style changes column gaps,
+       so automatic nodes arrange again. */
     int forms = s->prefs.short_bindings | s->prefs.title_flow << 1 |
-                s->prefs.compact_nodes << 2;
+                s->prefs.compact_nodes << 2 | (int)s->prefs.wires << 3;
     e->arrange_pending |= forms != g->forms;
     g->forms = forms;
     float scale = cf_app_get_pixel_scale();

@@ -301,7 +301,7 @@ struct editor
 
 /* Flow pacing. */
 #define ED_FLOW_DOT_SPACING 64.0f
-#define ED_FLOW_CURVE_SAMPLES 32
+#define ED_PIECE_SAMPLES 16
 
 /* Flow timing. */
 #define ED_FLOW_ATTACK_HOLD 0.3
@@ -387,25 +387,17 @@ ed_node_view *ed_hit_node(editor *e, ImVec2 p);
 ImVec4 ed_lerp4(ImVec4 a, ImVec4 b, float t);
 ImVec2 ed_bezier(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float t);
 float ed_distance(ImVec2 a, ImVec2 b);
-float ed_curve_length(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3);
-ImVec2 ed_curve_at_distance(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float distance, float length);
 float ed_flow_heat(double age, float *thickness, ImVec4 *color, ImVec4 base, int exec);
 int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec2 *p2, ImVec2 *p3);
 int ed_pin_row(const editor *e, const node *n, int kind, int index);
 void ed_route_wires(editor *e);
-int ed_route_count(const editor *e, const edge *ed);
+/* Clears `pieces` and fills it with the wire as drawn, in screen space.
+ * Returns the piece count, 0 for a wire that is not drawn. */
+int ed_link_pieces(const editor *e, const edge *ed, arrange_piece **pieces);
+ImVec2 ed_im(arrange_point p);
+ImVec2 ed_piece_at(const arrange_piece *piece, float t);
+int ed_piece_samples(const arrange_piece *piece);
 int ed_hit_handle(const editor *e, ImVec2 mouse, int *edge_index, int *side);
-void ed_route_segment(
-    const editor *e,
-    const edge *ed,
-    int segment,
-    ImVec2 start,
-    ImVec2 end,
-    ImVec2 *p0,
-    ImVec2 *p1,
-    ImVec2 *p2,
-    ImVec2 *p3
-);
 int ed_hit_link_segment(const editor *e, ImVec2 p, ed_link_ref *out, int *route_segment);
 int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out);
 void ed_update_hover(editor *e, ImVec2 mouse);

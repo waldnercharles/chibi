@@ -190,7 +190,11 @@ int main(int argc, char **argv)
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {
-        return bench_graph_arrange(argc > 2 ? atoi(argv[2]) : 1, argc > 3 ? argv[3] : NULL);
+        return bench_graph_arrange(
+            argc > 2 ? atoi(argv[2]) : 1,
+            argc > 3 && *argv[3] ? argv[3] : NULL,
+            argc > 4 ? argv[4] : NULL
+        );
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();

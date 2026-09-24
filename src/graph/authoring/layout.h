@@ -9,4 +9,8 @@ void graph_layout(graph *graph);
 /* Positions automatic nodes with graph_layout's arrangement; placed nodes keep
  * their authored positions. */
 void graph_place_unplaced(graph *graph);
+/* Auto-arrange stacks a graph's event chains top to bottom by this band:
+ * Begin, Tick, the other host events such as input and contact, custom
+ * events, End, then everything else. Chains that share nodes form one band. */
+int graph_layout_band(const node *n);
 #endif

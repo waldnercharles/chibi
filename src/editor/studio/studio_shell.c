@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
     "Scene",  "Behavior", "Outliner",   "Properties",
     "Output", "Assets",   "Performance"
@@ -625,8 +624,11 @@ static void settings(studio *s)
         }
         kit_menu_separator(k, "s1");
         kit_menu_group(k, "wires", "Graph Wires");
-        static const char *const wires[] = { "Curved", "Straight", "Angular" };
-        for (int w = 0; w < 3; w++) {
+        static const char *const wires[KIT_WIRE_STYLE_COUNT] = { "Curved",
+                                                                 "Orthogonal",
+                                                                 "Straight",
+                                                                 "Subway" };
+        for (int w = 0; w < KIT_WIRE_STYLE_COUNT; w++) {
             char key[16];
             snprintf(key, sizeof key, "wires%d", w);
             if (check_item(k, key, wires[w], s->prefs.wires == (kit_wire_style)w)) {

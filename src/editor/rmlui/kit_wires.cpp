@@ -1,16 +1,14 @@
 /* Node-editor wires (kit_wires.cpp): one element draws the canvas grid and every
  * wire as geometry, after xyflow's edges and Blender's noodles. Wire ends anchor
  * to kit paths and resolve after layout, so a wire follows its node in the same
- * frame the node moves. Curves leave and enter horizontally; a forward wire's
- * handles are half the horizontal distance, and a backward wire loops out with
- * handles of 0.25 * 25 * sqrt(-dx) (xyflow's getBezierPath). Strokes carry a
- * one-pixel feather because the canvas has no multisampling. */
+ * frame the node moves. The shape of each wire comes from arrange_path through
+ * kit_wire_shape, so the canvas draws what auto-arrange routes and scores.
+ * Strokes carry a one-pixel feather because the canvas has no multisampling. */
 #include "editor/rmlui/kit_internal.hpp"
 
 #include <RmlUi/Core/Geometry.h>
 #include <RmlUi/Core/Mesh.h>
 #include <RmlUi/Core/RenderManager.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -28,7 +26,9 @@ using Point = Rml::Vector2f;
 Rml::ColourbPremultiplied premultiply(uint32_t rgba, float alpha)
 {
     float a = std::clamp(((rgba & 255) / 255.0f) * alpha, 0.0f, 1.0f);
-    auto channel = [&](int shift) { return (Rml::byte)std::lround(((rgba >> shift) & 255) * a); };
+    auto channel = [&](int shift) {
+        return (Rml::byte)std::lround(((rgba >> shift) & 255) * a);
+    };
     return { channel(24), channel(16), channel(8), (Rml::byte)std::lround(a * 255) };
 }
 
@@ -43,58 +43,38 @@ struct WireData
     float flow = 0;
 };
 
-float handle(float dx)
+/* Samples the cubic pieces kit_wire_shape gives a wire through its knots, in
+   dp, into pixels. */
+void shape(std::vector<Point> &out, kit_wire_style style, const std::vector<float> &knots, float dp)
 {
-    return dx >= 0 ? dx * 0.5f : 0.25f * 25 * std::sqrt(-dx);
-}
-
-void bezier(std::vector<Point> &out, Point a, Point b)
-{
-    float h = handle(b.x - a.x);
-    Point c1 = { a.x + h, a.y }, c2 = { b.x - h, b.y };
-    for (int i = out.empty() ? 0 : 1; i <= kCurveSamples; ++i) {
-        float t = (float)i / kCurveSamples, u = 1 - t;
-        out.push_back(a * (u * u * u) + c1 * (3 * u * u * t) + c2 * (3 * u * t * t) + b * (t * t * t));
+    int count = (int)knots.size() / 2;
+    std::vector<float> pieces(16 * 8);
+    int n = kit_wire_shape(style, knots.data(), count, pieces.data(), 16);
+    if (n > 16) {
+        pieces.resize((size_t)n * 8);
+        kit_wire_shape(style, knots.data(), count, pieces.data(), n);
     }
-}
-
-/* A quarter circle from p (heading along d0) turning to heading d1. */
-void corner(std::vector<Point> &out, Point p, Point d0, Point d1, float r)
-{
-    Point start = p - d0 * r, end = p + d1 * r;
-    for (int i = 1; i <= 6; ++i) {
-        float t = (float)i / 6, u = 1 - t;
-        out.push_back(start * (u * u) + p * (2 * u * t) + end * (t * t));
+    if (n == 0) {
+        out = { Point{ knots[0], knots[1] } * dp,
+                Point{ knots[count * 2 - 2], knots[count * 2 - 1] } * dp };
+        return;
     }
-    (void)start;
-}
-
-/* Horizontal, vertical, horizontal with rounded corners; a backward wire steps
-   out of each node before turning. */
-void angular(std::vector<Point> &out, Point a, Point b, float dp)
-{
-    if (out.empty()) {
-        out.push_back(a);
-    }
-    float stub = 12 * dp;
-    std::vector<Point> knots;
-    if (b.x - a.x >= 2 * stub) {
-        float mid = std::round((a.x + b.x) / 2);
-        knots = { a, { mid, a.y }, { mid, b.y }, b };
-    } else {
-        float mid = (a.y + b.y) / 2;
-        knots = { a, { a.x + stub, a.y }, { a.x + stub, mid }, { b.x - stub, mid }, { b.x - stub, b.y }, b };
-    }
-    for (size_t i = 1; i + 1 < knots.size(); ++i) {
-        Point in = knots[i] - knots[i - 1], next = knots[i + 1] - knots[i];
-        float li = std::hypot(in.x, in.y), ln = std::hypot(next.x, next.y);
-        if (li < 0.01f || ln < 0.01f) {
-            continue;
+    out.push_back(Point{ pieces[0], pieces[1] } * dp);
+    for (int i = 0; i < n; ++i) {
+        const float *p = &pieces[(size_t)i * 8];
+        Point p0 = { p[0], p[1] }, p1 = { p[2], p[3] }, p2 = { p[4], p[5] },
+              p3 = { p[6], p[7] };
+        bool straight = p1 == p0 && p2 == p3;
+        int samples = straight ? 1 : kCurveSamples;
+        for (int k = 1; k <= samples; ++k) {
+            float t = (float)k / samples, u = 1 - t;
+            out.push_back(
+                (p0 * (u * u * u) + p1 * (3 * u * u * t) +
+                 p2 * (3 * u * t * t) + p3 * (t * t * t)) *
+                dp
+            );
         }
-        float r = std::min({ 8 * dp, li / 2, ln / 2 });
-        corner(out, knots[i], in / li, next / ln, r);
     }
-    out.push_back(b);
 }
 
 /* Four vertices per point: feather, core edge, core edge, feather. */
@@ -105,14 +85,18 @@ void stroke(Rml::Mesh &mesh, const std::vector<Point> &p, float width, Rml::Colo
     }
     float alpha = std::min(width / px, 1.0f);
     float core = std::max(width / 2 - px / 2, 0.0f), outer = core + px;
-    Rml::ColourbPremultiplied solid = { (Rml::byte)(color.red * alpha), (Rml::byte)(color.green * alpha), (Rml::byte)(color.blue * alpha), (Rml::byte)(color.alpha * alpha) };
+    Rml::ColourbPremultiplied solid = { (Rml::byte)(color.red * alpha),
+                                        (Rml::byte)(color.green * alpha),
+                                        (Rml::byte)(color.blue * alpha),
+                                        (Rml::byte)(color.alpha * alpha) };
     Rml::ColourbPremultiplied clear = { 0, 0, 0, 0 };
     int base = (int)mesh.vertices.size();
     size_t n = p.size();
     for (size_t i = 0; i < n; ++i) {
         Point d0 = i > 0 ? p[i] - p[i - 1] : p[i + 1] - p[i];
         Point d1 = i + 1 < n ? p[i + 1] - p[i] : d0;
-        float l0 = std::max(std::hypot(d0.x, d0.y), 1e-5f), l1 = std::max(std::hypot(d1.x, d1.y), 1e-5f);
+        float l0 = std::max(std::hypot(d0.x, d0.y), 1e-5f),
+              l1 = std::max(std::hypot(d1.x, d1.y), 1e-5f);
         Point n0 = { -d0.y / l0, d0.x / l0 }, n1 = { -d1.y / l1, d1.x / l1 };
         Point m = n0 + n1;
         float lm = std::hypot(m.x, m.y);
@@ -147,7 +131,8 @@ void disc(Rml::Mesh &mesh, Point c, float r, Rml::ColourbPremultiplied color, fl
     }
     for (int i = 0; i < kSides; ++i) {
         int j = (i + 1) % kSides;
-        int in_i = base + 1 + i * 2, out_i = in_i + 1, in_j = base + 1 + j * 2, out_j = in_j + 1;
+        int in_i = base + 1 + i * 2, out_i = in_i + 1, in_j = base + 1 + j * 2,
+            out_j = in_j + 1;
         int q[9] = { base, in_i, in_j, in_i, out_i, out_j, in_i, out_j, in_j };
         mesh.indices.insert(mesh.indices.end(), q, q + 9);
     }
@@ -221,27 +206,19 @@ protected:
         for (size_t i = 0; i < wires.size(); ++i) {
             const WireData &w = wires[i];
             Point a, b;
-            if (!resolve(w.from, w.from_point, origin, dp, a) || !resolve(w.to, w.to_point, origin, dp, b)) {
+            if (!resolve(w.from, w.from_point, origin, dp, a) ||
+                !resolve(w.to, w.to_point, origin, dp, b)) {
                 continue;
             }
-            std::vector<Point> knots = { a };
+            std::vector<float> knots = { a.x / dp, a.y / dp };
             for (Point v : w.via) {
-                knots.push_back(v * dp);
+                knots.push_back(v.x);
+                knots.push_back(v.y);
             }
-            knots.push_back(b);
+            knots.push_back(b.x / dp);
+            knots.push_back(b.y / dp);
             std::vector<Point> &path = drawn[i];
-            for (size_t k = 1; k < knots.size(); ++k) {
-                if (style == KIT_WIRE_STRAIGHT) {
-                    if (path.empty()) {
-                        path.push_back(knots[0]);
-                    }
-                    path.push_back(knots[k]);
-                } else if (style == KIT_WIRE_ANGULAR) {
-                    angular(path, knots[k - 1], knots[k], dp);
-                } else {
-                    bezier(path, knots[k - 1], knots[k]);
-                }
-            }
+            shape(path, style, knots, dp);
             Rml::ColourbPremultiplied color = premultiply(w.color, 1);
             if (w.flags & KIT_WIRE_DASHED) {
                 for (const auto &dash : dashes(path, kDash * dp, kDashGap * dp)) {
@@ -304,8 +281,10 @@ private:
                 }
                 auto color = premultiply(major ? grid_major : grid_color, alpha);
                 float x = std::floor(at) + 0.5f;
-                std::vector<Point> line = axis == 0 ? std::vector<Point>{ { x, 0 }, { x, across } }
-                                                    : std::vector<Point>{ { 0, x }, { across, x } };
+                std::vector<Point> line = axis == 0
+                                            ? std::vector<Point>{ { x, 0 }, { x, across } }
+                                            : std::vector<Point>{ { 0, x },
+                                                                  { across, x } };
                 stroke(mesh, line, 1, color, 1);
             }
         };
@@ -318,7 +297,10 @@ private:
     {
         float spacing = kFlowSpacing * dp, total = 0;
         for (size_t i = 1; i < path.size(); ++i) {
-            total += std::hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+            total += std::hypot(
+                path[i].x - path[i - 1].x,
+                path[i].y - path[i - 1].y
+            );
         }
         if (total <= 0) {
             return;
@@ -329,9 +311,13 @@ private:
         size_t seg = 1;
         for (float d = phase; d < total; d += spacing) {
             while (seg < path.size()) {
-                float l = std::hypot(path[seg].x - path[seg - 1].x, path[seg].y - path[seg - 1].y);
+                float l = std::hypot(
+                    path[seg].x - path[seg - 1].x,
+                    path[seg].y - path[seg - 1].y
+                );
                 if (along + l >= d) {
-                    Point p = path[seg - 1] + (path[seg] - path[seg - 1]) * ((d - along) / std::max(l, 1e-5f));
+                    Point p = path[seg - 1] + (path[seg] - path[seg - 1]) *
+                                                  ((d - along) / std::max(l, 1e-5f));
                     disc(mesh, p, kFlowRadius * dp, color, 1);
                     break;
                 }
@@ -444,10 +430,7 @@ public:
     bool dirty = true;
 
 protected:
-    void OnResize() override
-    {
-        dirty = true;
-    }
+    void OnResize() override { dirty = true; }
 
     void OnRender() override
     {
@@ -484,7 +467,8 @@ private:
             /* Inset so it weighs about as much as a circle of the same box. */
             float inset = 0.5f + size.x * 0.1f;
             Point a = { inset, inset }, b = { size.x - inset, inset },
-                  c = { size.x - inset, size.y - inset }, d = { inset, size.y - inset };
+                  c = { size.x - inset, size.y - inset },
+                  d = { inset, size.y - inset };
             square(mesh, a, c, ring > 0 ? edge : fill);
             if (ring > 0) {
                 square(mesh, a + Point{ ring, ring }, c - Point{ ring, ring }, fill);
@@ -499,7 +483,13 @@ private:
         if (ring > 0) {
             Point center = (a + b + c) / 3;
             float k = std::max(0.0f, 1 - 2.2f * ring / size.y);
-            triangle(mesh, center + (a - center) * k, center + (b - center) * k, center + (c - center) * k, fill);
+            triangle(
+                mesh,
+                center + (a - center) * k,
+                center + (b - center) * k,
+                center + (c - center) * k,
+                fill
+            );
         }
         stroke(mesh, { a, b, c, a }, 1, ring > 0 ? edge : fill, 1);
     }

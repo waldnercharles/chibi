@@ -1,6 +1,7 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/authoring/arrange.h"
+#include "graph/authoring/layout.h"
 #include "graph/model/registry.h"
 #include "support/math.h"
 
@@ -49,7 +50,7 @@ static void ed_arrange_input_build(const editor *e, ed_arrange_input *in)
     for (int i = 0; i < acount(e->views); i++) {
         node *n = e->views[i].n;
         apush(in->nodes, n);
-        apush(in->boxes, ((arrange_box){ e->views[i].size.x, e->views[i].size.y }));
+        apush(in->boxes, ((arrange_box){ e->views[i].size.x, e->views[i].size.y, graph_layout_band(n) }));
         apush(in->pos, ((arrange_point){ n->x, n->y }));
     }
     for (int i = 0; i < acount(g->edges); i++) {
@@ -127,7 +128,7 @@ void ed_route_wires(editor *e)
     }
     if (key != e->wire_route_key || !e->wire_routes.start) {
         arrange_graph layout = ed_arrange_graph(&in);
-        arrange_route(&layout, in.pos, &e->wire_routes);
+        arrange_route(&layout, in.pos, ARRANGE_ROUTE_CURVED, &e->wire_routes);
         e->wire_route_key = key;
     }
     afree(e->wire_route);
@@ -149,7 +150,7 @@ static void ed_arrange(editor *e, bool history, bool keep_placed)
         return;
     }
     arrange_graph layout = ed_arrange_graph(&in);
-    arrange_layout(&layout, in.pos);
+    arrange_layout(&layout, ARRANGE_ROUTE_CURVED, in.pos);
 
     int moved = 0;
     for (int i = 0; i < count && !moved; i++) {
@@ -232,22 +233,33 @@ static void ed_curve_axis_bounds(float p0, float p1, float p2, float p3, float *
 
 static bool ed_wire_bounds(const editor *e, const edge *wire, ImVec2 *minimum, ImVec2 *maximum)
 {
-    ImVec2 p0, p1, p2, p3;
-    if (!ed_link_curve(e, wire, &p0, &p1, &p2, &p3)) {
-        return false;
+    arrange_piece *pieces = NULL;
+    int count = ed_link_pieces(e, wire, &pieces);
+    if (count) {
+        *minimum = ed_im(pieces[0].p0);
+        *maximum = *minimum;
     }
-    *minimum = p0;
-    *maximum = p0;
-    int routes = ed_route_count(e, wire);
-    for (int segment = 0; segment <= routes; segment++) {
-        ImVec2 a = p0, b = p1, c = p2, d = p3;
-        if (routes) {
-            ed_route_segment(e, wire, segment, p0, p3, &a, &b, &c, &d);
-        }
-        ed_curve_axis_bounds(a.x, b.x, c.x, d.x, &minimum->x, &maximum->x);
-        ed_curve_axis_bounds(a.y, b.y, c.y, d.y, &minimum->y, &maximum->y);
+    for (int k = 0; k < count; k++) {
+        const arrange_piece *p = &pieces[k];
+        ed_curve_axis_bounds(
+            p->p0.x,
+            p->p1.x,
+            p->p2.x,
+            p->p3.x,
+            &minimum->x,
+            &maximum->x
+        );
+        ed_curve_axis_bounds(
+            p->p0.y,
+            p->p1.y,
+            p->p2.y,
+            p->p3.y,
+            &minimum->y,
+            &maximum->y
+        );
     }
-    return true;
+    afree(pieces);
+    return count > 0;
 }
 
 bool editor_graph_wires_visible(const editor *e)

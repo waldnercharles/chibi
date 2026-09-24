@@ -11,14 +11,17 @@
 #define SETTING_PIN                                                            \
     {                                                                          \
         .name = "Component", .type = PIN_NAME, .flags = PIN_FLAG_SETTING,      \
-        .default_value = { .type = PIN_NAME }                                  \
+        .default_value = {                                                     \
+            .type = PIN_NAME                                                   \
+        }                                                                      \
     }
 #define ENTITY_PIN                                                             \
     { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity", .flags = PIN_FLAG_DEFAULT_SELF }
-#define VALUE_PIN(pin_flags)                                                   \
-    {                                                                          \
-        .name = "Value", .type = PIN_STRUCT, .flags = (pin_flags),             \
-        .default_value = { .type = PIN_STRUCT }                                \
+#define VALUE_PIN(pin_flags)                                                          \
+    {                                                                                 \
+        .name = "Value", .type = PIN_STRUCT, .flags = (pin_flags), .default_value = { \
+            .type = PIN_STRUCT                                                        \
+        }                                                                             \
     }
 
 /* Set's Value input follows Exec, Component and Entity. */

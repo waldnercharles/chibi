@@ -492,6 +492,8 @@ void ed_draw_debug_menu(editor *e);
 void ed_rebuild_log_text(editor *e);
 void ed_rebuild_compile_text(editor *e);
 void ed_auto_arrange(editor *e);
+/* Opening arranges automatic nodes around the placed ones. */
+void ed_arrange_automatic(editor *e);
 void ed_zoom_fit(editor *e, bool animate);
 void ed_frame_initial_view(editor *e);
 void ed_apply_field_request(editor *e);

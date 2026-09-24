@@ -1050,6 +1050,19 @@ static void document_controls(arena_fixture *f)
     assert(graph_node_by_id(f->graph->active_graph, id)->x != displaced);
     editor_undo(f->graph);
     assert(graph_node_by_id(f->graph->active_graph, id)->x == displaced);
+    /* Opening arranges automatic nodes only; a placed node stays put. */
+    graph_node_by_id(f->graph->active_graph, id)->placed = true;
+    f->graph->arrange_pending = true;
+    frame(f);
+    assert(!f->graph->arrange_pending);
+    assert(graph_node_by_id(f->graph->active_graph, id)->x == displaced);
+    assert(graph_node_by_id(f->graph->active_graph, id)->placed);
+    click_item(f, "graph.arrange");
+    assert(graph_node_by_id(f->graph->active_graph, id)->x != displaced);
+    assert(!graph_node_by_id(f->graph->active_graph, id)->placed);
+    editor_undo(f->graph);
+    assert(graph_node_by_id(f->graph->active_graph, id)->x == displaced);
+    assert(graph_node_by_id(f->graph->active_graph, id)->placed);
     editor_undo(f->graph);
     ed_zoom_fit(f->graph, false);
     for (int i = 0; i < 20; i++) {

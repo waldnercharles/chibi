@@ -26,7 +26,9 @@ static int ed_node_index(node *const *nodes, const node *n)
     return -1;
 }
 
-static void ed_arrange(editor *e, bool history)
+/* Placed nodes' positions override the arrangement when `keep_placed` is set;
+ * only automatic nodes move. */
+static void ed_arrange(editor *e, bool history, bool keep_placed)
 {
     graph *g = e->active_graph;
     node **nodes = NULL;
@@ -82,7 +84,8 @@ static void ed_arrange(editor *e, bool history)
 
     int moved = 0;
     for (int i = 0; i < count && !moved; i++) {
-        moved = nodes[i]->x != pos[i].x || nodes[i]->y != pos[i].y;
+        moved = !(keep_placed && nodes[i]->placed) &&
+                (nodes[i]->x != pos[i].x || nodes[i]->y != pos[i].y);
     }
     /* An already arranged graph must not push a do-nothing undo entry, and
      * must not destroy the preview instance at the edit choke point. */
@@ -91,6 +94,9 @@ static void ed_arrange(editor *e, bool history)
             ed_snapshot_before(e);
         }
         for (int i = 0; i < count; i++) {
+            if (keep_placed && nodes[i]->placed) {
+                continue;
+            }
             nodes[i]->x = pos[i].x;
             nodes[i]->y = pos[i].y;
             nodes[i]->placed = false;
@@ -113,11 +119,15 @@ static void ed_arrange(editor *e, bool history)
 
 void ed_auto_arrange(editor *e)
 {
-    ed_arrange(e, true);
+    ed_arrange(e, true, false);
+}
+void ed_arrange_automatic(editor *e)
+{
+    ed_arrange(e, true, true);
 }
 void ed_arrange_in_transaction(editor *e)
 {
-    ed_arrange(e, false);
+    ed_arrange(e, false, false);
 }
 
 static void ed_curve_axis_bounds(float p0, float p1, float p2, float p3, float *minimum, float *maximum)

@@ -6,27 +6,27 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Age
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 124
   name: Pitch Rate
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 142
   name: Roll Rate
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 160
   name: Lift
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 209
   name: Birth Scale
-  type: 10
+  type: float
   type_name: float
   category: State
   default: 1.0
@@ -46,7 +46,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 6
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -56,13 +56,13 @@ graphs:
     inputs:
     - 8
     - id: 9
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 10
     - id: 11
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 24
@@ -97,7 +97,7 @@ graphs:
       flags: 0
     - id: 212
       name: scale
-      type: 10
+      type: float
       type_name: float
       field_source: 211
       field_name: scale
@@ -111,7 +111,7 @@ graphs:
     - id: 238
       declaration_id: 230
       name: Age
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -119,7 +119,7 @@ graphs:
     - id: 239
       declaration_id: 231
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -128,7 +128,7 @@ graphs:
     - id: 240
       declaration_id: 232
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -141,7 +141,7 @@ graphs:
     - id: 261
       declaration_id: 246
       name: Age
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -149,7 +149,7 @@ graphs:
     - id: 262
       declaration_id: 247
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -158,7 +158,7 @@ graphs:
     - id: 263
       declaration_id: 248
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -196,28 +196,28 @@ graphs:
     - id: 428
       declaration_id: 421
       name: scale
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 429
       declaration_id: 422
       name: Pitch Rate
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 430
       declaration_id: 423
       name: Roll Rate
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 431
       declaration_id: 424
       name: Lift
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -231,14 +231,14 @@ graphs:
     - id: 547
       declaration_id: 542
       name: Seconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 548
       declaration_id: 543
       name: Age
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -334,7 +334,7 @@ graphs:
     outputs:
     - id: 230
       name: Age
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -342,7 +342,7 @@ graphs:
       default: 0.0
     - id: 231
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -353,7 +353,7 @@ graphs:
     inputs:
     - id: 232
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -363,16 +363,16 @@ graphs:
     type: Add
     inputs:
     - id: 234
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 235
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 236
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -402,7 +402,7 @@ graphs:
     outputs:
     - id: 246
       name: Age
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -410,7 +410,7 @@ graphs:
       default: 0.0
     - id: 247
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -421,7 +421,7 @@ graphs:
     inputs:
     - id: 248
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -431,16 +431,16 @@ graphs:
     type: Add
     inputs:
     - id: 250
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 251
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 252
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 253
@@ -453,16 +453,16 @@ graphs:
     type: Divide
     inputs:
     - id: 257
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 258
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 259
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -500,7 +500,7 @@ graphs:
     outputs:
     - id: 269
       name: Normalized
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -511,7 +511,7 @@ graphs:
     inputs:
     - id: 270
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -527,16 +527,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 275
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 276
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 277
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 278
@@ -549,32 +549,32 @@ graphs:
     type: Subtract
     inputs:
     - id: 282
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 283
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 284
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 285
     type: Multiply
     inputs:
     - id: 286
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 287
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 288
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -620,7 +620,7 @@ graphs:
     outputs:
     - id: 297
       name: PositionX
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -628,7 +628,7 @@ graphs:
       default: 0.0
     - id: 298
       name: VelocityX
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -636,7 +636,7 @@ graphs:
       default: 0.0
     - id: 299
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -647,7 +647,7 @@ graphs:
     inputs:
     - id: 300
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -657,32 +657,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 302
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 303
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 304
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 305
     type: Add
     inputs:
     - id: 306
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 307
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 308
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -720,7 +720,7 @@ graphs:
     outputs:
     - id: 319
       name: PositionY
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -728,7 +728,7 @@ graphs:
       default: 0.0
     - id: 320
       name: VelocityY
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -736,7 +736,7 @@ graphs:
       default: 0.0
     - id: 321
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -747,7 +747,7 @@ graphs:
     inputs:
     - id: 322
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -757,32 +757,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 324
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 325
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 326
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 327
     type: Add
     inputs:
     - id: 328
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 329
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 330
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -820,7 +820,7 @@ graphs:
     outputs:
     - id: 341
       name: Pitch
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -828,7 +828,7 @@ graphs:
       default: 0.0
     - id: 342
       name: PitchRate
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -836,7 +836,7 @@ graphs:
       default: 0.0
     - id: 343
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -847,7 +847,7 @@ graphs:
     inputs:
     - id: 344
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -857,32 +857,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 346
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 347
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 348
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 349
     type: Add
     inputs:
     - id: 350
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 351
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 352
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -920,7 +920,7 @@ graphs:
     outputs:
     - id: 363
       name: Roll
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -928,7 +928,7 @@ graphs:
       default: 0.0
     - id: 364
       name: RollRate
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -936,7 +936,7 @@ graphs:
       default: 0.0
     - id: 365
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -947,7 +947,7 @@ graphs:
     inputs:
     - id: 366
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -957,32 +957,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 368
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 369
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 370
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 371
     type: Add
     inputs:
     - id: 372
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 373
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 374
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -1019,25 +1019,25 @@ graphs:
     - 398
     - id: 421
       name: scale
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 422
       name: Pitch Rate
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 423
       name: Roll Rate
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 424
       name: Lift
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -1050,13 +1050,13 @@ graphs:
     inputs:
     - 402
     - id: 403
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 404
     - id: 405
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 406
@@ -1065,13 +1065,13 @@ graphs:
     inputs:
     - 407
     - id: 408
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 409
     - id: 410
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 411
@@ -1080,13 +1080,13 @@ graphs:
     inputs:
     - 412
     - id: 413
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 414
     - id: 415
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 416
@@ -1095,13 +1095,13 @@ graphs:
     inputs:
     - 417
     - id: 418
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 419
     - id: 420
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   edges:
@@ -1154,14 +1154,14 @@ graphs:
     - 438
     - id: 542
       name: Seconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 543
       declaration_id: 248
       name: Age
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -1175,7 +1175,7 @@ graphs:
       flags: 0
     - id: 443
       name: x
-      type: 10
+      type: float
       type_name: float
       field_source: 442
       field_name: x
@@ -1183,7 +1183,7 @@ graphs:
       default: 0.0
     - id: 444
       name: "y"
-      type: 10
+      type: float
       type_name: float
       field_source: 442
       field_name: "y"
@@ -1196,7 +1196,7 @@ graphs:
       flags: 0
     - id: 447
       name: x
-      type: 10
+      type: float
       type_name: float
       field_source: 446
       field_name: x
@@ -1204,7 +1204,7 @@ graphs:
       default: 0.0
     - id: 448
       name: "y"
-      type: 10
+      type: float
       type_name: float
       field_source: 446
       field_name: "y"
@@ -1225,7 +1225,7 @@ graphs:
       flags: 0
     - id: 463
       name: pitch
-      type: 10
+      type: float
       type_name: float
       field_source: 462
       field_name: pitch
@@ -1233,7 +1233,7 @@ graphs:
       default: 0.0
     - id: 464
       name: roll
-      type: 10
+      type: float
       type_name: float
       field_source: 462
       field_name: roll
@@ -1256,7 +1256,7 @@ graphs:
     reference_id: 124
     outputs:
     - id: 484
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -1265,7 +1265,7 @@ graphs:
     reference_id: 142
     outputs:
     - id: 486
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -1274,7 +1274,7 @@ graphs:
     reference_id: 160
     outputs:
     - id: 488
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -1285,7 +1285,7 @@ graphs:
       flags: 0
     - id: 491
       name: elevation
-      type: 10
+      type: float
       type_name: float
       field_source: 490
       field_name: elevation
@@ -1295,20 +1295,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 493
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 494
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 495
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -1317,20 +1317,20 @@ graphs:
     type: Add
     inputs:
     - id: 497
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 498
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 499
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -1345,33 +1345,33 @@ graphs:
     inputs:
     - 507
     - id: 508
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 509
     - id: 510
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 511
     type: Multiply
     inputs:
     - id: 512
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 513
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 90.0
     outputs:
     - id: 514
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -1380,20 +1380,20 @@ graphs:
     type: Subtract
     inputs:
     - id: 516
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 517
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 518
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -1406,7 +1406,7 @@ graphs:
     - id: 520
       declaration_id: 269
       name: Normalized
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -1415,7 +1415,7 @@ graphs:
     - id: 521
       declaration_id: 270
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -1428,7 +1428,7 @@ graphs:
     - id: 523
       declaration_id: 297
       name: PositionX
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -1436,7 +1436,7 @@ graphs:
     - id: 524
       declaration_id: 298
       name: VelocityX
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -1444,7 +1444,7 @@ graphs:
     - id: 525
       declaration_id: 299
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -1453,7 +1453,7 @@ graphs:
     - id: 526
       declaration_id: 300
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -1466,7 +1466,7 @@ graphs:
     - id: 528
       declaration_id: 319
       name: PositionY
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -1474,7 +1474,7 @@ graphs:
     - id: 529
       declaration_id: 320
       name: VelocityY
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -1482,7 +1482,7 @@ graphs:
     - id: 530
       declaration_id: 321
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -1491,7 +1491,7 @@ graphs:
     - id: 531
       declaration_id: 322
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -1504,7 +1504,7 @@ graphs:
     - id: 533
       declaration_id: 341
       name: Pitch
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -1512,7 +1512,7 @@ graphs:
     - id: 534
       declaration_id: 342
       name: PitchRate
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -1520,7 +1520,7 @@ graphs:
     - id: 535
       declaration_id: 343
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -1529,7 +1529,7 @@ graphs:
     - id: 536
       declaration_id: 344
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -1542,7 +1542,7 @@ graphs:
     - id: 538
       declaration_id: 363
       name: Roll
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -1550,7 +1550,7 @@ graphs:
     - id: 539
       declaration_id: 364
       name: RollRate
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -1558,7 +1558,7 @@ graphs:
     - id: 540
       declaration_id: 365
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -1567,7 +1567,7 @@ graphs:
     - id: 541
       declaration_id: 366
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -1580,7 +1580,7 @@ graphs:
     - id: 550
       declaration_id: 246
       name: Age
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -1588,7 +1588,7 @@ graphs:
     - id: 551
       declaration_id: 247
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -1597,7 +1597,7 @@ graphs:
     - id: 552
       declaration_id: 248
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -1608,7 +1608,7 @@ graphs:
     reference_name: Birth Scale
     outputs:
     - id: 554
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -1617,7 +1617,7 @@ graphs:
     inputs:
     - 556
     - id: 557
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [558]

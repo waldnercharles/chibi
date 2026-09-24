@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { controllerExecutable } from "./controller.mjs";
+import { controllerExecutable, parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
 const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
@@ -252,7 +252,7 @@ const searchNodesDefinition = {
     domain: {
       type: "string",
       enum: ["behavior", "shader", "field"],
-      description: "Restrict results to general behavior nodes or shader nodes.",
+      description: "Restrict results to behavior, shader, or field nodes.",
     },
     pin_type: {
       type: "string",
@@ -597,8 +597,8 @@ const shaderAssetSelectorProperties = {
   ...assetSelectorProperties,
   kind: {
     type: "string",
-    enum: SHADER_KINDS,
-    description: "Shader asset family.",
+    enum: ["material", "shape"],
+    description: "Previewable shader asset family; shader libraries have no standalone image.",
   },
 };
 
@@ -801,8 +801,8 @@ export function validateAuthoringArguments(name, args = {}) {
 }
 
 function renderTimeout() {
-  const value = Number(process.env.CHIBI_RENDER_CTL_TIMEOUT_MS || process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
-  return Number.isSafeInteger(value) && value > 0 ? value : 30000;
+  const value = Number(process.env.CHIBI_RENDER_CTL_TIMEOUT_MS || process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
+  return Number.isSafeInteger(value) && value > 0 ? value : 300000;
 }
 
 function renderResponseLimit() {
@@ -882,7 +882,7 @@ export async function renderRequest(root, request, requestId) {
       const line = buffer.trim().split("\n").filter(Boolean).at(-1);
       if (line) {
         try {
-          finish(JSON.parse(line));
+          finish(parseControllerJson(line));
           return;
         } catch (error) {
           finish(failedRender(request.operation || "preview_shader", "invalid_response", `chibi_ctl --render returned invalid JSON: ${error.message}`));

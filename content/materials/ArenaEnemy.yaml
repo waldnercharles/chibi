@@ -34,7 +34,7 @@ graphs:
     reference_name: Base Color
     outputs:
     - id: 38
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -67,7 +67,7 @@ graphs:
     reference_name: Glow Color
     outputs:
     - id: 48
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -92,7 +92,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 54
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -105,7 +105,7 @@ graphs:
       group: 0
     outputs:
     - id: 56
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -156,7 +156,7 @@ graphs:
     type: Shader Mix
     inputs:
     - id: 66
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -165,7 +165,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 67
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -179,7 +179,7 @@ graphs:
       group: 0
     outputs:
     - id: 69
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -191,7 +191,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 71
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -205,7 +205,7 @@ graphs:
       group: 0
     outputs:
     - id: 73
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -217,7 +217,7 @@ graphs:
     type: Shader Add
     inputs:
     - id: 75
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -226,7 +226,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 76
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -236,7 +236,7 @@ graphs:
         z: 0.0
     outputs:
     - id: 77
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

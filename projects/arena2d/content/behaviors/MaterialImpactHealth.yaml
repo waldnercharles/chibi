@@ -14,19 +14,19 @@ graphs:
     - id: 3
       declaration_id: 1
       name: Energy
-      type: 10
+      type: float
       kind: data
       default: 0.0
     - id: 4
       declaration_id: 2
       name: Cause
-      type: 6
+      type: int
       kind: data
       default: 0
     - id: 5
       declaration_id: 3
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default:
@@ -38,14 +38,14 @@ graphs:
     - 7
     - id: 8
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 7
       field_name: current
       default: 0
     - id: 9
       name: maximum
-      type: 6
+      type: int
       type_name: int
       field_source: 7
       field_name: maximum
@@ -58,7 +58,7 @@ graphs:
     - id: 33
       declaration_id: 15
       name: current
-      type: 6
+      type: int
       type_name: int
       flags: 2
       group: 1
@@ -66,7 +66,7 @@ graphs:
     - id: 34
       declaration_id: 16
       name: damage
-      type: 6
+      type: int
       type_name: int
       flags: 2
       group: 2
@@ -75,7 +75,7 @@ graphs:
     - id: 35
       declaration_id: 17
       name: Result
-      type: 6
+      type: int
       type_name: int
       flags: 2
       group: 3
@@ -88,14 +88,14 @@ graphs:
     - 85
     - id: 108
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 85
       field_name: current
       default: 0
     - id: 109
       name: maximum
-      type: 6
+      type: int
       type_name: int
       field_source: 85
       field_name: maximum
@@ -111,7 +111,7 @@ graphs:
     - id: 125
       declaration_id: 115
       name: current
-      type: 11
+      type: double
       type_name: double
       group: 1
       default: 0.0
@@ -125,7 +125,7 @@ graphs:
     - id: 126
       declaration_id: 116
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 2
@@ -207,7 +207,7 @@ graphs:
     outputs:
     - id: 202
       name: current
-      type: 6
+      type: int
       type_name: int
       kind: data
       flags: 2
@@ -215,7 +215,7 @@ graphs:
       default: 0
     - id: 203
       name: damage
-      type: 6
+      type: int
       type_name: int
       kind: data
       flags: 2
@@ -226,7 +226,7 @@ graphs:
     inputs:
     - id: 204
       name: Result
-      type: 6
+      type: int
       type_name: int
       kind: data
       flags: 2
@@ -236,16 +236,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 206
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 207
-      type: 6
+      type: int
       type_name: int
       default: 0
     outputs:
     - id: 208
-      type: 6
+      type: int
       type_name: int
       default: 0
   - id: 209
@@ -256,16 +256,16 @@ graphs:
     type: Max
     inputs:
     - id: 213
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 214
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 215
-      type: 6
+      type: int
       type_name: int
       default: 0
   edges:
@@ -303,7 +303,7 @@ graphs:
     outputs:
     - id: 135
       name: current
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
@@ -313,7 +313,7 @@ graphs:
     inputs:
     - id: 136
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -327,11 +327,11 @@ graphs:
     type: Less Or Equal
     inputs:
     - id: 141
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 142
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [143]

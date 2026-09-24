@@ -14,7 +14,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -52,7 +52,7 @@ graphs:
     - id: 45
       declaration_id: 27
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 1
@@ -60,7 +60,7 @@ graphs:
     - id: 46
       declaration_id: 28
       name: speed
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -72,7 +72,7 @@ graphs:
     - id: 47
       declaration_id: 29
       name: vx
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -84,7 +84,7 @@ graphs:
     - id: 48
       declaration_id: 30
       name: vy
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 4
@@ -97,7 +97,7 @@ graphs:
     - id: 49
       declaration_id: 31
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 5
@@ -113,7 +113,7 @@ graphs:
     - id: 161
       declaration_id: 143
       name: velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       flags: 6
       group: 1
@@ -124,7 +124,7 @@ graphs:
     - id: 162
       declaration_id: 144
       name: delta
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 2
@@ -132,7 +132,7 @@ graphs:
     - id: 163
       declaration_id: 145
       name: acceleration
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -140,7 +140,7 @@ graphs:
     - id: 164
       declaration_id: 146
       name: dt
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -154,7 +154,7 @@ graphs:
     - id: 165
       declaration_id: 147
       name: Result
-      type: 15
+      type: struct
       type_name: GameVelocity
       flags: 2
       group: 5
@@ -170,7 +170,7 @@ graphs:
     - id: 324
       declaration_id: 311
       name: velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       flags: 6
       group: 1
@@ -185,7 +185,7 @@ graphs:
     - id: 325
       declaration_id: 312
       name: Result
-      type: 15
+      type: struct
       type_name: GameVelocity
       flags: 2
       group: 2
@@ -234,7 +234,7 @@ graphs:
     outputs:
     - id: 227
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -242,7 +242,7 @@ graphs:
       default: null
     - id: 228
       name: speed
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -250,7 +250,7 @@ graphs:
       default: 0.0
     - id: 229
       name: vx
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -258,7 +258,7 @@ graphs:
       default: 0.0
     - id: 230
       name: vy
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -269,7 +269,7 @@ graphs:
     inputs:
     - id: 231
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -279,16 +279,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 233
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 234
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 235
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 236
@@ -299,16 +299,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 241
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 242
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 243
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   edges:
@@ -355,14 +355,14 @@ graphs:
     - 246
     - id: 249
       name: velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       kind: data
       group: 1
       default: null
     - id: 250
       name: delta
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -370,7 +370,7 @@ graphs:
       default: null
     - id: 251
       name: acceleration
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -378,7 +378,7 @@ graphs:
       default: 0.0
     - id: 252
       name: dt
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -386,7 +386,7 @@ graphs:
       default: 0.0
     - id: 261
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 250
@@ -394,7 +394,7 @@ graphs:
       default: 0.0
     - id: 262
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 250
@@ -406,7 +406,7 @@ graphs:
     - 248
     - id: 253
       name: Result
-      type: 15
+      type: struct
       type_name: GameVelocity
       kind: data
       flags: 2
@@ -422,16 +422,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 258
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 259
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 260
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 263
@@ -446,13 +446,13 @@ graphs:
     type: Add
     inputs:
     - id: 272
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 273
     outputs:
     - id: 274
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 275
@@ -469,80 +469,80 @@ graphs:
     type: Max
     inputs:
     - id: 282
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 283
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 284
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 285
     type: Divide
     inputs:
     - id: 286
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 287
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 288
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 289
     type: Min
     inputs:
     - id: 290
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 291
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 292
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 293
     type: Multiply
     inputs:
     - id: 294
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 295
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 296
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 297
     type: Add
     inputs:
     - id: 298
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
     - id: 299
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 300
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 301
@@ -657,7 +657,7 @@ graphs:
     - 330
     - id: 333
       name: velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       kind: data
       group: 1
@@ -668,7 +668,7 @@ graphs:
     - 332
     - id: 334
       name: Result
-      type: 15
+      type: struct
       type_name: GameVelocity
       kind: data
       flags: 2

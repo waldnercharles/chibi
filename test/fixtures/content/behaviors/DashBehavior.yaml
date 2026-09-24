@@ -6,12 +6,12 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Just Started
-  type: 1
+  type: bool
   type_name: bool
   category: State
 - id: 2
   name: Struck Entities
-  type: 14
+  type: handle
   type_name: ecs.entity
   container: 1
   category: State
@@ -31,7 +31,7 @@ graphs:
       flags: 0
     - id: 359
       name: cooldown_remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 358
       field_name: cooldown_remaining
@@ -39,7 +39,7 @@ graphs:
       default: 0.0
     - id: 399
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 358
       field_name: remaining
@@ -76,7 +76,7 @@ graphs:
       flags: 0
     - id: 379
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 378
       field_name: remaining
@@ -103,13 +103,13 @@ graphs:
     - 393
     - id: 394
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
     - id: 411
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -121,7 +121,7 @@ graphs:
     - 396
     - id: 397
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -390,7 +390,7 @@ graphs:
       default: null
     - id: 96
       name: speed
-      type: 10
+      type: float
       type_name: float
       field_source: 94
       field_name: speed
@@ -400,13 +400,13 @@ graphs:
     type: Multiply
     inputs:
     - id: 98
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
     - 99
     outputs:
     - id: 100
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 101
@@ -427,18 +427,18 @@ graphs:
     inputs:
     - id: 111
       name: X
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     - id: 112
       name: "Y"
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - id: 113
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       default: null
   - id: 114
@@ -526,18 +526,18 @@ graphs:
     inputs:
     - id: 125
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 126
       name: speed
-      type: 15
+      type: struct
       type_name: GameMovement
       default: null
     outputs:
     - id: 127
       name: Velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 128
@@ -619,7 +619,7 @@ graphs:
       flags: 0
     - id: 147
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 146
       field_name: remaining
@@ -656,7 +656,7 @@ graphs:
     - 163
     - id: 164
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 163
       field_name: remaining
@@ -740,7 +740,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 178
-      type: 1
+      type: bool
       type_name: bool
       flags: 0
       default: false
@@ -754,13 +754,13 @@ graphs:
     inputs:
     - 185
     - id: 186
-      type: 1
+      type: bool
       type_name: bool
       default: false
     outputs:
     - 187
     - id: 188
-      type: 1
+      type: bool
       type_name: bool
       default: false
   - id: 189
@@ -770,7 +770,7 @@ graphs:
       flags: 0
     - id: 191
       name: cooldown_remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 190
       field_name: cooldown_remaining
@@ -778,7 +778,7 @@ graphs:
       default: 0.0
     - id: 192
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 190
       field_name: remaining
@@ -900,7 +900,7 @@ graphs:
       name: Then
     - id: 31
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -914,7 +914,7 @@ graphs:
       flags: 0
     - id: 224
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 223
       field_name: remaining
@@ -922,7 +922,7 @@ graphs:
       default: 0.0
     - id: 225
       name: damage
-      type: 6
+      type: int
       type_name: int
       field_source: 223
       field_name: damage
@@ -959,7 +959,7 @@ graphs:
     - 253
     - id: 254
       name: category
-      type: 7
+      type: uint
       type_name: unsigned int
       field_source: 253
       field_name: category
@@ -980,7 +980,7 @@ graphs:
     reference_id: 2
     outputs:
     - id: 265
-      type: 14
+      type: handle
       type_name: ecs.entity
       container: 1
       flags: 0
@@ -989,11 +989,11 @@ graphs:
     type: Contains
     inputs:
     - id: 267
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: []
     - id: 268
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: null
     outputs: [269]
@@ -1005,16 +1005,16 @@ graphs:
     type: Array Add
     inputs:
     - id: 276
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: []
     - id: 277
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: null
     outputs:
     - id: 278
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: []
   - id: 279
@@ -1023,14 +1023,14 @@ graphs:
     inputs:
     - 280
     - id: 281
-      type: 14
+      type: handle
       type_name: ecs.entity
       container: 1
       default: []
     outputs:
     - 282
     - id: 283
-      type: 14
+      type: handle
       type_name: ecs.entity
       container: 1
       default: []
@@ -1048,7 +1048,7 @@ graphs:
     - id: 289
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 290
@@ -1214,13 +1214,13 @@ graphs:
     inputs:
     - 299
     - id: 300
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: []
     outputs:
     - 301
     - id: 302
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: null
     - 303
@@ -1233,7 +1233,7 @@ graphs:
     - 306
     - id: 307
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -1285,7 +1285,7 @@ graphs:
       flags: 0
     - id: 311
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 310
       field_name: current
@@ -1315,7 +1315,7 @@ graphs:
       flags: 0
     - id: 326
       name: duration
-      type: 10
+      type: float
       type_name: float
       field_source: 325
       field_name: duration
@@ -1323,7 +1323,7 @@ graphs:
       default: 0.0
     - id: 327
       name: cooldown
-      type: 10
+      type: float
       type_name: float
       field_source: 325
       field_name: cooldown
@@ -1343,13 +1343,13 @@ graphs:
     inputs:
     - 343
     - id: 344
-      type: 1
+      type: bool
       type_name: bool
       default: true
     outputs:
     - 345
     - id: 346
-      type: 1
+      type: bool
       type_name: bool
       default: false
   - id: 347
@@ -1358,14 +1358,14 @@ graphs:
     inputs:
     - 348
     - id: 349
-      type: 14
+      type: handle
       type_name: ecs.entity
       container: 1
       default: []
     outputs:
     - 350
     - id: 351
-      type: 14
+      type: handle
       type_name: ecs.entity
       container: 1
       default: []

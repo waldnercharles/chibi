@@ -51,33 +51,33 @@ graphs:
     inputs:
     - id: 67
       name: Position
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 68
       name: Target
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 69
       name: Speed
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     - id: 70
       name: Delta Seconds
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     - id: 71
       name: Distance
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - id: 72
       name: Velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 73
@@ -153,16 +153,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 22
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 23
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 24
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 25
@@ -173,13 +173,13 @@ graphs:
     type: Multiply
     inputs:
     - id: 45
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
     - 46
     outputs:
     - id: 47
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 58
@@ -187,31 +187,31 @@ graphs:
     outputs:
     - id: 59
       name: Position
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 60
       name: Target
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 61
       name: Speed
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 62
       name: Delta Seconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 63
       name: Distance
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -220,7 +220,7 @@ graphs:
     inputs:
     - id: 65
       name: Velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       kind: data
       default: null

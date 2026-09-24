@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Elapsed
-  type: 10
+  type: float
   type_name: float
   category: Weapon
 graphs:
@@ -33,7 +33,7 @@ graphs:
       flags: 0
     - id: 46
       name: damage
-      type: 6
+      type: int
       type_name: int
       field_source: 43
       field_name: damage
@@ -41,7 +41,7 @@ graphs:
       default: 0
     - id: 222
       name: cooldown
-      type: 10
+      type: float
       type_name: float
       field_source: 43
       field_name: cooldown
@@ -52,7 +52,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 55
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -69,13 +69,13 @@ graphs:
     inputs:
     - 63
     - id: 64
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 65
     - id: 66
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 197
@@ -86,26 +86,26 @@ graphs:
     - 198
     - id: 199
       name: Origin
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 200
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 201
       name: Damage
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 235
       declaration_id: 234
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ArenaProjectile
@@ -124,7 +124,7 @@ graphs:
       default: null
     - id: 214
       name: firing
-      type: 1
+      type: bool
       type_name: _Bool
       field_source: 212
       field_name: firing
@@ -136,13 +136,13 @@ graphs:
     inputs:
     - 216
     - id: 217
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 218
     - id: 219
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 223
@@ -168,13 +168,13 @@ graphs:
     inputs:
     - 230
     - id: 231
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 232
     - id: 233
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   edges:
@@ -254,7 +254,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 72
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -268,13 +268,13 @@ graphs:
     inputs:
     - 87
     - id: 88
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 89
     - id: 90
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 156
@@ -285,23 +285,23 @@ graphs:
     inputs:
     - id: 157
       name: Elapsed
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     - id: 158
       name: Cooldown
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - id: 159
       name: Ready
-      type: 1
+      type: bool
       type_name: bool
       default: false
     - id: 160
       name: Remainder
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 182
@@ -313,33 +313,33 @@ graphs:
     - 183
     - id: 184
       name: Origin
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 185
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 186
       name: Damage
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 221
       declaration_id: 220
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ""
     - id: 236
       declaration_id: 255
       name: Shooter
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -347,7 +347,7 @@ graphs:
     - 187
     - id: 188
       name: Entity
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -358,25 +358,25 @@ graphs:
       name: Then
     - id: 192
       name: Origin
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 193
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 194
       name: Damage
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 234
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ""
@@ -390,7 +390,7 @@ graphs:
       flags: 0
     - id: 209
       name: cooldown
-      type: 10
+      type: float
       type_name: float
       field_source: 208
       field_name: cooldown

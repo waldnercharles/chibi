@@ -115,18 +115,18 @@ saving them. Tool results include complete `structuredContent` and
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
-- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry data.
+- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts.
 - `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies.
 - `getProjectStatus`: return project, asset, and reflection counts.
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
 - `getExecutionStatus`: report the backend selected for a behavior or system.
 - `runScenario`: run a bounded deterministic prototype or scene scenario.
-- `captureRuntimeSnapshot`: capture bounded ECS entities, reflected fields, behaviors, and timing.
+- `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, and timing.
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
-- `describeRegistry`: inspect reflected nodes, pins, types, services, operators, and components.
+- `describeRegistry`: inspect reflected types, services, operators, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
 
 ## Check adapter distribution

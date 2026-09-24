@@ -14,7 +14,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -29,7 +29,7 @@ graphs:
     - id: 18
       declaration_id: 9
       name: heading
-      type: 10
+      type: float
       type_name: float
       flags: 6
       group: 1
@@ -41,7 +41,7 @@ graphs:
     - id: 19
       declaration_id: 10
       name: "y"
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -53,7 +53,7 @@ graphs:
     - id: 20
       declaration_id: 11
       name: x
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -69,7 +69,7 @@ graphs:
     - id: 21
       declaration_id: 12
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -95,7 +95,7 @@ graphs:
     - id: 138
       declaration_id: 112
       name: target
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 6
       group: 1
@@ -107,7 +107,7 @@ graphs:
     - id: 139
       declaration_id: 113
       name: heading
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -119,7 +119,7 @@ graphs:
     - id: 140
       declaration_id: 114
       name: speed
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -135,7 +135,7 @@ graphs:
     - id: 141
       declaration_id: 115
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 4
@@ -151,7 +151,7 @@ graphs:
     - id: 307
       declaration_id: 284
       name: x
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -163,7 +163,7 @@ graphs:
     - id: 308
       declaration_id: 285
       name: "y"
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -182,7 +182,7 @@ graphs:
     - id: 309
       declaration_id: 286
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 3
@@ -198,7 +198,7 @@ graphs:
     - id: 386
       declaration_id: 372
       name: target
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 6
       group: 1
@@ -210,7 +210,7 @@ graphs:
     - id: 387
       declaration_id: 373
       name: x
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -222,7 +222,7 @@ graphs:
     - id: 388
       declaration_id: 374
       name: "y"
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -234,7 +234,7 @@ graphs:
     - id: 389
       declaration_id: 375
       name: speed
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -250,7 +250,7 @@ graphs:
     - id: 390
       declaration_id: 376
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 5
@@ -266,7 +266,7 @@ graphs:
     - id: 543
       declaration_id: 530
       name: target
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 6
       group: 1
@@ -282,7 +282,7 @@ graphs:
     - id: 544
       declaration_id: 531
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 2
@@ -327,14 +327,14 @@ graphs:
     - 78
     - id: 81
       name: heading
-      type: 10
+      type: float
       type_name: float
       kind: data
       group: 1
       default: 0.0
     - id: 82
       name: "y"
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -342,7 +342,7 @@ graphs:
       default: 0.0
     - id: 83
       name: x
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -354,7 +354,7 @@ graphs:
     - 80
     - id: 84
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -427,14 +427,14 @@ graphs:
     - 236
     - id: 239
       name: target
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       group: 1
       default: null
     - id: 240
       name: heading
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -442,7 +442,7 @@ graphs:
       default: 0.0
     - id: 241
       name: speed
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -454,7 +454,7 @@ graphs:
     - 238
     - id: 242
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -476,16 +476,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 254
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 255
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 256
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 257
@@ -498,16 +498,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 261
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 262
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 263
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 264
@@ -600,7 +600,7 @@ graphs:
     outputs:
     - id: 345
       name: x
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -608,7 +608,7 @@ graphs:
       default: 0.0
     - id: 346
       name: "y"
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -619,7 +619,7 @@ graphs:
     inputs:
     - id: 347
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -629,48 +629,48 @@ graphs:
     type: Multiply
     inputs:
     - id: 349
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 350
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 351
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 352
     type: Multiply
     inputs:
     - id: 353
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 354
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 355
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 356
     type: Add
     inputs:
     - id: 357
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 358
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 359
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 360
@@ -683,11 +683,11 @@ graphs:
     type: Greater
     inputs:
     - id: 364
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 365
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [366]
@@ -743,14 +743,14 @@ graphs:
     - 494
     - id: 497
       name: target
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       group: 1
       default: null
     - id: 498
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -758,7 +758,7 @@ graphs:
       default: 0.0
     - id: 499
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -766,7 +766,7 @@ graphs:
       default: 0.0
     - id: 500
       name: speed
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -778,7 +778,7 @@ graphs:
     - 496
     - id: 501
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -792,16 +792,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 507
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 508
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 509
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 510
@@ -879,7 +879,7 @@ graphs:
     - 549
     - id: 552
       name: target
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       group: 1
@@ -890,7 +890,7 @@ graphs:
     - 551
     - id: 553
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2

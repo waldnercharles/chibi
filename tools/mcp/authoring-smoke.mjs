@@ -195,7 +195,7 @@ try {
     request(4, "searchNodes", { query: "Shader Surface Output", limit: 3 }),
     request(5, "searchNodes", { query: "Shader Shape Output", limit: 3 }),
     request(27, "searchNodes", { query: "Base Color", pin_type: "ShaderVec3", domain: "shader", limit: 3 }),
-    request(6, "describeRegistry", {}),
+    request(6, "describeRegistry", { sections: ["nodes"] }),
     request(7, "buildBehavior", {
       kind: "behavior",
       name: behaviorName,

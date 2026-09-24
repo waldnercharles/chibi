@@ -4,12 +4,12 @@ id_counter: 82
 variables:
 - id: 1
   name: Orbit Radius
-  type: 10
+  type: float
   category: Tuning
   default: 72.0
 - id: 2
   name: Move Speed
-  type: 10
+  type: float
   category: Tuning
   default: 55.0
 graphs:
@@ -72,16 +72,16 @@ graphs:
     type: Add
     inputs:
     - id: 45
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 46
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 47
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 48
@@ -129,7 +129,7 @@ graphs:
     reference_name: Orbit Radius
     outputs:
     - id: 79
-      type: 10
+      type: float
       type_name: null
       flags: 0
       default: 0.0
@@ -139,7 +139,7 @@ graphs:
     reference_name: Move Speed
     outputs:
     - id: 81
-      type: 10
+      type: float
       type_name: null
       flags: 0
       default: 0.0

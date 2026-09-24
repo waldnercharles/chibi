@@ -6,12 +6,12 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Remaining
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 2
   name: Dispatched
-  type: 1
+  type: bool
   type_name: bool
   category: State
 graphs:
@@ -29,7 +29,7 @@ graphs:
       flags: 0
     - id: 7
       name: delay
-      type: 10
+      type: float
       type_name: float
       field_source: 5
       field_name: delay
@@ -37,7 +37,7 @@ graphs:
       default: 0.0
     - id: 8
       name: prototype
-      type: 13
+      type: const char *
       type_name: const char *
       field_source: 5
       field_name: prototype
@@ -49,33 +49,33 @@ graphs:
     inputs:
     - 9
     - id: 10
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 11
     - id: 12
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 17
     type: Max
     inputs:
     - id: 14
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 15
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.05
     outputs:
     - id: 16
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -89,7 +89,7 @@ graphs:
     reference_id: 2
     outputs:
     - id: 38
-      type: 1
+      type: bool
       type_name: bool
       flags: 0
       default: false
@@ -105,7 +105,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 47
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -115,33 +115,33 @@ graphs:
     inputs:
     - 49
     - id: 50
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 51
     - id: 52
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 57
     type: Subtract
     inputs:
     - id: 54
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 55
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 56
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -160,13 +160,13 @@ graphs:
     inputs:
     - 67
     - id: 68
-      type: 1
+      type: bool
       type_name: bool
       default: true
     outputs:
     - 69
     - id: 70
-      type: 1
+      type: bool
       type_name: bool
       default: false
   - id: 73
@@ -183,14 +183,14 @@ graphs:
     - id: 75
       declaration_id: 20
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ""
     - id: 76
       declaration_id: 21
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
@@ -209,20 +209,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 85
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 86
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 10.0
     outputs:
     - id: 87
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -235,20 +235,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 92
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 93
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 94
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -257,20 +257,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 96
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.2
     - id: 97
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 98
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -279,20 +279,20 @@ graphs:
     type: Add
     inputs:
     - id: 100
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.8
     - id: 101
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 102
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -421,13 +421,13 @@ graphs:
       name: Then
     - id: 20
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ""
     - id: 21
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null

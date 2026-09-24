@@ -86,7 +86,7 @@ graphs:
     - id: 670
       declaration_id: 276
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -96,13 +96,13 @@ graphs:
     - id: 671
       declaration_id: 277
       name: Tile Size
-      type: 10
+      type: float
       default: 20.0
     outputs:
     - id: 672
       declaration_id: 279
       name: Center
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -133,7 +133,7 @@ graphs:
     - id: 677
       declaration_id: 626
       name: Color
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -144,7 +144,7 @@ graphs:
     - id: 678
       declaration_id: 628
       name: Strength
-      type: 10
+      type: float
       default: 0.0
   - id: 679
     type: Shader Beat Pulse
@@ -200,7 +200,7 @@ graphs:
     - id: 695
       declaration_id: 503
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -210,23 +210,23 @@ graphs:
     - id: 696
       declaration_id: 504
       name: Tile Size
-      type: 10
+      type: float
       default: 16.0
     - id: 697
       declaration_id: 505
       name: Scale
-      type: 10
+      type: float
       default: 0.25
     - id: 698
       declaration_id: 506
       name: Width
-      type: 10
+      type: float
       default: 0.012000000104308128
     outputs:
     - id: 699
       declaration_id: 508
       name: Mask
-      type: 10
+      type: float
       default: 0.0
   - id: 700
     type: Call Pure Function
@@ -236,7 +236,7 @@ graphs:
     - id: 701
       declaration_id: 503
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -246,23 +246,23 @@ graphs:
     - id: 702
       declaration_id: 504
       name: Tile Size
-      type: 10
+      type: float
       default: 16.0
     - id: 703
       declaration_id: 505
       name: Scale
-      type: 10
+      type: float
       default: 0.25
     - id: 704
       declaration_id: 506
       name: Width
-      type: 10
+      type: float
       default: 0.012000000104308128
     outputs:
     - id: 705
       declaration_id: 508
       name: Mask
-      type: 10
+      type: float
       default: 0.0
   - id: 706
     type: Shader Multiply
@@ -295,7 +295,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 715
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -308,7 +308,7 @@ graphs:
       group: 0
     outputs:
     - id: 717
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -320,7 +320,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 719
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -333,7 +333,7 @@ graphs:
       group: 0
     outputs:
     - id: 721
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -345,7 +345,7 @@ graphs:
     type: Shader Add
     inputs:
     - id: 723
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -354,7 +354,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 724
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -364,7 +364,7 @@ graphs:
         z: 0.0
     outputs:
     - id: 725
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -376,7 +376,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 727
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -389,7 +389,7 @@ graphs:
       group: 0
     outputs:
     - id: 729
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -430,7 +430,7 @@ graphs:
     - id: 740
       declaration_id: 503
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -440,23 +440,23 @@ graphs:
     - id: 741
       declaration_id: 504
       name: Tile Size
-      type: 10
+      type: float
       default: 16.0
     - id: 742
       declaration_id: 505
       name: Scale
-      type: 10
+      type: float
       default: 1.0
     - id: 743
       declaration_id: 506
       name: Width
-      type: 10
+      type: float
       default: 0.012000000104308128
     outputs:
     - id: 744
       declaration_id: 508
       name: Mask
-      type: 10
+      type: float
       default: 0.0
   - id: 745
     type: Shader Max
@@ -624,7 +624,7 @@ graphs:
     outputs:
     - id: 503
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       flags: 64
@@ -634,17 +634,17 @@ graphs:
         z: 0.0
     - id: 504
       name: Tile Size
-      type: 10
+      type: float
       kind: data
       default: 16.0
     - id: 505
       name: Scale
-      type: 10
+      type: float
       kind: data
       default: 0.25
     - id: 506
       name: Width
-      type: 10
+      type: float
       kind: data
       default: 0.012000000104308128
   - id: 507
@@ -652,14 +652,14 @@ graphs:
     inputs:
     - id: 508
       name: Mask
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 509
     type: Shader X
     inputs:
     - id: 510
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -672,7 +672,7 @@ graphs:
     type: Shader Z
     inputs:
     - id: 513
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -1230,7 +1230,7 @@ graphs:
     outputs:
     - id: 626
       name: Color
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       flags: 64
@@ -1243,14 +1243,14 @@ graphs:
     inputs:
     - id: 628
       name: Strength
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 629
     type: Shader X
     inputs:
     - id: 630
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -1263,7 +1263,7 @@ graphs:
     type: Shader Y
     inputs:
     - id: 633
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -1289,7 +1289,7 @@ graphs:
     type: Shader Z
     inputs:
     - id: 640
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -1388,7 +1388,7 @@ graphs:
     outputs:
     - id: 276
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       default:
@@ -1397,7 +1397,7 @@ graphs:
         z: 0.0
     - id: 277
       name: Tile Size
-      type: 10
+      type: float
       kind: data
       default: 20.0
   - id: 278
@@ -1405,7 +1405,7 @@ graphs:
     inputs:
     - id: 279
       name: Center
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       default:
@@ -1416,7 +1416,7 @@ graphs:
     type: Shader X
     inputs:
     - id: 281
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -1429,7 +1429,7 @@ graphs:
     type: Shader Y
     inputs:
     - id: 284
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -1442,7 +1442,7 @@ graphs:
     type: Shader Z
     inputs:
     - id: 287
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

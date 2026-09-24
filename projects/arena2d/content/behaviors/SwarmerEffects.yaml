@@ -20,13 +20,13 @@ graphs:
     - id: 17
       declaration_id: 261
       name: Prototype
-      type: 12
+      type: name
       kind: data
       default: SpawnEmitter
     - id: 18
       declaration_id: 262
       name: Transform
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       binding:
@@ -38,7 +38,7 @@ graphs:
     - id: 19
       declaration_id: 263
       name: Entity
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null

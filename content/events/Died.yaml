@@ -6,7 +6,7 @@ description: An entity reached zero health. Source identifies the accepted letha
 variables:
 - id: 3
   name: Source
-  type: 14
+  type: handle
   type_name: ecs.entity
   category: Payload
 graphs:

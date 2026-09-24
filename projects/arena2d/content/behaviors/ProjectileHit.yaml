@@ -14,13 +14,13 @@ graphs:
     - 2
     - id: 3
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
     - id: 4
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -45,7 +45,7 @@ graphs:
     - id: 28
       declaration_id: 15
       name: point
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 1
@@ -53,7 +53,7 @@ graphs:
     - id: 29
       declaration_id: 16
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 2
@@ -61,7 +61,7 @@ graphs:
     - id: 30
       declaration_id: 17
       name: inset
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -70,7 +70,7 @@ graphs:
     - id: 31
       declaration_id: 18
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 4
@@ -104,7 +104,7 @@ graphs:
     - id: 103
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       binding:
         kind: component_field
@@ -186,7 +186,7 @@ graphs:
     outputs:
     - id: 79
       name: point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -194,7 +194,7 @@ graphs:
       default: null
     - id: 80
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -202,7 +202,7 @@ graphs:
       default: null
     - id: 81
       name: inset
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -213,7 +213,7 @@ graphs:
     inputs:
     - id: 82
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -223,32 +223,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 84
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 85
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 86
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   - id: 87
     type: Add
     inputs:
     - id: 88
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 89
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 90
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   edges:

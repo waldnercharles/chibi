@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Particle Carry
-  type: 10
+  type: float
   type_name: float
   category: Trail
 graphs:
@@ -20,7 +20,7 @@ graphs:
     - 12
     - id: 13
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -32,7 +32,7 @@ graphs:
     - 22
     - id: 23
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -47,13 +47,13 @@ graphs:
     inputs:
     - 47
     - id: 48
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 49
     - id: 50
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 165
@@ -63,13 +63,13 @@ graphs:
     inputs:
     - id: 166
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 167
       name: Stationary
-      type: 1
+      type: bool
       type_name: bool
       default: false
   edges:
@@ -111,7 +111,7 @@ graphs:
       name: Then
     - id: 16
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -126,7 +126,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 63
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -151,13 +151,13 @@ graphs:
     inputs:
     - 69
     - id: 70
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 71
     - id: 72
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 73
@@ -179,7 +179,7 @@ graphs:
     type: Multiply
     inputs:
     - id: 86
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
@@ -190,7 +190,7 @@ graphs:
       default: -1.0
     outputs:
     - id: 88
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
@@ -199,7 +199,7 @@ graphs:
     type: Multiply
     inputs:
     - id: 90
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
@@ -210,7 +210,7 @@ graphs:
       default: 9.0
     outputs:
     - id: 92
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
@@ -225,21 +225,21 @@ graphs:
     inputs:
     - id: 96
       name: a
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
       default: null
     - id: 97
       name: b
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
       default: null
     outputs:
     - id: 98
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 0
       group: 0
@@ -289,13 +289,13 @@ graphs:
     inputs:
     - 124
     - id: 125
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 126
     - id: 127
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 153
@@ -305,13 +305,13 @@ graphs:
     inputs:
     - id: 154
       name: dt
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 155
       name: Result
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -410,7 +410,7 @@ graphs:
     outputs:
     - id: 133
       name: dt
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -419,7 +419,7 @@ graphs:
     inputs:
     - id: 134
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -437,20 +437,20 @@ graphs:
     type: Clamp
     inputs:
     - id: 142
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 143
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 144
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 145
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 146
@@ -463,16 +463,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 150
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 151
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 152
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -557,13 +557,13 @@ graphs:
     outputs:
     - id: 160
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 161
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 160
@@ -571,7 +571,7 @@ graphs:
       default: 0.0
     - id: 162
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 160
@@ -582,7 +582,7 @@ graphs:
     inputs:
     - id: 164
       name: Stationary
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       default: false

@@ -14,13 +14,13 @@ graphs:
     - 2
     - id: 3
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
     - id: 140
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -31,7 +31,7 @@ graphs:
       flags: 0
     - id: 26
       name: damage
-      type: 6
+      type: int
       type_name: int
       field_source: 5
       field_name: damage
@@ -51,7 +51,7 @@ graphs:
     - id: 19
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 20
@@ -76,14 +76,14 @@ graphs:
     - id: 37
       declaration_id: 53
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 124
       declaration_id: 54
       name: Elevation
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -114,7 +114,7 @@ graphs:
       flags: 0
     - id: 134
       name: elevation
-      type: 10
+      type: float
       type_name: float
       field_source: 132
       field_name: elevation
@@ -129,14 +129,14 @@ graphs:
     - id: 137
       declaration_id: 53
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 138
       declaration_id: 54
       name: Elevation
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -228,13 +228,13 @@ graphs:
       name: Then
     - id: 53
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 54
       name: Elevation
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0

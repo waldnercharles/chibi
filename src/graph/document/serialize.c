@@ -130,9 +130,9 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         yyjson_val *name = yyjson_obj_get(v, "name");
         yyjson_val *type = yyjson_obj_get(v, "type");
         yyjson_val *kind = yyjson_obj_get(v, "kind");
+        pin_type type_value = p->type;
         if ((name && !yyjson_is_str(name)) || (kind && !yyjson_is_str(kind)) ||
-            (type && (!yyjson_is_int(type) || yyjson_get_sint(type) < PIN_FLOW ||
-                      yyjson_get_sint(type) > PIN_ENUM)) ||
+            (type && !serialize_read_pin_type(type, &type_value)) ||
             read_pin_str(g, v, "type_name", &p->type_name) ||
             read_pin_str(g, v, "split_type_name", &p->split_type_name)) {
             serialize_error_set(
@@ -145,9 +145,7 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         if (name) {
             p->name = graph_own_str(g, yyjson_get_str(name), yyjson_get_len(name));
         }
-        if (type) {
-            p->type = (pin_type)yyjson_get_sint(type);
-        }
+        p->type = type_value;
         if (kind) {
             p->kind = strcmp(yyjson_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
         }
@@ -745,14 +743,10 @@ static int load_variable(behavior_asset *asset, yyjson_val *v)
         return -1;
     }
     yyjson_val *name = yyjson_obj_get(v, "name");
-    yyjson_val *type = yyjson_obj_get(v, "type");
-    if (!yyjson_is_str(name) || !yyjson_is_int(type)) {
+    pin_type pt;
+    if (!yyjson_is_str(name) ||
+        !serialize_read_pin_type(yyjson_obj_get(v, "type"), &pt)) {
         serialize_error_set("variable has malformed name or type");
-        return -1;
-    }
-    pin_type pt = (pin_type)yyjson_get_sint(type);
-    if (pt < PIN_FLOW || pt > PIN_ENUM) {
-        serialize_error_set("variable has invalid type");
         return -1;
     }
     yyjson_val *tn = yyjson_obj_get(v, "type_name");

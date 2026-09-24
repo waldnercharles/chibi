@@ -64,7 +64,7 @@ graphs:
     - id: 16
       declaration_id: 104
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec2
       default:
         x: 0.0
@@ -72,18 +72,18 @@ graphs:
     - id: 17
       declaration_id: 105
       name: Radius
-      type: 10
+      type: float
       default: 35.0
     - id: 18
       declaration_id: 106
       name: Width
-      type: 10
+      type: float
       default: 3.0
     outputs:
     - id: 19
       declaration_id: 108
       name: Mask
-      type: 10
+      type: float
       default: 0.0
   - id: 20
     type: Shader Parameter
@@ -91,7 +91,7 @@ graphs:
     reference_name: Color
     outputs:
     - id: 21
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -128,18 +128,18 @@ graphs:
     - id: 29
       declaration_id: 61
       name: Time
-      type: 10
+      type: float
       default: 0.0
     - id: 30
       declaration_id: 62
       name: Speed
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - id: 31
       declaration_id: 63
       name: Brightness
-      type: 10
+      type: float
       default: 0.0
   - id: 32
     type: Shader Add
@@ -172,7 +172,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 41
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -185,7 +185,7 @@ graphs:
       group: 0
     outputs:
     - id: 43
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

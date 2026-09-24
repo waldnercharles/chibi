@@ -193,7 +193,6 @@ static const contract_field CONTRACT_LIST_ASSETS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
     { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
-    { "summary", "boolean", false, "Return compact asset records without relationship details." },
 };
 static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -208,6 +207,9 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
     { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
+};
+static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
+    { "sections", "string[]", false, "nodes, types, services, operators, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -243,7 +245,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
-    { "input_timeline", "array", false, "At most 600 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
@@ -251,13 +253,13 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
-    { "entity_limit", "uint64", false, "Maximum number of ordered entities; maximum 256." },
+    { "entity_limit", "uint64", false, "Maximum number of ordered entities; defaults to 32, maximum 256." },
     { "component_limit", "uint64", false, "Maximum number of components per entity; maximum 64." },
     { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
     { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
     { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
     { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
-    { "input_timeline", "array", false, "At most 600 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RECORD_SCENARIO[] = {
@@ -523,8 +525,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "describe_registry",
         "Return reflected graph, type, service, operator, and component "
         "metadata.",
-        CONTRACT_NO_FIELDS,
-        0,
+        CONTRACT_DESCRIBE_REGISTRY,
+        CONTRACT_FIELD_COUNT(CONTRACT_DESCRIBE_REGISTRY),
         1,
         true,
         true,
@@ -640,10 +642,10 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
 
 static const char *const CONTRACT_ERROR_CATEGORIES[] = {
     "invalid_request", "io_error",         "validation_failed",
-    "asset_not_found", "execution_failed",
+    "asset_not_found", "execution_failed", "asset_conflict",
 };
 
-static int handle_describe_registry(response *result);
+static int handle_describe_registry(yyjson_val *request, response *result, int *exit_code);
 static int handle_describe_contract(response *result);
 static int handle_describe_components(yyjson_val *request, response *result, int *exit_code);
 static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code);
@@ -2178,23 +2180,9 @@ static int handle_catalog(const char *root, yyjson_val *request, response *resul
     for (uint64_t i = 0; i < count; i++) {
         add_catalog_asset(result->doc, asset_array, &assets[start + i], assets, acount(assets), page.summary);
     }
-    if (page.summary) {
-        yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
-        add_registry(result->doc, registry);
-    } else {
-        response registry = response_new("describe_registry");
-        handle_describe_registry(&registry);
-        yyjson_mut_val *registry_value = yyjson_mut_obj_get(registry.root, "result");
-        if (registry_value) {
-            yyjson_mut_obj_add_val(
-                result->doc,
-                value,
-                "registry",
-                yyjson_mut_val_mut_copy(result->doc, registry_value)
-            );
-        }
-        yyjson_mut_doc_free(registry.doc);
-    }
+    /* Registry counts only; describe_registry returns the registry itself. */
+    yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
+    add_registry(result->doc, registry);
     return 0;
 }
 
@@ -4603,6 +4591,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
 }
 
 #define RUNTIME_SNAPSHOT_MAX_ENTITIES 256
+#define RUNTIME_SNAPSHOT_DEFAULT_ENTITIES 32
 #define RUNTIME_SNAPSHOT_MAX_COMPONENTS 64
 #define RUNTIME_SNAPSHOT_MAX_FIELDS 128
 #define RUNTIME_SNAPSHOT_MAX_BEHAVIORS 64
@@ -6277,7 +6266,7 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
     if (!runtime_snapshot_limit(
             request,
             "entity_limit",
-            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            RUNTIME_SNAPSHOT_DEFAULT_ENTITIES,
             RUNTIME_SNAPSHOT_MAX_ENTITIES,
             &entity_limit
         ) ||
@@ -6455,7 +6444,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     if (!runtime_snapshot_limit(
             request,
             "entity_limit",
-            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            RUNTIME_SNAPSHOT_DEFAULT_ENTITIES,
             RUNTIME_SNAPSHOT_MAX_ENTITIES,
             &entity_limit
         ) ||
@@ -7040,77 +7029,135 @@ static int handle_describe_components(yyjson_val *request, response *result, int
     return 0;
 }
 
-static int handle_describe_registry(response *result)
+static const char *const REGISTRY_SECTIONS[] = {
+    "nodes", "types", "services", "operators", "components",
+};
+
+/* Nodes dominate the registry; searchNodes serves focused node lookups. */
+static bool registry_section(yyjson_val *sections, const char *name)
 {
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
-    for (int i = 0; i < registry_node_count(); i++) {
-        const node_desc *node = registry_node(i);
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, nodes);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", node->name);
-        yyjson_mut_obj_add_bool(result->doc, object, "pure", node_desc_is_pure(node));
-        yyjson_mut_obj_add_int(result->doc, object, "display_class", node->display_class);
-        if (node->category) {
-            yyjson_mut_obj_add_strcpy(result->doc, object, "category", node->category);
+    if (!sections) {
+        return strcmp(name, "nodes") != 0;
+    }
+    size_t i, count;
+    yyjson_val *section;
+    yyjson_arr_foreach(sections, i, count, section)
+    {
+        if (!strcmp(yyjson_get_str(section), name)) {
+            return true;
         }
-        if (node->keywords) {
-            yyjson_mut_obj_add_strcpy(result->doc, object, "keywords", node->keywords);
+    }
+    return false;
+}
+
+static bool valid_registry_sections(yyjson_val *sections)
+{
+    if (!sections) {
+        return true;
+    }
+    if (!yyjson_is_arr(sections)) {
+        return false;
+    }
+    size_t i, count;
+    yyjson_val *section;
+    yyjson_arr_foreach(sections, i, count, section)
+    {
+        bool known = false;
+        for (int s = 0;
+             yyjson_is_str(section) &&
+             s < (int)(sizeof REGISTRY_SECTIONS / sizeof *REGISTRY_SECTIONS);
+             s++) {
+            known |= !strcmp(yyjson_get_str(section), REGISTRY_SECTIONS[s]);
         }
-        add_pins(result->doc, object, "inputs", node->inputs, node->input_count);
-        add_pins(result->doc, object, "outputs", node->outputs, node->output_count);
+        if (!known) {
+            return false;
+        }
     }
-    yyjson_mut_val *types = yyjson_mut_obj_add_arr(result->doc, value, "types");
-    for (int i = 0; i < registry_type_count(); i++) {
-        add_type(result->doc, types, registry_type(i));
+    return true;
+}
+
+static int handle_describe_registry(yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *sections = request ? yyjson_obj_get(request, "sections") : NULL;
+    if (!valid_registry_sections(sections)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, operators, or components");
+        return -1;
     }
-    yyjson_mut_val *services = yyjson_mut_obj_add_arr(result->doc, value, "services");
-    for (int i = 0; i < registry_service_count(); i++) {
-        const service_desc *service = registry_service(i);
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, services);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", service->name);
-        yyjson_mut_obj_add_uint(result->doc, object, "stable_id", service->stable_id);
+    yyjson_mut_doc *doc = result->doc;
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
+    if (registry_section(sections, "nodes")) {
+        yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(doc, value, "nodes");
+        for (int i = 0; i < registry_node_count(); i++) {
+            const node_desc *node = registry_node(i);
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, nodes);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", node->name);
+            yyjson_mut_obj_add_bool(doc, object, "pure", node_desc_is_pure(node));
+            yyjson_mut_obj_add_int(doc, object, "display_class", node->display_class);
+            if (node->category) {
+                yyjson_mut_obj_add_strcpy(doc, object, "category", node->category);
+            }
+            if (node->keywords) {
+                yyjson_mut_obj_add_strcpy(doc, object, "keywords", node->keywords);
+            }
+            add_pins(doc, object, "inputs", node->inputs, node->input_count);
+            add_pins(doc, object, "outputs", node->outputs, node->output_count);
+        }
     }
-    yyjson_mut_val *operators = yyjson_mut_obj_add_arr(result->doc, value, "operators");
-    for (int i = 0; i < registry_operator_count(); i++) {
-        const operator_signature *signature = registry_operator(i);
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, operators);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", signature->name);
-        yyjson_mut_obj_add_strcpy(
-            result->doc,
-            object,
-            "left",
-            pin_json_name(signature->left)
-        );
-        yyjson_mut_obj_add_strcpy(
-            result->doc,
-            object,
-            "right",
-            pin_json_name(signature->right)
-        );
-        yyjson_mut_obj_add_strcpy(
-            result->doc,
-            object,
-            "result",
-            pin_json_name(signature->result)
-        );
-        yyjson_mut_obj_add_int(result->doc, object, "priority", signature->priority);
+    if (registry_section(sections, "types")) {
+        yyjson_mut_val *types = yyjson_mut_obj_add_arr(doc, value, "types");
+        for (int i = 0; i < registry_type_count(); i++) {
+            add_type(doc, types, registry_type(i));
+        }
     }
-    yyjson_mut_val *components = yyjson_mut_obj_add_arr(result->doc, value, "components");
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
-        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, components);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "key", component->key);
-        yyjson_mut_obj_add_strcpy(result->doc, object, "name", component->name);
-        yyjson_mut_obj_add_uint(result->doc, object, "id", component->id);
-        yyjson_mut_obj_add_uint(result->doc, object, "bytes", component->element_size);
-        yyjson_mut_obj_add_uint(result->doc, object, "layout_hash", component->layout_hash);
-        if (component->type) {
+    if (registry_section(sections, "services")) {
+        yyjson_mut_val *services = yyjson_mut_obj_add_arr(doc, value, "services");
+        for (int i = 0; i < registry_service_count(); i++) {
+            const service_desc *service = registry_service(i);
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, services);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", service->name);
+            yyjson_mut_obj_add_uint(doc, object, "stable_id", service->stable_id);
+        }
+    }
+    if (registry_section(sections, "operators")) {
+        yyjson_mut_val *operators = yyjson_mut_obj_add_arr(doc, value, "operators");
+        for (int i = 0; i < registry_operator_count(); i++) {
+            const operator_signature *signature = registry_operator(i);
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, operators);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", signature->name);
             yyjson_mut_obj_add_strcpy(
-                result->doc,
+                doc,
                 object,
-                "type",
-                component->type->name
+                "left",
+                pin_json_name(signature->left)
             );
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                object,
+                "right",
+                pin_json_name(signature->right)
+            );
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                object,
+                "result",
+                pin_json_name(signature->result)
+            );
+            yyjson_mut_obj_add_int(doc, object, "priority", signature->priority);
+        }
+    }
+    if (registry_section(sections, "components")) {
+        yyjson_mut_val *components = yyjson_mut_obj_add_arr(doc, value, "components");
+        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+            const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, components);
+            yyjson_mut_obj_add_strcpy(doc, object, "key", component->key);
+            yyjson_mut_obj_add_strcpy(doc, object, "name", component->name);
+            yyjson_mut_obj_add_uint(doc, object, "id", component->id);
+            yyjson_mut_obj_add_uint(doc, object, "bytes", component->element_size);
+            yyjson_mut_obj_add_uint(doc, object, "layout_hash", component->layout_hash);
+            if (component->type) {
+                yyjson_mut_obj_add_strcpy(doc, object, "type", component->type->name);
+            }
         }
     }
     return 0;
@@ -8202,7 +8249,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else if (!strcmp(operation, "read_recording")) {
         handle_read_recording(root_value, &result, exit_code);
     } else {
-        handle_describe_registry(&result);
+        handle_describe_registry(root_value, &result, exit_code);
     }
     free(root);
     yyjson_doc_free(document);

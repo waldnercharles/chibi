@@ -13,7 +13,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -24,7 +24,7 @@ graphs:
       default: Lives
     outputs:
     - id: 6
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 21
@@ -38,7 +38,7 @@ graphs:
     - id: 22
       declaration_id: 12
       name: lives
-      type: 11
+      type: double
       type_name: double
       group: 1
       default: 0.0
@@ -52,7 +52,7 @@ graphs:
     - id: 23
       declaration_id: 13
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 2
@@ -72,7 +72,7 @@ graphs:
       default: Hits
     outputs:
     - id: 49
-      type: 10
+      type: float
       default: 0.0
   - id: 50
     type: Format Text
@@ -82,7 +82,7 @@ graphs:
         TARGET PRACTICE
         {:.0f} / 8 HITS
     - id: 52
-      type: 10
+      type: float
       default: 0.0
     outputs: [53]
   - id: 54
@@ -128,7 +128,7 @@ graphs:
     outputs:
     - id: 32
       name: lives
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
@@ -138,7 +138,7 @@ graphs:
     inputs:
     - id: 33
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -152,11 +152,11 @@ graphs:
     type: Less Or Equal
     inputs:
     - id: 38
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 39
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [40]

@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Age
-  type: 10
+  type: float
   type_name: float
   category: State
 graphs:
@@ -22,7 +22,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 4
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -35,33 +35,33 @@ graphs:
     inputs:
     - 8
     - id: 9
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 10
     - id: 11
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 16
     type: Add
     inputs:
     - id: 13
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 14
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 15
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -70,20 +70,20 @@ graphs:
     type: Divide
     inputs:
     - id: 17
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 18
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.8
     outputs:
     - id: 19
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -113,20 +113,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 36
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 336.0
     - id: 37
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 38
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -135,20 +135,20 @@ graphs:
     type: Add
     inputs:
     - id: 40
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 24.0
     - id: 41
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 42
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -161,20 +161,20 @@ graphs:
     type: Subtract
     inputs:
     - id: 50
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 51
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 28.0
     outputs:
     - id: 52
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -183,20 +183,20 @@ graphs:
     type: Max
     inputs:
     - id: 54
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 55
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 56
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -209,20 +209,20 @@ graphs:
     type: Subtract
     inputs:
     - id: 64
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 1.0
     - id: 65
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 66
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -231,20 +231,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 68
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.65
     - id: 69
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 70
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0

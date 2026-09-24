@@ -165,7 +165,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 76
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -178,7 +178,7 @@ graphs:
       group: 0
     outputs:
     - id: 78
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -228,7 +228,7 @@ graphs:
     type: Shader Mix
     inputs:
     - id: 88
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -237,7 +237,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 89
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -251,7 +251,7 @@ graphs:
       group: 0
     outputs:
     - id: 91
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -263,7 +263,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 93
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -277,7 +277,7 @@ graphs:
       group: 0
     outputs:
     - id: 95
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -289,7 +289,7 @@ graphs:
     type: Shader Add
     inputs:
     - id: 97
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -298,7 +298,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 98
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -308,7 +308,7 @@ graphs:
         z: 0.0
     outputs:
     - id: 99
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -329,7 +329,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 103
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -343,7 +343,7 @@ graphs:
       group: 0
     outputs:
     - id: 105
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -355,7 +355,7 @@ graphs:
     type: Shader Add
     inputs:
     - id: 107
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -364,7 +364,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 108
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -374,7 +374,7 @@ graphs:
         z: 0.0
     outputs:
     - id: 109
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

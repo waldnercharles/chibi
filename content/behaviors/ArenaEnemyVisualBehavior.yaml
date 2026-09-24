@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Bump Lift
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 1.600000023841858
@@ -57,13 +57,13 @@ graphs:
     - 25
     - id: 26
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
     - id: 160
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -75,7 +75,7 @@ graphs:
     - 28
     - id: 29
       name: Strength
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 1.0
@@ -88,14 +88,14 @@ graphs:
     - id: 33
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 34
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -107,7 +107,7 @@ graphs:
     - 36
     - id: 37
       name: Strength
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 1.600000023841858
@@ -151,7 +151,7 @@ graphs:
       name: Then
     - id: 100
       name: Strength
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 1.0
@@ -177,16 +177,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 111
-      type: 15
+      type: struct
       type_name: CF_V3
       default: null
     - id: 112
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 113
-      type: 15
+      type: struct
       type_name: CF_V3
       default: null
   - id: 116

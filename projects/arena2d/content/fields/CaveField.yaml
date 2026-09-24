@@ -5,11 +5,11 @@ id_counter: 202
 variables:
 - id: 5
   name: Radius
-  type: 10
+  type: float
   default: 225.0
 - id: 9
   name: Roughness
-  type: 10
+  type: float
   default: 100.0
 graphs:
 - kind: event

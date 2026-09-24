@@ -18,12 +18,12 @@ graphs:
     outputs:
     - id: 61
       name: Time
-      type: 10
+      type: float
       kind: data
       default: 0.0
     - id: 62
       name: Speed
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 59
@@ -31,7 +31,7 @@ graphs:
     inputs:
     - id: 63
       name: Brightness
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 64
@@ -93,7 +93,7 @@ graphs:
     outputs:
     - id: 104
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec2
       kind: data
       default:
@@ -101,12 +101,12 @@ graphs:
         "y": 0.0
     - id: 105
       name: Radius
-      type: 10
+      type: float
       kind: data
       default: 35.0
     - id: 106
       name: Width
-      type: 10
+      type: float
       kind: data
       default: 3.0
   - id: 107
@@ -114,7 +114,7 @@ graphs:
     inputs:
     - id: 108
       name: Mask
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 110

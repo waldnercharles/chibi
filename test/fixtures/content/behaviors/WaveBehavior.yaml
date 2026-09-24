@@ -6,35 +6,35 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: CountLimit
-  type: 6
+  type: int
   type_name: int
   category: Wave
   default: 8
 - id: 2
   name: Interval
-  type: 10
+  type: float
   type_name: float
   category: Wave
   default: 1.5
 - id: 3
   name: SpawnDistance
-  type: 10
+  type: float
   type_name: float
   category: Wave
   default: 260.0
 - id: 4
   name: Elapsed
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 5
   name: Spawned
-  type: 6
+  type: int
   type_name: int
   category: State
 - id: 6
   name: Side
-  type: 10
+  type: float
   type_name: float
   category: State
   default: -1.0
@@ -47,7 +47,7 @@ graphs:
     reference_id: 4
     outputs:
     - id: 48
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -64,13 +64,13 @@ graphs:
     inputs:
     - 56
     - id: 57
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 58
     - id: 59
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 124
@@ -109,7 +109,7 @@ graphs:
     - 144
     - id: 145
       name: Player Position
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -169,7 +169,7 @@ graphs:
       name: Then
     - id: 44
       name: Player Position
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -181,7 +181,7 @@ graphs:
     reference_id: 2
     outputs:
     - id: 61
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 1.5
@@ -197,7 +197,7 @@ graphs:
     reference_id: 4
     outputs:
     - id: 67
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -240,13 +240,13 @@ graphs:
     inputs:
     - 95
     - id: 96
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 97
     - id: 98
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 103
@@ -257,7 +257,7 @@ graphs:
     - 100
     - id: 101
       name: Player Position
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -266,16 +266,16 @@ graphs:
     type: Add
     inputs:
     - id: 105
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 106
-      type: 6
+      type: int
       type_name: int
       default: 1
     outputs:
     - id: 107
-      type: 6
+      type: int
       type_name: int
       default: 0
   - id: 112
@@ -288,7 +288,7 @@ graphs:
     reference_id: 6
     outputs:
     - id: 113
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: -1.0
@@ -305,13 +305,13 @@ graphs:
     inputs:
     - 119
     - id: 120
-      type: 10
+      type: float
       type_name: float
       default: -1.0
     outputs:
     - 121
     - id: 122
-      type: 10
+      type: float
       type_name: float
       default: -1.0
   edges:
@@ -421,13 +421,13 @@ graphs:
       name: Then
     - id: 9
       name: Player Position
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 13
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 9
@@ -435,7 +435,7 @@ graphs:
       default: 0.0
     - id: 14
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 9
@@ -449,7 +449,7 @@ graphs:
     reference_id: 6
     outputs:
     - id: 15
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: -1.0
@@ -458,7 +458,7 @@ graphs:
     reference_id: 3
     outputs:
     - id: 17
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 260.0

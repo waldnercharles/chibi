@@ -36,7 +36,7 @@ graphs:
     reference_name: Base Color
     outputs:
     - id: 10
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -65,18 +65,18 @@ graphs:
     - id: 16
       declaration_id: 61
       name: Time
-      type: 10
+      type: float
       default: 0.0
     - id: 17
       declaration_id: 62
       name: Speed
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - id: 18
       declaration_id: 63
       name: Brightness
-      type: 10
+      type: float
       default: 0.0
   - id: 19
     type: Shader Multiply
@@ -132,7 +132,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 34
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -145,7 +145,7 @@ graphs:
       group: 0
     outputs:
     - id: 36
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

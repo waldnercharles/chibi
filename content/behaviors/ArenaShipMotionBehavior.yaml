@@ -6,69 +6,69 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Roll Speed (Degrees/Second)
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 36.0
 - id: 2
   name: Reverse Nose Lift (Degrees)
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 3.0
 - id: 3
   name: Settle Response (Hz)
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 1.0
 - id: 4
   name: Settle Damping
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 1.0
 - id: 5
   name: Roll Angle
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 6
   name: Roll Velocity
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 7
   name: Nose Position
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 8
   name: Nose Velocity
-  type: 10
+  type: float
   type_name: float
   category: State
 - id: 252
   name: Face Rocking
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 0.5
 - id: 253
   name: Roll Acceleration (Per Second)
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 3.0
 - id: 254
   name: Strafe Dead Zone
-  type: 10
+  type: float
   type_name: float
   category: Motion
   default: 0.11999999731779099
 - id: 255
   name: Resting Face
-  type: 10
+  type: float
   type_name: float
   category: State
 graphs:
@@ -87,7 +87,7 @@ graphs:
     reference_id: 3
     outputs:
     - id: 186
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -96,7 +96,7 @@ graphs:
     reference_id: 4
     outputs:
     - id: 188
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -105,7 +105,7 @@ graphs:
     reference_id: 5
     outputs:
     - id: 190
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -114,7 +114,7 @@ graphs:
     reference_id: 6
     outputs:
     - id: 192
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -127,21 +127,21 @@ graphs:
     - id: 195
       declaration_id: 81
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 196
       declaration_id: 82
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 197
       declaration_id: 83
       name: Target
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -152,21 +152,21 @@ graphs:
     - id: 198
       declaration_id: 84
       name: Frequency
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 199
       declaration_id: 85
       name: Damping
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 200
       declaration_id: 86
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -175,14 +175,14 @@ graphs:
     - id: 202
       declaration_id: 89
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 203
       declaration_id: 90
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -192,13 +192,13 @@ graphs:
     inputs:
     - 205
     - id: 206
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 207
     - id: 208
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 214
@@ -207,13 +207,13 @@ graphs:
     inputs:
     - 210
     - id: 211
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 212
     - id: 213
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 361
@@ -224,14 +224,14 @@ graphs:
     type: Abs
     inputs:
     - id: 362
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 363
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -254,7 +254,7 @@ graphs:
     - id: 637
       declaration_id: 584
       name: Move
-      type: 15
+      type: struct
       type_name: CF_V2
       binding:
         kind: component_field
@@ -264,7 +264,7 @@ graphs:
     - id: 638
       declaration_id: 585
       name: Aim
-      type: 15
+      type: struct
       type_name: CF_V2
       binding:
         kind: component_field
@@ -275,13 +275,13 @@ graphs:
     - id: 639
       declaration_id: 586
       name: Strafe
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 640
       declaration_id: 587
       name: Forward
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 772
@@ -293,28 +293,28 @@ graphs:
     - id: 775
       declaration_id: 768
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 776
       declaration_id: 769
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 777
       declaration_id: 770
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 778
       declaration_id: 771
       name: Strafe
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -328,7 +328,7 @@ graphs:
     - id: 839
       declaration_id: 831
       name: reverseNoseLift
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -339,28 +339,28 @@ graphs:
     - id: 840
       declaration_id: 832
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 841
       declaration_id: 833
       name: Frequency
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 842
       declaration_id: 834
       name: Damping
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 843
       declaration_id: 835
       name: forward
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -480,37 +480,37 @@ graphs:
       name: Then
     - id: 81
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 82
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 83
       name: Target
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 84
       name: Frequency
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 85
       name: Damping
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 86
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -520,13 +520,13 @@ graphs:
     - 88
     - id: 89
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 90
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -593,43 +593,43 @@ graphs:
       name: Then
     - id: 258
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 259
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 260
       name: Strafe
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 261
       name: Speed
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 262
       name: Rocking
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 263
       name: Acceleration
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 264
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -639,19 +639,19 @@ graphs:
     - 266
     - id: 267
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 268
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 269
       name: Face
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -667,7 +667,7 @@ graphs:
     - id: 434
       declaration_id: 412
       name: Acceleration
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -675,7 +675,7 @@ graphs:
     - id: 435
       declaration_id: 413
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -684,7 +684,7 @@ graphs:
     - id: 436
       declaration_id: 414
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -697,7 +697,7 @@ graphs:
     - id: 512
       declaration_id: 442
       name: Strafe
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -705,7 +705,7 @@ graphs:
     - id: 513
       declaration_id: 443
       name: Speed
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -713,7 +713,7 @@ graphs:
     - id: 514
       declaration_id: 444
       name: Rocking
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -721,7 +721,7 @@ graphs:
     - id: 515
       declaration_id: 445
       name: Position
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 4
@@ -730,7 +730,7 @@ graphs:
     - id: 516
       declaration_id: 446
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 5
@@ -743,7 +743,7 @@ graphs:
     - id: 546
       declaration_id: 522
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -751,7 +751,7 @@ graphs:
     - id: 547
       declaration_id: 523
       name: Gain
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -759,7 +759,7 @@ graphs:
     - id: 548
       declaration_id: 524
       name: Desired
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -768,7 +768,7 @@ graphs:
     - id: 549
       declaration_id: 525
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -781,7 +781,7 @@ graphs:
     - id: 575
       declaration_id: 555
       name: Position
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -789,7 +789,7 @@ graphs:
     - id: 576
       declaration_id: 556
       name: NewVelocity
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -797,7 +797,7 @@ graphs:
     - id: 577
       declaration_id: 557
       name: Delta
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -806,7 +806,7 @@ graphs:
     - id: 578
       declaration_id: 558
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -894,7 +894,7 @@ graphs:
     outputs:
     - id: 412
       name: Acceleration
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -902,7 +902,7 @@ graphs:
       default: 0.0
     - id: 413
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -913,7 +913,7 @@ graphs:
     inputs:
     - id: 414
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -927,16 +927,16 @@ graphs:
     type: Max
     inputs:
     - id: 419
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 420
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 421
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 422
@@ -947,32 +947,32 @@ graphs:
     type: Max
     inputs:
     - id: 426
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 427
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 428
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 429
     type: Multiply
     inputs:
     - id: 430
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 431
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 432
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -1018,7 +1018,7 @@ graphs:
     outputs:
     - id: 442
       name: Strafe
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1026,7 +1026,7 @@ graphs:
       default: 0.0
     - id: 443
       name: Speed
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1034,7 +1034,7 @@ graphs:
       default: 0.0
     - id: 444
       name: Rocking
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1042,7 +1042,7 @@ graphs:
       default: 0.0
     - id: 445
       name: Position
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1053,7 +1053,7 @@ graphs:
     inputs:
     - id: 446
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1067,32 +1067,32 @@ graphs:
     type: Max
     inputs:
     - id: 451
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 452
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 453
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 454
     type: Multiply
     inputs:
     - id: 455
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 456
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 457
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 458
@@ -1111,32 +1111,32 @@ graphs:
     type: Divide
     inputs:
     - id: 465
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 466
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 467
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 468
     type: Multiply
     inputs:
     - id: 469
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 470
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 471
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 472
@@ -1153,16 +1153,16 @@ graphs:
     type: Max
     inputs:
     - id: 479
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 480
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 481
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 482
@@ -1175,16 +1175,16 @@ graphs:
     type: Min
     inputs:
     - id: 486
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 487
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 488
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 489
@@ -1197,16 +1197,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 493
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 494
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 495
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 496
@@ -1217,48 +1217,48 @@ graphs:
     type: Multiply
     inputs:
     - id: 500
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 501
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 502
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 503
     type: Subtract
     inputs:
     - id: 504
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 505
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 506
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 507
     type: Multiply
     inputs:
     - id: 508
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 509
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 510
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -1364,7 +1364,7 @@ graphs:
     outputs:
     - id: 522
       name: Velocity
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1372,7 +1372,7 @@ graphs:
       default: 0.0
     - id: 523
       name: Gain
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1380,7 +1380,7 @@ graphs:
       default: 0.0
     - id: 524
       name: Desired
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1391,7 +1391,7 @@ graphs:
     inputs:
     - id: 525
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1401,32 +1401,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 527
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 528
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 529
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 530
     type: Add
     inputs:
     - id: 531
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 532
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 533
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 534
@@ -1439,32 +1439,32 @@ graphs:
     type: Add
     inputs:
     - id: 538
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 539
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 540
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 541
     type: Divide
     inputs:
     - id: 542
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 543
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 544
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -1518,7 +1518,7 @@ graphs:
     outputs:
     - id: 555
       name: Position
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1526,7 +1526,7 @@ graphs:
       default: 0.0
     - id: 556
       name: NewVelocity
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1534,7 +1534,7 @@ graphs:
       default: 0.0
     - id: 557
       name: Delta
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1545,7 +1545,7 @@ graphs:
     inputs:
     - id: 558
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1559,48 +1559,48 @@ graphs:
     type: Max
     inputs:
     - id: 563
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 564
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 565
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 566
     type: Multiply
     inputs:
     - id: 567
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 568
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 569
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 570
     type: Add
     inputs:
     - id: 571
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 572
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 573
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -1644,13 +1644,13 @@ graphs:
     outputs:
     - id: 584
       name: Move
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 585
       name: Aim
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -1659,13 +1659,13 @@ graphs:
     inputs:
     - id: 586
       name: Strafe
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 587
       name: Forward
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -1677,7 +1677,7 @@ graphs:
     - id: 609
       declaration_id: 593
       name: move
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 1
@@ -1685,7 +1685,7 @@ graphs:
     - id: 610
       declaration_id: 594
       name: aim
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 2
@@ -1694,7 +1694,7 @@ graphs:
     - id: 611
       declaration_id: 595
       name: Result
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -1707,7 +1707,7 @@ graphs:
     - id: 633
       declaration_id: 617
       name: move
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 1
@@ -1715,7 +1715,7 @@ graphs:
     - id: 634
       declaration_id: 618
       name: aim
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 2
@@ -1724,7 +1724,7 @@ graphs:
     - id: 635
       declaration_id: 619
       name: Result
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -1768,7 +1768,7 @@ graphs:
     outputs:
     - id: 686
       name: move
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -1776,7 +1776,7 @@ graphs:
       default: null
     - id: 687
       name: aim
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -1784,7 +1784,7 @@ graphs:
       default: null
     - id: 688
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 686
@@ -1792,7 +1792,7 @@ graphs:
       default: 0.0
     - id: 689
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 686
@@ -1800,7 +1800,7 @@ graphs:
       default: 0.0
     - id: 690
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 687
@@ -1808,7 +1808,7 @@ graphs:
       default: 0.0
     - id: 691
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 687
@@ -1819,7 +1819,7 @@ graphs:
     inputs:
     - id: 692
       name: Result
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -1880,7 +1880,7 @@ graphs:
     outputs:
     - id: 710
       name: move
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -1888,7 +1888,7 @@ graphs:
       default: null
     - id: 711
       name: aim
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -1896,7 +1896,7 @@ graphs:
       default: null
     - id: 712
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 710
@@ -1904,7 +1904,7 @@ graphs:
       default: 0.0
     - id: 713
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 710
@@ -1912,7 +1912,7 @@ graphs:
       default: 0.0
     - id: 714
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 711
@@ -1920,7 +1920,7 @@ graphs:
       default: 0.0
     - id: 715
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 711
@@ -1931,7 +1931,7 @@ graphs:
     inputs:
     - id: 716
       name: Result
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -1992,7 +1992,7 @@ graphs:
     outputs:
     - id: 646
       name: forward
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -2000,7 +2000,7 @@ graphs:
       default: 0.0
     - id: 647
       name: reverseNoseLift
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -2011,7 +2011,7 @@ graphs:
     inputs:
     - id: 648
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -2021,12 +2021,12 @@ graphs:
     type: Negate
     inputs:
     - id: 650
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 651
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 652
@@ -2037,32 +2037,32 @@ graphs:
     type: Max
     inputs:
     - id: 656
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 657
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 658
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 659
     type: Multiply
     inputs:
     - id: 660
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 661
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 662
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 663
@@ -2081,32 +2081,32 @@ graphs:
     type: Divide
     inputs:
     - id: 670
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 671
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 672
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 673
     type: Multiply
     inputs:
     - id: 674
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 675
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 676
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -2163,26 +2163,26 @@ graphs:
     - 731
     - id: 768
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 769
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 770
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 771
       declaration_id: 586
       name: Strafe
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -2198,28 +2198,28 @@ graphs:
     - id: 738
       declaration_id: 258
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 739
       declaration_id: 259
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 740
       declaration_id: 260
       name: Strafe
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 741
       declaration_id: 261
       name: Speed
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -2230,7 +2230,7 @@ graphs:
     - id: 742
       declaration_id: 262
       name: Rocking
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -2241,7 +2241,7 @@ graphs:
     - id: 743
       declaration_id: 263
       name: Acceleration
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -2252,7 +2252,7 @@ graphs:
     - id: 744
       declaration_id: 264
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -2261,21 +2261,21 @@ graphs:
     - id: 746
       declaration_id: 267
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 747
       declaration_id: 268
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 748
       declaration_id: 269
       name: Face
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -2285,13 +2285,13 @@ graphs:
     inputs:
     - 754
     - id: 755
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 756
     - id: 757
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 758
@@ -2300,13 +2300,13 @@ graphs:
     inputs:
     - 759
     - id: 760
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 761
     - id: 762
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 763
@@ -2315,13 +2315,13 @@ graphs:
     inputs:
     - 764
     - id: 765
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 766
     - id: 767
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   edges:
@@ -2386,32 +2386,32 @@ graphs:
     - 785
     - id: 831
       name: reverseNoseLift
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 832
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 833
       name: Frequency
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 834
       name: Damping
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 835
       declaration_id: 587
       name: forward
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -2427,7 +2427,7 @@ graphs:
     - id: 794
       declaration_id: 81
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -2438,7 +2438,7 @@ graphs:
     - id: 795
       declaration_id: 82
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       binding:
@@ -2449,28 +2449,28 @@ graphs:
     - id: 796
       declaration_id: 83
       name: Target
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 797
       declaration_id: 84
       name: Frequency
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 798
       declaration_id: 85
       name: Damping
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 799
       declaration_id: 86
       name: Delta
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -2479,14 +2479,14 @@ graphs:
     - id: 801
       declaration_id: 89
       name: Position
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 802
       declaration_id: 90
       name: Velocity
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -2496,13 +2496,13 @@ graphs:
     inputs:
     - 804
     - id: 805
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 806
     - id: 807
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 808
@@ -2511,13 +2511,13 @@ graphs:
     inputs:
     - 809
     - id: 810
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 811
     - id: 812
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 813
@@ -2543,7 +2543,7 @@ graphs:
     - id: 828
       declaration_id: 646
       name: forward
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -2551,7 +2551,7 @@ graphs:
     - id: 829
       declaration_id: 647
       name: reverseNoseLift
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -2560,7 +2560,7 @@ graphs:
     - id: 830
       declaration_id: 648
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3

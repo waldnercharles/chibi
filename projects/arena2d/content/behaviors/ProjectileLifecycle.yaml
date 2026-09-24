@@ -14,7 +14,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -29,7 +29,7 @@ graphs:
     - id: 17
       declaration_id: 9
       name: age
-      type: 10
+      type: float
       type_name: float
       flags: 6
       group: 1
@@ -41,7 +41,7 @@ graphs:
     - id: 18
       declaration_id: 10
       name: dt
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -55,7 +55,7 @@ graphs:
     - id: 19
       declaration_id: 11
       name: Result
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -71,7 +71,7 @@ graphs:
     - id: 97
       declaration_id: 89
       name: age
-      type: 11
+      type: double
       type_name: double
       group: 1
       binding:
@@ -82,7 +82,7 @@ graphs:
     - id: 98
       declaration_id: 90
       name: lifetime
-      type: 11
+      type: double
       type_name: double
       group: 2
       binding:
@@ -100,7 +100,7 @@ graphs:
     - id: 99
       declaration_id: 91
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 3
@@ -125,7 +125,7 @@ graphs:
     - id: 159
       declaration_id: 138
       name: vx
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -137,7 +137,7 @@ graphs:
     - id: 160
       declaration_id: 139
       name: vy
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -156,7 +156,7 @@ graphs:
     - id: 161
       declaration_id: 140
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 3
@@ -172,7 +172,7 @@ graphs:
     - id: 229
       declaration_id: 220
       name: heading
-      type: 10
+      type: float
       type_name: float
       flags: 6
       group: 1
@@ -184,7 +184,7 @@ graphs:
     - id: 230
       declaration_id: 221
       name: vy
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -196,7 +196,7 @@ graphs:
     - id: 231
       declaration_id: 222
       name: vx
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -212,7 +212,7 @@ graphs:
     - id: 232
       declaration_id: 223
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 4
@@ -257,14 +257,14 @@ graphs:
     - 55
     - id: 58
       name: age
-      type: 10
+      type: float
       type_name: float
       kind: data
       group: 1
       default: 0.0
     - id: 59
       name: dt
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -276,7 +276,7 @@ graphs:
     - 57
     - id: 60
       name: Result
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -287,7 +287,7 @@ graphs:
     inputs:
     - 62
     - id: 63
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [64]
@@ -365,14 +365,14 @@ graphs:
     outputs:
     - id: 120
       name: age
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
       default: 0.0
     - id: 121
       name: lifetime
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 2
@@ -382,7 +382,7 @@ graphs:
     inputs:
     - id: 122
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -392,11 +392,11 @@ graphs:
     type: Greater Or Equal
     inputs:
     - id: 124
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 125
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [126]
@@ -427,7 +427,7 @@ graphs:
     outputs:
     - id: 195
       name: vx
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -435,7 +435,7 @@ graphs:
       default: 0.0
     - id: 196
       name: vy
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -446,7 +446,7 @@ graphs:
     inputs:
     - id: 197
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -456,40 +456,40 @@ graphs:
     type: Abs
     inputs:
     - id: 199
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 200
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 201
     type: Abs
     inputs:
     - id: 202
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 203
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 204
     type: Add
     inputs:
     - id: 205
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 206
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 207
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 208
@@ -502,11 +502,11 @@ graphs:
     type: Greater
     inputs:
     - id: 212
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 213
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [214]
@@ -554,14 +554,14 @@ graphs:
     - 289
     - id: 292
       name: heading
-      type: 10
+      type: float
       type_name: float
       kind: data
       group: 1
       default: 0.0
     - id: 293
       name: vy
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -569,7 +569,7 @@ graphs:
       default: 0.0
     - id: 294
       name: vx
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -581,7 +581,7 @@ graphs:
     - 291
     - id: 295
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2

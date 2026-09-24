@@ -68,20 +68,20 @@ graphs:
     type: Shader Mix
     inputs:
     - id: 28
-      type: 15
+      type: struct
       type_name: ShaderVec3
       default: null
     - id: 29
-      type: 15
+      type: struct
       type_name: ShaderVec3
       default: null
     - id: 30
-      type: 15
+      type: struct
       type_name: ShaderVec3
       default: null
     outputs:
     - id: 31
-      type: 15
+      type: struct
       type_name: ShaderVec3
       default: null
   edges:

@@ -14,7 +14,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -47,7 +47,7 @@ graphs:
     - id: 24
       declaration_id: 15
       name: active
-      type: 1
+      type: bool
       type_name: _Bool
       flags: 6
       group: 1
@@ -59,7 +59,7 @@ graphs:
     - id: 25
       declaration_id: 16
       name: action
-      type: 15
+      type: struct
       type_name: GameActionBinding
       flags: 2
       group: 2
@@ -67,7 +67,7 @@ graphs:
     - id: 26
       declaration_id: 17
       name: input
-      type: 15
+      type: struct
       type_name: GameInput
       flags: 2
       group: 3
@@ -79,7 +79,7 @@ graphs:
     - id: 27
       declaration_id: 18
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 4
@@ -112,14 +112,14 @@ graphs:
     - 266
     - id: 269
       name: active
-      type: 1
+      type: bool
       type_name: _Bool
       kind: data
       group: 1
       default: false
     - id: 270
       name: action
-      type: 15
+      type: struct
       type_name: GameActionBinding
       kind: data
       flags: 2
@@ -127,7 +127,7 @@ graphs:
       default: null
     - id: 271
       name: input
-      type: 15
+      type: struct
       type_name: GameInput
       kind: data
       flags: 2
@@ -135,7 +135,7 @@ graphs:
       default: null
     - id: 273
       name: source
-      type: 16
+      type: enum
       type_name: GameControl
       kind: data
       field_source: 270
@@ -143,7 +143,7 @@ graphs:
       default: 0
     - id: 274
       name: action
-      type: 13
+      type: const char *
       type_name: const char *
       kind: data
       field_source: 270
@@ -151,7 +151,7 @@ graphs:
       default: ""
     - id: 275
       name: firing
-      type: 1
+      type: bool
       type_name: _Bool
       kind: data
       field_source: 270
@@ -159,7 +159,7 @@ graphs:
       default: false
     - id: 276
       name: disabled
-      type: 1
+      type: bool
       type_name: _Bool
       kind: data
       field_source: 270
@@ -167,7 +167,7 @@ graphs:
       default: false
     - id: 277
       name: pressed
-      type: 1
+      type: bool
       type_name: _Bool
       kind: data
       field_source: 270
@@ -175,7 +175,7 @@ graphs:
       default: false
     - id: 281
       name: move
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       field_source: 271
@@ -183,7 +183,7 @@ graphs:
       default: null
     - id: 282
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 281
@@ -191,7 +191,7 @@ graphs:
       default: 0.0
     - id: 283
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 281
@@ -203,7 +203,7 @@ graphs:
     - 268
     - id: 272
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -225,13 +225,13 @@ graphs:
     type: Add
     inputs:
     - id: 293
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 294
     outputs:
     - id: 295
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 296
@@ -244,11 +244,11 @@ graphs:
     type: Greater
     inputs:
     - id: 300
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 301
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [302]

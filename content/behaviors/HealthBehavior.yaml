@@ -15,14 +15,14 @@ graphs:
     - id: 1017
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1018
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -33,7 +33,7 @@ graphs:
       flags: 0
     - id: 1021
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 1020
       field_name: current
@@ -41,7 +41,7 @@ graphs:
       default: 0
     - id: 1022
       name: maximum
-      type: 6
+      type: int
       type_name: int
       field_source: 1020
       field_name: maximum
@@ -64,28 +64,28 @@ graphs:
     - id: 1034
       declaration_id: 1004
       name: Current
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1035
       declaration_id: 1005
       name: Maximum
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1036
       declaration_id: 1006
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1037
       declaration_id: 1007
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -98,7 +98,7 @@ graphs:
     - id: 1144
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -195,25 +195,25 @@ graphs:
       name: Then
     - id: 1004
       name: Current
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1005
       name: Maximum
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1006
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 1007
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -244,7 +244,7 @@ graphs:
       flags: 0
     - id: 1057
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 1056
       field_name: remaining
@@ -265,40 +265,40 @@ graphs:
     inputs:
     - id: 1068
       name: current
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 1069
       name: amount
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 1070
       name: maximum
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 1071
       name: Result
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 1072
     type: Subtract
     inputs:
     - id: 1073
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 1074
-      type: 6
+      type: int
       type_name: int
       group: 1
       default: 0
     outputs:
     - id: 1075
-      type: 6
+      type: int
       type_name: int
       default: 0
   - id: 1076
@@ -327,7 +327,7 @@ graphs:
     - id: 1096
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 1097
@@ -532,13 +532,13 @@ graphs:
     inputs:
     - 1126
     - id: 1127
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: []
     outputs:
     - 1128
     - id: 1129
-      type: 14
+      type: handle
       type_name: ecs.entity
       default: null
     - 1130
@@ -595,19 +595,19 @@ graphs:
     outputs:
     - id: 68
       name: current
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 69
       name: amount
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 70
       name: maximum
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -616,7 +616,7 @@ graphs:
     inputs:
     - id: 71
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -624,56 +624,56 @@ graphs:
     type: Clamp
     inputs:
     - id: 76
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 77
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 78
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 79
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 80
     type: Subtract
     inputs:
     - id: 81
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 82
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 83
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 87
     type: Clamp
     inputs:
     - id: 88
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 89
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 90
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 91
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:

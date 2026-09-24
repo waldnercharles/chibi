@@ -20,7 +20,7 @@ graphs:
     outputs:
     - id: 339
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -28,7 +28,7 @@ graphs:
       default: null
     - id: 340
       name: speed
-      type: 15
+      type: struct
       type_name: GameMovement
       kind: data
       flags: 2
@@ -39,7 +39,7 @@ graphs:
     inputs:
     - id: 342
       name: Velocity
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -49,13 +49,13 @@ graphs:
     type: Multiply
     inputs:
     - id: 344
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - 345
     outputs:
     - id: 346
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   edges:

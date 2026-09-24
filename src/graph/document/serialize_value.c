@@ -6,6 +6,28 @@
 #include <stdlib.h>
 #include <string.h>
 
+const char *serialize_pin_type_name(pin_type type)
+{
+    const char *name = pin_type_name(type);
+    return name ? name : "flow";
+}
+
+bool serialize_read_pin_type(yyjson_val *value, pin_type *out)
+{
+    if (yyjson_is_int(value) && yyjson_get_sint(value) >= PIN_FLOW &&
+        yyjson_get_sint(value) <= PIN_ENUM) {
+        *out = (pin_type)yyjson_get_sint(value);
+        return true;
+    }
+    for (int type = PIN_FLOW; yyjson_is_str(value) && type <= PIN_ENUM; type++) {
+        if (!strcmp(yyjson_get_str(value), serialize_pin_type_name((pin_type)type))) {
+            *out = (pin_type)type;
+            return true;
+        }
+    }
+    return false;
+}
+
 void serialize_write_value(
     yyjson_mut_doc *doc,
     yyjson_mut_val *obj,

@@ -18,7 +18,7 @@ graphs:
       flags: 0
     - id: 8
       name: lifetime
-      type: 10
+      type: float
       type_name: float
       field_source: 4
       field_name: lifetime
@@ -26,7 +26,7 @@ graphs:
       default: 0.0
     - id: 12
       name: age
-      type: 10
+      type: float
       type_name: float
       field_source: 4
       field_name: age
@@ -47,14 +47,14 @@ graphs:
     - 55
     - id: 59
       name: lifetime
-      type: 10
+      type: float
       type_name: float
       field_source: 55
       field_name: lifetime
       default: 0.0
     - id: 63
       name: age
-      type: 10
+      type: float
       type_name: float
       field_source: 55
       field_name: age
@@ -84,13 +84,13 @@ graphs:
     - 127
     - id: 128
       name: X
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 129
       name: "Y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -102,7 +102,7 @@ graphs:
       flags: 0
     - id: 159
       name: x
-      type: 10
+      type: float
       type_name: float
       field_source: 158
       field_name: x
@@ -110,7 +110,7 @@ graphs:
       default: 0.0
     - id: 160
       name: "y"
-      type: 10
+      type: float
       type_name: float
       field_source: 158
       field_name: "y"
@@ -183,13 +183,13 @@ graphs:
       name: Then
     - id: 81
       name: X
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 82
       name: "Y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -220,20 +220,20 @@ graphs:
     - id: 112
       declaration_id: 4
       name: X
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     - id: 115
       declaration_id: 5
       name: "Y"
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - id: 120
       declaration_id: 6
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       default: null
   - id: 126
@@ -247,18 +247,18 @@ graphs:
     inputs:
     - id: 151
       name: x
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 152
       name: "y"
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 153
       name: Result
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -332,13 +332,13 @@ graphs:
     outputs:
     - id: 137
       name: x
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
     - id: 138
       name: "y"
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -347,7 +347,7 @@ graphs:
     inputs:
     - id: 139
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       default: 0.0
@@ -355,40 +355,40 @@ graphs:
     type: Abs
     inputs:
     - id: 141
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 142
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 143
     type: Abs
     inputs:
     - id: 144
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 145
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 146
     type: Add
     inputs:
     - id: 147
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 148
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 149
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:

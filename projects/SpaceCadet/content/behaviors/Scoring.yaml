@@ -5,7 +5,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: award
-  type: 10
+  type: float
 graphs:
 - kind: event
   name: ""
@@ -17,13 +17,13 @@ graphs:
     - 3
     - id: 4
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
     - id: 5
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -50,13 +50,13 @@ graphs:
     inputs:
     - 41
     - id: 42
-      type: 10
+      type: float
       type_name: null
       default: 1000.0
     outputs:
     - 43
     - id: 44
-      type: 10
+      type: float
       type_name: null
       default: 0.0
   - id: 45
@@ -66,13 +66,13 @@ graphs:
     inputs:
     - 46
     - id: 47
-      type: 10
+      type: float
       type_name: null
       default: 5000.0
     outputs:
     - 48
     - id: 49
-      type: 10
+      type: float
       type_name: null
       default: 0.0
   - id: 50
@@ -82,7 +82,7 @@ graphs:
       default: Score
     outputs:
     - id: 52
-      type: 10
+      type: float
       default: 0.0
   - id: 53
     type: Get Global Variable
@@ -91,7 +91,7 @@ graphs:
       default: Rank
     outputs:
     - id: 55
-      type: 10
+      type: float
       default: 0.0
   - id: 73
     type: Behavior Expression
@@ -101,14 +101,14 @@ graphs:
     - id: 74
       declaration_id: 61
       name: score
-      type: 10
+      type: float
       flags: 2
       group: 1
       default: 0.0
     - id: 75
       declaration_id: 62
       name: award
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -120,7 +120,7 @@ graphs:
     - id: 76
       declaration_id: 63
       name: rank
-      type: 10
+      type: float
       flags: 2
       group: 3
       default: 0.0
@@ -128,7 +128,7 @@ graphs:
     - id: 77
       declaration_id: 64
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 4
       default: 0.0
@@ -139,12 +139,12 @@ graphs:
     - id: 131
       default: Score
     - id: 132
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 133
     - id: 134
-      type: 10
+      type: float
       default: 0.0
   - id: 152
     type: Get Global Variable
@@ -153,7 +153,7 @@ graphs:
       default: Hits
     outputs:
     - id: 154
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 169
@@ -164,7 +164,7 @@ graphs:
     - id: 170
       declaration_id: 160
       name: hits
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -173,7 +173,7 @@ graphs:
     - id: 171
       declaration_id: 161
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 2
       default: 0.0
@@ -184,12 +184,12 @@ graphs:
     - id: 188
       default: Hits
     - id: 189
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 190
     - id: 191
-      type: 10
+      type: float
       default: 0.0
   - id: 206
     type: Play Sound
@@ -217,7 +217,7 @@ graphs:
     - id: 230
       declaration_id: 220
       name: hits
-      type: 11
+      type: double
       type_name: double
       group: 1
       default: 0.0
@@ -231,7 +231,7 @@ graphs:
     - id: 231
       declaration_id: 221
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 2
@@ -244,14 +244,14 @@ graphs:
     - id: 269
       declaration_id: 254
       name: score
-      type: 10
+      type: float
       flags: 2
       group: 1
       default: 0.0
     - id: 270
       declaration_id: 255
       name: rank
-      type: 10
+      type: float
       flags: 2
       group: 2
       default: 0.0
@@ -259,7 +259,7 @@ graphs:
     - id: 271
       declaration_id: 256
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 3
       default: 0.0
@@ -270,12 +270,12 @@ graphs:
     - id: 312
       default: Score
     - id: 313
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 314
     - id: 315
-      type: 10
+      type: float
       default: 0.0
   - id: 356
     type: Behavior Expression
@@ -285,7 +285,7 @@ graphs:
     - id: 357
       declaration_id: 340
       name: rank
-      type: 10
+      type: float
       flags: 2
       group: 1
       default: 0.0
@@ -293,7 +293,7 @@ graphs:
     - id: 358
       declaration_id: 341
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 2
       default: 0.0
@@ -304,12 +304,12 @@ graphs:
     - id: 382
       default: Rank
     - id: 383
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 384
     - id: 385
-      type: 10
+      type: float
       default: 0.0
   - id: 407
     type: Set Global Variable
@@ -318,12 +318,12 @@ graphs:
     - id: 409
       default: Hits
     - id: 410
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 411
     - id: 412
-      type: 10
+      type: float
       default: 0.0
   - id: 413
     type: Play Sound
@@ -489,14 +489,14 @@ graphs:
     outputs:
     - id: 140
       name: score
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 1
       default: 0.0
     - id: 141
       name: award
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -504,7 +504,7 @@ graphs:
       default: 0.0
     - id: 142
       name: rank
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 3
@@ -514,7 +514,7 @@ graphs:
     inputs:
     - id: 143
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 4
@@ -523,14 +523,14 @@ graphs:
     type: Multiply
     inputs:
     - id: 145
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 146
       type_name: null
     outputs:
     - id: 147
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 148
@@ -539,7 +539,7 @@ graphs:
     - id: 149
       type_name: null
     - id: 150
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -580,7 +580,7 @@ graphs:
     outputs:
     - id: 197
       name: hits
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 1
@@ -590,7 +590,7 @@ graphs:
     inputs:
     - id: 198
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 2
@@ -607,7 +607,7 @@ graphs:
     - id: 203
       type_name: null
     - id: 204
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -640,7 +640,7 @@ graphs:
     outputs:
     - id: 240
       name: hits
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
@@ -650,7 +650,7 @@ graphs:
     inputs:
     - id: 241
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -666,11 +666,11 @@ graphs:
     type: Greater Or Equal
     inputs:
     - id: 246
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 247
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [248]
@@ -701,14 +701,14 @@ graphs:
     outputs:
     - id: 321
       name: score
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 1
       default: 0.0
     - id: 322
       name: rank
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 2
@@ -718,7 +718,7 @@ graphs:
     inputs:
     - id: 323
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 3
@@ -733,14 +733,14 @@ graphs:
     type: Multiply
     inputs:
     - id: 328
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 329
       type_name: null
     outputs:
     - id: 330
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 331
@@ -749,7 +749,7 @@ graphs:
     - id: 332
       type_name: null
     - id: 333
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -790,7 +790,7 @@ graphs:
     outputs:
     - id: 391
       name: rank
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 1
@@ -800,7 +800,7 @@ graphs:
     inputs:
     - id: 392
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 2
@@ -817,7 +817,7 @@ graphs:
     - id: 397
       type_name: null
     - id: 398
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -835,7 +835,7 @@ graphs:
     - id: 404
       type_name: null
     - id: 405
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:

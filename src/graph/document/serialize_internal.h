@@ -9,6 +9,9 @@
 
 void serialize_error_set(const char *fmt, ...);
 bool serialize_same_value(const pin_value *a, const pin_value *b);
+/* Documents spell pin types by name; loading also accepts enum numbers. */
+const char *serialize_pin_type_name(pin_type type);
+bool serialize_read_pin_type(yyjson_val *value, pin_type *out);
 void serialize_write_value(
     yyjson_mut_doc *doc,
     yyjson_mut_val *obj,

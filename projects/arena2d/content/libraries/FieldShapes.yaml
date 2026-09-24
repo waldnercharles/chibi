@@ -17,12 +17,12 @@ graphs:
     outputs:
     - id: 6
       name: X
-      type: 10
+      type: float
       kind: data
       default: 0.0
     - id: 7
       name: "Y"
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 4
@@ -30,7 +30,7 @@ graphs:
     inputs:
     - id: 8
       name: Value
-      type: 10
+      type: float
       kind: data
       default: 0.0
   - id: 9

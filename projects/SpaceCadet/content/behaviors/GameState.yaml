@@ -21,12 +21,12 @@ graphs:
     - id: 7
       default: Score
     - id: 8
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 9
     - id: 10
-      type: 10
+      type: float
       default: 0.0
   - id: 11
     type: Set Global Variable
@@ -35,12 +35,12 @@ graphs:
     - id: 13
       default: Lives
     - id: 14
-      type: 10
+      type: float
       default: 3.0
     outputs:
     - 15
     - id: 16
-      type: 10
+      type: float
       default: 0.0
   - id: 17
     type: Set Global Variable
@@ -49,12 +49,12 @@ graphs:
     - id: 19
       default: Hits
     - id: 20
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 21
     - id: 22
-      type: 10
+      type: float
       default: 0.0
   - id: 23
     type: Set Global Variable
@@ -63,12 +63,12 @@ graphs:
     - id: 25
       default: Rank
     - id: 26
-      type: 10
+      type: float
       default: 1.0
     outputs:
     - 27
     - id: 28
-      type: 10
+      type: float
       default: 0.0
   - id: 29
     type: Set Global Variable
@@ -77,12 +77,12 @@ graphs:
     - id: 31
       default: Ready
     - id: 32
-      type: 10
+      type: float
       default: 1.0
     outputs:
     - 33
     - id: 34
-      type: 10
+      type: float
       default: 0.0
   - id: 35
     type: Set Global Variable
@@ -91,12 +91,12 @@ graphs:
     - id: 37
       default: Charge
     - id: 38
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 39
     - id: 40
-      type: 10
+      type: float
       default: 0.0
   - id: 41
     type: Set_GameTransform

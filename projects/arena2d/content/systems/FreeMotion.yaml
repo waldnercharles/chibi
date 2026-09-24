@@ -13,7 +13,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -31,7 +31,7 @@ graphs:
     - id: 26
       declaration_id: 13
       name: position
-      type: 15
+      type: struct
       type_name: GameTransform
       flags: 2
       group: 1
@@ -39,7 +39,7 @@ graphs:
     - id: 27
       declaration_id: 14
       name: velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       flags: 2
       group: 2
@@ -47,7 +47,7 @@ graphs:
     - id: 28
       declaration_id: 15
       name: dt
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 3
@@ -56,7 +56,7 @@ graphs:
     - id: 29
       declaration_id: 16
       name: Result
-      type: 15
+      type: struct
       type_name: GameTransform
       flags: 2
       group: 4
@@ -100,7 +100,7 @@ graphs:
     outputs:
     - id: 91
       name: position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       flags: 2
@@ -108,7 +108,7 @@ graphs:
       default: null
     - id: 92
       name: velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       kind: data
       flags: 2
@@ -116,7 +116,7 @@ graphs:
       default: null
     - id: 93
       name: dt
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -127,7 +127,7 @@ graphs:
     inputs:
     - id: 94
       name: Result
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       flags: 2
@@ -137,29 +137,29 @@ graphs:
     type: Multiply
     inputs:
     - id: 96
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
     - 97
     outputs:
     - id: 98
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 99
     type: Add
     inputs:
     - id: 100
-      type: 15
+      type: struct
       type_name: GameTransform
       default: null
     - id: 101
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
     outputs:
     - id: 102
-      type: 15
+      type: struct
       type_name: GameTransform
       default: null
   edges:

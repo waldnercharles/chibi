@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 70
   name: Death Handled
-  type: 1
+  type: bool
   type_name: bool
   category: State
 graphs:
@@ -21,14 +21,14 @@ graphs:
     - id: 20
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 21
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -39,7 +39,7 @@ graphs:
       flags: 0
     - id: 25
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 23
       field_name: current
@@ -67,14 +67,14 @@ graphs:
     - id: 38
       declaration_id: 3
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ArenaHitPulse
     - id: 39
       declaration_id: 4
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
@@ -87,7 +87,7 @@ graphs:
     - id: 43
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -100,14 +100,14 @@ graphs:
     - id: 66
       declaration_id: 3
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ArenaDeathPulse
     - id: 67
       declaration_id: 4
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
@@ -117,7 +117,7 @@ graphs:
     reference_id: 70
     outputs:
     - id: 71
-      type: 1
+      type: bool
       type_name: bool
       flags: 0
       default: false
@@ -131,13 +131,13 @@ graphs:
     inputs:
     - 78
     - id: 79
-      type: 1
+      type: bool
       type_name: bool
       default: true
     outputs:
     - 80
     - id: 81
-      type: 1
+      type: bool
       type_name: bool
       default: false
   - id: 84
@@ -156,7 +156,7 @@ graphs:
       flags: 0
     - id: 92
       name: role
-      type: 6
+      type: int
       type_name: int
       field_source: 90
       field_name: role
@@ -182,35 +182,35 @@ graphs:
     - id: 112
       declaration_id: 545
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 113
       declaration_id: 546
       name: Appearance
-      type: 15
+      type: struct
       type_name: GameGeometry3D
       kind: data
       default: null
     - id: 114
       declaration_id: 547
       name: Material
-      type: 15
+      type: struct
       type_name: GameShader
       kind: data
       default: null
     - id: 115
       declaration_id: 548
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       default: null
     - id: 595
       declaration_id: 594
       name: Visual
-      type: 15
+      type: struct
       type_name: GameVisualTransform
       kind: data
       default: null
@@ -343,13 +343,13 @@ graphs:
       name: Then
     - id: 3
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ArenaHitPulse
     - id: 4
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
@@ -407,31 +407,31 @@ graphs:
       name: Then
     - id: 545
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 546
       name: Appearance
-      type: 15
+      type: struct
       type_name: GameGeometry3D
       kind: data
       default: null
     - id: 547
       name: Material
-      type: 15
+      type: struct
       type_name: GameShader
       kind: data
       default: null
     - id: 548
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       default: null
     - id: 594
       name: Visual
-      type: 15
+      type: struct
       type_name: GameVisualTransform
       kind: data
       default: null

@@ -13,7 +13,7 @@ import {
   renderRequest,
   validateAuthoringArguments,
 } from "./authoring.mjs";
-import { controllerExecutable } from "./controller.mjs";
+import { controllerExecutable, parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -177,7 +177,7 @@ class ControllerSession {
       clearTimeout(this.timer);
       this.timer = null;
       try {
-        request.resolveRequest(JSON.parse(line));
+        request.resolveRequest(parseControllerJson(line));
       } catch (error) {
         request.rejectRequest(protocolError(-32603, `chibi_ctl returned invalid JSON: ${error.message}`));
         this.fail(new Error("chibi_ctl returned invalid JSON"));
@@ -237,7 +237,14 @@ class ControllerSession {
 
 let controllerSession;
 
+let toolDefinitionsCache;
+
 function rawToolDefinitions() {
+  toolDefinitionsCache ||= buildToolDefinitions();
+  return toolDefinitionsCache;
+}
+
+function buildToolDefinitions() {
   const noArguments = { type: "object", additionalProperties: false };
   const outputSchema = { type: "object", additionalProperties: true };
   const pageProperties = {
@@ -385,7 +392,7 @@ function rawToolDefinitions() {
         type: "integer",
         minimum: 1,
         maximum: 256,
-        description: "Maximum number of ordered entities to include.",
+        description: "Maximum number of ordered entities to include; defaults to 32.",
       },
       component_limit: {
         type: "integer",
@@ -588,43 +595,13 @@ function rawToolDefinitions() {
   scenePreview.inputSchema.properties.input_timeline = timeline;
   scenarioArguments.properties.input_timeline = timeline;
   runtimeSnapshotArguments.properties.input_timeline = timeline;
-  scenarioArguments.properties.inputs = normalizedInputs;
-  runtimeSnapshotArguments.properties.inputs = normalizedInputs;
-  const recording = {
-    type: "object",
-    properties: {
-      version: { type: "integer", enum: [2] },
-      contract_version: { type: "integer", enum: [1] },
-      id: { type: "string", maxLength: 128 },
-      format: { type: "string", maxLength: 128 },
-      kind: { type: "string", enum: ["prototype", "scene"] },
-      name: { type: "string", minLength: 1, maxLength: 128 },
-      frames: { type: "integer", minimum: 0, maximum: 1800 },
-      fixed_dt: { type: "number", minimum: 0.000001, maximum: 0.25 },
-      content_hash: { type: "string", minLength: 16, maxLength: 16 },
-      runtime_content_hash: { type: "string", minLength: 16, maxLength: 16 },
-      assets: {
-        type: "array", maxItems: 4096,
-        items: {
-          type: "object",
-          properties: {
-            kind: { type: "string" }, name: { type: "string" }, path: { type: "string" },
-            bytes: { type: "integer", minimum: 0 }, hash: { type: "string", minLength: 16, maxLength: 16 },
-          },
-          required: ["kind", "name", "path", "bytes", "hash"], additionalProperties: false,
-        },
-      },
-      inputs: normalizedInputs,
-      saved_state: savedState,
-      frame_hashes: { type: "array", maxItems: 1800, items: { type: "string", minLength: 16, maxLength: 16 } },
-      live_entities: { type: "array", maxItems: 1800, items: { type: "integer", minimum: 0 } },
-      world_hash: { type: "string", maxLength: 16 },
-      artifact_path: { type: "string", maxLength: 1024 },
-    },
-    required: ["version", "contract_version", "format", "kind", "name", "frames", "fixed_dt",
-               "content_hash", "runtime_content_hash", "inputs", "frame_hashes", "live_entities"],
-    additionalProperties: false,
-  };
+  // One detailed input schema per tool; chibi_ctl validates every sample.
+  const frameInputs = { type: "array", maxItems: 1800, items: { type: "object" },
+    description: "One input per fixed frame, shaped like input_timeline[].input." };
+  scenePreview.inputSchema.properties.inputs = frameInputs;
+  scenarioArguments.properties.inputs = frameInputs;
+  runtimeSnapshotArguments.properties.inputs = frameInputs;
+  const recording = { type: "object", description: "Recording returned by recordScenario, passed back unchanged." };
   const recordArguments = {
     type: "object",
     properties: {
@@ -684,7 +661,11 @@ function rawToolDefinitions() {
       name: "listAssets",
       operation: "list_assets",
       description: "List authored YAML assets with stable paths, sizes, and content hashes.",
-      inputSchema: pageArguments,
+      inputSchema: {
+        type: "object",
+        properties: { limit: pageProperties.limit, cursor: pageProperties.cursor },
+        additionalProperties: false,
+      },
       outputSchema,
     },
     {
@@ -782,7 +763,18 @@ function rawToolDefinitions() {
       name: "describeRegistry",
       operation: "describe_registry",
       description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
-      inputSchema: noArguments,
+      inputSchema: {
+        type: "object",
+        properties: {
+          sections: {
+            type: "array",
+            maxItems: 5,
+            items: { type: "string", enum: ["nodes", "types", "services", "operators", "components"] },
+            description: "Sections to return; defaults to all but nodes, which searchNodes covers.",
+          },
+        },
+        additionalProperties: false,
+      },
       outputSchema,
     },
     {
@@ -815,8 +807,9 @@ function rawToolDefinitions() {
 }
 
 async function nativeRequest(operation, args = {}) {
-  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
-  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
+  // Long deterministic scenarios can run for minutes; a timeout restarts the controller.
+  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
+  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 300000;
   let executable;
   try {
     executable = await controllerExecutable();

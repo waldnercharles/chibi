@@ -13,7 +13,7 @@ graphs:
     - 2
     - id: 3
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -24,7 +24,7 @@ graphs:
       default: Ready
     outputs:
     - id: 6
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 21
@@ -38,7 +38,7 @@ graphs:
     - id: 22
       declaration_id: 12
       name: ready
-      type: 11
+      type: double
       type_name: double
       group: 1
       default: 0.0
@@ -52,7 +52,7 @@ graphs:
     - id: 23
       declaration_id: 13
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 2
@@ -65,7 +65,7 @@ graphs:
     - id: 75
       declaration_id: 46
       name: v
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -77,7 +77,7 @@ graphs:
     - id: 76
       declaration_id: 47
       name: dt
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -88,7 +88,7 @@ graphs:
     - id: 77
       declaration_id: 48
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -108,7 +108,7 @@ graphs:
     - id: 198
       declaration_id: 188
       name: "y"
-      type: 11
+      type: double
       type_name: double
       group: 1
       binding:
@@ -126,7 +126,7 @@ graphs:
     - id: 199
       declaration_id: 189
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 2
@@ -138,7 +138,7 @@ graphs:
       default: Lives
     outputs:
     - id: 219
-      type: 10
+      type: float
       default: 0.0
   - id: 241
     type: Behavior Expression
@@ -148,7 +148,7 @@ graphs:
     - id: 242
       declaration_id: 225
       name: lives
-      type: 10
+      type: float
       flags: 2
       group: 1
       default: 0.0
@@ -156,7 +156,7 @@ graphs:
     - id: 243
       declaration_id: 226
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 2
       default: 0.0
@@ -167,12 +167,12 @@ graphs:
     - id: 267
       default: Lives
     - id: 268
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 269
     - id: 270
-      type: 10
+      type: float
       default: 0.0
   - id: 292
     type: Set Global Variable
@@ -181,12 +181,12 @@ graphs:
     - id: 294
       default: Ready
     - id: 295
-      type: 10
+      type: float
       default: 1.0
     outputs:
     - 296
     - id: 297
-      type: 10
+      type: float
       default: 0.0
   - id: 298
     type: Set Global Variable
@@ -195,12 +195,12 @@ graphs:
     - id: 300
       default: Charge
     - id: 301
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - 302
     - id: 303
-      type: 10
+      type: float
       default: 0.0
   - id: 304
     type: Set_GameTransform
@@ -302,7 +302,7 @@ graphs:
     outputs:
     - id: 32
       name: ready
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
@@ -312,7 +312,7 @@ graphs:
     inputs:
     - id: 33
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -328,11 +328,11 @@ graphs:
     type: Less
     inputs:
     - id: 38
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 39
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [40]
@@ -363,7 +363,7 @@ graphs:
     outputs:
     - id: 155
       name: v
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -371,7 +371,7 @@ graphs:
       default: 0.0
     - id: 156
       name: dt
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -382,7 +382,7 @@ graphs:
     inputs:
     - id: 157
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -398,32 +398,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 162
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 163
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 164
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 165
     type: Add
     inputs:
     - id: 166
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 167
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 168
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 169
@@ -436,12 +436,12 @@ graphs:
     type: Negate
     inputs:
     - id: 173
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 174
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 175
@@ -454,20 +454,20 @@ graphs:
     type: Clamp
     inputs:
     - id: 179
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 180
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 181
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 182
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -521,7 +521,7 @@ graphs:
     outputs:
     - id: 208
       name: "y"
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
@@ -531,7 +531,7 @@ graphs:
     inputs:
     - id: 209
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -547,11 +547,11 @@ graphs:
     type: Greater
     inputs:
     - id: 214
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 215
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [216]
@@ -582,7 +582,7 @@ graphs:
     outputs:
     - id: 276
       name: lives
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 1
@@ -592,7 +592,7 @@ graphs:
     inputs:
     - id: 277
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 2
@@ -609,7 +609,7 @@ graphs:
     - id: 282
       type_name: null
     - id: 283
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -625,7 +625,7 @@ graphs:
     - id: 289
       type_name: null
     - id: 290
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:

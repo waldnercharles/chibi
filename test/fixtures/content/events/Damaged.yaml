@@ -6,12 +6,12 @@ description: Accepted health loss after damage is applied. Amount is the actual 
 variables:
 - id: 2
   name: Amount
-  type: 6
+  type: int
   type_name: int
   category: Payload
 - id: 3
   name: Source
-  type: 14
+  type: handle
   type_name: ecs.entity
   category: Payload
 graphs:

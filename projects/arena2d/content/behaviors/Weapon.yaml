@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: elapsed
-  type: 10
+  type: float
   default: 0.125
 graphs:
 - kind: event
@@ -19,7 +19,7 @@ graphs:
     - 3
     - id: 4
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -79,7 +79,7 @@ graphs:
     - id: 49
       declaration_id: 41
       name: elapsed
-      type: 10
+      type: float
       flags: 6
       group: 1
       binding:
@@ -90,7 +90,7 @@ graphs:
     - id: 50
       declaration_id: 42
       name: dt
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -104,7 +104,7 @@ graphs:
     - id: 51
       declaration_id: 43
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 3
       default: 0.0
@@ -150,7 +150,7 @@ graphs:
     - id: 178
       declaration_id: 165
       name: x
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 1
@@ -162,7 +162,7 @@ graphs:
     - id: 179
       declaration_id: 166
       name: "y"
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 2
@@ -174,7 +174,7 @@ graphs:
     - id: 180
       declaration_id: 167
       name: offset
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 3
@@ -183,7 +183,7 @@ graphs:
     - id: 181
       declaration_id: 168
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       flags: 2
       group: 4
@@ -198,14 +198,14 @@ graphs:
     - id: 236
       declaration_id: 176
       name: Origin
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 237
       declaration_id: 177
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       binding:
@@ -216,7 +216,7 @@ graphs:
     - id: 238
       declaration_id: 178
       name: Damage
-      type: 6
+      type: int
       type_name: int
       kind: data
       binding:
@@ -227,14 +227,14 @@ graphs:
     - id: 239
       declaration_id: 220
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: Projectile
     - id: 240
       declaration_id: 255
       name: Shooter
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -243,7 +243,7 @@ graphs:
     - id: 241
       declaration_id: 181
       name: Entity
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -258,7 +258,7 @@ graphs:
     - id: 272
       declaration_id: 264
       name: elapsed
-      type: 10
+      type: float
       flags: 6
       group: 1
       binding:
@@ -269,7 +269,7 @@ graphs:
     - id: 273
       declaration_id: 265
       name: cooldown
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -285,7 +285,7 @@ graphs:
     - id: 274
       declaration_id: 266
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 3
       default: 0.0
@@ -300,7 +300,7 @@ graphs:
     - id: 324
       declaration_id: 316
       name: elapsed
-      type: 10
+      type: float
       flags: 6
       group: 1
       binding:
@@ -311,7 +311,7 @@ graphs:
     - id: 325
       declaration_id: 317
       name: cooldown
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -327,7 +327,7 @@ graphs:
     - id: 326
       declaration_id: 318
       name: Result
-      type: 10
+      type: float
       flags: 2
       group: 3
       default: 0.0
@@ -439,13 +439,13 @@ graphs:
     - 73
     - id: 76
       name: elapsed
-      type: 10
+      type: float
       kind: data
       group: 1
       default: 0.0
     - id: 77
       name: dt
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -457,7 +457,7 @@ graphs:
     - 75
     - id: 78
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 3
@@ -468,7 +468,7 @@ graphs:
     - id: 80
       type_name: null
     - id: 81
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -481,13 +481,13 @@ graphs:
     inputs:
     - 84
     - id: 85
-      type: 10
+      type: float
       type_name: null
       default: 0.0
     outputs:
     - 86
     - id: 87
-      type: 10
+      type: float
       type_name: null
       default: 0.0
   edges:
@@ -530,13 +530,13 @@ graphs:
     - 348
     - id: 351
       name: elapsed
-      type: 10
+      type: float
       kind: data
       group: 1
       default: 0.0
     - id: 352
       name: cooldown
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -548,7 +548,7 @@ graphs:
     - 350
     - id: 353
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 3
@@ -559,7 +559,7 @@ graphs:
     - id: 355
       type_name: null
     - id: 356
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -572,13 +572,13 @@ graphs:
     inputs:
     - 359
     - id: 360
-      type: 10
+      type: float
       type_name: null
       default: 0.0
     outputs:
     - 361
     - id: 362
-      type: 10
+      type: float
       type_name: null
       default: 0.0
   edges:
@@ -620,7 +620,7 @@ graphs:
     outputs:
     - id: 247
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -628,7 +628,7 @@ graphs:
       default: 0.0
     - id: 248
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -636,7 +636,7 @@ graphs:
       default: 0.0
     - id: 249
       name: offset
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -647,7 +647,7 @@ graphs:
     inputs:
     - id: 250
       name: Result
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       flags: 2
@@ -661,16 +661,16 @@ graphs:
     type: Add
     inputs:
     - id: 256
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 257
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     outputs:
     - id: 258
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
   edges:
@@ -709,13 +709,13 @@ graphs:
     - 296
     - id: 299
       name: elapsed
-      type: 10
+      type: float
       kind: data
       group: 1
       default: 0.0
     - id: 300
       name: cooldown
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -727,7 +727,7 @@ graphs:
     - 298
     - id: 301
       name: Result
-      type: 10
+      type: float
       kind: data
       flags: 2
       group: 3
@@ -738,7 +738,7 @@ graphs:
     - id: 303
       type_name: null
     - id: 304
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
@@ -751,13 +751,13 @@ graphs:
     inputs:
     - 307
     - id: 308
-      type: 10
+      type: float
       type_name: null
       default: 0.0
     outputs:
     - 309
     - id: 310
-      type: 10
+      type: float
       type_name: null
       default: 0.0
   edges:

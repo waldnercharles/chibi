@@ -16,7 +16,7 @@ graphs:
     reference_name: Scroll Speed
     outputs:
     - id: 3
-      type: 15
+      type: struct
       type_name: ShaderVec2
       flags: 0
       group: 0
@@ -30,7 +30,7 @@ graphs:
       flags: 0
       group: 0
     - id: 6
-      type: 15
+      type: struct
       type_name: ShaderVec2
       flags: 0
       group: 0
@@ -39,7 +39,7 @@ graphs:
         "y": 0.0
     outputs:
     - id: 7
-      type: 15
+      type: struct
       type_name: ShaderVec2
       flags: 0
       group: 0
@@ -52,7 +52,7 @@ graphs:
     reference_name: Tiling
     outputs:
     - id: 9
-      type: 15
+      type: struct
       type_name: ShaderVec2
       flags: 0
       group: 0
@@ -100,7 +100,7 @@ graphs:
     type: Shader X
     inputs:
     - id: 25
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -161,7 +161,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 36
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -175,7 +175,7 @@ graphs:
       default: 1.0
     outputs:
     - id: 38
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

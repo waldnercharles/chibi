@@ -15,14 +15,14 @@ graphs:
     - id: 3
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 4
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -37,7 +37,7 @@ graphs:
     - id: 18
       declaration_id: 10
       name: health
-      type: 6
+      type: int
       type_name: int
       flags: 6
       group: 1
@@ -49,7 +49,7 @@ graphs:
     - id: 19
       declaration_id: 11
       name: amount
-      type: 6
+      type: int
       type_name: int
       flags: 2
       group: 2
@@ -61,7 +61,7 @@ graphs:
     - id: 20
       declaration_id: 12
       name: Result
-      type: 6
+      type: int
       type_name: int
       flags: 2
       group: 3
@@ -72,14 +72,14 @@ graphs:
     - 89
     - id: 90
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 89
       field_name: current
       default: 0
     - id: 91
       name: maximum
-      type: 6
+      type: int
       type_name: int
       field_source: 89
       field_name: maximum
@@ -95,7 +95,7 @@ graphs:
     - id: 107
       declaration_id: 97
       name: health
-      type: 11
+      type: double
       type_name: double
       group: 1
       default: 0.0
@@ -109,7 +109,7 @@ graphs:
     - id: 108
       declaration_id: 98
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       flags: 2
       group: 2
@@ -133,13 +133,13 @@ graphs:
     - id: 146
       declaration_id: 261
       name: Prototype
-      type: 12
+      type: name
       kind: data
       default: HitEmitter
     - id: 147
       declaration_id: 262
       name: Transform
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       binding:
@@ -151,7 +151,7 @@ graphs:
     - id: 148
       declaration_id: 263
       name: Entity
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -165,13 +165,13 @@ graphs:
     - id: 152
       declaration_id: 261
       name: Prototype
-      type: 12
+      type: name
       kind: data
       default: DeathEmitter
     - id: 153
       declaration_id: 262
       name: Transform
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       binding:
@@ -183,7 +183,7 @@ graphs:
     - id: 154
       declaration_id: 263
       name: Entity
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -236,14 +236,14 @@ graphs:
     - 52
     - id: 55
       name: health
-      type: 6
+      type: int
       type_name: int
       kind: data
       group: 1
       default: 0
     - id: 56
       name: amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       flags: 2
@@ -255,7 +255,7 @@ graphs:
     - 54
     - id: 57
       name: Result
-      type: 6
+      type: int
       type_name: int
       kind: data
       flags: 2
@@ -265,16 +265,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 59
-      type: 6
+      type: int
       type_name: int
       default: 0
     - id: 60
-      type: 6
+      type: int
       type_name: int
       default: 0
     outputs:
     - id: 61
-      type: 6
+      type: int
       type_name: int
       default: 0
   - id: 62
@@ -343,7 +343,7 @@ graphs:
     outputs:
     - id: 117
       name: health
-      type: 11
+      type: double
       type_name: double
       kind: data
       group: 1
@@ -353,7 +353,7 @@ graphs:
     inputs:
     - id: 118
       name: Result
-      type: 1
+      type: bool
       type_name: bool
       kind: data
       flags: 2
@@ -367,11 +367,11 @@ graphs:
     type: Less Or Equal
     inputs:
     - id: 123
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 124
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs: [125]

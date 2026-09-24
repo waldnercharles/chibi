@@ -81,7 +81,7 @@ const requests = [
   { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validateAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describeRegistry", arguments: {} } },
+  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describeRegistry", arguments: { sections: ["nodes"] } } },
   { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describeContract", arguments: {} } },
   { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "listAssets", arguments: { limit: 2 } } },
   { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "getAssetCatalog", arguments: { limit: 1, summary: true } } },
@@ -416,7 +416,8 @@ if (linkedValidation.response.ok !== true || !linkedValidation.response.result?.
   throw new Error("validateAsset must link external library functions before compilation");
 }
 
-const nativeRegistry = nativeRequest("describe_registry");
+const nativeRegistry = nativeRequest("describe_registry", { sections: ["nodes"] });
+const defaultRegistry = nativeRequest("describe_registry");
 const nativeMissing = nativeRequest("read_asset", { path: "content/nope.yaml" });
 if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeAssets.response.result?.assets?.length < 1 ||
@@ -436,6 +437,8 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeRead.response.result?.name !== "HealthBehavior" ||
     nativeValidation.response.result?.valid !== true ||
     nativeRegistry.response.result?.nodes?.length < 1 ||
+    defaultRegistry.response.result?.nodes !== undefined ||
+    !(defaultRegistry.response.result?.components?.length > 0) ||
     nativeMissing.status !== 6 || nativeMissing.response.error?.code !== "asset_not_found") {
   throw new Error("native controller smoke checks failed");
 }

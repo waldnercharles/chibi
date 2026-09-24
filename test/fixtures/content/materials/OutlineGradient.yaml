@@ -64,7 +64,7 @@ graphs:
     - id: 44
       declaration_id: 104
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec2
       default:
         x: 0.0
@@ -72,18 +72,18 @@ graphs:
     - id: 45
       declaration_id: 105
       name: Radius
-      type: 10
+      type: float
       default: 35.0
     - id: 46
       declaration_id: 106
       name: Width
-      type: 10
+      type: float
       default: 3.0
     outputs:
     - id: 47
       declaration_id: 108
       name: Mask
-      type: 10
+      type: float
       default: 0.0
   - id: 48
     type: Shader Parameter
@@ -91,7 +91,7 @@ graphs:
     reference_name: Color
     outputs:
     - id: 49
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -105,7 +105,7 @@ graphs:
     reference_name: Color B
     outputs:
     - id: 51
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       group: 0
@@ -121,7 +121,7 @@ graphs:
     - id: 53
       declaration_id: 3
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec2
       default:
         x: 0.0
@@ -129,7 +129,7 @@ graphs:
     - id: 54
       declaration_id: 4
       name: Color
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -139,7 +139,7 @@ graphs:
     - id: 55
       declaration_id: 5
       name: Color B
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -149,13 +149,13 @@ graphs:
     - id: 56
       declaration_id: 6
       name: Width
-      type: 10
+      type: float
       default: 100.0
     outputs:
     - id: 57
       declaration_id: 8
       name: Color
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 64
       default:
@@ -191,18 +191,18 @@ graphs:
     - id: 65
       declaration_id: 61
       name: Time
-      type: 10
+      type: float
       default: 0.0
     - id: 66
       declaration_id: 62
       name: Speed
-      type: 10
+      type: float
       default: 0.0
     outputs:
     - id: 67
       declaration_id: 63
       name: Brightness
-      type: 10
+      type: float
       default: 0.0
   - id: 68
     type: Shader Add
@@ -235,7 +235,7 @@ graphs:
     type: Shader Multiply
     inputs:
     - id: 77
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -248,7 +248,7 @@ graphs:
       group: 0
     outputs:
     - id: 79
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -333,7 +333,7 @@ graphs:
     outputs:
     - id: 3
       name: Position
-      type: 15
+      type: struct
       type_name: ShaderVec2
       kind: data
       default:
@@ -341,7 +341,7 @@ graphs:
         "y": 0.0
     - id: 4
       name: Color
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       flags: 64
@@ -351,7 +351,7 @@ graphs:
         z: 0.0
     - id: 5
       name: Color B
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       flags: 64
@@ -361,7 +361,7 @@ graphs:
         z: 1.0
     - id: 6
       name: Width
-      type: 10
+      type: float
       kind: data
       default: 100.0
   - id: 7
@@ -369,7 +369,7 @@ graphs:
     inputs:
     - id: 8
       name: Color
-      type: 15
+      type: struct
       type_name: ShaderVec3
       kind: data
       flags: 64
@@ -381,7 +381,7 @@ graphs:
     type: Shader X
     inputs:
     - id: 11
-      type: 15
+      type: struct
       type_name: ShaderVec2
       flags: 0
       group: 0
@@ -431,7 +431,7 @@ graphs:
     type: Shader Mix
     inputs:
     - id: 25
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -440,7 +440,7 @@ graphs:
         "y": 0.0
         z: 0.0
     - id: 26
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0
@@ -453,7 +453,7 @@ graphs:
       group: 0
     outputs:
     - id: 28
-      type: 15
+      type: struct
       type_name: ShaderVec3
       flags: 0
       group: 0

@@ -19,14 +19,14 @@ graphs:
     - id: 5
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 6
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null

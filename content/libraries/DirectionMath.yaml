@@ -18,13 +18,13 @@ graphs:
     outputs:
     - id: 4
       name: X
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 5
       name: "Y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -33,7 +33,7 @@ graphs:
     inputs:
     - id: 6
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       default: null

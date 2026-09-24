@@ -35,14 +35,14 @@ graphs:
     - id: 490
       declaration_id: 3
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ArenaDeathPulse
     - id: 491
       declaration_id: 4
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
@@ -56,7 +56,7 @@ graphs:
     - id: 497
       declaration_id: 104
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       binding:
@@ -66,7 +66,7 @@ graphs:
     - id: 498
       declaration_id: 105
       name: Appearance
-      type: 15
+      type: struct
       type_name: GameGeometry3D
       kind: data
       binding:
@@ -76,7 +76,7 @@ graphs:
     - id: 499
       declaration_id: 106
       name: Material
-      type: 15
+      type: struct
       type_name: GameShader
       kind: data
       binding:
@@ -86,7 +86,7 @@ graphs:
     - id: 500
       declaration_id: 107
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       binding:
@@ -96,7 +96,7 @@ graphs:
     - id: 544
       declaration_id: 543
       name: Visual
-      type: 15
+      type: struct
       type_name: GameVisualTransform
       kind: data
       binding:
@@ -243,31 +243,31 @@ graphs:
       name: Then
     - id: 104
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 105
       name: Appearance
-      type: 15
+      type: struct
       type_name: GameGeometry3D
       kind: data
       default: null
     - id: 106
       name: Material
-      type: 15
+      type: struct
       type_name: GameShader
       kind: data
       default: null
     - id: 107
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       default: null
     - id: 543
       name: Visual
-      type: 15
+      type: struct
       type_name: GameVisualTransform
       kind: data
       default: null
@@ -283,76 +283,76 @@ graphs:
     - id: 572
       declaration_id: 558
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 573
       declaration_id: 559
       name: Appearance
-      type: 15
+      type: struct
       type_name: GameGeometry3D
       kind: data
       default: null
     - id: 574
       declaration_id: 560
       name: Material
-      type: 15
+      type: struct
       type_name: GameShader
       kind: data
       default: null
     - id: 575
       declaration_id: 561
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       default: null
     - id: 576
       declaration_id: 562
       name: Visual
-      type: 15
+      type: struct
       type_name: GameVisualTransform
       kind: data
       default: null
     - id: 577
       declaration_id: 563
       name: Center
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 578
       declaration_id: 564
       name: Center Y
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 579
       declaration_id: 565
       name: Width
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 580
       declaration_id: 566
       name: Height
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 581
       declaration_id: 567
       name: Depth
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 877
       name: Primitive
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
@@ -369,20 +369,20 @@ graphs:
     type: Subtract
     inputs:
     - id: 905
-      type: 6
+      type: int
       type_name: int
       flags: 0
       group: 0
       default: 0
     - id: 906
-      type: 6
+      type: int
       type_name: int
       flags: 0
       group: 0
       default: 1
     outputs:
     - id: 907
-      type: 6
+      type: int
       type_name: int
       flags: 0
       group: 0
@@ -482,13 +482,13 @@ graphs:
       name: Then
     - id: 3
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: ArenaHitPulse
     - id: 4
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
@@ -546,73 +546,73 @@ graphs:
       name: Then
     - id: 558
       name: Position
-      type: 15
+      type: struct
       type_name: GameTransform
       kind: data
       default: null
     - id: 559
       name: Appearance
-      type: 15
+      type: struct
       type_name: GameGeometry3D
       kind: data
       default: null
     - id: 560
       name: Material
-      type: 15
+      type: struct
       type_name: GameShader
       kind: data
       default: null
     - id: 561
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       kind: data
       default: null
     - id: 562
       name: Visual
-      type: 15
+      type: struct
       type_name: GameVisualTransform
       kind: data
       default: null
     - id: 563
       name: Center
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 564
       name: Center Y
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 565
       name: Width
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 566
       name: Height
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 567
       name: Depth
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
     - id: 878
       name: Primitive
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 727
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 558
@@ -620,7 +620,7 @@ graphs:
       default: 0.0
     - id: 728
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 558
@@ -628,7 +628,7 @@ graphs:
       default: 0.0
     - id: 732
       name: elevation
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 559
@@ -636,7 +636,7 @@ graphs:
       default: 0.0
     - id: 733
       name: radians
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 561
@@ -671,20 +671,20 @@ graphs:
     type: Add
     inputs:
     - id: 766
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 767
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 768
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -693,20 +693,20 @@ graphs:
     type: Add
     inputs:
     - id: 770
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 771
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 772
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -715,20 +715,20 @@ graphs:
     type: Add
     inputs:
     - id: 774
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 775
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     outputs:
     - id: 776
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -737,20 +737,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 790
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 791
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 5.0
     outputs:
     - id: 792
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
@@ -759,20 +759,20 @@ graphs:
     type: Multiply
     inputs:
     - id: 794
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 0.0
     - id: 795
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0
       default: 5.0
     outputs:
     - id: 796
-      type: 11
+      type: double
       type_name: double
       flags: 0
       group: 0

@@ -5,22 +5,22 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: RestAngle
-  type: 11
+  type: double
   type_name: double
   category: Default
 - id: 15
   name: Stroke
-  type: 11
+  type: double
   type_name: double
   category: Default
 - id: 497
   name: RestX
-  type: 10
+  type: float
   type_name: float
   category: Default
 - id: 503
   name: RestY
-  type: 10
+  type: float
   type_name: float
   category: Default
 graphs:
@@ -34,7 +34,7 @@ graphs:
     inputs:
     - 3
     - id: 4
-      type: 11
+      type: double
       type_name: double
       binding:
         kind: component_field
@@ -44,7 +44,7 @@ graphs:
     outputs:
     - 5
     - id: 6
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 13
@@ -58,13 +58,13 @@ graphs:
     inputs:
     - 17
     - id: 18
-      type: 11
+      type: double
       type_name: double
       default: 0.9
     outputs:
     - 19
     - id: 20
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 21
@@ -74,13 +74,13 @@ graphs:
     inputs:
     - 22
     - id: 23
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - 24
     - id: 25
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 26
@@ -90,7 +90,7 @@ graphs:
     - 27
     - id: 28
       name: DeltaSeconds
-      type: 10
+      type: float
       type_name: float
       kind: data
       default: 0.0
@@ -115,7 +115,7 @@ graphs:
     inputs:
     - id: 109
       name: rest
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -126,7 +126,7 @@ graphs:
       default: 0.0
     - id: 110
       name: stroke
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -137,7 +137,7 @@ graphs:
       default: 0.0
     - id: 111
       name: angle
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -148,7 +148,7 @@ graphs:
       default: 0.0
     - id: 112
       name: dt
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 4
@@ -157,7 +157,7 @@ graphs:
     - id: 55
       declaration_id: 47
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 5
@@ -177,7 +177,7 @@ graphs:
     inputs:
     - id: 285
       name: angle
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -188,7 +188,7 @@ graphs:
       default: 0.0
     - id: 286
       name: speed
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -199,14 +199,14 @@ graphs:
       default: 0.0
     - id: 287
       name: dt
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 4
       default: 0.0
     - id: 558
       name: origin
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -217,7 +217,7 @@ graphs:
       default: 0.0
     - id: 559
       name: rest
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 5
@@ -228,7 +228,7 @@ graphs:
       default: 0.0
     - id: 560
       name: position
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 6
@@ -241,7 +241,7 @@ graphs:
     - id: 246
       declaration_id: 238
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 7
@@ -253,7 +253,7 @@ graphs:
     inputs:
     - id: 418
       name: angle
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -264,7 +264,7 @@ graphs:
       default: 0.0
     - id: 419
       name: speed
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 3
@@ -275,14 +275,14 @@ graphs:
       default: 0.0
     - id: 420
       name: dt
-      type: 10
+      type: float
       type_name: float
       flags: 2
       group: 4
       default: 0.0
     - id: 610
       name: origin
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -293,7 +293,7 @@ graphs:
       default: 0.0
     - id: 611
       name: rest
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 5
@@ -304,7 +304,7 @@ graphs:
       default: 0.0
     - id: 612
       name: position
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 6
@@ -317,7 +317,7 @@ graphs:
     - id: 379
       declaration_id: 371
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 7
@@ -329,7 +329,7 @@ graphs:
     inputs:
     - 499
     - id: 500
-      type: 10
+      type: float
       type_name: float
       binding:
         kind: component_field
@@ -339,7 +339,7 @@ graphs:
     outputs:
     - 501
     - id: 502
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 504
@@ -349,7 +349,7 @@ graphs:
     inputs:
     - 505
     - id: 506
-      type: 10
+      type: float
       type_name: float
       binding:
         kind: component_field
@@ -359,7 +359,7 @@ graphs:
     outputs:
     - 507
     - id: 508
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   edges:
@@ -441,7 +441,7 @@ graphs:
     outputs:
     - id: 171
       name: rest
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -449,7 +449,7 @@ graphs:
       default: 0.0
     - id: 172
       name: stroke
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -457,7 +457,7 @@ graphs:
       default: 0.0
     - id: 173
       name: angle
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -465,7 +465,7 @@ graphs:
       default: 0.0
     - id: 174
       name: dt
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -476,7 +476,7 @@ graphs:
     inputs:
     - id: 175
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -490,16 +490,16 @@ graphs:
     type: Multiply
     inputs:
     - id: 180
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 181
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 182
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 183
@@ -510,73 +510,73 @@ graphs:
     type: Abs
     inputs:
     - id: 187
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 188
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 189
     type: Divide
     inputs:
     - id: 190
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 191
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 192
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 193
     type: Subtract
     inputs:
     - id: 194
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 195
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 196
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 197
     type: Subtract
     inputs:
     - id: 198
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 199
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 200
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 201
     type: Divide
     inputs:
     - id: 202
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 203
     outputs:
     - id: 204
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 205
@@ -589,12 +589,12 @@ graphs:
     type: Negate
     inputs:
     - id: 209
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 210
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 211
@@ -607,20 +607,20 @@ graphs:
     type: Clamp
     inputs:
     - id: 215
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 216
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 217
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 218
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -710,7 +710,7 @@ graphs:
     outputs:
     - id: 514
       name: angle
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -718,7 +718,7 @@ graphs:
       default: 0.0
     - id: 515
       name: speed
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -726,7 +726,7 @@ graphs:
       default: 0.0
     - id: 516
       name: dt
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -734,7 +734,7 @@ graphs:
       default: 0.0
     - id: 517
       name: origin
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -742,7 +742,7 @@ graphs:
       default: 0.0
     - id: 518
       name: rest
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -750,7 +750,7 @@ graphs:
       default: 0.0
     - id: 519
       name: position
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -761,7 +761,7 @@ graphs:
     inputs:
     - id: 520
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -777,29 +777,29 @@ graphs:
     type: Multiply
     inputs:
     - id: 525
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 526
     outputs:
     - id: 527
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 528
     type: Add
     inputs:
     - id: 529
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 530
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 531
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 532
@@ -814,77 +814,77 @@ graphs:
     type: Subtract
     inputs:
     - id: 539
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 540
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 541
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 542
     type: Multiply
     inputs:
     - id: 543
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 544
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 545
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 546
     type: Add
     inputs:
     - id: 547
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 548
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 549
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 550
     type: Subtract
     inputs:
     - id: 551
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 552
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 553
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 554
     type: Divide
     inputs:
     - id: 555
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 556
     outputs:
     - id: 557
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -970,7 +970,7 @@ graphs:
     outputs:
     - id: 566
       name: angle
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -978,7 +978,7 @@ graphs:
       default: 0.0
     - id: 567
       name: speed
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -986,7 +986,7 @@ graphs:
       default: 0.0
     - id: 568
       name: dt
-      type: 10
+      type: float
       type_name: float
       kind: data
       flags: 2
@@ -994,7 +994,7 @@ graphs:
       default: 0.0
     - id: 569
       name: origin
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1002,7 +1002,7 @@ graphs:
       default: 0.0
     - id: 570
       name: rest
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1010,7 +1010,7 @@ graphs:
       default: 0.0
     - id: 571
       name: position
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1021,7 +1021,7 @@ graphs:
     inputs:
     - id: 572
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -1037,29 +1037,29 @@ graphs:
     type: Multiply
     inputs:
     - id: 577
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 578
     outputs:
     - id: 579
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 580
     type: Add
     inputs:
     - id: 581
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 582
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 583
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 584
@@ -1074,77 +1074,77 @@ graphs:
     type: Subtract
     inputs:
     - id: 591
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 592
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 593
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 594
     type: Multiply
     inputs:
     - id: 595
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 596
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 597
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 598
     type: Add
     inputs:
     - id: 599
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 600
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 601
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 602
     type: Subtract
     inputs:
     - id: 603
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 604
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 605
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 606
     type: Divide
     inputs:
     - id: 607
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - 608
     outputs:
     - id: 609
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:

@@ -26,7 +26,7 @@ if node_bin=$(command -v node 2>/dev/null); then
 elif [ -x "/Applications/Codex.app/Contents/Resources/cua_node/bin/node" ]; then
     node_bin="/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 else
-    printf '%s\n' 'chibi MCP requires Node.js 20 or newer' >&2
+    printf '%s\n' 'chibi MCP requires Node.js 22 or newer' >&2
     exit 1
 fi
 

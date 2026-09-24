@@ -14,7 +14,7 @@ graphs:
     - 2
     - id: 3
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -35,7 +35,7 @@ graphs:
     - 84
     - id: 92
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -48,18 +48,18 @@ graphs:
     inputs:
     - id: 132
       name: direction
-      type: 15
+      type: struct
       type_name: CF_V2
       default: null
     - id: 133
       name: speed
-      type: 15
+      type: struct
       type_name: GameMovement
       default: null
     outputs:
     - id: 108
       name: Velocity
-      type: 15
+      type: struct
       type_name: GameVelocity
       default: null
   - id: 355
@@ -76,7 +76,7 @@ graphs:
       flags: 0
     - id: 364
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 363
       field_name: remaining
@@ -153,13 +153,13 @@ graphs:
       name: Then
     - id: 91
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 38
       name: x
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 91
@@ -167,7 +167,7 @@ graphs:
       default: 0.0
     - id: 39
       name: "y"
-      type: 10
+      type: float
       type_name: float
       kind: data
       field_source: 91
@@ -226,20 +226,20 @@ graphs:
     - id: 69
       declaration_id: 4
       name: X
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     - id: 72
       declaration_id: 5
       name: "Y"
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - id: 77
       declaration_id: 6
       name: Orientation
-      type: 15
+      type: struct
       type_name: GameOrientation
       default: null
   - id: 83

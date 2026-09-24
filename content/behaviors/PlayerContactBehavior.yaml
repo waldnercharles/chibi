@@ -6,7 +6,7 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Remaining
-  type: 10
+  type: float
   type_name: float
   category: Contact
 graphs:
@@ -22,7 +22,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 6
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -55,13 +55,13 @@ graphs:
     inputs:
     - 18
     - id: 19
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 20
     - id: 21
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 25
@@ -71,13 +71,13 @@ graphs:
     - 23
     - id: 24
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
     - id: 129
       name: Point
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
@@ -86,7 +86,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 26
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -106,7 +106,7 @@ graphs:
     - 37
     - id: 38
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -125,7 +125,7 @@ graphs:
       flags: 0
     - id: 119
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 118
       field_name: remaining
@@ -218,7 +218,7 @@ graphs:
       name: Then
     - id: 42
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -240,7 +240,7 @@ graphs:
     - 54
     - id: 55
       name: category
-      type: 7
+      type: uint
       type_name: unsigned int
       field_source: 54
       field_name: category
@@ -271,7 +271,7 @@ graphs:
     - 75
     - id: 76
       name: current
-      type: 6
+      type: int
       type_name: int
       field_source: 75
       field_name: current
@@ -295,7 +295,7 @@ graphs:
     - 88
     - id: 89
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -399,7 +399,7 @@ graphs:
       name: Then
     - id: 93
       name: Other
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -409,13 +409,13 @@ graphs:
     inputs:
     - 95
     - id: 96
-      type: 10
+      type: float
       type_name: float
       default: 0.5
     outputs:
     - 97
     - id: 98
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 101
@@ -432,7 +432,7 @@ graphs:
     - id: 104
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       default: 10
     - id: 105

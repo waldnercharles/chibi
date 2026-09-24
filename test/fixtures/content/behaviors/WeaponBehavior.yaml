@@ -23,7 +23,7 @@ graphs:
       flags: 0
     - id: 23
       name: damage
-      type: 6
+      type: int
       type_name: int
       field_source: 22
       field_name: damage
@@ -38,13 +38,13 @@ graphs:
     - 25
     - id: 26
       name: Origin
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default: null
     - id: 27
       name: Direction
-      type: 15
+      type: struct
       type_name: CF_V2
       kind: data
       default:
@@ -52,21 +52,21 @@ graphs:
         "y": 0.0
     - id: 28
       name: Damage
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 29
       declaration_id: 220
       name: Prototype
-      type: 12
+      type: name
       type_name: name
       kind: data
       default: Projectile
     - id: 33
       declaration_id: 255
       name: Shooter
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -74,7 +74,7 @@ graphs:
     - 30
     - id: 31
       name: Entity
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null

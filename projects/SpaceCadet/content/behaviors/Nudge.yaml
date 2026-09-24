@@ -18,7 +18,7 @@ graphs:
     - id: 45
       declaration_id: 8
       name: v
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -31,7 +31,7 @@ graphs:
     - id: 46
       declaration_id: 9
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -48,7 +48,7 @@ graphs:
     - id: 150
       declaration_id: 140
       name: v
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 1
@@ -61,7 +61,7 @@ graphs:
     - id: 151
       declaration_id: 141
       name: Result
-      type: 11
+      type: double
       type_name: double
       flags: 2
       group: 2
@@ -101,7 +101,7 @@ graphs:
     outputs:
     - id: 99
       name: v
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -112,7 +112,7 @@ graphs:
     inputs:
     - id: 100
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -131,16 +131,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 107
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 108
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 109
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 110
@@ -153,32 +153,32 @@ graphs:
     type: Multiply
     inputs:
     - id: 114
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 115
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 116
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 117
     type: Add
     inputs:
     - id: 118
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 119
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 120
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 121
@@ -191,12 +191,12 @@ graphs:
     type: Negate
     inputs:
     - id: 125
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 126
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   - id: 127
@@ -209,20 +209,20 @@ graphs:
     type: Clamp
     inputs:
     - id: 131
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 132
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 133
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 134
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:
@@ -284,7 +284,7 @@ graphs:
     outputs:
     - id: 177
       name: v
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -295,7 +295,7 @@ graphs:
     inputs:
     - id: 178
       name: Result
-      type: 11
+      type: double
       type_name: double
       kind: data
       flags: 2
@@ -311,16 +311,16 @@ graphs:
     type: Subtract
     inputs:
     - id: 183
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     - id: 184
-      type: 11
+      type: double
       type_name: double
       default: 0.0
     outputs:
     - id: 185
-      type: 11
+      type: double
       type_name: double
       default: 0.0
   edges:

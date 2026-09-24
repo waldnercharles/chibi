@@ -66,7 +66,7 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
     }
     write_str_change(doc, o, "name", p->name, base->name);
     if (p->type != base->type) {
-        yyjson_mut_obj_add_int(doc, o, "type", p->type);
+        yyjson_mut_obj_add_str(doc, o, "type", serialize_pin_type_name(p->type));
     }
     write_str_change(doc, o, "type_name", p->type_name, base->type_name);
     if (p->kind != base->kind) {
@@ -459,7 +459,7 @@ static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const behav
     yyjson_mut_val *o = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_uint(doc, o, "id", v->id);
     yyjson_mut_obj_add_str(doc, o, "name", v->name ? v->name : "");
-    yyjson_mut_obj_add_int(doc, o, "type", v->type);
+    yyjson_mut_obj_add_str(doc, o, "type", serialize_pin_type_name(v->type));
     if (v->type_name) {
         yyjson_mut_obj_add_str(doc, o, "type_name", v->type_name);
     }

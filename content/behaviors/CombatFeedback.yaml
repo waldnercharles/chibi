@@ -6,25 +6,25 @@ owner_type: ecs.entity
 variables:
 - id: 1
   name: Hit Duration
-  type: 10
+  type: float
   type_name: float
   category: Feedback
   default: 0.14000000059604645
 - id: 2
   name: Hit Strength
-  type: 10
+  type: float
   type_name: float
   category: Feedback
   default: 2.0
 - id: 3
   name: Dash Strength
-  type: 10
+  type: float
   type_name: float
   category: Feedback
   default: 1.7999999523162842
 - id: 4
   name: Hit Remaining
-  type: 10
+  type: float
   type_name: float
   category: State
 graphs:
@@ -39,14 +39,14 @@ graphs:
     - id: 131
       declaration_id: 2
       name: Amount
-      type: 6
+      type: int
       type_name: int
       kind: data
       default: 0
     - id: 132
       declaration_id: 3
       name: Source
-      type: 14
+      type: handle
       type_name: ecs.entity
       kind: data
       default: null
@@ -77,7 +77,7 @@ graphs:
     reference_id: 4
     outputs:
     - id: 145
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -153,7 +153,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 16
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -177,13 +177,13 @@ graphs:
     inputs:
     - 22
     - id: 23
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 24
     - id: 25
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 28
@@ -191,7 +191,7 @@ graphs:
     reference_id: 2
     outputs:
     - id: 27
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -262,7 +262,7 @@ graphs:
     reference_id: 4
     outputs:
     - id: 42
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -309,13 +309,13 @@ graphs:
     inputs:
     - 63
     - id: 64
-      type: 10
+      type: float
       type_name: float
       default: 0.0
     outputs:
     - 65
     - id: 66
-      type: 10
+      type: float
       type_name: float
       default: 0.0
   - id: 69
@@ -323,7 +323,7 @@ graphs:
     reference_id: 1
     outputs:
     - id: 68
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -359,7 +359,7 @@ graphs:
     reference_id: 2
     outputs:
     - id: 78
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0
@@ -496,7 +496,7 @@ graphs:
       flags: 0
     - id: 105
       name: remaining
-      type: 10
+      type: float
       type_name: float
       field_source: 104
       field_name: remaining
@@ -504,7 +504,7 @@ graphs:
       default: 0.0
     - id: 106
       name: duration
-      type: 10
+      type: float
       type_name: float
       field_source: 104
       field_name: duration
@@ -542,7 +542,7 @@ graphs:
     reference_id: 3
     outputs:
     - id: 116
-      type: 10
+      type: float
       type_name: float
       flags: 0
       default: 0.0

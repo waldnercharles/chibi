@@ -196,7 +196,20 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
                                            selected_prototype(scene)->prototype->name
                                        )
                                      : NULL;
-    tab_set_path(tab, scene->scene_path);
+    /* A scene loaded into this tab gives it its name: "scene-1" becomes Sandbox. */
+    const char *path = scene->scene_path;
+    if (path && path[0] && (!tab->path || strcmp(tab->path, path) != 0)) {
+        bool current = scene->current_scene_tab_key &&
+                       !strcmp(scene->current_scene_tab_key, tab->key);
+        free(tab->key);
+        tab->key = tab_key(tab->kind, NULL, path);
+        free(tab->label);
+        tab->label = tab_label(tab->kind, NULL, path);
+        if (current) {
+            set_current_scene_tab(scene, tab);
+        }
+    }
+    tab_set_path(tab, path);
 }
 
 static void capture_system_tab(app_scene_authoring *scene, scene_document_tab *tab)

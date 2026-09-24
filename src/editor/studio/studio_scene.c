@@ -1166,6 +1166,7 @@ static const struct
     { KIT_ICON_SETTINGS, "Scene" },    { KIT_ICON_PROTOTYPE, "Object" },
     { KIT_ICON_PHYSICS, "Physics" },   { KIT_ICON_MATERIAL, "Material" },
     { KIT_ICON_GAMEPLAY, "Gameplay" }, { KIT_ICON_GRAPH, "Behaviors" },
+    { KIT_ICON_HEXAGON, "Node" },
 };
 
 void studio_properties_body(studio *s, int area)
@@ -1194,6 +1195,18 @@ void studio_properties_body(studio *s, int area)
             }
         }
     }
+    /* The Node tab follows the graph selection, as Object follows the
+   scene's: a newly selected node shows its details, a newly selected
+   object its components. */
+    uint64_t node = studio_graph_node(s);
+    available[STUDIO_TAB_NODE] = node != 0;
+    if (node && node != s->shown_node) {
+        s->tab = STUDIO_TAB_NODE;
+    } else if (s->tab == STUDIO_TAB_NODE && scene->selected != s->shown_actor && actor) {
+        s->tab = STUDIO_TAB_OBJECT;
+    }
+    s->shown_node = node;
+    s->shown_actor = scene->selected;
     if (!available[s->tab]) {
         s->tab = actor || asset ? STUDIO_TAB_OBJECT : STUDIO_TAB_SCENE;
     }
@@ -1203,8 +1216,9 @@ void studio_properties_body(studio *s, int area)
         if (!available[t]) {
             continue;
         }
-        if (t == STUDIO_TAB_BEHAVIORS) {
-            kit_leaf(k, "sep", NULL, "tab-sep");
+        if (t == STUDIO_TAB_BEHAVIORS ||
+            (t == STUDIO_TAB_NODE && !available[STUDIO_TAB_BEHAVIORS])) {
+            kit_leaf(k, t == STUDIO_TAB_NODE ? "sep2" : "sep", NULL, "tab-sep");
         }
         char key[16];
         snprintf(key, sizeof key, "tab%d", t);
@@ -1220,6 +1234,8 @@ void studio_properties_body(studio *s, int area)
     kit_push(k, "scroll", NULL, "prop-scroll");
     if (s->tab == STUDIO_TAB_SCENE) {
         scene_panels(s, locked);
+    } else if (s->tab == STUDIO_TAB_NODE) {
+        studio_node_properties(s);
     } else if (asset && asset->prototype) {
         prototype_properties(s, asset, locked);
     } else if (!actor) {

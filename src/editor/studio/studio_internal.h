@@ -42,6 +42,7 @@ typedef enum
     STUDIO_TAB_MATERIAL,
     STUDIO_TAB_GAMEPLAY,
     STUDIO_TAB_BEHAVIORS,
+    STUDIO_TAB_NODE, /* the graph node selected in the Behavior area */
     STUDIO_TAB_COUNT,
 } studio_tab;
 
@@ -214,6 +215,8 @@ struct studio
     kit_rect main_rect;
     kit_rect side_rect;
     studio_tab tab;
+    uint64_t shown_node; /* graph node the Properties tabs last followed */
+    int shown_actor;     /* scene selection the Properties tabs last followed */
     studio_record_entry *records;
     studio_perf_sample *perf;
     double perf_readout_time;
@@ -285,6 +288,9 @@ bool studio_graph_palette(studio *s);
 bool studio_graph_can_replay(studio *s, bool redo);
 void studio_graph_history(studio *s, bool redo);
 bool studio_graph_active(const studio *s);
+/* The graph node Properties shows, or 0; and its panels. */
+uint64_t studio_graph_node(const studio *s);
+void studio_node_properties(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
 const char *studio_asset_kind_name(int kind);

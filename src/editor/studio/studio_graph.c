@@ -1667,10 +1667,10 @@ void studio_graph_menus(studio *s)
 
 /* ---------- Emission ---------- */
 
-static void emit_value(studio *s, node *n, int output, int p)
+/* A pin's value editor, in the canvas or in Properties. */
+static void emit_value_in(studio *s, kit *k, node *n, int output, int p)
 {
     studio_graph *g = &s->graph;
-    kit *k = g->kit;
     editor *e = graph_editor(s);
     graph *gr = active_graph(s);
     const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
@@ -1789,6 +1789,11 @@ static void emit_value(studio *s, node *n, int output, int p)
     }
     graph_set_pin_default(gr, n, output, p, &value);
     touched(e);
+}
+
+static void emit_value(studio *s, node *n, int output, int p)
+{
+    emit_value_in(s, s->graph.kit, n, output, p);
 }
 
 static void emit_pin(studio *s, node *n, int kind, int p)
@@ -2287,6 +2292,24 @@ void studio_graph_history(studio *s, bool redo)
 
 /* ---------- Area ---------- */
 
+/* Adds a graph under the first free name and opens it, as one undo step. */
+static void create_graph(editor *e, graph_kind kind, const char *base)
+{
+    char name[128];
+    snprintf(name, sizeof name, "%s", base);
+    for (int i = 2; behavior_asset_find_graph_by_name(e->asset, name); i++) {
+        snprintf(name, sizeof name, "%s %d", base, i);
+    }
+    editor_command create = { .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                              .data.create_graph = { kind, name } };
+    if (editor_command_apply(e, create) == 0) {
+        graph *made = behavior_asset_find_graph_by_name(e->asset, name);
+        if (made) {
+            editor_open_graph(e, made->graph_id);
+        }
+    }
+}
+
 void studio_behavior_header(studio *s, int area)
 {
     kit *k = s->kit;
@@ -2336,6 +2359,14 @@ void studio_behavior_header(studio *s, int area)
             if (kit_menu_item(k, item_key, &d)) {
                 editor_open_graph(e, item->graph_id);
             }
+        }
+        kit_menu_separator(k, "s0");
+        bool locked = !behavior_asset_mutable(e->asset);
+        if (menu_item(k, "function", "New Function", KIT_ICON_ADD, NULL, locked)) {
+            create_graph(e, GRAPH_FUNCTION, "New Function");
+        }
+        if (menu_item(k, "macro", "New Macro", KIT_ICON_ADD, NULL, locked)) {
+            create_graph(e, GRAPH_MACRO, "New Macro");
         }
         kit_popup_end(k);
     }
@@ -2520,4 +2551,125 @@ bool studio_graph_palette(studio *s)
     afree(items);
     afree(matches);
     return true;
+}
+
+/* ---------- Properties ---------- */
+
+uint64_t studio_graph_node(const studio *s)
+{
+    const editor *e = graph_editor(s);
+    return studio_graph_active(s) && acount(e->selected) > 0 ? e->selected[0]->id : 0;
+}
+
+/* The Node tab: every pin, advanced ones included, with what feeds it; the
+   canvas shows the common case, this shows everything (Unreal's Details). */
+void studio_node_properties(studio *s)
+{
+    kit *k = s->kit;
+    editor *e = graph_editor(s);
+    graph *gr = active_graph(s);
+    node *n = node_by_id(s, studio_graph_node(s));
+    if (!n) {
+        kit_label(k, "empty", "prop-empty", "No node selected");
+        return;
+    }
+    char title[256], label[160], text[256];
+    bool readonly = graph_readonly(s);
+    kit_push(k, "identity", NULL, "identity");
+    kit_push(k, "glyph", NULL, "glyph");
+    kit_icon(k, "icon", NULL, node_icon(n) ? node_icon(n) : KIT_ICON_HEXAGON);
+    kit_pop(k);
+    kit_push(k, "who", NULL, "who");
+    kit_label(k, "name", "title", ed_node_title(e, n, title, sizeof title));
+    kit_push(k, "lineage", NULL, "lineage");
+    kit_label(k, "of", NULL, n->desc->category ? n->desc->category : n->desc->name);
+    kit_pop(k);
+    kit_pop(k);
+    kit_pop(k);
+    if (n->input_count && kit_panel_begin(k, "inputs", "Inputs", NULL, true)) {
+        for (int p = 0; p < n->input_count; p++) {
+            const pin_spec *spec = &n->input_pins[p];
+            if (spec->flags & PIN_FLAG_SETTING && spec->kind != PIN_DATA) {
+                continue;
+            }
+            char key[16];
+            snprintf(key, sizeof key, "i%d", p);
+            ed_pin_label(n, spec, label, sizeof label);
+            kit_prop_begin(k, key, label);
+            node *src = NULL;
+            int src_pin = -1;
+            if (spec->kind == PIN_EXEC) {
+                kit_label(k, "v", "dim", "Execution");
+            } else if (graph_input_source(gr, n, p, &src, &src_pin)) {
+                char source[160];
+                ed_pin_label(src, &src->output_pins[src_pin], source, sizeof source);
+                snprintf(
+                    text,
+                    sizeof text,
+                    "%s \xe2\x80\xba %s",
+                    ed_node_title(e, src, title, sizeof title),
+                    source
+                );
+                kit_label(k, "v", "dim", text);
+            } else if (spec->binding) {
+                kit_label(k, "v", "chip", ed_binding_label(e, spec->binding, text, sizeof text));
+            } else if (!readonly && value_kind_of(s, n, 0, p) != VALUE_NONE) {
+                emit_value_in(s, k, n, 0, p);
+            } else {
+                kit_label(k, "v", "dim", ed_pin_type_name(spec));
+            }
+            kit_prop_end(k);
+        }
+    }
+    if (n->input_count) {
+        kit_panel_end(k);
+    }
+    if (n->output_count && kit_panel_begin(k, "outputs", "Outputs", NULL, true)) {
+        for (int p = 0; p < n->output_count; p++) {
+            const pin_spec *spec = &n->output_pins[p];
+            char key[16];
+            snprintf(key, sizeof key, "o%d", p);
+            ed_pin_label(n, spec, label, sizeof label);
+            kit_prop_begin(k, key, label);
+            if (ed_pin_editable(gr, n, ED_PIN_OUTPUT, p) && !readonly &&
+                value_kind_of(s, n, 1, p) != VALUE_NONE) {
+                emit_value_in(s, k, n, 1, p);
+            } else {
+                kit_label(k, "v", "dim", spec->kind == PIN_EXEC ? "Execution" : ed_pin_type_name(spec));
+            }
+            kit_prop_end(k);
+        }
+    }
+    if (n->output_count) {
+        kit_panel_end(k);
+    }
+    if (kit_panel_begin(k, "node", "Node", NULL, true)) {
+        unsigned flags = readonly ? KIT_DISABLED : 0;
+        bool disabled = n->disabled != 0;
+        kit_prop_begin(k, "disabled", "Disabled");
+        if (kit_checkbox(k, "v", &disabled, NULL, flags)) {
+            ed_snapshot_before(e);
+            graph_set_node_disabled(gr, n, disabled);
+        }
+        kit_prop_end(k);
+        if (node_behavior_for(n) != NODE_BEHAVIOR_PURE) {
+            bool breakpoint = n->breakpoint != 0;
+            kit_prop_begin(k, "break", "Breakpoint");
+            if (kit_checkbox(k, "v", &breakpoint, NULL, flags)) {
+                ed_snapshot_before(e);
+                graph_set_breakpoint(gr, n, breakpoint);
+            }
+            kit_prop_end(k);
+        }
+        if (ed_node_has_advanced_inputs(n)) {
+            bool advanced = n->show_advanced;
+            kit_prop_begin(k, "advanced", "Advanced Inputs");
+            if (kit_checkbox(k, "v", &advanced, "Show on node", flags)) {
+                ed_snapshot_before(e);
+                n->show_advanced = advanced;
+            }
+            kit_prop_end(k);
+        }
+    }
+    kit_panel_end(k);
 }

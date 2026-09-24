@@ -126,6 +126,9 @@ body.light .viewport {
 .area-head .graph-pick { color: var(--fg); padding: 0dp 6dp; }
 .area-head .readout { color: var(--fg-3); font-size: 11dp; font-family: InterNumeric; padding: 0dp 4dp; }
 
+/* A source that feeds a pin, in Properties (the graph draws its own). */
+.prop .chip { display: block; height: 18dp; padding: 0dp 6dp; border-radius: 3dp; background-color: var(--field-edit); color: #c6b8ea; font-size: 11dp; line-height: 18dp; white-space: nowrap; overflow: hidden; }
+
 /* Editors without content yet. */
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--fg-3); background-color: var(--canvas); }
 

@@ -366,7 +366,12 @@ static void ed_draw_event_status(editor *e, ImDrawList *dl, const ed_node_view *
         return;
     }
     behavior_event_batch_info info = { 0 };
-    behavior_program_event_batch_info(behavior_program_publish(e->asset), n, &info);
+    graph *runtime = eval_view_graph(e->ev, e->active_graph);
+    behavior_program_event_batch_info(
+        runtime ? behavior_program_publish(runtime->owner) : NULL,
+        runtime ? graph_node_by_id(runtime, n->id) : NULL,
+        &info
+    );
     bool ready = info.reason == BEHAVIOR_BATCH_READY;
     editor_icon icon = ready ? EDITOR_ICON_FA_TACHOMETER : EDITOR_ICON_FA_WARNING;
     ImVec4 status_color = ed_event_batch_status_color(&info);

@@ -6,6 +6,7 @@
 #include "graph/model/pin_conv.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/generated.h"
 
@@ -946,8 +947,11 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
     pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
     bool expression_assignment = !output && n->desc == &NODE_BehaviorExpression &&
                                  (spec->flags & PIN_FLAG_REFERENCE);
-    if (spec->kind == PIN_EXEC ||
-        ((spec->flags & PIN_FLAG_SETTING) && !expression_assignment)) {
+    component_node_kind component = component_node_kind_of(n->desc);
+    bool component_setting = !output && component &&
+                             index == component_node_setting(component);
+    if (spec->kind == PIN_EXEC || ((spec->flags & PIN_FLAG_SETTING) &&
+                                   !expression_assignment && !component_setting)) {
         return;
     }
     char pin_label[256];
@@ -1069,11 +1073,11 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
         return;
     }
     if (!spec->field_source) {
-        if (!output && ed_source_scope_available(e) &&
-            ImGui_ButtonEx("Bind...", (ImVec2){ 0, 0 })) {
+        bool bindable = !output && !component_setting && ed_source_scope_available(e);
+        if (bindable && ImGui_ButtonEx("Bind...", (ImVec2){ 0, 0 })) {
             ed_open_binding_popup(e, n, index);
         }
-        if (!output && ed_source_scope_available(e)) {
+        if (bindable) {
             editor_ui_track_item("inspector.input.binding.open");
         }
         if (expression_assignment) {

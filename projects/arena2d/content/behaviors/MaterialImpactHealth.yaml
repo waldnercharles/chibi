@@ -1,6 +1,6 @@
 version: 3
 name: MaterialImpactHealth
-id_counter: 249
+id_counter: 252
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -19,8 +19,11 @@ graphs:
         kind: data
         default: {x: 0.0, "y": 0.0}
   - id: 6
-    type: Get_GameHealth
+    type: Get Component
+    inputs:
+      Component: {id: 249, default: game.GameHealth}
     outputs:
+      Value: {id: 7}
       Value.current: {}
       Value.maximum: {}
   - id: 32
@@ -33,8 +36,13 @@ graphs:
     outputs:
       Result: {flags: 2, group: 3}
   - id: 80
-    type: Set_GameHealth_current
+    type: Set Component
+    inputs:
+      Component: {id: 251, default: game.GameHealth}
+      Entity: {id: 83}
+      current: {id: 82}
     outputs:
+      Then: {id: 84}
       Value.current: {id: 108}
       Value.maximum: {}
   - id: 124
@@ -59,11 +67,11 @@ graphs:
   - {from: 1.Then, to: 80.Exec}
   - {from: 1.Energy, to: 191.Value}
   - {from: 6.Value.current, to: 32.current}
-  - {from: 32.Result, to: 80.Value}
+  - {from: 32.Result, to: 80.current}
   - {from: 80.Then, to: 124.Exec}
   - {from: 80.Value.current, to: 124.current, conversion: To Real}
   - {from: 124.True, to: 146.Exec}
-  - {from: 144.Self, to: 80.Target}
+  - {from: 144.Self, to: 80.Entity}
   - {from: 144.Self, to: 146.Entity}
   - {from: 191.Result, to: 194.Value}
   - {from: 194.Integer, to: 32.damage}

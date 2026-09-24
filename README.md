@@ -18,7 +18,7 @@ make sdl-package  # build pinned SDL once for macOS worktrees
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
 make dev          # watch sources, rebuild, and reload the running editor
-make format       # explicitly format project C sources
+make format       # format project C sources with clang-format 22, as CI does
 make check-format
 make web          # static browser application; requires Emscripten
 ```

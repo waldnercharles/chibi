@@ -65,19 +65,6 @@ static bool editable(const graph *g, const node *n)
     return true;
 }
 
-static bool component_getter(const node *n)
-{
-    const node_desc *desc = n->desc;
-    return desc->binding_component && desc->name &&
-           registry_node_by_name(desc->name) == desc &&
-           desc->pure_kind == NODE_PURE_READ && desc->read &&
-           !desc->read_inputs && desc->input_count == 0 &&
-           n->input_count == 0 && desc->output_count == 1 && desc->type &&
-           desc->access && desc->access->read_count == 1 &&
-           desc->access->reads && desc->access->write_count == 0 &&
-           desc->access->flags == NODE_EFFECT_ENTITY_SCOPED;
-}
-
 static bool debug_state(const node *n)
 {
     if (n->disabled || n->breakpoint || n->breakpoint_enabled) {
@@ -96,9 +83,10 @@ static bool debug_state(const node *n)
     return false;
 }
 
-static bool component_field_prefix(const node *source, int pin, char *path, size_t cap)
+static bool component_field_prefix(const graph *g, const node *source, int pin, char *path, size_t cap)
 {
-    if (!component_getter(source) || pin < 0 || pin >= source->output_count || !cap) {
+    if (!graph_optimize_component_getter(g, source) || pin < 0 ||
+        pin >= source->output_count || !cap) {
         return false;
     }
     if (pin == 0) {
@@ -152,9 +140,10 @@ static bool transparent(graph *g, node *n, graph_optimize_report *report)
     const node_desc *incoming = graph_input_conversion(g, n, 0);
     const type_desc *type = projection ? graph_output_struct(source, pin) : NULL;
     char component_prefix[256];
-    bool component_projection = projection && component_getter(source);
+    const node_desc *getter = graph_optimize_component_getter(g, source);
+    bool component_projection = projection && getter;
     if (component_projection &&
-        !component_field_prefix(source, pin, component_prefix, sizeof component_prefix)) {
+        !component_field_prefix(g, source, pin, component_prefix, sizeof component_prefix)) {
         return false;
     }
     if (component_projection && pin != 0) {
@@ -221,7 +210,7 @@ static bool transparent(graph *g, node *n, graph_optimize_report *report)
         replacement r = replacements[i];
         if (component_projection) {
             pin_binding binding = { .kind = PIN_BINDING_COMPONENT_FIELD,
-                                    .component_key = source->desc->binding_component,
+                                    .component_key = getter->binding_component,
                                     .field_name = r.component_field_path };
             int set_pin_binding_result = graph_set_pin_binding(g, r.target, 0, r.input, &binding);
             assert(set_pin_binding_result == 0);

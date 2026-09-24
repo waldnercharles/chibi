@@ -5,6 +5,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "graph/nodes/component_nodes.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -330,6 +331,11 @@ void editor_preview_create(editor *e)
     char *json = behavior_asset_save_json(e->asset);
     e->preview_behavior_asset = json ? behavior_asset_load_json(json) : NULL;
     free(json);
+    if (e->preview_behavior_asset &&
+        behavior_asset_lower_component_nodes(e->preview_behavior_asset, NULL, 0)) {
+        behavior_asset_free(e->preview_behavior_asset);
+        e->preview_behavior_asset = NULL;
+    }
     if (!e->preview_behavior_asset) {
         return;
     }

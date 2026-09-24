@@ -62,8 +62,8 @@ static const char *resolved_alias(const char *name)
     return name;
 }
 
-/* Linking resolves type aliases, and pin groups only guide editing; neither
- * changes execution. */
+/* Linking resolves type aliases and turns library calls into local ones; pin
+ * groups and declarations only guide editing. None changes execution. */
 static void normalize_pins(behavior_asset *asset)
 {
     for (int g = 0; g < acount(asset->graphs); g++) {
@@ -75,6 +75,7 @@ static void normalize_pins(behavior_asset *asset)
                 for (int p = 0; p < count; p++) {
                     pins[p].group = 0;
                     pins[p].type_name = resolved_alias(pins[p].type_name);
+                    pins[p].declaration_id = serialize_call_declaration(asset, n, output, p);
                 }
             }
         }
@@ -130,7 +131,7 @@ static yyjson_mut_doc *execution_json(const behavior_asset *source_asset)
                 yyjson_mut_obj_remove_key(node, "reference_id");
                 yyjson_mut_obj_remove_key(node, "reference_asset");
                 yyjson_mut_obj_add_uint(doc, node, "reference_id", target->source_graph_id);
-                yyjson_mut_obj_add_str(doc, node, "reference_asset", target->source_asset);
+                yyjson_mut_obj_add_strcpy(doc, node, "reference_asset", target->source_asset);
                 break;
             }
         }

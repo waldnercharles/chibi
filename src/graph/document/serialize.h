@@ -27,5 +27,8 @@ int serialize_pin_by_key(const node *n, int output, const char *key);
 /* False when the pin's key is ambiguous on its node side. */
 bool serialize_pin_ref(const node *n, int output, int index, char *out, size_t size);
 bool serialize_resolve_ref(const graph *g, const char *ref, int output, node **n, int *index);
+/* A local call's pin declares the signature pin with its name; documents
+ * record a declaration only when it differs. */
+uint64_t serialize_call_declaration(const behavior_asset *asset, const node *call, int output, int index);
 
 #endif

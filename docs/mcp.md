@@ -58,6 +58,17 @@ next request. Run
 `make mcp-setup` to generate that machine-local registration. Restart Codex
 or open a new task after adding or changing project MCP configuration.
 
+## Asset files
+
+Authored assets under `content/` are YAML. Documents omit what loading
+reproduces: pins list only the fields that differ from the node type's
+template pin (a pin with no differences is just its ID), default values are
+left out, and only placed nodes store `x`/`y`. The editor arranges the rest
+when it opens a graph. `build/chibi_ctl --project-root <root> --format`
+rewrites every asset in canonical form, and `--check` lists assets that
+differ. Prefer the build tools over hand edits; they keep IDs, hashes and
+layout consistent.
+
 ## Default authoring workflow
 
 For reproducible rendering measurements, `previewScene` accepts

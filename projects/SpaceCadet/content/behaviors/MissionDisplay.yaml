@@ -1,0 +1,175 @@
+version: 3
+name: MissionDisplay
+id_counter: 60
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+    - 2
+    - id: 3
+      name: DeltaSeconds
+      type: 10
+      type_name: float
+      kind: data
+      default: 0.0
+  - id: 4
+    type: Get Global Variable
+    inputs:
+    - id: 5
+      default: Lives
+    outputs:
+    - id: 6
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 21
+    type: Behavior Expression
+    reference_id: 7
+    reference_name: lives <= 0
+    inputs:
+    - id: 24
+      name: Exec
+      kind: exec
+    - id: 22
+      declaration_id: 12
+      name: lives
+      type: 11
+      type_name: double
+      group: 1
+      default: 0.0
+    outputs:
+    - id: 25
+      name: "True"
+      kind: exec
+    - id: 26
+      name: "False"
+      kind: exec
+    - id: 23
+      declaration_id: 13
+      name: Result
+      type: 1
+      type_name: bool
+      flags: 2
+      group: 2
+      default: false
+  - id: 41
+    type: Set_GameWidget_text
+    inputs:
+    - 42
+    - id: 43
+      default: GAME OVER
+    - 44
+    outputs: [45, 46]
+  - id: 47
+    type: Get Global Variable
+    inputs:
+    - id: 48
+      default: Hits
+    outputs:
+    - id: 49
+      type: 10
+      default: 0.0
+  - id: 50
+    type: Format Text
+    inputs:
+    - id: 51
+      default: |-
+        TARGET PRACTICE
+        {:.0f} / 8 HITS
+    - id: 52
+      type: 10
+      default: 0.0
+    outputs: [53]
+  - id: 54
+    type: Set_GameWidget_text
+    inputs: [55, 56, 57]
+    outputs: [58, 59]
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 21
+    to_pin: 24
+  - from: 4
+    from_pin: 6
+    to: 21
+    to_pin: 22
+  - from: 21
+    from_pin: 25
+    to: 41
+    to_pin: 42
+  - from: 21
+    from_pin: 26
+    to: 54
+    to_pin: 55
+  - from: 47
+    from_pin: 49
+    to: 50
+    to_pin: 52
+  - from: 50
+    from_pin: 53
+    to: 54
+    to_pin: 56
+- id: 7
+  kind: function
+  name: lives <= 0
+  math_expression: lives <= 0
+  expression_mode: 3
+  entry_id: 28
+  return_id: 30
+  call_depth_limit: 64
+  nodes:
+  - id: 28
+    type: Function Entry
+    outputs:
+    - id: 32
+      name: lives
+      type: 11
+      type_name: double
+      kind: data
+      group: 1
+      default: 0.0
+  - id: 30
+    type: Return
+    inputs:
+    - id: 33
+      name: Result
+      type: 1
+      type_name: bool
+      kind: data
+      flags: 2
+      group: 2
+      default: false
+  - id: 34
+    type: Real
+    inputs: [35]
+    outputs: [36]
+  - id: 37
+    type: Less Or Equal
+    inputs:
+    - id: 38
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 39
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs: [40]
+  edges:
+  - from: 28
+    from_pin: 32
+    to: 37
+    to_pin: 38
+  - from: 34
+    from_pin: 36
+    to: 37
+    to_pin: 39
+  - from: 37
+    from_pin: 40
+    to: 30
+    to_pin: 33

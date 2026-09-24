@@ -1,0 +1,308 @@
+version: 3
+name: SurfacePulseBehavior
+id_counter: 77
+description: Capture the authored surface influence strength on Begin, fade it over Duration, then destroy the pulse. Color, radius and lingering floor response belong to the prototype.
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: Duration
+  type: 10
+  type_name: float
+  category: Surface
+  default: 0.2800000011920929
+- id: 2
+  name: Remaining
+  type: 10
+  type_name: float
+  category: State
+- id: 3
+  name: Peak Strength
+  type: 10
+  type_name: float
+  category: State
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 5
+    type: Event
+    reference_name: Begin
+    outputs: [4]
+  - id: 7
+    type: Get_GameSurfaceInfluence
+    outputs:
+    - id: 6
+      flags: 0
+    - id: 8
+      name: strength
+      type: 10
+      type_name: float
+      field_source: 6
+      field_name: strength
+      flags: 0
+      default: 0.0
+  - id: 13
+    type: Set Variable
+    reference_id: 3
+    inputs:
+    - 9
+    - id: 10
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 11
+    - id: 12
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 15
+    type: Get Variable
+    reference_id: 1
+    outputs:
+    - id: 14
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 20
+    type: Set Variable
+    reference_id: 2
+    inputs:
+    - 16
+    - id: 17
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 18
+    - id: 19
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 22
+    type: Event
+    reference_name: Tick
+    outputs: [21]
+  - id: 24
+    type: Get Variable
+    reference_id: 2
+    outputs:
+    - id: 23
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 26
+    type: Delta Time
+    outputs: [25]
+  - id: 30
+    type: Subtract
+    inputs:
+    - id: 27
+      flags: 0
+      group: 0
+    - id: 28
+      flags: 0
+      group: 0
+    outputs:
+    - id: 29
+      flags: 0
+      group: 0
+  - id: 35
+    type: Set Variable
+    reference_id: 2
+    inputs:
+    - 31
+    - id: 32
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 33
+    - id: 34
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 39
+    type: Greater
+    inputs: [36, 37]
+    outputs: [38]
+  - id: 44
+    type: Branch
+    inputs: [40, 41]
+    outputs: [42, 43]
+  - id: 46
+    type: Self
+    outputs:
+    - id: 45
+      name: Entity
+      type_name: ecs.entity
+  - id: 50
+    type: Destroy Entity
+    inputs: [47, 48]
+    outputs: [49]
+  - id: 52
+    type: Get Variable
+    reference_id: 1
+    outputs:
+    - id: 51
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 56
+    type: Max
+    inputs:
+    - id: 53
+      flags: 0
+      group: 0
+    - id: 54
+      flags: 0
+      group: 0
+      default: 0.0010000000474974513
+    outputs:
+    - id: 55
+      flags: 0
+      group: 0
+  - id: 60
+    type: Divide
+    inputs:
+    - id: 57
+      flags: 0
+      group: 0
+    - id: 58
+      flags: 0
+      group: 0
+    outputs:
+    - id: 59
+      flags: 0
+      group: 0
+  - id: 64
+    type: Multiply
+    inputs:
+    - id: 61
+      flags: 0
+      group: 0
+    - id: 62
+      flags: 0
+      group: 0
+    outputs:
+    - id: 63
+      flags: 0
+      group: 0
+  - id: 66
+    type: Get Variable
+    reference_id: 3
+    outputs:
+    - id: 65
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 70
+    type: Multiply
+    inputs:
+    - id: 67
+      flags: 0
+      group: 0
+    - id: 68
+      flags: 0
+      group: 0
+    outputs:
+    - id: 69
+      flags: 0
+      group: 0
+  - id: 76
+    type: Set_GameSurfaceInfluence_strength
+    inputs: [71, 72, 73]
+    outputs: [74, 75]
+  edges:
+  - from: 5
+    from_pin: 4
+    to: 13
+    to_pin: 9
+  - from: 7
+    from_pin: 8
+    to: 13
+    to_pin: 10
+  - from: 13
+    from_pin: 11
+    to: 20
+    to_pin: 16
+  - from: 15
+    from_pin: 14
+    to: 20
+    to_pin: 17
+  - from: 22
+    from_pin: 21
+    to: 35
+    to_pin: 31
+  - from: 24
+    from_pin: 23
+    to: 30
+    to_pin: 27
+  - from: 26
+    from_pin: 25
+    to: 30
+    to_pin: 28
+  - from: 30
+    from_pin: 29
+    to: 35
+    to_pin: 32
+  - from: 35
+    from_pin: 33
+    to: 44
+    to_pin: 40
+  - from: 35
+    from_pin: 34
+    to: 39
+    to_pin: 36
+  - from: 35
+    from_pin: 34
+    to: 60
+    to_pin: 57
+  - from: 39
+    from_pin: 38
+    to: 44
+    to_pin: 41
+  - from: 44
+    from_pin: 42
+    to: 76
+    to_pin: 71
+  - from: 44
+    from_pin: 43
+    to: 50
+    to_pin: 47
+  - from: 46
+    from_pin: 45
+    to: 50
+    to_pin: 48
+  - from: 52
+    from_pin: 51
+    to: 56
+    to_pin: 53
+  - from: 56
+    from_pin: 55
+    to: 60
+    to_pin: 58
+  - from: 60
+    from_pin: 59
+    to: 64
+    to_pin: 61
+  - from: 60
+    from_pin: 59
+    to: 64
+    to_pin: 62
+  - from: 64
+    from_pin: 63
+    to: 70
+    to_pin: 67
+  - from: 66
+    from_pin: 65
+    to: 70
+    to_pin: 68
+  - from: 70
+    from_pin: 69
+    to: 76
+    to_pin: 72

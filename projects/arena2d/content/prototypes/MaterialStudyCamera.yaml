@@ -1,0 +1,7 @@
+name: MaterialStudyCamera
+identity: prototype-46852390150f1fe8
+components:
+  GAME.GameCamera:
+    height: 540.0
+    width: 640.0
+  game.GameTransform: {}

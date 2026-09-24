@@ -721,8 +721,8 @@ static bool valid_asset_filename(const char *filename)
         return false;
     }
     size_t length = strlen(filename);
-    return length > sizeof ".json" - 1 &&
-           !strcmp(filename + length - (sizeof ".json" - 1), ".json");
+    return length > sizeof ASSET_EXTENSION - 1 &&
+           !strcmp(filename + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION);
 }
 
 static bool valid_relative_asset_path(const char *path)
@@ -969,15 +969,15 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
         strchr(name, '\\') || strstr(name, "..")) {
         return set_error(error, error_size, "asset requires a known kind and safe name");
     }
-    if (strstr(name, ".json")) {
+    if (strstr(name, ASSET_EXTENSION)) {
         if (!valid_asset_filename(name) || strlen(name) >= sizeof out->filename) {
             return set_error(error, error_size, "asset name is invalid");
         }
         snprintf(out->filename, sizeof out->filename, "%s", name);
-    } else if (strlen(name) + sizeof ".json" >= sizeof out->filename) {
+    } else if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof out->filename) {
         return set_error(error, error_size, "asset name is too long");
     } else {
-        snprintf(out->filename, sizeof out->filename, "%s.json", name);
+        snprintf(out->filename, sizeof out->filename, "%s" ASSET_EXTENSION, name);
     }
     snprintf(out->relative, sizeof out->relative, "content/%s/%s", out->family->folder, out->filename);
     return 0;
@@ -1059,7 +1059,7 @@ static void free_asset_entries(asset_entry *entries)
 
 static char *asset_name_from_filename(const char *filename)
 {
-    size_t length = strlen(filename) - (sizeof ".json" - 1);
+    size_t length = strlen(filename) - (sizeof ASSET_EXTENSION - 1);
     char *name = xmalloc(length + 1);
     memcpy(name, filename, length);
     name[length] = '\0';
@@ -1147,9 +1147,9 @@ static char *catalog_normalize_name(const char *value)
     const char *name = strrchr(value, '/');
     name = name ? name + 1 : value;
     size_t length = strlen(name);
-    if (length > sizeof ".json" - 1 &&
-        !strcmp(name + length - (sizeof ".json" - 1), ".json")) {
-        length -= sizeof ".json" - 1;
+    if (length > sizeof ASSET_EXTENSION - 1 &&
+        !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
+        length -= sizeof ASSET_EXTENSION - 1;
     }
     if (!length) {
         return NULL;
@@ -1516,6 +1516,14 @@ static void catalog_resolve_references(catalog_asset *assets)
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
 
+/* Parses asset file YAML or in-memory JSON where callers report their own
+ * error. */
+static yyjson_doc *parse_asset_text(const char *text)
+{
+    char error[160];
+    return asset_text_read(text, error, sizeof error);
+}
+
 static int load_catalog_asset(
     const char *root,
     const asset_entry *entry,
@@ -1545,7 +1553,7 @@ static int load_catalog_asset(
         free_catalog_assets(asset);
         return set_error(error, error_size, read_error);
     }
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     if (!document) {
         asset->valid = false;
         asset->errors = 1;
@@ -1778,7 +1786,7 @@ static void add_hash(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t hash)
 static yyjson_mut_val *add_asset_entry(yyjson_mut_doc *doc, yyjson_mut_val *array, const asset_entry *entry)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    size_t name_size = strlen(entry->filename) - (sizeof ".json" - 1) + 1;
+    size_t name_size = strlen(entry->filename) - (sizeof ASSET_EXTENSION - 1) + 1;
     char *name = xmalloc(name_size);
     memcpy(name, entry->filename, name_size - 1);
     name[name_size - 1] = '\0';
@@ -1962,7 +1970,7 @@ static void add_asset_identity(
     uint64_t hash
 )
 {
-    size_t name_size = strlen(ref->filename) - (sizeof ".json" - 1) + 1;
+    size_t name_size = strlen(ref->filename) - (sizeof ASSET_EXTENSION - 1) + 1;
     char *name = xmalloc(name_size);
     memcpy(name, ref->filename, name_size - 1);
     name[name_size - 1] = '\0';
@@ -2783,7 +2791,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
         return -1;
     }
-    yyjson_doc *source_document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *source_document = parse_asset_text(json);
     behavior_asset *asset = behavior_asset_load_json(json);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
@@ -3403,17 +3411,17 @@ static int load_named_asset(
     }
     memset(ref, 0, sizeof *ref);
     ref->family = family;
-    if (strstr(name, ".json")) {
+    if (strstr(name, ASSET_EXTENSION)) {
         if (!valid_asset_filename(name) || strlen(name) >= sizeof ref->filename) {
             return set_error(error, error_size, "asset name is invalid"),
                    CHIBI_AUTOMATION_INVALID_REQUEST;
         }
         snprintf(ref->filename, sizeof ref->filename, "%s", name);
-    } else if (strlen(name) + sizeof ".json" >= sizeof ref->filename) {
+    } else if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof ref->filename) {
         return set_error(error, error_size, "asset name is too long"),
                CHIBI_AUTOMATION_INVALID_REQUEST;
     } else {
-        snprintf(ref->filename, sizeof ref->filename, "%s.json", name);
+        snprintf(ref->filename, sizeof ref->filename, "%s" ASSET_EXTENSION, name);
     }
     snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
     int directory_status = verify_asset_directory(root, family, error, error_size);
@@ -3568,7 +3576,7 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
         response_error(result, exit_code, status, error);
         return -1;
     }
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     if (!document) {
         free(json);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset is not valid JSON");
@@ -3944,7 +3952,7 @@ static uint64_t scenario_world_hash(const ecs_world *world)
 
 static char *scenario_prototype_json(const char *json, uint64_t hash)
 {
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     if (!document) {
         return NULL;
     }
@@ -5909,7 +5917,7 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_obj_add_strcpy(doc, recording, "id", id);
     yyjson_mut_obj_add_strcpy(doc, recording, "kind", context->scene_target ? "scene" : "prototype");
     size_t name_size = strlen(context->prototype_ref.filename) -
-                       (sizeof ".json" - 1) + 1;
+                       (sizeof ASSET_EXTENSION - 1) + 1;
     char *name = xmalloc(name_size);
     memcpy(name, context->prototype_ref.filename, name_size - 1);
     name[name_size - 1] = '\0';
@@ -7379,7 +7387,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         );
     }
     if (status == CHIBI_AUTOMATION_OK && ref.family->loader == ASSET_SYSTEM) {
-        yyjson_doc *original = source ? yyjson_read(source, strlen(source), 0) : NULL;
+        yyjson_doc *original = source ? parse_asset_text(source) : NULL;
         yyjson_val *query = yyjson_obj_get(request, "query");
         if (!query && original) {
             query = yyjson_obj_get(yyjson_doc_get_root(original), "query");
@@ -7484,7 +7492,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
 
 static int validate_prototype_behaviors(const char *root, const char *json, char *error, size_t error_size)
 {
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *document = parse_asset_text(json);
     yyjson_val *root_value = document ? yyjson_doc_get_root(document) : NULL;
     yyjson_val *behaviors = root_value && yyjson_is_obj(root_value)
                               ? yyjson_obj_get(root_value, "behaviors")
@@ -7827,7 +7835,7 @@ static char *scene_request_defaults(const char *root, yyjson_val *request, char 
             valid = false;
             break;
         }
-        yyjson_doc *prototype = yyjson_read(json, strlen(json), 0);
+        yyjson_doc *prototype = parse_asset_text(json);
         yyjson_val *behaviors = yyjson_obj_get(yyjson_doc_get_root(prototype), "behaviors");
         yyjson_mut_obj_add_val(
             doc,

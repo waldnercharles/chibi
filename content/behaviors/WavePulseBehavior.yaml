@@ -1,0 +1,344 @@
+version: 3
+name: WavePulseBehavior
+id_counter: 78
+description: An authored wave announcement expands a thin red band through floor cells and expires after 0.8 seconds.
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: Age
+  type: 10
+  type_name: float
+  category: State
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 3
+    type: Event
+    reference_name: Tick
+    outputs: [2]
+  - id: 5
+    type: Get Variable
+    reference_id: 1
+    outputs:
+    - id: 4
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 7
+    type: Delta Time
+    outputs: [6]
+  - id: 12
+    type: Set Variable
+    reference_id: 1
+    inputs:
+    - 8
+    - id: 9
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 10
+    - id: 11
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 16
+    type: Add
+    inputs:
+    - id: 13
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 14
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 15
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 20
+    type: Divide
+    inputs:
+    - id: 17
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 18
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.8
+    outputs:
+    - id: 19
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 24
+    type: Greater Or Equal
+    inputs:
+    - 21
+    - id: 22
+      default: 1.0
+    outputs: [23]
+  - id: 29
+    type: Branch
+    inputs: [25, 26]
+    outputs: [27, 28]
+  - id: 33
+    type: Destroy Entity
+    inputs: [30, 31]
+    outputs: [32]
+  - id: 35
+    type: Self
+    outputs:
+    - id: 34
+      name: Entity
+      type_name: ecs.entity
+  - id: 39
+    type: Multiply
+    inputs:
+    - id: 36
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 336.0
+    - id: 37
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 38
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 43
+    type: Add
+    inputs:
+    - id: 40
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 24.0
+    - id: 41
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 42
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 49
+    type: Set_GameSurfaceInfluence_radius
+    inputs: [44, 45, 46]
+    outputs: [47, 48]
+  - id: 53
+    type: Subtract
+    inputs:
+    - id: 50
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 51
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 28.0
+    outputs:
+    - id: 52
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 57
+    type: Max
+    inputs:
+    - id: 54
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 55
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 56
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 63
+    type: Set_GameSurfaceInfluence_inner_radius
+    inputs: [58, 59, 60]
+    outputs: [61, 62]
+  - id: 67
+    type: Subtract
+    inputs:
+    - id: 64
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 1.0
+    - id: 65
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 66
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 71
+    type: Multiply
+    inputs:
+    - id: 68
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.65
+    - id: 69
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 70
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 77
+    type: Set_GameSurfaceInfluence_strength
+    inputs: [72, 73, 74]
+    outputs: [75, 76]
+  edges:
+  - from: 3
+    from_pin: 2
+    to: 12
+    to_pin: 8
+  - from: 5
+    from_pin: 4
+    to: 16
+    to_pin: 13
+  - from: 7
+    from_pin: 6
+    to: 16
+    to_pin: 14
+  - from: 12
+    from_pin: 10
+    to: 29
+    to_pin: 25
+  - from: 12
+    from_pin: 11
+    to: 20
+    to_pin: 17
+  - from: 16
+    from_pin: 15
+    to: 12
+    to_pin: 9
+  - from: 20
+    from_pin: 19
+    to: 24
+    to_pin: 21
+  - from: 20
+    from_pin: 19
+    to: 39
+    to_pin: 37
+  - from: 20
+    from_pin: 19
+    to: 67
+    to_pin: 65
+  - from: 24
+    from_pin: 23
+    to: 29
+    to_pin: 26
+  - from: 29
+    from_pin: 27
+    to: 33
+    to_pin: 30
+  - from: 29
+    from_pin: 28
+    to: 49
+    to_pin: 44
+  - from: 35
+    from_pin: 34
+    to: 33
+    to_pin: 31
+  - from: 39
+    from_pin: 38
+    to: 43
+    to_pin: 41
+  - from: 43
+    from_pin: 42
+    to: 49
+    to_pin: 45
+  - from: 43
+    from_pin: 42
+    to: 53
+    to_pin: 50
+  - from: 49
+    from_pin: 47
+    to: 63
+    to_pin: 58
+  - from: 53
+    from_pin: 52
+    to: 57
+    to_pin: 55
+  - from: 57
+    from_pin: 56
+    to: 63
+    to_pin: 59
+  - from: 63
+    from_pin: 61
+    to: 77
+    to_pin: 72
+  - from: 67
+    from_pin: 66
+    to: 71
+    to_pin: 69
+  - from: 71
+    from_pin: 70
+    to: 77
+    to_pin: 73

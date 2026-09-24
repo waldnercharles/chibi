@@ -66,9 +66,9 @@ static behavior_asset *load_linked_example(const char *path, const behavior_asse
 
 static void examples()
 {
-    behavior_asset *library = load_example("content/shader-libraries/ShaderMath.json");
+    behavior_asset *library = load_example("content/shader-libraries/ShaderMath.yaml");
     assert(behavior_asset_validate_library(library) == NULL);
-    behavior_asset *ring = load_linked_example("test/fixtures/content/materials/PulseRing.json", library);
+    behavior_asset *ring = load_linked_example("test/fixtures/content/materials/PulseRing.yaml", library);
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error;
@@ -98,7 +98,7 @@ static void examples()
     behavior_asset_free(ring);
 
     behavior_asset *gradient = load_linked_example(
-        "test/fixtures/content/materials/OutlineGradient.json",
+        "test/fixtures/content/materials/OutlineGradient.yaml",
         library
     );
     assert(shader_graph_from_graph(gradient->graph, &ir, &error));
@@ -110,7 +110,7 @@ static void examples()
     behavior_asset_free(gradient);
     behavior_asset_free(library);
 
-    behavior_asset *shape = load_example("test/fixtures/content/shapes/SmoothUnion.json");
+    behavior_asset *shape = load_example("test/fixtures/content/shapes/SmoothUnion.yaml");
     assert(shader_graph_from_graph(shape->graph, &ir, &error));
     sample.position[0] = sample.position[1] = 0;
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
@@ -123,7 +123,7 @@ static void examples()
     shader_graph_free(&ir);
 
     behavior_asset *flash = load_example(
-        "test/fixtures/content/behaviors/DamageFlashBehavior.json"
+        "test/fixtures/content/behaviors/DamageFlashBehavior.yaml"
     );
     compile_report report;
     compile_report_init(&report);
@@ -173,15 +173,15 @@ static void live_shader_library()
     game_live_world *live = game_live_world_new(world);
     game_live_definition *library = game_live_definition_new(
         "ShaderMath",
-        load_example("content/shader-libraries/ShaderMath.json")
+        load_example("content/shader-libraries/ShaderMath.yaml")
     );
     game_live_definition *ring = game_live_definition_new(
         "PulseRing",
-        load_example("test/fixtures/content/materials/PulseRing.json")
+        load_example("test/fixtures/content/materials/PulseRing.yaml")
     );
     game_live_definition *gradient = game_live_definition_new(
         "OutlineGradient",
-        load_example("test/fixtures/content/materials/OutlineGradient.json")
+        load_example("test/fixtures/content/materials/OutlineGradient.yaml")
     );
     assert(library && ring && gradient);
     assert(game_live_add_definition(live, library) == 0);

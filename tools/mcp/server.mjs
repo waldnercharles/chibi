@@ -271,7 +271,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Asset filename without the .json suffix.",
+        description: "Asset filename without the .yaml suffix.",
       },
     },
     required: ["kind", "name"],
@@ -338,7 +338,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype or scene asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -367,7 +367,7 @@ function rawToolDefinitions() {
       name: {
         type: "string",
         maxLength: 128,
-        description: "Prototype or scene asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -426,7 +426,7 @@ function rawToolDefinitions() {
       name: {
         type: "string",
         maxLength: 128,
-        description: "Prototype or scene asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -461,7 +461,7 @@ function rawToolDefinitions() {
       name: {
         type: "string",
         maxLength: 128,
-        description: "Behavior or system asset name without the .json suffix.",
+        description: "Behavior or system asset name without the .yaml suffix.",
       },
     },
     required: ["kind", "name"],
@@ -636,7 +636,7 @@ function rawToolDefinitions() {
       name: {
         type: "string",
         maxLength: 128,
-        description: "Prototype asset name without the .json suffix.",
+        description: "Prototype asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -683,7 +683,7 @@ function rawToolDefinitions() {
     {
       name: "listAssets",
       operation: "list_assets",
-      description: "List authored JSON assets with stable paths, sizes, and content hashes.",
+      description: "List authored YAML assets with stable paths, sizes, and content hashes.",
       inputSchema: pageArguments,
       outputSchema,
     },

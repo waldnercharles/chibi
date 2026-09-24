@@ -1,0 +1,53 @@
+version: 3
+name: MaterialIslands
+domain: field
+id_counter: 56
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 45
+    type: Field X
+    outputs: [46]
+  - id: 47
+    type: Field Y
+    outputs: [48]
+  - id: 49
+    type: Call Pure Function
+    reference_id: 1
+    reference_name: Islands
+    reference_asset: FieldShapes
+    inputs:
+    - id: 50
+      declaration_id: 6
+      name: X
+      type: 10
+      default: 0.0
+    - id: 51
+      declaration_id: 7
+      name: "Y"
+      type: 10
+      default: 0.0
+    outputs:
+    - id: 52
+      declaration_id: 8
+      name: Value
+      type: 10
+      default: 0.0
+  - id: 53
+    type: Field Output
+    inputs: [54]
+    outputs: [55]
+  edges:
+  - from: 45
+    from_pin: 46
+    to: 49
+    to_pin: 50
+  - from: 47
+    from_pin: 48
+    to: 49
+    to_pin: 51
+  - from: 49
+    from_pin: 52
+    to: 53
+    to_pin: 54

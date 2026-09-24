@@ -288,6 +288,22 @@ chibi_registry("${BASE_REGISTRY}" ${BASE_REGISTRY_PACKS})
 
 # --- graph model and execution ---
 
+# Asset files are YAML; libyaml's event parser and emitter convert them.
+add_library(yaml STATIC
+    third_party/libyaml/api.c
+    third_party/libyaml/emitter.c
+    third_party/libyaml/parser.c
+    third_party/libyaml/reader.c
+    third_party/libyaml/scanner.c
+    third_party/libyaml/writer.c
+)
+target_include_directories(yaml PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libyaml)
+target_compile_definitions(yaml
+    PUBLIC YAML_DECLARE_STATIC
+    PRIVATE YAML_VERSION_MAJOR=0 YAML_VERSION_MINOR=2 YAML_VERSION_PATCH=5
+            YAML_VERSION_STRING="0.2.5")
+target_compile_options(yaml PRIVATE -w)
+
 add_library(core STATIC
     ${CORE_SOURCES}
     third_party/yyjson/yyjson.c
@@ -299,6 +315,7 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
+target_link_libraries(core PRIVATE yaml)
 if(UNIX)
     target_link_libraries(core PUBLIC m)
 endif()
@@ -493,6 +510,20 @@ else()
     target_sources(chibi_ctl PRIVATE src/automation/gpu_capture.c)
 endif()
 chibi_enable_tracy(chibi_ctl)
+
+# Authored assets must stay in the canonical form chibi_ctl --format writes.
+set(CHIBI_ASSET_ROOTS
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/projects/arena2d
+    ${CMAKE_SOURCE_DIR}/projects/SpaceCadet
+    ${CMAKE_SOURCE_DIR}/projects/hrc_lab
+    ${CMAKE_SOURCE_DIR}/test/fixtures)
+set(CHIBI_ASSET_CHECKS)
+foreach(asset_root ${CHIBI_ASSET_ROOTS})
+    list(APPEND CHIBI_ASSET_CHECKS COMMAND ${CMAKE_COMMAND} -E env MallocNanoZone=0
+        $<TARGET_FILE:chibi_ctl> --project-root ${asset_root} --format --check)
+endforeach()
+add_custom_target(check-assets ${CHIBI_ASSET_CHECKS} DEPENDS chibi_ctl VERBATIM)
 
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)

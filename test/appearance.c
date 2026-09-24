@@ -44,7 +44,7 @@ static void expect_edited_style(const GameAppearance *appearance)
 static game_prototype *read_prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.json", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.yaml", name);
     FILE *file = fopen(path, "rb");
     assert(file);
     fseek(file, 0, SEEK_END);

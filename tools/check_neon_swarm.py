@@ -161,7 +161,7 @@ class Runner:
             shutil.copyfile(self.project/'project.json',project/'project.json')
             probe = Runner(self.build,self.output,project)
             asset = probe.author('readAsset',dict(kind='scene',name='Sandbox'))
-            scene = json.loads((project/'content/scenes/Sandbox.json').read_text())
+            scene = asset['document']
             keep = {'Player','Camera','HRC','FireMouse','FireStick'}
             operations = [dict(op='remove_entity',entity=e['name']) for e in scene['entities'] if e['name'] not in keep]
             operations.append(dict(op='add_entity',name='Target',prototype='Swarmer',

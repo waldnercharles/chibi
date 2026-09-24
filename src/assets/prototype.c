@@ -5,6 +5,7 @@
 #include "graph/runtime/value_array.h"
 #include "runtime/components.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -369,9 +370,8 @@ static game_prototype *load_document(
     size_t error_size
 )
 {
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *doc = asset_text_read(json, error, error_size);
     if (!doc) {
-        set_error(error, error_size, "malformed prototype JSON");
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(doc);

@@ -44,7 +44,7 @@ const assetSelectorProperties = {
   name: {
     type: "string",
     maxLength: 256,
-    description: "Asset name without the .json suffix.",
+    description: "Asset name without the .yaml suffix.",
   },
 };
 

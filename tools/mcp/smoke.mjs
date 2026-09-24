@@ -417,7 +417,7 @@ if (linkedValidation.response.ok !== true || !linkedValidation.response.result?.
 }
 
 const nativeRegistry = nativeRequest("describe_registry");
-const nativeMissing = nativeRequest("read_asset", { path: "content/nope.json" });
+const nativeMissing = nativeRequest("read_asset", { path: "content/nope.yaml" });
 if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeAssets.response.result?.assets?.length < 1 ||
     nativeCatalog.response.ok !== true || !nativeCatalog.response.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -444,7 +444,8 @@ const systemRoot = mkdtempSync(join(tmpdir(), "chibi-system-"));
 try {
   const systemDirectory = join(systemRoot, "content", "systems");
   mkdirSync(systemDirectory, { recursive: true });
-  const systemPath = join(systemDirectory, "MovementSystem.json");
+  // Asset files are YAML, and loaders also accept JSON documents.
+  const systemPath = join(systemDirectory, "MovementSystem.yaml");
   const systemDocument = JSON.parse(readFileSync(
     resolve(root, "test/fixtures/systems/MovementSystem.json"),
     "utf8"
@@ -474,7 +475,7 @@ try {
 
 const queryRoot = mkdtempSync(join(tmpdir(), "chibi-query-fusion-"));
 try {
-  const document = JSON.parse(readFileSync(resolve(root, "content/behaviors/ArenaWaveBehavior.json"), "utf8"));
+  const document = nativeRequest("read_asset", { kind: "behavior", name: "ArenaWaveBehavior" }).response.result.document;
   const query = document.graphs.find((graph) => graph.name === "Count Members Snapshot");
   if (!query) throw new Error("query fusion fixture is missing");
   document.name = "QueryFusionCheck";
@@ -482,7 +483,7 @@ try {
   document.graphs = [{ ...document.graphs[0], nodes: [], edges: [] }, query];
   const directory = join(queryRoot, "content", "behaviors");
   mkdirSync(directory, { recursive: true });
-  writeFileSync(join(directory, "QueryFusionCheck.json"), JSON.stringify(document));
+  writeFileSync(join(directory, "QueryFusionCheck.yaml"), JSON.stringify(document));
   const inspected = nativeRequestAt(queryRoot, "inspect_graph", {
     kind: "behavior", name: "QueryFusionCheck", graph_name: query.name,
   });
@@ -506,18 +507,18 @@ const scenarioRoot = mkdtempSync(join(tmpdir(), "chibi-scenario-"));
 try {
   const prototypeDirectory = join(scenarioRoot, "content", "prototypes");
   mkdirSync(prototypeDirectory, { recursive: true });
-  const prototype = JSON.parse(readFileSync(
-    resolve(root, "test/fixtures/content/prototypes/Editor2DPreview.json"), "utf8"
-  ));
+  const prototype = nativeRequestAt(resolve(root, "test/fixtures"), "read_asset", {
+    kind: "prototype", name: "Editor2DPreview",
+  }).response.result.document;
   prototype.components.GameInput = { move: { x: 0, y: 0 } };
   prototype.components.GameVelocity = { x: 0, y: 0 };
   prototype.behaviors = ["ReplayInput"];
-  writeFileSync(join(prototypeDirectory, "Editor2DPreview.json"), JSON.stringify(prototype));
+  writeFileSync(join(prototypeDirectory, "Editor2DPreview.yaml"), JSON.stringify(prototype));
   const behaviorDirectory = join(scenarioRoot, "content", "behaviors");
   mkdirSync(behaviorDirectory, { recursive: true });
   writeFileSync(
-    join(behaviorDirectory, "ReplayInput.json"),
-    readFileSync(resolve(root, "test/fixtures/content/behaviors/ReplayInput.json"))
+    join(behaviorDirectory, "ReplayInput.yaml"),
+    readFileSync(resolve(root, "test/fixtures/content/behaviors/ReplayInput.yaml"))
   );
   const scenarioRequests = [
     {

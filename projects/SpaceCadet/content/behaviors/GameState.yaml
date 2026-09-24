@@ -1,0 +1,167 @@
+version: 3
+name: GameState
+id_counter: 57
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Begin
+    outputs: [2]
+  - id: 3
+    type: Event
+    reference_name: Restart
+    outputs: [4]
+  - id: 5
+    type: Set Global Variable
+    inputs:
+    - 6
+    - id: 7
+      default: Score
+    - id: 8
+      type: 10
+      default: 0.0
+    outputs:
+    - 9
+    - id: 10
+      type: 10
+      default: 0.0
+  - id: 11
+    type: Set Global Variable
+    inputs:
+    - 12
+    - id: 13
+      default: Lives
+    - id: 14
+      type: 10
+      default: 3.0
+    outputs:
+    - 15
+    - id: 16
+      type: 10
+      default: 0.0
+  - id: 17
+    type: Set Global Variable
+    inputs:
+    - 18
+    - id: 19
+      default: Hits
+    - id: 20
+      type: 10
+      default: 0.0
+    outputs:
+    - 21
+    - id: 22
+      type: 10
+      default: 0.0
+  - id: 23
+    type: Set Global Variable
+    inputs:
+    - 24
+    - id: 25
+      default: Rank
+    - id: 26
+      type: 10
+      default: 1.0
+    outputs:
+    - 27
+    - id: 28
+      type: 10
+      default: 0.0
+  - id: 29
+    type: Set Global Variable
+    inputs:
+    - 30
+    - id: 31
+      default: Ready
+    - id: 32
+      type: 10
+      default: 1.0
+    outputs:
+    - 33
+    - id: 34
+      type: 10
+      default: 0.0
+  - id: 35
+    type: Set Global Variable
+    inputs:
+    - 36
+    - id: 37
+      default: Charge
+    - id: 38
+      type: 10
+      default: 0.0
+    outputs:
+    - 39
+    - id: 40
+      type: 10
+      default: 0.0
+  - id: 41
+    type: Set_GameTransform
+    inputs:
+    - 42
+    - id: 43
+      default:
+        x: 196.0
+        "y": 260.0
+    outputs: [44, 45]
+  - id: 46
+    type: Set_GameVelocity
+    inputs:
+    - 47
+    - id: 48
+      default:
+        x: 0.0
+        "y": 0.0
+    outputs: [49, 50]
+  - id: 51
+    type: Event
+    reference_name: LeftFlip
+    outputs: [52]
+  - id: 53
+    type: Event
+    reference_name: RightFlip
+    outputs: [54]
+  - id: 55
+    type: Event
+    reference_name: Dash
+    outputs: [56]
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 5
+    to_pin: 6
+  - from: 3
+    from_pin: 4
+    to: 5
+    to_pin: 6
+  - from: 5
+    from_pin: 9
+    to: 11
+    to_pin: 12
+  - from: 11
+    from_pin: 15
+    to: 17
+    to_pin: 18
+  - from: 17
+    from_pin: 21
+    to: 23
+    to_pin: 24
+  - from: 23
+    from_pin: 27
+    to: 29
+    to_pin: 30
+  - from: 29
+    from_pin: 33
+    to: 35
+    to_pin: 36
+  - from: 35
+    from_pin: 39
+    to: 41
+    to_pin: 42
+  - from: 41
+    from_pin: 44
+    to: 46
+    to_pin: 47

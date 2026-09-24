@@ -1,0 +1,107 @@
+version: 3
+name: Rock
+domain: material
+id_counter: 41
+description: Continuous world-space fractal rock grain. Occupancy and damage come from terrain cells.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+    - id: 2
+      default:
+        x: 1.0
+        "y": 1.0
+        z: 1.0
+    - id: 3
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 4
+      default: 0.949999988079071
+    - 5
+    - id: 6
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - 7
+    - 8
+  - id: 9
+    type: Shader WorldPosition
+    outputs: [10]
+  - id: 11
+    type: Shader Fractal Noise
+    inputs:
+    - 12
+    - id: 13
+      default: 0.04500000178813934
+    - id: 14
+      default: 3.0
+    - id: 15
+      default: 0.550000011920929
+    outputs: [16]
+  - id: 17
+    type: Shader Vector3
+    inputs:
+    - id: 18
+      default: 0.02500000037252903
+    - id: 19
+      default: 0.03999999910593033
+    - id: 20
+      default: 0.054999999701976776
+    outputs: [21]
+  - id: 22
+    type: Shader Vector3
+    inputs:
+    - id: 23
+      default: 0.1599999964237213
+    - id: 24
+      default: 0.2199999988079071
+    - id: 25
+      default: 0.27000001072883606
+    outputs: [26]
+  - id: 27
+    type: Shader Mix
+    inputs:
+    - id: 28
+      type: 15
+      type_name: ShaderVec3
+      default: null
+    - id: 29
+      type: 15
+      type_name: ShaderVec3
+      default: null
+    - id: 30
+      type: 15
+      type_name: ShaderVec3
+      default: null
+    outputs:
+    - id: 31
+      type: 15
+      type_name: ShaderVec3
+      default: null
+  edges:
+  - from: 9
+    from_pin: 10
+    to: 11
+    to_pin: 12
+  - from: 11
+    from_pin: 16
+    to: 27
+    to_pin: 30
+  - from: 17
+    from_pin: 21
+    to: 27
+    to_pin: 28
+  - from: 22
+    from_pin: 26
+    to: 27
+    to_pin: 29
+  - from: 27
+    from_pin: 31
+    to: 1
+    to_pin: 2

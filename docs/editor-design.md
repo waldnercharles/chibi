@@ -1005,7 +1005,7 @@ wait while editor and gameplay workflows improve.
 
 ## Authored encounter and restart
 
-The shipped `content/scenes/NeonSwarm.json` contains Player and a nonvisual
+The shipped `content/scenes/NeonSwarm.yaml` contains Player and a nonvisual
 Encounter controller. Scene files can be opened from Files. Other prototypes are
 available as assets rather than being instantiated automatically. Startup reports
 scene load errors instead of silently opening an empty scene. Native interaction

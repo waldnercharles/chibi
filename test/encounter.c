@@ -41,7 +41,7 @@ static behavior_asset *read_asset(const char *path)
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.yaml", name);
     behavior_asset *asset = link_test_libraries(read_asset(path));
     compile_report report;
     compile_report_init(&report);
@@ -57,7 +57,7 @@ static behavior_asset *behavior(const char *name)
 static game_prototype *prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "content/prototypes/%s.json", name);
+    snprintf(path, sizeof path, "content/prototypes/%s.yaml", name);
     char *json = text_file_read(path);
     assert(json);
     game_prototype *result = game_prototype_load(json, registry, error, sizeof error);
@@ -479,7 +479,7 @@ static void cross_batch_defeat()
 
 static behavior_asset *damage_probe()
 {
-    behavior_asset *definition = read_asset("content/events/Damaged.json");
+    behavior_asset *definition = read_asset("content/events/Damaged.yaml");
     behavior_asset *asset = behavior_asset_new("Accepted damage probe");
     uint64_t count = behavior_asset_add_variable(asset, "Count", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "")
                          ->id;
@@ -508,7 +508,7 @@ static behavior_asset *damage_probe()
         graph_connect_data_conversion(asset->graph, event, 1, log, 1, registry_node_by_name("To String")) == 0
     );
     assert(graph_connect_exec(asset->graph, increment, 0, log, 0, 0) == 0);
-    definition = read_asset("content/events/Died.json");
+    definition = read_asset("content/events/Died.yaml");
     event = graph_add_node(asset->graph, &NODE_Event);
     assert(graph_event_apply(asset->graph, event, definition) == 0);
     log = graph_add_node(asset->graph, registry_node_by_name("Print String"));
@@ -1099,7 +1099,7 @@ static float feedback_parameter(encounter_host *h, int material, const char *nam
 static void combat_feedback_gates()
 {
     encounter_host h = create(false);
-    behavior_asset *material = read_asset("content/materials/ArenaPlayer.json");
+    behavior_asset *material = read_asset("content/materials/ArenaPlayer.yaml");
     shader_error error;
     assert(render_shader_upsert(material, &error));
     int id = render_shader_find(material->name);

@@ -1,0 +1,45 @@
+name: BoostEmitter
+identity: prototype-03d63f729e45d3fe
+components:
+  GAME.GameIgniter:
+    heat: 2.5
+  GAME.GameParticleEmitter:
+    absorption: 0.009999999776482582
+    active: true
+    color: 870776831
+    direction:
+      x: -1.0
+    drag:
+      start:
+        x: 2.0
+        "y": 3.0
+    emission:
+      exponent: 0.800000011920929
+      start:
+        x: 0.18000000715255737
+        "y": 0.30000001192092896
+    end_color: 3394636
+    fluid: true
+    fluid_mass: 0.00039999998989515007
+    heading_only: true
+    lifetime:
+      x: 0.4000000059604645
+      "y": 0.699999988079071
+    metaball_blend: 2.0
+    metaball_group: 1
+    offset:
+      x: -10.0
+    planar: true
+    rate: 210.0
+    size:
+      exponent: 1.2000000476837158
+      start:
+        x: 4.0
+        "y": 6.0
+    speed:
+      x: 90.0
+      "y": 140.0
+    spread: 0.6499999761581421
+    velocity_inherit: 1.0
+  game.GameTransform: {}
+behaviors: [BoostEmitter]

@@ -1,0 +1,45 @@
+version: 3
+name: ProjectileEffects
+id_counter: 16
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Begin
+    outputs: [2]
+  - id: 3
+    type: Self
+    outputs:
+    - id: 4
+      type_name: ecs.entity
+  - id: 5
+    type: Spawn Prototype
+    inputs:
+    - 6
+    - id: 7
+      default: TrailEmitter
+    outputs: [8, 9]
+  - id: 10
+    type: Set_GameParticleEmitter_parent
+    inputs: [11, 12, 13]
+    outputs: [14, 15]
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 5
+    to_pin: 6
+  - from: 3
+    from_pin: 4
+    to: 10
+    to_pin: 12
+  - from: 5
+    from_pin: 8
+    to: 10
+    to_pin: 11
+  - from: 5
+    from_pin: 9
+    to: 10
+    to_pin: 13

@@ -1,0 +1,1325 @@
+version: 3
+name: Flipper
+id_counter: 1336
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: rest
+  type: 10
+- id: 2
+  name: restX
+  type: 10
+- id: 3
+  name: restY
+  type: 10
+- id: 4
+  name: stroke
+  type: 10
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 5
+    type: Event
+    reference_name: Begin
+    outputs: [6]
+  - id: 7
+    type: Set Variable
+    reference_id: 1
+    reference_name: rest
+    inputs:
+    - 8
+    - id: 9
+      type: 10
+      type_name: null
+      binding:
+        kind: component_field
+        component: GAME.GameOrientation
+        field: radians
+      default: 0.0
+    outputs:
+    - 10
+    - id: 11
+      type: 10
+      type_name: null
+      default: 0.0
+  - id: 12
+    type: Set Variable
+    reference_id: 2
+    reference_name: restX
+    inputs:
+    - 13
+    - id: 14
+      type: 10
+      type_name: null
+      binding:
+        kind: component_field
+        component: game.GameTransform
+        field: x
+      default: 0.0
+    outputs:
+    - 15
+    - id: 16
+      type: 10
+      type_name: null
+      default: 0.0
+  - id: 17
+    type: Set Variable
+    reference_id: 3
+    reference_name: restY
+    inputs:
+    - 18
+    - id: 19
+      type: 10
+      type_name: null
+      binding:
+        kind: component_field
+        component: game.GameTransform
+        field: "y"
+      default: 0.0
+    outputs:
+    - 20
+    - id: 21
+      type: 10
+      type_name: null
+      default: 0.0
+  - id: 22
+    type: Event
+    reference_name: Tick
+    outputs:
+    - 23
+    - id: 24
+      name: DeltaSeconds
+      type: 10
+      type_name: float
+      kind: data
+      default: 0.0
+  - id: 25
+    type: Branch
+    inputs:
+    - 26
+    - id: 27
+      binding:
+        kind: component_field
+        component: GAME.GameActionBinding
+        field: pressed
+    outputs: [28, 29]
+  - id: 30
+    type: Set Variable
+    reference_id: 4
+    reference_name: stroke
+    inputs:
+    - 31
+    - id: 32
+      type: 10
+      type_name: null
+      default: 0.9200000166893005
+    outputs:
+    - 33
+    - id: 34
+      type: 10
+      type_name: null
+      default: 0.0
+  - id: 35
+    type: Set Variable
+    reference_id: 4
+    reference_name: stroke
+    inputs:
+    - 36
+    - id: 37
+      type: 10
+      type_name: null
+      default: 0.0
+    outputs:
+    - 38
+    - id: 39
+      type: 10
+      type_name: null
+      default: 0.0
+  - id: 100
+    type: Behavior Expression
+    reference_id: 40
+    reference_name: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
+    inputs:
+    - id: 101
+      declaration_id: 45
+      name: rest
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: variable
+        variable_id: 1
+        source_asset: Flipper
+      default: 0.0
+    - id: 102
+      declaration_id: 46
+      name: stroke
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: variable
+        variable_id: 4
+        source_asset: Flipper
+      default: 0.0
+    - id: 103
+      declaration_id: 47
+      name: angle
+      type: 11
+      type_name: double
+      flags: 2
+      group: 3
+      binding:
+        kind: component_field
+        component: GAME.GameOrientation
+        field: radians
+      default: 0.0
+    - id: 104
+      declaration_id: 48
+      name: dt
+      type: 11
+      type_name: double
+      flags: 2
+      group: 4
+      binding:
+        kind: delta_time
+      default: 0.0
+    outputs:
+    - id: 105
+      declaration_id: 49
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 5
+      default: 0.0
+  - id: 346
+    type: Set_GameBody_angular_velocity
+    inputs: [347, 348, 349]
+    outputs: [350, 351]
+  - id: 468
+    type: Behavior Expression
+    reference_id: 412
+    reference_name: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
+    inputs:
+    - id: 469
+      declaration_id: 417
+      name: origin
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: variable
+        variable_id: 2
+        source_asset: Flipper
+      default: 0.0
+    - id: 470
+      declaration_id: 418
+      name: angle
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: component_field
+        component: GAME.GameOrientation
+        field: radians
+      default: 0.0
+    - id: 471
+      declaration_id: 419
+      name: speed
+      type: 11
+      type_name: double
+      flags: 2
+      group: 3
+      binding:
+        kind: component_field
+        component: GAME.GameBody
+        field: angular_velocity
+      default: 0.0
+    - id: 472
+      declaration_id: 420
+      name: dt
+      type: 11
+      type_name: double
+      flags: 2
+      group: 4
+      binding:
+        kind: delta_time
+      default: 0.0
+    - id: 473
+      declaration_id: 421
+      name: rest
+      type: 11
+      type_name: double
+      flags: 2
+      group: 5
+      binding:
+        kind: variable
+        variable_id: 1
+        source_asset: Flipper
+      default: 0.0
+    - id: 474
+      declaration_id: 422
+      name: position
+      type: 11
+      type_name: double
+      flags: 2
+      group: 6
+      binding:
+        kind: component_field
+        component: game.GameTransform
+        field: x
+      default: 0.0
+    outputs:
+    - id: 475
+      declaration_id: 423
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 7
+      default: 0.0
+  - id: 812
+    type: Set_GameVelocity_x
+    inputs: [813, 814, 815]
+    outputs: [816, 817]
+  - id: 930
+    type: Behavior Expression
+    reference_id: 874
+    reference_name: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
+    inputs:
+    - id: 931
+      declaration_id: 879
+      name: origin
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: variable
+        variable_id: 3
+        source_asset: Flipper
+      default: 0.0
+    - id: 932
+      declaration_id: 880
+      name: angle
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: component_field
+        component: GAME.GameOrientation
+        field: radians
+      default: 0.0
+    - id: 933
+      declaration_id: 881
+      name: speed
+      type: 11
+      type_name: double
+      flags: 2
+      group: 3
+      binding:
+        kind: component_field
+        component: GAME.GameBody
+        field: angular_velocity
+      default: 0.0
+    - id: 934
+      declaration_id: 882
+      name: dt
+      type: 11
+      type_name: double
+      flags: 2
+      group: 4
+      binding:
+        kind: delta_time
+      default: 0.0
+    - id: 935
+      declaration_id: 883
+      name: rest
+      type: 11
+      type_name: double
+      flags: 2
+      group: 5
+      binding:
+        kind: variable
+        variable_id: 1
+        source_asset: Flipper
+      default: 0.0
+    - id: 936
+      declaration_id: 884
+      name: position
+      type: 11
+      type_name: double
+      flags: 2
+      group: 6
+      binding:
+        kind: component_field
+        component: game.GameTransform
+        field: "y"
+      default: 0.0
+    outputs:
+    - id: 937
+      declaration_id: 885
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 7
+      default: 0.0
+  - id: 1274
+    type: Set_GameVelocity_y
+    inputs: [1275, 1276, 1277]
+    outputs: [1278, 1279]
+  edges:
+  - from: 5
+    from_pin: 6
+    to: 7
+    to_pin: 8
+  - from: 7
+    from_pin: 10
+    to: 12
+    to_pin: 13
+  - from: 12
+    from_pin: 15
+    to: 17
+    to_pin: 18
+  - from: 22
+    from_pin: 23
+    to: 25
+    to_pin: 26
+  - from: 25
+    from_pin: 28
+    to: 30
+    to_pin: 31
+  - from: 25
+    from_pin: 29
+    to: 35
+    to_pin: 36
+  - from: 30
+    from_pin: 33
+    to: 346
+    to_pin: 347
+  - from: 35
+    from_pin: 38
+    to: 346
+    to_pin: 347
+  - from: 100
+    from_pin: 105
+    to: 346
+    to_pin: 348
+  - from: 346
+    from_pin: 350
+    to: 812
+    to_pin: 813
+  - from: 468
+    from_pin: 475
+    to: 812
+    to_pin: 814
+  - from: 812
+    from_pin: 816
+    to: 1274
+    to_pin: 1275
+  - from: 930
+    from_pin: 937
+    to: 1274
+    to_pin: 1276
+- id: 40
+  kind: function
+  name: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
+  math_expression: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
+  expression_mode: 1
+  entry_id: 353
+  return_id: 355
+  call_depth_limit: 64
+  nodes:
+  - id: 353
+    type: Function Entry
+    outputs:
+    - id: 357
+      name: rest
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+    - id: 358
+      name: stroke
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+    - id: 359
+      name: angle
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+    - id: 360
+      name: dt
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 4
+      default: 0.0
+  - id: 355
+    type: Return
+    inputs:
+    - id: 361
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 5
+      default: 0.0
+  - id: 362
+    type: Cosine
+    inputs: [363]
+    outputs: [364]
+  - id: 365
+    type: Cosine
+    inputs: [366]
+    outputs: [367]
+  - id: 368
+    type: Abs
+    inputs:
+    - id: 369
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 370
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 371
+    type: Divide
+    inputs:
+    - id: 372
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 373
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 374
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 375
+    type: Multiply
+    inputs:
+    - id: 376
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 377
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 378
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 379
+    type: Subtract
+    inputs:
+    - id: 380
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 381
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 382
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 383
+    type: Subtract
+    inputs:
+    - id: 384
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 385
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 386
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 387
+    type: Real
+    inputs:
+    - id: 388
+      default: 0.001
+    outputs: [389]
+  - id: 390
+    type: Max
+    inputs:
+    - id: 391
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 392
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 393
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 394
+    type: Divide
+    inputs:
+    - id: 395
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 396
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 397
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 398
+    type: Real
+    inputs:
+    - id: 399
+      default: 24.0
+    outputs: [400]
+  - id: 401
+    type: Negate
+    inputs:
+    - id: 402
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 403
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 404
+    type: Real
+    inputs:
+    - id: 405
+      default: 24.0
+    outputs: [406]
+  - id: 407
+    type: Clamp
+    inputs:
+    - id: 408
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 409
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 410
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 411
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 353
+    from_pin: 357
+    to: 362
+    to_pin: 363
+  - from: 353
+    from_pin: 357
+    to: 365
+    to_pin: 366
+  - from: 353
+    from_pin: 357
+    to: 379
+    to_pin: 380
+  - from: 353
+    from_pin: 358
+    to: 375
+    to_pin: 377
+  - from: 353
+    from_pin: 359
+    to: 383
+    to_pin: 385
+  - from: 353
+    from_pin: 360
+    to: 390
+    to_pin: 391
+  - from: 362
+    from_pin: 364
+    to: 371
+    to_pin: 372
+  - from: 365
+    from_pin: 367
+    to: 368
+    to_pin: 369
+  - from: 368
+    from_pin: 370
+    to: 371
+    to_pin: 373
+  - from: 371
+    from_pin: 374
+    to: 375
+    to_pin: 376
+  - from: 375
+    from_pin: 378
+    to: 379
+    to_pin: 381
+  - from: 379
+    from_pin: 382
+    to: 383
+    to_pin: 384
+  - from: 383
+    from_pin: 386
+    to: 394
+    to_pin: 395
+  - from: 387
+    from_pin: 389
+    to: 390
+    to_pin: 392
+  - from: 390
+    from_pin: 393
+    to: 394
+    to_pin: 396
+  - from: 394
+    from_pin: 397
+    to: 407
+    to_pin: 408
+  - from: 398
+    from_pin: 400
+    to: 401
+    to_pin: 402
+  - from: 401
+    from_pin: 403
+    to: 407
+    to_pin: 409
+  - from: 404
+    from_pin: 406
+    to: 407
+    to_pin: 410
+  - from: 407
+    from_pin: 411
+    to: 355
+    to_pin: 361
+- id: 412
+  kind: function
+  name: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
+  math_expression: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
+  expression_mode: 1
+  entry_id: 819
+  return_id: 821
+  call_depth_limit: 64
+  nodes:
+  - id: 819
+    type: Function Entry
+    outputs:
+    - id: 823
+      name: origin
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+    - id: 824
+      name: angle
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+    - id: 825
+      name: speed
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+    - id: 826
+      name: dt
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 4
+      default: 0.0
+    - id: 827
+      name: rest
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 5
+      default: 0.0
+    - id: 828
+      name: position
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 6
+      default: 0.0
+  - id: 821
+    type: Return
+    inputs:
+    - id: 829
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 7
+      default: 0.0
+  - id: 830
+    type: Real
+    inputs:
+    - id: 831
+      default: 38.0
+    outputs: [832]
+  - id: 833
+    type: Multiply
+    inputs:
+    - id: 834
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 835
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 836
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 837
+    type: Add
+    inputs:
+    - id: 838
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 839
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 840
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 841
+    type: Cosine
+    inputs: [842]
+    outputs: [843]
+  - id: 844
+    type: Cosine
+    inputs: [845]
+    outputs: [846]
+  - id: 847
+    type: Subtract
+    inputs:
+    - id: 848
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 849
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 850
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 851
+    type: Multiply
+    inputs:
+    - id: 852
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 853
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 854
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 855
+    type: Add
+    inputs:
+    - id: 856
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 857
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 858
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 859
+    type: Subtract
+    inputs:
+    - id: 860
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 861
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 862
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 863
+    type: Real
+    inputs:
+    - id: 864
+      default: 0.001
+    outputs: [865]
+  - id: 866
+    type: Max
+    inputs:
+    - id: 867
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 868
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 869
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 870
+    type: Divide
+    inputs:
+    - id: 871
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 872
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 873
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 819
+    from_pin: 823
+    to: 855
+    to_pin: 856
+  - from: 819
+    from_pin: 824
+    to: 837
+    to_pin: 838
+  - from: 819
+    from_pin: 825
+    to: 833
+    to_pin: 834
+  - from: 819
+    from_pin: 826
+    to: 833
+    to_pin: 835
+  - from: 819
+    from_pin: 826
+    to: 866
+    to_pin: 867
+  - from: 819
+    from_pin: 827
+    to: 844
+    to_pin: 845
+  - from: 819
+    from_pin: 828
+    to: 859
+    to_pin: 861
+  - from: 830
+    from_pin: 832
+    to: 851
+    to_pin: 852
+  - from: 833
+    from_pin: 836
+    to: 837
+    to_pin: 839
+  - from: 837
+    from_pin: 840
+    to: 841
+    to_pin: 842
+  - from: 841
+    from_pin: 843
+    to: 847
+    to_pin: 848
+  - from: 844
+    from_pin: 846
+    to: 847
+    to_pin: 849
+  - from: 847
+    from_pin: 850
+    to: 851
+    to_pin: 853
+  - from: 851
+    from_pin: 854
+    to: 855
+    to_pin: 857
+  - from: 855
+    from_pin: 858
+    to: 859
+    to_pin: 860
+  - from: 859
+    from_pin: 862
+    to: 870
+    to_pin: 871
+  - from: 863
+    from_pin: 865
+    to: 866
+    to_pin: 868
+  - from: 866
+    from_pin: 869
+    to: 870
+    to_pin: 872
+  - from: 870
+    from_pin: 873
+    to: 821
+    to_pin: 829
+- id: 874
+  kind: function
+  name: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
+  math_expression: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
+  expression_mode: 1
+  entry_id: 1281
+  return_id: 1283
+  call_depth_limit: 64
+  nodes:
+  - id: 1281
+    type: Function Entry
+    outputs:
+    - id: 1285
+      name: origin
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+    - id: 1286
+      name: angle
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+    - id: 1287
+      name: speed
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+    - id: 1288
+      name: dt
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 4
+      default: 0.0
+    - id: 1289
+      name: rest
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 5
+      default: 0.0
+    - id: 1290
+      name: position
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 6
+      default: 0.0
+  - id: 1283
+    type: Return
+    inputs:
+    - id: 1291
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 7
+      default: 0.0
+  - id: 1292
+    type: Real
+    inputs:
+    - id: 1293
+      default: 38.0
+    outputs: [1294]
+  - id: 1295
+    type: Multiply
+    inputs:
+    - id: 1296
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1297
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1298
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1299
+    type: Add
+    inputs:
+    - id: 1300
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1301
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1302
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1303
+    type: Sine
+    inputs: [1304]
+    outputs: [1305]
+  - id: 1306
+    type: Sine
+    inputs: [1307]
+    outputs: [1308]
+  - id: 1309
+    type: Subtract
+    inputs:
+    - id: 1310
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1311
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1312
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1313
+    type: Multiply
+    inputs:
+    - id: 1314
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1315
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1316
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1317
+    type: Add
+    inputs:
+    - id: 1318
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1319
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1320
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1321
+    type: Subtract
+    inputs:
+    - id: 1322
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1323
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1324
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1325
+    type: Real
+    inputs:
+    - id: 1326
+      default: 0.001
+    outputs: [1327]
+  - id: 1328
+    type: Max
+    inputs:
+    - id: 1329
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1330
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1331
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1332
+    type: Divide
+    inputs:
+    - id: 1333
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1334
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1335
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 1281
+    from_pin: 1285
+    to: 1317
+    to_pin: 1318
+  - from: 1281
+    from_pin: 1286
+    to: 1299
+    to_pin: 1300
+  - from: 1281
+    from_pin: 1287
+    to: 1295
+    to_pin: 1296
+  - from: 1281
+    from_pin: 1288
+    to: 1295
+    to_pin: 1297
+  - from: 1281
+    from_pin: 1288
+    to: 1328
+    to_pin: 1329
+  - from: 1281
+    from_pin: 1289
+    to: 1306
+    to_pin: 1307
+  - from: 1281
+    from_pin: 1290
+    to: 1321
+    to_pin: 1323
+  - from: 1292
+    from_pin: 1294
+    to: 1313
+    to_pin: 1314
+  - from: 1295
+    from_pin: 1298
+    to: 1299
+    to_pin: 1301
+  - from: 1299
+    from_pin: 1302
+    to: 1303
+    to_pin: 1304
+  - from: 1303
+    from_pin: 1305
+    to: 1309
+    to_pin: 1310
+  - from: 1306
+    from_pin: 1308
+    to: 1309
+    to_pin: 1311
+  - from: 1309
+    from_pin: 1312
+    to: 1313
+    to_pin: 1315
+  - from: 1313
+    from_pin: 1316
+    to: 1317
+    to_pin: 1319
+  - from: 1317
+    from_pin: 1320
+    to: 1321
+    to_pin: 1322
+  - from: 1321
+    from_pin: 1324
+    to: 1332
+    to_pin: 1333
+  - from: 1325
+    from_pin: 1327
+    to: 1328
+    to_pin: 1330
+  - from: 1328
+    from_pin: 1331
+    to: 1332
+    to_pin: 1334
+  - from: 1332
+    from_pin: 1335
+    to: 1283
+    to_pin: 1291

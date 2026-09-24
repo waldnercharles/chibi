@@ -1,0 +1,21 @@
+version: 3
+name: Material Impact
+domain: event
+id_counter: 4
+variables:
+- id: 1
+  name: Energy
+  type: 10
+- id: 2
+  name: Cause
+  type: 6
+- id: 3
+  name: Point
+  type: 15
+  type_name: CF_V2
+  default:
+    x: 0.0
+    "y": 0.0
+graphs:
+- kind: event
+  name: ""

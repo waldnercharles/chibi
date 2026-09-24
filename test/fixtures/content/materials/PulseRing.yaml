@@ -1,0 +1,248 @@
+version: 3
+name: PulseRing
+domain: material
+id_counter: 44
+description: An emissive ring surface. Flash remains the named DamageFlashBehavior override; pulse and ring masking use ShaderMath.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+    - id: 2
+      default:
+        x: 1.0
+        "y": 1.0
+        z: 1.0
+    - id: 3
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 4
+      default: 0.6499999761581421
+    - 5
+    - id: 6
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - 7
+    - id: 8
+      default: true
+  - id: 9
+    type: Shader Position
+    outputs:
+    - id: 10
+      default:
+        x: 0.0
+        "y": 0.0
+  - id: 11
+    type: Shader Parameter
+    reference_name: Radius
+    outputs:
+    - id: 12
+      flags: 0
+      group: 0
+      default: 35.0
+  - id: 13
+    type: Shader Parameter
+    reference_id: 1
+    reference_name: Width
+    outputs:
+    - id: 14
+      flags: 0
+      group: 0
+      default: 3.0
+  - id: 15
+    type: Call Pure Function
+    reference_id: 102
+    reference_name: Ring Mask
+    reference_asset: ShaderMath
+    inputs:
+    - id: 16
+      declaration_id: 104
+      name: Position
+      type: 15
+      type_name: ShaderVec2
+      default:
+        x: 0.0
+        "y": 0.0
+    - id: 17
+      declaration_id: 105
+      name: Radius
+      type: 10
+      default: 35.0
+    - id: 18
+      declaration_id: 106
+      name: Width
+      type: 10
+      default: 3.0
+    outputs:
+    - id: 19
+      declaration_id: 108
+      name: Mask
+      type: 10
+      default: 0.0
+  - id: 20
+    type: Shader Parameter
+    reference_id: 2
+    reference_name: Color
+    outputs:
+    - id: 21
+      type: 15
+      type_name: ShaderVec3
+      flags: 64
+      group: 0
+      default:
+        x: 0.05000000074505806
+        "y": 0.6000000238418579
+        z: 1.0
+  - id: 22
+    type: Shader Time
+    outputs: [23]
+  - id: 24
+    type: Shader Parameter
+    reference_id: 3
+    reference_name: Speed
+    outputs:
+    - id: 25
+      flags: 0
+      group: 0
+      default: 2.0
+  - id: 26
+    type: Shader Parameter
+    reference_id: 4
+    reference_name: Flash
+    outputs:
+    - id: 27
+      flags: 0
+      group: 0
+  - id: 28
+    type: Call Pure Function
+    reference_id: 56
+    reference_name: Pulse
+    reference_asset: ShaderMath
+    inputs:
+    - id: 29
+      declaration_id: 61
+      name: Time
+      type: 10
+      default: 0.0
+    - id: 30
+      declaration_id: 62
+      name: Speed
+      type: 10
+      default: 0.0
+    outputs:
+    - id: 31
+      declaration_id: 63
+      name: Brightness
+      type: 10
+      default: 0.0
+  - id: 32
+    type: Shader Add
+    inputs:
+    - id: 33
+      flags: 0
+      group: 0
+    - id: 34
+      flags: 0
+      group: 0
+      default: 0.30000001192092896
+    outputs:
+    - id: 35
+      flags: 0
+      group: 0
+  - id: 36
+    type: Shader Add
+    inputs:
+    - id: 37
+      flags: 0
+      group: 0
+    - id: 38
+      flags: 0
+      group: 0
+    outputs:
+    - id: 39
+      flags: 0
+      group: 0
+  - id: 40
+    type: Shader Multiply
+    inputs:
+    - id: 41
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 42
+      flags: 0
+      group: 0
+    outputs:
+    - id: 43
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  edges:
+  - from: 9
+    from_pin: 10
+    to: 15
+    to_pin: 16
+  - from: 11
+    from_pin: 12
+    to: 15
+    to_pin: 17
+  - from: 13
+    from_pin: 14
+    to: 15
+    to_pin: 18
+  - from: 15
+    from_pin: 19
+    to: 1
+    to_pin: 7
+  - from: 20
+    from_pin: 21
+    to: 1
+    to_pin: 2
+  - from: 20
+    from_pin: 21
+    to: 40
+    to_pin: 41
+  - from: 22
+    from_pin: 23
+    to: 28
+    to_pin: 29
+  - from: 24
+    from_pin: 25
+    to: 28
+    to_pin: 30
+  - from: 26
+    from_pin: 27
+    to: 36
+    to_pin: 38
+  - from: 28
+    from_pin: 31
+    to: 32
+    to_pin: 33
+  - from: 32
+    from_pin: 35
+    to: 36
+    to_pin: 37
+  - from: 36
+    from_pin: 39
+    to: 40
+    to_pin: 42
+  - from: 40
+    from_pin: 43
+    to: 1
+    to_pin: 3

@@ -1,0 +1,338 @@
+version: 3
+name: Nudge
+id_counter: 186
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Nudge
+    outputs: [2]
+  - id: 44
+    type: Behavior Expression
+    reference_id: 3
+    reference_name: clamp(v + (rand()-0.5)*170, -900, 900)
+    inputs:
+    - id: 45
+      declaration_id: 8
+      name: v
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameVelocity
+        field: x
+      default: 0.0
+    outputs:
+    - id: 46
+      declaration_id: 9
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 88
+    type: Set_GameVelocity_x
+    inputs: [89, 90, 91]
+    outputs: [92, 93]
+  - id: 149
+    type: Behavior Expression
+    reference_id: 135
+    reference_name: v-100
+    inputs:
+    - id: 150
+      declaration_id: 140
+      name: v
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameVelocity
+        field: "y"
+      default: 0.0
+    outputs:
+    - id: 151
+      declaration_id: 141
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 166
+    type: Set_GameVelocity_y
+    inputs: [167, 168, 169]
+    outputs: [170, 171]
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 88
+    to_pin: 89
+  - from: 44
+    from_pin: 46
+    to: 88
+    to_pin: 90
+  - from: 88
+    from_pin: 92
+    to: 166
+    to_pin: 167
+  - from: 149
+    from_pin: 151
+    to: 166
+    to_pin: 168
+- id: 3
+  kind: function
+  name: clamp(v + (rand()-0.5)*170, -900, 900)
+  math_expression: clamp(v + (rand()-0.5)*170, -900, 900)
+  expression_mode: 1
+  entry_id: 95
+  return_id: 97
+  call_depth_limit: 64
+  nodes:
+  - id: 95
+    type: Function Entry
+    outputs:
+    - id: 99
+      name: v
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+  - id: 97
+    type: Return
+    inputs:
+    - id: 100
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 101
+    type: Random Real
+    outputs: [102]
+  - id: 103
+    type: Real
+    inputs:
+    - id: 104
+      default: 0.5
+    outputs: [105]
+  - id: 106
+    type: Subtract
+    inputs:
+    - id: 107
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 108
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 109
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 110
+    type: Real
+    inputs:
+    - id: 111
+      default: 170.0
+    outputs: [112]
+  - id: 113
+    type: Multiply
+    inputs:
+    - id: 114
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 115
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 116
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 117
+    type: Add
+    inputs:
+    - id: 118
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 119
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 120
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 121
+    type: Real
+    inputs:
+    - id: 122
+      default: 900.0
+    outputs: [123]
+  - id: 124
+    type: Negate
+    inputs:
+    - id: 125
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 126
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 127
+    type: Real
+    inputs:
+    - id: 128
+      default: 900.0
+    outputs: [129]
+  - id: 130
+    type: Clamp
+    inputs:
+    - id: 131
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 132
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 133
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 134
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 95
+    from_pin: 99
+    to: 117
+    to_pin: 118
+  - from: 101
+    from_pin: 102
+    to: 106
+    to_pin: 107
+  - from: 103
+    from_pin: 105
+    to: 106
+    to_pin: 108
+  - from: 106
+    from_pin: 109
+    to: 113
+    to_pin: 114
+  - from: 110
+    from_pin: 112
+    to: 113
+    to_pin: 115
+  - from: 113
+    from_pin: 116
+    to: 117
+    to_pin: 119
+  - from: 117
+    from_pin: 120
+    to: 130
+    to_pin: 131
+  - from: 121
+    from_pin: 123
+    to: 124
+    to_pin: 125
+  - from: 124
+    from_pin: 126
+    to: 130
+    to_pin: 132
+  - from: 127
+    from_pin: 129
+    to: 130
+    to_pin: 133
+  - from: 130
+    from_pin: 134
+    to: 97
+    to_pin: 100
+- id: 135
+  kind: function
+  name: v-100
+  math_expression: v-100
+  expression_mode: 1
+  entry_id: 173
+  return_id: 175
+  call_depth_limit: 64
+  nodes:
+  - id: 173
+    type: Function Entry
+    outputs:
+    - id: 177
+      name: v
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+  - id: 175
+    type: Return
+    inputs:
+    - id: 178
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 179
+    type: Real
+    inputs:
+    - id: 180
+      default: 100.0
+    outputs: [181]
+  - id: 182
+    type: Subtract
+    inputs:
+    - id: 183
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 184
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 185
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 173
+    from_pin: 177
+    to: 182
+    to_pin: 183
+  - from: 179
+    from_pin: 181
+    to: 182
+    to_pin: 184
+  - from: 182
+    from_pin: 185
+    to: 175
+    to_pin: 178

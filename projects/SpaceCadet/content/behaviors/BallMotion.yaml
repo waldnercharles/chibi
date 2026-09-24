@@ -1,0 +1,654 @@
+version: 3
+name: BallMotion
+id_counter: 323
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+    - 2
+    - id: 3
+      name: DeltaSeconds
+      type: 10
+      type_name: float
+      kind: data
+      default: 0.0
+  - id: 4
+    type: Get Global Variable
+    inputs:
+    - id: 5
+      default: Ready
+    outputs:
+    - id: 6
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 21
+    type: Behavior Expression
+    reference_id: 7
+    reference_name: ready < 0.5
+    inputs:
+    - id: 24
+      name: Exec
+      kind: exec
+    - id: 22
+      declaration_id: 12
+      name: ready
+      type: 11
+      type_name: double
+      group: 1
+      default: 0.0
+    outputs:
+    - id: 25
+      name: "True"
+      kind: exec
+    - id: 26
+      name: "False"
+      kind: exec
+    - id: 23
+      declaration_id: 13
+      name: Result
+      type: 1
+      type_name: bool
+      flags: 2
+      group: 2
+      default: false
+  - id: 74
+    type: Behavior Expression
+    reference_id: 41
+    reference_name: clamp(v + 480 * dt, -1150, 1000)
+    inputs:
+    - id: 75
+      declaration_id: 46
+      name: v
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameVelocity
+        field: "y"
+      default: 0.0
+    - id: 76
+      declaration_id: 47
+      name: dt
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: delta_time
+      default: 0.0
+    outputs:
+    - id: 77
+      declaration_id: 48
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 3
+      default: 0.0
+  - id: 144
+    type: Set_GameVelocity_y
+    inputs: [145, 146, 147]
+    outputs: [148, 149]
+  - id: 197
+    type: Behavior Expression
+    reference_id: 183
+    reference_name: y > 345
+    inputs:
+    - id: 200
+      name: Exec
+      kind: exec
+    - id: 198
+      declaration_id: 188
+      name: "y"
+      type: 11
+      type_name: double
+      group: 1
+      binding:
+        kind: component_field
+        component: game.GameTransform
+        field: "y"
+      default: 0.0
+    outputs:
+    - id: 201
+      name: "True"
+      kind: exec
+    - id: 202
+      name: "False"
+      kind: exec
+    - id: 199
+      declaration_id: 189
+      name: Result
+      type: 1
+      type_name: bool
+      flags: 2
+      group: 2
+      default: false
+  - id: 217
+    type: Get Global Variable
+    inputs:
+    - id: 218
+      default: Lives
+    outputs:
+    - id: 219
+      type: 10
+      default: 0.0
+  - id: 241
+    type: Behavior Expression
+    reference_id: 220
+    reference_name: max(lives-1,0)
+    inputs:
+    - id: 242
+      declaration_id: 225
+      name: lives
+      type: 10
+      flags: 2
+      group: 1
+      default: 0.0
+    outputs:
+    - id: 243
+      declaration_id: 226
+      name: Result
+      type: 10
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 265
+    type: Set Global Variable
+    inputs:
+    - 266
+    - id: 267
+      default: Lives
+    - id: 268
+      type: 10
+      default: 0.0
+    outputs:
+    - 269
+    - id: 270
+      type: 10
+      default: 0.0
+  - id: 292
+    type: Set Global Variable
+    inputs:
+    - 293
+    - id: 294
+      default: Ready
+    - id: 295
+      type: 10
+      default: 1.0
+    outputs:
+    - 296
+    - id: 297
+      type: 10
+      default: 0.0
+  - id: 298
+    type: Set Global Variable
+    inputs:
+    - 299
+    - id: 300
+      default: Charge
+    - id: 301
+      type: 10
+      default: 0.0
+    outputs:
+    - 302
+    - id: 303
+      type: 10
+      default: 0.0
+  - id: 304
+    type: Set_GameTransform
+    inputs:
+    - 305
+    - id: 306
+      default:
+        x: 196.0
+        "y": 260.0
+    outputs: [307, 308]
+  - id: 309
+    type: Set_GameVelocity
+    inputs:
+    - 310
+    - id: 311
+      default:
+        x: 0.0
+        "y": 0.0
+    outputs: [312, 313]
+  - id: 314
+    type: Play Sound
+    inputs:
+    - 315
+    - id: 316
+      default: 190.0
+    - id: 317
+      default: 55.0
+    - id: 318
+      default: 0.4000000059604645
+    - id: 319
+      default: 0.4000000059604645
+    - 320
+    - 321
+    outputs: [322]
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 21
+    to_pin: 24
+  - from: 4
+    from_pin: 6
+    to: 21
+    to_pin: 22
+  - from: 21
+    from_pin: 25
+    to: 144
+    to_pin: 145
+  - from: 74
+    from_pin: 77
+    to: 144
+    to_pin: 146
+  - from: 144
+    from_pin: 148
+    to: 197
+    to_pin: 200
+  - from: 197
+    from_pin: 201
+    to: 265
+    to_pin: 266
+  - from: 217
+    from_pin: 219
+    to: 241
+    to_pin: 242
+  - from: 241
+    from_pin: 243
+    to: 265
+    to_pin: 268
+  - from: 265
+    from_pin: 269
+    to: 292
+    to_pin: 293
+  - from: 292
+    from_pin: 296
+    to: 298
+    to_pin: 299
+  - from: 298
+    from_pin: 302
+    to: 304
+    to_pin: 305
+  - from: 304
+    from_pin: 307
+    to: 309
+    to_pin: 310
+  - from: 309
+    from_pin: 312
+    to: 314
+    to_pin: 315
+- id: 7
+  kind: function
+  name: ready < 0.5
+  math_expression: ready < 0.5
+  expression_mode: 3
+  entry_id: 28
+  return_id: 30
+  call_depth_limit: 64
+  nodes:
+  - id: 28
+    type: Function Entry
+    outputs:
+    - id: 32
+      name: ready
+      type: 11
+      type_name: double
+      kind: data
+      group: 1
+      default: 0.0
+  - id: 30
+    type: Return
+    inputs:
+    - id: 33
+      name: Result
+      type: 1
+      type_name: bool
+      kind: data
+      flags: 2
+      group: 2
+      default: false
+  - id: 34
+    type: Real
+    inputs:
+    - id: 35
+      default: 0.5
+    outputs: [36]
+  - id: 37
+    type: Less
+    inputs:
+    - id: 38
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 39
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs: [40]
+  edges:
+  - from: 28
+    from_pin: 32
+    to: 37
+    to_pin: 38
+  - from: 34
+    from_pin: 36
+    to: 37
+    to_pin: 39
+  - from: 37
+    from_pin: 40
+    to: 30
+    to_pin: 33
+- id: 41
+  kind: function
+  name: clamp(v + 480 * dt, -1150, 1000)
+  math_expression: clamp(v + 480 * dt, -1150, 1000)
+  expression_mode: 1
+  entry_id: 151
+  return_id: 153
+  call_depth_limit: 64
+  nodes:
+  - id: 151
+    type: Function Entry
+    outputs:
+    - id: 155
+      name: v
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+    - id: 156
+      name: dt
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 153
+    type: Return
+    inputs:
+    - id: 157
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+  - id: 158
+    type: Real
+    inputs:
+    - id: 159
+      default: 480.0
+    outputs: [160]
+  - id: 161
+    type: Multiply
+    inputs:
+    - id: 162
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 163
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 164
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 165
+    type: Add
+    inputs:
+    - id: 166
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 167
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 168
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 169
+    type: Real
+    inputs:
+    - id: 170
+      default: 1150.0
+    outputs: [171]
+  - id: 172
+    type: Negate
+    inputs:
+    - id: 173
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 174
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 175
+    type: Real
+    inputs:
+    - id: 176
+      default: 1000.0
+    outputs: [177]
+  - id: 178
+    type: Clamp
+    inputs:
+    - id: 179
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 180
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 181
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 182
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 151
+    from_pin: 155
+    to: 165
+    to_pin: 166
+  - from: 151
+    from_pin: 156
+    to: 161
+    to_pin: 163
+  - from: 158
+    from_pin: 160
+    to: 161
+    to_pin: 162
+  - from: 161
+    from_pin: 164
+    to: 165
+    to_pin: 167
+  - from: 165
+    from_pin: 168
+    to: 178
+    to_pin: 179
+  - from: 169
+    from_pin: 171
+    to: 172
+    to_pin: 173
+  - from: 172
+    from_pin: 174
+    to: 178
+    to_pin: 180
+  - from: 175
+    from_pin: 177
+    to: 178
+    to_pin: 181
+  - from: 178
+    from_pin: 182
+    to: 153
+    to_pin: 157
+- id: 183
+  kind: function
+  name: y > 345
+  math_expression: y > 345
+  expression_mode: 3
+  entry_id: 204
+  return_id: 206
+  call_depth_limit: 64
+  nodes:
+  - id: 204
+    type: Function Entry
+    outputs:
+    - id: 208
+      name: "y"
+      type: 11
+      type_name: double
+      kind: data
+      group: 1
+      default: 0.0
+  - id: 206
+    type: Return
+    inputs:
+    - id: 209
+      name: Result
+      type: 1
+      type_name: bool
+      kind: data
+      flags: 2
+      group: 2
+      default: false
+  - id: 210
+    type: Real
+    inputs:
+    - id: 211
+      default: 345.0
+    outputs: [212]
+  - id: 213
+    type: Greater
+    inputs:
+    - id: 214
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 215
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs: [216]
+  edges:
+  - from: 204
+    from_pin: 208
+    to: 213
+    to_pin: 214
+  - from: 210
+    from_pin: 212
+    to: 213
+    to_pin: 215
+  - from: 213
+    from_pin: 216
+    to: 206
+    to_pin: 209
+- id: 220
+  kind: function
+  name: max(lives-1,0)
+  math_expression: max(lives-1,0)
+  expression_mode: 1
+  entry_id: 272
+  return_id: 274
+  call_depth_limit: 64
+  nodes:
+  - id: 272
+    type: Function Entry
+    outputs:
+    - id: 276
+      name: lives
+      type: 10
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+  - id: 274
+    type: Return
+    inputs:
+    - id: 277
+      name: Result
+      type: 10
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 278
+    type: Real
+    inputs:
+    - id: 279
+      default: 1.0
+    outputs: [280]
+  - id: 281
+    type: Subtract
+    inputs:
+    - id: 282
+      type_name: null
+    - id: 283
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 284
+      type_name: null
+  - id: 285
+    type: Real
+    inputs: [286]
+    outputs: [287]
+  - id: 288
+    type: Max
+    inputs:
+    - id: 289
+      type_name: null
+    - id: 290
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 291
+      type_name: null
+  edges:
+  - from: 272
+    from_pin: 276
+    to: 281
+    to_pin: 282
+  - from: 278
+    from_pin: 280
+    to: 281
+    to_pin: 283
+  - from: 281
+    from_pin: 284
+    to: 288
+    to_pin: 289
+  - from: 285
+    from_pin: 287
+    to: 288
+    to_pin: 290
+  - from: 288
+    from_pin: 291
+    to: 274
+    to_pin: 277

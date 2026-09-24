@@ -1,0 +1,137 @@
+version: 3
+name: SmoothUnion
+domain: shape
+bounds_x: 52.0
+bounds_y: 34.0
+id_counter: 38
+description: Two circles joined by a smooth union. Radius and Smoothness are exposed; bounds are explicit half extents.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Shape Output
+    inputs: [2]
+  - id: 3
+    type: Shader Position
+    outputs: [4]
+  - id: 5
+    type: Shader Parameter
+    reference_name: Radius
+    outputs:
+    - id: 6
+      default: 24.0
+  - id: 7
+    type: Shader Parameter
+    reference_id: 1
+    reference_name: Smoothness
+    outputs:
+    - id: 8
+      default: 12.0
+  - id: 9
+    type: Shader Vector2
+    inputs:
+    - id: 10
+      default: -18.0
+    - 11
+    outputs: [12]
+  - id: 13
+    type: Shader Vector2
+    inputs:
+    - id: 14
+      default: 18.0
+    - 15
+    outputs: [16]
+  - id: 17
+    type: Shader Subtract
+    inputs:
+    - id: 18
+      type: 15
+      type_name: ShaderVec2
+      default: null
+    - id: 19
+      type: 15
+      type_name: ShaderVec2
+      default: null
+    outputs:
+    - id: 20
+      type: 15
+      type_name: ShaderVec2
+      default: null
+  - id: 21
+    type: Shader Subtract
+    inputs:
+    - id: 22
+      type: 15
+      type_name: ShaderVec2
+      default: null
+    - id: 23
+      type: 15
+      type_name: ShaderVec2
+      default: null
+    outputs:
+    - id: 24
+      type: 15
+      type_name: ShaderVec2
+      default: null
+  - id: 25
+    type: Shader Circle
+    inputs: [26, 27]
+    outputs: [28]
+  - id: 29
+    type: Shader Circle
+    inputs: [30, 31]
+    outputs: [32]
+  - id: 33
+    type: Shader SmoothUnion
+    inputs: [34, 35, 36]
+    outputs: [37]
+  edges:
+  - from: 3
+    from_pin: 4
+    to: 17
+    to_pin: 18
+  - from: 3
+    from_pin: 4
+    to: 21
+    to_pin: 22
+  - from: 5
+    from_pin: 6
+    to: 25
+    to_pin: 27
+  - from: 5
+    from_pin: 6
+    to: 29
+    to_pin: 31
+  - from: 7
+    from_pin: 8
+    to: 33
+    to_pin: 36
+  - from: 9
+    from_pin: 12
+    to: 17
+    to_pin: 19
+  - from: 13
+    from_pin: 16
+    to: 21
+    to_pin: 23
+  - from: 17
+    from_pin: 20
+    to: 25
+    to_pin: 26
+  - from: 21
+    from_pin: 24
+    to: 29
+    to_pin: 30
+  - from: 25
+    from_pin: 28
+    to: 33
+    to_pin: 34
+  - from: 29
+    from_pin: 32
+    to: 33
+    to_pin: 35
+  - from: 33
+    from_pin: 37
+    to: 1
+    to_pin: 2

@@ -1,0 +1,472 @@
+version: 3
+name: SpawnTelegraphBehavior
+id_counter: 110
+description: Display an authored arrival marker for the requested delay, then create exactly one configured prototype at the marked position and retire the marker.
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: Remaining
+  type: 10
+  type_name: float
+  category: State
+- id: 2
+  name: Dispatched
+  type: 1
+  type_name: bool
+  category: State
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 4
+    type: Event
+    reference_name: Begin
+    outputs: [3]
+  - id: 6
+    type: Get_GameSpawnRequest
+    outputs:
+    - id: 5
+      flags: 0
+    - id: 7
+      name: delay
+      type: 10
+      type_name: float
+      field_source: 5
+      field_name: delay
+      flags: 0
+      default: 0.0
+    - id: 8
+      name: prototype
+      type: 13
+      type_name: const char *
+      field_source: 5
+      field_name: prototype
+      flags: 0
+      default: ""
+  - id: 13
+    type: Set Variable
+    reference_id: 1
+    inputs:
+    - 9
+    - id: 10
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 11
+    - id: 12
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 17
+    type: Max
+    inputs:
+    - id: 14
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 15
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.05
+    outputs:
+    - id: 16
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 37
+    type: Event
+    reference_name: Tick
+    outputs: [36]
+  - id: 39
+    type: Get Variable
+    reference_id: 2
+    outputs:
+    - id: 38
+      type: 1
+      type_name: bool
+      flags: 0
+      default: false
+  - id: 44
+    type: Branch
+    inputs: [40, 41]
+    outputs: [42, 43]
+  - id: 46
+    type: Delta Time
+    outputs: [45]
+  - id: 48
+    type: Get Variable
+    reference_id: 1
+    outputs:
+    - id: 47
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 53
+    type: Set Variable
+    reference_id: 1
+    inputs:
+    - 49
+    - id: 50
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 51
+    - id: 52
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 57
+    type: Subtract
+    inputs:
+    - id: 54
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 55
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 56
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 61
+    type: Less Or Equal
+    inputs: [58, 59]
+    outputs: [60]
+  - id: 66
+    type: Branch
+    inputs: [62, 63]
+    outputs: [64, 65]
+  - id: 71
+    type: Set Variable
+    reference_id: 2
+    inputs:
+    - 67
+    - id: 68
+      type: 1
+      type_name: bool
+      default: true
+    outputs:
+    - 69
+    - id: 70
+      type: 1
+      type_name: bool
+      default: false
+  - id: 73
+    type: Get_GameTransform
+    outputs:
+    - id: 72
+      flags: 0
+  - id: 78
+    type: Call Function
+    reference_id: 18
+    reference_name: Arrive At Marker
+    inputs:
+    - 74
+    - id: 75
+      declaration_id: 20
+      name: Prototype
+      type: 12
+      type_name: name
+      kind: data
+      default: ""
+    - id: 76
+      declaration_id: 21
+      name: Position
+      type: 15
+      type_name: GameTransform
+      kind: data
+      default: null
+    outputs: [77]
+  - id: 82
+    type: Destroy Entity
+    inputs: [79, 80]
+    outputs: [81]
+  - id: 84
+    type: Self
+    outputs:
+    - id: 83
+      name: Entity
+      type_name: ecs.entity
+  - id: 88
+    type: Multiply
+    inputs:
+    - id: 85
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 86
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 10.0
+    outputs:
+    - id: 87
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 91
+    type: Sine
+    inputs: [89]
+    outputs: [90]
+  - id: 95
+    type: Multiply
+    inputs:
+    - id: 92
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    - id: 93
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 94
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 99
+    type: Multiply
+    inputs:
+    - id: 96
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.2
+    - id: 97
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 98
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 103
+    type: Add
+    inputs:
+    - id: 100
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.8
+    - id: 101
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+    outputs:
+    - id: 102
+      type: 11
+      type_name: double
+      flags: 0
+      group: 0
+      default: 0.0
+  - id: 109
+    type: Set_GameVisualTransform_scale
+    inputs: [104, 105, 106]
+    outputs: [107, 108]
+  edges:
+  - from: 4
+    from_pin: 3
+    to: 13
+    to_pin: 9
+  - from: 6
+    from_pin: 7
+    to: 17
+    to_pin: 14
+  - from: 6
+    from_pin: 8
+    to: 78
+    to_pin: 75
+    conversion: To Name
+  - from: 17
+    from_pin: 16
+    to: 13
+    to_pin: 10
+  - from: 37
+    from_pin: 36
+    to: 44
+    to_pin: 40
+  - from: 39
+    from_pin: 38
+    to: 44
+    to_pin: 41
+  - from: 44
+    from_pin: 43
+    to: 53
+    to_pin: 49
+  - from: 46
+    from_pin: 45
+    to: 57
+    to_pin: 55
+  - from: 48
+    from_pin: 47
+    to: 57
+    to_pin: 54
+  - from: 53
+    from_pin: 51
+    to: 66
+    to_pin: 62
+  - from: 53
+    from_pin: 52
+    to: 61
+    to_pin: 58
+  - from: 53
+    from_pin: 52
+    to: 88
+    to_pin: 85
+  - from: 57
+    from_pin: 56
+    to: 53
+    to_pin: 50
+  - from: 61
+    from_pin: 60
+    to: 66
+    to_pin: 63
+  - from: 66
+    from_pin: 64
+    to: 71
+    to_pin: 67
+  - from: 66
+    from_pin: 65
+    to: 109
+    to_pin: 104
+  - from: 71
+    from_pin: 69
+    to: 78
+    to_pin: 74
+  - from: 73
+    from_pin: 72
+    to: 78
+    to_pin: 76
+  - from: 78
+    from_pin: 77
+    to: 82
+    to_pin: 79
+  - from: 84
+    from_pin: 83
+    to: 82
+    to_pin: 80
+  - from: 88
+    from_pin: 87
+    to: 91
+    to_pin: 89
+  - from: 91
+    from_pin: 90
+    to: 95
+    to_pin: 92
+  - from: 91
+    from_pin: 90
+    to: 95
+    to_pin: 93
+  - from: 95
+    from_pin: 94
+    to: 99
+    to_pin: 97
+  - from: 99
+    from_pin: 98
+    to: 103
+    to_pin: 101
+  - from: 103
+    from_pin: 102
+    to: 109
+    to_pin: 105
+- id: 18
+  kind: function
+  name: Arrive At Marker
+  entry_id: 22
+  return_id: 24
+  call_depth_limit: 64
+  nodes:
+  - id: 22
+    type: Function Entry
+    outputs:
+    - id: 19
+      name: Then
+    - id: 20
+      name: Prototype
+      type: 12
+      type_name: name
+      kind: data
+      default: ""
+    - id: 21
+      name: Position
+      type: 15
+      type_name: GameTransform
+      kind: data
+      default: null
+  - id: 24
+    type: Return
+    inputs: [23]
+  - id: 29
+    type: Spawn Prototype
+    inputs:
+    - 25
+    - id: 26
+      type_name: name
+    outputs: [27, 28]
+  - id: 35
+    type: SetEntity_GameTransform
+    inputs: [30, 31, 32]
+    outputs: [33, 34]
+  edges:
+  - from: 22
+    from_pin: 19
+    to: 29
+    to_pin: 25
+  - from: 22
+    from_pin: 20
+    to: 29
+    to_pin: 26
+  - from: 22
+    from_pin: 21
+    to: 35
+    to_pin: 32
+  - from: 29
+    from_pin: 27
+    to: 35
+    to_pin: 30
+  - from: 29
+    from_pin: 28
+    to: 35
+    to_pin: 31
+  - from: 35
+    from_pin: 33
+    to: 24
+    to_pin: 23

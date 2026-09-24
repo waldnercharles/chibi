@@ -1,0 +1,628 @@
+version: 3
+name: CombatFeedback
+id_counter: 163
+description: Accepted damage restarts an authored hit flash; its final active tick clears the material parameter. Idle entities skip hit-flash work, and only entities with GameDash evaluate dash glow.
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: Hit Duration
+  type: 10
+  type_name: float
+  category: Feedback
+  default: 0.14000000059604645
+- id: 2
+  name: Hit Strength
+  type: 10
+  type_name: float
+  category: Feedback
+  default: 2.0
+- id: 3
+  name: Dash Strength
+  type: 10
+  type_name: float
+  category: Feedback
+  default: 1.7999999523162842
+- id: 4
+  name: Hit Remaining
+  type: 10
+  type_name: float
+  category: State
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 133
+    type: Event
+    reference_name: Damaged
+    outputs:
+    - 130
+    - id: 131
+      declaration_id: 2
+      name: Amount
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 132
+      declaration_id: 3
+      name: Source
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+  - id: 136
+    type: Call Function
+    reference_id: 11
+    reference_name: Start Hit Flash
+    inputs: [134]
+    outputs: [135]
+  - id: 138
+    type: Event
+    reference_name: Tick
+    outputs: [137]
+  - id: 141
+    type: Call Function
+    reference_id: 37
+    reference_name: Update Hit Flash
+    inputs: [139]
+    outputs: [140]
+  - id: 144
+    type: Call Function
+    reference_id: 92
+    reference_name: Update Dash Glow
+    inputs: [142]
+    outputs: [143]
+  - id: 146
+    type: Get Variable
+    reference_id: 4
+    outputs:
+    - id: 145
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 150
+    type: Greater
+    inputs: [147, 148]
+    outputs: [149]
+  - id: 155
+    type: Branch
+    inputs: [151, 152]
+    outputs: [153, 154]
+  - id: 157
+    type: Has_GameDash
+    outputs: [156]
+  - id: 162
+    type: Branch
+    inputs: [158, 159]
+    outputs: [160, 161]
+  edges:
+  - from: 133
+    from_pin: 130
+    to: 136
+    to_pin: 134
+  - from: 138
+    from_pin: 137
+    to: 155
+    to_pin: 151
+  - from: 141
+    from_pin: 140
+    to: 162
+    to_pin: 158
+  - from: 146
+    from_pin: 145
+    to: 150
+    to_pin: 147
+  - from: 150
+    from_pin: 149
+    to: 155
+    to_pin: 152
+  - from: 155
+    from_pin: 153
+    to: 141
+    to_pin: 139
+  - from: 155
+    from_pin: 154
+    to: 162
+    to_pin: 158
+  - from: 157
+    from_pin: 156
+    to: 162
+    to_pin: 159
+  - from: 162
+    from_pin: 160
+    to: 144
+    to_pin: 142
+- id: 11
+  kind: function
+  name: Start Hit Flash
+  entry_id: 13
+  return_id: 15
+  call_depth_limit: 64
+  nodes:
+  - id: 13
+    type: Function Entry
+    outputs:
+    - id: 12
+      name: Then
+  - id: 15
+    type: Return
+    inputs: [14]
+  - id: 17
+    type: Get Variable
+    reference_id: 1
+    outputs:
+    - id: 16
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 21
+    type: Max
+    inputs:
+    - id: 18
+      flags: 0
+      group: 0
+    - id: 19
+      flags: 0
+      group: 0
+      default: 0.0010000000474974513
+    outputs:
+    - id: 20
+      flags: 0
+      group: 0
+  - id: 26
+    type: Set Variable
+    reference_id: 4
+    inputs:
+    - 22
+    - id: 23
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 24
+    - id: 25
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 28
+    type: Get Variable
+    reference_id: 2
+    outputs:
+    - id: 27
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 30
+    type: Self
+    outputs:
+    - id: 29
+      type_name: ecs.entity
+  - id: 36
+    type: Set Material Parameter
+    inputs:
+    - 31
+    - 32
+    - id: 33
+      type_name: const char *
+      default: Hit Flash
+    - id: 34
+      type_name: float
+      flags: 0
+      group: 0
+    outputs: [35]
+  edges:
+  - from: 13
+    from_pin: 12
+    to: 26
+    to_pin: 22
+  - from: 17
+    from_pin: 16
+    to: 21
+    to_pin: 18
+  - from: 21
+    from_pin: 20
+    to: 26
+    to_pin: 23
+  - from: 26
+    from_pin: 24
+    to: 36
+    to_pin: 31
+  - from: 28
+    from_pin: 27
+    to: 36
+    to_pin: 34
+  - from: 30
+    from_pin: 29
+    to: 36
+    to_pin: 32
+  - from: 36
+    from_pin: 35
+    to: 15
+    to_pin: 14
+- id: 37
+  kind: function
+  name: Update Hit Flash
+  entry_id: 39
+  return_id: 41
+  call_depth_limit: 64
+  nodes:
+  - id: 39
+    type: Function Entry
+    outputs:
+    - id: 38
+      name: Then
+  - id: 41
+    type: Return
+    inputs: [40]
+  - id: 43
+    type: Get Variable
+    reference_id: 4
+    outputs:
+    - id: 42
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 47
+    type: Greater
+    inputs: [44, 45]
+    outputs: [46]
+  - id: 52
+    type: Branch
+    inputs: [48, 49]
+    outputs: [50, 51]
+  - id: 54
+    type: Delta Time
+    outputs: [53]
+  - id: 58
+    type: Subtract
+    inputs:
+    - id: 55
+      flags: 0
+      group: 0
+    - id: 56
+      flags: 0
+      group: 0
+    outputs:
+    - id: 57
+      flags: 0
+      group: 0
+  - id: 62
+    type: Max
+    inputs:
+    - id: 59
+      flags: 0
+      group: 0
+    - id: 60
+      flags: 0
+      group: 0
+    outputs:
+    - id: 61
+      flags: 0
+      group: 0
+  - id: 67
+    type: Set Variable
+    reference_id: 4
+    inputs:
+    - 63
+    - id: 64
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - 65
+    - id: 66
+      type: 10
+      type_name: float
+      default: 0.0
+  - id: 69
+    type: Get Variable
+    reference_id: 1
+    outputs:
+    - id: 68
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 73
+    type: Max
+    inputs:
+    - id: 70
+      flags: 0
+      group: 0
+    - id: 71
+      flags: 0
+      group: 0
+      default: 0.0010000000474974513
+    outputs:
+    - id: 72
+      flags: 0
+      group: 0
+  - id: 77
+    type: Divide
+    inputs:
+    - id: 74
+      flags: 0
+      group: 0
+    - id: 75
+      flags: 0
+      group: 0
+    outputs:
+    - id: 76
+      flags: 0
+      group: 0
+  - id: 79
+    type: Get Variable
+    reference_id: 2
+    outputs:
+    - id: 78
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 83
+    type: Multiply
+    inputs:
+    - id: 80
+      flags: 0
+      group: 0
+    - id: 81
+      flags: 0
+      group: 0
+    outputs:
+    - id: 82
+      flags: 0
+      group: 0
+  - id: 85
+    type: Self
+    outputs:
+    - id: 84
+      type_name: ecs.entity
+  - id: 91
+    type: Set Material Parameter
+    inputs:
+    - 86
+    - 87
+    - id: 88
+      type_name: const char *
+      default: Hit Flash
+    - id: 89
+      type_name: float
+      flags: 0
+      group: 0
+    outputs: [90]
+  edges:
+  - from: 39
+    from_pin: 38
+    to: 52
+    to_pin: 48
+  - from: 43
+    from_pin: 42
+    to: 47
+    to_pin: 45
+  - from: 43
+    from_pin: 42
+    to: 58
+    to_pin: 55
+  - from: 47
+    from_pin: 46
+    to: 52
+    to_pin: 49
+  - from: 52
+    from_pin: 50
+    to: 41
+    to_pin: 40
+  - from: 52
+    from_pin: 51
+    to: 67
+    to_pin: 63
+  - from: 54
+    from_pin: 53
+    to: 58
+    to_pin: 56
+  - from: 58
+    from_pin: 57
+    to: 62
+    to_pin: 59
+  - from: 62
+    from_pin: 61
+    to: 67
+    to_pin: 64
+  - from: 67
+    from_pin: 65
+    to: 91
+    to_pin: 86
+  - from: 67
+    from_pin: 66
+    to: 77
+    to_pin: 74
+  - from: 69
+    from_pin: 68
+    to: 73
+    to_pin: 70
+  - from: 73
+    from_pin: 72
+    to: 77
+    to_pin: 75
+  - from: 77
+    from_pin: 76
+    to: 83
+    to_pin: 80
+  - from: 79
+    from_pin: 78
+    to: 83
+    to_pin: 81
+  - from: 83
+    from_pin: 82
+    to: 91
+    to_pin: 89
+  - from: 85
+    from_pin: 84
+    to: 91
+    to_pin: 87
+  - from: 91
+    from_pin: 90
+    to: 41
+    to_pin: 40
+- id: 92
+  kind: function
+  name: Update Dash Glow
+  entry_id: 94
+  return_id: 96
+  call_depth_limit: 64
+  nodes:
+  - id: 94
+    type: Function Entry
+    outputs:
+    - id: 93
+      name: Then
+  - id: 96
+    type: Return
+    inputs: [95]
+  - id: 98
+    type: Has_GameDash
+    outputs: [97]
+  - id: 103
+    type: Branch
+    inputs: [99, 100]
+    outputs: [101, 102]
+  - id: 107
+    type: Get_GameDash
+    outputs:
+    - id: 104
+      flags: 0
+    - id: 105
+      name: remaining
+      type: 10
+      type_name: float
+      field_source: 104
+      field_name: remaining
+      flags: 0
+      default: 0.0
+    - id: 106
+      name: duration
+      type: 10
+      type_name: float
+      field_source: 104
+      field_name: duration
+      flags: 0
+      default: 0.0
+  - id: 111
+    type: Max
+    inputs:
+    - id: 108
+      flags: 0
+      group: 0
+    - id: 109
+      flags: 0
+      group: 0
+      default: 0.0010000000474974513
+    outputs:
+    - id: 110
+      flags: 0
+      group: 0
+  - id: 115
+    type: Divide
+    inputs:
+    - id: 112
+      flags: 0
+      group: 0
+    - id: 113
+      flags: 0
+      group: 0
+    outputs:
+    - id: 114
+      flags: 0
+      group: 0
+  - id: 117
+    type: Get Variable
+    reference_id: 3
+    outputs:
+    - id: 116
+      type: 10
+      type_name: float
+      flags: 0
+      default: 0.0
+  - id: 121
+    type: Multiply
+    inputs:
+    - id: 118
+      flags: 0
+      group: 0
+    - id: 119
+      flags: 0
+      group: 0
+    outputs:
+    - id: 120
+      flags: 0
+      group: 0
+  - id: 123
+    type: Self
+    outputs:
+    - id: 122
+      type_name: ecs.entity
+  - id: 129
+    type: Set Material Parameter
+    inputs:
+    - 124
+    - 125
+    - id: 126
+      type_name: const char *
+      default: Dash Glow
+    - id: 127
+      type_name: float
+      flags: 0
+      group: 0
+    outputs: [128]
+  edges:
+  - from: 94
+    from_pin: 93
+    to: 103
+    to_pin: 99
+  - from: 98
+    from_pin: 97
+    to: 103
+    to_pin: 100
+  - from: 103
+    from_pin: 101
+    to: 129
+    to_pin: 124
+  - from: 103
+    from_pin: 102
+    to: 96
+    to_pin: 95
+  - from: 107
+    from_pin: 105
+    to: 115
+    to_pin: 112
+  - from: 107
+    from_pin: 106
+    to: 111
+    to_pin: 108
+  - from: 111
+    from_pin: 110
+    to: 115
+    to_pin: 113
+  - from: 115
+    from_pin: 114
+    to: 121
+    to_pin: 118
+  - from: 117
+    from_pin: 116
+    to: 121
+    to_pin: 119
+  - from: 121
+    from_pin: 120
+    to: 129
+    to_pin: 127
+  - from: 123
+    from_pin: 122
+    to: 129
+    to_pin: 125
+  - from: 129
+    from_pin: 128
+    to: 96
+    to_pin: 95

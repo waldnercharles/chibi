@@ -1,0 +1,67 @@
+version: 1
+name: HRCShadow
+entities:
+- name: Camera
+  prototype: Camera
+  components:
+    GameTransform:
+      x: 0
+      "y": 0
+- name: HRC
+  prototype: HRC
+  components:
+    GameTransform:
+      x: 0
+      "y": 0
+- name: Source
+  prototype: Crystal
+  components:
+    GameTransform:
+      x: -330
+      "y": -130
+    GameAppearance:
+      width: 30
+      height: 30
+      color: 4294967295
+    GameMaterial:
+      emission_color: 4294967295
+      emission_intensity: 0.1
+      absorption: 0
+      scene: 4294967295
+      edge_light: 0
+- name: Occluder
+  prototype: HardRock
+  components:
+    GameTransform:
+      x: -30
+      "y": -10
+    GameAppearance:
+      width: 80
+      height: 180
+    GameMaterial:
+      absorption: 1
+      edge_light: 0
+- name: Receiver
+  prototype: HardRock
+  components:
+    GameTransform:
+      x: 270
+      "y": 0
+    GameAppearance:
+      width: 260
+      height: 400
+    GameMaterial:
+      absorption: 0.25
+      edge_light: 0
+- name: Floor
+  prototype: HardRock
+  components:
+    GameTransform:
+      x: 0
+      "y": -220
+    GameAppearance:
+      width: 700
+      height: 24
+    GameMaterial:
+      absorption: 0.5
+      edge_light: 0

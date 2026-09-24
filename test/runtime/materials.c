@@ -128,7 +128,7 @@ static void contours()
 
 static behavior_asset *cave_asset()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.json");
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
     assert(json);
     behavior_asset *asset = behavior_asset_load_json(json);
     free(json);
@@ -1376,8 +1376,8 @@ static void blast_policy()
     }
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/events/Material Impact.json",
-        "projects/arena2d/content/behaviors/MaterialImpactHealth.json"
+        "projects/arena2d/content/events/Material Impact.yaml",
+        "projects/arena2d/content/behaviors/MaterialImpactHealth.yaml"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);

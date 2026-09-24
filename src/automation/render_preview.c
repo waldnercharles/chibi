@@ -12,6 +12,7 @@
 #include "render/shader_images.h"
 #include "render/shader_preview.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -223,8 +224,8 @@ static bool safe_component(const char *value, size_t max)
 static bool valid_filename(const char *name)
 {
     size_t length = name ? strlen(name) : 0;
-    return length > sizeof ".json" - 1 && length < 256 &&
-           !strcmp(name + length - (sizeof ".json" - 1), ".json") &&
+    return length > sizeof ASSET_EXTENSION - 1 && length < 256 &&
+           !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION) &&
            safe_component(name, 256);
 }
 
@@ -286,18 +287,18 @@ static int resolve_preview_ref(yyjson_val *request, preview_ref *out, char *erro
         return PREVIEW_INVALID_REQUEST;
     }
     const char *name = yyjson_get_str(name_value);
-    if (strstr(name, ".json")) {
+    if (strstr(name, ASSET_EXTENSION)) {
         if (!valid_filename(name)) {
             set_error(error, error_size, "name is not a valid JSON asset filename");
             return PREVIEW_INVALID_REQUEST;
         }
         snprintf(out->filename, sizeof out->filename, "%s", name);
     } else {
-        if (strlen(name) + sizeof ".json" >= sizeof out->filename) {
+        if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof out->filename) {
             set_error(error, error_size, "name is too long");
             return PREVIEW_INVALID_REQUEST;
         }
-        snprintf(out->filename, sizeof out->filename, "%s.json", name);
+        snprintf(out->filename, sizeof out->filename, "%s" ASSET_EXTENSION, name);
     }
     snprintf(out->relative, sizeof out->relative, "content/%s/%s", out->family->folder, out->filename);
     return PREVIEW_OK;
@@ -472,8 +473,8 @@ static behavior_asset **load_libraries(const char *root)
             continue;
         }
         size_t name_length = strlen(entry->d_name);
-        if (name_length < sizeof ".json" - 1 ||
-            strcmp(entry->d_name + name_length - (sizeof ".json" - 1), ".json")) {
+        if (name_length < sizeof ASSET_EXTENSION - 1 ||
+            strcmp(entry->d_name + name_length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
             continue;
         }
         char file_path[PATH_MAX];

@@ -1,0 +1,53 @@
+name: DeathEmitter
+identity: prototype-3c472da63f9677c9
+components:
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    absorption: 0.0010000000474974513
+    active: true
+    antialias:
+      exponent: 0.5
+      start:
+        x: 1.0
+        "y": 1.0
+    burst_count: 48
+    color: 4294967295
+    direction:
+      x: 1.0
+      z: 1.0
+    drag:
+      start:
+        x: 1.0
+        "y": 2.0
+    emission:
+      exponent: 0.5
+      start:
+        x: 0.019999999552965164
+        "y": 0.03999999910593033
+    end_color: 864616192
+    fluid_mass: 0.00019999999494757503
+    heading_only: true
+    lifetime:
+      x: 1.0
+      "y": 2.0
+    metaball_blend: 2.0
+    metaball_group: 3
+    planar: true
+    size:
+      exponent: 1.2000000476837158
+      start:
+        x: 0.25
+        "y": 0.25
+    speed:
+      x: 100.0
+      "y": 300.0
+    spread: 6.2831854820251465
+    stretch:
+      "y": 0.009999999776482582
+    velocity_align: true
+    velocity_inherit: 1.0
+  GAME.GameProjectile:
+    lifetime: 1.5
+  game.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [ProjectileLifecycle]

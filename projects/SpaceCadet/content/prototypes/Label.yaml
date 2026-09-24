@@ -1,0 +1,21 @@
+name: Label
+identity: prototype-0000000000000038
+components:
+  GAME.GameWidget:
+    anchor:
+      x: 0.8100000023841858
+      "y": 0.30000001192092896
+    center_text: true
+    color: 4072564479
+    drop_group: ""
+    event: ""
+    font_size: 24.0
+    order: 50
+    pivot:
+      x: 0.5
+      "y": 0.5
+    size:
+      x: 245.0
+      "y": 45.0
+    text: ""
+    tooltip: ""

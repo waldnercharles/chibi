@@ -209,11 +209,11 @@ static void noise_and_composition()
     assert(hash(values, 256) != hash(again, 256));
     field_program_free(p);
     behavior_asset_free(a);
-    char *json = text_file_read("projects/arena2d/content/fields/MaterialIslands.json");
+    char *json = text_file_read("projects/arena2d/content/fields/MaterialIslands.yaml");
     assert(json);
     a = behavior_asset_load_json(json);
     free(json);
-    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.json");
+    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.yaml");
     assert(json);
     behavior_asset *library = behavior_asset_load_json(json);
     free(json);
@@ -321,8 +321,8 @@ static void library_hot_apply()
     }
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/libraries/FieldShapes.json",
-        "projects/arena2d/content/fields/MaterialIslands.json"
+        "projects/arena2d/content/libraries/FieldShapes.yaml",
+        "projects/arena2d/content/fields/MaterialIslands.yaml"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
@@ -504,7 +504,7 @@ void test_fields()
 }
 int bench_fields()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.json");
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
     assert(json);
     behavior_asset *a = behavior_asset_load_json(json);
     free(json);

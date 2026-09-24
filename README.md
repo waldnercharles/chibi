@@ -28,9 +28,9 @@ run is useful; TSan cannot be linked into the same binary as ASan, so the one
 target switches the sanitizer mode in the shared Debug build directory.
 
 Neon Swarm is the default project for native launches, editor profiles, MCP,
-and `make web-serve`. Its manifest selects `scenes/Sandbox.json`.
+and `make web-serve`. Its manifest selects `scenes/Sandbox.yaml`.
 Use `make debug PROJECT=.` for the Arena3D reference, or
-`make debug PROJECT=. SCENE=scenes/OrbitPinball.json` for pinball.
+`make debug PROJECT=. SCENE=scenes/OrbitPinball.yaml` for pinball.
 Add `ARGS=--play` to launch into Play.
 
 Run `make help` for the complete target list and the purpose of each target.

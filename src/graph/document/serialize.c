@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/value_array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -653,9 +654,10 @@ graph *graph_load_json(const char *json)
         serialize_error_set("null JSON input");
         return NULL;
     }
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    char error[160];
+    yyjson_doc *doc = asset_text_read(json, error, sizeof error);
     if (!doc) {
-        serialize_error_set("malformed JSON");
+        serialize_error_set("%s", error);
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(doc);
@@ -965,9 +967,10 @@ behavior_asset *behavior_asset_load_json(const char *json)
         serialize_error_set("null JSON input");
         return NULL;
     }
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    char error[160];
+    yyjson_doc *doc = asset_text_read(json, error, sizeof error);
     if (!doc) {
-        serialize_error_set("malformed JSON");
+        serialize_error_set("%s", error);
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(doc);

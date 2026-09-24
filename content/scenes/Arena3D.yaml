@@ -1,0 +1,204 @@
+version: 1
+name: Arena 3D
+presentation: "3d"
+entities:
+- name: Arena
+  prototype: ArenaFloor
+- name: Encounter
+  prototype: ArenaEncounter
+  behaviors: [ArenaWaveBehavior]
+- name: Player
+  prototype: ArenaPlayer
+  behaviors:
+  - TwinStickInputBehavior
+  - TwinStickWeaponBehavior
+  - HealthBehavior
+  - PlayerContactBehavior
+  - ArenaShipMotionBehavior
+  - CombatFeedback
+  - ArenaImpactFeedback
+- name: Phase Warden
+  prototype: PhaseWarden
+- name: Boundary 1
+  prototype: ArenaWallHorizontal
+  components:
+    GameTransform:
+      x: 39.83716857408418
+      "y": -265.0
+    GameOrientation:
+      radians: -1.0471975511965976
+    GameGeometry3D:
+      primitive: 0
+      width: 205.2272947547483
+      depth: 1.6
+      height: 2
+      elevation: 0
+    GameCollider:
+      radius: 0
+      category: 8
+      mask: 7
+      shape: 1
+      width: 208.2272947547483
+      height: 4
+      sensor: false
+      ignore_entity: null
+- name: Boundary 2
+  prototype: ArenaWallHorizontal
+  components:
+    GameTransform:
+      x: 323.3161507461905
+      "y": -354.0
+    GameOrientation:
+      radians: 0.0
+    GameGeometry3D:
+      primitive: 0
+      width: 463.88021535170066
+      depth: 1.6
+      height: 2
+      elevation: 0
+    GameCollider:
+      radius: 0
+      category: 8
+      mask: 7
+      shape: 1
+      width: 466.88021535170066
+      height: 4
+      sensor: false
+      ignore_entity: null
+- name: Boundary 3
+  prototype: ArenaWallHorizontal
+  components:
+    GameTransform:
+      x: 606.7951329182968
+      "y": -265.0
+    GameOrientation:
+      radians: 1.0471975511965976
+    GameGeometry3D:
+      primitive: 0
+      width: 205.2272947547483
+      depth: 1.6
+      height: 2
+      elevation: 0
+    GameCollider:
+      radius: 0
+      category: 8
+      mask: 7
+      shape: 1
+      width: 208.2272947547483
+      height: 4
+      sensor: false
+      ignore_entity: null
+- name: Boundary 4
+  prototype: ArenaWallHorizontal
+  components:
+    GameTransform:
+      x: 606.7951329182968
+      "y": -87.0
+    GameOrientation:
+      radians: 2.0943951023931957
+    GameGeometry3D:
+      primitive: 0
+      width: 205.2272947547483
+      depth: 1.6
+      height: 2
+      elevation: 0
+    GameCollider:
+      radius: 0
+      category: 8
+      mask: 7
+      shape: 1
+      width: 208.2272947547483
+      height: 4
+      sensor: false
+      ignore_entity: null
+- name: Boundary 5
+  prototype: ArenaWallHorizontal
+  components:
+    GameTransform:
+      x: 323.3161507461905
+      "y": 2.0
+    GameOrientation:
+      radians: 3.141592653589793
+    GameGeometry3D:
+      primitive: 0
+      width: 463.88021535170066
+      depth: 1.6
+      height: 2
+      elevation: 0
+    GameCollider:
+      radius: 0
+      category: 8
+      mask: 7
+      shape: 1
+      width: 466.88021535170066
+      height: 4
+      sensor: false
+      ignore_entity: null
+- name: Boundary 6
+  prototype: ArenaWallHorizontal
+  components:
+    GameTransform:
+      x: 39.83716857408418
+      "y": -87.0
+    GameOrientation:
+      radians: -2.0943951023931957
+    GameGeometry3D:
+      primitive: 0
+      width: 205.2272947547483
+      depth: 1.6
+      height: 2
+      elevation: 0
+    GameCollider:
+      radius: 0
+      category: 8
+      mask: 7
+      shape: 1
+      width: 208.2272947547483
+      height: 4
+      sensor: false
+      ignore_entity: null
+- name: Environment
+  prototype: ArenaEnvironment
+- name: Space Dash
+  prototype: ActionBinding
+  components:
+    GameActionBinding:
+      source: 3
+      action: Dash
+      firing: false
+- name: Shift Dash
+  prototype: ActionBinding
+  components:
+    GameActionBinding:
+      source: 4
+      action: Dash
+      firing: false
+- name: Pad Dash
+  prototype: ActionBinding
+  components:
+    GameActionBinding:
+      source: 33
+      action: Dash
+      firing: false
+- name: Stick Fire
+  prototype: ActionBinding
+  components:
+    GameActionBinding:
+      source: 41
+      action: Fire
+      firing: true
+- name: Trigger Fire
+  prototype: ActionBinding
+  components:
+    GameActionBinding:
+      source: 40
+      action: Fire
+      firing: true
+- name: Mouse Fire
+  prototype: ActionBinding
+  components:
+    GameActionBinding:
+      source: 1
+      action: Fire
+      firing: true
+      disabled: false

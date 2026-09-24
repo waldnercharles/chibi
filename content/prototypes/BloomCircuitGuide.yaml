@@ -1,0 +1,19 @@
+name: BloomCircuitGuide
+identity: prototype-0000000000000182
+components:
+  game.GameTransform: {}
+  GAME.GameWidget:
+    anchor:
+      x: 0.5
+    drop_group: ""
+    event: ""
+    offset:
+      "y": 100.0
+    pivot:
+      x: 0.5
+    size:
+      x: 620.0
+      "y": 48.0
+    text: BLOOM CIRCUIT / Collect all 8 / WASD move / Dodge red
+    tooltip: ""
+behaviors: [BloomCircuitGoal]

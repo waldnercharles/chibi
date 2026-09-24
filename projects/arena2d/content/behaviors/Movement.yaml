@@ -1,0 +1,962 @@
+version: 3
+name: Movement
+id_counter: 579
+description: Face aim; drive from movement input or boost along the ship heading.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+    - 2
+    - id: 3
+      name: DeltaSeconds
+      type: 10
+      type_name: float
+      kind: data
+      default: 0.0
+  - id: 17
+    type: Behavior Expression
+    reference_id: 4
+    reference_name: heading = atan2(y, x)
+    inputs:
+    - id: 22
+      name: Exec
+      kind: exec
+    - id: 18
+      declaration_id: 9
+      name: heading
+      type: 10
+      type_name: float
+      flags: 6
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameOrientation
+        field: radians
+      default: 0.0
+    - id: 19
+      declaration_id: 10
+      name: "y"
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: component_field
+        component: GAME.GameAim
+        field: direction.y
+      default: 0.0
+    - id: 20
+      declaration_id: 11
+      name: x
+      type: 11
+      type_name: double
+      flags: 2
+      group: 3
+      binding:
+        kind: component_field
+        component: GAME.GameAim
+        field: direction.x
+      default: 0.0
+    outputs:
+    - id: 23
+      name: Then
+      kind: exec
+    - id: 21
+      declaration_id: 12
+      name: Result
+      type: 11
+      type_name: double
+      flags: 2
+      group: 4
+      default: 0.0
+  - id: 102
+    type: Branch
+    inputs:
+    - 103
+    - id: 104
+      binding:
+        kind: component_field
+        component: GAME.GameActionBinding
+        field: pressed
+    outputs: [105, 106]
+  - id: 137
+    type: Behavior Expression
+    reference_id: 107
+    reference_name: target = vec2(cos(heading), sin(heading)) * speed * 2
+    inputs:
+    - id: 142
+      name: Exec
+      kind: exec
+    - id: 138
+      declaration_id: 112
+      name: target
+      type: 15
+      type_name: CF_V2
+      flags: 6
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameDrive
+        field: target
+      default: null
+    - id: 139
+      declaration_id: 113
+      name: heading
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: component_field
+        component: GAME.GameOrientation
+        field: radians
+      default: 0.0
+    - id: 140
+      declaration_id: 114
+      name: speed
+      type: 11
+      type_name: double
+      flags: 2
+      group: 3
+      binding:
+        kind: component_field
+        component: game.GameMovement
+        field: speed
+      default: 0.0
+    outputs:
+    - id: 143
+      name: Then
+      kind: exec
+    - id: 141
+      declaration_id: 115
+      name: Result
+      type: 15
+      type_name: CF_V2
+      flags: 2
+      group: 4
+      default: null
+  - id: 306
+    type: Behavior Expression
+    reference_id: 279
+    reference_name: x * x + y * y > 0.01
+    inputs:
+    - id: 310
+      name: Exec
+      kind: exec
+    - id: 307
+      declaration_id: 284
+      name: x
+      type: 11
+      type_name: double
+      flags: 2
+      group: 1
+      binding:
+        kind: component_field
+        component: game.GameInput
+        field: move.x
+      default: 0.0
+    - id: 308
+      declaration_id: 285
+      name: "y"
+      type: 11
+      type_name: double
+      flags: 2
+      group: 2
+      binding:
+        kind: component_field
+        component: game.GameInput
+        field: move.y
+      default: 0.0
+    outputs:
+    - id: 311
+      name: "True"
+      kind: exec
+    - id: 312
+      name: "False"
+      kind: exec
+    - id: 309
+      declaration_id: 286
+      name: Result
+      type: 1
+      type_name: bool
+      flags: 2
+      group: 3
+      default: false
+  - id: 385
+    type: Behavior Expression
+    reference_id: 367
+    reference_name: target = vec2(x, y) * speed
+    inputs:
+    - id: 391
+      name: Exec
+      kind: exec
+    - id: 386
+      declaration_id: 372
+      name: target
+      type: 15
+      type_name: CF_V2
+      flags: 6
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameDrive
+        field: target
+      default: null
+    - id: 387
+      declaration_id: 373
+      name: x
+      type: 10
+      type_name: float
+      flags: 2
+      group: 2
+      binding:
+        kind: component_field
+        component: game.GameInput
+        field: move.x
+      default: 0.0
+    - id: 388
+      declaration_id: 374
+      name: "y"
+      type: 10
+      type_name: float
+      flags: 2
+      group: 3
+      binding:
+        kind: component_field
+        component: game.GameInput
+        field: move.y
+      default: 0.0
+    - id: 389
+      declaration_id: 375
+      name: speed
+      type: 11
+      type_name: double
+      flags: 2
+      group: 4
+      binding:
+        kind: component_field
+        component: game.GameMovement
+        field: speed
+      default: 0.0
+    outputs:
+    - id: 392
+      name: Then
+      kind: exec
+    - id: 390
+      declaration_id: 376
+      name: Result
+      type: 15
+      type_name: CF_V2
+      flags: 2
+      group: 5
+      default: null
+  - id: 542
+    type: Behavior Expression
+    reference_id: 525
+    reference_name: target = vec2(0, 0)
+    inputs:
+    - id: 545
+      name: Exec
+      kind: exec
+    - id: 543
+      declaration_id: 530
+      name: target
+      type: 15
+      type_name: CF_V2
+      flags: 6
+      group: 1
+      binding:
+        kind: component_field
+        component: GAME.GameDrive
+        field: target
+      default: null
+    outputs:
+    - id: 546
+      name: Then
+      kind: exec
+    - id: 544
+      declaration_id: 531
+      name: Result
+      type: 15
+      type_name: CF_V2
+      flags: 2
+      group: 2
+      default: null
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 17
+    to_pin: 22
+  - from: 17
+    from_pin: 23
+    to: 102
+    to_pin: 103
+  - from: 102
+    from_pin: 105
+    to: 137
+    to_pin: 142
+  - from: 102
+    from_pin: 106
+    to: 306
+    to_pin: 310
+  - from: 306
+    from_pin: 311
+    to: 385
+    to_pin: 391
+  - from: 306
+    from_pin: 312
+    to: 542
+    to_pin: 545
+- id: 4
+  kind: function
+  name: heading = atan2(y, x)
+  math_expression: heading = atan2(y, x)
+  expression_mode: 2
+  entry_id: 77
+  return_id: 79
+  call_depth_limit: 64
+  nodes:
+  - id: 77
+    type: Function Entry
+    outputs:
+    - 78
+    - id: 81
+      name: heading
+      type: 10
+      type_name: float
+      kind: data
+      group: 1
+      default: 0.0
+    - id: 82
+      name: "y"
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+    - id: 83
+      name: x
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+  - id: 79
+    type: Return
+    inputs:
+    - 80
+    - id: 84
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 4
+      default: 0.0
+  - id: 85
+    type: Arc Tangent 2
+    inputs: [86, 87]
+    outputs: [88]
+  - id: 89
+    type: Get_GameOrientation
+    outputs: [90]
+  - id: 91
+    type: Break_GameOrientation
+    inputs: [92]
+    outputs: [93]
+  - id: 94
+    type: Make_GameOrientation
+    inputs: [95]
+    outputs: [96]
+  - id: 97
+    type: Set_GameOrientation
+    inputs: [98, 99]
+    outputs: [100, 101]
+  edges:
+  - from: 77
+    from_pin: 78
+    to: 97
+    to_pin: 98
+  - from: 77
+    from_pin: 82
+    to: 85
+    to_pin: 86
+  - from: 77
+    from_pin: 83
+    to: 85
+    to_pin: 87
+  - from: 85
+    from_pin: 88
+    to: 79
+    to_pin: 84
+  - from: 85
+    from_pin: 88
+    to: 94
+    to_pin: 95
+  - from: 89
+    from_pin: 90
+    to: 91
+    to_pin: 92
+  - from: 94
+    from_pin: 96
+    to: 97
+    to_pin: 99
+  - from: 97
+    from_pin: 100
+    to: 79
+    to_pin: 80
+- id: 107
+  kind: function
+  name: target = vec2(cos(heading), sin(heading)) * speed * 2
+  math_expression: target = vec2(cos(heading), sin(heading)) * speed * 2
+  expression_mode: 2
+  entry_id: 235
+  return_id: 237
+  call_depth_limit: 64
+  nodes:
+  - id: 235
+    type: Function Entry
+    outputs:
+    - 236
+    - id: 239
+      name: target
+      type: 15
+      type_name: CF_V2
+      kind: data
+      group: 1
+      default: null
+    - id: 240
+      name: heading
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+    - id: 241
+      name: speed
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+  - id: 237
+    type: Return
+    inputs:
+    - 238
+    - id: 242
+      name: Result
+      type: 15
+      type_name: CF_V2
+      kind: data
+      flags: 2
+      group: 4
+      default: null
+  - id: 243
+    type: Cosine
+    inputs: [244]
+    outputs: [245]
+  - id: 246
+    type: Sine
+    inputs: [247]
+    outputs: [248]
+  - id: 249
+    type: Make_CF_V2
+    inputs: [250, 251]
+    outputs: [252]
+  - id: 253
+    type: Multiply
+    inputs:
+    - id: 254
+      type: 15
+      type_name: CF_V2
+      default: null
+    - id: 255
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 256
+      type: 15
+      type_name: CF_V2
+      default: null
+  - id: 257
+    type: Real
+    inputs:
+    - id: 258
+      default: 2.0
+    outputs: [259]
+  - id: 260
+    type: Multiply
+    inputs:
+    - id: 261
+      type: 15
+      type_name: CF_V2
+      default: null
+    - id: 262
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 263
+      type: 15
+      type_name: CF_V2
+      default: null
+  - id: 264
+    type: Get_GameDrive
+    outputs: [265]
+  - id: 266
+    type: Break_GameDrive
+    inputs: [267]
+    outputs: [268, 269]
+  - id: 270
+    type: Make_GameDrive
+    inputs: [271, 272]
+    outputs: [273]
+  - id: 274
+    type: Set_GameDrive
+    inputs: [275, 276]
+    outputs: [277, 278]
+  edges:
+  - from: 235
+    from_pin: 236
+    to: 274
+    to_pin: 275
+  - from: 235
+    from_pin: 240
+    to: 243
+    to_pin: 244
+  - from: 235
+    from_pin: 240
+    to: 246
+    to_pin: 247
+  - from: 235
+    from_pin: 241
+    to: 253
+    to_pin: 255
+  - from: 243
+    from_pin: 245
+    to: 249
+    to_pin: 250
+  - from: 246
+    from_pin: 248
+    to: 249
+    to_pin: 251
+  - from: 249
+    from_pin: 252
+    to: 253
+    to_pin: 254
+  - from: 253
+    from_pin: 256
+    to: 260
+    to_pin: 261
+  - from: 257
+    from_pin: 259
+    to: 260
+    to_pin: 262
+  - from: 260
+    from_pin: 263
+    to: 237
+    to_pin: 242
+  - from: 260
+    from_pin: 263
+    to: 270
+    to_pin: 271
+  - from: 264
+    from_pin: 265
+    to: 266
+    to_pin: 267
+  - from: 266
+    from_pin: 269
+    to: 270
+    to_pin: 272
+  - from: 270
+    from_pin: 273
+    to: 274
+    to_pin: 276
+  - from: 274
+    from_pin: 277
+    to: 237
+    to_pin: 238
+- id: 279
+  kind: function
+  name: x * x + y * y > 0.01
+  math_expression: x * x + y * y > 0.01
+  expression_mode: 3
+  entry_id: 341
+  return_id: 343
+  call_depth_limit: 64
+  nodes:
+  - id: 341
+    type: Function Entry
+    outputs:
+    - id: 345
+      name: x
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 1
+      default: 0.0
+    - id: 346
+      name: "y"
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+  - id: 343
+    type: Return
+    inputs:
+    - id: 347
+      name: Result
+      type: 1
+      type_name: bool
+      kind: data
+      flags: 2
+      group: 3
+      default: false
+  - id: 348
+    type: Multiply
+    inputs:
+    - id: 349
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 350
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 351
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 352
+    type: Multiply
+    inputs:
+    - id: 353
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 354
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 355
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 356
+    type: Add
+    inputs:
+    - id: 357
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 358
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 359
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 360
+    type: Real
+    inputs:
+    - id: 361
+      default: 0.01
+    outputs: [362]
+  - id: 363
+    type: Greater
+    inputs:
+    - id: 364
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 365
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs: [366]
+  edges:
+  - from: 341
+    from_pin: 345
+    to: 348
+    to_pin: 349
+  - from: 341
+    from_pin: 345
+    to: 348
+    to_pin: 350
+  - from: 341
+    from_pin: 346
+    to: 352
+    to_pin: 353
+  - from: 341
+    from_pin: 346
+    to: 352
+    to_pin: 354
+  - from: 348
+    from_pin: 351
+    to: 356
+    to_pin: 357
+  - from: 352
+    from_pin: 355
+    to: 356
+    to_pin: 358
+  - from: 356
+    from_pin: 359
+    to: 363
+    to_pin: 364
+  - from: 360
+    from_pin: 362
+    to: 363
+    to_pin: 365
+  - from: 363
+    from_pin: 366
+    to: 343
+    to_pin: 347
+- id: 367
+  kind: function
+  name: target = vec2(x, y) * speed
+  math_expression: target = vec2(x, y) * speed
+  expression_mode: 2
+  entry_id: 493
+  return_id: 495
+  call_depth_limit: 64
+  nodes:
+  - id: 493
+    type: Function Entry
+    outputs:
+    - 494
+    - id: 497
+      name: target
+      type: 15
+      type_name: CF_V2
+      kind: data
+      group: 1
+      default: null
+    - id: 498
+      name: x
+      type: 10
+      type_name: float
+      kind: data
+      flags: 2
+      group: 2
+      default: 0.0
+    - id: 499
+      name: "y"
+      type: 10
+      type_name: float
+      kind: data
+      flags: 2
+      group: 3
+      default: 0.0
+    - id: 500
+      name: speed
+      type: 11
+      type_name: double
+      kind: data
+      flags: 2
+      group: 4
+      default: 0.0
+  - id: 495
+    type: Return
+    inputs:
+    - 496
+    - id: 501
+      name: Result
+      type: 15
+      type_name: CF_V2
+      kind: data
+      flags: 2
+      group: 5
+      default: null
+  - id: 502
+    type: Make_CF_V2
+    inputs: [503, 504]
+    outputs: [505]
+  - id: 506
+    type: Multiply
+    inputs:
+    - id: 507
+      type: 15
+      type_name: CF_V2
+      default: null
+    - id: 508
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 509
+      type: 15
+      type_name: CF_V2
+      default: null
+  - id: 510
+    type: Get_GameDrive
+    outputs: [511]
+  - id: 512
+    type: Break_GameDrive
+    inputs: [513]
+    outputs: [514, 515]
+  - id: 516
+    type: Make_GameDrive
+    inputs: [517, 518]
+    outputs: [519]
+  - id: 520
+    type: Set_GameDrive
+    inputs: [521, 522]
+    outputs: [523, 524]
+  edges:
+  - from: 493
+    from_pin: 494
+    to: 520
+    to_pin: 521
+  - from: 493
+    from_pin: 498
+    to: 502
+    to_pin: 503
+  - from: 493
+    from_pin: 499
+    to: 502
+    to_pin: 504
+  - from: 493
+    from_pin: 500
+    to: 506
+    to_pin: 508
+  - from: 502
+    from_pin: 505
+    to: 506
+    to_pin: 507
+  - from: 506
+    from_pin: 509
+    to: 495
+    to_pin: 501
+  - from: 506
+    from_pin: 509
+    to: 516
+    to_pin: 517
+  - from: 510
+    from_pin: 511
+    to: 512
+    to_pin: 513
+  - from: 512
+    from_pin: 515
+    to: 516
+    to_pin: 518
+  - from: 516
+    from_pin: 519
+    to: 520
+    to_pin: 522
+  - from: 520
+    from_pin: 523
+    to: 495
+    to_pin: 496
+- id: 525
+  kind: function
+  name: target = vec2(0, 0)
+  math_expression: target = vec2(0, 0)
+  expression_mode: 2
+  entry_id: 548
+  return_id: 550
+  call_depth_limit: 64
+  nodes:
+  - id: 548
+    type: Function Entry
+    outputs:
+    - 549
+    - id: 552
+      name: target
+      type: 15
+      type_name: CF_V2
+      kind: data
+      group: 1
+      default: null
+  - id: 550
+    type: Return
+    inputs:
+    - 551
+    - id: 553
+      name: Result
+      type: 15
+      type_name: CF_V2
+      kind: data
+      flags: 2
+      group: 2
+      default: null
+  - id: 554
+    type: Real
+    inputs: [555]
+    outputs: [556]
+  - id: 557
+    type: Real
+    inputs: [558]
+    outputs: [559]
+  - id: 560
+    type: Make_CF_V2
+    inputs: [561, 562]
+    outputs: [563]
+  - id: 564
+    type: Get_GameDrive
+    outputs: [565]
+  - id: 566
+    type: Break_GameDrive
+    inputs: [567]
+    outputs: [568, 569]
+  - id: 570
+    type: Make_GameDrive
+    inputs: [571, 572]
+    outputs: [573]
+  - id: 574
+    type: Set_GameDrive
+    inputs: [575, 576]
+    outputs: [577, 578]
+  edges:
+  - from: 548
+    from_pin: 549
+    to: 574
+    to_pin: 575
+  - from: 554
+    from_pin: 556
+    to: 560
+    to_pin: 561
+  - from: 557
+    from_pin: 559
+    to: 560
+    to_pin: 562
+  - from: 560
+    from_pin: 563
+    to: 550
+    to_pin: 553
+  - from: 560
+    from_pin: 563
+    to: 570
+    to_pin: 571
+  - from: 564
+    from_pin: 565
+    to: 566
+    to_pin: 567
+  - from: 566
+    from_pin: 569
+    to: 570
+    to_pin: 572
+  - from: 570
+    from_pin: 573
+    to: 574
+    to_pin: 576
+  - from: 574
+    from_pin: 577
+    to: 550
+    to_pin: 551

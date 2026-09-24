@@ -1,0 +1,473 @@
+version: 3
+name: ArenaPlayer
+domain: material
+id_counter: 111
+description: Cyan player surface. Mapping and a color ramp mark the forward local X end; Fresnel lifts the edge.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 29
+    type: Shader Surface Output
+    inputs:
+    - id: 30
+      default:
+        x: 1.0
+        "y": 1.0
+        z: 1.0
+    - id: 31
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - 32
+    - 33
+    - id: 34
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - 35
+    - 36
+  - id: 37
+    type: Shader Position
+    outputs:
+    - id: 38
+      default:
+        x: 0.0
+        "y": 0.0
+  - id: 39
+    type: Shader Mapping
+    inputs:
+    - id: 40
+      default:
+        x: 0.0
+        "y": 0.0
+    - id: 41
+      default:
+        x: 0.5
+        "y": 0.5
+    - 42
+    - id: 43
+      default:
+        x: 0.0357142873108387
+        "y": 0.05000000074505806
+    outputs:
+    - id: 44
+      default:
+        x: 0.0
+        "y": 0.0
+  - id: 45
+    type: Shader Gradient
+    inputs:
+    - id: 46
+      default:
+        x: 0.0
+        "y": 0.0
+    - 47
+    - 48
+    - 49
+    outputs: [50]
+  - id: 51
+    type: Shader Color Ramp
+    inputs:
+    - 52
+    - id: 53
+      default:
+      - Position: 0.0
+        Color:
+          x: 0.00800000037997961
+          "y": 0.1599999964237213
+          z: 0.30000001192092896
+          w: 1.0
+      - Position: 0.6200000047683716
+        Color:
+          x: 0.014999999664723873
+          "y": 0.5
+          z: 0.8199999928474426
+          w: 1.0
+      - Position: 0.8600000143051147
+        Color:
+          x: 0.3499999940395355
+          "y": 0.949999988079071
+          z: 1.0499999523162842
+          w: 1.0
+      - Position: 1.0
+        Color:
+          x: 0.7200000286102295
+          "y": 1.100000023841858
+          z: 1.149999976158142
+          w: 1.0
+    - id: 54
+      default: 2
+    outputs:
+    - id: 55
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 56
+      default: 1.0
+  - id: 57
+    type: Shader Fresnel
+    inputs:
+    - 58
+    - 59
+    - id: 60
+      default: 3.0
+    - 61
+    outputs: [62]
+  - id: 63
+    type: Shader Parameter
+    reference_id: 2
+    reference_name: Edge Glow
+    outputs:
+    - id: 64
+      flags: 0
+      group: 0
+      default: 2.799999952316284
+  - id: 65
+    type: Shader Multiply
+    inputs:
+    - id: 66
+      flags: 0
+      group: 0
+    - id: 67
+      flags: 0
+      group: 0
+    outputs:
+    - id: 68
+      flags: 0
+      group: 0
+  - id: 69
+    type: Shader Parameter
+    reference_id: 5
+    reference_name: Body Glow
+    outputs:
+    - id: 70
+      flags: 0
+      group: 0
+      default: 0.6499999761581421
+  - id: 71
+    type: Shader Add
+    inputs:
+    - id: 72
+      flags: 0
+      group: 0
+    - id: 73
+      flags: 0
+      group: 0
+    outputs:
+    - id: 74
+      flags: 0
+      group: 0
+  - id: 75
+    type: Shader Multiply
+    inputs:
+    - id: 76
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 77
+      flags: 0
+      group: 0
+    outputs:
+    - id: 78
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  - id: 79
+    type: Shader Parameter
+    reference_id: 3
+    reference_name: Roughness
+    outputs:
+    - id: 80
+      flags: 0
+      group: 0
+      default: 0.3199999928474426
+  - id: 81
+    type: Shader Parameter
+    reference_id: 4
+    reference_name: Metallic
+    outputs:
+    - id: 82
+      flags: 0
+      group: 0
+      default: 0.18000000715255737
+  - id: 84
+    type: Shader Parameter
+    reference_name: Hit Flash
+    outputs:
+    - id: 83
+      type_name: float
+      flags: 0
+      group: 0
+  - id: 87
+    type: Shader Saturate
+    inputs:
+    - id: 85
+      type_name: float
+      flags: 0
+      group: 0
+    outputs:
+    - id: 86
+      type_name: float
+      flags: 0
+      group: 0
+  - id: 92
+    type: Shader Mix
+    inputs:
+    - id: 88
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 89
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.75
+        "y": 0.949999988079071
+        z: 1.0
+    - id: 90
+      type_name: float
+      flags: 0
+      group: 0
+    outputs:
+    - id: 91
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  - id: 96
+    type: Shader Multiply
+    inputs:
+    - id: 93
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.75
+        "y": 0.949999988079071
+        z: 1.0
+    - id: 94
+      type_name: float
+      flags: 0
+      group: 0
+    outputs:
+    - id: 95
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  - id: 100
+    type: Shader Add
+    inputs:
+    - id: 97
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 98
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    outputs:
+    - id: 99
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  - id: 102
+    type: Shader Parameter
+    reference_id: 1
+    reference_name: Dash Glow
+    outputs:
+    - id: 101
+      type_name: float
+      flags: 0
+      group: 0
+  - id: 106
+    type: Shader Multiply
+    inputs:
+    - id: 103
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.05999999865889549
+        "y": 0.6499999761581421
+        z: 1.0
+    - id: 104
+      type_name: float
+      flags: 0
+      group: 0
+    outputs:
+    - id: 105
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  - id: 110
+    type: Shader Add
+    inputs:
+    - id: 107
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    - id: 108
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+    outputs:
+    - id: 109
+      type: 15
+      type_name: ShaderVec3
+      flags: 0
+      group: 0
+      default:
+        x: 0.0
+        "y": 0.0
+        z: 0.0
+  edges:
+  - from: 37
+    from_pin: 38
+    to: 39
+    to_pin: 40
+  - from: 39
+    from_pin: 44
+    to: 45
+    to_pin: 46
+  - from: 45
+    from_pin: 50
+    to: 51
+    to_pin: 52
+  - from: 51
+    from_pin: 55
+    to: 75
+    to_pin: 76
+  - from: 51
+    from_pin: 55
+    to: 92
+    to_pin: 88
+  - from: 57
+    from_pin: 62
+    to: 65
+    to_pin: 66
+  - from: 63
+    from_pin: 64
+    to: 65
+    to_pin: 67
+  - from: 65
+    from_pin: 68
+    to: 71
+    to_pin: 72
+  - from: 69
+    from_pin: 70
+    to: 71
+    to_pin: 73
+  - from: 71
+    from_pin: 74
+    to: 75
+    to_pin: 77
+  - from: 75
+    from_pin: 78
+    to: 100
+    to_pin: 97
+  - from: 79
+    from_pin: 80
+    to: 29
+    to_pin: 32
+  - from: 81
+    from_pin: 82
+    to: 29
+    to_pin: 33
+  - from: 84
+    from_pin: 83
+    to: 87
+    to_pin: 85
+  - from: 84
+    from_pin: 83
+    to: 96
+    to_pin: 94
+  - from: 87
+    from_pin: 86
+    to: 92
+    to_pin: 90
+  - from: 92
+    from_pin: 91
+    to: 29
+    to_pin: 30
+  - from: 96
+    from_pin: 95
+    to: 100
+    to_pin: 98
+  - from: 100
+    from_pin: 99
+    to: 110
+    to_pin: 107
+  - from: 102
+    from_pin: 101
+    to: 106
+    to_pin: 104
+  - from: 106
+    from_pin: 105
+    to: 110
+    to_pin: 108
+  - from: 110
+    from_pin: 109
+    to: 29
+    to_pin: 31

@@ -92,7 +92,7 @@ static float evaluate(const char *source, float x, float y)
 
 static void health_damage()
 {
-    behavior_asset *asset = load("content/behaviors/HealthBehavior.json");
+    behavior_asset *asset = load("content/behaviors/HealthBehavior.yaml");
     node *setter = NULL;
     graph *setter_graph = NULL;
     node *expression = NULL;
@@ -392,8 +392,8 @@ void test_behavior_math()
     angle_helpers();
     easing_helpers();
     health_damage();
-    behavior_asset *projectile = load("content/behaviors/ProjectileBehavior.json");
-    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.json");
+    behavior_asset *projectile = load("content/behaviors/ProjectileBehavior.yaml");
+    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.yaml");
     graph *direction = projectile->graphs[1];
     graph *emission = trail->graphs[1];
     node *magnitude = graph_node_by_id(direction, 150);

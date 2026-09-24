@@ -1,0 +1,103 @@
+version: 3
+name: WeaponBehavior
+id_counter: 36
+description: Spawns a projectile beside the owning entity when Fire is dispatched.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Fire
+    outputs: [2]
+  - id: 8
+    type: Get_GameTransform
+    outputs:
+    - id: 9
+      flags: 0
+  - id: 21
+    type: Get_GameWeapon
+    outputs:
+    - id: 22
+      flags: 0
+    - id: 23
+      name: damage
+      type: 6
+      type_name: int
+      field_source: 22
+      field_name: damage
+      flags: 0
+      default: 0
+  - id: 24
+    type: Call Function
+    reference_id: 173
+    reference_name: Fire Projectile
+    reference_asset: WeaponActions
+    inputs:
+    - 25
+    - id: 26
+      name: Origin
+      type: 15
+      type_name: CF_V2
+      kind: data
+      default: null
+    - id: 27
+      name: Direction
+      type: 15
+      type_name: CF_V2
+      kind: data
+      default:
+        x: 1.0
+        "y": 0.0
+    - id: 28
+      name: Damage
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 29
+      declaration_id: 220
+      name: Prototype
+      type: 12
+      type_name: name
+      kind: data
+      default: Projectile
+    - id: 33
+      declaration_id: 255
+      name: Shooter
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+    outputs:
+    - 30
+    - id: 31
+      name: Entity
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+  - id: 34
+    type: Self
+    outputs:
+    - id: 35
+      name: Entity
+      type_name: ecs.entity
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 24
+    to_pin: 25
+  - from: 8
+    from_pin: 9
+    to: 24
+    to_pin: 26
+  - from: 21
+    from_pin: 23
+    to: 24
+    to_pin: 28
+  - from: 34
+    from_pin: 35
+    to: 24
+    to_pin: 33

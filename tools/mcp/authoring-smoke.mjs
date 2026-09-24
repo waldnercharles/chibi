@@ -449,7 +449,7 @@ try {
   const invalidMaterialName = "McpAuthoringInvalidMaterial";
   const invalidMaterial = JSON.parse(JSON.stringify(materialRead.result.document));
   invalidMaterial.graphs[0].nodes[0].type = "Shader Node That Does Not Exist";
-  writeFileSync(join(projectRoot, "content", "materials", invalidMaterialName + ".json"), JSON.stringify(invalidMaterial));
+  writeFileSync(join(projectRoot, "content", "materials", invalidMaterialName + ".yaml"), JSON.stringify(invalidMaterial));
   const publicValidationRun = runMcp(projectRoot, [
     initialize(),
     request(2, "validateAsset", { kind: "material", name: invalidMaterialName }),

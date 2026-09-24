@@ -1,0 +1,14 @@
+name: OrbitCabinet
+identity: prototype-0000000000000034
+components:
+  GAME.GameAppearance:
+    border_color: 1774174207
+    border_width: 3.0
+    color: 288176639
+    height: 750.0
+    width: 430.0
+  GAME.GameCamera:
+    height: 850.0
+    width: 500.0
+  game.GameTransform:
+    "y": -340.0

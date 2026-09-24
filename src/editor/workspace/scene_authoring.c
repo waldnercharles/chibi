@@ -1405,7 +1405,7 @@ int app_scene_authoring_seed_default(app_scene_authoring *scene)
         return -1;
     }
     char path[CONTENT_PATH_CAP];
-    snprintf(path, sizeof path, "%s/scenes/Arena3D.json", scene->content_root);
+    snprintf(path, sizeof path, "%s/scenes/Arena3D" ASSET_EXTENSION, scene->content_root);
     return app_scene_authoring_load(scene, path);
 }
 

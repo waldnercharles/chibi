@@ -1,0 +1,707 @@
+version: 3
+name: HealthBehavior
+id_counter: 1163
+description: Applies accepted damage and reports actual health loss. Died handlers run before destruction; active dashes reject Damage.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1015
+    type: Event
+    reference_name: Damage
+    outputs:
+    - 1016
+    - id: 1017
+      declaration_id: 2
+      name: Amount
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1018
+      declaration_id: 3
+      name: Source
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+  - id: 1019
+    type: Get_GameHealth
+    outputs:
+    - id: 1020
+      flags: 0
+    - id: 1021
+      name: current
+      type: 6
+      type_name: int
+      field_source: 1020
+      field_name: current
+      flags: 0
+      default: 0
+    - id: 1022
+      name: maximum
+      type: 6
+      type_name: int
+      field_source: 1020
+      field_name: maximum
+      flags: 0
+      default: 0
+  - id: 1023
+    type: Integer Greater
+    inputs: [1024, 1025]
+    outputs: [1026]
+  - id: 1027
+    type: Branch
+    inputs: [1028, 1029]
+    outputs: [1030, 1031]
+  - id: 1032
+    type: Call Function
+    reference_id: 1001
+    reference_name: Apply Damage
+    inputs:
+    - 1033
+    - id: 1034
+      declaration_id: 1004
+      name: Current
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1035
+      declaration_id: 1005
+      name: Maximum
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1036
+      declaration_id: 1006
+      name: Amount
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1037
+      declaration_id: 1007
+      name: Source
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+    outputs: [1038]
+  - id: 1142
+    type: Event
+    reference_name: Died
+    outputs:
+    - 1143
+    - id: 1144
+      declaration_id: 3
+      name: Source
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+  - id: 1145
+    type: Integer Less Or Equal
+    inputs: [1146, 1147]
+    outputs: [1148]
+  - id: 1149
+    type: Branch
+    inputs: [1150, 1151]
+    outputs: [1152, 1153]
+  - id: 1154
+    type: Call Function
+    reference_id: 1010
+    reference_name: Notify Encounter
+    inputs: [1155]
+    outputs: [1156]
+  - id: 1157
+    type: Self
+    outputs:
+    - id: 1158
+      type_name: ecs.entity
+  - id: 1159
+    type: Destroy Entity
+    inputs: [1160, 1161]
+    outputs: [1162]
+  edges:
+  - from: 1015
+    from_pin: 1016
+    to: 1027
+    to_pin: 1028
+  - from: 1015
+    from_pin: 1017
+    to: 1023
+    to_pin: 1024
+  - from: 1015
+    from_pin: 1017
+    to: 1032
+    to_pin: 1036
+  - from: 1015
+    from_pin: 1018
+    to: 1032
+    to_pin: 1037
+  - from: 1019
+    from_pin: 1021
+    to: 1032
+    to_pin: 1034
+  - from: 1019
+    from_pin: 1021
+    to: 1145
+    to_pin: 1146
+  - from: 1019
+    from_pin: 1022
+    to: 1032
+    to_pin: 1035
+  - from: 1023
+    from_pin: 1026
+    to: 1027
+    to_pin: 1029
+  - from: 1027
+    from_pin: 1030
+    to: 1032
+    to_pin: 1033
+  - from: 1142
+    from_pin: 1143
+    to: 1149
+    to_pin: 1150
+  - from: 1145
+    from_pin: 1148
+    to: 1149
+    to_pin: 1151
+  - from: 1149
+    from_pin: 1152
+    to: 1154
+    to_pin: 1155
+  - from: 1154
+    from_pin: 1156
+    to: 1159
+    to_pin: 1160
+  - from: 1157
+    from_pin: 1158
+    to: 1159
+    to_pin: 1161
+- id: 1001
+  kind: function
+  name: Apply Damage
+  entry_id: 1002
+  return_id: 1008
+  nodes:
+  - id: 1002
+    type: Function Entry
+    outputs:
+    - id: 1003
+      name: Then
+    - id: 1004
+      name: Current
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1005
+      name: Maximum
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1006
+      name: Amount
+      type: 6
+      type_name: int
+      kind: data
+      default: 0
+    - id: 1007
+      name: Source
+      type: 14
+      type_name: ecs.entity
+      kind: data
+      default: null
+  - id: 1008
+    type: Return
+    inputs: [1009]
+  - id: 1039
+    type: Integer Greater
+    inputs: [1040, 1041]
+    outputs: [1042]
+  - id: 1043
+    type: Branch
+    inputs: [1044, 1045]
+    outputs: [1046, 1047]
+  - id: 1048
+    type: Has_GameDash
+    outputs:
+    - id: 1049
+      name: Has
+  - id: 1050
+    type: Branch
+    inputs: [1051, 1052]
+    outputs: [1053, 1054]
+  - id: 1055
+    type: Get_GameDash
+    outputs:
+    - id: 1056
+      flags: 0
+    - id: 1057
+      name: remaining
+      type: 10
+      type_name: float
+      field_source: 1056
+      field_name: remaining
+      flags: 0
+      default: 0.0
+  - id: 1058
+    type: Greater
+    inputs: [1059, 1060]
+    outputs: [1061]
+  - id: 1062
+    type: Branch
+    inputs: [1063, 1064]
+    outputs: [1065, 1066]
+  - id: 1067
+    type: Behavior Expression
+    reference_id: 63
+    reference_name: Remaining Health
+    inputs:
+    - id: 1068
+      name: current
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1069
+      name: amount
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 1070
+      name: maximum
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 1071
+      name: Result
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 1072
+    type: Subtract
+    inputs:
+    - id: 1073
+      type: 6
+      type_name: int
+      default: 0
+    - id: 1074
+      type: 6
+      type_name: int
+      group: 1
+      default: 0
+    outputs:
+    - id: 1075
+      type: 6
+      type_name: int
+      default: 0
+  - id: 1076
+    type: Integer Greater
+    inputs: [1077, 1078]
+    outputs: [1079]
+  - id: 1080
+    type: Branch
+    inputs: [1081, 1082]
+    outputs: [1083, 1084]
+  - id: 1085
+    type: Set_GameHealth_current
+    inputs: [1086, 1087, 1088]
+    outputs: [1089, 1090]
+  - id: 1091
+    type: Self
+    outputs:
+    - id: 1092
+      type_name: ecs.entity
+  - id: 1093
+    type: Send Event
+    reference_name: Damaged
+    inputs:
+    - 1094
+    - 1095
+    - id: 1096
+      declaration_id: 2
+      name: Amount
+      type: 6
+      type_name: int
+      default: 0
+    - id: 1097
+      declaration_id: 3
+      name: Source
+    outputs: [1098]
+  - id: 1099
+    type: Integer Less Or Equal
+    inputs: [1100, 1101]
+    outputs: [1102]
+  - id: 1103
+    type: Branch
+    inputs: [1104, 1105]
+    outputs: [1106, 1107]
+  - id: 1137
+    type: Send Event
+    reference_name: Died
+    inputs:
+    - 1138
+    - 1139
+    - id: 1140
+      declaration_id: 3
+      name: Source
+    outputs: [1141]
+  edges:
+  - from: 1002
+    from_pin: 1003
+    to: 1043
+    to_pin: 1044
+  - from: 1002
+    from_pin: 1004
+    to: 1039
+    to_pin: 1040
+  - from: 1002
+    from_pin: 1004
+    to: 1067
+    to_pin: 1068
+    conversion: To Real
+  - from: 1002
+    from_pin: 1004
+    to: 1072
+    to_pin: 1073
+  - from: 1002
+    from_pin: 1005
+    to: 1067
+    to_pin: 1070
+    conversion: To Real
+  - from: 1002
+    from_pin: 1006
+    to: 1067
+    to_pin: 1069
+    conversion: To Real
+  - from: 1002
+    from_pin: 1007
+    to: 1093
+    to_pin: 1097
+  - from: 1002
+    from_pin: 1007
+    to: 1137
+    to_pin: 1140
+  - from: 1039
+    from_pin: 1042
+    to: 1043
+    to_pin: 1045
+  - from: 1043
+    from_pin: 1046
+    to: 1050
+    to_pin: 1051
+  - from: 1043
+    from_pin: 1047
+    to: 1008
+    to_pin: 1009
+  - from: 1048
+    from_pin: 1049
+    to: 1050
+    to_pin: 1052
+  - from: 1050
+    from_pin: 1053
+    to: 1062
+    to_pin: 1063
+  - from: 1050
+    from_pin: 1054
+    to: 1080
+    to_pin: 1081
+  - from: 1055
+    from_pin: 1057
+    to: 1058
+    to_pin: 1059
+  - from: 1058
+    from_pin: 1061
+    to: 1062
+    to_pin: 1064
+  - from: 1062
+    from_pin: 1065
+    to: 1008
+    to_pin: 1009
+  - from: 1062
+    from_pin: 1066
+    to: 1080
+    to_pin: 1081
+  - from: 1067
+    from_pin: 1071
+    to: 1072
+    to_pin: 1074
+    conversion: To Integer
+  - from: 1067
+    from_pin: 1071
+    to: 1085
+    to_pin: 1087
+    conversion: To Integer
+  - from: 1067
+    from_pin: 1071
+    to: 1099
+    to_pin: 1100
+    conversion: To Integer
+  - from: 1072
+    from_pin: 1075
+    to: 1076
+    to_pin: 1077
+  - from: 1072
+    from_pin: 1075
+    to: 1093
+    to_pin: 1096
+  - from: 1076
+    from_pin: 1079
+    to: 1080
+    to_pin: 1082
+  - from: 1080
+    from_pin: 1083
+    to: 1085
+    to_pin: 1086
+  - from: 1080
+    from_pin: 1084
+    to: 1008
+    to_pin: 1009
+  - from: 1085
+    from_pin: 1089
+    to: 1093
+    to_pin: 1094
+  - from: 1091
+    from_pin: 1092
+    to: 1093
+    to_pin: 1095
+  - from: 1091
+    from_pin: 1092
+    to: 1137
+    to_pin: 1139
+  - from: 1093
+    from_pin: 1098
+    to: 1103
+    to_pin: 1104
+  - from: 1099
+    from_pin: 1102
+    to: 1103
+    to_pin: 1105
+  - from: 1103
+    from_pin: 1106
+    to: 1137
+    to_pin: 1138
+  - from: 1103
+    from_pin: 1107
+    to: 1008
+    to_pin: 1009
+  - from: 1137
+    from_pin: 1141
+    to: 1008
+    to_pin: 1009
+- id: 1010
+  kind: function
+  name: Notify Encounter
+  entry_id: 1011
+  return_id: 1013
+  nodes:
+  - id: 1011
+    type: Function Entry
+    outputs:
+    - id: 1012
+      name: Then
+  - id: 1013
+    type: Return
+    inputs: [1014]
+  - id: 1115
+    type: Has_GameEncounterMember
+    outputs:
+    - id: 1116
+      name: Has
+  - id: 1117
+    type: Branch
+    inputs: [1118, 1119]
+    outputs: [1120, 1121]
+  - id: 1122
+    type: Find Entities With Component
+    inputs:
+    - id: 1123
+      type_name: name
+      default: GAME.GameEncounter
+    outputs:
+    - id: 1124
+      default: []
+  - id: 1125
+    type: ForEach
+    inputs:
+    - 1126
+    - id: 1127
+      type: 14
+      type_name: ecs.entity
+      default: []
+    outputs:
+    - 1128
+    - id: 1129
+      type: 14
+      type_name: ecs.entity
+      default: null
+    - 1130
+    - 1131
+  - id: 1132
+    type: Send Event
+    reference_name: RefreshEncounter
+    inputs: [1133, 1134]
+    outputs: [1135]
+  edges:
+  - from: 1011
+    from_pin: 1012
+    to: 1117
+    to_pin: 1118
+  - from: 1115
+    from_pin: 1116
+    to: 1117
+    to_pin: 1119
+  - from: 1117
+    from_pin: 1120
+    to: 1125
+    to_pin: 1126
+  - from: 1117
+    from_pin: 1121
+    to: 1013
+    to_pin: 1014
+  - from: 1122
+    from_pin: 1124
+    to: 1125
+    to_pin: 1127
+  - from: 1125
+    from_pin: 1128
+    to: 1132
+    to_pin: 1133
+  - from: 1125
+    from_pin: 1129
+    to: 1132
+    to_pin: 1134
+  - from: 1125
+    from_pin: 1131
+    to: 1013
+    to_pin: 1014
+- id: 63
+  kind: function
+  name: Remaining Health
+  math_expression: clamp(current - clamp(amount, 0, current), 0, maximum)
+  expression_mode: 1
+  entry_id: 64
+  return_id: 66
+  call_depth_limit: 64
+  nodes:
+  - id: 64
+    type: Function Entry
+    outputs:
+    - id: 68
+      name: current
+      type: 11
+      type_name: double
+      kind: data
+      default: 0.0
+    - id: 69
+      name: amount
+      type: 11
+      type_name: double
+      kind: data
+      default: 0.0
+    - id: 70
+      name: maximum
+      type: 11
+      type_name: double
+      kind: data
+      default: 0.0
+  - id: 66
+    type: Return
+    inputs:
+    - id: 71
+      name: Result
+      type: 11
+      type_name: double
+      kind: data
+      default: 0.0
+  - id: 75
+    type: Clamp
+    inputs:
+    - id: 76
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 77
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 78
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 79
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 80
+    type: Subtract
+    inputs:
+    - id: 81
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 82
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 83
+      type: 11
+      type_name: double
+      default: 0.0
+  - id: 87
+    type: Clamp
+    inputs:
+    - id: 88
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 89
+      type: 11
+      type_name: double
+      default: 0.0
+    - id: 90
+      type: 11
+      type_name: double
+      default: 0.0
+    outputs:
+    - id: 91
+      type: 11
+      type_name: double
+      default: 0.0
+  edges:
+  - from: 64
+    from_pin: 68
+    to: 75
+    to_pin: 78
+  - from: 64
+    from_pin: 68
+    to: 80
+    to_pin: 81
+  - from: 64
+    from_pin: 69
+    to: 75
+    to_pin: 76
+  - from: 64
+    from_pin: 70
+    to: 87
+    to_pin: 90
+  - from: 75
+    from_pin: 79
+    to: 80
+    to_pin: 82
+  - from: 80
+    from_pin: 83
+    to: 87
+    to_pin: 88
+  - from: 87
+    from_pin: 91
+    to: 66
+    to_pin: 71

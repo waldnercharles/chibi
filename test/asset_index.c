@@ -12,21 +12,21 @@ void test_asset_index()
         index,
         ASSET_INDEX_PROTOTYPE,
         "ArenaPlayer",
-        "content/prototypes/ArenaPlayer.json",
+        "content/prototypes/ArenaPlayer.yaml",
         0
     );
     int material = asset_index_add_asset(
         index,
         ASSET_INDEX_MATERIAL,
         "ArenaPlayer",
-        "content/materials/ArenaPlayer.json",
+        "content/materials/ArenaPlayer.yaml",
         0
     );
     assert(prototype >= 0 && material >= 0 && prototype != material);
     assert(asset_index_find_name(index, ASSET_INDEX_PROTOTYPE, "ArenaPlayer") == prototype);
     assert(asset_index_find_name(index, ASSET_INDEX_MATERIAL, "ArenaPlayer") == material);
     assert(
-        asset_index_find(index, ASSET_INDEX_PROTOTYPE, "./content/prototypes/ArenaPlayer.json", 0) == prototype
+        asset_index_find(index, ASSET_INDEX_PROTOTYPE, "./content/prototypes/ArenaPlayer.yaml", 0) == prototype
     );
 
     int event = asset_index_ensure_name(index, ASSET_INDEX_EVENT, "Damaged");
@@ -36,7 +36,7 @@ void test_asset_index()
         index,
         ASSET_INDEX_BEHAVIOR,
         "HealthBehavior",
-        "content/behaviors/HealthBehavior.json",
+        "content/behaviors/HealthBehavior.yaml",
         0
     );
     assert(
@@ -54,7 +54,7 @@ void test_asset_index()
     );
     assert(asset_index_reference_count(index) == 1);
 
-    int resolved = asset_index_add_asset(index, ASSET_INDEX_EVENT, "Damaged", "content/events/Damaged.json", 0);
+    int resolved = asset_index_add_asset(index, ASSET_INDEX_EVENT, "Damaged", "content/events/Damaged.yaml", 0);
     assert(resolved == event);
     assert(!asset_index_asset_at(index, event)->unresolved);
     assert(asset_index_score(asset_index_asset_at(index, event), "dam") >= 0);
@@ -97,7 +97,7 @@ void test_asset_index()
     assert(editor_search_score("playar", "Player", NULL) >= 0);
     assert(editor_search_score("plsyr", "Player", NULL) < 0);
     assert(
-        editor_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.json") <
+        editor_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.yaml") <
         0
     );
     assert(editor_search_score("cat", "Cast", NULL) >= 0);

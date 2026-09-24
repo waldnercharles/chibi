@@ -2,6 +2,7 @@
 
 #include "../third_party/yyjson/yyjson.h"
 #include "graph/document/serialize.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <stdio.h>
@@ -135,10 +136,9 @@ game_system_document *game_system_document_load(
         set_error(error, error_size, "malformed system behavior_asset");
         return NULL;
     }
-    yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *parsed = asset_text_read(json, error, error_size);
     if (!parsed) {
         behavior_asset_free(definition);
-        set_error(error, error_size, "malformed system document");
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(parsed);

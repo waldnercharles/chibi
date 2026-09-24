@@ -112,12 +112,12 @@ static arena_fixture fixture_new()
     );
     assert(app_scene_authoring_load_content(f.scene) == 0);
     const char
-        *preview_path = "test/fixtures/content/prototypes/Editor2DPreview.json";
+        *preview_path = "test/fixtures/content/prototypes/Editor2DPreview.yaml";
     char *preview_json = text_file_read(preview_path);
     assert(preview_json);
     assert(app_scene_authoring_register_prototype(f.scene, preview_json, preview_path) == 0);
     free(preview_json);
-    int loaded = app_scene_authoring_load(f.scene, "content/scenes/Arena3D.json");
+    int loaded = app_scene_authoring_load(f.scene, "content/scenes/Arena3D.yaml");
     if (loaded != 0) {
         fprintf(stderr, "Arena scene load: %s\n", app_scene_authoring_message(f.scene));
     }
@@ -286,7 +286,7 @@ static void preview_projection(arena_fixture *f)
     assert(app_scene_authoring_set_runtime_target(f->scene, APP_RUNTIME_SCENE) == 0);
     frame(f);
     assert(engine_viewport_perspective(f->viewport));
-    assert(app_scene_authoring_load(f->scene, "test/fixtures/content/scenes/Editor2D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "test/fixtures/content/scenes/Editor2D.yaml") == 0);
     frame(f);
     assert(!engine_viewport_perspective(f->viewport));
     assert(app_scene_authoring_preview_prototype(f->scene, "ArenaPlayer") == 0);
@@ -296,7 +296,7 @@ static void preview_projection(arena_fixture *f)
     assert(app_scene_authoring_set_runtime_target(f->scene, APP_RUNTIME_SCENE) == 0);
     frame(f);
     assert(!engine_viewport_perspective(f->viewport));
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     assert(engine_viewport_perspective(f->viewport));
 }
@@ -498,12 +498,12 @@ static void surface_influence_authoring(arena_fixture *f)
     int descriptor = mkstemp(path);
     assert(descriptor >= 0 && close(descriptor) == 0);
     assert(app_scene_authoring_save(f->scene, path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     expect_surface_influence(f, original);
     assert(app_scene_authoring_load(f->scene, path) == 0);
     expect_surface_influence(f, edited);
     assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     expect_surface_influence(f, original);
     editor_ui_rect inspector = inspector_input_rect();
@@ -633,12 +633,12 @@ static void mesh_parts_authoring(arena_fixture *f)
     int descriptor = mkstemp(path);
     assert(descriptor >= 0 && close(descriptor) == 0);
     assert(app_scene_authoring_save(f->scene, path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     assert(!GAME_GameMeshParts_has(f->world, f->scene->actors[player_index(f)].entity));
     assert(app_scene_authoring_load(f->scene, path) == 0);
     expect_parts(f, edited);
     assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     assert(!GAME_GameMeshParts_has(f->world, f->scene->actors[player_index(f)].entity));
     select_instance(f->scene, player_index(f));
@@ -904,7 +904,7 @@ static void environment_authoring(arena_fixture *f)
     int descriptor = mkstemp(path);
     assert(descriptor >= 0 && close(descriptor) == 0);
     assert(app_scene_authoring_save(f->scene, path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     expect_environment(f, original);
     assert(app_scene_authoring_load(f->scene, path) == 0);
     expect_environment(f, edited);
@@ -918,7 +918,7 @@ static void environment_authoring(arena_fixture *f)
         assert(app_save_screenshot(capture) == 0);
     }
     assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     expect_environment(f, original);
     printf(
@@ -1256,7 +1256,7 @@ static void planar_orientation(arena_fixture *f)
     }
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     puts("planar orientation PASS: authored aim, rendered tips and empty-corner picking in four quadrants");
 }
@@ -1412,8 +1412,8 @@ static void spatial_authoring(arena_fixture *f)
     char directory[] = "/tmp/arena-ui-spatial-XXXXXX";
     assert(mkdtemp(directory));
     char prototype_path[256], scene_path[256];
-    snprintf(prototype_path, sizeof prototype_path, "%s/SpatialOnly.json", directory);
-    snprintf(scene_path, sizeof scene_path, "%s/Scene.json", directory);
+    snprintf(prototype_path, sizeof prototype_path, "%s/SpatialOnly.yaml", directory);
+    snprintf(scene_path, sizeof scene_path, "%s/Scene.yaml", directory);
     write_fixture(prototype_path, prototype);
     write_fixture(scene_path, scene);
     assert(app_scene_authoring_register_prototype(f->scene, prototype, prototype_path) == 0);
@@ -1563,9 +1563,9 @@ static void physics_authoring(arena_fixture *f)
     char directory[] = "/tmp/arena-ui-physics-XXXXXX";
     assert(mkdtemp(directory));
     char prototype_path[256], scene_path[256], saved_path[256];
-    snprintf(prototype_path, sizeof prototype_path, "%s/PhysicsControls.json", directory);
-    snprintf(scene_path, sizeof scene_path, "%s/Scene.json", directory);
-    snprintf(saved_path, sizeof saved_path, "%s/Saved.json", directory);
+    snprintf(prototype_path, sizeof prototype_path, "%s/PhysicsControls.yaml", directory);
+    snprintf(scene_path, sizeof scene_path, "%s/Scene.yaml", directory);
+    snprintf(saved_path, sizeof saved_path, "%s/Saved.yaml", directory);
     write_fixture(prototype_path, prototype);
     write_fixture(scene_path, scene);
     assert(app_scene_authoring_register_prototype(f->scene, prototype, prototype_path) == 0);
@@ -1631,7 +1631,7 @@ static void physics_authoring(arena_fixture *f)
     assert(prototype_undo(f->scene) == 0);
     frame(f);
     collider_fields("prototype", false);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     assert(
         unlink(prototype_path) == 0 && unlink(scene_path) == 0 &&
@@ -1819,7 +1819,7 @@ static int standalone_key(arena_fixture *f, app_game_presentation *game, SDL_Sca
 
 static void standalone_play(arena_fixture *f)
 {
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     /* Projectile lifetime is part of the firing comparison below. */
     for (int i = 0; i < acount(f->scene->actors); i++) {
         if (!strcmp(f->scene->actors[i].prototype_name, "PhaseWarden")) {
@@ -2832,7 +2832,7 @@ static ecs_entity *scene_scale_enemies(arena_fixture *f, int count, bool combat)
             encounter->alive = count;
         }
     }
-    char *json = text_file_read("content/prototypes/ArenaEnemy.json"), error[256];
+    char *json = text_file_read("content/prototypes/ArenaEnemy.yaml"), error[256];
     assert(json);
     game_prototype *prototype = game_prototype_load(json, &f->scene->registry, error, sizeof error);
     free(json);

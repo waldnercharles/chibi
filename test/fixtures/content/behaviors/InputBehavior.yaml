@@ -1,0 +1,313 @@
+version: 3
+name: InputBehavior
+id_counter: 374
+description: Set movement velocity from local input and face the movement direction.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Input
+    outputs:
+    - 2
+    - id: 3
+      name: Direction
+      type: 15
+      type_name: CF_V2
+      kind: data
+      default: null
+  - id: 14
+    type: Set_GameVelocity
+    inputs: [15, 16]
+    outputs: [17, 35]
+  - id: 18
+    type: Get_GameMovement
+    outputs:
+    - id: 21
+      flags: 0
+  - id: 88
+    type: Call Function
+    reference_id: 36
+    reference_name: Face Direction
+    inputs:
+    - 84
+    - id: 92
+      name: Direction
+      type: 15
+      type_name: CF_V2
+      kind: data
+      default: null
+    outputs: [87]
+  - id: 105
+    type: Call Pure Function
+    reference_id: 93
+    reference_name: Movement Velocity
+    reference_asset: MovementActions
+    inputs:
+    - id: 132
+      name: direction
+      type: 15
+      type_name: CF_V2
+      default: null
+    - id: 133
+      name: speed
+      type: 15
+      type_name: GameMovement
+      default: null
+    outputs:
+    - id: 108
+      name: Velocity
+      type: 15
+      type_name: GameVelocity
+      default: null
+  - id: 355
+    type: Has_GameDash
+    outputs: [356]
+  - id: 357
+    type: Branch
+    inputs: [358, 359]
+    outputs: [360, 361]
+  - id: 362
+    type: Get_GameDash
+    outputs:
+    - id: 363
+      flags: 0
+    - id: 364
+      name: remaining
+      type: 10
+      type_name: float
+      field_source: 363
+      field_name: remaining
+      flags: 0
+      default: 0.0
+  - id: 365
+    type: Less
+    inputs: [366, 367]
+    outputs: [368]
+  - id: 369
+    type: Branch
+    inputs: [370, 371]
+    outputs: [372, 373]
+  edges:
+  - from: 1
+    from_pin: 2
+    to: 357
+    to_pin: 358
+  - from: 1
+    from_pin: 3
+    to: 88
+    to_pin: 92
+  - from: 1
+    from_pin: 3
+    to: 105
+    to_pin: 132
+  - from: 14
+    from_pin: 17
+    to: 88
+    to_pin: 84
+  - from: 18
+    from_pin: 21
+    to: 105
+    to_pin: 133
+  - from: 105
+    from_pin: 108
+    to: 14
+    to_pin: 16
+  - from: 355
+    from_pin: 356
+    to: 357
+    to_pin: 359
+  - from: 357
+    from_pin: 360
+    to: 369
+    to_pin: 370
+  - from: 357
+    from_pin: 361
+    to: 14
+    to_pin: 15
+  - from: 362
+    from_pin: 364
+    to: 365
+    to_pin: 367
+  - from: 365
+    from_pin: 368
+    to: 369
+    to_pin: 371
+  - from: 369
+    from_pin: 373
+    to: 14
+    to_pin: 15
+- id: 36
+  kind: function
+  name: Face Direction
+  entry_id: 40
+  return_id: 42
+  call_depth_limit: 64
+  nodes:
+  - id: 40
+    type: Function Entry
+    outputs:
+    - id: 37
+      name: Then
+    - id: 91
+      name: Direction
+      type: 15
+      type_name: CF_V2
+      kind: data
+      default: null
+    - id: 38
+      name: x
+      type: 10
+      type_name: float
+      kind: data
+      field_source: 91
+      field_name: x
+      default: 0.0
+    - id: 39
+      name: "y"
+      type: 10
+      type_name: float
+      kind: data
+      field_source: 91
+      field_name: "y"
+      default: 0.0
+  - id: 42
+    type: Return
+    inputs: [41]
+  - id: 44
+    type: Has_GameOrientation
+    outputs: [43]
+  - id: 49
+    type: Branch
+    inputs: [45, 46]
+    outputs: [47, 48]
+  - id: 52
+    type: Abs
+    inputs:
+    - id: 50
+      group: 0
+    outputs:
+    - id: 51
+      group: 0
+  - id: 55
+    type: Abs
+    inputs:
+    - id: 53
+      group: 0
+    outputs:
+    - id: 54
+      group: 0
+  - id: 59
+    type: Add
+    inputs:
+    - id: 56
+      group: 0
+    - id: 57
+      group: 0
+    outputs:
+    - id: 58
+      group: 0
+  - id: 63
+    type: Greater Or Equal
+    inputs: [60, 61]
+    outputs: [62]
+  - id: 68
+    type: Branch
+    inputs: [64, 65]
+    outputs: [66, 67]
+  - id: 71
+    type: Call Pure Function
+    reference_id: 1
+    reference_name: Direction Orientation
+    reference_asset: DirectionMath
+    inputs:
+    - id: 69
+      declaration_id: 4
+      name: X
+      type: 10
+      type_name: float
+      default: 0.0
+    - id: 72
+      declaration_id: 5
+      name: "Y"
+      type: 10
+      type_name: float
+      default: 0.0
+    outputs:
+    - id: 77
+      declaration_id: 6
+      name: Orientation
+      type: 15
+      type_name: GameOrientation
+      default: null
+  - id: 83
+    type: Set_GameOrientation
+    inputs: [79, 80]
+    outputs: [81, 82]
+  edges:
+  - from: 40
+    from_pin: 37
+    to: 49
+    to_pin: 45
+  - from: 40
+    from_pin: 38
+    to: 52
+    to_pin: 50
+  - from: 40
+    from_pin: 38
+    to: 71
+    to_pin: 69
+  - from: 40
+    from_pin: 39
+    to: 55
+    to_pin: 53
+  - from: 40
+    from_pin: 39
+    to: 71
+    to_pin: 72
+  - from: 44
+    from_pin: 43
+    to: 49
+    to_pin: 46
+  - from: 49
+    from_pin: 47
+    to: 68
+    to_pin: 64
+  - from: 49
+    from_pin: 48
+    to: 42
+    to_pin: 41
+  - from: 52
+    from_pin: 51
+    to: 59
+    to_pin: 56
+  - from: 55
+    from_pin: 54
+    to: 59
+    to_pin: 57
+  - from: 59
+    from_pin: 58
+    to: 63
+    to_pin: 61
+  - from: 63
+    from_pin: 62
+    to: 68
+    to_pin: 65
+  - from: 68
+    from_pin: 66
+    to: 42
+    to_pin: 41
+  - from: 68
+    from_pin: 67
+    to: 83
+    to_pin: 79
+  - from: 71
+    from_pin: 77
+    to: 83
+    to_pin: 80
+  - from: 83
+    from_pin: 81
+    to: 42
+    to_pin: 41

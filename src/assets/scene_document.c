@@ -3,6 +3,7 @@
 #include "../third_party/yyjson/yyjson.h"
 #include "assets/physics_settings.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -323,9 +324,8 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
         set_error(error, error_size, "scene document is missing");
         return NULL;
     }
-    yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
+    yyjson_doc *parsed = asset_text_read(json, error, error_size);
     if (!parsed) {
-        set_error(error, error_size, "malformed scene document");
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(parsed);

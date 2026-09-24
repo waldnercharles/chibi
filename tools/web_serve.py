@@ -2,6 +2,7 @@
 """Serve a consistent browser build with saves routed to the selected local project."""
 import argparse
 import json
+import re
 import secrets
 import shutil
 import tempfile
@@ -20,10 +21,12 @@ def content_directory(project):
 
 def save_asset(project, content, request):
     path = (project / request['path'].lstrip('/')).resolve()
-    if not path.is_relative_to(content) or path.suffix != '.json':
-        raise ValueError('Saves must be JSON assets inside this project content directory')
+    if not path.is_relative_to(content) or path.suffix != '.yaml':
+        raise ValueError('Saves must be YAML assets inside this project content directory')
     text = request['text']
-    json.loads(text)
+    # The engine writes asset documents as YAML mappings.
+    if not re.match(r'[A-Za-z_][A-Za-z0-9_]*:', text):
+        raise ValueError('Saves must be YAML asset documents')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:
         temporary = Path(file.name)
@@ -75,7 +78,7 @@ def main():
                         self.send_error(403)
                         return
                     assets = {str(p.relative_to(project)): p.read_text()
-                              for p in content.rglob('*.json') if p.resolve().is_relative_to(content)}
+                              for p in content.rglob('*.yaml') if p.resolve().is_relative_to(content)}
                     assets['project.json'] = (project / 'project.json').read_text()
                     body = json.dumps(assets).encode()
                     self.send_response(200)

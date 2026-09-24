@@ -1,0 +1,1726 @@
+version: 1
+name: Scene
+physics:
+  substeps: 8
+  sleep: false
+entities:
+- name: Camera
+  prototype: Camera
+- name: Cabinet
+  prototype: Table
+- name: Playfield
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 428.0
+      height: 638.0
+      color: 271006975
+      border_width: 4.0
+      border_color: 1366261503
+      layer: -29
+    game.GameTransform:
+      "y": -5.0
+- name: Shooter trough
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 30.0
+      height: 565.0
+      color: 287059455
+      layer: -27
+    game.GameTransform:
+      x: 196.0
+      "y": 35.0
+- name: Star chart
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 330.0
+      height: 385.0
+      color: 372855295
+      shape: 1
+      border_width: 2.0
+      border_color: 627079679
+      layer: -26
+    game.GameTransform:
+      "y": -60.0
+- name: Radar ring 0
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 100.0
+      height: 100.0
+      color: 389303039
+      shape: 1
+      border_width: 1.0
+      border_color: 677276927
+      layer: -25
+    game.GameTransform:
+      x: -10.0
+      "y": -52.0
+- name: Radar ring 1
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 148.0
+      height: 148.0
+      color: 389303039
+      shape: 1
+      border_width: 1.0
+      border_color: 677276927
+      layer: -24
+    game.GameTransform:
+      x: -10.0
+      "y": -52.0
+- name: Radar ring 2
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 196.0
+      height: 196.0
+      color: 389303039
+      shape: 1
+      border_width: 1.0
+      border_color: 677276927
+      layer: -23
+    game.GameTransform:
+      x: -10.0
+      "y": -52.0
+- name: Radar ring 3
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 244.0
+      height: 244.0
+      color: 389303039
+      shape: 1
+      border_width: 1.0
+      border_color: 677276927
+      layer: -22
+    game.GameTransform:
+      x: -10.0
+      "y": -52.0
+- name: Star 0
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 4.0
+      height: 4.0
+      color: 4140860415
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: -143.0
+      "y": -239.0
+- name: Star 1
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -30.0
+      "y": -66.0
+- name: Star 2
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 83.0
+      "y": 107.0
+- name: Star 3
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -164.0
+      "y": -240.0
+- name: Star 4
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: -51.0
+      "y": -67.0
+- name: Star 5
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 4.0
+      height: 4.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 62.0
+      "y": 106.0
+- name: Star 6
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 175.0
+      "y": -241.0
+- name: Star 7
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -72.0
+      "y": -68.0
+- name: Star 8
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: 41.0
+      "y": 105.0
+- name: Star 9
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 154.0
+      "y": -242.0
+- name: Star 10
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 4.0
+      height: 4.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -93.0
+      "y": -69.0
+- name: Star 11
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 20.0
+      "y": 104.0
+- name: Star 12
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: 133.0
+      "y": -243.0
+- name: Star 13
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -114.0
+      "y": -70.0
+- name: Star 14
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -1.0
+      "y": 103.0
+- name: Star 15
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 4.0
+      height: 4.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 112.0
+      "y": -244.0
+- name: Star 16
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: -135.0
+      "y": -71.0
+- name: Star 17
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -22.0
+      "y": 102.0
+- name: Star 18
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 91.0
+      "y": -245.0
+- name: Star 19
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -156.0
+      "y": -72.0
+- name: Star 20
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 4.0
+      height: 4.0
+      color: 1569826303
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: -43.0
+      "y": 101.0
+- name: Star 21
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 70.0
+      "y": -246.0
+- name: Star 22
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -177.0
+      "y": -73.0
+- name: Star 23
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -64.0
+      "y": 100.0
+- name: Star 24
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 2
+      layer: -19
+    game.GameTransform:
+      x: 49.0
+      "y": -247.0
+- name: Star 25
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 4.0
+      height: 4.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 162.0
+      "y": -74.0
+- name: Star 26
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 1569826303
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: -85.0
+      "y": 99.0
+- name: Star 27
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 2.0
+      height: 2.0
+      color: 4140860415
+      shape: 1
+      layer: -19
+    game.GameTransform:
+      x: 28.0
+      "y": -248.0
+- name: Rail 1
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 558.0
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 558.0
+      height: 10.0
+    GAME.GameOrientation:
+      radians: -1.5707963705062866
+    game.GameTransform:
+      x: -210.0
+      "y": 39.0
+- name: Rail 2
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 42.95346450805664
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 42.95346450805664
+      height: 10.0
+    GAME.GameOrientation:
+      radians: -1.1383885145187378
+    game.GameTransform:
+      x: -201.0
+      "y": -259.5
+- name: Rail 3
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 50.80354309082031
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 50.80354309082031
+      height: 10.0
+    GAME.GameOrientation:
+      radians: -0.6316906213760376
+    game.GameTransform:
+      x: -171.5
+      "y": -294.0
+- name: Rail 4
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 61.61168670654297
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 61.61168670654297
+      height: 10.0
+    GAME.GameOrientation:
+      radians: -0.22923193871974945
+    game.GameTransform:
+      x: -121.0
+      "y": -316.0
+- name: Rail 5
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 182.0
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 182.0
+      height: 10.0
+    game.GameTransform:
+      "y": -323.0
+- name: Rail 6
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 66.94026947021484
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 66.94026947021484
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 0.24135549366474152
+    game.GameTransform:
+      x: 123.5
+      "y": -315.0
+- name: Rail 7
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 51.22499465942383
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 51.22499465942383
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 0.6747409701347351
+    game.GameTransform:
+      x: 176.0
+      "y": -291.0
+- name: Rail 8
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 52.801513671875
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 52.801513671875
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 1.1410340070724487
+    game.GameTransform:
+      x: 207.0
+      "y": -251.0
+- name: Rail 9
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 545.0
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 545.0
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 1.5707963705062866
+    game.GameTransform:
+      x: 218.0
+      "y": 45.5
+- name: Rail 10
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 131.0
+      height: 6.0
+      color: 1669963519
+    GAME.GameCollider:
+      width: 131.0
+      height: 6.0
+    GAME.GameOrientation:
+      radians: -1.5707963705062866
+    game.GameTransform:
+      x: -180.0
+      "y": 225.5
+- name: Rail 11
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 34.48188018798828
+      height: 6.0
+      color: 1669963519
+    GAME.GameCollider:
+      width: 34.48188018798828
+      height: 6.0
+    GAME.GameOrientation:
+      radians: -1.0552473068237305
+    game.GameTransform:
+      x: -171.5
+      "y": 145.0
+- name: Rail 12
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 205.0
+      height: 7.0
+      color: 2680411135
+    GAME.GameCollider:
+      width: 205.0
+      height: 7.0
+    GAME.GameOrientation:
+      radians: -1.5707963705062866
+    game.GameTransform:
+      x: 167.0
+      "y": 192.5
+- name: Rail 13
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 80.62257385253906
+      height: 7.0
+      color: 2680411135
+    GAME.GameCollider:
+      width: 80.62257385253906
+      height: 7.0
+    GAME.GameOrientation:
+      radians: -1.4464412927627563
+    game.GameTransform:
+      x: 172.0
+      "y": 50.0
+- name: Rail 14
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 177.00282287597656
+      height: 7.0
+      color: 2680411135
+    GAME.GameCollider:
+      width: 177.00282287597656
+      height: 7.0
+    GAME.GameOrientation:
+      radians: -1.5651466846466064
+    game.GameTransform:
+      x: 177.5
+      "y": -78.5
+- name: Rail 15
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 30.805843353271484
+      height: 7.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 30.805843353271484
+      height: 7.0
+    GAME.GameOrientation:
+      radians: -2.194819450378418
+    game.GameTransform:
+      x: 169.0
+      "y": -179.5
+- name: Rail 16
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 33.0
+      height: 8.0
+      color: 3214434559
+    GAME.GameCollider:
+      width: 33.0
+      height: 8.0
+    game.GameTransform:
+      x: 198.5
+      "y": 290.0
+- name: Rail 17
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 76.48529052734375
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 76.48529052734375
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 0.7298996448516846
+    game.GameTransform:
+      x: -181.5
+      "y": 250.5
+- name: Rail 18
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 61.032779693603516
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 61.032779693603516
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 0.6107259392738342
+    game.GameTransform:
+      x: -128.0
+      "y": 293.5
+- name: Rail 19
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 68.88395690917969
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 68.88395690917969
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 2.2636759281158447
+    game.GameTransform:
+      x: 146.0
+      "y": 251.5
+- name: Rail 20
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 42.01190185546875
+      height: 10.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 42.01190185546875
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 2.238102436065674
+    game.GameTransform:
+      x: 111.0
+      "y": 294.5
+- name: Rail 21
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 78.26238250732422
+      height: 7.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 78.26238250732422
+      height: 7.0
+    GAME.GameOrientation:
+      radians: 1.1071487665176392
+    game.GameTransform:
+      x: -162.5
+      "y": 174.0
+- name: Rail 22
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 49.24428939819336
+      height: 7.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 49.24428939819336
+      height: 7.0
+    GAME.GameOrientation:
+      radians: 0.4182243347167969
+    game.GameTransform:
+      x: -122.5
+      "y": 219.0
+- name: Rail 23
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 75.96051788330078
+      height: 7.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 75.96051788330078
+      height: 7.0
+    GAME.GameOrientation:
+      radians: 1.8509043455123901
+    game.GameTransform:
+      x: 135.5
+      "y": 171.5
+- name: Rail 24
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 32.649654388427734
+      height: 7.0
+      color: 2478428415
+    GAME.GameCollider:
+      width: 32.649654388427734
+      height: 7.0
+    GAME.GameOrientation:
+      radians: 2.4429328441619873
+    game.GameTransform:
+      x: 112.5
+      "y": 218.5
+- name: Rail 25
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 113.6529769897461
+      height: 10.0
+      color: 3935527679
+    GAME.GameCollider:
+      width: 113.6529769897461
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 1.2017273902893066
+    game.GameTransform:
+      x: -152.5
+      "y": 126.0
+- name: Rail 26
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 38.832977294921875
+      height: 10.0
+      color: 3935527679
+    GAME.GameCollider:
+      width: 38.832977294921875
+      height: 10.0
+    GAME.GameOrientation:
+      radians: 0.9685089588165283
+    game.GameTransform:
+      x: -121.0
+      "y": 195.0
+- name: Rail 27
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 151.7003631591797
+      height: 6.0
+      color: 4189746431
+    GAME.GameCollider:
+      category: 4
+      width: 151.7003631591797
+      height: 6.0
+    GAME.GameOrientation:
+      radians: 1.142532229423523
+    game.GameTransform:
+      x: -141.5
+      "y": 142.0
+  behaviors: [BumperKick]
+- name: Rail 28
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 137.52818298339844
+      height: 6.0
+      color: 4189746431
+    GAME.GameCollider:
+      category: 4
+      width: 137.52818298339844
+      height: 6.0
+    GAME.GameOrientation:
+      radians: 1.8281199932098389
+    game.GameTransform:
+      x: 127.5
+      "y": 144.5
+  behaviors: [BumperKick]
+- name: Left slingshot
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 62.0
+      height: 106.0
+      color: 3377350143
+      shape: 6
+      border_width: 3.0
+      border_color: 3988219903
+      layer: 0
+    GAME.GameOrientation:
+      radians: -0.41999998688697815
+    game.GameTransform:
+      x: -139.0
+      "y": 158.0
+- name: Right slingshot
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 62.0
+      height: 106.0
+      color: 3377350143
+      shape: 6
+      border_width: 3.0
+      border_color: 3988219903
+      layer: 0
+    GAME.GameOrientation:
+      radians: 0.41999998688697815
+    game.GameTransform:
+      x: 131.0
+      "y": 158.0
+- name: Rail 29
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 93.30059051513672
+      height: 5.0
+      color: 3585700095
+    GAME.GameCollider:
+      width: 93.30059051513672
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.2320982217788696
+    game.GameTransform:
+      x: -137.5
+      "y": 32.0
+- name: Rail 30
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 93.17188262939453
+      height: 5.0
+      color: 3585700095
+    GAME.GameCollider:
+      width: 93.17188262939453
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.7871370315551758
+    game.GameTransform:
+      x: -132.0
+      "y": -57.5
+- name: Rail 31
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 119.64112854003906
+      height: 5.0
+      color: 3585700095
+    GAME.GameCollider:
+      width: 119.64112854003906
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.3602867126464844
+    game.GameTransform:
+      x: -129.5
+      "y": -161.5
+- name: Rail 32
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 51.400390625
+      height: 5.0
+      color: 3585700095
+    GAME.GameCollider:
+      width: 51.400390625
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -0.6473921537399292
+    game.GameTransform:
+      x: -96.5
+      "y": -235.5
+- name: Rail 33
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 75.7693862915039
+      height: 5.0
+      color: 2006492159
+    GAME.GameCollider:
+      width: 75.7693862915039
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.1780356168746948
+    game.GameTransform:
+      x: -165.5
+      "y": 23.0
+- name: Rail 34
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 94.3663101196289
+      height: 5.0
+      color: 2006492159
+    GAME.GameCollider:
+      width: 94.3663101196289
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.7411714792251587
+    game.GameTransform:
+      x: -159.0
+      "y": -58.5
+- name: Rail 35
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 126.49505615234375
+      height: 5.0
+      color: 2006492159
+    GAME.GameCollider:
+      width: 126.49505615234375
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.3718503713607788
+    game.GameTransform:
+      x: -154.5
+      "y": -167.0
+- name: Rail 36
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 72.91776275634766
+      height: 5.0
+      color: 2006492159
+    GAME.GameCollider:
+      width: 72.91776275634766
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -0.7368925213813782
+    game.GameTransform:
+      x: -115.0
+      "y": -253.5
+- name: Rail 37
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 84.9705810546875
+      height: 6.0
+      color: 3567610879
+    GAME.GameCollider:
+      width: 84.9705810546875
+      height: 6.0
+    GAME.GameOrientation:
+      radians: -1.1071487665176392
+    game.GameTransform:
+      x: 85.0
+      "y": 119.0
+- name: Rail 38
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 99.82484436035156
+      height: 6.0
+      color: 3567610879
+    GAME.GameCollider:
+      width: 99.82484436035156
+      height: 6.0
+    GAME.GameOrientation:
+      radians: -1.3792946338653564
+    game.GameTransform:
+      x: 113.5
+      "y": 32.0
+- name: Rail 39
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 142.144287109375
+      height: 6.0
+      color: 3567610879
+    GAME.GameCollider:
+      width: 142.144287109375
+      height: 6.0
+    GAME.GameOrientation:
+      radians: -1.6977691650390625
+    game.GameTransform:
+      x: 114.0
+      "y": -87.5
+- name: Rail 40
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 78.892333984375
+      height: 6.0
+      color: 3567610879
+    GAME.GameCollider:
+      width: 78.892333984375
+      height: 6.0
+    GAME.GameOrientation:
+      radians: -2.10252046585083
+    game.GameTransform:
+      x: 85.0
+      "y": -192.0
+- name: Rail 41
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 93.10746765136719
+      height: 5.0
+      color: 2074589439
+    GAME.GameCollider:
+      width: 93.10746765136719
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.1503909826278687
+    game.GameTransform:
+      x: 114.0
+      "y": 127.5
+- name: Rail 42
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 106.21205139160156
+      height: 5.0
+      color: 2074589439
+    GAME.GameCollider:
+      width: 106.21205139160156
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.4195786714553833
+    game.GameTransform:
+      x: 141.0
+      "y": 32.5
+- name: Rail 43
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 151.07614135742188
+      height: 5.0
+      color: 2074589439
+    GAME.GameCollider:
+      width: 151.07614135742188
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -1.6902252435684204
+    game.GameTransform:
+      x: 140.0
+      "y": -95.0
+- name: Rail 44
+  prototype: Rail
+  components:
+    GAME.GameAppearance:
+      width: 83.86298370361328
+      height: 5.0
+      color: 2074589439
+    GAME.GameCollider:
+      width: 83.86298370361328
+      height: 5.0
+    GAME.GameOrientation:
+      radians: -2.109170913696289
+    game.GameTransform:
+      x: 109.5
+      "y": -206.0
+- name: Bumper pedestal 0
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 60.0
+      height: 60.0
+      color: 693000959
+      shape: 1
+      border_width: 4.0
+      border_color: 2326768639
+      layer: 1
+    game.GameTransform:
+      x: -62.0
+      "y": -151.0
+- name: Attack bumper 1
+  prototype: AttackBumper
+  components:
+    game.GameTransform:
+      x: -62.0
+      "y": -151.0
+  behaviors: [BumperKick]
+- name: Bumper cap 0
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 23.0
+      height: 23.0
+      color: 4023419647
+      shape: 1
+      border_width: 3.0
+      border_color: 3175231487
+      layer: 7
+    game.GameTransform:
+      x: -62.0
+      "y": -151.0
+- name: Bumper inset 0
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 8.0
+      height: 8.0
+      color: 3075554815
+      shape: 1
+      layer: 8
+    game.GameTransform:
+      x: -62.0
+      "y": -151.0
+- name: Bumper pedestal 1
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 60.0
+      height: 60.0
+      color: 693000959
+      shape: 1
+      border_width: 4.0
+      border_color: 2326768639
+      layer: 1
+    game.GameTransform:
+      x: 20.0
+      "y": -166.0
+- name: Attack bumper 2
+  prototype: AttackBumper
+  components:
+    game.GameTransform:
+      x: 20.0
+      "y": -166.0
+  behaviors: [BumperKick]
+- name: Bumper cap 1
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 23.0
+      height: 23.0
+      color: 4023419647
+      shape: 1
+      border_width: 3.0
+      border_color: 3175231487
+      layer: 7
+    game.GameTransform:
+      x: 20.0
+      "y": -166.0
+- name: Bumper inset 1
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 8.0
+      height: 8.0
+      color: 3075554815
+      shape: 1
+      layer: 8
+    game.GameTransform:
+      x: 20.0
+      "y": -166.0
+- name: Bumper pedestal 2
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 60.0
+      height: 60.0
+      color: 693000959
+      shape: 1
+      border_width: 4.0
+      border_color: 2326768639
+      layer: 1
+    game.GameTransform:
+      x: -18.0
+      "y": -83.0
+- name: Attack bumper 3
+  prototype: AttackBumper
+  components:
+    game.GameTransform:
+      x: -18.0
+      "y": -83.0
+  behaviors: [BumperKick]
+- name: Bumper cap 2
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 23.0
+      height: 23.0
+      color: 4023419647
+      shape: 1
+      border_width: 3.0
+      border_color: 3175231487
+      layer: 7
+    game.GameTransform:
+      x: -18.0
+      "y": -83.0
+- name: Bumper inset 2
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 8.0
+      height: 8.0
+      color: 3075554815
+      shape: 1
+      layer: 8
+    game.GameTransform:
+      x: -18.0
+      "y": -83.0
+- name: Bumper pedestal 3
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 60.0
+      height: 60.0
+      color: 693000959
+      shape: 1
+      border_width: 4.0
+      border_color: 2326768639
+      layer: 1
+    game.GameTransform:
+      x: 61.0
+      "y": -94.0
+- name: Attack bumper 4
+  prototype: AttackBumper
+  components:
+    game.GameTransform:
+      x: 61.0
+      "y": -94.0
+  behaviors: [BumperKick]
+- name: Bumper cap 3
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 23.0
+      height: 23.0
+      color: 4023419647
+      shape: 1
+      border_width: 3.0
+      border_color: 3175231487
+      layer: 7
+    game.GameTransform:
+      x: 61.0
+      "y": -94.0
+- name: Bumper inset 3
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 8.0
+      height: 8.0
+      color: 3075554815
+      shape: 1
+      layer: 8
+    game.GameTransform:
+      x: 61.0
+      "y": -94.0
+- name: Mission target 1
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: -81.0
+      "y": -277.0
+- name: Mission target 2
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: -22.0
+      "y": -282.0
+- name: Mission target 3
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: 38.0
+      "y": -282.0
+- name: Mission target 4
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: -151.0
+- name: Mission target 5
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: -153.0
+      "y": 33.0
+- name: Mission target 6
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: -150.0
+      "y": 66.0
+- name: Mission target 7
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: 109.0
+      "y": -219.0
+- name: Mission target 8
+  prototype: LaneTarget
+  components:
+    game.GameTransform:
+      x: 78.0
+      "y": 65.0
+- name: Rank lamp 1
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 3937946111
+      shape: 1
+      glow_radius: 3.0
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: -55.0
+      "y": 96.0
+- name: Rank lamp 2
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 3937946111
+      shape: 1
+      glow_radius: 3.0
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: -40.0
+      "y": 96.0
+- name: Rank lamp 3
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 3937946111
+      shape: 1
+      glow_radius: 3.0
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: -25.0
+      "y": 96.0
+- name: Rank lamp 4
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 1113872383
+      shape: 1
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: -10.0
+      "y": 96.0
+- name: Rank lamp 5
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 1113872383
+      shape: 1
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: 5.0
+      "y": 96.0
+- name: Rank lamp 6
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 1113872383
+      shape: 1
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: 20.0
+      "y": 96.0
+- name: Rank lamp 7
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 1113872383
+      shape: 1
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: 35.0
+      "y": 96.0
+- name: Rank lamp 8
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 9.0
+      height: 12.0
+      color: 1113872383
+      shape: 1
+      glow_color: 4207496191
+      layer: 2
+    game.GameTransform:
+      x: 50.0
+      "y": 96.0
+- name: Center arrow
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 31.0
+      height: 50.0
+      color: 3752745471
+      shape: 3
+      layer: 0
+    GAME.GameOrientation:
+      radians: 3.1415927410125732
+    game.GameTransform:
+      x: -5.0
+      "y": 164.0
+- name: Spacecraft body
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 57.0
+      height: 106.0
+      color: 727941375
+      shape: 2
+      border_width: 2.0
+      border_color: 1939778303
+      layer: -5
+    game.GameTransform:
+      x: -20.0
+      "y": 15.0
+- name: Left wing
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 53.0
+      height: 42.0
+      color: 1283626751
+      shape: 6
+      layer: -4
+    GAME.GameOrientation:
+      radians: -0.5
+    game.GameTransform:
+      x: -52.0
+      "y": 30.0
+- name: Right wing
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 53.0
+      height: 42.0
+      color: 1283626751
+      shape: 6
+      layer: -4
+    GAME.GameOrientation:
+      radians: 0.5
+    game.GameTransform:
+      x: 12.0
+      "y": 30.0
+- name: Left flipper
+  prototype: FlipperPaddle
+  components:
+    game.GameTransform:
+      x: -65.78301239013672
+      "y": 246.5286865234375
+  behaviors: [Flipper]
+- name: Left flipper pivot
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 18.0
+      height: 18.0
+      color: 3973884159
+      shape: 1
+      border_width: 3.0
+      border_color: 2775732223
+      layer: 9
+    game.GameTransform:
+      x: -100.0
+      "y": 230.0
+- name: Right flipper
+  prototype: FlipperPaddle
+  components:
+    GAME.GameActionBinding:
+      source: 18
+      action: RightFlip
+    GAME.GameOrientation:
+      radians: 2.6915926933288574
+    game.GameTransform:
+      x: 65.78301239013672
+      "y": 246.5286865234375
+  behaviors: [Flipper]
+- name: Right flipper pivot
+  prototype: Artwork
+  components:
+    GAME.GameAppearance:
+      width: 18.0
+      height: 18.0
+      color: 3973884159
+      shape: 1
+      border_width: 3.0
+      border_color: 2775732223
+      layer: 9
+    game.GameTransform:
+      x: 100.0
+      "y": 230.0
+- name: Ball
+  prototype: Pinball
+  behaviors: [GameState, BallMotion, Plunger, Scoring, Nudge]
+- name: New game binding
+  prototype: InputBinding
+- name: Nudge binding
+  prototype: InputBinding
+  components:
+    GAME.GameActionBinding:
+      source: 30
+      action: Nudge
+- name: Scoreboard
+  prototype: Panel
+- name: Space title
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: SPACE
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.17000000178813934
+      color: 3655922431
+      font_size: 34.0
+- name: Cadet title
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: CADET
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.2199999988079071
+      color: 3655922431
+      font_size: 34.0
+- name: Flight label
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: FLIGHT COMMAND
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.2800000011920929
+      color: 1873000703
+      font_size: 12.0
+- name: Score caption
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: SCORE
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.3499999940395355
+      color: 3095414271
+      font_size: 13.0
+- name: Score display
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: "00000000"
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.4000000059604645
+      color: 4289938431
+      font_size: 34.0
+  behaviors: [ScoreDisplay]
+- name: Lives display
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: BALLS   3
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.47999998927116394
+      color: 2881539583
+      font_size: 18.0
+  behaviors: [LivesDisplay]
+- name: Rank display
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: RANK   1
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.5350000262260437
+      color: 2881539583
+      font_size: 18.0
+  behaviors: [RankDisplay]
+- name: Mission display
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: |-
+        TARGET PRACTICE
+        0 / 8 HITS
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.625
+      size:
+        x: 240.0
+        "y": 70.0
+      color: 4290927871
+      font_size: 18.0
+  behaviors: [MissionDisplay]
+- name: Launch power
+  prototype: PlungerMeter
+  behaviors: [PlungerDisplay]
+- name: Plunger label
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: PLUNGER
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.7699999809265137
+      color: 2091169791
+      font_size: 12.0
+- name: Flipper controls
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: A / L   FLIPPERS
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.8399999737739563
+      color: 2645803007
+      font_size: 13.0
+- name: Launch controls
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: SPACE   LAUNCH
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.875
+      color: 2645803007
+      font_size: 13.0
+- name: Restart controls
+  prototype: Label
+  components:
+    GAME.GameWidget:
+      text: R   NEW GAME     X   NUDGE
+      anchor:
+        x: 0.8100000023841858
+        "y": 0.9100000262260437
+      color: 2006032127
+      font_size: 11.0
+- name: Table lighting
+  prototype: TableLighting
+  components:
+    GAME.GameHRC2D:
+      target_fps: 60.0
+      debug_view: 1
+      particle_focal_length: 300.0

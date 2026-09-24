@@ -190,7 +190,7 @@ const entries = [
     operation: "list_assets",
     adapter: "native",
     title: "List authored assets",
-    description: "List authored JSON assets with stable paths, sizes, and content hashes. Use this for a complete inventory when search terms are unavailable. Call searchAssets to narrow the inventory before editing.",
+    description: "List authored YAML assets with stable paths, sizes, and content hashes. Use this for a complete inventory when search terms are unavailable. Call searchAssets to narrow the inventory before editing.",
     intentTerms: ["list", "assets"],
     candidates: ["enumerateAssets", "listAssets"],
     legacyName: "list_assets",

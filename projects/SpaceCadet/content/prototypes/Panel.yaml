@@ -1,0 +1,22 @@
+name: Panel
+identity: prototype-000000000000003e
+components:
+  GAME.GameWidget:
+    anchor:
+      x: 0.8100000023841858
+      "y": 0.5
+    background: 269820671
+    color: 1551077631
+    drop_group: ""
+    event: ""
+    kind: 1
+    order: 30
+    pivot:
+      x: 0.5
+      "y": 0.5
+    rounding: 4.0
+    size:
+      x: 255.0
+      "y": 555.0
+    text: ""
+    tooltip: ""

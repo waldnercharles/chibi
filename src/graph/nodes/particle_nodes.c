@@ -123,6 +123,7 @@ static const char *directed_call(void *service, const pin_value *v, pin_value *)
         .size_exponent = v[16].f,
         .elevation = v[17].f,
         .shape = v[18].i,
+        .antialias = 1.5f,
     };
     if (game_particles_emit_directed(particles, &spray) < 0) {
         return "Directed particle ranges and direction must be finite and "

@@ -54,6 +54,7 @@ void ed_draw_field_details(editor *e)
                                      (field_context){ .seed = (unsigned)e->field_seed },
                                      (field_grid){ 64, 64, e->field_cell_size },
                                      e->field_values,
+                                     NULL,
                                      e->field_error,
                                      sizeof e->field_error
                                  );

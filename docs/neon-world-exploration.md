@@ -38,8 +38,8 @@ before advancing. Keep the last accepted version available for comparison.
 
 The starting scene is the original `NeonSwarmSandbox`, currently named
 `Sandbox`. It provides the starting point for the existing ship, controls,
-camera, lighting, and material interaction. The next feature and its visual
-references still need agreement.
+camera, lighting, and material interaction. The agreed visual direction and the
+feature in review are recorded below.
 
 ## The game
 
@@ -186,18 +186,45 @@ death and full restart; a boss attack; and boss progression. Refine only the nex
 selected item into an implementation brief. Names, catalogs, quantities, and
 balance from the rejected experiment are not automatically part of that brief.
 
+## Visual direction
+
+Agreed September 23, 2026. The first rock is columnar basalt. The broader look
+combines silhouette on depth, with dark playable rock against lit distance;
+living light, with glowing growth that emits real HRC light; and organic growth
+in some areas. Environments will eventually distinguish zones. Surfaces,
+normals, and growth are procedural and should interact with HRC, gas, and liquid.
+The player's ship lights the walls around it.
+
+Animal Well sets the bar for layered effects: normal-mapped scenery under moving
+lights, SDF backgrounds lit by the layers in front, a rim-light pass, and a fluid
+layer.
+
+Agreed sequence: basalt wall shape; lit basalt, with procedural normals,
+normal-aware 2D lighting, and walls lit by the ship; a parallax depth layer;
+living light tied to HRC.
+
+Candidates raised in review, not yet ordered: drifting dust that shows only
+where light reaches it; fog with density-driven in-scattering, drifting detail
+and visible shafts; liquids that emit, tint transmitted light, and catch
+highlights; and a bounded MPM study for flowing or phase-changing material such
+as lava cooling into basalt. HRC already treats gas as a 2D participating medium
+and lights fog from received light, which shows shafts behind occluders; it has
+no depth, phase function, or coloured transmission.
+
 ## Next feature brief
 
-Current activity: refine the design and choose the reference. Implementation is
-paused.
+Current activity: basalt world and lit basalt, in review. At the user's request
+this step also removed the terrain's rectangular bound and brought the lit
+basalt forward.
 
 | Question | Current position |
 | --- | --- |
-| Which scene do we start from? | The restored `Sandbox`, formerly `NeonSwarmSandbox`. |
-| What should the first new result be? | One convincing cave surface is proposed. Confirm after choosing the reference. |
-| What should it look like? | Unresolved. Choose references before generating or implementing visuals. |
-| How will we judge it? | Fly alongside it and fire near it. Inspect silhouette, material response, depth, brightness, and readability in motion. |
-| What is deliberately deferred? | Additional areas, enemies, bosses, weapon systems, shops, and a complete run loop. |
+| Which scene do we start from? | `Sandbox`. `Cave` streams the unbounded `BasaltCave` field and uses the `Basalt` material. `CaveField` remains for field tests and comparison. |
+| What changes? | An unbounded network of chambers, passages and shafts joins the original tunnel. The rock is one continuous column grid whose columns thin, widen, lean and fan gradually, with no seams between styles. Cross-joints carry every exposed column end. Rock near open space receives its light over 64 units and is shaded from each light's direction with relief shadows, in HDR with bloom. Shots throw grit, fine sparks colored by the weapon, and hot rock chunks that fly out, shove loose rock, split on hard knocks and shrink into small puffs; crater dust clears within a few seconds. The ship lamp is shelved. |
+| What does the player do? | Descend to the floor, fire into it, climb and fire at the ceiling. Then fly by hand at normal speed and while boosting. |
+| How will we judge it? | Column rhythm reads in silhouette and surface. Walls near the ship, shots and fire are visibly lit, with relief facing the light. Passages remain navigable while boosting; streaming does not pop in visible terrain. |
+| What is deliberately deferred? | Depth layer, living light, the starfield, crystals and hard rock, and regional world structure. |
+| What is the evidence? | Moving captures under game lighting and an ambient-lit inspection copy, GPU surface-lighting checks, 1080p frame times, and hands-on play. |
 
 This section should hold only the next agreed feature. Replace it after that
 feature is accepted, keeping the decision and evidence in a short delivery note.
@@ -272,9 +299,9 @@ when their source destroys itself, scenario error details, and preview captures
 up to 4096 pixels per side. The [material engine document](material-engine.md)
 describes streaming configuration and limits.
 
-Game feature development remains paused. Existing scenes and project startup
-still use the original content. No experimental cave art, enemies, boss, weapon
-modules, shop, or exploration scene was transferred.
+Feature development resumed on September 23, 2026 with the basalt wall shape,
+which is in review. No experimental cave art, enemies, boss, weapon modules,
+shop, or exploration scene was transferred from the rejected experiment.
 
 The rejected experiment, its patch, and its historical validation notes remain
 archived locally under

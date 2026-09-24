@@ -211,6 +211,8 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_terrain.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_stream.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_fluid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_debris.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_debris.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/materials.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/particle_emitters.c

@@ -2,7 +2,7 @@
   "version": 3,
   "name": "CutMaterial",
   "domain": "behavior",
-  "id_counter": 16,
+  "id_counter": 17,
   "description": "",
   "owner_type": "ecs.entity",
   "variables": [],
@@ -182,6 +182,18 @@
               "flags": 0,
               "group": 0,
               "default": 0
+            },
+            {
+              "id": 17,
+              "name": "Source",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
             }
           ],
           "outputs": [

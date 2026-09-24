@@ -522,7 +522,7 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
         goto failed;
     }
     ir.output_count = root->input_count;
-    if (ir.output_count != (shape ? 1 : 7)) {
+    if (ir.output_count != (shape ? 1 : 8)) {
         error(&l, root->id, "Shader output has the wrong number of inputs");
         goto failed;
     }

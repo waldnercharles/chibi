@@ -10,23 +10,29 @@
       "glow_color": 0,
       "glow_radius": 0.0,
       "height": 48.0,
+      "layer": 0,
       "shape": 1,
       "stroke_width": 0.0,
       "width": 130.0
     },
     "GAME.GameCollider": {
       "category": 8,
+      "friction": 0.0,
       "height": 48.0,
       "ignore_entity": null,
       "mask": 15,
+      "pierce_fragments": false,
       "radius": 0.0,
+      "restitution": 0.0,
       "sensor": false,
       "shape": 1,
       "width": 130.0
     },
     "GAME.GameDestructible": {
       "cell_size": 2.0,
-      "min_fragment_cells": 12
+      "min_fragment_cells": 12,
+      "pierceable_fragments": false,
+      "release_fraction": 0.0
     },
     "GAME.GameMaterial": {
       "absorption": 0.6000000238418579,
@@ -35,7 +41,7 @@
       "border_emission_color": 0,
       "border_filter": 0,
       "border_scene": 0,
-      "edge_light": 2.0,
+      "edge_light": 1.0,
       "emission_color": 0,
       "emission_intensity": 0.0,
       "emission_multiplier": 1.0,
@@ -55,17 +61,17 @@
       "y": 0.0
     },
     "GAME.MaterialBreakProfile": {
-      "chip_speed": 35,
-      "fragment_speed": 30,
-      "blast_speed": 70,
-      "release_speed": 12,
+      "blast_speed": 70.0,
+      "chip_speed": 35.0,
+      "dust_lifetime_max": 0.30000001192092896,
+      "dust_lifetime_min": 0.15000000596046448,
       "dust_limit": 8,
-      "dust_speed_min": 4,
-      "dust_speed_max": 12,
-      "dust_lifetime_min": 0.15,
-      "dust_lifetime_max": 0.3,
+      "dust_size_max": 0.5,
       "dust_size_min": 0.25,
-      "dust_size_max": 0.5
+      "dust_speed_max": 12.0,
+      "dust_speed_min": 4.0,
+      "fragment_speed": 30.0,
+      "release_speed": 12.0
     }
   }
 }

@@ -2,7 +2,7 @@
   "version": 3,
   "name": "ArenaPlayer",
   "domain": "material",
-  "id_counter": 111,
+  "id_counter": 112,
   "description": "Cyan player surface. Mapping and a color ramp mark the forward local X end; Fresnel lifts the edge.",
   "variables": [],
   "graphs": [
@@ -113,6 +113,17 @@
               "flags": 0,
               "group": 0,
               "default": false
+            },
+            {
+              "id": 112,
+              "name": "Height",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ],
           "outputs": []

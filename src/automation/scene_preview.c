@@ -3,6 +3,7 @@
 #include "automation/render_preview.h"
 #include "diagnostics/tracy.h"
 #include "platform/cute.h"
+#include "render/gpu_timing.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/widgets.h"
@@ -68,8 +69,10 @@ typedef struct
 typedef struct
 {
     int width, height, frames, capture_frame;
-    bool frozen;
+    bool frozen, pass_timing;
     const char *capture_path;
+    /* Optional raw RGBA8 file receiving every measured frame. */
+    const char *frames_path;
 } preview_options;
 
 static double seconds()
@@ -158,6 +161,12 @@ static bool render_scene(
     double simulation_ms = 0, render_ms = 0;
     engine *runtime = ok ? game_prototype_preview_runtime(scene.preview) : NULL;
     int warmup = render_frames > 2 ? 240 : 0;
+    render_gpu_timing_enable(options->pass_timing);
+    FILE *frames = NULL;
+    if (ok && options->frames_path && !(frames = fopen(options->frames_path, "wb"))) {
+        snprintf(error, size, "Could not open frame capture file");
+        ok = false;
+    }
     if (ok) {
         measurement->initial_state = chibi_preview_state(run);
         measurement->backend = cf_backend_type_to_string(cf_query_backend());
@@ -221,6 +230,13 @@ static bool render_scene(
             ok = false;
         }
         CHIBI_TRACE_FRAME_MARK("Scene preview frame");
+        if (i == warmup + 15) {
+            render_gpu_timing_clear();
+        }
+        if (frames && i >= warmup + 16 &&
+            !chibi_preview_readback_raw(width, height, frames, error, size)) {
+            ok = false;
+        }
         if (i >= warmup + 16) {
             double elapsed = (seconds() - start) * 1000;
             timings[count++] = elapsed;
@@ -243,6 +259,10 @@ static bool render_scene(
             ok = false;
         }
         CHIBI_TRACE_ZONE_END(frame_zone);
+    }
+    if (frames && fclose(frames) && ok) {
+        snprintf(error, size, "Could not finish frame capture file");
+        ok = false;
     }
     if (count) {
         qsort(timings, count, sizeof *timings, compare_time);
@@ -322,6 +342,17 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         }
     }
     yyjson_val *freeze = yyjson_obj_get(root, "freeze_simulation");
+    yyjson_val *pass_timing = yyjson_obj_get(root, "pass_timing");
+    yyjson_val *frames_value = yyjson_obj_get(root, "capture_frames");
+    const char *frames_path = yyjson_get_str(frames_value);
+    if (frames_value && (!frames_path || frames_path[0] != '/' ||
+                         render_frames <= 2 || strlen(frames_path) >= PATH_MAX)) {
+        snprintf(error, sizeof error, "capture_frames must be an absolute path and requires a performance run");
+    }
+    if (pass_timing && (!yyjson_is_bool(pass_timing) ||
+                        (yyjson_get_bool(pass_timing) && render_frames <= 2))) {
+        snprintf(error, sizeof error, "pass_timing must be a boolean and requires a performance run");
+    }
     yyjson_val *capture = yyjson_obj_get(root, "metal_capture");
     yyjson_val *capture_frame = yyjson_obj_get(root, "capture_frame");
     const char *capture_path = yyjson_get_str(capture);
@@ -340,10 +371,14 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         (capture && (render_frames <= 2 || capture_at >= render_frames))) {
         snprintf(error, sizeof error, "capture_frame must select a rendered frame in a performance run");
     }
-    preview_options options = {
-        width,       height, render_frames, capture_at, yyjson_get_bool(freeze),
-        capture_path
-    };
+    preview_options options = { .width = width,
+                                .height = height,
+                                .frames = render_frames,
+                                .capture_frame = capture_at,
+                                .frozen = yyjson_get_bool(freeze),
+                                .pass_timing = yyjson_get_bool(pass_timing),
+                                .capture_path = capture_path,
+                                .frames_path = frames_path };
     render_measurement measurement = { 0 };
     char *png = NULL;
     bool ok = false;
@@ -385,7 +420,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             yyjson_mut_obj_add_strcpy(response, result, "metal_capture", capture_path);
         }
         yyjson_mut_val *performance = yyjson_mut_obj_add_obj(response, result, "performance");
-        bool instrumented = capture_path != NULL;
+        bool instrumented = capture_path != NULL || options.pass_timing || frames_path;
 #ifdef CHIBI_ENABLE_TRACY
         instrumented = true;
 #endif
@@ -411,6 +446,22 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         yyjson_mut_obj_add_int(response, performance, "particles", measurement.particles);
         yyjson_mut_obj_add_int(response, performance, "entities", measurement.entities);
         yyjson_mut_obj_add_real(response, performance, "hrc_scale", measurement.scale);
+        if (options.pass_timing) {
+            /* Average milliseconds per rendered frame, in submission order. */
+            yyjson_mut_val *passes = yyjson_mut_obj_add_arr(response, performance, "passes");
+            int count;
+            const render_gpu_pass *pass = render_gpu_timing_passes(&count);
+            for (int i = 0; i < count; i++) {
+                yyjson_mut_val *item = yyjson_mut_arr_add_obj(response, passes);
+                yyjson_mut_obj_add_str(response, item, "name", pass[i].name);
+                yyjson_mut_obj_add_real(
+                    response,
+                    item,
+                    "ms",
+                    measurement.samples ? pass[i].total_ms / measurement.samples : 0
+                );
+            }
+        }
         yyjson_mut_val *preview = yyjson_mut_obj_add_obj(response, result, "preview");
         yyjson_mut_obj_add_str(response, preview, "mime_type", "image/png");
         yyjson_mut_obj_add_int(response, preview, "width", width);

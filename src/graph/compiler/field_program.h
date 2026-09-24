@@ -2,6 +2,7 @@
 
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
+#include "runtime/tasks.h"
 
 typedef struct field_program field_program;
 typedef struct
@@ -26,11 +27,14 @@ typedef struct
  * Compiling never attaches an ECS/behavior instance or borrows graph storage. */
 field_program *field_program_compile(const behavior_asset *asset, char *error, size_t size);
 void field_program_free(field_program *program);
+/* Optional borrowed tasks split rows across workers; the caller owns the
+ * submission scope. NULL bakes on the calling thread. */
 bool field_program_bake(
     const field_program *program,
     field_context context,
     field_grid grid,
     float *out,
+    const game_task_system *tasks,
     char *error,
     size_t size
 );

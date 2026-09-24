@@ -2001,6 +2001,7 @@ static void trail_particle_crossing()
     CF_V3 crossing = { 0, 5, 0 };
     CF_V3 above = cf_add_v3(eye, cf_mul_v3_f(cf_sub_v3(crossing, eye), (12 - eye.y) / (5 - eye.y)));
     game_particle_spray spray = { .position = { above.x, above.z },
+                                  .antialias = 1.5f,
                                   .elevation = 12,
                                   .direction = { 1, 0 },
                                   .count = 1,
@@ -2053,6 +2054,7 @@ static void particle_appearance()
 {
     fixture f = fixture_new();
     game_particle_spray spray = { .direction = { 1, 0 },
+                                  .antialias = 1.5f,
                                   .count = 1,
                                   .color = 0xff0000ffu,
                                   .end_color = 0x0000ffffu,

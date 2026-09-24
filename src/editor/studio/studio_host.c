@@ -159,6 +159,10 @@ static void forward_input(studio *s)
                 break;
             }
             case SDL_EVENT_MOUSE_WHEEL:
+                /* Zoom anchors where the wheel turned, which a motion event
+                   may not have reported yet. */
+                in->mouse_x = input.x = e->wheel.mouse_x;
+                in->mouse_y = input.y = e->wheel.mouse_y;
                 in->wheel += e->wheel.y;
                 input.type = EDITOR_RML_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;

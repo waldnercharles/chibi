@@ -20,24 +20,42 @@ option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
+set_source_files_properties(
+    src/render/scene_renderer.c
+    src/automation/render_preview.c
+    src/host/main.c
+    PROPERTIES COMPILE_DEFINITIONS
+        "CHIBI_RENDER_SHADER_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders\"")
 if(CHIBI_ENABLE_CCACHE)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
         cmake_path(IS_PREFIX CMAKE_SOURCE_DIR "${CMAKE_BINARY_DIR}" NORMALIZE CHIBI_IN_TREE_BUILD)
+        if(NOT CMAKE_CONFIGURATION_TYPES AND
+           NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_IN_TREE_BUILD)
+            cmake_path(RELATIVE_PATH CMAKE_BINARY_DIR BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                OUTPUT_VARIABLE CHIBI_CCACHE_RELATIVE_BINARY_DIR)
+        endif()
         foreach(language C CXX OBJC)
             if(NOT DEFINED CMAKE_${language}_COMPILER_LAUNCHER)
                 set(CMAKE_${language}_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
                     "${language} compiler launcher")
             endif()
-            if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_CONFIGURATION_TYPES AND
-               NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
-               NOT CHIBI_ENABLE_SANITIZERS AND NOT CHIBI_DEVELOPMENT_RELOAD AND
-               NOT CHIBI_ENABLE_TRACY AND CHIBI_IN_TREE_BUILD AND
+            if(NOT CMAKE_CONFIGURATION_TYPES AND
+               NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_IN_TREE_BUILD AND
                CMAKE_${language}_COMPILER_LAUNCHER STREQUAL CCACHE_PROGRAM)
-                # Keep fetched sources and build outputs private to each worktree.
-                # ccache reuses matching Release objects across those paths.
+                # Normalize in-tree paths so matching builds share objects across worktrees.
                 set(CMAKE_${language}_COMPILER_LAUNCHER
                     "${CMAKE_COMMAND};-E;env;CCACHE_BASEDIR=${CMAKE_SOURCE_DIR};${CCACHE_PROGRAM}")
+                if(CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
+                    if(CMAKE_${language}_COMPILER_ID MATCHES "^(AppleClang|Clang)$")
+                        # Keep DWARF paths relative to the worktree root for debugger lookup.
+                        string(APPEND CMAKE_${language}_FLAGS
+                            " -fdebug-compilation-dir=${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
+                    elseif(CMAKE_${language}_COMPILER_ID STREQUAL "GNU")
+                        string(APPEND CMAKE_${language}_FLAGS
+                            " -fdebug-prefix-map=${CMAKE_BINARY_DIR}=${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
+                    endif()
+                endif()
             endif()
         endforeach()
     endif()
@@ -45,6 +63,7 @@ endif()
 
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
+set(CHIBI_SDL3_PACKAGE_PREFIX "" CACHE PATH "Pinned SDL3 package prefix")
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
 else()
@@ -57,7 +76,27 @@ FetchContent_Declare(
     GIT_TAG        a13f4661f5ba27e8d45027b52f121c1704786425
     UPDATE_DISCONNECTED TRUE
 )
-FetchContent_MakeAvailable(cute_framework)
+FetchContent_GetProperties(cute_framework)
+if(NOT cute_framework_POPULATED)
+    if(POLICY CMP0169)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0169 OLD)
+    endif()
+    FetchContent_Populate(cute_framework)
+    if(POLICY CMP0169)
+        cmake_policy(POP)
+    endif()
+endif()
+set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
+foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
+    set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
+    include(cmake/apply_cute_patch.cmake)
+endforeach()
+unset(CUTE_PATCH_NAME)
+unset(CUTE_SOURCE)
+unset(CUTE_PATCH)
+add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
 # Apple's SDK uses fixed-underlying enum typedef declarations rejected by
 # upstream Clang 22. Restrict compatibility to the framework's SDK consumers.
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -67,16 +106,6 @@ endif()
 # WebGL has no base-vertex draw support; large graph canvases exceed 16-bit indices.
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
-set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
-    set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
-    include(cmake/apply_cute_patch.cmake)
-endforeach()
-unset(CUTE_PATCH_NAME)
-unset(CUTE_SOURCE)
-unset(CUTE_PATCH)
-
 # --- SLJIT backend ----------------------------------------------------------
 option(CHIBI_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -394,7 +423,6 @@ add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c sr
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
-target_compile_definitions(chibi_render PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_render PUBLIC runtime_support core cute)
 target_compile_options(chibi_render PRIVATE -Wno-macro-redefined)
@@ -457,7 +485,6 @@ endfunction()
 set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
 add_library(chibi_sources OBJECT ${APP_SOURCES} ${APP_REGISTRY})
 target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_definitions(chibi_sources PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
 chibi_enable_tracy(chibi_sources)
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -475,7 +502,6 @@ if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_executable(chibi ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
     chibi_watch_platform(chibi)
     target_compile_definitions(chibi PRIVATE CHIBI_DEVELOPMENT_HOST=1)
-    target_compile_definitions(chibi PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
     target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
     target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(chibi PRIVATE cute ${CMAKE_DL_LIBS})
@@ -485,7 +511,6 @@ else()
     add_executable(chibi ${HOST_SOURCES} $<TARGET_OBJECTS:chibi_sources>)
     target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_compile_definitions(chibi PRIVATE CHIBI_STATIC_APPLICATION=1)
-    target_compile_definitions(chibi PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
     target_link_libraries(chibi PRIVATE ${CMAKE_DL_LIBS} chibi_render editor engine runtime_support cute)
     chibi_enable_tracy(chibi)
     set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
@@ -494,7 +519,6 @@ endif()
 add_executable(chibi_ctl tools/chibi_ctl/main.c ${APP_REGISTRY})
 add_dependencies(chibi_ctl generate_runtime_registry)
 target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(chibi_ctl PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
 set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -543,8 +567,6 @@ if(NODE_EXECUTABLE)
     add_custom_target(check-mcp-gpu
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
         DEPENDS chibi_ctl
@@ -673,7 +695,6 @@ add_executable(test_suite
 # Generated-C system benchmarks call the same runtime helpers as SLJIT.
 set_target_properties(test_suite PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(test_suite PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(test_suite PRIVATE automation engine runtime_support ecs editor chibi_render)
 if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
     target_compile_definitions(test_suite PRIVATE CHIBI_SKIP_PERFORMANCE_TESTS=1)

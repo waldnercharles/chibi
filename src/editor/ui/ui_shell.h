@@ -122,6 +122,8 @@ void editor_ui_set_document_bar_visible(bool visible);
 bool editor_ui_document_bar_visible();
 /* Pair with ImGui_End(), even when the contents are clipped. */
 bool editor_ui_begin_document_bar();
+/* Consumes the retained toolbar's Open Documents action. */
+bool editor_ui_take_document_list_request();
 bool editor_ui_navigator_visible(void);
 editor_ui_pane editor_ui_navigator_tab(editor_ui_pane outline);
 void editor_ui_restore_navigator_tab(editor_ui_pane tab);
@@ -139,7 +141,12 @@ void editor_ui_set_reduced_motion(bool enabled);
 
 /* Register workspace preferences before the first ImGui frame loads settings. */
 void editor_ui_initialize(bool persist);
+/* Show converted controls only, without changing workspace visibility preferences. */
+void editor_ui_set_design_preview(bool enabled);
 void editor_ui_prepare(void);
+/* Compose retained UI after document panes and before presenting the frame. */
+void editor_ui_render();
+bool editor_ui_captures_keyboard();
 void editor_ui_reset_layout(void);
 void editor_ui_set_framebuffer_target(bool target);
 void editor_ui_set_framebuffer_size(int width, int height);

@@ -1,0 +1,11 @@
+<rml>
+<head>
+    <title>Chibi Studio</title>
+    <link type="text/rcss" href="kit.rcss" />
+    <link type="text/rcss" href="studio.rcss" />
+</head>
+<body>
+    <div id="app"></div>
+    <div id="layer"></div>
+</body>
+</rml>

@@ -215,6 +215,16 @@ void ed_redo(editor *e)
     free(target);
 }
 
+bool editor_can_undo(const editor *e)
+{
+    return e && acount(e->undo) > 0;
+}
+
+bool editor_can_redo(const editor *e)
+{
+    return e && acount(e->redo) > 0;
+}
+
 void ed_delete_selected(editor *e)
 {
     if (acount(e->selected) == 0 && acount(e->selected_links) == 0) {

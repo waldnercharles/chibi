@@ -224,7 +224,8 @@ int main(int argc, char **argv)
         puts(
             "chibi [--headless] [--frames N] [--fps N] [--screenshot "
             "PATH]\n"
-            "             [--play] [--project-root PATH|--project PATH] "
+            "             [--play] [--design-preview] [--project-root "
+            "PATH|--project PATH] "
             "[--scene PATH] "
             "[--fixed-dt SECONDS]\n"
             "             [--checkpoint PATH]\n"

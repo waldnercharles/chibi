@@ -88,6 +88,59 @@ function controllerPath() {
   return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
 }
 
+// launch.sh sets CHIBI_CTL to the build output; build it on demand so the MCP
+// handshake never waits on a native compile.
+let controllerBuild = null;
+
+function controllerReady() {
+  return !process.env.CHIBI_CTL || existsSync(process.env.CHIBI_CTL);
+}
+
+function ensureController() {
+  if (controllerReady()) {
+    return Promise.resolve();
+  }
+  const controller = process.env.CHIBI_CTL;
+  controllerBuild ??= new Promise((resolveBuild, rejectBuild) => {
+    process.stderr.write("chibi MCP building native controllers\n");
+    const child = spawn("make", ["-C", serverRoot, "build", `BUILD_DIR=${dirname(controller)}`, "BUILD_TARGET=chibi_ctl"], {
+      stdio: ["ignore", process.stderr, process.stderr],
+    });
+    child.on("error", rejectBuild);
+    child.on("exit", (code, signal) => {
+      if (code === 0 && existsSync(controller)) {
+        resolveBuild();
+        return;
+      }
+      rejectBuild(new Error(signal ? `terminated by ${signal}` : `exited with status ${code}`));
+    });
+  }).catch((error) => {
+    controllerBuild = null;
+    throw protocolError(-32603, `chibi MCP could not build ${controller}: make build ${error.message}`);
+  });
+  return controllerBuild;
+}
+
+// Renders waiting on the build are not yet cancellable by authoring.mjs.
+const rendersAwaitingBuild = new Map();
+
+async function builtRenderRequest(renderRoot, request, requestId) {
+  if (!controllerReady() && requestId !== undefined) {
+    const key = String(requestId);
+    const cancelled = new Promise((resolveCancel) => rendersAwaitingBuild.set(key, () => resolveCancel(true)));
+    try {
+      if (await Promise.race([ensureController().then(() => false), cancelled])) {
+        const operation = request.operation || "preview_shader";
+        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "shader preview was cancelled" } };
+      }
+    } finally {
+      rendersAwaitingBuild.delete(key);
+    }
+  }
+  await ensureController();
+  return renderRequest(renderRoot, request, requestId);
+}
+
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
@@ -818,6 +871,7 @@ function rawToolDefinitions() {
 async function nativeRequest(operation, args = {}) {
   const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
   const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
+  await ensureController();
   if (!controllerSession || controllerSession.closed) {
     controllerSession = new ControllerSession();
   }
@@ -842,6 +896,10 @@ let contractMetadataCache;
 function contractMetadata() {
   if (contractMetadataCache !== undefined) {
     return contractMetadataCache;
+  }
+  // tools/list must not wait on a native build; catalog annotations stand in.
+  if (!controllerReady()) {
+    return Promise.resolve(null);
   }
   contractMetadataCache = nativeRequest("describe_contract")
     .then((response) => response.ok === true ? response.result : null)
@@ -972,7 +1030,7 @@ async function toolCall(name, args, requestId) {
   }
   validateToolArguments(name, args);
   if (isAuthoringTool(name)) {
-    return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
+    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
   }
   const entry = getToolCatalogEntry(name);
   if (!entry || entry.adapter !== "native") {
@@ -1209,6 +1267,7 @@ async function dispatch(message) {
   }
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
+      rendersAwaitingBuild.get(String(message.params.requestId))?.();
       cancelAuthoringRequest(message.params.requestId);
     }
     return null;
@@ -1304,6 +1363,9 @@ function maybeCloseController() {
     controllerSession?.close();
   }
 }
+
+// Start a missing build now so the first tool call waits less; failures resurface on use.
+ensureController().catch(() => {});
 
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {

@@ -1503,17 +1503,74 @@ instead of as one curve across the columns, so they no longer cut through
 nodes. `arrange_route` recomputes the lanes from node positions alone: it
 re-runs the layered layout with every node pinned in place, so it finds the
 lanes Arrange reserved and still gives hand-placed nodes reasonable lanes.
-Routes are never saved. The canvas rebuilds them when positions, sizes, or
-wires change. Authored reroutes and custom handles take precedence, and wires
-that run backward keep their looping curve.
+Routes are never saved. The canvas rebuilds them when positions, sizes, wires,
+or the wire style change. Authored reroutes and custom handles take
+precedence.
 
-`test_suite --arrange-bench [repeats] [filter]`, run from the repository root,
-arranges and routes every graph under `content/` and `projects/*/content/`. It
-prints layout and routing time, crossings, wire-node hits, overlaps, waypoint
-count, length, cost, and a hash of the placed positions per graph.
-`--graph-arrange` runs the focused scoring, routing, and determinism checks.
+Studio's Graph Wires preference picks one of four styles, shared by Arrange,
+routing, drawing, and scoring through `arrange_route_style`; the ImGui canvas
+draws curved wires:
+
+- Curved: cubics through the lanes. Backward wires loop around their nodes on
+  round corners.
+- Orthogonal: level and vertical runs with rounded corners. Every vertical run
+  gets a track in the gap between two columns (channel routing): tracks are
+  ordered for the fewest crossings, runs that overlap vertically never share
+  one, and a staircase of wires that no order can separate doglegs. Arrange
+  widens a gap to fit its tracks.
+- Straight: line segments between the waypoints, leaving and entering pins
+  level.
+- Subway: the orthogonal tracks with 45 degree diagonals for corners.
+
+`arrange_path` turns a wire's waypoints into cubic pieces in canvas units, so
+every renderer draws, hit-tests, and bounds wires the same way and the score
+measures what is drawn. Studio's `kit_wires` element reaches it through
+`kit_wire_shape` once each wire's ends resolve after layout; changing the style
+arranges automatic nodes again, since gaps depend on it. Wires from one output share a trunk: they share lanes
+through the columns they all skip, turn on one track in each gap, and curved
+and straight fan-outs leave the pin along one short level run. Crossings count
+where drawn wires cross, so a trunk crossed once counts once, and the score's
+ink length counts shared runs once.
+
+Turns are scored too: every change of height costs two, and the score keeps
+the turns on execution wires apart. Editors mark execution wires, and a node
+lining up with its neighbours counts each as three data wires, which
+straightens execution chains without bending data curves into more crossings;
+heavier weights did. When two inputs still pull a node equally it follows the
+one on its higher pin, and a straightening pass then moves each run of lanes to one height
+wherever its column has room, so a long wire changes height once instead of at
+every column. A pin drawn a few units off the height its route planned slides
+the vertical run beside it rather than jogging, and a subway drop barely longer
+than two diagonals becomes one.
+
+A backward (cycle) wire leaves its output rightward, passes its own node on
+the side it heads for, runs left through the lanes its columns reserve,
+passes its target the same way, and enters from the left, so it never
+crosses the nodes between its ends. `graph_layout`, which MCP edits use,
+measures pin rows in the order Studio draws them: execution pins, then data
+outputs, then data inputs, counting only drawn pins.
+
+Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
+other host events such as input and contact, custom events, End, then
+everything else (`graph_layout_band`). Event chains that share nodes form one
+band. `arrange_long_links` reports links whose ends are three or more columns
+apart, or whose path crosses at least a given number of wires, so an editor can
+offer to name the value as a local; it changes nothing.
+
+`test_suite --arrange-bench [repeats] [filter] [style]`, run from the
+repository root, arranges and routes every graph under `content/` and
+`projects/*/content/` in every style, or in the one named. It prints layout and
+routing time, crossings, wire-node hits, node and wire overlaps, waypoint
+count, length, ink, turns, cost, and a hash of the placed positions per graph and
+style, then totals per style. `--graph-arrange` runs the focused scoring,
+routing, and determinism checks, and scores the arena2d behaviors against a
+ceiling per style.
+
 Across the 201 content graphs, arranged from zeroed seeds as `graph_layout`
-does, Arrange previously produced 4672 crossings and 774 wire-node hits; it now
-produces 3382 crossings and none. A Release build lays out and routes all of
-them in 12 ms, previously about 1.05 s for layout alone. The largest graph
-(BasaltCave, 425 nodes) takes 7 ms, previously 211 ms.
+does, Arrange once produced 4672 crossings and 774 wire-node hits. Counted as
+drawn, lanes without trunks produce 3340 crossings and none; shared trunks
+bring curved wires to about 2190 crossings and cut ink by about a third,
+orthogonal wires cross about 1900 times and subway wires about 1730, and
+straightening cut turns from 8944 to 7826. A Release build lays out and routes all of them in about
+6 ms curved and 8 ms orthogonal; the largest graph (BasaltCave, 425 nodes)
+takes about 3 ms.

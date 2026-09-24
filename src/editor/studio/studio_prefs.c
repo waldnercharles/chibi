@@ -48,6 +48,10 @@ catch(_)
 
 static const char *const THEMES[STUDIO_THEME_COUNT] = { "system", "dark", "light" };
 static const char *const NODE_FLAGS[] = { "shortBindings", "titleFlow", "compact" };
+static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
+                                                         "orthogonal",
+                                                         "straight",
+                                                         "subway" };
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
     "scene",  "behavior", "outliner",   "properties",
     "output", "assets",   "performance"
@@ -148,8 +152,8 @@ studio_prefs studio_prefs_load()
     if (yyjson_is_bool(motion)) {
         p.reduced_motion = yyjson_get_bool(motion);
     }
-    static const char *const WIRES[] = { "curved", "straight", "angular" };
-    p.wires = (kit_wire_style)name_index(WIRES, 3, yyjson_obj_get(root, "wires"), p.wires);
+    p.wires = (kit_wire_style)
+        name_index(WIRES, KIT_WIRE_STYLE_COUNT, yyjson_obj_get(root, "wires"), p.wires);
     yyjson_val *nodes = yyjson_obj_get(root, "nodes");
     bool *flags[] = { &p.short_bindings, &p.title_flow, &p.compact_nodes };
     for (int i = 0; i < 3; i++) {
@@ -190,7 +194,6 @@ bool studio_prefs_save(const studio_prefs *p)
     yyjson_mut_obj_add_str(doc, root, "theme", THEMES[p->theme]);
     yyjson_mut_obj_add_str(doc, root, "density", p->comfortable ? "comfortable" : "compact");
     yyjson_mut_obj_add_bool(doc, root, "reduceMotion", p->reduced_motion);
-    static const char *const WIRES[] = { "curved", "straight", "angular" };
     yyjson_mut_obj_add_str(doc, root, "wires", WIRES[p->wires]);
     yyjson_mut_val *nodes = yyjson_mut_obj_add_obj(doc, root, "nodes");
     bool flags[] = { p->short_bindings, p->title_flow, p->compact_nodes };

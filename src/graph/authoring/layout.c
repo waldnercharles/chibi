@@ -1,7 +1,9 @@
 #include "graph/authoring/layout.h"
 
 #include "graph/authoring/arrange.h"
+#include "graph/document/events.h"
 #include "support/array.h"
+#include "support/math.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>
@@ -39,6 +41,77 @@ static int compare_links(const void *a, const void *b)
     return left->to_y < right->to_y ? -1 : left->to_y > right->to_y;
 }
 
+enum
+{
+    LAYOUT_BAND_BEGIN,
+    LAYOUT_BAND_TICK,
+    LAYOUT_BAND_HOST,
+    LAYOUT_BAND_CUSTOM,
+    LAYOUT_BAND_END,
+    LAYOUT_BAND_OTHER,
+};
+
+int graph_layout_band(const node *n)
+{
+    if (n->desc->flow_kind != NODE_FLOW_EVENT) {
+        return LAYOUT_BAND_OTHER;
+    }
+    const char *name = graph_event_name(n);
+    if (graph_host_event_is(name, GRAPH_HOST_EVENT_BEGIN)) {
+        return LAYOUT_BAND_BEGIN;
+    }
+    if (graph_host_event_is(name, GRAPH_HOST_EVENT_TICK)) {
+        return LAYOUT_BAND_TICK;
+    }
+    if (graph_host_event_is(name, GRAPH_HOST_EVENT_END)) {
+        return LAYOUT_BAND_END;
+    }
+    return graph_event_host_name(name) ? LAYOUT_BAND_HOST : LAYOUT_BAND_CUSTOM;
+}
+
+static bool pin_exec(const node *n, bool output, int pin)
+{
+    return (output ? n->output_pins : n->input_pins)[pin].kind == PIN_EXEC;
+}
+
+/* Drawn pins on one side of a node, execution or data. */
+static int pin_rows(const graph *g, const node *n, bool output, bool exec, int before)
+{
+    int rows = 0;
+    for (int p = 0; p < before; p++) {
+        rows += graph_pin_visible(g, n, output, p) && pin_exec(n, output, p) == exec;
+    }
+    return rows;
+}
+
+static int exec_rows(const graph *g, const node *n)
+{
+    return math_max(
+        pin_rows(g, n, false, true, n->input_count),
+        pin_rows(g, n, true, true, n->output_count)
+    );
+}
+
+float graph_layout_pin_y(const graph *g, const node *n, bool output, int pin)
+{
+    bool exec = pin_exec(n, output, pin);
+    int row = pin_rows(g, n, output, exec, pin);
+    if (!exec) {
+        row += exec_rows(g, n) +
+               (output ? 0 : pin_rows(g, n, true, false, n->output_count));
+    }
+    return pin_y(row);
+}
+
+arrange_box graph_layout_box(const graph *g, const node *n)
+{
+    int rows = exec_rows(g, n) + pin_rows(g, n, true, false, n->output_count) +
+               pin_rows(g, n, false, false, n->input_count);
+    return (arrange_box){ .width = 220,
+                          .height = 36 + 24 * (float)math_max(rows, 1),
+                          .band = graph_layout_band(n) };
+}
+
 static int node_index(const graph *graph, uint64_t id)
 {
     for (int i = 0; i < acount(graph->nodes); i++) {
@@ -73,10 +146,7 @@ static void arrange_boxes(graph *graph, bool keep_placed)
     arrange_box *boxes = xmalloc((size_t)boxes_count * sizeof *boxes);
     arrange_point *arranged = xcalloc((size_t)boxes_count, sizeof *arranged);
     for (int i = 0; i < boxes_count; i++) {
-        const node *node = graph->nodes[order[i].index];
-        int rows = node->input_count > node->output_count ? node->input_count
-                                                          : node->output_count;
-        boxes[i] = (arrange_box){ .width = 220, .height = 36 + 24 * rows };
+        boxes[i] = graph_layout_box(graph, graph->nodes[order[i].index]);
         slot[order[i].index] = i;
     }
     arrange_link *links = NULL;
@@ -92,10 +162,12 @@ static void arrange_boxes(graph *graph, bool keep_placed)
         }
         apush(
             links,
-            ((arrange_link){ .from = slot[from],
-                             .to = slot[to],
-                             .from_y = pin_y(from_pin),
-                             .to_y = pin_y(to_pin) })
+            ((arrange_link){
+                .from = slot[from],
+                .to = slot[to],
+                .from_y = graph_layout_pin_y(graph, graph->nodes[from], true, from_pin),
+                .to_y = graph_layout_pin_y(graph, graph->nodes[to], false, to_pin),
+                .flow = graph->nodes[from]->output_pins[from_pin].kind == PIN_EXEC })
         );
     }
     if (acount(links)) {
@@ -105,7 +177,7 @@ static void arrange_boxes(graph *graph, bool keep_placed)
                             .box_count = boxes_count,
                             .links = links,
                             .link_count = acount(links) };
-    arrange_layout(&input, arranged);
+    arrange_layout(&input, ARRANGE_ROUTE_CURVED, arranged);
     for (int i = 0; i < boxes_count; i++) {
         node *node = graph->nodes[order[i].index];
         if (keep_placed && node->placed) {

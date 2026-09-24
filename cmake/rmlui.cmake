@@ -41,6 +41,8 @@ add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit_text.cpp
     src/editor/rmlui/kit_toast.cpp
     src/editor/rmlui/kit_wires.cpp
+    # kit_wires.cpp draws through it, so it links with the kit.
+    src/editor/ui/kit_wire_shape.c
     src/editor/rmlui/menu.cpp
     src/editor/rmlui/toolbar.cpp
     # The editor's embedded faces; the ImGui panes read them through editor,
@@ -54,7 +56,9 @@ target_include_directories(chibi_rmlui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(chibi_rmlui SYSTEM PRIVATE ${cute_framework_SOURCE_DIR}/include)
 target_compile_definitions(chibi_rmlui PRIVATE
     CHIBI_RMLUI_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources")
-target_link_libraries(chibi_rmlui PRIVATE RmlUi::Core cute)
+# core supplies arrange_path to kit_wire_shape.c; listing it here keeps it
+# after this library on single-pass link lines.
+target_link_libraries(chibi_rmlui PRIVATE RmlUi::Core cute core)
 set_target_properties(chibi_rmlui PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden

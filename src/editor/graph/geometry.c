@@ -108,15 +108,7 @@ static bool ed_input_multivalue(const editor *e, const node *n, int pin)
 
 bool ed_pin_visible(const graph *g, const node *n, int kind, int pin)
 {
-    const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
-                                                : &n->output_pins[pin];
-    if (spec->flags & PIN_FLAG_SETTING) {
-        return false;
-    }
-    return kind != ED_PIN_INPUT || n->show_advanced ||
-           (n->desc->category && !strncmp(n->desc->category, "Shader", 6)) ||
-           !(n->input_pins[pin].flags & PIN_FLAG_ADVANCED) || spec->binding ||
-           ed_input_connected(g, n, pin);
+    return graph_pin_visible(g, n, kind == ED_PIN_OUTPUT, pin);
 }
 
 static bool editable_output(const node *n)
@@ -583,41 +575,6 @@ float ed_distance(ImVec2 a, ImVec2 b)
     return sqrtf(d.x * d.x + d.y * d.y);
 }
 
-float ed_curve_length(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3)
-{
-    float length = 0.0f;
-    ImVec2 prev = p0;
-    for (int i = 1; i <= ED_FLOW_CURVE_SAMPLES; i++) {
-        ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)i / ED_FLOW_CURVE_SAMPLES);
-        length += ed_distance(prev, next);
-        prev = next;
-    }
-    return length;
-}
-
-ImVec2 ed_curve_at_distance(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float distance, float length)
-{
-    if (distance <= 0.0f) {
-        return p0;
-    }
-    if (distance >= length) {
-        return p3;
-    }
-    float travelled = 0.0f;
-    ImVec2 prev = p0;
-    for (int i = 1; i <= ED_FLOW_CURVE_SAMPLES; i++) {
-        ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)i / ED_FLOW_CURVE_SAMPLES);
-        float segment = ed_distance(prev, next);
-        if (segment > 0.0f && travelled + segment >= distance) {
-            float t = (distance - travelled) / segment;
-            return ed_add(prev, ed_scale(ed_sub(next, prev), t));
-        }
-        travelled += segment;
-        prev = next;
-    }
-    return p3;
-}
-
 static float ed_clamp01(float value)
 {
     if (value < 0.0f) {
@@ -717,132 +674,118 @@ int ed_hit_handle(const editor *e, ImVec2 mouse, int *edge_index, int *side)
     return 0;
 }
 
-/* A wire without authored reroutes or handles follows its automatic lanes. */
-static const arrange_point *ed_auto_route(const editor *e, const edge *ed, int *count)
+ImVec2 ed_im(arrange_point p)
 {
+    return (ImVec2){ p.x, p.y };
+}
+
+static arrange_point ed_canvas_point(const editor *e, ImVec2 screen)
+{
+    ImVec2 world = ed_screen_to_world(e, screen);
+    return (arrange_point){ world.x, world.y };
+}
+
+static arrange_point ed_screen_point(const editor *e, arrange_point world)
+{
+    ImVec2 screen = ed_world_to_screen(e, world.x, world.y);
+    return (arrange_point){ screen.x, screen.y };
+}
+
+/* A wire runs through its authored reroutes; without reroutes or handles it
+ * follows its automatic lanes. Pieces come from arrange_path in canvas units,
+ * mapped to the screen. */
+int ed_link_pieces(const editor *e, const edge *ed, arrange_piece **pieces)
+{
+    aclear(*pieces);
+    ImVec2 p0, p1, p2, p3;
+    if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
+        return 0;
+    }
+    if (ed->custom_handles && !ed->reroute_count) {
+        arrange_piece authored = { { p0.x, p0.y },
+                                   { p1.x, p1.y },
+                                   { p2.x, p2.y },
+                                   { p3.x, p3.y },
+                                   0 };
+        apush(*pieces, authored);
+        return 1;
+    }
+    arrange_point reroutes[GRAPH_EDGE_MAX_REROUTES];
+    const arrange_point *knots = reroutes;
+    int count = ed->reroute_count;
+    for (int i = 0; i < count; i++) {
+        reroutes[i] = (arrange_point){ ed->reroutes[i].x, ed->reroutes[i].y };
+    }
     int index = (int)(ed - e->active_graph->edges);
     assert(index >= 0 && index < acount(e->active_graph->edges));
-    *count = 0;
-    if (ed->reroute_count || ed->custom_handles ||
-        index >= acount(e->wire_route) || e->wire_route[index] < 0) {
-        return NULL;
+    if (!count && index < acount(e->wire_route) && e->wire_route[index] >= 0) {
+        const int *start = e->wire_routes.start + e->wire_route[index];
+        knots = e->wire_routes.points + start[0];
+        count = start[1] - start[0];
     }
-    const int *start = e->wire_routes.start + e->wire_route[index];
-    *count = start[1] - start[0];
-    return e->wire_routes.points + start[0];
+    arrange_path(ARRANGE_ROUTE_CURVED, ed_canvas_point(e, p0), ed_canvas_point(e, p3), knots, count, pieces);
+    for (int i = 0; i < acount(*pieces); i++) {
+        arrange_piece *piece = &(*pieces)[i];
+        piece->p0 = ed_screen_point(e, piece->p0);
+        piece->p1 = ed_screen_point(e, piece->p1);
+        piece->p2 = ed_screen_point(e, piece->p2);
+        piece->p3 = ed_screen_point(e, piece->p3);
+    }
+    return acount(*pieces);
 }
 
-int ed_route_count(const editor *e, const edge *ed)
+/* Straight pieces need no samples between their ends. */
+int ed_piece_samples(const arrange_piece *piece)
 {
-    int count = 0;
-    ed_auto_route(e, ed, &count);
-    return ed->reroute_count ? ed->reroute_count : count;
+    bool straight = piece->p1.x == piece->p0.x && piece->p1.y == piece->p0.y &&
+                    piece->p2.x == piece->p3.x && piece->p2.y == piece->p3.y;
+    return straight ? 1 : ED_PIECE_SAMPLES;
 }
 
-static ImVec2 ed_route_point(const editor *e, const edge *ed, int index, ImVec2 start, ImVec2 end)
+ImVec2 ed_piece_at(const arrange_piece *piece, float t)
 {
-    if (index == 0) {
-        return start;
-    }
-    if (index == ed_route_count(e, ed) + 1) {
-        return end;
-    }
-    if (ed->reroute_count) {
-        return ed_world_to_screen(
-            e,
-            ed->reroutes[index - 1].x,
-            ed->reroutes[index - 1].y
-        );
-    }
-    int count = 0;
-    const arrange_point *route = ed_auto_route(e, ed, &count);
-    return ed_world_to_screen(e, route[index - 1].x, route[index - 1].y);
+    return ed_bezier(
+        ed_im(piece->p0),
+        ed_im(piece->p1),
+        ed_im(piece->p2),
+        ed_im(piece->p3),
+        t
+    );
 }
 
-static float ed_route_tangent(const editor *e, const edge *ed, int index, ImVec2 start, ImVec2 end)
+static bool ed_piece_near(const arrange_piece *piece, ImVec2 p, float reach)
 {
-    float span;
-    if (index == 0) {
-        span = ed_abs(ed_route_point(e, ed, 1, start, end).x - start.x);
-    } else if (index == ed_route_count(e, ed) + 1) {
-        span = ed_abs(end.x - ed_route_point(e, ed, index - 1, start, end).x);
-    } else {
-        ImVec2 at = ed_route_point(e, ed, index, start, end);
-        float before = ed_abs(
-            at.x - ed_route_point(e, ed, index - 1, start, end).x
-        );
-        float after = ed_abs(ed_route_point(e, ed, index + 1, start, end).x - at.x);
-        span = ed_min(before, after);
+    ImVec2 prev = ed_im(piece->p0);
+    int samples = ed_piece_samples(piece);
+    for (int s = 1; s <= samples; s++) {
+        ImVec2 next = ed_piece_at(piece, (float)s / (float)samples);
+        if (ed_distance_to_segment(p, prev, next) <= reach) {
+            return true;
+        }
+        prev = next;
     }
-    float direction = end.x >= start.x ? 1.0f : -1.0f;
-    /* Keep control points inside short horizontal spans.  A fixed minimum
-     * handle otherwise crosses the reroute knot and produces a visible
-     * back-turn right at the attached pin. */
-    return direction * ed_min(40.0f * e->zoom, span * 0.5f);
-}
-
-void ed_route_segment(
-    const editor *e,
-    const edge *ed,
-    int segment,
-    ImVec2 start,
-    ImVec2 end,
-    ImVec2 *p0,
-    ImVec2 *p1,
-    ImVec2 *p2,
-    ImVec2 *p3
-)
-{
-    *p0 = ed_route_point(e, ed, segment, start, end);
-    *p3 = ed_route_point(e, ed, segment + 1, start, end);
-    float from_tangent = ed_route_tangent(e, ed, segment, start, end);
-    float to_tangent = ed_route_tangent(e, ed, segment + 1, start, end);
-    *p1 = ed_add(*p0, (ImVec2){ from_tangent, 0.0f });
-    *p2 = ed_sub(*p3, (ImVec2){ to_tangent, 0.0f });
+    return false;
 }
 
 int ed_hit_link_segment(const editor *e, ImVec2 p, ed_link_ref *out, int *route_segment)
 {
-    for (int i = acount(e->active_graph->edges) - 1; i >= 0; i--) {
+    arrange_piece *pieces = NULL;
+    float reach = ed_max(7.0f, 5.0f * e->zoom);
+    int hit = 0;
+    for (int i = acount(e->active_graph->edges) - 1; i >= 0 && !hit; i--) {
         const edge *ed = &e->active_graph->edges[i];
-        ImVec2 p0, p1, p2, p3;
-        if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
-            continue;
-        }
-        int routes = ed_route_count(e, ed);
-        if (routes) {
-            for (int segment = 0; segment <= routes; segment++) {
-                ImVec2 start, c1, c2, end;
-                ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
-                ImVec2 prev = start;
-                for (int s = 1; s <= 16; s++) {
-                    ImVec2 next = ed_bezier(start, c1, c2, end, (float)s / 16.0f);
-                    if (ed_distance_to_segment(p, prev, next) <=
-                        ed_max(7.0f, 5.0f * e->zoom)) {
-                        *out = (ed_link_ref){ ed->from_id,
-                                              ed->from_pin_id,
-                                              ed->to_id,
-                                              ed->to_pin_id };
-                        *route_segment = segment;
-                        return 1;
-                    }
-                    prev = next;
-                }
+        int count = ed_link_pieces(e, ed, &pieces);
+        for (int k = 0; k < count && !hit; k++) {
+            if (!ed_piece_near(&pieces[k], p, reach)) {
+                continue;
             }
-            continue;
-        }
-        ImVec2 prev = p0;
-        for (int s = 1; s <= 24; s++) {
-            ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)s / 24.0f);
-            if (ed_distance_to_segment(p, prev, next) <= ed_max(7.0f, 5.0f * e->zoom)) {
-                *out = (ed_link_ref){ ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
-                *route_segment = 0;
-                return 1;
-            }
-            prev = next;
+            *out = (ed_link_ref){ ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
+            *route_segment = pieces[k].segment;
+            hit = 1;
         }
     }
-    return 0;
+    afree(pieces);
+    return hit;
 }
 
 int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
@@ -853,28 +796,22 @@ int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
 
 static int ed_link_in_rect(const editor *e, const edge *ed, ImVec2 min, ImVec2 max)
 {
-    ImVec2 p0, p1, p2, p3;
-    if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
-        return 0;
-    }
-    int routes = ed_route_count(e, ed);
-    for (int segment = 0; segment <= routes; segment++) {
-        ImVec2 start = p0, c1 = p1, c2 = p2, end = p3;
-        if (routes) {
-            ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
-        }
-        ImVec2 prev = start;
-        for (int i = 1; i <= 24; i++) {
-            ImVec2 next = ed_bezier(start, c1, c2, end, (float)i / 24.0f);
+    arrange_piece *pieces = NULL;
+    int count = ed_link_pieces(e, ed, &pieces);
+    int inside = 0;
+    for (int k = 0; k < count && !inside; k++) {
+        ImVec2 prev = ed_im(pieces[k].p0);
+        int samples = ed_piece_samples(&pieces[k]);
+        for (int i = 1; i <= samples && !inside; i++) {
+            ImVec2 next = ed_piece_at(&pieces[k], (float)i / (float)samples);
             ImVec2 a = { ed_min(prev.x, next.x), ed_min(prev.y, next.y) };
             ImVec2 b = { ed_max(prev.x, next.x), ed_max(prev.y, next.y) };
-            if (ed_rects_overlap(min, max, a, b)) {
-                return 1;
-            }
+            inside = ed_rects_overlap(min, max, a, b);
             prev = next;
         }
     }
-    return 0;
+    afree(pieces);
+    return inside;
 }
 
 void ed_update_hover(editor *e, ImVec2 mouse)

@@ -1495,12 +1495,13 @@ Studio's Graph Wires preference picks one of four styles, shared by Arrange,
 routing, drawing, and scoring through `arrange_route_style`; the ImGui canvas
 draws curved wires:
 
-- Curved: cubics through the lanes. Backward wires keep their looping curve.
+- Curved: cubics through the lanes. Backward wires loop around their nodes on
+  round corners.
 - Orthogonal: level and vertical runs with rounded corners. Every vertical run
   gets a track in the gap between two columns (channel routing): tracks are
   ordered for the fewest crossings, runs that overlap vertically never share
   one, and a staircase of wires that no order can separate doglegs. Arrange
-  widens a gap to fit its tracks. Backward wires loop under their nodes.
+  widens a gap to fit its tracks.
 - Straight: line segments between the waypoints, leaving and entering pins
   level.
 - Subway: the orthogonal tracks with 45 degree diagonals for corners.
@@ -1515,13 +1516,23 @@ and straight fan-outs leave the pin along one short level run. Crossings count
 where drawn wires cross, so a trunk crossed once counts once, and the score's
 ink length counts shared runs once.
 
-Turns are scored too: every change of height costs two. When two inputs pull a
-node equally it follows the one on its higher pin, so execution chains run
-straight, and a straightening pass then moves each run of lanes to one height
+Turns are scored too: every change of height costs two, and the score keeps
+the turns on execution wires apart. Editors mark execution wires, and a node
+lining up with its neighbours counts each as three data wires, which
+straightens execution chains without bending data curves into more crossings;
+heavier weights did. When two inputs still pull a node equally it follows the
+one on its higher pin, and a straightening pass then moves each run of lanes to one height
 wherever its column has room, so a long wire changes height once instead of at
 every column. A pin drawn a few units off the height its route planned slides
 the vertical run beside it rather than jogging, and a subway drop barely longer
 than two diagonals becomes one.
+
+A backward (cycle) wire leaves its output rightward, passes its own node on
+the side it heads for, runs left through the lanes its columns reserve,
+passes its target the same way, and enters from the left, so it never
+crosses the nodes between its ends. `graph_layout`, which MCP edits use,
+measures pin rows in the order Studio draws them: execution pins, then data
+outputs, then data inputs, counting only drawn pins.
 
 Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
 other host events such as input and contact, custom events, End, then

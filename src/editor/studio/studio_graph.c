@@ -974,7 +974,8 @@ static void arrange_input_build(const studio *s, arrange_input *in)
             ((arrange_link){ .from = a,
                              .to = b,
                              .from_y = pin_y(s, from, ED_PIN_OUTPUT, from_pin),
-                             .to_y = pin_y(s, to, ED_PIN_INPUT, to_pin) })
+                             .to_y = pin_y(s, to, ED_PIN_INPUT, to_pin),
+                             .flow = pin_exec(from, ED_PIN_OUTPUT, from_pin) })
         );
     }
 }

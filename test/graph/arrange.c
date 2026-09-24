@@ -76,7 +76,8 @@ static arrange_case arrange_case_of(const graph *g)
             ((arrange_link){ .from = arrange_node_slot(g, from->id),
                              .to = arrange_node_slot(g, to->id),
                              .from_y = graph_layout_pin_y(g, from, true, from_pin),
-                             .to_y = graph_layout_pin_y(g, to, false, to_pin) })
+                             .to_y = graph_layout_pin_y(g, to, false, to_pin),
+                             .flow = from->output_pins[from_pin].kind == PIN_EXEC })
         );
     }
     if (acount(c.links)) {
@@ -417,6 +418,31 @@ static void arrange_long_link_checks()
     afree(long_links);
 }
 
+/* An execution chain stays level though its first node's data outputs pull
+ * it toward the nodes they feed. */
+static void arrange_flow_checks()
+{
+    arrange_box boxes[6];
+    for (int i = 0; i < 6; i++) {
+        boxes[i] = arrange_test_box;
+    }
+    boxes[0].height = 132;
+    const arrange_link links[] = {
+        { .from = 0, .to = 1, .from_y = PIN_Y(0), .to_y = PIN_Y(0), .flow = true },
+        { .from = 1, .to = 2, .from_y = PIN_Y(0), .to_y = PIN_Y(0), .flow = true },
+        LINK(0, 3, 1, 0),
+        LINK(0, 4, 2, 0),
+        LINK(0, 5, 3, 0),
+    };
+    arrange_graph g = { boxes, 6, links, 5 };
+    for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
+        arrange_point pos[6] = { { 0, 0 },   { 0, 0 },   { 0, 0 },
+                                 { 0, 100 }, { 0, 200 }, { 0, 300 } };
+        arrange_layout(&g, style, pos);
+        test_check(arrange_measure(&g, pos, style).flow_bends == 0, "arrange keeps execution chains level");
+    }
+}
+
 /* Unconnected components stack top to bottom by band, then by first box. */
 static void arrange_band_checks()
 {
@@ -547,6 +573,7 @@ static void arrange_score_add(arrange_score *total, arrange_score s)
     total->node_overlaps += s.node_overlaps;
     total->wire_overlaps += s.wire_overlaps;
     total->wire_bends += s.wire_bends;
+    total->flow_bends += s.flow_bends;
     total->wire_length += s.wire_length;
     total->ink_length += s.ink_length;
 }
@@ -586,19 +613,20 @@ static void arrange_content_checks()
     {
         int crossings;
         int bends;
+        int flow_bends;
         float ink;
     } ceiling[ARRANGE_ROUTE_STYLE_COUNT] = {
-        [ARRANGE_ROUTE_CURVED] = { 31, 376, 82200.0f },
-        [ARRANGE_ROUTE_ORTHOGONAL] = { 32, 376, 87400.0f },
-        [ARRANGE_ROUTE_STRAIGHT] = { 32, 376, 82800.0f },
-        [ARRANGE_ROUTE_SUBWAY] = { 26, 376, 84500.0f },
+        [ARRANGE_ROUTE_CURVED] = { 31, 394, 74, 83800.0f },
+        [ARRANGE_ROUTE_ORTHOGONAL] = { 32, 394, 74, 89000.0f },
+        [ARRANGE_ROUTE_STRAIGHT] = { 34, 394, 74, 84500.0f },
+        [ARRANGE_ROUTE_SUBWAY] = { 26, 394, 74, 86000.0f },
     };
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;
         arrange_score s = arrange_arena_score(style, &graphs);
         printf(
             "arrange arena2d %-10s graphs=%d crossings=%d hits=%d overlaps=%d "
-            "wire_overlaps=%d bends=%d length=%.0f ink=%.0f\n",
+            "wire_overlaps=%d bends=%d flow_bends=%d length=%.0f ink=%.0f\n",
             arrange_style_names[style],
             graphs,
             s.wire_crossings,
@@ -606,6 +634,7 @@ static void arrange_content_checks()
             s.node_overlaps,
             s.wire_overlaps,
             s.wire_bends,
+            s.flow_bends,
             s.wire_length,
             s.ink_length
         );
@@ -614,6 +643,7 @@ static void arrange_content_checks()
         test_check(s.wire_overlaps == 0, "arrange keeps arena2d wires off each other");
         test_check(s.wire_crossings <= ceiling[style].crossings, "arrange keeps arena2d crossings in budget");
         test_check(s.wire_bends <= ceiling[style].bends, "arrange keeps arena2d turns in budget");
+        test_check(s.flow_bends <= ceiling[style].flow_bends, "arrange keeps arena2d execution chains straight");
         test_check(s.ink_length <= ceiling[style].ink, "arrange keeps arena2d ink in budget");
     }
 }
@@ -627,6 +657,7 @@ void run_graph_arrange_checks()
     arrange_bundle_checks();
     arrange_long_link_checks();
     arrange_band_checks();
+    arrange_flow_checks();
     arrange_layout_checks();
     arrange_content_checks();
 }
@@ -792,8 +823,8 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
         }
         printf(
             "total %-10s graphs=%d ms=%.3f worst_ms=%.3f crossings=%d hits=%d "
-            "overlaps=%d wire_overlaps=%d bends=%d points=%d length=%.0f "
-            "ink=%.0f cost=%.2f\n",
+            "overlaps=%d wire_overlaps=%d bends=%d flow_bends=%d points=%d "
+            "length=%.0f ink=%.0f cost=%.2f\n",
             arrange_style_names[s],
             t->graphs,
             t->ms,
@@ -803,6 +834,7 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
             t->score.node_overlaps,
             t->score.wire_overlaps,
             t->score.wire_bends,
+            t->score.flow_bends,
             t->points,
             t->score.wire_length,
             t->score.ink_length,

@@ -80,7 +80,8 @@ static void ed_arrange_input_build(const editor *e, ed_arrange_input *in)
                 .from = from_at,
                 .to = to_at,
                 .from_y = pin_y(from, ed_pin_row(e, from, ED_PIN_OUTPUT, from_pin)),
-                .to_y = pin_y(to, ed_pin_row(e, to, ED_PIN_INPUT, to_pin)) })
+                .to_y = pin_y(to, ed_pin_row(e, to, ED_PIN_INPUT, to_pin)),
+                .flow = from->output_pins[from_pin].kind == PIN_EXEC })
         );
     }
 }

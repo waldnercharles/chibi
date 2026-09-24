@@ -51,6 +51,10 @@
 #define AR_COST_LENGTH 0.0008f
 
 #define AR_FAN_CROSS_WEIGHT 2
+/* An execution wire outweighs this many data wires when a node lines up
+ * with its neighbours. Heavier weights straighten more chains but bend the
+ * data curves around them into more crossings. */
+#define AR_FLOW_WEIGHT 3
 
 #define AR_ORDER_SWEEPS 8
 #define AR_TRANSPOSE_PASSES 4
@@ -731,6 +735,7 @@ typedef struct ar_ledge
     float from_anchor;
     float to_anchor;
     bool back; /* part of a wire drawn right to left */
+    bool flow; /* part of an execution wire */
 } ar_ledge;
 
 typedef struct ar_ctx
@@ -1208,28 +1213,25 @@ static void ar_move(ar_ctx *c, int node, float delta)
 }
 
 /* Where a node's neighbours on one side would put it: the median of their
- * pulls. Between two middle pulls it follows the one on its higher pin, so
- * execution chains, whose pins come first, run straight. */
+ * pulls, with execution wires counted AR_FLOW_WEIGHT times so execution
+ * chains run straight. Between two middle pulls it follows the one on its
+ * higher pin. */
 static bool ar_neighbor_median_y(ar_ctx *c, int node, bool forward, float *out)
 {
     aclear(c->pulls);
-    if (forward) {
-        for (int i = c->in_start[node]; i < c->in_start[node + 1]; i++) {
-            const ar_ledge *e = &c->edges[c->in_edge[i]];
-            apush(
-                c->pulls,
-                ((arrange_point){ c->nodes[e->from].y + e->from_anchor - e->to_anchor,
-                                  e->to_anchor })
-            );
-        }
-    } else {
-        for (int i = c->out_start[node]; i < c->out_start[node + 1]; i++) {
-            const ar_ledge *e = &c->edges[c->out_edge[i]];
-            apush(
-                c->pulls,
-                ((arrange_point){ c->nodes[e->to].y + e->to_anchor - e->from_anchor,
-                                  e->from_anchor })
-            );
+    const int *start = forward ? c->in_start : c->out_start;
+    const int *list = forward ? c->in_edge : c->out_edge;
+    for (int i = start[node]; i < start[node + 1]; i++) {
+        const ar_ledge *e = &c->edges[list[i]];
+        arrange_point pull = forward
+                               ? (arrange_point){ c->nodes[e->from].y +
+                                                      e->from_anchor - e->to_anchor,
+                                                  e->to_anchor }
+                               : (arrange_point){ c->nodes[e->to].y + e->to_anchor -
+                                                      e->from_anchor,
+                                                  e->from_anchor };
+        for (int w = 0; w < (e->flow ? AR_FLOW_WEIGHT : 1); w++) {
+            apush(c->pulls, pull);
         }
     }
     int count = acount(c->pulls);
@@ -1348,6 +1350,14 @@ static bool ar_fan_out(const ar_lanes *w, int src, float out)
         count += w->out[k] == out;
     }
     return count > 1;
+}
+
+/* Marks the edges a wire added from `first` on as execution flow. */
+static void ar_mark_flow(ar_ctx *c, int first, bool flow)
+{
+    for (int k = first; k < acount(c->edges); k++) {
+        c->edges[k].flow = flow;
+    }
 }
 
 /* Records a wire with no lanes. */
@@ -2257,6 +2267,7 @@ static void ar_layout_component(
     for (int i = 0; i < acount(edge_src); i++) {
         const arrange_link *l = &g->links[links[edge_link[i]]];
         bool back = reversed[edge_link[i]];
+        int first = acount(c.edges);
         ar_ctx_link(
             &c,
             &lanes,
@@ -2266,6 +2277,7 @@ static void ar_layout_component(
             back ? l->from_y : l->to_y,
             back
         );
+        ar_mark_flow(&c, first, l->flow);
     }
     ar_ctx_solve(&c);
 
@@ -2572,11 +2584,13 @@ void arrange_route(
             ar_lanes_skip(&lanes);
             continue;
         }
+        int first = acount(c.edges);
         if (column[l->from] < column[l->to]) {
             ar_ctx_link(&c, &lanes, node_of[l->from], node_of[l->to], l->from_y, l->to_y, false);
         } else {
             ar_ctx_link(&c, &lanes, node_of[l->to], node_of[l->from], l->to_y, l->from_y, true);
         }
+        ar_mark_flow(&c, first, l->flow);
     }
     ar_ctx_solve(&c);
 
@@ -2825,7 +2839,9 @@ arrange_score arrange_measure(const arrange_graph *g, const arrange_point *pos, 
     ar_crossing *crossings = NULL;
     for (int i = 0; i < g->link_count; i++) {
         score.wire_length += d.wires[i].length;
-        score.wire_bends += ar_bends(&d, i);
+        int bends = ar_bends(&d, i);
+        score.wire_bends += bends;
+        score.flow_bends += g->links[i].flow ? bends : 0;
         for (int j = i + 1; j < g->link_count; j++) {
             if (ar_share_pin(&g->links[i], &g->links[j])) {
                 ar_union(group, i, j);

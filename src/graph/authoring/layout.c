@@ -156,7 +156,8 @@ static void default_layout(const graph *graph, vec2 *positions)
                 .from = slot[from],
                 .to = slot[to],
                 .from_y = graph_layout_pin_y(graph, graph->nodes[from], true, from_pin),
-                .to_y = graph_layout_pin_y(graph, graph->nodes[to], false, to_pin) })
+                .to_y = graph_layout_pin_y(graph, graph->nodes[to], false, to_pin),
+                .flow = graph->nodes[from]->output_pins[from_pin].kind == PIN_EXEC })
         );
     }
     if (acount(links)) {

@@ -55,6 +55,7 @@ typedef struct arrange_link
     float to_handle_x;
     float to_handle_y;
     bool custom_handles;
+    bool flow; /* execution: nodes line up along these first */
 } arrange_link;
 
 /* Positions use the shared scalar vector type while retaining a domain name
@@ -80,6 +81,7 @@ typedef struct arrange_score
     int node_overlaps;  /* node pairs whose boxes overlap */
     int wire_overlaps;  /* wire pairs that run on top of each other */
     int wire_bends;     /* turns, two wherever a wire changes height */
+    int flow_bends;     /* the turns on execution wires */
     float wire_length;  /* every wire's full length */
     float ink_length;   /* drawn length, with shared trunks counted once */
 } arrange_score;

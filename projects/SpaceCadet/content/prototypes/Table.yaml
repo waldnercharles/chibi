@@ -1,5 +1,4 @@
 name: Table
-identity: prototype-0000000000000008
 components:
   GAME.GameAppearance:
     border_color: 2443621631

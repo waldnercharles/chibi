@@ -1,5 +1,4 @@
 name: ArenaSpawnMarker
-identity: prototype-000000000000000c
 components:
   GAME.GameEncounterMember: {role: 1}
   GAME.GameGeometry3D:

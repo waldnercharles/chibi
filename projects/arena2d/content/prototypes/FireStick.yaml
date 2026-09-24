@@ -1,4 +1,3 @@
 name: FireStick
-identity: prototype-d80745769a1347ff
 components:
   GAME.GameActionBinding: {action: Fire, firing: true, source: Aim Stick}

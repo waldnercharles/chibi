@@ -1,5 +1,4 @@
 name: HRCLabLiquid
-identity: prototype-89f6797563197e9d
 components:
   GAME.GameFluidVolume:
     absorption: 0.03500000014901161

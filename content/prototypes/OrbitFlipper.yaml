@@ -1,5 +1,4 @@
 name: OrbitFlipper
-identity: prototype-00000000000004a4
 components:
   GAME.GameActionBinding: {action: FlipLeft, source: Z}
   GAME.GameAppearance:

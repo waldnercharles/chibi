@@ -1,5 +1,4 @@
 name: OrbitRing
-identity: prototype-000000000000079a
 components:
   GAME.GameAppearance:
     antialias: 1.0

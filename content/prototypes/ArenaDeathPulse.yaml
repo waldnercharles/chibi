@@ -1,5 +1,4 @@
 name: ArenaDeathPulse
-identity: prototype-0000000000000002
 components:
   GAME.GameSurfaceInfluence:
     color: 4282940671

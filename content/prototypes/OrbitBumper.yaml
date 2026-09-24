@@ -1,5 +1,4 @@
 name: OrbitBumper
-identity: prototype-00000000000001aa
 components:
   GAME.GameAppearance:
     antialias: 1.0

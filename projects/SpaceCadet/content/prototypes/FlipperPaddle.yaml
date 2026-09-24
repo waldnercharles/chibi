@@ -1,5 +1,4 @@
 name: FlipperPaddle
-identity: prototype-000000000000001a
 components:
   GAME.GameActionBinding: {action: LeftFlip, source: A}
   GAME.GameAppearance:

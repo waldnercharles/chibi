@@ -1,5 +1,4 @@
 name: LaneTarget
-identity: prototype-0000000000000026
 components:
   GAME.GameAppearance:
     border_color: 3539664895

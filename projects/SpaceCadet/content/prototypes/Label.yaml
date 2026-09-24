@@ -1,5 +1,4 @@
 name: Label
-identity: prototype-0000000000000038
 components:
   GAME.GameWidget:
     anchor: {x: 0.8100000023841858, "y": 0.30000001192092896}

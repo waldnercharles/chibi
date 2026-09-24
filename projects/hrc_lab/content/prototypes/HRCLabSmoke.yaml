@@ -1,5 +1,4 @@
 name: HRCLabSmoke
-identity: prototype-cb686ba003fac706
 components:
   GAME.GameFluidVolume:
     absorption: 0.006000000052154064

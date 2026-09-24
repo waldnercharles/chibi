@@ -1,5 +1,4 @@
 name: OrbitRail
-identity: prototype-000000000000007d
 components:
   GAME.GameAppearance: {color: 3101482495, height: 580.0, width: 12.0}
   GAME.GameCollider:

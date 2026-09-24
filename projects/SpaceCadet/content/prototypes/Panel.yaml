@@ -1,5 +1,4 @@
 name: Panel
-identity: prototype-000000000000003e
 components:
   GAME.GameWidget:
     anchor: {x: 0.8100000023841858, "y": 0.5}

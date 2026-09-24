@@ -1,5 +1,4 @@
 name: ShaderGradient
-identity: prototype-0000000000000006
 components:
   GAME.GameAppearance:
     antialias: 0.5

@@ -1,5 +1,4 @@
 name: HitEmitter
-identity: prototype-9843af35d2b1186c
 components:
   GAME.GameOrientation: {}
   GAME.GameParticleEmitter:

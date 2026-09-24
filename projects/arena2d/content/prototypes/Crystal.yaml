@@ -1,5 +1,4 @@
 name: Crystal
-identity: prototype-9d68a304e4fadfc5
 components:
   GAME.GameAppearance:
     antialias: 0.5

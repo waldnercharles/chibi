@@ -1,5 +1,4 @@
 name: MovementEmitter
-identity: prototype-a967ea0814a7f0ba
 components:
   GAME.GameIgniter: {heat: 2.5}
   GAME.GameParticleEmitter:

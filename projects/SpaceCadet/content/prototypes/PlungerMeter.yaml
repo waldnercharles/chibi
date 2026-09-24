@@ -1,5 +1,4 @@
 name: PlungerMeter
-identity: prototype-0000000000000044
 components:
   GAME.GameWidget:
     accent: 4290067967

@@ -1,5 +1,4 @@
 name: ArenaHitPulse
-identity: prototype-0000000000000009
 components:
   GAME.GameSurfaceInfluence:
     color: 4289615359

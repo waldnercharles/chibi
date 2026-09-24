@@ -1,5 +1,4 @@
 name: TrailEmitter
-identity: prototype-207eb21e261eb89f
 components:
   GAME.GameOrientation: {}
   GAME.GameParticleEmitter:

@@ -1,5 +1,4 @@
 name: Projectile
-identity: prototype-0000000000000005
 components:
   GAME.GameAppearance:
     antialias: 2.0

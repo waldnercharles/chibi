@@ -1,5 +1,4 @@
 name: MaterialStudyWorld
-identity: prototype-26f39f349a5cdb15
 components:
   GAME.GameHRC2D:
     ambient: 0.30000001192092896

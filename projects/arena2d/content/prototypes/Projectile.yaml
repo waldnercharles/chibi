@@ -1,5 +1,4 @@
 name: Projectile
-identity: prototype-def5c61c019d9356
 components:
   GAME.GameAppearance: {antialias: 1.0, color: 16777215, height: 4.0, shape: Capsule, width: 16.0}
   GAME.GameBody: {continuous: true, type: Kinematic}

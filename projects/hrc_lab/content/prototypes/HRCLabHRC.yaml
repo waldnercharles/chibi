@@ -1,5 +1,4 @@
 name: HRCLabHRC
-identity: prototype-79df6cb9f3a1bed4
 components:
   GAME.GameHRC2D:
     bounce_hysteresis: 0.800000011920929

@@ -1,5 +1,4 @@
 name: MaterialSpecimen
-identity: prototype-15f35b61abc40c14
 components:
   GAME.GameAppearance: {color: 1269808639}
   GAME.GameMaterial:

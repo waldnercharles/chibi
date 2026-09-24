@@ -1,5 +1,4 @@
 name: ArenaPlayer
-identity: prototype-0000000000000001
 components:
   GAME.GameAim:
     direction: {x: 1.0}

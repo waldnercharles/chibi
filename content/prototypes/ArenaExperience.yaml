@@ -1,5 +1,4 @@
 name: ArenaExperience
-identity: prototype-0000000000000007
 components:
   GAME.GameGeometry3D:
     depth: 5.0

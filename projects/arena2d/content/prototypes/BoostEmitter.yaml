@@ -1,5 +1,4 @@
 name: BoostEmitter
-identity: prototype-03d63f729e45d3fe
 components:
   GAME.GameIgniter: {heat: 2.5}
   GAME.GameParticleEmitter:

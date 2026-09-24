@@ -1,5 +1,4 @@
 name: ArenaWavePulse
-identity: prototype-000000000000000e
 components:
   GAME.GameSurfaceInfluence: {color: 4280633599, radius: 24.0, strength: 0.6499999761581421}
   game.GameTransform: {}

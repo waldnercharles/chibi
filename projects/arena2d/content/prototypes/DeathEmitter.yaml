@@ -1,5 +1,4 @@
 name: DeathEmitter
-identity: prototype-3c472da63f9677c9
 components:
   GAME.GameOrientation: {}
   GAME.GameParticleEmitter:

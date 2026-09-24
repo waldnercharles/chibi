@@ -1,5 +1,4 @@
 name: ArenaProjectile
-identity: prototype-0000000000000001
 components:
   GAME.GameBody: {continuous: true, type: Kinematic}
   GAME.GameCollider: {category: 4, mask: 10, radius: 4.0, sensor: true}

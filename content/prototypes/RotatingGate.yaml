@@ -1,5 +1,4 @@
 name: RotatingGate
-identity: prototype-0000000000000385
 components:
   GAME.GameAppearance: {color: 1440137215, height: 12.0, width: 160.0}
   GAME.GameBody: {angular_velocity: 1.0, type: Kinematic}

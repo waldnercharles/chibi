@@ -1,5 +1,4 @@
 name: BloomCircuitGuide
-identity: prototype-0000000000000182
 components:
   game.GameTransform: {}
   GAME.GameWidget:

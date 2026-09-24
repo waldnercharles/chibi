@@ -1,5 +1,4 @@
 name: Player
-identity: prototype-0000000000000004
 components:
   GAME.GameAppearance:
     antialias: 1.0

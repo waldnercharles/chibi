@@ -1,5 +1,4 @@
 name: Enemy
-identity: prototype-0000000000000003
 components:
   GAME.GameAppearance:
     border_color: 4291559679

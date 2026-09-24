@@ -17,8 +17,6 @@
 #include <string.h>
 
 static const type_desc PROTOTYPE_TAG_TYPE = { "PrototypeTag", 1, NULL, 0, NULL };
-static uint64_t next_identity = 1;
-
 static uint64_t identity_id(const char *identity)
 {
     uint64_t hash = UINT64_C(1469598103934665603);
@@ -29,10 +27,12 @@ static uint64_t identity_id(const char *identity)
     return hash ? hash : 1;
 }
 
-static char *new_identity(void)
+/* A prototype's identity defaults to one derived from its name, so documents
+ * record it only when it differs. */
+static char *name_identity(const char *name)
 {
     char identity[32];
-    snprintf(identity, sizeof identity, "prototype-%016llx", (unsigned long long)next_identity++);
+    snprintf(identity, sizeof identity, "prototype-%016llx", (unsigned long long)identity_id(name));
     return xstrdup(identity);
 }
 
@@ -393,7 +393,7 @@ static game_prototype *load_document(
     }
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
-    prototype->identity = new_identity();
+    prototype->identity = name_identity(name);
     prototype->registry_storage = *registry;
     prototype->registry = &prototype->registry_storage;
     yyjson_val *identity = yyjson_obj_get(root, "identity");
@@ -532,19 +532,6 @@ game_prototype *game_prototype_clone(const game_prototype *prototype, char *erro
     return copy;
 }
 
-game_prototype *game_prototype_duplicate(const game_prototype *prototype, char *error, size_t error_size)
-{
-    game_prototype *copy = game_prototype_clone(prototype, error, error_size);
-    if (!copy) {
-        return NULL;
-    }
-    free(copy->identity);
-    copy->identity = new_identity();
-    free(copy->tag.name);
-    setup_tag(copy);
-    return copy;
-}
-
 const char *game_prototype_identity(const game_prototype *prototype)
 {
     return prototype ? prototype->identity : NULL;
@@ -602,7 +589,7 @@ game_prototype *game_prototype_capture_entity(
     }
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
-    prototype->identity = new_identity();
+    prototype->identity = name_identity(name);
     prototype->registry_storage = *registry;
     prototype->registry = &prototype->registry_storage;
     setup_tag(prototype);
@@ -835,7 +822,11 @@ char *game_prototype_save(const game_prototype *prototype)
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_strcpy(doc, root, "name", prototype->name);
-    yyjson_mut_obj_add_strcpy(doc, root, "identity", prototype->identity);
+    char *identity = name_identity(prototype->name);
+    if (strcmp(identity, prototype->identity) != 0) {
+        yyjson_mut_obj_add_strcpy(doc, root, "identity", prototype->identity);
+    }
+    free(identity);
     yyjson_mut_obj_add_val(
         doc,
         root,

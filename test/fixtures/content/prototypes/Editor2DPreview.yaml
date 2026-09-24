@@ -1,5 +1,4 @@
 name: Editor2DPreview
-identity: prototype-0000000000000001
 components:
   GAME.GameAppearance:
     antialias: 1.0

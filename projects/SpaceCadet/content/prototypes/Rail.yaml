@@ -1,5 +1,4 @@
 name: Rail
-identity: prototype-0000000000000014
 components:
   GAME.GameAppearance:
     border_color: 3639078911

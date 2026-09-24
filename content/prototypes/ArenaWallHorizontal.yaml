@@ -1,5 +1,4 @@
 name: ArenaWallHorizontal
-identity: prototype-000000000000000d
 components:
   GAME.GameBody: {}
   GAME.GameCollider: {category: 8, height: 3.0, mask: 7, shape: Box, width: 640.0}

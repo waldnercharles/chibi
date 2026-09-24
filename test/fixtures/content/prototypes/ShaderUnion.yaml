@@ -1,5 +1,4 @@
 name: ShaderUnion
-identity: prototype-0000000000000008
 components:
   GAME.GameAppearance:
     antialias: 0.5

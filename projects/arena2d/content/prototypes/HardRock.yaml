@@ -1,5 +1,4 @@
 name: HardRock
-identity: prototype-6f6328242d01ac61
 components:
   GAME.GameAppearance: {antialias: 0.25, color: 1262571775, height: 48.0, shape: Circle, width: 130.0}
   GAME.GameCollider: {category: 8, height: 48.0, mask: 15, shape: Box, width: 130.0}

@@ -1,5 +1,4 @@
 name: TableLighting
-identity: prototype-0000000000003cda
 components:
   GAME.GameEnvironment: {bloom_threshold: 1.0}
   GAME.GameHRC2D:

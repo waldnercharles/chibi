@@ -1,5 +1,4 @@
 name: OrbitCabinet
-identity: prototype-0000000000000034
 components:
   GAME.GameAppearance:
     border_color: 1774174207

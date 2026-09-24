@@ -1,4 +1,3 @@
 name: FreeMotionSystem
-identity: prototype-70e01b88afe8e53a
 components:
   GAME.EngineSystem: {asset: FreeMotion}

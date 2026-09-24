@@ -1,5 +1,4 @@
 name: AttackBumper
-identity: prototype-0000000000000020
 components:
   GAME.GameAppearance:
     border_color: 4005525759

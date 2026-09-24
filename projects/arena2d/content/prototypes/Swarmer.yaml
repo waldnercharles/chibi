@@ -1,5 +1,4 @@
 name: Swarmer
-identity: prototype-1906d2fce9c20228
 components:
   GAME.GameAppearance:
     antialias: 0.5

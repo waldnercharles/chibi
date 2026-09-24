@@ -1,5 +1,4 @@
 name: Pinball
-identity: prototype-000000000000002c
 components:
   GAME.GameActionBinding: {action: Dash, source: Space}
   GAME.GameAppearance:

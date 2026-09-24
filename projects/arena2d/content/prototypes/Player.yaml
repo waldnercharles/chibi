@@ -1,5 +1,4 @@
 name: Player
-identity: prototype-b77c334d33bb1c24
 components:
   GAME.GameActionBinding: {action: Dash, source: Space}
   GAME.GameAim:

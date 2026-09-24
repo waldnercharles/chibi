@@ -1,4 +1,3 @@
 name: ActionBinding
-identity: prototype-2c5a299f8cbbf356
 components:
   GAME.GameActionBinding: {action: Dash, source: Space}

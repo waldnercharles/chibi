@@ -1,5 +1,4 @@
 name: FuelCloud
-identity: prototype-918ca8bda9ed3a12
 components:
   GAME.GameFluidVolume:
     absorption: 0.012000000104308128

@@ -1,5 +1,4 @@
 name: Cave
-identity: prototype-e5543b9b7a44303c
 components:
   GAME.GameAppearance: {color: 591155711}
   GAME.GameMaterial:

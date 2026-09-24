@@ -1,5 +1,4 @@
 name: HRC
-identity: prototype-e1e4aac0a24ad0c0
 components:
   GAME.GameCombustion:
     blast_damage: 1.5

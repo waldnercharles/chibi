@@ -1,5 +1,4 @@
 name: SpawnEmitter
-identity: prototype-1b29c99e14d944b2
 components:
   GAME.GameOrientation: {}
   GAME.GameParticleEmitter:

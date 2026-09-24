@@ -1,5 +1,4 @@
 name: ArenaEnvironment
-identity: prototype-0000000000000006
 components:
   GAME.GameEnvironment:
     bloom_radius: 0.012000000104308128

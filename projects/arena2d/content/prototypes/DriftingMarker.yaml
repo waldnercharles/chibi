@@ -1,5 +1,4 @@
 name: DriftingMarker
-identity: prototype-b70350f8960d0ba0
 components:
   GAME.GameAppearance: {color: 2463819519, height: 5.0, width: 5.0}
   GAME.GameMaterial:

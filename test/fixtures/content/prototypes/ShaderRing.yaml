@@ -1,5 +1,4 @@
 name: ShaderRing
-identity: prototype-0000000000000007
 components:
   GAME.GameAppearance:
     antialias: 0.5

@@ -1,5 +1,4 @@
 name: OrbitControls
-identity: prototype-0000000000000584
 components:
   game.GameTransform: {}
   GAME.GameWidget:

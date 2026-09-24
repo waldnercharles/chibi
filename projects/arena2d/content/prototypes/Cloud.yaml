@@ -1,5 +1,4 @@
 name: Cloud
-identity: prototype-87daa3c4c7a07f5a
 components:
   GAME.GameFluidVolume:
     absorption: 0.006000000052154064

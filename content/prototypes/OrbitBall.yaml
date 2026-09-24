@@ -1,5 +1,4 @@
 name: OrbitBall
-identity: prototype-0000000000001364
 components:
   GAME.GameAppearance: {color: 3942121471, height: 18.0, shape: Circle, width: 18.0}
   GAME.GameBody: {continuous: true, type: Dynamic}

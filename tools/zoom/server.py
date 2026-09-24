@@ -130,8 +130,9 @@ def zoom(path: str, x1: int, y1: int, x2: int, y2: int) -> list:
     y1, y2 = max(0, min(y1, view_h)), max(0, min(y2, view_h))
     if x1 >= x2 or y1 >= y2:
         return [f"Error: invalid region; need x1 < x2 and y1 < y2 within {view_w}x{view_h}"]
-    scale = original.width / view_w
-    box = (round(x1 * scale), round(y1 * scale), round(x2 * scale), round(y2 * scale))
+    # Width and height round independently in resized_size, so scale each axis.
+    sx, sy = original.width / view_w, original.height / view_h
+    box = (round(x1 * sx), round(y1 * sy), round(x2 * sx), round(y2 * sy))
     cropped = original.crop(box)
     zoomed = cropped.resize(
         resized_size(cropped.width * 10_000, cropped.height * 10_000),

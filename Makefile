@@ -62,8 +62,9 @@ help:
 build:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
-# Publish only when this build refreshed chibi_ctl for the current sources.
-ifeq ($(LOCAL_CMAKE_FLAGS),$(SANITIZER_CMAKE_FLAGS))
+# The MCP controller cache keys on sources alone: publish only default-profile
+# builds that refreshed chibi_ctl.
+ifeq ($(origin NATIVE_TOOLCHAIN_FLAGS) $(origin LOCAL_CMAKE_FLAGS) $(origin SANITIZER_CMAKE_FLAGS) $(origin SANITIZERS),file file file file)
 ifeq ($(filter-out chibi_ctl,$(BUILD_TARGET)),)
 	@sh tools/mcp/controller-cache.sh publish "$(BUILD_DIR)/chibi_ctl" || true
 endif

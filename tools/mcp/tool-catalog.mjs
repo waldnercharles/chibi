@@ -5,7 +5,7 @@ const entries = [
     description: "Create or edit a pure scalar field using native field nodes and scalar library functions. Inspect nodes and assets first. Edits are atomic, hash-checked and automatically arranged.",
     intentTerms: ["build", "field"], candidates: ["buildField"], legacyName: "edit_graph",
     nextSteps: ["Call validateAsset with the field selector.", "Call previewField to inspect the baked contour."],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "buildSystem", operation: "edit_graph", adapter: "authoring",
@@ -13,7 +13,7 @@ const entries = [
     description: "Create or edit a standalone System graph and its ECS query. Inspect the query, nodes and effects first. Edits are atomic, hash-checked and automatically arranged.",
     intentTerms: ["build", "system"], candidates: ["buildSystem"], legacyName: "edit_graph",
     nextSteps: ["Call inspectSystem to check the query and inferred effects.", "Call getExecutionStatus to verify the selected backend."],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "previewField", operation: "preview_field", adapter: "authoring",
@@ -36,7 +36,7 @@ const entries = [
       "Call validateAsset with the same shader asset selector.",
       "Call previewShader to inspect the rendered result.",
     ],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "buildBehavior",
@@ -51,7 +51,7 @@ const entries = [
       "Call validateAsset with the same behavior asset selector.",
       "Call runScenario when the behavior is attached to a prototype or scene.",
     ],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "buildPrototype",
@@ -66,7 +66,7 @@ const entries = [
       "Call validateAsset with the same prototype asset selector.",
       "Call runScenario to verify prototype behavior.",
     ],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "buildScene",
@@ -81,7 +81,7 @@ const entries = [
       "Call validateAsset with the same scene asset selector.",
       "Call previewScene or runScenario to check the composed scene.",
     ],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "optimizeGraph",
@@ -96,7 +96,7 @@ const entries = [
       "Run the dry run and review its applied and skipped changes.",
       "Call validateAsset after applying an optimization.",
     ],
-    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: true },
   },
   {
     name: "previewShader",
@@ -315,7 +315,7 @@ const entries = [
     candidates: ["captureScenarioRecording", "recordScenario"],
     legacyName: "record_scenario",
     nextSteps: ["Call replayScenario with the returned recording or recording path."],
-    annotations: { readOnlyHint: true, idempotentHint: false, destructiveHint: false },
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
   {
     name: "replayScenario",

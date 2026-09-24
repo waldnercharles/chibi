@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { controllerExecutable } from "./controller.mjs";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
 const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
@@ -801,16 +800,6 @@ export function validateAuthoringArguments(name, args = {}) {
   }
 }
 
-function controllerPath(root) {
-  const configured = process.env.CHIBI_CTL;
-  const candidates = [
-    configured,
-    resolve(root, "build", "chibi_ctl"),
-    resolve(root, "build-release", "chibi_ctl"),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
-}
-
 function renderTimeout() {
   const value = Number(process.env.CHIBI_RENDER_CTL_TIMEOUT_MS || process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
   return Number.isSafeInteger(value) && value > 0 ? value : 30000;
@@ -830,8 +819,13 @@ function failedRender(operation, code, message) {
   };
 }
 
-export function renderRequest(root, request, requestId) {
-  const executable = controllerPath(root);
+export async function renderRequest(root, request, requestId) {
+  let executable;
+  try {
+    executable = await controllerExecutable();
+  } catch (error) {
+    return failedRender(request.operation || "preview_shader", "process_error", error.message);
+  }
   const timeout = renderTimeout();
   const maxBytes = renderResponseLimit();
   return new Promise((resolveRequest) => {

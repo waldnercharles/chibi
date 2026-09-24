@@ -23,7 +23,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-render clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-render clean
 
 all: build
 
@@ -46,6 +46,7 @@ help:
 		'make benchmark      Run optimized benchmarks with symbols' \
 		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
+		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build the browser application' \
 		'make web-serve      Serve the browser application locally' \
@@ -59,9 +60,11 @@ build:
 build-debug:
 	$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)"
 
-mcp:
+mcp-controller:
 	@cmake -S . -B "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
 	@cmake --build "$(BUILD_DIR)" --target chibi_ctl >&2
+
+mcp: mcp-controller
 	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
 	@sh tools/mcp/launch.sh
 

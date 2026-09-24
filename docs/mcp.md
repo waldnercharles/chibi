@@ -49,9 +49,12 @@ are shared by MCP hosts and Codex.
 
 Codex can start the adapter automatically for this repository. Its project
 scoped registration lives in `.codex/config.toml`; it is loaded when Codex is
-started in this repository or one of its subdirectories. The launcher keeps
-build output on stderr, starts the stdio adapter on stdout, and builds
-`build/chibi_ctl` on first use if needed. Run
+started in this repository or one of its subdirectories. The launcher starts
+the stdio adapter immediately, so hosts with short connect timeouts can attach
+from a fresh worktree. When `build/chibi_ctl` is missing, the adapter runs
+`make mcp-controller` in the background with output on stderr, and the first
+tool call waits for it. A rebuilt controller replaces the running one on the
+next request. Run
 `make mcp-setup` to generate that machine-local registration. Restart Codex
 or open a new task after adding or changing project MCP configuration.
 

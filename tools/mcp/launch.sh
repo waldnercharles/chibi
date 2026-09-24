@@ -20,31 +20,6 @@ if ! project_root=$(CDPATH= cd -- "$project_root" && pwd -P); then
     printf '%s\n' "chibi MCP project root is not a directory: $project_root" >&2
     exit 1
 fi
-build_dir=${BUILD_DIR:-build}
-case "$build_dir" in
-    /*) ;;
-    *) build_dir="$repo_root/$build_dir" ;;
-esac
-controller=${CHIBI_CTL:-"$build_dir/chibi_ctl"}
-
-if [ -n "${CHIBI_CTL:-}" ] && [ ! -x "$controller" ]; then
-    printf '%s\n' "chibi MCP controller is not executable: $controller" >&2
-    exit 1
-fi
-
-if [ ! -x "$controller" ]; then
-    if ! command -v make >/dev/null 2>&1; then
-        printf '%s\n' 'chibi MCP requires native controllers or make' >&2
-        exit 1
-    fi
-    printf '%s\n' 'chibi MCP building native controllers' >&2
-    make -C "$repo_root" build BUILD_DIR="$build_dir" >&2
-fi
-
-if [ ! -x "$controller" ]; then
-	printf '%s\n' "chibi MCP could not build $controller" >&2
-    exit 1
-fi
 
 if node_bin=$(command -v node 2>/dev/null); then
     :
@@ -55,7 +30,6 @@ else
     exit 1
 fi
 
+# The server answers the handshake immediately and builds chibi_ctl on first use.
 printf '%s\n' "chibi MCP starting from project root $project_root" >&2
-CHIBI_ROOT="$project_root" \
-CHIBI_CTL="$controller" \
-exec "$node_bin" "$repo_root/tools/mcp/server.mjs"
+CHIBI_ROOT="$project_root" exec "$node_bin" "$repo_root/tools/mcp/server.mjs"

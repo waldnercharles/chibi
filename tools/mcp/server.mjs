@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import {
   renderRequest,
   validateAuthoringArguments,
 } from "./authoring.mjs";
+import { controllerExecutable } from "./controller.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -79,15 +80,6 @@ function resourceTemplates() {
   }];
 }
 
-function controllerPath() {
-  const candidates = [
-    process.env.CHIBI_CTL,
-    resolve(root, "build", "chibi_ctl"),
-    resolve(root, "build-release", "chibi_ctl"),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
-}
-
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
@@ -104,9 +96,11 @@ function errorResponse(id, code, message) {
 }
 
 class ControllerSession {
-  constructor() {
+  constructor(executable) {
+    this.executable = executable;
+    this.modified = statSync(executable).mtimeMs;
     this.child = spawn(
-      controllerPath(),
+      executable,
       ["--project-root", root],
       { cwd: root, stdio: ["pipe", "pipe", "pipe"] },
     );
@@ -130,6 +124,11 @@ class ControllerSession {
         this.fail(new Error(`chibi_ctl ${detail}${this.stderr ? `: ${this.stderr.trim()}` : ""}`));
       }
     });
+  }
+
+  // A rebuilt controller replaces the running one on the next request.
+  stale() {
+    return statSync(this.executable).mtimeMs !== this.modified;
   }
 
   request(payload, timeout) {
@@ -818,8 +817,17 @@ function rawToolDefinitions() {
 async function nativeRequest(operation, args = {}) {
   const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
   const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
+  let executable;
+  try {
+    executable = await controllerExecutable();
+  } catch (error) {
+    throw protocolError(-32603, error.message);
+  }
+  if (controllerSession && !controllerSession.closed && controllerSession.stale()) {
+    controllerSession.close();
+  }
   if (!controllerSession || controllerSession.closed) {
-    controllerSession = new ControllerSession();
+    controllerSession = new ControllerSession(executable);
   }
   const session = controllerSession;
   if (!session.rootCheck) {
@@ -837,36 +845,16 @@ async function nativeRequest(operation, args = {}) {
   return session.request({ ...args, contract: 1, operation }, timeout);
 }
 
-let contractMetadataCache;
-
-function contractMetadata() {
-  if (contractMetadataCache !== undefined) {
-    return contractMetadataCache;
-  }
-  contractMetadataCache = nativeRequest("describe_contract")
-    .then((response) => response.ok === true ? response.result : null)
-    .catch(() => null);
-  return contractMetadataCache;
-}
-
 function toolDefinition(name) {
   return rawToolDefinitions().find((candidate) => candidate.name === name);
 }
 
-async function toolDefinitions() {
-  const contract = await contractMetadata();
+function toolDefinitions() {
   const definitions = new Map(rawToolDefinitions().map((definition) => [definition.name, definition]));
   return toolCatalog.map((entry) => {
     const definition = definitions.get(entry.name);
     if (!definition) {
       throw new Error(`MCP catalog is missing definition for ${entry.name}`);
-    }
-    const nativeMetadata = contract?.operations?.find((candidate) => candidate.name === entry.operation);
-    const annotations = { ...entry.annotations };
-    if (nativeMetadata) {
-      annotations.readOnlyHint = nativeMetadata.read_only;
-      annotations.idempotentHint = nativeMetadata.idempotent;
-      annotations.destructiveHint = nativeMetadata.destructive;
     }
     const { operation, ...schema } = definition;
     return {
@@ -874,7 +862,7 @@ async function toolDefinitions() {
       name: entry.name,
       title: entry.title,
       description: entry.description,
-      annotations,
+      annotations: entry.annotations,
     };
   });
 }
@@ -1235,7 +1223,7 @@ async function dispatch(message) {
     return reply(message, { jsonrpc: "2.0", id: message.id, result: {} });
   }
   if (message.method === "tools/list") {
-    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: await toolDefinitions() } });
+    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: toolDefinitions() } });
   }
   if (message.method === "resources/list") {
     return reply(message, {
@@ -1343,3 +1331,4 @@ process.stdin.on("end", () => {
   maybeCloseController();
 });
 process.on("exit", () => controllerSession?.close());
+controllerExecutable().catch((error) => process.stderr.write(`chibi MCP ${error.message}\n`));

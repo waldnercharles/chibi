@@ -447,10 +447,7 @@ chibi_enable_tracy(engine)
 # --- editor UI (RmlUi shell and existing ImGui panes) ---
 
 include(cmake/rmlui.cmake)
-add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
-    ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT})
-add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font
-    generate_editor_ui_medium_font generate_editor_ui_semibold_font generate_editor_ui_numeric_font)
+add_library(editor STATIC ${EDITOR_SOURCES})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
 

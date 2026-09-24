@@ -42,7 +42,13 @@ add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit_toast.cpp
     src/editor/rmlui/kit_wires.cpp
     src/editor/rmlui/menu.cpp
-    src/editor/rmlui/toolbar.cpp)
+    src/editor/rmlui/toolbar.cpp
+    # The editor's embedded faces; the ImGui panes read them through editor,
+    # which links this library, so single-pass linkers resolve them too.
+    ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
+    ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT})
+add_dependencies(chibi_rmlui generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font
+    generate_editor_ui_medium_font generate_editor_ui_semibold_font generate_editor_ui_numeric_font)
 target_compile_features(chibi_rmlui PRIVATE cxx_std_17)
 target_include_directories(chibi_rmlui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(chibi_rmlui SYSTEM PRIVATE ${cute_framework_SOURCE_DIR}/include)

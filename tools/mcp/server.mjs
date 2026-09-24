@@ -121,9 +121,24 @@ function ensureController() {
   return controllerBuild;
 }
 
-async function builtRenderRequest(...args) {
+// Renders waiting on the build are not yet cancellable by authoring.mjs.
+const rendersAwaitingBuild = new Map();
+
+async function builtRenderRequest(renderRoot, request, requestId) {
+  if (!controllerReady() && requestId !== undefined) {
+    const key = String(requestId);
+    const cancelled = new Promise((resolveCancel) => rendersAwaitingBuild.set(key, () => resolveCancel(true)));
+    try {
+      if (await Promise.race([ensureController().then(() => false), cancelled])) {
+        const operation = request.operation || "preview_shader";
+        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "shader preview was cancelled" } };
+      }
+    } finally {
+      rendersAwaitingBuild.delete(key);
+    }
+  }
   await ensureController();
-  return renderRequest(...args);
+  return renderRequest(renderRoot, request, requestId);
 }
 
 function send(message) {
@@ -1252,6 +1267,7 @@ async function dispatch(message) {
   }
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
+      rendersAwaitingBuild.get(String(message.params.requestId))?.();
       cancelAuthoringRequest(message.params.requestId);
     }
     return null;

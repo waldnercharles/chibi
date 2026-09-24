@@ -314,10 +314,13 @@ static void arrangement()
     graph_free(&folded);
 }
 
-static bool formats(graph *g, const node *n, const char *expected)
+/* Formats what a consumer of n's first output receives. */
+static bool formats(graph *g, node *n, const char *expected)
 {
+    node *consumer = add(g, "Reroute Data");
+    wire(g, n, 0, consumer, 0);
     char text[256];
-    behavior_expression_format(g, n, 0, text, sizeof text);
+    behavior_expression_format(g, consumer, 0, text, sizeof text);
     if (strcmp(text, expected)) {
         printf("formatted `%s`, expected `%s`\n", text, expected);
         return false;
@@ -341,6 +344,13 @@ static void formatting()
     node *get = behavior_asset_add_get_node(asset, speed->id);
     node *scaled = binary(g, "Multiply", get, real(g, 2));
     test_check(formats(g, scaled, "speed * 2"), "variables and constants format as an expression");
+    node *integer = add(g, "Integer");
+    pin_value seven = { .type = PIN_I32, .type_name = "int", .i = 7 };
+    assert(graph_set_pin_default(g, integer, false, 0, &seven) == 0);
+    node *converted = add(g, "Multiply");
+    assert(graph_connect_data_conversion(g, integer, 0, converted, 0, &NODE_To_Real) == 0);
+    wire(g, real(g, 2), 0, converted, 1);
+    test_check(formats(g, converted, "to_real(7) * 2"), "edge conversions format as calls");
 
     test_check(
         formats(g, binary(g, "Subtract", real(g, 1), binary(g, "Subtract", real(g, 2), real(g, 3))), "1 - (2 - 3)") &&
@@ -364,7 +374,14 @@ static void formatting()
     );
 
     node *self = add(g, "Self");
-    test_check(formats(g, self, "Self"), "Self formats as Self");
+    assert(graph_set_pin_type(g, self, 1, 0, PIN_HANDLE, "ecs.entity") == 0);
+    node *self_has = add(g, "Has Component");
+    assert(component_node_retarget(g, self_has, GAME_COMPONENT_GameMovement.key) == 0);
+    wire(g, self, 0, self_has, component_node_setting(COMPONENT_NODE_HAS) + 1);
+    test_check(
+        graph_node_is_inline(g, self) && formats(g, self_has, "has(Self.GameMovement)"),
+        "a wired Self formats as Self"
+    );
     node *getter = add(g, "Get_GameMovement");
     assert(graph_expose_output_fields(g, getter, 0) == 0);
     int field = -1;

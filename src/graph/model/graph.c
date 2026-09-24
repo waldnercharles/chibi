@@ -1511,6 +1511,7 @@ int graph_set_node_disabled(graph *g, node *n, int disabled)
 
 int graph_set_node_presentation(graph *g, node *n, node_presentation presentation)
 {
+    assert(presentation >= NODE_PRESENTATION_AUTO && presentation <= NODE_PRESENTATION_EXPANDED);
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
         return -1;
     }

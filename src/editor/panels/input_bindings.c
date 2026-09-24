@@ -1420,7 +1420,7 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
     char chip[128];
     char fitted[128];
     if (has_inline_source) {
-        behavior_expression_format(e->active_graph, inline_source, inline_pin, source, sizeof source);
+        behavior_expression_format(e->active_graph, n, index, source, sizeof source);
     }
     const char *full_label = binding
                                ? ed_binding_label(e, binding, source, sizeof source)

@@ -20,11 +20,14 @@ typedef struct text
     size_t used;
 } text;
 
+/* Truncates at cap; used stays below cap, so room never underflows. */
 static void put(text *t, const char *s)
 {
+    assert(t->used < t->cap);
+    size_t room = t->cap - 1 - t->used;
     size_t length = strlen(s);
-    if (length > t->cap - 1 - t->used) {
-        length = t->cap - 1 - t->used;
+    if (length > room) {
+        length = room;
     }
     memcpy(t->buf + t->used, s, length);
     t->used += length;
@@ -140,6 +143,22 @@ static int binding_of(const node *n)
 
 static void put_node(text *t, const graph *g, const node *n, int output);
 
+/* Writes the source wired into an input, calling its edge conversion by name
+ * so a conversion such as truncation stays visible. */
+static int put_source(text *t, const graph *g, const node *n, int pin, const node *source, int source_pin)
+{
+    const node_desc *conversion = graph_input_conversion(g, n, pin);
+    if (!conversion) {
+        put_node(t, g, source, source_pin);
+        return binding_of(source);
+    }
+    put_identifier(t, conversion->name);
+    put(t, "(");
+    put_node(t, g, source, source_pin);
+    put(t, ")");
+    return ATOM_BINDING;
+}
+
 /* Writes an input's value and returns how tightly its text binds. */
 static int put_operand(text *t, const graph *g, const node *n, int pin)
 {
@@ -147,8 +166,7 @@ static int put_operand(text *t, const graph *g, const node *n, int pin)
     node *source = NULL;
     int source_pin = -1;
     if (graph_inline_source(g, n, pin, &source, &source_pin)) {
-        put_node(t, g, source, source_pin);
-        return binding_of(source);
+        return put_source(t, g, n, pin, source, source_pin);
     }
     if (spec->binding) {
         put_binding(t, g, spec->binding);
@@ -299,10 +317,17 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     }
 }
 
-void behavior_expression_format(const graph *g, const node *n, int output, char *buf, size_t cap)
+void behavior_expression_format(const graph *g, const node *target, int pin, char *buf, size_t cap)
 {
-    assert(cap && output >= 0 && output < n->output_count);
+    assert(cap && pin >= 0 && pin < target->input_count);
     text t = { buf, cap, 0 };
     buf[0] = '\0';
-    put_node(&t, g, n, output);
+    node *source = NULL;
+    int source_pin = -1;
+    if (graph_input_source(g, target, pin, &source, &source_pin) &&
+        !graph_input_local(g, target, pin)) {
+        put_source(&t, g, target, pin, source, source_pin);
+        return;
+    }
+    put_operand(&t, g, target, pin);
 }

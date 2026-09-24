@@ -6,8 +6,10 @@
 #include "editor/ui/kit.h"
 #include "editor/ui/kit_icons.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/authoring/arrange.h"
 
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>
 
 typedef enum
@@ -64,6 +66,7 @@ typedef struct
     bool drawer_open;
     float drawer_height;
     studio_editor editors[STUDIO_AREA_COUNT];
+    kit_wire_style wires; /* graph wire routing */
 } studio_prefs;
 
 typedef struct
@@ -93,6 +96,97 @@ typedef struct
     SDL_Keycode key;
     SDL_Keymod mod; /* at press time: a quick chord is released before the frame runs */
 } studio_key;
+
+typedef enum
+{
+    STUDIO_GRAPH_IDLE,
+    STUDIO_GRAPH_PRESS, /* on a node, below the drag threshold */
+    STUDIO_GRAPH_MOVE,  /* dragging the selected nodes */
+    STUDIO_GRAPH_BOX,   /* marquee selection */
+    STUDIO_GRAPH_PAN,   /* middle, Space or right drag */
+    STUDIO_GRAPH_LINK,  /* dragging a wire from a socket */
+    STUDIO_GRAPH_RIGHT, /* right press, below the pan threshold */
+} studio_graph_gesture;
+
+typedef struct
+{
+    uint64_t graph_id;
+    float zoom, x, y;
+} studio_graph_view;
+
+/* The behavior graph canvas (studio_graph.c): its own RmlUi context whose dp
+ * ratio is the zoom, so text stays crisp and clipping works at every scale. The
+ * canvas logical space is graph units; `x, y` is the graph point at the canvas
+ * top-left. */
+typedef struct
+{
+    editor_rml_backend *backend;
+    kit *kit;
+    kit_frame_input in;
+    editor_rml_input *events; /* window events replayed into the canvas */
+    kit_surface_input surface;
+    int area;
+    bool focused;
+    bool captured; /* a press began in the canvas and is held */
+    float zoom, x, y;
+    struct
+    {
+        float zoom, x, y;
+        float from_zoom, from_x, from_y;
+        double start;
+        bool active;
+    } camera;
+    studio_graph_view *views; /* camera per graph, restored on return */
+    uint64_t graph_id;
+    bool framed;
+    studio_graph_gesture gesture;
+    float press_x, press_y;   /* window px */
+    float press_wx, press_wy; /* the press in graph units */
+    char press_path[96];      /* hovered kit path when the button went down */
+    bool press_control;       /* the press landed on a field or button */
+    int press_button;         /* -1 when no press arrived this frame */
+    float world_x, world_y;   /* pointer in graph units */
+    uint64_t press_node;
+    bool press_toggle;
+    struct
+    {
+        uint64_t id;
+        float x, y;
+    } *drag;
+    float box[4];       /* marquee corners in graph units */
+    uint64_t *box_base; /* selection before an additive marquee */
+    uint64_t link_node;
+    int link_kind; /* ED_PIN_INPUT or ED_PIN_OUTPUT */
+    int link_pin;
+    char link_error[160];
+    uint64_t hover_node;
+    int hover_kind, hover_pin; /* -1 without a socket */
+    int hover_edge;            /* edge index under the pointer, or -1 */
+    bool space;
+    bool trackpad;
+    double wheel_time;
+    double value_edit_frame; /* a value gesture has an open undo snapshot */
+    bool value_editing;
+    uint64_t measured_key;
+    arrange_routes routes;
+    int *edge_route; /* per edge: its link in routes, or -1 */
+    int *wire_edges; /* per drawn wire: its edge index */
+    struct
+    {
+        uint64_t id;
+        float w, h;
+    } *sizes;           /* node sizes measured this frame */
+    bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
+    float spawn_x, spawn_y;
+    bool double_click; /* the press this frame completes a double click */
+    double last_press_time;
+    float last_press_x, last_press_y;
+    uint64_t menu_node; /* context menu target, or 0 */
+    int menu_edge;      /* context menu wire, or -1 */
+    bool menu_request; /* open the context menu at menu_x, menu_y (window px) */
+    float menu_x, menu_y;
+    uint64_t *unused; /* nodes no event reaches or whose values nothing reads */
+} studio_graph;
 
 struct studio
 {
@@ -132,6 +226,7 @@ struct studio
     char property_search[128];
     bool text_input;
     kit_surface_input surface;
+    studio_graph graph;
     struct
     {
         uint64_t entity;
@@ -171,7 +266,21 @@ void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
 void studio_properties_header(studio *s, int area);
 void studio_properties_body(studio *s, int area);
+void studio_behavior_header(studio *s, int area);
 void studio_behavior_body(studio *s, int area);
+/* After the Studio document is emitted: drive and render the graph canvas. */
+void studio_graph_frame(studio *s, double delta_seconds);
+void studio_graph_free(studio *s);
+/* Canvas menus live in the Studio document; emitted with the Behavior area. */
+void studio_graph_menus(studio *s);
+bool studio_graph_wants_keyboard(const studio *s);
+bool studio_graph_accepts_text(const studio *s);
+const char *studio_graph_cursor(const studio *s);
+/* The add-node palette: items for the command surface while it is open for the graph. */
+bool studio_graph_palette(studio *s);
+bool studio_graph_can_replay(studio *s, bool redo);
+void studio_graph_history(studio *s, bool redo);
+bool studio_graph_active(const studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
 const char *studio_asset_kind_name(int kind);

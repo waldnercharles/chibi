@@ -129,18 +129,6 @@ void studio_scene_body(studio *s, int area)
     kit_pop(k);
 }
 
-void studio_behavior_body(studio *s, int area)
-{
-    (void)area;
-    kit *k = s->kit;
-    kit_push(k, "pending", NULL, "pending-editor");
-    kit_icon(k, "icon", NULL, KIT_ICON_GRAPH);
-    const char *name = s->scene->graph_document_id ? s->scene->graph_document_id
-                                                   : "Behavior";
-    kit_label(k, "name", NULL, name);
-    kit_pop(k);
-}
-
 /* ---------- Outliner ---------- */
 
 void studio_outliner_header(studio *s, int area)

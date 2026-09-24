@@ -83,6 +83,25 @@ The inventory found these problems:
   - Fire and Dash leave core. Input action assets fire events with Started, Triggered and Completed phases and a typed value (Unreal Enhanced Input).
   - Hold, tap and chord logic live on the action, not in graphs.
 
+### Legibility
+
+A graph should read like the sentence the author had in mind. Presentation never changes evaluation.
+
+Model and arrange work, each its own PR:
+- **Inline by default.** Every pure source that qualifies folds into its consumer's pin row. Qualifying sources are getters, constants, Self, field reads, single-input conversions and small pure trees shown as one expression chip. A per-node choice of auto, always or expanded replaces the `inline_source` bool, and arrange skips inline nodes.
+- **Routing styles.** Arrange routes wires as curved, orthogonal (track-assigned channels with rounded corners, like Electronic Nodes' Manhattan) or straight. It bundles fan-outs into a trunk and scores each style as it is drawn.
+- **Event bands.** Event chains stack in a fixed order (Begin, Tick, input, custom), so a graph reads top to bottom by event.
+- **Long wires become names.** Arrange reports wires that span three or more columns or cross many others, and the editor offers to turn each into a local (a named reroute).
+- **Component access in three nodes.** Reflected components get Get, Set and Has nodes with split pins (see "Simplify the language").
+
+Editor work, in the RmlUi graph editor:
+- **Follow the selection.** Selecting or hovering a node highlights its wires and dims the rest.
+- **Wire weight.** Exec wires are thick and white; data wires are thin and take their type's color.
+- **Conversion chips** on wires that convert.
+- **Usage graying.** Nodes that no event reaches, or whose outputs nothing reads, draw at half opacity.
+- **Level of detail.** Zoomed out, pins and values hide and titles grow to stay readable. Comment frame titles always stay readable.
+- **Routing style as a setting,** drawing the geometry arrange returns.
+
 ### Conversions
 
 Edges already carry the conversion. Decide which ones are automatic and show them as chips on the wire:
@@ -194,15 +213,15 @@ These live in the RmlUi graph editor ([contract](../editor-graph-references.md))
 
 ## Coordination
 
-- **`asset-storage-format` worktree:** converts authored assets to YAML and trims MCP tool schemas.
-  - New asset fields wait for it: prototype icons and colors, node versioning, tags, input actions.
+- **`asset-storage-format` (merged, PR #93):** authored assets are YAML, and MCP tool schemas are trimmed.
+  - New asset fields can land now: prototype icons and colors, node versioning, tags, input actions.
   - The editor must not assume `.json`; scene titles already strip any extension.
-- **`vigilant-mclean` worktree:** makes `graph/authoring/arrange.c` faster and better. The graph editor consumes arrange; it doesn't modify it.
+- **`vigilant-mclean` (merged, PR #94):** made `graph/authoring/arrange.c` faster and routes long wires through lanes. Routing styles build on it in their own PR. The graph editor consumes arrange; it doesn't modify it.
 - **This worktree:** the RmlUi editor. It uses the editor's mutation helpers and commands, and adds model-level commands (move, delete, disconnect, reroute) through `editor_command_apply`.
 
 ## Suggested order
 
-1. **The RmlUi graph editor at parity**, built to the interaction contract, together with conversion chips and link-error reasons, which are mostly editor work.
+1. **The RmlUi graph editor at parity**, built to the interaction contract, together with conversion chips, link-error reasons and the editor legibility work above. In parallel, three separate PRs: inline by default, routing styles with event bands, and component access in three nodes.
 2. **Safety rails that need only compiler analysis:** lazy Select/Switch, dominance errors, usage graying, total math, warning IDs.
 3. **Catalog curation:** parameterized component nodes, one Real type, a single struct presentation. The descriptors stay, so this is mostly search and presentation.
 4. **One vocabulary across behavior, shader and field graphs,** after the YAML format lands, since node identities change.

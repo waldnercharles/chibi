@@ -290,6 +290,9 @@ extern "C"
     void kit_command_open(kit *k, const char *placeholder);
     bool kit_command_is_open(const kit *k);
     int kit_command(kit *k, const kit_command_item *items, int count);
+    /* Items already filtered and ranked by the caller for the current query,
+     * shown in order and grouped by first appearance. */
+    int kit_command_ranked(kit *k, const kit_command_item *items, int count);
     const char *kit_command_query(const kit *k);
 
     /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes. */
@@ -375,12 +378,62 @@ extern "C"
     } kit_chart_desc;
     float kit_chart(kit *k, const char *key, const char *cls, const kit_chart_desc *desc);
 
+    /* Node-editor wires and the canvas grid, drawn by one element (xyflow edges,
+     * Blender noodles). A wire end anchors to the center of the element at a kit
+     * path, resolved after layout, or to a point; points and waypoints are in the
+     * element's own dp. Curves leave rightward and enter leftward. */
+    typedef enum kit_wire_style
+    {
+        KIT_WIRE_CURVED,
+        KIT_WIRE_STRAIGHT,
+        KIT_WIRE_ANGULAR, /* horizontal and vertical runs with rounded corners */
+    } kit_wire_style;
+    enum
+    {
+        KIT_WIRE_DASHED = 1 << 0,
+        KIT_WIRE_FLOW = 1 << 1, /* markers travel from source to target */
+    };
+    typedef struct kit_wire
+    {
+        const char *from, *to; /* kit paths; NULL uses the point */
+        float from_x, from_y, to_x, to_y;
+        const float *via; /* waypoints as x, y pairs */
+        int via_count;
+        uint32_t color; /* 0xRRGGBBAA */
+        float width;    /* dp; 0 means 1.5 */
+        unsigned flags;
+        float flow; /* seconds, the marker phase with KIT_WIRE_FLOW */
+    } kit_wire;
+    typedef struct kit_wires_desc
+    {
+        const kit_wire *wires;
+        int count;
+        kit_wire_style style;
+        float grid;           /* line spacing in dp; 0 draws no grid */
+        float grid_x, grid_y; /* grid coordinate at the element's top-left */
+        uint32_t grid_color, grid_major_color;
+    } kit_wires_desc;
+    void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *desc);
+    /* The last drawn curve of wire `index` as x, y pairs in the element's dp.
+     * Returns the point count, which may exceed max. */
+    int kit_wire_points(const kit *k, const char *path, int index, float *xy, int max);
+
     /* Host queries. */
     bool kit_wants_keyboard(const kit *k);
     bool kit_wants_text(const kit *k, kit_rect *caret);
     /* True while focus can receive typed characters, including a focused number field. */
     bool kit_accepts_text(const kit *k);
     bool kit_wants_pointer(const kit *k);
+    /* Width in dp of one line of Inter at `size` dp and `weight` (400 regular). */
+    float kit_text_width(const kit *k, const char *text, float size, int weight);
+    /* Drops keyboard focus, as a press elsewhere in the window does. */
+    void kit_blur(kit *k);
+    /* The path of the innermost emitted item under the pointer, or NULL. */
+    const char *kit_hovered_path(const kit *k);
+    /* True over a control that takes the pointer itself: fields, buttons, choices. */
+    bool kit_pointer_on_control(const kit *k);
+    /* The path of the item emitted last, valid while it stays emitted. */
+    const char *kit_item_path(const kit *k);
     bool kit_find(const kit *k, const char *path, kit_rect *out);
     void kit_set_theme(kit *k, const char *name, bool active);
     void kit_set_body_class(kit *k, const char *name, bool on);

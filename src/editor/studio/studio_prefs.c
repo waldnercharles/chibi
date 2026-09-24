@@ -83,7 +83,7 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
            a->reduced_motion == b->reduced_motion &&
            a->side_width == b->side_width && a->main_split == b->main_split &&
            a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
-           a->drawer_height == b->drawer_height;
+           a->drawer_height == b->drawer_height && a->wires == b->wires;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -142,6 +142,8 @@ studio_prefs studio_prefs_load()
     if (yyjson_is_bool(motion)) {
         p.reduced_motion = yyjson_get_bool(motion);
     }
+    static const char *const WIRES[] = { "curved", "straight", "angular" };
+    p.wires = (kit_wire_style)name_index(WIRES, 3, yyjson_obj_get(root, "wires"), p.wires);
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.side_width = number(yyjson_obj_get(layout, "sideWidth"), p.side_width, 200, 1600);
     p.main_split = number(yyjson_obj_get(layout, "mainSplit"), p.main_split, 0.05f, 0.95f);
@@ -174,6 +176,8 @@ bool studio_prefs_save(const studio_prefs *p)
     yyjson_mut_obj_add_str(doc, root, "theme", THEMES[p->theme]);
     yyjson_mut_obj_add_str(doc, root, "density", p->comfortable ? "comfortable" : "compact");
     yyjson_mut_obj_add_bool(doc, root, "reduceMotion", p->reduced_motion);
+    static const char *const WIRES[] = { "curved", "straight", "angular" };
+    yyjson_mut_obj_add_str(doc, root, "wires", WIRES[p->wires]);
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_real(doc, layout, "sideWidth", p->side_width);
     yyjson_mut_obj_add_real(doc, layout, "mainSplit", p->main_split);

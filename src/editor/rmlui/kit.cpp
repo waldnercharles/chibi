@@ -7,6 +7,8 @@
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/FontEngineInterface.h>
+#include <RmlUi/Core/TextShapingContext.h>
 
 #include <algorithm>
 #include <cassert>
@@ -1432,6 +1434,7 @@ extern "C" kit *kit_create(void *context, const char *document_path)
     assert(k->doc);
     k->doc->Show();
     register_chart_element();
+    register_wires_element();
     k->listener = std::make_unique<KitListener>(k);
     const Rml::EventId events[] = {
         Rml::EventId::Mousedown, Rml::EventId::Mouseup,   Rml::EventId::Click,   Rml::EventId::Dblclick,
@@ -2398,7 +2401,19 @@ extern "C" const char *kit_command_query(const kit *k)
     return k->command.query.c_str();
 }
 
+static int command(kit *k, const kit_command_item *items, int count, bool ranked);
+
 extern "C" int kit_command(kit *k, const kit_command_item *items, int count)
+{
+    return command(k, items, count, false);
+}
+
+extern "C" int kit_command_ranked(kit *k, const kit_command_item *items, int count)
+{
+    return command(k, items, count, true);
+}
+
+static int command(kit *k, const kit_command_item *items, int count, bool ranked)
 {
     CommandState &c = k->command;
     if (!c.open) {
@@ -2442,8 +2457,8 @@ extern "C" int kit_command(kit *k, const kit_command_item *items, int count)
     };
     std::vector<Scored> scored;
     for (int i = 0; i < count; ++i) {
-        double s = 1;
-        if (!c.query.empty()) {
+        double s = ranked ? count - i : 1;
+        if (!ranked && !c.query.empty()) {
             std::string text = std::string(items[i].label) + (items[i].keywords ? std::string(" ") + items[i].keywords : "");
             s = command_score(text, c.query);
             if (s <= (c.query.size() > 1 ? 0.02 : 0)) {
@@ -2461,7 +2476,7 @@ extern "C" int kit_command(kit *k, const kit_command_item *items, int count)
         }
         by_group[g].push_back(s);
     }
-    if (!c.query.empty()) {
+    if (!ranked && !c.query.empty()) {
         for (auto &[g, list] : by_group) {
             (void)g;
             std::stable_sort(list.begin(), list.end(), [](const Scored &a, const Scored &b) { return a.score > b.score; });
@@ -2654,6 +2669,67 @@ extern "C" bool kit_wants_pointer(const kit *k)
     Rml::Element *hover = k->context->GetHoverElement();
     auto found = k->by_element.find(hover);
     return hover && hover != k->doc && (found == k->by_element.end() || found->second->kind != Kind::Surface);
+}
+
+/* Measured at a large reference size and scaled, so the width in dp does not
+   depend on the zoom or on glyph rounding at small sizes. */
+extern "C" float kit_text_width(const kit *k, const char *text, float size, int weight)
+{
+    (void)k;
+    constexpr float kReference = 8;
+    Rml::FontEngineInterface *fonts = Rml::GetFontEngineInterface();
+    if (!fonts || !text || !text[0]) {
+        return 0;
+    }
+    Rml::FontFaceHandle face = fonts->GetFontFaceHandle(
+        "inter", /* the font provider keys families in lower case */
+        Rml::Style::FontStyle::Normal,
+        (Rml::Style::FontWeight)(weight > 0 ? weight : 400),
+        (int)std::lround(size * kReference)
+    );
+    if (!face) {
+        return 0;
+    }
+    static const Rml::String language;
+    Rml::TextShapingContext shaping{ language };
+    const Rml::String string = text;
+    return (float)fonts->GetStringWidth(face, Rml::StringView(string), shaping) / kReference;
+}
+
+extern "C" void kit_blur(kit *k)
+{
+    if (Rml::Element *focus = k->context->GetFocusElement(); focus && focus != k->doc) {
+        focus->Blur();
+    }
+}
+
+extern "C" const char *kit_hovered_path(const kit *k)
+{
+    Node *n = node_for(const_cast<kit *>(k), k->context->GetHoverElement());
+    return n && n->kind != Kind::Root ? n->path.c_str() : nullptr;
+}
+
+extern "C" bool kit_pointer_on_control(const kit *k)
+{
+    for (Node *n = node_for(const_cast<kit *>(k), k->context->GetHoverElement()); n; n = n->parent) {
+        switch (n->kind) {
+            case Kind::Button:
+            case Kind::Number:
+            case Kind::Check:
+            case Kind::Toggle:
+            case Kind::Select:
+            case Kind::Text:
+            case Kind::Search:
+            case Kind::Color: return true;
+            default: break;
+        }
+    }
+    return false;
+}
+
+extern "C" const char *kit_item_path(const kit *k)
+{
+    return k->last ? k->last->path.c_str() : nullptr;
 }
 
 extern "C" bool kit_find(const kit *k, const char *path, kit_rect *out)

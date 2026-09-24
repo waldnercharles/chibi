@@ -377,6 +377,7 @@ void drag_begin_frame(kit *k);
 void drag_end_frame(kit *k);
 void drag_cancel(kit *k);
 void register_chart_element();
+void register_wires_element();
 void text_frame(kit *k, double dt);
 void morph_label(kit *k, Node *n, Rml::Element *box, const char *text);
 void forget_motion(kit *k, Node *n);

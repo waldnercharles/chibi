@@ -147,6 +147,14 @@ extern "C"
         int logical_height,
         float framebuffer_scale
     );
+    /* Sizes the canvas in physical pixels with any dp ratio, as a zoomed canvas
+     * needs; pointer input is then in physical / dp_ratio units. */
+    void editor_rml_backend_resize_pixels(
+        editor_rml_backend *backend,
+        int physical_width,
+        int physical_height,
+        float dp_ratio
+    );
     void editor_rml_backend_update(editor_rml_backend *backend, double delta_seconds);
     /* Called only from the live app's final draw phase, after a Cute GPU context exists. */
     void editor_rml_backend_render(editor_rml_backend *backend);

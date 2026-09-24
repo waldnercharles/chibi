@@ -100,6 +100,7 @@ static int app_frame(app_loop *loop)
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
         CHIBI_TRACE_ZONE_END(game_zone);
     } else if (loop->design_preview) {
+        editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
         if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
             fprintf(stderr, "runtime frame failed\n");

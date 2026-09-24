@@ -135,6 +135,7 @@ static void forward_input(studio *s)
                 editor_rml_input move = input;
                 move.type = EDITOR_RML_POINTER_MOVE;
                 editor_rml_backend_process_input(s->backend, &move);
+                apush(s->graph.events, move);
                 bool down = e->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
                 in->down[b] = down;
                 in->pressed[b] |= down;
@@ -174,6 +175,7 @@ static void forward_input(studio *s)
             default: continue;
         }
         editor_rml_backend_process_input(s->backend, &input);
+        apush(s->graph.events, input);
     }
     asetlen(s->events, 0);
     SDL_Keymod mod = s->mods;
@@ -205,9 +207,10 @@ static void sync_cursor(studio *s)
         { "grab", SDL_SYSTEM_CURSOR_MOVE },
         { "not-allowed", SDL_SYSTEM_CURSOR_NOT_ALLOWED },
     };
-    const char *name = kit_dragging(s->kit, NULL)
-                         ? "move"
-                         : editor_rml_backend_cursor(s->backend);
+    const char *graph = studio_graph_cursor(s);
+    const char *name = kit_dragging(s->kit, NULL) ? "move"
+                     : graph ? graph
+                             : editor_rml_backend_cursor(s->backend);
     SDL_SystemCursor wanted = SDL_SYSTEM_CURSOR_DEFAULT;
     for (size_t i = 0; name && i < sizeof names / sizeof *names; i++) {
         if (strcmp(names[i].name, name) == 0) {
@@ -228,7 +231,7 @@ static void sync_cursor(studio *s)
 static void sync_text_input(studio *s)
 {
     kit_rect caret;
-    bool wants = kit_accepts_text(s->kit);
+    bool wants = kit_accepts_text(s->kit) || studio_graph_accepts_text(s);
     if (wants != s->text_input) {
         s->text_input = wants;
         if (wants) {
@@ -343,6 +346,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     s->assets_kind = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = -1;
+    s->graph.area = -1;
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
     SDL_AddEventWatch(queue_event, s);
@@ -373,6 +377,7 @@ void studio_free(studio *s)
     afree(s->keys);
     engine_viewport_set_host_input(s->viewport, NULL);
     editor_set_retained_keyboard(false);
+    studio_graph_free(s);
     kit_destroy(s->kit);
     editor_rml_backend_destroy(s->backend);
     free(s);
@@ -394,12 +399,14 @@ void studio_frame(studio *s, double delta_seconds)
     kit_begin(s->kit, &s->in);
     studio_emit(s);
     kit_end(s->kit);
-    if (!kit_wants_keyboard(s->kit)) {
+    bool typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
+    if (!typing) {
         studio_shortcuts(s);
     }
-    editor_set_retained_keyboard(kit_wants_keyboard(s->kit));
+    editor_set_retained_keyboard(typing);
     apply_prefs(s, false);
     draw_viewport(s);
+    studio_graph_frame(s, delta_seconds);
     sync_text_input(s);
     sync_cursor(s);
     editor_rml_backend_update(s->backend, delta_seconds);

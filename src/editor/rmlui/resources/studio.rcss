@@ -116,7 +116,12 @@ body.light .viewport {
 .add-row { margin-top: 6dp; display: flex; }
 .add-row .btn { flex: 1 1 0dp; }
 
-/* Placeholder editors awaiting conversion. */
+/* Behavior graph: the canvas is its own zoomed document (graph.rml), shown here. */
+.graph-surface { position: absolute; left: 0dp; top: 0dp; width: 100%; height: 100%; }
+.area-head .graph-pick { color: var(--fg); padding: 0dp 6dp; }
+.area-head .readout { color: var(--fg-3); font-size: 11dp; font-family: InterNumeric; padding: 0dp 4dp; }
+
+/* Editors without content yet. */
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--fg-3); background-color: var(--canvas); }
 
 /* Output. */

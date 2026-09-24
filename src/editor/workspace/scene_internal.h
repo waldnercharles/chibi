@@ -325,6 +325,7 @@ int replay_scene_edit(app_scene_authoring *scene, bool redo);
 const ecs_component_desc *resolve_system_component(const char *name, void *);
 int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, const game_prototype *prototype);
 int save_active_document(app_scene_authoring *scene);
+int save_behavior_document(app_scene_authoring *scene);
 int save_all_documents(app_scene_authoring *scene);
 int save_as_active_document(app_scene_authoring *scene);
 int create_scene_asset(app_scene_authoring *scene, const char *name);

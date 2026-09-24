@@ -92,6 +92,14 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 
 /* ---------- Commands ---------- */
 
+/* The graph canvas owns history and saving while it has focus (Blender: the
+   area under the pointer or last clicked). */
+static bool graph_focused(const studio *s)
+{
+    return studio_graph_active(s) && s->graph.area >= 0 &&
+           s->focus_area == s->graph.area;
+}
+
 static bool editable(const studio *s)
 {
     return scene_can_move(s->scene) && !s->scene->runtime_snapshot_valid;
@@ -121,6 +129,21 @@ void studio_save(studio *s)
     }
     finish_transform_edit(scene, false);
     const char *failure = scene->message[0] ? scene->message : NULL;
+    if (graph_focused(s) && scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        char title[160];
+        snprintf(title, sizeof title, "Saved %s", scene->graph_document_id);
+        if (save_behavior_document(scene) == 0) {
+            toast(s, KIT_TOAST_SUCCESS, title, NULL);
+        } else {
+            toast(
+                s,
+                KIT_TOAST_ERROR,
+                "Could not save",
+                scene->message[0] ? scene->message : failure
+            );
+        }
+        return;
+    }
     if (scene->document.kind != APP_EDITOR_DOCUMENT_SCENE) {
         const char *label = scene->active_tab >= 0 &&
                                     scene->active_tab < acount(scene->tabs)
@@ -158,6 +181,9 @@ void studio_save(studio *s)
 static bool can_replay(studio *s, bool redo)
 {
     app_scene_authoring *scene = s->scene;
+    if (graph_focused(s)) {
+        return studio_graph_can_replay(s, redo);
+    }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         return asset && acount(redo ? asset->redo : asset->undo) > 0;
@@ -182,6 +208,11 @@ static bool active_dirty(studio *s)
 void studio_history(studio *s, bool redo)
 {
     if (!editable(s) || !can_replay(s, redo)) {
+        return;
+    }
+    if (graph_focused(s)) {
+        studio_graph_history(s, redo);
+        studio_report(s, redo ? "Redo" : "Undo");
         return;
     }
     finish_transform_edit(s->scene, false);
@@ -591,6 +622,16 @@ static void settings(studio *s)
             s->prefs.comfortable = true;
         }
         kit_menu_separator(k, "s1");
+        kit_menu_group(k, "wires", "Graph Wires");
+        static const char *const wires[] = { "Curved", "Straight", "Angular" };
+        for (int w = 0; w < 3; w++) {
+            char key[16];
+            snprintf(key, sizeof key, "wires%d", w);
+            if (check_item(k, key, wires[w], s->prefs.wires == (kit_wire_style)w)) {
+                s->prefs.wires = (kit_wire_style)w;
+            }
+        }
+        kit_menu_separator(k, "s2");
         if (check_item(k, "motion", "Reduce Motion", s->prefs.reduced_motion)) {
             s->prefs.reduced_motion = !s->prefs.reduced_motion;
         }
@@ -685,6 +726,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
     editor_type_menu(s, index);
     switch (editor) {
         case STUDIO_EDITOR_SCENE: studio_scene_header(s, index); break;
+        case STUDIO_EDITOR_BEHAVIOR: studio_behavior_header(s, index); break;
         case STUDIO_EDITOR_OUTLINER: studio_outliner_header(s, index); break;
         case STUDIO_EDITOR_PROPERTIES:
             studio_properties_header(s, index);
@@ -907,7 +949,7 @@ enum
 
 static void palette(studio *s)
 {
-    if (!kit_command_is_open(s->kit)) {
+    if (studio_graph_palette(s) || !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1094,11 +1136,11 @@ void studio_shortcuts(studio *s)
             studio_history(s, shift);
         } else if (mod && key == SDLK_Y) {
             studio_history(s, true);
-        } else if (!mod && key == SDLK_SPACE) {
+        } else if (!mod && key == SDLK_SPACE && editor != STUDIO_EDITOR_BEHAVIOR) {
             studio_runtime(s, APP_RUNTIME_PLAY);
         } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {
             studio_frame_selection(s);
-        } else if (!mod && shift && key == SDLK_D && editor != STUDIO_EDITOR_PROPERTIES) {
+        } else if (!mod && shift && key == SDLK_D && editor != STUDIO_EDITOR_PROPERTIES && editor != STUDIO_EDITOR_BEHAVIOR) {
             studio_duplicate(s);
         } else if (!mod && editor == STUDIO_EDITOR_OUTLINER && (key == SDLK_X || key == SDLK_DELETE)) {
             studio_delete(s);

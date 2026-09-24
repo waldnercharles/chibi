@@ -285,6 +285,8 @@ unsigned editor_edit_revision(const editor *e);
 bool editor_has_pending_edits(const editor *e);
 void editor_undo(editor *e);
 void editor_redo(editor *e);
+bool editor_can_undo(const editor *e);
+bool editor_can_redo(const editor *e);
 
 /* Behavior output from the preview, oldest first. The origin label is written
  * to origin; the message stays valid until the log changes. */

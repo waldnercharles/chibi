@@ -402,6 +402,32 @@ bool test_rmlui_kit()
     }
     ok &= check(!kit_find(f.k, "layer/@toaster/t2", &removed), "toast expires");
 
+    /* Text measures in dp, independent of any canvas scale. */
+    float hello = kit_text_width(f.k, "Hello", 12, 400);
+    ok &= check(hello > 20 && hello < 40, "text measures in dp");
+    ok &= check(fabsf(kit_text_width(f.k, "Hello", 24, 400) - 2 * hello) < 2, "text width follows size");
+    ok &= check(kit_text_width(f.k, "Hello", 12, 700) > hello, "bold text is wider");
+
+    /* A second context, like the zoomed graph canvas, comes and goes while the
+       first keeps working. */
+    editor_rml_backend *second = editor_rml_backend_create(200, 100, 2);
+    kit *canvas = second ? kit_create(editor_rml_backend_context(second), "graph.rml")
+                         : NULL;
+    ok &= check(canvas != NULL, "a second context loads its document");
+    if (canvas) {
+        kit_frame_input in = { .dp_ratio = 2, .width = 200, .height = 100 };
+        kit_begin(canvas, &in);
+        kit_root(canvas, "world");
+        kit_label(canvas, "node", NULL, "Node");
+        kit_end(canvas);
+        editor_rml_backend_update(second, 1.0 / 60);
+        kit_rect node;
+        ok &= check(kit_find(canvas, "world/node", &node) && node.w > 0, "second context lays out");
+        kit_destroy(canvas);
+    }
+    editor_rml_backend_destroy(second);
+    ok &= check(click(&f, "app/bar/button"), "first context works after the second closes");
+
     kit_destroy(f.k);
     editor_rml_backend_destroy(f.backend);
     return ok;

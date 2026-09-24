@@ -167,14 +167,22 @@ struct Geometry
     CF_Mesh mesh = {};
 };
 
+/* RmlUi has one system interface for every context. Contexts share its clock,
+ * which follows the backend that has advanced furthest, and each backend
+ * collects the cursor its own context asks for while it is being driven. */
 class BackendSystem final : public Rml::SystemInterface
 {
 public:
     double GetElapsedTime() override { return elapsed_seconds; }
 
-    void advance(double delta_seconds) { elapsed_seconds += delta_seconds; }
-    void SetMouseCursor(const Rml::String &name) override { cursor = name; }
-    Rml::String cursor = "arrow";
+    void advance_to(double seconds) { elapsed_seconds = std::max(elapsed_seconds, seconds); }
+    void SetMouseCursor(const Rml::String &name) override
+    {
+        if (cursor) {
+            *cursor = name;
+        }
+    }
+    Rml::String *cursor = nullptr;
 
     void SetClipboardText(const Rml::String &text) override
     {
@@ -243,10 +251,18 @@ private:
 
 } // namespace
 
+namespace {
+
+BackendSystem shared_system;
+int backend_count = 0;
+
+} // namespace
+
 struct editor_rml_backend
 {
-    BackendSystem system;
     BackendRenderer renderer{ this };
+    Rml::String cursor = "arrow";
+    double elapsed = 0.0;
     Rml::Context *context = nullptr;
     std::string context_name;
     int logical_width = 1;
@@ -254,7 +270,6 @@ struct editor_rml_backend
     float scale = 1.0f;
     int physical_width = 1;
     int physical_height = 1;
-    bool initialized = false;
     bool gpu_ready = false;
     uint64_t next_geometry = 1;
     uint64_t next_texture = 1;
@@ -580,6 +595,8 @@ void BackendRenderer::SetScissorRegion(Rml::Rectanglei region)
     cf_draw_push_scissor(scissor);
 }
 
+static bool initialise_rml();
+
 extern "C" editor_rml_backend *editor_rml_backend_create(int logical_width, int logical_height, float framebuffer_scale)
 {
     static uint64_t context_serial = 0;
@@ -590,13 +607,35 @@ extern "C" editor_rml_backend *editor_rml_backend_create(int logical_width, int 
     set_dimensions(backend);
     backend->context_name = "Chibi Editor " + std::to_string(++context_serial);
 
-    Rml::SetSystemInterface(&backend->system);
-    Rml::SetRenderInterface(&backend->renderer);
-    if (!Rml::Initialise()) {
+    /* The first backend initializes RmlUi and its fonts; later ones add a
+       context with their own renderer and canvas, such as the graph editor's. */
+    if (backend_count == 0 && !initialise_rml()) {
         delete backend;
         return nullptr;
     }
-    backend->initialized = true;
+    backend_count++;
+    backend->context = Rml::CreateContext(
+        backend->context_name,
+        { backend->physical_width, backend->physical_height },
+        &backend->renderer
+    );
+    if (!backend->context) {
+        if (--backend_count == 0) {
+            Rml::Shutdown();
+        }
+        delete backend;
+        return nullptr;
+    }
+    backend->context->SetDensityIndependentPixelRatio(backend->scale);
+    return backend;
+}
+
+static bool initialise_rml()
+{
+    Rml::SetSystemInterface(&shared_system);
+    if (!Rml::Initialise()) {
+        return false;
+    }
     Rml::LoadFontFace(
         Rml::Span<const Rml::byte>(editor_ui_font, editor_ui_font_size),
         "Inter",
@@ -626,16 +665,7 @@ extern "C" editor_rml_backend *editor_rml_backend_create(int logical_width, int 
             false
         );
     }
-    backend->context = Rml::CreateContext(
-        backend->context_name,
-        { backend->physical_width, backend->physical_height }
-    );
-    if (!backend->context) {
-        editor_rml_backend_destroy(backend);
-        return nullptr;
-    }
-    backend->context->SetDensityIndependentPixelRatio(backend->scale);
-    return backend;
+    return true;
 }
 
 extern "C" void editor_rml_backend_destroy(editor_rml_backend *backend)
@@ -643,14 +673,14 @@ extern "C" void editor_rml_backend_destroy(editor_rml_backend *backend)
     if (!backend) {
         return;
     }
-    if (backend->initialized) {
-        if (backend->context) {
-            Rml::RemoveContext(backend->context_name);
-            backend->context = nullptr;
-        }
+    if (backend->context) {
+        Rml::RemoveContext(backend->context_name);
+        backend->context = nullptr;
+        /* Drops this renderer's manager while the renderer is still alive. */
         Rml::ReleaseRenderManagers();
-        Rml::Shutdown();
-        backend->initialized = false;
+        if (--backend_count == 0) {
+            Rml::Shutdown();
+        }
     }
     destroy_gpu(backend);
     delete backend;
@@ -670,11 +700,33 @@ extern "C" void editor_rml_backend_resize(
     set_dimensions(backend);
 }
 
+extern "C" void editor_rml_backend_resize_pixels(
+    editor_rml_backend *backend,
+    int physical_width,
+    int physical_height,
+    float dp_ratio
+)
+{
+    assert(backend);
+    backend->scale = std::max(dp_ratio, 0.01f);
+    backend->physical_width = std::max(physical_width, 1);
+    backend->physical_height = std::max(physical_height, 1);
+    backend->logical_width = std::max(1, (int)std::lround(backend->physical_width / backend->scale));
+    backend->logical_height = std::max(1, (int)std::lround(backend->physical_height / backend->scale));
+    if (backend->context) {
+        backend->context->SetDimensions({ backend->physical_width, backend->physical_height });
+        backend->context->SetDensityIndependentPixelRatio(backend->scale);
+    }
+}
+
 extern "C" void editor_rml_backend_update(editor_rml_backend *backend, double delta_seconds)
 {
     assert(backend && backend->context);
-    backend->system.advance(std::max(0.0, delta_seconds));
+    backend->elapsed += std::max(0.0, delta_seconds);
+    shared_system.advance_to(backend->elapsed);
+    shared_system.cursor = &backend->cursor;
     backend->context->Update();
+    shared_system.cursor = nullptr;
 }
 
 extern "C" void editor_rml_backend_render(editor_rml_backend *backend)
@@ -750,6 +802,7 @@ extern "C" unsigned editor_rml_backend_process_input(editor_rml_backend *backend
     const int y = (int)std::lround(input->y * backend->scale);
     bool unconsumed = true;
     unsigned capture = 0;
+    shared_system.cursor = &backend->cursor;
     switch (input->type) {
         case EDITOR_RML_POINTER_MOVE:
             unconsumed = context.ProcessMouseMove(x, y, modifiers);
@@ -802,6 +855,7 @@ extern "C" unsigned editor_rml_backend_process_input(editor_rml_backend *backend
             }
             break;
     }
+    shared_system.cursor = nullptr;
     if (context.IsMouseInteracting()) {
         capture |= EDITOR_RML_CAPTURE_POINTER;
     }
@@ -816,7 +870,7 @@ extern "C" void editor_rml_backend_set_texture(editor_rml_backend *backend, cons
 
 extern "C" const char *editor_rml_backend_cursor(const editor_rml_backend *backend)
 {
-    return backend->system.cursor.c_str();
+    return backend->cursor.c_str();
 }
 
 extern "C" void editor_rml_backend_present(editor_rml_backend *backend)

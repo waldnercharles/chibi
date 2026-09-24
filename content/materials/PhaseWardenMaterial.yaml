@@ -22,13 +22,9 @@ graphs:
       Height: {id: 38}
   - id: 9
     type: Shader Vector3
-    x: 0.0
-    "y": 0.0
     inputs: {X: 0.019999999552965164, "Y": 0.05000000074505806, Z: 0.18000000715255737}
   - id: 14
     type: Shader Vector3
-    x: 0.0
-    "y": 144.0
     inputs: {X: 0.05000000074505806, "Y": 0.6499999761581421, Z: 1.2000000476837158}
   edges:
   - {from: 9.Value, to: 1.Base Color}

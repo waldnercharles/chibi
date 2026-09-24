@@ -81,78 +81,6 @@ static int ed_search_match_cmp(const void *a, const void *b)
     return c ? c : strcmp(ma->name, mb->name);
 }
 
-static bool ed_inline_inputs_default(const node *n)
-{
-    for (int i = 0; i < n->input_count; i++) {
-        const pin_spec *pin = &n->input_pins[i];
-        unsigned implicit_flags = PIN_FLAG_SETTING | PIN_FLAG_DEFAULT_SELF |
-                                  PIN_FLAG_SERVICE;
-        if (pin->kind != PIN_DATA || pin->type == PIN_FLOW ||
-            (!(pin->flags & implicit_flags) && pin->type == PIN_STRUCT &&
-             !pin->default_value.ptr) ||
-            (!(pin->flags & implicit_flags) && pin->type == PIN_HANDLE &&
-             !pin->default_value.u64)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool ed_node_can_inline(const editor *e, const node *n)
-{
-    graph *g = e ? e->active_graph : NULL;
-    if (!ed_source_scope_available(e) || !g || !n || !n->desc || n->inline_source ||
-        n->disabled || node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
-        n->desc->flow_kind != NODE_FLOW_NONE || n->desc == &NODE_CallFunction ||
-        n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression ||
-        n->desc == &NODE_CallMacro || !ed_inline_inputs_default(n)) {
-        return false;
-    }
-    for (int p = 0; p < n->output_count; p++) {
-        if (graph_output_local(g, n, p)) {
-            return false;
-        }
-    }
-    const edge *outgoing = NULL;
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *edge = &g->edges[i];
-        if (edge->from_id != n->id) {
-            continue;
-        }
-        if (edge->kind != GRAPH_EDGE_DATA || outgoing || edge->to_id == n->id) {
-            return false;
-        }
-        outgoing = edge;
-    }
-    if (!outgoing) {
-        return false;
-    }
-    node *target = graph_node_by_id(g, outgoing->to_id);
-    int source_is_output = 0;
-    int target_is_output = 0;
-    const pin_spec *source_pin = graph_pin_by_id(n, outgoing->from_pin_id, &source_is_output, NULL);
-    const pin_spec *target_pin = target
-                                   ? graph_pin_by_id(target, outgoing->to_pin_id, &target_is_output, NULL)
-                                   : NULL;
-    if (!source_pin || !target_pin || !source_is_output || target_is_output ||
-        source_pin->kind != PIN_DATA || target_pin->kind != PIN_DATA ||
-        ((source_pin->flags | target_pin->flags) & PIN_FLAG_SETTING)) {
-        return false;
-    }
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *edge = &g->edges[i];
-        if (edge->to_id != n->id) {
-            continue;
-        }
-        node *source = graph_node_by_id(g, edge->from_id);
-        if (edge->kind != GRAPH_EDGE_DATA || !graph_node_is_vector_constructor(n) ||
-            !source || !graph_node_is_inline(g, source)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 void ed_open_context_menu(editor *e, ImVec2 mouse)
 {
     if (e->active_graph->math_expression) {
@@ -928,7 +856,7 @@ int ed_expose_spawned_output_fields(editor *e, node *n)
     return 0;
 }
 
-static int ed_autowire_spawn_input(editor *e, node *n, bool inline_source)
+static int ed_autowire_spawn_input(editor *e, node *n)
 {
     int connected = 0;
     const pin_spec *input = &e->spawn_link_pin.n->input_pins[e->spawn_link_pin.index];
@@ -936,7 +864,7 @@ static int ed_autowire_spawn_input(editor *e, node *n, bool inline_source)
         ed_pin_view target = { n, ED_PIN_OUTPUT, p, { 0.0f, 0.0f } };
         const pin_spec *output = &n->output_pins[p];
         if (output->kind == input->kind && ed_data_connectable(output, input)) {
-            connected = ed_connect_with_inline(e, &e->spawn_link_pin, &target, inline_source);
+            connected = ed_connect(e, &e->spawn_link_pin, &target);
         }
     }
     return connected;
@@ -944,7 +872,6 @@ static int ed_autowire_spawn_input(editor *e, node *n, bool inline_source)
 
 static int ed_autowire_spawn(editor *e, node *n)
 {
-    bool inline_source = editor_ui_inline_edge_nodes();
     if (e->spawn_link_pin.kind == ED_PIN_OUTPUT) {
         int connected = 0;
         for (int p = 0; p < n->input_count && !connected; p++) {
@@ -953,16 +880,16 @@ static int ed_autowire_spawn(editor *e, node *n)
                                      ->output_pins[e->spawn_link_pin.index];
             const pin_spec *b = &n->input_pins[p];
             if (a->kind == b->kind && ed_data_connectable(a, b)) {
-                connected = ed_connect_with_inline(e, &e->spawn_link_pin, &target, inline_source);
+                connected = ed_connect(e, &e->spawn_link_pin, &target);
             }
         }
         return connected;
     }
-    int connected = ed_autowire_spawn_input(e, n, inline_source);
+    int connected = ed_autowire_spawn_input(e, n);
     if (connected || ed_expose_spawned_output_fields(e, n) != 0) {
         return connected;
     }
-    return ed_autowire_spawn_input(e, n, inline_source);
+    return ed_autowire_spawn_input(e, n);
 }
 
 node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
@@ -1287,10 +1214,11 @@ void ed_handle_popups(editor *e)
                 }
             }
         }
-        bool can_inline = ed_node_can_inline(e, n);
+        bool can_inline = ed_source_scope_available(e) &&
+                          graph_node_can_inline(e->active_graph, n);
         if (ImGui_MenuItemEx("Inline", NULL, false, can_inline)) {
             ed_snapshot_before(e);
-            int result = graph_set_node_inline(e->active_graph, n, true);
+            int result = graph_inline_node(e->active_graph, n);
             assert(result == 0);
             (void)result;
             ImGui_CloseCurrentPopup();

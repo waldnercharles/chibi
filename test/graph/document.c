@@ -352,6 +352,9 @@ void run_graph_document_checks()
         ad->x = 50.0f;
         ad->y = 60.0f;
 
+        /* Expanded, so c2 stays outside the subset instead of folding into ad. */
+        graph_set_node_presentation(&g2, c1, NODE_PRESENTATION_EXPANDED);
+        graph_set_node_presentation(&g2, c2, NODE_PRESENTATION_EXPANDED);
         node *subset[] = { c1, ad }; /* c2 is outside the subset */
         char *json = graph_save_nodes_json(&g2, subset, 2);
         test_check(json != NULL, "subset: serialize");
@@ -403,6 +406,8 @@ void run_graph_document_checks()
         c1->y = 20.0f;
         ad->x = 50.0f;
         ad->y = 60.0f;
+        graph_set_node_presentation(&g4, c1, NODE_PRESENTATION_EXPANDED);
+        graph_set_node_presentation(&g4, c2, NODE_PRESENTATION_EXPANDED);
 
         node *subset[] = { c1, ad };
         char *json = graph_save_nodes_json(&g4, subset, 2);

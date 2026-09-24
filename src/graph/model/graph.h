@@ -143,6 +143,8 @@ const char *graph_event_name(const node *event_node);
 void graph_flow_pause(graph *g);
 void graph_flow_resume(graph *g);
 int graph_remove_node(graph *g, node *n);
+/* Removes n and the inline nodes drawn inside it. */
+int graph_remove_node_tree(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
@@ -150,11 +152,23 @@ int graph_input_source(const graph *g, const node *n, int pin, node **src, int *
  * returned strings are borrowed from the graph or registry; a field path
  * assembled from nested projections is graph-owned. */
 int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_binding *binding);
-/* A presentation hint for folding a pure source into its single downstream
- * data consumer. The node and edge remain ordinary graph data. */
+/* Whether the editor folds n into its single downstream data consumer's pin
+ * row instead of drawing a box. The node and edge remain ordinary graph data
+ * that evaluation uses unchanged; the canvas, arrangement, extraction and
+ * serialization share this predicate.
+ * An inline node is pure, enabled, not a function call, reroute or local
+ * source, has no setting pins besides a chosen Component, has exactly one
+ * outgoing edge (a data wire),
+ * and each input is wired from an inline node or holds a value. The `auto`
+ * presentation also requires a tree of at most GRAPH_INLINE_AUTO_NODES nodes
+ * without breakpoints or watches, outside generated expression graphs. */
+#define GRAPH_INLINE_AUTO_NODES 3
 bool graph_node_is_inline(const graph *g, const node *n);
+/* Whether n would be inline with the `inline` presentation. */
+bool graph_node_can_inline(const graph *g, const node *n);
 bool graph_node_is_vector_constructor(const node *n);
 const node_desc *graph_vector_constructor(const pin_spec *pin);
+/* The visible node that draws n: n itself unless n is inline. */
 node *graph_inline_owner(const graph *g, node *n);
 int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
@@ -187,7 +201,11 @@ const pin_binding *graph_pin_binding(const graph *g, const node *n, int output, 
 int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_binding *binding);
 int graph_move_pin(graph *g, node *n, int output, int index, int target_index);
 int graph_set_node_disabled(graph *g, node *n, int disabled);
-int graph_set_node_inline(graph *g, node *n, int enabled);
+int graph_set_node_presentation(graph *g, node *n, node_presentation presentation);
+/* The presentation spelled `name`, or -1. */
+int graph_presentation_by_name(const char *name);
+/* Folds n, persisting `inline` only when `auto` would draw its box. */
+int graph_inline_node(graph *g, node *n);
 int graph_set_breakpoint(graph *g, node *n, int enabled);
 int graph_set_all_breakpoints(graph *g, int enabled);
 int graph_set_pin_watch(graph *g, node *n, int output, int index, int enabled);

@@ -30,15 +30,11 @@ graphs:
         default: {x: 0.0, "y": 0.0}
   - id: 39
     type: Shader Parameter
-    x: 0.0
-    "y": 130.0
     reference_name: Radius
     outputs:
       Value: {flags: 0, group: 0, default: 35.0}
   - id: 41
     type: Shader Parameter
-    x: 0.0
-    "y": 260.0
     reference_id: 1
     reference_name: Width
     outputs:
@@ -62,8 +58,6 @@ graphs:
       Mask: {declaration_id: 108, type: float, type_name: null}
   - id: 48
     type: Shader Parameter
-    x: 0.0
-    "y": 440.0
     reference_id: 2
     reference_name: Color
     outputs:
@@ -75,8 +69,6 @@ graphs:
         default: {x: 0.05000000074505806, "y": 0.6000000238418579, z: 1.0}
   - id: 50
     type: Shader Parameter
-    x: 0.0
-    "y": 630.0
     reference_id: 5
     reference_name: Color B
     outputs:
@@ -114,19 +106,15 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
-  - {id: 58, type: Shader Time, x: 0.0, "y": 890.0}
+  - {id: 58, type: Shader Time}
   - id: 60
     type: Shader Parameter
-    x: 0.0
-    "y": 1020.0
     reference_id: 3
     reference_name: Speed
     outputs:
       Value: {flags: 0, group: 0, default: 2.0}
   - id: 62
     type: Shader Parameter
-    x: 620.0
-    "y": 1080.0
     reference_id: 4
     reference_name: Flash
     outputs:

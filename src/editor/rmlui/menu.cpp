@@ -434,10 +434,6 @@ void apply_state(editor_rml_menu *menu)
         );
     }
     set_check_state(
-        menu->document->GetElementById("view.inline_edge_nodes"),
-        menu->state.inline_edge_nodes
-    );
-    set_check_state(
         menu->document->GetElementById("view.reduced_motion"),
         menu->state.reduced_motion
     );
@@ -459,7 +455,6 @@ bool states_equal(const editor_rml_menu_state &left, const editor_rml_menu_state
         left.design_preview != right.design_preview ||
         left.can_undo != right.can_undo || left.can_redo != right.can_redo ||
         left.navigator_visible != right.navigator_visible ||
-        left.inline_edge_nodes != right.inline_edge_nodes ||
         left.reduced_motion != right.reduced_motion ||
         left.mac_shortcuts != right.mac_shortcuts) {
         return false;

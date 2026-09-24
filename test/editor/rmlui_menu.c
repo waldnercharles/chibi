@@ -420,8 +420,7 @@ static bool design_preview(rmlui_menu_fixture *fixture)
     static const char *const hidden_ids[] = {
         "view.graph_and_scene", "view.navigator",   "view.inspector",
         "view.node_canvas",     "view.scene",       "view.compiler_results",
-        "view.output_log",      "view.performance", "view.inline_edge_nodes",
-        "view.reset_layout",
+        "view.output_log",      "view.performance", "view.reset_layout",
     };
     for (int i = 0; i < (int)(sizeof hidden_ids / sizeof *hidden_ids); i++) {
         hidden &= !item_center(hidden_ids[i], &(ImVec2){ 0 });
@@ -561,16 +560,6 @@ bool test_rmlui_menu()
         bool nav_restored = editor_ui_navigator_visible() == nav_before;
         state_actions &= view_open && navigator_visible && navigator_clicked &&
                          nav_toggled && nav_restored;
-
-        bool inline_before = editor_ui_inline_edge_nodes();
-        dismiss_menu();
-        view_open = click_item("view.menu");
-        bool inline_visible = item_center("view.inline_edge_nodes", &(ImVec2){ 0 });
-        bool inline_clicked = click_item("view.inline_edge_nodes");
-        bool inline_toggled = editor_ui_inline_edge_nodes() != inline_before;
-        dismiss_menu();
-        editor_ui_set_inline_edge_nodes(inline_before);
-        state_actions &= view_open && inline_visible && inline_clicked && inline_toggled;
 
         bool motion_before = editor_ui_reduced_motion();
         dismiss_menu();

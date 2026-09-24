@@ -122,20 +122,30 @@ static int node_index(const graph *graph, uint64_t id)
     return -1;
 }
 
-static void default_layout(const graph *graph, vec2 *positions)
+/* Arranges the nodes that draw a box. Inline nodes are drawn inside their
+ * consumer, so they have no box, no wires and keep their position. */
+static void arrange_boxes(graph *graph, bool keep_placed)
 {
     int count = acount(graph->nodes);
     /* Arrange in ID order from zeroed seeds so in-memory node order and
      * current positions cannot change the result. */
-    node_order *order = xmalloc((size_t)count * sizeof *order);
-    int *slot = xmalloc((size_t)count * sizeof *slot);
+    node_order *order = NULL;
+    int *slot = xmalloc((size_t)(count ? count : 1) * sizeof *slot);
     for (int i = 0; i < count; i++) {
-        order[i] = (node_order){ graph->nodes[i]->id, i };
+        slot[i] = -1;
+        if (!graph_node_is_inline(graph, graph->nodes[i])) {
+            apush(order, ((node_order){ graph->nodes[i]->id, i }));
+        }
     }
-    qsort(order, (size_t)count, sizeof *order, compare_node_ids);
-    arrange_box *boxes = xmalloc((size_t)count * sizeof *boxes);
-    arrange_point *arranged = xcalloc((size_t)count, sizeof *arranged);
-    for (int i = 0; i < count; i++) {
+    int boxes_count = acount(order);
+    if (!boxes_count) {
+        free(slot);
+        return;
+    }
+    qsort(order, (size_t)boxes_count, sizeof *order, compare_node_ids);
+    arrange_box *boxes = xmalloc((size_t)boxes_count * sizeof *boxes);
+    arrange_point *arranged = xcalloc((size_t)boxes_count, sizeof *arranged);
+    for (int i = 0; i < boxes_count; i++) {
         boxes[i] = graph_layout_box(graph, graph->nodes[order[i].index]);
         slot[order[i].index] = i;
     }
@@ -145,7 +155,7 @@ static void default_layout(const graph *graph, vec2 *positions)
         int from = node_index(graph, edge->from_id),
             to = node_index(graph, edge->to_id);
         int from_pin, to_pin;
-        if (from < 0 || to < 0 ||
+        if (from < 0 || to < 0 || slot[from] < 0 || slot[to] < 0 ||
             !graph_pin_by_id(graph->nodes[from], edge->from_pin_id, NULL, &from_pin) ||
             !graph_pin_by_id(graph->nodes[to], edge->to_pin_id, NULL, &to_pin)) {
             continue;
@@ -164,57 +174,41 @@ static void default_layout(const graph *graph, vec2 *positions)
         qsort(links, (size_t)acount(links), sizeof *links, compare_links);
     }
     arrange_graph input = { .boxes = boxes,
-                            .box_count = count,
+                            .box_count = boxes_count,
                             .links = links,
                             .link_count = acount(links) };
     arrange_layout(&input, ARRANGE_ROUTE_CURVED, arranged);
-    for (int i = 0; i < count; i++) {
-        positions[order[i].index] = arranged[i];
+    for (int i = 0; i < boxes_count; i++) {
+        node *node = graph->nodes[order[i].index];
+        if (keep_placed && node->placed) {
+            continue;
+        }
+        node->x = arranged[i].x;
+        node->y = arranged[i].y;
+        node->placed = false;
     }
     afree(links);
     free(arranged);
     free(boxes);
     free(slot);
-    free(order);
+    afree(order);
 }
 
 void graph_layout(graph *graph)
 {
-    int count = acount(graph->nodes);
-    if (!count) {
-        return;
-    }
-    vec2 *positions = xmalloc((size_t)count * sizeof *positions);
-    default_layout(graph, positions);
-    for (int i = 0; i < count; i++) {
-        graph->nodes[i]->x = positions[i].x;
-        graph->nodes[i]->y = positions[i].y;
-        graph->nodes[i]->placed = false;
-    }
+    arrange_boxes(graph, false);
     for (int i = 0; i < acount(graph->edges); i++) {
         graph->edges[i].reroute_count = 0;
         graph->edges[i].custom_handles = false;
     }
-    free(positions);
 }
 
 void graph_place_unplaced(graph *graph)
 {
-    int count = acount(graph->nodes);
-    bool unplaced = false;
-    for (int i = 0; i < count && !unplaced; i++) {
-        unplaced = !graph->nodes[i]->placed;
-    }
-    if (!unplaced) {
-        return;
-    }
-    vec2 *positions = xmalloc((size_t)count * sizeof *positions);
-    default_layout(graph, positions);
-    for (int i = 0; i < count; i++) {
-        if (!graph->nodes[i]->placed) {
-            graph->nodes[i]->x = positions[i].x;
-            graph->nodes[i]->y = positions[i].y;
+    for (int i = 0; i < acount(graph->nodes); i++) {
+        if (!graph->nodes[i]->placed && !graph_node_is_inline(graph, graph->nodes[i])) {
+            arrange_boxes(graph, true);
+            return;
         }
     }
-    free(positions);
 }

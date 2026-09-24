@@ -138,8 +138,6 @@ bool editor_ui_focus_mode();
 void editor_ui_set_focus_mode(bool enabled);
 bool editor_ui_reduced_motion();
 void editor_ui_set_reduced_motion(bool enabled);
-bool editor_ui_inline_edge_nodes();
-void editor_ui_set_inline_edge_nodes(bool enabled);
 
 /* Register workspace preferences before the first ImGui frame loads settings. */
 void editor_ui_initialize(bool persist);

@@ -100,7 +100,6 @@ static bool ui_runtime_playing;
 static bool ui_runtime_session;
 static bool ui_can_undo;
 static bool ui_can_redo;
-static bool ui_inline_edge_nodes = true;
 
 static float ui_framebuffer_scale_x(void);
 static float ui_framebuffer_scale_y(void);
@@ -134,7 +133,6 @@ static void ui_settings_clear(ImGuiContext *, ImGuiSettingsHandler *)
     ui_focus_mode = false;
     ui_load_focus = false;
     ui_reduce_motion = false;
-    ui_inline_edge_nodes = true;
     ui_scene_central_graph = 0;
     ui_scene_central_scene = 0;
     ui_set_default_visibility();
@@ -181,10 +179,6 @@ static void ui_settings_read(ImGuiContext *, ImGuiSettingsHandler *, void *, con
         ui_reduce_motion = value;
         return;
     }
-    if (strcmp(key, "InlineEdgeNodes") == 0) {
-        ui_inline_edge_nodes = value;
-        return;
-    }
     for (int pane = 0; pane < EDITOR_UI_PANE_COUNT; pane++) {
         if (strcmp(key, UI_PANE_KEYS[pane]) == 0) {
             ui_pane_visibility[pane] = value;
@@ -200,13 +194,7 @@ static void ui_settings_apply(ImGuiContext *, ImGuiSettingsHandler *)
 
 static void ui_settings_write(ImGuiContext *, ImGuiSettingsHandler *, ImGuiTextBuffer *out)
 {
-    ImGuiTextBuffer_appendf(
-        out,
-        "[Chibi][Workspace]\nFocus=%d\nReduceMotion=%d\nInlineEdgeNodes=%d\n",
-        ui_focus_mode,
-        ui_reduce_motion,
-        ui_inline_edge_nodes
-    );
+    ImGuiTextBuffer_appendf(out, "[Chibi][Workspace]\nFocus=%d\nReduceMotion=%d\n", ui_focus_mode, ui_reduce_motion);
     ImGuiTextBuffer_appendf(out, "NavigatorOutline=%d\n", ui_navigator_outline);
     ImGuiTextBuffer_appendf(
         out,
@@ -272,20 +260,6 @@ void editor_ui_set_reduced_motion(bool enabled)
     if (ui_context) {
         ImGui_GetStyle()->ScrollSmooth = enabled ? 1.0f : UI_SCROLL_SMOOTHNESS;
     }
-    ui_settings_changed();
-}
-
-bool editor_ui_inline_edge_nodes()
-{
-    return ui_inline_edge_nodes;
-}
-
-void editor_ui_set_inline_edge_nodes(bool enabled)
-{
-    if (ui_inline_edge_nodes == enabled) {
-        return;
-    }
-    ui_inline_edge_nodes = enabled;
     ui_settings_changed();
 }
 
@@ -1723,7 +1697,6 @@ static void ui_draw_menu(void)
         .can_undo = ui_can_undo,
         .can_redo = ui_can_redo,
         .navigator_visible = ui_navigator_visible(),
-        .inline_edge_nodes = ui_inline_edge_nodes,
         .reduced_motion = ui_reduce_motion,
         .mac_shortcuts = ImGui_GetIO()->ConfigMacOSXBehaviors,
     };
@@ -1771,9 +1744,6 @@ static void ui_draw_menu(void)
         }
         if (strcmp(action, "view.navigator") == 0) {
             ui_set_navigator_visible(!ui_navigator_visible());
-        }
-        if (strcmp(action, "view.inline_edge_nodes") == 0) {
-            editor_ui_set_inline_edge_nodes(!ui_inline_edge_nodes);
         }
         if (strcmp(action, "view.reduced_motion") == 0) {
             editor_ui_set_reduced_motion(!ui_reduce_motion);

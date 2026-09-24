@@ -646,6 +646,7 @@ void editor_reveal_node(editor *e, node *n)
     if (!e || !n) {
         return;
     }
+    n = graph_inline_owner(e->active_graph, n);
     ed_select_node(e, n, 0);
     e->reveal_target = n;
     editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);

@@ -102,7 +102,6 @@ uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
         assert(set_pin_binding_result == 0);
         (void)set_pin_binding_result;
     }
-    source->inline_source = false;
     g->topology_revision++;
     return local.id;
 }

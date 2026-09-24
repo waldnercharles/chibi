@@ -1365,10 +1365,8 @@ and keywords. Node search retains compatible-pin filtering and authored aliases.
 Quick Open keeps keyboard navigation in the result list and selects the best
 result after query changes.
 
-View includes `Inline nodes on edge drop`. When enabled, compatible component
-getters selected from an edge are folded into the destination binding; when
-disabled, the getter remains an ordinary graph node. Dedicated inline source
-controls keep their existing inline behavior.
+Compatible component getters dropped on or selected from an edge fold into the
+destination binding.
 
 Behavior event graphs also expose their typed event outputs in the same input
 binding picker. Choosing an event output stores the event and pin identity on
@@ -1462,10 +1460,28 @@ Assigning a scalar to a whole vector evaluates that scalar once and broadcasts i
 to every component. Shader lowering uses the same broadcast behavior. Inline
 scalar constants remain editable on the node.
 
-An eligible pure source with one data consumer can also be marked inline from its
-node context menu. The action uses the same presentation flag as inline source
-selection and remains unavailable for shared sources, sources with input
-connections, executable nodes, or otherwise invalid source nodes.
+Pure sources are drawn inside their consumer's input by default. A node folds
+when it is pure and enabled; is not a function call, reroute, or local source;
+has no setting pins besides a component node's chosen Component; has exactly
+one outgoing wire, a data wire into a non-setting input; and each input is
+wired from a folded node or holds a value (a literal, binding, local, or
+implied Self). `graph_node_is_inline` decides this for the canvas,
+arrangement, extraction, copying, and saving. Trees of up to three nodes fold
+into one chip written in Behavior Expression grammar with the typographic
+operators node titles use, such as `elapsed ≥ Self.GameWeapon.cooldown`. Nodes
+with breakpoints or watches, and generated expression graphs, keep their boxes.
+Folded nodes remain ordinary nodes and wires, so evaluation, compilation, and
+debugging are unchanged. They have no box, wires, or saved position, and
+arrangement skips them.
+
+Each node stores a presentation: `auto` (the default, omitted from files),
+`inline` (fold whenever legal, including larger trees), or `expanded` (always
+draw the box). **Expand source** sets `expanded` and places the node left of its
+consumer, below any box it would overlap. The node context menu's
+**Inline** folds an eligible node and stores `inline` only when `auto` would keep
+its box. Deleting a node deletes the sources drawn inside it. A wire dropped on
+an input replaces its folded source, as it would a literal. Older files load
+`inline_source: true` as `inline`.
 
 Node rows use four pixels of extra spacing. Only literal outputs are editable;
 runtime-written outputs do not reserve empty control rows. Entity, aggregate,

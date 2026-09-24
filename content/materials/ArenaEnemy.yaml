@@ -21,8 +21,6 @@ graphs:
       Height: {id: 80}
   - id: 37
     type: Shader Parameter
-    x: 0.0
-    "y": 0.0
     reference_name: Base Color
     outputs:
       Value:
@@ -38,16 +36,12 @@ graphs:
     inputs: {Power: 3.0, Base: 0.11999999731779099}
   - id: 45
     type: Shader Parameter
-    x: 0.0
-    "y": 535.0
     reference_id: 2
     reference_name: Edge Glow
     outputs:
       Value: {flags: 0, group: 0, default: 2.5999999046325684}
   - id: 47
     type: Shader Parameter
-    x: 290.0
-    "y": 675.0
     reference_id: 1
     reference_name: Glow Color
     outputs:
@@ -87,16 +81,12 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 57
     type: Shader Parameter
-    x: 720.0
-    "y": 515.0
     reference_id: 3
     reference_name: Roughness
     outputs:
       Value: {flags: 0, group: 0, default: 0.6000000238418579}
   - id: 59
     type: Shader Parameter
-    x: 720.0
-    "y": 680.0
     reference_id: 4
     reference_name: Metallic
     outputs:

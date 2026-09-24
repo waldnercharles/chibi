@@ -232,15 +232,7 @@ void ed_delete_selected(editor *e)
     }
     uint64_t *selected_ids = NULL;
     for (int i = 0; i < acount(e->selected); i++) {
-        node *n = e->selected[i];
-        apush(selected_ids, n->id);
-        for (int pin = 0; pin < n->input_count; pin++) {
-            node *source = NULL;
-            int source_pin = -1;
-            if (graph_inline_source(e->active_graph, n, pin, &source, &source_pin)) {
-                apush(selected_ids, source->id);
-            }
-        }
+        apush(selected_ids, e->selected[i]->id);
     }
     ed_snapshot_before(e);
     for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
@@ -263,7 +255,7 @@ void ed_delete_selected(editor *e)
     for (int i = acount(selected_ids) - 1; i >= 0; i--) {
         node *target = graph_node_by_id(e->active_graph, selected_ids[i]);
         if (target) {
-            int removed = graph_remove_node(e->active_graph, target);
+            int removed = graph_remove_node_tree(e->active_graph, target);
             assert(removed == 0);
             (void)removed;
         }
@@ -446,12 +438,22 @@ int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin
     return conversion_for_pins(output, input) != NULL;
 }
 
-int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
+/* Drops the inline tree a new wire replaces, as it would a literal. */
+static void ed_drop_replaced_source(editor *e, const ed_pin_view *output, const ed_pin_view *input, uint64_t replaced)
 {
-    return ed_connect_with_inline(e, a, b, true);
+    node *source = NULL;
+    int source_pin = -1;
+    node *old = graph_node_by_id(e->active_graph, replaced);
+    if (old &&
+        graph_input_source(e->active_graph, input->n, input->index, &source, &source_pin) &&
+        source == output->n && old != output->n) {
+        int removed = graph_remove_node_tree(e->active_graph, old);
+        assert(removed == 0);
+        (void)removed;
+    }
 }
 
-int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b, bool inline_source)
+int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
     ed_clear_connect_error(e);
     const ed_pin_view *output = a->kind == ED_PIN_OUTPUT ? a : b;
@@ -461,6 +463,11 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
     }
     const pin_spec *out_spec = &output->n->output_pins[output->index];
     const pin_spec *in_spec = &input->n->input_pins[input->index];
+    node *replaced = NULL;
+    int replaced_pin = -1;
+    uint64_t replaced_id = ed_inline_source_for(e, input->n, input->index, &replaced, &replaced_pin)
+                             ? replaced->id
+                             : 0;
     const char *out_name = ed_pin_type_name(out_spec);
     const char *in_name = ed_pin_type_name(in_spec);
     if (!ed_connection_specs_valid(out_spec, in_spec, out_spec->kind)) {
@@ -486,7 +493,8 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
                             input->index,
                             conv
                         ) == 0;
-        if (connected && inline_source) {
+        if (connected) {
+            ed_drop_replaced_source(e, output, input, replaced_id);
             (void)ed_simplify_component_getter(
                 e,
                 output->n,
@@ -596,7 +604,8 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
                 return 0;
             }
         }
-        if (inline_source && !reference_input) {
+        ed_drop_replaced_source(e, output, input, replaced_id);
+        if (!reference_input) {
             (void)ed_simplify_component_getter(
                 e,
                 output->n,

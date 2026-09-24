@@ -216,8 +216,18 @@ void editor_set_save_handler(editor *e, editor_save_handler handler, void *user)
     e->save_user = user;
 }
 
+static bool retained_keyboard;
+
+void editor_set_retained_keyboard(bool captured)
+{
+    retained_keyboard = captured;
+}
+
 int editor_host_captures_keyboard(void)
 {
+    if (retained_keyboard) {
+        return true;
+    }
     const ImGuiIO *io = ImGui_GetIO();
     const ImGuiContext *context = ImGui_GetCurrentContext();
     bool active_control = context->ActiveId &&

@@ -243,6 +243,8 @@ void editor_set_save_handler(editor *e, editor_save_handler handler, void *user)
 /* ENG-3: true while a panel is consuming the keyboard, so the host must not
  * also route those keys to a focused viewport or to the graph canvas. */
 int editor_host_captures_keyboard(void);
+/* A retained UI host reports its own keyboard capture here. */
+void editor_set_retained_keyboard(bool captured);
 
 /* The fixed event signatures supplied by the host. Core keeps lifecycle names
  * out of its runtime vocabulary; the editor uses this catalog when it creates
@@ -283,6 +285,18 @@ unsigned editor_edit_revision(const editor *e);
 bool editor_has_pending_edits(const editor *e);
 void editor_undo(editor *e);
 void editor_redo(editor *e);
+
+/* Behavior output from the preview, oldest first. The origin label is written
+ * to origin; the message stays valid until the log changes. */
+typedef struct
+{
+    double time;
+    unsigned long step;
+    const char *message;
+} editor_log_line;
+int editor_log_count(const editor *e);
+editor_log_line editor_log_at(const editor *e, int index, char *origin, size_t origin_size);
+void editor_clear_log(editor *e);
 
 /* Selects and centers a node in the canvas. */
 void editor_select_node(editor *e, node *n);

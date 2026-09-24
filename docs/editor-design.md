@@ -27,12 +27,14 @@ activates, and Escape or Tab returns focus to the editor. The existing document
 tabs and document-list popup still use ImGui. The list opens from its retained
 button's current bounds, including when invoked by keyboard.
 
-Use `--design-preview` on desktop or `?design-preview=1` in the browser to review
-only the converted menus and toolbar. Panels, document tabs, the activity rail,
-native tooltips and their View entries are hidden. Commands that need the full
-workspace are disabled; Reduce Motion remains available. This preview skips
-authoring input and simulation and does not save changes to the workspace layout.
-Launch without the flag to use the full editor.
+Use `--design-preview` on desktop or `?design-preview=1` in the browser to run
+Studio, the full-window RmlUi editor, in place of the ImGui workspace. Its
+direction, component kit and migration progress are in
+[the Studio design](prototypes/studio/DESIGN.md). Studio has Blender-style
+areas, a command palette, the Outliner, Properties and the scene viewport. It
+edits the same C authoring model with one undo step per gesture. The behavior
+graph, Assets and Output are not converted yet. Launch without the flag to use
+the ImGui editor.
 
 Menu labels share a centered 18dp line box. Popups align with their triggers,
 and checkable and ordinary View items share one text column. Pointer presses

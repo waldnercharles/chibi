@@ -64,6 +64,11 @@ extern "C"
         EDITOR_RML_KEY_X = 35,
         EDITOR_RML_KEY_Y = 36,
         EDITOR_RML_KEY_Z = 37,
+        EDITOR_RML_KEY_OEM_PLUS = 39,
+        EDITOR_RML_KEY_OEM_MINUS = 41,
+        EDITOR_RML_KEY_OEM_PERIOD = 42,
+        EDITOR_RML_KEY_NUMPAD_ENTER = 61,
+        EDITOR_RML_KEY_SUBTRACT = 65,
         EDITOR_RML_KEY_BACKSPACE = 69,
         EDITOR_RML_KEY_TAB = 70,
         EDITOR_RML_KEY_ENTER = 72,
@@ -151,6 +156,12 @@ extern "C"
     unsigned editor_rml_backend_process_input(editor_rml_backend *backend, const editor_rml_input *input);
     /* Opaque Rml::Context pointer for the C++ menu controller. Valid until backend_destroy. */
     void *editor_rml_backend_context(editor_rml_backend *backend);
+    /* Bind a host texture to "kit:<name>" sources, e.g. the Scene render target. */
+    void editor_rml_backend_set_texture(editor_rml_backend *backend, const char *name, uint64_t texture);
+    /* Cursor requested by the hovered element's RCSS `cursor` property. */
+    const char *editor_rml_backend_cursor(const editor_rml_backend *backend);
+    /* Queue the rendered UI over the app canvas; drawn by cf_app_draw_onto_screen. */
+    void editor_rml_backend_present(editor_rml_backend *backend);
 
 #ifdef __cplusplus
 }

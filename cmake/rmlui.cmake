@@ -33,6 +33,13 @@ chibi_rmlui_dependencies()
 
 add_library(chibi_rmlui STATIC
     src/editor/rmlui/backend.cpp
+    src/editor/rmlui/kit.cpp
+    src/editor/rmlui/kit_chart.cpp
+    src/editor/rmlui/kit_drag.cpp
+    src/editor/rmlui/kit_list.cpp
+    src/editor/rmlui/kit_motion.cpp
+    src/editor/rmlui/kit_text.cpp
+    src/editor/rmlui/kit_toast.cpp
     src/editor/rmlui/menu.cpp
     src/editor/rmlui/toolbar.cpp)
 target_compile_features(chibi_rmlui PRIVATE cxx_std_17)

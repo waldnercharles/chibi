@@ -3,6 +3,7 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
+#include "editor/studio/studio.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
@@ -42,6 +43,7 @@ typedef struct
     engine_viewport *viewport;
     app_scene_authoring *authoring;
     app_game_presentation *game;
+    studio *studio;
     int frames;
     int frame;
     const char *screenshot_path;
@@ -98,10 +100,11 @@ static int app_frame(app_loop *loop)
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
         CHIBI_TRACE_ZONE_END(game_zone);
     } else if (loop->design_preview) {
-        editor_ui_prepare();
-        editor_ui_begin_document_bar();
-        ImGui_End();
-        editor_ui_render();
+        app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
+        if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
+            fprintf(stderr, "runtime frame failed\n");
+        }
+        studio_frame(loop->studio, loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME);
     } else {
         CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor input and documents");
         editor_tick(loop->graph_editor, loop->monotonic_time);
@@ -445,10 +448,16 @@ static void application_activate(void *state)
     }
 #endif
     app_input_initialize();
+    if (loop->design_preview) {
+        loop->studio = studio_new(loop->authoring, loop->viewport);
+    }
 }
 
-static void application_deactivate(void *)
+static void application_deactivate(void *state)
 {
+    app_loop *loop = state;
+    studio_free(loop->studio);
+    loop->studio = NULL;
     app_input_shutdown();
     editor_ui_deactivate();
 }

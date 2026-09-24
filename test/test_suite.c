@@ -52,6 +52,7 @@ void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
 bool test_rmlui_menu();
+bool test_rmlui_kit();
 int rmlui_render_run(const char *program);
 
 static int fails;
@@ -161,6 +162,7 @@ TEST_CASE(all_checks)
     test_editor_checkpoint();
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
     test_check(test_rmlui_menu(), "RmlUi menu commands, focus, layout, and lifecycle");
+    test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_ui_scroll_smoothing(), "smooth scrolling is refresh-rate independent");
     test_check(test_gameplay_keyboard(), "gameplay keyboard navigation and text editing capture");
 
@@ -705,6 +707,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-menu") == 0) {
         return test_rmlui_menu() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
+        return test_rmlui_kit() ? 0 : 1;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-menu-render") == 0) {
         return rmlui_render_run(program_name);

@@ -1733,13 +1733,10 @@ static void draw_external_behavior_prompt(app_scene_authoring *scene)
     ImGui_EndPopup();
 }
 
-void app_scene_authoring_draw(app_scene_authoring *scene)
+/* Model bookkeeping shared by the ImGui shell and the retained Studio. */
+static void refresh_catalogs(app_scene_authoring *scene)
 {
     editor_set_asset_opener(scene->graph_editor, open_library_source, scene);
-    if (!scene) {
-        return;
-    }
-    scene_tabs_draw(scene);
     refresh_prototype_choices(scene);
     refresh_global_choices(scene);
     const behavior_asset **assets = NULL;
@@ -1761,32 +1758,10 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         scene->selected_attachment = -1;
         sync_editor_inspection(scene);
     }
-    editor_ui_pane interaction = editor_ui_take_document_interaction();
-    if (interaction == EDITOR_UI_PANE_NODE_CANVAS && scene->graph_document_id) {
-        scene_authoring_select_document(scene, scene->graph_document_kind, scene->graph_document_id);
-    }
-    if (interaction == EDITOR_UI_PANE_SCENE) {
-        scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    }
-    app_runtime_state transport = app_scene_authoring_runtime_state(scene);
-    editor_ui_set_runtime_state(
-        transport.playing,
-        transport.target == APP_RUNTIME_PREVIEW ? previewed_prototype(scene) != NULL
-                                                : scene->runtime_snapshot_valid
-    );
-    scene_prototype_asset *target_prototype = prototype_at(scene, scene->runtime_preview_prototype);
-    char target_label[160];
-    snprintf(
-        target_label,
-        sizeof target_label,
-        "%s",
-        transport.target == APP_RUNTIME_PREVIEW && target_prototype
-            ? target_prototype->prototype->name
-            : "Scene"
-    );
-    editor_ui_set_runtime_target(target_label, selected_prototype(scene) != NULL, runtime_session(scene));
-    scene->property_seen = false;
-    app_scene_authoring_navigation_sync(scene);
+}
+
+static void refresh_asset_index(app_scene_authoring *scene, bool ui_active)
+{
     bool defer_asset_index = false;
     unsigned editor_revision = editor_edit_revision(scene->graph_editor);
     if (editor_revision != scene->asset_index_editor_revision) {
@@ -1836,9 +1811,52 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
     }
     if (scene->asset_index_built_generation != scene->asset_index_generation &&
         !defer_asset_index && !editor_has_pending_edits(scene->graph_editor) &&
-        !ImGui_IsAnyItemActive()) {
+        !ui_active) {
         app_scene_authoring_refresh_asset_index(scene);
     }
+}
+
+void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active)
+{
+    refresh_catalogs(scene);
+    app_scene_authoring_navigation_sync(scene);
+    refresh_asset_index(scene, ui_active);
+}
+
+void app_scene_authoring_draw(app_scene_authoring *scene)
+{
+    if (!scene) {
+        return;
+    }
+    scene_tabs_draw(scene);
+    refresh_catalogs(scene);
+    editor_ui_pane interaction = editor_ui_take_document_interaction();
+    if (interaction == EDITOR_UI_PANE_NODE_CANVAS && scene->graph_document_id) {
+        scene_authoring_select_document(scene, scene->graph_document_kind, scene->graph_document_id);
+    }
+    if (interaction == EDITOR_UI_PANE_SCENE) {
+        scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    }
+    app_runtime_state transport = app_scene_authoring_runtime_state(scene);
+    editor_ui_set_runtime_state(
+        transport.playing,
+        transport.target == APP_RUNTIME_PREVIEW ? previewed_prototype(scene) != NULL
+                                                : scene->runtime_snapshot_valid
+    );
+    scene_prototype_asset *target_prototype = prototype_at(scene, scene->runtime_preview_prototype);
+    char target_label[160];
+    snprintf(
+        target_label,
+        sizeof target_label,
+        "%s",
+        transport.target == APP_RUNTIME_PREVIEW && target_prototype
+            ? target_prototype->prototype->name
+            : "Scene"
+    );
+    editor_ui_set_runtime_target(target_label, selected_prototype(scene) != NULL, runtime_session(scene));
+    scene->property_seen = false;
+    app_scene_authoring_navigation_sync(scene);
+    refresh_asset_index(scene, ImGui_IsAnyItemActive());
     draw_quick_open(scene);
     draw_navigator(scene);
     draw_asset_document_overview(scene);

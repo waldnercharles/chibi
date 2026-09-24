@@ -110,6 +110,27 @@ engine_viewport_action engine_viewport_draw(
     engine_viewport *viewport,
     const engine_viewport_controls *controls
 );
+
+/* Pointer state from a retained UI host, in logical pixels relative to the image. */
+typedef struct engine_viewport_host_input
+{
+    float width, height;
+    float x, y;
+    bool hovered;
+    bool focused; /* keyboard belongs to the Scene area */
+    bool blocked; /* an overlay or popup covers the image */
+    bool down[3], pressed[3], released[3];
+    float wheel;
+    bool alt;
+    bool escape;
+    char dropped_prototype[256];
+} engine_viewport_host_input;
+
+/* While set, engine_viewport_draw renders the canvas and interprets this input
+ * instead of drawing an ImGui pane. The host displays the canvas texture. */
+void engine_viewport_set_host_input(engine_viewport *viewport, const engine_viewport_host_input *input);
+/* CF texture id of the current canvas target; changes when the canvas resizes. */
+uint64_t engine_viewport_texture(const engine_viewport *viewport);
 typedef struct engine_viewport_pointer
 {
     float world_x;

@@ -675,7 +675,7 @@ bool scene_tabs_path_in_use(
     return false;
 }
 
-static bool tab_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
+bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
 {
     if (tab->kind == APP_EDITOR_DOCUMENT_SCENE) {
         int current = scene_tab_for_current_document(scene);
@@ -868,7 +868,7 @@ int scene_tabs_discard(app_scene_authoring *scene, int index)
 static void request_close(app_scene_authoring *scene, int index)
 {
     scene->close_tab = index;
-    if (tab_dirty(scene, &scene->tabs[index])) {
+    if (scene_tabs_dirty(scene, &scene->tabs[index])) {
         return;
     }
     remove_tab(scene, index);
@@ -935,7 +935,7 @@ void scene_tabs_draw(app_scene_authoring *scene)
                 ImGui_PushID(tab->key);
                 if (ImGui_MenuItemEx(
                         tab->label,
-                        tab_dirty(scene, tab) ? "Modified" : NULL,
+                        scene_tabs_dirty(scene, tab) ? "Modified" : NULL,
                         i == scene->active_tab,
                         true
                     )) {
@@ -959,7 +959,7 @@ void scene_tabs_draw(app_scene_authoring *scene)
                 snprintf(label, sizeof label, "%s###%s", tab->label, tab->key);
                 ImGui_PushID(tab->key);
                 int flags = i == scene->active_tab ? ImGuiTabItemFlags_SetSelected : 0;
-                if (tab_dirty(scene, tab)) {
+                if (scene_tabs_dirty(scene, tab)) {
                     flags |= ImGuiTabItemFlags_UnsavedDocument;
                 }
                 ImGui_SetNextItemWidth(
@@ -998,7 +998,7 @@ void scene_tabs_draw(app_scene_authoring *scene)
             activate = -1;
         }
         if (scene->close_tab >= 0 && scene->close_tab < acount(scene->tabs) &&
-            tab_dirty(scene, &scene->tabs[scene->close_tab])) {
+            scene_tabs_dirty(scene, &scene->tabs[scene->close_tab])) {
             editor_ui_open_popup("workspace.close");
             draw_close_popup(scene);
         }

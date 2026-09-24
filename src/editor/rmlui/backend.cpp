@@ -25,9 +25,17 @@
 extern "C"
 {
     extern const unsigned char editor_ui_font[];
+    extern const unsigned char editor_ui_medium_font[];
+    extern const unsigned char editor_ui_semibold_font[];
+    extern const unsigned char editor_ui_numeric_font[];
     extern const unsigned char editor_ui_bold_font[];
+    extern const unsigned char editor_nerd_symbols_font[];
     extern const size_t editor_ui_font_size;
+    extern const size_t editor_ui_medium_font_size;
+    extern const size_t editor_ui_semibold_font_size;
+    extern const size_t editor_ui_numeric_font_size;
     extern const size_t editor_ui_bold_font_size;
+    extern const size_t editor_nerd_symbols_font_size;
 }
 
 namespace {
@@ -165,6 +173,8 @@ public:
     double GetElapsedTime() override { return elapsed_seconds; }
 
     void advance(double delta_seconds) { elapsed_seconds += delta_seconds; }
+    void SetMouseCursor(const Rml::String &name) override { cursor = name; }
+    Rml::String cursor = "arrow";
 
     void SetClipboardText(const Rml::String &text) override
     {
@@ -250,6 +260,9 @@ struct editor_rml_backend
     uint64_t next_texture = 1;
     std::unordered_map<uintptr_t, Geometry> geometries;
     std::unordered_map<uintptr_t, CF_Texture> textures;
+    /* Host-owned textures named "kit:<name>"; handles stay valid across updates. */
+    std::unordered_map<std::string, CF_Texture> externals;
+    std::unordered_map<uintptr_t, std::string> external_handles;
     CF_Texture white_texture = {};
     CF_Shader ui_shader = {};
     CF_Shader resolve_shader = {};
@@ -433,11 +446,19 @@ void BackendRenderer::RenderGeometry(
 {
     auto found = backend->geometries.find(geometry);
     assert(found != backend->geometries.end());
-    auto image = backend->textures.find(texture);
-    if (texture) {
+    CF_Texture gpu_texture = backend->white_texture;
+    auto external = backend->external_handles.find(texture);
+    if (external != backend->external_handles.end()) {
+        auto named = backend->externals.find(external->second);
+        if (named == backend->externals.end() || !named->second.id) {
+            return;
+        }
+        gpu_texture = named->second;
+    } else if (texture) {
+        auto image = backend->textures.find(texture);
         assert(image != backend->textures.end());
+        gpu_texture = image->second;
     }
-    CF_Texture gpu_texture = texture ? image->second : backend->white_texture;
     cf_draw_push_layer(k_rml_draw_layer);
     cf_draw3d_set_texture("u_texture", gpu_texture);
     cf_draw3d_push();
@@ -470,6 +491,12 @@ Rml::TextureHandle BackendRenderer::GenerateTexture(Rml::Span<const Rml::byte> s
 Rml::TextureHandle BackendRenderer::LoadTexture(Rml::Vector2i &dimensions, const Rml::String &source)
 {
     assert(backend->gpu_ready);
+    if (source.rfind("kit:", 0) == 0) {
+        uintptr_t handle = (uintptr_t)backend->next_texture++;
+        backend->external_handles.emplace(handle, source.substr(4));
+        dimensions = { 1, 1 };
+        return handle;
+    }
     CF_Image image = {};
     std::string lower = source;
     std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
@@ -506,6 +533,9 @@ Rml::TextureHandle BackendRenderer::LoadTexture(Rml::Vector2i &dimensions, const
 
 void BackendRenderer::ReleaseTexture(Rml::TextureHandle handle)
 {
+    if (backend->external_handles.erase(handle)) {
+        return;
+    }
     auto found = backend->textures.find(handle);
     if (found == backend->textures.end()) {
         return;
@@ -574,13 +604,28 @@ extern "C" editor_rml_backend *editor_rml_backend_create(int logical_width, int 
         Rml::Style::FontWeight::Normal,
         true
     );
-    Rml::LoadFontFace(
-        Rml::Span<const Rml::byte>(editor_ui_bold_font, editor_ui_bold_font_size),
-        "Inter",
-        Rml::Style::FontStyle::Normal,
-        Rml::Style::FontWeight::Bold,
-        false
-    );
+    const struct
+    {
+        const unsigned char *data;
+        size_t size;
+        const char *family;
+        int weight;
+    } faces[] = {
+        { editor_ui_medium_font, editor_ui_medium_font_size, "Inter", 500 },
+        { editor_ui_semibold_font, editor_ui_semibold_font_size, "Inter", 600 },
+        { editor_ui_bold_font, editor_ui_bold_font_size, "Inter", 700 },
+        { editor_ui_numeric_font, editor_ui_numeric_font_size, "InterNumeric", 400 },
+        { editor_nerd_symbols_font, editor_nerd_symbols_font_size, "Symbols", 400 },
+    };
+    for (const auto &face : faces) {
+        Rml::LoadFontFace(
+            Rml::Span<const Rml::byte>(face.data, face.size),
+            face.family,
+            Rml::Style::FontStyle::Normal,
+            static_cast<Rml::Style::FontWeight>(face.weight),
+            false
+        );
+    }
     backend->context = Rml::CreateContext(
         backend->context_name,
         { backend->physical_width, backend->physical_height }
@@ -761,4 +806,28 @@ extern "C" unsigned editor_rml_backend_process_input(editor_rml_backend *backend
         capture |= EDITOR_RML_CAPTURE_POINTER;
     }
     return capture;
+}
+
+extern "C" void editor_rml_backend_set_texture(editor_rml_backend *backend, const char *name, uint64_t texture)
+{
+    assert(backend && name);
+    backend->externals[name] = CF_Texture{ texture };
+}
+
+extern "C" const char *editor_rml_backend_cursor(const editor_rml_backend *backend)
+{
+    return backend->system.cursor.c_str();
+}
+
+extern "C" void editor_rml_backend_present(editor_rml_backend *backend)
+{
+    assert(backend);
+    if (!backend->gpu_ready) {
+        return;
+    }
+    float w = (float)backend->logical_width, h = (float)backend->logical_height;
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, w, h));
+    cf_draw_canvas(backend->straight_canvas, cf_v2(0, 0), cf_v2(w, h));
+    cf_draw_pop();
 }

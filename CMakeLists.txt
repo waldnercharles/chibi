@@ -233,9 +233,15 @@ endfunction()
 set(GEN_NERD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_nerd_symbols_font.c)
 set(GEN_UI_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_font.c)
 set(GEN_UI_BOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_bold_font.c)
+set(GEN_UI_MEDIUM_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_medium_font.c)
+set(GEN_UI_SEMIBOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_semibold_font.c)
+set(GEN_UI_NUMERIC_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_numeric_font.c)
 chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf" "${GEN_NERD_FONT}" editor_nerd_symbols_font)
 chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf" "${GEN_UI_FONT}" editor_ui_font)
 chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf" "${GEN_UI_BOLD_FONT}" editor_ui_bold_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Medium.ttf" "${GEN_UI_MEDIUM_FONT}" editor_ui_medium_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-SemiBold.ttf" "${GEN_UI_SEMIBOLD_FONT}" editor_ui_semibold_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Numeric.ttf" "${GEN_UI_NUMERIC_FONT}" editor_ui_numeric_font)
 
 function(chibi_registry output)
     set(OUTPUT "${output}")
@@ -395,8 +401,10 @@ chibi_enable_tracy(engine)
 # --- editor UI (RmlUi shell and existing ImGui panes) ---
 
 include(cmake/rmlui.cmake)
-add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
-add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
+add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
+    ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT})
+add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font
+    generate_editor_ui_medium_font generate_editor_ui_semibold_font generate_editor_ui_numeric_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
 

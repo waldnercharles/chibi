@@ -178,6 +178,60 @@ static void arrange_measure_checks()
     }
 }
 
+/* How many pieces of a path change height. */
+static int arrange_climbs(const arrange_piece *pieces, int count, bool vertical_only)
+{
+    int climbs = 0;
+    for (int i = 0; i < count; i++) {
+        bool level = pieces[i].p0.y == pieces[i].p3.y;
+        bool vertical = pieces[i].p0.x == pieces[i].p3.x;
+        climbs += !level && (!vertical_only || vertical);
+    }
+    return climbs;
+}
+
+/* How many times a path changes height: runs of pieces that are not level. */
+static int arrange_climb_runs(const arrange_piece *pieces, int count)
+{
+    int runs = 0;
+    bool climbing = false;
+    for (int i = 0; i < count; i++) {
+        bool level = pieces[i].p0.y == pieces[i].p3.y &&
+                     pieces[i].p1.y == pieces[i].p0.y &&
+                     pieces[i].p2.y == pieces[i].p0.y;
+        runs += !level && !climbing;
+        climbing = !level;
+    }
+    return runs;
+}
+
+/* A drawn pin a few units off the height its route planned slides the run
+ * beside it instead of jogging, and a subway drop barely longer than two
+ * diagonals becomes one. */
+static void arrange_turn_checks()
+{
+    arrange_point track[] = { { 60, 6 }, { 60, 120 } };
+    arrange_piece *pieces = NULL;
+    arrange_path(
+        ARRANGE_ROUTE_ORTHOGONAL,
+        (arrange_point){ 0, 0 },
+        (arrange_point){ 140, 120 },
+        track,
+        2,
+        &pieces
+    );
+    bool slid = true;
+    for (int i = 0; i < acount(pieces); i++) {
+        slid &= !(pieces[i].p0.y == 6 && pieces[i].p3.y == 6);
+    }
+    test_check(slid && acount(pieces) == 5, "arrange slides a run to a drawn pin instead of jogging");
+    aclear(pieces);
+    arrange_point drop[] = { { 60, 0 }, { 60, 60 } };
+    arrange_path(ARRANGE_ROUTE_SUBWAY, (arrange_point){ 0, 0 }, (arrange_point){ 140, 60 }, drop, 2, &pieces);
+    test_check(!arrange_climbs(pieces, acount(pieces), true), "arrange draws a short subway drop as one diagonal");
+    afree(pieces);
+}
+
 /* Every style draws a joined chain of pieces from pin to pin. */
 static void arrange_path_checks()
 {
@@ -402,6 +456,22 @@ static void arrange_layout_checks()
         arrange_score score = arrange_measure(&fanned, first, style);
         test_check(score.wire_node_hits == 0, "arrange leaves lanes for wires that skip a column");
         test_check(score.wire_overlaps == 0, arrange_style_names[style]);
+        arrange_routes routes = { 0 };
+        arrange_route(&fanned, first, style, &routes);
+        bool once = true;
+        for (int i = 0; i < fanned.link_count; i++) {
+            const arrange_link *l = &fans[i];
+            arrange_point from = { first[l->from].x + arrange_test_box.width,
+                                   first[l->from].y + l->from_y };
+            arrange_point to = { first[l->to].x, first[l->to].y + l->to_y };
+            arrange_piece *pieces = NULL;
+            int at = routes.start[i];
+            arrange_path(style, from, to, routes.points + at, routes.start[i + 1] - at, &pieces);
+            once &= arrange_climb_runs(pieces, acount(pieces)) <= 1;
+            afree(pieces);
+        }
+        test_check(once, "arrange keeps lanes level so every wire changes height once");
+        arrange_routes_free(&routes);
     }
 }
 
@@ -465,6 +535,7 @@ static void arrange_score_add(arrange_score *total, arrange_score s)
     total->wire_node_hits += s.wire_node_hits;
     total->node_overlaps += s.node_overlaps;
     total->wire_overlaps += s.wire_overlaps;
+    total->wire_bends += s.wire_bends;
     total->wire_length += s.wire_length;
     total->ink_length += s.ink_length;
 }
@@ -503,25 +574,27 @@ static void arrange_content_checks()
     static const struct
     {
         int crossings;
+        int bends;
         float ink;
     } ceiling[ARRANGE_ROUTE_STYLE_COUNT] = {
-        [ARRANGE_ROUTE_CURVED] = { 30, 79000.0f },
-        [ARRANGE_ROUTE_ORTHOGONAL] = { 30, 84000.0f },
-        [ARRANGE_ROUTE_STRAIGHT] = { 31, 79500.0f },
-        [ARRANGE_ROUTE_SUBWAY] = { 31, 82000.0f },
+        [ARRANGE_ROUTE_CURVED] = { 30, 370, 79500.0f },
+        [ARRANGE_ROUTE_ORTHOGONAL] = { 30, 372, 84300.0f },
+        [ARRANGE_ROUTE_STRAIGHT] = { 31, 370, 80000.0f },
+        [ARRANGE_ROUTE_SUBWAY] = { 23, 372, 81500.0f },
     };
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;
         arrange_score s = arrange_arena_score(style, &graphs);
         printf(
             "arrange arena2d %-10s graphs=%d crossings=%d hits=%d overlaps=%d "
-            "wire_overlaps=%d length=%.0f ink=%.0f\n",
+            "wire_overlaps=%d bends=%d length=%.0f ink=%.0f\n",
             arrange_style_names[style],
             graphs,
             s.wire_crossings,
             s.wire_node_hits,
             s.node_overlaps,
             s.wire_overlaps,
+            s.wire_bends,
             s.wire_length,
             s.ink_length
         );
@@ -529,6 +602,7 @@ static void arrange_content_checks()
         test_check(s.node_overlaps == 0 && s.wire_node_hits == 0, arrange_style_names[style]);
         test_check(s.wire_overlaps == 0, "arrange keeps arena2d wires off each other");
         test_check(s.wire_crossings <= ceiling[style].crossings, "arrange keeps arena2d crossings in budget");
+        test_check(s.wire_bends <= ceiling[style].bends, "arrange keeps arena2d turns in budget");
         test_check(s.ink_length <= ceiling[style].ink, "arrange keeps arena2d ink in budget");
     }
 }
@@ -537,6 +611,7 @@ void run_graph_arrange_checks()
 {
     arrange_measure_checks();
     arrange_path_checks();
+    arrange_turn_checks();
     arrange_route_checks();
     arrange_bundle_checks();
     arrange_long_link_checks();
@@ -620,8 +695,8 @@ static void arrange_bench_graph(
     }
     arrange_score s = arrange_measure(&g, pos, style);
     printf(
-        "%-64s %-10s %5d %5d %8.3f %8.3f %5d %5d %5d %5d %6d %9.0f %9.0f %8.2f "
-        "%08x\n",
+        "%-64s %-10s %5d %5d %8.3f %8.3f %5d %5d %5d %5d %5d %6d %9.0f %9.0f "
+        "%8.2f %08x\n",
         name,
         arrange_style_names[style],
         g.box_count,
@@ -632,6 +707,7 @@ static void arrange_bench_graph(
         s.wire_node_hits,
         s.node_overlaps,
         s.wire_overlaps,
+        s.wire_bends,
         acount(routes.points),
         s.wire_length,
         s.ink_length,
@@ -658,7 +734,7 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
     char **paths = arrange_content_paths();
     arrange_bench_total totals[ARRANGE_ROUTE_STYLE_COUNT] = { 0 };
     printf(
-        "%-64s %-10s %5s %5s %8s %8s %5s %5s %5s %5s %6s %9s %9s %8s %8s\n",
+        "%-64s %-10s %5s %5s %8s %8s %5s %5s %5s %5s %5s %6s %9s %9s %8s %8s\n",
         "graph",
         "style",
         "nodes",
@@ -669,6 +745,7 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
         "hits",
         "over",
         "wover",
+        "bends",
         "points",
         "length",
         "ink",
@@ -704,8 +781,8 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
         }
         printf(
             "total %-10s graphs=%d ms=%.3f worst_ms=%.3f crossings=%d hits=%d "
-            "overlaps=%d wire_overlaps=%d points=%d length=%.0f ink=%.0f "
-            "cost=%.2f\n",
+            "overlaps=%d wire_overlaps=%d bends=%d points=%d length=%.0f "
+            "ink=%.0f cost=%.2f\n",
             arrange_style_names[s],
             t->graphs,
             t->ms,
@@ -714,6 +791,7 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
             t->score.wire_node_hits,
             t->score.node_overlaps,
             t->score.wire_overlaps,
+            t->score.wire_bends,
             t->points,
             t->score.wire_length,
             t->score.ink_length,

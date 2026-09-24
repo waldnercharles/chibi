@@ -79,6 +79,7 @@ typedef struct arrange_score
     int wire_node_hits; /* (wire, unrelated node) collisions */
     int node_overlaps;  /* node pairs whose boxes overlap */
     int wire_overlaps;  /* wire pairs that run on top of each other */
+    int wire_bends;     /* turns, two wherever a wire changes height */
     float wire_length;  /* every wire's full length */
     float ink_length;   /* drawn length, with shared trunks counted once */
 } arrange_score;

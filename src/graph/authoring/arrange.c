@@ -30,8 +30,13 @@
 #define AR_TRUNK 24.0f  /* level run curved and straight fan-outs share */
 /* Subway diagonals reach no further along a run than this, which keeps them
  * inside the track margin of their gap. */
-#define AR_SUBWAY_REACH 20.0f
+#define AR_SUBWAY_REACH 24.0f
+#define AR_SUBWAY_KINK 8.0f
 #define AR_LOOP_CLEAR 18.0f
+/* A drawn pin this close to the height its route was planned for slides the
+ * vertical run beside it rather than adding a jog. */
+#define AR_PIN_SNAP 12.0f
+#define AR_LEVEL_SNAP 0.5f /* heights closer than this are one level */
 
 #define AR_BEND_MIN 40.0f
 #define AR_CURVE_SAMPLES 12
@@ -41,6 +46,7 @@
 #define AR_COST_HIT 4.0f
 #define AR_COST_OVERLAP 40.0f
 #define AR_COST_WIRE_OVERLAP 2.0f
+#define AR_COST_BEND 0.25f
 #define AR_COST_LENGTH 0.0008f
 
 #define AR_FAN_CROSS_WEIGHT 2
@@ -49,6 +55,7 @@
 #define AR_TRANSPOSE_PASSES 4
 #define AR_COORD_SWEEPS 8
 #define AR_TIGHTEN_PASSES 8
+#define AR_STRAIGHTEN_PASSES 4
 
 #define AR_FREE 1.0e9f
 #define AR_CORRIDOR_PRIORITY 1000000
@@ -214,10 +221,17 @@ static float ar_corner_cut(arrange_route_style style, const arrange_point *p, in
     }
     float in_len = vec2_length(in);
     float out_len = vec2_length(out);
-    float reach = style == ARRANGE_ROUTE_SUBWAY ? AR_SUBWAY_REACH : AR_CORNER_RADIUS;
-    reach = math_min(reach, k == 1 ? in_len - math_min(AR_PIN_RUN, in_len * 0.5f) : in_len * 0.5f);
-    reach = math_min(reach, k + 2 == n ? out_len - math_min(AR_PIN_RUN, out_len * 0.5f) : out_len * 0.5f);
-    return reach;
+    float in_room = k == 1 ? in_len - math_min(AR_PIN_RUN, in_len * 0.5f)
+                           : in_len * 0.5f;
+    float out_room = k + 2 == n ? out_len - math_min(AR_PIN_RUN, out_len * 0.5f)
+                                : out_len * 0.5f;
+    float reach = AR_CORNER_RADIUS;
+    if (style == ARRANGE_ROUTE_SUBWAY) {
+        /* A vertical run barely longer than two diagonals becomes one. */
+        float vertical = in.x == 0.0f ? in_room : out_room;
+        reach = vertical - AR_SUBWAY_REACH < AR_SUBWAY_KINK ? vertical : AR_SUBWAY_REACH;
+    }
+    return math_min(reach, math_min(in_room, out_room));
 }
 
 /* Orthogonal corners round into quarter circles; subway corners cut across
@@ -283,6 +297,15 @@ void arrange_path(
     }
     apush(knot, to);
     int n = acount(knot);
+    if (ar_tracked(style) && count >= 2) {
+        if (knot[1].x == knot[2].x && math_abs(knot[1].y - from.y) <= AR_PIN_SNAP) {
+            knot[1].y = from.y;
+        }
+        if (knot[n - 2].x == knot[n - 3].x &&
+            math_abs(knot[n - 2].y - to.y) <= AR_PIN_SNAP) {
+            knot[n - 2].y = to.y;
+        }
+    }
     switch (style) {
         case ARRANGE_ROUTE_CURVED: ar_path_curved(knot, n, pieces); break;
         case ARRANGE_ROUTE_STRAIGHT: ar_path_straight(knot, n, pieces); break;
@@ -627,6 +650,24 @@ static float ar_wire_ink(const ar_drawing *d, int i, const int *earlier, int ear
     return ink;
 }
 
+static bool ar_level(const arrange_piece *p)
+{
+    return p->p0.y == p->p3.y && p->p1.y == p->p0.y && p->p2.y == p->p0.y;
+}
+
+/* Every run of pieces that changes height turns twice. */
+static int ar_bends(const ar_drawing *d, int i)
+{
+    int runs = 0;
+    bool climbing = false;
+    for (int p = d->piece_start[i]; p < d->piece_start[i + 1]; p++) {
+        bool level = ar_level(&d->pieces[p]);
+        runs += !level && !climbing;
+        climbing = !level;
+    }
+    return 2 * runs;
+}
+
 static bool ar_share_pin(const arrange_link *a, const arrange_link *b)
 {
     if (a->from == b->from && a->from_y == b->from_y) {
@@ -659,7 +700,7 @@ float arrange_cost(arrange_score score)
            AR_COST_HIT * (float)score.wire_node_hits +
            AR_COST_OVERLAP * (float)score.node_overlaps +
            AR_COST_WIRE_OVERLAP * (float)score.wire_overlaps +
-           AR_COST_LENGTH * score.ink_length;
+           AR_COST_BEND * (float)score.wire_bends + AR_COST_LENGTH * score.ink_length;
 }
 
 typedef struct ar_lnode
@@ -699,6 +740,7 @@ typedef struct ar_ctx
     int *rank_edge;
     int *scratch;
     float *values;
+    arrange_point *pulls; /* (y, anchor) a neighbour pulls a node toward */
     int *best_order;
 } ar_ctx;
 
@@ -716,6 +758,7 @@ static void ar_ctx_free(ar_ctx *c)
     afree(c->rank_edge);
     afree(c->scratch);
     afree(c->values);
+    afree(c->pulls);
     afree(c->best_order);
 }
 
@@ -1156,24 +1199,48 @@ static void ar_move(ar_ctx *c, int node, float delta)
     }
 }
 
+/* Where a node's neighbours on one side would put it: the median of their
+ * pulls. Between two middle pulls it follows the one on its higher pin, so
+ * execution chains, whose pins come first, run straight. */
 static bool ar_neighbor_median_y(ar_ctx *c, int node, bool forward, float *out)
 {
-    aclear(c->values);
+    aclear(c->pulls);
     if (forward) {
         for (int i = c->in_start[node]; i < c->in_start[node + 1]; i++) {
             const ar_ledge *e = &c->edges[c->in_edge[i]];
-            apush(c->values, c->nodes[e->from].y + e->from_anchor - e->to_anchor);
+            apush(
+                c->pulls,
+                ((arrange_point){ c->nodes[e->from].y + e->from_anchor - e->to_anchor,
+                                  e->to_anchor })
+            );
         }
     } else {
         for (int i = c->out_start[node]; i < c->out_start[node + 1]; i++) {
             const ar_ledge *e = &c->edges[c->out_edge[i]];
-            apush(c->values, c->nodes[e->to].y + e->to_anchor - e->from_anchor);
+            apush(
+                c->pulls,
+                ((arrange_point){ c->nodes[e->to].y + e->to_anchor - e->from_anchor,
+                                  e->from_anchor })
+            );
         }
     }
-    if (!acount(c->values)) {
+    int count = acount(c->pulls);
+    if (!count) {
         return false;
     }
-    *out = ar_median(c->values, acount(c->values));
+    arrange_point *pull = c->pulls;
+    for (int i = 1; i < count; i++) {
+        arrange_point v = pull[i];
+        int j = i;
+        while (j > 0 && pull[j - 1].x > v.x) {
+            pull[j] = pull[j - 1];
+            j--;
+        }
+        pull[j] = v;
+    }
+    const arrange_point *lower = &pull[count / 2];
+    const arrange_point *upper = &pull[(count - 1) / 2];
+    *out = upper->y <= lower->y ? upper->x : lower->x;
     return true;
 }
 
@@ -1283,6 +1350,149 @@ static void ar_lanes_skip(ar_lanes *w)
     apush(w->out, 0.0f);
 }
 
+/* Whether a node has room for its top at `y` between its neighbours in its
+ * rank. */
+static bool ar_fits(const ar_ctx *c, int node, float y)
+{
+    const ar_lnode *n = &c->nodes[node];
+    int first = c->rank_start[n->rank];
+    int last = c->rank_start[n->rank + 1];
+    if (n->slot > first) {
+        const ar_lnode *above = &c->nodes[c->flat[n->slot - 1]];
+        if (y < above->y + above->height + ar_gap(above, n)) {
+            return false;
+        }
+    }
+    if (n->slot + 1 < last) {
+        const ar_lnode *below = &c->nodes[c->flat[n->slot + 1]];
+        if (y + n->height + ar_gap(n, below) > below->y) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool ar_same_level(float a, float b)
+{
+    return math_abs(a - b) < AR_LEVEL_SNAP;
+}
+
+/* A run of corridors starts after a box, or after a trunk that splits. */
+static bool ar_run_starts(const ar_ctx *c, int node)
+{
+    if (c->nodes[node].box >= 0) {
+        return false;
+    }
+    int from = c->edges[c->in_edge[c->in_start[node]]].from;
+    return c->nodes[from].box >= 0 || c->out_start[from + 1] - c->out_start[from] > 1;
+}
+
+/* How often a run of corridors at `levels` changes height between the level
+ * it comes from and the levels it leaves to. */
+static int ar_run_steps(const ar_ctx *c, const int *run, int count, const float *levels, float in)
+{
+    int steps = !ar_same_level(in, levels[0]);
+    for (int i = 1; i < count; i++) {
+        steps += !ar_same_level(levels[i - 1], levels[i]);
+    }
+    int last = run[count - 1];
+    for (int i = c->out_start[last]; i < c->out_start[last + 1]; i++) {
+        const ar_ledge *e = &c->edges[c->out_edge[i]];
+        steps += !ar_same_level(levels[count - 1], c->nodes[e->to].y + e->to_anchor);
+    }
+    return steps;
+}
+
+/* Alignment leaves a wire's lanes wherever each column had room, so a long
+ * wire can step at every column. Moves each run of corridors to one height,
+ * the level it comes from, leaves to, or already holds somewhere, when all
+ * of it has room there and the wire turns fewer times. A lane may always
+ * shift by a lane gap, which keeps wires apart but spares a small jog. */
+static void ar_straighten(ar_ctx *c)
+{
+    int *run = NULL;
+    float *levels = NULL;
+    float *flat = NULL;
+    for (int pass = 0; pass < AR_STRAIGHTEN_PASSES; pass++) {
+        bool moved = false;
+        for (int start = 0; start < acount(c->nodes); start++) {
+            if (!ar_run_starts(c, start)) {
+                continue;
+            }
+            aclear(run);
+            aclear(levels);
+            for (int node = start;;) {
+                apush(run, node);
+                apush(levels, c->nodes[node].y + AR_WIRE_LANE * 0.5f);
+                int out = c->out_start[node];
+                if (c->out_start[node + 1] - out != 1) {
+                    break;
+                }
+                node = c->edges[c->out_edge[out]].to;
+                if (c->nodes[node].box >= 0) {
+                    break;
+                }
+            }
+            int count = acount(run);
+            const ar_ledge *in_edge = &c->edges[c->in_edge[c->in_start[start]]];
+            float in = c->nodes[in_edge->from].y + in_edge->from_anchor;
+            int best_steps = ar_run_steps(c, run, count, levels, in);
+            float best = 0.0f;
+            float best_move = AR_FREE;
+            aclear(flat);
+            apush(flat, in);
+            for (int i = 0; i < count; i++) {
+                apush(flat, levels[i]);
+            }
+            int last = run[count - 1];
+            for (int i = c->out_start[last]; i < c->out_start[last + 1]; i++) {
+                const ar_ledge *e = &c->edges[c->out_edge[i]];
+                apush(flat, c->nodes[e->to].y + e->to_anchor);
+            }
+            for (int k = 0; k < acount(flat); k++) {
+                float y = flat[k];
+                float move = 0.0f;
+                bool fits = true;
+                for (int i = 0; i < count && fits; i++) {
+                    float shift = math_abs(levels[i] - y);
+                    fits = shift <= AR_LANE_GAP ||
+                           ar_fits(c, run[i], y - AR_WIRE_LANE * 0.5f);
+                    move += shift;
+                }
+                aclear(levels);
+                for (int i = 0; i < count; i++) {
+                    apush(levels, y);
+                }
+                int steps = ar_run_steps(c, run, count, levels, in);
+                aclear(levels);
+                for (int i = 0; i < count; i++) {
+                    apush(levels, c->nodes[run[i]].y + AR_WIRE_LANE * 0.5f);
+                }
+                if (fits && (steps < best_steps ||
+                             (steps == best_steps && best_move < AR_FREE &&
+                              move < best_move))) {
+                    best_steps = steps;
+                    best = y;
+                    best_move = move;
+                }
+            }
+            if (best_move >= AR_FREE) {
+                continue;
+            }
+            for (int i = 0; i < count; i++) {
+                c->nodes[run[i]].y = best - AR_WIRE_LANE * 0.5f;
+            }
+            moved = true;
+        }
+        if (!moved) {
+            break;
+        }
+    }
+    afree(run);
+    afree(levels);
+    afree(flat);
+}
+
 /* Adds a wire between two layered nodes, with a corridor node for each rank
  * it passes and does not share. A forward wire shares by its output pin, at
  * `src_anchor` on `src`; a backward wire shares nothing. */
@@ -1374,6 +1584,7 @@ static void ar_ctx_solve(ar_ctx *c)
     }
     ar_order_ranks(c);
     ar_assign_y(c);
+    ar_straighten(c);
 }
 
 enum
@@ -2201,6 +2412,17 @@ static void ar_levels(
         apush(*levels, ar_lane_y(c, lanes->lanes[lanes->start[link] + k]));
     }
     apush(*levels, ar_link_end(pos, l).y);
+    /* Lanes are stored by their tops, so a level can come back a rounding
+     * step off the pin it lines up with. */
+    int n = acount(*levels);
+    for (int k = 1; k < n - 1; k++) {
+        if (ar_same_level((*levels)[k], (*levels)[k - 1])) {
+            (*levels)[k] = (*levels)[k - 1];
+        }
+    }
+    for (int k = n - 2; k > 0 && ar_same_level((*levels)[k], (*levels)[n - 1]); k--) {
+        (*levels)[k] = (*levels)[n - 1];
+    }
 }
 
 /* Curved and straight wires cross each column they skip along its lane, from
@@ -2561,6 +2783,7 @@ arrange_score arrange_measure(const arrange_graph *g, const arrange_point *pos, 
     ar_crossing *crossings = NULL;
     for (int i = 0; i < g->link_count; i++) {
         score.wire_length += d.wires[i].length;
+        score.wire_bends += ar_bends(&d, i);
         for (int j = i + 1; j < g->link_count; j++) {
             if (ar_share_pin(&g->links[i], &g->links[j])) {
                 ar_union(group, i, j);

@@ -1515,6 +1515,14 @@ and straight fan-outs leave the pin along one short level run. Crossings count
 where drawn wires cross, so a trunk crossed once counts once, and the score's
 ink length counts shared runs once.
 
+Turns are scored too: every change of height costs two. When two inputs pull a
+node equally it follows the one on its higher pin, so execution chains run
+straight, and a straightening pass then moves each run of lanes to one height
+wherever its column has room, so a long wire changes height once instead of at
+every column. A pin drawn a few units off the height its route planned slides
+the vertical run beside it rather than jogging, and a subway drop barely longer
+than two diagonals becomes one.
+
 Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
 other host events such as input and contact, custom events, End, then
 everything else (`graph_layout_band`). Event chains that share nodes form one
@@ -1526,7 +1534,7 @@ offer to name the value as a local; it changes nothing.
 repository root, arranges and routes every graph under `content/` and
 `projects/*/content/` in every style, or in the one named. It prints layout and
 routing time, crossings, wire-node hits, node and wire overlaps, waypoint
-count, length, ink, cost, and a hash of the placed positions per graph and
+count, length, ink, turns, cost, and a hash of the placed positions per graph and
 style, then totals per style. `--graph-arrange` runs the focused scoring,
 routing, and determinism checks, and scores the arena2d behaviors against a
 ceiling per style.
@@ -1534,7 +1542,8 @@ ceiling per style.
 Across the 201 content graphs, arranged from zeroed seeds as `graph_layout`
 does, Arrange once produced 4672 crossings and 774 wire-node hits. Counted as
 drawn, lanes without trunks produce 3340 crossings and none; shared trunks
-bring curved wires to 2192 crossings and cut ink by 41%, and orthogonal wires
-cross 1886 times. A Release build lays out and routes all of them in about
+bring curved wires to about 2190 crossings and cut ink by about a third,
+orthogonal wires cross about 1900 times and subway wires about 1730, and
+straightening cut turns from 8944 to 7826. A Release build lays out and routes all of them in about
 6 ms curved and 8 ms orthogonal; the largest graph (BasaltCave, 425 nodes)
 takes about 3 ms.

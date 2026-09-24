@@ -320,7 +320,7 @@ static bool formats(graph *g, node *n, const char *expected)
     node *consumer = add(g, "Reroute Data");
     wire(g, n, 0, consumer, 0);
     char text[256];
-    behavior_expression_format(g, consumer, 0, text, sizeof text);
+    behavior_expression_format(g, consumer, 0, text, sizeof text, NULL);
     if (strcmp(text, expected)) {
         printf("formatted `%s`, expected `%s`\n", text, expected);
         return false;
@@ -343,19 +343,19 @@ static void formatting()
     );
     node *get = behavior_asset_add_get_node(asset, speed->id);
     node *scaled = binary(g, "Multiply", get, real(g, 2));
-    test_check(formats(g, scaled, "speed * 2"), "variables and constants format as an expression");
+    test_check(formats(g, scaled, "speed × 2"), "variables and constants format as an expression");
     node *integer = add(g, "Integer");
     pin_value seven = { .type = PIN_I32, .type_name = "int", .i = 7 };
     assert(graph_set_pin_default(g, integer, false, 0, &seven) == 0);
     node *converted = add(g, "Multiply");
     assert(graph_connect_data_conversion(g, integer, 0, converted, 0, &NODE_To_Real) == 0);
     wire(g, real(g, 2), 0, converted, 1);
-    test_check(formats(g, converted, "to_real(7) * 2"), "edge conversions format as calls");
+    test_check(formats(g, converted, "to_real(7) × 2"), "edge conversions format as calls");
 
     test_check(
-        formats(g, binary(g, "Subtract", real(g, 1), binary(g, "Subtract", real(g, 2), real(g, 3))), "1 - (2 - 3)") &&
-            formats(g, binary(g, "Multiply", binary(g, "Add", real(g, 1), real(g, 2)), real(g, 3)), "(1 + 2) * 3") &&
-            formats(g, binary(g, "Add", real(g, 1), binary(g, "Multiply", real(g, 2), real(g, 3))), "1 + 2 * 3"),
+        formats(g, binary(g, "Subtract", real(g, 1), binary(g, "Subtract", real(g, 2), real(g, 3))), "1 − (2 − 3)") &&
+            formats(g, binary(g, "Multiply", binary(g, "Add", real(g, 1), real(g, 2)), real(g, 3)), "(1 + 2) × 3") &&
+            formats(g, binary(g, "Add", real(g, 1), binary(g, "Multiply", real(g, 2), real(g, 3))), "1 + 2 × 3"),
         "expression text groups operands by precedence"
     );
     test_check(
@@ -367,7 +367,7 @@ static void formatting()
     node *negated = add(g, "Negate");
     wire(g, binary(g, "Add", real(g, 1), real(g, 2)), 0, negated, 0);
     test_check(
-        formats(g, negated, "-(1 + 2)") &&
+        formats(g, negated, "−(1 + 2)") &&
             formats(g, binary(g, "Min", real(g, 1), real(g, 2)), "min(1, 2)") &&
             formats(g, binary(g, "Less", real(g, 1), real(g, 2)), "1 < 2"),
         "prefix operators, functions and comparisons use expression syntax"
@@ -416,10 +416,32 @@ static void formatting()
     wire(g, has, 0, missing, 0);
     test_check(
         graph_node_is_inline(g, read) && graph_node_is_inline(g, has) &&
-            formats(g, scaled_read, "Self.GameMovement.speed * 2") &&
+            formats(g, scaled_read, "Self.GameMovement.speed × 2") &&
             formats(g, missing, "!has(Self.GameMovement)"),
         "configured component reads fold despite their Component setting"
     );
+
+    /* The values a chip reads, so an editor can name them in its own style. */
+    node *reader = add(g, "Reroute Data");
+    wire(g, scaled_read, 0, reader, 0);
+    char text[128];
+    behavior_expression_read *reads = NULL;
+    behavior_expression_format(g, reader, 0, text, sizeof text, &reads);
+    test_check(
+        acount(reads) == 1 && reads[0].start == 0 &&
+            reads[0].length == (int)strlen("Self.GameMovement.speed") &&
+            reads[0].read.kind == PIN_BINDING_COMPONENT_FIELD &&
+            !strcmp(reads[0].read.component_key, GAME_COMPONENT_GameMovement.key) &&
+            !strcmp(reads[0].read.field_name, "speed"),
+        "formatting lists the component fields a chip reads"
+    );
+    asetlen(reads, 0);
+    behavior_expression_format(g, reader, 0, text, 8, &reads);
+    test_check(
+        acount(reads) == 1 && reads[0].length == 7 && !strcmp(text, "Self.Ga"),
+        "truncated text cuts its last read short"
+    );
+    afree(reads);
     behavior_asset_free(asset);
 }
 

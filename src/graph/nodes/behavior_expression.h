@@ -42,12 +42,30 @@ const char *behavior_expression_source(const behavior_asset *asset, const node *
  * NULL when the syntax has no spelling for it. */
 #define BEHAVIOR_EXPRESSION_PREFIX_BINDING 25
 const char *behavior_expression_spelling(const node_desc *desc, int *binding);
-/* Writes the value input `pin` of target receives in Behavior Expression
- * syntax, such as `Self.GameMovement.speed * 2`: its wired source with the
- * inline tree behind it, or its binding or literal. Edge conversions appear
- * as calls. Truncated to cap. The text presents graph data for reading; it is
- * never parsed back. */
-void behavior_expression_format(const graph *g, const node *target, int pin, char *buf, size_t cap);
+/* A value a formatted expression reads, which an editor may name in its own
+ * style: text [start, start + length) spells `read`. */
+typedef struct behavior_expression_read
+{
+    int start;
+    int length;
+    pin_binding read;
+} behavior_expression_read;
+
+/* Writes the value input `pin` of target receives, as Behavior Expression
+ * grammar with typographic operators, such as `Self.GameMovement.speed × 2`:
+ * its wired source with the inline tree behind it, or its binding or literal.
+ * Edge conversions appear as calls. Truncated to cap. The text presents graph
+ * data for reading; it is never parsed back. When reads is not NULL, the
+ * bindings, variables, Delta Time and Self component reads the text spells
+ * are appended to *reads (support/array.h) in text order. */
+void behavior_expression_format(
+    const graph *g,
+    const node *target,
+    int pin,
+    char *buf,
+    size_t cap,
+    behavior_expression_read **reads
+);
 
 /* A source-to-source authoring transform for a connected, pure numeric
  * calculation. The selected graph nodes are replaced by one expression call;

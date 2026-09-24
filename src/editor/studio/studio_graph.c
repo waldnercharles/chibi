@@ -420,6 +420,34 @@ static uint32_t binding_chip(const studio *s, const pin_binding *b, char *out, s
     return 0;
 }
 
+/* A folded source's chip: the expression the input receives. With Short
+   Bindings each value it reads is named as its binding chip names it, and a
+   chip that is one read takes that read's icon. */
+static uint32_t folded_chip(const studio *s, node *n, int p, char *out, size_t size)
+{
+    char text[256];
+    behavior_expression_read *reads = NULL;
+    behavior_expression_format(active_graph(s), n, p, text, sizeof text, s->prefs.short_bindings ? &reads : NULL);
+    uint32_t icon = 0;
+    size_t used = 0;
+    int at = 0;
+    out[0] = '\0';
+    for (int i = 0; i < acount(reads); i++) {
+        char name[160];
+        uint32_t read_icon = binding_chip(s, &reads[i].read, name, sizeof name);
+        bool whole = acount(reads) == 1 && reads[i].start == 0 &&
+                     reads[i].length == (int)strlen(text);
+        icon = whole ? read_icon : 0;
+        used += (size_t)
+            snprintf(out + used, size - used, "%.*s%s", reads[i].start - at, text + at, name);
+        used = used < size ? used : size - 1;
+        at = reads[i].start + reads[i].length;
+    }
+    snprintf(out + used, size - used, "%s", text + at);
+    afree(reads);
+    return icon;
+}
+
 static void pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 {
     editor *e = graph_editor(s);
@@ -444,7 +472,7 @@ static void pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *o
     ed_pin_label(n, spec, out->label, sizeof out->label);
     out->show_label = !exec_label(spec, out->label);
     if (out->inline_source) {
-        ed_node_title(e, src, out->chip, sizeof out->chip);
+        out->chip_icon = folded_chip(s, n, p, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
     } else if (input && spec->binding) {
         out->chip_icon = binding_chip(s, spec->binding, out->chip, sizeof out->chip);
@@ -2009,6 +2037,39 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon,
     return kit_menu_item(k, key, &d);
 }
 
+static bool folded_inputs(const graph *gr, node *n)
+{
+    node *source = NULL;
+    int pin = -1;
+    for (int p = 0; p < n->input_count; p++) {
+        if (graph_inline_source(gr, n, p, &source, &pin)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Draws the sources folded into n's inputs as their own nodes; automatic
+   arrangement places them clear of their neighbours. */
+static void expand_inputs(editor *e, node *n)
+{
+    graph *gr = e->active_graph;
+    node **sources = NULL;
+    for (int p = 0; p < n->input_count; p++) {
+        node *source = NULL;
+        int pin = -1;
+        if (graph_inline_source(gr, n, p, &source, &pin)) {
+            apush(sources, source);
+        }
+    }
+    for (int i = 0; i < acount(sources); i++) {
+        (void)graph_set_node_presentation(gr, sources[i], NODE_PRESENTATION_EXPANDED);
+        sources[i]->placed = false;
+    }
+    afree(sources);
+    e->arrange_pending = true;
+}
+
 void studio_graph_menus(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -2086,6 +2147,17 @@ void studio_graph_menus(studio *s)
             menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
             ed_snapshot_before(e);
             graph_set_breakpoint(gr, n, !n->breakpoint);
+        }
+        if (ed_source_scope_available(e) && graph_node_can_inline(gr, n) &&
+            menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
+            ed_snapshot_before(e);
+            (void)graph_inline_node(gr, n);
+            ed_select_node(e, graph_inline_owner(gr, n), false);
+        }
+        if (folded_inputs(gr, n) &&
+            menu_item(k, "expand", "Expand Inputs", KIT_ICON_MAXIMIZE, NULL, readonly)) {
+            ed_snapshot_before(e);
+            expand_inputs(e, n);
         }
     } else if (comment_by_id(s, g->menu_comment)) {
         if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {

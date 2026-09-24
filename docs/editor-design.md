@@ -1465,17 +1465,19 @@ when it is pure and enabled; is not a function call, reroute, or local source;
 has no setting pins besides a component node's chosen Component; has exactly
 one outgoing wire, a data wire into a non-setting input; and each input is
 wired from a folded node or holds a value (a literal, binding, local, or
-implied Self). `graph_node_is_inline` decides
-this for the canvas, arrangement, extraction, copying, and saving. Trees of up
-to three nodes fold into one chip written in Behavior Expression syntax, such
-as `elapsed >= Self.GameWeapon.cooldown`. Nodes with breakpoints or watches, and
-generated expression graphs, keep their boxes. Folded nodes remain ordinary
-nodes and wires, so evaluation, compilation, and debugging are unchanged. They
-have no box, wires, or saved position, and arrangement skips them.
+implied Self). `graph_node_is_inline` decides this for the canvas,
+arrangement, extraction, copying, and saving. Trees of up to three nodes fold
+into one chip written in Behavior Expression grammar with the typographic
+operators node titles use, such as `elapsed ≥ Self.GameWeapon.cooldown`. Nodes
+with breakpoints or watches, and generated expression graphs, keep their boxes.
+Folded nodes remain ordinary nodes and wires, so evaluation, compilation, and
+debugging are unchanged. They have no box, wires, or saved position, and
+arrangement skips them.
 
 Each node stores a presentation: `auto` (the default, omitted from files),
 `inline` (fold whenever legal, including larger trees), or `expanded` (always
-draw the box). **Expand source** sets `expanded`. The node context menu's
+draw the box). **Expand source** sets `expanded` and places the node left of its
+consumer, below any box it would overlap. The node context menu's
 **Inline** folds an eligible node and stores `inline` only when `auto` would keep
 its box. Deleting a node deletes the sources drawn inside it. A wire dropped on
 an input replaces its folded source, as it would a literal. Older files load

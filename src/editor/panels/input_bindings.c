@@ -1001,6 +1001,34 @@ static int ed_choose_binding(editor *e, node *target, int index, const ed_bindin
     return 0;
 }
 
+/* Left of its consumer, stepping down past any box it would overlap. */
+static void ed_place_beside(editor *e, node *source, const node *target)
+{
+    static const float gap = 20.0f;
+    graph *g = e->active_graph;
+    ImVec2 size = ed_node_dimensions(e, g, source);
+    source->x = target->x - size.x - 3.0f * gap;
+    source->y = target->y;
+    source->placed = true;
+    for (bool overlapped = true; overlapped;) {
+        overlapped = false;
+        for (int i = 0; i < acount(g->nodes); i++) {
+            node *other = g->nodes[i];
+            if (other == source || graph_node_is_inline(g, other)) {
+                continue;
+            }
+            ImVec2 box = ed_node_dimensions(e, g, other);
+            if (source->x < other->x + box.x + gap &&
+                other->x < source->x + size.x + gap &&
+                source->y < other->y + box.y + gap &&
+                other->y < source->y + size.y + gap) {
+                source->y = other->y + box.y + gap;
+                overlapped = true;
+            }
+        }
+    }
+}
+
 int ed_expand_inline_source(editor *e, node *target, int index)
 {
     node *source = NULL;
@@ -1013,8 +1041,7 @@ int ed_expand_inline_source(editor *e, node *target, int index)
         0) {
         return -1;
     }
-    source->x = target->x - ed_node_dimensions(e, e->active_graph, source).x - 60.0f;
-    source->y = target->y;
+    ed_place_beside(e, source, target);
     ed_select_node(e, source, false);
     editor_reveal_node(e, source);
     return 0;
@@ -1420,7 +1447,7 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
     char chip[128];
     char fitted[128];
     if (has_inline_source) {
-        behavior_expression_format(e->active_graph, n, index, source, sizeof source);
+        behavior_expression_format(e->active_graph, n, index, source, sizeof source, NULL);
     }
     const char *full_label = binding
                                ? ed_binding_label(e, binding, source, sizeof source)

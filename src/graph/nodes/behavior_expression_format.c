@@ -4,6 +4,7 @@
 #include "graph/model/pin_fmt.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -18,6 +19,7 @@ typedef struct text
     char *buf;
     size_t cap;
     size_t used;
+    behavior_expression_read **reads; /* NULL when the caller wants text only */
 } text;
 
 /* Truncates at cap; used stays below cap, so room never underflows. */
@@ -62,6 +64,33 @@ static const char *component_name(const char *key)
 {
     const char *dot = key ? strrchr(key, '.') : NULL;
     return dot ? dot + 1 : key ? key : "component";
+}
+
+static void put_binding(text *t, const graph *g, const pin_binding *binding);
+
+/* Writes a value the expression reads, noting where its text lies. */
+static void put_read(text *t, const graph *g, const pin_binding *read)
+{
+    int start = (int)t->used;
+    put_binding(t, g, read);
+    if (t->reads) {
+        apush(*t->reads, ((behavior_expression_read){ start, (int)t->used - start, *read }));
+    }
+}
+
+/* Typographic operators, as node titles draw them. */
+static const char *display_symbol(const char *symbol)
+{
+    static const char *const symbols[][2] = {
+        { "*", "×" },  { "/", "÷" },  { "-", "−" },  { "<=", "≤" },
+        { ">=", "≥" }, { "!=", "≠" }, { "==", "=" },
+    };
+    for (size_t i = 0; i < sizeof symbols / sizeof *symbols; i++) {
+        if (!strcmp(symbol, symbols[i][0])) {
+            return symbols[i][1];
+        }
+    }
+    return symbol;
 }
 
 static void put_binding(text *t, const graph *g, const pin_binding *binding)
@@ -169,7 +198,7 @@ static int put_operand(text *t, const graph *g, const node *n, int pin)
         return put_source(t, g, n, pin, source, source_pin);
     }
     if (spec->binding) {
-        put_binding(t, g, spec->binding);
+        put_read(t, g, spec->binding);
         return ATOM_BINDING;
     }
     if ((spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
@@ -185,14 +214,18 @@ static int put_operand(text *t, const graph *g, const node *n, int pin)
 static void put_input(text *t, const graph *g, const node *n, int pin, int binding)
 {
     char operand[512];
-    text value = { operand, sizeof operand, 0 };
+    text value = { operand, sizeof operand, 0, t->reads };
     operand[0] = '\0';
+    int first = t->reads ? acount(*t->reads) : 0;
     int operand_binding = put_operand(&value, g, n, pin);
     if (operand[0] == '-' && operand_binding > BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
         operand_binding = BEHAVIOR_EXPRESSION_PREFIX_BINDING;
     }
     bool group = operand_binding < binding;
     put(t, group ? "(" : "");
+    for (int i = first; t->reads && i < acount(*t->reads); i++) {
+        (*t->reads)[i].start += (int)t->used;
+    }
     put(t, operand);
     put(t, group ? ")" : "");
 }
@@ -212,8 +245,22 @@ static void put_arguments(text *t, const graph *g, const node *n)
     put(t, ")");
 }
 
+/* An entity input left to its default, or fed by a folded Self. */
+static bool reads_self(const graph *g, const node *n, int pin)
+{
+    const pin_spec *spec = &n->input_pins[pin];
+    node *source = NULL;
+    int source_pin = -1;
+    if (graph_inline_source(g, n, pin, &source, &source_pin)) {
+        return source->desc->pure_kind == NODE_PURE_SELF;
+    }
+    return !graph_input_source(g, n, pin, &source, &source_pin) && !spec->binding &&
+           (spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64;
+}
+
 /* Component reads, generated or configured, read like their bindings:
- * `Self.GameHealth.current`, and `has(Self.GameDash)` for presence. */
+ * `Self.GameHealth.current`, and `has(Self.GameDash)` for presence. A read
+ * of Self is a read callers may name; another entity's is spelled out. */
 static bool put_component(text *t, const graph *g, const node *n, int output)
 {
     const ecs_component_desc *component = component_node_component(n);
@@ -230,17 +277,21 @@ static bool put_component(text *t, const graph *g, const node *n, int output)
     for (int p = 0; p < n->input_count && entity < 0; p++) {
         entity = n->input_pins[p].type == PIN_HANDLE ? p : -1;
     }
+    const pin_spec *out = &n->output_pins[output];
+    bool field = get && out->field_source && out->name;
     put(t, has ? "has(" : "");
-    if (entity >= 0) {
-        put_input(t, g, n, entity, ATOM_BINDING);
+    if (entity < 0 || reads_self(g, n, entity)) {
+        pin_binding read = { .kind = field ? PIN_BINDING_COMPONENT_FIELD
+                                           : PIN_BINDING_COMPONENT,
+                             .component_key = component->key,
+                             .field_name = field ? out->name : NULL };
+        put_read(t, g, &read);
     } else {
-        put(t, "Self");
-    }
-    put(t, ".");
-    put(t, component->name);
-    if (get && n->output_pins[output].field_source && n->output_pins[output].name) {
+        put_input(t, g, n, entity, ATOM_BINDING);
         put(t, ".");
-        put(t, n->output_pins[output].name);
+        put(t, component->name);
+        put(t, field ? "." : "");
+        put(t, field ? out->name : "");
     }
     put(t, has ? ")" : "");
     return true;
@@ -251,7 +302,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     const node_desc *desc = n->desc;
     int binding = binding_of(n);
     if (binding == BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
-        put(t, behavior_expression_spelling(desc, &binding));
+        put(t, display_symbol(behavior_expression_spelling(desc, &binding)));
         put_input(t, g, n, 0, binding);
         return;
     }
@@ -260,7 +311,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         bool right = !strcmp(spelling, "^");
         put_input(t, g, n, 0, binding + right);
         put(t, " ");
-        put(t, spelling);
+        put(t, display_symbol(spelling));
         put(t, " ");
         put_input(t, g, n, 1, binding + !right);
         return;
@@ -274,13 +325,17 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         return;
     }
     if (desc->pure_kind == NODE_PURE_GET) {
-        const behavior_variable *variable = g->owner
-                                              ? behavior_asset_find_variable_by_id(g->owner, n->reference_id)
-                                              : NULL;
-        put(t,
-            variable            ? variable->name
-            : n->reference_name ? n->reference_name
-                                : "variable");
+        pin_binding read = { .kind = PIN_BINDING_VARIABLE,
+                             .variable_id = n->reference_id };
+        if (g->owner && behavior_asset_find_variable_by_id(g->owner, n->reference_id)) {
+            put_read(t, g, &read);
+        } else {
+            put(t, n->reference_name ? n->reference_name : "variable");
+        }
+        return;
+    }
+    if (desc->pure_kind == NODE_PURE_DELTA) {
+        put_read(t, g, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME });
         return;
     }
     if (desc->pure_kind == NODE_PURE_CONST ||
@@ -317,17 +372,40 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     }
 }
 
-void behavior_expression_format(const graph *g, const node *target, int pin, char *buf, size_t cap)
+void behavior_expression_format(
+    const graph *g,
+    const node *target,
+    int pin,
+    char *buf,
+    size_t cap,
+    behavior_expression_read **reads
+)
 {
     assert(cap && pin >= 0 && pin < target->input_count);
-    text t = { buf, cap, 0 };
+    text t = { buf, cap, 0, reads };
     buf[0] = '\0';
+    int first = reads ? acount(*reads) : 0;
     node *source = NULL;
     int source_pin = -1;
     if (graph_input_source(g, target, pin, &source, &source_pin) &&
         !graph_input_local(g, target, pin)) {
         put_source(&t, g, target, pin, source, source_pin);
+    } else {
+        put_operand(&t, g, target, pin);
+    }
+    if (!reads) {
         return;
     }
-    put_operand(&t, g, target, pin);
+    /* Truncation drops the reads past the end and cuts the last one short. */
+    int kept = acount(*reads);
+    while (kept > first && (*reads)[kept - 1].start >= (int)t.used) {
+        kept--;
+    }
+    asetlen(*reads, kept);
+    if (kept > first) {
+        behavior_expression_read *last = &(*reads)[kept - 1];
+        if (last->start + last->length > (int)t.used) {
+            last->length = (int)t.used - last->start;
+        }
+    }
 }

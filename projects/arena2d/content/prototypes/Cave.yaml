@@ -4,33 +4,47 @@ components:
   GAME.GameMaterial:
     absorption: 0.15000000596046448
     albedo: 1316326655
-    edge_light: 2.0
+    edge_light: 1.2000000476837158
     emission_multiplier: 1.0
     scene: 591155711
-  GAME.GameShader: {material: Rock, parameters: "", shape: ""}
+  GAME.GameShader: {material: Basalt, parameters: "", shape: ""}
   GAME.GameSubstance: {blast_multiplier: 1.0, hardness: 1.0}
   game.GameTransform: {}
   GAME.MaterialBreakProfile:
     blast_speed: 70.0
     chip_speed: 35.0
-    dust_lifetime_max: 0.30000001192092896
-    dust_lifetime_min: 0.15000000596046448
-    dust_limit: 8
-    dust_size_max: 0.5
-    dust_size_min: 0.25
-    dust_speed_max: 12.0
-    dust_speed_min: 4.0
+    chunk_cells: 2.0
+    chunk_lifetime: 1.7999999523162842
+    chunk_limit: 8
+    chunk_size_max: 3.799999952316284
+    chunk_size_min: 1.2000000476837158
+    chunk_speed_max: 280.0
+    chunk_speed_min: 110.0
+    dust_color: 1044134655
+    dust_lifetime_max: 1.100000023841858
+    dust_lifetime_min: 0.4000000059604645
+    dust_limit: 24
+    dust_size_max: 0.30000001192092896
+    dust_size_min: 0.11999999731779099
+    dust_speed_max: 30.0
+    dust_speed_min: 8.0
     fragment_speed: 30.0
     release_speed: 12.0
+    smoke_color: 2828964544
+    smoke_count: 14
+    smoke_lifetime: 3.5
+    smoke_speed: 22.0
+    spark_color: 4288301823
+    spark_density: 0.8999999761581421
+    spark_emission: 1.399999976158142
   GAME.MaterialTerrain:
-    border_cells: 8
     category: 8
     cell_size: 2.0
-    connectivity: 1
-    field: CaveField
-    height: 1536.0
+    field: BasaltCave
+    island_cells: 4000
     mask: 15
     min_fragment_cells: 24
-    parameters: '{"Radius":225.0,"Roughness":100.0}'
+    parameters: '{"Radius":225.0,"Roughness":100.0,"ChamberSpacing":1300.0,"OriginX":960.0}'
     seed: 1729
-    width: 4096.0
+    stream_budget: 1
+    stream_radius: 512.0

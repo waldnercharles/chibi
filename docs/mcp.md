@@ -51,9 +51,9 @@ Codex can start the adapter automatically for this repository. Its project
 scoped registration lives in `.codex/config.toml`; it is loaded when Codex is
 started in this repository or one of its subdirectories. The launcher starts
 the stdio adapter immediately, so hosts with short connect timeouts can attach
-from a fresh worktree. When `build/chibi_ctl` is missing, the adapter runs
-`make mcp-controller` in the background with output on stderr, and the first
-tool call waits for it. A rebuilt controller replaces the running one on the
+from a fresh worktree. When `build/chibi_ctl` is missing and no cached build
+of the same sources exists, the adapter builds it in the background with output
+on stderr, and the first tool call waits for it. A rebuilt controller replaces the running one on the
 next request. Run
 `make mcp-setup` to generate that machine-local registration. Restart Codex
 or open a new task after adding or changing project MCP configuration.
@@ -82,7 +82,11 @@ For reproducible rendering measurements, `previewScene` accepts
 `freeze_simulation` and an `input_timeline` spanning preparation and advancing
 render frames. Results include initial/final runtime state and the active GPU
 backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
-supported Macs. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+supported Macs. Without vendor tools, `pass_timing` waits for the GPU after each
+render pass and reports average milliseconds per pass, and `capture_frames`
+writes every measured frame to a raw RGBA8 file for judging motion and temporal
+effects. Both serialize or read back each frame, so their frame totals are not
+benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 
 Use the MCP for authored content whenever it is available. Route requests by
 domain:

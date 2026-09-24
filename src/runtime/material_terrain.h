@@ -19,5 +19,9 @@ typedef struct
 
 /* Connectivity is discrete occupancy cleanup and does not change field semantics. */
 void material_terrain_connect(float *field, field_grid grid, int connectivity, int border_cells);
+/* Removes solid islands and fills air pockets of fewer than island_cells cells
+ * that do not touch the grid edge. Such a component is enclosed within the
+ * grid, so a streamed tile never removes rock connected across its edges. */
+void material_terrain_tidy(float *field, field_grid grid, int island_cells);
 material_terrain_chunk *material_terrain_chunks(const float *field, field_grid grid);
 void material_terrain_chunks_free(material_terrain_chunk *chunks);

@@ -13,7 +13,7 @@ static int damage_node(node *, flow_context *ctx)
     if (!materials) {
         return flow_context_fail(ctx, FLOW_ERR_NODE, "Damage Material requires a live world");
     }
-    pin_value target, point, radius, energy, cause;
+    pin_value target, point, radius, energy, cause, source;
     int result = flow_context_eval_data(ctx, 1, &target);
     if (result >= 0) {
         result = flow_context_eval_data(ctx, 2, &point);
@@ -27,6 +27,9 @@ static int damage_node(node *, flow_context *ctx)
     if (result >= 0) {
         result = flow_context_eval_data(ctx, 5, &cause);
     }
+    if (result >= 0) {
+        result = flow_context_eval_data(ctx, 6, &source);
+    }
     if (result < 0) {
         return result;
     }
@@ -39,13 +42,24 @@ static int damage_node(node *, flow_context *ctx)
         !isfinite(energy.f) || energy.f < 0) {
         return flow_context_fail(ctx, FLOW_ERR_NODE, "Damage Material needs a finite position and nonnegative radius");
     }
+    /* The striking entity's light color and heat shape the impact. */
+    material_impact impact = { 0 };
+    ecs_world *world = flow_context_service(ctx, "ecs.world");
+    ecs_entity striker = ecs_entity_from_u64(source.u64);
+    if (world && source.u64 && ecs_entity_is_alive(world, striker)) {
+        const GameMaterial *light = GAME_GameMaterial_get_const(world, striker);
+        const GameIgniter *igniter = GAME_GameIgniter_get_const(world, striker);
+        impact.color = light ? light->emission_color : 0;
+        impact.heat = igniter && isfinite(igniter->heat) ? fmaxf(igniter->heat, 0) : 0;
+    }
     game_materials_damage(
         materials,
         ecs_entity_from_u64(target.u64),
         (fluid_vec){ position.x, position.y },
         radius.f,
         energy.f,
-        cause.i
+        cause.i,
+        impact
     );
     return flow_context_continue(ctx, 0);
 }
@@ -57,13 +71,16 @@ static pin_spec DAMAGE_IN[] = {
     { .name = "Radius", .type = PIN_F32 },
     { .name = "Energy", .type = PIN_F32 },
     { .name = "Cause", .type = PIN_I32 },
+    /* Optional striking entity; its emission color and igniter heat shape
+     * sparks and dust. */
+    { .name = "Source", .type = PIN_HANDLE, .type_name = "ecs.entity" },
 };
 static pin_spec DAMAGE_OUT[] = { { .name = "Out", .type = PIN_FLOW, .kind = PIN_EXEC } };
 static const node_access DAMAGE_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
 node_desc GAME_NODE_DamageMaterial = {
     .name = "Damage Material",
     .category = "Physics",
-    .input_count = 6,
+    .input_count = 7,
     .inputs = DAMAGE_IN,
     .output_count = 1,
     .outputs = DAMAGE_OUT,

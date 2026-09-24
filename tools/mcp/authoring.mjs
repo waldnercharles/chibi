@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { controllerExecutable, parseControllerJson } from "./controller.mjs";
+import { parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
 const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
@@ -570,6 +572,10 @@ const previewSceneDefinition = {
       description: "Rendered frames; values above two measure complete frames after 240 warmup frames, including GPU completion." },
     freeze_simulation: { type: "boolean", default: false,
       description: "Hold simulation and camera at the requested initial frame throughout rendering; lighting history still warms up." },
+    capture_frames: { type: "string", minLength: 2, maxLength: 4095,
+      description: "Performance runs only: absolute path of a raw RGBA8 file receiving every measured frame in order (width x height each), for judging motion and temporal effects. Instrumented, not a benchmark." },
+    pass_timing: { type: "boolean", default: false,
+      description: "Performance runs only: wait for the GPU after each render pass and report average milliseconds per pass. Serializes CPU and GPU, so frame totals are instrumented, not benchmark results." },
     input_timeline: { type: "array", maxItems: 1800, items: { type: "object" },
       description: "Sparse scenario inputs across initial and advancing render frames. Samples must have increasing frame indices." },
     metal_capture: { type: "string",
@@ -746,13 +752,18 @@ function failedRender(operation, code, message) {
   };
 }
 
-export async function renderRequest(root, request, requestId) {
-  let executable;
-  try {
-    executable = await controllerExecutable();
-  } catch (error) {
-    return failedRender(request.operation || "preview_shader", "process_error", error.message);
-  }
+function controllerPath(root) {
+  const configured = process.env.CHIBI_CTL;
+  const candidates = [
+    configured,
+    resolve(root, "build", "chibi_ctl"),
+    resolve(root, "build-release", "chibi_ctl"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
+}
+
+export function renderRequest(root, request, requestId) {
+  const executable = controllerPath(root);
   const timeout = renderTimeout();
   const maxBytes = renderResponseLimit();
   return new Promise((resolveRequest) => {

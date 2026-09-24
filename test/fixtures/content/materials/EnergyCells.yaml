@@ -1,7 +1,7 @@
 version: 3
 name: EnergyCells
 domain: material
-id_counter: 48
+id_counter: 49
 description: Scrolling cyan cell lines on a dark surface. Scroll Speed controls UV motion, Tiling sets repetition, and Intensity controls emission. Edit Color Ramp to recolor the energy.
 graphs:
 - kind: event
@@ -9,10 +9,14 @@ graphs:
   nodes:
   - id: 2
     type: Shader Time
+    x: 0.0
+    "y": 0.0
     outputs:
       Value: {id: 1}
   - id: 4
     type: Shader Parameter
+    x: 0.0
+    "y": 145.0
     reference_id: 1
     reference_name: Scroll Speed
     outputs:
@@ -25,6 +29,8 @@ graphs:
         default: {x: 0.05999999865889549, "y": -0.029999999329447746}
   - id: 8
     type: Shader Multiply
+    x: 245.0
+    "y": 40.0
     inputs:
       A: {id: 5, flags: 0, group: 0}
       B:
@@ -42,6 +48,8 @@ graphs:
         default: {x: 0.0, "y": 0.0}
   - id: 10
     type: Shader Parameter
+    x: 245.0
+    "y": 280.0
     reference_id: 2
     reference_name: Tiling
     outputs:
@@ -54,6 +62,8 @@ graphs:
         default: {x: 1.5, "y": 1.5}
   - id: 16
     type: Shader Mapping
+    x: 515.0
+    "y": 20.0
     inputs:
       Position: {id: 11}
       Offset:
@@ -66,6 +76,8 @@ graphs:
         default: {x: 0.0, "y": 0.0}
   - id: 24
     type: Shader Image Texture
+    x: 800.0
+    "y": 20.0
     inputs:
       UV: {id: 17}
       Image: test/fixtures/content/textures/EnergyCells.png
@@ -76,6 +88,8 @@ graphs:
       Alpha: 1.0
   - id: 27
     type: Shader X
+    x: 1095.0
+    "y": 20.0
     inputs:
       Value:
         id: 25
@@ -86,6 +100,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 33
     type: Shader Color Ramp
+    x: 1315.0
+    "y": 20.0
     inputs:
       Factor: {id: 28}
       Stops:
@@ -113,11 +129,15 @@ graphs:
       Alpha: 1.0
   - id: 35
     type: Shader Parameter
+    x: 1315.0
+    "y": 340.0
     reference_name: Intensity
     outputs:
       Value: {id: 34, flags: 0, group: 0, default: 1.600000023841858}
   - id: 39
     type: Shader Multiply
+    x: 1620.0
+    "y": 180.0
     inputs:
       A:
         id: 36
@@ -136,6 +156,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 47
     type: Shader Surface Output
+    x: 1900.0
+    "y": 20.0
     inputs:
       Base Color:
         id: 40
@@ -145,6 +167,7 @@ graphs:
       Roughness: 0.699999988079071
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
+      Height: {id: 48}
   edges:
   - {from: 2.Value, to: 8.A}
   - {from: 4.Value, to: 8.B}

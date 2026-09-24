@@ -30,6 +30,12 @@ typedef struct
     float speed_min, speed_max, lifetime_min, lifetime_max;
     float size_min, size_max, spread, drag_min, drag_max;
     float emission_min, emission_max, size_exponent;
+    /* Positive values fade emission to zero over the lifetime; zero keeps it. */
+    float emission_exponent;
+    /* Streak length per unit of speed. */
+    float stretch;
+    /* Edge softness in world units; zero softens by one pixel. */
+    float antialias;
     float elevation; /* Zero rests on the ground; otherwise center height in 3D. */
     int shape;
 } game_particle_spray;

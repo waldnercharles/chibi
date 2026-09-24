@@ -107,7 +107,9 @@ class Runner:
         breached=self.snapshot(300,fire,kind='scene')
         excavation=[dict(frame=0,input=dict(aim=dict(x=0,y=1,firing=True),controls=[1]))]
         excavated=self.snapshot(300,excavation,kind='scene')
-        assert excavated['materials']['cells'] < initial['materials']['cells']
+        # Streamed terrain keeps loading around the camera; compare equal frames.
+        idle=self.snapshot(300,[],kind='scene')
+        assert excavated['materials']['cells'] < idle['materials']['cells']
         assert 0 < breached['materials']['fuel_particles'] < initial['materials']['fuel_particles']
         assert breached['materials']['burning_particles']==0, 'Finite cloud should have burned out'
         repeat=self.snapshot(300,fire,kind='scene')

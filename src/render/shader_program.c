@@ -75,7 +75,7 @@ static bool compile(render_programs *programs, program *entry)
     const char *scene = programs->scene ? programs->scene : "";
     const char *uniforms = programs->kind == RENDER_PROGRAM_FRAGMENT
                              ? "layout(set=3,binding=1) uniform shd_uniforms { "
-                               "vec2 sg_lighting; vec4 sg_entity[84]; vec4 "
+                               "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
                                "sg_ramp_data[SG_RAMP_COUNT]; };\n"
                          : compute
                              ? "layout(set=2,binding=0) uniform Params { "

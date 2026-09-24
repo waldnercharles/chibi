@@ -106,7 +106,8 @@ static int fragments(
             (material_event){ .kind = MATERIAL_EVENT_FRAGMENT,
                               .target = damage.target,
                               .point = damage.point,
-                              .cause = damage.cause }
+                              .cause = damage.cause,
+                              .impact = damage.impact }
         );
     }
     afree(pieces);
@@ -200,6 +201,7 @@ static void apply_damage(material_destruction *d, const material_host *host, int
                           .point = damage.point,
                           .energy = damage.energy,
                           .cause = damage.cause,
+                          .impact = damage.impact,
                           .removed = removed,
                           .dust = dust + (mask->count < source.minimum ? mask->count : 0) }
     );

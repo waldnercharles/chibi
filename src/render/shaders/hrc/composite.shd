@@ -8,6 +8,9 @@ layout(set = 2, binding = 6) uniform sampler2D normal_tex;
 layout(set = 2, binding = 7) uniform sampler2D background_tex;
 layout(set = 2, binding = 8) uniform sampler2D visibility_tex;
 layout(set = 2, binding = 9) uniform sampler2D luminance_tex;
+layout(set = 2, binding = 10) uniform sampler2D surface_tex;
+layout(set = 2, binding = 11) uniform sampler2D surface_dir_tex;
+layout(set = 2, binding = 12) uniform sampler2D relief_tex;
 
 layout(set = 3, binding = 1) uniform shd_uniforms
 {
@@ -19,9 +22,36 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     float dither_phase;
     vec4 crop_uv;
     int split_lighting;
+    float surface_sigma;
+    // x enabled, y relief, z bevel, w specular gain.
+    vec4 surface_params;
+    // xy canvas uv to surface uv scale, zw one surface texel in uv.
+    vec4 surface_map;
+    int linear_output;
+    float world_per_px;
 };
 
 #include "color.shd"
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+// GGX distribution, height-correlated Smith visibility and Schlick Fresnel for
+// a dielectric, viewed straight down the camera axis.
+float highlight(vec3 n, vec3 l, float roughness)
+{
+    vec3 h = normalize(l + vec3(0, 0, 1));
+    float nv = max(n.z, 0.0001);
+    float nl = max(dot(n, l), 0.0);
+    float nh = max(dot(n, h), 0.0);
+    float alpha = max(roughness * roughness, 0.0025);
+    float a2 = alpha * alpha;
+    float d = nh * nh * (a2 - 1.0) + 1.0;
+    float distribution = a2 / max(3.14159265 * d * d, 0.00000001);
+    float visibility = 0.5 / max(nl * sqrt(nv * nv * (1.0 - a2) + a2) +
+                                 nv * sqrt(nl * nl * (1.0 - a2) + a2), 0.0001);
+    float fresnel = 0.04 + 0.96 * pow(1.0 - max(h.z, 0.0), 5.0);
+    return fresnel * distribution * visibility * nl;
+}
 
 vec4 shader(vec4 color, ShaderParams params)
 {
@@ -48,44 +78,113 @@ vec4 shader(vec4 color, ShaderParams params)
     vec2 fluence_uv = source_uv + distortion;
     if (normal.z < 0.0) fluence = max(texture(fluence_tex, fluence_uv).rgb, vec3(0));
     if (split_lighting != 0) {
-        const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
         float Y = texture(luminance_tex, fluence_uv).r;
-        float coarseY = dot(fluence, luma);
+        float coarseY = dot(fluence, LUMA);
         fluence = coarseY > 1e-8 ? fluence * (Y / coarseY) : vec3(Y);
-    }
-    // Sample nearby received light to soften illumination inward from edges.
-    // The combined mask hides internal terrain seams. With no light this is zero.
-    float edge = 0.0;
-    vec2 step_uv = 8.0 * pixel_uv;
-    if (normal.z > 0.0) {
-        float weight = .5333333;
-        for (int i = 1; i <= 4; i++) {
-            vec2 reach = pixel_uv * (2.0 * float(i));
-            float neighbor = min(min(texture(normal_tex, source_uv + vec2(reach.x, 0)).z,
-                                     texture(normal_tex, source_uv - vec2(reach.x, 0)).z),
-                                 min(texture(normal_tex, source_uv + vec2(0, reach.y)).z,
-                                     texture(normal_tex, source_uv - vec2(0, reach.y)).z));
-            edge += max(0.0, normal.z - max(0.0, neighbor)) * weight;
-            weight *= .5;
-        }
-    }
-    if (normal.z < 0.0) edge = normal.a * 2.0;
-    vec3 edge_received = vec3(0);
-    if (edge > 0.0) {
-        edge_received = .25 * (texture(fluence_tex, source_uv + vec2(step_uv.x, 0)).rgb +
-                                texture(fluence_tex, source_uv - vec2(step_uv.x, 0)).rgb +
-                                texture(fluence_tex, source_uv + vec2(0, step_uv.y)).rgb +
-                                texture(fluence_tex, source_uv - vec2(0, step_uv.y)).rgb);
     }
     vec4 visibility = texture(visibility_tex, source_uv);
     // The same exposure as visible emitters reveals light received by fluid.
     // Coverage blends this artistic gain; it never feeds the transport solver.
     float volume_exposure = mix(1.0, intensity, visibility.a);
-    vec3 lit = albedo * (fluence * volume_exposure + edge_received * edge * intensity) +
+    vec3 incident = fluence * volume_exposure;
+    if (normal.z < 0.0) {
+        // Liquid edges brighten from light received just outside them.
+        vec2 reach = 8.0 * pixel_uv;
+        vec3 outside = .25 * (texture(fluence_tex, source_uv + vec2(reach.x, 0)).rgb +
+                              texture(fluence_tex, source_uv - vec2(reach.x, 0)).rgb +
+                              texture(fluence_tex, source_uv + vec2(0, reach.y)).rgb +
+                              texture(fluence_tex, source_uv - vec2(0, reach.y)).rgb);
+        incident += outside * normal.a * 2.0 * intensity;
+    }
+
+    // Solids: normal.xy is the bump tilt (world axes, y up), z the edge-light
+    // gain and w the gloss. Light from the open space around a solid reaches
+    // surface_radius into it. It arrives from four quadrants; within each, the
+    // slope of that quadrant's light points at its sources. No received light
+    // means no surface light.
+    bool solid = normal.z > 0.0 || (normal.z == 0.0 && (normal.w > 0.0 || dot(normal.xy, normal.xy) > 0.0));
+    vec3 surface_light = vec3(0);
+    vec2 tilt = solid ? normal.xy : vec2(0);
+    // Per quadrant: light fraction and direction toward it (world axes, y up).
+    vec4 weights = vec4(0);
+    vec2 dirs[4] = vec2[4](vec2(1, 0), vec2(0, -1), vec2(-1, 0), vec2(0, 1));
+    if (solid && surface_params.x > 0.0) {
+        vec2 suv = source_uv * surface_map.xy;
+        vec2 dx = vec2(surface_map.z, 0), dy = vec2(0, surface_map.w);
+        vec4 s = texture(surface_tex, suv);
+        vec4 left = texture(surface_tex, suv - dx), right = texture(surface_tex, suv + dx);
+        vec4 up = texture(surface_tex, suv - dy), down = texture(surface_tex, suv + dy);
+        vec4 q = max(texture(surface_dir_tex, suv), vec4(0));
+        // Texture rows run down the screen; world axes run up.
+        vec4 qx = texture(surface_dir_tex, suv + dx) - texture(surface_dir_tex, suv - dx);
+        vec4 qy = texture(surface_dir_tex, suv - dy) - texture(surface_dir_tex, suv + dy);
+        float open = max(s.a, 0.0);
+        // One at a straight face, less in concave corners, zero one radius deep.
+        float reach = clamp((2.0 * open - 0.05) / 0.95, 0.0, 1.0);
+        surface_light = s.rgb / max(open, 1e-4) * reach * normal.z * intensity;
+        weights = q / max(dot(q, vec4(1)), 1e-6);
+        for (int i = 0; i < 4; i++) {
+            vec2 slope = 0.5 * surface_sigma * vec2(qx[i], qy[i]) / max(q[i], 1e-6);
+            vec2 d = dirs[i] + slope / max(1.0, length(slope));
+            // Keep each direction within its quadrant's half plane.
+            d -= dirs[i] * min(dot(d, dirs[i]) - 0.2, 0.0);
+            dirs[i] = normalize(d);
+        }
+        // Near a silhouette the surface turns toward the open side (rim light).
+        vec2 outward = 0.5 * surface_sigma * vec2(right.a - left.a, up.a - down.a);
+        tilt += outward * surface_params.z * step(1e-4, normal.z);
+    }
+    incident += surface_light;
+    vec3 n = vec3(0, 0, 1);
+    if (solid) n = normalize(vec3(tilt, sqrt(max(1.0 - dot(normal.xy, normal.xy), 0.0))));
+    // Material relief shadows itself: march toward the dominant light over
+    // the height field, which rises 1/relief units per unit across the plane.
+    // Open space casts no relief shadow.
+    float shadow = 1.0;
+    vec4 relief = texture(relief_tex, source_uv);
+    vec2 toward = vec2(0);
+    for (int i = 0; i < 4; i++) toward += weights[i] * dirs[i];
+    if (solid && relief.y > 0.5 && dot(toward, toward) > 0.01) {
+        float h0 = relief.x / relief.y;
+        const float STEP = 0.6;
+        vec2 step_uv = normalize(vec2(toward.x, -toward.y)) * (STEP / world_per_px) * pixel_uv;
+        float rise = STEP / max(surface_params.y, 1e-3);
+        for (int i = 1; i <= 10; i++) {
+            vec4 r = texture(relief_tex, source_uv + step_uv * float(i));
+            if (r.y < 0.5) break;
+            shadow = min(shadow, clamp(1.0 - (r.x / r.y - h0 - rise * float(i)), 0.0, 1.0));
+        }
+    }
+    // A flat face keeps the received light; tilted relief gains or loses it.
+    // Specular is a physically based dielectric for the same light; one in
+    // surface_params.w means physical.
+    float gloss = solid ? clamp(normal.w, 0.0, 1.0) : 0.0;
+    float diffuse = 0.0, sheen = 0.0;
+    vec2 dominant = vec2(0);
+    if (dot(weights, vec4(1)) <= 0.0) {
+        diffuse = 1.0;
+    }
+    for (int i = 0; i < 4; i++) {
+        if (weights[i] <= 0.0) continue;
+        vec3 l = normalize(vec3(dirs[i] * surface_params.y, 1.0));
+        diffuse += weights[i] * max(dot(n, l), 0.0) / l.z;
+        if (gloss > 0.0) {
+            sheen += weights[i] * 3.14159265 * highlight(n, l, 1.0 - gloss) / l.z * surface_params.w;
+        }
+        dominant += weights[i] * dirs[i];
+    }
+    diffuse = mix(diffuse * shadow, diffuse, 1.0 - dot(weights, vec4(1)));
+    sheen *= shadow;
+    if (mode == 7) return vec4(surface_light, 1.0);
+    if (mode == 8) return vec4(dominant * 0.5 + 0.5, shadow, 1.0);
+    if (mode == 9) return vec4(n * 0.5 + 0.5, 1.0);
+
+    vec3 lit = incident * (albedo * diffuse + vec3(sheen)) +
                max(albedo * shadow_floor, visibility.rgb);
     vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient + lit;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
+    if (linear_output != 0) return vec4(max(out_linear, vec3(0.0)), 1.0);
     vec3 out_srgb = linear_to_srgb(max(out_linear, vec3(0.0)));
     float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);
     return vec4(clamp(out_srgb + vec3(dither), vec3(0.0), vec3(1.0)), 1.0);

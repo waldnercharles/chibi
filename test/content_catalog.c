@@ -148,7 +148,7 @@ void run_content_catalog_checks()
         "ProjectileLifecycle.yaml",
     };
     static const char *const arena2d_materials[] = {
-        "Rock.yaml",
+        "Basalt.yaml",
     };
     static const char *const arena2d_events[] = {
         "CollectExperience.yaml", "Damage.yaml",
@@ -190,7 +190,8 @@ void run_content_catalog_checks()
     static const char *const arena2d_libraries[] = { "DirectionMath.yaml",
                                                      "FieldShapes.yaml",
                                                      "WeaponActions.yaml" };
-    static const char *const arena2d_fields[] = { "CaveField.yaml",
+    static const char *const arena2d_fields[] = { "BasaltCave.yaml",
+                                                  "CaveField.yaml",
                                                   "MaterialIslands.yaml" };
     static const char *const arena2d_systems[] = { "FreeMotion.yaml" };
     const char *arena2d_root = "projects/arena2d/content";
@@ -200,7 +201,12 @@ void run_content_catalog_checks()
         arena2d_behaviors,
         (int)(sizeof arena2d_behaviors / sizeof *arena2d_behaviors)
     );
-    valid &= folder_matches(arena2d_root, "fields", arena2d_fields, 2);
+    valid &= folder_matches(
+        arena2d_root,
+        "fields",
+        arena2d_fields,
+        (int)(sizeof arena2d_fields / sizeof *arena2d_fields)
+    );
     valid &= folder_matches(arena2d_root, "systems", arena2d_systems, 1);
     valid &= folder_matches(
         arena2d_root,

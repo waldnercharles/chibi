@@ -1,7 +1,7 @@
 version: 3
 name: ArenaRim
 domain: material
-id_counter: 37
+id_counter: 38
 description: A metallic cyan boundary with a slow, restrained pulse in its emission.
 graphs:
 - kind: event
@@ -9,6 +9,8 @@ graphs:
   nodes:
   - id: 1
     type: Shader Surface Output
+    x: 1190.0
+    "y": 50.0
     inputs:
       Base Color:
         default: {x: 1.0, "y": 1.0, z: 1.0}
@@ -18,8 +20,11 @@ graphs:
       Metallic: 0.550000011920929
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
+      Height: {id: 37}
   - id: 9
     type: Shader Parameter
+    x: 0.0
+    "y": 0.0
     reference_name: Base Color
     outputs:
       Value:
@@ -28,15 +33,19 @@ graphs:
         flags: 64
         group: 0
         default: {x: 0.012000000104308128, "y": 0.14000000059604645, z: 0.23999999463558197}
-  - {id: 11, type: Shader Time}
+  - {id: 11, type: Shader Time, x: 0.0, "y": 250.0}
   - id: 13
     type: Shader Parameter
+    x: 0.0
+    "y": 390.0
     reference_id: 1
     reference_name: Pulse Speed
     outputs:
       Value: {flags: 0, group: 0, default: 0.44999998807907104}
   - id: 15
     type: Call Pure Function
+    x: 290.0
+    "y": 250.0
     reference_id: 56
     reference_name: Pulse
     reference_asset: ShaderMath
@@ -47,6 +56,8 @@ graphs:
       Brightness: {declaration_id: 63, type: float, type_name: null}
   - id: 19
     type: Shader Multiply
+    x: 550.0
+    "y": 250.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.11999999731779099}
@@ -54,6 +65,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 23
     type: Shader Add
+    x: 800.0
+    "y": 250.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.8799999952316284}
@@ -61,12 +74,16 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 27
     type: Shader Parameter
+    x: 550.0
+    "y": 470.0
     reference_id: 2
     reference_name: Glow
     outputs:
       Value: {flags: 0, group: 0, default: 1.2000000476837158}
   - id: 29
     type: Shader Multiply
+    x: 800.0
+    "y": 500.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -74,6 +91,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 33
     type: Shader Multiply
+    x: 1050.0
+    "y": 500.0
     inputs:
       A:
         type: struct

@@ -1,7 +1,7 @@
 version: 3
 name: ArenaExperience
 domain: material
-id_counter: 17
+id_counter: 19
 description: Flat hollow lime pickups with a restrained unlit color and a faint collection ribbon.
 graphs:
 - kind: event
@@ -9,6 +9,8 @@ graphs:
   nodes:
   - id: 1
     type: Shader Surface Output
+    x: 688.0
+    "y": 0.0
     inputs:
       Base Color:
         default: {x: 1.0, "y": 1.0, z: 1.0}
@@ -18,8 +20,11 @@ graphs:
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Unlit: true
+      Height: {id: 18}
   - id: 9
     type: Shader Parameter
+    x: 0.0
+    "y": 2.0
     reference_name: Color
     outputs:
       Value:
@@ -30,12 +35,16 @@ graphs:
         default: {x: 0.9374018907546997, "y": 1.0, z: 0.028911888599395752}
   - id: 11
     type: Shader Parameter
+    x: 0.0
+    "y": 116.0
     reference_id: 1
     reference_name: Glow
     outputs:
       Value: {flags: 0, group: 0, default: 10.0}
   - id: 13
     type: Shader Multiply
+    x: 272.0
+    "y": 60.0
     inputs:
       A:
         type: struct

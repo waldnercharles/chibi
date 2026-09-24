@@ -124,7 +124,7 @@ static void parameters_and_errors()
     v.name = "missing";
     assert(!field_program_sample(p, ctx, 0, 0, &out, error, sizeof error));
     assert(
-        !field_program_bake(p, (field_context){ 0 }, (field_grid){ 0, 1, 1 }, &out, error, sizeof error)
+        !field_program_bake(p, (field_context){ 0 }, (field_grid){ 0, 1, 1 }, &out, NULL, error, sizeof error)
     );
     field_program_free(p);
     material_fields *catalog = material_fields_new();
@@ -140,6 +140,7 @@ static void parameters_and_errors()
             0,
             (field_grid){ 1, 1, 1 },
             &out,
+            NULL,
             error,
             sizeof error
         ) &&
@@ -153,6 +154,7 @@ static void parameters_and_errors()
         0,
         (field_grid){ 1, 1, 1 },
         &out,
+        NULL,
         error,
         sizeof error
     ));
@@ -192,8 +194,8 @@ static void noise_and_composition()
     field_program *p = compile(a);
     field_context ctx = { .seed = 8 };
     field_grid grid = { 16, 16, .125f };
-    assert(field_program_bake(p, ctx, grid, values, error, sizeof error));
-    assert(field_program_bake(p, ctx, grid, again, error, sizeof error));
+    assert(field_program_bake(p, ctx, grid, values, NULL, error, sizeof error));
+    assert(field_program_bake(p, ctx, grid, again, NULL, error, sizeof error));
     assert(hash(values, 256) == hash(again, 256));
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
@@ -205,7 +207,7 @@ static void noise_and_composition()
         }
     }
     ctx.seed++;
-    assert(field_program_bake(p, ctx, grid, again, error, sizeof error));
+    assert(field_program_bake(p, ctx, grid, again, NULL, error, sizeof error));
     assert(hash(values, 256) != hash(again, 256));
     field_program_free(p);
     behavior_asset_free(a);
@@ -337,7 +339,7 @@ static void library_hot_apply()
     float before, after;
     field_grid grid = { 1, 1, 1, -90, 0 };
     assert(
-        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &before, error, sizeof error)
+        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &before, NULL, error, sizeof error)
     );
     game_live_definition *library = game_live_find_definition(live, "FieldShapes");
     graph *function = library->working->graphs[1];
@@ -356,7 +358,7 @@ static void library_hot_apply()
     assert(!game_live_apply(live, library, error, sizeof error));
     assert(material_field_revision(fields, "MaterialIslands") == 2);
     assert(
-        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &after, error, sizeof error)
+        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &after, NULL, error, sizeof error)
     );
     assert(after < before - 20);
     assert(graph_add_node(function, registry_node_by_name("Print String")));
@@ -365,7 +367,7 @@ static void library_hot_apply()
     assert(material_field_revision(fields, "MaterialIslands") == 2);
     float retained;
     assert(
-        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &retained, error, sizeof error)
+        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &retained, NULL, error, sizeof error)
     );
     assert(retained == after);
     game_live_world_free(live);
@@ -484,6 +486,37 @@ static void streaming_restore()
     tiles = material_stream_tiles(stream, &count);
     assert(count == 1 && tiles[0].key == key && tiles[0].mask->count == remaining);
     material_stream_free(stream);
+    /* Tidying removes an enclosed island and fills an enclosed pocket, but
+     * keeps components that reach the grid edge. */
+    {
+        field_grid small = { 12, 12, 1 };
+        float cells[144];
+        for (int i = 0; i < 144; i++) {
+            cells[i] = 1; /* open */
+        }
+        cells[5 * 12 + 5] = cells[5 * 12 + 6] = -1; /* island */
+        cells[0 * 12 + 2] = cells[1 * 12 + 2] = -1; /* touches the top edge */
+        for (int y = 8; y < 12; y++) {
+            for (int x = 0; x < 4; x++) {
+                cells[y * 12 + x] = -1; /* rock with a pocket */
+            }
+        }
+        cells[9 * 12 + 1] = 1;
+        material_terrain_tidy(cells, small, 8);
+        assert(cells[5 * 12 + 5] > 0 && cells[5 * 12 + 6] > 0);
+        assert(cells[0 * 12 + 2] < 0 && cells[1 * 12 + 2] < 0);
+        assert(cells[9 * 12 + 1] < 0);
+        material_terrain_tidy(cells, small, 0);
+    }
+    /* Every tile inside a required extent loads at once; the budget only
+     * limits prefetching beyond it. */
+    stream = material_stream_new(desc);
+    view = (material_stream_view){ 0, 0, 1000, 200 };
+    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_inspect(stream).resident == 16 + 1);
+    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_inspect(stream).resident == 16 + 2);
+    material_stream_free(stream);
     material_fields_free(fields);
     behavior_asset_free(a);
     free(cells);
@@ -517,7 +550,7 @@ int bench_fields()
         struct timespec start, end;
         clock_gettime(CLOCK_MONOTONIC, &start);
         assert(
-            field_program_bake(p, (field_context){ .seed = 1729 }, grid, values, error, sizeof error)
+            field_program_bake(p, (field_context){ .seed = 1729 }, grid, values, NULL, error, sizeof error)
         );
         clock_gettime(CLOCK_MONOTONIC, &end);
         double bake_ms = 1000. * (end.tv_sec - start.tv_sec) +

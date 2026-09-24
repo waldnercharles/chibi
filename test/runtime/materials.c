@@ -5,6 +5,7 @@
 #include "runtime/material_terrain.h"
 #include "support/text_file.h"
 float *reference_cave_generate(unsigned, int, int, float, float, float);
+#include "runtime/material_debris.h"
 #include "runtime/material_fluid.h"
 #include "runtime/material_mask.h"
 #include "runtime/task_pool.h"
@@ -148,7 +149,7 @@ static float *cave_field_generate(unsigned seed, int width, int height, float ce
                                        { .type = PIN_F32, .f = roughness } } };
     field_grid grid = { width, height, cell };
     assert(
-        field_program_bake(program, (field_context){ seed, parameters, 2 }, grid, out, error, sizeof error)
+        field_program_bake(program, (field_context){ seed, parameters, 2 }, grid, out, NULL, error, sizeof error)
     );
     material_terrain_connect(out, grid, MATERIAL_CONNECTIVITY_FIRST_AIR, 8);
     field_program_free(program);
@@ -605,7 +606,7 @@ static void physical_destruction()
         ) == 0
     );
     assert(hit.found);
-    game_materials_damage(live->materials, slab, (fluid_vec){ 0, 0 }, 11, 1, 0);
+    game_materials_damage(live->materials, slab, (fluid_vec){ 0, 0 }, 11, 1, 0, (material_impact){ 0 });
     assert(game_physics_tick(live->physics, 0) == 0);
     assert(ecs_world_live_count(world) == 3); /* settings, core, detached body */
     assert(
@@ -746,7 +747,7 @@ static void terrain_boundary_cut()
     ecs_query_end(&query);
     assert(ecs_entity_to_u64(target));
     game_material_state initial = game_materials_inspect(live->materials);
-    game_materials_damage(live->materials, target, (fluid_vec){ 0, 220 }, 12, 1, 0);
+    game_materials_damage(live->materials, target, (fluid_vec){ 0, 220 }, 12, 1, 0, (material_impact){ 0 });
     assert(!game_materials_prepare(live->materials));
     int after = 0, opened = 0;
     assert(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
@@ -785,7 +786,7 @@ static void terrain_boundary_cut()
     assert(game_materials_inspect(live->materials).cells == initial.cells);
     game_materials_reset(live->materials);
     assert(ecs_world_live_count(world) == 2);
-    game_materials_damage(live->materials, source, (fluid_vec){ 0, 220 }, 12, 1, 0);
+    game_materials_damage(live->materials, source, (fluid_vec){ 0, 220 }, 12, 1, 0, (material_impact){ 0 });
     assert(!game_materials_prepare(live->materials));
     assert(game_materials_inspect(live->materials).cells == damaged.cells);
     assert(ecs_world_live_count(world) > 2);
@@ -859,7 +860,7 @@ static void terrain_stream_restore()
     }
     ecs_query_end(&query);
     assert(ecs_entity_to_u64(target));
-    game_materials_damage(live->materials, target, point, 10, 1, 0);
+    game_materials_damage(live->materials, target, point, 10, 1, 0, (material_impact){ 0 });
     assert(!game_materials_prepare(live->materials));
     assert(game_materials_inspect(live->materials).cells < pristine.cells);
     assert(!material_mask_contains(
@@ -1061,7 +1062,7 @@ static void resistance_and_chips()
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(game_physics_tick(live->physics, 0) == 0);
-    game_materials_damage(live->materials, slab, (fluid_vec){ 8, 0 }, 3, 1, 0);
+    game_materials_damage(live->materials, slab, (fluid_vec){ 8, 0 }, 3, 1, 0, (material_impact){ 0 });
     assert(game_physics_tick(live->physics, 0) == 0);
     ecs_query query;
     ecs_entity entity;
@@ -1155,11 +1156,11 @@ static void small_hull_release()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(game_physics_tick(live->physics, 0) == 0);
     assert(game_materials_mask(live->materials, slab)->count == 400);
-    game_materials_damage(live->materials, slab, (fluid_vec){ 10, 0 }, 9, 1, 0);
+    game_materials_damage(live->materials, slab, (fluid_vec){ 10, 0 }, 9, 1, 0, (material_impact){ 0 });
     assert(game_physics_tick(live->physics, 0) == 0);
     assert(game_materials_mask(live->materials, slab)->count > 240);
     assert(GAME_GameHealth_get_const(world, slab)->current == 3);
-    game_materials_damage(live->materials, slab, (fluid_vec){ -10, 0 }, 12, 1, 0);
+    game_materials_damage(live->materials, slab, (fluid_vec){ -10, 0 }, 12, 1, 0, (material_impact){ 0 });
     assert(game_physics_tick(live->physics, 0) == 0);
     assert(!game_materials_mask(live->materials, slab));
     ecs_query query;
@@ -1178,6 +1179,77 @@ static void small_hull_release()
     assert(fragments > 0);
     game_live_world_free(live);
     ecs_world_free(world);
+}
+
+/* Fragments keep the frame their source's material was laid out in, including
+ * a frame the source itself inherited, so world-space patterns travel with them. */
+static void fragment_material_frame()
+{
+    for (int inherited = 0; inherited < 2; inherited++) {
+        ecs_world *world = ecs_world_new();
+        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+            assert(
+                ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
+            );
+        }
+        game_live_world *live = game_live_world_new(world);
+        ecs_entity config = ecs_world_create_entity(world),
+                   slab = ecs_world_create_entity(world);
+        component(world, config, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
+        component(
+            world,
+            config,
+            &GAME_COMPONENT_MaterialFluidWorld,
+            &(MaterialFluidWorld){ 64, 32, 10, 100 }
+        );
+        component(world, slab, &GAME_COMPONENT_GameTransform, &(GameTransform){ 30, -12 });
+        component(world, slab, &GAME_COMPONENT_GameOrientation, &(GameOrientation){ .4f });
+        component(
+            world,
+            slab,
+            &GAME_COMPONENT_GameCollider,
+            &(GameCollider){ .shape = GAME_COLLIDER_BOX,
+                             .width = 20,
+                             .height = 20,
+                             .category = 8,
+                             .mask = 15 }
+        );
+        component(
+            world,
+            slab,
+            &GAME_COMPONENT_GameDestructible,
+            &(GameDestructible){ .cell_size = 1, .min_fragment_cells = 3, .release_fraction = .3f }
+        );
+        component(world, slab, &GAME_COMPONENT_GameShader, &(GameShader){ .material = "Basalt" });
+        GameMaterialFrame expected = { 30, -12, .4f };
+        if (inherited) {
+            expected = (GameMaterialFrame){ -5, 7, 1.1f };
+            component(world, slab, &GAME_COMPONENT_GameMaterialFrame, &expected);
+        }
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+        assert(game_physics_tick(live->physics, 0) == 0);
+        game_materials_damage(live->materials, slab, (fluid_vec){ 40, -12 }, 9, 1, 0, (material_impact){ 0 });
+        assert(game_physics_tick(live->physics, 0) == 0);
+        game_materials_damage(live->materials, slab, (fluid_vec){ 20, -12 }, 12, 1, 0, (material_impact){ 0 });
+        assert(game_physics_tick(live->physics, 0) == 0);
+        ecs_query query;
+        ecs_entity entity;
+        ecs_component_id body = GAME_COMPONENT_GameBody.id;
+        int fragments = 0;
+        assert(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
+        while (ecs_query_next(&query, &entity)) {
+            const GameMaterialFrame *frame = GAME_GameMaterialFrame_get_const(world, entity);
+            assert(
+                frame && frame->x == expected.x && frame->y == expected.y &&
+                frame->radians == expected.radians
+            );
+            fragments++;
+        }
+        ecs_query_end(&query);
+        assert(fragments > 0);
+        game_live_world_free(live);
+        ecs_world_free(world);
+    }
 }
 
 static void rotated_occlusion()
@@ -1360,7 +1432,7 @@ static void swept_ignition()
     assert(game_physics_tick(live->physics, 1.f / 60) == 0);
     assert(GAME_GameTransform_get_const(world, shot)->x < 0);
     assert(!game_materials_inspect(live->materials).burning_particles);
-    game_materials_damage(live->materials, wall, (fluid_vec){ 0 }, 10, 1, 0);
+    game_materials_damage(live->materials, wall, (fluid_vec){ 0 }, 10, 1, 0, (material_impact){ 0 });
     *GAME_GameTransform_get(world, shot) = (GameTransform){ -20, 0 };
     assert(game_physics_tick(live->physics, 1.f / 60) == 0);
     assert(game_materials_inspect(live->materials).burning_particles == 1);
@@ -1450,11 +1522,110 @@ static void blast_policy()
     ecs_world_free(world);
 }
 
+/* Solid below y = 10 (gameplay y runs down). */
+static bool debris_floor(void *user, fluid_vec point, float *distance)
+{
+    (void)user;
+    *distance = 10 - point.y;
+    return true;
+}
+
+static material_chunk debris_chunk(fluid_vec position, fluid_vec velocity, float age)
+{
+    material_chunk chunk = { .position = position,
+                             .velocity = velocity,
+                             .radius = .8f,
+                             .age = age,
+                             .lifetime = 5 };
+    material_chunk_shape(&chunk, 7);
+    return chunk;
+}
+
+static void debris()
+{
+    material_debris *debris = material_debris_new(4);
+    material_debris_add(debris, debris_chunk((fluid_vec){ 0, 0 }, (fluid_vec){ 0, 60 }, 0));
+    int count;
+    const material_chunk *chunk = material_debris_chunks(debris, &count);
+    assert(chunk->count >= 5 && chunk->count <= MATERIAL_CHUNK_POINTS);
+    for (int k = 0; k < chunk->count; k++) {
+        assert(hypotf(chunk->points[2 * k], chunk->points[2 * k + 1]) <= chunk->radius + 1e-4f);
+    }
+    for (int i = 0; i < 60; i++) {
+        material_debris_tick(debris, 1 / 60.f, debris_floor, NULL, NULL, 0, NULL, 0, NULL, 0);
+        chunk = material_debris_chunks(debris, &count);
+        assert(count == 1 && chunk->position.y <= 9.25f);
+    }
+    /* Too small to split, it bounced back up, losing most of its speed. */
+    assert(chunk->velocity.y < 0 && chunk->velocity.y > -30);
+
+    /* A hard knock splits a large chunk into smaller pieces that keep its
+     * material and heat; pieces of pieces split once more at most. */
+    material_debris_clear(debris);
+    material_chunk large = debris_chunk((fluid_vec){ 0, 0 }, (fluid_vec){ 0, 90 }, 1);
+    large.radius = 2;
+    large.source = 42;
+    large.heat = 1;
+    material_chunk_shape(&large, 3);
+    material_debris_add(debris, large);
+    for (int i = 0; i < 30; i++) {
+        material_debris_tick(debris, 1 / 60.f, debris_floor, NULL, NULL, 0, NULL, 0, NULL, 0);
+    }
+    chunk = material_debris_chunks(debris, &count);
+    assert(count >= 2 && count <= 4);
+    for (int i = 0; i < count; i++) {
+        assert(chunk[i].source == 42 && chunk[i].generation >= 1 && chunk[i].radius < 1.5f);
+        assert(chunk[i].heat > 0 && chunk[i].heat < 1 && chunk[i].position.y <= 10);
+    }
+
+    /* A blast throws a chunk away from its center. */
+    material_debris_clear(debris);
+    material_debris_add(debris, debris_chunk((fluid_vec){ 0, 8 }, (fluid_vec){ 0 }, 0));
+    material_debris_push(debris, (material_debris_blast){ { 0, 12 }, 20, 200 });
+    chunk = material_debris_chunks(debris, &count);
+    assert(chunk->velocity.y < -20 && chunk->shock > 20);
+
+    /* A moving box body shoves chunks it overlaps. */
+    material_debris_clear(debris);
+    material_debris_add(debris, debris_chunk((fluid_vec){ 0, 0 }, (fluid_vec){ 0 }, 0));
+    fluid_body body = { .position = { -1.5f, 0 },
+                        .velocity = { 40, 0 },
+                        .inverse_mass = 1 };
+    fluid_obstacle box = { .body = 0, .half_size = { 1, 1 } };
+    material_debris_tick(debris, 1 / 60.f, NULL, NULL, &body, 1, &box, 1, NULL, 0);
+    chunk = material_debris_chunks(debris, &count);
+    assert(chunk->position.x >= .29f && chunk->velocity.x > 30);
+
+    /* A full pool replaces its oldest chunk; chunks shrink, then expire. */
+    material_debris_free(debris);
+    debris = material_debris_new(2);
+    material_debris_add(debris, debris_chunk((fluid_vec){ 1, 0 }, (fluid_vec){ 0 }, 3));
+    material_debris_add(debris, debris_chunk((fluid_vec){ 2, 0 }, (fluid_vec){ 0 }, 1));
+    material_debris_add(debris, debris_chunk((fluid_vec){ 3, 0 }, (fluid_vec){ 0 }, 0));
+    chunk = material_debris_chunks(debris, &count);
+    assert(count == 2 && chunk[0].position.x == 3 && chunk[1].position.x == 2);
+    assert(material_chunk_scale(&chunk[0]) == 1);
+    int expired = 0;
+    for (int i = 0; i < 280; i++) {
+        material_debris_tick(debris, 1 / 60.f, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        int gone;
+        const material_chunk *spent = material_debris_expired(debris, &gone);
+        assert(gone == 0 || (gone == 1 && spent->position.x == 2));
+        expired += gone;
+    }
+    chunk = material_debris_chunks(debris, &count);
+    assert(expired == 1 && count == 1 && chunk->position.x == 3);
+    assert(material_chunk_scale(chunk) < 1 && material_chunk_scale(chunk) > 0);
+    material_debris_free(debris);
+}
+
 void test_materials()
 {
     blast_policy();
     rotated_occlusion();
     fragment_penetration();
+    fragment_material_frame();
+    debris();
     swept_ignition();
     reactions();
     resistance_and_chips();

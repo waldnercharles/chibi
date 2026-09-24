@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,7 @@ import {
   renderRequest,
   validateAuthoringArguments,
 } from "./authoring.mjs";
-import { controllerExecutable, parseControllerJson } from "./controller.mjs";
+import { parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -78,6 +78,68 @@ function resourceTemplates() {
     name: "Chibi deterministic recording",
     mimeType: "application/json",
   }];
+}
+
+function controllerPath() {
+  const candidates = [
+    process.env.CHIBI_CTL,
+    resolve(root, "build", "chibi_ctl"),
+    resolve(root, "build-release", "chibi_ctl"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
+}
+
+// launch.sh sets CHIBI_CTL to the build output; build it on demand so the MCP
+// handshake never waits on a native compile.
+let controllerBuild = null;
+
+function controllerReady() {
+  return !process.env.CHIBI_CTL || existsSync(process.env.CHIBI_CTL);
+}
+
+function ensureController() {
+  if (controllerReady()) {
+    return Promise.resolve();
+  }
+  const controller = process.env.CHIBI_CTL;
+  controllerBuild ??= new Promise((resolveBuild, rejectBuild) => {
+    process.stderr.write("chibi MCP building native controllers\n");
+    const child = spawn("make", ["-C", serverRoot, "build", `BUILD_DIR=${dirname(controller)}`, "BUILD_TARGET=chibi_ctl"], {
+      stdio: ["ignore", process.stderr, process.stderr],
+    });
+    child.on("error", rejectBuild);
+    child.on("exit", (code, signal) => {
+      if (code === 0 && existsSync(controller)) {
+        resolveBuild();
+        return;
+      }
+      rejectBuild(new Error(signal ? `terminated by ${signal}` : `exited with status ${code}`));
+    });
+  }).catch((error) => {
+    controllerBuild = null;
+    throw protocolError(-32603, `chibi MCP could not build ${controller}: make build ${error.message}`);
+  });
+  return controllerBuild;
+}
+
+// Renders waiting on the build are not yet cancellable by authoring.mjs.
+const rendersAwaitingBuild = new Map();
+
+async function builtRenderRequest(renderRoot, request, requestId) {
+  if (!controllerReady() && requestId !== undefined) {
+    const key = String(requestId);
+    const cancelled = new Promise((resolveCancel) => rendersAwaitingBuild.set(key, () => resolveCancel(true)));
+    try {
+      if (await Promise.race([ensureController().then(() => false), cancelled])) {
+        const operation = request.operation || "preview_shader";
+        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "shader preview was cancelled" } };
+      }
+    } finally {
+      rendersAwaitingBuild.delete(key);
+    }
+  }
+  await ensureController();
+  return renderRequest(renderRoot, request, requestId);
 }
 
 function send(message) {
@@ -804,12 +866,8 @@ async function nativeRequest(operation, args = {}) {
   // Long deterministic scenarios can run for minutes; a timeout restarts the controller.
   const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
   const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 300000;
-  let executable;
-  try {
-    executable = await controllerExecutable();
-  } catch (error) {
-    throw protocolError(-32603, error.message);
-  }
+  await ensureController();
+  const executable = controllerPath();
   if (controllerSession && !controllerSession.closed && controllerSession.stale()) {
     controllerSession.close();
   }
@@ -947,7 +1005,7 @@ async function toolCall(name, args, requestId) {
   }
   validateToolArguments(name, args);
   if (isAuthoringTool(name)) {
-    return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
+    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
   }
   const entry = getToolCatalogEntry(name);
   if (!entry || entry.adapter !== "native") {
@@ -1184,6 +1242,7 @@ async function dispatch(message) {
   }
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
+      rendersAwaitingBuild.get(String(message.params.requestId))?.();
       cancelAuthoringRequest(message.params.requestId);
     }
     return null;
@@ -1280,6 +1339,9 @@ function maybeCloseController() {
   }
 }
 
+// Start a missing build now so the first tool call waits less; failures resurface on use.
+ensureController().catch(() => {});
+
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   pending += chunk;
@@ -1318,4 +1380,3 @@ process.stdin.on("end", () => {
   maybeCloseController();
 });
 process.on("exit", () => controllerSession?.close());
-controllerExecutable().catch((error) => process.stderr.write(`chibi MCP ${error.message}\n`));

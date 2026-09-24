@@ -20,6 +20,25 @@ if ! project_root=$(CDPATH= cd -- "$project_root" && pwd -P); then
     printf '%s\n' "chibi MCP project root is not a directory: $project_root" >&2
     exit 1
 fi
+build_dir=${BUILD_DIR:-build}
+case "$build_dir" in
+    /*) ;;
+    *) build_dir="$repo_root/$build_dir" ;;
+esac
+controller=${CHIBI_CTL:-"$build_dir/chibi_ctl"}
+
+if [ -n "${CHIBI_CTL:-}" ] && [ ! -x "$controller" ]; then
+    printf '%s\n' "chibi MCP controller is not executable: $controller" >&2
+    exit 1
+fi
+
+# A worktree without its own build borrows the shared build of identical native sources.
+if [ -z "${CHIBI_CTL:-}" ] && [ ! -x "$controller" ]; then
+    cached=$(sh "$script_dir/controller-cache.sh" 2>/dev/null || true)
+    if [ -n "$cached" ] && [ -x "$cached" ]; then
+        controller=$cached
+    fi
+fi
 
 if node_bin=$(command -v node 2>/dev/null); then
     :
@@ -32,4 +51,7 @@ fi
 
 # The server answers the handshake immediately and builds chibi_ctl on first use.
 printf '%s\n' "chibi MCP starting from project root $project_root" >&2
-CHIBI_ROOT="$project_root" exec "$node_bin" "$repo_root/tools/mcp/server.mjs"
+CHIBI_ROOT="$project_root" \
+CHIBI_CTL="$controller" \
+CHIBI_RENDER_SHADER_DIR="$repo_root/src/render/shaders" \
+exec "$node_bin" "$repo_root/tools/mcp/server.mjs"

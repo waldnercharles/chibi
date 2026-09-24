@@ -1,7 +1,7 @@
 version: 3
 name: ArenaFloor
 domain: material
-id_counter: 749
+id_counter: 751
 description: Permanent triangular cell outlines surround small breathing inner triangles. Cell boundaries brighten locally around activity; the floor faces remain dark.
 graphs:
 - kind: event
@@ -9,53 +9,71 @@ graphs:
   nodes:
   - id: 653
     type: Shader Parameter
+    x: 0.0
+    "y": 0.0
     reference_name: Tile Size
     outputs:
       Value: {flags: 0, group: 0, default: 16.0}
   - id: 655
     type: Shader Parameter
+    x: 260.0
+    "y": 0.0
     reference_id: 1
     reference_name: Idle Size
     outputs:
       Value: {flags: 0, group: 0, default: 0.23999999463558197}
   - id: 657
     type: Shader Parameter
+    x: 520.0
+    "y": 0.0
     reference_id: 2
     reference_name: Active Size
     outputs:
       Value: {flags: 0, group: 0, default: 0.8399999737739563}
   - id: 659
     type: Shader Parameter
+    x: 780.0
+    "y": 0.0
     reference_id: 3
     reference_name: Line Width
     outputs:
       Value: {flags: 0, group: 0, default: 0.009999999776482582}
   - id: 661
     type: Shader Parameter
+    x: 1040.0
+    "y": 0.0
     reference_id: 4
     reference_name: Idle Glow
     outputs:
       Value: {flags: 0, group: 0, default: 0.02199999988079071}
   - id: 663
     type: Shader Parameter
+    x: 1300.0
+    "y": 0.0
     reference_id: 5
     reference_name: Reaction Gain
     outputs:
       Value: {flags: 0, group: 0, default: 0.4000000059604645}
   - id: 665
     type: Shader Parameter
+    x: 1560.0
+    "y": 0.0
     reference_id: 6
     reference_name: Beat Amount
     outputs:
       Value: {flags: 0, group: 0, default: 0.04500000178813934}
   - id: 667
     type: Shader WorldPosition
+    x: 0.0
+    "y": 240.0
     outputs:
       Value:
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 669
     type: Call Pure Function
+    x: 260.0
+    "y": 240.0
     reference_id: 274
     reference_name: Triangle Center
     inputs:
@@ -73,6 +91,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 673
     type: Shader Surface Influence
+    x: 520.0
+    "y": 240.0
     inputs:
       Position:
         flags: 64
@@ -83,6 +103,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 676
     type: Call Pure Function
+    x: 780.0
+    "y": 240.0
     reference_id: 624
     reference_name: Activity Strength
     inputs:
@@ -93,9 +115,11 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
     outputs:
       Strength: {type: float, type_name: null}
-  - {id: 679, type: Shader Beat Pulse}
+  - {id: 679, type: Shader Beat Pulse, x: 1040.0, "y": 240.0}
   - id: 681
     type: Shader Mix
+    x: 1300.0
+    "y": 240.0
     inputs:
     - {id: 682, flags: 0, group: 0}
     - {id: 683, flags: 0, group: 0}
@@ -104,6 +128,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 686
     type: Shader Multiply
+    x: 1560.0
+    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -111,6 +137,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 690
     type: Shader Add
+    x: 0.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -118,6 +146,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 694
     type: Call Pure Function
+    x: 260.0
+    "y": 480.0
     reference_id: 501
     reference_name: Triangle Border
     inputs:
@@ -133,6 +163,8 @@ graphs:
       Mask: {type: float, type_name: null}
   - id: 700
     type: Call Pure Function
+    x: 520.0
+    "y": 480.0
     reference_id: 501
     reference_name: Triangle Border
     inputs:
@@ -148,6 +180,8 @@ graphs:
       Mask: {type: float, type_name: null}
   - id: 706
     type: Shader Multiply
+    x: 780.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.23999999463558197}
@@ -155,6 +189,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 710
     type: Shader Max
+    x: 1040.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -162,6 +198,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 714
     type: Shader Multiply
+    x: 1300.0
+    "y": 480.0
     inputs:
       A:
         type: struct
@@ -179,6 +217,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 718
     type: Shader Multiply
+    x: 1560.0
+    "y": 480.0
     inputs:
       A:
         type: struct
@@ -196,6 +236,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 722
     type: Shader Add
+    x: 0.0
+    "y": 720.0
     inputs:
       A:
         type: struct
@@ -218,6 +260,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 726
     type: Shader Multiply
+    x: 260.0
+    "y": 720.0
     inputs:
       A:
         type: struct
@@ -235,6 +279,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 730
     type: Shader Surface Output
+    x: 520.0
+    "y": 720.0
     inputs:
       Base Color:
         default: {x: 0.001500000013038516, "y": 0.0020000000949949026, z: 0.003000000026077032}
@@ -245,8 +291,11 @@ graphs:
       Normal:
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
+      Height: {id: 750}
   - id: 739
     type: Call Pure Function
+    x: 1820.0
+    "y": 800.0
     reference_id: 501
     reference_name: Triangle Border
     inputs:
@@ -262,6 +311,8 @@ graphs:
       Mask: {type: float, type_name: null}
   - id: 745
     type: Shader Max
+    x: 2080.0
+    "y": 800.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -312,6 +363,8 @@ graphs:
   nodes:
   - id: 502
     type: Function Entry
+    x: 0.0
+    "y": 0.0
     outputs:
     - id: 503
       name: Position
@@ -335,10 +388,14 @@ graphs:
       default: 0.012000000104308128
   - id: 507
     type: Return
+    x: 260.0
+    "y": 0.0
     inputs:
     - {id: 508, name: Mask, type: float, type_name: null, kind: data}
   - id: 509
     type: Shader X
+    x: 520.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -348,6 +405,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 512
     type: Shader Z
+    x: 780.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -357,6 +416,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 515
     type: Shader Max
+    x: 1040.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.009999999776482582}
@@ -364,6 +425,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 519
     type: Shader Divide
+    x: 1300.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -371,6 +434,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 523
     type: Shader Divide
+    x: 1560.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -378,6 +443,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 527
     type: Shader Multiply
+    x: 0.0
+    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.8660253882408142}
@@ -385,6 +452,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 531
     type: Shader Multiply
+    x: 260.0
+    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.5}
@@ -392,6 +461,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 535
     type: Shader Subtract
+    x: 520.0
+    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -399,18 +470,24 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 539
     type: Shader Fract
+    x: 780.0
+    "y": 240.0
     inputs:
       Value: {flags: 0, group: 0}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 542
     type: Shader Fract
+    x: 1040.0
+    "y": 240.0
     inputs:
       Value: {flags: 0, group: 0}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 545
     type: Shader Add
+    x: 1300.0
+    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -418,6 +495,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 549
     type: Shader Step
+    x: 1560.0
+    "y": 240.0
     inputs:
       Value: {flags: 0, group: 0}
       Edge: 1.0
@@ -425,6 +504,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 553
     type: Shader Subtract
+    x: 0.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0, default: 1.0}
       B: {flags: 0, group: 0}
@@ -432,6 +513,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 557
     type: Shader Mix
+    x: 260.0
+    "y": 480.0
     inputs:
     - {id: 558, flags: 0, group: 0}
     - {id: 559, flags: 0, group: 0}
@@ -440,6 +523,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 562
     type: Shader Subtract
+    x: 520.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0, default: 1.0}
       B: {flags: 0, group: 0}
@@ -447,6 +532,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 566
     type: Shader Mix
+    x: 780.0
+    "y": 480.0
     inputs:
     - {id: 567, flags: 0, group: 0}
     - {id: 568, flags: 0, group: 0}
@@ -455,6 +542,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 571
     type: Shader Add
+    x: 1040.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -462,6 +551,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 575
     type: Shader Subtract
+    x: 1300.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0, default: 1.0}
       B: {flags: 0, group: 0}
@@ -469,6 +560,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 579
     type: Shader Min
+    x: 1560.0
+    "y": 480.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -476,6 +569,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 583
     type: Shader Min
+    x: 0.0
+    "y": 720.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -483,6 +578,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 587
     type: Shader Clamp
+    x: 260.0
+    "y": 720.0
     inputs:
       Value: {flags: 0, group: 0}
       Min: 0.009999999776482582
@@ -490,6 +587,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 592
     type: Shader Subtract
+    x: 520.0
+    "y": 720.0
     inputs:
       A: {flags: 0, group: 0, default: 1.0}
       B: {flags: 0, group: 0}
@@ -497,6 +596,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 596
     type: Shader Divide
+    x: 780.0
+    "y": 720.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 3.0}
@@ -504,6 +605,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 600
     type: Shader Subtract
+    x: 1040.0
+    "y": 720.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -511,12 +614,16 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 604
     type: Shader Abs
+    x: 1300.0
+    "y": 720.0
     inputs:
       Value: {flags: 0, group: 0}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 607
     type: Shader Max
+    x: 1560.0
+    "y": 720.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.0020000000949949026}
@@ -524,6 +631,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 611
     type: Shader Add
+    x: 0.0
+    "y": 960.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.006000000052154064}
@@ -531,6 +640,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 615
     type: Shader Smoothstep
+    x: 260.0
+    "y": 960.0
     inputs:
       Value: {flags: 0, group: 0}
       Max: 0.0
@@ -538,6 +649,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 620
     type: Shader Subtract
+    x: 520.0
+    "y": 960.0
     inputs:
       A: {flags: 0, group: 0, default: 1.0}
       B: {flags: 0, group: 0}
@@ -597,6 +710,8 @@ graphs:
   nodes:
   - id: 625
     type: Function Entry
+    x: 0.0
+    "y": 0.0
     outputs:
     - id: 626
       name: Color
@@ -607,10 +722,14 @@ graphs:
       default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 627
     type: Return
+    x: 260.0
+    "y": 0.0
     inputs:
     - {id: 628, name: Strength, type: float, type_name: null, kind: data}
   - id: 629
     type: Shader X
+    x: 520.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -620,6 +739,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 632
     type: Shader Y
+    x: 780.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -629,6 +750,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 635
     type: Shader Max
+    x: 1040.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -636,6 +759,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 639
     type: Shader Z
+    x: 1300.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -645,6 +770,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 642
     type: Shader Max
+    x: 1560.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -652,6 +779,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 646
     type: Shader Multiply
+    x: 0.0
+    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 2.5}
@@ -659,6 +788,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 650
     type: Shader Saturate
+    x: 260.0
+    "y": 240.0
     inputs:
       Value: {flags: 0, group: 0}
     outputs:
@@ -683,6 +814,8 @@ graphs:
   nodes:
   - id: 275
     type: Function Entry
+    x: 0.0
+    "y": 0.0
     outputs:
     - id: 276
       name: Position
@@ -698,6 +831,8 @@ graphs:
       default: 20.0
   - id: 278
     type: Return
+    x: 230.0
+    "y": 0.0
     inputs:
     - id: 279
       name: Center
@@ -707,6 +842,8 @@ graphs:
       default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 280
     type: Shader X
+    x: 460.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -716,6 +853,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 283
     type: Shader Y
+    x: 690.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -725,6 +864,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 286
     type: Shader Z
+    x: 920.0
+    "y": 0.0
     inputs:
       Value:
         type: struct
@@ -734,6 +875,8 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 289
     type: Shader Max
+    x: 1150.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.009999999776482582}
@@ -741,6 +884,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 293
     type: Shader Divide
+    x: 1380.0
+    "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 1.0}
@@ -748,6 +893,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 297
     type: Shader Divide
+    x: 0.0
+    "y": 220.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 1.0}
@@ -755,6 +902,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 301
     type: Shader Multiply
+    x: 230.0
+    "y": 220.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.8660253882408142}
@@ -762,6 +911,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 305
     type: Shader Multiply
+    x: 460.0
+    "y": 220.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.5}
@@ -769,6 +920,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 309
     type: Shader Subtract
+    x: 690.0
+    "y": 220.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -776,18 +929,24 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 313
     type: Shader Fract
+    x: 920.0
+    "y": 220.0
     inputs:
       Value: {flags: 0, group: 0}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 316
     type: Shader Fract
+    x: 1150.0
+    "y": 220.0
     inputs:
       Value: {flags: 0, group: 0}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 319
     type: Shader Subtract
+    x: 1380.0
+    "y": 220.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -795,6 +954,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 323
     type: Shader Subtract
+    x: 0.0
+    "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -802,6 +963,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 327
     type: Shader Add
+    x: 230.0
+    "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -809,6 +972,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 331
     type: Shader Step
+    x: 460.0
+    "y": 440.0
     inputs:
       Value: {flags: 0, group: 0}
       Edge: 1.0
@@ -816,6 +981,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 335
     type: Shader Multiply
+    x: 690.0
+    "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.3333333432674408}
@@ -823,6 +990,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 339
     type: Shader Add
+    x: 920.0
+    "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.3333333432674408}
@@ -830,6 +999,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 343
     type: Shader Add
+    x: 1150.0
+    "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -837,6 +1008,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 347
     type: Shader Add
+    x: 1380.0
+    "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -844,6 +1017,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 351
     type: Shader Multiply
+    x: 0.0
+    "y": 660.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.5}
@@ -851,6 +1026,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 355
     type: Shader Add
+    x: 230.0
+    "y": 660.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -858,6 +1035,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 359
     type: Shader Divide
+    x: 460.0
+    "y": 660.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.8660253882408142}
@@ -865,6 +1044,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 363
     type: Shader Multiply
+    x: 690.0
+    "y": 660.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -872,6 +1053,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 367
     type: Shader Multiply
+    x: 920.0
+    "y": 660.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -879,6 +1062,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 371
     type: Shader Vector3
+    x: 1150.0
+    "y": 660.0
     outputs:
       Value:
         default: {x: 0.0, "y": 0.0, z: 0.0}

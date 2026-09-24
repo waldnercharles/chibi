@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileHit
-id_counter: 126
+id_counter: 111
 description: Carve at the impact point, pierce enemy fragments, and deliver damage to blocking targets.
 owner_type: ecs.entity
 graphs:
@@ -9,21 +9,29 @@ graphs:
   nodes:
   - id: 1
     type: Event
+    x: 0.0
+    "y": 200.0
     reference_name: Contact Begin
     outputs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {type: struct, type_name: CF_V2, kind: data}
   - id: 5
     type: Self
+    x: 310.0
+    "y": 466.0
     outputs:
       Self: {type_name: ecs.entity}
   - id: 7
     type: Normalize Vector 2
+    x: 0.0
+    "y": 346.0
     inputs:
       Value:
         binding: {kind: component, component: GAME.GameVelocity}
   - id: 27
     type: Behavior Expression
+    x: 310.0
+    "y": 290.0
     reference_id: 10
     reference_name: point + direction * inset
     inputs:
@@ -34,11 +42,20 @@ graphs:
       Result: {flags: 2, group: 4}
   - id: 66
     type: Damage Material
-    inputs: {Radius: 4.0, Energy: 1.0}
-  - {id: 91, type: Is Pierceable Material Fragment}
-  - {id: 94, type: Branch}
+    x: 620.0
+    "y": 0.0
+    inputs:
+      Radius: 4.0
+      Energy: 1.0
+      Source: {id: 110}
+    outputs:
+      Out: {id: 73}
+  - {id: 91, type: Is Pierceable Material Fragment, x: 620.0, "y": 240.0}
+  - {id: 94, type: Branch, x: 930.0, "y": 200.0}
   - id: 99
     type: Send Event
+    x: 1240.0
+    "y": 311.0
     reference_name: Damage
     inputs:
       Amount:
@@ -49,13 +66,14 @@ graphs:
       Source: {declaration_id: 3}
     outputs:
       Then: {id: 102}
-  - {id: 105, type: Destroy Entity}
+  - {id: 105, type: Destroy Entity, x: 1550.0, "y": 374.0}
   edges:
   - {from: 1.Then, to: 66.In}
   - {from: 1.Other, to: 66.Entity}
   - {from: 1.Other, to: 91.Entity}
   - {from: 1.Other, to: 99.Entity}
   - {from: 1.Point, to: 27.point}
+  - {from: 5.Self, to: 66.Source}
   - {from: 5.Self, to: 99.Source}
   - {from: 5.Self, to: 105.Entity}
   - {from: 7.Result, to: 27.direction}
@@ -69,6 +87,6 @@ graphs:
   name: point + direction * inset
   math_expression: point + direction * inset
   expression_mode: 1
-  entry_id: 110
-  return_id: 112
+  entry_id: 75
+  return_id: 77
   call_depth_limit: 64

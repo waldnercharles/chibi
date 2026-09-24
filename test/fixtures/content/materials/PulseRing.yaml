@@ -1,7 +1,7 @@
 version: 3
 name: PulseRing
 domain: material
-id_counter: 44
+id_counter: 45
 description: An emissive ring surface. Flash remains the named DamageFlashBehavior override; pulse and ring masking use ShaderMath.
 graphs:
 - kind: event
@@ -9,6 +9,8 @@ graphs:
   nodes:
   - id: 1
     type: Shader Surface Output
+    x: 1280.0
+    "y": 170.0
     inputs:
       Base Color:
         default: {x: 1.0, "y": 1.0, z: 1.0}
@@ -18,24 +20,33 @@ graphs:
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Unlit: true
+      Height: {id: 44}
   - id: 9
     type: Shader Position
+    x: 0.0
+    "y": 0.0
     outputs:
       Position:
         default: {x: 0.0, "y": 0.0}
   - id: 11
     type: Shader Parameter
+    x: 0.0
+    "y": 130.0
     reference_name: Radius
     outputs:
       Value: {flags: 0, group: 0, default: 35.0}
   - id: 13
     type: Shader Parameter
+    x: 0.0
+    "y": 260.0
     reference_id: 1
     reference_name: Width
     outputs:
       Value: {flags: 0, group: 0, default: 3.0}
   - id: 15
     type: Call Pure Function
+    x: 330.0
+    "y": 30.0
     reference_id: 102
     reference_name: Ring Mask
     reference_asset: ShaderMath
@@ -51,6 +62,8 @@ graphs:
       Mask: {declaration_id: 108, type: float, type_name: null}
   - id: 20
     type: Shader Parameter
+    x: 0.0
+    "y": 440.0
     reference_id: 2
     reference_name: Color
     outputs:
@@ -60,21 +73,27 @@ graphs:
         flags: 64
         group: 0
         default: {x: 0.05000000074505806, "y": 0.6000000238418579, z: 1.0}
-  - {id: 22, type: Shader Time}
+  - {id: 22, type: Shader Time, x: 0.0, "y": 890.0}
   - id: 24
     type: Shader Parameter
+    x: 0.0
+    "y": 1020.0
     reference_id: 3
     reference_name: Speed
     outputs:
       Value: {flags: 0, group: 0, default: 2.0}
   - id: 26
     type: Shader Parameter
+    x: 620.0
+    "y": 1080.0
     reference_id: 4
     reference_name: Flash
     outputs:
       Value: {flags: 0, group: 0}
   - id: 28
     type: Call Pure Function
+    x: 330.0
+    "y": 890.0
     reference_id: 56
     reference_name: Pulse
     reference_asset: ShaderMath
@@ -85,6 +104,8 @@ graphs:
       Brightness: {declaration_id: 63, type: float, type_name: null}
   - id: 32
     type: Shader Add
+    x: 600.0
+    "y": 830.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0, default: 0.30000001192092896}
@@ -92,6 +113,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 36
     type: Shader Add
+    x: 860.0
+    "y": 830.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -99,6 +122,8 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 40
     type: Shader Multiply
+    x: 990.0
+    "y": 440.0
     inputs:
       A:
         type: struct

@@ -2,45 +2,25 @@
   "name": "BloomCircuitGuide",
   "identity": "prototype-0000000000000182",
   "components": {
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
-    },
+    "game.GameTransform": {},
     "GAME.GameWidget": {
-      "accent": 0,
       "anchor": {
-        "x": 0.5,
-        "y": 0.0
+        "x": 0.5
       },
-      "background": 0,
-      "block_input": false,
-      "color": 0,
-      "disabled": false,
-      "draggable": false,
       "drop_group": "",
       "event": "",
-      "font_size": 0.0,
-      "hidden": false,
-      "kind": 0,
-      "maximum": 0.0,
-      "minimum": 0.0,
       "offset": {
-        "x": 0.0,
         "y": 100.0
       },
-      "order": 0,
       "pivot": {
-        "x": 0.5,
-        "y": 0.0
+        "x": 0.5
       },
-      "rounding": 0.0,
       "size": {
         "x": 620.0,
         "y": 48.0
       },
       "text": "BLOOM CIRCUIT / Collect all 8 / WASD move / Dodge red",
-      "tooltip": "",
-      "value": 0.0
+      "tooltip": ""
     }
   },
   "behaviors": [

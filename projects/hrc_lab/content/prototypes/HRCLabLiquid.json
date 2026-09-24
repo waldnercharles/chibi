@@ -5,22 +5,14 @@
     "GAME.GameFluidVolume": {
       "absorption": 0.03500000014901161,
       "color": 951492269,
-      "emission": 0.0,
       "height": 100.0,
       "kind": 1,
       "mass": 0.004000000189989805,
       "refraction": 8.0,
       "spacing": 4.0,
-      "velocity": {
-        "x": 0.0,
-        "y": 0.0
-      },
       "visibility": 0.012000000104308128,
       "width": 100.0
     },
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
-    }
+    "game.GameTransform": {}
   }
 }

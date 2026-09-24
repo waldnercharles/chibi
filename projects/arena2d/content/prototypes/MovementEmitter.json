@@ -9,39 +9,22 @@
       "absorption": 0.009999999776482582,
       "active": true,
       "antialias": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "exponent": 0.0,
         "start": {
           "x": 1.5,
           "y": 1.5
         }
       },
-      "burst_count": 0,
       "color": 4288223999,
       "direction": {
-        "x": -1.0,
-        "y": 0.0,
-        "z": 0.0
+        "x": -1.0
       },
       "drag": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "exponent": 0.0,
         "start": {
           "x": 4.0,
           "y": 8.0
         }
       },
       "emission": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
         "exponent": 0.800000011920929,
         "start": {
           "x": 0.18000000715255737,
@@ -50,7 +33,6 @@
       },
       "end_color": 1275133824,
       "fluid": true,
-      "fluid_kind": 0,
       "fluid_mass": 0.00039999998989515007,
       "heading_only": true,
       "lifetime": {
@@ -60,19 +42,11 @@
       "metaball_blend": 2.0,
       "metaball_group": 1,
       "offset": {
-        "x": -10.0,
-        "y": 0.0,
-        "z": 0.0
+        "x": -10.0
       },
-      "parent": null,
       "planar": true,
       "rate": 120.0,
-      "shape": 0,
       "size": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
         "exponent": 1.2000000476837158,
         "start": {
           "x": 3.0,
@@ -84,17 +58,9 @@
         "y": 85.0
       },
       "spread": 0.6499999761581421,
-      "stretch": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "velocity_align": false,
       "velocity_inherit": 1.0
     },
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
-    }
+    "game.GameTransform": {}
   },
   "behaviors": [
     "MovementEmitter"

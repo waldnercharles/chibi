@@ -3,85 +3,47 @@
   "identity": "prototype-0000000000001364",
   "components": {
     "GAME.GameAppearance": {
-      "antialias": 0.0,
-      "border_color": 0,
-      "border_width": 0.0,
       "color": 3942121471,
-      "glow_color": 0,
-      "glow_radius": 0.0,
       "height": 18.0,
-      "layer": 0,
       "shape": 1,
-      "stroke_width": 0.0,
       "width": 18.0
     },
     "GAME.GameBody": {
-      "angular_velocity": 0.0,
       "continuous": true,
       "type": 1
     },
     "GAME.GameCollider": {
       "category": 1,
       "friction": 0.07999999821186066,
-      "height": 0.0,
-      "ignore_entity": null,
       "mask": 8,
       "radius": 9.0,
-      "restitution": 0.75,
-      "sensor": false,
-      "shape": 0,
-      "width": 0.0
+      "restitution": 0.75
     },
-    "game.GameInput": {
-      "move": {
-        "x": 0.0,
-        "y": 0.0
-      }
-    },
+    "game.GameInput": {},
     "game.GameTransform": {
       "x": 166.0,
       "y": -165.0
     },
-    "GAME.GameVelocity": {
-      "x": 0.0,
-      "y": 0.0
-    },
+    "GAME.GameVelocity": {},
     "GAME.GameWidget": {
-      "accent": 0,
       "anchor": {
         "x": 0.5,
         "y": 0.6200000047683716
       },
-      "background": 0,
-      "block_input": false,
       "center_text": true,
-      "color": 0,
-      "disabled": false,
-      "draggable": false,
       "drop_group": "",
       "event": "",
       "font_size": 42.0,
-      "hidden": false,
-      "kind": 0,
-      "maximum": 0.0,
-      "minimum": 0.0,
-      "offset": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "order": 0,
       "pivot": {
         "x": 0.5,
         "y": 0.5
       },
-      "rounding": 0.0,
       "size": {
         "x": 132.0,
         "y": 58.0
       },
       "text": "0",
-      "tooltip": "",
-      "value": 0.0
+      "tooltip": ""
     }
   },
   "behaviors": [

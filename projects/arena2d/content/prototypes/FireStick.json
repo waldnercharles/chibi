@@ -4,9 +4,7 @@
   "components": {
     "GAME.GameActionBinding": {
       "action": "Fire",
-      "disabled": false,
       "firing": true,
-      "pressed": false,
       "source": 41
     }
   }

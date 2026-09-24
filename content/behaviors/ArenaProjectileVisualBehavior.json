@@ -4,297 +4,86 @@
   "id_counter": 25,
   "description": "Begin chooses a random orientation and spin from editable vector ranges. GameVisualMotion integrates the spin while the projectile is alive, and its emitter leaves the path trail.",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 2,
           "type": "Event",
-          "x": 0,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
+          "reference_name": "Begin",
           "outputs": [
-            {
-              "id": 1,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "reference_name": "Begin"
+            1
+          ]
         },
         {
           "id": 4,
           "type": "Random Range Vector",
-          "x": 260,
-          "y": -160,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 5,
-              "name": "Min",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": {
-                "x": 0,
-                "y": 0,
-                "z": 0
-              }
-            },
+            5,
             {
               "id": 6,
-              "name": "Max",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
-                "x": 6.283185307179586,
-                "y": 6.283185307179586,
-                "z": 6.283185307179586
+                "x": 6.2831854820251465,
+                "y": 6.2831854820251465,
+                "z": 6.2831854820251465
               }
             }
           ],
           "outputs": [
-            {
-              "id": 7,
-              "name": "Result",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            7
           ]
         },
         {
           "id": 8,
           "type": "Set_GameVisualMotion_rotation",
-          "x": 520,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 9,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 10,
-              "name": "Value",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 11,
-              "name": "Target",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 32,
-              "group": 0,
-              "default": null
-            }
+            9,
+            10,
+            11
           ],
           "outputs": [
-            {
-              "id": 12,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 13,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameVisualMotion",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            12,
+            13
           ]
         },
         {
           "id": 14,
           "type": "Random Range Vector",
-          "x": 260,
-          "y": 220,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 15,
-              "name": "Min",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
-                "x": -10,
-                "y": -10,
-                "z": -10
+                "x": -10.0,
+                "y": -10.0,
+                "z": -10.0
               }
             },
             {
               "id": 16,
-              "name": "Max",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
-                "x": 10,
-                "y": 10,
-                "z": 10
+                "x": 10.0,
+                "y": 10.0,
+                "z": 10.0
               }
             }
           ],
           "outputs": [
-            {
-              "id": 17,
-              "name": "Result",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            17
           ]
         },
         {
           "id": 18,
           "type": "Set_GameVisualMotion_angular_velocity",
-          "x": 520,
-          "y": 240,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 19,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 20,
-              "name": "Value",
-              "type": 15,
-              "type_name": "CF_V3",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 21,
-              "name": "Target",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 32,
-              "group": 0,
-              "default": null
-            }
+            19,
+            20,
+            21
           ],
           "outputs": [
-            {
-              "id": 22,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 23,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameVisualMotion",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            22,
+            23
           ]
         }
       ],
@@ -303,31 +92,25 @@
           "from": 2,
           "from_pin": 1,
           "to": 8,
-          "to_pin": 9,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 9
         },
         {
           "from": 4,
           "from_pin": 7,
           "to": 8,
-          "to_pin": 10,
-          "kind": "data"
+          "to_pin": 10
         },
         {
           "from": 8,
           "from_pin": 12,
           "to": 18,
-          "to_pin": 19,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 19
         },
         {
           "from": 14,
           "from_pin": 17,
           "to": 18,
-          "to_pin": 20,
-          "kind": "data"
+          "to_pin": 20
         }
       ]
     }

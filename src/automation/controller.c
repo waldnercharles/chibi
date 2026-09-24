@@ -10,6 +10,7 @@
 #include "automation/prototype_edit.h"
 #include "automation/scene_edit.h"
 #include "ecs/ecs.h"
+#include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_jit_sljit.h"
@@ -23,6 +24,7 @@
 #include "runtime/systems/system.h"
 #include "runtime/widgets.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -2539,10 +2541,7 @@ static void inspect_add_sorted_array(
                 }
             } else {
                 const char *const layout_keys[] = {
-                    "x",
-                    "y",
-                    "inline_source",
-                    "show_advanced",
+                    "x", "y", "placed", "inline_source", "show_advanced",
                 };
                 for (int layout = 0;
                      layout < (int)(sizeof layout_keys / sizeof *layout_keys);
@@ -2667,6 +2666,18 @@ static yyjson_mut_val *inspect_graph_value(
 )
 {
     char *serialized = graph_save_json(source);
+    if (include_layout && serialized) {
+        /* Asset files omit automatic positions; report the arranged ones. */
+        graph *arranged = graph_load_json(serialized);
+        free(serialized);
+        serialized = NULL;
+        if (arranged) {
+            graph_place_unplaced(arranged);
+            serialized = graph_save_json(arranged);
+            graph_free(arranged);
+            free(arranged);
+        }
+    }
     yyjson_doc *document = serialized
                              ? yyjson_read(serialized, strlen(serialized), 0)
                              : NULL;
@@ -3423,6 +3434,126 @@ static int load_named_asset(
     *json = read_file(path, bytes, hash, error, error_size);
     free(path);
     return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
+}
+
+/* Replaces an edited in-memory document with its asset file text. */
+static int to_disk_text(char **edited, char *error, size_t error_size)
+{
+    char *text = asset_text_to_disk(*edited, error, error_size);
+    free(*edited);
+    *edited = text;
+    return text ? 0 : -1;
+}
+
+/* Owned canonical file text for one asset, produced by its native loader and
+ * saver. */
+static char *canonical_asset(const asset_family *family, const char *json, char *error, size_t error_size)
+{
+    switch (family->loader) {
+        case ASSET_GRAPH: {
+            behavior_asset *asset = behavior_asset_load_json(json);
+            if (!asset) {
+                set_error(error, error_size, graph_last_error());
+                return NULL;
+            }
+            char *text = behavior_asset_save_json(asset);
+            behavior_asset_free(asset);
+            return text;
+        }
+        case ASSET_SYSTEM: {
+            game_system_document *document = game_system_document_load(
+                json,
+                automation_query_component,
+                NULL,
+                error,
+                error_size
+            );
+            if (!document) {
+                return NULL;
+            }
+            char *text = game_system_document_save(
+                document,
+                automation_query_component,
+                automation_query_component_name,
+                NULL
+            );
+            game_system_document_free(document);
+            return text;
+        }
+        case ASSET_PROTOTYPE: {
+            game_prototype_registry registry = {
+                .components = GAME_REGISTRY_COMPONENTS,
+                .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+            };
+            game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
+            if (!prototype) {
+                return NULL;
+            }
+            char *text = game_prototype_save(prototype);
+            game_prototype_free(prototype);
+            return text;
+        }
+        case ASSET_SCENE: {
+            game_scene_document *scene = game_scene_document_load(json, error, error_size);
+            if (!scene) {
+                return NULL;
+            }
+            char *text = game_scene_document_save(scene);
+            game_scene_document_free(scene);
+            return text;
+        }
+    }
+    return NULL;
+}
+
+int chibi_automation_format_assets(const char *root, bool check)
+{
+    asset_entry *entries = NULL;
+    char error[256] = { 0 };
+    if (enumerate_assets(root, &entries, error, sizeof error)) {
+        fprintf(stderr, "chibi_ctl --format: %s\n", error);
+        return -1;
+    }
+    int differing = 0;
+    for (int i = 0; i < acount(entries) && differing >= 0; i++) {
+        size_t size = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(size);
+        snprintf(path, size, "%s/%s", root, entries[i].relative);
+        size_t bytes = 0;
+        uint64_t hash = 0;
+        char *json = read_file(path, &bytes, &hash, error, sizeof error);
+        char *text = json ? canonical_asset(entries[i].family, json, error, sizeof error)
+                          : NULL;
+        if (text && to_disk_text(&text, error, sizeof error)) {
+            text = NULL;
+        }
+        if (!text) {
+            fprintf(stderr, "chibi_ctl --format: %s: %s\n", entries[i].relative, error);
+            differing = -1;
+        } else if (strcmp(json, text)) {
+            differing++;
+            fprintf(
+                stderr,
+                "%s %s\n",
+                check ? "not canonical:" : "formatted",
+                entries[i].relative
+            );
+            FILE *file = check ? NULL : fopen(path, "wb");
+            if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
+                fprintf(
+                    stderr,
+                    "chibi_ctl --format: could not write %s\n",
+                    entries[i].relative
+                );
+                differing = -1;
+            }
+        }
+        free(text);
+        free(json);
+        free(path);
+    }
+    free_asset_entries(entries);
+    return differing;
 }
 
 static int handle_read_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -7311,6 +7442,11 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         free(edited);
         return -1;
     }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
+        return -1;
+    }
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
@@ -7622,6 +7758,11 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         free(edited);
         return -1;
     }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
+        return -1;
+    }
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
@@ -7788,6 +7929,11 @@ static int handle_edit_scene(const char *root, yyjson_val *request, response *re
         free(edited);
         return -1;
     }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
+        return -1;
+    }
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
@@ -7892,6 +8038,11 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
         response_error(result, exit_code, status, error);
         free(source);
         free(edited);
+        return -1;
+    }
+    if (to_disk_text(&edited, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+        free(source);
         return -1;
     }
     size_t after_bytes = strlen(edited);

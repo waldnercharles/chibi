@@ -4,16 +4,10 @@
   "domain": "event",
   "id_counter": 2,
   "description": "Recount encounter members after a lifecycle change.",
-  "variables": [],
   "graphs": [
     {
-      "id": 1,
-      "name": "Events",
-      "description": "",
       "kind": "event",
-      "nodes": [],
-      "edges": [],
-      "comment_boxes": []
+      "name": "Events"
     }
   ]
 }

@@ -4,9 +4,6 @@
   "components": {
     "GAME.GameActionBinding": {
       "action": "FlipLeft",
-      "disabled": false,
-      "firing": false,
-      "pressed": false,
       "source": 32
     },
     "GAME.GameAppearance": {
@@ -14,28 +11,18 @@
       "border_color": 4293970943,
       "border_width": 2.0,
       "color": 4001404927,
-      "glow_color": 0,
-      "glow_radius": 0.0,
       "height": 16.0,
-      "layer": 0,
       "shape": 5,
-      "stroke_width": 0.0,
       "width": 92.0
     },
     "GAME.GameBody": {
-      "angular_velocity": 0.0,
-      "continuous": false,
       "type": 2
     },
     "GAME.GameCollider": {
       "category": 8,
-      "friction": 0.0,
       "height": 16.0,
-      "ignore_entity": null,
       "mask": 1,
-      "radius": 0.0,
       "restitution": 0.75,
-      "sensor": false,
       "shape": 1,
       "width": 92.0
     },
@@ -46,10 +33,7 @@
       "x": -72.41999816894531,
       "y": -68.27999877929688
     },
-    "GAME.GameVelocity": {
-      "x": 0.0,
-      "y": 0.0
-    }
+    "GAME.GameVelocity": {}
   },
   "behaviors": [
     "OrbitFlipperMotion"

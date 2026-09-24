@@ -10,8 +10,6 @@
       "name": "Amount",
       "type": 6,
       "type_name": "int",
-      "container": 0,
-      "default": 0,
       "category": "Payload"
     },
     {
@@ -19,20 +17,13 @@
       "name": "Source",
       "type": 14,
       "type_name": "ecs.entity",
-      "container": 0,
-      "default": null,
       "category": "Payload"
     }
   ],
   "graphs": [
     {
-      "id": 1,
-      "name": "Events",
-      "description": "",
       "kind": "event",
-      "nodes": [],
-      "edges": [],
-      "comment_boxes": []
+      "name": "Events"
     }
   ]
 }

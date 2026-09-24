@@ -3,24 +3,12 @@
   "identity": "prototype-000000000000000e",
   "components": {
     "GAME.GameAppearance": {
-      "antialias": 0.0,
-      "border_color": 0,
-      "border_width": 0.0,
       "color": 4291054591,
-      "glow_color": 0,
-      "glow_radius": 0.0,
       "height": 10.0,
       "layer": -10,
-      "shape": 0,
-      "stroke_width": 0.0,
       "width": 10.0
     },
-    "GAME.GameOrientation": {
-      "radians": 0.0
-    },
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
-    }
+    "GAME.GameOrientation": {},
+    "game.GameTransform": {}
   }
 }

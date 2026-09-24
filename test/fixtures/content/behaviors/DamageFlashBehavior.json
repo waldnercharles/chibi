@@ -1,305 +1,105 @@
 {
   "version": 3,
   "name": "DamageFlashBehavior",
-  "domain": "behavior",
   "id_counter": 25,
   "description": "Begin and Damage flash the bound material for 0.18 seconds. The material exposes Flash as a scalar parameter.",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Event",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
           "reference_name": "Begin",
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            2
           ]
         },
         {
           "id": 3,
           "type": "Event",
-          "x": 0.0,
-          "y": 180.0,
-          "reference_id": 0,
           "reference_name": "Damage",
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 4,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            4,
             {
               "id": 5,
+              "declaration_id": 2,
               "name": "Amount",
               "type": 6,
               "type_name": "int",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0,
-              "declaration_id": 2
+              "default": 0
             },
             {
               "id": 6,
+              "declaration_id": 3,
               "name": "Source",
               "type": 14,
               "type_name": "ecs.entity",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null,
-              "declaration_id": 3
+              "default": null
             }
           ]
         },
         {
           "id": 7,
           "type": "Self",
-          "x": 0.0,
-          "y": 450.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 8,
-              "name": "Self",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "type_name": "ecs.entity"
             }
           ]
         },
         {
           "id": 9,
           "type": "Set Material Parameter",
-          "x": 300.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 10,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 11,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            10,
+            11,
             {
               "id": 12,
-              "name": "Name",
-              "type": 13,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": "Flash"
             },
             {
               "id": 13,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 3.0
             }
           ],
           "outputs": [
-            {
-              "id": 14,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            14
           ]
         },
         {
           "id": 15,
           "type": "Delay",
-          "x": 580.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 16,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            16,
             {
               "id": 17,
-              "name": "Duration",
-              "type": 11,
-              "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.18
             }
           ],
           "outputs": [
-            {
-              "id": 18,
-              "name": "Completed",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            18
           ]
         },
         {
           "id": 19,
           "type": "Set Material Parameter",
-          "x": 800.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 20,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 21,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            20,
+            21,
             {
               "id": 22,
-              "name": "Name",
-              "type": 13,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": "Flash"
             },
-            {
-              "id": 23,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0.0
-            }
+            23
           ],
           "outputs": [
-            {
-              "id": 24,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            24
           ]
         }
       ],
@@ -308,47 +108,37 @@
           "from": 1,
           "from_pin": 2,
           "to": 9,
-          "to_pin": 10,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 10
         },
         {
           "from": 3,
           "from_pin": 4,
           "to": 9,
-          "to_pin": 10,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 10
         },
         {
           "from": 7,
           "from_pin": 8,
           "to": 9,
-          "to_pin": 11,
-          "kind": "data"
+          "to_pin": 11
         },
         {
           "from": 7,
           "from_pin": 8,
           "to": 19,
-          "to_pin": 21,
-          "kind": "data"
+          "to_pin": 21
         },
         {
           "from": 9,
           "from_pin": 14,
           "to": 15,
-          "to_pin": 16,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 16
         },
         {
           "from": 15,
           "from_pin": 18,
           "to": 19,
-          "to_pin": 20,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 20
         }
       ]
     }

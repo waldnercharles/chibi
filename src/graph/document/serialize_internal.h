@@ -8,6 +8,7 @@
 #define GRAPH_SCHEMA_VERSION 3
 
 void serialize_error_set(const char *fmt, ...);
+bool serialize_same_value(const pin_value *a, const pin_value *b);
 void serialize_write_value(
     yyjson_mut_doc *doc,
     yyjson_mut_val *obj,

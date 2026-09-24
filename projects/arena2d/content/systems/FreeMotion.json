@@ -1,53 +1,25 @@
 {
   "version": 3,
   "name": "FreeMotion",
-  "domain": "behavior",
   "id_counter": 103,
-  "description": "",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "description": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Event",
-          "x": 0.0,
-          "y": 192.0,
-          "reference_id": 0,
           "reference_name": "Tick",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            2,
             {
               "id": 3,
               "name": "DeltaSeconds",
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ]
@@ -55,66 +27,22 @@
         {
           "id": 4,
           "type": "Get_GameTransform",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 5,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 4,
-              "group": 0,
-              "default": null
-            }
+            5
           ]
         },
         {
           "id": 6,
           "type": "Get_GameVelocity",
-          "x": 0.0,
-          "y": 96.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 7,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 4,
-              "group": 0,
-              "default": null
-            }
+            7
           ]
         },
         {
           "id": 25,
           "type": "Behavior Expression",
-          "x": 260.5,
-          "y": 73.5,
           "reference_id": 8,
           "reference_name": "position + velocity * dt",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 26,
@@ -122,9 +50,6 @@
               "name": "position",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 1,
               "default": null
@@ -135,9 +60,6 @@
               "name": "velocity",
               "type": 15,
               "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 2,
               "default": null
@@ -148,9 +70,6 @@
               "name": "dt",
               "type": 10,
               "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 3,
               "default": 0.0
@@ -163,9 +82,6 @@
               "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 4,
               "default": null
@@ -175,62 +91,13 @@
         {
           "id": 81,
           "type": "Set_GameTransform",
-          "x": 620.0,
-          "y": 134.5,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 82,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 83,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            82,
+            83
           ],
           "outputs": [
-            {
-              "id": 84,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 85,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            84,
+            85
           ]
         }
       ],
@@ -239,37 +106,31 @@
           "from": 1,
           "from_pin": 2,
           "to": 81,
-          "to_pin": 82,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 82
         },
         {
           "from": 1,
           "from_pin": 3,
           "to": 25,
-          "to_pin": 28,
-          "kind": "data"
+          "to_pin": 28
         },
         {
           "from": 4,
           "from_pin": 5,
           "to": 25,
-          "to_pin": 26,
-          "kind": "data"
+          "to_pin": 26
         },
         {
           "from": 6,
           "from_pin": 7,
           "to": 25,
-          "to_pin": 27,
-          "kind": "data"
+          "to_pin": 27
         },
         {
           "from": 25,
           "from_pin": 29,
           "to": 81,
-          "to_pin": 83,
-          "kind": "data"
+          "to_pin": 83
         }
       ]
     },
@@ -277,11 +138,8 @@
       "id": 8,
       "kind": "function",
       "name": "position + velocity * dt",
-      "description": "",
-      "breakpoints_enabled": true,
       "math_expression": "position + velocity * dt",
       "expression_mode": 1,
-      "comment_boxes": [],
       "entry_id": 87,
       "return_id": 89,
       "call_depth_limit": 64,
@@ -289,14 +147,6 @@
         {
           "id": 87,
           "type": "Function Entry",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 91,
@@ -304,8 +154,6 @@
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 1,
               "default": null
@@ -316,8 +164,6 @@
               "type": 15,
               "type_name": "GameVelocity",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 2,
               "default": null
@@ -328,8 +174,6 @@
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 3,
               "default": 0.0
@@ -339,13 +183,6 @@
         {
           "id": 89,
           "type": "Return",
-          "x": 660.0,
-          "y": 360.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 94,
@@ -353,62 +190,29 @@
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 4,
               "default": null
             }
-          ],
-          "outputs": []
+          ]
         },
         {
           "id": 95,
           "type": "Multiply",
-          "x": 220.0,
-          "y": 270.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 96,
-              "name": "A",
               "type": 15,
               "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
-            {
-              "id": 97,
-              "name": "B",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
-              "default": 0.0
-            }
+            97
           ],
           "outputs": [
             {
               "id": 98,
-              "name": "Result",
               "type": 15,
               "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -416,50 +220,25 @@
         {
           "id": 99,
           "type": "Add",
-          "x": 440.0,
-          "y": 360.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 100,
-              "name": "A",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
             {
               "id": 101,
-              "name": "B",
               "type": 15,
               "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
               "default": null
             }
           ],
           "outputs": [
             {
               "id": 102,
-              "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -470,38 +249,68 @@
           "from": 87,
           "from_pin": 91,
           "to": 99,
-          "to_pin": 100,
-          "kind": "data"
+          "to_pin": 100
         },
         {
           "from": 87,
           "from_pin": 92,
           "to": 95,
-          "to_pin": 96,
-          "kind": "data"
+          "to_pin": 96
         },
         {
           "from": 87,
           "from_pin": 93,
           "to": 95,
-          "to_pin": 97,
-          "kind": "data"
+          "to_pin": 97
         },
         {
           "from": 95,
           "from_pin": 98,
           "to": 99,
-          "to_pin": 101,
-          "kind": "data"
+          "to_pin": 101
         },
         {
           "from": 99,
           "from_pin": 102,
           "to": 89,
-          "to_pin": 94,
-          "kind": "data"
+          "to_pin": 94
         }
       ]
     }
-  ]
-,"query":{"op":"all","terms":[{"op":"has","component":"game.GameTransform"},{"op":"has","component":"GAME.GameVelocity"},{"op":"has","component":"GAME.GameAppearance"},{"op":"not","terms":[{"op":"has","component":"GAME.GameCollider"}]},{"op":"not","terms":[{"op":"has","component":"GAME.GameBody"}]}]}}
+  ],
+  "query": {
+    "op": "all",
+    "terms": [
+      {
+        "op": "has",
+        "component": "game.GameTransform"
+      },
+      {
+        "op": "has",
+        "component": "GAME.GameVelocity"
+      },
+      {
+        "op": "has",
+        "component": "GAME.GameAppearance"
+      },
+      {
+        "op": "not",
+        "terms": [
+          {
+            "op": "has",
+            "component": "GAME.GameCollider"
+          }
+        ]
+      },
+      {
+        "op": "not",
+        "terms": [
+          {
+            "op": "has",
+            "component": "GAME.GameBody"
+          }
+        ]
+      }
+    ]
+  }
+}

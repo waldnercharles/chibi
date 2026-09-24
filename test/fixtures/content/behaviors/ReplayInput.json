@@ -4,7 +4,6 @@
   "id_counter": 100,
   "description": "Fire sets velocity so replay exercises an authored input action.",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
@@ -13,89 +12,27 @@
         {
           "id": 1,
           "type": "Event",
-          "x": 0,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
+          "reference_name": "Fire",
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "reference_name": "Fire"
+            2
+          ]
         },
         {
           "id": 14,
           "type": "Set_GameVelocity",
-          "x": 1400,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 15,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            15,
             {
               "id": 16,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
-                "x": 1,
-                "y": 0
+                "x": 1.0,
+                "y": 0.0
               }
             }
           ],
           "outputs": [
-            {
-              "id": 17,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 35,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameVelocity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            17,
+            35
           ]
         }
       ],
@@ -104,9 +41,7 @@
           "from": 1,
           "from_pin": 2,
           "to": 14,
-          "to_pin": 15,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 15
         }
       ]
     }

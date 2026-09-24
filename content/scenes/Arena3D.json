@@ -5,14 +5,11 @@
   "entities": [
     {
       "name": "Arena",
-      "prototype": "ArenaFloor",
-      "components": {},
-      "behaviors": []
+      "prototype": "ArenaFloor"
     },
     {
       "name": "Encounter",
       "prototype": "ArenaEncounter",
-      "components": {},
       "behaviors": [
         "ArenaWaveBehavior"
       ]
@@ -20,7 +17,6 @@
     {
       "name": "Player",
       "prototype": "ArenaPlayer",
-      "components": {},
       "behaviors": [
         "TwinStickInputBehavior",
         "TwinStickWeaponBehavior",
@@ -33,9 +29,7 @@
     },
     {
       "name": "Phase Warden",
-      "prototype": "PhaseWarden",
-      "components": {},
-      "behaviors": []
+      "prototype": "PhaseWarden"
     },
     {
       "name": "Boundary 1",
@@ -65,8 +59,7 @@
           "sensor": false,
           "ignore_entity": null
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Boundary 2",
@@ -96,8 +89,7 @@
           "sensor": false,
           "ignore_entity": null
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Boundary 3",
@@ -127,8 +119,7 @@
           "sensor": false,
           "ignore_entity": null
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Boundary 4",
@@ -158,8 +149,7 @@
           "sensor": false,
           "ignore_entity": null
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Boundary 5",
@@ -189,8 +179,7 @@
           "sensor": false,
           "ignore_entity": null
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Boundary 6",
@@ -220,14 +209,11 @@
           "sensor": false,
           "ignore_entity": null
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Environment",
-      "prototype": "ArenaEnvironment",
-      "components": {},
-      "behaviors": []
+      "prototype": "ArenaEnvironment"
     },
     {
       "name": "Space Dash",
@@ -238,8 +224,7 @@
           "action": "Dash",
           "firing": false
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Shift Dash",
@@ -250,8 +235,7 @@
           "action": "Dash",
           "firing": false
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Pad Dash",
@@ -262,8 +246,7 @@
           "action": "Dash",
           "firing": false
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Stick Fire",
@@ -274,8 +257,7 @@
           "action": "Fire",
           "firing": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Trigger Fire",
@@ -286,8 +268,7 @@
           "action": "Fire",
           "firing": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Mouse Fire",
@@ -299,17 +280,7 @@
           "firing": true,
           "disabled": false
         }
-      },
-      "behaviors": []
+      }
     }
-  ],
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  }
+  ]
 }

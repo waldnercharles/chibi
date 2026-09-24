@@ -4,8 +4,6 @@
   "components": {
     "GAME.GameActionBinding": {
       "action": "Dash",
-      "disabled": false,
-      "firing": false,
       "source": 3
     }
   }

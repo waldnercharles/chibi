@@ -1022,7 +1022,7 @@ void run_runtime_execution_checks()
         char *json = graph_save_json(&gj);
         test_check(
             json && strstr(json, "\"version\": 3") &&
-                strstr(json, "\"kind\": \"exec\"") && strstr(json, "\"order\": 12") &&
+                strstr(json, "\"from_pin\"") && strstr(json, "\"order\": 12") &&
                 strstr(json, "\"reference_name\": \"Saved\""),
             "v3 JSON writes ID-based flow metadata"
         );

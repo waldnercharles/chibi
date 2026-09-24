@@ -18,7 +18,11 @@ void run_graph_functions_checks()
             "Editor"
         );
         node *literal = graph_add_node(asset->graph, registry_node_by_name("Integer"));
+        /* Defaults are omitted, so author non-default graph state. */
+        graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
+        asset->graph->breakpoints_enabled = 0;
         char *json = behavior_asset_save_json(asset);
+        asset->graph->breakpoints_enabled = 1;
         test_check(
             json && strstr(json, "variables") && strstr(json, "graphs"),
             "every Behavior Asset document value has an authored model surface"

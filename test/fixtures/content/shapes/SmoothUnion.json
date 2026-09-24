@@ -6,84 +6,32 @@
   "bounds_y": 34.0,
   "id_counter": 38,
   "description": "Two circles joined by a smooth union. Radius and Smoothness are exposed; bounds are explicit half extents.",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Shader Shape Output",
-          "x": 880.0,
-          "y": 100.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 2,
-              "name": "Distance",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": []
+            2
+          ]
         },
         {
           "id": 3,
           "type": "Shader Position",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 4,
-              "name": "Position",
-              "type": 15,
-              "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            4
           ]
         },
         {
           "id": 5,
           "type": "Shader Parameter",
-          "x": 0.0,
-          "y": 500.0,
-          "reference_id": 0,
           "reference_name": "Radius",
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 6,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 24.0
             }
           ]
@@ -91,24 +39,11 @@
         {
           "id": 7,
           "type": "Shader Parameter",
-          "x": 450.0,
-          "y": 520.0,
           "reference_id": 1,
           "reference_name": "Smoothness",
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 8,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 12.0
             }
           ]
@@ -116,145 +51,53 @@
         {
           "id": 9,
           "type": "Shader Vector2",
-          "x": 0.0,
-          "y": 170.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 10,
-              "name": "X",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": -18.0
             },
-            {
-              "id": 11,
-              "name": "Y",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            11
           ],
           "outputs": [
-            {
-              "id": 12,
-              "name": "Value",
-              "type": 15,
-              "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            12
           ]
         },
         {
           "id": 13,
           "type": "Shader Vector2",
-          "x": 0.0,
-          "y": 320.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 14,
-              "name": "X",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 18.0
             },
-            {
-              "id": 15,
-              "name": "Y",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            15
           ],
           "outputs": [
-            {
-              "id": 16,
-              "name": "Value",
-              "type": 15,
-              "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            16
           ]
         },
         {
           "id": 17,
           "type": "Shader Subtract",
-          "x": 230.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 18,
-              "name": "A",
               "type": 15,
               "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
             {
               "id": 19,
-              "name": "B",
               "type": 15,
               "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ],
           "outputs": [
             {
               "id": 20,
-              "name": "Value",
               "type": 15,
               "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -262,49 +105,25 @@
         {
           "id": 21,
           "type": "Shader Subtract",
-          "x": 230.0,
-          "y": 250.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 22,
-              "name": "A",
               "type": 15,
               "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
             {
               "id": 23,
-              "name": "B",
               "type": 15,
               "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ],
           "outputs": [
             {
               "id": 24,
-              "name": "Value",
               "type": 15,
               "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -312,155 +131,35 @@
         {
           "id": 25,
           "type": "Shader Circle",
-          "x": 450.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 26,
-              "name": "Position",
-              "type": 15,
-              "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 27,
-              "name": "Radius",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            26,
+            27
           ],
           "outputs": [
-            {
-              "id": 28,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            28
           ]
         },
         {
           "id": 29,
           "type": "Shader Circle",
-          "x": 450.0,
-          "y": 250.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 30,
-              "name": "Position",
-              "type": 15,
-              "type_name": "ShaderVec2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 31,
-              "name": "Radius",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            30,
+            31
           ],
           "outputs": [
-            {
-              "id": 32,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            32
           ]
         },
         {
           "id": 33,
           "type": "Shader SmoothUnion",
-          "x": 670.0,
-          "y": 100.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 34,
-              "name": "A",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            },
-            {
-              "id": 35,
-              "name": "B",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            },
-            {
-              "id": 36,
-              "name": "Smoothness",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            34,
+            35,
+            36
           ],
           "outputs": [
-            {
-              "id": 37,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            37
           ]
         }
       ],
@@ -469,85 +168,73 @@
           "from": 3,
           "from_pin": 4,
           "to": 17,
-          "to_pin": 18,
-          "kind": "data"
+          "to_pin": 18
         },
         {
           "from": 3,
           "from_pin": 4,
           "to": 21,
-          "to_pin": 22,
-          "kind": "data"
+          "to_pin": 22
         },
         {
           "from": 5,
           "from_pin": 6,
           "to": 25,
-          "to_pin": 27,
-          "kind": "data"
+          "to_pin": 27
         },
         {
           "from": 5,
           "from_pin": 6,
           "to": 29,
-          "to_pin": 31,
-          "kind": "data"
+          "to_pin": 31
         },
         {
           "from": 7,
           "from_pin": 8,
           "to": 33,
-          "to_pin": 36,
-          "kind": "data"
+          "to_pin": 36
         },
         {
           "from": 9,
           "from_pin": 12,
           "to": 17,
-          "to_pin": 19,
-          "kind": "data"
+          "to_pin": 19
         },
         {
           "from": 13,
           "from_pin": 16,
           "to": 21,
-          "to_pin": 23,
-          "kind": "data"
+          "to_pin": 23
         },
         {
           "from": 17,
           "from_pin": 20,
           "to": 25,
-          "to_pin": 26,
-          "kind": "data"
+          "to_pin": 26
         },
         {
           "from": 21,
           "from_pin": 24,
           "to": 29,
-          "to_pin": 30,
-          "kind": "data"
+          "to_pin": 30
         },
         {
           "from": 25,
           "from_pin": 28,
           "to": 33,
-          "to_pin": 34,
-          "kind": "data"
+          "to_pin": 34
         },
         {
           "from": 29,
           "from_pin": 32,
           "to": 33,
-          "to_pin": 35,
-          "kind": "data"
+          "to_pin": 35
         },
         {
           "from": 33,
           "from_pin": 37,
           "to": 1,
-          "to_pin": 2,
-          "kind": "data"
+          "to_pin": 2
         }
       ]
     }

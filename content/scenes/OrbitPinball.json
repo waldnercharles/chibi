@@ -1,16 +1,6 @@
 {
   "version": 1,
   "name": "Scene",
-  "presentation": "2d",
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  },
   "entities": [
     {
       "name": "OrbitCabinet_1",
@@ -19,13 +9,11 @@
         "GAME.GameAppearance": {
           "layer": -100
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitRail_1",
       "prototype": "OrbitRail",
-      "components": {},
       "retained_components": {
         "GameBody": {
           "values": {
@@ -42,8 +30,7 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitRail_2",
@@ -69,8 +56,7 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitRail_3",
@@ -105,8 +91,7 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitRail_4",
@@ -144,8 +129,7 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitRail_5",
@@ -183,8 +167,7 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitRail_6",
@@ -219,14 +202,11 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitBumper_1",
-      "prototype": "OrbitBumper",
-      "components": {},
-      "behaviors": []
+      "prototype": "OrbitBumper"
     },
     {
       "name": "OrbitBumper_2",
@@ -235,8 +215,7 @@
         "game.GameTransform": {
           "x": 65.0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitBumper_3",
@@ -246,13 +225,11 @@
           "x": -10.0,
           "y": -545.0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "OrbitFlipper_1",
       "prototype": "OrbitFlipper",
-      "components": {},
       "behaviors": [
         "OrbitFlipperMotion"
       ]
@@ -279,7 +256,6 @@
     {
       "name": "OrbitBall_1",
       "prototype": "OrbitBall",
-      "components": {},
       "behaviors": [
         "OrbitLaunch"
       ]
@@ -317,32 +293,23 @@
           },
           "automatic": true
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "ActionBinding_1",
-      "prototype": "ActionBinding",
-      "components": {},
-      "behaviors": []
+      "prototype": "ActionBinding"
     },
     {
       "name": "OrbitGuide_1",
-      "prototype": "OrbitGuide",
-      "components": {},
-      "behaviors": []
+      "prototype": "OrbitGuide"
     },
     {
       "name": "OrbitControls_1",
-      "prototype": "OrbitControls",
-      "components": {},
-      "behaviors": []
+      "prototype": "OrbitControls"
     },
     {
       "name": "OrbitRing_1",
-      "prototype": "OrbitRing",
-      "components": {},
-      "behaviors": []
+      "prototype": "OrbitRing"
     },
     {
       "name": "OrbitRing_2",
@@ -352,8 +319,7 @@
           "width": 330.0,
           "height": 330.0
         }
-      },
-      "behaviors": []
+      }
     }
   ]
 }

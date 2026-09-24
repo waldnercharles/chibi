@@ -1,38 +1,27 @@
 {
   "name": "ArenaWallHorizontal",
+  "identity": "prototype-000000000000000d",
   "components": {
-    "GameTransform": {
-      "x": 320,
-      "y": 0
-    },
-    "GameGeometry3D": {
-      "primitive": 0,
-      "width": 635,
-      "depth": 1.4,
-      "height": 1.5,
-      "elevation": 0
-    },
-    "GameShader": {
-      "material": "ArenaRim",
-      "shape": "",
-      "parameters": "{}",
-      "bounds_x": 0,
-      "bounds_y": 0
-    },
-    "GameBody": {
-      "type": 0,
-      "continuous": false
-    },
-    "GameCollider": {
-      "radius": 0,
+    "GAME.GameBody": {},
+    "GAME.GameCollider": {
       "category": 8,
+      "height": 3.0,
       "mask": 7,
       "shape": 1,
-      "width": 640,
-      "height": 3,
-      "sensor": false,
-      "ignore_entity": null
+      "width": 640.0
+    },
+    "GAME.GameGeometry3D": {
+      "depth": 1.399999976158142,
+      "height": 1.5,
+      "width": 635.0
+    },
+    "GAME.GameShader": {
+      "material": "ArenaRim",
+      "parameters": "{}",
+      "shape": ""
+    },
+    "game.GameTransform": {
+      "x": 320.0
     }
-  },
-  "behaviors": []
+  }
 }

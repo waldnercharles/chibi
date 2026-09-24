@@ -4,23 +4,17 @@
   "domain": "library",
   "id_counter": 355,
   "description": "Shared movement intent in project units per second.",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
-      "name": "Events",
-      "nodes": [],
-      "edges": [],
-      "comment_boxes": [],
-      "breakpoints_enabled": true
+      "name": "Events"
     },
     {
       "id": 93,
       "kind": "function",
       "name": "Movement Velocity",
-      "breakpoints_enabled": true,
       "math_expression": "direction * speed",
-      "comment_boxes": [],
+      "expression_mode": 1,
       "entry_id": 334,
       "return_id": 336,
       "call_depth_limit": 64,
@@ -28,13 +22,6 @@
         {
           "id": 334,
           "type": "Function Entry",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 339,
@@ -42,8 +29,6 @@
               "type": 15,
               "type_name": "CF_V2",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 2,
               "default": null
@@ -54,8 +39,6 @@
               "type": 15,
               "type_name": "GameMovement",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 3,
               "default": null
@@ -65,74 +48,36 @@
         {
           "id": 336,
           "type": "Return",
-          "x": 520,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 342,
               "name": "Velocity",
               "type": 15,
-              "type_name": "GameVelocity",
+              "type_name": "CF_V2",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 5,
               "default": null
             }
-          ],
-          "outputs": []
+          ]
         },
         {
           "id": 343,
           "type": "Multiply",
-          "x": 260,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 344,
-              "name": "A",
               "type": 15,
               "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
-            {
-              "id": 345,
-              "name": "B",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
-              "default": 0.0
-            }
+            345
           ],
           "outputs": [
             {
               "id": 346,
-              "name": "Result",
               "type": 15,
               "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -143,23 +88,20 @@
           "from": 334,
           "from_pin": 339,
           "to": 343,
-          "to_pin": 344,
-          "kind": "data"
+          "to_pin": 344
         },
         {
           "from": 334,
           "from_pin": 340,
           "to": 343,
           "to_pin": 345,
-          "kind": "data",
           "conversion": "Unwrap_GameMovement"
         },
         {
           "from": 343,
           "from_pin": 346,
           "to": 336,
-          "to_pin": 342,
-          "kind": "data"
+          "to_pin": 342
         }
       ]
     }

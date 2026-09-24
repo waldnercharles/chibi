@@ -3,18 +3,11 @@
   "identity": "prototype-26f39f349a5cdb15",
   "components": {
     "GAME.GameHRC2D": {
-      "adaptive": false,
       "ambient": 0.30000001192092896,
       "bounce_hysteresis": 0.800000011920929,
-      "bounce_intensity": 0.0,
-      "debug_view": 0,
       "falloff": 1.0,
-      "feedback": false,
-      "fog": 0.0,
       "fps_tolerance": 0.10000000149011612,
       "intensity": 1.0,
-      "luminance_mode": 0,
-      "luminance_scale": 0.0,
       "max_scale": 1.0,
       "min_scale": 0.10000000149011612,
       "particle_focal_length": 300.0,

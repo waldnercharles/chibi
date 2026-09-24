@@ -44,11 +44,31 @@ static int compact_component_node(const graph *g, const node *n)
             (!strncmp(n->desc->name, "Set_", 4) && n->desc->access->write_count == 1));
 }
 
+/* Absent keeps the template string; null clears it. */
+static int read_pin_str(graph *g, yyjson_val *pin, const char *key, const char **out)
+{
+    yyjson_val *value = yyjson_obj_get(pin, key);
+    if (!value) {
+        return 0;
+    }
+    if (yyjson_is_null(value)) {
+        *out = NULL;
+        return 0;
+    }
+    if (!yyjson_is_str(value)) {
+        return -1;
+    }
+    *out = graph_own_str(g, yyjson_get_str(value), yyjson_get_len(value));
+    return 0;
+}
+
+/* A pin is its ID alone or an object of the fields that differ from the
+ * node descriptor's template pin. */
 static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
 {
-    if (!arr || !yyjson_is_arr(arr)) {
+    if (arr && !yyjson_is_arr(arr)) {
         serialize_error_set(
-            "node %llu has a missing or invalid %s pin list",
+            "node %llu has an invalid %s pin list",
             (unsigned long long)n->id,
             output ? "output" : "input"
         );
@@ -59,7 +79,7 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
     yyjson_val *v;
     int i = 0;
     int count = output ? n->output_count : n->input_count;
-    int serialized_count = (int)yyjson_arr_size(arr);
+    int serialized_count = arr ? (int)yyjson_arr_size(arr) : 0;
     if (serialized_count < count &&
         (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return ||
          compact_component_node(g, n))) {
@@ -76,7 +96,7 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         }
     }
     while ((v = yyjson_arr_iter_next(&it))) {
-        if (!yyjson_is_obj(v)) {
+        if (!yyjson_is_obj(v) && !yyjson_is_uint(v)) {
             serialize_error_set(
                 "node %llu has invalid %s pin list",
                 (unsigned long long)n->id,
@@ -85,14 +105,8 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
             return -1;
         }
         if (i >= count) {
-            pin_spec extension = { .name = "Pin", .type = PIN_FLOW, .kind = PIN_DATA };
-            const pin_spec *template_pin = &extension;
-            if (output && n->desc->output_count) {
-                template_pin = &n->desc->outputs[n->desc->output_count - 1];
-            } else if (!output && n->desc->input_count) {
-                template_pin = &n->desc->inputs[n->desc->input_count - 1];
-            }
-            if (graph_add_pin(g, n, output, template_pin) < 0) {
+            if (graph_add_pin(g, n, output, serialize_pin_template(n->desc, output, i)) <
+                0) {
                 serialize_error_set(
                     "node %llu cannot extend %s pin list",
                     (unsigned long long)n->id,
@@ -104,14 +118,22 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         }
         pin_spec *p = output ? &n->output_pins[i] : &n->input_pins[i];
         uint64_t id = 0;
-        if (json_uint(yyjson_obj_get(v, "id"), &id, "pin.id")) {
+        if (json_uint(yyjson_is_uint(v) ? v : yyjson_obj_get(v, "id"), &id, "pin.id")) {
             return -1;
         }
         p->id = id;
+        if (yyjson_is_uint(v)) {
+            i++;
+            continue;
+        }
         yyjson_val *name = yyjson_obj_get(v, "name");
         yyjson_val *type = yyjson_obj_get(v, "type");
-        if (!yyjson_is_str(name) || !yyjson_is_int(type) ||
-            yyjson_get_sint(type) < PIN_FLOW || yyjson_get_sint(type) > PIN_ENUM) {
+        yyjson_val *kind = yyjson_obj_get(v, "kind");
+        if ((name && !yyjson_is_str(name)) || (kind && !yyjson_is_str(kind)) ||
+            (type && (!yyjson_is_int(type) || yyjson_get_sint(type) < PIN_FLOW ||
+                      yyjson_get_sint(type) > PIN_ENUM)) ||
+            read_pin_str(g, v, "type_name", &p->type_name) ||
+            read_pin_str(g, v, "split_type_name", &p->split_type_name)) {
             serialize_error_set(
                 "node %llu has malformed pin %d",
                 (unsigned long long)n->id,
@@ -119,18 +141,15 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
             );
             return -1;
         }
-        p->name = graph_own_str(g, yyjson_get_str(name), yyjson_get_len(name));
-        p->type = (pin_type)yyjson_get_sint(type);
-        yyjson_val *tn = yyjson_obj_get(v, "type_name");
-        p->type_name = yyjson_is_str(tn)
-                         ? graph_own_str(g, yyjson_get_str(tn), yyjson_get_len(tn))
-                         : NULL;
-        yyjson_val *kind = yyjson_obj_get(v, "kind");
-        if (!yyjson_is_str(kind)) {
-            serialize_error_set("pin %d missing kind", i);
-            return -1;
+        if (name) {
+            p->name = graph_own_str(g, yyjson_get_str(name), yyjson_get_len(name));
         }
-        p->kind = strcmp(yyjson_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
+        if (type) {
+            p->type = (pin_type)yyjson_get_sint(type);
+        }
+        if (kind) {
+            p->kind = strcmp(yyjson_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
+        }
         yyjson_val *container = yyjson_obj_get(v, "container");
         if (container && yyjson_is_int(container)) {
             p->container = (pin_container)yyjson_get_sint(container);
@@ -139,10 +158,6 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         if (split && yyjson_is_uint(split)) {
             p->split_parent = yyjson_get_uint(split);
         }
-        yyjson_val *split_type = yyjson_obj_get(v, "split_type_name");
-        p->split_type_name = yyjson_is_str(split_type)
-                               ? graph_own_str(g, yyjson_get_str(split_type), yyjson_get_len(split_type))
-                               : NULL;
         yyjson_val *field_source = yyjson_obj_get(v, "field_source");
         yyjson_val *field_name = yyjson_obj_get(v, "field_name");
         if ((field_source || field_name) &&
@@ -151,12 +166,15 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
             serialize_error_set("invalid exposed field metadata");
             return -1;
         }
-        p->field_source = field_source ? yyjson_get_uint(field_source) : 0;
-        p->field_name = field_name
-                          ? graph_own_str(g, yyjson_get_str(field_name), yyjson_get_len(field_name))
-                          : NULL;
+        if (field_source) {
+            p->field_source = yyjson_get_uint(field_source);
+            p->field_name = graph_own_str(g, yyjson_get_str(field_name), yyjson_get_len(field_name));
+        }
         yyjson_val *flags = yyjson_obj_get(v, "flags");
-        p->declaration_id = yyjson_get_uint(yyjson_obj_get(v, "declaration_id"));
+        yyjson_val *declaration = yyjson_obj_get(v, "declaration_id");
+        if (declaration) {
+            p->declaration_id = yyjson_get_uint(declaration);
+        }
         if (flags && yyjson_is_uint(flags)) {
             p->flags = (unsigned)yyjson_get_uint(flags);
         }
@@ -337,12 +355,16 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
         }
         n->id = id;
         yyjson_val *x = yyjson_obj_get(v, "x"), *y = yyjson_obj_get(v, "y");
-        if (x && yyjson_is_num(x)) {
-            n->x = (float)yyjson_get_num(x);
+        yyjson_val *placed = yyjson_obj_get(v, "placed");
+        if ((x && !yyjson_is_num(x)) || (y && !yyjson_is_num(y)) || !x != !y ||
+            (placed && !yyjson_is_bool(placed))) {
+            serialize_error_set("node %llu has an invalid position", (unsigned long long)id);
+            return -1;
         }
-        if (y && yyjson_is_num(y)) {
-            n->y = (float)yyjson_get_num(y);
-        }
+        /* Nodes without a position wait for the editor to arrange them. */
+        n->x = x ? (float)yyjson_get_num(x) : 0.0f;
+        n->y = y ? (float)yyjson_get_num(y) : 0.0f;
+        n->placed = x && (!placed || yyjson_get_bool(placed));
         yyjson_val *refasset = yyjson_obj_get(v, "reference_asset");
         if (yyjson_is_str(refasset)) {
             n->reference_asset = graph_own_str(g, yyjson_get_str(refasset), yyjson_get_len(refasset));
@@ -516,11 +538,13 @@ static int load_edges(graph *g, yyjson_val *edges)
                        *tps = graph_pin_by_id(to, to_pin, &to_out, &tp);
         yyjson_val *kind = yyjson_obj_get(v, "kind");
         if (!from || !to || !fps || !tps || fo != 1 || to_out != 0 ||
-            !yyjson_is_str(kind)) {
+            (kind && !yyjson_is_str(kind))) {
             serialize_error_set("edge references missing node or pin ID");
             return -1;
         }
-        const char *kind_name = yyjson_get_str(kind);
+        const char *kind_name = kind                  ? yyjson_get_str(kind)
+                              : fps->kind == PIN_EXEC ? "exec"
+                                                      : "data";
         yyjson_val *conversion_value = yyjson_obj_get(v, "conversion");
         const node_desc *conversion = NULL;
         if (conversion_value) {
@@ -547,12 +571,12 @@ static int load_edges(graph *g, yyjson_val *edges)
                 return -1;
             }
             yyjson_val *order = yyjson_obj_get(v, "order");
-            if (!yyjson_is_int(order) || yyjson_get_sint(order) < 0 ||
-                yyjson_get_sint(order) > INT_MAX) {
+            if (order && (!yyjson_is_int(order) || yyjson_get_sint(order) < 0 ||
+                          yyjson_get_sint(order) > INT_MAX)) {
                 serialize_error_set("exec edge has an invalid order");
                 return -1;
             }
-            r = graph_connect_exec(g, from, fp, to, tp, (int)yyjson_get_sint(order));
+            r = graph_connect_exec(g, from, fp, to, tp, order ? (int)yyjson_get_sint(order) : 0);
         } else {
             serialize_error_set("unsupported edge kind");
             return -1;
@@ -643,8 +667,8 @@ graph *graph_load_json(const char *json)
     }
     yyjson_val *nodes = yyjson_obj_get(root, "nodes"),
                *edges = yyjson_obj_get(root, "edges");
-    if (!yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
-        serialize_error_set("missing or invalid nodes or edges array");
+    if ((nodes && !yyjson_is_arr(nodes)) || (edges && !yyjson_is_arr(edges))) {
+        serialize_error_set("invalid nodes or edges array");
         yyjson_doc_free(doc);
         return NULL;
     }
@@ -668,10 +692,11 @@ graph *graph_load_json(const char *json)
     if (yyjson_is_str(metadata_name)) {
         g->name = graph_own_str(g, yyjson_get_str(metadata_name), yyjson_get_len(metadata_name));
     }
-    if (yyjson_is_str(metadata_description)) {
-        g->description = graph_own_str(g, yyjson_get_str(metadata_description), yyjson_get_len(metadata_description));
-    }
-    if (!g->name || !g->description) {
+    const char *description = yyjson_is_str(metadata_description)
+                                ? yyjson_get_str(metadata_description)
+                                : "";
+    g->description = graph_own_str(g, description, strlen(description));
+    if (!g->name || (metadata_description && !yyjson_is_str(metadata_description))) {
         serialize_error_set("missing behavior_asset metadata");
         goto fail;
     }
@@ -783,8 +808,8 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
         graph_kind_from_name(yyjson_get_str(kind_json), &kind) ||
         !yyjson_is_str(name_json) ||
         (description_json && !yyjson_is_str(description_json)) ||
-        !yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
-        serialize_error_set("graph is missing kind, name, nodes, or edges");
+        (nodes && !yyjson_is_arr(nodes)) || (edges && !yyjson_is_arr(edges))) {
+        serialize_error_set("graph is missing kind or name, or has invalid nodes or edges");
         return -1;
     }
     if (is_default && kind != GRAPH_EVENT) {
@@ -958,8 +983,9 @@ behavior_asset *behavior_asset_load_json(const char *json)
     }
     yyjson_val *metadata_name = yyjson_obj_get(root, "name");
     yyjson_val *metadata_description = yyjson_obj_get(root, "description");
-    if (!yyjson_is_str(metadata_name) || !yyjson_is_str(metadata_description)) {
-        serialize_error_set("behavior_asset requires name and description");
+    if (!yyjson_is_str(metadata_name) ||
+        (metadata_description && !yyjson_is_str(metadata_description))) {
+        serialize_error_set("behavior_asset requires a name");
         goto fail;
     }
     uint64_t requested_counter = 1;

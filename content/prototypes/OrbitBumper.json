@@ -11,20 +11,13 @@
       "glow_radius": 14.0,
       "height": 60.0,
       "shape": 1,
-      "stroke_width": 0.0,
       "width": 60.0
     },
     "GAME.GameCollider": {
       "category": 8,
-      "friction": 0.0,
-      "height": 0.0,
-      "ignore_entity": null,
       "mask": 1,
       "radius": 29.0,
-      "restitution": 1.0,
-      "sensor": false,
-      "shape": 0,
-      "width": 0.0
+      "restitution": 1.0
     },
     "game.GameTransform": {
       "x": -85.0,

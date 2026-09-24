@@ -4,121 +4,52 @@
   "domain": "material",
   "id_counter": 16,
   "description": "Thin rose arrival outline, matching the incoming enemy and pointing toward the arena center.",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Shader Surface Output",
-          "x": 630,
-          "y": 30,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 2,
-              "name": "Base Color",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 64,
-              "group": 0,
               "default": {
-                "x": 1,
-                "y": 0.18,
-                "z": 0.36
-              },
-              "type_name": "ShaderVec3"
+                "x": 1.0,
+                "y": 0.18000000715255737,
+                "z": 0.36000001430511475
+              }
             },
             {
               "id": 3,
-              "name": "Emission",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 64,
-              "group": 0,
               "default": {
-                "x": 0.48,
-                "y": 0.04,
-                "z": 0.1
-              },
-              "type_name": "ShaderVec3"
+                "x": 0.47999998927116394,
+                "y": 0.03999999910593033,
+                "z": 0.10000000149011612
+              }
             },
             {
               "id": 4,
-              "name": "Roughness",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.35
+              "default": 0.3499999940395355
             },
-            {
-              "id": 5,
-              "name": "Metallic",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            },
+            5,
             {
               "id": 6,
-              "name": "Normal",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
-                "x": 0,
-                "y": 0,
-                "z": 0
-              },
-              "type_name": "ShaderVec3"
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              }
             },
-            {
-              "id": 7,
-              "name": "Opacity",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 1
-            },
+            7,
             {
               "id": 8,
-              "name": "Unlit",
-              "type": 1,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": true
             }
-          ],
-          "outputs": []
+          ]
         }
-      ],
-      "edges": []
+      ]
     }
   ]
 }

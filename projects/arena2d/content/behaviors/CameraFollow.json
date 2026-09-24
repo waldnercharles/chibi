@@ -1,53 +1,26 @@
 {
   "version": 3,
   "name": "CameraFollow",
-  "domain": "behavior",
   "id_counter": 189,
   "description": "Follow the Player binding with exponential smoothing.",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "description": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Event",
-          "x": 310.0,
-          "y": 0.0,
-          "reference_id": 0,
           "reference_name": "Tick",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            2,
             {
               "id": 3,
               "name": "DeltaSeconds",
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ]
@@ -55,38 +28,17 @@
         {
           "id": 4,
           "type": "Get Global Variable",
-          "x": 0.0,
-          "y": 120.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 5,
-              "name": "Name",
-              "type": 12,
-              "type_name": "name",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": "Player"
             }
           ],
           "outputs": [
             {
               "id": 6,
-              "name": "Value",
               "type": 14,
               "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -94,64 +46,23 @@
         {
           "id": 7,
           "type": "GetEntity_GameTransform",
-          "x": 310.0,
-          "y": 120.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 8,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            8
           ],
           "outputs": [
-            {
-              "id": 9,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            9
           ]
         },
         {
           "id": 49,
           "type": "Behavior Expression",
-          "x": 620.0,
-          "y": 40.0,
           "reference_id": 10,
           "reference_name": "position += (target - position) * (1 - exp(-rate * dt))",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 55,
               "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "kind": "exec"
             },
             {
               "id": 50,
@@ -159,9 +70,6 @@
               "name": "position",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 6,
               "group": 1,
               "binding": {
@@ -176,9 +84,6 @@
               "name": "target",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 2,
               "default": null
@@ -189,9 +94,6 @@
               "name": "rate",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 3,
               "default": 6.0
@@ -202,9 +104,6 @@
               "name": "dt",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 4,
               "binding": {
@@ -217,13 +116,7 @@
             {
               "id": 56,
               "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "kind": "exec"
             },
             {
               "id": 54,
@@ -231,9 +124,6 @@
               "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 5,
               "default": null
@@ -246,23 +136,19 @@
           "from": 1,
           "from_pin": 2,
           "to": 49,
-          "to_pin": 55,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 55
         },
         {
           "from": 4,
           "from_pin": 6,
           "to": 7,
-          "to_pin": 8,
-          "kind": "data"
+          "to_pin": 8
         },
         {
           "from": 7,
           "from_pin": 9,
           "to": 49,
-          "to_pin": 51,
-          "kind": "data"
+          "to_pin": 51
         }
       ]
     },
@@ -270,11 +156,8 @@
       "id": 10,
       "kind": "function",
       "name": "position += (target - position) * (1 - exp(-rate * dt))",
-      "description": "",
-      "breakpoints_enabled": true,
       "math_expression": "position += (target - position) * (1 - exp(-rate * dt))",
       "expression_mode": 2,
-      "comment_boxes": [],
       "entry_id": 146,
       "return_id": 148,
       "call_depth_limit": 64,
@@ -282,35 +165,14 @@
         {
           "id": 146,
           "type": "Function Entry",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 147,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            147,
             {
               "id": 150,
               "name": "position",
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
               "group": 1,
               "default": null
             },
@@ -320,8 +182,6 @@
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 2,
               "default": null
@@ -332,8 +192,6 @@
               "type": 11,
               "type_name": "double",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 3,
               "default": 0.0
@@ -344,8 +202,6 @@
               "type": 11,
               "type_name": "double",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 4,
               "default": 0.0
@@ -355,87 +211,42 @@
         {
           "id": 148,
           "type": "Return",
-          "x": 1320.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 149,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            149,
             {
               "id": 154,
               "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 2,
               "group": 5,
               "default": null
             }
-          ],
-          "outputs": []
+          ]
         },
         {
           "id": 155,
           "type": "Subtract",
-          "x": 220.0,
-          "y": 270.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 156,
-              "name": "A",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
             {
               "id": 157,
-              "name": "B",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
               "default": null
             }
           ],
           "outputs": [
             {
               "id": 158,
-              "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -443,77 +254,32 @@
         {
           "id": 159,
           "type": "Real",
-          "x": 220.0,
-          "y": 360.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 160,
-              "name": "Value",
-              "type": 11,
-              "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 1.0
             }
           ],
           "outputs": [
-            {
-              "id": 161,
-              "name": "Value",
-              "type": 11,
-              "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            161
           ]
         },
         {
           "id": 162,
           "type": "Negate",
-          "x": 220.0,
-          "y": 540.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 163,
-              "name": "Value",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 0.0
             }
           ],
           "outputs": [
             {
               "id": 164,
-              "name": "Result",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 0.0
             }
           ]
@@ -521,50 +287,25 @@
         {
           "id": 165,
           "type": "Multiply",
-          "x": 440.0,
-          "y": 720.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 166,
-              "name": "A",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 0.0
             },
             {
               "id": 167,
-              "name": "B",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
               "default": 0.0
             }
           ],
           "outputs": [
             {
               "id": 168,
-              "name": "Result",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 0.0
             }
           ]
@@ -572,89 +313,35 @@
         {
           "id": 169,
           "type": "Exponential",
-          "x": 660.0,
-          "y": 810.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 170,
-              "name": "Value",
-              "type": 11,
-              "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            170
           ],
           "outputs": [
-            {
-              "id": 171,
-              "name": "Result",
-              "type": 11,
-              "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
+            171
           ]
         },
         {
           "id": 172,
           "type": "Subtract",
-          "x": 880.0,
-          "y": 900.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 173,
-              "name": "A",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 0.0
             },
             {
               "id": 174,
-              "name": "B",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
               "default": 0.0
             }
           ],
           "outputs": [
             {
               "id": 175,
-              "name": "Result",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": 0.0
             }
           ]
@@ -662,50 +349,25 @@
         {
           "id": 176,
           "type": "Multiply",
-          "x": 1100.0,
-          "y": 990.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 177,
-              "name": "A",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
             {
               "id": 178,
-              "name": "B",
               "type": 11,
               "type_name": "double",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
               "default": 0.0
             }
           ],
           "outputs": [
             {
               "id": 179,
-              "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -713,50 +375,25 @@
         {
           "id": 180,
           "type": "Add",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
             {
               "id": 181,
-              "name": "A",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             },
             {
               "id": 182,
-              "name": "B",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
               "default": null
             }
           ],
           "outputs": [
             {
               "id": 183,
-              "name": "Result",
               "type": 15,
               "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
               "default": null
             }
           ]
@@ -764,62 +401,13 @@
         {
           "id": 184,
           "type": "Set_GameTransform",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 185,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 186,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            185,
+            186
           ],
           "outputs": [
-            {
-              "id": 187,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 188,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            187,
+            188
           ]
         }
       ],
@@ -828,115 +416,97 @@
           "from": 146,
           "from_pin": 147,
           "to": 184,
-          "to_pin": 185,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 185
         },
         {
           "from": 146,
           "from_pin": 150,
           "to": 155,
-          "to_pin": 157,
-          "kind": "data"
+          "to_pin": 157
         },
         {
           "from": 146,
           "from_pin": 150,
           "to": 180,
-          "to_pin": 181,
-          "kind": "data"
+          "to_pin": 181
         },
         {
           "from": 146,
           "from_pin": 151,
           "to": 155,
-          "to_pin": 156,
-          "kind": "data"
+          "to_pin": 156
         },
         {
           "from": 146,
           "from_pin": 152,
           "to": 162,
-          "to_pin": 163,
-          "kind": "data"
+          "to_pin": 163
         },
         {
           "from": 146,
           "from_pin": 153,
           "to": 165,
-          "to_pin": 167,
-          "kind": "data"
+          "to_pin": 167
         },
         {
           "from": 155,
           "from_pin": 158,
           "to": 176,
-          "to_pin": 177,
-          "kind": "data"
+          "to_pin": 177
         },
         {
           "from": 159,
           "from_pin": 161,
           "to": 172,
-          "to_pin": 173,
-          "kind": "data"
+          "to_pin": 173
         },
         {
           "from": 162,
           "from_pin": 164,
           "to": 165,
-          "to_pin": 166,
-          "kind": "data"
+          "to_pin": 166
         },
         {
           "from": 165,
           "from_pin": 168,
           "to": 169,
-          "to_pin": 170,
-          "kind": "data"
+          "to_pin": 170
         },
         {
           "from": 169,
           "from_pin": 171,
           "to": 172,
-          "to_pin": 174,
-          "kind": "data"
+          "to_pin": 174
         },
         {
           "from": 172,
           "from_pin": 175,
           "to": 176,
-          "to_pin": 178,
-          "kind": "data"
+          "to_pin": 178
         },
         {
           "from": 176,
           "from_pin": 179,
           "to": 180,
-          "to_pin": 182,
-          "kind": "data"
+          "to_pin": 182
         },
         {
           "from": 180,
           "from_pin": 183,
           "to": 184,
-          "to_pin": 186,
-          "kind": "data"
+          "to_pin": 186
         },
         {
           "from": 184,
           "from_pin": 187,
           "to": 148,
-          "to_pin": 149,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 149
         },
         {
           "from": 184,
           "from_pin": 188,
           "to": 148,
-          "to_pin": 154,
-          "kind": "data"
+          "to_pin": 154
         }
       ]
     }

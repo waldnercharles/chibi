@@ -1,15 +1,13 @@
 {
   "name": "ArenaEncounter",
+  "identity": "prototype-0000000000000003",
   "components": {
-    "GameTransform": {
-      "x": 323.3161507461905,
-      "y": -176
+    "GAME.GameEncounter": {
+      "total": 40
     },
-    "GameEncounter": {
-      "status": 0,
-      "total": 40,
-      "spawned": 0,
-      "alive": 0
+    "game.GameTransform": {
+      "x": 323.316162109375,
+      "y": -176.0
     }
   },
   "behaviors": [

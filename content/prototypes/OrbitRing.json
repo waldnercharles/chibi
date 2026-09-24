@@ -6,13 +6,9 @@
       "antialias": 1.0,
       "border_color": 1115128063,
       "border_width": 1.5,
-      "color": 0,
-      "glow_color": 0,
-      "glow_radius": 0.0,
       "height": 290.0,
       "layer": -50,
       "shape": 1,
-      "stroke_width": 0.0,
       "width": 290.0
     },
     "game.GameTransform": {

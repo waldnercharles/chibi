@@ -1,46 +1,36 @@
 {
   "name": "ArenaSpawnMarker",
+  "identity": "prototype-000000000000000c",
   "components": {
-    "GameTransform": {
-      "x": 0,
-      "y": 0
-    },
-    "GameSpawnRequest": {
-      "prototype": "ArenaEnemy",
-      "delay": 1
-    },
-    "GameEncounterMember": {
+    "GAME.GameEncounterMember": {
       "role": 1
     },
-    "GameGeometry3D": {
+    "GAME.GameGeometry3D": {
+      "depth": 22.0,
+      "elevation": 1.0,
+      "height": 0.10000000149011612,
       "primitive": 9,
-      "width": 22,
-      "depth": 22,
-      "height": 0.1,
-      "elevation": 1
+      "width": 22.0
     },
-    "GameShader": {
+    "GAME.GameOrientation": {},
+    "GAME.GameShader": {
       "material": "ArenaSpawnMarker",
-      "shape": "",
       "parameters": "{}",
-      "bounds_x": 0,
-      "bounds_y": 0
+      "shape": ""
     },
-    "GameVisualTransform": {
-      "pitch": 0,
-      "yaw": 0,
-      "roll": 0,
-      "scale": 1
+    "GAME.GameSpawnRequest": {
+      "delay": 1.0,
+      "prototype": "ArenaEnemy"
     },
-    "GameSurfaceInfluence": {
+    "GAME.GameSurfaceInfluence": {
       "color": 4282543359,
-      "strength": 0.4,
-      "radius": 14,
-      "inner_radius": 11,
-      "linger": 0
+      "inner_radius": 11.0,
+      "radius": 14.0,
+      "strength": 0.4000000059604645
     },
-    "GameOrientation": {
-      "radians": 0
+    "game.GameTransform": {},
+    "GAME.GameVisualTransform": {
+      "scale": 1.0
     }
   },
   "behaviors": [

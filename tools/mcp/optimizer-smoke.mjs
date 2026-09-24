@@ -50,9 +50,11 @@ try {
       const age = document.variables.find(v => v.name === "Age");
       const setter = graph.nodes.find(n => n.type === "Set Variable" && n.reference_id === age.id);
       assert(setter, "Optimize must retain the Age assignment");
-      assert(!graph.edges.some(e => e.from === setter.id && e.kind === "data"));
+      // Compact pins may be bare IDs; the setter's first output is its exec pin.
+      const pinId = p => typeof p === "number" ? p : p.id;
+      assert(graph.edges.filter(e => e.from === setter.id).every(e => e.from_pin === pinId(setter.outputs[0])));
       assert(graph.nodes.some(n => n.type === "Self" && n.inline_source));
-      assert(graph.nodes.flatMap(n => n.inputs).filter(p =>
+      assert(graph.nodes.flatMap(n => n.inputs || []).filter(p =>
         p.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);
     }
     assert.equal(document.variables.length, JSON.parse(before).variables.length);

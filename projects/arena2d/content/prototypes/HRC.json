@@ -17,11 +17,8 @@
       "smoke_lifetime": 4.5
     },
     "GAME.GameHRC2D": {
-      "adaptive": false,
-      "ambient": 0.0,
       "bounce_hysteresis": 0.800000011920929,
       "bounce_intensity": 1.0,
-      "debug_view": 0,
       "falloff": 1.0,
       "feedback": true,
       "fog": 0.15000000596046448,
@@ -67,6 +64,9 @@
         "z": 0.6000000238418579
       }
     },
+    "GAME.MaterialDestructionWorld": {
+      "fragment_limit": 96
+    },
     "GAME.MaterialFluidWorld": {
       "buffer": 192.0,
       "chunk_size": 256.0,
@@ -75,9 +75,6 @@
       "gas_vorticity": 2.0,
       "kernel": 10.0,
       "particle_limit": 32768
-    },
-    "GAME.MaterialDestructionWorld": {
-      "fragment_limit": 96
     }
   }
 }

@@ -3,42 +3,25 @@
   "identity": "prototype-0000000000000014",
   "components": {
     "GAME.GameAppearance": {
-      "antialias": 0.0,
       "border_color": 3639078911,
       "border_width": 1.0,
       "color": 2360132607,
-      "glow_color": 0,
-      "glow_radius": 0.0,
       "height": 100.0,
       "layer": 2,
       "shape": 5,
-      "stroke_width": 0.0,
       "width": 10.0
     },
-    "GAME.GameBody": {
-      "angular_velocity": 0.0,
-      "continuous": false,
-      "type": 0
-    },
+    "GAME.GameBody": {},
     "GAME.GameCollider": {
       "category": 8,
       "friction": 0.07999999821186066,
       "height": 100.0,
-      "ignore_entity": null,
       "mask": 1,
-      "pierce_fragments": false,
-      "radius": 0.0,
       "restitution": 0.7200000286102295,
-      "sensor": false,
       "shape": 1,
       "width": 10.0
     },
-    "GAME.GameOrientation": {
-      "radians": 0.0
-    },
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
-    }
+    "GAME.GameOrientation": {},
+    "game.GameTransform": {}
   }
 }

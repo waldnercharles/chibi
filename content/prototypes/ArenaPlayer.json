@@ -4,11 +4,8 @@
   "components": {
     "GAME.GameAim": {
       "direction": {
-        "x": 1.0,
-        "y": 0.0
-      },
-      "firing": false,
-      "manual": false
+        "x": 1.0
+      }
     },
     "GAME.GameBody": {
       "continuous": true,
@@ -16,20 +13,11 @@
     },
     "GAME.GameCollider": {
       "category": 1,
-      "height": 0.0,
-      "ignore_entity": null,
       "mask": 10,
-      "radius": 12.0,
-      "sensor": false,
-      "shape": 0,
-      "width": 0.0
+      "radius": 12.0
     },
-    "GAME.GameEncounterMember": {
-      "role": 0
-    },
-    "GAME.GameExperience": {
-      "current": 0
-    },
+    "GAME.GameEncounterMember": {},
+    "GAME.GameExperience": {},
     "GAME.GameGeometry3D": {
       "depth": 18.0,
       "elevation": 14.0,
@@ -41,86 +29,47 @@
       "current": 100,
       "maximum": 100
     },
-    "game.GameInput": {
-      "move": {
-        "x": 0.0,
-        "y": 0.0
-      }
-    },
+    "game.GameInput": {},
     "game.GameMovement": {
       "speed": 180.0
     },
-    "GAME.GameOrientation": {
-      "radians": 0.0
-    },
+    "GAME.GameOrientation": {},
     "GAME.GameParticleEmitter": {
       "absorption": 0.009999999776482582,
       "active": true,
       "antialias": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "exponent": 0.0,
         "start": {
           "x": 1.5,
           "y": 1.5
         }
       },
-      "burst_count": 0,
       "color": 3304783871,
       "direction": {
-        "x": -1.0,
-        "y": 0.0,
-        "z": 0.0
+        "x": -1.0
       },
       "drag": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "exponent": 0.0,
         "start": {
           "x": 1.5,
           "y": 1.5
         }
       },
       "emission": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
-        "exponent": 0.0,
         "start": {
           "x": 1.2999999523162842,
           "y": 1.2999999523162842
         }
       },
       "end_color": 394308096,
-      "fluid": false,
-      "fluid_kind": 0,
       "fluid_mass": 0.00019999999494757503,
-      "heading_only": false,
       "lifetime": {
         "x": 0.23999999463558197,
         "y": 0.23999999463558197
       },
-      "metaball_blend": 0.0,
-      "metaball_group": 0,
       "offset": {
-        "x": -11.0,
-        "y": 0.0,
-        "z": 0.0
+        "x": -11.0
       },
-      "parent": null,
-      "planar": false,
       "rate": 160.0,
-      "shape": 0,
       "size": {
-        "end": {
-          "x": 0.0,
-          "y": 0.0
-        },
         "exponent": 0.8500000238418579,
         "start": {
           "x": 2.200000047683716,
@@ -132,11 +81,6 @@
         "y": 105.0
       },
       "spread": 0.20000000298023224,
-      "stretch": {
-        "x": 0.0,
-        "y": 0.0
-      },
-      "velocity_align": false,
       "velocity_inherit": 1.0
     },
     "GAME.GamePointLight": {
@@ -146,15 +90,12 @@
       "radius": 62.0
     },
     "GAME.GameShader": {
-      "bounds_x": 0.0,
-      "bounds_y": 0.0,
       "material": "ArenaPlayer",
       "parameters": "{}",
       "shape": ""
     },
     "GAME.GameSurfaceInfluence": {
       "color": 953090047,
-      "inner_radius": 0.0,
       "linger": 0.2199999988079071,
       "radius": 22.0,
       "strength": 0.1899999976158142
@@ -163,15 +104,9 @@
       "x": 320.0,
       "y": -180.0
     },
-    "GAME.GameVelocity": {
-      "x": 0.0,
-      "y": 0.0
-    },
+    "GAME.GameVelocity": {},
     "GAME.GameVisualTransform": {
-      "pitch": 0.0,
-      "roll": 0.0,
-      "scale": 1.0,
-      "yaw": 0.0
+      "scale": 1.0
     },
     "GAME.GameWeapon": {
       "cooldown": 0.125,

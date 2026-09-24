@@ -3,28 +3,15 @@
   "identity": "prototype-000000000000003e",
   "components": {
     "GAME.GameWidget": {
-      "accent": 0,
       "anchor": {
         "x": 0.8100000023841858,
         "y": 0.5
       },
       "background": 269820671,
-      "block_input": false,
-      "center_text": false,
       "color": 1551077631,
-      "disabled": false,
-      "draggable": false,
       "drop_group": "",
       "event": "",
-      "font_size": 0.0,
-      "hidden": false,
       "kind": 1,
-      "maximum": 0.0,
-      "minimum": 0.0,
-      "offset": {
-        "x": 0.0,
-        "y": 0.0
-      },
       "order": 30,
       "pivot": {
         "x": 0.5,
@@ -36,8 +23,7 @@
         "y": 555.0
       },
       "text": "",
-      "tooltip": "",
-      "value": 0.0
+      "tooltip": ""
     }
   }
 }

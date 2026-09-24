@@ -1,1 +1,2766 @@
-{"presentation":"2d","physics":{"substeps":8,"continuous":true,"sleep":false},"entities":[{"name":"Camera","prototype":"Camera","components":{},"behaviors":[]},{"name":"Cabinet","prototype":"Table","components":{"GameTransform":{"x":0,"y":0}},"behaviors":[]},{"name":"Playfield","prototype":"Artwork","components":{"GameTransform":{"x":0,"y":-5},"GameAppearance":{"width":428,"height":638,"color":271006975,"shape":0,"layer":-29,"border_color":1366261503,"border_width":4},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Shooter trough","prototype":"Artwork","components":{"GameTransform":{"x":196,"y":35},"GameAppearance":{"width":30,"height":565,"color":287059455,"shape":0,"layer":-27},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star chart","prototype":"Artwork","components":{"GameTransform":{"x":0,"y":-60},"GameAppearance":{"width":330,"height":385,"color":372855295,"shape":1,"layer":-26,"border_color":627079679,"border_width":2},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Radar ring 0","prototype":"Artwork","components":{"GameTransform":{"x":-10,"y":-52},"GameAppearance":{"width":100,"height":100,"color":389303039,"shape":1,"layer":-25,"border_color":677276927,"border_width":1},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Radar ring 1","prototype":"Artwork","components":{"GameTransform":{"x":-10,"y":-52},"GameAppearance":{"width":148,"height":148,"color":389303039,"shape":1,"layer":-24,"border_color":677276927,"border_width":1},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Radar ring 2","prototype":"Artwork","components":{"GameTransform":{"x":-10,"y":-52},"GameAppearance":{"width":196,"height":196,"color":389303039,"shape":1,"layer":-23,"border_color":677276927,"border_width":1},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Radar ring 3","prototype":"Artwork","components":{"GameTransform":{"x":-10,"y":-52},"GameAppearance":{"width":244,"height":244,"color":389303039,"shape":1,"layer":-22,"border_color":677276927,"border_width":1},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 0","prototype":"Artwork","components":{"GameTransform":{"x":-143,"y":-239},"GameAppearance":{"width":4,"height":4,"color":4140860415,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 1","prototype":"Artwork","components":{"GameTransform":{"x":-30,"y":-66},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 2","prototype":"Artwork","components":{"GameTransform":{"x":83,"y":107},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 3","prototype":"Artwork","components":{"GameTransform":{"x":-164,"y":-240},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 4","prototype":"Artwork","components":{"GameTransform":{"x":-51,"y":-67},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 5","prototype":"Artwork","components":{"GameTransform":{"x":62,"y":106},"GameAppearance":{"width":4,"height":4,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 6","prototype":"Artwork","components":{"GameTransform":{"x":175,"y":-241},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 7","prototype":"Artwork","components":{"GameTransform":{"x":-72,"y":-68},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 8","prototype":"Artwork","components":{"GameTransform":{"x":41,"y":105},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 9","prototype":"Artwork","components":{"GameTransform":{"x":154,"y":-242},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 10","prototype":"Artwork","components":{"GameTransform":{"x":-93,"y":-69},"GameAppearance":{"width":4,"height":4,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 11","prototype":"Artwork","components":{"GameTransform":{"x":20,"y":104},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 12","prototype":"Artwork","components":{"GameTransform":{"x":133,"y":-243},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 13","prototype":"Artwork","components":{"GameTransform":{"x":-114,"y":-70},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 14","prototype":"Artwork","components":{"GameTransform":{"x":-1,"y":103},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 15","prototype":"Artwork","components":{"GameTransform":{"x":112,"y":-244},"GameAppearance":{"width":4,"height":4,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 16","prototype":"Artwork","components":{"GameTransform":{"x":-135,"y":-71},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 17","prototype":"Artwork","components":{"GameTransform":{"x":-22,"y":102},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 18","prototype":"Artwork","components":{"GameTransform":{"x":91,"y":-245},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 19","prototype":"Artwork","components":{"GameTransform":{"x":-156,"y":-72},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 20","prototype":"Artwork","components":{"GameTransform":{"x":-43,"y":101},"GameAppearance":{"width":4,"height":4,"color":1569826303,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 21","prototype":"Artwork","components":{"GameTransform":{"x":70,"y":-246},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 22","prototype":"Artwork","components":{"GameTransform":{"x":-177,"y":-73},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 23","prototype":"Artwork","components":{"GameTransform":{"x":-64,"y":100},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 24","prototype":"Artwork","components":{"GameTransform":{"x":49,"y":-247},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":2,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 25","prototype":"Artwork","components":{"GameTransform":{"x":162,"y":-74},"GameAppearance":{"width":4,"height":4,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 26","prototype":"Artwork","components":{"GameTransform":{"x":-85,"y":99},"GameAppearance":{"width":2,"height":2,"color":1569826303,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Star 27","prototype":"Artwork","components":{"GameTransform":{"x":28,"y":-248},"GameAppearance":{"width":2,"height":2,"color":4140860415,"shape":1,"layer":-19},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rail 1","prototype":"Rail","components":{"GameTransform":{"x":-210,"y":39},"GameOrientation":{"radians":-1.5707963267948966},"GameAppearance":{"width":558,"height":10,"color":2478428415},"GameCollider":{"width":558,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 2","prototype":"Rail","components":{"GameTransform":{"x":-201,"y":-259.5},"GameOrientation":{"radians":-1.1383885512243588},"GameAppearance":{"width":42.95346318982906,"height":10,"color":2478428415},"GameCollider":{"width":42.95346318982906,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 3","prototype":"Rail","components":{"GameTransform":{"x":-171.5,"y":-294},"GameOrientation":{"radians":-0.6316906343389693},"GameAppearance":{"width":50.80354318352216,"height":10,"color":2478428415},"GameCollider":{"width":50.80354318352216,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 4","prototype":"Rail","components":{"GameTransform":{"x":-121,"y":-316},"GameOrientation":{"radians":-0.22923193327699534},"GameAppearance":{"width":61.61168720299746,"height":10,"color":2478428415},"GameCollider":{"width":61.61168720299746,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 5","prototype":"Rail","components":{"GameTransform":{"x":0,"y":-323},"GameOrientation":{"radians":0},"GameAppearance":{"width":182,"height":10,"color":2478428415},"GameCollider":{"width":182,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 6","prototype":"Rail","components":{"GameTransform":{"x":123.5,"y":-315},"GameOrientation":{"radians":0.24135549057540379},"GameAppearance":{"width":66.94027188471824,"height":10,"color":2478428415},"GameCollider":{"width":66.94027188471824,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 7","prototype":"Rail","components":{"GameTransform":{"x":176,"y":-291},"GameOrientation":{"radians":0.6747409422235526},"GameAppearance":{"width":51.22499389946279,"height":10,"color":2478428415},"GameCollider":{"width":51.22499389946279,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 8","prototype":"Rail","components":{"GameTransform":{"x":207,"y":-251},"GameOrientation":{"radians":1.1410340476982082},"GameAppearance":{"width":52.80151512977635,"height":10,"color":2478428415},"GameCollider":{"width":52.80151512977635,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 9","prototype":"Rail","components":{"GameTransform":{"x":218,"y":45.5},"GameOrientation":{"radians":1.5707963267948966},"GameAppearance":{"width":545,"height":10,"color":2478428415},"GameCollider":{"width":545,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 10","prototype":"Rail","components":{"GameTransform":{"x":-180,"y":225.5},"GameOrientation":{"radians":-1.5707963267948966},"GameAppearance":{"width":131,"height":6,"color":1669963519},"GameCollider":{"width":131,"height":6,"category":8}},"behaviors":[]},{"name":"Rail 11","prototype":"Rail","components":{"GameTransform":{"x":-171.5,"y":145},"GameOrientation":{"radians":-1.0552473193359175},"GameAppearance":{"width":34.48187929913334,"height":6,"color":1669963519},"GameCollider":{"width":34.48187929913334,"height":6,"category":8}},"behaviors":[]},{"name":"Rail 12","prototype":"Rail","components":{"GameTransform":{"x":167,"y":192.5},"GameOrientation":{"radians":-1.5707963267948966},"GameAppearance":{"width":205,"height":7,"color":2680411135},"GameCollider":{"width":205,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 13","prototype":"Rail","components":{"GameTransform":{"x":172,"y":50},"GameOrientation":{"radians":-1.446441332248135},"GameAppearance":{"width":80.62257748298549,"height":7,"color":2680411135},"GameCollider":{"width":80.62257748298549,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 14","prototype":"Rail","components":{"GameTransform":{"x":177.5,"y":-78.5},"GameOrientation":{"radians":-1.5651466693913123},"GameAppearance":{"width":177.00282483621552,"height":7,"color":2680411135},"GameCollider":{"width":177.00282483621552,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 15","prototype":"Rail","components":{"GameTransform":{"x":169,"y":-179.5},"GameOrientation":{"radians":-2.1948193797716535},"GameAppearance":{"width":30.80584360149873,"height":7,"color":2478428415},"GameCollider":{"width":30.80584360149873,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 16","prototype":"Rail","components":{"GameTransform":{"x":198.5,"y":290},"GameOrientation":{"radians":0},"GameAppearance":{"width":33,"height":8,"color":3214434559},"GameCollider":{"width":33,"height":8,"category":8}},"behaviors":[]},{"name":"Rail 17","prototype":"Rail","components":{"GameTransform":{"x":-181.5,"y":250.5},"GameOrientation":{"radians":0.7298996581517315},"GameAppearance":{"width":76.48529270389177,"height":10,"color":2478428415},"GameCollider":{"width":76.48529270389177,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 18","prototype":"Rail","components":{"GameTransform":{"x":-128,"y":293.5},"GameOrientation":{"radians":0.6107259643892086},"GameAppearance":{"width":61.032778078668514,"height":10,"color":2478428415},"GameCollider":{"width":61.032778078668514,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 19","prototype":"Rail","components":{"GameTransform":{"x":146,"y":251.5},"GameOrientation":{"radians":2.263675869072698},"GameAppearance":{"width":68.8839603971781,"height":10,"color":2478428415},"GameCollider":{"width":68.8839603971781,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 20","prototype":"Rail","components":{"GameTransform":{"x":111,"y":294.5},"GameOrientation":{"radians":2.238102461773251},"GameAppearance":{"width":42.01190307520001,"height":10,"color":2478428415},"GameCollider":{"width":42.01190307520001,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 21","prototype":"Rail","components":{"GameTransform":{"x":-162.5,"y":174},"GameOrientation":{"radians":1.1071487177940904},"GameAppearance":{"width":78.26237921249265,"height":7,"color":2478428415},"GameCollider":{"width":78.26237921249265,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 22","prototype":"Rail","components":{"GameTransform":{"x":-122.5,"y":219},"GameOrientation":{"radians":0.4182243295792291},"GameAppearance":{"width":49.24428900898052,"height":7,"color":2478428415},"GameCollider":{"width":49.24428900898052,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 23","prototype":"Rail","components":{"GameTransform":{"x":135.5,"y":171.5},"GameOrientation":{"radians":1.8509043020929503},"GameAppearance":{"width":75.96051605933178,"height":7,"color":2478428415},"GameCollider":{"width":75.96051605933178,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 24","prototype":"Rail","components":{"GameTransform":{"x":112.5,"y":218.5},"GameOrientation":{"radians":2.44293282886833},"GameAppearance":{"width":32.64965543462902,"height":7,"color":2478428415},"GameCollider":{"width":32.64965543462902,"height":7,"category":8}},"behaviors":[]},{"name":"Rail 25","prototype":"Rail","components":{"GameTransform":{"x":-152.5,"y":126},"GameOrientation":{"radians":1.201727359427424},"GameAppearance":{"width":113.65298060323802,"height":10,"color":3935527679},"GameCollider":{"width":113.65298060323802,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 26","prototype":"Rail","components":{"GameTransform":{"x":-121,"y":195},"GameOrientation":{"radians":0.9685089806599324},"GameAppearance":{"width":38.8329756778952,"height":10,"color":3935527679},"GameCollider":{"width":38.8329756778952,"height":10,"category":8}},"behaviors":[]},{"name":"Rail 27","prototype":"Rail","components":{"GameTransform":{"x":-141.5,"y":142},"GameOrientation":{"radians":1.142532173918242},"GameAppearance":{"width":151.70036255724636,"height":6,"color":4189746431},"GameCollider":{"width":151.70036255724636,"height":6,"category":4}},"behaviors":["BumperKick"]},{"name":"Rail 28","prototype":"Rail","components":{"GameTransform":{"x":127.5,"y":144.5},"GameOrientation":{"radians":1.8281200417659853},"GameAppearance":{"width":137.5281789307195,"height":6,"color":4189746431},"GameCollider":{"width":137.5281789307195,"height":6,"category":4}},"behaviors":["BumperKick"]},{"name":"Left slingshot","prototype":"Artwork","components":{"GameTransform":{"x":-139,"y":158},"GameAppearance":{"width":62,"height":106,"color":3377350143,"shape":6,"layer":0,"border_color":3988219903,"border_width":3},"GameOrientation":{"radians":-0.42}},"behaviors":[]},{"name":"Right slingshot","prototype":"Artwork","components":{"GameTransform":{"x":131,"y":158},"GameAppearance":{"width":62,"height":106,"color":3377350143,"shape":6,"layer":0,"border_color":3988219903,"border_width":3},"GameOrientation":{"radians":0.42}},"behaviors":[]},{"name":"Rail 29","prototype":"Rail","components":{"GameTransform":{"x":-137.5,"y":32},"GameOrientation":{"radians":-1.2320982425918494},"GameAppearance":{"width":93.30058949438637,"height":5,"color":3585700095},"GameCollider":{"width":93.30058949438637,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 30","prototype":"Rail","components":{"GameTransform":{"x":-132,"y":-57.5},"GameOrientation":{"radians":-1.7871369881681871},"GameAppearance":{"width":93.17188417113825,"height":5,"color":3585700095},"GameCollider":{"width":93.17188417113825,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 31","prototype":"Rail","components":{"GameTransform":{"x":-129.5,"y":-161.5},"GameOrientation":{"radians":-1.3602867646675405},"GameAppearance":{"width":119.64113005150028,"height":5,"color":3585700095},"GameCollider":{"width":119.64113005150028,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 32","prototype":"Rail","components":{"GameTransform":{"x":-96.5,"y":-235.5},"GameOrientation":{"radians":-0.6473921397399288},"GameAppearance":{"width":51.40038910358559,"height":5,"color":3585700095},"GameCollider":{"width":51.40038910358559,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 33","prototype":"Rail","components":{"GameTransform":{"x":-165.5,"y":23},"GameOrientation":{"radians":-1.178035661157575},"GameAppearance":{"width":75.76938695805846,"height":5,"color":2006492159},"GameCollider":{"width":75.76938695805846,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 34","prototype":"Rail","components":{"GameTransform":{"x":-159,"y":-58.5},"GameOrientation":{"radians":-1.7411714374575127},"GameAppearance":{"width":94.36630754670864,"height":5,"color":2006492159},"GameCollider":{"width":94.36630754670864,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 35","prototype":"Rail","components":{"GameTransform":{"x":-154.5,"y":-167},"GameOrientation":{"radians":-1.371850380590338},"GameAppearance":{"width":126.49505919204908,"height":5,"color":2006492159},"GameCollider":{"width":126.49505919204908,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 36","prototype":"Rail","components":{"GameTransform":{"x":-115,"y":-253.5},"GameOrientation":{"radians":-0.7368925511570648},"GameAppearance":{"width":72.91776189653658,"height":5,"color":2006492159},"GameCollider":{"width":72.91776189653658,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 37","prototype":"Rail","components":{"GameTransform":{"x":85,"y":119},"GameOrientation":{"radians":-1.1071487177940904},"GameAppearance":{"width":84.97058314499202,"height":6,"color":3567610879},"GameCollider":{"width":84.97058314499202,"height":6,"category":8}},"behaviors":[]},{"name":"Rail 38","prototype":"Rail","components":{"GameTransform":{"x":113.5,"y":32},"GameOrientation":{"radians":-1.3792946083252777},"GameAppearance":{"width":99.82484660644363,"height":6,"color":3567610879},"GameCollider":{"width":99.82484660644363,"height":6,"category":8}},"behaviors":[]},{"name":"Rail 39","prototype":"Rail","components":{"GameTransform":{"x":114,"y":-87.5},"GameOrientation":{"radians":-1.6977691164089757},"GameAppearance":{"width":142.1442928857856,"height":6,"color":3567610879},"GameCollider":{"width":142.1442928857856,"height":6,"category":8}},"behaviors":[]},{"name":"Rail 40","prototype":"Rail","components":{"GameTransform":{"x":85,"y":-192},"GameOrientation":{"radians":-2.1025203940537023},"GameAppearance":{"width":78.89233169326407,"height":6,"color":3567610879},"GameCollider":{"width":78.89233169326407,"height":6,"category":8}},"behaviors":[]},{"name":"Rail 41","prototype":"Rail","components":{"GameTransform":{"x":114,"y":127.5},"GameOrientation":{"radians":-1.1503909755921538},"GameAppearance":{"width":93.1074647920348,"height":5,"color":2074589439},"GameCollider":{"width":93.1074647920348,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 42","prototype":"Rail","components":{"GameTransform":{"x":141,"y":32.5},"GameOrientation":{"radians":-1.419578636648456},"GameAppearance":{"width":106.21205204683694,"height":5,"color":2074589439},"GameCollider":{"width":106.21205204683694,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 43","prototype":"Rail","components":{"GameTransform":{"x":140,"y":-95},"GameOrientation":{"radians":-1.690225252813235},"GameAppearance":{"width":151.07613974417006,"height":5,"color":2074589439},"GameCollider":{"width":151.07613974417006,"height":5,"category":8}},"behaviors":[]},{"name":"Rail 44","prototype":"Rail","components":{"GameTransform":{"x":109.5,"y":-206},"GameOrientation":{"radians":-2.1091708401411267},"GameAppearance":{"width":83.86298349093002,"height":5,"color":2074589439},"GameCollider":{"width":83.86298349093002,"height":5,"category":8}},"behaviors":[]},{"name":"Bumper pedestal 0","prototype":"Artwork","components":{"GameTransform":{"x":-62,"y":-151},"GameAppearance":{"width":60,"height":60,"color":693000959,"shape":1,"layer":1,"border_color":2326768639,"border_width":4},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Attack bumper 1","prototype":"AttackBumper","components":{"GameTransform":{"x":-62,"y":-151}},"behaviors":["BumperKick"]},{"name":"Bumper cap 0","prototype":"Artwork","components":{"GameTransform":{"x":-62,"y":-151},"GameAppearance":{"width":23,"height":23,"color":4023419647,"shape":1,"layer":7,"border_color":3175231487,"border_width":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper inset 0","prototype":"Artwork","components":{"GameTransform":{"x":-62,"y":-151},"GameAppearance":{"width":8,"height":8,"color":3075554815,"shape":1,"layer":8},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper pedestal 1","prototype":"Artwork","components":{"GameTransform":{"x":20,"y":-166},"GameAppearance":{"width":60,"height":60,"color":693000959,"shape":1,"layer":1,"border_color":2326768639,"border_width":4},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Attack bumper 2","prototype":"AttackBumper","components":{"GameTransform":{"x":20,"y":-166}},"behaviors":["BumperKick"]},{"name":"Bumper cap 1","prototype":"Artwork","components":{"GameTransform":{"x":20,"y":-166},"GameAppearance":{"width":23,"height":23,"color":4023419647,"shape":1,"layer":7,"border_color":3175231487,"border_width":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper inset 1","prototype":"Artwork","components":{"GameTransform":{"x":20,"y":-166},"GameAppearance":{"width":8,"height":8,"color":3075554815,"shape":1,"layer":8},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper pedestal 2","prototype":"Artwork","components":{"GameTransform":{"x":-18,"y":-83},"GameAppearance":{"width":60,"height":60,"color":693000959,"shape":1,"layer":1,"border_color":2326768639,"border_width":4},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Attack bumper 3","prototype":"AttackBumper","components":{"GameTransform":{"x":-18,"y":-83}},"behaviors":["BumperKick"]},{"name":"Bumper cap 2","prototype":"Artwork","components":{"GameTransform":{"x":-18,"y":-83},"GameAppearance":{"width":23,"height":23,"color":4023419647,"shape":1,"layer":7,"border_color":3175231487,"border_width":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper inset 2","prototype":"Artwork","components":{"GameTransform":{"x":-18,"y":-83},"GameAppearance":{"width":8,"height":8,"color":3075554815,"shape":1,"layer":8},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper pedestal 3","prototype":"Artwork","components":{"GameTransform":{"x":61,"y":-94},"GameAppearance":{"width":60,"height":60,"color":693000959,"shape":1,"layer":1,"border_color":2326768639,"border_width":4},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Attack bumper 4","prototype":"AttackBumper","components":{"GameTransform":{"x":61,"y":-94}},"behaviors":["BumperKick"]},{"name":"Bumper cap 3","prototype":"Artwork","components":{"GameTransform":{"x":61,"y":-94},"GameAppearance":{"width":23,"height":23,"color":4023419647,"shape":1,"layer":7,"border_color":3175231487,"border_width":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Bumper inset 3","prototype":"Artwork","components":{"GameTransform":{"x":61,"y":-94},"GameAppearance":{"width":8,"height":8,"color":3075554815,"shape":1,"layer":8},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Mission target 1","prototype":"LaneTarget","components":{"GameTransform":{"x":-81,"y":-277}},"behaviors":[]},{"name":"Mission target 2","prototype":"LaneTarget","components":{"GameTransform":{"x":-22,"y":-282}},"behaviors":[]},{"name":"Mission target 3","prototype":"LaneTarget","components":{"GameTransform":{"x":38,"y":-282}},"behaviors":[]},{"name":"Mission target 4","prototype":"LaneTarget","components":{"GameTransform":{"x":-151,"y":0}},"behaviors":[]},{"name":"Mission target 5","prototype":"LaneTarget","components":{"GameTransform":{"x":-153,"y":33}},"behaviors":[]},{"name":"Mission target 6","prototype":"LaneTarget","components":{"GameTransform":{"x":-150,"y":66}},"behaviors":[]},{"name":"Mission target 7","prototype":"LaneTarget","components":{"GameTransform":{"x":109,"y":-219}},"behaviors":[]},{"name":"Mission target 8","prototype":"LaneTarget","components":{"GameTransform":{"x":78,"y":65}},"behaviors":[]},{"name":"Rank lamp 1","prototype":"Artwork","components":{"GameTransform":{"x":-55,"y":96},"GameAppearance":{"width":9,"height":12,"color":3937946111,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 2","prototype":"Artwork","components":{"GameTransform":{"x":-40,"y":96},"GameAppearance":{"width":9,"height":12,"color":3937946111,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 3","prototype":"Artwork","components":{"GameTransform":{"x":-25,"y":96},"GameAppearance":{"width":9,"height":12,"color":3937946111,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 4","prototype":"Artwork","components":{"GameTransform":{"x":-10,"y":96},"GameAppearance":{"width":9,"height":12,"color":1113872383,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":0},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 5","prototype":"Artwork","components":{"GameTransform":{"x":5,"y":96},"GameAppearance":{"width":9,"height":12,"color":1113872383,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":0},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 6","prototype":"Artwork","components":{"GameTransform":{"x":20,"y":96},"GameAppearance":{"width":9,"height":12,"color":1113872383,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":0},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 7","prototype":"Artwork","components":{"GameTransform":{"x":35,"y":96},"GameAppearance":{"width":9,"height":12,"color":1113872383,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":0},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Rank lamp 8","prototype":"Artwork","components":{"GameTransform":{"x":50,"y":96},"GameAppearance":{"width":9,"height":12,"color":1113872383,"shape":1,"layer":2,"glow_color":4207496191,"glow_radius":0},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Center arrow","prototype":"Artwork","components":{"GameTransform":{"x":-5,"y":164},"GameAppearance":{"width":31,"height":50,"color":3752745471,"shape":3,"layer":0},"GameOrientation":{"radians":3.141592653589793}},"behaviors":[]},{"name":"Spacecraft body","prototype":"Artwork","components":{"GameTransform":{"x":-20,"y":15},"GameAppearance":{"width":57,"height":106,"color":727941375,"shape":2,"layer":-5,"border_color":1939778303,"border_width":2},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Left wing","prototype":"Artwork","components":{"GameTransform":{"x":-52,"y":30},"GameAppearance":{"width":53,"height":42,"color":1283626751,"shape":6,"layer":-4},"GameOrientation":{"radians":-0.5}},"behaviors":[]},{"name":"Right wing","prototype":"Artwork","components":{"GameTransform":{"x":12,"y":30},"GameAppearance":{"width":53,"height":42,"color":1283626751,"shape":6,"layer":-4},"GameOrientation":{"radians":0.5}},"behaviors":[]},{"name":"Left flipper","prototype":"FlipperPaddle","components":{"GameTransform":{"x":-65.78301011059827,"y":246.52869029622676},"GameOrientation":{"radians":0.45},"GameActionBinding":{"source":7,"action":"LeftFlip"}},"behaviors":["Flipper"]},{"name":"Left flipper pivot","prototype":"Artwork","components":{"GameTransform":{"x":-100,"y":230},"GameAppearance":{"width":18,"height":18,"color":3973884159,"shape":1,"layer":9,"border_color":2775732223,"border_width":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Right flipper","prototype":"FlipperPaddle","components":{"GameTransform":{"x":65.78301011059828,"y":246.52869029622676},"GameOrientation":{"radians":2.691592653589793},"GameActionBinding":{"source":18,"action":"RightFlip"}},"behaviors":["Flipper"]},{"name":"Right flipper pivot","prototype":"Artwork","components":{"GameTransform":{"x":100,"y":230},"GameAppearance":{"width":18,"height":18,"color":3973884159,"shape":1,"layer":9,"border_color":2775732223,"border_width":3},"GameOrientation":{"radians":0}},"behaviors":[]},{"name":"Ball","prototype":"Pinball","components":{},"behaviors":["GameState","BallMotion","Plunger","Scoring","Nudge"]},{"name":"New game binding","prototype":"InputBinding","components":{"GameActionBinding":{"source":24,"action":"Restart"}},"behaviors":[]},{"name":"Nudge binding","prototype":"InputBinding","components":{"GameActionBinding":{"source":30,"action":"Nudge"}},"behaviors":[]},{"name":"Scoreboard","prototype":"Panel","components":{},"behaviors":[]},{"name":"Space title","prototype":"Label","components":{"GameWidget":{"text":"SPACE","anchor":{"x":0.81,"y":0.17},"font_size":34,"color":3655922431}},"behaviors":[]},{"name":"Cadet title","prototype":"Label","components":{"GameWidget":{"text":"CADET","anchor":{"x":0.81,"y":0.22},"font_size":34,"color":3655922431}},"behaviors":[]},{"name":"Flight label","prototype":"Label","components":{"GameWidget":{"text":"FLIGHT COMMAND","anchor":{"x":0.81,"y":0.28},"font_size":12,"color":1873000703}},"behaviors":[]},{"name":"Score caption","prototype":"Label","components":{"GameWidget":{"text":"SCORE","anchor":{"x":0.81,"y":0.35},"font_size":13,"color":3095414271}},"behaviors":[]},{"name":"Score display","prototype":"Label","components":{"GameWidget":{"text":"00000000","anchor":{"x":0.81,"y":0.4},"font_size":34,"color":4289938431}},"behaviors":["ScoreDisplay"]},{"name":"Lives display","prototype":"Label","components":{"GameWidget":{"text":"BALLS   3","anchor":{"x":0.81,"y":0.48},"font_size":18,"color":2881539583}},"behaviors":["LivesDisplay"]},{"name":"Rank display","prototype":"Label","components":{"GameWidget":{"text":"RANK   1","anchor":{"x":0.81,"y":0.535},"font_size":18,"color":2881539583}},"behaviors":["RankDisplay"]},{"name":"Mission display","prototype":"Label","components":{"GameWidget":{"text":"TARGET PRACTICE\n0 / 8 HITS","anchor":{"x":0.81,"y":0.625},"font_size":18,"color":4290927871,"size":{"x":240,"y":70}}},"behaviors":["MissionDisplay"]},{"name":"Launch power","prototype":"PlungerMeter","components":{},"behaviors":["PlungerDisplay"]},{"name":"Plunger label","prototype":"Label","components":{"GameWidget":{"text":"PLUNGER","anchor":{"x":0.81,"y":0.77},"font_size":12,"color":2091169791}},"behaviors":[]},{"name":"Flipper controls","prototype":"Label","components":{"GameWidget":{"text":"A / L   FLIPPERS","anchor":{"x":0.81,"y":0.84},"font_size":13,"color":2645803007}},"behaviors":[]},{"name":"Launch controls","prototype":"Label","components":{"GameWidget":{"text":"SPACE   LAUNCH","anchor":{"x":0.81,"y":0.875},"font_size":13,"color":2645803007}},"behaviors":[]},{"name":"Restart controls","prototype":"Label","components":{"GameWidget":{"text":"R   NEW GAME     X   NUDGE","anchor":{"x":0.81,"y":0.91},"font_size":11,"color":2006032127}},"behaviors":[]}],"name":"FlightDeck","version":1}
+{
+  "version": 1,
+  "name": "FlightDeck",
+  "physics": {
+    "substeps": 8,
+    "sleep": false
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "Camera"
+    },
+    {
+      "name": "Cabinet",
+      "prototype": "Table",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    },
+    {
+      "name": "Playfield",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -5
+        },
+        "GameAppearance": {
+          "width": 428,
+          "height": 638,
+          "color": 271006975,
+          "shape": 0,
+          "layer": -29,
+          "border_color": 1366261503,
+          "border_width": 4
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Shooter trough",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 196,
+          "y": 35
+        },
+        "GameAppearance": {
+          "width": 30,
+          "height": 565,
+          "color": 287059455,
+          "shape": 0,
+          "layer": -27
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star chart",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -60
+        },
+        "GameAppearance": {
+          "width": 330,
+          "height": 385,
+          "color": 372855295,
+          "shape": 1,
+          "layer": -26,
+          "border_color": 627079679,
+          "border_width": 2
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Radar ring 0",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -10,
+          "y": -52
+        },
+        "GameAppearance": {
+          "width": 100,
+          "height": 100,
+          "color": 389303039,
+          "shape": 1,
+          "layer": -25,
+          "border_color": 677276927,
+          "border_width": 1
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Radar ring 1",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -10,
+          "y": -52
+        },
+        "GameAppearance": {
+          "width": 148,
+          "height": 148,
+          "color": 389303039,
+          "shape": 1,
+          "layer": -24,
+          "border_color": 677276927,
+          "border_width": 1
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Radar ring 2",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -10,
+          "y": -52
+        },
+        "GameAppearance": {
+          "width": 196,
+          "height": 196,
+          "color": 389303039,
+          "shape": 1,
+          "layer": -23,
+          "border_color": 677276927,
+          "border_width": 1
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Radar ring 3",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -10,
+          "y": -52
+        },
+        "GameAppearance": {
+          "width": 244,
+          "height": 244,
+          "color": 389303039,
+          "shape": 1,
+          "layer": -22,
+          "border_color": 677276927,
+          "border_width": 1
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 0",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -143,
+          "y": -239
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 4140860415,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 1",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -30,
+          "y": -66
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 2",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 83,
+          "y": 107
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 3",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -164,
+          "y": -240
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 4",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -51,
+          "y": -67
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 5",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 62,
+          "y": 106
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 6",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 175,
+          "y": -241
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 7",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -72,
+          "y": -68
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 8",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 41,
+          "y": 105
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 9",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 154,
+          "y": -242
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 10",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -93,
+          "y": -69
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 11",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": 104
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 12",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 133,
+          "y": -243
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 13",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -114,
+          "y": -70
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 14",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -1,
+          "y": 103
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 15",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 112,
+          "y": -244
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 16",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -135,
+          "y": -71
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 17",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -22,
+          "y": 102
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 18",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 91,
+          "y": -245
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 19",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -156,
+          "y": -72
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 20",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -43,
+          "y": 101
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 1569826303,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 21",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 70,
+          "y": -246
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 22",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -177,
+          "y": -73
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 23",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -64,
+          "y": 100
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 24",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 49,
+          "y": -247
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 2,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 25",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 162,
+          "y": -74
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 26",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -85,
+          "y": 99
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 1569826303,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Star 27",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 28,
+          "y": -248
+        },
+        "GameAppearance": {
+          "width": 2,
+          "height": 2,
+          "color": 4140860415,
+          "shape": 1,
+          "layer": -19
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rail 1",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -210,
+          "y": 39
+        },
+        "GameOrientation": {
+          "radians": -1.5707963267948966
+        },
+        "GameAppearance": {
+          "width": 558,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 558,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 2",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -201,
+          "y": -259.5
+        },
+        "GameOrientation": {
+          "radians": -1.1383885512243588
+        },
+        "GameAppearance": {
+          "width": 42.95346318982906,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 42.95346318982906,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 3",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -171.5,
+          "y": -294
+        },
+        "GameOrientation": {
+          "radians": -0.6316906343389693
+        },
+        "GameAppearance": {
+          "width": 50.80354318352216,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 50.80354318352216,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 4",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -121,
+          "y": -316
+        },
+        "GameOrientation": {
+          "radians": -0.22923193327699534
+        },
+        "GameAppearance": {
+          "width": 61.61168720299746,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 61.61168720299746,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 5",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -323
+        },
+        "GameOrientation": {
+          "radians": 0
+        },
+        "GameAppearance": {
+          "width": 182,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 182,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 6",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 123.5,
+          "y": -315
+        },
+        "GameOrientation": {
+          "radians": 0.24135549057540379
+        },
+        "GameAppearance": {
+          "width": 66.94027188471824,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 66.94027188471824,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 7",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 176,
+          "y": -291
+        },
+        "GameOrientation": {
+          "radians": 0.6747409422235526
+        },
+        "GameAppearance": {
+          "width": 51.22499389946279,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 51.22499389946279,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 8",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 207,
+          "y": -251
+        },
+        "GameOrientation": {
+          "radians": 1.1410340476982082
+        },
+        "GameAppearance": {
+          "width": 52.80151512977635,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 52.80151512977635,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 9",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 218,
+          "y": 45.5
+        },
+        "GameOrientation": {
+          "radians": 1.5707963267948966
+        },
+        "GameAppearance": {
+          "width": 545,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 545,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 10",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -180,
+          "y": 225.5
+        },
+        "GameOrientation": {
+          "radians": -1.5707963267948966
+        },
+        "GameAppearance": {
+          "width": 131,
+          "height": 6,
+          "color": 1669963519
+        },
+        "GameCollider": {
+          "width": 131,
+          "height": 6,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 11",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -171.5,
+          "y": 145
+        },
+        "GameOrientation": {
+          "radians": -1.0552473193359175
+        },
+        "GameAppearance": {
+          "width": 34.48187929913334,
+          "height": 6,
+          "color": 1669963519
+        },
+        "GameCollider": {
+          "width": 34.48187929913334,
+          "height": 6,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 12",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 167,
+          "y": 192.5
+        },
+        "GameOrientation": {
+          "radians": -1.5707963267948966
+        },
+        "GameAppearance": {
+          "width": 205,
+          "height": 7,
+          "color": 2680411135
+        },
+        "GameCollider": {
+          "width": 205,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 13",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 172,
+          "y": 50
+        },
+        "GameOrientation": {
+          "radians": -1.446441332248135
+        },
+        "GameAppearance": {
+          "width": 80.62257748298549,
+          "height": 7,
+          "color": 2680411135
+        },
+        "GameCollider": {
+          "width": 80.62257748298549,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 14",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 177.5,
+          "y": -78.5
+        },
+        "GameOrientation": {
+          "radians": -1.5651466693913123
+        },
+        "GameAppearance": {
+          "width": 177.00282483621552,
+          "height": 7,
+          "color": 2680411135
+        },
+        "GameCollider": {
+          "width": 177.00282483621552,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 15",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 169,
+          "y": -179.5
+        },
+        "GameOrientation": {
+          "radians": -2.1948193797716535
+        },
+        "GameAppearance": {
+          "width": 30.80584360149873,
+          "height": 7,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 30.80584360149873,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 16",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 198.5,
+          "y": 290
+        },
+        "GameOrientation": {
+          "radians": 0
+        },
+        "GameAppearance": {
+          "width": 33,
+          "height": 8,
+          "color": 3214434559
+        },
+        "GameCollider": {
+          "width": 33,
+          "height": 8,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 17",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -181.5,
+          "y": 250.5
+        },
+        "GameOrientation": {
+          "radians": 0.7298996581517315
+        },
+        "GameAppearance": {
+          "width": 76.48529270389177,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 76.48529270389177,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 18",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -128,
+          "y": 293.5
+        },
+        "GameOrientation": {
+          "radians": 0.6107259643892086
+        },
+        "GameAppearance": {
+          "width": 61.032778078668514,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 61.032778078668514,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 19",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 146,
+          "y": 251.5
+        },
+        "GameOrientation": {
+          "radians": 2.263675869072698
+        },
+        "GameAppearance": {
+          "width": 68.8839603971781,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 68.8839603971781,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 20",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 111,
+          "y": 294.5
+        },
+        "GameOrientation": {
+          "radians": 2.238102461773251
+        },
+        "GameAppearance": {
+          "width": 42.01190307520001,
+          "height": 10,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 42.01190307520001,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 21",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -162.5,
+          "y": 174
+        },
+        "GameOrientation": {
+          "radians": 1.1071487177940904
+        },
+        "GameAppearance": {
+          "width": 78.26237921249265,
+          "height": 7,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 78.26237921249265,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 22",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -122.5,
+          "y": 219
+        },
+        "GameOrientation": {
+          "radians": 0.4182243295792291
+        },
+        "GameAppearance": {
+          "width": 49.24428900898052,
+          "height": 7,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 49.24428900898052,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 23",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 135.5,
+          "y": 171.5
+        },
+        "GameOrientation": {
+          "radians": 1.8509043020929503
+        },
+        "GameAppearance": {
+          "width": 75.96051605933178,
+          "height": 7,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 75.96051605933178,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 24",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 112.5,
+          "y": 218.5
+        },
+        "GameOrientation": {
+          "radians": 2.44293282886833
+        },
+        "GameAppearance": {
+          "width": 32.64965543462902,
+          "height": 7,
+          "color": 2478428415
+        },
+        "GameCollider": {
+          "width": 32.64965543462902,
+          "height": 7,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 25",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -152.5,
+          "y": 126
+        },
+        "GameOrientation": {
+          "radians": 1.201727359427424
+        },
+        "GameAppearance": {
+          "width": 113.65298060323802,
+          "height": 10,
+          "color": 3935527679
+        },
+        "GameCollider": {
+          "width": 113.65298060323802,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 26",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -121,
+          "y": 195
+        },
+        "GameOrientation": {
+          "radians": 0.9685089806599324
+        },
+        "GameAppearance": {
+          "width": 38.8329756778952,
+          "height": 10,
+          "color": 3935527679
+        },
+        "GameCollider": {
+          "width": 38.8329756778952,
+          "height": 10,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 27",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -141.5,
+          "y": 142
+        },
+        "GameOrientation": {
+          "radians": 1.142532173918242
+        },
+        "GameAppearance": {
+          "width": 151.70036255724636,
+          "height": 6,
+          "color": 4189746431
+        },
+        "GameCollider": {
+          "width": 151.70036255724636,
+          "height": 6,
+          "category": 4
+        }
+      },
+      "behaviors": [
+        "BumperKick"
+      ]
+    },
+    {
+      "name": "Rail 28",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 127.5,
+          "y": 144.5
+        },
+        "GameOrientation": {
+          "radians": 1.8281200417659853
+        },
+        "GameAppearance": {
+          "width": 137.5281789307195,
+          "height": 6,
+          "color": 4189746431
+        },
+        "GameCollider": {
+          "width": 137.5281789307195,
+          "height": 6,
+          "category": 4
+        }
+      },
+      "behaviors": [
+        "BumperKick"
+      ]
+    },
+    {
+      "name": "Left slingshot",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -139,
+          "y": 158
+        },
+        "GameAppearance": {
+          "width": 62,
+          "height": 106,
+          "color": 3377350143,
+          "shape": 6,
+          "layer": 0,
+          "border_color": 3988219903,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": -0.42
+        }
+      }
+    },
+    {
+      "name": "Right slingshot",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 131,
+          "y": 158
+        },
+        "GameAppearance": {
+          "width": 62,
+          "height": 106,
+          "color": 3377350143,
+          "shape": 6,
+          "layer": 0,
+          "border_color": 3988219903,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0.42
+        }
+      }
+    },
+    {
+      "name": "Rail 29",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -137.5,
+          "y": 32
+        },
+        "GameOrientation": {
+          "radians": -1.2320982425918494
+        },
+        "GameAppearance": {
+          "width": 93.30058949438637,
+          "height": 5,
+          "color": 3585700095
+        },
+        "GameCollider": {
+          "width": 93.30058949438637,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 30",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -132,
+          "y": -57.5
+        },
+        "GameOrientation": {
+          "radians": -1.7871369881681871
+        },
+        "GameAppearance": {
+          "width": 93.17188417113825,
+          "height": 5,
+          "color": 3585700095
+        },
+        "GameCollider": {
+          "width": 93.17188417113825,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 31",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -129.5,
+          "y": -161.5
+        },
+        "GameOrientation": {
+          "radians": -1.3602867646675405
+        },
+        "GameAppearance": {
+          "width": 119.64113005150028,
+          "height": 5,
+          "color": 3585700095
+        },
+        "GameCollider": {
+          "width": 119.64113005150028,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 32",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -96.5,
+          "y": -235.5
+        },
+        "GameOrientation": {
+          "radians": -0.6473921397399288
+        },
+        "GameAppearance": {
+          "width": 51.40038910358559,
+          "height": 5,
+          "color": 3585700095
+        },
+        "GameCollider": {
+          "width": 51.40038910358559,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 33",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -165.5,
+          "y": 23
+        },
+        "GameOrientation": {
+          "radians": -1.178035661157575
+        },
+        "GameAppearance": {
+          "width": 75.76938695805846,
+          "height": 5,
+          "color": 2006492159
+        },
+        "GameCollider": {
+          "width": 75.76938695805846,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 34",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -159,
+          "y": -58.5
+        },
+        "GameOrientation": {
+          "radians": -1.7411714374575127
+        },
+        "GameAppearance": {
+          "width": 94.36630754670864,
+          "height": 5,
+          "color": 2006492159
+        },
+        "GameCollider": {
+          "width": 94.36630754670864,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 35",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -154.5,
+          "y": -167
+        },
+        "GameOrientation": {
+          "radians": -1.371850380590338
+        },
+        "GameAppearance": {
+          "width": 126.49505919204908,
+          "height": 5,
+          "color": 2006492159
+        },
+        "GameCollider": {
+          "width": 126.49505919204908,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 36",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": -115,
+          "y": -253.5
+        },
+        "GameOrientation": {
+          "radians": -0.7368925511570648
+        },
+        "GameAppearance": {
+          "width": 72.91776189653658,
+          "height": 5,
+          "color": 2006492159
+        },
+        "GameCollider": {
+          "width": 72.91776189653658,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 37",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 85,
+          "y": 119
+        },
+        "GameOrientation": {
+          "radians": -1.1071487177940904
+        },
+        "GameAppearance": {
+          "width": 84.97058314499202,
+          "height": 6,
+          "color": 3567610879
+        },
+        "GameCollider": {
+          "width": 84.97058314499202,
+          "height": 6,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 38",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 113.5,
+          "y": 32
+        },
+        "GameOrientation": {
+          "radians": -1.3792946083252777
+        },
+        "GameAppearance": {
+          "width": 99.82484660644363,
+          "height": 6,
+          "color": 3567610879
+        },
+        "GameCollider": {
+          "width": 99.82484660644363,
+          "height": 6,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 39",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 114,
+          "y": -87.5
+        },
+        "GameOrientation": {
+          "radians": -1.6977691164089757
+        },
+        "GameAppearance": {
+          "width": 142.1442928857856,
+          "height": 6,
+          "color": 3567610879
+        },
+        "GameCollider": {
+          "width": 142.1442928857856,
+          "height": 6,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 40",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 85,
+          "y": -192
+        },
+        "GameOrientation": {
+          "radians": -2.1025203940537023
+        },
+        "GameAppearance": {
+          "width": 78.89233169326407,
+          "height": 6,
+          "color": 3567610879
+        },
+        "GameCollider": {
+          "width": 78.89233169326407,
+          "height": 6,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 41",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 114,
+          "y": 127.5
+        },
+        "GameOrientation": {
+          "radians": -1.1503909755921538
+        },
+        "GameAppearance": {
+          "width": 93.1074647920348,
+          "height": 5,
+          "color": 2074589439
+        },
+        "GameCollider": {
+          "width": 93.1074647920348,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 42",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 141,
+          "y": 32.5
+        },
+        "GameOrientation": {
+          "radians": -1.419578636648456
+        },
+        "GameAppearance": {
+          "width": 106.21205204683694,
+          "height": 5,
+          "color": 2074589439
+        },
+        "GameCollider": {
+          "width": 106.21205204683694,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 43",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 140,
+          "y": -95
+        },
+        "GameOrientation": {
+          "radians": -1.690225252813235
+        },
+        "GameAppearance": {
+          "width": 151.07613974417006,
+          "height": 5,
+          "color": 2074589439
+        },
+        "GameCollider": {
+          "width": 151.07613974417006,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Rail 44",
+      "prototype": "Rail",
+      "components": {
+        "GameTransform": {
+          "x": 109.5,
+          "y": -206
+        },
+        "GameOrientation": {
+          "radians": -2.1091708401411267
+        },
+        "GameAppearance": {
+          "width": 83.86298349093002,
+          "height": 5,
+          "color": 2074589439
+        },
+        "GameCollider": {
+          "width": 83.86298349093002,
+          "height": 5,
+          "category": 8
+        }
+      }
+    },
+    {
+      "name": "Bumper pedestal 0",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -62,
+          "y": -151
+        },
+        "GameAppearance": {
+          "width": 60,
+          "height": 60,
+          "color": 693000959,
+          "shape": 1,
+          "layer": 1,
+          "border_color": 2326768639,
+          "border_width": 4
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Attack bumper 1",
+      "prototype": "AttackBumper",
+      "components": {
+        "GameTransform": {
+          "x": -62,
+          "y": -151
+        }
+      },
+      "behaviors": [
+        "BumperKick"
+      ]
+    },
+    {
+      "name": "Bumper cap 0",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -62,
+          "y": -151
+        },
+        "GameAppearance": {
+          "width": 23,
+          "height": 23,
+          "color": 4023419647,
+          "shape": 1,
+          "layer": 7,
+          "border_color": 3175231487,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper inset 0",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -62,
+          "y": -151
+        },
+        "GameAppearance": {
+          "width": 8,
+          "height": 8,
+          "color": 3075554815,
+          "shape": 1,
+          "layer": 8
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper pedestal 1",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": -166
+        },
+        "GameAppearance": {
+          "width": 60,
+          "height": 60,
+          "color": 693000959,
+          "shape": 1,
+          "layer": 1,
+          "border_color": 2326768639,
+          "border_width": 4
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Attack bumper 2",
+      "prototype": "AttackBumper",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": -166
+        }
+      },
+      "behaviors": [
+        "BumperKick"
+      ]
+    },
+    {
+      "name": "Bumper cap 1",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": -166
+        },
+        "GameAppearance": {
+          "width": 23,
+          "height": 23,
+          "color": 4023419647,
+          "shape": 1,
+          "layer": 7,
+          "border_color": 3175231487,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper inset 1",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": -166
+        },
+        "GameAppearance": {
+          "width": 8,
+          "height": 8,
+          "color": 3075554815,
+          "shape": 1,
+          "layer": 8
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper pedestal 2",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -18,
+          "y": -83
+        },
+        "GameAppearance": {
+          "width": 60,
+          "height": 60,
+          "color": 693000959,
+          "shape": 1,
+          "layer": 1,
+          "border_color": 2326768639,
+          "border_width": 4
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Attack bumper 3",
+      "prototype": "AttackBumper",
+      "components": {
+        "GameTransform": {
+          "x": -18,
+          "y": -83
+        }
+      },
+      "behaviors": [
+        "BumperKick"
+      ]
+    },
+    {
+      "name": "Bumper cap 2",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -18,
+          "y": -83
+        },
+        "GameAppearance": {
+          "width": 23,
+          "height": 23,
+          "color": 4023419647,
+          "shape": 1,
+          "layer": 7,
+          "border_color": 3175231487,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper inset 2",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -18,
+          "y": -83
+        },
+        "GameAppearance": {
+          "width": 8,
+          "height": 8,
+          "color": 3075554815,
+          "shape": 1,
+          "layer": 8
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper pedestal 3",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 61,
+          "y": -94
+        },
+        "GameAppearance": {
+          "width": 60,
+          "height": 60,
+          "color": 693000959,
+          "shape": 1,
+          "layer": 1,
+          "border_color": 2326768639,
+          "border_width": 4
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Attack bumper 4",
+      "prototype": "AttackBumper",
+      "components": {
+        "GameTransform": {
+          "x": 61,
+          "y": -94
+        }
+      },
+      "behaviors": [
+        "BumperKick"
+      ]
+    },
+    {
+      "name": "Bumper cap 3",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 61,
+          "y": -94
+        },
+        "GameAppearance": {
+          "width": 23,
+          "height": 23,
+          "color": 4023419647,
+          "shape": 1,
+          "layer": 7,
+          "border_color": 3175231487,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Bumper inset 3",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 61,
+          "y": -94
+        },
+        "GameAppearance": {
+          "width": 8,
+          "height": 8,
+          "color": 3075554815,
+          "shape": 1,
+          "layer": 8
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Mission target 1",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": -81,
+          "y": -277
+        }
+      }
+    },
+    {
+      "name": "Mission target 2",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": -22,
+          "y": -282
+        }
+      }
+    },
+    {
+      "name": "Mission target 3",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": 38,
+          "y": -282
+        }
+      }
+    },
+    {
+      "name": "Mission target 4",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": -151,
+          "y": 0
+        }
+      }
+    },
+    {
+      "name": "Mission target 5",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": -153,
+          "y": 33
+        }
+      }
+    },
+    {
+      "name": "Mission target 6",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": -150,
+          "y": 66
+        }
+      }
+    },
+    {
+      "name": "Mission target 7",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": 109,
+          "y": -219
+        }
+      }
+    },
+    {
+      "name": "Mission target 8",
+      "prototype": "LaneTarget",
+      "components": {
+        "GameTransform": {
+          "x": 78,
+          "y": 65
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 1",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -55,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 3937946111,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 2",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -40,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 3937946111,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 3",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -25,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 3937946111,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 4",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -10,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 1113872383,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 0
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 5",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 5,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 1113872383,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 0
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 6",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 1113872383,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 0
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 7",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 35,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 1113872383,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 0
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Rank lamp 8",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 50,
+          "y": 96
+        },
+        "GameAppearance": {
+          "width": 9,
+          "height": 12,
+          "color": 1113872383,
+          "shape": 1,
+          "layer": 2,
+          "glow_color": 4207496191,
+          "glow_radius": 0
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Center arrow",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -5,
+          "y": 164
+        },
+        "GameAppearance": {
+          "width": 31,
+          "height": 50,
+          "color": 3752745471,
+          "shape": 3,
+          "layer": 0
+        },
+        "GameOrientation": {
+          "radians": 3.141592653589793
+        }
+      }
+    },
+    {
+      "name": "Spacecraft body",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -20,
+          "y": 15
+        },
+        "GameAppearance": {
+          "width": 57,
+          "height": 106,
+          "color": 727941375,
+          "shape": 2,
+          "layer": -5,
+          "border_color": 1939778303,
+          "border_width": 2
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Left wing",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -52,
+          "y": 30
+        },
+        "GameAppearance": {
+          "width": 53,
+          "height": 42,
+          "color": 1283626751,
+          "shape": 6,
+          "layer": -4
+        },
+        "GameOrientation": {
+          "radians": -0.5
+        }
+      }
+    },
+    {
+      "name": "Right wing",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 12,
+          "y": 30
+        },
+        "GameAppearance": {
+          "width": 53,
+          "height": 42,
+          "color": 1283626751,
+          "shape": 6,
+          "layer": -4
+        },
+        "GameOrientation": {
+          "radians": 0.5
+        }
+      }
+    },
+    {
+      "name": "Left flipper",
+      "prototype": "FlipperPaddle",
+      "components": {
+        "GameTransform": {
+          "x": -65.78301011059827,
+          "y": 246.52869029622676
+        },
+        "GameOrientation": {
+          "radians": 0.45
+        },
+        "GameActionBinding": {
+          "source": 7,
+          "action": "LeftFlip"
+        }
+      },
+      "behaviors": [
+        "Flipper"
+      ]
+    },
+    {
+      "name": "Left flipper pivot",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": -100,
+          "y": 230
+        },
+        "GameAppearance": {
+          "width": 18,
+          "height": 18,
+          "color": 3973884159,
+          "shape": 1,
+          "layer": 9,
+          "border_color": 2775732223,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Right flipper",
+      "prototype": "FlipperPaddle",
+      "components": {
+        "GameTransform": {
+          "x": 65.78301011059828,
+          "y": 246.52869029622676
+        },
+        "GameOrientation": {
+          "radians": 2.691592653589793
+        },
+        "GameActionBinding": {
+          "source": 18,
+          "action": "RightFlip"
+        }
+      },
+      "behaviors": [
+        "Flipper"
+      ]
+    },
+    {
+      "name": "Right flipper pivot",
+      "prototype": "Artwork",
+      "components": {
+        "GameTransform": {
+          "x": 100,
+          "y": 230
+        },
+        "GameAppearance": {
+          "width": 18,
+          "height": 18,
+          "color": 3973884159,
+          "shape": 1,
+          "layer": 9,
+          "border_color": 2775732223,
+          "border_width": 3
+        },
+        "GameOrientation": {
+          "radians": 0
+        }
+      }
+    },
+    {
+      "name": "Ball",
+      "prototype": "Pinball",
+      "behaviors": [
+        "GameState",
+        "BallMotion",
+        "Plunger",
+        "Scoring",
+        "Nudge"
+      ]
+    },
+    {
+      "name": "New game binding",
+      "prototype": "InputBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 24,
+          "action": "Restart"
+        }
+      }
+    },
+    {
+      "name": "Nudge binding",
+      "prototype": "InputBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 30,
+          "action": "Nudge"
+        }
+      }
+    },
+    {
+      "name": "Scoreboard",
+      "prototype": "Panel"
+    },
+    {
+      "name": "Space title",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "SPACE",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.17
+          },
+          "font_size": 34,
+          "color": 3655922431
+        }
+      }
+    },
+    {
+      "name": "Cadet title",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "CADET",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.22
+          },
+          "font_size": 34,
+          "color": 3655922431
+        }
+      }
+    },
+    {
+      "name": "Flight label",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "FLIGHT COMMAND",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.28
+          },
+          "font_size": 12,
+          "color": 1873000703
+        }
+      }
+    },
+    {
+      "name": "Score caption",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "SCORE",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.35
+          },
+          "font_size": 13,
+          "color": 3095414271
+        }
+      }
+    },
+    {
+      "name": "Score display",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "00000000",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.4
+          },
+          "font_size": 34,
+          "color": 4289938431
+        }
+      },
+      "behaviors": [
+        "ScoreDisplay"
+      ]
+    },
+    {
+      "name": "Lives display",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "BALLS   3",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.48
+          },
+          "font_size": 18,
+          "color": 2881539583
+        }
+      },
+      "behaviors": [
+        "LivesDisplay"
+      ]
+    },
+    {
+      "name": "Rank display",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "RANK   1",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.535
+          },
+          "font_size": 18,
+          "color": 2881539583
+        }
+      },
+      "behaviors": [
+        "RankDisplay"
+      ]
+    },
+    {
+      "name": "Mission display",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "TARGET PRACTICE\n0 / 8 HITS",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.625
+          },
+          "font_size": 18,
+          "color": 4290927871,
+          "size": {
+            "x": 240,
+            "y": 70
+          }
+        }
+      },
+      "behaviors": [
+        "MissionDisplay"
+      ]
+    },
+    {
+      "name": "Launch power",
+      "prototype": "PlungerMeter",
+      "behaviors": [
+        "PlungerDisplay"
+      ]
+    },
+    {
+      "name": "Plunger label",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "PLUNGER",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.77
+          },
+          "font_size": 12,
+          "color": 2091169791
+        }
+      }
+    },
+    {
+      "name": "Flipper controls",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "A / L   FLIPPERS",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.84
+          },
+          "font_size": 13,
+          "color": 2645803007
+        }
+      }
+    },
+    {
+      "name": "Launch controls",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "SPACE   LAUNCH",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.875
+          },
+          "font_size": 13,
+          "color": 2645803007
+        }
+      }
+    },
+    {
+      "name": "Restart controls",
+      "prototype": "Label",
+      "components": {
+        "GameWidget": {
+          "text": "R   NEW GAME     X   NUDGE",
+          "anchor": {
+            "x": 0.81,
+            "y": 0.91
+          },
+          "font_size": 11,
+          "color": 2006032127
+        }
+      }
+    }
+  ]
+}

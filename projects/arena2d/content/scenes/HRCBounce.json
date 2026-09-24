@@ -1,16 +1,6 @@
 {
   "version": 1,
   "name": "HRCBounce",
-  "presentation": "2d",
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  },
   "entities": [
     {
       "name": "Camera",
@@ -20,8 +10,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "HRC",
@@ -31,8 +20,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Source",
@@ -54,8 +42,7 @@
           "scene": 4294967295,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Reflector one",
@@ -76,8 +63,7 @@
           "absorption": 0.15,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Reflector two",
@@ -98,8 +84,7 @@
           "absorption": 0.15,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Receiver",
@@ -117,8 +102,7 @@
           "absorption": 0.25,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     }
   ]
 }

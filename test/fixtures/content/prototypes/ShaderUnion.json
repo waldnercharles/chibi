@@ -1,29 +1,21 @@
 {
   "name": "ShaderUnion",
+  "identity": "prototype-0000000000000008",
   "components": {
-    "GameTransform": {
-      "x": 0,
-      "y": 0
-    },
-    "GameAppearance": {
-      "width": 104,
-      "height": 68,
-      "color": 551398143,
-      "shape": 0,
-      "border_width": 0,
+    "GAME.GameAppearance": {
+      "antialias": 0.5,
       "border_color": 551398143,
-      "glow_radius": 0,
-      "glow_color": 0,
-      "stroke_width": 0,
-      "antialias": 0.5
+      "color": 551398143,
+      "height": 68.0,
+      "width": 104.0
     },
-    "GameShader": {
+    "GAME.GameShader": {
+      "bounds_x": 52.0,
+      "bounds_y": 34.0,
       "material": "",
-      "shape": "SmoothUnion",
       "parameters": "{}",
-      "bounds_x": 52,
-      "bounds_y": 34
-    }
-  },
-  "behaviors": []
+      "shape": "SmoothUnion"
+    },
+    "game.GameTransform": {}
+  }
 }

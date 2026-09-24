@@ -4,9 +4,6 @@
   "components": {
     "GAME.GameActionBinding": {
       "action": "Restart",
-      "disabled": false,
-      "firing": false,
-      "pressed": false,
       "source": 24
     }
   }

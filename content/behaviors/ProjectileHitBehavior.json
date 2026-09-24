@@ -1,53 +1,26 @@
 {
   "version": 3,
   "name": "ProjectileHitBehavior",
-  "domain": "behavior",
   "id_counter": 142,
   "description": "Damages the contacted enemy, emits an impact burst, then destroys the projectile.",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "description": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Event",
-          "x": 0.0,
-          "y": 111.0,
-          "reference_id": 0,
           "reference_name": "Contact Begin",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            2,
             {
               "id": 3,
               "name": "Other",
               "type": 14,
               "type_name": "ecs.entity",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": null
             },
             {
@@ -56,10 +29,6 @@
               "type": 15,
               "type_name": "CF_V2",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": null
             }
           ]
@@ -67,39 +36,19 @@
         {
           "id": 4,
           "type": "Get_GameProjectile",
-          "x": 620.0,
-          "y": 174.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 5,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameProjectile",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "flags": 0
             },
             {
               "id": 26,
               "name": "damage",
               "type": 6,
               "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "field_source": 5,
               "field_name": "damage",
               "flags": 0,
-              "group": 0,
               "default": 0
             }
           ]
@@ -107,203 +56,66 @@
         {
           "id": 14,
           "type": "Self",
-          "x": 620.0,
-          "y": 294.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 15,
-              "name": "Self",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "type_name": "ecs.entity"
             }
           ]
         },
         {
           "id": 16,
           "type": "Send Event",
-          "x": 930.0,
-          "y": 91.0,
-          "reference_id": 0,
           "reference_name": "Damage",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 17,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 18,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            17,
+            18,
             {
               "id": 19,
               "declaration_id": 2,
               "name": "Amount",
               "type": 6,
               "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0
             },
             {
               "id": 20,
               "declaration_id": 3,
-              "name": "Source",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "name": "Source"
             }
           ],
           "outputs": [
-            {
-              "id": 21,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            21
           ]
         },
         {
           "id": 22,
           "type": "Destroy Entity",
-          "x": 1860.0,
-          "y": 239.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 23,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 24,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            23,
+            24
           ],
           "outputs": [
-            {
-              "id": 25,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            25
           ]
         },
         {
           "id": 27,
           "type": "Get_GameTransform",
-          "x": 1240.0,
-          "y": 120.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 28,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "flags": 0
             }
           ]
         },
         {
           "id": 35,
           "type": "Call Function",
-          "x": 1550.0,
-          "y": 48.0,
           "reference_id": 51,
           "reference_name": "Impact Particles",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 36,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            36,
             {
               "id": 37,
               "declaration_id": 53,
@@ -311,10 +123,6 @@
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": null
             },
             {
@@ -324,248 +132,76 @@
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ],
           "outputs": [
-            {
-              "id": 42,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            42
           ]
         },
         {
           "id": 43,
           "type": "HasEntity_GameHealth",
-          "x": 310.0,
-          "y": 183.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 44,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            44
           ],
           "outputs": [
             {
               "id": 45,
-              "name": "Has",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
+              "name": "Has"
             }
           ]
         },
         {
           "id": 46,
           "type": "Branch",
-          "x": 620.0,
-          "y": 20.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 47,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 48,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
+            47,
+            48
           ],
           "outputs": [
-            {
-              "id": 49,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 50,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            49,
+            50
           ]
         },
         {
           "id": 126,
           "type": "Has_GameGeometry3D",
-          "x": 930.0,
-          "y": 259.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 125,
-              "name": "Result",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
+              "name": "Result"
             }
           ]
         },
         {
           "id": 131,
           "type": "Branch",
-          "x": 1240.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 127,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 128,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
+            127,
+            128
           ],
           "outputs": [
-            {
-              "id": 129,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 130,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            129,
+            130
           ]
         },
         {
           "id": 133,
           "type": "Get_GameGeometry3D",
-          "x": 1240.0,
-          "y": 216.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 132,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameGeometry3D",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "flags": 0
             },
             {
               "id": 134,
               "name": "elevation",
               "type": 10,
               "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "field_source": 132,
               "field_name": "elevation",
               "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ]
@@ -573,26 +209,10 @@
         {
           "id": 135,
           "type": "Call Function",
-          "x": 1550.0,
-          "y": 192.0,
           "reference_id": 51,
           "reference_name": "Impact Particles",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 136,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            136,
             {
               "id": 137,
               "declaration_id": 53,
@@ -600,10 +220,6 @@
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": null
             },
             {
@@ -613,25 +229,11 @@
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ],
           "outputs": [
-            {
-              "id": 139,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            139
           ]
         }
       ],
@@ -640,135 +242,109 @@
           "from": 1,
           "from_pin": 2,
           "to": 46,
-          "to_pin": 47,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 47
         },
         {
           "from": 1,
           "from_pin": 3,
           "to": 16,
-          "to_pin": 18,
-          "kind": "data"
+          "to_pin": 18
         },
         {
           "from": 1,
           "from_pin": 3,
           "to": 43,
-          "to_pin": 44,
-          "kind": "data"
+          "to_pin": 44
         },
         {
           "from": 4,
           "from_pin": 26,
           "to": 16,
-          "to_pin": 19,
-          "kind": "data"
+          "to_pin": 19
         },
         {
           "from": 14,
           "from_pin": 15,
           "to": 16,
-          "to_pin": 20,
-          "kind": "data"
+          "to_pin": 20
         },
         {
           "from": 14,
           "from_pin": 15,
           "to": 22,
-          "to_pin": 24,
-          "kind": "data"
+          "to_pin": 24
         },
         {
           "from": 16,
           "from_pin": 21,
           "to": 131,
-          "to_pin": 127,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 127
         },
         {
           "from": 27,
           "from_pin": 28,
           "to": 35,
-          "to_pin": 37,
-          "kind": "data"
+          "to_pin": 37
         },
         {
           "from": 27,
           "from_pin": 28,
           "to": 135,
-          "to_pin": 137,
-          "kind": "data"
+          "to_pin": 137
         },
         {
           "from": 35,
           "from_pin": 42,
           "to": 22,
-          "to_pin": 23,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 23
         },
         {
           "from": 43,
           "from_pin": 45,
           "to": 46,
-          "to_pin": 48,
-          "kind": "data"
+          "to_pin": 48
         },
         {
           "from": 46,
           "from_pin": 49,
           "to": 16,
-          "to_pin": 17,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 17
         },
         {
           "from": 46,
           "from_pin": 50,
           "to": 131,
-          "to_pin": 127,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 127
         },
         {
           "from": 126,
           "from_pin": 125,
           "to": 131,
-          "to_pin": 128,
-          "kind": "data"
+          "to_pin": 128
         },
         {
           "from": 131,
           "from_pin": 129,
           "to": 135,
-          "to_pin": 136,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 136
         },
         {
           "from": 131,
           "from_pin": 130,
           "to": 35,
-          "to_pin": 36,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 36
         },
         {
           "from": 133,
           "from_pin": 134,
           "to": 135,
-          "to_pin": 138,
-          "kind": "data"
+          "to_pin": 138
         },
         {
           "from": 135,
           "from_pin": 139,
           "to": 22,
-          "to_pin": 23,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 23
         }
       ]
     },
@@ -776,9 +352,6 @@
       "id": 51,
       "kind": "function",
       "name": "Impact Particles",
-      "description": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "entry_id": 55,
       "return_id": 57,
       "call_depth_limit": 64,
@@ -786,25 +359,10 @@
         {
           "id": 55,
           "type": "Function Entry",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 52,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "name": "Then"
             },
             {
               "id": 53,
@@ -812,10 +370,6 @@
               "type": 15,
               "type_name": "GameTransform",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": null
             },
             {
@@ -824,10 +378,6 @@
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ]
@@ -835,72 +385,18 @@
         {
           "id": 57,
           "type": "Return",
-          "x": 1380.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 56,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": []
+            56
+          ]
         },
         {
           "id": 58,
           "type": "Emit Directed Particles",
-          "x": 300.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 59,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 60,
-              "name": "Position",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            59,
+            60,
             {
               "id": 61,
-              "name": "Direction",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
                 "x": 1.0,
                 "y": 0.0
@@ -908,267 +404,83 @@
             },
             {
               "id": 62,
-              "name": "Count",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 8
             },
             {
               "id": 63,
-              "name": "Color",
-              "type": 7,
-              "type_name": "unsigned int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 65,
-              "group": 0,
               "default": 4291524863
             },
             {
               "id": 64,
-              "name": "End Color",
-              "type": 7,
-              "type_name": "unsigned int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 65,
-              "group": 0,
               "default": 4065531392
             },
             {
               "id": 65,
-              "name": "Min Speed",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 60.0
             },
             {
               "id": 66,
-              "name": "Max Speed",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 140.0
             },
             {
               "id": 67,
-              "name": "Min Lifetime",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.09000000357627869
             },
             {
               "id": 68,
-              "name": "Max Lifetime",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.2199999988079071
             },
             {
               "id": 69,
-              "name": "Min Size",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 1.100000023841858
             },
             {
               "id": 70,
-              "name": "Max Size",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 2.200000047683716
             },
             {
               "id": 71,
-              "name": "Spread",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 6.2831854820251465
             },
             {
               "id": 72,
-              "name": "Min Drag",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 3.0
             },
             {
               "id": 73,
-              "name": "Max Drag",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 5.0
             },
             {
               "id": 74,
-              "name": "Min Emission",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 1.100000023841858
             },
             {
               "id": 75,
-              "name": "Max Emission",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 1.7999999523162842
             },
             {
               "id": 76,
-              "name": "Size Exponent",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.699999988079071
             },
-            {
-              "id": 77,
-              "name": "Elevation",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
-              "default": 0.0
-            },
+            77,
             {
               "id": 78,
-              "name": "Shape",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 0,
-              "group": 0,
               "default": 4
             }
           ],
           "outputs": [
-            {
-              "id": 79,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            79
           ]
         },
         {
           "id": 80,
           "type": "Emit Directed Particles",
-          "x": 650.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 81,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 82,
-              "name": "Position",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            81,
+            82,
             {
               "id": 83,
-              "name": "Direction",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
                 "x": 1.0,
                 "y": 0.0
@@ -1176,489 +488,150 @@
             },
             {
               "id": 84,
-              "name": "Count",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 3
             },
             {
               "id": 85,
-              "name": "Color",
-              "type": 7,
-              "type_name": "unsigned int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 65,
-              "group": 0,
               "default": 4293107711
             },
             {
               "id": 86,
-              "name": "End Color",
-              "type": 7,
-              "type_name": "unsigned int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 65,
-              "group": 0,
               "default": 4015135488
             },
             {
               "id": 87,
-              "name": "Min Speed",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 15.0
             },
             {
               "id": 88,
-              "name": "Max Speed",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 42.0
             },
             {
               "id": 89,
-              "name": "Min Lifetime",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.10000000149011612
             },
             {
               "id": 90,
-              "name": "Max Lifetime",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.18000000715255737
             },
             {
               "id": 91,
-              "name": "Min Size",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 2.5
             },
-            {
-              "id": 92,
-              "name": "Max Size",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
-              "default": 4.0
-            },
+            92,
             {
               "id": 93,
-              "name": "Spread",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 6.2831854820251465
             },
             {
               "id": 94,
-              "name": "Min Drag",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 3.0
             },
             {
               "id": 95,
-              "name": "Max Drag",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 5.0
             },
             {
               "id": 96,
-              "name": "Min Emission",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 1.2000000476837158
             },
             {
               "id": 97,
-              "name": "Max Emission",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 1.7999999523162842
             },
             {
               "id": 98,
-              "name": "Size Exponent",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.699999988079071
             },
-            {
-              "id": 99,
-              "name": "Elevation",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
-              "default": 0.0
-            },
+            99,
             {
               "id": 100,
-              "name": "Shape",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
+              "flags": 0
             }
           ],
           "outputs": [
-            {
-              "id": 101,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            101
           ]
         },
         {
           "id": 102,
           "type": "Emit Directed Particles",
-          "x": 1000.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 103,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 104,
-              "name": "Position",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            103,
+            104,
             {
               "id": 105,
-              "name": "Direction",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": {
                 "x": 1.0,
                 "y": 0.0
               }
             },
-            {
-              "id": 106,
-              "name": "Count",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 1
-            },
+            106,
             {
               "id": 107,
-              "name": "Color",
-              "type": 7,
-              "type_name": "unsigned int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 65,
-              "group": 0,
               "default": 2448359423
             },
             {
               "id": 108,
-              "name": "End Color",
-              "type": 7,
-              "type_name": "unsigned int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 65,
-              "group": 0,
               "default": 427153664
             },
             {
               "id": 109,
-              "name": "Min Speed",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.0
             },
             {
               "id": 110,
-              "name": "Max Speed",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.0
             },
             {
               "id": 111,
-              "name": "Min Lifetime",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.18000000715255737
             },
             {
               "id": 112,
-              "name": "Max Lifetime",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.18000000715255737
             },
             {
               "id": 113,
-              "name": "Min Size",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 10.0
             },
             {
               "id": 114,
-              "name": "Max Size",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 10.0
             },
             {
               "id": 115,
-              "name": "Spread",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 6.2831854820251465
             },
             {
               "id": 116,
-              "name": "Min Drag",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 3.0
             },
             {
               "id": 117,
-              "name": "Max Drag",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 5.0
             },
             {
               "id": 118,
-              "name": "Min Emission",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.800000011920929
             },
             {
               "id": 119,
-              "name": "Max Emission",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.800000011920929
             },
             {
               "id": 120,
-              "name": "Size Exponent",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
               "default": 0.699999988079071
             },
-            {
-              "id": 121,
-              "name": "Elevation",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 1,
-              "group": 0,
-              "default": 0.0
-            },
+            121,
             {
               "id": 122,
-              "name": "Shape",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
               "flags": 0,
-              "group": 0,
               "default": 3
             }
           ],
           "outputs": [
-            {
-              "id": 123,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            123
           ]
         }
       ],
@@ -1667,75 +640,61 @@
           "from": 55,
           "from_pin": 52,
           "to": 58,
-          "to_pin": 59,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 59
         },
         {
           "from": 55,
           "from_pin": 53,
           "to": 58,
-          "to_pin": 60,
-          "kind": "data"
+          "to_pin": 60
         },
         {
           "from": 55,
           "from_pin": 53,
           "to": 80,
-          "to_pin": 82,
-          "kind": "data"
+          "to_pin": 82
         },
         {
           "from": 55,
           "from_pin": 53,
           "to": 102,
-          "to_pin": 104,
-          "kind": "data"
+          "to_pin": 104
         },
         {
           "from": 55,
           "from_pin": 54,
           "to": 58,
-          "to_pin": 77,
-          "kind": "data"
+          "to_pin": 77
         },
         {
           "from": 55,
           "from_pin": 54,
           "to": 80,
-          "to_pin": 99,
-          "kind": "data"
+          "to_pin": 99
         },
         {
           "from": 55,
           "from_pin": 54,
           "to": 102,
-          "to_pin": 121,
-          "kind": "data"
+          "to_pin": 121
         },
         {
           "from": 58,
           "from_pin": 79,
           "to": 80,
-          "to_pin": 81,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 81
         },
         {
           "from": 80,
           "from_pin": 101,
           "to": 102,
-          "to_pin": 103,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 103
         },
         {
           "from": 102,
           "from_pin": 123,
           "to": 57,
-          "to_pin": 56,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 56
         }
       ]
     }

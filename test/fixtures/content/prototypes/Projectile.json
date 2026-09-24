@@ -1,61 +1,42 @@
 {
   "name": "Projectile",
+  "identity": "prototype-0000000000000005",
   "components": {
-    "GameTransform": {
-      "x": 0,
-      "y": 0
+    "GAME.GameAppearance": {
+      "antialias": 2.0,
+      "color": 16773375,
+      "glow_color": 16773216,
+      "glow_radius": 6.0,
+      "height": 6.0,
+      "shape": 5,
+      "width": 18.0
     },
-    "GameProjectile": {
-      "speed": 420,
-      "lifetime": 2,
-      "damage": 10,
-      "age": 0
+    "GAME.GameBody": {
+      "continuous": true,
+      "type": 2
     },
-    "GameCollider": {
-      "radius": 4,
+    "GAME.GameCollider": {
       "category": 4,
       "mask": 10,
-      "shape": 0,
-      "width": 0,
-      "height": 0,
-      "sensor": true,
-      "ignore_entity": null
+      "radius": 4.0,
+      "sensor": true
     },
-    "GameAppearance": {
-      "width": 18,
-      "height": 6,
-      "color": 16773375,
-      "shape": 5,
-      "border_width": 0,
-      "border_color": 0,
-      "glow_radius": 6,
-      "glow_color": 16773216,
-      "stroke_width": 0,
-      "antialias": 2
-    },
-    "GameOrientation": {
-      "radians": 0.0
-    },
-    "GameMaterial": {
-      "scene": 16773375,
-      "albedo": 0,
-      "filter": 0,
+    "GAME.GameMaterial": {
+      "absorption": 1.0,
       "emission_color": 16773375,
-      "emission_intensity": 0.1,
-      "emission_multiplier": 1,
-      "absorption": 1,
-      "border_scene": 0,
-      "border_emission_color": 0,
-      "border_albedo": 0,
-      "border_filter": 0
+      "emission_intensity": 0.10000000149011612,
+      "emission_multiplier": 1.0,
+      "scene": 16773375
     },
-    "GameBody": {
-      "type": 2,
-      "continuous": true
+    "GAME.GameOrientation": {},
+    "GAME.GameProjectile": {
+      "damage": 10,
+      "lifetime": 2.0,
+      "speed": 420.0
     },
-    "GameVelocity": {
-      "x": 420,
-      "y": 0
+    "game.GameTransform": {},
+    "GAME.GameVelocity": {
+      "x": 420.0
     }
   },
   "behaviors": [

@@ -29,6 +29,7 @@
 #include "runtime/scenes/gameplay.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -69,10 +70,16 @@ EM_JS(int, web_save_asset, (const char *path, const char *text), {
 })
 #endif
 
-int write_text_file_atomic(const char *path, const char *text)
+int write_text_file_atomic(const char *path, const char *json)
 {
+    char error[128];
+    char *text = asset_text_to_disk(json, error, sizeof error);
+    if (!text) {
+        return -1;
+    }
 #ifdef __EMSCRIPTEN__
     if (web_save_asset(path, text)) {
+        free(text);
         return -1;
     }
 #endif
@@ -82,6 +89,7 @@ int write_text_file_atomic(const char *path, const char *text)
     FILE *file = fopen(temporary, "wb");
     if (!file) {
         free(temporary);
+        free(text);
         return -1;
     }
     int result = fputs(text, file) < 0;
@@ -95,6 +103,7 @@ int write_text_file_atomic(const char *path, const char *text)
         remove(temporary);
     }
     free(temporary);
+    free(text);
     return result;
 }
 

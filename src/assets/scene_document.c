@@ -257,13 +257,13 @@ char *game_scene_document_save(const game_scene_document *document)
     yyjson_mut_doc_set_root(json, root);
     yyjson_mut_obj_add_uint(json, root, "version", 1);
     yyjson_mut_obj_add_strcpy(json, root, "name", document->name);
-    yyjson_mut_obj_add_str(json, root, "presentation", document->perspective ? "3d" : "2d");
-    yyjson_mut_obj_add_val(
-        json,
-        root,
-        "physics",
-        game_physics_settings_write(json, document->physics)
-    );
+    if (document->perspective) {
+        yyjson_mut_obj_add_str(json, root, "presentation", "3d");
+    }
+    yyjson_mut_val *physics = game_physics_settings_write(json, document->physics);
+    if (yyjson_mut_obj_size(physics)) {
+        yyjson_mut_obj_add_val(json, root, "physics", physics);
+    }
     yyjson_mut_val *entities = yyjson_mut_arr(json);
     for (int i = 0; i < acount(document->entities); i++) {
         const game_scene_entity *entity = &document->entities[i];
@@ -273,11 +273,11 @@ char *game_scene_document_save(const game_scene_document *document)
         const char *components_json = entity->components_json ? entity->components_json
                                                               : "{}";
         yyjson_doc *components_doc = yyjson_read(components_json, strlen(components_json), 0);
-        yyjson_mut_val *components = components_doc &&
-                                             yyjson_is_obj(yyjson_doc_get_root(components_doc))
-                                       ? yyjson_val_mut_copy(json, yyjson_doc_get_root(components_doc))
-                                       : yyjson_mut_obj(json);
-        yyjson_mut_obj_add_val(json, value, "components", components);
+        yyjson_val *components = components_doc ? yyjson_doc_get_root(components_doc)
+                                                : NULL;
+        if (yyjson_is_obj(components) && yyjson_obj_size(components)) {
+            yyjson_mut_obj_add_val(json, value, "components", yyjson_val_mut_copy(json, components));
+        }
         yyjson_doc_free(components_doc);
         if (entity->retained_json) {
             yyjson_doc *retained = yyjson_read(
@@ -296,11 +296,12 @@ char *game_scene_document_save(const game_scene_document *document)
             }
             yyjson_doc_free(retained);
         }
-        yyjson_mut_val *behaviors = yyjson_mut_arr(json);
-        for (int j = 0; j < acount(entity->behaviors); j++) {
-            yyjson_mut_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
+        if (acount(entity->behaviors)) {
+            yyjson_mut_val *behaviors = yyjson_mut_obj_add_arr(json, value, "behaviors");
+            for (int j = 0; j < acount(entity->behaviors); j++) {
+                yyjson_mut_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
+            }
         }
-        yyjson_mut_obj_add_val(json, value, "behaviors", behaviors);
         yyjson_mut_arr_add_val(entities, value);
     }
     yyjson_mut_obj_add_val(json, root, "entities", entities);

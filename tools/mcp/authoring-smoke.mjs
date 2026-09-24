@@ -544,7 +544,7 @@ try {
   const rawAssetBytes = bytes(materialRead.result.document);
   const compactResponseBytes = Buffer.byteLength(toolText(blueRun.get(2)), "utf8");
   assert(searchBytes < registryBytes, `bounded search was not smaller than describe_registry (${searchBytes} >= ${registryBytes})`);
-  assert(compactResponseBytes < rawAssetBytes, `compact edit response was not smaller than the raw asset (${compactResponseBytes} >= ${rawAssetBytes})`);
+  assert(compactResponseBytes < 1024, `edit response echoed more than a summary (${compactResponseBytes} bytes)`);
   console.log(JSON.stringify({
     authoring_sizes: {
       search_nodes_bytes: searchBytes,

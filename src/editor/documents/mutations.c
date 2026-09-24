@@ -339,6 +339,7 @@ void ed_update_drag(editor *e, ImVec2 mouse)
     for (int i = 0; i < acount(e->drag_nodes); i++) {
         e->drag_nodes[i].n->x = e->drag_nodes[i].x + delta.x;
         e->drag_nodes[i].n->y = e->drag_nodes[i].y + delta.y;
+        e->drag_nodes[i].n->placed = true;
     }
 }
 

@@ -1,16 +1,6 @@
 {
   "version": 1,
   "name": "HRCLabVolume",
-  "presentation": "2d",
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  },
   "entities": [
     {
       "name": "Camera",
@@ -20,8 +10,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "HRC",
@@ -31,8 +20,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Emitter",
@@ -47,8 +35,7 @@
           "height": 24,
           "shape": 1
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Smoke",
@@ -64,8 +51,7 @@
           "absorption": 0.008,
           "visibility": 0.018
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Liquid",
@@ -81,8 +67,7 @@
           "absorption": 0.04,
           "visibility": 0.02
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Receiver",
@@ -96,8 +81,7 @@
           "width": 100,
           "height": 420
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Backdrop",
@@ -119,8 +103,7 @@
           "scene": 1802202111,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     }
   ]
 }

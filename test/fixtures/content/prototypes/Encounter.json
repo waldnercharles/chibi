@@ -1,9 +1,10 @@
 {
   "name": "Encounter",
+  "identity": "prototype-0000000000000002",
   "components": {
-    "GameTransform": {
-      "x": 320,
-      "y": -180
+    "game.GameTransform": {
+      "x": 320.0,
+      "y": -180.0
     }
   },
   "behaviors": [

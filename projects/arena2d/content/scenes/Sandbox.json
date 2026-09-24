@@ -1,16 +1,6 @@
 {
   "version": 1,
   "name": "Sandbox",
-  "presentation": "2d",
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  },
   "entities": [
     {
       "name": "Player",
@@ -43,21 +33,15 @@
     },
     {
       "name": "HRC",
-      "prototype": "HRC",
-      "components": {},
-      "behaviors": []
+      "prototype": "HRC"
     },
     {
       "name": "FireMouse",
-      "prototype": "FireMouse",
-      "components": {},
-      "behaviors": []
+      "prototype": "FireMouse"
     },
     {
       "name": "FireStick",
-      "prototype": "FireStick",
-      "components": {},
-      "behaviors": []
+      "prototype": "FireStick"
     },
     {
       "name": "Entry cloud",
@@ -67,8 +51,7 @@
           "x": 70,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Floating liquid",
@@ -78,8 +61,7 @@
           "x": 330,
           "y": 100
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Distant cloud",
@@ -94,8 +76,7 @@
           "height": 360,
           "color": 2288896187
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Distant liquid",
@@ -109,8 +90,7 @@
           "width": 160,
           "height": 160
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Cave guardian 1",
@@ -165,8 +145,7 @@
           "x": 960,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Reflective crystal",
@@ -176,8 +155,7 @@
           "x": -245,
           "y": -62
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Brittle crystal seam",
@@ -190,8 +168,7 @@
         "GameOrientation": {
           "radians": 0.24
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Hard rock shelf",
@@ -201,8 +178,7 @@
           "x": 420,
           "y": 110
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Fuel cloud",
@@ -212,8 +188,7 @@
           "x": 50,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Distant fuel cloud",
@@ -223,14 +198,11 @@
           "x": 1230,
           "y": 40
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Free motion",
-      "prototype": "FreeMotionSystem",
-      "components": {},
-      "behaviors": []
+      "prototype": "FreeMotionSystem"
     },
     {
       "name": "Drifting marker",
@@ -240,8 +212,7 @@
           "x": -400,
           "y": 90
         }
-      },
-      "behaviors": []
+      }
     }
   ]
 }

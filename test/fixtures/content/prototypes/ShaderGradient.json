@@ -1,29 +1,22 @@
 {
   "name": "ShaderGradient",
+  "identity": "prototype-0000000000000006",
   "components": {
-    "GameTransform": {
-      "x": 0,
-      "y": 0
-    },
-    "GameAppearance": {
-      "width": 100,
-      "height": 100,
-      "color": 4294967295,
-      "shape": 1,
-      "border_width": 0,
+    "GAME.GameAppearance": {
+      "antialias": 0.5,
       "border_color": 4294967295,
-      "glow_radius": 0,
-      "glow_color": 0,
-      "stroke_width": 0,
-      "antialias": 0.5
+      "color": 4294967295,
+      "height": 100.0,
+      "shape": 1,
+      "width": 100.0
     },
-    "GameShader": {
+    "GAME.GameShader": {
+      "bounds_x": 50.0,
+      "bounds_y": 50.0,
       "material": "OutlineGradient",
-      "shape": "",
       "parameters": "{}",
-      "bounds_x": 50,
-      "bounds_y": 50
-    }
-  },
-  "behaviors": []
+      "shape": ""
+    },
+    "game.GameTransform": {}
+  }
 }

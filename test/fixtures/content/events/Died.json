@@ -10,20 +10,13 @@
       "name": "Source",
       "type": 14,
       "type_name": "ecs.entity",
-      "container": 0,
-      "default": null,
       "category": "Payload"
     }
   ],
   "graphs": [
     {
-      "id": 1,
-      "name": "Events",
-      "description": "",
       "kind": "event",
-      "nodes": [],
-      "edges": [],
-      "comment_boxes": []
+      "name": "Events"
     }
   ]
 }

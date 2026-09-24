@@ -1,16 +1,14 @@
 {
   "name": "ArenaHitPulse",
+  "identity": "prototype-0000000000000009",
   "components": {
-    "GameTransform": {
-      "x": 0,
-      "y": 0
-    },
-    "GameSurfaceInfluence": {
+    "GAME.GameSurfaceInfluence": {
       "color": 4289615359,
-      "strength": 0.8,
-      "radius": 42,
-      "linger": 0.15
-    }
+      "linger": 0.15000000596046448,
+      "radius": 42.0,
+      "strength": 0.800000011920929
+    },
+    "game.GameTransform": {}
   },
   "behaviors": [
     "SurfacePulseBehavior"

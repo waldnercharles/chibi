@@ -1,53 +1,25 @@
 {
   "version": 3,
   "name": "CutMaterial",
-  "domain": "behavior",
   "id_counter": 16,
-  "description": "",
   "owner_type": "ecs.entity",
-  "variables": [],
   "graphs": [
     {
       "kind": "event",
       "name": "",
-      "description": "",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
       "nodes": [
         {
           "id": 1,
           "type": "Event",
-          "x": 0.0,
-          "y": 0.0,
-          "reference_id": 0,
           "reference_name": "Tick",
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            2,
             {
               "id": 3,
               "name": "DeltaSeconds",
               "type": 10,
               "type_name": "float",
               "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 0.0
             }
           ]
@@ -55,147 +27,39 @@
         {
           "id": 4,
           "type": "Self",
-          "x": 0.0,
-          "y": 120.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
             {
               "id": 5,
-              "name": "Self",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
+              "type_name": "ecs.entity"
             }
           ]
         },
         {
           "id": 6,
           "type": "Get_GameTransform",
-          "x": 0.0,
-          "y": 216.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
           "outputs": [
-            {
-              "id": 7,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 4,
-              "group": 0,
-              "default": null
-            }
+            7
           ]
         },
         {
           "id": 8,
           "type": "Damage Material",
-          "x": 310.0,
-          "y": 96.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
           "inputs": [
-            {
-              "id": 9,
-              "name": "In",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 10,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 11,
-              "name": "Point",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
+            9,
+            10,
+            11,
             {
               "id": 12,
-              "name": "Radius",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 24.0
             },
             {
               "id": 13,
-              "name": "Energy",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
               "default": 1.0
             },
-            {
-              "id": 14,
-              "name": "Cause",
-              "type": 6,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
+            14
           ],
           "outputs": [
-            {
-              "id": 15,
-              "name": "Out",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            15
           ]
         }
       ],
@@ -204,23 +68,19 @@
           "from": 1,
           "from_pin": 2,
           "to": 8,
-          "to_pin": 9,
-          "kind": "exec",
-          "order": 0
+          "to_pin": 9
         },
         {
           "from": 4,
           "from_pin": 5,
           "to": 8,
-          "to_pin": 10,
-          "kind": "data"
+          "to_pin": 10
         },
         {
           "from": 6,
           "from_pin": 7,
           "to": 8,
           "to_pin": 11,
-          "kind": "data",
           "conversion": "game_transform_to_cf"
         }
       ]

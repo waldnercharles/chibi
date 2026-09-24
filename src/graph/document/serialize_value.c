@@ -46,7 +46,7 @@ void serialize_write_value(
         case PIN_U32: value = yyjson_mut_uint(doc, v->u); break;
         case PIN_I64: value = yyjson_mut_sint(doc, v->i64); break;
         case PIN_U64: value = yyjson_mut_uint(doc, v->u64); break;
-        case PIN_F32: value = yyjson_mut_real(doc, v->f); break;
+        case PIN_F32: value = yyjson_mut_float(doc, v->f); break;
         case PIN_F64: value = yyjson_mut_real(doc, v->d); break;
         case PIN_ENUM: value = yyjson_mut_sint(doc, v->e); break;
         case PIN_NAME:

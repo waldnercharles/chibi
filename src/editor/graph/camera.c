@@ -93,6 +93,7 @@ static void ed_arrange(editor *e, bool history)
         for (int i = 0; i < count; i++) {
             nodes[i]->x = pos[i].x;
             nodes[i]->y = pos[i].y;
+            nodes[i]->placed = false;
         }
     }
     /* The arranged graph rarely still sits where the view was looking, so

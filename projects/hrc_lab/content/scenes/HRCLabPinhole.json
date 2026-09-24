@@ -1,16 +1,6 @@
 {
   "version": 1,
   "name": "HRCLabPinhole",
-  "presentation": "2d",
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  },
   "entities": [
     {
       "name": "Camera",
@@ -20,8 +10,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "HRC",
@@ -31,8 +20,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Emitter",
@@ -47,8 +35,7 @@
           "height": 24,
           "shape": 1
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Upper occluder",
@@ -62,8 +49,7 @@
           "width": 180,
           "height": 200
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Lower occluder",
@@ -77,8 +63,7 @@
           "width": 180,
           "height": 200
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Receiver",
@@ -92,8 +77,7 @@
           "width": 120,
           "height": 420
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Backdrop",
@@ -115,8 +99,7 @@
           "scene": 1802202111,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     }
   ]
 }

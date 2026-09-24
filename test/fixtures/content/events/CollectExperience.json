@@ -4,16 +4,10 @@
   "domain": "event",
   "id_counter": 2,
   "description": "Invite waiting experience pickups to fly to the player after combat ends.",
-  "variables": [],
   "graphs": [
     {
-      "id": 1,
-      "name": "Events",
-      "description": "",
       "kind": "event",
-      "nodes": [],
-      "edges": [],
-      "comment_boxes": []
+      "name": "Events"
     }
   ]
 }

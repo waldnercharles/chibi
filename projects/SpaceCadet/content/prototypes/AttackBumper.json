@@ -3,7 +3,6 @@
   "identity": "prototype-0000000000000020",
   "components": {
     "GAME.GameAppearance": {
-      "antialias": 0.0,
       "border_color": 4005525759,
       "border_width": 5.0,
       "color": 4016259071,
@@ -12,31 +11,16 @@
       "height": 46.0,
       "layer": 5,
       "shape": 1,
-      "stroke_width": 0.0,
       "width": 46.0
     },
-    "GAME.GameBody": {
-      "angular_velocity": 0.0,
-      "continuous": false,
-      "type": 0
-    },
+    "GAME.GameBody": {},
     "GAME.GameCollider": {
       "category": 4,
-      "friction": 0.0,
-      "height": 0.0,
-      "ignore_entity": null,
       "mask": 1,
-      "pierce_fragments": false,
       "radius": 23.0,
-      "restitution": 1.0,
-      "sensor": false,
-      "shape": 0,
-      "width": 0.0
+      "restitution": 1.0
     },
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
-    }
+    "game.GameTransform": {}
   },
   "behaviors": [
     "BumperKick"

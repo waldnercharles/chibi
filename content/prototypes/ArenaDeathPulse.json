@@ -1,16 +1,14 @@
 {
   "name": "ArenaDeathPulse",
+  "identity": "prototype-0000000000000002",
   "components": {
-    "GameTransform": {
-      "x": 0,
-      "y": 0
-    },
-    "GameSurfaceInfluence": {
+    "GAME.GameSurfaceInfluence": {
       "color": 4282940671,
-      "strength": 1.4,
-      "radius": 64,
-      "linger": 0.22
-    }
+      "linger": 0.2199999988079071,
+      "radius": 64.0,
+      "strength": 1.399999976158142
+    },
+    "game.GameTransform": {}
   },
   "behaviors": [
     "SurfacePulseBehavior"

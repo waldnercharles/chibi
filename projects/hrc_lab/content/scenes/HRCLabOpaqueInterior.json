@@ -1,16 +1,6 @@
 {
   "version": 1,
   "name": "HRCLabOpaqueInterior",
-  "presentation": "2d",
-  "physics": {
-    "workers": 0,
-    "substeps": 4,
-    "sleep": true,
-    "continuous": true,
-    "force_drive": false,
-    "contact_hertz": 30.0,
-    "contact_damping": 10.0
-  },
   "entities": [
     {
       "name": "Camera",
@@ -20,8 +10,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "HRC",
@@ -31,8 +20,7 @@
           "x": 0,
           "y": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Backdrop",
@@ -54,8 +42,7 @@
           "scene": 1802202111,
           "edge_light": 0
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Low sigma source",
@@ -92,8 +79,7 @@
           "filter": 0,
           "scene": 4294967295
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Low sigma slab",
@@ -133,8 +119,7 @@
           "filter": 0,
           "scene": 673720575
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Low sigma inner target",
@@ -171,8 +156,7 @@
           "filter": 0,
           "scene": 724249855
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Medium sigma source",
@@ -209,8 +193,7 @@
           "filter": 0,
           "scene": 4294967295
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Medium sigma slab",
@@ -250,8 +233,7 @@
           "filter": 0,
           "scene": 673720575
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "Medium sigma inner target",
@@ -288,8 +270,7 @@
           "filter": 0,
           "scene": 724249855
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "High sigma source",
@@ -326,8 +307,7 @@
           "filter": 0,
           "scene": 4294967295
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "High sigma slab",
@@ -367,8 +347,7 @@
           "filter": 0,
           "scene": 673720575
         }
-      },
-      "behaviors": []
+      }
     },
     {
       "name": "High sigma inner target",
@@ -405,8 +384,7 @@
           "filter": 0,
           "scene": 724249855
         }
-      },
-      "behaviors": []
+      }
     }
   ]
 }

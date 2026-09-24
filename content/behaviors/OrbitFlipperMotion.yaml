@@ -1,6 +1,6 @@
 version: 3
 name: OrbitFlipperMotion
-id_counter: 613
+id_counter: 764
 owner_type: ecs.entity
 variables:
 - {id: 1, name: RestAngle, type: double, type_name: double, category: Default}
@@ -187,229 +187,22 @@ graphs:
   name: Turn toward stroke
   math_expression: clamp((rest - stroke * cos(rest) / abs(cos(rest)) - angle) / dt, -16, 16)
   expression_mode: 1
-  entry_id: 167
-  return_id: 169
+  entry_id: 614
+  return_id: 616
   call_depth_limit: 64
-  nodes:
-  - id: 167
-    type: Function Entry
-    outputs:
-    - {id: 171, name: rest, type: double, kind: data, flags: 2, group: 1}
-    - {id: 172, name: stroke, type: double, kind: data, flags: 2, group: 2}
-    - {id: 173, name: angle, type: double, kind: data, flags: 2, group: 3}
-    - {id: 174, name: dt, type: float, kind: data, flags: 2, group: 4}
-  - id: 169
-    type: Return
-    inputs:
-    - {id: 175, name: Result, kind: data, flags: 2, group: 5}
-  - {id: 176, type: Cosine}
-  - id: 179
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 183, type: Cosine}
-  - {id: 186, type: Abs}
-  - id: 189
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 193
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 197
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 201
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 205
-    type: Real
-    inputs: {Value: 16.0}
-  - {id: 208, type: Negate}
-  - id: 211
-    type: Real
-    inputs: {Value: 16.0}
-  - {id: 214, type: Clamp}
-  edges:
-  - {from: 167.rest, to: 176.Value}
-  - {from: 167.rest, to: 183.Value}
-  - {from: 167.rest, to: 193.A}
-  - {from: 167.stroke, to: 179.A}
-  - {from: 167.angle, to: 197.B}
-  - {from: 167.dt, to: 201.B}
-  - {from: 176.Result, to: 179.B}
-  - {from: 179.Result, to: 189.A}
-  - {from: 183.Result, to: 186.Value}
-  - {from: 186.Result, to: 189.B}
-  - {from: 189.Result, to: 193.B}
-  - {from: 193.Result, to: 197.A}
-  - {from: 197.Result, to: 201.A}
-  - {from: 201.Result, to: 214.Value}
-  - {from: 205.Value, to: 208.Value}
-  - {from: 208.Result, to: 214.Min}
-  - {from: 211.Value, to: 214.Max}
-  - {from: 214.Result, to: 169.Result}
 - id: 231
   kind: function
   name: Pivot velocity X
   math_expression: (origin + 40 * (cos(angle + speed * dt) - cos(rest)) - position) / dt
   expression_mode: 1
-  entry_id: 510
-  return_id: 512
+  entry_id: 667
+  return_id: 669
   call_depth_limit: 64
-  nodes:
-  - id: 510
-    type: Function Entry
-    outputs:
-    - {id: 514, name: angle, type: double, kind: data, flags: 2, group: 2}
-    - {id: 515, name: speed, type: double, kind: data, flags: 2, group: 3}
-    - {id: 516, name: dt, type: float, kind: data, flags: 2, group: 4}
-    - {id: 517, name: origin, type: double, kind: data, flags: 2, group: 1}
-    - {id: 518, name: rest, type: double, kind: data, flags: 2, group: 5}
-    - {id: 519, name: position, type: double, kind: data, flags: 2, group: 6}
-  - id: 512
-    type: Return
-    inputs:
-    - {id: 520, name: Result, type: double, kind: data, flags: 2, group: 7}
-  - id: 521
-    type: Real
-    inputs: {Value: 40.0}
-  - id: 524
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 528
-    type: Add
-    inputs:
-      B: {type: double}
-  - {id: 532, type: Cosine}
-  - {id: 535, type: Cosine}
-  - {id: 538, type: Subtract}
-  - {id: 542, type: Multiply}
-  - id: 546
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 550
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 554
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 510.angle, to: 528.A}
-  - {from: 510.speed, to: 524.A}
-  - {from: 510.dt, to: 524.B}
-  - {from: 510.dt, to: 554.B}
-  - {from: 510.origin, to: 546.A}
-  - {from: 510.rest, to: 535.Value}
-  - {from: 510.position, to: 550.B}
-  - {from: 521.Value, to: 542.A}
-  - {from: 524.Result, to: 528.B}
-  - {from: 528.Result, to: 532.Value}
-  - {from: 532.Result, to: 538.A}
-  - {from: 535.Result, to: 538.B}
-  - {from: 538.Result, to: 542.B}
-  - {from: 542.Result, to: 546.B}
-  - {from: 546.Result, to: 550.A}
-  - {from: 550.Result, to: 554.A}
-  - {from: 554.Result, to: 512.Result}
 - id: 364
   kind: function
   name: Pivot velocity Y
   math_expression: (origin + 40 * (sin(angle + speed * dt) - sin(rest)) - position) / dt
   expression_mode: 1
-  entry_id: 562
-  return_id: 564
+  entry_id: 716
+  return_id: 718
   call_depth_limit: 64
-  nodes:
-  - id: 562
-    type: Function Entry
-    outputs:
-    - {id: 566, name: angle, type: double, kind: data, flags: 2, group: 2}
-    - {id: 567, name: speed, type: double, kind: data, flags: 2, group: 3}
-    - {id: 568, name: dt, type: float, kind: data, flags: 2, group: 4}
-    - {id: 569, name: origin, type: double, kind: data, flags: 2, group: 1}
-    - {id: 570, name: rest, type: double, kind: data, flags: 2, group: 5}
-    - {id: 571, name: position, type: double, kind: data, flags: 2, group: 6}
-  - id: 564
-    type: Return
-    inputs:
-    - {id: 572, name: Result, type: double, kind: data, flags: 2, group: 7}
-  - id: 573
-    type: Real
-    inputs: {Value: 40.0}
-  - id: 576
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 580
-    type: Add
-    inputs:
-      B: {type: double}
-  - {id: 584, type: Sine}
-  - {id: 587, type: Sine}
-  - {id: 590, type: Subtract}
-  - {id: 594, type: Multiply}
-  - id: 598
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 602
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 606
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 562.angle, to: 580.A}
-  - {from: 562.speed, to: 576.A}
-  - {from: 562.dt, to: 576.B}
-  - {from: 562.dt, to: 606.B}
-  - {from: 562.origin, to: 598.A}
-  - {from: 562.rest, to: 587.Value}
-  - {from: 562.position, to: 602.B}
-  - {from: 573.Value, to: 594.A}
-  - {from: 576.Result, to: 580.B}
-  - {from: 580.Result, to: 584.Value}
-  - {from: 584.Result, to: 590.A}
-  - {from: 587.Result, to: 590.B}
-  - {from: 590.Result, to: 594.B}
-  - {from: 594.Result, to: 598.B}
-  - {from: 598.Result, to: 602.A}
-  - {from: 602.Result, to: 606.A}
-  - {from: 606.Result, to: 564.Result}

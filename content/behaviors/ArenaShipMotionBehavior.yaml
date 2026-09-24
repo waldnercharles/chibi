@@ -1,6 +1,6 @@
 version: 3
 name: ArenaShipMotionBehavior
-id_counter: 844
+id_counter: 1080
 description: Sustained aim-relative strafe slowly rolls between the pyramid's 90-degree faces. Roll angle and angular velocity stay continuous through reversals. Release settles onto the nearest face captured while moving. Reverse movement adds a subtle nose lift. Tune speed, rocking and settling under Motion in the Variables Inspector.
 owner_type: ecs.entity
 variables:
@@ -277,41 +277,41 @@ graphs:
     reference_id: 407
     reference_name: Roll Gain
     inputs:
-      Acceleration: {declaration_id: 412, type: float, flags: 2, group: 1}
-      Delta: {declaration_id: 413, type: float, flags: 2, group: 2}
+      Acceleration: {declaration_id: 412, flags: 2, group: 1}
+      Delta: {declaration_id: 413, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 414, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 414, type: float, flags: 2, group: 3}
   - id: 511
     type: Behavior Expression
     reference_id: 437
     reference_name: Desired Roll
     inputs:
-      Strafe: {declaration_id: 442, type: float, flags: 2, group: 1}
-      Speed: {declaration_id: 443, type: float, flags: 2, group: 2}
-      Rocking: {declaration_id: 444, type: float, flags: 2, group: 3}
-      Position: {declaration_id: 445, type: float, flags: 2, group: 4}
+      Strafe: {declaration_id: 442, flags: 2, group: 1}
+      Speed: {declaration_id: 443, flags: 2, group: 2}
+      Rocking: {declaration_id: 444, flags: 2, group: 3}
+      Position: {declaration_id: 445, flags: 2, group: 4}
     outputs:
-      Result: {declaration_id: 446, type: double, flags: 2, group: 5}
+      Result: {declaration_id: 446, type: float, flags: 2, group: 5}
   - id: 545
     type: Behavior Expression
     reference_id: 517
     reference_name: Roll Velocity
     inputs:
       Velocity: {declaration_id: 522, type: float, flags: 2, group: 1}
-      Gain: {declaration_id: 523, type: double, flags: 2, group: 2}
-      Desired: {declaration_id: 524, type: double, flags: 2, group: 3}
+      Gain: {declaration_id: 523, type: float, flags: 2, group: 2}
+      Desired: {declaration_id: 524, type: float, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 525, type: double, flags: 2, group: 4}
+      Result: {declaration_id: 525, type: float, flags: 2, group: 4}
   - id: 574
     type: Behavior Expression
     reference_id: 550
     reference_name: Roll Position
     inputs:
       Position: {declaration_id: 555, type: float, flags: 2, group: 1}
-      NewVelocity: {declaration_id: 556, type: double, flags: 2, group: 2}
+      NewVelocity: {declaration_id: 556, type: float, flags: 2, group: 2}
       Delta: {declaration_id: 557, type: float, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 558, type: double, flags: 2, group: 4}
+      Result: {declaration_id: 558, type: float, flags: 2, group: 4}
   edges:
   - {from: 265.Then, to: 270.Exec}
   - {from: 265.Position, to: 511.Position}
@@ -335,262 +335,33 @@ graphs:
   name: Roll Gain
   math_expression: max(Acceleration,0)*max(Delta,0)
   expression_mode: 1
-  entry_id: 408
-  return_id: 410
+  entry_id: 845
+  return_id: 847
   call_depth_limit: 64
-  nodes:
-  - id: 408
-    type: Function Entry
-    outputs:
-    - {id: 412, name: Acceleration, type: double, kind: data, flags: 2, group: 1}
-    - {id: 413, name: Delta, type: double, kind: data, flags: 2, group: 2}
-  - id: 410
-    type: Return
-    inputs:
-    - {id: 414, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - {id: 415, type: Real}
-  - id: 418
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 422, type: Real}
-  - id: 425
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 429
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 408.Acceleration, to: 418.A}
-  - {from: 408.Delta, to: 425.A}
-  - {from: 415.Value, to: 418.B}
-  - {from: 418.Result, to: 429.A}
-  - {from: 422.Value, to: 425.B}
-  - {from: 425.Result, to: 429.B}
-  - {from: 429.Result, to: 410.Result}
 - id: 437
   kind: function
   name: Desired Roll
   math_expression: Strafe*max(Speed,0)*(pi/180)*(1-min(max(Rocking,0),0.85)*cos(Position*4))
   expression_mode: 1
-  entry_id: 438
-  return_id: 440
+  entry_id: 871
+  return_id: 873
   call_depth_limit: 64
-  nodes:
-  - id: 438
-    type: Function Entry
-    outputs:
-    - {id: 442, name: Strafe, type: double, kind: data, flags: 2, group: 1}
-    - {id: 443, name: Speed, type: double, kind: data, flags: 2, group: 2}
-    - {id: 444, name: Rocking, type: double, kind: data, flags: 2, group: 3}
-    - {id: 445, name: Position, type: double, kind: data, flags: 2, group: 4}
-  - id: 440
-    type: Return
-    inputs:
-    - {id: 446, name: Result, type: double, kind: data, flags: 2, group: 5}
-  - {id: 447, type: Real}
-  - id: 450
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 454
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 458
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 461
-    type: Real
-    inputs: {Value: 180.0}
-  - {id: 464, type: Divide}
-  - id: 468
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 472
-    type: Real
-    inputs: {Value: 1.0}
-  - {id: 475, type: Real}
-  - id: 478
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 482
-    type: Real
-    inputs: {Value: 0.85}
-  - id: 485
-    type: Min
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 489
-    type: Real
-    inputs: {Value: 4.0}
-  - {id: 492, type: Multiply}
-  - {id: 496, type: Cosine}
-  - id: 499
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 503
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 507
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 438.Strafe, to: 454.A}
-  - {from: 438.Speed, to: 450.A}
-  - {from: 438.Rocking, to: 478.A}
-  - {from: 438.Position, to: 492.A}
-  - {from: 447.Value, to: 450.B}
-  - {from: 450.Result, to: 454.B}
-  - {from: 454.Result, to: 468.A}
-  - {from: 458.Value, to: 464.A}
-  - {from: 461.Value, to: 464.B}
-  - {from: 464.Result, to: 468.B}
-  - {from: 468.Result, to: 507.A}
-  - {from: 472.Value, to: 503.A}
-  - {from: 475.Value, to: 478.B}
-  - {from: 478.Result, to: 485.A}
-  - {from: 482.Value, to: 485.B}
-  - {from: 485.Result, to: 499.A}
-  - {from: 489.Value, to: 492.B}
-  - {from: 492.Result, to: 496.Value}
-  - {from: 496.Result, to: 499.B}
-  - {from: 499.Result, to: 503.B}
-  - {from: 503.Result, to: 507.B}
-  - {from: 507.Result, to: 440.Result}
 - id: 517
   kind: function
   name: Roll Velocity
   math_expression: (Velocity+Gain*Desired)/(1+Gain)
   expression_mode: 1
-  entry_id: 518
-  return_id: 520
+  entry_id: 945
+  return_id: 947
   call_depth_limit: 64
-  nodes:
-  - id: 518
-    type: Function Entry
-    outputs:
-    - {id: 522, name: Velocity, type: double, kind: data, flags: 2, group: 1}
-    - {id: 523, name: Gain, type: double, kind: data, flags: 2, group: 2}
-    - {id: 524, name: Desired, type: double, kind: data, flags: 2, group: 3}
-  - id: 520
-    type: Return
-    inputs:
-    - {id: 525, name: Result, type: double, kind: data, flags: 2, group: 4}
-  - id: 526
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 530
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 534
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 537
-    type: Add
-    inputs:
-      B: {type: double}
-  - id: 541
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 518.Velocity, to: 530.A}
-  - {from: 518.Gain, to: 526.A}
-  - {from: 518.Gain, to: 537.B}
-  - {from: 518.Desired, to: 526.B}
-  - {from: 526.Result, to: 530.B}
-  - {from: 530.Result, to: 541.A}
-  - {from: 534.Value, to: 537.A}
-  - {from: 537.Result, to: 541.B}
-  - {from: 541.Result, to: 520.Result}
 - id: 550
   kind: function
   name: Roll Position
   math_expression: Position+NewVelocity*max(Delta,0)
   expression_mode: 1
-  entry_id: 551
-  return_id: 553
+  entry_id: 973
+  return_id: 975
   call_depth_limit: 64
-  nodes:
-  - id: 551
-    type: Function Entry
-    outputs:
-    - {id: 555, name: Position, type: double, kind: data, flags: 2, group: 1}
-    - {id: 556, name: NewVelocity, type: double, kind: data, flags: 2, group: 2}
-    - {id: 557, name: Delta, type: double, kind: data, flags: 2, group: 3}
-  - id: 553
-    type: Return
-    inputs:
-    - {id: 558, name: Result, type: double, kind: data, flags: 2, group: 4}
-  - {id: 559, type: Real}
-  - id: 562
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 566
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 570
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 551.Position, to: 570.A}
-  - {from: 551.NewVelocity, to: 566.A}
-  - {from: 551.Delta, to: 562.A}
-  - {from: 559.Value, to: 562.B}
-  - {from: 562.Result, to: 566.B}
-  - {from: 566.Result, to: 570.B}
-  - {from: 570.Result, to: 553.Result}
 - id: 579
   kind: function
   name: Compute Aim Basis
@@ -638,153 +409,25 @@ graphs:
   name: Aim Strafe
   math_expression: move.y*aim.x-move.x*aim.y
   expression_mode: 1
-  entry_id: 682
-  return_id: 684
+  entry_id: 997
+  return_id: 999
   call_depth_limit: 64
-  nodes:
-  - id: 682
-    type: Function Entry
-    outputs:
-    - id: 686
-      name: move
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - id: 687
-      name: aim
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 2
-    - {id: 688, name: x, type: float, kind: data, field_source: 686, field_name: x}
-    - {id: 689, name: "y", type: float, kind: data, field_source: 686, field_name: "y"}
-    - {id: 690, name: x, type: float, kind: data, field_source: 687, field_name: x}
-    - {id: 691, name: "y", type: float, kind: data, field_source: 687, field_name: "y"}
-  - id: 684
-    type: Return
-    inputs:
-    - {id: 692, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - {id: 693, type: Multiply}
-  - {id: 697, type: Multiply}
-  - {id: 701, type: Subtract}
-  edges:
-  - {from: 682.move.x, to: 697.A}
-  - {from: 682.move.y, to: 693.A}
-  - {from: 682.aim.x, to: 693.B}
-  - {from: 682.aim.y, to: 697.B}
-  - {from: 693.Result, to: 701.A}
-  - {from: 697.Result, to: 701.B}
-  - {from: 701.Result, to: 684.Result}
 - id: 612
   kind: function
   name: Aim Forward
   math_expression: move.x*aim.x+move.y*aim.y
   expression_mode: 1
-  entry_id: 706
-  return_id: 708
+  entry_id: 1021
+  return_id: 1023
   call_depth_limit: 64
-  nodes:
-  - id: 706
-    type: Function Entry
-    outputs:
-    - id: 710
-      name: move
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - id: 711
-      name: aim
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 2
-    - {id: 712, name: x, type: float, kind: data, field_source: 710, field_name: x}
-    - {id: 713, name: "y", type: float, kind: data, field_source: 710, field_name: "y"}
-    - {id: 714, name: x, type: float, kind: data, field_source: 711, field_name: x}
-    - {id: 715, name: "y", type: float, kind: data, field_source: 711, field_name: "y"}
-  - id: 708
-    type: Return
-    inputs:
-    - {id: 716, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - {id: 717, type: Multiply}
-  - {id: 721, type: Multiply}
-  - {id: 725, type: Add}
-  edges:
-  - {from: 706.move.x, to: 717.A}
-  - {from: 706.move.y, to: 721.A}
-  - {from: 706.aim.x, to: 717.B}
-  - {from: 706.aim.y, to: 721.B}
-  - {from: 717.Result, to: 725.A}
-  - {from: 721.Result, to: 725.B}
-  - {from: 725.Result, to: 708.Result}
 - id: 641
   kind: function
   name: Nose Lift Target
   math_expression: max(-forward,0)*reverseNoseLift*(pi/180)
   expression_mode: 1
-  entry_id: 642
-  return_id: 644
+  entry_id: 1045
+  return_id: 1047
   call_depth_limit: 64
-  nodes:
-  - id: 642
-    type: Function Entry
-    outputs:
-    - {id: 646, name: forward, type: double, kind: data, flags: 2, group: 1}
-    - {id: 647, name: reverseNoseLift, type: double, kind: data, flags: 2, group: 2}
-  - id: 644
-    type: Return
-    inputs:
-    - {id: 648, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 649
-    type: Negate
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 652, type: Real}
-  - id: 655
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 659
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 663
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 666
-    type: Real
-    inputs: {Value: 180.0}
-  - {id: 669, type: Divide}
-  - id: 673
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 642.forward, to: 649.Value}
-  - {from: 642.reverseNoseLift, to: 659.B}
-  - {from: 649.Result, to: 655.A}
-  - {from: 652.Value, to: 655.B}
-  - {from: 655.Result, to: 659.A}
-  - {from: 659.Result, to: 673.A}
-  - {from: 663.Value, to: 669.A}
-  - {from: 666.Value, to: 669.B}
-  - {from: 669.Result, to: 673.B}
-  - {from: 673.Result, to: 644.Result}
 - id: 729
   kind: function
   name: Advance Rolling Motion

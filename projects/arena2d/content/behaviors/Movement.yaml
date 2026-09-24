@@ -1,6 +1,6 @@
 version: 3
 name: Movement
-id_counter: 579
+id_counter: 742
 description: Face aim; drive from movement input or boost along the ship heading.
 owner_type: ecs.entity
 graphs:
@@ -179,210 +179,38 @@ graphs:
   name: heading = atan2(y, x)
   math_expression: heading = atan2(y, x)
   expression_mode: 2
-  entry_id: 77
-  return_id: 79
+  entry_id: 580
+  return_id: 582
   call_depth_limit: 64
-  nodes:
-  - id: 77
-    type: Function Entry
-    outputs:
-      heading: {id: 81, type: float, kind: data, group: 1}
-      "y": {kind: data, flags: 2, group: 2}
-      x: {kind: data, flags: 2, group: 3}
-  - id: 79
-    type: Return
-    inputs:
-      Result: {id: 84, kind: data, flags: 2, group: 4}
-  - {id: 85, type: Arc Tangent 2}
-  - {id: 89, type: Get_GameOrientation}
-  - {id: 91, type: Break_GameOrientation}
-  - {id: 94, type: Make_GameOrientation}
-  - {id: 97, type: Set_GameOrientation}
-  edges:
-  - {from: 77.Exec, to: 97.Exec}
-  - {from: 77.y, to: 85.A}
-  - {from: 77.x, to: 85.B}
-  - {from: 85.Result, to: 79.Result}
-  - {from: 85.Result, to: 94.radians}
-  - {from: 89.Value, to: 91.GameOrientation}
-  - {from: 94.GameOrientation, to: 97.Value}
-  - {from: 97.Then, to: 79.Exec}
 - id: 107
   kind: function
   name: target = vec2(cos(heading), sin(heading)) * speed * 2
   math_expression: target = vec2(cos(heading), sin(heading)) * speed * 2
   expression_mode: 2
-  entry_id: 235
-  return_id: 237
+  entry_id: 606
+  return_id: 608
   call_depth_limit: 64
-  nodes:
-  - id: 235
-    type: Function Entry
-    outputs:
-      target: {id: 239, type: struct, type_name: CF_V2, kind: data, group: 1}
-      heading: {kind: data, flags: 2, group: 2}
-      speed: {type: double, kind: data, flags: 2, group: 3}
-  - id: 237
-    type: Return
-    inputs:
-      Result: {id: 242, kind: data, flags: 2, group: 4}
-  - {id: 243, type: Cosine}
-  - {id: 246, type: Sine}
-  - {id: 249, type: Make_CF_V2}
-  - id: 253
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - id: 257
-    type: Real
-    inputs: {Value: 2.0}
-  - {id: 260, type: Multiply}
-  - {id: 264, type: Get_GameDrive}
-  - {id: 266, type: Break_GameDrive}
-  - {id: 270, type: Make_GameDrive}
-  - {id: 274, type: Set_GameDrive}
-  edges:
-  - {from: 235.Exec, to: 274.Exec}
-  - {from: 235.heading, to: 243.Value}
-  - {from: 235.heading, to: 246.Value}
-  - {from: 235.speed, to: 253.B}
-  - {from: 243.Result, to: 249.x}
-  - {from: 246.Result, to: 249.y}
-  - {from: 249.CF_V2, to: 253.A}
-  - {from: 253.Result, to: 260.A}
-  - {from: 257.Value, to: 260.B}
-  - {from: 260.Result, to: 237.Result}
-  - {from: 260.Result, to: 270.target}
-  - {from: 264.Value, to: 266.GameDrive}
-  - {from: 266.acceleration, to: 270.acceleration}
-  - {from: 270.GameDrive, to: 274.Value}
-  - {from: 274.Then, to: 237.Exec}
 - id: 279
   kind: function
   name: x * x + y * y > 0.01
   math_expression: x * x + y * y > 0.01
   expression_mode: 3
-  entry_id: 341
-  return_id: 343
+  entry_id: 651
+  return_id: 653
   call_depth_limit: 64
-  nodes:
-  - id: 341
-    type: Function Entry
-    outputs:
-    - {id: 345, name: x, type: double, kind: data, flags: 2, group: 1}
-    - {id: 346, name: "y", type: double, kind: data, flags: 2, group: 2}
-  - id: 343
-    type: Return
-    inputs:
-    - {id: 347, name: Result, kind: data, flags: 2, group: 3}
-  - id: 348
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 352
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 356
-    type: Add
-    inputs:
-      B: {type: double}
-  - id: 360
-    type: Real
-    inputs: {Value: 0.01}
-  - id: 363
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 341.x, to: 348.A}
-  - {from: 341.x, to: 348.B}
-  - {from: 341.y, to: 352.A}
-  - {from: 341.y, to: 352.B}
-  - {from: 348.Result, to: 356.A}
-  - {from: 352.Result, to: 356.B}
-  - {from: 356.Result, to: 363.A}
-  - {from: 360.Value, to: 363.B}
-  - {from: 363.Result, to: 343.Result}
 - id: 367
   kind: function
   name: target = vec2(x, y) * speed
   math_expression: target = vec2(x, y) * speed
   expression_mode: 2
-  entry_id: 493
-  return_id: 495
+  entry_id: 678
+  return_id: 680
   call_depth_limit: 64
-  nodes:
-  - id: 493
-    type: Function Entry
-    outputs:
-      target: {id: 497, type: struct, type_name: CF_V2, kind: data, group: 1}
-      x: {kind: data, flags: 2, group: 2}
-      "y": {kind: data, flags: 2, group: 3}
-      speed: {type: double, kind: data, flags: 2, group: 4}
-  - id: 495
-    type: Return
-    inputs:
-      Result: {id: 501, kind: data, flags: 2, group: 5}
-  - {id: 502, type: Make_CF_V2}
-  - id: 506
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 510, type: Get_GameDrive}
-  - {id: 512, type: Break_GameDrive}
-  - {id: 516, type: Make_GameDrive}
-  - {id: 520, type: Set_GameDrive}
-  edges:
-  - {from: 493.Exec, to: 520.Exec}
-  - {from: 493.x, to: 502.x}
-  - {from: 493.y, to: 502.y}
-  - {from: 493.speed, to: 506.B}
-  - {from: 502.CF_V2, to: 506.A}
-  - {from: 506.Result, to: 495.Result}
-  - {from: 506.Result, to: 516.target}
-  - {from: 510.Value, to: 512.GameDrive}
-  - {from: 512.acceleration, to: 516.acceleration}
-  - {from: 516.GameDrive, to: 520.Value}
-  - {from: 520.Then, to: 495.Exec}
 - id: 525
   kind: function
   name: target = vec2(0, 0)
   math_expression: target = vec2(0, 0)
   expression_mode: 2
-  entry_id: 548
-  return_id: 550
+  entry_id: 711
+  return_id: 713
   call_depth_limit: 64
-  nodes:
-  - id: 548
-    type: Function Entry
-    outputs:
-      target: {id: 552, type: struct, type_name: CF_V2, kind: data, group: 1}
-  - id: 550
-    type: Return
-    inputs:
-      Result: {id: 553, kind: data, flags: 2, group: 2}
-  - {id: 554, type: Real}
-  - {id: 557, type: Real}
-  - {id: 560, type: Make_CF_V2}
-  - {id: 564, type: Get_GameDrive}
-  - {id: 566, type: Break_GameDrive}
-  - {id: 570, type: Make_GameDrive}
-  - {id: 574, type: Set_GameDrive}
-  edges:
-  - {from: 548.Exec, to: 574.Exec}
-  - {from: 554.Value, to: 560.x}
-  - {from: 557.Value, to: 560.y}
-  - {from: 560.CF_V2, to: 550.Result}
-  - {from: 560.CF_V2, to: 570.target}
-  - {from: 564.Value, to: 566.GameDrive}
-  - {from: 566.acceleration, to: 570.acceleration}
-  - {from: 570.GameDrive, to: 574.Value}
-  - {from: 574.Then, to: 550.Exec}

@@ -1,6 +1,6 @@
 version: 3
 name: FreeMotion
-id_counter: 103
+id_counter: 120
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -35,57 +35,9 @@ graphs:
   name: position + velocity * dt
   math_expression: position + velocity * dt
   expression_mode: 1
-  entry_id: 87
-  return_id: 89
+  entry_id: 104
+  return_id: 106
   call_depth_limit: 64
-  nodes:
-  - id: 87
-    type: Function Entry
-    outputs:
-    - id: 91
-      name: position
-      type: struct
-      type_name: GameTransform
-      kind: data
-      flags: 2
-      group: 1
-    - id: 92
-      name: velocity
-      type: struct
-      type_name: GameVelocity
-      kind: data
-      flags: 2
-      group: 2
-    - {id: 93, name: dt, type: float, kind: data, flags: 2, group: 3}
-  - id: 89
-    type: Return
-    inputs:
-    - id: 94
-      name: Result
-      type: struct
-      type_name: GameTransform
-      kind: data
-      flags: 2
-      group: 4
-  - id: 95
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: GameVelocity}
-    outputs:
-      Result: {type: struct, type_name: GameVelocity}
-  - id: 99
-    type: Add
-    inputs:
-      A: {type: struct, type_name: GameTransform}
-      B: {type: struct, type_name: GameVelocity}
-    outputs:
-      Result: {type: struct, type_name: GameTransform}
-  edges:
-  - {from: 87.position, to: 99.A}
-  - {from: 87.velocity, to: 95.A}
-  - {from: 87.dt, to: 95.B}
-  - {from: 95.Result, to: 99.B}
-  - {from: 99.Result, to: 89.Result}
 query:
   op: all
   terms:

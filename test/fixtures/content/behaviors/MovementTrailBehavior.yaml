@@ -1,6 +1,6 @@
 version: 3
 name: MovementTrailBehavior
-id_counter: 171
+id_counter: 196
 description: Movement emits a rear-facing ship trail at 64 particles per second; idle clears fractional carry. Frame contribution is bounded to 0.1 seconds.
 owner_type: ecs.entity
 variables:
@@ -132,9 +132,9 @@ graphs:
     reference_id: 128
     reference_name: Emission Budget
     inputs:
-      dt: {type: double}
+      dt: {type: float, group: 1}
     outputs:
-      Result: {type: double}
+      Result: {type: float, group: 2}
   edges:
   - {from: 14.Then, to: 68.Exec}
   - {from: 14.Direction, to: 82.Value}
@@ -161,34 +161,9 @@ graphs:
   name: Emission Budget
   math_expression: clamp(dt, 0, 0.10000000149011612) * 64
   expression_mode: 1
-  entry_id: 129
-  return_id: 131
+  entry_id: 172
+  return_id: 174
   call_depth_limit: 64
-  nodes:
-  - id: 129
-    type: Function Entry
-    outputs:
-    - {id: 133, name: dt, type: double, kind: data}
-  - id: 131
-    type: Return
-    inputs:
-    - {id: 134, name: Result, type: double, kind: data}
-  - {id: 135, type: Real}
-  - id: 138
-    type: Real
-    inputs: {Value: 0.10000000149011612}
-  - {id: 141, type: Clamp}
-  - id: 146
-    type: Real
-    inputs: {Value: 64.0}
-  - {id: 149, type: Multiply}
-  edges:
-  - {from: 129.dt, to: 141.Value}
-  - {from: 135.Value, to: 141.Min}
-  - {from: 138.Value, to: 141.Max}
-  - {from: 141.Result, to: 149.A}
-  - {from: 146.Value, to: 149.B}
-  - {from: 149.Result, to: 131.Result}
 - id: 158
   kind: function
   name: Is Stationary

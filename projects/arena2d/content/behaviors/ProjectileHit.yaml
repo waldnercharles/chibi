@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileHit
-id_counter: 109
+id_counter: 126
 description: Carve at the impact point, pierce enemy fragments, and deliver damage to blocking targets.
 owner_type: ecs.entity
 graphs:
@@ -69,55 +69,6 @@ graphs:
   name: point + direction * inset
   math_expression: point + direction * inset
   expression_mode: 1
-  entry_id: 75
-  return_id: 77
+  entry_id: 110
+  return_id: 112
   call_depth_limit: 64
-  nodes:
-  - id: 75
-    type: Function Entry
-    outputs:
-    - id: 79
-      name: point
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - id: 80
-      name: direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 2
-    - {id: 81, name: inset, type: double, kind: data, flags: 2, group: 3}
-  - id: 77
-    type: Return
-    inputs:
-    - id: 82
-      name: Result
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 4
-  - id: 83
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-      B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
-  - id: 87
-    type: Add
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-      B: {type: struct, type_name: CF_V2}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
-  edges:
-  - {from: 75.point, to: 87.A}
-  - {from: 75.direction, to: 83.A}
-  - {from: 75.inset, to: 83.B}
-  - {from: 83.Result, to: 87.B}
-  - {from: 87.Result, to: 77.Result}

@@ -1,6 +1,6 @@
 version: 3
 name: BoostEmitter
-id_counter: 245
+id_counter: 323
 description: Emit boost exhaust while the parent holds Dash.
 owner_type: ecs.entity
 graphs:
@@ -43,58 +43,6 @@ graphs:
   name: active = action.pressed
   math_expression: active = action.pressed
   expression_mode: 2
-  entry_id: 168
-  return_id: 170
+  entry_id: 246
+  return_id: 248
   call_depth_limit: 64
-  nodes:
-  - id: 168
-    type: Function Entry
-    outputs:
-      active: {id: 172, type: bool, type_name: _Bool, kind: data, group: 1}
-      action: {type: struct, type_name: GameActionBinding, kind: data, flags: 2, group: 2}
-      action.source: {id: 175}
-      action.action: {}
-      action.firing: {}
-      action.disabled: {}
-      action.pressed: {}
-  - id: 170
-    type: Return
-    inputs:
-      Result: {id: 174, type: bool, type_name: _Bool, kind: data, flags: 2, group: 3}
-  - {id: 180, type: Get_GameParticleEmitter}
-  - {id: 182, type: Break_GameParticleEmitter}
-  - {id: 211, type: Make_GameParticleEmitter}
-  - {id: 240, type: Set_GameParticleEmitter}
-  edges:
-  - {from: 168.Exec, to: 240.Exec}
-  - {from: 168.action.pressed, to: 170.Result}
-  - {from: 168.action.pressed, to: 211.active}
-  - {from: 180.Value, to: 182.GameParticleEmitter}
-  - {from: 182.shape, to: 211.shape}
-  - {from: 182.color, to: 211.color}
-  - {from: 182.end_color, to: 211.end_color}
-  - {from: 182.rate, to: 211.rate}
-  - {from: 182.burst_count, to: 211.burst_count}
-  - {from: 182.lifetime, to: 211.lifetime}
-  - {from: 182.speed, to: 211.speed}
-  - {from: 182.size, to: 211.size}
-  - {from: 182.spread, to: 211.spread}
-  - {from: 182.drag, to: 211.drag}
-  - {from: 182.emission, to: 211.emission}
-  - {from: 182.antialias, to: 211.antialias}
-  - {from: 182.absorption, to: 211.absorption}
-  - {from: 182.metaball_group, to: 211.metaball_group}
-  - {from: 182.metaball_blend, to: 211.metaball_blend}
-  - {from: 182.velocity_align, to: 211.velocity_align}
-  - {from: 182.stretch, to: 211.stretch}
-  - {from: 182.velocity_inherit, to: 211.velocity_inherit}
-  - {from: 182.offset, to: 211.offset}
-  - {from: 182.direction, to: 211.direction}
-  - {from: 182.parent, to: 211.parent}
-  - {from: 182.planar, to: 211.planar}
-  - {from: 182.heading_only, to: 211.heading_only}
-  - {from: 182.fluid, to: 211.fluid}
-  - {from: 182.fluid_kind, to: 211.fluid_kind}
-  - {from: 182.fluid_mass, to: 211.fluid_mass}
-  - {from: 211.GameParticleEmitter, to: 240.Value}
-  - {from: 240.Then, to: 170.Exec}

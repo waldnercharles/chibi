@@ -1,6 +1,6 @@
 version: 3
 name: Plunger
-id_counter: 331
+id_counter: 414
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -52,14 +52,14 @@ graphs:
         group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 110, type: float, type_name: null, flags: 2, group: 3}
+      Result: {declaration_id: 110, type: double, flags: 2, group: 3}
   - id: 164
     type: Set Global Variable
     inputs:
       Name: Charge
-      Value: {type: float, type_name: null}
+      Value: {type: double}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: double}
   - id: 203
     type: Behavior Expression
     reference_id: 189
@@ -124,156 +124,30 @@ graphs:
   name: ready > 0.5 && lives > 0
   math_expression: ready > 0.5 && lives > 0
   expression_mode: 3
-  entry_id: 70
-  return_id: 72
+  entry_id: 332
+  return_id: 334
   call_depth_limit: 64
-  nodes:
-  - id: 70
-    type: Function Entry
-    outputs:
-    - {id: 74, name: ready, type: double, kind: data, group: 1}
-    - {id: 75, name: lives, type: double, kind: data, group: 2}
-  - id: 72
-    type: Return
-    inputs:
-    - {id: 76, name: Result, kind: data, flags: 2, group: 3}
-  - id: 77
-    type: Real
-    inputs: {Value: 0.5}
-  - id: 80
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  - {id: 84, type: Real}
-  - id: 87
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  - {id: 91, type: And}
-  edges:
-  - {from: 70.ready, to: 80.A}
-  - {from: 70.lives, to: 87.A}
-  - {from: 77.Value, to: 80.B}
-  - {from: 80.Result, to: 91.A}
-  - {from: 84.Value, to: 87.B}
-  - {from: 87.Result, to: 91.B}
-  - {from: 91.Result, to: 72.Result}
 - id: 103
   kind: function
   name: min(charge + dt, 1)
   math_expression: min(charge + dt, 1)
   expression_mode: 1
-  entry_id: 171
-  return_id: 173
+  entry_id: 358
+  return_id: 360
   call_depth_limit: 64
-  nodes:
-  - id: 171
-    type: Function Entry
-    outputs:
-    - id: 175
-      name: charge
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 176, name: dt, type: double, kind: data, flags: 2, group: 2}
-  - id: 173
-    type: Return
-    inputs:
-    - id: 177
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 3
-  - id: 178
-    type: Add
-    inputs:
-      A: {type_name: null}
-      B: {type: double}
-    outputs:
-      Result: {type_name: null}
-  - id: 182
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 185
-    type: Min
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  edges:
-  - {from: 171.charge, to: 178.A}
-  - {from: 171.dt, to: 178.B}
-  - {from: 178.Result, to: 185.A}
-  - {from: 182.Value, to: 185.B}
-  - {from: 185.Result, to: 173.Result}
 - id: 189
   kind: function
   name: charge > 0.01
   math_expression: charge > 0.01
   expression_mode: 3
-  entry_id: 210
-  return_id: 212
+  entry_id: 377
+  return_id: 379
   call_depth_limit: 64
-  nodes:
-  - id: 210
-    type: Function Entry
-    outputs:
-    - {id: 214, name: charge, type: double, kind: data, group: 1}
-  - id: 212
-    type: Return
-    inputs:
-    - {id: 215, name: Result, kind: data, flags: 2, group: 2}
-  - id: 216
-    type: Real
-    inputs: {Value: 0.01}
-  - id: 219
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 210.charge, to: 219.A}
-  - {from: 216.Value, to: 219.B}
-  - {from: 219.Result, to: 212.Result}
 - id: 223
   kind: function
   name: -800 - 230 * charge
   math_expression: -800 - 230 * charge
   expression_mode: 1
-  entry_id: 281
-  return_id: 283
+  entry_id: 391
+  return_id: 393
   call_depth_limit: 64
-  nodes:
-  - id: 281
-    type: Function Entry
-    outputs:
-    - {id: 285, name: charge, type: double, kind: data, flags: 2, group: 1}
-  - id: 283
-    type: Return
-    inputs:
-    - {id: 286, name: Result, kind: data, flags: 2, group: 2}
-  - id: 287
-    type: Real
-    inputs: {Value: 800.0}
-  - {id: 290, type: Negate}
-  - id: 293
-    type: Real
-    inputs: {Value: 230.0}
-  - id: 296
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 300, type: Subtract}
-  edges:
-  - {from: 281.charge, to: 296.B}
-  - {from: 287.Value, to: 290.Value}
-  - {from: 290.Result, to: 300.A}
-  - {from: 293.Value, to: 296.A}
-  - {from: 296.Result, to: 300.B}
-  - {from: 300.Result, to: 283.Result}

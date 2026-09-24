@@ -1,6 +1,6 @@
 version: 3
 name: MaterialImpactHealth
-id_counter: 216
+id_counter: 249
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -72,63 +72,14 @@ graphs:
   name: max(current - damage, 0)
   math_expression: max(current - damage, 0)
   expression_mode: 1
-  entry_id: 198
-  return_id: 200
+  entry_id: 217
+  return_id: 219
   call_depth_limit: 64
-  nodes:
-  - id: 198
-    type: Function Entry
-    outputs:
-    - {id: 202, name: current, type: int, kind: data, flags: 2, group: 1}
-    - {id: 203, name: damage, type: int, kind: data, flags: 2, group: 2}
-  - id: 200
-    type: Return
-    inputs:
-    - {id: 204, name: Result, type: int, kind: data, flags: 2, group: 3}
-  - id: 205
-    type: Subtract
-    inputs:
-      A: {type: int}
-      B: {type: int}
-    outputs:
-      Result: {type: int}
-  - {id: 209, type: Real}
-  - id: 212
-    type: Max
-    inputs:
-      A: {type: int}
-    outputs:
-      Result: {type: int}
-  edges:
-  - {from: 198.current, to: 205.A}
-  - {from: 198.damage, to: 205.B}
-  - {from: 205.Result, to: 212.A}
-  - {from: 209.Value, to: 212.B}
-  - {from: 212.Result, to: 200.Result}
 - id: 110
   kind: function
   name: current <= 0
   math_expression: current <= 0
   expression_mode: 3
-  entry_id: 131
-  return_id: 133
+  entry_id: 236
+  return_id: 238
   call_depth_limit: 64
-  nodes:
-  - id: 131
-    type: Function Entry
-    outputs:
-    - {id: 135, name: current, type: double, kind: data, group: 1}
-  - id: 133
-    type: Return
-    inputs:
-    - {id: 136, name: Result, kind: data, flags: 2, group: 2}
-  - {id: 137, type: Real}
-  - id: 140
-    type: Less Or Equal
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 131.current, to: 140.A}
-  - {from: 137.Value, to: 140.B}
-  - {from: 140.Result, to: 133.Result}

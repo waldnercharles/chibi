@@ -1,6 +1,6 @@
 version: 3
 name: ArenaWaveBehavior
-id_counter: 3399
+id_counter: 3613
 description: 'Five telegraphed formations: edge rows, opposing pincers and an arc. Markers count as pending arrivals, hold for one second, and create enemies at their exact marked positions. Final pickups are collected before clearing.'
 owner_type: ecs.entity
 variables:
@@ -766,100 +766,17 @@ graphs:
   name: Row X
   math_expression: Center.x+Direction*48*(Index-3.5)
   expression_mode: 1
-  entry_id: 3155
-  return_id: 3157
+  entry_id: 3400
+  return_id: 3402
   call_depth_limit: 64
-  nodes:
-  - id: 3155
-    type: Function Entry
-    outputs:
-    - id: 3159
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 3160, name: Direction, type: float, kind: data, flags: 2, group: 2}
-    - {id: 3161, name: Index, type: double, kind: data, flags: 2, group: 3}
-    - {id: 3162, name: x, type: float, kind: data, field_source: 3159, field_name: x}
-    - {id: 3163, name: "y", type: float, kind: data, field_source: 3159, field_name: "y"}
-  - id: 3157
-    type: Return
-    inputs:
-    - {id: 3164, name: Result, type: float, kind: data, flags: 2, group: 4}
-  - id: 3165
-    type: Real
-    inputs: {Value: 48.0}
-  - id: 3168
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - id: 3172
-    type: Real
-    inputs: {Value: 3.5}
-  - id: 3175
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3179
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 3183, type: Add}
-  edges:
-  - {from: 3155.Direction, to: 3168.A}
-  - {from: 3155.Index, to: 3175.A}
-  - {from: 3155.Center.x, to: 3183.A}
-  - {from: 3165.Value, to: 3168.B}
-  - {from: 3168.Result, to: 3179.A}
-  - {from: 3172.Value, to: 3175.B}
-  - {from: 3175.Result, to: 3179.B}
-  - {from: 3179.Result, to: 3183.B}
-  - {from: 3183.Result, to: 3157.Result}
 - id: 2696
   kind: function
   name: Row Y
   math_expression: Center.y+Direction*116
   expression_mode: 1
-  entry_id: 2753
-  return_id: 2755
+  entry_id: 3433
+  return_id: 3435
   call_depth_limit: 64
-  nodes:
-  - id: 2753
-    type: Function Entry
-    outputs:
-    - id: 2757
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 2758, name: Direction, type: float, kind: data, flags: 2, group: 2}
-    - {id: 2759, name: x, type: float, kind: data, field_source: 2757, field_name: x}
-    - {id: 2760, name: "y", type: float, kind: data, field_source: 2757, field_name: "y"}
-  - id: 2755
-    type: Return
-    inputs:
-    - {id: 2761, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - id: 2762
-    type: Real
-    inputs: {Value: 116.0}
-  - id: 2765
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 2769, type: Add}
-  edges:
-  - {from: 2753.Direction, to: 2765.A}
-  - {from: 2753.Center.y, to: 2769.A}
-  - {from: 2762.Value, to: 2765.B}
-  - {from: 2765.Result, to: 2769.B}
-  - {from: 2769.Result, to: 2755.Result}
 - id: 2777
   kind: function
   name: Side Formation
@@ -909,111 +826,17 @@ graphs:
   name: Side X
   math_expression: Center.x+Side*220
   expression_mode: 1
-  entry_id: 2847
-  return_id: 2849
+  entry_id: 3454
+  return_id: 3456
   call_depth_limit: 64
-  nodes:
-  - id: 2847
-    type: Function Entry
-    outputs:
-    - id: 2851
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 2852, name: Side, type: float, kind: data, flags: 2, group: 2}
-    - {id: 2853, name: x, type: float, kind: data, field_source: 2851, field_name: x}
-    - {id: 2854, name: "y", type: float, kind: data, field_source: 2851, field_name: "y"}
-  - id: 2849
-    type: Return
-    inputs:
-    - {id: 2855, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - id: 2856
-    type: Real
-    inputs: {Value: 220.0}
-  - id: 2859
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 2863, type: Add}
-  edges:
-  - {from: 2847.Side, to: 2859.A}
-  - {from: 2847.Center.x, to: 2863.A}
-  - {from: 2856.Value, to: 2859.B}
-  - {from: 2859.Result, to: 2863.B}
-  - {from: 2863.Result, to: 2849.Result}
 - id: 2809
   kind: function
   name: Side Y
   math_expression: Center.y+54*(Index%4-1.5)
   expression_mode: 1
-  entry_id: 3188
-  return_id: 3190
+  entry_id: 3475
+  return_id: 3477
   call_depth_limit: 64
-  nodes:
-  - id: 3188
-    type: Function Entry
-    outputs:
-    - id: 3192
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 3193, name: Index, type: double, kind: data, flags: 2, group: 2}
-    - {id: 3194, name: x, type: float, kind: data, field_source: 3192, field_name: x}
-    - {id: 3195, name: "y", type: float, kind: data, field_source: 3192, field_name: "y"}
-  - id: 3190
-    type: Return
-    inputs:
-    - {id: 3196, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - id: 3197
-    type: Real
-    inputs: {Value: 54.0}
-  - id: 3200
-    type: Real
-    inputs: {Value: 4.0}
-  - id: 3203
-    type: Modulo
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3207
-    type: Real
-    inputs: {Value: 1.5}
-  - id: 3210
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3214
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3218
-    type: Add
-    inputs:
-      B: {type: double}
-  edges:
-  - {from: 3188.Index, to: 3203.A}
-  - {from: 3188.Center.y, to: 3218.A}
-  - {from: 3197.Value, to: 3214.A}
-  - {from: 3200.Value, to: 3203.B}
-  - {from: 3203.Result, to: 3210.A}
-  - {from: 3207.Value, to: 3210.B}
-  - {from: 3210.Result, to: 3214.B}
-  - {from: 3214.Result, to: 3218.B}
-  - {from: 3218.Result, to: 3190.Result}
 - id: 2906
   kind: function
   name: Ellipse Formation
@@ -1062,193 +885,17 @@ graphs:
   name: Ellipse X
   math_expression: Center.x+225*cos(Index*pi/4+pi/8)
   expression_mode: 1
-  entry_id: 3223
-  return_id: 3225
+  entry_id: 3510
+  return_id: 3512
   call_depth_limit: 64
-  nodes:
-  - id: 3223
-    type: Function Entry
-    outputs:
-    - id: 3227
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 3228, name: Index, type: double, kind: data, flags: 2, group: 2}
-    - {id: 3229, name: x, type: float, kind: data, field_source: 3227, field_name: x}
-    - {id: 3230, name: "y", type: float, kind: data, field_source: 3227, field_name: "y"}
-  - id: 3225
-    type: Return
-    inputs:
-    - {id: 3231, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - id: 3232
-    type: Real
-    inputs: {Value: 225.0}
-  - id: 3235
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 3238
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3242
-    type: Real
-    inputs: {Value: 4.0}
-  - id: 3245
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3249
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 3252
-    type: Real
-    inputs: {Value: 8.0}
-  - id: 3255
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3259
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 3263, type: Cosine}
-  - id: 3266
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3270
-    type: Add
-    inputs:
-      B: {type: double}
-  edges:
-  - {from: 3223.Index, to: 3238.A}
-  - {from: 3223.Center.x, to: 3270.A}
-  - {from: 3232.Value, to: 3266.A}
-  - {from: 3235.Value, to: 3238.B}
-  - {from: 3238.Result, to: 3245.A}
-  - {from: 3242.Value, to: 3245.B}
-  - {from: 3245.Result, to: 3259.A}
-  - {from: 3249.Value, to: 3255.A}
-  - {from: 3252.Value, to: 3255.B}
-  - {from: 3255.Result, to: 3259.B}
-  - {from: 3259.Result, to: 3263.Value}
-  - {from: 3263.Result, to: 3266.B}
-  - {from: 3266.Result, to: 3270.B}
-  - {from: 3270.Result, to: 3225.Result}
 - id: 2968
   kind: function
   name: Ellipse Y
   math_expression: Center.y+108*sin(Index*pi/4+pi/8)
   expression_mode: 1
-  entry_id: 3275
-  return_id: 3277
+  entry_id: 3562
+  return_id: 3564
   call_depth_limit: 64
-  nodes:
-  - id: 3275
-    type: Function Entry
-    outputs:
-    - id: 3279
-      name: Center
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 3280, name: Index, type: double, kind: data, flags: 2, group: 2}
-    - {id: 3281, name: x, type: float, kind: data, field_source: 3279, field_name: x}
-    - {id: 3282, name: "y", type: float, kind: data, field_source: 3279, field_name: "y"}
-  - id: 3277
-    type: Return
-    inputs:
-    - {id: 3283, name: Result, type: float, kind: data, flags: 2, group: 3}
-  - id: 3284
-    type: Real
-    inputs: {Value: 108.0}
-  - id: 3287
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 3290
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3294
-    type: Real
-    inputs: {Value: 4.0}
-  - id: 3297
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3301
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 3304
-    type: Real
-    inputs: {Value: 8.0}
-  - id: 3307
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3311
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 3315, type: Sine}
-  - id: 3318
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 3322
-    type: Add
-    inputs:
-      B: {type: double}
-  edges:
-  - {from: 3275.Index, to: 3290.A}
-  - {from: 3275.Center.y, to: 3322.A}
-  - {from: 3284.Value, to: 3318.A}
-  - {from: 3287.Value, to: 3290.B}
-  - {from: 3290.Result, to: 3297.A}
-  - {from: 3294.Value, to: 3297.B}
-  - {from: 3297.Result, to: 3311.A}
-  - {from: 3301.Value, to: 3307.A}
-  - {from: 3304.Value, to: 3307.B}
-  - {from: 3307.Result, to: 3311.B}
-  - {from: 3311.Result, to: 3315.Value}
-  - {from: 3315.Result, to: 3318.B}
-  - {from: 3318.Result, to: 3322.B}
-  - {from: 3322.Result, to: 3277.Result}
 - id: 3339
   kind: function
   name: Count Members Snapshot

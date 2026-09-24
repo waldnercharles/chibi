@@ -1,5 +1,6 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
@@ -640,6 +641,45 @@ static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const behav
     yyjson_mut_arr_add_val(arr, o);
 }
 
+/* Expression bodies are read-only; the editor arranges them. */
+static void drop_positions(yyjson_mut_val *obj)
+{
+    size_t i, count;
+    yyjson_mut_val *n;
+    yyjson_mut_arr_foreach(yyjson_mut_obj_get(obj, "nodes"), i, count, n)
+    {
+        yyjson_mut_obj_remove_key(n, "x");
+        yyjson_mut_obj_remove_key(n, "y");
+        yyjson_mut_obj_remove_key(n, "placed");
+    }
+}
+
+/* An expression function omits a body that rebuilding from its source
+ * reproduces. */
+static bool derived_body(const graph *g)
+{
+    graph *body = g->owner && g->math_expression
+                    ? behavior_expression_rebuild(g->owner, g)
+                    : NULL;
+    if (!body) {
+        return false;
+    }
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *written = yyjson_mut_obj(doc), *rebuilt = yyjson_mut_obj(doc);
+    write_graph_body(doc, written, g, NULL, 0);
+    write_graph_body(doc, rebuilt, body, NULL, 0);
+    drop_positions(written);
+    drop_positions(rebuilt);
+    bool same = body->entry_id == g->entry_id && body->return_id == g->return_id &&
+                body->expression_mode == g->expression_mode &&
+                body->call_depth_limit == g->call_depth_limit &&
+                yyjson_mut_equals(written, rebuilt);
+    yyjson_mut_doc_free(doc);
+    graph_free(body);
+    free(body);
+    return same;
+}
+
 static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, const graph *g)
 {
     yyjson_mut_val *obj = yyjson_mut_obj(doc);
@@ -666,8 +706,10 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     if (g->call_depth_limit) {
         yyjson_mut_obj_add_int(doc, obj, "call_depth_limit", g->call_depth_limit);
     }
-    write_graph_body(doc, obj, g, NULL, 0);
-    serialize_omit_implied_shapes(obj, g);
+    if (!derived_body(g)) {
+        write_graph_body(doc, obj, g, NULL, 0);
+        serialize_omit_implied_shapes(obj, g);
+    }
     yyjson_mut_arr_add_val(graphs, obj);
 }
 

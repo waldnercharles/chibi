@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileLifecycle
-id_counter: 313
+id_counter: 407
 description: Age and expire projectiles; face velocity while moving.
 owner_type: ecs.entity
 graphs:
@@ -123,146 +123,30 @@ graphs:
   name: age += dt
   math_expression: age += dt
   expression_mode: 2
-  entry_id: 54
-  return_id: 56
+  entry_id: 314
+  return_id: 316
   call_depth_limit: 64
-  nodes:
-  - id: 54
-    type: Function Entry
-    outputs:
-      age: {id: 58, type: float, kind: data, group: 1}
-      dt: {type: double, kind: data, flags: 2, group: 2}
-  - id: 56
-    type: Return
-    inputs:
-      Result: {id: 60, kind: data, flags: 2, group: 3}
-  - id: 61
-    type: Add
-    inputs:
-      B: {type: double}
-  - {id: 65, type: Get_GameProjectile}
-  - {id: 67, type: Break_GameProjectile}
-  - {id: 73, type: Make_GameProjectile}
-  - {id: 79, type: Set_GameProjectile}
-  edges:
-  - {from: 54.Exec, to: 79.Exec}
-  - {from: 54.age, to: 61.A}
-  - {from: 54.dt, to: 61.B}
-  - {from: 61.Result, to: 56.Result}
-  - {from: 61.Result, to: 73.age}
-  - {from: 65.Value, to: 67.GameProjectile}
-  - {from: 67.speed, to: 73.speed}
-  - {from: 67.lifetime, to: 73.lifetime}
-  - {from: 67.damage, to: 73.damage}
-  - {from: 73.GameProjectile, to: 79.Value}
-  - {from: 79.Then, to: 56.Exec}
 - id: 84
   kind: function
   name: age >= lifetime
   math_expression: age >= lifetime
   expression_mode: 3
-  entry_id: 116
-  return_id: 118
+  entry_id: 345
+  return_id: 347
   call_depth_limit: 64
-  nodes:
-  - id: 116
-    type: Function Entry
-    outputs:
-    - {id: 120, name: age, type: double, kind: data, group: 1}
-    - {id: 121, name: lifetime, type: double, kind: data, group: 2}
-  - id: 118
-    type: Return
-    inputs:
-    - {id: 122, name: Result, kind: data, flags: 2, group: 3}
-  - id: 123
-    type: Greater Or Equal
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 116.age, to: 123.A}
-  - {from: 116.lifetime, to: 123.B}
-  - {from: 123.Result, to: 118.Result}
 - id: 133
   kind: function
   name: abs(vx) + abs(vy) > 0.0001
   math_expression: abs(vx) + abs(vy) > 0.0001
   expression_mode: 3
-  entry_id: 191
-  return_id: 193
+  entry_id: 357
+  return_id: 359
   call_depth_limit: 64
-  nodes:
-  - id: 191
-    type: Function Entry
-    outputs:
-    - {id: 195, name: vx, type: double, kind: data, flags: 2, group: 1}
-    - {id: 196, name: vy, type: double, kind: data, flags: 2, group: 2}
-  - id: 193
-    type: Return
-    inputs:
-    - {id: 197, name: Result, kind: data, flags: 2, group: 3}
-  - id: 198
-    type: Abs
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 201
-    type: Abs
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 204
-    type: Add
-    inputs:
-      B: {type: double}
-  - id: 208
-    type: Real
-    inputs: {Value: 0.0001}
-  - id: 211
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 191.vx, to: 198.Value}
-  - {from: 191.vy, to: 201.Value}
-  - {from: 198.Result, to: 204.A}
-  - {from: 201.Result, to: 204.B}
-  - {from: 204.Result, to: 211.A}
-  - {from: 208.Value, to: 211.B}
-  - {from: 211.Result, to: 193.Result}
 - id: 215
   kind: function
   name: heading = atan2(vy, vx)
   math_expression: heading = atan2(vy, vx)
   expression_mode: 2
-  entry_id: 288
-  return_id: 290
+  entry_id: 382
+  return_id: 384
   call_depth_limit: 64
-  nodes:
-  - id: 288
-    type: Function Entry
-    outputs:
-      heading: {id: 292, type: float, kind: data, group: 1}
-      vy: {kind: data, flags: 2, group: 2}
-      vx: {kind: data, flags: 2, group: 3}
-  - id: 290
-    type: Return
-    inputs:
-      Result: {id: 295, kind: data, flags: 2, group: 4}
-  - {id: 296, type: Arc Tangent 2}
-  - {id: 300, type: Get_GameOrientation}
-  - {id: 302, type: Break_GameOrientation}
-  - {id: 305, type: Make_GameOrientation}
-  - {id: 308, type: Set_GameOrientation}
-  edges:
-  - {from: 288.Exec, to: 308.Exec}
-  - {from: 288.vy, to: 296.A}
-  - {from: 288.vx, to: 296.B}
-  - {from: 296.Result, to: 290.Result}
-  - {from: 296.Result, to: 305.radians}
-  - {from: 300.Value, to: 302.GameOrientation}
-  - {from: 305.GameOrientation, to: 308.Value}
-  - {from: 308.Then, to: 290.Exec}

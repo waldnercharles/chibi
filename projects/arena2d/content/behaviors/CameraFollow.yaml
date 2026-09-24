@@ -1,6 +1,6 @@
 version: 3
 name: CameraFollow
-id_counter: 189
+id_counter: 233
 description: Follow the Player binding with exponential smoothing.
 owner_type: ecs.entity
 graphs:
@@ -56,67 +56,6 @@ graphs:
   name: position += (target - position) * (1 - exp(-rate * dt))
   math_expression: position += (target - position) * (1 - exp(-rate * dt))
   expression_mode: 2
-  entry_id: 146
-  return_id: 148
+  entry_id: 190
+  return_id: 192
   call_depth_limit: 64
-  nodes:
-  - id: 146
-    type: Function Entry
-    outputs:
-      position: {id: 150, type: struct, type_name: GameTransform, kind: data, group: 1}
-      target: {type: struct, type_name: GameTransform, kind: data, flags: 2, group: 2}
-      rate: {type: double, kind: data, flags: 2, group: 3}
-      dt: {type: double, kind: data, flags: 2, group: 4}
-  - id: 148
-    type: Return
-    inputs:
-      Result: {id: 154, kind: data, flags: 2, group: 5}
-  - id: 155
-    type: Subtract
-    inputs:
-      A: {type: struct, type_name: GameTransform}
-    outputs:
-      Result: {type: struct, type_name: GameTransform}
-  - id: 159
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 162
-    type: Negate
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 165
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 169, type: Exponential}
-  - {id: 172, type: Subtract}
-  - id: 176
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: GameTransform}
-    outputs:
-      Result: {type: struct, type_name: GameTransform}
-  - id: 180
-    type: Add
-    inputs:
-      B: {type: struct, type_name: GameTransform}
-  - {id: 184, type: Set_GameTransform}
-  edges:
-  - {from: 146.Exec, to: 184.Exec}
-  - {from: 146.position, to: 155.B}
-  - {from: 146.position, to: 180.A}
-  - {from: 146.target, to: 155.A}
-  - {from: 146.rate, to: 162.Value}
-  - {from: 146.dt, to: 165.B}
-  - {from: 155.Result, to: 176.A}
-  - {from: 159.Value, to: 172.A}
-  - {from: 162.Result, to: 165.A}
-  - {from: 165.Result, to: 169.Value}
-  - {from: 169.Result, to: 172.B}
-  - {from: 172.Result, to: 176.B}
-  - {from: 176.Result, to: 180.B}
-  - {from: 180.Result, to: 184.Value}
-  - {from: 184.Then, to: 148.Exec}
-  - {from: 184.Value, to: 148.Result}

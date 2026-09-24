@@ -1,6 +1,6 @@
 version: 3
 name: BumperKick
-id_counter: 1163
+id_counter: 1342
 owner_type: ecs.entity
 variables:
 - {id: 1, name: pulse, type: float}
@@ -145,261 +145,30 @@ graphs:
   name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
   math_expression: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
   expression_mode: 1
-  entry_id: 435
-  return_id: 437
+  entry_id: 1164
+  return_id: 1166
   call_depth_limit: 64
-  nodes:
-  - id: 435
-    type: Function Entry
-    outputs:
-    - {id: 439, name: v, type: float, kind: data, flags: 2, group: 1}
-    - {id: 440, name: x, type: float, kind: data, flags: 2, group: 2}
-    - {id: 441, name: sx, type: double, kind: data, flags: 2, group: 3}
-    - {id: 442, name: "y", type: float, kind: data, flags: 2, group: 4}
-    - {id: 443, name: sy, type: double, kind: data, flags: 2, group: 5}
-  - id: 437
-    type: Return
-    inputs:
-    - {id: 444, name: Result, type: float, kind: data, flags: 2, group: 6}
-  - id: 445
-    type: Real
-    inputs: {Value: 180.0}
-  - id: 448
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 452
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 456
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 460
-    type: Real
-    inputs: {Value: 2.0}
-  - {id: 463, type: Power}
-  - id: 467
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 471
-    type: Real
-    inputs: {Value: 2.0}
-  - {id: 474, type: Power}
-  - {id: 478, type: Add}
-  - {id: 482, type: Square Root}
-  - id: 485
-    type: Real
-    inputs: {Value: 1.0}
-  - {id: 488, type: Max}
-  - id: 492
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 496
-    type: Add
-    inputs:
-      B: {type: double}
-  edges:
-  - {from: 435.v, to: 496.A}
-  - {from: 435.x, to: 448.A}
-  - {from: 435.x, to: 456.A}
-  - {from: 435.sx, to: 448.B}
-  - {from: 435.sx, to: 456.B}
-  - {from: 435.y, to: 467.A}
-  - {from: 435.sy, to: 467.B}
-  - {from: 445.Value, to: 452.A}
-  - {from: 448.Result, to: 452.B}
-  - {from: 452.Result, to: 492.A}
-  - {from: 456.Result, to: 463.A}
-  - {from: 460.Value, to: 463.B}
-  - {from: 463.Result, to: 478.A}
-  - {from: 467.Result, to: 474.A}
-  - {from: 471.Value, to: 474.B}
-  - {from: 474.Result, to: 478.B}
-  - {from: 478.Result, to: 482.Value}
-  - {from: 482.Result, to: 488.A}
-  - {from: 485.Value, to: 488.B}
-  - {from: 488.Result, to: 492.B}
-  - {from: 492.Result, to: 496.B}
-  - {from: 496.Result, to: 437.Result}
 - id: 500
   kind: function
   name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
   math_expression: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
   expression_mode: 1
-  entry_id: 910
-  return_id: 912
+  entry_id: 1230
+  return_id: 1232
   call_depth_limit: 64
-  nodes:
-  - id: 910
-    type: Function Entry
-    outputs:
-    - {id: 914, name: v, type: float, kind: data, flags: 2, group: 1}
-    - {id: 915, name: "y", type: float, kind: data, flags: 2, group: 2}
-    - {id: 916, name: sy, type: double, kind: data, flags: 2, group: 3}
-    - {id: 917, name: x, type: float, kind: data, flags: 2, group: 4}
-    - {id: 918, name: sx, type: double, kind: data, flags: 2, group: 5}
-  - id: 912
-    type: Return
-    inputs:
-    - {id: 919, name: Result, type: float, kind: data, flags: 2, group: 6}
-  - id: 920
-    type: Real
-    inputs: {Value: 180.0}
-  - id: 923
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 927
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 931
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 935
-    type: Real
-    inputs: {Value: 2.0}
-  - {id: 938, type: Power}
-  - id: 942
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 946
-    type: Real
-    inputs: {Value: 2.0}
-  - {id: 949, type: Power}
-  - {id: 953, type: Add}
-  - {id: 957, type: Square Root}
-  - id: 960
-    type: Real
-    inputs: {Value: 1.0}
-  - {id: 963, type: Max}
-  - id: 967
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 971
-    type: Add
-    inputs:
-      B: {type: double}
-  edges:
-  - {from: 910.v, to: 971.A}
-  - {from: 910.y, to: 923.A}
-  - {from: 910.y, to: 942.A}
-  - {from: 910.sy, to: 923.B}
-  - {from: 910.sy, to: 942.B}
-  - {from: 910.x, to: 931.A}
-  - {from: 910.sx, to: 931.B}
-  - {from: 920.Value, to: 927.A}
-  - {from: 923.Result, to: 927.B}
-  - {from: 927.Result, to: 967.A}
-  - {from: 931.Result, to: 938.A}
-  - {from: 935.Value, to: 938.B}
-  - {from: 938.Result, to: 953.A}
-  - {from: 942.Result, to: 949.A}
-  - {from: 946.Value, to: 949.B}
-  - {from: 949.Result, to: 953.B}
-  - {from: 953.Result, to: 957.Value}
-  - {from: 957.Result, to: 963.A}
-  - {from: 960.Value, to: 963.B}
-  - {from: 963.Result, to: 967.B}
-  - {from: 967.Result, to: 971.B}
-  - {from: 971.Result, to: 912.Result}
 - id: 978
   kind: function
   name: max(pulse - dt*4,0)
   math_expression: max(pulse - dt*4,0)
   expression_mode: 1
-  entry_id: 1066
-  return_id: 1068
+  entry_id: 1296
+  return_id: 1298
   call_depth_limit: 64
-  nodes:
-  - id: 1066
-    type: Function Entry
-    outputs:
-    - {id: 1070, name: pulse, type: double, kind: data, flags: 2, group: 1}
-    - {id: 1071, name: dt, type: double, kind: data, flags: 2, group: 2}
-  - id: 1068
-    type: Return
-    inputs:
-    - {id: 1072, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 1073
-    type: Real
-    inputs: {Value: 4.0}
-  - id: 1076
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 1080
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 1084, type: Real}
-  - id: 1087
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 1066.pulse, to: 1080.A}
-  - {from: 1066.dt, to: 1076.A}
-  - {from: 1073.Value, to: 1076.B}
-  - {from: 1076.Result, to: 1080.B}
-  - {from: 1080.Result, to: 1087.A}
-  - {from: 1084.Value, to: 1087.B}
-  - {from: 1087.Result, to: 1068.Result}
 - id: 1091
   kind: function
   name: 5+14*pulse
   math_expression: 5+14*pulse
   expression_mode: 1
-  entry_id: 1143
-  return_id: 1145
+  entry_id: 1322
+  return_id: 1324
   call_depth_limit: 64
-  nodes:
-  - id: 1143
-    type: Function Entry
-    outputs:
-    - {id: 1147, name: pulse, type: double, kind: data, flags: 2, group: 1}
-  - id: 1145
-    type: Return
-    inputs:
-    - {id: 1148, name: Result, kind: data, flags: 2, group: 2}
-  - id: 1149
-    type: Real
-    inputs: {Value: 5.0}
-  - id: 1152
-    type: Real
-    inputs: {Value: 14.0}
-  - id: 1155
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 1159, type: Add}
-  edges:
-  - {from: 1143.pulse, to: 1155.B}
-  - {from: 1149.Value, to: 1159.A}
-  - {from: 1152.Value, to: 1155.A}
-  - {from: 1155.Result, to: 1159.B}
-  - {from: 1159.Result, to: 1145.Result}

@@ -1,6 +1,6 @@
 version: 3
 name: BallMotion
-id_counter: 323
+id_counter: 405
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -131,161 +131,30 @@ graphs:
   name: ready < 0.5
   math_expression: ready < 0.5
   expression_mode: 3
-  entry_id: 28
-  return_id: 30
+  entry_id: 324
+  return_id: 326
   call_depth_limit: 64
-  nodes:
-  - id: 28
-    type: Function Entry
-    outputs:
-    - {id: 32, name: ready, type: double, kind: data, group: 1}
-  - id: 30
-    type: Return
-    inputs:
-    - {id: 33, name: Result, kind: data, flags: 2, group: 2}
-  - id: 34
-    type: Real
-    inputs: {Value: 0.5}
-  - id: 37
-    type: Less
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 28.ready, to: 37.A}
-  - {from: 34.Value, to: 37.B}
-  - {from: 37.Result, to: 30.Result}
 - id: 41
   kind: function
   name: clamp(v + 480 * dt, -1150, 1000)
   math_expression: clamp(v + 480 * dt, -1150, 1000)
   expression_mode: 1
-  entry_id: 151
-  return_id: 153
+  entry_id: 338
+  return_id: 340
   call_depth_limit: 64
-  nodes:
-  - id: 151
-    type: Function Entry
-    outputs:
-    - {id: 155, name: v, type: double, kind: data, flags: 2, group: 1}
-    - {id: 156, name: dt, type: double, kind: data, flags: 2, group: 2}
-  - id: 153
-    type: Return
-    inputs:
-    - {id: 157, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 158
-    type: Real
-    inputs: {Value: 480.0}
-  - id: 161
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - id: 165
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 169
-    type: Real
-    inputs: {Value: 1150.0}
-  - {id: 172, type: Negate}
-  - id: 175
-    type: Real
-    inputs: {Value: 1000.0}
-  - id: 178
-    type: Clamp
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 151.v, to: 165.A}
-  - {from: 151.dt, to: 161.B}
-  - {from: 158.Value, to: 161.A}
-  - {from: 161.Result, to: 165.B}
-  - {from: 165.Result, to: 178.Value}
-  - {from: 169.Value, to: 172.Value}
-  - {from: 172.Result, to: 178.Min}
-  - {from: 175.Value, to: 178.Max}
-  - {from: 178.Result, to: 153.Result}
 - id: 183
   kind: function
   name: y > 345
   math_expression: y > 345
   expression_mode: 3
-  entry_id: 204
-  return_id: 206
+  entry_id: 371
+  return_id: 373
   call_depth_limit: 64
-  nodes:
-  - id: 204
-    type: Function Entry
-    outputs:
-    - {id: 208, name: "y", type: double, kind: data, group: 1}
-  - id: 206
-    type: Return
-    inputs:
-    - {id: 209, name: Result, kind: data, flags: 2, group: 2}
-  - id: 210
-    type: Real
-    inputs: {Value: 345.0}
-  - id: 213
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 204.y, to: 213.A}
-  - {from: 210.Value, to: 213.B}
-  - {from: 213.Result, to: 206.Result}
 - id: 220
   kind: function
   name: max(lives-1,0)
   math_expression: max(lives-1,0)
   expression_mode: 1
-  entry_id: 272
-  return_id: 274
+  entry_id: 385
+  return_id: 387
   call_depth_limit: 64
-  nodes:
-  - id: 272
-    type: Function Entry
-    outputs:
-    - id: 276
-      name: lives
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 1
-  - id: 274
-    type: Return
-    inputs:
-    - id: 277
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 2
-  - id: 278
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 281
-    type: Subtract
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  - {id: 285, type: Real}
-  - id: 288
-    type: Max
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  edges:
-  - {from: 272.lives, to: 281.A}
-  - {from: 278.Value, to: 281.B}
-  - {from: 281.Result, to: 288.A}
-  - {from: 285.Value, to: 288.B}
-  - {from: 288.Result, to: 274.Result}

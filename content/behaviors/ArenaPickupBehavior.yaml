@@ -1,6 +1,6 @@
 version: 3
 name: ArenaPickupBehavior
-id_counter: 933
+id_counter: 1301
 description: Small flat outline pickups keep a random initial rotation, ease through the shared beat, fade smoothly at expiry and trace a short spiral into the player.
 owner_type: ecs.entity
 variables:
@@ -228,7 +228,7 @@ graphs:
       Lifetime: {declaration_id: 541, type: float, flags: 2, group: 1}
       UpdatedAge: {declaration_id: 542, type: float, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 543, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 543, type: float, flags: 2, group: 3}
   - id: 585
     type: Behavior Expression
     reference_id: 573
@@ -249,7 +249,7 @@ graphs:
     reference_name: Pulse Scale
     inputs:
       Angle: {declaration_id: 594, type: double, flags: 2, group: 1}
-      Fade: {declaration_id: 595, type: double, flags: 2, group: 2}
+      Fade: {declaration_id: 595, type: float, flags: 2, group: 2}
     outputs:
       Result: {declaration_id: 596, type: double, flags: 2, group: 3}
   edges:
@@ -411,21 +411,21 @@ graphs:
     inputs:
       CollectionAge: {declaration_id: 627, type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 628, type: double, flags: 2, group: 2}
+      Result: {declaration_id: 628, type: float, flags: 2, group: 2}
   - id: 660
     type: Behavior Expression
     reference_id: 639
     reference_name: Spiral Angle
     inputs:
-      T: {declaration_id: 644, type: double, flags: 2, group: 1}
+      T: {declaration_id: 644, type: float, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 645, type: double, flags: 2, group: 2}
+      Result: {declaration_id: 645, type: float, flags: 2, group: 2}
   - id: 706
     type: Behavior Expression
     reference_id: 663
     reference_name: Spiral Weight
     inputs:
-      T: {declaration_id: 668, type: double, flags: 2, group: 1}
+      T: {declaration_id: 668, type: float, flags: 2, group: 1}
     outputs:
       Result: {declaration_id: 669, type: double, flags: 2, group: 2}
   - id: 784
@@ -433,29 +433,29 @@ graphs:
     reference_id: 709
     reference_name: Spiral X
     inputs:
-      TargetX: {declaration_id: 714, type: float, flags: 2, group: 1}
+      TargetX: {declaration_id: 714, flags: 2, group: 1}
       Weight: {declaration_id: 715, type: double, flags: 2, group: 2}
-      OriginX: {declaration_id: 716, type: float, flags: 2, group: 3}
-      Theta: {declaration_id: 717, type: double, flags: 2, group: 4}
-      OriginY: {declaration_id: 718, type: float, flags: 2, group: 5}
-      TargetY: {declaration_id: 719, type: float, flags: 2, group: 6}
-      T: {declaration_id: 720, type: double, flags: 2, group: 7}
+      OriginX: {declaration_id: 716, flags: 2, group: 3}
+      Theta: {declaration_id: 717, type: float, flags: 2, group: 4}
+      OriginY: {declaration_id: 718, flags: 2, group: 5}
+      TargetY: {declaration_id: 719, flags: 2, group: 6}
+      T: {declaration_id: 720, type: float, flags: 2, group: 7}
     outputs:
-      Result: {declaration_id: 721, type: double, flags: 2, group: 8}
+      Result: {declaration_id: 721, flags: 2, group: 8}
   - id: 868
     type: Behavior Expression
     reference_id: 793
     reference_name: Spiral Y
     inputs:
-      TargetY: {declaration_id: 798, type: float, flags: 2, group: 1}
+      TargetY: {declaration_id: 798, flags: 2, group: 1}
       Weight: {declaration_id: 799, type: double, flags: 2, group: 2}
-      OriginX: {declaration_id: 800, type: float, flags: 2, group: 3}
-      TargetX: {declaration_id: 801, type: float, flags: 2, group: 4}
-      Theta: {declaration_id: 802, type: double, flags: 2, group: 5}
-      OriginY: {declaration_id: 803, type: float, flags: 2, group: 6}
-      T: {declaration_id: 804, type: double, flags: 2, group: 7}
+      OriginX: {declaration_id: 800, flags: 2, group: 3}
+      TargetX: {declaration_id: 801, flags: 2, group: 4}
+      Theta: {declaration_id: 802, type: float, flags: 2, group: 5}
+      OriginY: {declaration_id: 803, flags: 2, group: 6}
+      T: {declaration_id: 804, type: float, flags: 2, group: 7}
     outputs:
-      Result: {declaration_id: 805, type: double, flags: 2, group: 8}
+      Result: {declaration_id: 805, flags: 2, group: 8}
   - id: 889
     type: Behavior Expression
     reference_id: 877
@@ -467,15 +467,15 @@ graphs:
         flags: 2
         group: 1
         binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
-      Theta: {declaration_id: 883, type: double, flags: 2, group: 2}
+      Theta: {declaration_id: 883, type: float, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 884, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 884, flags: 2, group: 3}
   - id: 914
     type: Behavior Expression
     reference_id: 893
     reference_name: Spiral Scale
     inputs:
-      T: {declaration_id: 898, type: double, flags: 2, group: 1}
+      T: {declaration_id: 898, type: float, flags: 2, group: 1}
     outputs:
       Result: {declaration_id: 899, type: double, flags: 2, group: 2}
   - id: 929
@@ -483,7 +483,7 @@ graphs:
     reference_id: 917
     reference_name: Collection Age
     inputs:
-      CollectionAge: {declaration_id: 922, type: float, flags: 2, group: 1}
+      CollectionAge: {declaration_id: 922, flags: 2, group: 1}
       Delta:
         declaration_id: 923
         type: float
@@ -491,7 +491,7 @@ graphs:
         group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {declaration_id: 924, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 924, flags: 2, group: 3}
   edges:
   - {from: 8.Then, to: 237.Exec}
   - {from: 223.Value.collection_age, to: 929.CollectionAge}
@@ -642,629 +642,94 @@ graphs:
   name: Pulse Angle
   math_expression: Eased*2*pi
   expression_mode: 1
-  entry_id: 513
-  return_id: 515
+  entry_id: 934
+  return_id: 936
   call_depth_limit: 64
-  nodes:
-  - id: 513
-    type: Function Entry
-    outputs:
-    - {id: 517, name: Eased, type: double, kind: data, flags: 2, group: 1}
-  - id: 515
-    type: Return
-    inputs:
-    - {id: 518, name: Result, type: double, kind: data, flags: 2, group: 2}
-  - id: 519
-    type: Real
-    inputs: {Value: 2.0}
-  - id: 522
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 526
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 529
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 513.Eased, to: 522.A}
-  - {from: 519.Value, to: 522.B}
-  - {from: 522.Result, to: 529.A}
-  - {from: 526.Value, to: 529.B}
-  - {from: 529.Result, to: 515.Result}
 - id: 536
   kind: function
   name: Pulse Fade
   math_expression: min(max((Lifetime-UpdatedAge)/2,0),1)
   expression_mode: 1
-  entry_id: 537
-  return_id: 539
+  entry_id: 955
+  return_id: 957
   call_depth_limit: 64
-  nodes:
-  - id: 537
-    type: Function Entry
-    outputs:
-    - {id: 541, name: Lifetime, type: double, kind: data, flags: 2, group: 1}
-    - {id: 542, name: UpdatedAge, type: double, kind: data, flags: 2, group: 2}
-  - id: 539
-    type: Return
-    inputs:
-    - {id: 543, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 544
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 548
-    type: Real
-    inputs: {Value: 2.0}
-  - id: 551
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 555, type: Real}
-  - id: 558
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 562
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 565
-    type: Min
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 537.Lifetime, to: 544.A}
-  - {from: 537.UpdatedAge, to: 544.B}
-  - {from: 544.Result, to: 551.A}
-  - {from: 548.Value, to: 551.B}
-  - {from: 551.Result, to: 558.A}
-  - {from: 555.Value, to: 558.B}
-  - {from: 558.Result, to: 565.A}
-  - {from: 562.Value, to: 565.B}
-  - {from: 565.Result, to: 539.Result}
 - id: 573
   kind: function
   name: Pulse Yaw
   math_expression: Angle+BaseRotation
   expression_mode: 1
-  entry_id: 574
-  return_id: 576
+  entry_id: 988
+  return_id: 990
   call_depth_limit: 64
-  nodes:
-  - id: 574
-    type: Function Entry
-    outputs:
-    - {id: 578, name: Angle, type: double, kind: data, flags: 2, group: 1}
-    - {id: 579, name: BaseRotation, type: double, kind: data, flags: 2, group: 2}
-  - id: 576
-    type: Return
-    inputs:
-    - {id: 580, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 581
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 574.Angle, to: 581.A}
-  - {from: 574.BaseRotation, to: 581.B}
-  - {from: 581.Result, to: 576.Result}
 - id: 589
   kind: function
   name: Pulse Scale
   math_expression: (0.9+0.1*cos(Angle))*Fade
   expression_mode: 1
-  entry_id: 590
-  return_id: 592
+  entry_id: 1000
+  return_id: 1002
   call_depth_limit: 64
-  nodes:
-  - id: 590
-    type: Function Entry
-    outputs:
-    - {id: 594, name: Angle, kind: data, flags: 2, group: 1}
-    - {id: 595, name: Fade, type: double, kind: data, flags: 2, group: 2}
-  - id: 592
-    type: Return
-    inputs:
-    - {id: 596, name: Result, kind: data, flags: 2, group: 3}
-  - id: 597
-    type: Real
-    inputs: {Value: 0.9}
-  - id: 600
-    type: Real
-    inputs: {Value: 0.1}
-  - {id: 603, type: Cosine}
-  - {id: 606, type: Multiply}
-  - {id: 610, type: Add}
-  - id: 614
-    type: Multiply
-    inputs:
-      B: {type: double}
-  edges:
-  - {from: 590.Angle, to: 603.Value}
-  - {from: 590.Fade, to: 614.B}
-  - {from: 597.Value, to: 610.A}
-  - {from: 600.Value, to: 606.A}
-  - {from: 603.Result, to: 606.B}
-  - {from: 606.Result, to: 610.B}
-  - {from: 610.Result, to: 614.A}
-  - {from: 614.Result, to: 592.Result}
 - id: 622
   kind: function
   name: Spiral T
   math_expression: CollectionAge/0.6
   expression_mode: 1
-  entry_id: 623
-  return_id: 625
+  entry_id: 1029
+  return_id: 1031
   call_depth_limit: 64
-  nodes:
-  - id: 623
-    type: Function Entry
-    outputs:
-    - {id: 627, name: CollectionAge, type: double, kind: data, flags: 2, group: 1}
-  - id: 625
-    type: Return
-    inputs:
-    - {id: 628, name: Result, type: double, kind: data, flags: 2, group: 2}
-  - id: 629
-    type: Real
-    inputs: {Value: 0.6}
-  - id: 632
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 623.CollectionAge, to: 632.A}
-  - {from: 629.Value, to: 632.B}
-  - {from: 632.Result, to: 625.Result}
 - id: 639
   kind: function
   name: Spiral Angle
   math_expression: T*2.5*pi
   expression_mode: 1
-  entry_id: 640
-  return_id: 642
+  entry_id: 1043
+  return_id: 1045
   call_depth_limit: 64
-  nodes:
-  - id: 640
-    type: Function Entry
-    outputs:
-    - {id: 644, name: T, type: double, kind: data, flags: 2, group: 1}
-  - id: 642
-    type: Return
-    inputs:
-    - {id: 645, name: Result, type: double, kind: data, flags: 2, group: 2}
-  - id: 646
-    type: Real
-    inputs: {Value: 2.5}
-  - id: 649
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 653
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 656
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 640.T, to: 649.A}
-  - {from: 646.Value, to: 649.B}
-  - {from: 649.Result, to: 656.A}
-  - {from: 653.Value, to: 656.B}
-  - {from: 656.Result, to: 642.Result}
 - id: 663
   kind: function
   name: Spiral Weight
   math_expression: (1-T)*(1-T)*(1+5*T)
   expression_mode: 1
-  entry_id: 664
-  return_id: 666
+  entry_id: 1064
+  return_id: 1066
   call_depth_limit: 64
-  nodes:
-  - id: 664
-    type: Function Entry
-    outputs:
-    - {id: 668, name: T, type: double, kind: data, flags: 2, group: 1}
-  - id: 666
-    type: Return
-    inputs:
-    - {id: 669, name: Result, kind: data, flags: 2, group: 2}
-  - id: 670
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 673
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 677
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 680
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - {id: 684, type: Multiply}
-  - id: 688
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 691
-    type: Real
-    inputs: {Value: 5.0}
-  - id: 694
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 698, type: Add}
-  - {id: 702, type: Multiply}
-  edges:
-  - {from: 664.T, to: 673.B}
-  - {from: 664.T, to: 680.B}
-  - {from: 664.T, to: 694.B}
-  - {from: 670.Value, to: 673.A}
-  - {from: 673.Result, to: 684.A}
-  - {from: 677.Value, to: 680.A}
-  - {from: 680.Result, to: 684.B}
-  - {from: 684.Result, to: 702.A}
-  - {from: 688.Value, to: 698.A}
-  - {from: 691.Value, to: 694.A}
-  - {from: 694.Result, to: 698.B}
-  - {from: 698.Result, to: 702.B}
-  - {from: 702.Result, to: 666.Result}
 - id: 709
   kind: function
   name: Spiral X
   math_expression: TargetX+Weight*((OriginX-TargetX)*cos(Theta)-(OriginY-TargetY)*sin(Theta))+12*sin(pi*T)*cos(Theta)
   expression_mode: 1
-  entry_id: 710
-  return_id: 712
+  entry_id: 1107
+  return_id: 1109
   call_depth_limit: 64
-  nodes:
-  - id: 710
-    type: Function Entry
-    outputs:
-    - {id: 714, name: TargetX, type: double, kind: data, flags: 2, group: 1}
-    - {id: 715, name: Weight, type: double, kind: data, flags: 2, group: 2}
-    - {id: 716, name: OriginX, type: double, kind: data, flags: 2, group: 3}
-    - {id: 717, name: Theta, kind: data, flags: 2, group: 4}
-    - {id: 718, name: OriginY, type: double, kind: data, flags: 2, group: 5}
-    - {id: 719, name: TargetY, type: double, kind: data, flags: 2, group: 6}
-    - {id: 720, name: T, type: double, kind: data, flags: 2, group: 7}
-  - id: 712
-    type: Return
-    inputs:
-    - {id: 721, name: Result, type: double, kind: data, flags: 2, group: 8}
-  - id: 722
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 726, type: Cosine}
-  - id: 729
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 733
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 737, type: Sine}
-  - id: 740
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 744
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 748
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 752
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 756
-    type: Real
-    inputs: {Value: 12.0}
-  - id: 759
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 762
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 766, type: Sine}
-  - {id: 769, type: Multiply}
-  - {id: 773, type: Cosine}
-  - {id: 776, type: Multiply}
-  - id: 780
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 710.TargetX, to: 722.B}
-  - {from: 710.TargetX, to: 752.A}
-  - {from: 710.Weight, to: 748.A}
-  - {from: 710.OriginX, to: 722.A}
-  - {from: 710.Theta, to: 726.Value}
-  - {from: 710.Theta, to: 737.Value}
-  - {from: 710.Theta, to: 773.Value}
-  - {from: 710.OriginY, to: 733.A}
-  - {from: 710.TargetY, to: 733.B}
-  - {from: 710.T, to: 762.B}
-  - {from: 722.Result, to: 729.A}
-  - {from: 726.Result, to: 729.B}
-  - {from: 729.Result, to: 744.A}
-  - {from: 733.Result, to: 740.A}
-  - {from: 737.Result, to: 740.B}
-  - {from: 740.Result, to: 744.B}
-  - {from: 744.Result, to: 748.B}
-  - {from: 748.Result, to: 752.B}
-  - {from: 752.Result, to: 780.A}
-  - {from: 756.Value, to: 769.A}
-  - {from: 759.Value, to: 762.A}
-  - {from: 762.Result, to: 766.Value}
-  - {from: 766.Result, to: 769.B}
-  - {from: 769.Result, to: 776.A}
-  - {from: 773.Result, to: 776.B}
-  - {from: 776.Result, to: 780.B}
-  - {from: 780.Result, to: 712.Result}
 - id: 793
   kind: function
   name: Spiral Y
   math_expression: TargetY+Weight*((OriginX-TargetX)*sin(Theta)+(OriginY-TargetY)*cos(Theta))+12*sin(pi*T)*sin(Theta)
   expression_mode: 1
-  entry_id: 794
-  return_id: 796
+  entry_id: 1182
+  return_id: 1184
   call_depth_limit: 64
-  nodes:
-  - id: 794
-    type: Function Entry
-    outputs:
-    - {id: 798, name: TargetY, type: double, kind: data, flags: 2, group: 1}
-    - {id: 799, name: Weight, type: double, kind: data, flags: 2, group: 2}
-    - {id: 800, name: OriginX, type: double, kind: data, flags: 2, group: 3}
-    - {id: 801, name: TargetX, type: double, kind: data, flags: 2, group: 4}
-    - {id: 802, name: Theta, kind: data, flags: 2, group: 5}
-    - {id: 803, name: OriginY, type: double, kind: data, flags: 2, group: 6}
-    - {id: 804, name: T, type: double, kind: data, flags: 2, group: 7}
-  - id: 796
-    type: Return
-    inputs:
-    - {id: 805, name: Result, type: double, kind: data, flags: 2, group: 8}
-  - id: 806
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 810, type: Sine}
-  - id: 813
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 817
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 821, type: Cosine}
-  - id: 824
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 828
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 832
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 836
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 840
-    type: Real
-    inputs: {Value: 12.0}
-  - id: 843
-    type: Real
-    inputs: {Value: 3.141592653589793}
-  - id: 846
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 850, type: Sine}
-  - {id: 853, type: Multiply}
-  - {id: 857, type: Sine}
-  - {id: 860, type: Multiply}
-  - id: 864
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 794.TargetY, to: 817.B}
-  - {from: 794.TargetY, to: 836.A}
-  - {from: 794.Weight, to: 832.A}
-  - {from: 794.OriginX, to: 806.A}
-  - {from: 794.TargetX, to: 806.B}
-  - {from: 794.Theta, to: 810.Value}
-  - {from: 794.Theta, to: 821.Value}
-  - {from: 794.Theta, to: 857.Value}
-  - {from: 794.OriginY, to: 817.A}
-  - {from: 794.T, to: 846.B}
-  - {from: 806.Result, to: 813.A}
-  - {from: 810.Result, to: 813.B}
-  - {from: 813.Result, to: 828.A}
-  - {from: 817.Result, to: 824.A}
-  - {from: 821.Result, to: 824.B}
-  - {from: 824.Result, to: 828.B}
-  - {from: 828.Result, to: 832.B}
-  - {from: 832.Result, to: 836.B}
-  - {from: 836.Result, to: 864.A}
-  - {from: 840.Value, to: 853.A}
-  - {from: 843.Value, to: 846.A}
-  - {from: 846.Result, to: 850.Value}
-  - {from: 850.Result, to: 853.B}
-  - {from: 853.Result, to: 860.A}
-  - {from: 857.Result, to: 860.B}
-  - {from: 860.Result, to: 864.B}
-  - {from: 864.Result, to: 796.Result}
 - id: 877
   kind: function
   name: Spiral Yaw
   math_expression: BaseRotation+Theta
   expression_mode: 1
-  entry_id: 878
-  return_id: 880
+  entry_id: 1257
+  return_id: 1259
   call_depth_limit: 64
-  nodes:
-  - id: 878
-    type: Function Entry
-    outputs:
-    - {id: 882, name: BaseRotation, type: double, kind: data, flags: 2, group: 1}
-    - {id: 883, name: Theta, type: double, kind: data, flags: 2, group: 2}
-  - id: 880
-    type: Return
-    inputs:
-    - {id: 884, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 885
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 878.BaseRotation, to: 885.A}
-  - {from: 878.Theta, to: 885.B}
-  - {from: 885.Result, to: 880.Result}
 - id: 893
   kind: function
   name: Spiral Scale
   math_expression: 1-0.5*T
   expression_mode: 1
-  entry_id: 894
-  return_id: 896
+  entry_id: 1269
+  return_id: 1271
   call_depth_limit: 64
-  nodes:
-  - id: 894
-    type: Function Entry
-    outputs:
-    - {id: 898, name: T, type: double, kind: data, flags: 2, group: 1}
-  - id: 896
-    type: Return
-    inputs:
-    - {id: 899, name: Result, kind: data, flags: 2, group: 2}
-  - id: 900
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 903
-    type: Real
-    inputs: {Value: 0.5}
-  - id: 906
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 910, type: Subtract}
-  edges:
-  - {from: 894.T, to: 906.B}
-  - {from: 900.Value, to: 910.A}
-  - {from: 903.Value, to: 906.A}
-  - {from: 906.Result, to: 910.B}
-  - {from: 910.Result, to: 896.Result}
 - id: 917
   kind: function
   name: Collection Age
   math_expression: CollectionAge+Delta
   expression_mode: 1
-  entry_id: 918
-  return_id: 920
+  entry_id: 1290
+  return_id: 1292
   call_depth_limit: 64
-  nodes:
-  - id: 918
-    type: Function Entry
-    outputs:
-    - {id: 922, name: CollectionAge, type: double, kind: data, flags: 2, group: 1}
-    - {id: 923, name: Delta, type: double, kind: data, flags: 2, group: 2}
-  - id: 920
-    type: Return
-    inputs:
-    - {id: 924, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 925
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 918.CollectionAge, to: 925.A}
-  - {from: 918.Delta, to: 925.B}
-  - {from: 925.Result, to: 920.Result}

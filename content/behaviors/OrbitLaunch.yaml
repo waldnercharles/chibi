@@ -1,6 +1,6 @@
 version: 3
 name: OrbitLaunch
-id_counter: 161
+id_counter: 180
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -81,37 +81,6 @@ graphs:
   name: v + 350 * dt
   math_expression: v + 350 * dt
   expression_mode: 1
-  entry_id: 142
-  return_id: 144
+  entry_id: 162
+  return_id: 164
   call_depth_limit: 64
-  nodes:
-  - id: 142
-    type: Function Entry
-    outputs:
-    - {id: 146, name: v, type: double, kind: data, flags: 2, group: 1}
-    - {id: 147, name: dt, type: float, kind: data, flags: 2, group: 2}
-  - id: 144
-    type: Return
-    inputs:
-    - {id: 148, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 149
-    type: Real
-    inputs: {Value: 350.0}
-  - id: 152
-    type: Multiply
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 156
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 142.v, to: 156.A}
-  - {from: 142.dt, to: 152.B}
-  - {from: 149.Value, to: 152.A}
-  - {from: 152.Result, to: 156.B}
-  - {from: 156.Result, to: 144.Result}

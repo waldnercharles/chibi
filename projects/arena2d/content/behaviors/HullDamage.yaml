@@ -1,6 +1,6 @@
 version: 3
 name: HullDamage
-id_counter: 155
+id_counter: 196
 description: Apply damage, emit hit feedback, and release the hull when health reaches zero.
 owner_type: ecs.entity
 graphs:
@@ -109,61 +109,14 @@ graphs:
   name: health -= amount
   math_expression: health -= amount
   expression_mode: 2
-  entry_id: 51
-  return_id: 53
+  entry_id: 156
+  return_id: 158
   call_depth_limit: 64
-  nodes:
-  - id: 51
-    type: Function Entry
-    outputs:
-      health: {id: 55, type: int, kind: data, group: 1}
-      amount: {type: int, kind: data, flags: 2, group: 2}
-  - id: 53
-    type: Return
-    inputs:
-      Result: {id: 57, kind: data, flags: 2, group: 3}
-  - id: 58
-    type: Subtract
-    inputs:
-      B: {type: int}
-  - {id: 62, type: Get_GameHealth}
-  - {id: 64, type: Break_GameHealth}
-  - {id: 68, type: Make_GameHealth}
-  - {id: 72, type: Set_GameHealth}
-  edges:
-  - {from: 51.Exec, to: 72.Exec}
-  - {from: 51.health, to: 58.A}
-  - {from: 51.amount, to: 58.B}
-  - {from: 58.Result, to: 53.Result}
-  - {from: 58.Result, to: 68.current}
-  - {from: 62.Value, to: 64.GameHealth}
-  - {from: 64.maximum, to: 68.maximum}
-  - {from: 68.GameHealth, to: 72.Value}
-  - {from: 72.Then, to: 53.Exec}
 - id: 92
   kind: function
   name: health <= 0
   math_expression: health <= 0
   expression_mode: 3
-  entry_id: 113
-  return_id: 115
+  entry_id: 183
+  return_id: 185
   call_depth_limit: 64
-  nodes:
-  - id: 113
-    type: Function Entry
-    outputs:
-    - {id: 117, name: health, type: double, kind: data, group: 1}
-  - id: 115
-    type: Return
-    inputs:
-    - {id: 118, name: Result, kind: data, flags: 2, group: 2}
-  - {id: 119, type: Real}
-  - id: 122
-    type: Less Or Equal
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 113.health, to: 122.A}
-  - {from: 119.Value, to: 122.B}
-  - {from: 122.Result, to: 115.Result}

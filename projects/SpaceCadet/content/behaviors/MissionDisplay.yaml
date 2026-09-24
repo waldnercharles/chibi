@@ -1,6 +1,6 @@
 version: 3
 name: MissionDisplay
-id_counter: 60
+id_counter: 74
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -53,25 +53,6 @@ graphs:
   name: lives <= 0
   math_expression: lives <= 0
   expression_mode: 3
-  entry_id: 28
-  return_id: 30
+  entry_id: 61
+  return_id: 63
   call_depth_limit: 64
-  nodes:
-  - id: 28
-    type: Function Entry
-    outputs:
-    - {id: 32, name: lives, type: double, kind: data, group: 1}
-  - id: 30
-    type: Return
-    inputs:
-    - {id: 33, name: Result, kind: data, flags: 2, group: 2}
-  - {id: 34, type: Real}
-  - id: 37
-    type: Less Or Equal
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 28.lives, to: 37.A}
-  - {from: 34.Value, to: 37.B}
-  - {from: 37.Result, to: 30.Result}

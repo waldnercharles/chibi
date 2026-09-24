@@ -1,6 +1,6 @@
 version: 3
 name: ArenaShardBehavior
-id_counter: 559
+id_counter: 702
 description: The twelve original box-frame beams keep their source pose and material, separate outward, tumble at independent rates, arc above the floor, and shrink away after 0.55 seconds.
 owner_type: ecs.entity
 variables:
@@ -72,19 +72,19 @@ graphs:
     reference_id: 225
     reference_name: Updated Age
     inputs:
-      Age: {declaration_id: 230, type: float, flags: 2, group: 1}
-      Delta: {declaration_id: 231, type: float, flags: 2, group: 2}
+      Age: {declaration_id: 230, flags: 2, group: 1}
+      Delta: {declaration_id: 231, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 232, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 232, flags: 2, group: 3}
   - id: 260
     type: Behavior Expression
     reference_id: 241
     reference_name: Age Phase
     inputs:
-      Age: {declaration_id: 246, type: float, flags: 2, group: 1}
-      Delta: {declaration_id: 247, type: float, flags: 2, group: 2}
+      Age: {declaration_id: 246, flags: 2, group: 1}
+      Delta: {declaration_id: 247, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 248, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 248, flags: 2, group: 3}
   - id: 380
     type: Random Range
     inputs: {Min: -6.0, Max: 6.0}
@@ -139,266 +139,57 @@ graphs:
   name: Updated Age
   math_expression: Age+Delta
   expression_mode: 1
-  entry_id: 226
-  return_id: 228
+  entry_id: 560
+  return_id: 562
   call_depth_limit: 64
-  nodes:
-  - id: 226
-    type: Function Entry
-    outputs:
-    - {id: 230, name: Age, type: double, kind: data, flags: 2, group: 1}
-    - {id: 231, name: Delta, type: double, kind: data, flags: 2, group: 2}
-  - id: 228
-    type: Return
-    inputs:
-    - {id: 232, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 233
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 226.Age, to: 233.A}
-  - {from: 226.Delta, to: 233.B}
-  - {from: 233.Result, to: 228.Result}
 - id: 241
   kind: function
   name: Age Phase
   math_expression: (Age+Delta)/0.55
   expression_mode: 1
-  entry_id: 242
-  return_id: 244
+  entry_id: 684
+  return_id: 686
   call_depth_limit: 64
-  nodes:
-  - id: 242
-    type: Function Entry
-    outputs:
-    - {id: 246, name: Age, type: double, kind: data, flags: 2, group: 1}
-    - {id: 247, name: Delta, type: double, kind: data, flags: 2, group: 2}
-  - id: 244
-    type: Return
-    inputs:
-    - {id: 248, name: Result, type: double, kind: data, flags: 2, group: 3}
-  - id: 249
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 253
-    type: Real
-    inputs: {Value: 0.55}
-  - id: 256
-    type: Divide
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 242.Age, to: 249.A}
-  - {from: 242.Delta, to: 249.B}
-  - {from: 249.Result, to: 256.A}
-  - {from: 253.Value, to: 256.B}
-  - {from: 256.Result, to: 244.Result}
 - id: 264
   kind: function
   name: Fade
   math_expression: (1-Normalized)*(1-Normalized)
   expression_mode: 1
-  entry_id: 265
-  return_id: 267
+  entry_id: 591
+  return_id: 593
   call_depth_limit: 64
-  nodes:
-  - id: 265
-    type: Function Entry
-    outputs:
-    - {id: 269, name: Normalized, type: double, kind: data, flags: 2, group: 1}
-  - id: 267
-    type: Return
-    inputs:
-    - {id: 270, name: Result, kind: data, flags: 2, group: 2}
-  - id: 271
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 274
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 278
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 281
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - {id: 285, type: Multiply}
-  edges:
-  - {from: 265.Normalized, to: 274.B}
-  - {from: 265.Normalized, to: 281.B}
-  - {from: 271.Value, to: 274.A}
-  - {from: 274.Result, to: 285.A}
-  - {from: 278.Value, to: 281.A}
-  - {from: 281.Result, to: 285.B}
-  - {from: 285.Result, to: 267.Result}
 - id: 292
   kind: function
   name: Position X
   math_expression: PositionX+VelocityX*Delta
   expression_mode: 1
-  entry_id: 293
-  return_id: 295
+  entry_id: 616
+  return_id: 618
   call_depth_limit: 64
-  nodes:
-  - id: 293
-    type: Function Entry
-    outputs:
-    - {id: 297, name: PositionX, type: double, kind: data, flags: 2, group: 1}
-    - {id: 298, name: VelocityX, type: double, kind: data, flags: 2, group: 2}
-    - {id: 299, name: Delta, type: double, kind: data, flags: 2, group: 3}
-  - id: 295
-    type: Return
-    inputs:
-    - {id: 300, name: Result, type: double, kind: data, flags: 2, group: 4}
-  - id: 301
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 305
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 293.PositionX, to: 305.A}
-  - {from: 293.VelocityX, to: 301.A}
-  - {from: 293.Delta, to: 301.B}
-  - {from: 301.Result, to: 305.B}
-  - {from: 305.Result, to: 295.Result}
 - id: 314
   kind: function
   name: Position Y
   math_expression: PositionY+VelocityY*Delta
   expression_mode: 1
-  entry_id: 315
-  return_id: 317
+  entry_id: 633
+  return_id: 635
   call_depth_limit: 64
-  nodes:
-  - id: 315
-    type: Function Entry
-    outputs:
-    - {id: 319, name: PositionY, type: double, kind: data, flags: 2, group: 1}
-    - {id: 320, name: VelocityY, type: double, kind: data, flags: 2, group: 2}
-    - {id: 321, name: Delta, type: double, kind: data, flags: 2, group: 3}
-  - id: 317
-    type: Return
-    inputs:
-    - {id: 322, name: Result, type: double, kind: data, flags: 2, group: 4}
-  - id: 323
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 327
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 315.PositionY, to: 327.A}
-  - {from: 315.VelocityY, to: 323.A}
-  - {from: 315.Delta, to: 323.B}
-  - {from: 323.Result, to: 327.B}
-  - {from: 327.Result, to: 317.Result}
 - id: 336
   kind: function
   name: Pitch
   math_expression: Pitch+PitchRate*Delta
   expression_mode: 1
-  entry_id: 337
-  return_id: 339
+  entry_id: 650
+  return_id: 652
   call_depth_limit: 64
-  nodes:
-  - id: 337
-    type: Function Entry
-    outputs:
-    - {id: 341, name: Pitch, type: double, kind: data, flags: 2, group: 1}
-    - {id: 342, name: PitchRate, type: double, kind: data, flags: 2, group: 2}
-    - {id: 343, name: Delta, type: double, kind: data, flags: 2, group: 3}
-  - id: 339
-    type: Return
-    inputs:
-    - {id: 344, name: Result, type: double, kind: data, flags: 2, group: 4}
-  - id: 345
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 349
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 337.Pitch, to: 349.A}
-  - {from: 337.PitchRate, to: 345.A}
-  - {from: 337.Delta, to: 345.B}
-  - {from: 345.Result, to: 349.B}
-  - {from: 349.Result, to: 339.Result}
 - id: 358
   kind: function
   name: Roll
   math_expression: Roll+RollRate*Delta
   expression_mode: 1
-  entry_id: 359
-  return_id: 361
+  entry_id: 667
+  return_id: 669
   call_depth_limit: 64
-  nodes:
-  - id: 359
-    type: Function Entry
-    outputs:
-    - {id: 363, name: Roll, type: double, kind: data, flags: 2, group: 1}
-    - {id: 364, name: RollRate, type: double, kind: data, flags: 2, group: 2}
-    - {id: 365, name: Delta, type: double, kind: data, flags: 2, group: 3}
-  - id: 361
-    type: Return
-    inputs:
-    - {id: 366, name: Result, type: double, kind: data, flags: 2, group: 4}
-  - id: 367
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 371
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 359.Roll, to: 371.A}
-  - {from: 359.RollRate, to: 367.A}
-  - {from: 359.Delta, to: 367.B}
-  - {from: 367.Result, to: 371.B}
-  - {from: 371.Result, to: 361.Result}
 - id: 396
   kind: function
   name: Initialize Shard
@@ -549,7 +340,7 @@ graphs:
     reference_id: 264
     reference_name: Fade
     inputs:
-      Normalized: {declaration_id: 269, type: double, flags: 2, group: 1}
+      Normalized: {declaration_id: 269, type: float, flags: 2, group: 1}
     outputs:
       Result: {declaration_id: 270, type: double, flags: 2, group: 2}
   - id: 522
@@ -557,41 +348,41 @@ graphs:
     reference_id: 292
     reference_name: Position X
     inputs:
-      PositionX: {declaration_id: 297, type: float, flags: 2, group: 1}
-      VelocityX: {declaration_id: 298, type: float, flags: 2, group: 2}
-      Delta: {declaration_id: 299, type: float, flags: 2, group: 3}
+      PositionX: {declaration_id: 297, flags: 2, group: 1}
+      VelocityX: {declaration_id: 298, flags: 2, group: 2}
+      Delta: {declaration_id: 299, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 300, type: double, flags: 2, group: 4}
+      Result: {declaration_id: 300, flags: 2, group: 4}
   - id: 527
     type: Behavior Expression
     reference_id: 314
     reference_name: Position Y
     inputs:
-      PositionY: {declaration_id: 319, type: float, flags: 2, group: 1}
-      VelocityY: {declaration_id: 320, type: float, flags: 2, group: 2}
-      Delta: {declaration_id: 321, type: float, flags: 2, group: 3}
+      PositionY: {declaration_id: 319, flags: 2, group: 1}
+      VelocityY: {declaration_id: 320, flags: 2, group: 2}
+      Delta: {declaration_id: 321, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 322, type: double, flags: 2, group: 4}
+      Result: {declaration_id: 322, flags: 2, group: 4}
   - id: 532
     type: Behavior Expression
     reference_id: 336
     reference_name: Pitch
     inputs:
-      Pitch: {declaration_id: 341, type: float, flags: 2, group: 1}
-      PitchRate: {declaration_id: 342, type: float, flags: 2, group: 2}
-      Delta: {declaration_id: 343, type: float, flags: 2, group: 3}
+      Pitch: {declaration_id: 341, flags: 2, group: 1}
+      PitchRate: {declaration_id: 342, flags: 2, group: 2}
+      Delta: {declaration_id: 343, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 344, type: double, flags: 2, group: 4}
+      Result: {declaration_id: 344, flags: 2, group: 4}
   - id: 537
     type: Behavior Expression
     reference_id: 358
     reference_name: Roll
     inputs:
-      Roll: {declaration_id: 363, type: float, flags: 2, group: 1}
-      RollRate: {declaration_id: 364, type: float, flags: 2, group: 2}
-      Delta: {declaration_id: 365, type: float, flags: 2, group: 3}
+      Roll: {declaration_id: 363, flags: 2, group: 1}
+      RollRate: {declaration_id: 364, flags: 2, group: 2}
+      Delta: {declaration_id: 365, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 366, type: double, flags: 2, group: 4}
+      Result: {declaration_id: 366, flags: 2, group: 4}
   - id: 549
     type: Behavior Expression
     reference_id: 241
@@ -600,7 +391,7 @@ graphs:
       Age: {declaration_id: 246, flags: 2, group: 1}
       Delta: {declaration_id: 247, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 248, type: double, flags: 2, group: 3}
+      Result: {declaration_id: 248, type: float, flags: 2, group: 3}
   - id: 553
     type: Get Variable
     reference_id: 209

@@ -1305,6 +1305,14 @@ behavior_asset *behavior_asset_load_json(const char *json)
         serialize_error_set("behavior_asset requires a default event graph");
         goto fail;
     }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *g = asset->graphs[i];
+        if (g->math_expression && !acount(g->nodes) &&
+            behavior_expression_restore(asset, g)) {
+            serialize_error_set("could not rebuild expression %s", g->name);
+            goto fail;
+        }
+    }
     if (serialize_repair_math_calls(asset)) {
         goto fail;
     }

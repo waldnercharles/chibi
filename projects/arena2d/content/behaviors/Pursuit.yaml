@@ -1,6 +1,6 @@
 version: 3
 name: Pursuit
-id_counter: 350
+id_counter: 456
 description: Approach a player within 600 units, limiting acceleration to 120 units per second squared.
 owner_type: ecs.entity
 graphs:
@@ -118,184 +118,22 @@ graphs:
   name: direction * speed - vec2(vx, vy)
   math_expression: direction * speed - vec2(vx, vy)
   expression_mode: 1
-  entry_id: 223
-  return_id: 225
+  entry_id: 351
+  return_id: 353
   call_depth_limit: 64
-  nodes:
-  - id: 223
-    type: Function Entry
-    outputs:
-    - id: 227
-      name: direction
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 228, name: speed, type: double, kind: data, flags: 2, group: 2}
-    - {id: 229, name: vx, kind: data, flags: 2, group: 3}
-    - {id: 230, name: vy, kind: data, flags: 2, group: 4}
-  - id: 225
-    type: Return
-    inputs:
-    - id: 231
-      name: Result
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 5
-  - id: 232
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-      B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
-  - {id: 236, type: Make_CF_V2}
-  - id: 240
-    type: Subtract
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
-  edges:
-  - {from: 223.direction, to: 232.A}
-  - {from: 223.speed, to: 232.B}
-  - {from: 223.vx, to: 236.x}
-  - {from: 223.vy, to: 236.y}
-  - {from: 232.Result, to: 240.A}
-  - {from: 236.CF_V2, to: 240.B}
-  - {from: 240.Result, to: 225.Result}
 - id: 138
   kind: function
   name: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
   math_expression: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
   expression_mode: 2
-  entry_id: 245
-  return_id: 247
+  entry_id: 373
+  return_id: 375
   call_depth_limit: 64
-  nodes:
-  - id: 245
-    type: Function Entry
-    outputs:
-      velocity: {id: 249, type: struct, type_name: GameVelocity, kind: data, group: 1}
-      delta: {type: struct, type_name: CF_V2, kind: data, flags: 2, group: 2}
-      acceleration: {type: double, kind: data, flags: 2, group: 3}
-      dt: {type: double, kind: data, flags: 2, group: 4}
-      delta.x: {id: 261}
-      delta.y: {}
-  - id: 247
-    type: Return
-    inputs:
-      Result: {id: 253, type: struct, type_name: GameVelocity, kind: data, flags: 2, group: 5}
-  - id: 254
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 257
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 263, type: Multiply}
-  - {id: 267, type: Multiply}
-  - id: 271
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - {id: 275, type: Square Root}
-  - id: 278
-    type: Real
-    inputs: {Value: 0.0001}
-  - id: 281
-    type: Max
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 285
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 289
-    type: Min
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 293
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-      B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
-  - id: 297
-    type: Add
-    inputs:
-      A: {type: struct, type_name: GameVelocity}
-      B: {type: struct, type_name: CF_V2}
-    outputs:
-      Result: {type: struct, type_name: GameVelocity}
-  - {id: 301, type: Set_GameVelocity}
-  edges:
-  - {from: 245.Exec, to: 301.Exec}
-  - {from: 245.velocity, to: 297.A}
-  - {from: 245.delta, to: 293.A}
-  - {from: 245.acceleration, to: 257.A}
-  - {from: 245.dt, to: 257.B}
-  - {from: 245.delta.x, to: 263.A}
-  - {from: 245.delta.x, to: 263.B}
-  - {from: 245.delta.y, to: 267.A}
-  - {from: 245.delta.y, to: 267.B}
-  - {from: 254.Value, to: 289.A}
-  - {from: 257.Result, to: 285.A}
-  - {from: 263.Result, to: 271.A}
-  - {from: 267.Result, to: 271.B}
-  - {from: 271.Result, to: 275.Value}
-  - {from: 275.Result, to: 281.A}
-  - {from: 278.Value, to: 281.B}
-  - {from: 281.Result, to: 285.B}
-  - {from: 285.Result, to: 289.B}
-  - {from: 289.Result, to: 293.B}
-  - {from: 293.Result, to: 297.B}
-  - {from: 297.Result, to: 301.Value}
-  - {from: 301.Then, to: 247.Exec}
-  - {from: 301.Value, to: 247.Result}
 - id: 306
   kind: function
   name: velocity = vec2(0, 0)
   math_expression: velocity = vec2(0, 0)
   expression_mode: 2
-  entry_id: 329
-  return_id: 331
+  entry_id: 435
+  return_id: 437
   call_depth_limit: 64
-  nodes:
-  - id: 329
-    type: Function Entry
-    outputs:
-      velocity: {id: 333, type: struct, type_name: GameVelocity, kind: data, group: 1}
-  - id: 331
-    type: Return
-    inputs:
-      Result: {id: 334, kind: data, flags: 2, group: 2}
-  - {id: 335, type: Real}
-  - {id: 338, type: Real}
-  - {id: 341, type: Make_CF_V2}
-  - {id: 345, type: Set_GameVelocity}
-  edges:
-  - {from: 329.Exec, to: 345.Exec}
-  - {from: 335.Value, to: 341.x}
-  - {from: 338.Value, to: 341.y}
-  - {from: 341.CF_V2, to: 345.Value}
-  - {from: 345.Then, to: 331.Exec}
-  - {from: 345.Value, to: 331.Result}

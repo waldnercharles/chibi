@@ -1,6 +1,6 @@
 version: 3
 name: MovementEmitter
-id_counter: 372
+id_counter: 480
 description: Emit movement exhaust above the input deadzone while boost is released.
 owner_type: ecs.entity
 graphs:
@@ -50,91 +50,6 @@ graphs:
   name: active = !action.pressed && (input.move.x * input.move.x + input.move.y * input.move.y > 0.01)
   math_expression: active = !action.pressed && (input.move.x * input.move.x + input.move.y * input.move.y > 0.01)
   expression_mode: 2
-  entry_id: 265
-  return_id: 267
+  entry_id: 373
+  return_id: 375
   call_depth_limit: 64
-  nodes:
-  - id: 265
-    type: Function Entry
-    outputs:
-      active: {id: 269, type: bool, type_name: _Bool, kind: data, group: 1}
-      action: {type: struct, type_name: GameActionBinding, kind: data, flags: 2, group: 2}
-      input: {type: struct, type_name: GameInput, kind: data, flags: 2, group: 3}
-      action.source: {id: 273}
-      action.action: {}
-      action.firing: {}
-      action.disabled: {}
-      action.pressed: {}
-      input.move: {id: 281}
-      input.move.x: {}
-      input.move.y: {}
-  - id: 267
-    type: Return
-    inputs:
-      Result: {id: 272, type: bool, kind: data, flags: 2, group: 4}
-  - {id: 278, type: Not}
-  - {id: 284, type: Multiply}
-  - {id: 288, type: Multiply}
-  - id: 292
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 296
-    type: Real
-    inputs: {Value: 0.01}
-  - id: 299
-    type: Greater
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  - {id: 303, type: And}
-  - {id: 307, type: Get_GameParticleEmitter}
-  - {id: 309, type: Break_GameParticleEmitter}
-  - {id: 338, type: Make_GameParticleEmitter}
-  - {id: 367, type: Set_GameParticleEmitter}
-  edges:
-  - {from: 265.Exec, to: 367.Exec}
-  - {from: 265.action.pressed, to: 278.Value}
-  - {from: 265.input.move.x, to: 284.A}
-  - {from: 265.input.move.x, to: 284.B}
-  - {from: 265.input.move.y, to: 288.A}
-  - {from: 265.input.move.y, to: 288.B}
-  - {from: 278.Result, to: 303.A}
-  - {from: 284.Result, to: 292.A}
-  - {from: 288.Result, to: 292.B}
-  - {from: 292.Result, to: 299.A}
-  - {from: 296.Value, to: 299.B}
-  - {from: 299.Result, to: 303.B}
-  - {from: 303.Result, to: 267.Result}
-  - {from: 303.Result, to: 338.active}
-  - {from: 307.Value, to: 309.GameParticleEmitter}
-  - {from: 309.shape, to: 338.shape}
-  - {from: 309.color, to: 338.color}
-  - {from: 309.end_color, to: 338.end_color}
-  - {from: 309.rate, to: 338.rate}
-  - {from: 309.burst_count, to: 338.burst_count}
-  - {from: 309.lifetime, to: 338.lifetime}
-  - {from: 309.speed, to: 338.speed}
-  - {from: 309.size, to: 338.size}
-  - {from: 309.spread, to: 338.spread}
-  - {from: 309.drag, to: 338.drag}
-  - {from: 309.emission, to: 338.emission}
-  - {from: 309.antialias, to: 338.antialias}
-  - {from: 309.absorption, to: 338.absorption}
-  - {from: 309.metaball_group, to: 338.metaball_group}
-  - {from: 309.metaball_blend, to: 338.metaball_blend}
-  - {from: 309.velocity_align, to: 338.velocity_align}
-  - {from: 309.stretch, to: 338.stretch}
-  - {from: 309.velocity_inherit, to: 338.velocity_inherit}
-  - {from: 309.offset, to: 338.offset}
-  - {from: 309.direction, to: 338.direction}
-  - {from: 309.parent, to: 338.parent}
-  - {from: 309.planar, to: 338.planar}
-  - {from: 309.heading_only, to: 338.heading_only}
-  - {from: 309.fluid, to: 338.fluid}
-  - {from: 309.fluid_kind, to: 338.fluid_kind}
-  - {from: 309.fluid_mass, to: 338.fluid_mass}
-  - {from: 338.GameParticleEmitter, to: 367.Value}
-  - {from: 367.Then, to: 267.Exec}

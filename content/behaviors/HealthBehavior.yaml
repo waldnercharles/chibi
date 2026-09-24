@@ -1,6 +1,6 @@
 version: 3
 name: HealthBehavior
-id_counter: 1163
+id_counter: 1192
 description: Applies accepted damage and reports actual health loss. Died handlers run before destruction; active dashes reject Damage.
 owner_type: ecs.entity
 graphs:
@@ -95,11 +95,11 @@ graphs:
     reference_id: 63
     reference_name: Remaining Health
     inputs:
-      current: {type: double}
-      amount: {type: double}
-      maximum: {type: double}
+      current: {type: double, group: 1}
+      amount: {type: double, group: 2}
+      maximum: {type: double, group: 3}
     outputs:
-      Result: {type: double}
+      Result: {type: double, group: 4}
   - id: 1072
     type: Subtract
     inputs:
@@ -206,34 +206,6 @@ graphs:
   name: Remaining Health
   math_expression: clamp(current - clamp(amount, 0, current), 0, maximum)
   expression_mode: 1
-  entry_id: 64
-  return_id: 66
+  entry_id: 1164
+  return_id: 1166
   call_depth_limit: 64
-  nodes:
-  - id: 64
-    type: Function Entry
-    outputs:
-    - {id: 68, name: current, type: double, kind: data}
-    - {id: 69, name: amount, type: double, kind: data}
-    - {id: 70, name: maximum, type: double, kind: data}
-  - id: 66
-    type: Return
-    inputs:
-    - {id: 71, name: Result, type: double, kind: data}
-  - id: 75
-    type: Clamp
-    inputs:
-      Min: {type: double}
-  - {id: 80, type: Subtract}
-  - id: 87
-    type: Clamp
-    inputs:
-      Min: {type: double}
-  edges:
-  - {from: 64.current, to: 75.Max}
-  - {from: 64.current, to: 80.A}
-  - {from: 64.amount, to: 75.Value}
-  - {from: 64.maximum, to: 87.Max}
-  - {from: 75.Result, to: 80.B}
-  - {from: 80.Result, to: 87.Value}
-  - {from: 87.Result, to: 66.Result}

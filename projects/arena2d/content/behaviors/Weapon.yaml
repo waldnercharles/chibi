@@ -1,6 +1,6 @@
 version: 3
 name: Weapon
-id_counter: 367
+id_counter: 435
 description: Aim at the nearest enemy when manual aim is absent; emit shots only while Fire is held.
 owner_type: ecs.entity
 variables:
@@ -208,145 +208,30 @@ graphs:
   name: elapsed += dt
   math_expression: elapsed += dt
   expression_mode: 2
-  entry_id: 72
-  return_id: 74
+  entry_id: 368
+  return_id: 370
   call_depth_limit: 64
-  nodes:
-  - id: 72
-    type: Function Entry
-    outputs:
-      elapsed: {id: 76, type: float, type_name: null, kind: data, group: 1}
-      dt: {type: double, kind: data, flags: 2, group: 2}
-  - id: 74
-    type: Return
-    inputs:
-      Result: {id: 78, kind: data, flags: 2, group: 3}
-  - id: 79
-    type: Add
-    inputs:
-      B: {type: double}
-  - id: 83
-    type: Set Variable
-    reference_id: 1
-    reference_name: elapsed
-    inputs:
-      Value: {type: float, type_name: null}
-    outputs:
-      Value: {type: float, type_name: null}
-  edges:
-  - {from: 72.Exec, to: 83.Exec}
-  - {from: 72.elapsed, to: 79.A}
-  - {from: 72.dt, to: 79.B}
-  - {from: 79.Result, to: 83.Value}
-  - {from: 83.Then, to: 74.Exec}
-  - {from: 83.Value, to: 74.Result}
 - id: 311
   kind: function
   name: elapsed = min(elapsed, cooldown)
   math_expression: elapsed = min(elapsed, cooldown)
   expression_mode: 2
-  entry_id: 347
-  return_id: 349
+  entry_id: 419
+  return_id: 421
   call_depth_limit: 64
-  nodes:
-  - id: 347
-    type: Function Entry
-    outputs:
-      elapsed: {id: 351, type: float, type_name: null, kind: data, group: 1}
-      cooldown: {type: double, kind: data, flags: 2, group: 2}
-  - id: 349
-    type: Return
-    inputs:
-      Result: {id: 353, kind: data, flags: 2, group: 3}
-  - id: 354
-    type: Min
-    inputs:
-      B: {type: double}
-  - id: 358
-    type: Set Variable
-    reference_id: 1
-    reference_name: elapsed
-    inputs:
-      Value: {type: float, type_name: null}
-    outputs:
-      Value: {type: float, type_name: null}
-  edges:
-  - {from: 347.Exec, to: 358.Exec}
-  - {from: 347.elapsed, to: 354.A}
-  - {from: 347.cooldown, to: 354.B}
-  - {from: 354.Result, to: 358.Value}
-  - {from: 358.Then, to: 349.Exec}
-  - {from: 358.Value, to: 349.Result}
 - id: 160
   kind: function
   name: vec2(x, y) + offset
   math_expression: vec2(x, y) + offset
   expression_mode: 1
-  entry_id: 243
-  return_id: 245
+  entry_id: 385
+  return_id: 387
   call_depth_limit: 64
-  nodes:
-  - id: 243
-    type: Function Entry
-    outputs:
-    - {id: 247, name: x, kind: data, flags: 2, group: 1}
-    - {id: 248, name: "y", kind: data, flags: 2, group: 2}
-    - id: 249
-      name: offset
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 3
-  - id: 245
-    type: Return
-    inputs:
-    - {id: 250, name: Result, kind: data, flags: 2, group: 4}
-  - {id: 251, type: Make_CF_V2}
-  - id: 255
-    type: Add
-    inputs:
-      B: {type: struct, type_name: CF_V2}
-  edges:
-  - {from: 243.x, to: 251.x}
-  - {from: 243.y, to: 251.y}
-  - {from: 243.offset, to: 255.B}
-  - {from: 251.CF_V2, to: 255.A}
-  - {from: 255.Result, to: 245.Result}
 - id: 259
   kind: function
   name: elapsed -= cooldown
   math_expression: elapsed -= cooldown
   expression_mode: 2
-  entry_id: 295
-  return_id: 297
+  entry_id: 402
+  return_id: 404
   call_depth_limit: 64
-  nodes:
-  - id: 295
-    type: Function Entry
-    outputs:
-      elapsed: {id: 299, type: float, type_name: null, kind: data, group: 1}
-      cooldown: {type: double, kind: data, flags: 2, group: 2}
-  - id: 297
-    type: Return
-    inputs:
-      Result: {id: 301, kind: data, flags: 2, group: 3}
-  - id: 302
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 306
-    type: Set Variable
-    reference_id: 1
-    reference_name: elapsed
-    inputs:
-      Value: {type: float, type_name: null}
-    outputs:
-      Value: {type: float, type_name: null}
-  edges:
-  - {from: 295.Exec, to: 306.Exec}
-  - {from: 295.elapsed, to: 302.A}
-  - {from: 295.cooldown, to: 302.B}
-  - {from: 302.Result, to: 306.Value}
-  - {from: 306.Then, to: 297.Exec}
-  - {from: 306.Value, to: 297.Result}

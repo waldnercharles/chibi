@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileBehavior
-id_counter: 161
+id_counter: 179
 description: Face the current velocity and expire after the authored lifetime. Physics integrates movement.
 owner_type: ecs.entity
 graphs:
@@ -111,10 +111,10 @@ graphs:
     reference_id: 132
     reference_name: Direction Magnitude
     inputs:
-      x: {type: double}
-      "y": {type: double}
+      x: {type: float, group: 1}
+      "y": {type: float, group: 2}
     outputs:
-      Result: {type: double}
+      Result: {type: float, group: 3}
   edges:
   - {from: 83.Then, to: 92.Exec}
   - {from: 83.X, to: 114.X}
@@ -135,25 +135,6 @@ graphs:
   name: Direction Magnitude
   math_expression: abs(x) + abs(y)
   expression_mode: 1
-  entry_id: 133
-  return_id: 135
+  entry_id: 162
+  return_id: 164
   call_depth_limit: 64
-  nodes:
-  - id: 133
-    type: Function Entry
-    outputs:
-    - {id: 137, name: x, type: double, kind: data}
-    - {id: 138, name: "y", type: double, kind: data}
-  - id: 135
-    type: Return
-    inputs:
-    - {id: 139, name: Result, type: double, kind: data}
-  - {id: 140, type: Abs}
-  - {id: 143, type: Abs}
-  - {id: 146, type: Add}
-  edges:
-  - {from: 133.x, to: 140.Value}
-  - {from: 133.y, to: 143.Value}
-  - {from: 140.Result, to: 146.A}
-  - {from: 143.Result, to: 146.B}
-  - {from: 146.Result, to: 135.Result}

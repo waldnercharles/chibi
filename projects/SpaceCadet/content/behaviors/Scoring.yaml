@@ -1,6 +1,6 @@
 version: 3
 name: Scoring
-id_counter: 430
+id_counter: 515
 owner_type: ecs.entity
 variables:
 - {id: 1, name: award, type: float}
@@ -78,14 +78,14 @@ graphs:
     inputs:
       hits: {declaration_id: 160, type: double, flags: 2, group: 1}
     outputs:
-      Result: {declaration_id: 161, type: float, type_name: null, flags: 2, group: 2}
+      Result: {declaration_id: 161, type: double, flags: 2, group: 2}
   - id: 186
     type: Set Global Variable
     inputs:
       Name: Hits
-      Value: {type: float, type_name: null}
+      Value: {type: double}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: double}
   - id: 206
     type: Play Sound
     inputs:
@@ -191,234 +191,38 @@ graphs:
   name: score + award * rank
   math_expression: score + award * rank
   expression_mode: 1
-  entry_id: 136
-  return_id: 138
+  entry_id: 431
+  return_id: 433
   call_depth_limit: 64
-  nodes:
-  - id: 136
-    type: Function Entry
-    outputs:
-    - id: 140
-      name: score
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 1
-    - {id: 141, name: award, type: double, kind: data, flags: 2, group: 2}
-    - id: 142
-      name: rank
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 3
-  - id: 138
-    type: Return
-    inputs:
-    - id: 143
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 4
-  - id: 144
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type_name: null}
-    outputs:
-      Result: {type: double}
-  - id: 148
-    type: Add
-    inputs:
-      A: {type_name: null}
-      B: {type: double}
-    outputs:
-      Result: {type_name: null}
-  edges:
-  - {from: 136.score, to: 148.A}
-  - {from: 136.award, to: 144.A}
-  - {from: 136.rank, to: 144.B}
-  - {from: 144.Result, to: 148.B}
-  - {from: 148.Result, to: 138.Result}
 - id: 155
   kind: function
   name: hits + 1
   math_expression: hits + 1
   expression_mode: 1
-  entry_id: 193
-  return_id: 195
+  entry_id: 448
+  return_id: 450
   call_depth_limit: 64
-  nodes:
-  - id: 193
-    type: Function Entry
-    outputs:
-    - id: 197
-      name: hits
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 1
-  - id: 195
-    type: Return
-    inputs:
-    - id: 198
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 2
-  - id: 199
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 202
-    type: Add
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  edges:
-  - {from: 193.hits, to: 202.A}
-  - {from: 199.Value, to: 202.B}
-  - {from: 202.Result, to: 195.Result}
 - id: 215
   kind: function
   name: hits >= 8
   math_expression: hits >= 8
   expression_mode: 3
-  entry_id: 236
-  return_id: 238
+  entry_id: 462
+  return_id: 464
   call_depth_limit: 64
-  nodes:
-  - id: 236
-    type: Function Entry
-    outputs:
-    - {id: 240, name: hits, type: double, kind: data, group: 1}
-  - id: 238
-    type: Return
-    inputs:
-    - {id: 241, name: Result, kind: data, flags: 2, group: 2}
-  - id: 242
-    type: Real
-    inputs: {Value: 8.0}
-  - id: 245
-    type: Greater Or Equal
-    inputs:
-      A: {type: double}
-      B: {type: double}
-  edges:
-  - {from: 236.hits, to: 245.A}
-  - {from: 242.Value, to: 245.B}
-  - {from: 245.Result, to: 238.Result}
 - id: 249
   kind: function
   name: score + 25000 * rank
   math_expression: score + 25000 * rank
   expression_mode: 1
-  entry_id: 317
-  return_id: 319
+  entry_id: 476
+  return_id: 478
   call_depth_limit: 64
-  nodes:
-  - id: 317
-    type: Function Entry
-    outputs:
-    - id: 321
-      name: score
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 1
-    - id: 322
-      name: rank
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 2
-  - id: 319
-    type: Return
-    inputs:
-    - id: 323
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 3
-  - id: 324
-    type: Real
-    inputs: {Value: 25000.0}
-  - id: 327
-    type: Multiply
-    inputs:
-      B: {type_name: null}
-  - id: 331
-    type: Add
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  edges:
-  - {from: 317.score, to: 331.A}
-  - {from: 317.rank, to: 327.B}
-  - {from: 324.Value, to: 327.A}
-  - {from: 327.Result, to: 331.B}
-  - {from: 331.Result, to: 319.Result}
 - id: 335
   kind: function
   name: min(rank+1,9)
   math_expression: min(rank+1,9)
   expression_mode: 1
-  entry_id: 387
-  return_id: 389
+  entry_id: 495
+  return_id: 497
   call_depth_limit: 64
-  nodes:
-  - id: 387
-    type: Function Entry
-    outputs:
-    - id: 391
-      name: rank
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 1
-  - id: 389
-    type: Return
-    inputs:
-    - id: 392
-      name: Result
-      type: float
-      type_name: null
-      kind: data
-      flags: 2
-      group: 2
-  - id: 393
-    type: Real
-    inputs: {Value: 1.0}
-  - id: 396
-    type: Add
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  - id: 400
-    type: Real
-    inputs: {Value: 9.0}
-  - id: 403
-    type: Min
-    inputs:
-      A: {type_name: null}
-    outputs:
-      Result: {type_name: null}
-  edges:
-  - {from: 387.rank, to: 396.A}
-  - {from: 393.Value, to: 396.B}
-  - {from: 396.Result, to: 403.A}
-  - {from: 400.Value, to: 403.B}
-  - {from: 403.Result, to: 389.Result}

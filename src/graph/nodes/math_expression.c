@@ -1157,6 +1157,7 @@ static int expression_integer_index(
     return 0;
 }
 
+/* Generation allocates the function's IDs in one run, starting at first_id. */
 static behavior_asset *generate(
     behavior_asset *asset,
     graph *caller,
@@ -1164,7 +1165,8 @@ static behavior_asset *generate(
     const char *source,
     behavior_expression_error *error,
     const expression_rename *renames,
-    int rename_count
+    int rename_count,
+    uint64_t first_id
 )
 {
     parser p = { .source = source, .cursor = source, .error = error };
@@ -1230,14 +1232,9 @@ static behavior_asset *generate(
                                           ? GRAPH_EXPRESSION_BRANCH
                                           : GRAPH_EXPRESSION_VALUE);
     behavior_asset *staged = behavior_asset_new("Expression staging");
-    staged->graph->id_counter = asset->graph->id_counter;
+    staged->graph->id_counter = first_id;
     char name[64];
-    snprintf(
-        name,
-        sizeof name,
-        "Behavior Expression %llu",
-        (unsigned long long)asset->graph->id_counter
-    );
+    snprintf(name, sizeof name, "Behavior Expression %llu", (unsigned long long)first_id);
     graph *target = behavior_asset_add_function(staged, name, mode != GRAPH_EXPRESSION_ACTION);
     assert(target);
     target->math_expression = graph_own_str(target, source, strlen(source));
@@ -2135,6 +2132,122 @@ int behavior_expression_repair(behavior_asset *asset, node *call)
     return 0;
 }
 
+static node *first_call(const behavior_asset *asset, const graph *generated)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            node *n = caller->nodes[j];
+            if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction ||
+                 n->desc == &NODE_BehaviorExpression) &&
+                n->reference_id == generated->graph_id && !n->reference_asset) {
+                return n;
+            }
+        }
+    }
+    return NULL;
+}
+
+static graph *rebuild(const behavior_asset *asset, const graph *generated, uint64_t first_id)
+{
+    const node *call = first_call(asset, generated);
+    if (!call || !generated->math_expression || generated->source_asset) {
+        return NULL;
+    }
+    behavior_expression_error error;
+    behavior_asset *staged = generate(
+        (behavior_asset *)asset,
+        caller_graph(asset, call),
+        call,
+        generated->math_expression,
+        &error,
+        NULL,
+        0,
+        first_id
+    );
+    if (!staged) {
+        return NULL;
+    }
+    graph *body = staged->graphs[1];
+    asetlen(staged->graphs, 1);
+    behavior_asset_free(staged);
+    body->owner = NULL;
+    body->shared_id_counter = NULL;
+    for (int i = 0; i < acount(body->nodes); i++) {
+        body->nodes[i]->placed = false;
+    }
+    return body;
+}
+
+graph *behavior_expression_rebuild(const behavior_asset *asset, const graph *generated)
+{
+    return generated->entry_id ? rebuild(asset, generated, generated->entry_id - 1)
+                               : NULL;
+}
+
+static bool id_used(const behavior_asset *asset, uint64_t id)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            const node *n = g->nodes[j];
+            int output = 0, index = -1;
+            if (n->id == id || graph_pin_by_id(n, id, &output, &index)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool body_ids_free(const behavior_asset *asset, const graph *body)
+{
+    for (int i = 0; i < acount(body->nodes); i++) {
+        const node *n = body->nodes[i];
+        if (id_used(asset, n->id)) {
+            return false;
+        }
+        for (int output = 0; output < 2; output++) {
+            const pin_spec *pins = output ? n->output_pins : n->input_pins;
+            for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
+                if (id_used(asset, pins[p].id)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+int behavior_expression_restore(behavior_asset *asset, graph *generated)
+{
+    assert(!acount(generated->nodes));
+    graph *body = behavior_expression_rebuild(asset, generated);
+    if (body && !body_ids_free(asset, body)) {
+        /* A changed generator can need more IDs than the document reserved. */
+        graph_free(body);
+        free(body);
+        body = rebuild(asset, generated, asset->graph->id_counter);
+    }
+    if (!body) {
+        return -1;
+    }
+    uint64_t id = generated->graph_id;
+    char *name = xstrdup(generated->name);
+    char *description = xstrdup(generated->description ? generated->description : "");
+    graph_free(generated);
+    *generated = *body;
+    free(body);
+    generated->owner = asset;
+    generated->shared_id_counter = &asset->graph->id_counter;
+    generated->graph_id = id;
+    generated->name = graph_own_str(generated, name, strlen(name));
+    generated->description = graph_own_str(generated, description, strlen(description));
+    free(name);
+    free(description);
+    return 0;
+}
+
 static graph *adopt(behavior_asset *asset, behavior_asset *staged, graph *previous)
 {
     graph *generated = staged->graphs[1];
@@ -2192,7 +2305,16 @@ node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *
         snprintf(error->message, sizeof error->message, "Expression caller must belong to this asset");
         return NULL;
     }
-    behavior_asset *staged = generate(asset, caller, NULL, source, error, NULL, 0);
+    behavior_asset *staged = generate(
+        asset,
+        caller,
+        NULL,
+        source,
+        error,
+        NULL,
+        0,
+        asset->graph->id_counter
+    );
     if (!staged) {
         return NULL;
     }
@@ -2245,7 +2367,8 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
         source,
         error,
         renames,
-        acount(renames)
+        acount(renames),
+        asset->graph->id_counter
     );
     if (!staged) {
         afree(renames);
@@ -2295,7 +2418,16 @@ int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expr
         return -1;
     }
     synchronize_connected_inputs(asset, call);
-    behavior_asset *staged = generate(asset, caller_graph(asset, call), call, source, error, NULL, 0);
+    behavior_asset *staged = generate(
+        asset,
+        caller_graph(asset, call),
+        call,
+        source,
+        error,
+        NULL,
+        0,
+        asset->graph->id_counter
+    );
     if (!staged) {
         return -1;
     }

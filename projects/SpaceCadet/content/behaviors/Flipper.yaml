@@ -1,6 +1,6 @@
 version: 3
 name: Flipper
-id_counter: 1336
+id_counter: 1508
 owner_type: ecs.entity
 variables:
 - {id: 1, name: rest, type: float}
@@ -210,251 +210,22 @@ graphs:
   name: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
   math_expression: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
   expression_mode: 1
-  entry_id: 353
-  return_id: 355
+  entry_id: 1337
+  return_id: 1339
   call_depth_limit: 64
-  nodes:
-  - id: 353
-    type: Function Entry
-    outputs:
-    - {id: 357, name: rest, kind: data, flags: 2, group: 1}
-    - {id: 358, name: stroke, type: double, kind: data, flags: 2, group: 2}
-    - {id: 359, name: angle, type: double, kind: data, flags: 2, group: 3}
-    - {id: 360, name: dt, type: double, kind: data, flags: 2, group: 4}
-  - id: 355
-    type: Return
-    inputs:
-    - {id: 361, name: Result, kind: data, flags: 2, group: 5}
-  - {id: 362, type: Cosine}
-  - {id: 365, type: Cosine}
-  - {id: 368, type: Abs}
-  - {id: 371, type: Divide}
-  - id: 375
-    type: Multiply
-    inputs:
-      B: {type: double}
-  - {id: 379, type: Subtract}
-  - id: 383
-    type: Subtract
-    inputs:
-      B: {type: double}
-  - id: 387
-    type: Real
-    inputs: {Value: 0.001}
-  - id: 390
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 394
-    type: Divide
-    inputs:
-      B: {type: double}
-  - id: 398
-    type: Real
-    inputs: {Value: 24.0}
-  - {id: 401, type: Negate}
-  - id: 404
-    type: Real
-    inputs: {Value: 24.0}
-  - {id: 407, type: Clamp}
-  edges:
-  - {from: 353.rest, to: 362.Value}
-  - {from: 353.rest, to: 365.Value}
-  - {from: 353.rest, to: 379.A}
-  - {from: 353.stroke, to: 375.B}
-  - {from: 353.angle, to: 383.B}
-  - {from: 353.dt, to: 390.A}
-  - {from: 362.Result, to: 371.A}
-  - {from: 365.Result, to: 368.Value}
-  - {from: 368.Result, to: 371.B}
-  - {from: 371.Result, to: 375.A}
-  - {from: 375.Result, to: 379.B}
-  - {from: 379.Result, to: 383.A}
-  - {from: 383.Result, to: 394.A}
-  - {from: 387.Value, to: 390.B}
-  - {from: 390.Result, to: 394.B}
-  - {from: 394.Result, to: 407.Value}
-  - {from: 398.Value, to: 401.Value}
-  - {from: 401.Result, to: 407.Min}
-  - {from: 404.Value, to: 407.Max}
-  - {from: 407.Result, to: 355.Result}
 - id: 412
   kind: function
   name: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
   math_expression: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
   expression_mode: 1
-  entry_id: 819
-  return_id: 821
+  entry_id: 1397
+  return_id: 1399
   call_depth_limit: 64
-  nodes:
-  - id: 819
-    type: Function Entry
-    outputs:
-    - {id: 823, name: origin, type: double, kind: data, flags: 2, group: 1}
-    - {id: 824, name: angle, type: double, kind: data, flags: 2, group: 2}
-    - {id: 825, name: speed, type: double, kind: data, flags: 2, group: 3}
-    - {id: 826, name: dt, type: double, kind: data, flags: 2, group: 4}
-    - {id: 827, name: rest, kind: data, flags: 2, group: 5}
-    - {id: 828, name: position, type: double, kind: data, flags: 2, group: 6}
-  - id: 821
-    type: Return
-    inputs:
-    - {id: 829, name: Result, type: double, kind: data, flags: 2, group: 7}
-  - id: 830
-    type: Real
-    inputs: {Value: 38.0}
-  - id: 833
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 837
-    type: Add
-    inputs:
-      B: {type: double}
-  - {id: 841, type: Cosine}
-  - {id: 844, type: Cosine}
-  - {id: 847, type: Subtract}
-  - {id: 851, type: Multiply}
-  - id: 855
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 859
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 863
-    type: Real
-    inputs: {Value: 0.001}
-  - id: 866
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 870
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 819.origin, to: 855.A}
-  - {from: 819.angle, to: 837.A}
-  - {from: 819.speed, to: 833.A}
-  - {from: 819.dt, to: 833.B}
-  - {from: 819.dt, to: 866.A}
-  - {from: 819.rest, to: 844.Value}
-  - {from: 819.position, to: 859.B}
-  - {from: 830.Value, to: 851.A}
-  - {from: 833.Result, to: 837.B}
-  - {from: 837.Result, to: 841.Value}
-  - {from: 841.Result, to: 847.A}
-  - {from: 844.Result, to: 847.B}
-  - {from: 847.Result, to: 851.B}
-  - {from: 851.Result, to: 855.B}
-  - {from: 855.Result, to: 859.A}
-  - {from: 859.Result, to: 870.A}
-  - {from: 863.Value, to: 866.B}
-  - {from: 866.Result, to: 870.B}
-  - {from: 870.Result, to: 821.Result}
 - id: 874
   kind: function
   name: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
   math_expression: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
   expression_mode: 1
-  entry_id: 1281
-  return_id: 1283
+  entry_id: 1453
+  return_id: 1455
   call_depth_limit: 64
-  nodes:
-  - id: 1281
-    type: Function Entry
-    outputs:
-    - {id: 1285, name: origin, type: double, kind: data, flags: 2, group: 1}
-    - {id: 1286, name: angle, type: double, kind: data, flags: 2, group: 2}
-    - {id: 1287, name: speed, type: double, kind: data, flags: 2, group: 3}
-    - {id: 1288, name: dt, type: double, kind: data, flags: 2, group: 4}
-    - {id: 1289, name: rest, kind: data, flags: 2, group: 5}
-    - {id: 1290, name: position, type: double, kind: data, flags: 2, group: 6}
-  - id: 1283
-    type: Return
-    inputs:
-    - {id: 1291, name: Result, type: double, kind: data, flags: 2, group: 7}
-  - id: 1292
-    type: Real
-    inputs: {Value: 38.0}
-  - id: 1295
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 1299
-    type: Add
-    inputs:
-      B: {type: double}
-  - {id: 1303, type: Sine}
-  - {id: 1306, type: Sine}
-  - {id: 1309, type: Subtract}
-  - {id: 1313, type: Multiply}
-  - id: 1317
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 1321
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 1325
-    type: Real
-    inputs: {Value: 0.001}
-  - id: 1328
-    type: Max
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 1332
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 1281.origin, to: 1317.A}
-  - {from: 1281.angle, to: 1299.A}
-  - {from: 1281.speed, to: 1295.A}
-  - {from: 1281.dt, to: 1295.B}
-  - {from: 1281.dt, to: 1328.A}
-  - {from: 1281.rest, to: 1306.Value}
-  - {from: 1281.position, to: 1321.B}
-  - {from: 1292.Value, to: 1313.A}
-  - {from: 1295.Result, to: 1299.B}
-  - {from: 1299.Result, to: 1303.Value}
-  - {from: 1303.Result, to: 1309.A}
-  - {from: 1306.Result, to: 1309.B}
-  - {from: 1309.Result, to: 1313.B}
-  - {from: 1313.Result, to: 1317.B}
-  - {from: 1317.Result, to: 1321.A}
-  - {from: 1321.Result, to: 1332.A}
-  - {from: 1325.Value, to: 1328.B}
-  - {from: 1328.Result, to: 1332.B}
-  - {from: 1332.Result, to: 1283.Result}

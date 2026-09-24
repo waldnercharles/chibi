@@ -1,6 +1,6 @@
 version: 3
 name: Nudge
-id_counter: 186
+id_counter: 241
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -45,85 +45,14 @@ graphs:
   name: clamp(v + (rand()-0.5)*170, -900, 900)
   math_expression: clamp(v + (rand()-0.5)*170, -900, 900)
   expression_mode: 1
-  entry_id: 95
-  return_id: 97
+  entry_id: 187
+  return_id: 189
   call_depth_limit: 64
-  nodes:
-  - id: 95
-    type: Function Entry
-    outputs:
-    - {id: 99, name: v, type: double, kind: data, flags: 2, group: 1}
-  - id: 97
-    type: Return
-    inputs:
-    - {id: 100, name: Result, type: double, kind: data, flags: 2, group: 2}
-  - {id: 101, type: Random Real}
-  - id: 103
-    type: Real
-    inputs: {Value: 0.5}
-  - {id: 106, type: Subtract}
-  - id: 110
-    type: Real
-    inputs: {Value: 170.0}
-  - {id: 113, type: Multiply}
-  - id: 117
-    type: Add
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 121
-    type: Real
-    inputs: {Value: 900.0}
-  - {id: 124, type: Negate}
-  - id: 127
-    type: Real
-    inputs: {Value: 900.0}
-  - id: 130
-    type: Clamp
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 95.v, to: 117.A}
-  - {from: 101.Result, to: 106.A}
-  - {from: 103.Value, to: 106.B}
-  - {from: 106.Result, to: 113.A}
-  - {from: 110.Value, to: 113.B}
-  - {from: 113.Result, to: 117.B}
-  - {from: 117.Result, to: 130.Value}
-  - {from: 121.Value, to: 124.Value}
-  - {from: 124.Result, to: 130.Min}
-  - {from: 127.Value, to: 130.Max}
-  - {from: 130.Result, to: 97.Result}
 - id: 135
   kind: function
   name: v-100
   math_expression: v-100
   expression_mode: 1
-  entry_id: 173
-  return_id: 175
+  entry_id: 228
+  return_id: 230
   call_depth_limit: 64
-  nodes:
-  - id: 173
-    type: Function Entry
-    outputs:
-    - {id: 177, name: v, type: double, kind: data, flags: 2, group: 1}
-  - id: 175
-    type: Return
-    inputs:
-    - {id: 178, name: Result, type: double, kind: data, flags: 2, group: 2}
-  - id: 179
-    type: Real
-    inputs: {Value: 100.0}
-  - id: 182
-    type: Subtract
-    inputs:
-      A: {type: double}
-    outputs:
-      Result: {type: double}
-  edges:
-  - {from: 173.v, to: 182.A}
-  - {from: 179.Value, to: 182.B}
-  - {from: 182.Result, to: 175.Result}

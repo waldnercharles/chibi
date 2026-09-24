@@ -7,6 +7,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -530,8 +531,9 @@ typedef struct
     field_grid grid;
     float *out;
     int rows_per_band;
-    /* Set by any failing band; bands are independent otherwise. */
-    bool invalid;
+    /* Set by any failing band, possibly from several workers at once; bands
+     * are independent otherwise. */
+    atomic_bool invalid;
 } bake_job;
 
 static void bake_bands(int start, int end, uint32_t, void *context)
@@ -555,7 +557,7 @@ static void bake_bands(int start, int end, uint32_t, void *context)
                     y - first == 0 ? 0 : y,
                     y
                 )) {
-                job->invalid = true;
+                atomic_store_explicit(&job->invalid, true, memory_order_relaxed);
                 break;
             }
             for (int x = 0; x < job->grid.width; x++) {
@@ -596,14 +598,17 @@ bool field_program_bake(
                           : NULL;
     if (task) {
         tasks->finish(task, tasks->user);
-    } else if (!parallel) {
+    } else {
+        /* Serial grids, or a pool that could not take the job. */
         bake_bands(0, bands, 0, &job);
     }
-    if (job.invalid) {
+    /* finish() orders every band's writes before this load. */
+    bool invalid = atomic_load_explicit(&job.invalid, memory_order_relaxed);
+    if (invalid) {
         fail(error, size, "Field evaluation produced an invalid scalar");
     }
     free(parameters);
-    return !job.invalid;
+    return !invalid;
 }
 
 bool field_program_sample(

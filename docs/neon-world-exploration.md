@@ -223,7 +223,7 @@ basalt forward.
 | What changes? | An unbounded network of chambers, passages and shafts joins the original tunnel. The rock is one continuous column grid whose columns thin, widen, lean and fan gradually, with no seams between styles. Cross-joints carry every exposed column end. Rock near open space receives its light over 64 units and is shaded from each light's direction with relief shadows, in HDR with bloom. Shots throw grit, fine sparks colored by the weapon, and hot rock chunks that fly out, shove loose rock, split on hard knocks and shrink into small puffs; crater dust clears within a few seconds. The ship lamp is shelved. |
 | What does the player do? | Descend to the floor, fire into it, climb and fire at the ceiling. Then fly by hand at normal speed and while boosting. |
 | How will we judge it? | Column rhythm reads in silhouette and surface. Walls near the ship, shots and fire are visibly lit, with relief facing the light. Passages remain navigable while boosting; streaming does not pop in visible terrain. |
-| What is deliberately deferred? | Depth layer, living light, the starfield, crystals and hard rock, regional world structure, and GPU per-pass profiling. |
+| What is deliberately deferred? | Depth layer, living light, the starfield, crystals and hard rock, and regional world structure. |
 | What is the evidence? | Moving captures under game lighting and an ambient-lit inspection copy, GPU surface-lighting checks, 1080p frame times, and hands-on play. |
 
 This section should hold only the next agreed feature. Replace it after that

@@ -42,6 +42,11 @@ Permission and other metadata-only notifications do not trigger builds. This
 keeps dependency configuration from retriggering itself when it adjusts generated
 source permissions without changing their contents.
 
+The check fingerprints source inputs and the CMake cache. A matching fingerprint
+skips configure and build; if the accepted immutable generation also matches
+the source, resident inputs and application binary, it is returned without
+copying a new generation.
+
 Source fingerprints before and after each build reject results made stale by
 newer edits. Ninja retries incrementally, preserving unchanged resident binaries.
 Other generators force recompilation on retry so coarse filesystem timestamps

@@ -18,7 +18,11 @@ void run_graph_functions_checks()
             "Editor"
         );
         node *literal = graph_add_node(asset->graph, registry_node_by_name("Integer"));
+        /* Defaults are omitted, so author non-default graph state. */
+        graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
+        asset->graph->breakpoints_enabled = 0;
         char *json = behavior_asset_save_json(asset);
+        asset->graph->breakpoints_enabled = 1;
         test_check(
             json && strstr(json, "variables") && strstr(json, "graphs"),
             "every Behavior Asset document value has an authored model surface"
@@ -180,6 +184,17 @@ void run_graph_functions_checks()
             function_loaded && acount(function_loaded->graphs) == 3 &&
                 behavior_asset_find_graph_by_name(function_loaded, "PureIdentity") != NULL,
             "multiple graph definitions round-trip"
+        );
+        node *loaded_call = function_loaded
+                              ? graph_node_by_id(function_loaded->graph, call->id)
+                              : NULL;
+        test_check(
+            function_json && !strstr(function_json, "declaration_id") && loaded_call &&
+                loaded_call->input_pins[1].declaration_id ==
+                    entry->output_pins[1].id &&
+                loaded_call->output_pins[1].declaration_id == ret->input_pins[1].id,
+            "local call pins derive their declarations from the signature by "
+            "name"
         );
         test_check(fn->owner == asset, "function execution has an explicit local-state boundary");
         test_check(acount(asset->graphs) >= 3, "the Behavior Asset model lists event and function graphs");

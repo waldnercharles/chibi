@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 enum
 {
@@ -160,11 +161,12 @@ static bool material_pixels(render_material_textures textures)
                 }
             }
         } else {
+            /* A plain solid carries no bump tilt, edge light or gloss. */
             sample = 4 * (64 * SIDE + 43);
-            if (half_value(pixels[sample]) < 0.4f ||
-                fabsf(half_value(pixels[sample + 1])) > 0.2f ||
-                half_value(pixels[sample + 3]) < 0.5f) {
-                return false;
+            for (int channel = 0; channel < 4; channel++) {
+                if (fabsf(half_value(pixels[sample + channel])) > 0.002f) {
+                    return false;
+                }
             }
         }
     }
@@ -215,13 +217,15 @@ static render_material_entity wall_with(float absorption, float albedo)
     return entity;
 }
 
-static bool solve(
+/* Renders size x size pixels covering world x world units around the origin. */
+static bool solve_scaled(
     render_material_raster *raster,
     render_radiance *radiance,
     CF_Canvas canvas,
     const render_material_entity *entities,
     int count,
     int size,
+    float world,
     int frames,
     CF_Pixel *pixels
 )
@@ -234,10 +238,10 @@ static bool solve(
                 raster,
                 entities,
                 count,
-                (render_material_view){ .min_x = -size * 0.5f,
-                                        .max_y = size * 0.5f,
-                                        .width = size,
-                                        .height = size,
+                (render_material_view){ .min_x = -world * 0.5f,
+                                        .max_y = world * 0.5f,
+                                        .width = world,
+                                        .height = world,
                                         .crop_min_u = 0,
                                         .crop_min_v = 0,
                                         .crop_max_u = 1,
@@ -258,10 +262,10 @@ static bool solve(
         bool ok = render_radiance_draw(
             radiance,
             inputs,
-            (render_view_2d){ .min_x = -size * 0.5f,
-                              .max_y = size * 0.5f,
-                              .width = size,
-                              .height = size,
+            (render_view_2d){ .min_x = -world * 0.5f,
+                              .max_y = world * 0.5f,
+                              .width = world,
+                              .height = world,
                               .crop_min_u = 0,
                               .crop_min_v = 0,
                               .crop_max_u = 1,
@@ -276,6 +280,20 @@ static bool solve(
         }
     }
     return read_pixels(canvas, pixels, size * size);
+}
+
+static bool solve(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    int size,
+    int frames,
+    CF_Pixel *pixels
+)
+{
+    return solve_scaled(raster, radiance, canvas, entities, count, size, (float)size, frames, pixels);
 }
 
 static double receiver_light(const CF_Pixel *pixels)
@@ -646,6 +664,86 @@ static bool material_parameter_writes(const behavior_asset *material, int id)
     return ok;
 }
 
+static bool scene_pixels(render_material_raster *raster, uint16_t *pixels, int count)
+{
+    CF_CanvasParams params = cf_canvas_defaults(0, 0);
+    params.attach_target = render_material_raster_textures(raster).scene;
+    CF_Canvas canvas = cf_make_canvas(params);
+    CF_Readback readback = cf_canvas_readback(canvas);
+    bool ok = readback.id != 0;
+    if (ok) {
+        while (!cf_readback_ready(readback)) {
+        }
+        ok = cf_readback_data(readback, pixels, count * 8) == count * 8;
+        cf_destroy_readback(readback);
+    }
+    cf_destroy_canvas(canvas);
+    return ok;
+}
+
+/* A world-space material follows an entity's laid-out frame: red where the
+ * sampled world X is positive. */
+static bool material_frame_pixels(render_material_raster *raster)
+{
+    behavior_asset *material = behavior_asset_new("GPU material frame");
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *world = graph_add_node(g, registry_node_by_name("Shader WorldPosition"));
+    node *x = graph_add_node(g, registry_node_by_name("Shader X"));
+    node *step = graph_add_node(g, registry_node_by_name("Shader Step"));
+    node *color = graph_add_node(g, registry_node_by_name("Shader Vector3"));
+    pin_value unlit = { .type = PIN_BOOL, .b = true };
+    bool ok = graph_set_pin_default(g, output, 0, 6, &unlit) == 0;
+    ok &= graph_connect_data(g, world, 0, x, 0) == 0;
+    ok &= graph_connect_data(g, x, 0, step, 0) == 0;
+    ok &= graph_connect_data(g, step, 0, color, 0) == 0;
+    ok &= graph_connect_data(g, color, 0, output, 0) == 0;
+    shader_error error;
+    ok &= render_shader_upsert(material, &error);
+    if (!ok) {
+        fprintf(stderr, "material frame shader: %s\n", error.message);
+    }
+    render_material_entity entity = emitter();
+    entity.pos[0] = entity.pos[1] = 0;
+    entity.extent[0] = entity.extent[1] = 8;
+    entity.radius = 6;
+    entity.border_thickness = 0;
+    entity.reserved[0] = (float)render_shader_find(material->name);
+    const float frames[3][4] = { { 0 }, { 0, 0, -1, 0 }, { 0, 0, 0, 1 } };
+    /* Expected red at left, right, top and bottom samples. */
+    const bool red[3][4] = { { 0, 1, 1, 1 }, { 1, 0, 0, 0 }, { 1, 1, 0, 1 } };
+    const int samples[4] = { 8 * 16 + 4, 8 * 16 + 12, 4 * 16 + 8, 12 * 16 + 8 };
+    ok &= render_material_raster_resize(raster, 16, 16);
+    for (int f = 0; ok && f < 3; f++) {
+        memcpy(entity.material_frame, frames[f], sizeof entity.material_frame);
+        cf_app_update(NULL);
+        ok &= render_material_raster_draw(
+            raster,
+            &entity,
+            1,
+            (render_material_view){ -8, 8, 16, 16, 0, 0, 1, 1 }
+        );
+        cf_app_draw_onto_screen(false);
+        uint16_t pixels[16 * 16 * 4];
+        ok &= scene_pixels(raster, pixels, 16 * 16);
+        for (int i = 0; ok && i < 4; i++) {
+            /* Unframed entities sample the pixel itself; the first case
+             * checks left and right only. */
+            if (f == 0 && i >= 2) {
+                continue;
+            }
+            bool is_red = half_value(pixels[samples[i] * 4]) > .5f;
+            if (is_red != red[f][i]) {
+                fprintf(stderr, "material frame %d sample %d: red %d\n", f, i, is_red);
+                ok = false;
+            }
+        }
+    }
+    behavior_asset_free(material);
+    return ok;
+}
+
 static bool graph_material_pixels(render_material_raster *raster)
 {
     behavior_asset *material = behavior_asset_new("GPU material regression");
@@ -929,6 +1027,7 @@ static bool silhouette_lighting(
     lighting.adaptive = false;
     lighting.fog = 0;
     lighting.trace_levels = trace_levels;
+    lighting.surface_radius = 12;
     render_material_entity pieces[3];
     for (int i = 0; i < 2; i++) {
         pieces[i] = wall_with(1, .6f);
@@ -964,6 +1063,145 @@ static bool silhouette_lighting(
     int far_edge = pixels[64 * SIDE + 86].colors.g;
     printf("silhouette lighting: unlit %d lit %d seam %d far edge %d\n", dark, edge, seam, far_edge);
     return ok && edge > 10 && seam < 2 && far_edge < 2;
+}
+
+/* A flat gray material whose normal tilts sideways (x) and up (z). */
+static behavior_asset *tilted_material_xz(const char *name, float tilt_x, float tilt_z, float roughness)
+{
+    behavior_asset *material = behavior_asset_new(name);
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *output = shader_graph_add_output(material->graph, false);
+    float base[3] = { .6f, .6f, .6f }, normal[3] = { tilt_x, 1, tilt_z };
+    pin_value color = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = base };
+    pin_value bump = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = normal };
+    pin_value rough = { .type = PIN_F32, .f = roughness };
+    shader_error error;
+    if (graph_set_pin_default(material->graph, output, 0, 0, &color) ||
+        graph_set_pin_default(material->graph, output, 0, 2, &rough) ||
+        graph_set_pin_default(material->graph, output, 0, 4, &bump) ||
+        !render_shader_upsert(material, &error)) {
+        behavior_asset_free(material);
+        return NULL;
+    }
+    return material;
+}
+
+static behavior_asset *tilted_material(const char *name, float tilt, float roughness)
+{
+    return tilted_material_xz(name, tilt, 0, roughness);
+}
+
+static render_material_entity lit_wall(float half_width, float edge_light)
+{
+    render_material_entity entity = wall_with(1, .6f);
+    entity.extent[0] = half_width + 1;
+    entity.points[0] = half_width;
+    entity.reserved[2] = edge_light;
+    return entity;
+}
+
+static int green_at(const CF_Pixel *pixels, int x)
+{
+    return pixels[64 * SIDE + x].colors.g;
+}
+
+/* Material bump tilt and gloss reach the surface channels; light near a solid
+ * reaches a world-space depth into it and lights relief facing its source. */
+static bool surface_lighting(render_material_raster *raster, render_radiance *radiance, CF_Canvas canvas)
+{
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = false;
+    lighting.fog = 0;
+    lighting.surface_radius = 12;
+    lighting.surface_relief = 1.5f;
+    lighting.surface_bevel = 0;
+    lighting.specular = 0;
+    bool ok = render_radiance_set_lighting(radiance, lighting);
+    const float tilts[] = { -.75f, 0, .75f };
+    int face[3] = { 0 };
+    CF_Pixel pixels[PIXELS];
+    for (int i = 0; i < 3 && ok; i++) {
+        behavior_asset *material = tilted_material(
+            i ? "Surface tilt right" : "Surface tilt left",
+            tilts[i],
+            .25f
+        );
+        ok = material != NULL;
+        if (!ok) {
+            break;
+        }
+        render_material_entity scene[2] = { emitter(), lit_wall(6, 1.5f) };
+        scene[1].reserved[0] = (float)render_shader_find(material->name);
+        ok = solve(raster, radiance, canvas, scene, 2, SIDE, 12, pixels);
+        if (ok && i == 0) {
+            uint16_t normal[PIXELS * 4];
+            ok = read_hdr_texture(render_material_raster_textures(raster).normal, normal, PIXELS);
+            int center = 4 * (64 * SIDE + 64);
+            ok &= fabsf(half_value(normal[center]) + .6f) < .01f &&
+                  fabsf(half_value(normal[center + 1])) < .01f &&
+                  fabsf(half_value(normal[center + 2]) - 1.5f) < .01f &&
+                  fabsf(half_value(normal[center + 3]) - .75f) < .01f;
+        }
+        face[i] = green_at(pixels, 60);
+        behavior_asset_free(material);
+    }
+    printf("surface relief: facing light %d flat %d facing away %d\n", face[0], face[1], face[2]);
+    ok &= face[0] > face[1] + 8 && face[1] > face[2] + 8;
+
+    /* The same picture drawn at twice the world scale lights half the depth
+     * in pixels: the radius is in world units. */
+    int depth[2] = { 0 };
+    for (int zoom = 0; zoom < 2 && ok; zoom++) {
+        float k = zoom ? 2.f : 1.f;
+        render_material_entity scene[2] = { emitter(), lit_wall(40 * k, .4f) };
+        scene[0].pos[0] = -55 * k;
+        scene[0].radius *= k;
+        scene[0].border_thickness *= k;
+        scene[0].extent[0] *= k;
+        scene[0].extent[1] *= k;
+        scene[1].points[1] *= k;
+        scene[1].extent[1] *= k;
+        ok = solve_scaled(raster, radiance, canvas, scene, 2, SIDE, SIDE * k, 12, pixels);
+        int face_x = SIDE / 2 - 40;
+        int face = green_at(pixels, face_x + 1);
+        for (int x = face_x + 1; x < SIDE && ok; x++) {
+            if (green_at(pixels, x) * 4 < face) {
+                depth[zoom] = x - face_x;
+                break;
+            }
+        }
+        ok &= face > 20;
+    }
+    printf("surface depth: %d px at one unit per pixel, %d px at two\n", depth[0], depth[1]);
+    ok &= depth[0] >= 6 && depth[0] <= 18 && abs(2 * depth[1] - depth[0]) <= 3;
+
+    /* Light below a ceiling: relief facing down is brighter than facing up. */
+    int vertical[2] = { 0 };
+    for (int i = 0; i < 2 && ok; i++) {
+        behavior_asset *material = tilted_material_xz(
+            i ? "Surface tilt up" : "Surface tilt down",
+            0,
+            i ? .75f : -.75f,
+            .25f
+        );
+        ok = material != NULL;
+        if (!ok) {
+            break;
+        }
+        render_material_entity scene[2] = { emitter(), lit_wall(64, 1.5f) };
+        scene[0].pos[0] = 0;
+        scene[0].pos[1] = -30;
+        scene[1].pos[1] = 20;
+        scene[1].points[1] = 6;
+        scene[1].extent[1] = 8;
+        scene[1].reserved[0] = (float)render_shader_find(material->name);
+        ok = solve(raster, radiance, canvas, scene, 2, SIDE, 12, pixels);
+        vertical[i] = pixels[48 * SIDE + 64].colors.g;
+        behavior_asset_free(material);
+    }
+    printf("surface relief below a ceiling: facing down %d facing up %d\n", vertical[0], vertical[1]);
+    ok &= vertical[0] > vertical[1] + 8;
+    return ok;
 }
 
 static bool fluid_lighting(
@@ -1189,6 +1427,92 @@ static bool reflection_pixels()
 }
 
 /* The host initializes Cute and mounts/configures render/shaders before this call. */
+/* Renders frames with the view moving step world units right each frame. */
+static bool solve_moving(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    int frames,
+    float step,
+    CF_Pixel *pixels
+)
+{
+    render_radiance_reset(radiance);
+    for (int frame = 0; frame < frames; frame++) {
+        render_view_2d view = { .min_x = -SIDE * .5f + step * frame,
+                                .max_y = SIDE * .5f,
+                                .width = SIDE,
+                                .height = SIDE,
+                                .crop_max_u = 1,
+                                .crop_max_v = 1 };
+        cf_app_update(NULL);
+        if (!render_material_raster_draw(raster, entities, count, view)) {
+            cf_app_draw_onto_screen(false);
+            return false;
+        }
+        render_material_textures textures = render_material_raster_textures(raster);
+        render_radiance_inputs inputs = { textures.scene,
+                                          textures.emission,
+                                          textures.absorption,
+                                          textures.albedo,
+                                          textures.normal };
+        cf_draw_push();
+        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+        bool ok = render_radiance_draw(radiance, inputs, view, canvas);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(false);
+        if (!ok) {
+            return false;
+        }
+    }
+    return read_pixels(canvas, pixels, PIXELS);
+}
+
+static double mean_difference(const CF_Pixel *a, const CF_Pixel *b)
+{
+    double sum = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        sum += abs((int)a[i].colors.r - b[i].colors.r) +
+               abs((int)a[i].colors.g - b[i].colors.g) +
+               abs((int)a[i].colors.b - b[i].colors.b);
+    }
+    return sum / (3.0 * PIXELS);
+}
+
+/* Solving the light directions over two or four frames reuses earlier frusta,
+ * moved with the view; it matches solving every direction every frame. */
+static bool split_transport(render_material_raster *raster, CF_Canvas canvas)
+{
+    render_material_entity entities[] = { emitter(), wall_with(.2f, .8f) };
+    static CF_Pixel full[PIXELS], split[PIXELS];
+    bool ok = true;
+    const float steps[] = { 0, 2 };
+    for (int s = 0; s < 2 && ok; s++) {
+        for (int frames = 2; frames <= 4 && ok; frames *= 2) {
+            render_radiance *radiance = render_radiance_new();
+            GameHRC2D lighting = game_hrc2d_defaults();
+            lighting.adaptive = false;
+            lighting.fog = 0;
+            lighting.scale = 1;
+            ok = radiance && render_radiance_set_lighting(radiance, lighting) &&
+                 render_radiance_resize(radiance, SIDE, SIDE) &&
+                 solve_moving(raster, radiance, canvas, entities, 2, 12, steps[s], full);
+            lighting.split_frames = frames;
+            ok = ok && render_radiance_set_lighting(radiance, lighting) &&
+                 solve_moving(raster, radiance, canvas, entities, 2, 12, steps[s], split);
+            double difference = ok ? mean_difference(full, split) : 0;
+            ok = ok && difference < .1;
+            render_radiance_free(radiance);
+        }
+    }
+    if (!ok) {
+        fprintf(stderr, "HRC split transport must match a full solve\n");
+    }
+    return ok;
+}
+
 int test_radiance()
 {
     extern bool test_radiance_intervals();
@@ -1364,7 +1688,7 @@ int test_radiance()
         }
     }
     if (ok) {
-        ok = graph_material_pixels(raster);
+        ok = graph_material_pixels(raster) && material_frame_pixels(raster);
     }
     if (ok) {
         GameHRC2D lighting = game_hrc2d_defaults();
@@ -1390,6 +1714,8 @@ int test_radiance()
         ok &= silhouette_lighting(raster, radiance, canvas, levels);
         ok &= fluid_lighting(raster, radiance, canvas, levels);
     }
+    ok &= surface_lighting(raster, radiance, canvas);
+    ok &= split_transport(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);
     ok &= reflection_pixels();
     bool light_ok = light_field_checks();
@@ -1404,7 +1730,7 @@ int test_radiance()
     if (raster) {
         render_material_raster_free(raster);
     }
-    printf("radiance %s: HRC transport, SDF normals, absorption, reset and resize\n", ok ? "PASS" : "FAIL");
+    printf("radiance %s: HRC transport, surface channels, absorption, reset and resize\n", ok ? "PASS" : "FAIL");
     return !ok;
 }
 

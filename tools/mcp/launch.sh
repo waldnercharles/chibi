@@ -32,18 +32,12 @@ if [ -n "${CHIBI_CTL:-}" ] && [ ! -x "$controller" ]; then
     exit 1
 fi
 
-if [ ! -x "$controller" ]; then
-    if ! command -v make >/dev/null 2>&1; then
-        printf '%s\n' 'chibi MCP requires native controllers or make' >&2
-        exit 1
+# A worktree without its own build borrows the shared build of identical native sources.
+if [ -z "${CHIBI_CTL:-}" ] && [ ! -x "$controller" ]; then
+    cached=$(sh "$script_dir/controller-cache.sh" 2>/dev/null || true)
+    if [ -n "$cached" ] && [ -x "$cached" ]; then
+        controller=$cached
     fi
-    printf '%s\n' 'chibi MCP building native controllers' >&2
-    make -C "$repo_root" build BUILD_DIR="$build_dir" >&2
-fi
-
-if [ ! -x "$controller" ]; then
-	printf '%s\n' "chibi MCP could not build $controller" >&2
-    exit 1
 fi
 
 if node_bin=$(command -v node 2>/dev/null); then
@@ -51,11 +45,18 @@ if node_bin=$(command -v node 2>/dev/null); then
 elif [ -x "/Applications/Codex.app/Contents/Resources/cua_node/bin/node" ]; then
     node_bin="/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
 else
-    printf '%s\n' 'chibi MCP requires Node.js 20 or newer' >&2
+    printf '%s\n' 'chibi MCP requires Node.js 22 or newer' >&2
+    exit 1
+fi
+# Controller responses keep 64-bit IDs exact with the Node 22 JSON reviver source.
+if ! "$node_bin" -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
+    printf '%s\n' "chibi MCP requires Node.js 22 or newer; $node_bin is $("$node_bin" --version)" >&2
     exit 1
 fi
 
+# The server answers the handshake immediately and builds chibi_ctl on first use.
 printf '%s\n' "chibi MCP starting from project root $project_root" >&2
 CHIBI_ROOT="$project_root" \
 CHIBI_CTL="$controller" \
+CHIBI_RENDER_SHADER_DIR="$repo_root/src/render/shaders" \
 exec "$node_bin" "$repo_root/tools/mcp/server.mjs"

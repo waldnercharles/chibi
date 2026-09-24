@@ -4,6 +4,7 @@
 #include "editor/ui/color.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
+#include "graph/authoring/arrange.h"
 #include "graph/authoring/optimize.h"
 
 #include <imgui/dcimgui.h>
@@ -24,6 +25,7 @@ typedef struct ed_node_view
     uint64_t id;
     ImVec2 min;
     ImVec2 max;
+    ImVec2 size; /* world units, as arrange measures the node */
     ImVec2 symbol_min;
     ImVec2 symbol_max;
     float title_height;
@@ -39,6 +41,7 @@ typedef struct ed_pin_view
     int kind;
     int index;
     ImVec2 pos;
+    int row; /* body row, as arrange counts pin rows */
 } ed_pin_view;
 
 typedef struct ed_drag_node
@@ -174,6 +177,9 @@ struct editor
 
     ed_node_view *views;
     ed_pin_view *pins;
+    arrange_routes wire_routes; /* lanes derived from positions; never saved */
+    int *wire_route; /* per active-graph edge: its link in wire_routes, or -1 */
+    uint64_t wire_route_key; /* hash of the arrange input wire_routes came from */
     node **selected;
     ed_link_ref *selected_links;
 
@@ -385,6 +391,9 @@ float ed_curve_length(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3);
 ImVec2 ed_curve_at_distance(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float distance, float length);
 float ed_flow_heat(double age, float *thickness, ImVec4 *color, ImVec4 base, int exec);
 int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec2 *p2, ImVec2 *p3);
+int ed_pin_row(const editor *e, const node *n, int kind, int index);
+void ed_route_wires(editor *e);
+int ed_route_count(const editor *e, const edge *ed);
 int ed_hit_handle(const editor *e, ImVec2 mouse, int *edge_index, int *side);
 void ed_route_segment(
     const editor *e,
@@ -492,6 +501,8 @@ void ed_draw_debug_menu(editor *e);
 void ed_rebuild_log_text(editor *e);
 void ed_rebuild_compile_text(editor *e);
 void ed_auto_arrange(editor *e);
+/* Opening arranges automatic nodes around the placed ones. */
+void ed_arrange_automatic(editor *e);
 void ed_zoom_fit(editor *e, bool animate);
 void ed_frame_initial_view(editor *e);
 void ed_apply_field_request(editor *e);

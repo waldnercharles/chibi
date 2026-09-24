@@ -175,6 +175,19 @@ static pin_binding *clone_binding(graph *g, const pin_binding *source)
     return copy;
 }
 
+pin_value graph_pin_initial_default(const pin_spec *template_pin)
+{
+    pin_value value = template_pin->default_value;
+    value.type = template_pin->type;
+    value.container = template_pin->container;
+    value.type_name = template_pin->type_name;
+    if (value.container == PIN_CONTAINER_SINGLE &&
+        (value.type == PIN_STR || value.type == PIN_NAME) && !value.str) {
+        value.str = "";
+    }
+    return value;
+}
+
 static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
 {
     *dst = *src;
@@ -184,13 +197,7 @@ static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
                         ? graph_own_str(g, src->field_name, strlen(src->field_name))
                         : NULL;
     dst->binding = clone_binding(g, src->binding);
-    dst->default_value.type = dst->type;
-    dst->default_value.container = dst->container;
-    dst->default_value.type_name = dst->type_name;
-    if (dst->container == PIN_CONTAINER_SINGLE &&
-        (dst->type == PIN_STR || dst->type == PIN_NAME) && !dst->default_value.str) {
-        dst->default_value.str = "";
-    }
+    dst->default_value = graph_pin_initial_default(src);
 }
 
 node *graph_add_node(graph *g, const node_desc *desc)
@@ -202,6 +209,7 @@ node *graph_add_node(graph *g, const node_desc *desc)
     }
     node *n = (node *)xcalloc(1, sizeof *n);
     n->desc = desc;
+    n->placed = true;
     n->input_count = desc->input_count;
     n->output_count = desc->output_count;
     n->id = graph_alloc_id(g);
@@ -1628,6 +1636,18 @@ const type_field *graph_output_field(const node *n, int index, int *source_index
     return NULL;
 }
 
+pin_spec graph_field_pin(const node *n, int source_index, const type_field *field)
+{
+    const pin_spec *source = &n->output_pins[source_index];
+    return (pin_spec){ .name = field->name,
+                       .type = field->type,
+                       .type_name = field->type_name,
+                       .kind = PIN_DATA,
+                       .field_source = source->id,
+                       .field_name = field->name,
+                       .flags = source->flags & PIN_FLAG_REFERENCE };
+}
+
 int graph_expose_output_fields(graph *g, node *n, int index)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
@@ -1649,13 +1669,7 @@ int graph_expose_output_fields(graph *g, node *n, int index)
         if (exists) {
             continue;
         }
-        pin_spec pin = { .name = field->name,
-                         .type = field->type,
-                         .type_name = field->type_name,
-                         .kind = PIN_DATA,
-                         .field_source = source,
-                         .field_name = field->name,
-                         .flags = n->output_pins[index].flags & PIN_FLAG_REFERENCE };
+        pin_spec pin = graph_field_pin(n, index, field);
         if (graph_add_pin(g, n, 1, &pin) < 0) {
             return -1;
         }

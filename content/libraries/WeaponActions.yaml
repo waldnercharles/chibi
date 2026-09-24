@@ -1,0 +1,126 @@
+version: 3
+name: WeaponActions
+domain: library
+id_counter: 256
+description: Shared weapon cooldown and projectile initialization functions.
+graphs:
+- {kind: event, name: Events}
+- id: 149
+  kind: function
+  name: Check Firing Interval
+  entry_id: 150
+  return_id: 153
+  call_depth_limit: 64
+  nodes:
+  - id: 67
+    type: Max
+    inputs: {B: 0.009999999776482582}
+  - {id: 73, type: Greater Or Equal}
+  - {id: 82, type: Subtract}
+  - id: 150
+    type: Function Entry
+    outputs:
+    - {id: 151, name: Elapsed, type: float, kind: data}
+    - {id: 152, name: Cooldown, type: float, kind: data}
+  - id: 153
+    type: Return
+    inputs:
+    - {id: 154, name: Ready, type: bool, kind: data}
+    - {id: 155, name: Remainder, type: float, kind: data}
+  edges:
+  - {from: 67.Result, to: 73.B}
+  - {from: 67.Result, to: 82.B}
+  - {from: 73.Result, to: 153.Ready}
+  - {from: 82.Result, to: 153.Remainder}
+  - {from: 150.Elapsed, to: 73.A}
+  - {from: 150.Elapsed, to: 82.A}
+  - {from: 150.Cooldown, to: 67.A}
+- id: 173
+  kind: function
+  name: Fire Projectile
+  entry_id: 174
+  return_id: 179
+  call_depth_limit: 64
+  nodes:
+  - id: 91
+    type: Spawn Prototype
+    inputs:
+      Prototype: {type_name: name, default: ArenaProjectile}
+  - {id: 104, type: SetEntity_GameTransform}
+  - id: 110
+    type: GetEntity_GameProjectile
+    outputs:
+      Value.speed: {id: 115}
+  - id: 133
+    type: Set_GameProjectile_damage
+    inputs:
+      Value: {id: 136}
+      Target: {id: 135}
+    outputs:
+      Then: {id: 137}
+  - id: 174
+    type: Function Entry
+    outputs:
+    - {id: 175, name: Then}
+    - {id: 176, name: Origin, type: struct, type_name: CF_V2, kind: data}
+    - {id: 177, name: Direction, type: struct, type_name: CF_V2, kind: data}
+    - {id: 178, name: Damage, type: int, kind: data}
+    - {id: 220, name: Prototype, type: name, kind: data, default: ArenaProjectile}
+    - {id: 255, name: Shooter, type: handle, type_name: ecs.entity, kind: data}
+  - id: 179
+    type: Return
+    inputs:
+      Entity: {type: handle, type_name: ecs.entity, kind: data}
+  - id: 225
+    type: Multiply
+    inputs:
+      A: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {type: struct, type_name: CF_V2, flags: 0, group: 0}
+  - {id: 229, type: SetEntity_GameVelocity}
+  - id: 235
+    type: Call Pure Function
+    reference_id: 1
+    reference_name: Direction Orientation
+    reference_asset: DirectionMath
+    inputs:
+      X: {declaration_id: 4, type: float}
+      "Y": {declaration_id: 5, type: float}
+    outputs:
+      Orientation: {declaration_id: 6, type: struct, type_name: GameOrientation}
+  - {id: 239, type: SetEntity_GameOrientation}
+  - {id: 247, type: Set_GameCollider_ignore_entity}
+  - id: 253
+    type: Normalize Vector 2
+    inputs:
+      Value: {id: 221}
+    outputs:
+      Result.x: {}
+      Result.y: {}
+  edges:
+  - {from: 91.Then, to: 104.Exec}
+  - {from: 91.Entity, to: 104.Entity}
+  - {from: 91.Entity, to: 110.Entity}
+  - {from: 91.Entity, to: 133.Target}
+  - {from: 91.Entity, to: 179.Entity}
+  - {from: 91.Entity, to: 229.Entity}
+  - {from: 91.Entity, to: 239.Entity}
+  - {from: 91.Entity, to: 247.Target}
+  - {from: 104.Then, to: 229.Exec}
+  - {from: 110.Value.speed, to: 225.B}
+  - {from: 133.Then, to: 247.Exec}
+  - {from: 174.Then, to: 91.Exec}
+  - {from: 174.Origin, to: 104.Value}
+  - {from: 174.Direction, to: 253.Value}
+  - {from: 174.Damage, to: 133.Value}
+  - {from: 174.Prototype, to: 91.Prototype}
+  - {from: 174.Shooter, to: 247.Value}
+  - {from: 225.Result, to: 229.Value}
+  - {from: 229.Then, to: 239.Exec}
+  - {from: 235.Orientation, to: 239.Value}
+  - {from: 239.Then, to: 133.Exec}
+  - {from: 247.Then, to: 179.Exec}
+  - {from: 253.Result, to: 225.A}
+  - {from: 253.Result.x, to: 235.X}
+  - {from: 253.Result.y, to: 235.Y}

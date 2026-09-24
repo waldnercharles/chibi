@@ -80,6 +80,7 @@ TEST_CASE(all_checks)
     test_asset_index();
     run_graph_model_checks();
     run_graph_document_checks();
+    run_graph_arrange_checks();
     run_runtime_execution_checks();
     test_compiled_behaviors();
     test_encounter_backend_parity();
@@ -183,6 +184,13 @@ int main(int argc, char **argv)
         registry_validate();
         test_math_expression();
         return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--graph-arrange")) {
+        run_graph_arrange_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {
+        return bench_graph_arrange(argc > 2 ? atoi(argv[2]) : 1, argc > 3 ? argv[3] : NULL);
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();

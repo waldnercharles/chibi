@@ -1,0 +1,970 @@
+version: 3
+name: ArenaWaveBehavior
+id_counter: 3613
+description: 'Five telegraphed formations: edge rows, opposing pincers and an arc. Markers count as pending arrivals, hold for one second, and create enemies at their exact marked positions. Final pickups are collected before clearing.'
+owner_type: ecs.entity
+variables:
+- id: 2001
+  name: Interval
+  type: float
+  type_name: float
+  category: Formation
+  default: 4.0
+- id: 2002
+  name: Elapsed
+  type: float
+  type_name: float
+  category: State
+  default: 3.799999952316284
+- {id: 2003, name: Enemy Count, type: int, type_name: int, category: State}
+- {id: 2004, name: Player Alive, type: bool, type_name: bool, category: State}
+- {id: 2387, name: Pending Deaths, type: bool, type_name: bool, category: State}
+- id: 2430
+  name: Formation Position
+  type: struct
+  type_name: GameTransform
+  category: State
+  default: {x: 0.0, "y": 0.0}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 2027, type: Event, reference_name: Tick}
+  - id: 2029
+    type: Call Function
+    reference_id: 2005
+    reference_name: Refresh Encounter
+  - id: 2032
+    type: Event
+    reference_name: RefreshEncounter
+  - id: 2034
+    type: Call Function
+    reference_id: 2005
+    reference_name: Refresh Encounter
+  - id: 2037
+    type: Get_GameEncounter
+    outputs:
+      Value: {flags: 0}
+      Value.status: {}
+  - {id: 2040, type: Integer Equal}
+  - {id: 2044, type: Branch}
+  - id: 2049
+    type: Get_GameTransform
+    outputs:
+      Value: {flags: 0}
+  - id: 2051
+    type: Call Function
+    reference_id: 2015
+    reference_name: Advance Wave
+    inputs:
+      Arena Center: {type: struct, type_name: CF_V2, kind: data}
+  edges:
+  - {from: 2027.Then, to: 2029.Exec}
+  - {from: 2029.Then, to: 2044.Exec}
+  - {from: 2032.Then, to: 2034.Exec}
+  - {from: 2037.Value.status, to: 2040.A}
+  - {from: 2040.Result, to: 2044.Condition}
+  - {from: 2044.True, to: 2051.Exec}
+  - {from: 2049.Value, to: 2051.Arena Center, conversion: game_transform_to_cf}
+- id: 2005
+  kind: function
+  name: Refresh Encounter
+  entry_id: 2006
+  return_id: 2008
+  nodes:
+  - id: 2006
+    type: Function Entry
+    outputs:
+    - {id: 2007, name: Then}
+  - {id: 2008, type: Return}
+  - id: 2126
+    type: Get_GameEncounter
+    outputs:
+      Value: {flags: 0}
+      Value.status: {}
+      Value.spawned: {}
+      Value.total: {}
+  - id: 2131
+    type: Integer Not Equal
+    inputs: {B: 2}
+  - {id: 2135, type: Branch}
+  - id: 2140
+    type: Call Function
+    reference_id: 2010
+    reference_name: Count Living Members
+  - id: 2143
+    type: Get Variable
+    reference_id: 2004
+    outputs:
+      Value: {type: bool, flags: 0}
+  - {id: 2145, type: Branch}
+  - id: 2150
+    type: Get Variable
+    reference_id: 2003
+    outputs:
+      Value: {flags: 0}
+  - {id: 2152, type: Set_GameEncounter_alive}
+  - id: 2158
+    type: Set_GameEncounter_status
+    inputs: {Value: 2}
+  - {id: 2164, type: Integer Greater Or Equal}
+  - {id: 2168, type: Branch}
+  - {id: 2173, type: Integer Equal}
+  - {id: 2177, type: Branch}
+  - id: 2182
+    type: Set_GameEncounter_status
+    inputs: {Value: 1}
+  - {id: 2317, type: Integer Equal}
+  - {id: 2321, type: Branch}
+  - id: 2363
+    type: Find Entities With Component
+    inputs:
+      Component: {id: 2361, type_name: name, default: GAME.GamePickup}
+    outputs:
+      Entities:
+        default: []
+  - id: 2366
+    type: Length
+    inputs:
+      Array:
+        id: 2364
+        type: handle
+        type_name: ecs.entity
+        default: []
+    outputs:
+    - {id: 2365, name: Length}
+  - id: 2370
+    type: Integer Equal
+    inputs:
+      A: {id: 2367}
+  - id: 2375
+    type: Branch
+    inputs:
+      Exec: {id: 2371}
+  - id: 2382
+    type: ForEach
+    inputs:
+      Exec: {id: 2376}
+      Array:
+        type: handle
+        type_name: ecs.entity
+        default: []
+  - id: 2386
+    type: Send Event
+    reference_name: CollectExperience
+    inputs:
+      Exec: {id: 2383}
+  - id: 2399
+    type: Get Variable
+    reference_id: 2387
+    outputs:
+      Value: {id: 2398, type: bool, flags: 0}
+  - id: 2404
+    type: Branch
+    inputs:
+      Exec: {id: 2400}
+  edges:
+  - {from: 2006.Then, to: 2135.Exec}
+  - {from: 2126.Value.status, to: 2131.A}
+  - {from: 2126.Value.status, to: 2317.A}
+  - {from: 2126.Value.spawned, to: 2164.A}
+  - {from: 2126.Value.total, to: 2164.B}
+  - {from: 2131.Result, to: 2135.Condition}
+  - {from: 2135.True, to: 2140.Exec}
+  - {from: 2135.False, to: 2008.Exec}
+  - {from: 2140.Then, to: 2152.Exec}
+  - {from: 2143.Value, to: 2145.Condition}
+  - {from: 2145.True, to: 2321.Exec}
+  - {from: 2145.False, to: 2158.Exec}
+  - {from: 2150.Value, to: 2152.Value}
+  - {from: 2150.Value, to: 2173.A}
+  - {from: 2152.Then, to: 2145.Exec}
+  - {from: 2158.Then, to: 2008.Exec}
+  - {from: 2164.Result, to: 2168.Condition}
+  - {from: 2168.True, to: 2177.Exec}
+  - {from: 2168.False, to: 2008.Exec}
+  - {from: 2173.Result, to: 2177.Condition}
+  - {from: 2177.True, to: 2404.Exec}
+  - {from: 2177.False, to: 2008.Exec}
+  - {from: 2182.Then, to: 2008.Exec}
+  - {from: 2317.Result, to: 2321.Condition}
+  - {from: 2321.True, to: 2168.Exec}
+  - {from: 2321.False, to: 2008.Exec}
+  - {from: 2363.Entities, to: 2366.Array}
+  - {from: 2363.Entities, to: 2382.Array}
+  - {from: 2366.Length, to: 2370.A}
+  - {from: 2370.Result, to: 2375.Condition}
+  - {from: 2375.True, to: 2182.Exec}
+  - {from: 2375.False, to: 2382.Exec}
+  - {from: 2382.Body, to: 2386.Exec}
+  - {from: 2382.Array Element, to: 2386.Entity}
+  - {from: 2382.Completed, to: 2008.Exec}
+  - {from: 2399.Value, to: 2404.Condition}
+  - {from: 2404.True, to: 2008.Exec}
+  - {from: 2404.False, to: 2375.Exec}
+- id: 2010
+  kind: function
+  name: Count Living Members
+  entry_id: 2011
+  return_id: 2013
+  nodes:
+  - id: 2011
+    type: Function Entry
+    outputs:
+    - {id: 2012, name: Then}
+  - {id: 2013, type: Return}
+  - id: 3378
+    type: Call Function
+    reference_id: 3339
+    reference_name: Count Members Snapshot
+    outputs:
+      Enemy Count: {type: int, kind: data}
+      Player Alive: {type: bool, kind: data}
+      Pending Deaths: {type: bool, kind: data}
+  - id: 3384
+    type: Set Variable
+    reference_id: 2003
+    reference_name: Enemy Count
+  - id: 3389
+    type: Set Variable
+    reference_id: 2004
+    reference_name: Player Alive
+    inputs:
+      Value: {type: bool}
+    outputs:
+      Value: {type: bool}
+  - id: 3394
+    type: Set Variable
+    reference_id: 2387
+    reference_name: Pending Deaths
+    inputs:
+      Value: {type: bool}
+    outputs:
+      Value: {type: bool}
+  edges:
+  - {from: 2011.Then, to: 3378.Exec}
+  - {from: 3378.Then, to: 3384.Exec}
+  - {from: 3378.Enemy Count, to: 3384.Value}
+  - {from: 3378.Player Alive, to: 3389.Value}
+  - {from: 3378.Pending Deaths, to: 3394.Value}
+  - {from: 3384.Then, to: 3389.Exec}
+  - {from: 3389.Then, to: 3394.Exec}
+  - {from: 3394.Then, to: 2013.Exec}
+- id: 2015
+  kind: function
+  name: Advance Wave
+  entry_id: 2016
+  return_id: 2019
+  nodes:
+  - id: 2016
+    type: Function Entry
+    outputs:
+    - {id: 2017, name: Then}
+    - {id: 2018, name: Arena Center, type: struct, type_name: CF_V2, kind: data}
+  - {id: 2019, type: Return}
+  - id: 2188
+    type: Get_GameEncounter
+    outputs:
+      Value: {flags: 0}
+      Value.spawned: {}
+      Value.total: {}
+      Value.alive: {}
+  - {id: 2193, type: Integer Less}
+  - {id: 2197, type: Branch}
+  - id: 2202
+    type: Get Variable
+    reference_id: 2002
+    outputs:
+      Value: {type: float, flags: 0}
+  - {id: 2204, type: Delta Time}
+  - id: 2206
+    type: Add
+    inputs:
+      B: {group: 1}
+  - id: 2210
+    type: Set Variable
+    reference_id: 2002
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 2215
+    type: Get Variable
+    reference_id: 2001
+    outputs:
+      Value: {type: float, flags: 0, default: 0.6499999761581421}
+  - id: 2217
+    type: Max
+    inputs:
+      B: {group: 1, default: 0.009999999776482582}
+  - id: 2221
+    type: Get Variable
+    reference_id: 2002
+    outputs:
+      Value: {type: float, flags: 0}
+  - {id: 2223, type: Greater Or Equal}
+  - {id: 2227, type: WhileLoop}
+  - {id: 2232, type: Branch}
+  - id: 2237
+    type: Subtract
+    inputs:
+      B: {group: 1}
+  - id: 2241
+    type: Set Variable
+    reference_id: 2002
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 2246
+    type: Call Function
+    reference_id: 2021
+    reference_name: Spawn Telegraph
+    inputs:
+      Arena Center: {type: struct, type_name: CF_V2, kind: data}
+      Index: {id: 3338, type: int, kind: data}
+    outputs:
+      Then: {id: 2249}
+  - id: 2250
+    type: Add
+    inputs:
+      B: {type: int, group: 1, default: 1}
+  - {id: 2254, type: Set_GameEncounter_spawned}
+  - id: 2260
+    type: Add
+    inputs:
+      B: {type: int, group: 1, default: 1}
+  - {id: 2264, type: Set_GameEncounter_alive}
+  - id: 2411
+    type: ForLoop
+    inputs:
+      Exec: {id: 2405}
+      LastIndex: 7
+  - id: 2415
+    type: Integer Less
+    inputs:
+      A: {id: 2412}
+  - id: 2420
+    type: Branch
+    inputs:
+      Exec: {id: 2416}
+  edges:
+  - {from: 2016.Then, to: 2197.Exec}
+  - {from: 2016.Arena Center, to: 2246.Arena Center}
+  - {from: 2188.Value.spawned, to: 2193.A}
+  - {from: 2188.Value.spawned, to: 2246.Index}
+  - {from: 2188.Value.spawned, to: 2250.A}
+  - {from: 2188.Value.spawned, to: 2415.A}
+  - {from: 2188.Value.total, to: 2193.B}
+  - {from: 2188.Value.total, to: 2415.B}
+  - {from: 2188.Value.alive, to: 2260.A}
+  - {from: 2193.Result, to: 2197.Condition}
+  - {from: 2193.Result, to: 2232.Condition}
+  - {from: 2197.True, to: 2210.Exec}
+  - {from: 2197.False, to: 2019.Exec}
+  - {from: 2202.Value, to: 2206.A}
+  - {from: 2204.Seconds, to: 2206.B}
+  - {from: 2206.Result, to: 2210.Value}
+  - {from: 2210.Then, to: 2227.Exec}
+  - {from: 2215.Value, to: 2217.A}
+  - {from: 2217.Result, to: 2223.B}
+  - {from: 2217.Result, to: 2237.B}
+  - {from: 2221.Value, to: 2223.A}
+  - {from: 2221.Value, to: 2237.A}
+  - {from: 2223.Result, to: 2227.Condition}
+  - {from: 2227.Body, to: 2232.Exec}
+  - {from: 2227.Completed, to: 2019.Exec}
+  - {from: 2232.True, to: 2241.Exec}
+  - {from: 2232.False, to: 2019.Exec}
+  - {from: 2237.Result, to: 2241.Value}
+  - {from: 2241.Then, to: 2411.Exec}
+  - {from: 2246.Then, to: 2254.Exec}
+  - {from: 2250.Result, to: 2254.Value}
+  - {from: 2254.Then, to: 2264.Exec}
+  - {from: 2260.Result, to: 2264.Value}
+  - {from: 2411.Body, to: 2420.Exec}
+  - {from: 2415.Result, to: 2420.Condition}
+  - {from: 2420.True, to: 2246.Exec}
+- id: 2021
+  kind: function
+  name: Spawn Telegraph
+  entry_id: 2022
+  return_id: 2025
+  nodes:
+  - id: 2022
+    type: Function Entry
+    outputs:
+    - {id: 2023, name: Then}
+    - {id: 2024, name: Arena Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 2270, name: x, type: float, kind: data, field_source: 2024, field_name: x}
+    - {id: 2271, name: "y", type: float, kind: data, field_source: 2024, field_name: "y"}
+    - {id: 3337, name: Index, type: int, kind: data}
+  - {id: 2025, type: Return}
+  - id: 2305
+    type: Spawn Prototype
+    inputs:
+      Prototype: {type_name: name, default: ArenaSpawnMarker}
+  - {id: 2310, type: SetEntity_GameTransform}
+  - id: 2340
+    type: Modulo
+    inputs:
+      A: {id: 2337, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0, default: 8}
+    outputs:
+      Result: {type: int, flags: 0, group: 0}
+  - id: 2344
+    type: Integer Equal
+    inputs:
+      A: {id: 2341}
+  - id: 2349
+    type: Branch
+    inputs:
+      Exec: {id: 2345}
+  - id: 2354
+    type: Spawn Prototype
+    inputs:
+      Exec: {id: 2350}
+      Prototype: {type_name: name, default: ArenaWavePulse}
+  - id: 2360
+    type: SetEntity_GameTransform
+    inputs:
+      Exec: {id: 2355}
+  - id: 2606
+    type: Call Function
+    reference_id: 2421
+    reference_name: Formation Position
+    inputs:
+      Exec: {id: 2600}
+      Center: {type: struct, type_name: CF_V2, kind: data}
+      Index: {type: int, kind: data}
+      Pattern: {type: int, kind: data}
+    outputs:
+      Position: {type: struct, type_name: GameTransform, kind: data}
+      Position.x: {id: 2627}
+      Position.y: {}
+  - id: 2610
+    type: Modulo
+    inputs:
+      A: {id: 2607, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0, default: 8}
+    outputs:
+      Result: {type: int, flags: 0, group: 0}
+  - id: 2614
+    type: Divide
+    inputs:
+      A: {id: 2611, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0, default: 8}
+    outputs:
+      Result: {type: int, flags: 0, group: 0}
+  - id: 2618
+    type: Modulo
+    inputs:
+      A: {id: 2615, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0, default: 4}
+    outputs:
+      Result: {type: int, flags: 0, group: 0}
+  - id: 2632
+    type: Subtract
+    inputs:
+      A: {id: 2629, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 2636
+    type: Subtract
+    inputs:
+      A: {id: 2633, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 2640
+    type: Arc Tangent 2
+    inputs:
+      A: {id: 2637}
+  - id: 2646
+    type: Set_GameOrientation_radians
+    inputs:
+      Exec: {id: 2641}
+  - id: 2650
+    type: Make_GameTransform
+    inputs:
+      x: {id: 2647}
+    outputs:
+    - {id: 2649, name: Result}
+  edges:
+  - {from: 2022.Then, to: 2606.Exec}
+  - {from: 2022.Arena Center, to: 2606.Center}
+  - {from: 2022.Arena Center.x, to: 2636.A}
+  - {from: 2022.Arena Center.x, to: 2650.x}
+  - {from: 2022.Arena Center.y, to: 2632.A}
+  - {from: 2022.Arena Center.y, to: 2650.y}
+  - {from: 2022.Index, to: 2340.A}
+  - {from: 2022.Index, to: 2610.A}
+  - {from: 2022.Index, to: 2614.A}
+  - {from: 2305.Then, to: 2310.Exec}
+  - {from: 2305.Entity, to: 2310.Entity}
+  - {from: 2305.Entity, to: 2646.Target}
+  - {from: 2310.Then, to: 2646.Exec}
+  - {from: 2340.Result, to: 2344.A}
+  - {from: 2344.Result, to: 2349.Condition}
+  - {from: 2349.True, to: 2354.Exec}
+  - {from: 2349.False, to: 2025.Exec}
+  - {from: 2354.Then, to: 2360.Exec}
+  - {from: 2354.Entity, to: 2360.Entity}
+  - {from: 2360.Then, to: 2025.Exec}
+  - {from: 2606.Then, to: 2305.Exec}
+  - {from: 2606.Position, to: 2310.Value}
+  - {from: 2606.Position.x, to: 2636.B}
+  - {from: 2606.Position.y, to: 2632.B}
+  - {from: 2610.Result, to: 2606.Index}
+  - {from: 2614.Result, to: 2618.A}
+  - {from: 2618.Result, to: 2606.Pattern}
+  - {from: 2632.Result, to: 2640.A}
+  - {from: 2636.Result, to: 2640.B}
+  - {from: 2640.Result, to: 2646.Value}
+  - {from: 2646.Then, to: 2349.Exec}
+  - {from: 2650.Result, to: 2360.Value}
+- id: 2421
+  kind: function
+  name: Formation Position
+  entry_id: 2426
+  return_id: 2429
+  call_depth_limit: 64
+  nodes:
+  - id: 2426
+    type: Function Entry
+    outputs:
+    - {id: 2422, name: Then}
+    - {id: 2423, name: Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 2424, name: Index, type: int, kind: data}
+    - {id: 2425, name: Pattern, type: int, kind: data}
+    - {id: 2433, name: x, type: float, kind: data, field_source: 2423, field_name: x}
+    - {id: 2434, name: "y", type: float, kind: data, field_source: 2423, field_name: "y"}
+  - id: 2429
+    type: Return
+    inputs:
+      Exec: {id: 2427}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+  - id: 2432
+    type: Get Variable
+    reference_id: 2430
+    outputs:
+      Value: {id: 2431, type: struct, type_name: GameTransform, flags: 0}
+  - id: 2449
+    type: Integer Equal
+    inputs:
+      A: {id: 2446}
+  - id: 2454
+    type: Branch
+    inputs:
+      Exec: {id: 2450}
+  - id: 2471
+    type: Set Variable
+    reference_id: 2430
+    inputs:
+      Exec: {id: 2467}
+      Value: {type: struct, type_name: GameTransform}
+    outputs:
+      Value: {type: struct, type_name: GameTransform}
+  - id: 2475
+    type: Integer Equal
+    inputs:
+      A: {id: 2472}
+      B: 1
+  - id: 2480
+    type: Branch
+    inputs:
+      Exec: {id: 2476}
+  - id: 2497
+    type: Set Variable
+    reference_id: 2430
+    inputs:
+      Exec: {id: 2493}
+      Value: {type: struct, type_name: GameTransform}
+    outputs:
+      Value: {type: struct, type_name: GameTransform}
+  - id: 2501
+    type: Integer Equal
+    inputs:
+      A: {id: 2498}
+      B: 2
+  - id: 2506
+    type: Branch
+    inputs:
+      Exec: {id: 2502}
+  - id: 2510
+    type: Integer Less
+    inputs:
+      A: {id: 2507}
+      B: 4
+  - id: 2515
+    type: Branch
+    inputs:
+      Exec: {id: 2511}
+  - id: 2547
+    type: Set Variable
+    reference_id: 2430
+    inputs:
+      Exec: {id: 2543}
+      Value: {type: struct, type_name: GameTransform}
+    outputs:
+      Value: {type: struct, type_name: GameTransform}
+  - id: 2560
+    type: Set Variable
+    reference_id: 2430
+    inputs:
+      Exec: {id: 2556}
+      Value: {type: struct, type_name: GameTransform}
+    outputs:
+      Value: {type: struct, type_name: GameTransform}
+  - id: 2599
+    type: Set Variable
+    reference_id: 2430
+    inputs:
+      Exec: {id: 2595}
+      Value: {type: struct, type_name: GameTransform}
+    outputs:
+      Value: {type: struct, type_name: GameTransform}
+  - id: 3130
+    type: Call Pure Function
+    reference_id: 2651
+    reference_name: Row Formation
+    inputs:
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Direction: {type: float, default: 1.0}
+    outputs:
+      Position: {type: struct, type_name: GameTransform}
+  - id: 3135
+    type: Call Pure Function
+    reference_id: 2651
+    reference_name: Row Formation
+    inputs:
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Direction: {type: float, default: -1.0}
+    outputs:
+      Position: {type: struct, type_name: GameTransform}
+  - id: 3140
+    type: Call Pure Function
+    reference_id: 2777
+    reference_name: Side Formation
+    inputs:
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Side: {type: float, default: -1.0}
+    outputs:
+      Position: {type: struct, type_name: GameTransform}
+  - id: 3145
+    type: Call Pure Function
+    reference_id: 2777
+    reference_name: Side Formation
+    inputs:
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+      Side: {type: float, default: 1.0}
+    outputs:
+      Position: {type: struct, type_name: GameTransform}
+  - id: 3150
+    type: Call Pure Function
+    reference_id: 2906
+    reference_name: Ellipse Formation
+    inputs:
+      Center: {type: struct, type_name: CF_V2}
+      Index: {type: double}
+    outputs:
+      Position: {type: struct, type_name: GameTransform}
+  - {id: 3326, type: To Real}
+  edges:
+  - {from: 2426.Then, to: 2454.Exec}
+  - {from: 2426.Center, to: 3130.Center}
+  - {from: 2426.Center, to: 3135.Center}
+  - {from: 2426.Center, to: 3140.Center}
+  - {from: 2426.Center, to: 3145.Center}
+  - {from: 2426.Center, to: 3150.Center}
+  - {from: 2426.Index, to: 2510.A}
+  - {from: 2426.Index, to: 3326.Value}
+  - {from: 2426.Pattern, to: 2449.A}
+  - {from: 2426.Pattern, to: 2475.A}
+  - {from: 2426.Pattern, to: 2501.A}
+  - {from: 2432.Value, to: 2429.Position}
+  - {from: 2449.Result, to: 2454.Condition}
+  - {from: 2454.True, to: 2471.Exec}
+  - {from: 2454.False, to: 2480.Exec}
+  - {from: 2471.Then, to: 2429.Exec}
+  - {from: 2475.Result, to: 2480.Condition}
+  - {from: 2480.True, to: 2497.Exec}
+  - {from: 2480.False, to: 2506.Exec}
+  - {from: 2497.Then, to: 2429.Exec}
+  - {from: 2501.Result, to: 2506.Condition}
+  - {from: 2506.True, to: 2515.Exec}
+  - {from: 2506.False, to: 2599.Exec}
+  - {from: 2510.Result, to: 2515.Condition}
+  - {from: 2515.True, to: 2547.Exec}
+  - {from: 2515.False, to: 2560.Exec}
+  - {from: 2547.Then, to: 2429.Exec}
+  - {from: 2560.Then, to: 2429.Exec}
+  - {from: 2599.Then, to: 2429.Exec}
+  - {from: 3130.Position, to: 2471.Value}
+  - {from: 3135.Position, to: 2497.Value}
+  - {from: 3140.Position, to: 2547.Value}
+  - {from: 3145.Position, to: 2560.Value}
+  - {from: 3150.Position, to: 2599.Value}
+  - {from: 3326.Real, to: 3130.Index}
+  - {from: 3326.Real, to: 3135.Index}
+  - {from: 3326.Real, to: 3140.Index}
+  - {from: 3326.Real, to: 3145.Index}
+  - {from: 3326.Real, to: 3150.Index}
+- id: 2651
+  kind: function
+  name: Row Formation
+  entry_id: 2652
+  return_id: 2654
+  call_depth_limit: 64
+  nodes:
+  - id: 2652
+    type: Function Entry
+    outputs:
+    - {id: 2656, name: Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 2657, name: Index, type: double, kind: data}
+    - {id: 2658, name: Direction, type: float, kind: data}
+  - id: 2654
+    type: Return
+    inputs:
+    - {id: 2659, name: Position, type: struct, type_name: GameTransform, kind: data}
+  - id: 2691
+    type: Behavior Expression
+    reference_id: 2660
+    reference_name: Row X
+    inputs:
+      Center: {flags: 2, group: 1}
+      Direction: {flags: 2, group: 2}
+      Index: {flags: 2, group: 3}
+    outputs:
+      Result: {flags: 2, group: 4}
+  - id: 2715
+    type: Behavior Expression
+    reference_id: 2696
+    reference_name: Row Y
+    inputs:
+      Center: {flags: 2, group: 1}
+      Direction: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - {id: 2773, type: Make_GameTransform}
+  edges:
+  - {from: 2652.Center, to: 2691.Center}
+  - {from: 2652.Center, to: 2715.Center}
+  - {from: 2652.Index, to: 2691.Index}
+  - {from: 2652.Direction, to: 2691.Direction}
+  - {from: 2652.Direction, to: 2715.Direction}
+  - {from: 2691.Result, to: 2773.x}
+  - {from: 2715.Result, to: 2773.y}
+  - {from: 2773.GameTransform, to: 2654.Position}
+- id: 2660
+  kind: function
+  name: Row X
+  math_expression: Center.x+Direction*48*(Index-3.5)
+  expression_mode: 1
+  entry_id: 3400
+  return_id: 3402
+  call_depth_limit: 64
+- id: 2696
+  kind: function
+  name: Row Y
+  math_expression: Center.y+Direction*116
+  expression_mode: 1
+  entry_id: 3433
+  return_id: 3435
+  call_depth_limit: 64
+- id: 2777
+  kind: function
+  name: Side Formation
+  entry_id: 2778
+  return_id: 2780
+  call_depth_limit: 64
+  nodes:
+  - id: 2778
+    type: Function Entry
+    outputs:
+    - {id: 2782, name: Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 2783, name: Index, type: double, kind: data}
+    - {id: 2784, name: Side, type: float, kind: data}
+  - id: 2780
+    type: Return
+    inputs:
+    - {id: 2785, name: Position, type: struct, type_name: GameTransform, kind: data}
+  - id: 2805
+    type: Behavior Expression
+    reference_id: 2786
+    reference_name: Side X
+    inputs:
+      Center: {flags: 2, group: 1}
+      Side: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - id: 2842
+    type: Behavior Expression
+    reference_id: 2809
+    reference_name: Side Y
+    inputs:
+      Center: {flags: 2, group: 1}
+      Index: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - {id: 2902, type: Make_GameTransform}
+  edges:
+  - {from: 2778.Center, to: 2805.Center}
+  - {from: 2778.Center, to: 2842.Center}
+  - {from: 2778.Index, to: 2842.Index}
+  - {from: 2778.Side, to: 2805.Side}
+  - {from: 2805.Result, to: 2902.x}
+  - {from: 2842.Result, to: 2902.y}
+  - {from: 2902.GameTransform, to: 2780.Position}
+- id: 2786
+  kind: function
+  name: Side X
+  math_expression: Center.x+Side*220
+  expression_mode: 1
+  entry_id: 3454
+  return_id: 3456
+  call_depth_limit: 64
+- id: 2809
+  kind: function
+  name: Side Y
+  math_expression: Center.y+54*(Index%4-1.5)
+  expression_mode: 1
+  entry_id: 3475
+  return_id: 3477
+  call_depth_limit: 64
+- id: 2906
+  kind: function
+  name: Ellipse Formation
+  entry_id: 2907
+  return_id: 2909
+  call_depth_limit: 64
+  nodes:
+  - id: 2907
+    type: Function Entry
+    outputs:
+    - {id: 2911, name: Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 2912, name: Index, type: double, kind: data}
+  - id: 2909
+    type: Return
+    inputs:
+    - {id: 2913, name: Position, type: struct, type_name: GameTransform, kind: data}
+  - id: 2964
+    type: Behavior Expression
+    reference_id: 2914
+    reference_name: Ellipse X
+    inputs:
+      Center: {flags: 2, group: 1}
+      Index: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - id: 3018
+    type: Behavior Expression
+    reference_id: 2968
+    reference_name: Ellipse Y
+    inputs:
+      Center: {flags: 2, group: 1}
+      Index: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - {id: 3126, type: Make_GameTransform}
+  edges:
+  - {from: 2907.Center, to: 2964.Center}
+  - {from: 2907.Center, to: 3018.Center}
+  - {from: 2907.Index, to: 2964.Index}
+  - {from: 2907.Index, to: 3018.Index}
+  - {from: 2964.Result, to: 3126.x}
+  - {from: 3018.Result, to: 3126.y}
+  - {from: 3126.GameTransform, to: 2909.Position}
+- id: 2914
+  kind: function
+  name: Ellipse X
+  math_expression: Center.x+225*cos(Index*pi/4+pi/8)
+  expression_mode: 1
+  entry_id: 3510
+  return_id: 3512
+  call_depth_limit: 64
+- id: 2968
+  kind: function
+  name: Ellipse Y
+  math_expression: Center.y+108*sin(Index*pi/4+pi/8)
+  expression_mode: 1
+  entry_id: 3562
+  return_id: 3564
+  call_depth_limit: 64
+- id: 3339
+  kind: function
+  name: Count Members Snapshot
+  entry_id: 3340
+  return_id: 3342
+  call_depth_limit: 64
+  nodes:
+  - {id: 3340, type: Function Entry}
+  - id: 3342
+    type: Return
+    inputs:
+      Enemy Count: {type: int, kind: data}
+      Player Alive: {type: bool, kind: data}
+      Pending Deaths: {type: bool, kind: data}
+  - id: 3347
+    type: Find Entities With Component
+    inputs: {Component: GAME.GameEncounterMember}
+    outputs:
+      Entities:
+        default: []
+  - id: 3350
+    type: Count Matching Entities
+    inputs:
+      Entities:
+        default: []
+      Conditions:
+        default:
+        - {component: game.GameHealth, field: current, test: '>', value: 0.0}
+        - {component: GAME.GameEncounterMember, field: role, test: ==, value: 1.0}
+  - id: 3354
+    type: Count Matching Entities
+    inputs:
+      Entities:
+        default: []
+      Conditions:
+        default:
+        - {component: game.GameHealth, field: "", test: missing, value: 0.0}
+        - {component: GAME.GameSpawnRequest, field: "", test: has, value: 0.0}
+        - {component: GAME.GameEncounterMember, field: role, test: ==, value: 1.0}
+  - id: 3358
+    type: Count Matching Entities
+    inputs:
+      Entities:
+        default: []
+      Conditions:
+        default:
+        - {component: game.GameHealth, field: current, test: '>', value: 0.0}
+        - {component: GAME.GameEncounterMember, field: role, test: ==, value: 0.0}
+  - id: 3362
+    type: Count Matching Entities
+    inputs:
+      Entities:
+        default: []
+      Conditions:
+        default:
+        - {component: game.GameHealth, field: current, test: <=, value: 0.0}
+  - {id: 3366, type: Add}
+  - {id: 3370, type: Integer Greater}
+  - {id: 3374, type: Integer Greater}
+  edges:
+  - {from: 3340.Exec, to: 3342.Exec}
+  - {from: 3347.Entities, to: 3350.Entities}
+  - {from: 3347.Entities, to: 3354.Entities}
+  - {from: 3347.Entities, to: 3358.Entities}
+  - {from: 3347.Entities, to: 3362.Entities}
+  - {from: 3350.Count, to: 3366.A}
+  - {from: 3354.Count, to: 3366.B}
+  - {from: 3358.Count, to: 3370.A}
+  - {from: 3362.Count, to: 3374.A}
+  - {from: 3366.Result, to: 3342.Enemy Count}
+  - {from: 3370.Result, to: 3342.Player Alive}
+  - {from: 3374.Result, to: 3342.Pending Deaths}

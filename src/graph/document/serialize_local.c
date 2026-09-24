@@ -22,10 +22,12 @@ int serialize_read_locals(graph *g, yyjson_val *obj)
         yyjson_val *name = yyjson_obj_get(value, "name");
         yyjson_val *source = yyjson_obj_get(value, "source");
         yyjson_val *pin = yyjson_obj_get(value, "pin");
-        if (!yyjson_is_uint(id) || !yyjson_get_uint(id) ||
-            yyjson_get_uint(id) >= INT_MAX || !yyjson_is_uint(source) ||
-            !yyjson_get_uint(source) || !yyjson_is_uint(pin) ||
-            !yyjson_get_uint(pin) || !yyjson_is_str(name) || !yyjson_get_len(name)) {
+        /* A "<node>.<pin>" source resolves once nodes are loaded. */
+        bool reference = yyjson_is_str(yyjson_obj_get(value, "from"));
+        if (!yyjson_is_uint(id) || !yyjson_get_uint(id) || yyjson_get_uint(id) >= INT_MAX ||
+            (!reference && (!yyjson_is_uint(source) || !yyjson_get_uint(source) ||
+                            !yyjson_is_uint(pin) || !yyjson_get_uint(pin))) ||
+            !yyjson_is_str(name) || !yyjson_get_len(name)) {
             serialize_error_set("local has invalid identity, name, or source");
             return -1;
         }
@@ -36,6 +38,29 @@ int serialize_read_locals(graph *g, yyjson_val *obj)
             .source_pin_id = yyjson_get_uint(pin)
         };
         apush(g->locals, local);
+    }
+    return 0;
+}
+
+int serialize_resolve_locals(graph *g, yyjson_val *obj)
+{
+    yyjson_val *locals = yyjson_obj_get(obj, "locals");
+    size_t i, count;
+    yyjson_val *value;
+    yyjson_arr_foreach(locals, i, count, value)
+    {
+        yyjson_val *from = yyjson_obj_get(value, "from");
+        node *source = NULL;
+        int index = -1;
+        if (!yyjson_is_str(from)) {
+            continue;
+        }
+        if (!serialize_resolve_ref(g, yyjson_get_str(from), 1, &source, &index)) {
+            serialize_error_set("local names no pin: %s", yyjson_get_str(from));
+            return -1;
+        }
+        g->locals[i].source_id = source->id;
+        g->locals[i].source_pin_id = source->output_pins[index].id;
     }
     return 0;
 }
@@ -89,8 +114,16 @@ void serialize_write_locals(
         yyjson_mut_val *value = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_uint(doc, value, "id", local->id);
         yyjson_mut_obj_add_str(doc, value, "name", local->name);
-        yyjson_mut_obj_add_uint(doc, value, "source", local->source_id);
-        yyjson_mut_obj_add_uint(doc, value, "pin", local->source_pin_id);
+        node *source = graph_node_by_id(g, local->source_id);
+        int index = -1;
+        char ref[SERIALIZE_KEY_SIZE + 32];
+        if (source && graph_pin_by_id(source, local->source_pin_id, NULL, &index) &&
+            serialize_pin_ref(source, 1, index, ref, sizeof ref)) {
+            yyjson_mut_obj_add_strcpy(doc, value, "from", ref);
+        } else {
+            yyjson_mut_obj_add_uint(doc, value, "source", local->source_id);
+            yyjson_mut_obj_add_uint(doc, value, "pin", local->source_pin_id);
+        }
         yyjson_mut_arr_add_val(locals, value);
     }
     yyjson_mut_obj_add_val(doc, obj, "locals", locals);

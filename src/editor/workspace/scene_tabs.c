@@ -4,6 +4,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -66,8 +67,9 @@ static char *tab_label(app_editor_document_kind kind, const char *id, const char
     }
     char *label = xstrdup(value);
     size_t length = strlen(label);
-    if (length > 5 && !strcmp(label + length - 5, ".json")) {
-        label[length - 5] = '\0';
+    size_t extension = strlen(ASSET_EXTENSION);
+    if (length > extension && !strcmp(label + length - extension, ASSET_EXTENSION)) {
+        label[length - extension] = '\0';
     }
     return label;
 }

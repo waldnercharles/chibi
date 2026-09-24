@@ -42,6 +42,7 @@ bool automation_field_preview(
                      (unsigned)yyjson_get_uint(seed),
                      (field_grid){ width, height, (float)spacing },
                      values,
+                     NULL,
                      error,
                      size
                  );

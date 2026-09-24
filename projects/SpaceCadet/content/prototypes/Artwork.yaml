@@ -1,0 +1,5 @@
+name: Artwork
+components:
+  GAME.GameAppearance: {color: 4291054591, height: 10.0, layer: -10, width: 10.0}
+  GAME.GameOrientation: {}
+  game.GameTransform: {}

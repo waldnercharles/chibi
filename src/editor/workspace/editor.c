@@ -166,6 +166,8 @@ void editor_free(editor *e)
     afree(e->graph_callers);
     afree(e->views);
     afree(e->pins);
+    arrange_routes_free(&e->wire_routes);
+    afree(e->wire_route);
     afree(e->selected);
     afree(e->selected_links);
     afree(e->drag_nodes);
@@ -372,7 +374,7 @@ void editor_draw(editor *e)
              * schedules this work; inspecting another pane never schedules it. */
             if (e->arrange_pending && canvas_size.x > 0.0f && canvas_size.y > 0.0f) {
                 e->arrange_pending = false;
-                ed_auto_arrange(e);
+                ed_arrange_automatic(e);
             }
             ed_center_initial_view(e);
             if ((io->MouseDown[0] || io->MouseDown[1] || io->MouseDown[2]) &&

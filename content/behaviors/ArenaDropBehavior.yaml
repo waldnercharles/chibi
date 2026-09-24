@@ -1,0 +1,453 @@
+version: 3
+name: ArenaDropBehavior
+id_counter: 936
+description: A preparing XP pickup preserves the dead enemy pose and material while emitting its actual primitive parts, then restores its ordinary flat outline pickup presentation.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 476
+    type: Event
+    reference_name: Begin
+    outputs:
+      Then: {id: 475}
+  - id: 483
+    type: Integer Equal
+    inputs:
+      A:
+        id: 480
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
+      B: 3
+  - id: 488
+    type: Branch
+    inputs:
+      Exec: {id: 484}
+  - id: 493
+    type: Call Function
+    reference_id: 1
+    reference_name: Spawn Surface Pulse
+    inputs:
+      Exec: {id: 489}
+      Prototype: {type: name, kind: data, default: ArenaDeathPulse}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+  - id: 502
+    type: Call Function
+    reference_id: 102
+    reference_name: Emit Source Frame
+    inputs:
+      Exec: {id: 496}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
+      Appearance:
+        type: struct
+        type_name: GameGeometry3D
+        kind: data
+        binding: {kind: component, component: GAME.GameGeometry3D}
+      Material:
+        type: struct
+        type_name: GameShader
+        kind: data
+        binding: {kind: component, component: GAME.GameShader}
+      Orientation:
+        type: struct
+        type_name: GameOrientation
+        kind: data
+        binding: {kind: component, component: GAME.GameOrientation}
+      Visual:
+        id: 544
+        type: struct
+        type_name: GameVisualTransform
+        kind: data
+        binding: {kind: component, component: GAME.GameVisualTransform}
+    outputs:
+      Then: {id: 501}
+  - id: 518
+    type: SetEntity_GameGeometry3D
+    inputs:
+      Exec: {id: 513}
+      Value:
+        default:
+          primitive: 9
+          width: 5.0
+          depth: 5.0
+          height: 0.10000000149011612
+          elevation: 5.0
+  - id: 524
+    type: SetEntity_GameShader
+    inputs:
+      Exec: {id: 519}
+      Value:
+        default:
+          material: ArenaExperience
+          shape: ""
+          parameters: '{}'
+          bounds_x: 0.0
+          bounds_y: 0.0
+  - id: 530
+    type: Set_GameOrientation_radians
+    inputs:
+      Exec: {id: 525}
+  - id: 536
+    type: Set_GameVisualTransform_scale
+    inputs:
+      Exec: {id: 531}
+      Value: 1.0
+  - id: 542
+    type: Set_GamePickup_state
+    inputs:
+      Exec: {id: 537}
+  - id: 869
+    type: Set_GameVisualTransform_pitch
+    inputs:
+      Exec: {id: 864}
+  - id: 875
+    type: Set_GameVisualTransform_roll
+    inputs:
+      Exec: {id: 870}
+  - id: 916
+    type: Self
+    inline_source: true
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 918
+    type: Self
+    inline_source: true
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 922
+    type: Get_GameTransform
+    inline_source: true
+    outputs:
+      Value: {flags: 0}
+  edges:
+  - {from: 476.Then, to: 488.Exec}
+  - {from: 483.Result, to: 488.Condition}
+  - {from: 488.True, to: 493.Exec}
+  - {from: 493.Then, to: 502.Exec}
+  - {from: 502.Then, to: 518.Exec}
+  - {from: 518.Then, to: 524.Exec}
+  - {from: 524.Then, to: 530.Exec}
+  - {from: 530.Then, to: 536.Exec}
+  - {from: 536.Then, to: 869.Exec}
+  - {from: 869.Then, to: 875.Exec}
+  - {from: 875.Then, to: 542.Exec}
+  - {from: 916.Self, to: 518.Entity}
+  - {from: 918.Self, to: 524.Entity}
+  - {from: 922.Value, to: 493.Position}
+- id: 102
+  kind: function
+  name: Emit Source Frame
+  entry_id: 108
+  return_id: 110
+  call_depth_limit: 64
+  nodes:
+  - id: 108
+    type: Function Entry
+    outputs:
+    - {id: 103, name: Then}
+    - {id: 104, name: Position, type: struct, type_name: GameTransform, kind: data}
+    - {id: 105, name: Appearance, type: struct, type_name: GameGeometry3D, kind: data}
+    - {id: 106, name: Material, type: struct, type_name: GameShader, kind: data}
+    - id: 107
+      name: Orientation
+      type: struct
+      type_name: GameOrientation
+      kind: data
+    - id: 543
+      name: Visual
+      type: struct
+      type_name: GameVisualTransform
+      kind: data
+  - id: 110
+    type: Return
+    inputs:
+      Exec: {id: 109}
+  - id: 583
+    type: Call Function
+    reference_id: 556
+    reference_name: Spawn Source Beam
+    inputs:
+      Exec: {id: 571}
+      Position: {type: struct, type_name: GameTransform, kind: data}
+      Appearance: {type: struct, type_name: GameGeometry3D, kind: data}
+      Material: {type: struct, type_name: GameShader, kind: data}
+      Orientation: {type: struct, type_name: GameOrientation, kind: data}
+      Visual: {type: struct, type_name: GameVisualTransform, kind: data}
+      Center: {type: struct, type_name: CF_V2, kind: data}
+      Center Y: {type: float, kind: data}
+      Width: {type: float, kind: data}
+      Height: {type: float, kind: data}
+      Depth: {type: float, kind: data}
+      Primitive: {id: 877, type: int, kind: data}
+    outputs:
+      Then: {id: 582}
+  - id: 894
+    type: Primitive Part
+    inputs:
+      Appearance: {id: 885}
+  - id: 904
+    type: Primitive Part
+    inputs:
+      Appearance: {id: 895}
+  - id: 908
+    type: Subtract
+    inputs:
+      A: {id: 905, type: int, flags: 0, group: 0}
+      B: {type: int, flags: 0, group: 0, default: 1}
+    outputs:
+      Result: {type: int, flags: 0, group: 0}
+  - id: 915
+    type: ForLoop
+    inputs:
+      Exec: {id: 909}
+  edges:
+  - {from: 108.Then, to: 915.Exec}
+  - {from: 108.Position, to: 583.Position}
+  - {from: 108.Appearance, to: 583.Appearance}
+  - {from: 108.Appearance, to: 894.Appearance}
+  - {from: 108.Appearance, to: 904.Appearance}
+  - {from: 108.Material, to: 583.Material}
+  - {from: 108.Orientation, to: 583.Orientation}
+  - {from: 108.Visual, to: 583.Visual}
+  - {from: 894.Count, to: 908.A}
+  - {from: 904.Primitive, to: 583.Primitive}
+  - {from: 904.Center, to: 583.Center}
+  - {from: 904.Elevation, to: 583.Center Y}
+  - {from: 904.Width, to: 583.Width}
+  - {from: 904.Height, to: 583.Height}
+  - {from: 904.Depth, to: 583.Depth}
+  - {from: 908.Result, to: 915.LastIndex}
+  - {from: 915.Body, to: 583.Exec}
+  - {from: 915.Index, to: 904.Index}
+  - {from: 915.Completed, to: 110.Exec}
+- id: 1
+  kind: function
+  name: Spawn Surface Pulse
+  entry_id: 5
+  return_id: 18
+  call_depth_limit: 64
+  nodes:
+  - id: 5
+    type: Function Entry
+    outputs:
+    - {id: 2, name: Then}
+    - {id: 3, name: Prototype, type: name, kind: data, default: ArenaHitPulse}
+    - {id: 4, name: Position, type: struct, type_name: GameTransform, kind: data}
+  - id: 10
+    type: Spawn Prototype
+    inputs:
+      Exec: {id: 6}
+      Prototype: {type_name: name, default: ArenaHitPulse}
+  - id: 16
+    type: SetEntity_GameTransform
+    inputs:
+      Exec: {id: 11}
+  - id: 18
+    type: Return
+    inputs:
+      Exec: {id: 17}
+  edges:
+  - {from: 5.Then, to: 10.Exec}
+  - {from: 5.Prototype, to: 10.Prototype}
+  - {from: 5.Position, to: 16.Value}
+  - {from: 10.Then, to: 16.Exec}
+  - {from: 10.Entity, to: 16.Entity}
+  - {from: 16.Then, to: 18.Exec}
+- id: 556
+  kind: function
+  name: Spawn Source Beam
+  entry_id: 568
+  return_id: 570
+  call_depth_limit: 64
+  nodes:
+  - id: 568
+    type: Function Entry
+    outputs:
+    - {id: 557, name: Then}
+    - {id: 558, name: Position, type: struct, type_name: GameTransform, kind: data}
+    - {id: 559, name: Appearance, type: struct, type_name: GameGeometry3D, kind: data}
+    - {id: 560, name: Material, type: struct, type_name: GameShader, kind: data}
+    - id: 561
+      name: Orientation
+      type: struct
+      type_name: GameOrientation
+      kind: data
+    - id: 562
+      name: Visual
+      type: struct
+      type_name: GameVisualTransform
+      kind: data
+    - {id: 563, name: Center, type: struct, type_name: CF_V2, kind: data}
+    - {id: 564, name: Center Y, type: float, kind: data}
+    - {id: 565, name: Width, type: float, kind: data}
+    - {id: 566, name: Height, type: float, kind: data}
+    - {id: 567, name: Depth, type: float, kind: data}
+    - {id: 878, name: Primitive, type: int, kind: data}
+    - {id: 727, name: x, type: float, kind: data, field_source: 558, field_name: x}
+    - {id: 728, name: "y", type: float, kind: data, field_source: 558, field_name: "y"}
+    - id: 732
+      name: elevation
+      type: float
+      kind: data
+      field_source: 559
+      field_name: elevation
+    - id: 733
+      name: radians
+      type: float
+      kind: data
+      field_source: 561
+      field_name: radians
+  - id: 570
+    type: Return
+    inputs:
+      Exec: {id: 569}
+  - id: 754
+    type: Transform Visual Offset
+    inputs:
+      Offset: {id: 748}
+    outputs:
+      Offset.x: {id: 759}
+      Offset.y: {}
+  - id: 765
+    type: Spawn Prototype
+    inputs:
+      Exec: {id: 761}
+      Prototype: {type_name: name, default: ArenaEnemyShard}
+  - id: 769
+    type: Add
+    inputs:
+      A: {id: 766, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 773
+    type: Add
+    inputs:
+      A: {id: 770, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 777
+    type: Add
+    inputs:
+      A: {id: 774, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 793
+    type: Multiply
+    inputs:
+      A: {id: 790, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 5.0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 797
+    type: Multiply
+    inputs:
+      A: {id: 794, type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 5.0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 803
+    type: Set_GameTransform_x
+    inputs:
+      Exec: {id: 798}
+  - id: 809
+    type: Set_GameTransform_y
+    inputs:
+      Exec: {id: 804}
+  - id: 815
+    type: Set_GameGeometry3D_elevation
+    inputs:
+      Exec: {id: 810}
+  - id: 821
+    type: Set_GameGeometry3D_width
+    inputs:
+      Exec: {id: 816}
+  - id: 827
+    type: Set_GameGeometry3D_height
+    inputs:
+      Exec: {id: 822}
+  - id: 833
+    type: Set_GameGeometry3D_depth
+    inputs:
+      Exec: {id: 828}
+  - id: 839
+    type: Set_GameVelocity_x
+    inputs:
+      Exec: {id: 834}
+  - id: 845
+    type: Set_GameVelocity_y
+    inputs:
+      Exec: {id: 840}
+  - id: 851
+    type: SetEntity_GameShader
+    inputs:
+      Exec: {id: 846}
+  - id: 857
+    type: SetEntity_GameOrientation
+    inputs:
+      Exec: {id: 852}
+  - id: 863
+    type: SetEntity_GameVisualTransform
+    inputs:
+      Exec: {id: 858}
+  - id: 884
+    type: Set_GameGeometry3D_primitive
+    inputs:
+      Exec: {id: 879}
+  edges:
+  - {from: 568.Then, to: 765.Exec}
+  - {from: 568.Material, to: 851.Value}
+  - {from: 568.Orientation, to: 857.Value}
+  - {from: 568.Visual, to: 754.Visual}
+  - {from: 568.Visual, to: 863.Value}
+  - {from: 568.Center, to: 754.Offset}
+  - {from: 568.Center Y, to: 754.Elevation}
+  - {from: 568.Width, to: 821.Value}
+  - {from: 568.Height, to: 827.Value}
+  - {from: 568.Depth, to: 833.Value}
+  - {from: 568.Position.x, to: 769.A}
+  - {from: 568.Position.y, to: 773.A}
+  - {from: 568.Appearance.elevation, to: 777.A}
+  - {from: 568.Orientation.radians, to: 754.Heading}
+  - {from: 568.Primitive, to: 884.Value}
+  - {from: 754.Elevation, to: 777.B}
+  - {from: 754.Offset.x, to: 769.B}
+  - {from: 754.Offset.x, to: 793.A}
+  - {from: 754.Offset.y, to: 773.B}
+  - {from: 754.Offset.y, to: 797.A}
+  - {from: 765.Then, to: 803.Exec}
+  - {from: 765.Entity, to: 803.Target}
+  - {from: 765.Entity, to: 809.Target}
+  - {from: 765.Entity, to: 815.Target}
+  - {from: 765.Entity, to: 821.Target}
+  - {from: 765.Entity, to: 827.Target}
+  - {from: 765.Entity, to: 833.Target}
+  - {from: 765.Entity, to: 839.Target}
+  - {from: 765.Entity, to: 845.Target}
+  - {from: 765.Entity, to: 851.Entity}
+  - {from: 765.Entity, to: 857.Entity}
+  - {from: 765.Entity, to: 863.Entity}
+  - {from: 765.Entity, to: 884.Target}
+  - {from: 769.Result, to: 803.Value}
+  - {from: 773.Result, to: 809.Value}
+  - {from: 777.Result, to: 815.Value}
+  - {from: 793.Result, to: 839.Value}
+  - {from: 797.Result, to: 845.Value}
+  - {from: 803.Then, to: 809.Exec}
+  - {from: 809.Then, to: 815.Exec}
+  - {from: 815.Then, to: 821.Exec}
+  - {from: 821.Then, to: 827.Exec}
+  - {from: 827.Then, to: 833.Exec}
+  - {from: 833.Then, to: 884.Exec}
+  - {from: 839.Then, to: 845.Exec}
+  - {from: 845.Then, to: 851.Exec}
+  - {from: 851.Then, to: 857.Exec}
+  - {from: 857.Then, to: 863.Exec}
+  - {from: 863.Then, to: 570.Exec}
+  - {from: 884.Then, to: 839.Exec}

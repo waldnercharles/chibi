@@ -1,16 +1,9 @@
 #ifndef CHIBI_GAME_PARTICLES_H
 #define CHIBI_GAME_PARTICLES_H
 
+#include "runtime/components.h"
+
 #define GAME_PARTICLE_LIMIT 2048
-enum
-{
-    GAME_PARTICLE_ROUND,
-    GAME_PARTICLE_TRIANGLE,
-    GAME_PARTICLE_TRIANGLE_OUTLINE,
-    GAME_PARTICLE_RING,
-    GAME_PARTICLE_STREAK,
-    GAME_PARTICLE_SHAPE_COUNT
-};
 
 typedef struct game_particles game_particles;
 
@@ -37,6 +30,12 @@ typedef struct
     float speed_min, speed_max, lifetime_min, lifetime_max;
     float size_min, size_max, spread, drag_min, drag_max;
     float emission_min, emission_max, size_exponent;
+    /* Positive values fade emission to zero over the lifetime; zero keeps it. */
+    float emission_exponent;
+    /* Streak length per unit of speed. */
+    float stretch;
+    /* Edge softness in world units; zero softens by one pixel. */
+    float antialias;
     float elevation; /* Zero rests on the ground; otherwise center height in 3D. */
     int shape;
 } game_particle_spray;

@@ -1,0 +1,444 @@
+version: 3
+name: ArenaShardBehavior
+id_counter: 702
+description: The twelve original box-frame beams keep their source pose and material, separate outward, tumble at independent rates, arc above the floor, and shrink away after 0.55 seconds.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: Age, type: float, type_name: float, category: State}
+- {id: 124, name: Pitch Rate, type: float, type_name: float, category: State}
+- {id: 142, name: Roll Rate, type: float, type_name: float, category: State}
+- {id: 160, name: Lift, type: float, type_name: float, category: State}
+- id: 209
+  name: Birth Scale
+  type: float
+  type_name: float
+  category: State
+  default: 1.0
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 3
+    type: Event
+    reference_name: Tick
+    outputs:
+      Then: {id: 2}
+  - id: 5
+    type: Delta Time
+    outputs:
+      Seconds: {id: 4}
+  - id: 7
+    type: Get Variable
+    reference_id: 1
+    outputs:
+      Value: {id: 6, type: float, flags: 0}
+  - id: 12
+    type: Set Variable
+    reference_id: 1
+    inputs:
+      Exec: {id: 8}
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 24
+    type: Greater Or Equal
+    inputs:
+      A: {id: 21}
+      B: 1.0
+  - id: 29
+    type: Branch
+    inputs:
+      Exec: {id: 25}
+  - id: 33
+    type: Destroy Entity
+    inputs:
+      Exec: {id: 30}
+  - id: 35
+    type: Self
+    outputs:
+    - {id: 34, name: Entity, type_name: ecs.entity}
+  - id: 123
+    type: Event
+    reference_name: Begin
+    outputs:
+      Then: {id: 122}
+  - id: 210
+    type: Get_GameVisualTransform
+    outputs:
+      Value: {flags: 0}
+      Value.scale: {}
+  - id: 237
+    type: Behavior Expression
+    reference_id: 225
+    reference_name: Updated Age
+    inputs:
+      Age: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - id: 260
+    type: Behavior Expression
+    reference_id: 241
+    reference_name: Age Phase
+    inputs:
+      Age: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
+    outputs:
+      Result: {flags: 2, group: 3}
+  - id: 380
+    type: Random Range
+    inputs: {Min: -6.0, Max: 6.0}
+  - id: 384
+    type: Random Range
+    inputs: {Min: -7.0, Max: 7.0}
+  - id: 388
+    type: Random Range
+    inputs: {Min: 18.0, Max: 42.0}
+  - id: 425
+    type: Call Function
+    reference_id: 396
+    reference_name: Initialize Shard
+    inputs:
+      scale: {id: 428, type: float, kind: data}
+      Pitch Rate: {type: double, kind: data}
+      Roll Rate: {type: double, kind: data}
+      Lift: {type: double, kind: data}
+    outputs:
+      Then: {id: 427}
+  - id: 544
+    type: Call Function
+    reference_id: 436
+    reference_name: Advance Shard Motion
+    inputs:
+      Seconds: {id: 547, type: float, kind: data}
+      Age: {type: float, kind: data}
+    outputs:
+      Then: {id: 546}
+  edges:
+  - {from: 3.Then, to: 12.Exec}
+  - {from: 5.Seconds, to: 237.Delta}
+  - {from: 5.Seconds, to: 260.Delta}
+  - {from: 5.Seconds, to: 544.Seconds}
+  - {from: 7.Value, to: 237.Age}
+  - {from: 12.Then, to: 29.Exec}
+  - {from: 12.Value, to: 260.Age}
+  - {from: 12.Value, to: 544.Age}
+  - {from: 24.Result, to: 29.Condition}
+  - {from: 29.True, to: 33.Exec}
+  - {from: 29.False, to: 544.Exec}
+  - {from: 35.Entity, to: 33.Entity}
+  - {from: 123.Then, to: 425.Exec}
+  - {from: 210.Value.scale, to: 425.scale}
+  - {from: 237.Result, to: 12.Value}
+  - {from: 260.Result, to: 24.A}
+  - {from: 380.Result, to: 425.Pitch Rate}
+  - {from: 384.Result, to: 425.Roll Rate}
+  - {from: 388.Result, to: 425.Lift}
+- id: 225
+  kind: function
+  name: Updated Age
+  math_expression: Age+Delta
+  expression_mode: 1
+  entry_id: 560
+  return_id: 562
+  call_depth_limit: 64
+- id: 241
+  kind: function
+  name: Age Phase
+  math_expression: (Age+Delta)/0.55
+  expression_mode: 1
+  entry_id: 684
+  return_id: 686
+  call_depth_limit: 64
+- id: 264
+  kind: function
+  name: Fade
+  math_expression: (1-Normalized)*(1-Normalized)
+  expression_mode: 1
+  entry_id: 591
+  return_id: 593
+  call_depth_limit: 64
+- id: 292
+  kind: function
+  name: Position X
+  math_expression: PositionX+VelocityX*Delta
+  expression_mode: 1
+  entry_id: 616
+  return_id: 618
+  call_depth_limit: 64
+- id: 314
+  kind: function
+  name: Position Y
+  math_expression: PositionY+VelocityY*Delta
+  expression_mode: 1
+  entry_id: 633
+  return_id: 635
+  call_depth_limit: 64
+- id: 336
+  kind: function
+  name: Pitch
+  math_expression: Pitch+PitchRate*Delta
+  expression_mode: 1
+  entry_id: 650
+  return_id: 652
+  call_depth_limit: 64
+- id: 358
+  kind: function
+  name: Roll
+  math_expression: Roll+RollRate*Delta
+  expression_mode: 1
+  entry_id: 667
+  return_id: 669
+  call_depth_limit: 64
+- id: 396
+  kind: function
+  name: Initialize Shard
+  entry_id: 397
+  return_id: 399
+  call_depth_limit: 64
+  nodes:
+  - id: 397
+    type: Function Entry
+    outputs:
+      scale: {id: 421, type: float, kind: data}
+      Pitch Rate: {type: double, kind: data}
+      Roll Rate: {type: double, kind: data}
+      Lift: {type: double, kind: data}
+  - {id: 399, type: Return}
+  - id: 401
+    type: Set Variable
+    reference_id: 124
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 406
+    type: Set Variable
+    reference_id: 142
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 411
+    type: Set Variable
+    reference_id: 160
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 416
+    type: Set Variable
+    reference_id: 209
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  edges:
+  - {from: 397.Exec, to: 416.Exec}
+  - {from: 397.scale, to: 416.Value}
+  - {from: 397.Pitch Rate, to: 401.Value}
+  - {from: 397.Roll Rate, to: 406.Value}
+  - {from: 397.Lift, to: 411.Value}
+  - {from: 401.Then, to: 406.Exec}
+  - {from: 406.Then, to: 411.Exec}
+  - {from: 411.Then, to: 399.Exec}
+  - {from: 416.Then, to: 401.Exec}
+- id: 436
+  kind: function
+  name: Advance Shard Motion
+  entry_id: 437
+  return_id: 439
+  call_depth_limit: 64
+  nodes:
+  - id: 437
+    type: Function Entry
+    outputs:
+      Seconds: {id: 542, type: float, kind: data}
+      Age: {declaration_id: 248, type: float, kind: data}
+  - {id: 439, type: Return}
+  - id: 441
+    type: Get_GameTransform
+    outputs:
+      Value: {flags: 0}
+      Value.x: {}
+      Value.y: {}
+  - id: 445
+    type: Get_GameVelocity
+    outputs:
+      Value: {flags: 0}
+      Value.x: {}
+      Value.y: {}
+  - {id: 449, type: Set_GameTransform_x}
+  - {id: 455, type: Set_GameTransform_y}
+  - id: 461
+    type: Get_GameVisualTransform
+    outputs:
+      Value: {flags: 0}
+      Value.pitch: {}
+      Value.roll: {}
+  - {id: 465, type: Set_GameVisualTransform_pitch}
+  - {id: 471, type: Set_GameVisualTransform_roll}
+  - {id: 477, type: Set_GameVisualTransform_scale}
+  - id: 483
+    type: Get Variable
+    reference_id: 124
+    outputs:
+      Value: {type: float, flags: 0}
+  - id: 485
+    type: Get Variable
+    reference_id: 142
+    outputs:
+      Value: {type: float, flags: 0}
+  - id: 487
+    type: Get Variable
+    reference_id: 160
+    outputs:
+      Value: {type: float, flags: 0}
+  - id: 489
+    type: Get_GameGeometry3D
+    outputs:
+      Value: {flags: 0}
+      Value.elevation: {}
+  - id: 492
+    type: Multiply
+    inputs:
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 496
+    type: Add
+    inputs:
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - {id: 500, type: Set_GameGeometry3D_elevation}
+  - id: 506
+    type: Set Variable
+    reference_id: 160
+    inputs:
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 511
+    type: Multiply
+    inputs:
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0, default: 90.0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 515
+    type: Subtract
+    inputs:
+      A: {type: double, flags: 0, group: 0}
+      B: {type: double, flags: 0, group: 0}
+    outputs:
+      Result: {type: double, flags: 0, group: 0}
+  - id: 519
+    type: Behavior Expression
+    reference_id: 264
+    reference_name: Fade
+    inputs:
+      Normalized: {type: float, flags: 2, group: 1}
+    outputs:
+      Result: {type: double, flags: 2, group: 2}
+  - id: 522
+    type: Behavior Expression
+    reference_id: 292
+    reference_name: Position X
+    inputs:
+      PositionX: {flags: 2, group: 1}
+      VelocityX: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
+    outputs:
+      Result: {flags: 2, group: 4}
+  - id: 527
+    type: Behavior Expression
+    reference_id: 314
+    reference_name: Position Y
+    inputs:
+      PositionY: {flags: 2, group: 1}
+      VelocityY: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
+    outputs:
+      Result: {flags: 2, group: 4}
+  - id: 532
+    type: Behavior Expression
+    reference_id: 336
+    reference_name: Pitch
+    inputs:
+      Pitch: {flags: 2, group: 1}
+      PitchRate: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
+    outputs:
+      Result: {flags: 2, group: 4}
+  - id: 537
+    type: Behavior Expression
+    reference_id: 358
+    reference_name: Roll
+    inputs:
+      Roll: {flags: 2, group: 1}
+      RollRate: {flags: 2, group: 2}
+      Delta: {flags: 2, group: 3}
+    outputs:
+      Result: {flags: 2, group: 4}
+  - id: 549
+    type: Behavior Expression
+    reference_id: 241
+    reference_name: Age Phase
+    inputs:
+      Age: {flags: 2, group: 1}
+      Delta: {flags: 2, group: 2}
+    outputs:
+      Result: {type: float, flags: 2, group: 3}
+  - id: 553
+    type: Get Variable
+    reference_id: 209
+    reference_name: Birth Scale
+    outputs:
+      Value: {type: float, flags: 0}
+  - id: 555
+    type: Multiply
+    inputs:
+      B: {type: double}
+  edges:
+  - {from: 437.Exec, to: 449.Exec}
+  - {from: 437.Seconds, to: 492.B}
+  - {from: 437.Seconds, to: 511.A}
+  - {from: 437.Seconds, to: 522.Delta}
+  - {from: 437.Seconds, to: 527.Delta}
+  - {from: 437.Seconds, to: 532.Delta}
+  - {from: 437.Seconds, to: 537.Delta}
+  - {from: 437.Seconds, to: 549.Delta}
+  - {from: 437.Age, to: 549.Age}
+  - {from: 441.Value.x, to: 522.PositionX}
+  - {from: 441.Value.y, to: 527.PositionY}
+  - {from: 445.Value.x, to: 522.VelocityX}
+  - {from: 445.Value.y, to: 527.VelocityY}
+  - {from: 449.Then, to: 455.Exec}
+  - {from: 455.Then, to: 465.Exec}
+  - {from: 461.Value.pitch, to: 532.Pitch}
+  - {from: 461.Value.roll, to: 537.Roll}
+  - {from: 465.Then, to: 471.Exec}
+  - {from: 471.Then, to: 477.Exec}
+  - {from: 477.Then, to: 500.Exec}
+  - {from: 483.Value, to: 532.PitchRate}
+  - {from: 485.Value, to: 537.RollRate}
+  - {from: 487.Value, to: 492.A}
+  - {from: 487.Value, to: 515.A}
+  - {from: 489.Value.elevation, to: 496.A}
+  - {from: 492.Result, to: 496.B}
+  - {from: 496.Result, to: 500.Value}
+  - {from: 500.Then, to: 506.Exec}
+  - {from: 506.Then, to: 439.Exec}
+  - {from: 511.Result, to: 515.B}
+  - {from: 515.Result, to: 506.Value}
+  - {from: 519.Result, to: 555.B}
+  - {from: 522.Result, to: 449.Value}
+  - {from: 527.Result, to: 455.Value}
+  - {from: 532.Result, to: 465.Value}
+  - {from: 537.Result, to: 471.Value}
+  - {from: 549.Result, to: 519.Normalized}
+  - {from: 553.Value, to: 555.A}
+  - {from: 555.Result, to: 477.Value}

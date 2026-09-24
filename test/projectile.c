@@ -84,8 +84,8 @@ void test_projectile()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype *player = read_prototype("test/fixtures/content/prototypes/Player.json", &registry);
-    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.json", &registry);
+    game_prototype *player = read_prototype("test/fixtures/content/prototypes/Player.yaml", &registry);
+    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.yaml", &registry);
     const char *names[] = { "InputBehavior",         "WeaponBehavior",
                             "AutoWeaponBehavior",    "ProjectileBehavior",
                             "HealthBehavior",        "ProjectileHitBehavior",
@@ -117,7 +117,7 @@ void test_projectile()
                                        !strcmp(names[i], "WeaponBehavior")
                                  ? "test/fixtures/content/behaviors"
                                  : "content/behaviors";
-            snprintf(path, sizeof path, "%s/%s.json", root, names[i]);
+            snprintf(path, sizeof path, "%s/%s.yaml", root, names[i]);
             behavior_asset *asset = read_behavior(path);
             if (isolated) {
                 assert(game_prototype_preview_register_behavior(preview, names[i], asset) == 0);

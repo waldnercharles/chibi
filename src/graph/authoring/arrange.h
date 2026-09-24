@@ -14,7 +14,7 @@
 /* A measured node box. The pin rows are described rather than listed because
  * the canvas lays every pin out on the same pitch: input row i sits at
  * (x, y + title_height + pad + (i + 0.5) * row_height) and output row i at the
- * same height on x + width. */
+ * same height on x + width. Links name pins by these rows. */
 typedef struct arrange_box
 {
     float width;
@@ -50,7 +50,8 @@ typedef struct arrange_graph
     int link_count;
 } arrange_graph;
 
-/* Readability defects of a placement, counted on the drawn cubic curves. */
+/* Readability defects of a placement, counted on the wires as the canvas
+ * draws them, routes included. */
 typedef struct arrange_score
 {
     int wire_crossings; /* wire pairs whose curves intersect */
@@ -59,11 +60,27 @@ typedef struct arrange_score
     float wire_length;
 } arrange_score;
 
-/* Arranges the graph into layered columns with the wire crossings and
- * wire-node collisions driven down. `pos` is in-out: on entry it holds the
- * authored positions, which seed the within-column order so the result stays
- * recognisable; on exit it holds one position per box. */
+/* Arranges the graph into layered columns with the wire crossings driven
+ * down, leaving a lane beside the boxes of every column a wire skips. `pos` is
+ * in-out: on entry it holds the authored positions, which seed the
+ * within-column order so the result stays recognisable; on exit it holds one
+ * position per box. */
 void arrange_layout(const arrange_graph *g, arrange_point *pos);
+
+/* Waypoints that keep wires in the lanes between boxes. Link i passes through
+ * points[start[i]] up to points[start[i + 1]]; a link without waypoints is
+ * drawn as one curve. Both arrays use support/array.h. */
+typedef struct arrange_routes
+{
+    int *start;
+    arrange_point *points;
+} arrange_routes;
+
+/* Routes every wire that skips a column of boxes through a lane in that
+ * column. Routes depend only on the graph and the positions, so callers
+ * recompute them rather than store them. `routes` is reused across calls. */
+void arrange_route(const arrange_graph *g, const arrange_point *pos, arrange_routes *routes);
+void arrange_routes_free(arrange_routes *routes);
 
 arrange_score arrange_measure(const arrange_graph *g, const arrange_point *pos);
 

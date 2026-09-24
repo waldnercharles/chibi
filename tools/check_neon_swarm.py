@@ -107,7 +107,9 @@ class Runner:
         breached=self.snapshot(300,fire,kind='scene')
         excavation=[dict(frame=0,input=dict(aim=dict(x=0,y=1,firing=True),controls=[1]))]
         excavated=self.snapshot(300,excavation,kind='scene')
-        assert excavated['materials']['cells'] < initial['materials']['cells']
+        # Streamed terrain keeps loading around the camera; compare equal frames.
+        idle=self.snapshot(300,[],kind='scene')
+        assert excavated['materials']['cells'] < idle['materials']['cells']
         assert 0 < breached['materials']['fuel_particles'] < initial['materials']['fuel_particles']
         assert breached['materials']['burning_particles']==0, 'Finite cloud should have burned out'
         repeat=self.snapshot(300,fire,kind='scene')
@@ -161,7 +163,7 @@ class Runner:
             shutil.copyfile(self.project/'project.json',project/'project.json')
             probe = Runner(self.build,self.output,project)
             asset = probe.author('readAsset',dict(kind='scene',name='Sandbox'))
-            scene = json.loads((project/'content/scenes/Sandbox.json').read_text())
+            scene = asset['document']
             keep = {'Player','Camera','HRC','FireMouse','FireStick'}
             operations = [dict(op='remove_entity',entity=e['name']) for e in scene['entities'] if e['name'] not in keep]
             operations.append(dict(op='add_entity',name='Target',prototype='Swarmer',

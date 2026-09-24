@@ -26,9 +26,11 @@ function rpc(name, args) {
 try {
   mkdirSync(join(project, "content/behaviors"), { recursive: true });
   for (const name of ["WavePulseBehavior", "ArenaShardBehavior"]) {
-    const file = `content/behaviors/${name}.json`;
+    const file = `content/behaviors/${name}.yaml`;
+    const readDocument = () => rpc("readAsset", { kind: "behavior", name }).result?.structuredContent?.result?.document;
     copyFileSync(join(root, file), join(project, file));
     const before = readFileSync(join(project, file), "utf8");
+    const beforeDocument = readDocument();
     const dry = rpc("optimizeGraph", { path: file }).result?.structuredContent;
     assert(dry?.ok, JSON.stringify(dry));
     assert.equal(dry.result.dry_run, true);
@@ -43,19 +45,21 @@ try {
     assert.equal(applied.result.after_hash, dry.result.after_hash);
     const after = readFileSync(join(project, file), "utf8");
     assert.notEqual(after, before);
-    const document = JSON.parse(after);
+    const document = readDocument();
     if (name === "WavePulseBehavior") assert(document.graphs.some(g => g.locals?.length));
     if (name === "ArenaShardBehavior") {
       const graph = document.graphs[0];
       const age = document.variables.find(v => v.name === "Age");
       const setter = graph.nodes.find(n => n.type === "Set Variable" && n.reference_id === age.id);
       assert(setter, "Optimize must retain the Age assignment");
-      assert(!graph.edges.some(e => e.from === setter.id && e.kind === "data"));
+      // Edges name pins as <node>.<pin>; the setter's data output must stay unwired.
+      assert(!graph.edges.some(e => e.from === `${setter.id}.Value`));
       assert(graph.nodes.some(n => n.type === "Self" && n.inline_source));
-      assert(graph.nodes.flatMap(n => n.inputs).filter(p =>
-        p.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);
+      const pins = node => Array.isArray(node.inputs) ? node.inputs : Object.values(node.inputs || {});
+      assert(graph.nodes.flatMap(pins).filter(p =>
+        p?.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);
     }
-    assert.equal(document.variables.length, JSON.parse(before).variables.length);
+    assert.equal(document.variables.length, beforeDocument.variables.length);
     const noop = rpc("optimizeGraph", { path: file, dry_run: false, expected_hash: applied.result.after_hash }).result?.structuredContent;
     assert(noop?.ok && !noop.result.changed);
     assert.equal(readFileSync(join(project, file), "utf8"), after);

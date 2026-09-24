@@ -17,6 +17,7 @@
 
 static int ed_link_in_rect(const editor *e, const edge *ed, ImVec2 min, ImVec2 max);
 
+#include <assert.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -62,6 +63,13 @@ static ed_pin_view *ed_pin_for(const editor *e, const node *n, int kind, int ind
         }
     }
     return NULL;
+}
+
+int ed_pin_row(const editor *e, const node *n, int kind, int index)
+{
+    const ed_pin_view *pin = ed_pin_for(e, n, kind, index);
+    assert(pin);
+    return pin->row;
 }
 
 int ed_edge_index(const editor *e, const ed_link_ref *link)
@@ -414,6 +422,7 @@ void ed_build_layout(editor *e)
         v->drawn = (editor_node_ui){ 0 };
         v->min = min;
         v->max = max;
+        v->size = dimensions;
         v->title_height = title_height * e->zoom;
         v->input_first = pin_at;
         int exec_rows = ed_exec_rows(n);
@@ -429,7 +438,7 @@ void ed_build_layout(editor *e)
             if (!exec) {
                 input_row += ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, p);
             }
-            e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_INPUT, p, { min.x, y } };
+            e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_INPUT, p, { min.x, y }, row };
         }
         v->output_first = pin_at;
         int output_row = exec_rows;
@@ -442,11 +451,12 @@ void ed_build_layout(editor *e)
             if (!exec) {
                 output_row += ed_pin_rows(e, e->active_graph, n, ED_PIN_OUTPUT, p);
             }
-            e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y } };
+            e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y }, row };
         }
     }
     asetlen(e->views, view_at);
     asetlen(e->pins, pin_at);
+    ed_route_wires(e);
 }
 
 int ed_point_in_rect(ImVec2 p, ImVec2 min, ImVec2 max)
@@ -698,19 +708,46 @@ int ed_hit_handle(const editor *e, ImVec2 mouse, int *edge_index, int *side)
     return 0;
 }
 
+/* A wire without authored reroutes or handles follows its automatic lanes. */
+static const arrange_point *ed_auto_route(const editor *e, const edge *ed, int *count)
+{
+    int index = (int)(ed - e->active_graph->edges);
+    assert(index >= 0 && index < acount(e->active_graph->edges));
+    *count = 0;
+    if (ed->reroute_count || ed->custom_handles ||
+        index >= acount(e->wire_route) || e->wire_route[index] < 0) {
+        return NULL;
+    }
+    const int *start = e->wire_routes.start + e->wire_route[index];
+    *count = start[1] - start[0];
+    return e->wire_routes.points + start[0];
+}
+
+int ed_route_count(const editor *e, const edge *ed)
+{
+    int count = 0;
+    ed_auto_route(e, ed, &count);
+    return ed->reroute_count ? ed->reroute_count : count;
+}
+
 static ImVec2 ed_route_point(const editor *e, const edge *ed, int index, ImVec2 start, ImVec2 end)
 {
     if (index == 0) {
         return start;
     }
-    if (index == ed->reroute_count + 1) {
+    if (index == ed_route_count(e, ed) + 1) {
         return end;
     }
-    return ed_world_to_screen(
-        e,
-        ed->reroutes[index - 1].x,
-        ed->reroutes[index - 1].y
-    );
+    if (ed->reroute_count) {
+        return ed_world_to_screen(
+            e,
+            ed->reroutes[index - 1].x,
+            ed->reroutes[index - 1].y
+        );
+    }
+    int count = 0;
+    const arrange_point *route = ed_auto_route(e, ed, &count);
+    return ed_world_to_screen(e, route[index - 1].x, route[index - 1].y);
 }
 
 static float ed_route_tangent(const editor *e, const edge *ed, int index, ImVec2 start, ImVec2 end)
@@ -718,7 +755,7 @@ static float ed_route_tangent(const editor *e, const edge *ed, int index, ImVec2
     float span;
     if (index == 0) {
         span = ed_abs(ed_route_point(e, ed, 1, start, end).x - start.x);
-    } else if (index == ed->reroute_count + 1) {
+    } else if (index == ed_route_count(e, ed) + 1) {
         span = ed_abs(end.x - ed_route_point(e, ed, index - 1, start, end).x);
     } else {
         ImVec2 at = ed_route_point(e, ed, index, start, end);
@@ -763,8 +800,9 @@ int ed_hit_link_segment(const editor *e, ImVec2 p, ed_link_ref *out, int *route_
         if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
             continue;
         }
-        if (ed->reroute_count) {
-            for (int segment = 0; segment <= ed->reroute_count; segment++) {
+        int routes = ed_route_count(e, ed);
+        if (routes) {
+            for (int segment = 0; segment <= routes; segment++) {
                 ImVec2 start, c1, c2, end;
                 ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
                 ImVec2 prev = start;
@@ -810,10 +848,10 @@ static int ed_link_in_rect(const editor *e, const edge *ed, ImVec2 min, ImVec2 m
     if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
         return 0;
     }
-    int segment_count = ed->reroute_count ? ed->reroute_count + 1 : 1;
-    for (int segment = 0; segment < segment_count; segment++) {
+    int routes = ed_route_count(e, ed);
+    for (int segment = 0; segment <= routes; segment++) {
         ImVec2 start = p0, c1 = p1, c2 = p2, end = p3;
-        if (ed->reroute_count) {
+        if (routes) {
             ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
         }
         ImVec2 prev = start;

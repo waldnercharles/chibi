@@ -2,5 +2,5 @@
   "version": 1,
   "name": "HRC Lab",
   "content": "content",
-  "start_scene": "scenes/HRCLabPinhole.json"
+  "start_scene": "scenes/HRCLabPinhole.yaml"
 }

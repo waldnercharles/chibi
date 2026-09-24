@@ -11,6 +11,7 @@
 #include "graph/model/node.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <ctype.h>
@@ -823,7 +824,7 @@ static const char *content_asset_name(const char *path)
     static char name[256];
     snprintf(name, sizeof name, "%s", base);
     char *extension = strrchr(name, '.');
-    if (extension && !strcmp(extension, ".json")) {
+    if (extension && !strcmp(extension, ASSET_EXTENSION)) {
         *extension = '\0';
     }
     return name;

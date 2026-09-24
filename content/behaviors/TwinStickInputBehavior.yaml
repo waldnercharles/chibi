@@ -1,0 +1,85 @@
+version: 3
+name: TwinStickInputBehavior
+id_counter: 420
+description: Set movement velocity from local input while facing independent aim.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Input
+    outputs:
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - id: 14
+    type: Set_GameVelocity
+    outputs:
+      Value: {id: 35}
+  - id: 105
+    type: Call Pure Function
+    reference_id: 93
+    reference_name: Movement Velocity
+    reference_asset: MovementActions
+    inputs:
+      direction: {id: 132, type: struct, type_name: CF_V2}
+      speed: {type: struct, type_name: GameMovement}
+    outputs:
+      Velocity: {id: 108, type: struct, type_name: GameVelocity}
+  - {id: 356, type: Event, reference_name: Tick}
+  - id: 367
+    type: Call Pure Function
+    reference_id: 1
+    reference_name: Direction Orientation
+    reference_asset: DirectionMath
+    inputs:
+      X:
+        declaration_id: 4
+        type: float
+        binding: {kind: component_field, component: GAME.GameAim, field: direction.x}
+      "Y":
+        declaration_id: 5
+        type: float
+        binding: {kind: component_field, component: GAME.GameAim, field: direction.y}
+    outputs:
+      Orientation: {declaration_id: 6, type: struct, type_name: GameOrientation}
+  - {id: 371, type: Set_GameOrientation}
+  - {id: 380, type: Has_GameDash}
+  - {id: 382, type: Branch}
+  - id: 390
+    type: Less
+    inputs:
+      B:
+        binding: {kind: component_field, component: GAME.GameDash, field: remaining}
+  - {id: 394, type: Branch}
+  - {id: 399, type: Has_GameDash}
+  - {id: 401, type: Branch}
+  - id: 406
+    type: Get_GameDash
+    outputs:
+      Value: {flags: 0}
+      Value.remaining: {}
+  - {id: 409, type: Less}
+  - {id: 413, type: Branch}
+  - id: 418
+    type: Get_GameMovement
+    outputs:
+      Value: {flags: 0}
+  edges:
+  - {from: 1.Then, to: 382.Exec}
+  - {from: 1.Direction, to: 105.direction}
+  - {from: 105.Velocity, to: 14.Value}
+  - {from: 356.Then, to: 401.Exec}
+  - {from: 367.Orientation, to: 371.Value}
+  - {from: 380.Value, to: 382.Condition}
+  - {from: 382.True, to: 394.Exec}
+  - {from: 382.False, to: 14.Exec}
+  - {from: 390.Result, to: 394.Condition}
+  - {from: 394.False, to: 14.Exec}
+  - {from: 399.Value, to: 401.Condition}
+  - {from: 401.True, to: 413.Exec}
+  - {from: 401.False, to: 371.Exec}
+  - {from: 406.Value.remaining, to: 409.B}
+  - {from: 409.Result, to: 413.Condition}
+  - {from: 413.False, to: 371.Exec}
+  - {from: 418.Value, to: 105.speed}

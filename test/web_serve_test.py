@@ -1,6 +1,5 @@
 """Local workspace saves must survive reload without escaping the project."""
 import importlib.util
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -19,29 +18,29 @@ class WorkspaceSaves(unittest.TestCase):
         self.content = self.project / 'content'
         self.content.mkdir()
 
-    def save(self, path, text='{"name":"Bloom"}'):
+    def save(self, path, text='name: Bloom\n'):
         server.save_asset(self.project, self.content, {'path': path, 'text': text})
 
     def test_save_and_reopen(self):
-        self.save('/content/scenes/Bloom.json')
-        path = self.content / 'scenes/Bloom.json'
-        self.assertEqual(json.loads(path.read_text()), {'name': 'Bloom'})
-        self.save('content/scenes/Bloom.json', '{"name":"Revised"}')
-        self.assertEqual(json.loads(path.read_text()), {'name': 'Revised'})
+        self.save('/content/scenes/Bloom.yaml')
+        path = self.content / 'scenes/Bloom.yaml'
+        self.assertEqual(path.read_text(), 'name: Bloom\n')
+        self.save('content/scenes/Bloom.yaml', 'name: Revised\n')
+        self.assertEqual(path.read_text(), 'name: Revised\n')
 
-    def test_invalid_json_preserves_previous_asset(self):
-        self.save('content/Bloom.json')
+    def test_invalid_document_preserves_previous_asset(self):
+        self.save('content/Bloom.yaml')
         with self.assertRaises(ValueError):
-            self.save('content/Bloom.json', '{')
-        self.assertEqual(json.loads((self.content / 'Bloom.json').read_text()), {'name': 'Bloom'})
+            self.save('content/Bloom.yaml', '{')
+        self.assertEqual((self.content / 'Bloom.yaml').read_text(), 'name: Bloom\n')
 
     def test_paths_stay_inside_content(self):
         (self.content / 'escape').symlink_to(self.project, target_is_directory=True)
-        for path in ('content/../outside.json', '../outside.json',
-                     'content/escape/outside.json', 'content/script.js'):
+        for path in ('content/../outside.yaml', '../outside.yaml',
+                     'content/escape/outside.yaml', 'content/script.js'):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 self.save(path)
-        self.assertFalse((self.project / 'outside.json').exists())
+        self.assertFalse((self.project / 'outside.yaml').exists())
 
 
 if __name__ == '__main__':

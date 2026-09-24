@@ -13,10 +13,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-_Static_assert(sizeof(render_material_entity) == 1344, "entity std430 stride");
+/* The GPU entity is the prefix before the separately uploaded parameters. */
+enum
+{
+    GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters)
+};
+_Static_assert(sizeof(render_material_entity) == 1360, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
+_Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
 
 typedef struct
 {
@@ -34,14 +40,15 @@ struct render_material_raster
     CF_StorageBuffer entities, counts, indices, parameters;
     unsigned char *entity_data;
     float *parameter_data;
-    CF_Texture textures[5];
+    /* scene, emission, absorption, albedo, normal, relief */
+    CF_Texture textures[6];
     render_material_entity *sorted;
     int width, height, tiles, capacity;
 };
 
 static void free_targets(render_material_raster *r)
 {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         if (r->textures[i].id) {
             cf_destroy_texture(r->textures[i]);
         }
@@ -113,7 +120,7 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
         return true;
     }
     free_targets(r);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         CF_TextureParams params = cf_texture_defaults(width, height);
         params.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT |
@@ -157,7 +164,7 @@ static bool reserve(render_material_raster *r, int count)
     if (index_bytes > INT_MAX || count > INT_MAX / (int)sizeof(render_material_entity)) {
         return false;
     }
-    CF_StorageBuffer entities = buffer(count * 320);
+    CF_StorageBuffer entities = buffer(count * GPU_ENTITY_BYTES);
     CF_StorageBuffer parameters = buffer(count * 1024);
     CF_StorageBuffer indices = buffer((int)index_bytes);
     if (!entities.id || !indices.id || !parameters.id) {
@@ -182,7 +189,7 @@ static bool reserve(render_material_raster *r, int count)
         cf_destroy_storage_buffer(r->parameters);
     }
     r->parameters = parameters;
-    r->entity_data = xrealloc(r->entity_data, (size_t)count * 320);
+    r->entity_data = xrealloc(r->entity_data, (size_t)count * GPU_ENTITY_BYTES);
     r->parameter_data = xrealloc(r->parameter_data, (size_t)count * 1024);
     r->entities = entities;
     r->indices = indices;
@@ -320,10 +327,10 @@ bool render_material_raster_draw(
     }
     if (count) {
         for (int i = 0; i < count; i++) {
-            memcpy(r->entity_data + (size_t)i * 320, &r->sorted[i], 320);
+            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, &r->sorted[i], GPU_ENTITY_BYTES);
             memcpy(r->parameter_data + (size_t)i * 256, r->sorted[i].material_parameters, 1024);
         }
-        cf_update_storage_buffer(r->entities, r->entity_data, count * 320);
+        cf_update_storage_buffer(r->entities, r->entity_data, count * GPU_ENTITY_BYTES);
         cf_update_storage_buffer(r->parameters, r->parameter_data, count * 1024);
     }
     int tx = (r->width + 15) / 16, ty = (r->height + 15) / 16;
@@ -353,7 +360,7 @@ bool render_material_raster_draw(
     dispatch.ro_buffers = inputs;
     dispatch.ro_buffer_count = 4;
     dispatch.rw_textures = r->textures;
-    dispatch.rw_texture_count = 5;
+    dispatch.rw_texture_count = 6;
     cf_push_gpu_label("Material raster batches");
     for (int i = 0; i < acount(r->batches); i++) {
         const material_batch *batch = &r->batches[i];
@@ -373,7 +380,7 @@ bool render_material_raster_draw(
 render_material_textures render_material_raster_textures(const render_material_raster *r)
 {
     assert(r);
-    return (
-        render_material_textures
-    ){ r->textures[0], r->textures[1], r->textures[2], r->textures[3], r->textures[4] };
+    return (render_material_textures){ r->textures[0], r->textures[1],
+                                       r->textures[2], r->textures[3],
+                                       r->textures[4], r->textures[5] };
 }

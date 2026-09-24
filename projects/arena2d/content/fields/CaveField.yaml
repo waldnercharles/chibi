@@ -1,0 +1,181 @@
+version: 3
+name: CaveField
+domain: field
+id_counter: 202
+variables:
+- {id: 5, name: Radius, type: float, default: 225.0}
+- {id: 9, name: Roughness, type: float, default: 100.0}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Field X}
+  - {id: 3, type: Field Y}
+  - id: 6
+    type: Field Parameter
+    inputs: {Name: Radius}
+  - id: 10
+    type: Field Parameter
+    inputs: {Name: Roughness}
+  - id: 13
+    type: Field Multiply
+    inputs: {B: 0.550000011920929}
+  - id: 17
+    type: Field Divide
+    inputs: {B: 700.0}
+  - id: 21
+    type: Field Noise
+    inputs: {Seed Offset: 3.0}
+  - {id: 26, type: Field Multiply}
+  - id: 30
+    type: Field Divide
+    inputs: {B: 420.0}
+  - id: 34
+    type: Field Noise
+    inputs: {Seed Offset: 4.0}
+  - id: 39
+    type: Field Multiply
+    inputs: {A: 0.4000000059604645}
+  - id: 43
+    type: Field Add
+    inputs: {A: 1.0}
+  - {id: 47, type: Field Multiply}
+  - id: 51
+    type: Field Multiply
+    inputs: {B: 5.0}
+  - {id: 55, type: Field Divide}
+  - {id: 59, type: Field Floor}
+  - {id: 62, type: Field Subtract}
+  - id: 66
+    type: Field Multiply
+    inputs: {B: 3.1415927410125732}
+  - {id: 70, type: Field Sin}
+  - id: 73
+    type: Field Hash
+    inputs: {Seed Offset: 5.0}
+  - id: 78
+    type: Field Select
+    inputs: {Positive: 1.0, Negative: -1.0}
+  - {id: 83, type: Field Multiply}
+  - id: 87
+    type: Field Multiply
+    inputs: {B: 2.1500000953674316}
+  - {id: 91, type: Field Multiply}
+  - {id: 95, type: Field Add}
+  - {id: 99, type: Field Subtract}
+  - {id: 103, type: Field Abs}
+  - {id: 106, type: Field Subtract}
+  - {id: 110, type: Field Subtract}
+  - {id: 114, type: Field Abs}
+  - id: 117
+    type: Field Multiply
+    inputs: {B: 0.4300000071525574}
+  - {id: 121, type: Field Subtract}
+  - id: 125
+    type: Field Divide
+    inputs: {B: 170.0}
+  - id: 129
+    type: Field Divide
+    inputs: {B: 170.0}
+  - {id: 133, type: Field Noise}
+  - id: 138
+    type: Field Multiply
+    inputs: {A: 0.5699999928474426}
+  - id: 142
+    type: Field Divide
+    inputs: {B: 65.0}
+  - id: 146
+    type: Field Divide
+    inputs: {B: 65.0}
+  - id: 150
+    type: Field Noise
+    inputs: {Seed Offset: 1.0}
+  - id: 155
+    type: Field Multiply
+    inputs: {A: 0.2800000011920929}
+  - {id: 159, type: Field Add}
+  - id: 163
+    type: Field Divide
+    inputs: {B: 23.0}
+  - id: 167
+    type: Field Divide
+    inputs: {B: 23.0}
+  - id: 171
+    type: Field Noise
+    inputs: {Seed Offset: 2.0}
+  - id: 176
+    type: Field Multiply
+    inputs: {A: 0.15000000596046448}
+  - {id: 180, type: Field Add}
+  - {id: 184, type: Field Min}
+  - {id: 188, type: Field Multiply}
+  - {id: 192, type: Field Add}
+  - {id: 196, type: Field Negate}
+  - {id: 199, type: Field Output}
+  edges:
+  - {from: 1.Value, to: 17.A}
+  - {from: 1.Value, to: 30.A}
+  - {from: 1.Value, to: 55.A}
+  - {from: 1.Value, to: 125.A}
+  - {from: 1.Value, to: 142.A}
+  - {from: 1.Value, to: 163.A}
+  - {from: 3.Value, to: 99.A}
+  - {from: 3.Value, to: 110.A}
+  - {from: 3.Value, to: 129.A}
+  - {from: 3.Value, to: 146.A}
+  - {from: 3.Value, to: 167.A}
+  - {from: 6.Value, to: 13.A}
+  - {from: 6.Value, to: 47.A}
+  - {from: 6.Value, to: 51.A}
+  - {from: 6.Value, to: 83.B}
+  - {from: 6.Value, to: 117.A}
+  - {from: 10.Value, to: 188.A}
+  - {from: 13.Value, to: 26.A}
+  - {from: 17.Value, to: 21.X}
+  - {from: 21.Value, to: 26.B}
+  - {from: 26.Value, to: 95.A}
+  - {from: 26.Value, to: 99.B}
+  - {from: 30.Value, to: 34.X}
+  - {from: 34.Value, to: 39.B}
+  - {from: 39.Value, to: 43.B}
+  - {from: 43.Value, to: 47.B}
+  - {from: 47.Value, to: 106.B}
+  - {from: 51.Value, to: 55.B}
+  - {from: 55.Value, to: 59.Value}
+  - {from: 55.Value, to: 62.A}
+  - {from: 59.Value, to: 62.B}
+  - {from: 59.Value, to: 73.X}
+  - {from: 62.Value, to: 66.A}
+  - {from: 66.Value, to: 70.Value}
+  - {from: 70.Value, to: 91.B}
+  - {from: 73.Value, to: 78.Condition}
+  - {from: 78.Value, to: 83.A}
+  - {from: 83.Value, to: 87.A}
+  - {from: 87.Value, to: 91.A}
+  - {from: 91.Value, to: 95.B}
+  - {from: 95.Value, to: 110.B}
+  - {from: 99.Value, to: 103.Value}
+  - {from: 103.Value, to: 106.A}
+  - {from: 106.Value, to: 184.A}
+  - {from: 110.Value, to: 114.Value}
+  - {from: 114.Value, to: 121.A}
+  - {from: 117.Value, to: 121.B}
+  - {from: 121.Value, to: 184.B}
+  - {from: 125.Value, to: 133.X}
+  - {from: 129.Value, to: 133.Y}
+  - {from: 133.Value, to: 138.B}
+  - {from: 138.Value, to: 159.A}
+  - {from: 142.Value, to: 150.X}
+  - {from: 146.Value, to: 150.Y}
+  - {from: 150.Value, to: 155.B}
+  - {from: 155.Value, to: 159.B}
+  - {from: 159.Value, to: 180.A}
+  - {from: 163.Value, to: 171.X}
+  - {from: 167.Value, to: 171.Y}
+  - {from: 171.Value, to: 176.B}
+  - {from: 176.Value, to: 180.B}
+  - {from: 180.Value, to: 188.B}
+  - {from: 184.Value, to: 192.A}
+  - {from: 188.Value, to: 192.B}
+  - {from: 192.Value, to: 196.Value}
+  - {from: 196.Value, to: 199.Value}

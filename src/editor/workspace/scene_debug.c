@@ -50,39 +50,52 @@ bool scene_debug_resolve(
     return false;
 }
 
-static void normalize_pins(yyjson_mut_doc *doc, yyjson_mut_val *pins)
+static const char *resolved_alias(const char *name)
 {
-    size_t index, count;
-    yyjson_mut_val *pin;
-    yyjson_mut_arr_foreach(pins, index, count, pin)
-    {
-        yyjson_mut_obj_remove_key(pin, "group");
-        const char *name = yyjson_mut_get_str(yyjson_mut_obj_get(pin, "type_name"));
-        if (!name) {
-            continue;
+    for (int depth = 0; name && depth < 16; depth++) {
+        const type_desc *type = registry_type_by_name(name);
+        if (!type || !type->alias_of || !strcmp(type->alias_of, name)) {
+            break;
         }
-        /* Linking resolves aliases; their spelling does not change execution. */
-        for (int depth = 0; depth < 16; depth++) {
-            const type_desc *type = registry_type_by_name(name);
-            if (!type || !type->alias_of || !strcmp(type->alias_of, name)) {
-                break;
+        name = type->alias_of;
+    }
+    return name;
+}
+
+/* Linking resolves type aliases and turns library calls into local ones; pin
+ * groups and declarations only guide editing. None changes execution. */
+static void normalize_pins(behavior_asset *asset)
+{
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+            node *n = asset->graphs[g]->nodes[i];
+            for (int output = 0; output < 2; output++) {
+                pin_spec *pins = output ? n->output_pins : n->input_pins;
+                int count = output ? n->output_count : n->input_count;
+                for (int p = 0; p < count; p++) {
+                    pins[p].group = 0;
+                    pins[p].type_name = resolved_alias(pins[p].type_name);
+                    pins[p].declaration_id = serialize_call_declaration(asset, n, output, p);
+                }
             }
-            name = type->alias_of;
         }
-        yyjson_mut_obj_remove_key(pin, "type_name");
-        yyjson_mut_obj_add_strcpy(doc, pin, "type_name", name);
     }
 }
 
-static yyjson_mut_doc *execution_json(const behavior_asset *asset)
+static yyjson_mut_doc *execution_json(const behavior_asset *source_asset)
 {
-    char *json = behavior_asset_save_json(asset);
-    if (!json) {
+    char *json = behavior_asset_save_json(source_asset);
+    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+    free(json);
+    if (!asset) {
         return NULL;
     }
-    yyjson_doc *source = yyjson_read(json, strlen(json), 0);
+    normalize_pins(asset);
+    json = behavior_asset_save_json(asset);
+    yyjson_doc *source = json ? yyjson_read(json, strlen(json), 0) : NULL;
     free(json);
     if (!source) {
+        behavior_asset_free(asset);
         return NULL;
     }
     yyjson_mut_doc *doc = yyjson_doc_mut_copy(source, NULL);
@@ -106,10 +119,9 @@ static yyjson_mut_doc *execution_json(const behavior_asset *asset)
         yyjson_mut_val *node;
         yyjson_mut_arr_foreach(nodes, j, node_count, node)
         {
-            normalize_pins(doc, yyjson_mut_obj_get(node, "inputs"));
-            normalize_pins(doc, yyjson_mut_obj_get(node, "outputs"));
             yyjson_mut_obj_remove_key(node, "x");
             yyjson_mut_obj_remove_key(node, "y");
+            yyjson_mut_obj_remove_key(node, "placed");
             uint64_t target_id = yyjson_mut_get_uint(yyjson_mut_obj_get(node, "reference_id"));
             for (int index = 0; target_id && index < acount(asset->graphs); index++) {
                 const struct graph *target = asset->graphs[index];
@@ -119,7 +131,7 @@ static yyjson_mut_doc *execution_json(const behavior_asset *asset)
                 yyjson_mut_obj_remove_key(node, "reference_id");
                 yyjson_mut_obj_remove_key(node, "reference_asset");
                 yyjson_mut_obj_add_uint(doc, node, "reference_id", target->source_graph_id);
-                yyjson_mut_obj_add_str(doc, node, "reference_asset", target->source_asset);
+                yyjson_mut_obj_add_strcpy(doc, node, "reference_asset", target->source_asset);
                 break;
             }
         }
@@ -138,6 +150,7 @@ static yyjson_mut_doc *execution_json(const behavior_asset *asset)
             }
         }
     }
+    behavior_asset_free(asset);
     return doc;
 }
 

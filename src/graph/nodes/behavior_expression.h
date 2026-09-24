@@ -27,6 +27,13 @@ int behavior_expression_set(
 );
 int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error);
 int behavior_expression_repair(behavior_asset *asset, node *call);
+/* An expression function's body is derived from its source and first call.
+ * Rebuilding reproduces its IDs from the one before its entry node and leaves
+ * nodes for the editor to arrange. Returns a detached graph, or NULL. */
+graph *behavior_expression_rebuild(const behavior_asset *asset, const graph *generated);
+/* Loading fills an expression function whose document omits its body; the
+ * loader then advances the asset's ID counter past its IDs. */
+int behavior_expression_restore(behavior_asset *asset, graph *generated);
 const char *behavior_expression_source(const behavior_asset *asset, const node *call);
 
 /* A source-to-source authoring transform for a connected, pure numeric

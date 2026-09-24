@@ -105,7 +105,9 @@ static pin_spec surface[] = {
     FLOAT_PIN("Metallic"),
     VECTOR_PIN("Normal", 3),
     FLOAT_DEFAULT("Opacity", 1),
-    { .name = "Unlit", .type = PIN_BOOL, .default_value = { .type = PIN_BOOL } }
+    { .name = "Unlit", .type = PIN_BOOL, .default_value = { .type = PIN_BOOL } },
+    /* World units of relief above the surface; 2D shading casts its shadows. */
+    FLOAT_PIN("Height")
 };
 static pin_spec mapping2[] = { VECTOR_PIN("Position", 2),
                                VECTOR_PIN("Offset", 2),
@@ -282,7 +284,7 @@ static node_desc image_node = { .name = "Shader Image Texture",
                                 .category = "Shader",
                                 .display_class = NODE_DISPLAY_PURE };
 static node_desc surface_output = { .name = "Shader Surface Output",
-                                    .input_count = 7,
+                                    .input_count = 8,
                                     .inputs = surface,
                                     .category = "Shader",
                                     .display_class = NODE_DISPLAY_FUNCTION };

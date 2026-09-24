@@ -13,6 +13,8 @@ make build        # build the sanitizer-enabled Debug profile
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
 make test         # model, runtime, native UI, generation, and loader checks
+make test-fast TEST_ARGS=--graph-optimize  # focused plain Debug check
+make sdl-package  # build pinned SDL once for macOS worktrees
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
 make dev          # watch sources, rebuild, and reload the running editor
@@ -21,16 +23,27 @@ make check-format
 make web          # static browser application; requires Emscripten
 ```
 
-`make run` and `make play` use the fully optimized `Release` profile. The
-`make debug` target uses a plain `Debug` profile, while `make debug-san` uses
+`make run` and `make play` use the fully optimized `Release` profile. Their
+launch targets build only the application; `make build-release` still builds
+all native targets. `make debug` uses a plain `Debug` profile, while
+`make debug-san` uses
 ASan and UBSan by default. Use `make debug-san SANITIZERS=thread` when a TSan
 run is useful; TSan cannot be linked into the same binary as ASan, so the one
 target switches the sanitizer mode in the shared Debug build directory.
 
+Native builds use Ninja for new build directories when available and run up to
+eight compile jobs by default. Set `JOBS` to tune this for your machine or
+concurrent worktrees. An unchanged configuration is reused; changed Make flags
+or CMake cache settings trigger configuration again.
+
+`make test-fast TEST_ARGS=--graph-optimize` builds only the test executable in
+plain Debug and runs that selector. Use another `test_suite` selector for the
+area you changed. `make test` remains the full ASan and UBSan gate.
+
 Neon Swarm is the default project for native launches, editor profiles, MCP,
-and `make web-serve`. Its manifest selects `scenes/Sandbox.json`.
+and `make web-serve`. Its manifest selects `scenes/Sandbox.yaml`.
 Use `make debug PROJECT=.` for the Arena3D reference, or
-`make debug PROJECT=. SCENE=scenes/OrbitPinball.json` for pinball.
+`make debug PROJECT=. SCENE=scenes/OrbitPinball.yaml` for pinball.
 Add `ARGS=--play` to launch into Play.
 
 Run `make help` for the complete target list and the purpose of each target.
@@ -61,12 +74,24 @@ LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
 dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
 
-When ccache is installed, native `Release` builds under the source tree can
-reuse compiled objects across worktrees with the same relative build directory
-such as `build-release`. Each worktree still has its own fetched sources and
-linked libraries. The cache checks source, headers, compiler, and flags before
-reusing an object. Run `ccache --show-stats` to check hits. Debug, sanitizer,
-Tracy, reload, and web builds do not use this Release path normalization.
+When ccache is installed, native builds under the source tree can reuse matching
+objects across worktrees. Debug and development builds normalize compilation
+paths so their debug information still resolves local sources. New native build
+directories save pinned dependency source snapshots to
+`CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
+`${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`). Later build directories
+copy these snapshots using filesystem cloning when available. Each worktree can
+patch Cute and generate files without changing the shared snapshot. Dependency
+build directories and linked libraries remain private, except for an installed
+SDL package. Run `ccache --show-stats` to check hits and evictions; increase its
+size limit if it is continually full.
+
+On macOS, `make sdl-package` builds the pinned SDL 3.4.0 archive once and
+installs its static and shared libraries under
+`${XDG_CACHE_HOME:-$HOME/.cache}/chibi-sdl3`. Future native build directories
+automatically use that package when the compiler and SDK match. Set
+`CHIBI_SDL3_PACKAGE_ROOT` to use another cache location. If the package is
+absent, Cute fetches and builds SDL in the worktree as before.
 
 `make dev ARGS="--fps 60"` starts the native development host. Save a source file
 to build a new generation. Build diagnostics go to `.chibi/build.log`.

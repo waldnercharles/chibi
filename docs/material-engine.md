@@ -2,7 +2,7 @@
 
 Material algorithms operate on native grids and masks. Authored fields define
 geometry; reflected components define tuning; behaviors decide gameplay outcomes.
-`projects/arena2d/content/scenes/MaterialStudy.json` exercises this boundary with
+`projects/arena2d/content/scenes/MaterialStudy.yaml` exercises this boundary with
 two procedural specimens, a cut operation, and a moving marker. It has no fluid
 world, health, projectile, encounter, or combat configuration.
 
@@ -27,12 +27,27 @@ fragment ownership transfer, destruction, geometry invalidation and result
 callbacks. Sources must keep their mask addresses stable during callbacks.
 Mask views borrow storage until the next mutation; geometry consumers track the
 mask revision. The ECS fragment adapter copies an explicit presentation/physics
-bundle and omits health, projectiles and attached behaviors.
+bundle and omits health, projectiles and attached behaviors. Fragments with a
+material shader keep a `GameMaterialFrame`: where their source's frame sat when
+the material was laid out. World-space material patterns stay attached to the
+piece as it moves.
 
 `MaterialDestructionWorld` bounds retained fragments. `MaterialFluidWorld`
 configures particles, activation regions and fluid chunk size. Either capability
-works independently. `MaterialBreakProfile` owns kick speeds and dust ranges;
-missing profiles produce no impulses or dust. `MaterialTerrain` names a field,
+works independently; its `debris_limit` also bounds crater rock chunks.
+`MaterialBreakProfile` owns kick speeds and crater effects; missing profiles
+produce no impulses or dust. Everything sprays around the crater's outward
+normal, found from the open cells around it: grit, one grain per crumbled cell;
+sparks in proportion to the striker's heat, starting in its light color and
+cooling through `spark_color`; rock chunks; and `smoke_count` gas parcels. The
+strike also shoves loose chunks already near the crater. Chunks show the source
+material, glow in its spark color while a hot strike's heat cools, tumble,
+bounce off terrain and get shoved by bodies and blasts. A hard knock splits a
+large chunk into two or three pieces, at most twice; every chunk shrinks away
+at the end of its short life and leaves a small puff of the source's smoke
+color. `Damage Material`
+takes the striking entity as `Source`; its `GameMaterial` emission color and
+`GameIgniter` heat describe the impact. `MaterialTerrain` names a field,
 typed parameter object, seed, bounds, cell size, connectivity and collision filters.
 
 ## Procedural fields
@@ -77,14 +92,21 @@ Native blast handling does not modify health.
 `MaterialTerrain.stream_radius` defaults to zero, preserving resident terrain
 generation for existing assets. A positive radius enables streaming around
 enabled cameras, including their view extents. Moving bodies retain a small
-nearby area. `stream_budget` limits generation or restoration to 1..64 tiles per
-material preparation boundary. It limits tile count, not elapsed milliseconds.
+nearby area. Tiles a camera can see, and those under a moving body, prepare
+immediately so visible terrain never appears late. `stream_budget` limits the
+remaining prefetch to 1..64 tiles per material preparation boundary. It limits
+tile count, not elapsed milliseconds.
 
 Streamed terrain requires `connectivity = 0` and `border_cells = 0`. Positive
 width and height define finite bounds of up to 65536 cells per axis. Setting both
 dimensions to zero uses signed tile coordinates without an authored rectangular
 edge. Fields receive consistent coordinates across tiles. The field and its
 parameters still determine whether the resulting spaces connect.
+
+`MaterialTerrain.island_cells` removes solid islands and fills air pockets
+smaller than that many cells that lie wholly inside a tile or bounded grid.
+Such components are enclosed by the tile, so streaming never removes rock
+connected across a tile edge.
 
 Evicted tiles retain occupancy, distance samples, and partial damage in a
 temporary file for the current run. Returning restores the same mask, including
@@ -130,14 +152,14 @@ bytecode for its vector expression.
 
 ## Authoring and checks
 
-Use `buildField`, `buildSystem`, `inspectGraph`, `inspectSystem`, `validateAsset`
+Use `buildGraph`, `inspectGraph`, `inspectSystem`, `validateAsset`
 and `previewField` through Chibi MCP. Field previews return a deterministic CPU
 PNG, range and hash without a graphics context. Graph edits remain atomic,
 hash-checked and automatically arranged. The editor lists fields, filters their
 palette, exposes pure scalar library calls, and provides seed/cell-size controls
 and a field preview in Details.
 
-Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.json`.
+Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.yaml`.
 
 Useful checks:
 

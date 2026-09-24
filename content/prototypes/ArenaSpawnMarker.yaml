@@ -1,0 +1,20 @@
+name: ArenaSpawnMarker
+components:
+  GAME.GameEncounterMember: {role: 1}
+  GAME.GameGeometry3D:
+    depth: 22.0
+    elevation: 1.0
+    height: 0.10000000149011612
+    primitive: 9
+    width: 22.0
+  GAME.GameOrientation: {}
+  GAME.GameShader: {material: ArenaSpawnMarker, parameters: '{}', shape: ""}
+  GAME.GameSpawnRequest: {delay: 1.0, prototype: ArenaEnemy}
+  GAME.GameSurfaceInfluence:
+    color: 4282543359
+    inner_radius: 11.0
+    radius: 14.0
+    strength: 0.4000000059604645
+  game.GameTransform: {}
+  GAME.GameVisualTransform: {scale: 1.0}
+behaviors: [SpawnTelegraphBehavior]

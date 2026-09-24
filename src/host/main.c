@@ -5,6 +5,7 @@
 #include "dev.h"
 #endif
 #include "platform/cute.h"
+#include "render/shader_dir.h"
 #include "state_file.h"
 
 #include <signal.h>
@@ -325,7 +326,7 @@ int main(int argc, char **argv)
         free(window_path);
         return 1;
     }
-    cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
+    cf_fs_mount(render_shader_dir(), "/chibi-render", true);
     if (cf_query_backend() != CF_BACKEND_TYPE_GLES3) {
         cf_shader_directory("/chibi-render");
     }

@@ -177,10 +177,12 @@ static bool load_tile(material_stream *s, const material_fields *fields, uint64_
             s->desc.seed,
             grid,
             samples,
+            s->desc.tasks,
             error,
             size
         );
         if (ok) {
+            material_terrain_tidy(samples, grid, s->desc.island_cells);
             mask = material_mask_from_field(grid.width, grid.height, grid.cell_size, samples);
         }
     } else {
@@ -226,7 +228,13 @@ static bool resident(const material_stream *s, uint64_t key)
     return false;
 }
 
-static bool next_tile(const material_stream *s, const material_stream_view *views, int count, uint64_t *key)
+static bool next_tile(
+    const material_stream *s,
+    const material_stream_view *views,
+    int count,
+    bool required,
+    uint64_t *key
+)
 {
     float best = FLT_MAX;
     bool found = false;
@@ -236,6 +244,12 @@ static bool next_tile(const material_stream *s, const material_stream_view *view
     float top = grid.center_y - grid.height * grid.cell_size * .5f;
     for (int v = 0; v < count; v++) {
         material_stream_view view = views[v];
+        if (required) {
+            if (view.required <= 0) {
+                continue;
+            }
+            view.radius = view.required;
+        }
         int x0 = (int)floorf((view.x - view.radius - left) / span);
         int y0 = (int)floorf((view.y - view.radius - top) / span);
         int x1 = (int)floorf((view.x + view.radius - left) / span);
@@ -292,11 +306,13 @@ bool material_stream_update(
         adel(s->tiles, i);
         s->state.unloaded++;
     }
-    for (int i = 0; i < budget; i++) {
-        uint64_t key = 0;
-        if (!next_tile(s, views, count, &key)) {
-            break;
+    uint64_t key = 0;
+    while (next_tile(s, views, count, true, &key)) {
+        if (!load_tile(s, fields, key, error, size)) {
+            return false;
         }
+    }
+    for (int i = 0; i < budget && next_tile(s, views, count, false, &key); i++) {
         if (!load_tile(s, fields, key, error, size)) {
             return false;
         }

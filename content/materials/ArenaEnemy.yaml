@@ -1,0 +1,205 @@
+version: 3
+name: ArenaEnemy
+domain: material
+id_counter: 81
+description: Warm rose pursuer surface with a dark body and readable emissive edges.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 29
+    type: Shader Surface Output
+    x: 2040.0
+    "y": 60.0
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Height: {id: 80}
+  - id: 37
+    type: Shader Parameter
+    x: 0.0
+    "y": 0.0
+    reference_name: Base Color
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 64
+        group: 0
+        default: {x: 0.6200000047683716, "y": 0.009999999776482582, z: 0.03500000014901161}
+  - id: 39
+    type: Shader Fresnel
+    x: 0.0
+    "y": 270.0
+    inputs: {Power: 3.0, Base: 0.11999999731779099}
+  - id: 45
+    type: Shader Parameter
+    x: 0.0
+    "y": 535.0
+    reference_id: 2
+    reference_name: Edge Glow
+    outputs:
+      Value: {flags: 0, group: 0, default: 2.5999999046325684}
+  - id: 47
+    type: Shader Parameter
+    x: 290.0
+    "y": 675.0
+    reference_id: 1
+    reference_name: Glow Color
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 64
+        group: 0
+        default: {x: 1.100000023841858, "y": 0.017999999225139618, z: 0.09000000357627869}
+  - id: 49
+    type: Shader Multiply
+    x: 320.0
+    "y": 275.0
+    inputs:
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Value: {flags: 0, group: 0}
+  - id: 53
+    type: Shader Multiply
+    x: 630.0
+    "y": 270.0
+    inputs:
+      A:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - id: 57
+    type: Shader Parameter
+    x: 720.0
+    "y": 515.0
+    reference_id: 3
+    reference_name: Roughness
+    outputs:
+      Value: {flags: 0, group: 0, default: 0.6000000238418579}
+  - id: 59
+    type: Shader Parameter
+    x: 720.0
+    "y": 680.0
+    reference_id: 4
+    reference_name: Metallic
+    outputs:
+      Value: {flags: 0, group: 0, default: 0.07999999821186066}
+  - id: 62
+    type: Shader Parameter
+    x: 1040.0
+    "y": 420.0
+    reference_id: 5
+    reference_name: Hit Flash
+    outputs:
+      Value: {id: 61, type_name: float, flags: 0, group: 0}
+  - id: 65
+    type: Shader Saturate
+    x: 1260.0
+    "y": 420.0
+    inputs:
+      Value: {id: 63, type_name: float, flags: 0, group: 0}
+    outputs:
+      Value: {type_name: float, flags: 0, group: 0}
+  - id: 70
+    type: Shader Mix
+    x: 1520.0
+    "y": 0.0
+    inputs:
+      A:
+        id: 66
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      B:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.75, "y": 0.949999988079071, z: 1.0}
+      Alpha: {type_name: float, flags: 0, group: 0}
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - id: 74
+    type: Shader Multiply
+    x: 1260.0
+    "y": 650.0
+    inputs:
+      A:
+        id: 71
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.75, "y": 0.949999988079071, z: 1.0}
+      B: {type_name: float, flags: 0, group: 0}
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - id: 78
+    type: Shader Add
+    x: 1520.0
+    "y": 240.0
+    inputs:
+      A:
+        id: 75
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      B:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        flags: 0
+        group: 0
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  edges:
+  - {from: 37.Value, to: 70.A}
+  - {from: 39.Value, to: 49.A}
+  - {from: 45.Value, to: 49.B}
+  - {from: 47.Value, to: 53.A}
+  - {from: 49.Value, to: 53.B}
+  - {from: 53.Value, to: 78.A}
+  - {from: 57.Value, to: 29.Roughness}
+  - {from: 59.Value, to: 29.Metallic}
+  - {from: 62.Value, to: 65.Value}
+  - {from: 62.Value, to: 74.B}
+  - {from: 65.Value, to: 70.Alpha}
+  - {from: 70.Value, to: 29.Base Color}
+  - {from: 74.Value, to: 78.B}
+  - {from: 78.Value, to: 29.Emission}

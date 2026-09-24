@@ -13,7 +13,7 @@
 static void write_asset(const char *directory, const char *name, const char *json)
 {
     char path[512];
-    snprintf(path, sizeof path, "%s/%s.json", directory, name);
+    snprintf(path, sizeof path, "%s/%s.yaml", directory, name);
     FILE *file = fopen(path, "wb");
     assert(file);
     assert(fputs(json, file) >= 0);
@@ -33,7 +33,7 @@ void run_behavior_loader_checks()
     write_asset(directory, "Duplicate", json);
     free(json);
     behavior_asset_free(asset);
-    write_asset(directory, "Broken", "{");
+    write_asset(directory, "Broken", "name: [Broken\n");
 
     asset = behavior_asset_new("Unknown");
     graph_add_node(asset->graph, registry_node_by_name("Integer"));
@@ -83,14 +83,14 @@ void run_behavior_loader_checks()
 
     assert(loaded == 1 && game_live_find_definition(world, "Good"));
     assert(!game_live_find_definition(world, "PreviewFailed"));
-    assert(strstr(messages, "Broken.json (deserialize): malformed JSON"));
-    assert(strstr(messages, "Unknown.json (deserialize): unknown node type \"Missing\""));
-    assert(strstr(messages, "Good.json (register): A definition with this name is already registered."));
-    assert(strstr(messages, "MissingLibrary.json (register): AbsentLibrary:"));
+    assert(strstr(messages, "Broken.yaml (deserialize): line "));
+    assert(strstr(messages, "Unknown.yaml (deserialize): unknown node type \"Missing\""));
+    assert(strstr(messages, "Good.yaml (register): A definition with this name is already registered."));
+    assert(strstr(messages, "MissingLibrary.yaml (register): AbsentLibrary:"));
     assert(
         strstr(messages, "Could not register preview behavior PreviewFailed: A definition with this name")
     );
-    assert(strstr(messages, "PreviewFailed.json (preview):"));
+    assert(strstr(messages, "PreviewFailed.yaml (preview):"));
     game_prototype_preview_free(preview);
     game_live_world_free(world);
     ecs_world_free(ecs);
@@ -99,7 +99,7 @@ void run_behavior_loader_checks()
                             "Unknown", "MissingLibrary", "PreviewFailed" };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         char path[512];
-        snprintf(path, sizeof path, "%s/%s.json", directory, names[i]);
+        snprintf(path, sizeof path, "%s/%s.yaml", directory, names[i]);
         assert(unlink(path) == 0);
     }
     assert(rmdir(directory) == 0 && rmdir(root) == 0);

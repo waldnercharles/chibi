@@ -56,13 +56,29 @@ bool game_physics_settings_read(yyjson_val *object, game_physics_settings *out)
 yyjson_mut_val *game_physics_settings_write(yyjson_mut_doc *doc, game_physics_settings settings)
 {
     assert(game_physics_settings_valid(settings));
+    /* Reading starts from the defaults, so only differences are written. */
+    game_physics_settings defaults = game_physics_defaults();
     yyjson_mut_val *object = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, object, "workers", settings.workers);
-    yyjson_mut_obj_add_int(doc, object, "substeps", settings.substeps);
-    yyjson_mut_obj_add_bool(doc, object, "sleep", settings.sleep);
-    yyjson_mut_obj_add_bool(doc, object, "continuous", settings.continuous);
-    yyjson_mut_obj_add_bool(doc, object, "force_drive", settings.force_drive);
-    yyjson_mut_obj_add_real(doc, object, "contact_hertz", settings.contact_hertz);
-    yyjson_mut_obj_add_real(doc, object, "contact_damping", settings.contact_damping);
+    if (settings.workers != defaults.workers) {
+        yyjson_mut_obj_add_int(doc, object, "workers", settings.workers);
+    }
+    if (settings.substeps != defaults.substeps) {
+        yyjson_mut_obj_add_int(doc, object, "substeps", settings.substeps);
+    }
+    if (settings.sleep != defaults.sleep) {
+        yyjson_mut_obj_add_bool(doc, object, "sleep", settings.sleep);
+    }
+    if (settings.continuous != defaults.continuous) {
+        yyjson_mut_obj_add_bool(doc, object, "continuous", settings.continuous);
+    }
+    if (settings.force_drive != defaults.force_drive) {
+        yyjson_mut_obj_add_bool(doc, object, "force_drive", settings.force_drive);
+    }
+    if (settings.contact_hertz != defaults.contact_hertz) {
+        yyjson_mut_obj_add_float(doc, object, "contact_hertz", settings.contact_hertz);
+    }
+    if (settings.contact_damping != defaults.contact_damping) {
+        yyjson_mut_obj_add_float(doc, object, "contact_damping", settings.contact_damping);
+    }
     return object;
 }

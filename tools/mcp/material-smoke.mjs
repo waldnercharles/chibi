@@ -27,7 +27,7 @@ const result = (name, args, fail = false) => request(name, args, fail)?.structur
 const connect = (from, from_pin, to, to_pin, kind = "data") => ({ op: "connect", from, from_pin, to, to_pin, kind });
 try {
   const field = { kind: "field", name: "Disc" };
-  result("buildField", { ...field, create: true, operations: [
+  result("buildGraph", { ...field, create: true, operations: [
     { op: "add_node", type: "Field X", ref: "x" },
     { op: "add_node", type: "Field Y", ref: "y" },
     { op: "add_node", type: "Field Circle", ref: "disc", inputs: { Radius: 12 } },
@@ -45,13 +45,13 @@ try {
   assert.ok(png.at(32, 32)[1] > png.at(0, 0)[1]);
   const again = result("previewField", { ...field, width: 64, height: 64, cell_size: 1, seed: 1729 });
   assert.equal(again.field_hash, preview.structuredContent.result.field_hash);
-  result("buildField", { ...field, expected_hash: before.hash, operations: [
+  result("buildGraph", { ...field, expected_hash: before.hash, operations: [
     { op: "add_node", type: "Print String", ref: "impure" },
   ] }, true);
   assert.equal(result("readAsset", field).hash, before.hash, "invalid edits must be atomic");
   const system = { kind: "system", name: "Move" };
   const query = { op: "has", component: "GameTransform" };
-  result("buildSystem", { ...system, create: true, owner_type: "ecs.entity", query, operations: [
+  result("buildGraph", { ...system, create: true, owner_type: "ecs.entity", query, operations: [
     { op: "add_node", type: "Event", event_name: "Tick", ref: "tick" },
     { op: "add_node", type: "Set_GameTransform", ref: "set", inputs: { Value: { x: 3, y: 4 } } },
     connect("tick", "Then", "set", "Exec", "exec"),
@@ -62,7 +62,7 @@ try {
   const status = result("getExecutionStatus", system);
   assert.equal(status.execution.ready, true);
   const saved = result("readAsset", system);
-  result("buildSystem", { ...system, expected_hash: saved.hash, query: { op: "has", component: "GameVelocity" }, operations: [] });
+  result("buildGraph", { ...system, expected_hash: saved.hash, query: { op: "has", component: "GameVelocity" }, operations: [] });
   assert.notEqual(result("readAsset", system).hash, saved.hash);
   console.log("PASS: MCP field creation, atomic validation, deterministic PNG preview, System creation/query/inspection");
 } finally {

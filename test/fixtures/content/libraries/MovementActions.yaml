@@ -1,0 +1,53 @@
+version: 3
+name: MovementActions
+domain: library
+id_counter: 355
+description: Shared movement intent in project units per second.
+graphs:
+- {kind: event, name: Events}
+- id: 93
+  kind: function
+  name: Movement Velocity
+  math_expression: direction * speed
+  expression_mode: 1
+  entry_id: 334
+  return_id: 336
+  call_depth_limit: 64
+  nodes:
+  - id: 334
+    type: Function Entry
+    outputs:
+    - id: 339
+      name: direction
+      type: struct
+      type_name: CF_V2
+      kind: data
+      flags: 2
+      group: 2
+    - id: 340
+      name: speed
+      type: struct
+      type_name: GameMovement
+      kind: data
+      flags: 2
+      group: 3
+  - id: 336
+    type: Return
+    inputs:
+    - id: 342
+      name: Velocity
+      type: struct
+      type_name: CF_V2
+      kind: data
+      flags: 2
+      group: 5
+  - id: 343
+    type: Multiply
+    inputs:
+      A: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  edges:
+  - {from: 334.direction, to: 343.A}
+  - {from: 334.speed, to: 343.B, conversion: Unwrap_GameMovement}
+  - {from: 343.Result, to: 336.Velocity}

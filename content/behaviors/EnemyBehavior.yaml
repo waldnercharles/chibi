@@ -1,0 +1,106 @@
+version: 3
+name: EnemyBehavior
+id_counter: 89
+description: Pursue the nearest player with a velocity that slows for arrival; stop when no target is in range.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Tick}
+  - id: 3
+    type: Get_GameTransform
+    outputs:
+      Value: {flags: 0}
+  - id: 5
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 7
+    type: Find Nearest Entity
+    inputs: {Radius: 2000.0, Categories: 1}
+  - {id: 16, type: Branch}
+  - id: 28
+    type: Get_GameMovement
+    outputs:
+      Value: {flags: 0}
+  - {id: 52, type: Set_GameVelocity}
+  - id: 66
+    type: Call Pure Function
+    reference_id: 57
+    reference_name: Pursuit Velocity
+    inputs:
+      Position: {type: struct, type_name: CF_V2}
+      Target: {type: struct, type_name: CF_V2}
+      Speed: {type: float}
+      Delta Seconds: {type: float}
+      Distance: {type: float}
+    outputs:
+      Velocity: {type: struct, type_name: GameVelocity}
+  - id: 73
+    type: Set_GameVelocity
+    inputs:
+      Value:
+        default: {x: 0.0, "y": 0.0}
+  - {id: 78, type: Delta Time}
+  edges:
+  - {from: 1.Then, to: 16.Exec}
+  - {from: 3.Value, to: 7.Position}
+  - {from: 3.Value, to: 66.Position}
+  - {from: 5.Self, to: 7.Exclude}
+  - {from: 7.Found, to: 16.Condition}
+  - {from: 7.Position, to: 66.Target}
+  - {from: 7.Distance, to: 66.Distance}
+  - {from: 16.True, to: 52.Exec}
+  - {from: 16.False, to: 73.Exec}
+  - {from: 28.Value, to: 66.Speed, conversion: Unwrap_GameMovement}
+  - {from: 66.Velocity, to: 52.Value}
+  - {from: 78.Seconds, to: 66.Delta Seconds}
+- id: 57
+  kind: function
+  name: Pursuit Velocity
+  entry_id: 58
+  return_id: 64
+  call_depth_limit: 64
+  nodes:
+  - {id: 21, type: Subtract}
+  - {id: 25, type: Normalize Vector 2}
+  - {id: 44, type: Multiply}
+  - id: 58
+    type: Function Entry
+    outputs:
+    - {id: 59, name: Position, type: struct, type_name: CF_V2, kind: data}
+    - {id: 60, name: Target, type: struct, type_name: CF_V2, kind: data}
+    - {id: 61, name: Speed, type: float, kind: data}
+    - {id: 62, name: Delta Seconds, type: float, kind: data}
+    - {id: 63, name: Distance, type: float, kind: data}
+  - id: 64
+    type: Return
+    inputs:
+    - {id: 65, name: Velocity, type: struct, type_name: GameVelocity, kind: data}
+  - id: 80
+    type: Divide
+    inputs:
+      A: {flags: 0, group: 0}
+      B: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  - id: 84
+    type: Clamp
+    inputs:
+      Value: {flags: 0, group: 0}
+      Min: {flags: 0, group: 0}
+      Max: {flags: 0, group: 0}
+    outputs:
+      Result: {flags: 0, group: 0}
+  edges:
+  - {from: 21.Result, to: 25.Value}
+  - {from: 25.Result, to: 44.A}
+  - {from: 44.Result, to: 64.Velocity}
+  - {from: 58.Position, to: 21.B}
+  - {from: 58.Target, to: 21.A}
+  - {from: 58.Speed, to: 84.Value}
+  - {from: 58.Delta Seconds, to: 80.B}
+  - {from: 58.Distance, to: 80.A}
+  - {from: 80.Result, to: 84.Max}
+  - {from: 84.Result, to: 44.B}

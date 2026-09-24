@@ -1,6 +1,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/material_ecs.h"
 #include "runtime/material_terrain.h"
+#include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -118,7 +119,9 @@ static const char *stream_terrain(
                       terrain.cell_size },
             .field = terrain.field,
             .parameters = terrain.parameters,
-            .seed = terrain.seed });
+            .seed = terrain.seed,
+            .island_cells = terrain.island_cells,
+            .tasks = game_task_pool_tasks(materials->pool) });
         record->terrain = true;
         record->terrain_hash = hash;
     }
@@ -143,7 +146,8 @@ static const char *stream_terrain(
                 ((material_stream_view){
                     p->x + camera->offset.x - origin.x,
                     p->y + camera->offset.y - origin.y,
-                    terrain.stream_radius + fmaxf(camera->width, camera->height) * .5f })
+                    terrain.stream_radius + fmaxf(camera->width, camera->height) * .5f,
+                    fmaxf(camera->width, camera->height) * .5f })
             );
         }
         ecs_query_end(&query);
@@ -164,10 +168,11 @@ static const char *stream_terrain(
                 continue;
             }
             const GameTransform *p = GAME_GameTransform_get_const(world, e);
-            apush(views, ((material_stream_view){ p->x - origin.x, p->y - origin.y, 128 }));
+            apush(views, ((material_stream_view){ p->x - origin.x, p->y - origin.y, 128, 64 }));
         }
         ecs_query_end(&query);
     }
+    game_task_pool_begin(materials->pool, true);
     bool ok = material_stream_update(
         stream,
         materials->fields,
@@ -177,6 +182,7 @@ static const char *stream_terrain(
         materials->error,
         sizeof materials->error
     );
+    game_task_pool_end(materials->pool);
     afree(views);
     int count;
     const material_stream_tile *tiles = material_stream_tiles(stream, &count);
@@ -242,7 +248,8 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
         terrain.width / terrain.cell_size > (terrain.stream_radius > 0 ? 65536 : 4096) ||
         terrain.height / terrain.cell_size > (terrain.stream_radius > 0 ? 65536 : 4096) ||
         terrain.min_fragment_cells < 1 || terrain.border_cells < 0 ||
-        terrain.border_cells > 2048 || terrain.connectivity < MATERIAL_CONNECTIVITY_ALL ||
+        terrain.border_cells > 2048 || terrain.island_cells < 0 ||
+        terrain.connectivity < MATERIAL_CONNECTIVITY_ALL ||
         terrain.connectivity > MATERIAL_CONNECTIVITY_FIRST_AIR) {
         return "Terrain requires 1..4096 cells per axis (65536 or zero bounds "
                "when streamed), "
@@ -272,7 +279,8 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
                             (unsigned)terrain.connectivity,
                             (unsigned)terrain.border_cells,
                             revision,
-                            (unsigned)terrain.stream_budget };
+                            (unsigned)terrain.stream_budget,
+                            (unsigned)terrain.island_cells };
     uint64_t hash = hash_bytes(UINT64_C(14695981039346656037), dimensions, sizeof dimensions);
     hash = hash_bytes(hash, settings, sizeof settings);
     hash = hash_bytes(hash, terrain.field, strlen(terrain.field));
@@ -290,20 +298,25 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
                         (int)ceilf(terrain.height / terrain.cell_size),
                         terrain.cell_size };
     float *field = xmalloc((size_t)grid.width * grid.height * sizeof(float));
-    if (!material_field_bake(
-            materials->fields,
-            terrain.field,
-            terrain.parameters,
-            terrain.seed,
-            grid,
-            field,
-            materials->error,
-            sizeof materials->error
-        )) {
+    game_task_pool_begin(materials->pool, true);
+    bool baked = material_field_bake(
+        materials->fields,
+        terrain.field,
+        terrain.parameters,
+        terrain.seed,
+        grid,
+        field,
+        game_task_pool_tasks(materials->pool),
+        materials->error,
+        sizeof materials->error
+    );
+    game_task_pool_end(materials->pool);
+    if (!baked) {
         free(field);
         return materials->error;
     }
     material_terrain_connect(field, grid, terrain.connectivity, terrain.border_cells);
+    material_terrain_tidy(field, grid, terrain.island_cells);
     material_terrain_chunk *chunks = material_terrain_chunks(field, grid);
     free(field);
     discard_terrain(materials, source);

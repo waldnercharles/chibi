@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import {
   renderRequest,
   validateAuthoringArguments,
 } from "./authoring.mjs";
+import { parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -21,7 +22,7 @@ const serverVersion = "0.2.0";
 const serverInstructions = [
   "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
   "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, describeComponents, or getProjectStatus.",
-  "2. Build with buildShader, buildBehavior, buildField, buildSystem, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
+  "2. Build with buildGraph, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
   "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
   "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
@@ -88,6 +89,59 @@ function controllerPath() {
   return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
 }
 
+// launch.sh sets CHIBI_CTL to the build output; build it on demand so the MCP
+// handshake never waits on a native compile.
+let controllerBuild = null;
+
+function controllerReady() {
+  return !process.env.CHIBI_CTL || existsSync(process.env.CHIBI_CTL);
+}
+
+function ensureController() {
+  if (controllerReady()) {
+    return Promise.resolve();
+  }
+  const controller = process.env.CHIBI_CTL;
+  controllerBuild ??= new Promise((resolveBuild, rejectBuild) => {
+    process.stderr.write("chibi MCP building native controllers\n");
+    const child = spawn("make", ["-C", serverRoot, "build", `BUILD_DIR=${dirname(controller)}`, "BUILD_TARGET=chibi_ctl"], {
+      stdio: ["ignore", process.stderr, process.stderr],
+    });
+    child.on("error", rejectBuild);
+    child.on("exit", (code, signal) => {
+      if (code === 0 && existsSync(controller)) {
+        resolveBuild();
+        return;
+      }
+      rejectBuild(new Error(signal ? `terminated by ${signal}` : `exited with status ${code}`));
+    });
+  }).catch((error) => {
+    controllerBuild = null;
+    throw protocolError(-32603, `chibi MCP could not build ${controller}: make build ${error.message}`);
+  });
+  return controllerBuild;
+}
+
+// Renders waiting on the build are not yet cancellable by authoring.mjs.
+const rendersAwaitingBuild = new Map();
+
+async function builtRenderRequest(renderRoot, request, requestId) {
+  if (!controllerReady() && requestId !== undefined) {
+    const key = String(requestId);
+    const cancelled = new Promise((resolveCancel) => rendersAwaitingBuild.set(key, () => resolveCancel(true)));
+    try {
+      if (await Promise.race([ensureController().then(() => false), cancelled])) {
+        const operation = request.operation || "preview_shader";
+        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "shader preview was cancelled" } };
+      }
+    } finally {
+      rendersAwaitingBuild.delete(key);
+    }
+  }
+  await ensureController();
+  return renderRequest(renderRoot, request, requestId);
+}
+
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
@@ -104,9 +158,11 @@ function errorResponse(id, code, message) {
 }
 
 class ControllerSession {
-  constructor() {
+  constructor(executable) {
+    this.executable = executable;
+    this.modified = statSync(executable).mtimeMs;
     this.child = spawn(
-      controllerPath(),
+      executable,
       ["--project-root", root],
       { cwd: root, stdio: ["pipe", "pipe", "pipe"] },
     );
@@ -130,6 +186,11 @@ class ControllerSession {
         this.fail(new Error(`chibi_ctl ${detail}${this.stderr ? `: ${this.stderr.trim()}` : ""}`));
       }
     });
+  }
+
+  // A rebuilt controller replaces the running one on the next request.
+  stale() {
+    return statSync(this.executable).mtimeMs !== this.modified;
   }
 
   request(payload, timeout) {
@@ -178,7 +239,7 @@ class ControllerSession {
       clearTimeout(this.timer);
       this.timer = null;
       try {
-        request.resolveRequest(JSON.parse(line));
+        request.resolveRequest(parseControllerJson(line));
       } catch (error) {
         request.rejectRequest(protocolError(-32603, `chibi_ctl returned invalid JSON: ${error.message}`));
         this.fail(new Error("chibi_ctl returned invalid JSON"));
@@ -238,7 +299,14 @@ class ControllerSession {
 
 let controllerSession;
 
+let toolDefinitionsCache;
+
 function rawToolDefinitions() {
+  toolDefinitionsCache ||= buildToolDefinitions();
+  return toolDefinitionsCache;
+}
+
+function buildToolDefinitions() {
   const noArguments = { type: "object", additionalProperties: false };
   const outputSchema = { type: "object", additionalProperties: true };
   const pageProperties = {
@@ -272,7 +340,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Asset filename without the .json suffix.",
+        description: "Asset filename without the .yaml suffix.",
       },
     },
     required: ["kind", "name"],
@@ -339,7 +407,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype or scene asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -367,8 +435,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
-        description: "Prototype or scene asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -386,7 +453,7 @@ function rawToolDefinitions() {
         type: "integer",
         minimum: 1,
         maximum: 256,
-        description: "Maximum number of ordered entities to include.",
+        description: "Maximum number of ordered entities to include; defaults to 32.",
       },
       component_limit: {
         type: "integer",
@@ -409,7 +476,7 @@ function rawToolDefinitions() {
       fields: {
         type: "array",
         maxItems: 32,
-        items: { type: "string", maxLength: 128 },
+        items: { type: "string" },
         description: "Optional reflected field selectors such as GameTransform.x.",
       },
     },
@@ -426,8 +493,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
-        description: "Prototype or scene asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -461,8 +527,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
-        description: "Behavior or system asset name without the .json suffix.",
+        description: "Behavior or system asset name without the .yaml suffix.",
       },
     },
     required: ["kind", "name"],
@@ -509,7 +574,6 @@ function rawToolDefinitions() {
     properties: {
       name: {
         type: "string",
-        maxLength: 64,
         description: "Normalized action name.",
       },
       pressed: {
@@ -523,8 +587,8 @@ function rawToolDefinitions() {
   const normalizedEvent = {
     type: "object",
     properties: {
-      name: { type: "string", maxLength: 128 },
-      target: { type: "string", minLength: 1, maxLength: 512, description: "Scene entity name; omit to target the prototype owner or first scene entity." },
+      name: { type: "string" },
+      target: { type: "string", description: "Scene entity name; omit to target the prototype owner or first scene entity." },
       values: {
         type: "array", maxItems: 16,
         items: {
@@ -546,9 +610,9 @@ function rawToolDefinitions() {
       controls: { type: "array", maxItems: 41, items: { type: "integer", minimum: 1, maximum: 41 },
         description: "Held physical GameControl codes, interpreted by authored action bindings." },
       ui: { type: "array", maxItems: 32, items: { type: "object", properties: {
-        target: { type: "string", minLength: 1, maxLength: 512 },
+        target: { type: "string" },
         action: { type: "string", enum: ["activate", "change", "drop"] },
-        source: { type: "string", minLength: 1, maxLength: 512 },
+        source: { type: "string" },
         value: { type: "number" },
       }, required: ["target", "action"], additionalProperties: false },
         description: "Player UI interactions. Change requires value; drop requires a source widget name. Uses normal widget validation and behavior events." },
@@ -575,7 +639,7 @@ function rawToolDefinitions() {
     items: normalizedInput,
     description: "One normalized input sample per fixed frame.",
   };
-  const savedState = { type: "object", maxProperties: 1024, additionalProperties: { type: "string", maxLength: 65536 },
+  const savedState = { type: "object", maxProperties: 1024, additionalProperties: { type: "string" },
     description: "Initial committed save values in an isolated scenario store. Use returned saved_state for the next run." };
   const scenePreview = authoringToolDefinitions().find(tool => tool.name === "previewScene");
   scenePreview.inputSchema.properties.inputs = normalizedInputs;
@@ -589,43 +653,13 @@ function rawToolDefinitions() {
   scenePreview.inputSchema.properties.input_timeline = timeline;
   scenarioArguments.properties.input_timeline = timeline;
   runtimeSnapshotArguments.properties.input_timeline = timeline;
-  scenarioArguments.properties.inputs = normalizedInputs;
-  runtimeSnapshotArguments.properties.inputs = normalizedInputs;
-  const recording = {
-    type: "object",
-    properties: {
-      version: { type: "integer", enum: [2] },
-      contract_version: { type: "integer", enum: [1] },
-      id: { type: "string", maxLength: 128 },
-      format: { type: "string", maxLength: 128 },
-      kind: { type: "string", enum: ["prototype", "scene"] },
-      name: { type: "string", minLength: 1, maxLength: 128 },
-      frames: { type: "integer", minimum: 0, maximum: 1800 },
-      fixed_dt: { type: "number", minimum: 0.000001, maximum: 0.25 },
-      content_hash: { type: "string", minLength: 16, maxLength: 16 },
-      runtime_content_hash: { type: "string", minLength: 16, maxLength: 16 },
-      assets: {
-        type: "array", maxItems: 4096,
-        items: {
-          type: "object",
-          properties: {
-            kind: { type: "string" }, name: { type: "string" }, path: { type: "string" },
-            bytes: { type: "integer", minimum: 0 }, hash: { type: "string", minLength: 16, maxLength: 16 },
-          },
-          required: ["kind", "name", "path", "bytes", "hash"], additionalProperties: false,
-        },
-      },
-      inputs: normalizedInputs,
-      saved_state: savedState,
-      frame_hashes: { type: "array", maxItems: 1800, items: { type: "string", minLength: 16, maxLength: 16 } },
-      live_entities: { type: "array", maxItems: 1800, items: { type: "integer", minimum: 0 } },
-      world_hash: { type: "string", maxLength: 16 },
-      artifact_path: { type: "string", maxLength: 1024 },
-    },
-    required: ["version", "contract_version", "format", "kind", "name", "frames", "fixed_dt",
-               "content_hash", "runtime_content_hash", "inputs", "frame_hashes", "live_entities"],
-    additionalProperties: false,
-  };
+  // One detailed input schema per tool; chibi_ctl validates every sample.
+  const frameInputs = { type: "array", maxItems: 1800, items: { type: "object" },
+    description: "One input per fixed frame, shaped like input_timeline[].input." };
+  scenePreview.inputSchema.properties.inputs = frameInputs;
+  scenarioArguments.properties.inputs = frameInputs;
+  runtimeSnapshotArguments.properties.inputs = frameInputs;
+  const recording = { type: "object", description: "Recording returned by recordScenario, passed back unchanged." };
   const recordArguments = {
     type: "object",
     properties: {
@@ -636,8 +670,7 @@ function rawToolDefinitions() {
       },
       name: {
         type: "string",
-        maxLength: 128,
-        description: "Prototype asset name without the .json suffix.",
+        description: "Prototype asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
@@ -663,7 +696,6 @@ function rawToolDefinitions() {
       recording,
       recording_path: {
         type: "string",
-        maxLength: 1024,
         description: "Safe recording artifact path returned by record_scenario.",
       },
     },
@@ -684,8 +716,12 @@ function rawToolDefinitions() {
     {
       name: "listAssets",
       operation: "list_assets",
-      description: "List authored JSON assets with stable paths, sizes, and content hashes.",
-      inputSchema: pageArguments,
+      description: "List authored YAML assets with stable paths, sizes, and content hashes.",
+      inputSchema: {
+        type: "object",
+        properties: { limit: pageProperties.limit, cursor: pageProperties.cursor },
+        additionalProperties: false,
+      },
       outputSchema,
     },
     {
@@ -783,7 +819,18 @@ function rawToolDefinitions() {
       name: "describeRegistry",
       operation: "describe_registry",
       description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
-      inputSchema: noArguments,
+      inputSchema: {
+        type: "object",
+        properties: {
+          sections: {
+            type: "array",
+            maxItems: 5,
+            items: { type: "string", enum: ["nodes", "types", "services", "operators", "components"] },
+            description: "Sections to return; defaults to all but nodes, which searchNodes covers.",
+          },
+        },
+        additionalProperties: false,
+      },
       outputSchema,
     },
     {
@@ -796,7 +843,7 @@ function rawToolDefinitions() {
           names: {
             type: "array",
             maxItems: 64,
-            items: { type: "string", maxLength: 256 },
+            items: { type: "string" },
             description: "Optional component names or stable keys; omit to describe every component.",
           },
         },
@@ -816,10 +863,16 @@ function rawToolDefinitions() {
 }
 
 async function nativeRequest(operation, args = {}) {
-  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
-  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
+  // Long deterministic scenarios can run for minutes; a timeout restarts the controller.
+  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
+  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 300000;
+  await ensureController();
+  const executable = controllerPath();
+  if (controllerSession && !controllerSession.closed && controllerSession.stale()) {
+    controllerSession.close();
+  }
   if (!controllerSession || controllerSession.closed) {
-    controllerSession = new ControllerSession();
+    controllerSession = new ControllerSession(executable);
   }
   const session = controllerSession;
   if (!session.rootCheck) {
@@ -837,36 +890,16 @@ async function nativeRequest(operation, args = {}) {
   return session.request({ ...args, contract: 1, operation }, timeout);
 }
 
-let contractMetadataCache;
-
-function contractMetadata() {
-  if (contractMetadataCache !== undefined) {
-    return contractMetadataCache;
-  }
-  contractMetadataCache = nativeRequest("describe_contract")
-    .then((response) => response.ok === true ? response.result : null)
-    .catch(() => null);
-  return contractMetadataCache;
-}
-
 function toolDefinition(name) {
   return rawToolDefinitions().find((candidate) => candidate.name === name);
 }
 
-async function toolDefinitions() {
-  const contract = await contractMetadata();
+function toolDefinitions() {
   const definitions = new Map(rawToolDefinitions().map((definition) => [definition.name, definition]));
   return toolCatalog.map((entry) => {
     const definition = definitions.get(entry.name);
     if (!definition) {
       throw new Error(`MCP catalog is missing definition for ${entry.name}`);
-    }
-    const nativeMetadata = contract?.operations?.find((candidate) => candidate.name === entry.operation);
-    const annotations = { ...entry.annotations };
-    if (nativeMetadata) {
-      annotations.readOnlyHint = nativeMetadata.read_only;
-      annotations.idempotentHint = nativeMetadata.idempotent;
-      annotations.destructiveHint = nativeMetadata.destructive;
     }
     const { operation, ...schema } = definition;
     return {
@@ -874,7 +907,7 @@ async function toolDefinitions() {
       name: entry.name,
       title: entry.title,
       description: entry.description,
-      annotations,
+      annotations: entry.annotations,
     };
   });
 }
@@ -972,7 +1005,7 @@ async function toolCall(name, args, requestId) {
   }
   validateToolArguments(name, args);
   if (isAuthoringTool(name)) {
-    return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
+    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
   }
   const entry = getToolCatalogEntry(name);
   if (!entry || entry.adapter !== "native") {
@@ -1009,7 +1042,7 @@ function responseNextSteps(name, response) {
   if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
     return ["Broaden the node query or remove a restrictive pin filter."];
   }
-  if ((name === "buildShader" || name === "buildBehavior" || name === "buildPrototype" || name === "buildScene") &&
+  if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
     return [
       "Review the dry-run diagnostics and proposed changes.",
@@ -1209,6 +1242,7 @@ async function dispatch(message) {
   }
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
+      rendersAwaitingBuild.get(String(message.params.requestId))?.();
       cancelAuthoringRequest(message.params.requestId);
     }
     return null;
@@ -1235,7 +1269,7 @@ async function dispatch(message) {
     return reply(message, { jsonrpc: "2.0", id: message.id, result: {} });
   }
   if (message.method === "tools/list") {
-    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: await toolDefinitions() } });
+    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: toolDefinitions() } });
   }
   if (message.method === "resources/list") {
     return reply(message, {
@@ -1304,6 +1338,9 @@ function maybeCloseController() {
     controllerSession?.close();
   }
 }
+
+// Start a missing build now so the first tool call waits less; failures resurface on use.
+ensureController().catch(() => {});
 
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {

@@ -3,6 +3,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
+#include "support/asset_text.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -295,18 +296,14 @@ int editor_save(editor *e, const char *path)
         return -1;
     }
     char *json = behavior_asset_save_json(e->asset);
-    if (!json) {
-        return -1;
-    }
-    FILE *f = fopen(path, "wb");
-    if (!f) {
-        free(json);
-        return -1;
-    }
-    int ok = fputs(json, f) >= 0;
-    if (fclose(f) != 0) {
+    char error[128];
+    char *text = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
+    FILE *f = text ? fopen(path, "wb") : NULL;
+    int ok = f && fputs(text, f) >= 0;
+    if (f && fclose(f) != 0) {
         ok = 0;
     }
+    free(text);
     if (!ok) {
         free(json);
         return -1;

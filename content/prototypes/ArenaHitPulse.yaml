@@ -1,0 +1,9 @@
+name: ArenaHitPulse
+components:
+  GAME.GameSurfaceInfluence:
+    color: 4289615359
+    linger: 0.15000000596046448
+    radius: 42.0
+    strength: 0.800000011920929
+  game.GameTransform: {}
+behaviors: [SurfacePulseBehavior]

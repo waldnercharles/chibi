@@ -31,7 +31,7 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.yaml", name);
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
     free(text);
@@ -106,7 +106,7 @@ void test_pursuit()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_content("test/fixtures/content/prototypes/Enemy.json");
+    char *text = read_content("test/fixtures/content/prototypes/Enemy.yaml");
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
     free(text);

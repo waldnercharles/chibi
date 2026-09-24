@@ -16,12 +16,21 @@ enum
     MATERIAL_DAMAGE_BLAST
 };
 
+/* What struck the material: the color of the source's light and its heat.
+ * Zero is a cold, colorless impact. Carried through to results. */
+typedef struct
+{
+    unsigned color;
+    float heat;
+} material_impact;
+
 typedef struct
 {
     uint64_t target;
     material_point point;
     float radius, energy;
     int cause;
+    material_impact impact;
 } material_damage;
 
 /* Borrowed for one operation. Host columns may move when fragments are created;
@@ -58,6 +67,7 @@ typedef struct
     material_point point;
     float energy;
     int cause, removed, dust;
+    material_impact impact;
 } material_event;
 
 typedef struct

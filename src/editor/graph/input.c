@@ -2,6 +2,7 @@
 
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "support/asset_text.h"
 #include "support/math.h"
 
 #include <imgui/dcimgui.h>
@@ -247,6 +248,11 @@ void ed_handle_input(editor *e)
             int index = ed_edge_index(e, &link);
             edge *ed = &e->active_graph->edges[index];
             if (ed->reroute_count < GRAPH_EDGE_MAX_REROUTES) {
+                /* A wire on its automatic lanes takes the point as its only
+                 * reroute. */
+                if (!ed->reroute_count) {
+                    segment = 0;
+                }
                 e->pending_snapshot = ed_snapshot(e);
                 for (int i = ed->reroute_count; i > segment; i--) {
                     ed->reroutes[i] = ed->reroutes[i - 1];
@@ -348,7 +354,7 @@ void ed_handle_shortcuts(editor *e)
         if (e->save_handler) {
             e->save_handler(e, e->save_user);
         } else {
-            editor_save(e, "behavior_asset.json");
+            editor_save(e, "behavior_asset" ASSET_EXTENSION);
         }
     } else if (app_input_pressed(APP_INPUT_DELETE)) {
         ed_delete_selected(e);

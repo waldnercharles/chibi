@@ -51,7 +51,7 @@ make build-tracy
 Run the editor or another authored project:
 
 ```sh
-make run-tracy PROJECT=. SCENE=scenes/Arena3D.json
+make run-tracy PROJECT=. SCENE=scenes/Arena3D.yaml
 ```
 
 Use the [Tracy profiler](https://github.com/wolfpld/tracy/releases) and

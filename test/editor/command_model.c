@@ -404,6 +404,20 @@ void test_editor_command_model()
     }
     free(normalized);
 
+    const char *streamed_call_sse =
+        "event: response.output_item.done\n"
+        "data: {\"type\":\"response.output_item.done\",\"output_index\":0,"
+        "\"item\":{\"type\":\"function_call\",\"name\":\"submit_plan\","
+        "\"arguments\":\"{\\\"decision\\\":\\\"unsupported\\\","
+        "\\\"operations\\\":[],"
+        "\\\"unsupported\\\":\\\"Unavailable\\\"}\"}}\n\n"
+        "event: response.completed\n"
+        "data: {\"type\":\"response.completed\",\"response\":{"
+        "\"status\":\"completed\",\"output\":[]}}\n\n";
+    normalized = editor_codex_response_normalize(streamed_call_sse, codex_error, sizeof codex_error);
+    test_check(normalized != NULL, "Codex streamed function call survives an empty terminal output array");
+    free(normalized);
+
     const char
         *failed_sse = "event: response.failed\n"
                       "data: "

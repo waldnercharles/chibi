@@ -17,6 +17,8 @@ typedef struct
     bool has_data;
     bool completed;
     char *normalized;
+    yyjson_mut_doc *items_doc;
+    yyjson_mut_val *items;
 } response_stream;
 
 static void set_error(char *error, size_t size, const char *message)
@@ -123,10 +125,8 @@ static char *text_response(const char *content, size_t content_size)
     return json;
 }
 
-static bool normalize_completed(yyjson_val *root, response_stream *stream, char *error, size_t error_size)
+static bool normalize_completed(yyjson_val *output, response_stream *stream, char *error, size_t error_size)
 {
-    yyjson_val *response = yyjson_obj_get(root, "response");
-    yyjson_val *output = yyjson_obj_get(response, "output");
     if (!yyjson_is_arr(output)) {
         set_error(error, error_size, "Codex completed without a response output");
         return false;
@@ -292,13 +292,47 @@ static bool process_frame(response_stream *stream, char *error, size_t error_siz
         stream->event_size = 0;
         return true;
     }
+    bool item_done = text_equals(stream->event, stream->event_size, "response.output_item.done") ||
+                     (type && !strcmp(type, "response.output_item.done"));
+    if (item_done) {
+        yyjson_val *item = yyjson_obj_get(root, "item");
+        if (stream->completed || !yyjson_is_obj(item)) {
+            set_error(error, error_size, "Codex returned an invalid completed output item");
+            yyjson_doc_free(doc);
+            return false;
+        }
+        if (!stream->items_doc) {
+            stream->items_doc = yyjson_mut_doc_new(NULL);
+            stream->items = stream->items_doc ? yyjson_mut_arr(stream->items_doc)
+                                              : NULL;
+            if (stream->items) {
+                yyjson_mut_doc_set_root(stream->items_doc, stream->items);
+            }
+        }
+        yyjson_mut_val *copy = stream->items
+                                 ? yyjson_val_mut_copy(stream->items_doc, item)
+                                 : NULL;
+        if (!copy || !yyjson_mut_arr_append(stream->items, copy)) {
+            set_error(error, error_size, "Could not retain Codex output item");
+            yyjson_doc_free(doc);
+            return false;
+        }
+    }
     if (completed_event) {
         if (stream->completed) {
             set_error(error, error_size, "Codex returned multiple completed responses");
             yyjson_doc_free(doc);
             return false;
         }
-        if (!normalize_completed(root, stream, error, error_size)) {
+        yyjson_val *output = yyjson_obj_get(yyjson_obj_get(root, "response"), "output");
+        yyjson_doc *items_doc = NULL;
+        if ((!yyjson_is_arr(output) || !yyjson_arr_size(output)) && stream->items_doc) {
+            items_doc = yyjson_mut_doc_imut_copy(stream->items_doc, NULL);
+            output = items_doc ? yyjson_doc_get_root(items_doc) : NULL;
+        }
+        bool valid = normalize_completed(output, stream, error, error_size);
+        yyjson_doc_free(items_doc);
+        if (!valid) {
             yyjson_doc_free(doc);
             return false;
         }
@@ -378,6 +412,7 @@ char *editor_codex_response_normalize(const char *sse, char *error, size_t error
         valid = process_frame(&stream, error, error_size);
     }
     free(stream.data);
+    yyjson_mut_doc_free(stream.items_doc);
     if (!valid) {
         free(stream.normalized);
         return NULL;

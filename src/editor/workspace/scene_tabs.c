@@ -196,10 +196,12 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
                                            selected_prototype(scene)->prototype->name
                                        )
                                      : NULL;
-    /* A scene loaded into this tab gives it its name: "scene-1" becomes Sandbox. */
+    /* A scene loaded into an untitled tab names it: "scene-1" becomes Sandbox.
+       A titled tab keeps its identity through Save As. */
     const char *path = scene->scene_path;
-    if (path && path[0] && (!tab->path || strcmp(tab->path, path) != 0)) {
-        bool current = scene->current_scene_tab_key &&
+    if (path && path[0] && !tab->path) {
+        /* A tab being created has no key yet. */
+        bool current = scene->current_scene_tab_key && tab->key &&
                        !strcmp(scene->current_scene_tab_key, tab->key);
         free(tab->key);
         tab->key = tab_key(tab->kind, NULL, path);

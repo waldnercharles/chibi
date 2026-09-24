@@ -402,6 +402,9 @@ bool test_rmlui_kit()
     }
     ok &= check(!kit_find(f.k, "layer/@toaster/t2", &removed), "toast expires");
 
+    /* Highlighting fills at most the runs it is given, none included. */
+    ok &= check(highlight_runs(HIGHLIGHT_EXPRESSION, "a + 1", 5, NULL, 0) == 0, "highlighting without capacity writes nothing");
+
     /* Text measures in dp, as drawn at a pixel ratio. */
     float hello = kit_text_width(f.k, "Hello", 12, 400, 1);
     ok &= check(hello > 20 && hello < 40, "text measures in dp");

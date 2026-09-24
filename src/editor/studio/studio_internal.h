@@ -68,6 +68,9 @@ typedef struct
     float drawer_height;
     studio_editor editors[STUDIO_AREA_COUNT];
     kit_wire_style wires; /* graph wire routing */
+    bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
+    bool title_flow;    /* unlabeled execution pins sit in node titles */
+    bool compact_nodes; /* operators as symbols, one-output reads as pills */
 } studio_prefs;
 
 typedef struct
@@ -173,11 +176,8 @@ typedef struct
     arrange_routes routes;
     int *edge_route; /* per edge: its link in routes, or -1 */
     int *wire_edges; /* per drawn wire: its edge index */
-    struct
-    {
-        uint64_t id;
-        float w, h, label;
-    } *sizes;           /* node sizes measured this frame */
+    struct studio_node_layout *layouts; /* nodes measured this frame */
+    int forms;                          /* node settings the layouts follow */
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;
     bool double_click; /* the press this frame completes a double click */

@@ -425,7 +425,8 @@ extern "C"
     typedef enum kit_dot_shape
     {
         KIT_DOT_CIRCLE,
-        KIT_DOT_ARROW, /* pointing right */
+        KIT_DOT_ARROW,  /* pointing right */
+        KIT_DOT_SQUARE, /* a many-valued socket: arrays and sets */
     } kit_dot_shape;
     typedef struct kit_dot_desc
     {
@@ -442,8 +443,10 @@ extern "C"
     /* True while focus can receive typed characters, including a focused number field. */
     bool kit_accepts_text(const kit *k);
     bool kit_wants_pointer(const kit *k);
-    /* Width in dp of one line of Inter at `size` dp and `weight` (400 regular). */
-    float kit_text_width(const kit *k, const char *text, float size, int weight);
+    /* Width in dp of one line of Inter at `size` dp and `weight` (400 regular),
+     * as drawn at `ratio` pixels per dp: text renders at whole pixel sizes with
+     * hinting, so small sizes run wider than a scaled measurement. */
+    float kit_text_width(const kit *k, const char *text, float size, int weight, float ratio);
     /* Drops keyboard focus, as a press elsewhere in the window does. */
     void kit_blur(kit *k);
     /* The path of the innermost emitted item under the pointer, or NULL. */

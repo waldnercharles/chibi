@@ -633,6 +633,16 @@ static void settings(studio *s)
                 s->prefs.wires = (kit_wire_style)w;
             }
         }
+        kit_menu_group(k, "nodes", "Graph Nodes");
+        if (check_item(k, "bindings", "Short Bindings", s->prefs.short_bindings)) {
+            s->prefs.short_bindings = !s->prefs.short_bindings;
+        }
+        if (check_item(k, "flow", "Flow in Titles", s->prefs.title_flow)) {
+            s->prefs.title_flow = !s->prefs.title_flow;
+        }
+        if (check_item(k, "operators", "Compact Nodes", s->prefs.compact_nodes)) {
+            s->prefs.compact_nodes = !s->prefs.compact_nodes;
+        }
         kit_menu_separator(k, "s2");
         if (check_item(k, "motion", "Reduce Motion", s->prefs.reduced_motion)) {
             s->prefs.reduced_motion = !s->prefs.reduced_motion;

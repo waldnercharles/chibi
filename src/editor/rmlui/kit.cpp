@@ -2298,6 +2298,11 @@ extern "C" bool kit_popup_begin(kit *k, const char *key, const char *cls)
     return true;
 }
 
+static float dp_ratio(const kit *k)
+{
+    return k->context->GetDensityIndependentPixelRatio();
+}
+
 /* RmlUi sizes an absolutely positioned box from its block content and not from
    flex rows, so a menu is widened here to its widest measured row. */
 static void fit_row(kit *k, float width)
@@ -2355,8 +2360,8 @@ static Node *menu_row(kit *k, const char *key, Kind kind, const char *label, uin
         set_flag(n, "data-disabled", disabled);
     set_flag(n, "data-checked", checked > 0);
     /* Padding, lead icon and gaps, then the label and the shortcut or chevron. */
-    fit_row(k, 6 + 16 + 8 + kit_text_width(k, l.c_str(), 12, 400) + 8 +
-                   (kind == Kind::Submenu ? 20 : shortcut && shortcut[0] ? 24 + kit_text_width(k, shortcut, 11, 400) : 0));
+    fit_row(k, 6 + 16 + 8 + kit_text_width(k, l.c_str(), 12, 400, dp_ratio(k)) + 8 +
+                   (kind == Kind::Submenu ? 20 : shortcut && shortcut[0] ? 24 + kit_text_width(k, shortcut, 11, 400, dp_ratio(k)) : 0));
     if (!k->emitting.empty()) {
         Popup &p = k->popups[k->emitting.back()];
         p.items.push_back(n);
@@ -2383,7 +2388,7 @@ extern "C" void kit_menu_group(kit *k, const char *key, const char *label)
 {
         Node *n = emit(k, key, Kind::Box, "div", "menu-group");
     set_text(n, label);
-    fit_row(k, 12 + kit_text_width(k, label, 11, 400));
+    fit_row(k, 12 + kit_text_width(k, label, 11, 400, dp_ratio(k)));
 }
 
 extern "C" bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon)
@@ -2712,21 +2717,21 @@ extern "C" bool kit_wants_pointer(const kit *k)
     return hover && hover != k->doc && (found == k->by_element.end() || found->second->kind != Kind::Surface);
 }
 
-/* Measured at a large reference size and scaled, so the width in dp does not
-   depend on the zoom or on glyph rounding at small sizes. */
-extern "C" float kit_text_width(const kit *k, const char *text, float size, int weight)
+/* Measured with the face RmlUi draws at this ratio: it truncates font sizes to
+   whole pixels (ElementStyle) and hints glyph advances. */
+extern "C" float kit_text_width(const kit *, const char *text, float size, int weight, float ratio)
 {
-    (void)k;
-    constexpr float kReference = 8;
+    assert(ratio > 0);
     Rml::FontEngineInterface *fonts = Rml::GetFontEngineInterface();
-    if (!fonts || !text || !text[0]) {
+    int pixels = (int)(size * ratio);
+    if (!fonts || !text || !text[0] || pixels < 1) {
         return 0;
     }
     Rml::FontFaceHandle face = fonts->GetFontFaceHandle(
         "inter", /* the font provider keys families in lower case */
         Rml::Style::FontStyle::Normal,
         (Rml::Style::FontWeight)(weight > 0 ? weight : 400),
-        (int)std::lround(size * kReference)
+        pixels
     );
     if (!face) {
         return 0;
@@ -2734,7 +2739,7 @@ extern "C" float kit_text_width(const kit *k, const char *text, float size, int 
     static const Rml::String language;
     Rml::TextShapingContext shaping{ language };
     const Rml::String string = text;
-    return (float)fonts->GetStringWidth(face, Rml::StringView(string), shaping) / kReference;
+    return (float)fonts->GetStringWidth(face, Rml::StringView(string), shaping) / ratio;
 }
 
 extern "C" void kit_blur(kit *k)

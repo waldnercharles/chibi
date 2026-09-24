@@ -424,6 +424,12 @@ void triangle(Rml::Mesh &mesh, Point a, Point b, Point c, Rml::ColourbPremultipl
     mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2 });
 }
 
+void square(Rml::Mesh &mesh, Point min, Point max, Rml::ColourbPremultiplied color)
+{
+    triangle(mesh, min, { max.x, min.y }, max, color);
+    triangle(mesh, min, max, { min.x, max.y }, color);
+}
+
 } // namespace
 
 class ElementDot final : public Rml::Element
@@ -472,6 +478,18 @@ private:
                 disc(mesh, c, r - 0.5f, edge, 1);
             }
             disc(mesh, c, std::max(r - ring - 0.5f, 0.0f), fill, ring > 0 ? 0.75f : 1);
+            return;
+        }
+        if (desc.shape == KIT_DOT_SQUARE) {
+            /* Inset so it weighs about as much as a circle of the same box. */
+            float inset = 0.5f + size.x * 0.1f;
+            Point a = { inset, inset }, b = { size.x - inset, inset },
+                  c = { size.x - inset, size.y - inset }, d = { inset, size.y - inset };
+            square(mesh, a, c, ring > 0 ? edge : fill);
+            if (ring > 0) {
+                square(mesh, a + Point{ ring, ring }, c - Point{ ring, ring }, fill);
+            }
+            stroke(mesh, { a, b, c, d, a }, 1, ring > 0 ? edge : fill, 1);
             return;
         }
         /* An arrow pointing right, inset by half a pixel for its feather. */

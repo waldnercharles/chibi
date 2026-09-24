@@ -15,8 +15,27 @@ body.graph-canvas {
     --n-call: #2d5a3c;
     --node: #2b2b2fef;
     --node-edge: #0c0c0e;
+    --chip: #1d1d20;
+    --chip-fg: #c6b8ea;
+    --conversion: #1d1d20e6;
     --selected-object: #e0701c;
     --active-object: #ffa53a;
+}
+/* Light canvases keep full-color titles in lighter tints (Blender's light theme). */
+body.graph-canvas.light {
+    --n-event: #c9737f;
+    --n-flow: #8e8e98;
+    --n-pure: #6d9a78;
+    --n-function: #6f8fbd;
+    --n-variable: #a57d68;
+    --n-literal: #b79a5c;
+    --n-expr: #5f9aa8;
+    --n-call: #6e9e7a;
+    --node: #fbfbfcf2;
+    --node-edge: #c6c6cc;
+    --chip: #ececef;
+    --chip-fg: #6d4fb0;
+    --conversion: #ffffffe6;
 }
 
 #back, #front { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; }
@@ -24,8 +43,9 @@ body.graph-canvas {
 .wires { display: block; position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; }
 .stage { position: absolute; left: 0dp; top: 0dp; width: 0dp; height: 0dp; }
 
+/* measure_node sizes nodes; widths come from C. */
 .gnode {
-    position: absolute; min-width: 140dp; max-width: 340dp;
+    position: absolute;
     background-color: var(--node); border: 1dp var(--node-edge); border-radius: var(--r-lg);
     color: var(--fg); font-size: 12dp;
 }
@@ -36,9 +56,15 @@ body.graph-canvas {
 .gnode[data-disabled] { opacity: 0.5; }
 
 .gnode-head {
-    display: flex; align-items: center; gap: 6dp; height: 24dp; padding: 0dp 8dp;
+    position: relative; display: flex; align-items: center; gap: 6dp; height: 24dp; padding: 0dp 10dp;
     border-radius: 5dp 5dp 0dp 0dp; color: #ffffff; background-color: var(--n-pure);
 }
+.gnode-head:last-child { border-radius: 5dp; }
+/* Unlabeled execution pins sit on the title's edges (Unity Visual Scripting). */
+.hpin { position: absolute; top: 0dp; width: 0dp; height: 24dp; }
+.hpin.in { left: 0dp; }
+.hpin.out { right: 0dp; }
+.hpin > .socket { top: 4dp; }
 .gnode-head .icon { color: #ffffffcc; font-size: 12dp; width: 14dp; }
 .gnode-head .title { display: block; flex: 1 1 auto; white-space: nowrap; overflow: hidden; font-weight: 600; line-height: 24dp; }
 .gnode-head .symbol { display: block; font-weight: 700; font-size: 14dp; line-height: 24dp; }
@@ -50,9 +76,9 @@ body.graph-canvas {
 .gnode[data-kind=call] .gnode-head { background-color: var(--n-call); }
 .gnode[data-kind=expression] .gnode-head { background-color: var(--n-expr); }
 
-/* Rows sit on a fixed pitch, which is what arrange assumes: row i's socket is at
-   head (24) + pad (4) + (i + 0.5) * 22 from the node's top. Execution pins pair
-   up first, then data outputs, then data inputs (Blender's order). */
+/* Rows sit on a fixed pitch, which pin_y assumes: row i's socket is at head (24)
+   + pad (4) + (i + 0.5) * 22 below the node's border, after any code. Execution
+   pins pair up first, then data outputs, then data inputs (Blender's order). */
 .gnode-body { display: block; padding: 4dp 0dp 6dp; }
 .grow { position: relative; display: flex; align-items: center; gap: 6dp; height: 22dp; padding: 0dp 10dp; }
 .grow.out { justify-content: flex-end; }
@@ -69,11 +95,34 @@ body.graph-canvas {
 .grow .check { flex: 0 0 auto; }
 /* Editors and chips fill the row to the node's edge, so their right edges align. */
 .grow .chip {
-    display: block; flex: 1 1 auto; min-width: 0dp; height: 18dp; padding: 0dp 6dp; border-radius: 3dp;
-    background-color: var(--field-edit); color: #c6b8ea; font-size: 11dp; line-height: 18dp;
-    white-space: nowrap; overflow: hidden;
+    display: flex; align-items: center; gap: 4dp; flex: 1 1 auto; min-width: 0dp; height: 18dp;
+    padding: 0dp 6dp; border-radius: 3dp; background-color: var(--chip); color: var(--chip-fg);
+    font-size: 11dp; line-height: 18dp; overflow: hidden;
 }
+.grow .chip .icon { flex: 0 0 auto; width: 12dp; font-size: 11dp; line-height: 18dp; color: var(--fg-3); }
+.chip-text { display: block; flex: 1 1 auto; min-width: 0dp; white-space: nowrap; overflow: hidden; }
 .grow .chip.source { color: var(--tok-name); }
+
+/* An expression's source, lines wrapped by measure_node: 16 dp lines, 12 dp of
+   padding and margin below, 28 dp across. */
+.gcode {
+    display: block; margin: 0dp 8dp 4dp; padding: 4dp 6dp; border-radius: 4dp;
+    background-color: var(--chip); font-size: 11dp; line-height: 16dp;
+}
+.gcode-line { display: block; height: 16dp; white-space: nowrap; overflow: hidden; }
+
+/* Compact nodes (Unreal): an operator's symbol sits between its inputs and its
+   centered output; a one-output read is a pill with its socket on the title. */
+.gnode[data-form=operator] { border-radius: 10dp; }
+.gnode[data-form=operator] .gnode-body { position: relative; padding: 4dp 0dp; }
+.gnode[data-form=operator] .grow.in { padding-right: 0dp; }
+.gsymbol {
+    position: absolute; top: 0dp; bottom: 0dp; text-align: center; white-space: nowrap;
+    font-size: 18dp; font-weight: 700; color: var(--fg-2);
+}
+.gout { position: absolute; right: 0dp; width: 12dp; height: 22dp; }
+.gnode[data-form=getter] { border-radius: 13dp; }
+.gnode[data-form=getter] .gnode-head { border-radius: 12dp; }
 
 /* A socket is a 16 dp hit area centered on the node edge; kit_dot draws it. */
 .socket { position: absolute; top: 3dp; width: 16dp; height: 16dp; }
@@ -82,7 +131,7 @@ body.graph-canvas {
 .socket kit-dot { position: absolute; left: 3dp; top: 3dp; width: 10dp; height: 10dp; }
 
 /* Level of detail: far out, pins and values give way to titles. */
-body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented { visibility: hidden; }
+body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented, body.far .gcode { visibility: hidden; }
 body.far .gnode-head .title { font-size: 16dp; }
 
 .gcomment { position: absolute; border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f; }
@@ -95,11 +144,11 @@ body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
 /* Centered on the wire's middle by the negative margins. */
 .gconversion {
     position: absolute; display: block; height: 16dp; margin-top: -8dp; margin-left: -40dp; width: 80dp;
-    border-radius: 8dp; background-color: #1d1d20e6; border: 1dp #ffffff1c;
+    border-radius: 8dp; background-color: var(--conversion); border: 1dp var(--line-strong);
     color: var(--fg-2); font-size: 10dp; line-height: 14dp; text-align: center; white-space: nowrap; overflow: hidden;
 }
 
-.marquee { position: absolute; border: 1dp #ffffff66; background-color: #ffffff0d; }
+.marquee { position: absolute; border: 1dp var(--accent-edge); background-color: var(--accent-soft); }
 .link-error {
     position: absolute; padding: 2dp 8dp; border-radius: var(--r); background-color: var(--notice);
     color: var(--notice-fg); font-size: 11dp; line-height: 16dp; white-space: nowrap;

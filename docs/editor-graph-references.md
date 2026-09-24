@@ -82,15 +82,24 @@ These are our decisions, drawing on the references above. Distances are screen d
 - Rows follow Blender and our ImGui editor: execution pins pair up on the first rows (Unreal), then every data output, then every data input.
 - Inputs therefore always sit below outputs, wires never cross inside a node, and each input row has the full node width.
 - Input labels share one width per node, so their editors line up in a column.
-- Arrange numbers rows the same way.
 - Unreal, Unity and ComfyUI instead set inputs and outputs side by side. That is shorter, but it pairs unrelated pins and leaves editors half a node wide.
+- Nodes are measured in C with text measured as the canvas draws it at the current zoom, since hinted text at small pixel sizes runs wider than a scaled measurement. Arrange takes each pin's offset from the same measurement.
+
+Settings under Graph Nodes (all on by default):
+
+- **Short Bindings:** component values read "Aim › Manual" with a component icon, since a component binding always reads the node's owner. Variables, locals, event values and Delta Time get their own icons. Off, chips spell out `Self.GameAim.manual`. Unreal's member getters also omit "self"; its "self" and Unity's "This" appear only as the default of a call's Target pin.
+- **Flow in Titles:** an unlabeled execution pin (Exec, Then, In, Out) sits on the title's edge (Unity Visual Scripting). Named branches such as True and False keep their rows, and a node with no other rows is just its title.
+- **Compact Nodes:** an operator with a symbol draws it between its stacked inputs and its vertically centered output, without a title or pin labels (Unreal's compact nodes). A node that only reads one value is a pill with its socket on the title, without "Get" (Unreal's variable getters).
+
+Expressions show their source in the node, highlighted and wrapped, under an "Expression" title. Changing a setting arranges automatic nodes again.
 
 ### Wires and sockets
 
 - **Pins:**
-  - Exec pins are arrows; data pins are circles. Both are hollow while unconnected and filled once wired (Unreal).
+  - Exec pins are arrows, data pins are circles, and arrays and sets are squares (Blender, Unreal). All are hollow while unconnected and filled once wired (Unreal).
   - Sockets are drawn as antialiased geometry (`kit_dot`), since RmlUi's rounded boxes aren't antialiased and read as squares when small.
   - Colors follow the pin type; data wires take their source's color, and exec wires are white and thicker.
+  - The canvas follows the theme. Light canvases keep full-color titles in lighter tints, darken data colors slightly and draw exec wires dark gray (Blender's light theme).
   - Muted wires draw red.
 - **Shape:**
   - A cubic bezier leaving along each pin's direction: the handle is `0.5·dx` when the target is ahead of the source.

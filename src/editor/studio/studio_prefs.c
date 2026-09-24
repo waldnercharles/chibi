@@ -47,6 +47,7 @@ catch(_)
 #define PREFS_VERSION 1
 
 static const char *const THEMES[STUDIO_THEME_COUNT] = { "system", "dark", "light" };
+static const char *const NODE_FLAGS[] = { "shortBindings", "titleFlow", "compact" };
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
     "scene",  "behavior", "outliner",   "properties",
     "output", "assets",   "performance"
@@ -60,6 +61,9 @@ studio_prefs studio_prefs_default()
         .main_split = 0.62f,
         .side_split = 0.38f,
         .drawer_height = 240,
+        .short_bindings = true,
+        .title_flow = true,
+        .compact_nodes = true,
         .editors = { STUDIO_EDITOR_SCENE,
                      STUDIO_EDITOR_BEHAVIOR,
                      STUDIO_EDITOR_OUTLINER,
@@ -83,7 +87,9 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
            a->reduced_motion == b->reduced_motion &&
            a->side_width == b->side_width && a->main_split == b->main_split &&
            a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
-           a->drawer_height == b->drawer_height && a->wires == b->wires;
+           a->drawer_height == b->drawer_height && a->wires == b->wires &&
+           a->short_bindings == b->short_bindings &&
+           a->title_flow == b->title_flow && a->compact_nodes == b->compact_nodes;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -144,6 +150,14 @@ studio_prefs studio_prefs_load()
     }
     static const char *const WIRES[] = { "curved", "straight", "angular" };
     p.wires = (kit_wire_style)name_index(WIRES, 3, yyjson_obj_get(root, "wires"), p.wires);
+    yyjson_val *nodes = yyjson_obj_get(root, "nodes");
+    bool *flags[] = { &p.short_bindings, &p.title_flow, &p.compact_nodes };
+    for (int i = 0; i < 3; i++) {
+        yyjson_val *flag = yyjson_obj_get(nodes, NODE_FLAGS[i]);
+        if (yyjson_is_bool(flag)) {
+            *flags[i] = yyjson_get_bool(flag);
+        }
+    }
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.side_width = number(yyjson_obj_get(layout, "sideWidth"), p.side_width, 200, 1600);
     p.main_split = number(yyjson_obj_get(layout, "mainSplit"), p.main_split, 0.05f, 0.95f);
@@ -178,6 +192,11 @@ bool studio_prefs_save(const studio_prefs *p)
     yyjson_mut_obj_add_bool(doc, root, "reduceMotion", p->reduced_motion);
     static const char *const WIRES[] = { "curved", "straight", "angular" };
     yyjson_mut_obj_add_str(doc, root, "wires", WIRES[p->wires]);
+    yyjson_mut_val *nodes = yyjson_mut_obj_add_obj(doc, root, "nodes");
+    bool flags[] = { p->short_bindings, p->title_flow, p->compact_nodes };
+    for (int i = 0; i < 3; i++) {
+        yyjson_mut_obj_add_bool(doc, nodes, NODE_FLAGS[i], flags[i]);
+    }
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_real(doc, layout, "sideWidth", p->side_width);
     yyjson_mut_obj_add_real(doc, layout, "mainSplit", p->main_split);

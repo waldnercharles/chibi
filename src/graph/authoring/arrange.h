@@ -11,26 +11,22 @@
  * measures its nodes, describes its wires, and gets one position per node
  * back, so the layout quality is measurable in a headless test. */
 
-/* A measured node box. The pin rows are described rather than listed because
- * the canvas lays every pin out on the same pitch: input row i sits at
- * (x, y + title_height + pad + (i + 0.5) * row_height) and output row i at the
- * same height on x + width. Links name pins by these rows. */
+/* A measured node box. */
 typedef struct arrange_box
 {
     float width;
     float height;
-    float title_height;
-    float row_height;
-    float pad;
 } arrange_box;
 
-/* One wire, drawn from an output row on `from` to an input row on `to`. */
+/* One wire, drawn from an output pin on `from`'s right edge to an input pin on
+ * `to`'s left edge. The caller measures where each pin sits: from_y and to_y
+ * are offsets below the box tops, and links sharing an offset share the pin. */
 typedef struct arrange_link
 {
     int from;
     int to;
-    int from_pin;
-    int to_pin;
+    float from_y;
+    float to_y;
     float from_handle_x;
     float from_handle_y;
     float to_handle_x;

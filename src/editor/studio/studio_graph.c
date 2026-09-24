@@ -6,6 +6,7 @@
  * edits go through the graph editor's mutation helpers and history. */
 #include "editor/graph/search.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/extract.h"
@@ -70,50 +71,96 @@ static bool node_visible(const graph *g, const node *n)
     return n && n->desc && !graph_node_is_inline(g, n);
 }
 
-/* Rows, as the ImGui editor laid them out and Blender does: execution pins pair
-   up on the first rows, then every data output, then every data input, so
-   inputs always sit below outputs and each row has the node's full width.
-   Arrange numbers the same rows. */
+/* ---------- Node layout ----------
+   Nodes are sized here rather than by RmlUi, from measured text and the
+   graph.rcss metrics, so a node's box and sockets are known before it is laid
+   out: arrange, framing and hit tests never wait a frame.
+
+   A full node's rows follow the ImGui editor and Blender: execution pins pair
+   up first, then every data output, then every data input, so inputs always
+   sit below outputs. Unlabeled execution pins may sit in the title instead
+   (Unity Visual Scripting). Operators draw as a symbol between their inputs
+   and output, and one-output reads as pills (Unreal's compact nodes). */
+
+typedef enum
+{
+    FORM_FULL,
+    FORM_OPERATOR,
+    FORM_GETTER,
+} node_form;
+
+struct studio_node_layout
+{
+    uint64_t id;
+    node_form form;
+    float w, h;
+    float label;           /* input label column, so input editors line up */
+    float top;             /* the first row's top, below the node's */
+    float column;          /* an operator's input column */
+    int head_in, head_out; /* pins drawn in the title, or -1 */
+    int code_lines;        /* an expression's source lines */
+};
+typedef struct studio_node_layout node_layout;
+
+static const node_layout *layout_of(const studio *s, node *n);
+
 static bool pin_exec(const node *n, int kind, int pin)
 {
     return (kind == ED_PIN_INPUT ? n->input_pins : n->output_pins)[pin].kind == PIN_EXEC;
 }
 
-/* Index among the visible pins on the same side of the same kind (exec or data). */
-static int pin_order(const graph *g, const node *n, int kind, int pin)
+static bool in_head(const node_layout *l, int kind, int pin)
+{
+    return pin == (kind == ED_PIN_INPUT ? l->head_in : l->head_out);
+}
+
+/* Whether a pin has a row: visible and not drawn in the title. */
+static bool pin_in_rows(const graph *g, const node *n, const node_layout *l, int kind, int pin)
+{
+    return ed_pin_visible(g, n, kind, pin) && !in_head(l, kind, pin);
+}
+
+/* Index among the row pins on the same side of the same kind (exec or data). */
+static int pin_order(const graph *g, const node *n, const node_layout *l, int kind, int pin)
 {
     int order = 0;
     for (int p = 0; p < pin; p++) {
-        order += ed_pin_visible(g, n, kind, p) &&
+        order += pin_in_rows(g, n, l, kind, p) &&
                  pin_exec(n, kind, p) == pin_exec(n, kind, pin);
     }
     return order;
 }
 
-static int pin_count(const graph *g, const node *n, int kind, bool exec)
+static int pin_count(const graph *g, const node *n, const node_layout *l, int kind, bool exec)
 {
     int count = 0;
     for (int p = 0; p < (kind == ED_PIN_INPUT ? n->input_count : n->output_count); p++) {
-        count += ed_pin_visible(g, n, kind, p) && pin_exec(n, kind, p) == exec;
+        count += pin_in_rows(g, n, l, kind, p) && pin_exec(n, kind, p) == exec;
     }
     return count;
 }
 
-static int exec_rows(const graph *g, const node *n)
+static int exec_rows(const graph *g, const node *n, const node_layout *l)
 {
-    int in = pin_count(g, n, ED_PIN_INPUT, true),
-        out = pin_count(g, n, ED_PIN_OUTPUT, true);
+    int in = pin_count(g, n, l, ED_PIN_INPUT, true),
+        out = pin_count(g, n, l, ED_PIN_OUTPUT, true);
     return in > out ? in : out;
 }
 
-static int pin_row(const graph *g, const node *n, int kind, int pin)
+static int row_count(const graph *g, const node *n, const node_layout *l)
 {
-    int order = pin_order(g, n, kind, pin);
-    if (pin_exec(n, kind, pin)) {
+    return exec_rows(g, n, l) + pin_count(g, n, l, ED_PIN_OUTPUT, false) +
+           pin_count(g, n, l, ED_PIN_INPUT, false);
+}
+
+static int pin_row(const graph *g, const node *n, const node_layout *l, int kind, int pin)
+{
+    int order = pin_order(g, n, l, kind, pin);
+    if (pin_exec(n, kind, pin) || l->form == FORM_OPERATOR) {
         return order;
     }
-    int outputs = kind == ED_PIN_INPUT ? pin_count(g, n, ED_PIN_OUTPUT, false) : 0;
-    return exec_rows(g, n) + outputs + order;
+    int outputs = kind == ED_PIN_INPUT ? pin_count(g, n, l, ED_PIN_OUTPUT, false) : 0;
+    return exec_rows(g, n, l) + outputs + order;
 }
 
 static void node_path(char *out, size_t size, uint64_t id)
@@ -122,34 +169,75 @@ static void node_path(char *out, size_t size, uint64_t id)
 }
 
 /* Data rows are keyed i<pin> and o<pin> in the body; an execution row e<n>
-   holds the pair of pins that share it. */
-static void socket_path(char *out, size_t size, const graph *g, const node *n, int kind, int pin)
+   holds the pair of pins that share it, and title pins sit in the head. */
+static void socket_path(char *out, size_t size, const studio *s, node *n, int kind, int pin)
 {
+    const node_layout *l = layout_of(s, n);
     char side = kind == ED_PIN_INPUT ? 'i' : 'o';
     unsigned long long id = n->id;
+    if (in_head(l, kind, pin)) {
+        snprintf(out, size, "world/stage/n%llu/h/%c%d/s", id, side, pin);
+        return;
+    }
     if (pin_exec(n, kind, pin)) {
-        snprintf(out, size, "world/stage/n%llu/b/e%d/%c%d/s", id, pin_order(g, n, kind, pin), side, pin);
+        int row = pin_order(active_graph(s), n, l, kind, pin);
+        snprintf(out, size, "world/stage/n%llu/b/e%d/%c%d/s", id, row, side, pin);
         return;
     }
     snprintf(out, size, "world/stage/n%llu/b/%c%d/s", id, side, pin);
 }
 
-static uint32_t pack(ImVec4 c, float alpha)
+/* ---------- Palette ----------
+   Colors drawn as geometry follow the theme; graph.rcss themes the elements. */
+
+typedef struct
 {
-    return ((uint32_t)lroundf(c.x * 255) << 24) |
-           ((uint32_t)lroundf(c.y * 255) << 16) |
-           ((uint32_t)lroundf(c.z * 255) << 8) |
+    uint32_t node;      /* the node body: a hollow socket's fill */
+    uint32_t edge;      /* around a filled socket */
+    uint32_t exec;      /* execution sockets and wires */
+    uint32_t exec_idle; /* an unwired execution socket */
+    uint32_t hot;       /* a hovered or offered socket's ring */
+    uint32_t grid, grid_major;
+    float shade; /* data type colors darken on light canvases */
+} canvas_palette;
+
+static const canvas_palette DARK = { 0x2b2b2fffu, 0x111113ffu,
+                                     0xe8e8eaffu, 0x8a8a90ffu,
+                                     0xffffffffu, 0xffffff0au,
+                                     0xffffff14u, 1 };
+static const canvas_palette LIGHT = { 0xfbfbfcffu, 0xfbfbfcffu, 0x52525bffu,
+                                      0xa1a1aaffu, 0x18181bffu, 0x0000000du,
+                                      0x0000001au, 0.8f };
+
+static const canvas_palette *palette(const studio *s)
+{
+    return s->light ? &LIGHT : &DARK;
+}
+
+/* A pin's color as 0xRRGGBBAA. */
+static uint32_t pin_color(const studio *s, const pin_spec *spec, float alpha)
+{
+    const canvas_palette *p = palette(s);
+    if (spec->kind == PIN_EXEC) {
+        return (p->exec & ~255u) | (uint32_t)lroundf(fminf(alpha, 1) * 255);
+    }
+    ImVec4 c = ed_spec_color(spec);
+    return ((uint32_t)lroundf(c.x * p->shade * 255) << 24) |
+           ((uint32_t)lroundf(c.y * p->shade * 255) << 16) |
+           ((uint32_t)lroundf(c.z * p->shade * 255) << 8) |
            (uint32_t)lroundf(fminf(c.w * alpha, 1) * 255);
 }
 
-static ImVec4 pin_color(const pin_spec *spec)
+static bool is_expression(const studio *s, const node *n)
 {
-    return spec->kind == PIN_EXEC ? (ImVec4){ 0.91f, 0.91f, 0.92f, 1 }
-                                  : ed_spec_color(spec);
+    return behavior_expression_source(graph_editor(s)->asset, n) != NULL;
 }
 
-static const char *node_kind(const node *n)
+static const char *node_kind(const studio *s, const node *n)
 {
+    if (is_expression(s, n)) {
+        return "expression";
+    }
     if (ed_is_graph_call(n)) {
         return "call";
     }
@@ -163,8 +251,11 @@ static const char *node_kind(const node *n)
     }
 }
 
-static uint32_t node_icon(const node *n)
+static uint32_t node_icon(const studio *s, const node *n)
 {
+    if (is_expression(s, n)) {
+        return KIT_ICON_EXPRESSION;
+    }
     if (ed_is_graph_call(n)) {
         return KIT_ICON_FUNCTION;
     }
@@ -177,10 +268,7 @@ static uint32_t node_icon(const node *n)
     }
 }
 
-/* ---------- Node layout ----------
-   Nodes are sized here rather than by RmlUi, from measured text and the
-   graph.rcss metrics, so a node's box is known before it is laid out: arrange,
-   framing and hit tests never wait a frame. */
+/* ---------- Measurement ---------- */
 
 typedef enum
 {
@@ -201,11 +289,19 @@ typedef struct
     bool show_label;
     char label[128];
     char chip[160];
+    uint32_t chip_icon;
     value_kind value;
 } pin_parts;
 
-static const float SOCKET_PAD = 10, PART_GAP = 6, COLUMN_GAP = 12;
-static const float NODE_MIN = 120, NODE_MAX = 360;
+static const float SOCKET_PAD = 10, PART_GAP = 6, COLUMN_GAP = 12, HEAD_PAD = 10;
+static const float NODE_MIN = 120, NODE_MAX = 360, EDGE = 1, BOTTOM = 6;
+static const float OPERATOR_MIN = 56, OPERATOR_PAD = 4, SYMBOL_SIZE = 18;
+enum
+{
+    CODE_LINES = 12,
+};
+/* graph.rcss .gcode: 16 dp lines, 8 dp of padding and 4 below; 28 dp across. */
+static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 28;
 
 static value_kind value_kind_of(const studio *s, node *n, int output, int p)
 {
@@ -237,6 +333,93 @@ static bool exec_label(const pin_spec *spec, const char *label)
             !strcmp(label, "In") || !strcmp(label, "Out"));
 }
 
+/* "transform.position" reads as "Transform › Position". */
+static void path_label(const char *path, char *out, size_t size)
+{
+    size_t used = 0;
+    out[0] = '\0';
+    for (const char *at = path; *at && used < size;) {
+        const char *end = strchr(at, '.');
+        int length = end ? (int)(end - at) : (int)strlen(at);
+        char part[128], word[128];
+        snprintf(part, sizeof part, "%.*s", length, at);
+        editor_identifier_label(part, word, sizeof word);
+        used += (size_t)
+            snprintf(out + used, size - used, "%s%s", used ? " \xe2\x80\xba " : "", word);
+        at += length + (end != NULL);
+    }
+}
+
+/* A bound value's chip: what it reads, and an icon for where it comes from.
+   Component values always belong to the node's owner, so "Self" is implied. */
+static uint32_t binding_chip(const studio *s, const pin_binding *b, char *out, size_t size)
+{
+    editor *e = graph_editor(s);
+    char first[128], second[160];
+    if (s->prefs.short_bindings) {
+        switch (b->kind) {
+            case PIN_BINDING_COMPONENT:
+            case PIN_BINDING_COMPONENT_FIELD: {
+                const ecs_component_desc *c = ed_component_by_key(b->component_key);
+                const char *name = c && c->name ? c->name : b->component_key;
+                if (!name) {
+                    break;
+                }
+                editor_component_label(name, first, sizeof first);
+                if (b->kind == PIN_BINDING_COMPONENT || !b->field_name) {
+                    snprintf(out, size, "%s", first);
+                    return KIT_ICON_COMPONENT;
+                }
+                path_label(b->field_name, second, sizeof second);
+                snprintf(out, size, "%s \xe2\x80\xba %s", first, second);
+                return KIT_ICON_COMPONENT;
+            }
+            case PIN_BINDING_VARIABLE: {
+                const behavior_variable *v = behavior_asset_find_variable_by_id(e->asset, b->variable_id);
+                bool here = !b->source_asset || !e->asset->name ||
+                            !strcmp(b->source_asset, e->asset->name);
+                if (!here || !v || !v->name) {
+                    break;
+                }
+                editor_identifier_label(v->name, out, size);
+                return KIT_ICON_VARIABLE;
+            }
+            case PIN_BINDING_LOCAL: {
+                const graph_local *local = graph_local_by_id(e->active_graph, b->local_id);
+                if (!local || !local->name) {
+                    break;
+                }
+                editor_identifier_label(local->name, out, size);
+                return KIT_ICON_LOCAL;
+            }
+            case PIN_BINDING_EVENT_OUTPUT: {
+                node *event = graph_node_by_id(e->active_graph, b->event_node_id);
+                int output = 0;
+                const pin_spec *pin = event
+                                        ? graph_pin_by_id(event, b->event_pin_id, &output, NULL)
+                                        : NULL;
+                if (!pin || !output || !pin->name) {
+                    break;
+                }
+                editor_identifier_label(pin->name, second, sizeof second);
+                if (event->reference_name) {
+                    snprintf(out, size, "%s \xe2\x80\xba %s", event->reference_name, second);
+                } else {
+                    snprintf(out, size, "%s", second);
+                }
+                return KIT_ICON_EVENT;
+            }
+            case PIN_BINDING_DELTA_TIME:
+                snprintf(out, size, "Delta Time");
+                return KIT_ICON_TIMER;
+            default: break;
+        }
+    }
+    /* Full paths, and missing sources, which say what is missing. */
+    snprintf(out, size, "%s", ed_binding_label(e, b, second, sizeof second));
+    return 0;
+}
+
 static void pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 {
     editor *e = graph_editor(s);
@@ -264,17 +447,19 @@ static void pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *o
         ed_node_title(e, src, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
     } else if (input && spec->binding) {
-        char label[160];
-        snprintf(out->chip, sizeof out->chip, "%s", ed_binding_label(e, spec->binding, label, sizeof label));
+        out->chip_icon = binding_chip(s, spec->binding, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
     } else if ((!input || !out->connected) && ed_pin_editable(gr, n, kind, p)) {
         out->value = value_kind_of(s, n, !input, p);
     }
 }
 
+/* Measured as the canvas draws it at this zoom, so text never clips; far out,
+   where rows hide, at the least zoom that shows them. */
 static float text_width(const studio *s, const char *text, float size, int weight)
 {
-    return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight)
+    float ratio = fmaxf(s->graph.zoom, FAR_ZOOM) * cf_app_get_pixel_scale();
+    return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight, ratio)
                         : strlen(text) * size * 0.55f;
 }
 
@@ -288,48 +473,166 @@ static float value_width(const studio *s, const pin_parts *parts)
         case VALUE_TEXT: return 96;
         case VALUE_NUMBER: return 64;
         case VALUE_CHIP:
-            return fminf(text_width(s, parts->chip, 11, 400) + 12, 150);
+            return fminf(text_width(s, parts->chip, 11, 400) + 12 + (parts->chip_icon ? 16 : 0), 150);
         default: return 0;
     }
 }
 
-typedef struct
+/* Operators and one-output reads compact (Unreal); anything with execution
+   pins, several outputs or an editable output stays a full node. */
+static node_form form_of(const studio *s, node *n)
 {
-    float w, h;
-    float label; /* input label column, so input editors line up */
-} node_extent;
-
-static node_extent measure_node(const studio *s, node *n);
-
-/* Measured once per frame; mutations clear the cache. */
-static node_extent node_size(const studio *s, node *n)
-{
-    studio_graph *g = (studio_graph *)&s->graph;
-    for (int i = 0; i < acount(g->sizes); i++) {
-        if (g->sizes[i].id == n->id) {
-            return (node_extent){ g->sizes[i].w, g->sizes[i].h, g->sizes[i].label };
-        }
-    }
-    node_extent extent = measure_node(s, n);
-    apush(g->sizes, ((typeof(*g->sizes)){ n->id, extent.w, extent.h, extent.label }));
-    return extent;
-}
-
-static node_extent measure_node(const studio *s, node *n)
-{
-    editor *e = graph_editor(s);
     graph *gr = active_graph(s);
-    char title[256];
-    ed_node_title(e, n, title, sizeof title);
-    ed_node_presentation look = ed_node_appearance(n->desc);
-    float width = text_width(s, title, 12, 600) + 16 +
-                  (look.symbol || node_icon(n) ? 20 : 0);
-    node_extent extent = { 0 };
-    float values = 0, exec_in = 0, exec_out = 0;
+    if (!s->prefs.compact_nodes || ed_is_graph_call(n)) {
+        return FORM_FULL;
+    }
+    int inputs = 0, outputs = 0, output = -1;
     for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
         int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
         for (int p = 0; p < count; p++) {
             if (!ed_pin_visible(gr, n, kind, p)) {
+                continue;
+            }
+            if (pin_exec(n, kind, p)) {
+                return FORM_FULL;
+            }
+            inputs += kind == ED_PIN_INPUT;
+            outputs += kind == ED_PIN_OUTPUT;
+            output = kind == ED_PIN_OUTPUT ? p : output;
+        }
+    }
+    if (outputs != 1) {
+        return FORM_FULL;
+    }
+    pin_parts parts;
+    pin_parts_of(s, n, ED_PIN_OUTPUT, output, &parts);
+    if (parts.value != VALUE_NONE) {
+        return FORM_FULL;
+    }
+    if (!inputs) {
+        return FORM_GETTER;
+    }
+    return ed_node_appearance(n->desc).symbol ? FORM_OPERATOR : FORM_FULL;
+}
+
+/* The first execution pin on a side moves into the title when unlabeled. */
+static int title_pin(const graph *gr, node *n, int kind)
+{
+    int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
+    for (int p = 0; p < count; p++) {
+        if (!ed_pin_visible(gr, n, kind, p) || !pin_exec(n, kind, p)) {
+            continue;
+        }
+        const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[p]
+                                                    : &n->output_pins[p];
+        char label[128];
+        ed_pin_label(n, spec, label, sizeof label);
+        return exec_label(spec, label) ? p : -1;
+    }
+    return -1;
+}
+
+/* Expressions show their source in the body, and pills drop the "Get" every
+   read would repeat. */
+static const char *node_title(const studio *s, node *n, node_form form, char *buf, size_t size)
+{
+    if (is_expression(s, n)) {
+        snprintf(buf, size, "Expression");
+        return buf;
+    }
+    ed_node_title(graph_editor(s), n, buf, size);
+    if (form == FORM_GETTER && !strncmp(buf, "Get ", 4)) {
+        memmove(buf, buf + 4, strlen(buf + 4) + 1);
+    }
+    return buf;
+}
+
+/* Breaks source at spaces into lines no wider than `width`, filling starts
+   with each line's offset; returns the line count. A word wider than a line
+   keeps a line of its own, and the last line takes whatever is left. */
+static int code_lines(const studio *s, const char *code, float width, int starts[CODE_LINES])
+{
+    int count = 1, start = 0, fits = -1; /* fits: the end of the text that fits */
+    starts[0] = 0;
+    for (int i = 0; count < CODE_LINES;) {
+        while (code[i] && code[i] != ' ') {
+            i++;
+        }
+        char line[512];
+        snprintf(line, sizeof line, "%.*s", i - start, code + start);
+        if (fits > start && text_width(s, line, CODE_SIZE, 400) > width) {
+            start = fits + 1;
+            starts[count++] = start;
+            fits = -1;
+            continue;
+        }
+        fits = i;
+        if (!code[i]) {
+            break;
+        }
+        i++;
+    }
+    return count;
+}
+
+/* Nodes are border-box: rows and code sit inside the node's one dp border. */
+static float code_room(const node_layout *l)
+{
+    return l->w - 2 * EDGE - CODE_INSET;
+}
+
+static node_layout measure_operator(const studio *s, node *n, node_layout l, const char *symbol)
+{
+    graph *gr = active_graph(s);
+    float values = 0;
+    int inputs = 0;
+    for (int p = 0; p < n->input_count; p++) {
+        if (!ed_pin_visible(gr, n, ED_PIN_INPUT, p)) {
+            continue;
+        }
+        pin_parts parts;
+        pin_parts_of(s, n, ED_PIN_INPUT, p, &parts);
+        values = fmaxf(values, value_width(s, &parts));
+        inputs++;
+    }
+    l.column = SOCKET_PAD + values;
+    l.w = ceilf(
+        fmaxf(2 * EDGE + l.column + 2 * PART_GAP + text_width(s, symbol, SYMBOL_SIZE, 700) + SOCKET_PAD, OPERATOR_MIN)
+    );
+    l.top = EDGE + OPERATOR_PAD;
+    l.h = 2 * (EDGE + OPERATOR_PAD) + (float)(inputs > 1 ? inputs : 1) * ROW;
+    return l;
+}
+
+static node_layout measure_node(const studio *s, node *n)
+{
+    graph *gr = active_graph(s);
+    node_layout l = { .id = n->id, .form = form_of(s, n), .head_in = -1, .head_out = -1 };
+    char title[256];
+    node_title(s, n, l.form, title, sizeof title);
+    ed_node_presentation look = ed_node_appearance(n->desc);
+    if (l.form == FORM_OPERATOR) {
+        return measure_operator(s, n, l, look.symbol);
+    }
+    float width = text_width(s, title, 12, 600) + 2 * HEAD_PAD +
+                  (look.symbol || node_icon(s, n) ? 20 : 0);
+    if (l.form == FORM_GETTER) {
+        for (int p = 0; p < n->output_count; p++) {
+            l.head_out = ed_pin_visible(gr, n, ED_PIN_OUTPUT, p) ? p : l.head_out;
+        }
+        l.w = ceilf(2 * EDGE + width + PART_GAP);
+        l.h = 2 * EDGE + HEAD;
+        return l;
+    }
+    if (s->prefs.title_flow) {
+        l.head_in = title_pin(gr, n, ED_PIN_INPUT);
+        l.head_out = title_pin(gr, n, ED_PIN_OUTPUT);
+    }
+    float values = 0, exec_in = 0, exec_out = 0;
+    for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
+        int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
+        for (int p = 0; p < count; p++) {
+            if (!pin_in_rows(gr, n, &l, kind, p)) {
                 continue;
             }
             pin_parts parts;
@@ -340,7 +643,7 @@ static node_extent measure_node(const studio *s, node *n)
                 float *side = kind == ED_PIN_INPUT ? &exec_in : &exec_out;
                 *side = fmaxf(*side, SOCKET_PAD + label);
             } else if (kind == ED_PIN_INPUT) {
-                extent.label = fmaxf(extent.label, label);
+                l.label = fmaxf(l.label, label);
                 values = fmaxf(values, value);
             } else {
                 width = fmaxf(width, 2 * SOCKET_PAD + label + (value > 0 ? PART_GAP + value : 0));
@@ -348,28 +651,65 @@ static node_extent measure_node(const studio *s, node *n)
         }
     }
     width = fmaxf(width, exec_in + exec_out + COLUMN_GAP);
-    if (extent.label > 0 || values > 0) {
+    l.label = ceilf(l.label);
+    if (l.label > 0 || values > 0) {
         width = fmaxf(
             width,
-            2 * SOCKET_PAD + extent.label +
-                (extent.label > 0 && values > 0 ? PART_GAP : 0) + values
+            2 * SOCKET_PAD + l.label + (l.label > 0 && values > 0 ? PART_GAP : 0) + values
         );
     }
-    int rows = exec_rows(gr, n) + pin_count(gr, n, ED_PIN_OUTPUT, false) +
-               pin_count(gr, n, ED_PIN_INPUT, false);
-    extent.w = ceilf(fminf(fmaxf(width, NODE_MIN), NODE_MAX));
-    extent.h = HEAD + PAD + (float)rows * ROW + 6 + 2;
-    return extent;
+    const char *code = behavior_expression_source(graph_editor(s)->asset, n);
+    if (code) {
+        width = fmaxf(width, text_width(s, code, CODE_SIZE, 400) + CODE_INSET);
+    }
+    l.w = ceilf(fminf(fmaxf(2 * EDGE + width, NODE_MIN), NODE_MAX));
+    if (code) {
+        int starts[CODE_LINES];
+        l.code_lines = code_lines(s, code, code_room(&l), starts);
+    }
+    l.top = EDGE + HEAD + PAD +
+            (l.code_lines ? CODE_PAD + (float)l.code_lines * CODE_LINE : 0);
+    int rows = row_count(gr, n, &l);
+    l.h = rows || l.code_lines ? l.top + (float)rows * ROW + BOTTOM + EDGE
+                               : 2 * EDGE + HEAD;
+    return l;
+}
+
+/* Measured once per frame; mutations clear the cache. */
+static const node_layout *layout_of(const studio *s, node *n)
+{
+    studio_graph *g = (studio_graph *)&s->graph;
+    for (int i = 0; i < acount(g->layouts); i++) {
+        if (g->layouts[i].id == n->id) {
+            return &g->layouts[i];
+        }
+    }
+    node_layout l = measure_node(s, n);
+    apush(g->layouts, l);
+    return &alast(g->layouts);
+}
+
+/* Where a socket sits below its node's top. */
+static float pin_y(const studio *s, node *n, int kind, int pin)
+{
+    node_layout l = *layout_of(s, n);
+    if (in_head(&l, kind, pin)) {
+        return EDGE + HEAD / 2;
+    }
+    if (l.form == FORM_OPERATOR && kind == ED_PIN_OUTPUT) {
+        return l.h / 2;
+    }
+    return l.top + ((float)pin_row(active_graph(s), n, &l, kind, pin) + 0.5f) * ROW;
 }
 
 /* A node's box in graph units. */
 static bool node_box(const studio *s, node *n, float box[4])
 {
-    node_extent extent = node_size(s, n);
+    const node_layout *l = layout_of(s, n);
     box[0] = n->x;
     box[1] = n->y;
-    box[2] = extent.w;
-    box[3] = extent.h;
+    box[2] = l->w;
+    box[3] = l->h;
     return true;
 }
 
@@ -400,7 +740,8 @@ static graph_hit parse_hit(const char *path)
     int exec, pin, end = 0;
     char side;
     if (sscanf(row, "/b/e%d/%c%d%n", &exec, &side, &pin, &end) != 3 &&
-        sscanf(row, "/b/%c%d%n", &side, &pin, &end) != 2) {
+        sscanf(row, "/b/%c%d%n", &side, &pin, &end) != 2 &&
+        sscanf(row, "/h/%c%d%n", &side, &pin, &end) != 2) {
         return hit;
     }
     const char *part = row + end;
@@ -608,7 +949,7 @@ static void arrange_input_build(const studio *s, arrange_input *in)
             continue;
         }
         apush(in->nodes, n);
-        apush(in->boxes, ((arrange_box){ box[2], box[3], HEAD, ROW, PAD }));
+        apush(in->boxes, ((arrange_box){ box[2], box[3] }));
         apush(in->pos, ((arrange_point){ n->x, n->y }));
     }
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -631,8 +972,8 @@ static void arrange_input_build(const studio *s, arrange_input *in)
             in->links,
             ((arrange_link){ .from = a,
                              .to = b,
-                             .from_pin = pin_row(gr, from, ED_PIN_OUTPUT, from_pin),
-                             .to_pin = pin_row(gr, to, ED_PIN_INPUT, to_pin) })
+                             .from_y = pin_y(s, from, ED_PIN_OUTPUT, from_pin),
+                             .to_y = pin_y(s, to, ED_PIN_INPUT, to_pin) })
         );
     }
 }
@@ -1351,9 +1692,8 @@ static void replay(studio *s)
 /* Where a socket sits, from the same metrics that size nodes. */
 static void socket_at(const studio *s, node *n, int kind, int pin, float *x, float *y)
 {
-    graph *gr = active_graph(s);
-    *x = kind == ED_PIN_INPUT ? n->x : n->x + node_size(s, n).w;
-    *y = n->y + HEAD + PAD + ((float)pin_row(gr, n, kind, pin) + 0.5f) * ROW;
+    *x = kind == ED_PIN_INPUT ? n->x : n->x + layout_of(s, n)->w;
+    *y = n->y + pin_y(s, n, kind, pin);
 }
 
 static void snap_link(studio *s, graph_hit *hit)
@@ -1895,20 +2235,24 @@ static void emit_value(studio *s, node *n, int output, int p)
     emit_value_in(s, s->graph.kit, n, output, p);
 }
 
-/* Sockets are drawn as geometry: filled when wired, a ring when not, white
-   while hovered or offered as a target; exec pins are arrows. */
-static kit_dot_desc socket_dot(const pin_spec *spec, bool connected, bool hot, float alpha)
+/* Sockets are drawn as geometry: filled when wired, a ring when not, and ringed
+   by the hot color while hovered or offered as a target. Execution pins are
+   arrows and many-valued pins squares. */
+static kit_dot_desc socket_dot(const studio *s, const pin_spec *spec, bool connected, bool hot, float alpha)
 {
-    const uint32_t node_fill = 0x2b2b2fffu, edge = 0x111113ffu, white = 0xffffffffu;
-    uint32_t color = spec->kind == PIN_EXEC ? 0xe8e8eaffu : pack(pin_color(spec), 1);
-    kit_dot_desc d = { spec->kind == PIN_EXEC ? KIT_DOT_ARROW : KIT_DOT_CIRCLE,
-                       connected ? color : node_fill,
-                       hot                      ? white
-                       : connected              ? edge
-                       : spec->kind == PIN_EXEC ? 0x8a8a90ffu
-                                                : color,
+    const canvas_palette *p = palette(s);
+    bool exec = spec->kind == PIN_EXEC;
+    uint32_t color = pin_color(s, spec, 1);
+    kit_dot_desc d = { exec ? KIT_DOT_ARROW
+                       : spec->container != PIN_CONTAINER_SINGLE ? KIT_DOT_SQUARE
+                                                                 : KIT_DOT_CIRCLE,
+                       connected ? color : p->node,
+                       hot         ? p->hot
+                       : connected ? p->edge
+                       : exec      ? p->exec_idle
+                                   : color,
                        hot         ? 2.0f
-                       : connected ? (spec->kind == PIN_EXEC ? 0.0f : 1.0f)
+                       : connected ? (exec ? 0.0f : 1.0f)
                                    : 1.5f };
     uint32_t a = (uint32_t)lroundf(255 * alpha);
     d.fill = (d.fill & ~255u) | (((d.fill & 255u) * a) / 255);
@@ -1916,12 +2260,14 @@ static kit_dot_desc socket_dot(const pin_spec *spec, bool connected, bool hot, f
     return d;
 }
 
-/* One pin's row, or half an execution row: socket, label and editor. Input
-   labels share one width per node so the editors line up. */
+/* One pin: a row, half an execution row, or a socket in the title. Input
+   labels share one width per node so the editors line up; compact nodes and
+   title pins go unlabeled. */
 static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float label_width)
 {
     studio_graph *g = &s->graph;
     kit *k = g->kit;
+    node_layout l = *layout_of(s, n);
     bool input = kind == ED_PIN_INPUT;
     pin_parts parts;
     pin_parts_of(s, n, kind, p, &parts);
@@ -1941,68 +2287,97 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
     kit_push(k, key, NULL, cls);
     kit_flag(k, "data-hover", hovered);
     kit_push(k, "s", "span", "socket");
-    kit_dot_desc dot = socket_dot(parts.spec, parts.connected || parts.inline_source, hovered, alpha);
+    kit_dot_desc dot = socket_dot(s, parts.spec, parts.connected || parts.inline_source, hovered, alpha);
     kit_dot(k, "d", NULL, &dot);
     kit_pop(k);
     if (!input && parts.value != VALUE_NONE) {
         emit_value(s, n, 1, p);
     }
-    if (parts.show_label) {
+    if (parts.show_label && l.form == FORM_FULL && !in_head(&l, kind, p)) {
         kit_label(k, "l", "gpin-label", parts.label);
         if (input && label_width > 0 && !pin_exec(n, kind, p)) {
-            snprintf(width, sizeof width, "%.0fdp", ceilf(label_width));
+            snprintf(width, sizeof width, "%.0fdp", label_width);
             kit_style(k, "width", width);
         }
     }
     if (input && parts.value == VALUE_CHIP) {
-        kit_label(k, "c", parts.inline_source ? "chip source" : "chip", parts.chip);
+        kit_push(k, "c", NULL, parts.inline_source ? "chip source" : "chip");
+        if (parts.chip_icon) {
+            kit_icon(k, "i", NULL, parts.chip_icon);
+        }
+        kit_label(k, "t", "chip-text", parts.chip);
+        kit_pop(k);
     } else if (input && parts.value != VALUE_NONE) {
         emit_value(s, n, 0, p);
     }
     kit_pop(k);
 }
 
-static void emit_node(studio *s, node *n)
+static void emit_dp(kit *k, const char *property, float value)
 {
-    studio_graph *g = &s->graph;
-    kit *k = g->kit;
-    editor *e = graph_editor(s);
-    graph *gr = active_graph(s);
-    node_extent extent = node_size(s, n);
-    char key[32], position[32], title[256];
-    snprintf(key, sizeof key, "n%llu", (unsigned long long)n->id);
-    kit_push(k, key, NULL, "gnode");
-    snprintf(position, sizeof position, "%.1fdp", n->x);
-    kit_style(k, "left", position);
-    snprintf(position, sizeof position, "%.1fdp", n->y);
-    kit_style(k, "top", position);
-    snprintf(position, sizeof position, "%.0fdp", extent.w);
-    kit_style(k, "width", position);
-    kit_attr(k, "data-kind", node_kind(n));
-    kit_flag(k, "data-selected", ed_node_selected(e, n));
-    kit_flag(k, "data-active", e->front_node == n && ed_node_selected(e, n) && acount(e->selected) > 1);
-    kit_flag(k, "data-disabled", n->disabled != 0);
-    kit_flag(k, "data-dim", is_unused(g, n->id));
-    kit_flag(k, "data-breakpoint", n->breakpoint != 0);
+    char text[32];
+    snprintf(text, sizeof text, "%.1fdp", value);
+    kit_style(k, property, text);
+}
+
+static void emit_head(studio *s, node *n, const node_layout *l)
+{
+    kit *k = s->graph.kit;
+    char title[256];
     kit_push(k, "h", NULL, "gnode-head");
+    if (l->head_in >= 0) {
+        emit_pin(s, n, ED_PIN_INPUT, l->head_in, "hpin in", 0);
+    }
     ed_node_presentation look = ed_node_appearance(n->desc);
-    uint32_t icon = node_icon(n);
+    uint32_t icon = node_icon(s, n);
     if (look.symbol) {
         kit_label(k, "sym", "symbol", look.symbol);
     } else if (icon) {
         kit_icon(k, "i", NULL, icon);
     }
-    kit_label(k, "t", "title", ed_node_title(e, n, title, sizeof title));
+    kit_label(k, "t", "title", node_title(s, n, l->form, title, sizeof title));
+    if (l->head_out >= 0) {
+        emit_pin(s, n, ED_PIN_OUTPUT, l->head_out, "hpin out", 0);
+    }
     kit_pop(k);
+}
+
+/* An expression's source, highlighted, on the lines measure_node wrapped. */
+static void emit_code(studio *s, node *n, const node_layout *l)
+{
+    kit *k = s->graph.kit;
+    const char *code = behavior_expression_source(graph_editor(s)->asset, n);
+    int starts[CODE_LINES], length = (int)strlen(code);
+    int count = code_lines(s, code, code_room(l), starts);
+    kit_push(k, "code", NULL, "gcode");
+    for (int i = 0; i < count; i++) {
+        int end = i + 1 < count ? starts[i + 1] - 1 : length;
+        char key[8], line[512], markup[2048];
+        snprintf(key, sizeof key, "l%d", i);
+        snprintf(line, sizeof line, "%.*s", end - starts[i], code + starts[i]);
+        highlight_markup(HIGHLIGHT_EXPRESSION, line, markup, sizeof markup);
+        kit_markup(k, key, "gcode-line", markup);
+    }
+    kit_pop(k);
+}
+
+static void emit_rows(studio *s, node *n, const node_layout *l)
+{
+    kit *k = s->graph.kit;
+    graph *gr = active_graph(s);
+    char key[16];
     kit_push(k, "b", NULL, "gnode-body");
-    for (int row = 0; row < exec_rows(gr, n); row++) {
+    if (l->code_lines) {
+        emit_code(s, n, l);
+    }
+    for (int row = 0; row < exec_rows(gr, n, l); row++) {
         snprintf(key, sizeof key, "e%d", row);
         kit_push(k, key, NULL, "grow exec");
         for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
             int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
             for (int p = 0; p < count; p++) {
-                if (ed_pin_visible(gr, n, kind, p) && pin_exec(n, kind, p) &&
-                    pin_order(gr, n, kind, p) == row) {
+                if (pin_in_rows(gr, n, l, kind, p) && pin_exec(n, kind, p) &&
+                    pin_order(gr, n, l, kind, p) == row) {
                     emit_pin(s, n, kind, p, kind == ED_PIN_INPUT ? "ghalf in" : "ghalf out", 0);
                 }
             }
@@ -2010,16 +2385,73 @@ static void emit_node(studio *s, node *n)
         kit_pop(k);
     }
     for (int p = 0; p < n->output_count; p++) {
-        if (ed_pin_visible(gr, n, ED_PIN_OUTPUT, p) && !pin_exec(n, ED_PIN_OUTPUT, p)) {
+        if (pin_in_rows(gr, n, l, ED_PIN_OUTPUT, p) && !pin_exec(n, ED_PIN_OUTPUT, p)) {
             emit_pin(s, n, ED_PIN_OUTPUT, p, "grow out", 0);
         }
     }
     for (int p = 0; p < n->input_count; p++) {
-        if (ed_pin_visible(gr, n, ED_PIN_INPUT, p) && !pin_exec(n, ED_PIN_INPUT, p)) {
-            emit_pin(s, n, ED_PIN_INPUT, p, "grow in", extent.label);
+        if (pin_in_rows(gr, n, l, ED_PIN_INPUT, p) && !pin_exec(n, ED_PIN_INPUT, p)) {
+            emit_pin(s, n, ED_PIN_INPUT, p, "grow in", l->label);
         }
     }
     kit_pop(k);
+}
+
+/* Inputs stack on the left, the output centers on the right, and the symbol
+   takes the space between, so none of them overlap. */
+static void emit_operator(studio *s, node *n, const node_layout *l)
+{
+    kit *k = s->graph.kit;
+    graph *gr = active_graph(s);
+    float body = l->h - 2 * EDGE;
+    kit_push(k, "b", NULL, "gnode-body");
+    for (int p = 0; p < n->input_count; p++) {
+        if (ed_pin_visible(gr, n, ED_PIN_INPUT, p)) {
+            emit_pin(s, n, ED_PIN_INPUT, p, "grow in", 0);
+            emit_dp(k, "width", l->column);
+        }
+    }
+    kit_label(k, "sym", "gsymbol", ed_node_appearance(n->desc).symbol);
+    emit_dp(k, "left", l->column + PART_GAP);
+    emit_dp(k, "right", SOCKET_PAD);
+    emit_dp(k, "line-height", body);
+    for (int p = 0; p < n->output_count; p++) {
+        if (ed_pin_visible(gr, n, ED_PIN_OUTPUT, p)) {
+            emit_pin(s, n, ED_PIN_OUTPUT, p, "gout out", 0);
+            emit_dp(k, "top", (body - ROW) / 2);
+        }
+    }
+    kit_pop(k);
+}
+
+static void emit_node(studio *s, node *n)
+{
+    static const char *const FORMS[] = { "full", "operator", "getter" };
+    studio_graph *g = &s->graph;
+    kit *k = g->kit;
+    editor *e = graph_editor(s);
+    node_layout l = *layout_of(s, n);
+    char key[32];
+    snprintf(key, sizeof key, "n%llu", (unsigned long long)n->id);
+    kit_push(k, key, NULL, "gnode");
+    emit_dp(k, "left", n->x);
+    emit_dp(k, "top", n->y);
+    emit_dp(k, "width", l.w);
+    kit_attr(k, "data-kind", node_kind(s, n));
+    kit_attr(k, "data-form", FORMS[l.form]);
+    kit_flag(k, "data-selected", ed_node_selected(e, n));
+    kit_flag(k, "data-active", e->front_node == n && ed_node_selected(e, n) && acount(e->selected) > 1);
+    kit_flag(k, "data-disabled", n->disabled != 0);
+    kit_flag(k, "data-dim", is_unused(g, n->id));
+    kit_flag(k, "data-breakpoint", n->breakpoint != 0);
+    if (l.form == FORM_OPERATOR) {
+        emit_operator(s, n, &l);
+    } else {
+        emit_head(s, n, &l);
+    }
+    if (l.form == FORM_FULL && (l.code_lines || row_count(active_graph(s), n, &l))) {
+        emit_rows(s, n, &l);
+    }
     kit_pop(k);
 }
 
@@ -2052,8 +2484,8 @@ static void emit_wires(studio *s)
         }
         apush(g->wire_edges, i);
         apush(paths, ((typeof(*paths)){ { 0 } }));
-        socket_path(alast(paths).from, PATH, gr, from, ED_PIN_OUTPUT, fp);
-        socket_path(alast(paths).to, PATH, gr, to, ED_PIN_INPUT, tp);
+        socket_path(alast(paths).from, PATH, s, from, ED_PIN_OUTPUT, fp);
+        socket_path(alast(paths).to, PATH, s, to, ED_PIN_INPUT, tp);
         const pin_spec *spec = &from->output_pins[fp];
         bool exec = spec->kind == PIN_EXEC;
         ed_link_ref ref;
@@ -2065,14 +2497,14 @@ static void emit_wires(studio *s)
         if (is_unused(g, from->id) || is_unused(g, to->id)) {
             alpha *= 0.5f;
         }
-        kit_wire wire = { .color = pack(pin_color(spec), alpha),
+        kit_wire wire = { .color = pin_color(s, spec, alpha),
                           .width = (exec ? 2.5f : 1.5f) + (attached && focus ? 0.5f : 0),
                           .flags = ed->conversion ? KIT_WIRE_DASHED : 0 };
         /* Executed wires glow and carry markers while their heat lasts. */
         editor_edge_activity activity;
         editor_query_edge_activity(e, ed, &activity);
         if (activity.opacity > 0) {
-            wire.color = pack(pin_color(spec), 1);
+            wire.color = pin_color(s, spec, 1);
             wire.width += 1.5f * activity.opacity;
             wire.flags |= KIT_WIRE_FLOW;
             wire.flow = (float)s->time;
@@ -2112,8 +2544,8 @@ static void emit_wires(studio *s)
                             .grid = GRID,
                             .grid_x = g->x,
                             .grid_y = g->y,
-                            .grid_color = 0xffffff0a,
-                            .grid_major_color = 0xffffff14 };
+                            .grid_color = palette(s)->grid,
+                            .grid_major_color = palette(s)->grid_major };
     kit_wires(k, "wires", NULL, &desc);
     afree(wires);
     afree(paths);
@@ -2144,7 +2576,7 @@ static void emit_front(studio *s)
         return;
     }
     char anchor[PATH], target[PATH];
-    socket_path(anchor, sizeof anchor, active_graph(s), from, g->link_kind, g->link_pin);
+    socket_path(anchor, sizeof anchor, s, from, g->link_kind, g->link_pin);
     const pin_spec *spec = g->link_kind == ED_PIN_OUTPUT
                              ? &from->output_pins[g->link_pin]
                              : &from->input_pins[g->link_pin];
@@ -2152,10 +2584,10 @@ static void emit_front(studio *s)
     bool snap = over && g->hover_kind >= 0 &&
                 pins_compatible(from, g->link_kind, g->link_pin, over, g->hover_kind, g->hover_pin);
     if (snap) {
-        socket_path(target, sizeof target, active_graph(s), over, g->hover_kind, g->hover_pin);
+        socket_path(target, sizeof target, s, over, g->hover_kind, g->hover_pin);
     }
     bool invalid = over && g->hover_kind >= 0 && !snap;
-    kit_wire wire = { .color = invalid ? 0xe5534bff : pack(pin_color(spec), 1),
+    kit_wire wire = { .color = invalid ? 0xe5534bff : pin_color(s, spec, 1),
                       .width = spec->kind == PIN_EXEC ? 2.5f : 2,
                       .to_x = g->in.mouse_x,
                       .to_y = g->in.mouse_y,
@@ -2316,6 +2748,11 @@ void studio_graph_frame(studio *s, double delta_seconds)
     if (!follow_graph(s)) {
         e->arrange_pending = false;
     }
+    /* Node settings change node sizes, so automatic nodes arrange again. */
+    int forms = s->prefs.short_bindings | s->prefs.title_flow << 1 |
+                s->prefs.compact_nodes << 2;
+    e->arrange_pending |= forms != g->forms;
+    g->forms = forms;
     float scale = cf_app_get_pixel_scale();
     editor_rml_backend_resize_pixels(
         g->backend,
@@ -2323,11 +2760,11 @@ void studio_graph_frame(studio *s, double delta_seconds)
         (int)lroundf(r.h * scale),
         g->zoom * scale
     );
-    asetlen(g->sizes, 0);
+    asetlen(g->layouts, 0);
     replay(s);
     pointer(s);
     shortcuts(s);
-    asetlen(g->sizes, 0); /* gestures may have edited the graph */
+    asetlen(g->layouts, 0); /* gestures may have edited the graph */
     camera_step(s);
     if (e->arrange_pending) {
         arrange(s, true);
@@ -2349,6 +2786,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     g->in.height = canvas_h(g);
     kit_set_body_class(g->kit, "far", g->zoom < FAR_ZOOM);
     kit_set_body_class(g->kit, "comfortable", s->prefs.comfortable);
+    kit_set_body_class(g->kit, "light", s->light);
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
     find_unused(s);
     kit_begin(g->kit, &g->in);
@@ -2371,7 +2809,7 @@ void studio_graph_free(studio *s)
     afree(g->views);
     afree(g->drag);
     afree(g->box_base);
-    afree(g->sizes);
+    afree(g->layouts);
     afree(g->unused);
     *g = (studio_graph){ 0 };
 }
@@ -2615,11 +3053,10 @@ static void place_on_wire(studio *s, node *n, const ed_pin_view *from)
         if (!wired) {
             continue;
         }
-        int row = pin_row(gr, n, input ? ED_PIN_INPUT : ED_PIN_OUTPUT, p);
-        n->y -= HEAD + PAD + ((float)row + 0.5f) * ROW;
+        asetlen(s->graph.layouts, 0);
+        n->y -= pin_y(s, n, input ? ED_PIN_INPUT : ED_PIN_OUTPUT, p);
         if (!input) {
-            asetlen(s->graph.sizes, 0);
-            n->x -= node_size(s, n).w;
+            n->x -= layout_of(s, n)->w;
         }
         return;
     }
@@ -2711,7 +3148,7 @@ void studio_node_properties(studio *s)
     bool readonly = graph_readonly(s);
     kit_push(k, "identity", NULL, "identity");
     kit_push(k, "glyph", NULL, "glyph");
-    kit_icon(k, "icon", NULL, node_icon(n) ? node_icon(n) : KIT_ICON_HEXAGON);
+    kit_icon(k, "icon", NULL, node_icon(s, n) ? node_icon(s, n) : KIT_ICON_HEXAGON);
     kit_pop(k);
     kit_push(k, "who", NULL, "who");
     kit_label(k, "name", "title", ed_node_title(e, n, title, sizeof title));

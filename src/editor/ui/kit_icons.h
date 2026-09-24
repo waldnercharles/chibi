@@ -68,6 +68,10 @@ enum
     KIT_ICON_BRANCH = 0xf062c,      /* nf-md-source_branch */
     KIT_ICON_EXPRESSION = 0xf0169,  /* nf-md-code_braces */
     KIT_ICON_FIELD = 0xeb5f,        /* nf-cod-symbol_field */
+    KIT_ICON_COMPONENT = 0xf0a67,   /* nf-md-puzzle_outline */
+    KIT_ICON_VARIABLE = 0xea88,     /* nf-cod-symbol_variable */
+    KIT_ICON_LOCAL = 0xea92,        /* nf-cod-symbol_parameter */
+    KIT_ICON_TIMER = 0xf051b,       /* nf-md-timer_outline */
     KIT_ICON_TRIANGLE = 0xf0537,    /* nf-md-triangle_outline */
     KIT_ICON_HEXAGON = 0xf02d9,     /* nf-md-hexagon_outline */
     KIT_ICON_CLOUD = 0xf0163,       /* nf-md-cloud_outline */

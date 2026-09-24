@@ -38,22 +38,15 @@ typedef struct ar_curve
     arrange_point p3;
 } ar_curve;
 
-static float ar_pin_y(const arrange_box *b, int row)
-{
-    return b->title_height + b->pad + ((float)row + 0.5f) * b->row_height;
-}
-
 static arrange_point ar_link_start(const arrange_graph *g, const arrange_point *pos, const arrange_link *l)
 {
     const arrange_box *b = &g->boxes[l->from];
-    return (arrange_point){ pos[l->from].x + b->width,
-                            pos[l->from].y + ar_pin_y(b, l->from_pin) };
+    return (arrange_point){ pos[l->from].x + b->width, pos[l->from].y + l->from_y };
 }
 
-static arrange_point ar_link_end(const arrange_graph *g, const arrange_point *pos, const arrange_link *l)
+static arrange_point ar_link_end(const arrange_graph *, const arrange_point *pos, const arrange_link *l)
 {
-    return (arrange_point){ pos[l->to].x,
-                            pos[l->to].y + ar_pin_y(&g->boxes[l->to], l->to_pin) };
+    return (arrange_point){ pos[l->to].x, pos[l->to].y + l->to_y };
 }
 
 /* The canvas draws a wire without waypoints as one cubic whose handles grow
@@ -282,10 +275,10 @@ static bool ar_wire_hits_box(const arrange_point *points, const ar_wire *w, arra
 
 static bool ar_share_pin(const arrange_link *a, const arrange_link *b)
 {
-    if (a->from == b->from && a->from_pin == b->from_pin) {
+    if (a->from == b->from && a->from_y == b->from_y) {
         return true;
     }
-    return a->to == b->to && a->to_pin == b->to_pin;
+    return a->to == b->to && a->to_y == b->to_y;
 }
 
 static bool ar_link_touches(const arrange_link *l, int box)
@@ -1226,8 +1219,8 @@ static void ar_layout_component(
     }
     for (int i = 0; i < acount(edge_src); i++) {
         const arrange_link *l = &g->links[links[edge_link[i]]];
-        float from_anchor = ar_pin_y(&g->boxes[l->from], l->from_pin);
-        float to_anchor = ar_pin_y(&g->boxes[l->to], l->to_pin);
+        float from_anchor = l->from_y;
+        float to_anchor = l->to_y;
         int src = edge_src[i];
         int dst = edge_dst[i];
         float src_anchor = local[l->from] == src ? from_anchor : to_anchor;
@@ -1392,8 +1385,8 @@ void arrange_route(const arrange_graph *g, const arrange_point *pos, arrange_rou
         if (column[l->from] == column[l->to]) {
             continue;
         }
-        float from_anchor = ar_pin_y(&g->boxes[l->from], l->from_pin);
-        float to_anchor = ar_pin_y(&g->boxes[l->to], l->to_pin);
+        float from_anchor = l->from_y;
+        float to_anchor = l->to_y;
         corridor[i] = column[l->from] < column[l->to]
                         ? ar_ctx_link(&c, node_of[l->from], node_of[l->to], from_anchor, to_anchor)
                         : ar_ctx_link(&c, node_of[l->to], node_of[l->from], to_anchor, from_anchor);

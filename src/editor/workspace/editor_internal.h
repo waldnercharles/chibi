@@ -427,6 +427,7 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index);
 bool ed_binding_scope_available(const editor *e);
 bool ed_source_scope_available(const editor *e);
 const char *ed_binding_label(const editor *e, const pin_binding *binding, char *buf, size_t cap);
+const struct ecs_component_desc *ed_component_by_key(const char *key);
 bool ed_inline_source_for(const editor *e, const node *target, int index, node **source, int *source_pin);
 int ed_expand_inline_source(editor *e, node *target, int index);
 int ed_clear_input_source(editor *e, node *target, int index);

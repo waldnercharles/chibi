@@ -106,7 +106,7 @@ bool ed_binding_scope_available(const editor *e)
            e->asset->domain == BEHAVIOR_DOMAIN_EVENT;
 }
 
-static const ecs_component_desc *ed_component_by_key(const char *key)
+const ecs_component_desc *ed_component_by_key(const char *key)
 {
     if (!key) {
         return NULL;

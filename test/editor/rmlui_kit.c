@@ -402,11 +402,13 @@ bool test_rmlui_kit()
     }
     ok &= check(!kit_find(f.k, "layer/@toaster/t2", &removed), "toast expires");
 
-    /* Text measures in dp, independent of any canvas scale. */
-    float hello = kit_text_width(f.k, "Hello", 12, 400);
+    /* Text measures in dp, as drawn at a pixel ratio. */
+    float hello = kit_text_width(f.k, "Hello", 12, 400, 1);
     ok &= check(hello > 20 && hello < 40, "text measures in dp");
-    ok &= check(fabsf(kit_text_width(f.k, "Hello", 24, 400) - 2 * hello) < 2, "text width follows size");
-    ok &= check(kit_text_width(f.k, "Hello", 12, 700) > hello, "bold text is wider");
+    float large = kit_text_width(f.k, "Hello", 24, 400, 1);
+    ok &= check(fabsf(large / (2 * hello) - 1) < 0.1f, "text width follows size");
+    ok &= check(kit_text_width(f.k, "Hello", 12, 400, 2) == large / 2, "text measures as drawn at a ratio");
+    ok &= check(kit_text_width(f.k, "Hello", 12, 700, 1) > hello, "bold text is wider");
 
     /* A second context, like the zoomed graph canvas, comes and goes while the
        first keeps working. */

@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
     "Scene",  "Behavior", "Outliner",   "Properties",
     "Output", "Assets",   "Performance"

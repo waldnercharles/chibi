@@ -143,10 +143,10 @@ web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project . --port 8099
 
 format:
-	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target format --parallel $(JOBS)
+	sh tools/clang-format.sh
 
 check-format:
-	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target check-format --parallel $(JOBS)
+	sh tools/clang-format.sh --check
 
 test:
 	python3 test/web_serve_test.py

@@ -4,6 +4,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/event_catalog.h"
 #include "graph/document/events.h"
+#include "graph/nodes/component_nodes.h"
 #include "test/suite_internal.h"
 
 static pin_spec g_editor_float_outputs[] = {
@@ -691,6 +692,13 @@ static void check_library_search_snapshot()
     behavior_asset_free(catalog);
 }
 
+/* Behavior graphs offer Get Dash as a Get Component preset. */
+static bool get_dash(const ed_search_match *match)
+{
+    return match->desc == &NODE_GetComponent && match->component &&
+           !strcmp(match->component, "GAME.GameDash") && !match->field;
+}
+
 static void check_typed_wire_search()
 {
     behavior_asset *asset = behavior_asset_new("Typed wire search");
@@ -705,7 +713,7 @@ static void check_typed_wire_search()
         e->spawn_link_pin = (ed_pin_view){ target, ED_PIN_INPUT, 0, { 0, 0 } };
         ed_search_match *matches = ed_search_matches(e, "Get Dash");
         for (int i = 0; i < acount(matches); i++) {
-            behavior_match |= matches[i].desc == dash;
+            behavior_match |= get_dash(&matches[i]);
         }
         afree(matches);
         editor_set_ui_context(e, EDITOR_UI_CONTEXT_SYSTEM);
@@ -724,7 +732,7 @@ static void check_typed_wire_search()
         editor_set_ui_context(e, EDITOR_UI_CONTEXT_BEHAVIOR);
         ed_search_match *matches = ed_search_matches(e, "Get Dash");
         for (int i = 0; i < acount(matches); i++) {
-            if (matches[i].desc != dash) {
+            if (!get_dash(&matches[i])) {
                 continue;
             }
             for (int p = 0; p < ed_search_match_output_count(e, &matches[i]); p++) {
@@ -811,7 +819,9 @@ static void check_typed_wire_search()
         node *source = NULL;
         int source_pin = -1;
         retained = graph_input_source(retained_asset->graph, retained_target, 0, &source, &source_pin) &&
-                   source && source->desc == dash &&
+                   source &&
+                   component_node_getter(retained_asset->graph, source) == dash &&
+                   source->desc == &NODE_GetComponent &&
                    !graph_node_is_inline(retained_asset->graph, source) &&
                    source_pin >= 0 && source_pin < source->output_count &&
                    source->output_pins[source_pin].type == PIN_F32 &&
@@ -922,12 +932,108 @@ static void check_event_payload_repair()
     editor_free(e);
 }
 
+/* Browsing the catalog with no query: entries by kind. */
+static void component_catalog_counts(const editor *e, const char *label)
+{
+    ed_search_match *matches = ed_search_matches(e, "");
+    int access = 0, fields = 0, structural = 0, make_break = 0;
+    for (int i = 0; i < acount(matches); i++) {
+        const node_desc *d = matches[i].desc;
+        fields += d->component_kind == NODE_COMPONENT_SET_FIELD;
+        access += d->component_kind != NODE_COMPONENT_NONE &&
+                  d->component_kind != NODE_COMPONENT_SET_FIELD;
+        structural += !strncmp(d->name, "Add_", 4) || !strncmp(d->name, "Remove_", 7);
+        make_break += d->pure_kind == NODE_PURE_MAKE || d->pure_kind == NODE_PURE_BREAK;
+    }
+    printf(
+        "node catalog %s: %d entries; %d component access, %d field setters, "
+        "%d add/remove, %d make/break\n",
+        label,
+        acount(matches),
+        access,
+        fields,
+        structural,
+        make_break
+    );
+    afree(matches);
+}
+
+static node *spawn_first(editor *e, const char *query, const char *name)
+{
+    ed_search_match *matches = ed_search_matches(e, query);
+    bool found = acount(matches) && !strcmp(matches[0].name, name);
+    node *n = found ? ed_spawn_match(e, &matches[0]) : NULL;
+    afree(matches);
+    return n;
+}
+
+/* The catalog lists Get, Set and Has Component instead of generated
+ * per-component nodes; naming a component spawns a configured node. */
+static void check_component_search()
+{
+    behavior_asset *asset = behavior_asset_new("Component search");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    editor *e = editor_new(asset);
+    component_catalog_counts(e, "behavior");
+    ed_search_match *matches = ed_search_matches(e, "");
+    int component_nodes = 0, generated = 0;
+    for (int i = 0; i < acount(matches); i++) {
+        component_nodes += component_node_kind_of(matches[i].desc) &&
+                           !matches[i].component;
+        generated += matches[i].desc->component_kind != NODE_COMPONENT_NONE;
+    }
+    afree(matches);
+    test_check(component_nodes == 3 && !generated, "browsing lists three component nodes and no generated access nodes");
+    node *get = spawn_first(e, "Get Component", "Get Component");
+    test_check(
+        get && get->desc == &NODE_GetComponent && !component_node_component(get),
+        "the generic node spawns without a component"
+    );
+    node *velocity = spawn_first(e, "Set Velocity", "Set Velocity");
+    test_check(
+        velocity && velocity->desc == &NODE_SetComponent &&
+            !strcmp(component_node_key(velocity), "GAME.GameVelocity") &&
+            !component_node_split(velocity) &&
+            !strcmp(velocity->input_pins[3].type_name, "GameVelocity") &&
+            !strcmp(velocity->output_pins[1].type_name, "GameVelocity"),
+        "Set Velocity spawns Set Component writing Velocity"
+    );
+    node *x = spawn_first(e, "Set Velocity X", "Set Velocity X");
+    test_check(
+        x && component_node_split(x) && x->input_count == 4 &&
+            !strcmp(x->input_pins[3].name, "x") && x->input_pins[3].type == PIN_F32,
+        "Set Velocity X spawns Set Component showing only X"
+    );
+    node *health = spawn_first(e, "has health", "Has Health");
+    test_check(
+        health && health->desc == &NODE_HasComponent &&
+            !strcmp(component_node_key(health), "game.GameHealth"),
+        "Has Health spawns Has Component for Health"
+    );
+    node *transform = spawn_first(e, "get transform", "Get Transform");
+    test_check(
+        transform && !strcmp(transform->output_pins[0].type_name, "GameTransform") &&
+            (transform->output_pins[0].flags & PIN_FLAG_REFERENCE),
+        "Get Transform spawns Get Component reading Transform"
+    );
+    char title[256];
+    test_check(
+        transform &&
+            !strcmp(ed_node_title(e, transform, title, sizeof title), "Get Transform") &&
+            x && !strcmp(ed_node_title(e, x, title, sizeof title), "Set Velocity") &&
+            get && !strcmp(ed_node_title(e, get, title, sizeof title), "Get Component"),
+        "component nodes are titled by access and component"
+    );
+    editor_free(e);
+}
+
 void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
     editor_ui_initialize(false);
     check_linked_preview();
     check_search_catalog();
+    check_component_search();
     check_library_search_snapshot();
     check_field_preview();
     check_typed_wire_search();

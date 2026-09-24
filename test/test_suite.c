@@ -142,6 +142,7 @@ TEST_CASE(all_checks)
     test_retained_components();
     test_editor_flow();
     test_component_fields();
+    test_component_nodes();
     test_scene_navigation();
     test_scene_debug();
     test_appearance_geometry();
@@ -191,6 +192,11 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {
         return bench_graph_arrange(argc > 2 ? atoi(argv[2]) : 1, argc > 3 ? argv[3] : NULL);
+    }
+    if (argc > 1 && !strcmp(argv[1], "--component-nodes")) {
+        registry_validate();
+        test_component_nodes();
+        return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();

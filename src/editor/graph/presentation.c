@@ -3,6 +3,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "support/array.h"
 
@@ -197,8 +198,32 @@ float ed_node_body_padding(const node *)
     return ED_PAD;
 }
 
+/* Component nodes and the generated nodes they lower to read the same:
+ * the access, then the component. */
+static bool ed_component_title(const node *n, char *buf, size_t cap)
+{
+    node_component_kind generated = n->desc->component_kind;
+    component_node_kind kind = component_node_kind_of(n->desc);
+    const ecs_component_desc *component = component_node_component(n);
+    if ((!kind && generated == NODE_COMPONENT_NONE) || !component) {
+        return false;
+    }
+    bool has = kind == COMPONENT_NODE_HAS || generated == NODE_COMPONENT_HAS_SELF ||
+               generated == NODE_COMPONENT_HAS_ENTITY;
+    bool set = kind == COMPONENT_NODE_SET || generated == NODE_COMPONENT_SET_SELF ||
+               generated == NODE_COMPONENT_SET_ENTITY ||
+               generated == NODE_COMPONENT_SET_FIELD;
+    char label[128];
+    editor_component_label(component->name, label, sizeof label);
+    snprintf(buf, cap, "%s %s", has ? "Has" : set ? "Set" : "Get", label);
+    return true;
+}
+
 const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
 {
+    if (ed_component_title(n, buf, cap)) {
+        return buf;
+    }
     if (n->reference_name && !strcmp(n->desc->name, "Shader Parameter")) {
         snprintf(buf, cap, "%s", n->reference_name);
         return buf;

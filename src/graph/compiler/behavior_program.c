@@ -4,6 +4,7 @@
 #include "graph/compiler/behavior_jit.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/behavior_data.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"
@@ -493,6 +494,10 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
         if (entry->desc->flow_kind == NODE_FLOW_EVENT && entry->reference_name) {
             apush(program->events, entry);
         }
+    }
+    if (behavior_asset_has_component_nodes(asset)) {
+        diagnostic(program, NULL, NULL, -1, "component nodes must be lowered before publication");
+        return program;
     }
     compile_report report;
     compile_report_init(&report);

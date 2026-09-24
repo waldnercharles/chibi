@@ -8,6 +8,7 @@
  * holds for its whole lifetime (EXEC-19, RUN-20). */
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/instance_bank.h"
 #include "graph/runtime/value_array.h"
@@ -60,7 +61,8 @@ static int instance_blocked(behavior_instance *bi, flow_error *error)
         bi->compile_revision = rev;
     }
     if (!compile_report_blocked(&bi->compile)) {
-        if (bi->backend == BEHAVIOR_ORACLE) {
+        if (bi->backend == BEHAVIOR_ORACLE &&
+            !behavior_asset_has_component_nodes(bi->asset)) {
             return 0;
         }
         behavior_program *program = behavior_program_publish(bi->asset);

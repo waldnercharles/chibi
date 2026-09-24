@@ -1,6 +1,6 @@
 version: 3
 name: BumperKick
-id_counter: 1342
+id_counter: 1347
 owner_type: ecs.entity
 variables:
 - {id: 1, name: pulse, type: float}
@@ -22,8 +22,16 @@ graphs:
       Value: {type: float, type_name: null, default: 1.0}
     outputs:
       Value: {type: float, type_name: null}
-  - {id: 11, type: GetEntity_GameTransform}
-  - {id: 14, type: GetEntity_GameVelocity}
+  - id: 11
+    type: Get Component
+    inputs:
+      Component: {id: 1342, default: game.GameTransform}
+      Entity: {id: 12}
+  - id: 14
+    type: Get Component
+    inputs:
+      Component: {id: 1343, default: GAME.GameVelocity}
+      Entity: {id: 15}
   - {id: 17, type: Break_GameTransform}
   - {id: 21, type: Break_GameVelocity}
   - id: 91
@@ -46,7 +54,14 @@ graphs:
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
       Result: {flags: 2, group: 6}
-  - {id: 428, type: Set_GameVelocity_x}
+  - id: 428
+    type: Set Component
+    inputs:
+      Component: {id: 1344, default: GAME.GameVelocity}
+      Entity: {id: 431}
+      x: {id: 430}
+    outputs:
+      Then: {id: 432}
   - id: 566
     type: Behavior Expression
     reference_id: 500
@@ -67,7 +82,14 @@ graphs:
         binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
       Result: {flags: 2, group: 6}
-  - {id: 903, type: Set_GameVelocity_y}
+  - id: 903
+    type: Set Component
+    inputs:
+      Component: {id: 1345, default: GAME.GameVelocity}
+      Entity: {id: 906}
+      "y": {id: 905}
+    outputs:
+      Then: {id: 907}
   - id: 975
     type: Event
     reference_name: Tick
@@ -110,13 +132,20 @@ graphs:
         binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
     outputs:
       Result: {type: double, flags: 2, group: 2}
-  - {id: 1136, type: Set_GameAppearance_glow_radius}
+  - id: 1136
+    type: Set Component
+    inputs:
+      Component: {id: 1346, default: GAME.GameAppearance}
+      Entity: {id: 1139}
+      glow_radius: {id: 1138}
+    outputs:
+      Then: {id: 1140}
   edges:
   - {from: 2.Then, to: 6.Exec}
   - {from: 2.Other, to: 11.Entity}
   - {from: 2.Other, to: 14.Entity}
-  - {from: 2.Other, to: 428.Target}
-  - {from: 2.Other, to: 903.Target}
+  - {from: 2.Other, to: 428.Entity}
+  - {from: 2.Other, to: 903.Entity}
   - {from: 6.Then, to: 428.Exec}
   - {from: 11.Value, to: 17.GameTransform, conversion: game_transform_to_cf}
   - {from: 14.Value, to: 21.GameVelocity, conversion: game_transform_to_cf}
@@ -126,13 +155,13 @@ graphs:
   - {from: 17.y, to: 566.y}
   - {from: 21.x, to: 91.v}
   - {from: 21.y, to: 566.v}
-  - {from: 91.Result, to: 428.Value}
+  - {from: 91.Result, to: 428.x}
   - {from: 428.Then, to: 903.Exec}
-  - {from: 566.Result, to: 903.Value}
+  - {from: 566.Result, to: 903.y}
   - {from: 975.Then, to: 1060.Exec}
   - {from: 1004.Result, to: 1060.Value}
   - {from: 1060.Then, to: 1136.Exec}
-  - {from: 1112.Result, to: 1136.Value}
+  - {from: 1112.Result, to: 1136.glow_radius}
 - id: 25
   kind: function
   name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)

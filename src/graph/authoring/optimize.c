@@ -3,6 +3,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/eval.h"
 #include "support/arena.h"
@@ -71,15 +72,18 @@ static bool debug_state(const node *n)
     return false;
 }
 
-static bool component_getter(const node *n)
+const node_desc *graph_optimize_component_getter(const graph *g, const node *n)
 {
-    const node_desc *d = n->desc;
-    return d->binding_component && d->name && registry_node_by_name(d->name) == d &&
-           d->pure_kind == NODE_PURE_READ && d->read && !d->read_inputs &&
-           d->input_count == 0 && n->input_count == 0 && d->output_count == 1 &&
-           d->type && d->access && d->access->read_count == 1 &&
-           d->access->reads && d->access->write_count == 0 &&
-           d->access->flags == NODE_EFFECT_ENTITY_SCOPED;
+    const node_desc *d = component_node_getter(g, n);
+    bool valid = d && d->binding_component && d->name &&
+                 registry_node_by_name(d->name) == d &&
+                 d->pure_kind == NODE_PURE_READ && d->read && !d->read_inputs &&
+                 d->input_count == 0 && (n->desc != d || n->input_count == 0) &&
+                 d->output_count == 1 && d->type && d->access &&
+                 d->access->read_count == 1 && d->access->reads &&
+                 d->access->write_count == 0 &&
+                 d->access->flags == NODE_EFFECT_ENTITY_SCOPED;
+    return valid ? d : NULL;
 }
 
 static bool binding_domain(const graph *g)
@@ -97,12 +101,13 @@ static int direct_binding(
 )
 {
     const pin_spec *output = &source->output_pins[pin];
-    if (component_getter(source)) {
+    const node_desc *getter = graph_optimize_component_getter(g, source);
+    if (getter) {
         int aggregate = pin;
         const type_field *field = graph_output_field(source, pin, &aggregate);
         if (aggregate != 0 || (pin != 0 && !field) ||
             source->output_pins[0].type != PIN_STRUCT ||
-            !same_string(source->output_pins[0].type_name, source->desc->type->name)) {
+            !same_string(source->output_pins[0].type_name, getter->type->name)) {
             return GRAPH_OPTIMIZE_SEMANTICS;
         }
         pin_spec value = field ? (pin_spec){ .kind = PIN_DATA,
@@ -117,12 +122,12 @@ static int direct_binding(
             }
         } else if (conversion) {
             char unwrap[160];
-            snprintf(unwrap, sizeof unwrap, "Unwrap_%s", source->desc->type->name);
-            if (field || source->desc->type->field_count != 1 ||
+            snprintf(unwrap, sizeof unwrap, "Unwrap_%s", getter->type->name);
+            if (field || getter->type->field_count != 1 ||
                 conversion != registry_node_by_name(unwrap)) {
                 return GRAPH_OPTIMIZE_CONVERSION;
             }
-            field = &source->desc->type->fields[0];
+            field = &getter->type->fields[0];
             unwrap_conversion = true;
             value = (pin_spec){ .kind = PIN_DATA,
                                 .type = field->type,
@@ -135,7 +140,7 @@ static int direct_binding(
         }
         *binding = (pin_binding){ .kind = field ? PIN_BINDING_COMPONENT_FIELD
                                                 : PIN_BINDING_COMPONENT,
-                                  .component_key = source->desc->binding_component,
+                                  .component_key = getter->binding_component,
                                   .field_name = field ? field->name : NULL };
         return -1;
     }
@@ -231,7 +236,8 @@ static int collect_folds(graph *g, node *source, bool preserve_debug, fold **fol
         }
         /* Keep a structured getter edge intact until Break cleanup can convert
          * its scalar fields to nested component bindings. */
-        if (component_getter(source) && f.target->desc->pure_kind == NODE_PURE_BREAK &&
+        if (graph_optimize_component_getter(g, source) &&
+            f.target->desc->pure_kind == NODE_PURE_BREAK &&
             source->output_pins[f.source_pin].type == PIN_STRUCT) {
             return GRAPH_OPTIMIZE_SEMANTICS;
         }
@@ -384,7 +390,8 @@ static bool inline_self(graph *g, node *source, bool preserve_debug, graph_optim
 
 bool graph_fold_component_getter(graph *g, node *source)
 {
-    if (!g || g->flow_pause_count || !source || !component_getter(source)) {
+    if (!g || g->flow_pause_count || !source ||
+        !graph_optimize_component_getter(g, source)) {
         return false;
     }
     fold *folds = NULL;
@@ -406,8 +413,13 @@ static void skip(graph_optimize_report *report, const node *n, uint64_t pin, int
 static void local_name(const graph *g, const node *n, int pin, char *name, size_t size)
 {
     const char *source = n->output_pins[pin].name;
+    const ecs_component_desc *component = component_node_kind_of(n->desc)
+                                            ? component_node_component(n)
+                                            : NULL;
     if (!source || !strcmp(source, "Value") || !strcmp(source, "Result")) {
-        source = n->reference_name ? n->reference_name : n->desc->name;
+        source = component         ? component->name
+               : n->reference_name ? n->reference_name
+                                   : n->desc->name;
     }
     if (!strcmp(n->desc->name, "Spawn Prototype")) {
         source = "SpawnedEntity";
@@ -552,9 +564,9 @@ int graph_optimize(graph *g, const graph_optimize_options *requested, graph_opti
     }
     for (int i = 0; i < acount(ids); i++) {
         node *source = graph_node_by_id(g, ids[i]);
-        if (!component_getter(source) && source->desc != &NODE_GetVariable &&
-            source->desc != &NODE_DeltaTime && source->desc != &NODE_Self &&
-            source->desc != &NODE_SetVariable) {
+        if (!graph_optimize_component_getter(g, source) &&
+            source->desc != &NODE_GetVariable && source->desc != &NODE_DeltaTime &&
+            source->desc != &NODE_Self && source->desc != &NODE_SetVariable) {
             continue;
         }
         fold *folds = NULL;

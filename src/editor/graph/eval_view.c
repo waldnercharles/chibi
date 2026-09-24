@@ -3,6 +3,7 @@
 #include "graph/document/library.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/pin_fmt.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
@@ -100,6 +101,9 @@ void eval_view_set_catalog(eval_view *v, const behavior_asset *const *assets, in
 
 static bool requires_linking(const behavior_asset *asset)
 {
+    if (behavior_asset_has_component_nodes(asset)) {
+        return true;
+    }
     for (int i = 0; i < acount(asset->graphs); i++) {
         const graph *g = asset->graphs[i];
         for (int j = 0; j < acount(g->nodes); j++) {
@@ -111,7 +115,7 @@ static bool requires_linking(const behavior_asset *asset)
     return false;
 }
 
-static graph *preview_graph(eval_view *v, graph *g)
+graph *eval_view_graph(eval_view *v, graph *g)
 {
     if (!g->owner) {
         return g;
@@ -165,7 +169,7 @@ void eval_view_refresh(eval_view *v, graph *g)
                      g->owner->domain == BEHAVIOR_DOMAIN_FIELD)) {
         return;
     }
-    g = preview_graph(v, g);
+    g = eval_view_graph(v, g);
     if (!g) {
         return;
     }

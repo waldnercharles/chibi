@@ -5,6 +5,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/value_array.h"
 
@@ -784,12 +785,22 @@ const node_desc *graph_vector_constructor(const pin_spec *pin)
     return NULL;
 }
 
+/* A component node's Component setting names what it reads, which its chip
+ * shows, so it does not keep the node expanded once chosen. */
+static bool component_setting(const node *n, int pin)
+{
+    component_node_kind kind = component_node_kind_of(n->desc);
+    return kind && pin == component_node_setting(kind) && component_node_key(n)[0];
+}
+
 static bool inline_input(const graph *g, const node *n, int pin)
 {
     const pin_spec *spec = &n->input_pins[pin];
-    if (spec->kind != PIN_DATA || spec->type == PIN_FLOW ||
-        (spec->flags & PIN_FLAG_SETTING)) {
+    if (spec->kind != PIN_DATA || spec->type == PIN_FLOW) {
         return false;
+    }
+    if (spec->flags & PIN_FLAG_SETTING) {
+        return component_setting(n, pin);
     }
     if (input_edge(g, n, pin) || spec->binding ||
         (spec->flags & (PIN_FLAG_DEFAULT_SELF | PIN_FLAG_SERVICE))) {
@@ -1043,6 +1054,12 @@ int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_bi
         binding->component_key = source->desc->component->key;
         return 0;
     }
+    const node_desc *getter = component_node_getter(g, source);
+    if (getter && getter != source->desc) {
+        binding->kind = PIN_BINDING_COMPONENT;
+        binding->component_key = getter->component->key;
+        return 0;
+    }
     return -1;
 }
 
@@ -1219,6 +1236,14 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
     int count = output ? n->output_count : n->input_count;
     if (index < 0 || index >= count || p[index].kind != PIN_DATA) {
         return -1;
+    }
+    component_node_kind component = component_node_kind_of(n->desc);
+    if (!output && component && index == component_node_setting(component)) {
+        if (value->type != PIN_NAME || component_node_retarget(g, n, value->str)) {
+            return -1;
+        }
+        graph_changed(g);
+        return 0;
     }
     if ((p[index].flags & PIN_FLAG_WILDCARD) && p[index].type == PIN_FLOW) {
         if (graph_set_pin_type(g, n, output, index, value->type, value->type_name) != 0) {
@@ -1800,6 +1825,21 @@ int graph_split_pin(graph *g, node *n, int output, int index)
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
         return -1;
     }
+    /* Component nodes split into their field pins: Set writes each field it
+     * shows, and Get exposes fields beside Value. */
+    component_node_kind component = component_node_kind_of(n->desc);
+    if (component) {
+        if (index < 0 || index >= (output ? n->output_count : n->input_count)) {
+            return -1;
+        }
+        const pin_spec *pin = output ? &n->output_pins[index] : &n->input_pins[index];
+        if (pin->type != PIN_STRUCT || pin->field_source) {
+            return -1;
+        }
+        int result = output ? graph_expose_output_fields(g, n, index)
+                            : component_node_split_value(g, n, true);
+        return result ? -1 : index;
+    }
     pin_spec *pins = output ? n->output_pins : n->input_pins;
     int count = output ? n->output_count : n->input_count;
     if (index < 0 || index >= count || pins[index].kind != PIN_DATA ||
@@ -1870,6 +1910,16 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
         return -1;
+    }
+    component_node_kind component = component_node_kind_of(n->desc);
+    if (component) {
+        /* Set's field inputs, and Value, follow Exec, Component and Entity. */
+        int first = component_node_setting(component) + 2;
+        return !output && component_node_split(n) && index >= first &&
+                       index < n->input_count &&
+                       !component_node_split_value(g, n, false)
+                 ? first
+                 : -1;
     }
     pin_spec *pins = output ? n->output_pins : n->input_pins;
     int count = output ? n->output_count : n->input_count;

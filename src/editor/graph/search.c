@@ -11,6 +11,7 @@
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 
@@ -329,6 +330,73 @@ static void ed_add_search_match(
     }
 }
 
+static void ed_add_component_match(
+    const editor *e,
+    ed_search_match **matches,
+    const node_desc *desc,
+    const ecs_component_desc *component,
+    const char *field,
+    const char *filter
+)
+{
+    ed_search_match match = { .desc = desc,
+                              .component = component->key,
+                              .field = field,
+                              .category = desc->category };
+    char label[128], verb[32];
+    editor_component_label(component->name, label, sizeof label);
+    snprintf(verb, sizeof verb, "%.*s", (int)strcspn(desc->name, " "), desc->name);
+    snprintf(match.name, sizeof match.name, "%s %s", verb, label);
+    pin_spec inputs[4], outputs[2];
+    node_desc signature = *desc;
+    memcpy(inputs, desc->inputs, (size_t)desc->input_count * sizeof *inputs);
+    memcpy(outputs, desc->outputs, (size_t)desc->output_count * sizeof *outputs);
+    for (int i = 0; i < desc->input_count; i++) {
+        inputs[i].type_name = inputs[i].type == PIN_STRUCT ? component->type->name
+                                                           : inputs[i].type_name;
+    }
+    for (int i = 0; i < desc->output_count; i++) {
+        outputs[i].type_name = outputs[i].type == PIN_STRUCT ? component->type->name
+                                                             : outputs[i].type_name;
+    }
+    if (field) {
+        char name[128];
+        editor_identifier_label(field, name, sizeof name);
+        size_t used = strlen(match.name);
+        snprintf(match.name + used, sizeof match.name - used, " %s", name);
+        const type_field *f = pin_type_field_path(component->type, field);
+        inputs[desc->input_count - 1] = (pin_spec){ .name = f->name,
+                                                    .type = f->type,
+                                                    .type_name = f->type_name };
+    }
+    signature.inputs = inputs;
+    signature.outputs = outputs;
+    ed_add_search_match(e, matches, match, &signature, filter);
+}
+
+/* Get, Set and Has Component replace the generated per-component nodes. A
+ * query offers each component's presets, and Set one per settable field. */
+static void ed_search_components(const editor *e, ed_search_match **matches, const char *filter)
+{
+    const node_desc *access[] = { &NODE_GetComponent, &NODE_SetComponent, &NODE_HasComponent };
+    for (int i = 0; filter && filter[0] && i < registry_node_count(); i++) {
+        const node_desc *getter = registry_node(i);
+        if (getter->component_kind != NODE_COMPONENT_GET_SELF) {
+            continue;
+        }
+        const ecs_component_desc *component = getter->component;
+        for (int a = 0; a < 3; a++) {
+            ed_add_component_match(e, matches, access[a], component, NULL, filter);
+        }
+        for (int f = 0; f < component->type->field_count; f++) {
+            const char *field = component->type->fields[f].name;
+            if (component_field_settable(component, field)) {
+                ed_add_component_match(e, matches, &NODE_SetComponent, component, field, filter);
+            }
+        }
+    }
+}
+
 static void ed_search_host_events(const editor *e, ed_search_match **matches, const char *filter)
 {
     for (int i = 0; i < e->event_catalog_count; i++) {
@@ -428,7 +496,9 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     ed_search_match *matches = NULL;
     for (int i = -1; i < registry_node_count(); i++) {
         const node_desc *desc = i < 0 ? &ed_math_desc : registry_node(i);
-        if (desc == &NODE_GetVariable || desc == &NODE_SetVariable) {
+        bool generated_access = desc->component_kind != NODE_COMPONENT_NONE &&
+                                e->ui_context != EDITOR_UI_CONTEXT_SYSTEM;
+        if (desc == &NODE_GetVariable || desc == &NODE_SetVariable || generated_access) {
             continue;
         }
         ed_search_match match = { .desc = desc, .category = ed_desc_category(desc) };
@@ -453,6 +523,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
                                 .desc = &ed_comment_box_desc,
                                 .category = ed_desc_category(&ed_comment_box_desc) };
     ed_add_search_match(e, &matches, comment, &ed_comment_box_desc, filter);
+    ed_search_components(e, &matches, filter);
     bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
@@ -643,6 +714,16 @@ node *ed_spawn_match(editor *e, const ed_search_match *match)
         pin_value value = { .type = PIN_NAME, .str = match->prototype };
         graph_set_pin_default(g, n, 0, 1, &value);
     }
+    component_node_kind component = component_node_kind_of(match->desc);
+    if (match->component) {
+        pin_value key = { .type = PIN_NAME, .str = match->component };
+        int setting = component_node_setting(component);
+        if (graph_set_pin_default(g, n, 0, setting, &key) ||
+            (match->field && component_node_show_field(g, n, match->field, true))) {
+            graph_remove_node(g, n);
+            return NULL;
+        }
+    }
     return n;
 }
 
@@ -694,6 +775,10 @@ static bool ed_search_match_base_output(
         return false;
     }
     *output = match->desc->outputs[index];
+    const ecs_component_desc *component = component_by_key(match->component);
+    if (component && output->type == PIN_STRUCT) {
+        output->type_name = component->type->name;
+    }
     if (match->desc == &NODE_Self && index == 0) {
         if (!e->asset->owner_type_name) {
             return false;
@@ -919,6 +1004,33 @@ void ed_draw_extract_popup(editor *e)
     ImGui_EndPopup();
 }
 
+/* Set Component writes its whole Value or the fields it shows. */
+static void ed_draw_write_menu(editor *e, node *n)
+{
+    const ecs_component_desc *component = component_node_component(n);
+    bool split = component_node_split(n);
+    if (ImGui_MenuItemEx("Value", NULL, !split, split)) {
+        ed_snapshot_before(e);
+        component_node_split_value(e->active_graph, n, false);
+    }
+    for (int i = 0; i < component->type->field_count; i++) {
+        const char *field = component->type->fields[i].name;
+        if (!component_field_settable(component, field)) {
+            continue;
+        }
+        bool shown = false;
+        for (int p = 0; split && p < n->input_count; p++) {
+            shown |= !strcmp(n->input_pins[p].name, field);
+        }
+        char label[128];
+        editor_identifier_label(field, label, sizeof label);
+        if (ImGui_MenuItemEx(label, NULL, shown, true)) {
+            ed_snapshot_before(e);
+            component_node_show_field(e->active_graph, n, field, !shown);
+        }
+    }
+}
+
 void ed_handle_popups(editor *e)
 {
     if (e->active_graph->math_expression) {
@@ -1074,6 +1186,11 @@ void ed_handle_popups(editor *e)
         editor_ui_track_item("graph.node.inline");
         if (n && ed_field_output(n) >= 0 && ImGui_BeginMenu("Fields")) {
             ed_draw_fields_menu(e, n);
+            ImGui_EndMenu();
+        }
+        if (n && component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
+            component_node_component(n) && ImGui_BeginMenu("Write")) {
+            ed_draw_write_menu(e, n);
             ImGui_EndMenu();
         }
         if (ImGui_MenuItem("Delete")) {

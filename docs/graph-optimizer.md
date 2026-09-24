@@ -1,7 +1,8 @@
 # Graph readability optimizer
 
-Optimize graph folds exact component getters, variable reads, proven Set Variable
-outputs, Delta Time, and Self inputs. Fanout of three or more uses becomes a
+Optimize graph folds exact component getters, including a Get Component that
+reads Self, variable reads, proven Set Variable outputs, Delta Time, and Self
+inputs. Fanout of three or more uses becomes a
 graph local when it cannot be folded directly. Locals are named indirections to
 existing outputs; they never add persistent variables or execution steps.
 

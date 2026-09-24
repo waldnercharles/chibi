@@ -1,6 +1,7 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
@@ -201,14 +202,25 @@ static void write_listed_pins(
     yyjson_mut_obj_add_val(doc, o, key, arr);
 }
 
+/* A component node's template follows its Component setting. */
+static int keyed_template_count(const node *n, int output)
+{
+    return component_node_kind_of(n->desc) ? component_node_template_count(n, output)
+         : output ? n->desc->output_count
+                  : n->desc->input_count;
+}
+
 /* The pin a keyed entry starts from: its template pin, the exposed field it
- * names, or the extension template under its key. */
+ * names, a component field input, or the extension template under its key. */
 static bool keyed_baseline(const node *n, int output, int index, pin_spec *out)
 {
-    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    int template_count = keyed_template_count(n, output);
     const pin_spec *pin = output ? &n->output_pins[index] : &n->input_pins[index];
+    bool component = component_node_kind_of(n->desc);
     if (index < template_count) {
-        *out = output ? n->desc->outputs[index] : n->desc->inputs[index];
+        *out = component ? component_node_template(n, output, index)
+             : output    ? n->desc->outputs[index]
+                         : n->desc->inputs[index];
         return true;
     }
     int source = -1;
@@ -219,6 +231,9 @@ static bool keyed_baseline(const node *n, int output, int index, pin_spec *out)
         *out = graph_field_pin(n, source, field);
         return true;
     }
+    if (component) {
+        return !output && component_node_field_pin(n, pin->name, out);
+    }
     *out = *serialize_pin_template(n->desc, output, index);
     out->name = pin->name;
     return !pin->field_source && pin->name && !strchr(pin->name, '.');
@@ -226,7 +241,7 @@ static bool keyed_baseline(const node *n, int output, int index, pin_spec *out)
 
 static bool keyed_side(const node *n, int output)
 {
-    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    int template_count = keyed_template_count(n, output);
     int count = output ? n->output_count : n->input_count;
     if (count < template_count) {
         return false;
@@ -263,7 +278,7 @@ static void write_keyed_pins(
     uint64_t *next_id
 )
 {
-    int template_count = output ? n->desc->output_count : n->desc->input_count;
+    int template_count = keyed_template_count(n, output);
     int count = output ? n->output_count : n->input_count;
     const pin_spec *pins = output ? n->output_pins : n->input_pins;
     yyjson_mut_val *map = yyjson_mut_obj(doc);

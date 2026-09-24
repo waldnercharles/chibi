@@ -1390,9 +1390,10 @@ scalar constants remain editable on the node.
 
 Pure sources are drawn inside their consumer's input by default. A node folds
 when it is pure and enabled; is not a function call, reroute, or local source;
-has no setting pins; has exactly one outgoing wire, a data wire into a
-non-setting input; and each input is wired from a folded node or holds a value
-(a literal, binding, local, or implied Self). `graph_node_is_inline` decides
+has no setting pins besides a component node's chosen Component; has exactly
+one outgoing wire, a data wire into a non-setting input; and each input is
+wired from a folded node or holds a value (a literal, binding, local, or
+implied Self). `graph_node_is_inline` decides
 this for the canvas, arrangement, extraction, copying, and saving. Trees of up
 to three nodes fold into one chip written in Behavior Expression syntax, such
 as `elapsed >= Self.GameWeapon.cooldown`. Nodes with breakpoints or watches, and

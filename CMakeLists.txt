@@ -312,6 +312,7 @@ set(BASE_REGISTRY_PACKS
     CORE_REROUTE_PACK
     CORE_SET_MAP_PACK
     CORE_STRUCT_PACK
+    CORE_COMPONENT_PACK
 )
 chibi_registry("${BASE_REGISTRY}" ${BASE_REGISTRY_PACKS})
 
@@ -464,6 +465,7 @@ set(APP_REGISTRY_PACKS
     CORE_REROUTE_PACK
     CORE_SET_MAP_PACK
     CORE_STRUCT_PACK
+    CORE_COMPONENT_PACK
 )
 chibi_registry("${APP_REGISTRY}" ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
@@ -733,29 +735,6 @@ set_target_properties(query_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 add_executable(contact_benchmark test/contact_benchmark.c ${APP_REGISTRY})
 target_link_libraries(contact_benchmark PRIVATE runtime_support ecs)
 set_target_properties(contact_benchmark PROPERTIES LINKER_LANGUAGE CXX)
-
-# --- explicit formatting checks -------------------------------------------
-# The web toolchain's clang-format may not understand the project's native
-# configuration. Formatting is a native developer check, not a web dependency.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  find_program(CLANG_FORMAT clang-format)
-endif()
-if(CLANG_FORMAT)
-  file(GLOB_RECURSE FORMAT_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/*.c ${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.c ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h
-  )
-  add_custom_target(format
-    COMMAND ${CLANG_FORMAT} --style=file -i ${FORMAT_SOURCES}
-    COMMENT "Formatting C sources"
-    VERBATIM)
-  add_custom_target(check-format
-    COMMAND ${CLANG_FORMAT} --dry-run --Werror --style=file ${FORMAT_SOURCES}
-    COMMENT "Checking C source formatting"
-    VERBATIM)
-endif()
 
 file(
     CREATE_LINK

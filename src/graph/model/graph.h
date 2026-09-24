@@ -157,7 +157,8 @@ int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_bi
  * that evaluation uses unchanged; the canvas, arrangement, extraction and
  * serialization share this predicate.
  * An inline node is pure, enabled, not a function call, reroute or local
- * source, has no setting pins, has exactly one outgoing edge (a data wire),
+ * source, has no setting pins besides a chosen Component, has exactly one
+ * outgoing edge (a data wire),
  * and each input is wired from an inline node or holds a value. The `auto`
  * presentation also requires a tree of at most GRAPH_INLINE_AUTO_NODES nodes
  * without breakpoints or watches, outside generated expression graphs. */

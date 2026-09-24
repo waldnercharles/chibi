@@ -3,6 +3,7 @@
 #include "graph/model/pin_conv.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -193,33 +194,37 @@ static void put_arguments(text *t, const graph *g, const node *n)
     put(t, ")");
 }
 
-/* Reflected component reads, `Get_<Type>` of Self and `GetEntity_<Type>` of
- * an entity, read like their bindings. */
+/* Component reads, generated or configured, read like their bindings:
+ * `Self.GameHealth.current`, and `has(Self.GameDash)` for presence. */
 static bool put_component(text *t, const graph *g, const node *n, int output)
 {
-    const node_desc *desc = n->desc;
-    const char *name = desc->name;
-    size_t prefix = !strncmp(name, "Get_", 4)        ? 4
-                  : !strncmp(name, "GetEntity_", 10) ? 10
-                                                     : 0;
-    if (!prefix || !desc->type || strcmp(name + prefix, desc->type->name)) {
+    const ecs_component_desc *component = component_node_component(n);
+    component_node_kind kind = component_node_kind_of(n->desc);
+    node_component_kind access = n->desc->component_kind;
+    bool has = kind == COMPONENT_NODE_HAS || access == NODE_COMPONENT_HAS_SELF ||
+               access == NODE_COMPONENT_HAS_ENTITY;
+    bool get = kind == COMPONENT_NODE_GET || access == NODE_COMPONENT_GET_SELF ||
+               access == NODE_COMPONENT_GET_ENTITY;
+    if (!component || !(get || has)) {
         return false;
     }
     int entity = -1;
     for (int p = 0; p < n->input_count && entity < 0; p++) {
         entity = n->input_pins[p].type == PIN_HANDLE ? p : -1;
     }
+    put(t, has ? "has(" : "");
     if (entity >= 0) {
         put_input(t, g, n, entity, ATOM_BINDING);
     } else {
         put(t, "Self");
     }
     put(t, ".");
-    put(t, desc->type->name);
-    if (n->output_pins[output].field_source && n->output_pins[output].name) {
+    put(t, component->name);
+    if (get && n->output_pins[output].field_source && n->output_pins[output].name) {
         put(t, ".");
         put(t, n->output_pins[output].name);
     }
+    put(t, has ? ")" : "");
     return true;
 }
 
@@ -240,6 +245,10 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put(t, spelling);
         put(t, " ");
         put_input(t, g, n, 1, binding + !right);
+        return;
+    }
+    /* Before literals: component nodes leave pure_kind at its default. */
+    if (put_component(t, g, n, output)) {
         return;
     }
     if (desc->pure_kind == NODE_PURE_SELF) {
@@ -263,9 +272,6 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         } else {
             put_value(t, &n->output_pins[output], &n->output_pins[output].default_value);
         }
-        return;
-    }
-    if (put_component(t, g, n, output)) {
         return;
     }
     /* Named sources such as shader parameters read as their name. */

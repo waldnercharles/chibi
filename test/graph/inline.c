@@ -1,6 +1,7 @@
 #include "graph/authoring/layout.h"
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "support/asset_text.h"
 #include "test/suite_internal.h"
 
@@ -378,6 +379,29 @@ static void formatting()
     test_check(
         graph_node_is_inline(g, getter) && formats(g, sum, "Self.GameMovement.speed + 2"),
         "component field reads format like their bindings"
+    );
+
+    node *read = add(g, "Get Component");
+    assert(component_node_retarget(g, read, GAME_COMPONENT_GameMovement.key) == 0);
+    assert(graph_expose_output_fields(g, read, 0) == 0);
+    field = -1;
+    for (int p = 0; p < read->output_count; p++) {
+        const char *name = read->output_pins[p].name;
+        field = name && !strcmp(name, "speed") ? p : field;
+    }
+    assert(field >= 0);
+    node *scaled_read = add(g, "Multiply");
+    wire(g, read, field, scaled_read, 0);
+    wire(g, real(g, 2), 0, scaled_read, 1);
+    node *has = add(g, "Has Component");
+    assert(component_node_retarget(g, has, GAME_COMPONENT_GameMovement.key) == 0);
+    node *missing = add(g, "Not");
+    wire(g, has, 0, missing, 0);
+    test_check(
+        graph_node_is_inline(g, read) && graph_node_is_inline(g, has) &&
+            formats(g, scaled_read, "Self.GameMovement.speed * 2") &&
+            formats(g, missing, "!has(Self.GameMovement)"),
+        "configured component reads fold despite their Component setting"
     );
     behavior_asset_free(asset);
 }

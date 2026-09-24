@@ -96,6 +96,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/set_map_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/state_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/struct_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/component_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/switch_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/eval.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/flow.c

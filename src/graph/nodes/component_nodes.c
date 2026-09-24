@@ -24,6 +24,16 @@
         }                                                                             \
     }
 
+#define TYPE_PIN                                                               \
+    {                                                                          \
+        .name = "Type", .type = PIN_NAME, .flags = PIN_FLAG_SETTING,           \
+        .default_value = {                                                     \
+            .type = PIN_NAME                                                   \
+        }                                                                      \
+    }
+#define EXEC_PIN { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC }
+#define THEN_PIN { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC }
+
 /* Set's Value input follows Exec, Component and Entity. */
 enum
 {
@@ -33,12 +43,14 @@ enum
 static pin_spec get_inputs[] = { SETTING_PIN, ENTITY_PIN };
 static pin_spec get_outputs[] = { VALUE_PIN(PIN_FLAG_REFERENCE) };
 static pin_spec has_outputs[] = { { .name = "Value", .type = PIN_BOOL, .type_name = "bool" } };
-static pin_spec set_inputs[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-                                 SETTING_PIN,
-                                 ENTITY_PIN,
-                                 VALUE_PIN(0) };
-static pin_spec set_outputs[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
-                                  VALUE_PIN(0) };
+static pin_spec set_inputs[] = { EXEC_PIN, SETTING_PIN, ENTITY_PIN, VALUE_PIN(0) };
+static pin_spec set_outputs[] = { THEN_PIN, VALUE_PIN(0) };
+static pin_spec add_inputs[] = { EXEC_PIN, SETTING_PIN };
+static pin_spec add_outputs[] = { THEN_PIN,
+                                  { .name = "Value", .type = PIN_BOOL, .type_name = "bool" } };
+static pin_spec make_inputs[] = { TYPE_PIN };
+static pin_spec make_outputs[] = { VALUE_PIN(0) };
+static pin_spec break_inputs[] = { VALUE_PIN(0), TYPE_PIN };
 
 node_desc NODE_GetComponent = {
     .name = "Get Component",
@@ -71,9 +83,51 @@ node_desc NODE_HasComponent = {
     .keywords = "component present exists check entity self",
 };
 
-static node_desc *const COMPONENT_NODES[] = { &NODE_GetComponent,
-                                              &NODE_SetComponent,
-                                              &NODE_HasComponent };
+node_desc NODE_AddComponent = {
+    .name = "Add Component",
+    .input_count = 2,
+    .inputs = add_inputs,
+    .output_count = 2,
+    .outputs = add_outputs,
+    .display_class = NODE_DISPLAY_FUNCTION,
+    .category = "Components",
+    .keywords = "component add attach insert self",
+};
+
+node_desc NODE_RemoveComponent = {
+    .name = "Remove Component",
+    .input_count = 2,
+    .inputs = add_inputs,
+    .output_count = 2,
+    .outputs = add_outputs,
+    .display_class = NODE_DISPLAY_FUNCTION,
+    .category = "Components",
+    .keywords = "component remove detach delete self",
+};
+
+node_desc NODE_MakeStruct = {
+    .name = "Make Struct",
+    .input_count = 1,
+    .inputs = make_inputs,
+    .output_count = 1,
+    .outputs = make_outputs,
+    .category = "Struct",
+    .keywords = "make struct construct build value fields",
+};
+
+node_desc NODE_BreakStruct = {
+    .name = "Break Struct",
+    .input_count = 2,
+    .inputs = break_inputs,
+    .category = "Struct",
+    .keywords = "break struct split fields members",
+};
+
+static node_desc *const COMPONENT_NODES[] = {
+    &NODE_GetComponent, &NODE_SetComponent,    &NODE_HasComponent,
+    &NODE_AddComponent, &NODE_RemoveComponent, &NODE_MakeStruct,
+    &NODE_BreakStruct,
+};
 
 const registry_pack CORE_COMPONENT_PACK = {
     .name = "core.component",
@@ -83,22 +137,38 @@ const registry_pack CORE_COMPONENT_PACK = {
 
 component_node_kind component_node_kind_of(const node_desc *desc)
 {
-    return desc == &NODE_GetComponent ? COMPONENT_NODE_GET
-         : desc == &NODE_SetComponent ? COMPONENT_NODE_SET
-         : desc == &NODE_HasComponent ? COMPONENT_NODE_HAS
-                                      : COMPONENT_NODE_NONE;
+    for (int kind = COMPONENT_NODE_GET; kind <= COMPONENT_NODE_BREAK; kind++) {
+        if (desc == COMPONENT_NODES[kind - 1]) {
+            return (component_node_kind)kind;
+        }
+    }
+    return COMPONENT_NODE_NONE;
 }
 
-int component_node_setting(component_node_kind kind)
+/* Add, Remove, Make and Break become one generated node with the same pins. */
+static bool direct(component_node_kind kind)
 {
+    return kind >= COMPONENT_NODE_ADD;
+}
+
+static bool structural(component_node_kind kind)
+{
+    return kind == COMPONENT_NODE_MAKE || kind == COMPONENT_NODE_BREAK;
+}
+
+int component_node_setting(const node *n)
+{
+    component_node_kind kind = component_node_kind_of(n->desc);
     assert(kind != COMPONENT_NODE_NONE);
-    return kind == COMPONENT_NODE_SET;
+    return kind == COMPONENT_NODE_GET || kind == COMPONENT_NODE_HAS ? 0
+         : kind == COMPONENT_NODE_SET ? 1
+                                      : n->input_count - 1;
 }
 
 const char *component_node_key(const node *n)
 {
-    int setting = component_node_setting(component_node_kind_of(n->desc));
-    assert(setting < n->input_count);
+    int setting = component_node_setting(n);
+    assert(setting >= 0 && setting < n->input_count);
     const char *key = n->input_pins[setting].default_value.str;
     return key ? key : "";
 }
@@ -117,12 +187,99 @@ const ecs_component_desc *component_by_key(const char *key)
     return NULL;
 }
 
+/* The generated node an Add, Remove, Make or Break node with this key becomes. */
+static const node_desc *direct_target(component_node_kind kind, const char *key)
+{
+    assert(direct(kind));
+    if (!key || !key[0]) {
+        return NULL;
+    }
+    if (structural(kind)) {
+        node_pure_kind pure = kind == COMPONENT_NODE_MAKE ? NODE_PURE_MAKE
+                                                          : NODE_PURE_BREAK;
+        for (int i = 0; i < registry_node_count(); i++) {
+            const node_desc *d = registry_node(i);
+            if (d->pure_kind == pure && d->type && !strcmp(d->type->name, key)) {
+                return d;
+            }
+        }
+        return NULL;
+    }
+    const ecs_component_desc *component = component_by_key(key);
+    char name[160];
+    if (!component) {
+        return NULL;
+    }
+    snprintf(
+        name,
+        sizeof name,
+        "%s_%s",
+        kind == COMPONENT_NODE_ADD ? "Add" : "Remove",
+        component->name
+    );
+    return registry_node_by_name(name);
+}
+
+component_node_kind component_generated_kind(const node_desc *d)
+{
+    switch (d->component_kind) {
+        case NODE_COMPONENT_GET_SELF:
+        case NODE_COMPONENT_GET_ENTITY: return COMPONENT_NODE_GET;
+        case NODE_COMPONENT_HAS_SELF:
+        case NODE_COMPONENT_HAS_ENTITY: return COMPONENT_NODE_HAS;
+        case NODE_COMPONENT_SET_SELF:
+        case NODE_COMPONENT_SET_ENTITY:
+        case NODE_COMPONENT_SET_FIELD: return COMPONENT_NODE_SET;
+        case NODE_COMPONENT_NONE: break;
+    }
+    if (d->type && d->pure_kind == NODE_PURE_MAKE) {
+        return COMPONENT_NODE_MAKE;
+    }
+    if (d->type && d->pure_kind == NODE_PURE_BREAK) {
+        return COMPONENT_NODE_BREAK;
+    }
+    /* Reflection names structural component nodes Add_<C> and Remove_<C>. */
+    if (!strncmp(d->name, "Add_", 4) && component_by_key(d->name + 4)) {
+        return COMPONENT_NODE_ADD;
+    }
+    if (!strncmp(d->name, "Remove_", 7) && component_by_key(d->name + 7)) {
+        return COMPONENT_NODE_REMOVE;
+    }
+    return COMPONENT_NODE_NONE;
+}
+
+const char *component_node_canonical_key(component_node_kind kind, const char *key)
+{
+    if (structural(kind)) {
+        const node_desc *target = direct_target(kind, key);
+        return target ? target->type->name : NULL;
+    }
+    const ecs_component_desc *component = component_by_key(key);
+    return component ? component->key : NULL;
+}
+
 const ecs_component_desc *component_node_component(const node *n)
 {
-    if (component_node_kind_of(n->desc)) {
-        return component_by_key(component_node_key(n));
+    component_node_kind kind = component_node_kind_of(n->desc);
+    if (kind) {
+        return structural(kind) ? NULL : component_by_key(component_node_key(n));
     }
     return n->desc->component_kind != NODE_COMPONENT_NONE ? n->desc->component : NULL;
+}
+
+const node_desc *component_node_struct(const node *n)
+{
+    component_node_kind kind = component_node_kind_of(n->desc);
+    if (kind) {
+        return structural(kind) ? direct_target(kind, component_node_key(n)) : NULL;
+    }
+    return structural(component_generated_kind(n->desc)) ? n->desc : NULL;
+}
+
+const node_desc *component_node_shape(const node_desc *desc, const char *key)
+{
+    component_node_kind kind = component_node_kind_of(desc);
+    return direct(kind) ? direct_target(kind, key) : NULL;
 }
 
 static const node_desc *access_desc(const ecs_component_desc *component, node_component_kind kind, int field)
@@ -224,18 +381,88 @@ static int hide_exposed_outputs(graph *g, node *n)
     return 0;
 }
 
+static bool same_pins(const pin_spec *pins, int count, const pin_spec *shape, int shape_count)
+{
+    if (count != shape_count) {
+        return false;
+    }
+    for (int i = 0; i < count; i++) {
+        const pin_spec *a = &pins[i], *b = &shape[i];
+        if (a->kind != b->kind || a->type != b->type || a->container != b->container ||
+            !(a->name == b->name || (a->name && b->name && !strcmp(a->name, b->name))) ||
+            !(a->type_name == b->type_name ||
+              (a->type_name && b->type_name && !strcmp(a->type_name, b->type_name)))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* An Add, Remove, Make or Break node has its target's pins, then its setting;
+ * without a target, its template's. Unchanged shapes keep their wires. */
+static int reshape_direct(graph *g, node *n, const node_desc *target)
+{
+    const node_desc *shape = target ? target : n->desc;
+    int inputs = target ? target->input_count : n->desc->input_count - 1;
+    int outputs = 0;
+    while (outputs < n->output_count && !n->output_pins[outputs].field_source) {
+        outputs++;
+    }
+    if (same_pins(n->input_pins, n->input_count - 1, shape->inputs, inputs) &&
+        same_pins(n->output_pins, outputs, shape->outputs, shape->output_count)) {
+        return 0;
+    }
+    if (hide_exposed_outputs(g, n)) {
+        return -1;
+    }
+    while (n->output_count) {
+        if (graph_remove_pin(g, n, 1, n->output_count - 1)) {
+            return -1;
+        }
+    }
+    while (n->input_count > 1) {
+        if (graph_remove_pin(g, n, 0, 0)) {
+            return -1;
+        }
+    }
+    for (int i = 0; i < inputs; i++) {
+        if (graph_add_pin(g, n, 0, &shape->inputs[i]) < 0) {
+            return -1;
+        }
+    }
+    for (int i = 0; i < shape->output_count; i++) {
+        if (graph_add_pin(g, n, 1, &shape->outputs[i]) < 0) {
+            return -1;
+        }
+    }
+    return graph_move_pin(g, n, 0, 0, n->input_count - 1) < 0 ? -1 : 0;
+}
+
+static void store_key(graph *g, node *n, const char *key)
+{
+    const char *stored = key ? key : "";
+    n->input_pins[component_node_setting(n)]
+        .default_value.str = graph_own_str(g, stored, strlen(stored));
+}
+
 int component_node_retarget(graph *g, node *n, const char *key)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
     assert(kind != COMPONENT_NODE_NONE);
-    const ecs_component_desc *component = component_by_key(key);
-    if (key && key[0] && !component) {
+    const char *canonical = component_node_canonical_key(kind, key);
+    if (key && key[0] && !canonical) {
         return -1;
     }
+    if (direct(kind)) {
+        if (reshape_direct(g, n, direct_target(kind, canonical))) {
+            return -1;
+        }
+        store_key(g, n, canonical);
+        return 0;
+    }
+    const ecs_component_desc *component = component_by_key(canonical);
     const ecs_component_desc *previous = component_node_component(n);
-    pin_spec *setting = &n->input_pins[component_node_setting(kind)];
-    const char *stored = component ? component->key : "";
-    setting->default_value.str = graph_own_str(g, stored, strlen(stored));
+    store_key(g, n, canonical);
     if (component != previous && hide_exposed_outputs(g, n)) {
         return -1;
     }
@@ -319,25 +546,51 @@ int component_node_split_value(graph *g, node *n, bool split)
 
 int component_node_prepare(graph *g, node *n, const char *key, bool split)
 {
-    const ecs_component_desc *component = component_by_key(key);
-    if (key && key[0] && !component) {
+    component_node_kind kind = component_node_kind_of(n->desc);
+    const char *canonical = component_node_canonical_key(kind, key);
+    if (key && key[0] && !canonical) {
         return -1;
+    }
+    if (direct(kind)) {
+        if (reshape_direct(g, n, direct_target(kind, canonical))) {
+            return -1;
+        }
+        store_key(g, n, canonical);
+        return 0;
     }
     if (split && graph_remove_pin(g, n, 0, SET_VALUE)) {
         return -1;
     }
-    type_values(g, n, component);
+    type_values(g, n, component_by_key(canonical));
+    store_key(g, n, canonical);
     return 0;
 }
 
 int component_node_template_count(const node *n, int output)
 {
+    component_node_kind kind = component_node_kind_of(n->desc);
+    const node_desc *target = direct(kind)
+                                ? direct_target(kind, component_node_key(n))
+                                : NULL;
+    if (target) {
+        return output ? target->output_count : target->input_count + 1;
+    }
     int count = output ? n->desc->output_count : n->desc->input_count;
     return !output && component_node_split(n) ? count - 1 : count;
 }
 
 pin_spec component_node_template(const node *n, int output, int index)
 {
+    component_node_kind kind = component_node_kind_of(n->desc);
+    const node_desc *target = direct(kind)
+                                ? direct_target(kind, component_node_key(n))
+                                : NULL;
+    if (target) {
+        return output ? target->outputs[index]
+             : index < target->input_count
+                 ? target->inputs[index]
+                 : n->desc->inputs[n->desc->input_count - 1];
+    }
     pin_spec pin = output ? n->desc->outputs[index] : n->desc->inputs[index];
     if (pin.type == PIN_STRUCT) {
         const ecs_component_desc *component = component_node_component(n);
@@ -428,7 +681,64 @@ static bool entity_given(const graph *g, const node *n, int pin)
 bool component_node_self(const graph *g, const node *n)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
-    return kind && !entity_given(g, n, component_node_setting(kind) + 1);
+    return kind && !direct(kind) &&
+           !entity_given(g, n, component_node_setting(n) + 1);
+}
+
+/* Get, Set and Has read the owner or an explicit entity. */
+static node_component_kind access_kind(component_node_kind kind, bool given)
+{
+    return kind == COMPONENT_NODE_GET
+             ? (given ? NODE_COMPONENT_GET_ENTITY : NODE_COMPONENT_GET_SELF)
+         : kind == COMPONENT_NODE_HAS
+             ? (given ? NODE_COMPONENT_HAS_ENTITY : NODE_COMPONENT_HAS_SELF)
+             : (given ? NODE_COMPONENT_SET_ENTITY : NODE_COMPONENT_SET_SELF);
+}
+
+const node_desc *component_node_target(const graph *g, const node *n)
+{
+    component_node_kind kind = component_node_kind_of(n->desc);
+    if (!kind) {
+        return n->desc;
+    }
+    if (direct(kind)) {
+        return direct_target(kind, component_node_key(n));
+    }
+    const ecs_component_desc *component = component_node_component(n);
+    if (!component) {
+        return NULL;
+    }
+    if (component_node_split(n)) {
+        int field = n->input_count > SET_VALUE
+                      ? field_index(component->type, n->input_pins[SET_VALUE].name)
+                      : -1;
+        return access_desc(component, NODE_COMPONENT_SET_FIELD, field);
+    }
+    bool given = entity_given(g, n, component_node_setting(n) + 1);
+    return access_desc(component, access_kind(kind, given), 0);
+}
+
+bool component_node_access(const node *n, const char **verb, const char **name)
+{
+    static const char *const verbs[] = { NULL,  "Get",    "Set",  "Has",
+                                         "Add", "Remove", "Make", "Break" };
+    component_node_kind kind = component_node_kind_of(n->desc);
+    bool authored = kind != COMPONENT_NODE_NONE;
+    kind = authored ? kind : component_generated_kind(n->desc);
+    if (!kind) {
+        return false;
+    }
+    const node_desc *made = component_node_struct(n);
+    const ecs_component_desc *component = structural(kind) ? NULL
+                                        : authored ? component_node_component(n)
+                                        : n->desc->component
+                                            ? n->desc->component
+                                            : component_by_key(
+                                                  strchr(n->desc->name, '_') + 1
+                                              );
+    *verb = verbs[kind];
+    *name = made ? made->type->name : component ? component->name : NULL;
+    return *name != NULL;
 }
 
 const node_desc *component_node_getter(const graph *g, const node *n)
@@ -563,9 +873,32 @@ static int lower_split(graph *g, node *n, const ecs_component_desc *component, c
     return 0;
 }
 
+/* The node keeps every pin but its setting, which already match the target's. */
+static int lower_direct(node *n, component_node_kind kind, char *error, size_t size)
+{
+    const node_desc *target = direct_target(kind, component_node_key(n));
+    if (!target) {
+        const char *format = structural(kind) ? "Choose a type for %s"
+                                              : "Choose a component for %s";
+        return lower_error(error, size, format, n->desc->name);
+    }
+    pin_spec *inputs = NULL, *outputs = NULL;
+    for (int i = 0; i + 1 < n->input_count; i++) {
+        apush(inputs, n->input_pins[i]);
+    }
+    for (int i = 0; i < n->output_count; i++) {
+        apush(outputs, n->output_pins[i]);
+    }
+    replace_pins(n, target, inputs, outputs);
+    return 0;
+}
+
 static int lower_node(graph *g, node *n, char *error, size_t size)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
+    if (direct(kind)) {
+        return lower_direct(n, kind, error, size);
+    }
     const ecs_component_desc *component = component_node_component(n);
     if (!component) {
         return lower_error(error, size, "Choose a component for %s", n->desc->name);
@@ -573,16 +906,9 @@ static int lower_node(graph *g, node *n, char *error, size_t size)
     if (kind == COMPONENT_NODE_SET && component_node_split(n)) {
         return lower_split(g, n, component, error, size);
     }
-    int setting = component_node_setting(kind);
+    int setting = component_node_setting(n);
     bool given = entity_given(g, n, setting + 1);
-    node_component_kind target_kind = kind == COMPONENT_NODE_GET
-                                        ? (given ? NODE_COMPONENT_GET_ENTITY
-                                                 : NODE_COMPONENT_GET_SELF)
-                                    : kind == COMPONENT_NODE_HAS
-                                        ? (given ? NODE_COMPONENT_HAS_ENTITY
-                                                 : NODE_COMPONENT_HAS_SELF)
-                                        : (given ? NODE_COMPONENT_SET_ENTITY
-                                                 : NODE_COMPONENT_SET_SELF);
+    node_component_kind target_kind = access_kind(kind, given);
     const node_desc *target = access_desc(component, target_kind, 0);
     assert(target);
     pin_spec *inputs = NULL, *outputs = NULL;
@@ -673,12 +999,36 @@ bool behavior_asset_has_component_nodes(const behavior_asset *asset)
     return false;
 }
 
-static pin_spec setting_pin(graph *g, const ecs_component_desc *component)
+static pin_spec setting_pin(graph *g, const pin_spec *template, const char *key)
 {
-    pin_spec pin = get_inputs[0];
+    pin_spec pin = *template;
     pin.id = graph_alloc_id(g);
-    pin.default_value.str = graph_own_str(g, component->key, strlen(component->key));
+    pin.default_value.str = graph_own_str(g, key, strlen(key));
     return pin;
+}
+
+/* A generated Add, Remove, Make or Break node gains its setting. */
+static bool raise_direct(graph *g, node *n, component_node_kind kind)
+{
+    const node_desc *d = n->desc;
+    if (n->input_count != d->input_count || n->output_count < d->output_count) {
+        return false;
+    }
+    const node_desc *desc = COMPONENT_NODES[kind - 1];
+    const char *key = structural(kind)
+                        ? d->type->name
+                        : component_by_key(strchr(d->name, '_') + 1)->key;
+    pin_spec *inputs = NULL, *outputs = NULL;
+    for (int i = 0; i < n->input_count; i++) {
+        apush(inputs, n->input_pins[i]);
+    }
+    apush(inputs, setting_pin(g, &desc->inputs[desc->input_count - 1], key));
+    for (int i = 0; i < n->output_count; i++) {
+        apush(outputs, n->output_pins[i]);
+    }
+    replace_pins(n, desc, inputs, outputs);
+    reindexed(g);
+    return true;
 }
 
 static pin_spec typed(pin_spec pin, const ecs_component_desc *component)
@@ -691,6 +1041,15 @@ static pin_spec typed(pin_spec pin, const ecs_component_desc *component)
 bool component_node_raise(graph *g, node *n)
 {
     const node_desc *d = n->desc;
+    component_node_kind family = component_generated_kind(d);
+    /* Documents key a component node's inputs by their template names. */
+    if (!family || g->dataflow ||
+        !same_pins(n->input_pins, n->input_count, d->inputs, d->input_count)) {
+        return false;
+    }
+    if (direct(family)) {
+        return raise_direct(g, n, family);
+    }
     const ecs_component_desc *component = d->component;
     node_component_kind kind = d->component_kind;
     if (g->dataflow || kind == NODE_COMPONENT_NONE ||
@@ -726,7 +1085,7 @@ bool component_node_raise(graph *g, node *n)
             )
         );
     }
-    apush(inputs, setting_pin(g, component));
+    apush(inputs, setting_pin(g, &get_inputs[0], component->key));
     if (given) {
         const pin_spec *authored = &n->input_pins[entity];
         apush(

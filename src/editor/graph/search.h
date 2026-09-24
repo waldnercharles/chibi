@@ -12,9 +12,9 @@ typedef struct ed_search_match
     const char *prototype;
     const behavior_asset *event;
     int host_event; /* One-based index in the editor host event catalog. */
-    /* Component node presets: a reflected component key, and for Set the one
-     * field it writes. */
-    const char *component;
+    /* Component node presets: the Component or Type setting, and for Set the
+     * one field it writes. */
+    const char *setting;
     const char *field;
     const char *category;
     char name[384];

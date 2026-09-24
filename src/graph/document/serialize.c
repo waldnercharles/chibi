@@ -548,9 +548,9 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
     return 0;
 }
 
-/* A component node's Value pins follow its Component setting, and a Set that
- * names field inputs writes those fields instead of Value. Documents may name
- * the component; the setting stores its key. */
+/* A component node's pins follow its Component or Type setting, and a Set
+ * that names field inputs writes those fields instead of Value. Documents may
+ * name the component; the setting stores its key. */
 static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
@@ -565,7 +565,8 @@ static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs
         );
         return -1;
     }
-    yyjson_val *setting = yyjson_obj_get(inputs, "Component");
+    const char *setting_name = n->input_pins[component_node_setting(n)].name;
+    yyjson_val *setting = yyjson_obj_get(inputs, setting_name);
     yyjson_val *key = yyjson_is_obj(setting) ? yyjson_obj_get(setting, "default")
                                              : setting;
     const char *component = yyjson_get_str(key);
@@ -580,16 +581,15 @@ static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs
         }
     }
     if (component_node_prepare(g, n, component, split)) {
-        serialize_error_set("unknown component \"%s\"", component);
+        serialize_error_set("unknown %s \"%s\"", setting_name, component);
         return -1;
     }
     if (load_node_pins(g, n, v, refs)) {
         return -1;
     }
-    const ecs_component_desc *found = component_by_key(component);
-    n->input_pins[component_node_setting(kind)].default_value.str = found
-                                                                      ? found->key
-                                                                      : "";
+    const char *canonical = component_node_canonical_key(kind, component);
+    n->input_pins[component_node_setting(n)].default_value.str = canonical ? canonical
+                                                                           : "";
     return 0;
 }
 

@@ -76,8 +76,9 @@ const char *behavior_asset_validate_library(const behavior_asset *asset)
         }
         for (int i = 0; i < acount(graph->nodes); i++) {
             const node *n = graph->nodes[i];
-            if (!behavior_library_node_allowed(asset->domain, n->desc) ||
-                component_node_self(graph, n)) {
+            /* A component node is available when the node it lowers to is. */
+            const node_desc *target = component_node_target(graph, n);
+            if (!behavior_library_node_allowed(asset->domain, target ? target : n->desc)) {
                 return "This operation is unavailable in a function library.";
             }
             if (asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {

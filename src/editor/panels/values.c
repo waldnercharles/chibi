@@ -949,7 +949,7 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
                                  (spec->flags & PIN_FLAG_REFERENCE);
     component_node_kind component = component_node_kind_of(n->desc);
     bool component_setting = !output && component &&
-                             index == component_node_setting(component);
+                             index == component_node_setting(n);
     if (spec->kind == PIN_EXEC || ((spec->flags & PIN_FLAG_SETTING) &&
                                    !expression_assignment && !component_setting)) {
         return;

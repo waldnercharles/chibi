@@ -695,8 +695,8 @@ static void check_library_search_snapshot()
 /* Behavior graphs offer Get Dash as a Get Component preset. */
 static bool get_dash(const ed_search_match *match)
 {
-    return match->desc == &NODE_GetComponent && match->component &&
-           !strcmp(match->component, "GAME.GameDash") && !match->field;
+    return match->desc == &NODE_GetComponent && match->setting &&
+           !strcmp(match->setting, "GAME.GameDash") && !match->field;
 }
 
 static void check_typed_wire_search()
@@ -967,8 +967,8 @@ static node *spawn_first(editor *e, const char *query, const char *name)
     return n;
 }
 
-/* The catalog lists Get, Set and Has Component instead of generated
- * per-component nodes; naming a component spawns a configured node. */
+/* The catalog lists component nodes instead of generated per-component and
+ * per-struct nodes; naming a component or struct spawns a configured node. */
 static void check_component_search()
 {
     behavior_asset *asset = behavior_asset_new("Component search");
@@ -979,11 +979,11 @@ static void check_component_search()
     int component_nodes = 0, generated = 0;
     for (int i = 0; i < acount(matches); i++) {
         component_nodes += component_node_kind_of(matches[i].desc) &&
-                           !matches[i].component;
-        generated += matches[i].desc->component_kind != NODE_COMPONENT_NONE;
+                           !matches[i].setting;
+        generated += component_generated_kind(matches[i].desc) != COMPONENT_NODE_NONE;
     }
     afree(matches);
-    test_check(component_nodes == 3 && !generated, "browsing lists three component nodes and no generated access nodes");
+    test_check(component_nodes == 7 && !generated, "browsing lists seven component nodes and no generated access, structural, Make or Break nodes");
     node *get = spawn_first(e, "Get Component", "Get Component");
     test_check(
         get && get->desc == &NODE_GetComponent && !component_node_component(get),
@@ -1016,12 +1016,33 @@ static void check_component_search()
             (transform->output_pins[0].flags & PIN_FLAG_REFERENCE),
         "Get Transform spawns Get Component reading Transform"
     );
+    node *add = spawn_first(e, "add health", "Add Health");
+    node *remove = spawn_first(e, "remove health", "Remove Health");
+    test_check(
+        add && add->desc == &NODE_AddComponent && remove &&
+            remove->desc == &NODE_RemoveComponent &&
+            !strcmp(component_node_key(remove), "game.GameHealth") &&
+            add->output_count == 2 && add->output_pins[1].type == PIN_BOOL,
+        "Add and Remove Health spawn structural component nodes"
+    );
+    node *make = spawn_first(e, "make transform", "Make Transform");
+    node *split = spawn_first(e, "break transform", "Break Transform");
+    test_check(
+        make && make->desc == &NODE_MakeStruct && make->input_count == 3 &&
+            !strcmp(make->input_pins[0].name, "x") &&
+            !strcmp(make->output_pins[0].type_name, "GameTransform") && split &&
+            split->desc == &NODE_BreakStruct && split->output_count == 2 &&
+            !strcmp(split->input_pins[0].type_name, "GameTransform"),
+        "Make and Break Transform spawn struct nodes with the Transform fields"
+    );
     char title[256];
     test_check(
         transform &&
             !strcmp(ed_node_title(e, transform, title, sizeof title), "Get Transform") &&
-            x && !strcmp(ed_node_title(e, x, title, sizeof title), "Set Velocity") &&
-            get && !strcmp(ed_node_title(e, get, title, sizeof title), "Get Component"),
+            x && !strcmp(ed_node_title(e, x, title, sizeof title), "Set Velocity") && get &&
+            !strcmp(ed_node_title(e, get, title, sizeof title), "Get Component") && add &&
+            !strcmp(ed_node_title(e, add, title, sizeof title), "Add Health") && make &&
+            !strcmp(ed_node_title(e, make, title, sizeof title), "Make Transform"),
         "component nodes are titled by access and component"
     );
     editor_free(e);

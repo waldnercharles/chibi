@@ -81,7 +81,7 @@ Progress shows in the web build under `?design-preview=1`, where converted surfa
 | 1 · Shell | These work: the top bar, areas with editor-type menus and splitters, status-bar hints, the command palette (commands, objects, assets), the runtime target menu, and settings for theme, density and motion. Preferences and the area layout persist. Splitting and joining areas and presets remain. |
 | 2 · Panels | The Outliner is virtualized, with filter, add, a context menu, arrow-key selection and drop targets. Properties has context tabs, identity and lineage, reflected fields, override marks, Reset to Prototype, behaviors, scene physics and prototype documents. Assets lists every indexed asset, and its prototypes and behaviors can be dragged. Output has Log, Problems and Info views with highlighting and follow-output. |
 | 3 · Scene | The engine canvas is shown through the `kit:viewport` texture, and selection, dragging and navigation use host input. The tool shelf, the zoom readout (NumberFlow) and asset drop are done. Modal G/R and the gizmo remain. |
-| 4 · Graph | Not started; the interaction contract is in [Node editor references](../../editor-graph-references.md). The Behavior area is a placeholder. |
+| 4 · Graph | In progress, following the [Node editor references](../../editor-graph-references.md) contract. The Behavior area hosts the graph canvas: a second RmlUi context whose dp ratio is the zoom, shown through the `kit:graph` texture (`src/editor/studio/studio_graph.c`, `graph.rml`, `kit_wires.cpp`).<br>Done:<ul><li>Pan and cursor-anchored zoom, mouse vs trackpad detection, framing, and a per-graph camera.</li><li>Marquee, move, and auto-pan at the edges.</li><li>Wire dragging with snapping, pick-up and drop on a node body. A drop on empty canvas opens a type-ranked add-node search and wires the new node in place.</li><li>Inline values, and binding and inline-source chips.</li><li>Node, wire and comment menus.</li><li>Comment frames (C), call navigation, breakpoints (F9), copy and paste.</li><li>Arrange (⇧L), level of detail, dead-code dimming and selection-following wires.</li><li>Run heat from the debug target, a debug badge, and a wire style setting.</li></ul>Remaining: node details in Properties, reroute editing, knife and insert-on-wire, split pins, expression editing, graph management (add and rename functions), and the ImGui canvas's removal. |
 | 5 · Remainder | Performance is converted: live frame and simulation charts. Shader details, ramp and image editors, input bindings, runtime widgets and the pause menu remain. |
 
 Behavior changed from the ImGui editor:
@@ -97,6 +97,11 @@ Behavior changed from the ImGui editor:
 - The transport target is a menu: the scene, or a preview of the open or selected prototype. Its label morphs when the target changes.
 - The Outliner root collapses, and Up and Down step the selection while the pointer is over it.
 - Prototypes dragged from Assets land where they are dropped in the Scene; behaviors dropped on an Outliner row attach to that object.
+- The graph editor owns Undo, Redo and Save while its area has focus. Space and Shift D there no longer play the scene or duplicate objects.
+- A node spawned from a dragged wire lands with the wired socket at the drop point. The search lists exact type matches first, then conversions, then wildcards.
+- Nodes that no event reaches, or whose values nothing reads, are dimmed. Wires attached to the selection or the hovered node stand out, and the rest recede.
+- Scrubbing a node's inline value is one undo step.
+- Saving a scene keeps its file name as the document name. It used to write "Scene".
 
 ## Decisions
 

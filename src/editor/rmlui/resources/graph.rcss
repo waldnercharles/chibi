@@ -87,6 +87,20 @@ body.graph-canvas {
 body.far .gpin-label, body.far .gpin .field, body.far .gpin .chip, body.far .gpin .check { visibility: hidden; }
 body.far .gnode-head .title { font-size: 16dp; }
 
+.gcomment { position: absolute; border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f; }
+.gcomment-title {
+    display: block; height: 28dp; padding: 0dp 10dp; line-height: 28dp; font-size: 14dp; font-weight: 600;
+    color: var(--fg); white-space: nowrap; overflow: hidden; cursor: move;
+}
+body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
+
+/* Centered on the wire's middle by the negative margins. */
+.gconversion {
+    position: absolute; display: block; height: 16dp; margin-top: -8dp; margin-left: -40dp; width: 80dp;
+    border-radius: 8dp; background-color: #1d1d20e6; border: 1dp #ffffff1c;
+    color: var(--fg-2); font-size: 10dp; line-height: 14dp; text-align: center; white-space: nowrap; overflow: hidden;
+}
+
 .marquee { position: absolute; border: 1dp #ffffff66; background-color: #ffffff0d; }
 .link-error {
     position: absolute; padding: 2dp 8dp; border-radius: var(--r); background-color: var(--notice);

@@ -173,6 +173,15 @@ Arrange follows ELK Layered's phases, with Godot's MIT arranger as a size refere
 - `nodePlacement=BRANDES_KOEPF`, with `priority.straightness=10` on exec wires only
 - `spacing.nodeNodeBetweenLayers=80` and `spacing.nodeNode=30`
 
+## Canvas architecture
+
+The canvas is a separately scaled RmlUi context, not a transformed element: RmlUi can't clip transformed content, and scaling would blur text. The implementation has four parts:
+
+- **Context and texture.** `editor_rml_backend_resize_pixels` sizes the context to the Behavior area in physical pixels, with a dp ratio of zoom × pixel scale. Every RCSS length in `graph.rcss` is therefore in graph units, and text is rasterized at its displayed size. The texture is shown by a `kit_surface`, and window input is replayed into the context in graph units.
+- **Node sizing.** Nodes are sized in C from measured text (`kit_text_width`) and the fixed row pitch arrange assumes. Arrange, framing and hit tests never wait for layout.
+- **Wires.** `kit_wires` draws the grid and wires. Its ends anchor to socket elements and resolve after layout, so a wire follows its node in the frame the node moves.
+- **Menus and search.** These live in the Studio document, so they stay unscaled.
+
 ## Parity with the ImGui graph editor
 
 The RmlUi editor replaces `src/editor/graph` and the canvas side of `src/editor/panels`. It must keep:

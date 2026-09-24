@@ -147,6 +147,9 @@ typedef struct
     int press_button;         /* -1 when no press arrived this frame */
     float world_x, world_y;   /* pointer in graph units */
     uint64_t press_node;
+    uint64_t press_comment; /* a comment frame grabbed by its title */
+    float comment_x, comment_y;
+    uint64_t menu_comment;
     bool press_toggle;
     struct
     {
@@ -179,6 +182,7 @@ typedef struct
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;
     bool double_click; /* the press this frame completes a double click */
+    double pan_time;   /* last auto-pan step */
     double last_press_time;
     float last_press_x, last_press_y;
     uint64_t menu_node; /* context menu target, or 0 */

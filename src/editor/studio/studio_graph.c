@@ -6,6 +6,7 @@
  * edits go through the graph editor's mutation helpers and history. */
 #include "editor/graph/search.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
@@ -344,13 +345,18 @@ typedef struct
     uint64_t node;
     int kind; /* -1 on the node body */
     int pin;
+    uint64_t comment; /* a comment frame's title */
 } graph_hit;
 
 static graph_hit parse_hit(const char *path)
 {
-    graph_hit hit = { 0, -1, -1 };
+    graph_hit hit = { 0, -1, -1, 0 };
     unsigned long long id;
     int used = 0;
+    if (path && sscanf(path, "world/stage/c%llu/t", &id) == 1) {
+        hit.comment = id;
+        return hit;
+    }
     if (!path || sscanf(path, "world/stage/n%llu%n", &id, &used) != 1) {
         return hit;
     }
@@ -679,6 +685,67 @@ static node *node_by_id(const studio *s, uint64_t id)
     return gr && id ? graph_node_by_id(gr, id) : NULL;
 }
 
+static graph_comment_box *comment_by_id(const studio *s, uint64_t id)
+{
+    graph *gr = active_graph(s);
+    for (int i = 0; gr && id && i < acount(gr->comment_boxes); i++) {
+        if (gr->comment_boxes[i].id == id) {
+            return &gr->comment_boxes[i];
+        }
+    }
+    return NULL;
+}
+
+/* The nodes a frame carries: those wholly inside it when the drag begins. */
+static void comment_contents(studio *s, uint64_t id, bool frame_only)
+{
+    studio_graph *g = &s->graph;
+    graph *gr = active_graph(s);
+    graph_comment_box *box = comment_by_id(s, id);
+    if (!box || frame_only) {
+        return;
+    }
+    for (int i = 0; i < acount(gr->nodes); i++) {
+        node *n = gr->nodes[i];
+        float b[4];
+        if (node_visible(gr, n) && node_box(s, n, b) && b[0] >= box->x &&
+            b[1] >= box->y && b[0] + b[2] <= box->x + box->width &&
+            b[1] + b[3] <= box->y + box->height) {
+            apush(g->drag, ((typeof(*g->drag)){ n->id, n->x, n->y }));
+        }
+    }
+}
+
+/* C frames the selection with a comment (Unreal, Blender's Ctrl J). */
+static void frame_selection(studio *s)
+{
+    editor *e = graph_editor(s);
+    graph *gr = active_graph(s);
+    float lo[2] = { INFINITY, INFINITY }, hi[2] = { -INFINITY, -INFINITY };
+    for (int i = 0; i < acount(e->selected); i++) {
+        float b[4];
+        if (node_box(s, e->selected[i], b)) {
+            lo[0] = fminf(lo[0], b[0]);
+            lo[1] = fminf(lo[1], b[1]);
+            hi[0] = fmaxf(hi[0], b[0] + b[2]);
+            hi[1] = fmaxf(hi[1], b[1] + b[3]);
+        }
+    }
+    if (lo[0] > hi[0]) {
+        return;
+    }
+    const float pad = 24, title = 32;
+    ed_snapshot_before(e);
+    graph_add_comment_box(
+        gr,
+        "Comment",
+        lo[0] - pad,
+        lo[1] - pad - title,
+        hi[0] - lo[0] + 2 * pad,
+        hi[1] - lo[1] + 2 * pad + title
+    );
+}
+
 static void show_error(studio *s, const char *message)
 {
     kit_toast(
@@ -986,6 +1053,19 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
     if (on_control) {
         return;
     }
+    g->press_comment = 0;
+    graph_comment_box *box = comment_by_id(s, hit.comment);
+    if (box) {
+        /* Dragging a frame's title carries what it frames; Shift moves the
+           frame alone (Unreal, Blender). */
+        g->press_comment = box->id;
+        g->comment_x = box->x;
+        g->comment_y = box->y;
+        g->press_node = 0;
+        g->press_toggle = false;
+        g->gesture = STUDIO_GRAPH_PRESS;
+        return;
+    }
     node *n = node_by_id(s, hit.node);
     if (n && g->double_click && ed_is_graph_call(n)) {
         /* Double-click enters a call (Blender's Tab); Back returns. */
@@ -1050,14 +1130,23 @@ static void drag(studio *s)
             }
             g->gesture = STUDIO_GRAPH_MOVE;
             asetlen(g->drag, 0);
-            for (int i = 0; i < acount(e->selected); i++) {
-                node *n = e->selected[i];
-                apush(g->drag, ((typeof(*g->drag)){ n->id, n->x, n->y }));
+            if (g->press_comment) {
+                comment_contents(s, g->press_comment, g->in.modifiers & KIT_MOD_SHIFT);
+            } else {
+                for (int i = 0; i < acount(e->selected); i++) {
+                    node *n = e->selected[i];
+                    apush(g->drag, ((typeof(*g->drag)){ n->id, n->x, n->y }));
+                }
             }
             e->pending_snapshot = ed_snapshot(e);
             /* fallthrough */
         case STUDIO_GRAPH_MOVE: {
             float dx = g->world_x - g->press_wx, dy = g->world_y - g->press_wy;
+            graph_comment_box *box = comment_by_id(s, g->press_comment);
+            if (box) {
+                box->x = g->comment_x + dx;
+                box->y = g->comment_y + dy;
+            }
             for (int i = 0; i < acount(g->drag); i++) {
                 node *n = node_by_id(s, g->drag[i].id);
                 if (n) {
@@ -1099,7 +1188,8 @@ static void release(studio *s, graph_hit hit)
             break;
         }
         case STUDIO_GRAPH_MOVE: {
-            bool moved = false;
+            graph_comment_box *box = comment_by_id(s, g->press_comment);
+            bool moved = box && (box->x != g->comment_x || box->y != g->comment_y);
             for (int i = 0; i < acount(g->drag); i++) {
                 node *n = node_by_id(s, g->drag[i].id);
                 moved |= n && (n->x != g->drag[i].x || n->y != g->drag[i].y);
@@ -1115,12 +1205,11 @@ static void release(studio *s, graph_hit hit)
         case STUDIO_GRAPH_RIGHT: {
             /* A right click that didn't move opens the node or wire menu, or on
                empty canvas the add-node search (Unreal's action menu). */
-            node *n = node_by_id(
-                s,
-                parse_hit(g->press_path[0] ? g->press_path : NULL).node
-            );
-            int wire = n ? -1 : hit_wire(s);
-            if (n || wire >= 0) {
+            graph_hit at = parse_hit(g->press_path[0] ? g->press_path : NULL);
+            node *n = node_by_id(s, at.node);
+            int wire = n || at.comment ? -1 : hit_wire(s);
+            g->menu_comment = at.comment;
+            if (n || wire >= 0 || at.comment) {
                 if (n && !ed_node_selected(e, n)) {
                     select_only(e, n);
                 }
@@ -1243,6 +1332,75 @@ static void replay(studio *s)
     asetlen(g->events, 0);
 }
 
+/* Where a socket sits, from the same metrics that size nodes. */
+static void socket_at(const studio *s, node *n, int kind, int pin, float *x, float *y)
+{
+    graph *gr = active_graph(s);
+    *x = kind == ED_PIN_INPUT ? n->x : n->x + node_size(s, n).w;
+    *y = n->y + HEAD + PAD + ((float)pin_row(gr, n, kind, pin) + 0.5f) * ROW;
+}
+
+static void snap_link(studio *s, graph_hit *hit)
+{
+    studio_graph *g = &s->graph;
+    graph *gr = active_graph(s);
+    node *from = node_by_id(s, g->link_node);
+    int want = g->link_kind == ED_PIN_OUTPUT ? ED_PIN_INPUT : ED_PIN_OUTPUT;
+    float best = 20 / g->zoom;
+    for (int i = 0; from && i < acount(gr->nodes); i++) {
+        node *n = gr->nodes[i];
+        int count = want == ED_PIN_INPUT ? n->input_count : n->output_count;
+        if (n == from || !node_visible(gr, n)) {
+            continue;
+        }
+        for (int p = 0; p < count; p++) {
+            float x, y;
+            if (!ed_pin_visible(gr, n, want, p) ||
+                !pins_compatible(from, g->link_kind, g->link_pin, n, want, p)) {
+                continue;
+            }
+            socket_at(s, n, want, p, &x, &y);
+            float d = hypotf(x - g->world_x, y - g->world_y);
+            if (d < best) {
+                best = d;
+                *hit = (graph_hit){ n->id, want, p, 0 };
+            }
+        }
+    }
+}
+
+/* Dragging near an edge scrolls the view, faster closer in: up to 900 px/s
+   within 40 px of the edge (xyflow). */
+static void auto_pan(studio *s)
+{
+    studio_graph *g = &s->graph;
+    double dt = fmin(s->time - g->pan_time, 0.05);
+    g->pan_time = s->time;
+    if (g->gesture != STUDIO_GRAPH_MOVE && g->gesture != STUDIO_GRAPH_BOX &&
+        g->gesture != STUDIO_GRAPH_LINK) {
+        return;
+    }
+    const float edge = 40, speed = 900;
+    float px = g->in.mouse_x * g->zoom, py = g->in.mouse_y * g->zoom;
+    float w = g->surface.rect.w, h = g->surface.rect.h;
+    float vx = px < edge     ? -(edge - px) / edge
+             : px > w - edge ? (px - (w - edge)) / edge
+                             : 0;
+    float vy = py < edge     ? -(edge - py) / edge
+             : py > h - edge ? (py - (h - edge)) / edge
+                             : 0;
+    vx = fmaxf(-1, fminf(1, vx));
+    vy = fmaxf(-1, fminf(1, vy));
+    if (vx == 0 && vy == 0) {
+        return;
+    }
+    g->x += vx * speed * (float)dt / g->zoom;
+    g->y += vy * speed * (float)dt / g->zoom;
+    g->world_x += vx * speed * (float)dt / g->zoom;
+    g->world_y += vy * speed * (float)dt / g->zoom;
+    g->camera.active = false;
+}
+
 static void pointer(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -1256,7 +1414,7 @@ static void pointer(studio *s)
     );
     bool inside = g->in.mouse_x > -1e8f;
     graph_hit hit = inside ? parse_hit(kit_hovered_path(g->kit))
-                           : (graph_hit){ 0, -1, -1 };
+                           : (graph_hit){ 0, -1, -1, 0 };
     bool on_control = inside && kit_pointer_on_control(g->kit);
     node *hovered = node_by_id(s, hit.node);
     g->hover_node = hovered ? hovered->id : 0;
@@ -1268,6 +1426,14 @@ static void pointer(studio *s)
     if (g->press_button >= 0 && g->gesture == STUDIO_GRAPH_IDLE) {
         press(s, g->press_button, parse_hit(g->press_path[0] ? g->press_path : NULL), g->press_control);
     }
+    if (g->gesture == STUDIO_GRAPH_LINK && hit.kind < 0 && inside) {
+        /* A wire snaps to the nearest socket it fits within 20 px (xyflow). */
+        snap_link(s, &hit);
+        g->hover_node = hit.node;
+        g->hover_kind = hit.kind;
+        g->hover_pin = hit.pin;
+    }
+    auto_pan(s);
     if (g->gesture == STUDIO_GRAPH_PAN) {
         /* The graph point grabbed at the press stays under the pointer. */
         g->x = g->press_wx - g->in.mouse_x;
@@ -1285,6 +1451,7 @@ static void pointer(studio *s)
         } else {
             release(s, hit);
         }
+        g->press_comment = 0;
     }
     (void)gr;
 }
@@ -1339,6 +1506,8 @@ static void shortcuts(studio *s)
                 g->spawn_y = g->world_y;
                 kit_command_open(s->kit, "Add a node");
             }
+        } else if (!mod && !shift && key == SDLK_C && !graph_readonly(s)) {
+            frame_selection(s);
         } else if (!mod && shift && key == SDLK_L) {
             arrange(s, false);
         } else if (key == SDLK_F9 && !graph_readonly(s)) {
@@ -1478,6 +1647,11 @@ void studio_graph_menus(studio *s)
             menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
             ed_snapshot_before(e);
             graph_set_breakpoint(gr, n, !n->breakpoint);
+        }
+    } else if (comment_by_id(s, g->menu_comment)) {
+        if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
+            ed_snapshot_before(e);
+            graph_remove_comment_box(gr, g->menu_comment);
         }
     } else if (g->menu_edge >= 0 && g->menu_edge < acount(gr->edges)) {
         if (menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, "Alt click", readonly)) {
@@ -1869,6 +2043,75 @@ static void emit_front(studio *s)
     );
 }
 
+/* A wire that converts shows what it converts at its middle, so implicit
+   work stays visible without a node (Unreal's conversion nodes, folded). */
+static void emit_conversions(studio *s)
+{
+    studio_graph *g = &s->graph;
+    kit *k = g->kit;
+    graph *gr = active_graph(s);
+    if (g->zoom < FAR_ZOOM) {
+        return;
+    }
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *ed = &gr->edges[i];
+        node *from = graph_node_by_id(gr, ed->from_id),
+             *to = graph_node_by_id(gr, ed->to_id);
+        int fo = 0, to_out = 0, fp = -1, tp = -1;
+        if (!ed->conversion || !node_visible(gr, from) || !node_visible(gr, to) ||
+            !graph_pin_by_id(from, ed->from_pin_id, &fo, &fp) || !fo ||
+            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out) {
+            continue;
+        }
+        float ax, ay, bx, by;
+        socket_at(s, from, ED_PIN_OUTPUT, fp, &ax, &ay);
+        socket_at(s, to, ED_PIN_INPUT, tp, &bx, &by);
+        float mx = (ax + bx) / 2, my = (ay + by) / 2;
+        if (ed->reroute_count) {
+            mx = ed->reroutes[ed->reroute_count / 2].x;
+            my = ed->reroutes[ed->reroute_count / 2].y;
+        }
+        char key[32], text[96], value[32];
+        const node_desc *c = ed->conversion;
+        if (c->conversion_from && c->conversion_to) {
+            snprintf(text, sizeof text, "%s \xe2\x86\x92 %s", c->conversion_from, c->conversion_to);
+        } else {
+            editor_node_label(c, text, sizeof text);
+        }
+        snprintf(key, sizeof key, "x%d", i);
+        kit_label(k, key, "gconversion", text);
+        snprintf(value, sizeof value, "%.1fdp", mx);
+        kit_style(k, "left", value);
+        snprintf(value, sizeof value, "%.1fdp", my);
+        kit_style(k, "top", value);
+    }
+}
+
+/* Comment frames sit behind nodes; their titles stay readable when zoomed
+   out (Unreal). The frame's color tints its fill and edge. */
+static void emit_comment(studio *s, const graph_comment_box *box)
+{
+    kit *k = s->graph.kit;
+    char key[32], value[48];
+    snprintf(key, sizeof key, "c%llu", (unsigned long long)box->id);
+    kit_push(k, key, NULL, "gcomment");
+    snprintf(value, sizeof value, "%.1fdp", box->x);
+    kit_style(k, "left", value);
+    snprintf(value, sizeof value, "%.1fdp", box->y);
+    kit_style(k, "top", value);
+    snprintf(value, sizeof value, "%.1fdp", box->width);
+    kit_style(k, "width", value);
+    snprintf(value, sizeof value, "%.1fdp", box->height);
+    kit_style(k, "height", value);
+    uint32_t c = box->color ? box->color : 0x8a8a96ffu;
+    snprintf(value, sizeof value, "#%02x%02x%02x1f", c >> 24, (c >> 16) & 255, (c >> 8) & 255);
+    kit_style(k, "background-color", value);
+    snprintf(value, sizeof value, "#%02x%02x%02x66", c >> 24, (c >> 16) & 255, (c >> 8) & 255);
+    kit_style(k, "border-color", value);
+    kit_label(k, "t", "gcomment-title", box->title && box->title[0] ? box->title : "Comment");
+    kit_pop(k);
+}
+
 static void emit_canvas(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -1883,6 +2126,10 @@ static void emit_canvas(studio *s)
     kit_style(k, "left", value);
     snprintf(value, sizeof value, "%.2fdp", -g->y);
     kit_style(k, "top", value);
+    for (int i = 0; i < acount(gr->comment_boxes); i++) {
+        emit_comment(s, &gr->comment_boxes[i]);
+    }
+    emit_conversions(s);
     for (int i = 0; i < acount(gr->nodes); i++) {
         if (node_visible(gr, gr->nodes[i])) {
             emit_node(s, gr->nodes[i]);

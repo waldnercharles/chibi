@@ -9,11 +9,13 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 
+/* clang-format would space out a regular expression, so plain string tests. */
+// clang-format off
 EM_JS(bool, browser_is_mac, (), {
-    const platform = (navigator.userAgentData && navigator.userAgentData.platform) ||
-                     navigator.platform || "";
-    return / mac | iphone | ipad | ipod / i.test(platform);
+    const platform = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "").toLowerCase();
+    return platform.includes("mac") || platform.includes("iphone") || platform.includes("ipad");
 })
+// clang-format on
 #endif
 
 bool studio_detect_mac()

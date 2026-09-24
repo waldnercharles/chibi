@@ -1093,7 +1093,13 @@ void KitListener::click(Rml::Event &e, Node *n)
         case Kind::CommandItem:
             k->command.chosen = n->w.pending_index;
             return;
-        default: n->events |= EV_CLICK; return;
+        default:
+            /* A click on a label or icon is also a click on the boxes around it,
+               as DOM clicks bubble, so a whole row or tab answers. */
+            for (Node *box = n; box && box->kind == Kind::Box; box = box->parent) {
+                box->events |= EV_CLICK;
+            }
+            return;
     }
 }
 

@@ -900,23 +900,26 @@ static void behaviors_panel(studio *s, scene_actor *actor, bool locked)
             if (!matches(s->property_search, names[i])) {
                 continue;
             }
+            /* A row opens its behavior in the graph, like a row in Assets;
+   the open one is marked. */
             kit_push(k, names[i], NULL, "behavior-row");
+            bool open = scene->graph_document_id &&
+                        !strcmp(scene->graph_document_id, names[i]);
+            kit_flag(k, "data-current", open);
             kit_icon(k, "icon", NULL, KIT_ICON_GRAPH);
             kit_label(k, "name", "name", names[i]);
-            kit_button_desc open = { .icon = KIT_ICON_EXTERNAL,
-                                     .size = KIT_SM,
-                                     .tip = "Open" };
-            if (kit_button(k, "open", &open)) {
-                app_scene_authoring_open_behavior(scene, names[i]);
-            }
             kit_button_desc detach = { .icon = KIT_ICON_CLOSE,
                                        .size = KIT_SM,
                                        .tip = "Detach",
                                        .flags = locked ? KIT_DISABLED : 0 };
-            if (kit_button(k, "detach", &detach)) {
+            bool detached = kit_button(k, "detach", &detach);
+            if (detached) {
                 app_scene_authoring_set_instance_behavior(scene, names[i], false);
             }
             kit_pop(k);
+            if (!detached && kit_item_clicked(k) && !open) {
+                app_scene_authoring_open_behavior(scene, names[i]);
+            }
         }
         kit_push(k, "add", NULL, "add-row");
         kit_button_desc attach = { .label = "Attach Behavior",

@@ -116,6 +116,10 @@ body.light .viewport {
 .identity .lineage .btn .icon { font-size: 10dp; width: 11dp; }
 .prop-empty { padding: 20dp 8dp; color: var(--fg-3); text-align: center; }
 .behavior-row { display: flex; align-items: center; gap: 6dp; height: 26dp; padding: 0dp 4dp 0dp 6dp; border-radius: var(--r); margin-top: 2dp; background-color: var(--field); }
+.behavior-row { cursor: pointer; transition: background-color 0.11s cubic-out; }
+.behavior-row:hover { background-color: var(--field-hover); }
+.behavior-row[data-current] { background-color: var(--accent-soft); }
+.behavior-row[data-current] .icon { color: var(--accent-fg); }
 .behavior-row .name { flex: 1 1 0dp; }
 .behavior-row .graphs { color: var(--fg-3); font-size: 11dp; }
 .add-row { margin-top: 6dp; display: flex; }

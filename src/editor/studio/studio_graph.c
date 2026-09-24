@@ -251,10 +251,12 @@ static void pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *o
         out->inline_source = out->connected && graph_node_is_inline(gr, src);
     } else {
         out->connected = graph_output_local(gr, n, p) != NULL;
-        for (int i = 0; i < acount(gr->edges) && !out->connected; i++) {
-            out->connected = gr->edges[i].from_id == n->id &&
-                             gr->edges[i].from_pin_id == spec->id;
-        }
+    }
+    /* Execution pins, and outputs, are wired when any edge touches them. */
+    for (int i = 0; i < acount(gr->edges) && !out->connected; i++) {
+        const edge *ed = &gr->edges[i];
+        out->connected = input ? ed->to_id == n->id && ed->to_pin_id == spec->id
+                               : ed->from_id == n->id && ed->from_pin_id == spec->id;
     }
     ed_pin_label(n, spec, out->label, sizeof out->label);
     out->show_label = !exec_label(spec, out->label);
@@ -392,15 +394,20 @@ static graph_hit parse_hit(const char *path)
         return hit;
     }
     hit.node = id;
+    /* Only a pin's socket and label take a wire; the rest of its row
+   belongs to the node, so the node stays easy to grab. */
     const char *row = path + used;
-    int exec, pin;
+    int exec, pin, end = 0;
     char side;
-    if (sscanf(row, "/b/e%d/%c%d", &exec, &side, &pin) == 3 ||
-        sscanf(row, "/b/%c%d", &side, &pin) == 2) {
-        hit.kind = side == 'i' ? ED_PIN_INPUT
-                 : side == 'o' ? ED_PIN_OUTPUT
-                               : -1;
-        hit.pin = hit.kind >= 0 ? pin : -1;
+    if (sscanf(row, "/b/e%d/%c%d%n", &exec, &side, &pin, &end) != 3 &&
+        sscanf(row, "/b/%c%d%n", &side, &pin, &end) != 2) {
+        return hit;
+    }
+    const char *part = row + end;
+    bool grip = !strncmp(part, "/s", 2) || !strcmp(part, "/l");
+    if (grip && (side == 'i' || side == 'o')) {
+        hit.kind = side == 'i' ? ED_PIN_INPUT : ED_PIN_OUTPUT;
+        hit.pin = pin;
     }
     return hit;
 }

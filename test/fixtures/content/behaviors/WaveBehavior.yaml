@@ -137,10 +137,7 @@ graphs:
   - id: 104
     type: Add
     inputs:
-      A: {type: int}
       B: {type: int, default: 1}
-    outputs:
-      Result: {type: int}
   - id: 112
     type: Set Variable
     reference_id: 5

@@ -103,10 +103,7 @@ graphs:
   - id: 1072
     type: Subtract
     inputs:
-      A: {type: int}
-      B: {type: int, group: 1}
-    outputs:
-      Result: {type: int}
+      B: {group: 1}
   - {id: 1076, type: Integer Greater}
   - {id: 1080, type: Branch}
   - {id: 1085, type: Set_GameHealth_current}
@@ -192,8 +189,6 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-    outputs:
-      Array Element: {type: handle, type_name: ecs.entity}
   - id: 1132
     type: Send Event
     reference_name: RefreshEncounter
@@ -228,26 +223,12 @@ graphs:
   - id: 75
     type: Clamp
     inputs:
-      Value: {type: double}
       Min: {type: double}
-      Max: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 80
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 80, type: Subtract}
   - id: 87
     type: Clamp
     inputs:
-      Value: {type: double}
       Min: {type: double}
-      Max: {type: double}
-    outputs:
-      Result: {type: double}
   edges:
   - {from: 64.current, to: 75.Max}
   - {from: 64.current, to: 80.A}

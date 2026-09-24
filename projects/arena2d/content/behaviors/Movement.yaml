@@ -187,12 +187,12 @@ graphs:
     type: Function Entry
     outputs:
       heading: {id: 81, type: float, kind: data, group: 1}
-      "y": {type: double, kind: data, flags: 2, group: 2}
-      x: {type: double, kind: data, flags: 2, group: 3}
+      "y": {kind: data, flags: 2, group: 2}
+      x: {kind: data, flags: 2, group: 3}
   - id: 79
     type: Return
     inputs:
-      Result: {id: 84, type: double, kind: data, flags: 2, group: 4}
+      Result: {id: 84, kind: data, flags: 2, group: 4}
   - {id: 85, type: Arc Tangent 2}
   - {id: 89, type: Get_GameOrientation}
   - {id: 91, type: Break_GameOrientation}
@@ -220,32 +220,23 @@ graphs:
     type: Function Entry
     outputs:
       target: {id: 239, type: struct, type_name: CF_V2, kind: data, group: 1}
-      heading: {type: double, kind: data, flags: 2, group: 2}
+      heading: {kind: data, flags: 2, group: 2}
       speed: {type: double, kind: data, flags: 2, group: 3}
   - id: 237
     type: Return
     inputs:
-      Result: {id: 242, type: struct, type_name: CF_V2, kind: data, flags: 2, group: 4}
+      Result: {id: 242, kind: data, flags: 2, group: 4}
   - {id: 243, type: Cosine}
   - {id: 246, type: Sine}
   - {id: 249, type: Make_CF_V2}
   - id: 253
     type: Multiply
     inputs:
-      A: {type: struct, type_name: CF_V2}
       B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
   - id: 257
     type: Real
     inputs: {Value: 2.0}
-  - id: 260
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-      B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
+  - {id: 260, type: Multiply}
   - {id: 264, type: Get_GameDrive}
   - {id: 266, type: Break_GameDrive}
   - {id: 270, type: Make_GameDrive}
@@ -283,7 +274,7 @@ graphs:
   - id: 343
     type: Return
     inputs:
-    - {id: 347, name: Result, type: bool, kind: data, flags: 2, group: 3}
+    - {id: 347, name: Result, kind: data, flags: 2, group: 3}
   - id: 348
     type: Multiply
     inputs:
@@ -301,10 +292,7 @@ graphs:
   - id: 356
     type: Add
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 360
     type: Real
     inputs: {Value: 0.01}
@@ -336,21 +324,18 @@ graphs:
     type: Function Entry
     outputs:
       target: {id: 497, type: struct, type_name: CF_V2, kind: data, group: 1}
-      x: {type: float, kind: data, flags: 2, group: 2}
-      "y": {type: float, kind: data, flags: 2, group: 3}
+      x: {kind: data, flags: 2, group: 2}
+      "y": {kind: data, flags: 2, group: 3}
       speed: {type: double, kind: data, flags: 2, group: 4}
   - id: 495
     type: Return
     inputs:
-      Result: {id: 501, type: struct, type_name: CF_V2, kind: data, flags: 2, group: 5}
+      Result: {id: 501, kind: data, flags: 2, group: 5}
   - {id: 502, type: Make_CF_V2}
   - id: 506
     type: Multiply
     inputs:
-      A: {type: struct, type_name: CF_V2}
       B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
   - {id: 510, type: Get_GameDrive}
   - {id: 512, type: Break_GameDrive}
   - {id: 516, type: Make_GameDrive}
@@ -383,7 +368,7 @@ graphs:
   - id: 550
     type: Return
     inputs:
-      Result: {id: 553, type: struct, type_name: CF_V2, kind: data, flags: 2, group: 2}
+      Result: {id: 553, kind: data, flags: 2, group: 2}
   - {id: 554, type: Real}
   - {id: 557, type: Real}
   - {id: 560, type: Make_CF_V2}

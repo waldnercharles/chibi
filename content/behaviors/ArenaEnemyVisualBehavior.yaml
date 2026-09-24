@@ -85,13 +85,7 @@ graphs:
     inputs: {x: 0.36000001430511475, z: 0.5}
     outputs:
     - {id: 109, name: Result}
-  - id: 110
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: CF_V3}
-      B: {type: double}
-    outputs:
-      Result: {type: struct, type_name: CF_V3}
+  - {id: 110, type: Multiply}
   - id: 116
     type: Multiply
     inputs:

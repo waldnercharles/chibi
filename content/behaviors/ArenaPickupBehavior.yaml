@@ -310,7 +310,7 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-      Item: {id: 230, type: handle, type_name: ecs.entity}
+      Item: {id: 230}
     outputs:
     - {id: 231, name: Result}
   - id: 237
@@ -661,7 +661,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 526
@@ -671,7 +670,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -712,7 +710,6 @@ graphs:
     type: Divide
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - {id: 555, type: Real}
@@ -720,7 +717,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 562
@@ -730,7 +726,6 @@ graphs:
     type: Min
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -784,12 +779,12 @@ graphs:
   - id: 590
     type: Function Entry
     outputs:
-    - {id: 594, name: Angle, type: double, kind: data, flags: 2, group: 1}
+    - {id: 594, name: Angle, kind: data, flags: 2, group: 1}
     - {id: 595, name: Fade, type: double, kind: data, flags: 2, group: 2}
   - id: 592
     type: Return
     inputs:
-    - {id: 596, name: Result, type: double, kind: data, flags: 2, group: 3}
+    - {id: 596, name: Result, kind: data, flags: 2, group: 3}
   - id: 597
     type: Real
     inputs: {Value: 0.9}
@@ -797,27 +792,12 @@ graphs:
     type: Real
     inputs: {Value: 0.1}
   - {id: 603, type: Cosine}
-  - id: 606
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 610
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 606, type: Multiply}
+  - {id: 610, type: Add}
   - id: 614
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   edges:
   - {from: 590.Angle, to: 603.Value}
   - {from: 590.Fade, to: 614.B}
@@ -851,7 +831,6 @@ graphs:
     type: Divide
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -882,7 +861,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 653
@@ -892,7 +870,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -917,34 +894,22 @@ graphs:
   - id: 666
     type: Return
     inputs:
-    - {id: 669, name: Result, type: double, kind: data, flags: 2, group: 2}
+    - {id: 669, name: Result, kind: data, flags: 2, group: 2}
   - id: 670
     type: Real
     inputs: {Value: 1.0}
   - id: 673
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 677
     type: Real
     inputs: {Value: 1.0}
   - id: 680
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 684
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 684, type: Multiply}
   - id: 688
     type: Real
     inputs: {Value: 1.0}
@@ -954,24 +919,9 @@ graphs:
   - id: 694
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 698
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 702
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 698, type: Add}
+  - {id: 702, type: Multiply}
   edges:
   - {from: 664.T, to: 673.B}
   - {from: 664.T, to: 680.B}
@@ -1001,7 +951,7 @@ graphs:
     - {id: 714, name: TargetX, type: double, kind: data, flags: 2, group: 1}
     - {id: 715, name: Weight, type: double, kind: data, flags: 2, group: 2}
     - {id: 716, name: OriginX, type: double, kind: data, flags: 2, group: 3}
-    - {id: 717, name: Theta, type: double, kind: data, flags: 2, group: 4}
+    - {id: 717, name: Theta, kind: data, flags: 2, group: 4}
     - {id: 718, name: OriginY, type: double, kind: data, flags: 2, group: 5}
     - {id: 719, name: TargetY, type: double, kind: data, flags: 2, group: 6}
     - {id: 720, name: T, type: double, kind: data, flags: 2, group: 7}
@@ -1021,7 +971,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 733
@@ -1036,7 +985,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 744
@@ -1069,31 +1017,15 @@ graphs:
   - id: 762
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - {id: 766, type: Sine}
-  - id: 769
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 769, type: Multiply}
   - {id: 773, type: Cosine}
-  - id: 776
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 776, type: Multiply}
   - id: 780
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -1140,7 +1072,7 @@ graphs:
     - {id: 799, name: Weight, type: double, kind: data, flags: 2, group: 2}
     - {id: 800, name: OriginX, type: double, kind: data, flags: 2, group: 3}
     - {id: 801, name: TargetX, type: double, kind: data, flags: 2, group: 4}
-    - {id: 802, name: Theta, type: double, kind: data, flags: 2, group: 5}
+    - {id: 802, name: Theta, kind: data, flags: 2, group: 5}
     - {id: 803, name: OriginY, type: double, kind: data, flags: 2, group: 6}
     - {id: 804, name: T, type: double, kind: data, flags: 2, group: 7}
   - id: 796
@@ -1159,7 +1091,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 817
@@ -1174,7 +1105,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 828
@@ -1207,31 +1137,15 @@ graphs:
   - id: 846
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - {id: 850, type: Sine}
-  - id: 853
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 853, type: Multiply}
   - {id: 857, type: Sine}
-  - id: 860
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 860, type: Multiply}
   - id: 864
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -1307,7 +1221,7 @@ graphs:
   - id: 896
     type: Return
     inputs:
-    - {id: 899, name: Result, type: double, kind: data, flags: 2, group: 2}
+    - {id: 899, name: Result, kind: data, flags: 2, group: 2}
   - id: 900
     type: Real
     inputs: {Value: 1.0}
@@ -1317,17 +1231,8 @@ graphs:
   - id: 906
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 910
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 910, type: Subtract}
   edges:
   - {from: 894.T, to: 906.B}
   - {from: 900.Value, to: 910.A}

@@ -15,8 +15,6 @@ graphs:
   - id: 4
     type: Get Global Variable
     inputs: {Name: Player}
-    outputs:
-      Value: {type: handle, type_name: ecs.entity}
   - {id: 7, type: GetEntity_GameTransform}
   - id: 49
     type: Behavior Expression
@@ -32,7 +30,7 @@ graphs:
         flags: 6
         group: 1
         binding: {kind: component, component: game.GameTransform}
-      target: {declaration_id: 16, type: struct, type_name: GameTransform, flags: 2, group: 2}
+      target: {declaration_id: 16, flags: 2, group: 2}
       rate: {declaration_id: 17, type: double, flags: 2, group: 3, default: 6.0}
       dt:
         declaration_id: 18
@@ -72,18 +70,11 @@ graphs:
   - id: 148
     type: Return
     inputs:
-      Result:
-        id: 154
-        type: struct
-        type_name: GameTransform
-        kind: data
-        flags: 2
-        group: 5
+      Result: {id: 154, kind: data, flags: 2, group: 5}
   - id: 155
     type: Subtract
     inputs:
       A: {type: struct, type_name: GameTransform}
-      B: {type: struct, type_name: GameTransform}
     outputs:
       Result: {type: struct, type_name: GameTransform}
   - id: 159
@@ -98,32 +89,19 @@ graphs:
   - id: 165
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - {id: 169, type: Exponential}
-  - id: 172
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 172, type: Subtract}
   - id: 176
     type: Multiply
     inputs:
       A: {type: struct, type_name: GameTransform}
-      B: {type: double}
     outputs:
       Result: {type: struct, type_name: GameTransform}
   - id: 180
     type: Add
     inputs:
-      A: {type: struct, type_name: GameTransform}
       B: {type: struct, type_name: GameTransform}
-    outputs:
-      Result: {type: struct, type_name: GameTransform}
   - {id: 184, type: Set_GameTransform}
   edges:
   - {from: 146.Exec, to: 184.Exec}

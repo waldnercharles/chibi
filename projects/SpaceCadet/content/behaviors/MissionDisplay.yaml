@@ -14,8 +14,6 @@ graphs:
   - id: 4
     type: Get Global Variable
     inputs: {Name: Lives}
-    outputs:
-      Value: {type: double}
   - id: 21
     type: Behavior Expression
     reference_id: 7
@@ -66,7 +64,7 @@ graphs:
   - id: 30
     type: Return
     inputs:
-    - {id: 33, name: Result, type: bool, kind: data, flags: 2, group: 2}
+    - {id: 33, name: Result, kind: data, flags: 2, group: 2}
   - {id: 34, type: Real}
   - id: 37
     type: Less Or Equal

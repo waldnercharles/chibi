@@ -107,7 +107,6 @@ graphs:
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:

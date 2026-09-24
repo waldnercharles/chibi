@@ -26,20 +26,8 @@ graphs:
   - id: 13
     type: Shader Vector2
     inputs: {X: 18.0}
-  - id: 17
-    type: Shader Subtract
-    inputs:
-      A: {type: struct, type_name: ShaderVec2}
-      B: {type: struct, type_name: ShaderVec2}
-    outputs:
-      Value: {type: struct, type_name: ShaderVec2}
-  - id: 21
-    type: Shader Subtract
-    inputs:
-      A: {type: struct, type_name: ShaderVec2}
-      B: {type: struct, type_name: ShaderVec2}
-    outputs:
-      Value: {type: struct, type_name: ShaderVec2}
+  - {id: 17, type: Shader Subtract}
+  - {id: 21, type: Shader Subtract}
   - {id: 25, type: Shader Circle}
   - {id: 29, type: Shader Circle}
   - {id: 33, type: Shader SmoothUnion}

@@ -31,12 +31,7 @@ graphs:
         flags: 6
         group: 1
         binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
-      action:
-        declaration_id: 13
-        type: struct
-        type_name: GameActionBinding
-        flags: 2
-        group: 2
+      action: {declaration_id: 13, flags: 2, group: 2}
     outputs:
       Then: {id: 20, kind: exec}
       Result: {id: 18, declaration_id: 14, type: bool, flags: 2, group: 3}

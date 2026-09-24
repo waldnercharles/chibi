@@ -14,8 +14,6 @@ graphs:
   - id: 4
     type: Get Global Variable
     inputs: {Name: Ready}
-    outputs:
-      Value: {type: double}
   - id: 21
     type: Behavior Expression
     reference_id: 7
@@ -144,7 +142,7 @@ graphs:
   - id: 30
     type: Return
     inputs:
-    - {id: 33, name: Result, type: bool, kind: data, flags: 2, group: 2}
+    - {id: 33, name: Result, kind: data, flags: 2, group: 2}
   - id: 34
     type: Real
     inputs: {Value: 0.5}
@@ -181,26 +179,17 @@ graphs:
   - id: 161
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 165
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 169
     type: Real
     inputs: {Value: 1150.0}
-  - id: 172
-    type: Negate
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 172, type: Negate}
   - id: 175
     type: Real
     inputs: {Value: 1000.0}
@@ -208,8 +197,6 @@ graphs:
     type: Clamp
     inputs:
       Value: {type: double}
-      Min: {type: double}
-      Max: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -238,7 +225,7 @@ graphs:
   - id: 206
     type: Return
     inputs:
-    - {id: 209, name: Result, type: bool, kind: data, flags: 2, group: 2}
+    - {id: 209, name: Result, kind: data, flags: 2, group: 2}
   - id: 210
     type: Real
     inputs: {Value: 345.0}
@@ -287,7 +274,6 @@ graphs:
     type: Subtract
     inputs:
       A: {type_name: null}
-      B: {type: double}
     outputs:
       Result: {type_name: null}
   - {id: 285, type: Real}
@@ -295,7 +281,6 @@ graphs:
     type: Max
     inputs:
       A: {type_name: null}
-      B: {type: double}
     outputs:
       Result: {type_name: null}
   edges:

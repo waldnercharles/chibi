@@ -18,11 +18,11 @@ graphs:
     reference_id: 8
     reference_name: position + velocity * dt
     inputs:
-      position: {declaration_id: 13, type: struct, type_name: GameTransform, flags: 2, group: 1}
-      velocity: {declaration_id: 14, type: struct, type_name: GameVelocity, flags: 2, group: 2}
-      dt: {declaration_id: 15, type: float, flags: 2, group: 3}
+      position: {declaration_id: 13, flags: 2, group: 1}
+      velocity: {declaration_id: 14, flags: 2, group: 2}
+      dt: {declaration_id: 15, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 16, type: struct, type_name: GameTransform, flags: 2, group: 4}
+      Result: {declaration_id: 16, flags: 2, group: 4}
   - {id: 81, type: Set_GameTransform}
   edges:
   - {from: 1.Then, to: 81.Exec}

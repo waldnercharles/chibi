@@ -598,6 +598,9 @@ static char *write_graph(const graph *g, node *const *subset, int count)
         yyjson_mut_obj_add_uint(doc, root, "binding_owner_id", g->owner->identity);
     }
     write_graph_body(doc, root, g, subset, count);
+    if (!subset) {
+        serialize_omit_implied_shapes(root, g);
+    }
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
     free(expanded);
@@ -664,6 +667,7 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
         yyjson_mut_obj_add_int(doc, obj, "call_depth_limit", g->call_depth_limit);
     }
     write_graph_body(doc, obj, g, NULL, 0);
+    serialize_omit_implied_shapes(obj, g);
     yyjson_mut_arr_add_val(graphs, obj);
 }
 

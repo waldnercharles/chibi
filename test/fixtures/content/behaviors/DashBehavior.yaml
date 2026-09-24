@@ -164,12 +164,7 @@ graphs:
       Value: {flags: 0}
       Value.direction: {}
       Value.speed: {}
-  - id: 97
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: GameVelocity}
-    outputs:
-      Result: {type: struct, type_name: GameVelocity}
+  - {id: 97, type: Multiply}
   - {id: 101, type: Set_GameVelocity}
   - id: 106
     type: Break_CF_V2
@@ -419,7 +414,6 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-      Item: {type: handle, type_name: ecs.entity}
   - {id: 270, type: Branch}
   - id: 275
     type: Array Add
@@ -428,7 +422,6 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-      Item: {type: handle, type_name: ecs.entity}
     outputs:
       Array:
         type: handle
@@ -520,8 +513,6 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-    outputs:
-      Array Element: {type: handle, type_name: ecs.entity}
   - id: 305
     type: Call Function
     reference_id: 28

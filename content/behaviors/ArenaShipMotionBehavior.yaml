@@ -353,7 +353,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - {id: 422, type: Real}
@@ -361,7 +360,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 429
@@ -404,7 +402,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 454
@@ -420,18 +417,11 @@ graphs:
   - id: 461
     type: Real
     inputs: {Value: 180.0}
-  - id: 464
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 464, type: Divide}
   - id: 468
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 472
@@ -442,7 +432,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 482
@@ -452,39 +441,27 @@ graphs:
     type: Min
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 489
     type: Real
     inputs: {Value: 4.0}
-  - id: 492
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 492, type: Multiply}
   - {id: 496, type: Cosine}
   - id: 499
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 503
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 507
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -549,15 +526,11 @@ graphs:
   - id: 537
     type: Add
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 541
     type: Divide
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -594,7 +567,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 566
@@ -780,7 +752,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 659
@@ -796,18 +767,11 @@ graphs:
   - id: 666
     type: Real
     inputs: {Value: 180.0}
-  - id: 669
-    type: Divide
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 669, type: Divide}
   - id: 673
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:

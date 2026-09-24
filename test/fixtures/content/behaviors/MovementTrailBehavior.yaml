@@ -177,24 +177,11 @@ graphs:
   - id: 138
     type: Real
     inputs: {Value: 0.10000000149011612}
-  - id: 141
-    type: Clamp
-    inputs:
-      Value: {type: double}
-      Min: {type: double}
-      Max: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 141, type: Clamp}
   - id: 146
     type: Real
     inputs: {Value: 64.0}
-  - id: 149
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 149, type: Multiply}
   edges:
   - {from: 129.dt, to: 141.Value}
   - {from: 135.Value, to: 141.Min}

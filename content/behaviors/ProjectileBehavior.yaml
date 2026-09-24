@@ -148,25 +148,9 @@ graphs:
     type: Return
     inputs:
     - {id: 139, name: Result, type: double, kind: data}
-  - id: 140
-    type: Abs
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 143
-    type: Abs
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 146
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 140, type: Abs}
+  - {id: 143, type: Abs}
+  - {id: 146, type: Add}
   edges:
   - {from: 133.x, to: 140.Value}
   - {from: 133.y, to: 143.Value}

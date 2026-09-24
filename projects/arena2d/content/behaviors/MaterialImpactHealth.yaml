@@ -28,10 +28,10 @@ graphs:
     reference_id: 10
     reference_name: max(current - damage, 0)
     inputs:
-      current: {declaration_id: 15, type: int, flags: 2, group: 1}
-      damage: {declaration_id: 16, type: int, flags: 2, group: 2}
+      current: {declaration_id: 15, flags: 2, group: 1}
+      damage: {declaration_id: 16, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 17, type: int, flags: 2, group: 3}
+      Result: {declaration_id: 17, flags: 2, group: 3}
   - id: 80
     type: Set_GameHealth_current
     outputs:
@@ -97,7 +97,6 @@ graphs:
     type: Max
     inputs:
       A: {type: int}
-      B: {type: double}
     outputs:
       Result: {type: int}
   edges:
@@ -122,7 +121,7 @@ graphs:
   - id: 133
     type: Return
     inputs:
-    - {id: 136, name: Result, type: bool, kind: data, flags: 2, group: 2}
+    - {id: 136, name: Result, kind: data, flags: 2, group: 2}
   - {id: 137, type: Real}
   - id: 140
     type: Less Or Equal

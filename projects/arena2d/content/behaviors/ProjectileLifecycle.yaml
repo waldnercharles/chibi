@@ -135,7 +135,7 @@ graphs:
   - id: 56
     type: Return
     inputs:
-      Result: {id: 60, type: float, kind: data, flags: 2, group: 3}
+      Result: {id: 60, kind: data, flags: 2, group: 3}
   - id: 61
     type: Add
     inputs:
@@ -173,7 +173,7 @@ graphs:
   - id: 118
     type: Return
     inputs:
-    - {id: 122, name: Result, type: bool, kind: data, flags: 2, group: 3}
+    - {id: 122, name: Result, kind: data, flags: 2, group: 3}
   - id: 123
     type: Greater Or Equal
     inputs:
@@ -200,7 +200,7 @@ graphs:
   - id: 193
     type: Return
     inputs:
-    - {id: 197, name: Result, type: bool, kind: data, flags: 2, group: 3}
+    - {id: 197, name: Result, kind: data, flags: 2, group: 3}
   - id: 198
     type: Abs
     inputs:
@@ -216,10 +216,7 @@ graphs:
   - id: 204
     type: Add
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 208
     type: Real
     inputs: {Value: 0.0001}
@@ -249,12 +246,12 @@ graphs:
     type: Function Entry
     outputs:
       heading: {id: 292, type: float, kind: data, group: 1}
-      vy: {type: double, kind: data, flags: 2, group: 2}
-      vx: {type: double, kind: data, flags: 2, group: 3}
+      vy: {kind: data, flags: 2, group: 2}
+      vx: {kind: data, flags: 2, group: 3}
   - id: 290
     type: Return
     inputs:
-      Result: {id: 295, type: double, kind: data, flags: 2, group: 4}
+      Result: {id: 295, kind: data, flags: 2, group: 4}
   - {id: 296, type: Arc Tangent 2}
   - {id: 300, type: Get_GameOrientation}
   - {id: 302, type: Break_GameOrientation}

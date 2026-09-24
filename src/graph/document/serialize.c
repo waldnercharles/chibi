@@ -968,6 +968,23 @@ fail:
     return NULL;
 }
 
+graph *serialize_load_graph_body(yyjson_val *obj, uint64_t id_counter)
+{
+    graph *g = xcalloc(1, sizeof *g);
+    graph_init(g);
+    g->id_counter = id_counter;
+    yyjson_val *nodes = yyjson_obj_get(obj, "nodes"),
+               *edges = yyjson_obj_get(obj, "edges");
+    if (serialize_read_locals(g, obj) || load_nodes(g, nodes, id_counter) ||
+        serialize_resolve_locals(g, obj) || load_edges(g, edges) ||
+        serialize_validate_locals(g)) {
+        graph_free(g);
+        free(g);
+        return NULL;
+    }
+    return g;
+}
+
 static int load_variable(behavior_asset *asset, yyjson_val *v)
 {
     if (!yyjson_is_obj(v)) {

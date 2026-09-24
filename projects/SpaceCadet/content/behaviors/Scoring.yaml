@@ -279,7 +279,6 @@ graphs:
     type: Add
     inputs:
       A: {type_name: null}
-      B: {type: double}
     outputs:
       Result: {type_name: null}
   edges:
@@ -302,7 +301,7 @@ graphs:
   - id: 238
     type: Return
     inputs:
-    - {id: 241, name: Result, type: bool, kind: data, flags: 2, group: 2}
+    - {id: 241, name: Result, kind: data, flags: 2, group: 2}
   - id: 242
     type: Real
     inputs: {Value: 8.0}
@@ -357,15 +356,11 @@ graphs:
   - id: 327
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type_name: null}
-    outputs:
-      Result: {type: double}
   - id: 331
     type: Add
     inputs:
       A: {type_name: null}
-      B: {type: double}
     outputs:
       Result: {type_name: null}
   edges:
@@ -410,7 +405,6 @@ graphs:
     type: Add
     inputs:
       A: {type_name: null}
-      B: {type: double}
     outputs:
       Result: {type_name: null}
   - id: 400
@@ -420,7 +414,6 @@ graphs:
     type: Min
     inputs:
       A: {type_name: null}
-      B: {type: double}
     outputs:
       Result: {type_name: null}
   edges:

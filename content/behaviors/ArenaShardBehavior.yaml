@@ -195,7 +195,6 @@ graphs:
     type: Divide
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -220,34 +219,22 @@ graphs:
   - id: 267
     type: Return
     inputs:
-    - {id: 270, name: Result, type: double, kind: data, flags: 2, group: 2}
+    - {id: 270, name: Result, kind: data, flags: 2, group: 2}
   - id: 271
     type: Real
     inputs: {Value: 1.0}
   - id: 274
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 278
     type: Real
     inputs: {Value: 1.0}
   - id: 281
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 285
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 285, type: Multiply}
   edges:
   - {from: 265.Normalized, to: 274.B}
   - {from: 265.Normalized, to: 281.B}
@@ -610,8 +597,8 @@ graphs:
     reference_id: 241
     reference_name: Age Phase
     inputs:
-      Age: {declaration_id: 246, type: float, flags: 2, group: 1}
-      Delta: {declaration_id: 247, type: float, flags: 2, group: 2}
+      Age: {declaration_id: 246, flags: 2, group: 1}
+      Delta: {declaration_id: 247, flags: 2, group: 2}
     outputs:
       Result: {declaration_id: 248, type: double, flags: 2, group: 3}
   - id: 553

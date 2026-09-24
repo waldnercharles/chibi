@@ -26,7 +26,7 @@ graphs:
         flags: 6
         group: 1
         binding: {kind: component_field, component: game.GameHealth, field: current}
-      amount: {declaration_id: 11, type: int, flags: 2, group: 2}
+      amount: {declaration_id: 11, flags: 2, group: 2}
     outputs:
       Then: {id: 22, kind: exec}
       Result: {id: 20, declaration_id: 12, type: int, flags: 2, group: 3}
@@ -121,14 +121,11 @@ graphs:
   - id: 53
     type: Return
     inputs:
-      Result: {id: 57, type: int, kind: data, flags: 2, group: 3}
+      Result: {id: 57, kind: data, flags: 2, group: 3}
   - id: 58
     type: Subtract
     inputs:
-      A: {type: int}
       B: {type: int}
-    outputs:
-      Result: {type: int}
   - {id: 62, type: Get_GameHealth}
   - {id: 64, type: Break_GameHealth}
   - {id: 68, type: Make_GameHealth}
@@ -159,7 +156,7 @@ graphs:
   - id: 115
     type: Return
     inputs:
-    - {id: 118, name: Result, type: bool, kind: data, flags: 2, group: 2}
+    - {id: 118, name: Result, kind: data, flags: 2, group: 2}
   - {id: 119, type: Real}
   - id: 122
     type: Less Or Equal

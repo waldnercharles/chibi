@@ -149,8 +149,6 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-    outputs:
-      Array Element: {type: handle, type_name: ecs.entity}
   - id: 2386
     type: Send Event
     reference_name: CollectExperience
@@ -330,18 +328,12 @@ graphs:
   - id: 2250
     type: Add
     inputs:
-      A: {type: int}
       B: {type: int, group: 1, default: 1}
-    outputs:
-      Result: {type: int}
   - {id: 2254, type: Set_GameEncounter_spawned}
   - id: 2260
     type: Add
     inputs:
-      A: {type: int}
       B: {type: int, group: 1, default: 1}
-    outputs:
-      Result: {type: int}
   - {id: 2264, type: Set_GameEncounter_alive}
   - id: 2411
     type: ForLoop
@@ -745,20 +737,20 @@ graphs:
     reference_id: 2660
     reference_name: Row X
     inputs:
-      Center: {declaration_id: 2665, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      Direction: {declaration_id: 2666, type: float, flags: 2, group: 2}
-      Index: {declaration_id: 2667, type: double, flags: 2, group: 3}
+      Center: {declaration_id: 2665, flags: 2, group: 1}
+      Direction: {declaration_id: 2666, flags: 2, group: 2}
+      Index: {declaration_id: 2667, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 2668, type: float, flags: 2, group: 4}
+      Result: {declaration_id: 2668, flags: 2, group: 4}
   - id: 2715
     type: Behavior Expression
     reference_id: 2696
     reference_name: Row Y
     inputs:
-      Center: {declaration_id: 2701, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      Direction: {declaration_id: 2702, type: float, flags: 2, group: 2}
+      Center: {declaration_id: 2701, flags: 2, group: 1}
+      Direction: {declaration_id: 2702, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2703, type: float, flags: 2, group: 3}
+      Result: {declaration_id: 2703, flags: 2, group: 3}
   - {id: 2773, type: Make_GameTransform}
   edges:
   - {from: 2652.Center, to: 2691.Center}
@@ -890,19 +882,19 @@ graphs:
     reference_id: 2786
     reference_name: Side X
     inputs:
-      Center: {declaration_id: 2791, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      Side: {declaration_id: 2792, type: float, flags: 2, group: 2}
+      Center: {declaration_id: 2791, flags: 2, group: 1}
+      Side: {declaration_id: 2792, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2793, type: float, flags: 2, group: 3}
+      Result: {declaration_id: 2793, flags: 2, group: 3}
   - id: 2842
     type: Behavior Expression
     reference_id: 2809
     reference_name: Side Y
     inputs:
-      Center: {declaration_id: 2814, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      Index: {declaration_id: 2815, type: double, flags: 2, group: 2}
+      Center: {declaration_id: 2814, flags: 2, group: 1}
+      Index: {declaration_id: 2815, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2816, type: float, flags: 2, group: 3}
+      Result: {declaration_id: 2816, flags: 2, group: 3}
   - {id: 2902, type: Make_GameTransform}
   edges:
   - {from: 2778.Center, to: 2805.Center}
@@ -1043,19 +1035,19 @@ graphs:
     reference_id: 2914
     reference_name: Ellipse X
     inputs:
-      Center: {declaration_id: 2919, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      Index: {declaration_id: 2920, type: double, flags: 2, group: 2}
+      Center: {declaration_id: 2919, flags: 2, group: 1}
+      Index: {declaration_id: 2920, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2921, type: float, flags: 2, group: 3}
+      Result: {declaration_id: 2921, flags: 2, group: 3}
   - id: 3018
     type: Behavior Expression
     reference_id: 2968
     reference_name: Ellipse Y
     inputs:
-      Center: {declaration_id: 2973, type: struct, type_name: CF_V2, flags: 2, group: 1}
-      Index: {declaration_id: 2974, type: double, flags: 2, group: 2}
+      Center: {declaration_id: 2973, flags: 2, group: 1}
+      Index: {declaration_id: 2974, flags: 2, group: 2}
     outputs:
-      Result: {declaration_id: 2975, type: float, flags: 2, group: 3}
+      Result: {declaration_id: 2975, flags: 2, group: 3}
   - {id: 3126, type: Make_GameTransform}
   edges:
   - {from: 2907.Center, to: 2964.Center}
@@ -1313,13 +1305,7 @@ graphs:
       Conditions:
         default:
         - {component: game.GameHealth, field: current, test: <=, value: 0.0}
-  - id: 3366
-    type: Add
-    inputs:
-      A: {type: int}
-      B: {type: int}
-    outputs:
-      Result: {type: int}
+  - {id: 3366, type: Add}
   - {id: 3370, type: Integer Greater}
   - {id: 3374, type: Integer Greater}
   edges:

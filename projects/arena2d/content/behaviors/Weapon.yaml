@@ -92,9 +92,9 @@ graphs:
         flags: 2
         group: 2
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
-      offset: {declaration_id: 167, type: struct, type_name: CF_V2, flags: 2, group: 3}
+      offset: {declaration_id: 167, flags: 2, group: 3}
     outputs:
-      Result: {declaration_id: 168, type: struct, type_name: CF_V2, flags: 2, group: 4}
+      Result: {declaration_id: 168, flags: 2, group: 4}
   - id: 233
     type: Call Function
     reference_id: 173
@@ -220,14 +220,11 @@ graphs:
   - id: 74
     type: Return
     inputs:
-      Result: {id: 78, type: float, type_name: null, kind: data, flags: 2, group: 3}
+      Result: {id: 78, kind: data, flags: 2, group: 3}
   - id: 79
     type: Add
     inputs:
-      A: {type_name: null}
       B: {type: double}
-    outputs:
-      Result: {type_name: null}
   - id: 83
     type: Set Variable
     reference_id: 1
@@ -260,14 +257,11 @@ graphs:
   - id: 349
     type: Return
     inputs:
-      Result: {id: 353, type: float, type_name: null, kind: data, flags: 2, group: 3}
+      Result: {id: 353, kind: data, flags: 2, group: 3}
   - id: 354
     type: Min
     inputs:
-      A: {type_name: null}
       B: {type: double}
-    outputs:
-      Result: {type_name: null}
   - id: 358
     type: Set Variable
     reference_id: 1
@@ -295,8 +289,8 @@ graphs:
   - id: 243
     type: Function Entry
     outputs:
-    - {id: 247, name: x, type: float, kind: data, flags: 2, group: 1}
-    - {id: 248, name: "y", type: float, kind: data, flags: 2, group: 2}
+    - {id: 247, name: x, kind: data, flags: 2, group: 1}
+    - {id: 248, name: "y", kind: data, flags: 2, group: 2}
     - id: 249
       name: offset
       type: struct
@@ -307,21 +301,12 @@ graphs:
   - id: 245
     type: Return
     inputs:
-    - id: 250
-      name: Result
-      type: struct
-      type_name: CF_V2
-      kind: data
-      flags: 2
-      group: 4
+    - {id: 250, name: Result, kind: data, flags: 2, group: 4}
   - {id: 251, type: Make_CF_V2}
   - id: 255
     type: Add
     inputs:
-      A: {type: struct, type_name: CF_V2}
       B: {type: struct, type_name: CF_V2}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
   edges:
   - {from: 243.x, to: 251.x}
   - {from: 243.y, to: 251.y}
@@ -345,14 +330,11 @@ graphs:
   - id: 297
     type: Return
     inputs:
-      Result: {id: 301, type: float, type_name: null, kind: data, flags: 2, group: 3}
+      Result: {id: 301, kind: data, flags: 2, group: 3}
   - id: 302
     type: Subtract
     inputs:
-      A: {type_name: null}
       B: {type: double}
-    outputs:
-      Result: {type_name: null}
   - id: 306
     type: Set Variable
     reference_id: 1

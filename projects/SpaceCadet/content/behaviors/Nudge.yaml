@@ -61,39 +61,21 @@ graphs:
   - id: 103
     type: Real
     inputs: {Value: 0.5}
-  - id: 106
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 106, type: Subtract}
   - id: 110
     type: Real
     inputs: {Value: 170.0}
-  - id: 113
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 113, type: Multiply}
   - id: 117
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 121
     type: Real
     inputs: {Value: 900.0}
-  - id: 124
-    type: Negate
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 124, type: Negate}
   - id: 127
     type: Real
     inputs: {Value: 900.0}
@@ -101,8 +83,6 @@ graphs:
     type: Clamp
     inputs:
       Value: {type: double}
-      Min: {type: double}
-      Max: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -141,7 +121,6 @@ graphs:
     type: Subtract
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:

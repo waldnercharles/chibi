@@ -63,20 +63,9 @@ graphs:
   return_id: 64
   call_depth_limit: 64
   nodes:
-  - id: 21
-    type: Subtract
-    inputs:
-      A: {type: struct, type_name: CF_V2}
-      B: {type: struct, type_name: CF_V2}
-    outputs:
-      Result: {type: struct, type_name: CF_V2}
+  - {id: 21, type: Subtract}
   - {id: 25, type: Normalize Vector 2}
-  - id: 44
-    type: Multiply
-    inputs:
-      A: {type: struct, type_name: GameVelocity}
-    outputs:
-      Result: {type: struct, type_name: GameVelocity}
+  - {id: 44, type: Multiply}
   - id: 58
     type: Function Entry
     outputs:

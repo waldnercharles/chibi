@@ -44,6 +44,10 @@ void serialize_write_locals(
     int count
 );
 int serialize_migrate_component_reads(graph *g);
+/* Loads one graph object's locals, nodes and edges into a new graph, or NULL. */
+graph *serialize_load_graph_body(yyjson_val *obj, uint64_t id_counter);
+/* Drops wildcard pin shapes that loading the written graph reproduces. */
+void serialize_omit_implied_shapes(yyjson_mut_val *obj, const graph *g);
 int serialize_repair_math_calls(behavior_asset *asset);
 
 #endif

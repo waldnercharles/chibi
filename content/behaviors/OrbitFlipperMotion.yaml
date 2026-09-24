@@ -201,36 +201,26 @@ graphs:
   - id: 169
     type: Return
     inputs:
-    - {id: 175, name: Result, type: double, kind: data, flags: 2, group: 5}
+    - {id: 175, name: Result, kind: data, flags: 2, group: 5}
   - {id: 176, type: Cosine}
   - id: 179
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - {id: 183, type: Cosine}
-  - id: 186
-    type: Abs
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 186, type: Abs}
   - id: 189
     type: Divide
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 193
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 197
     type: Subtract
     inputs:
@@ -247,23 +237,11 @@ graphs:
   - id: 205
     type: Real
     inputs: {Value: 16.0}
-  - id: 208
-    type: Negate
-    inputs:
-      Value: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 208, type: Negate}
   - id: 211
     type: Real
     inputs: {Value: 16.0}
-  - id: 214
-    type: Clamp
-    inputs:
-      Value: {type: double}
-      Min: {type: double}
-      Max: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 214, type: Clamp}
   edges:
   - {from: 167.rest, to: 176.Value}
   - {from: 167.rest, to: 183.Value}
@@ -317,31 +295,15 @@ graphs:
   - id: 528
     type: Add
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - {id: 532, type: Cosine}
   - {id: 535, type: Cosine}
-  - id: 538
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 542
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 538, type: Subtract}
+  - {id: 542, type: Multiply}
   - id: 546
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 550
@@ -409,31 +371,15 @@ graphs:
   - id: 580
     type: Add
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - {id: 584, type: Sine}
   - {id: 587, type: Sine}
-  - id: 590
-    type: Subtract
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 594
-    type: Multiply
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 590, type: Subtract}
+  - {id: 594, type: Multiply}
   - id: 598
     type: Add
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 602

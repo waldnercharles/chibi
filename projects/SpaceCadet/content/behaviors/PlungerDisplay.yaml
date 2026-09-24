@@ -14,8 +14,6 @@ graphs:
   - id: 4
     type: Get Global Variable
     inputs: {Name: Charge}
-    outputs:
-      Value: {type: float}
   - {id: 7, type: Set_GameWidget_value}
   edges:
   - {from: 1.Then, to: 7.Exec}

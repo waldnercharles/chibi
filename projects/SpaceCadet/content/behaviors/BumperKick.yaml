@@ -31,15 +31,15 @@ graphs:
     reference_id: 25
     reference_name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
     inputs:
-      v: {declaration_id: 30, type: float, flags: 2, group: 1}
-      x: {declaration_id: 31, type: float, flags: 2, group: 2}
+      v: {declaration_id: 30, flags: 2, group: 1}
+      x: {declaration_id: 31, flags: 2, group: 2}
       sx:
         declaration_id: 32
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: game.GameTransform, field: x}
-      "y": {declaration_id: 33, type: float, flags: 2, group: 4}
+      "y": {declaration_id: 33, flags: 2, group: 4}
       sy:
         declaration_id: 34
         type: double
@@ -47,22 +47,22 @@ graphs:
         group: 5
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
     outputs:
-      Result: {declaration_id: 35, type: float, flags: 2, group: 6}
+      Result: {declaration_id: 35, flags: 2, group: 6}
   - {id: 428, type: Set_GameVelocity_x}
   - id: 566
     type: Behavior Expression
     reference_id: 500
     reference_name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
     inputs:
-      v: {declaration_id: 505, type: float, flags: 2, group: 1}
-      "y": {declaration_id: 506, type: float, flags: 2, group: 2}
+      v: {declaration_id: 505, flags: 2, group: 1}
+      "y": {declaration_id: 506, flags: 2, group: 2}
       sy:
         declaration_id: 507
         type: double
         flags: 2
         group: 3
         binding: {kind: component_field, component: game.GameTransform, field: "y"}
-      x: {declaration_id: 508, type: float, flags: 2, group: 4}
+      x: {declaration_id: 508, flags: 2, group: 4}
       sx:
         declaration_id: 509
         type: double
@@ -70,7 +70,7 @@ graphs:
         group: 5
         binding: {kind: component_field, component: game.GameTransform, field: x}
     outputs:
-      Result: {declaration_id: 510, type: float, flags: 2, group: 6}
+      Result: {declaration_id: 510, flags: 2, group: 6}
   - {id: 903, type: Set_GameVelocity_y}
   - id: 975
     type: Event
@@ -177,10 +177,7 @@ graphs:
   - id: 456
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 460
     type: Real
     inputs: {Value: 2.0}
@@ -188,32 +185,17 @@ graphs:
   - id: 467
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 471
     type: Real
     inputs: {Value: 2.0}
   - {id: 474, type: Power}
-  - id: 478
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 478, type: Add}
   - {id: 482, type: Square Root}
   - id: 485
     type: Real
     inputs: {Value: 1.0}
-  - id: 488
-    type: Max
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 488, type: Max}
   - id: 492
     type: Divide
     inputs:
@@ -285,10 +267,7 @@ graphs:
   - id: 931
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 935
     type: Real
     inputs: {Value: 2.0}
@@ -296,32 +275,17 @@ graphs:
   - id: 942
     type: Subtract
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
   - id: 946
     type: Real
     inputs: {Value: 2.0}
   - {id: 949, type: Power}
-  - id: 953
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 953, type: Add}
   - {id: 957, type: Square Root}
   - id: 960
     type: Real
     inputs: {Value: 1.0}
-  - id: 963
-    type: Max
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 963, type: Max}
   - id: 967
     type: Divide
     inputs:
@@ -381,7 +345,6 @@ graphs:
     type: Multiply
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   - id: 1080
@@ -396,7 +359,6 @@ graphs:
     type: Max
     inputs:
       A: {type: double}
-      B: {type: double}
     outputs:
       Result: {type: double}
   edges:
@@ -423,7 +385,7 @@ graphs:
   - id: 1145
     type: Return
     inputs:
-    - {id: 1148, name: Result, type: double, kind: data, flags: 2, group: 2}
+    - {id: 1148, name: Result, kind: data, flags: 2, group: 2}
   - id: 1149
     type: Real
     inputs: {Value: 5.0}
@@ -433,17 +395,8 @@ graphs:
   - id: 1155
     type: Multiply
     inputs:
-      A: {type: double}
       B: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 1159
-    type: Add
-    inputs:
-      A: {type: double}
-      B: {type: double}
-    outputs:
-      Result: {type: double}
+  - {id: 1159, type: Add}
   edges:
   - {from: 1143.pulse, to: 1155.B}
   - {from: 1149.Value, to: 1159.A}

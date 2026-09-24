@@ -30,7 +30,7 @@ graphs:
     reference_id: 22
     reference_name: direction * speed - vec2(vx, vy)
     inputs:
-      direction: {declaration_id: 27, type: struct, type_name: CF_V2, flags: 2, group: 1}
+      direction: {declaration_id: 27, flags: 2, group: 1}
       speed:
         declaration_id: 28
         type: double
@@ -133,8 +133,8 @@ graphs:
       flags: 2
       group: 1
     - {id: 228, name: speed, type: double, kind: data, flags: 2, group: 2}
-    - {id: 229, name: vx, type: float, kind: data, flags: 2, group: 3}
-    - {id: 230, name: vy, type: float, kind: data, flags: 2, group: 4}
+    - {id: 229, name: vx, kind: data, flags: 2, group: 3}
+    - {id: 230, name: vy, kind: data, flags: 2, group: 4}
   - id: 225
     type: Return
     inputs:
@@ -157,7 +157,6 @@ graphs:
     type: Subtract
     inputs:
       A: {type: struct, type_name: CF_V2}
-      B: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: CF_V2}
   edges:
@@ -288,7 +287,7 @@ graphs:
   - id: 331
     type: Return
     inputs:
-      Result: {id: 334, type: struct, type_name: GameVelocity, kind: data, flags: 2, group: 2}
+      Result: {id: 334, kind: data, flags: 2, group: 2}
   - {id: 335, type: Real}
   - {id: 338, type: Real}
   - {id: 341, type: Make_CF_V2}

@@ -27,14 +27,7 @@ graphs:
   - id: 22
     type: Shader Vector3
     inputs: {X: 0.1599999964237213, "Y": 0.2199999988079071, Z: 0.27000001072883606}
-  - id: 27
-    type: Shader Mix
-    inputs:
-      A: {type: struct, type_name: ShaderVec3}
-      B: {type: struct, type_name: ShaderVec3}
-      Alpha: {type: struct, type_name: ShaderVec3}
-    outputs:
-      Value: {type: struct, type_name: ShaderVec3}
+  - {id: 27, type: Shader Mix}
   edges:
   - {from: 9.Value, to: 11.Position}
   - {from: 11.Value, to: 27.Alpha}

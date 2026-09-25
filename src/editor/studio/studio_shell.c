@@ -1158,14 +1158,27 @@ static void step_selection(studio *s, int direction)
     afree(rows);
 }
 
+/* Held keys repeat to walk the Outliner and to undo or redo, never to toggle
+   or delete. */
+static bool repeats(SDL_Keycode key, bool mod)
+{
+    return mod ? key == SDLK_Z || key == SDLK_Y : key == SDLK_UP || key == SDLK_DOWN;
+}
+
 void studio_shortcuts(studio *s)
 {
     studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
                                               : STUDIO_EDITOR_COUNT;
+    /* A game playing in the focused viewport owns keys without a modifier,
+       such as Space for a dash. */
+    bool gameplay = engine_viewport_focused(s->viewport);
     for (int i = 0; i < acount(s->keys); i++) {
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if ((gameplay && !mod) || (s->keys[i].repeat && !repeats(key, mod))) {
+            continue;
+        }
         if (mod && shift && (key == SDLK_A || key == SDLK_U)) {
             studio_toggle_drawer(s, key == SDLK_A ? STUDIO_EDITOR_ASSETS : STUDIO_EDITOR_OUTPUT);
         } else if (mod && (key == SDLK_K || key == SDLK_P)) {

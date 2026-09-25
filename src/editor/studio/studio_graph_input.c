@@ -629,6 +629,9 @@ void sg_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if (s->keys[i].repeat) {
+            continue; /* a held key acts once */
+        }
         if (key == SDLK_ESCAPE && g->gesture != STUDIO_GRAPH_IDLE) {
             sg_cancel_gesture(s);
         } else if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {

@@ -104,6 +104,7 @@ typedef struct
 {
     SDL_Keycode key;
     SDL_Keymod mod; /* at press time: a quick chord is released before the frame runs */
+    bool repeat; /* an auto-repeat of a held key */
 } studio_key;
 
 typedef enum

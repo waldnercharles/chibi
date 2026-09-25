@@ -1,12 +1,8 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 
-#include <imgui/dcimgui.h>
-
-#undef IMGUI_STB_NAMESPACE
-#include <imgui/dcimgui_internal.h>
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,8 +29,6 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
         return -1;
     }
     aclear(e->graph_callers);
-    aclear(e->graph_views);
-    ed_load_graph_view(e);
     free(e->saved_snapshot);
     e->saved_snapshot = behavior_asset_save_json(e->asset);
     ed_free_string_stack(&e->undo);
@@ -43,16 +37,6 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
     e->inspection_run = NULL;
     e->arrange_pending = true;
     return editor_open_graph(e, graph_id);
-}
-
-bool ed_can_go_back(const editor *e)
-{
-    for (int i = acount(e->graph_callers) - 1; i >= 0; i--) {
-        if (behavior_asset_find_graph(e->asset, e->graph_callers[i].view.graph_id)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 int editor_open_graph(editor *e, uint64_t graph_id)
@@ -95,18 +79,10 @@ int editor_open_graph_call(editor *e, uint64_t node_id)
                                        : target->kind != GRAPH_FUNCTION)) {
         return -1;
     }
-    ed_save_graph_view(e);
-    ed_graph_caller caller = { *ed_graph_view_for(e, e->active_graph->graph_id, 0),
-                               node_id };
-    if (acount(e->graph_callers) == ED_HIST_MAX) {
-        memmove(
-            e->graph_callers,
-            e->graph_callers + 1,
-            (ED_HIST_MAX - 1) * sizeof *e->graph_callers
-        );
-        asetlen(e->graph_callers, ED_HIST_MAX - 1);
+    if (acount(e->graph_callers) == ED_CALLER_LIMIT) {
+        adel(e->graph_callers, 0);
     }
-    apush(e->graph_callers, caller);
+    apush(e->graph_callers, ((ed_graph_caller){ e->active_graph->graph_id, node_id }));
     ed_cancel_snapshot(e);
     return ed_switch_graph(e, target);
 }
@@ -118,22 +94,13 @@ int editor_graph_back(editor *e)
     }
     while (acount(e->graph_callers)) {
         ed_graph_caller caller = apop(e->graph_callers);
-        graph *target = behavior_asset_find_graph(e->asset, caller.view.graph_id);
+        graph *target = behavior_asset_find_graph(e->asset, caller.graph_id);
         if (!target) {
             continue;
         }
         ed_cancel_snapshot(e);
         ed_switch_graph(e, target);
         e->arrange_pending = false;
-        e->camera_moving = false;
-        e->fit_mode = caller.view.fit_mode;
-        e->fit_resize_pending = false;
-        e->fit_restore_pending = true;
-        e->camera_activity_time = ImGui_GetTime();
-        e->pan = caller.view.pan;
-        e->zoom = caller.view.zoom;
-        e->view_initialized = caller.view.view_initialized;
-        e->entry_index = caller.view.entry_index;
         node *call = graph_node_by_id(target, caller.node_id);
         if (call) {
             ed_select_node(e, call, 0);
@@ -148,18 +115,9 @@ int editor_graph_history_count(const editor *e)
     return e ? acount(e->graph_callers) : 0;
 }
 
-uint64_t editor_graph_history_id(const editor *e, int index)
-{
-    return e && index >= 0 && index < acount(e->graph_callers)
-             ? e->graph_callers[index].view.graph_id
-             : 0;
-}
-
 int editor_graph_ancestor(editor *e, int index)
 {
-    if (!e || index < 0 || index >= acount(e->graph_callers)) {
-        return -1;
-    }
+    assert(index >= 0 && index < acount(e->graph_callers));
     asetlen(e->graph_callers, index + 1);
     return editor_graph_back(e);
 }

@@ -95,14 +95,6 @@ void run_runtime_arrays_checks()
         );
         test_check(registry_node_by_name("Make Array")->category != NULL, "array nodes expose a category for context-sensitive spawn filtering");
         test_check(registry_node_by_name("Get")->keywords != NULL, "array connection targets expose compatible spawn keywords");
-        test_check(
-            strcmp(cmpl_rule_name(CMPL_RULE_UNREACHABLE), "CMPL-13") == 0,
-            "unreachable-node diagnostics have a stable warning rule"
-        );
-        test_check(
-            strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_DATA), "CMPL-14") == 0,
-            "unconnected impure data diagnostics have a stable warning rule"
-        );
         test_check(array_value.container == PIN_CONTAINER_ARRAY && array_value.ptr != NULL, "invalid and unresolved container values remain explicit errors, not silent nodes");
 
         /* DBG-5: struct array copies borrow their elements consistently. The
@@ -200,17 +192,9 @@ void run_runtime_arrays_checks()
         }
     }
 
-    /* Phase 6: weak delegate bindings. */
+    /* Service bindings belong to an instance. */
     {
-        behavior_asset *asset = behavior_asset_new("Delegates");
-        node *event = graph_add_node(asset->graph, &NODE_Event);
-        graph_set_event_name(asset->graph, event, "Changed");
-        pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
-        graph_add_pin(asset->graph, event, 1, &value);
-        node *sink = graph_add_node(asset->graph, &g_capture_desc);
-        graph_connect_exec(asset->graph, event, 0, sink, 0, 0);
-        graph_connect_data(asset->graph, event, 1, sink, 1);
-        behavior_instance *source = behavior_instance_create(asset, NULL, NULL, NULL);
+        behavior_asset *asset = behavior_asset_new("Services");
         behavior_instance *target = behavior_instance_create(asset, NULL, NULL, NULL);
         int service_token = 7;
         test_check(
@@ -218,43 +202,7 @@ void run_runtime_arrays_checks()
                 behavior_instance_service(target, "SelfCheckService") == &service_token,
             "service bindings are stable instance data"
         );
-        uint64_t binding = behavior_instance_bind_event(source, target, event->id);
-        uint64_t duplicate = behavior_instance_bind_event(source, target, event->id);
-        g_captured_int = -1;
-        flow_error delegate_error = { 0 };
-        flow_run *delegate_run = behavior_instance_dispatch_delegate(
-            source,
-            binding,
-            (flow_inputs){ &(pin_value){ .type = PIN_I32, .i = 77 }, 1, NULL },
-            &delegate_error
-        );
-        test_check(
-            binding != 0 && binding == duplicate && delegate_run && g_captured_int == 77,
-            "duplicate delegate registration returns one binding ID"
-        );
-        test_check(
-            behavior_instance_broadcast_event(
-                source,
-                event->id,
-                (flow_inputs){ &(pin_value){ .type = PIN_I32, .i = 78 }, 1, NULL },
-                &delegate_error
-            ) == 1,
-            "delegate dispatch follows a stable registration snapshot"
-        );
-        test_check(behavior_instance_unbind_event(source, binding) == 0, "unbinding removes exactly one binding");
-        binding = behavior_instance_bind_event(source, target, event->id);
-        char *delegate_json = behavior_asset_save_json(asset);
-        test_check(delegate_json && !strstr(delegate_json, "delegates"), "delegate runtime state is absent from authored JSON");
-        free(delegate_json);
-        test_check(binding != 0, "typed delegate communication has an instance-owned binding");
         behavior_instance_destroy(target);
-        test_check(
-            behavior_instance_dispatch_delegate(source, binding, (flow_inputs){ 0 }, &delegate_error) ==
-                NULL,
-            "destroying a weak delegate target prevents dispatch"
-        );
-        test_check(delegate_error.code == FLOW_ERR_INVALID_GRAPH, "a broken delegate produces one structured diagnostic");
-        behavior_instance_destroy(source);
         behavior_asset_free(asset);
     }
 }

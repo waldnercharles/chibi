@@ -12,7 +12,6 @@ enum
 
 /* Authoring operations. Failed reloads retain the last valid pixels and textures. */
 bool render_image_mount_content(const char *root, char *message, size_t size);
-bool render_image_load(const char *key, char *message, size_t size);
 bool render_image_reload(const char *key, char *message, size_t size);
 bool render_image_info(const char *key, int *width, int *height);
 const char *render_image_error(const char *key);

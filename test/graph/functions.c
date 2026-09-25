@@ -8,7 +8,7 @@ void run_graph_functions_checks()
         behavior_asset *asset = behavior_asset_new("EditorSurface");
         node *event = graph_add_node(asset->graph, &NODE_Event);
         graph_set_event_name(asset->graph, event, "Surface");
-        behavior_variable *value = behavior_asset_add_variable(
+        behavior_asset_add_variable(
             asset,
             "Value",
             PIN_I32,
@@ -54,11 +54,6 @@ void run_graph_functions_checks()
         test_check(bi && bi->asset == asset, "runtime instance state is separate from an activation");
         behavior_instance_destroy(bi);
         test_check(asset->graph->flow_pause_count == 0, "the replacement choke point releases the applied definition");
-        test_check(
-            value && literal &&
-                behavior_asset_promote_pin_to_variable(asset, literal, 0, 0, "Promoted"),
-            "the editor can promote a pin into a typed variable"
-        );
         test_check(registry_node_count() > 0, "the maintained parity surface is registry-extensible");
         test_check(CMPL_MESSAGE_MAX > 0, "diagnostics carry navigable stable message data");
         compile_report_free(&surface_report);

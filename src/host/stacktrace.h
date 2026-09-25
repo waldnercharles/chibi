@@ -3,9 +3,6 @@
 
 #include <stdbool.h>
 
-/* Print a symbolized stack trace to stderr, skipping `skip` top frames. */
-void print_stacktrace(int skip);
-
 /* Store argv[0] and install fatal-signal handlers (SIGSEGV, SIGABRT, ...).
  * Call at the top of main before anything else. */
 void stacktrace_init(char *program_name);

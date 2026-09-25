@@ -403,33 +403,6 @@ static void arrange_bundle_checks()
     arrange_routes_free(&routes);
 }
 
-static void arrange_long_link_checks()
-{
-    arrange_box boxes[5] = { arrange_test_box,
-                             arrange_test_box,
-                             arrange_test_box,
-                             arrange_test_box,
-                             arrange_test_box };
-    const arrange_link links[] = {
-        LINK(0, 1, 0, 0), LINK(1, 2, 0, 0), LINK(2, 3, 0, 0),
-        LINK(3, 4, 0, 0), LINK(0, 3, 1, 1), LINK(1, 3, 1, 2),
-    };
-    arrange_graph g = { boxes, 5, links, 6 };
-    arrange_point pos[5] = { 0 };
-    arrange_layout(&g, ARRANGE_ROUTE_CURVED, pos);
-    int *long_links = NULL;
-    arrange_long_links(&g, pos, ARRANGE_ROUTE_CURVED, 1000, &long_links);
-    test_check(acount(long_links) == 1 && long_links[0] == 4, "arrange reports links that span three columns");
-    afree(long_links);
-
-    const arrange_point grid[] = { { 0, 0 }, { 0, 300 }, { 600, 0 }, { 600, 240 } };
-    const arrange_link swapped[] = { LINK(0, 3, 0, 0), LINK(1, 2, 0, 0) };
-    arrange_graph crossing = { boxes, 4, swapped, 2 };
-    arrange_long_links(&crossing, grid, ARRANGE_ROUTE_CURVED, 1, &long_links);
-    test_check(acount(long_links) == 2, "arrange reports links that cross enough wires");
-    afree(long_links);
-}
-
 /* An execution chain stays level though its first node's data outputs pull
  * it toward the nodes they feed. */
 static void arrange_flow_checks()
@@ -692,7 +665,6 @@ void run_graph_arrange_checks()
     arrange_turn_checks();
     arrange_route_checks();
     arrange_bundle_checks();
-    arrange_long_link_checks();
     arrange_band_checks();
     arrange_flow_checks();
     arrange_band_width_checks();

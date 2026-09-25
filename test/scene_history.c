@@ -356,7 +356,7 @@ static void behavior_history()
     ecs_world_free(world);
 }
 
-static void component_history()
+static void component_override_roundtrip()
 {
     const ecs_component_desc *descriptors[] = { &GAME_COMPONENT_GameTransform,
                                                 &GAME_COMPONENT_GameHealth };
@@ -377,37 +377,6 @@ static void component_history()
     assert(base);
     ecs_entity entity;
     assert(game_prototype_spawn_components(base, world, &entity, error, sizeof error) == 0);
-    scene_history *history = scene_history_new();
-    GameTransform before = { 1, 2 }, after = { 3, 4 };
-    *GAME_GameTransform_get(world, entity) = after;
-    assert(scene_history_push(history, entity, before, after));
-    char *captured = game_prototype_entity_component_json(world, entity, descriptors[0], &registry);
-    assert(captured);
-    scene_component_edit edit = { .component = descriptors[0]->id,
-                                  .state_json = captured,
-                                  .added = false };
-    assert(GAME_GameTransform_remove(world, entity, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(scene_history_push_component(history, entity, &edit));
-    memset(captured, 'x', strlen(captured));
-    free(captured);
-    bool present = false;
-    ecs_entity selected = { 0 };
-    const scene_component_edit
-        *pending = scene_history_peek_component(history, false, &selected, &present);
-    assert(pending && present && ecs_entity_to_u64(selected) == ecs_entity_to_u64(entity));
-    assert(scene_history_undo(history, world, NULL) == -1);
-    assert(
-        game_prototype_apply_components_json(world, entity, pending->state_json, &registry, error, sizeof error) ==
-        0
-    );
-    scene_history_complete_component(history, false);
-    expect_position(world, entity, after);
-    assert(scene_history_undo(history, world, NULL) == 1);
-    expect_position(world, entity, before);
-    assert(scene_history_redo(history, world, NULL) == 1);
-    pending = scene_history_peek_component(history, true, NULL, &present);
-    assert(pending && !present);
     assert(
         game_prototype_apply_components_json(
             world,
@@ -419,7 +388,6 @@ static void component_history()
             sizeof error
         ) == 0
     );
-    scene_history_complete_component(history, true);
     char *overrides = game_prototype_capture_overrides_json(base, world, entity);
     assert(overrides && strstr(overrides, "null") && strstr(overrides, "GameHealth"));
     ecs_entity restored;
@@ -442,9 +410,8 @@ static void component_history()
     free(overrides);
     game_prototype_free(current);
     game_prototype_free(base);
-    scene_history_free(history);
     ecs_world_free(world);
-    puts("component history PASS: owned state, field chronology and added/removed override roundtrip");
+    puts("component overrides PASS: added/removed override roundtrip");
 }
 
 static void grouped_history()
@@ -572,7 +539,7 @@ void test_scene_history()
     string_history();
     checkpoint_history();
     grouped_history();
-    component_history();
+    component_override_roundtrip();
     scalar_history();
     actor_history();
     behavior_history();

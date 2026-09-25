@@ -305,7 +305,7 @@ static void end_link(studio *s, graph_hit hit)
         /* Dropped on empty canvas: search for a node that fits, spawned here
            and wired (Blender, Unreal). */
         e->spawn_link_pending = 1;
-        e->spawn_link_pin = (ed_pin_view){ from, g->link_kind, g->link_pin, { 0, 0 }, 0 };
+        e->spawn_link_pin = (ed_pin_view){ from, g->link_kind, g->link_pin };
         e->pending_snapshot = ed_snapshot(e);
         g->spawn_pending = true;
         g->spawn_x = g->world_x;

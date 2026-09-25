@@ -76,19 +76,6 @@ node_desc g_test_add_desc = {
     .fn = eval_test_add,
 };
 
-static pin_spec g_const_bool_out[] = {
-    { "value", PIN_BOOL, "bool" },
-};
-static node_desc g_const_bool_desc = {
-    .name = "const_bool_test",
-    .input_count = 0,
-    .output_count = 1,
-    .inputs = NULL,
-    .outputs = g_const_bool_out,
-    .pure_kind = NODE_PURE_CONST,
-    .display_class = NODE_DISPLAY_LITERAL,
-};
-
 static pin_spec g_all_types_outputs[] = {
     { "bool", PIN_BOOL, "bool" },         { "i8", PIN_I8, "int8_t" },
     { "u8", PIN_U8, "uint8_t" },          { "i16", PIN_I16, "int16_t" },

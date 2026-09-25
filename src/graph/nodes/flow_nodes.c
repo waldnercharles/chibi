@@ -630,7 +630,7 @@ node_desc NODE_CallMacro = {
     .display_class = NODE_DISPLAY_FUNCTION,
 };
 
-node_desc *const FLOW_NODES[] = {
+static node_desc *const FLOW_NODES[] = {
     &NODE_Event,
     &NODE_Branch,
     &NODE_Sequence,
@@ -652,7 +652,6 @@ node_desc *const FLOW_NODES[] = {
     &NODE_BehaviorExpression,
     &NODE_CallMacro,
 };
-const int FLOW_NODE_COUNT = sizeof FLOW_NODES / sizeof FLOW_NODES[0];
 
 const registry_pack CORE_FLOW_PACK = {
     .name = "core.flow",

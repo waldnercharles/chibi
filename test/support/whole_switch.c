@@ -1,5 +1,4 @@
 #include "graph/model/registry.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"

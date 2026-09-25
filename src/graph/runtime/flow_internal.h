@@ -96,8 +96,6 @@ struct flow_run
     flow_sink_fn sink;
     void *sink_user;
     char *event_name;
-    flow_parallel_for_fn parallel_for;
-    void *parallel_user;
     arena input_arena;
     arena scratch;
     flow_watch *watches;

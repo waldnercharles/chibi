@@ -12,17 +12,6 @@ const compile_diagnostic *behavior_function_query_diagnostics(
     const behavior_function *function,
     int *count
 );
-typedef enum
-{
-    BEHAVIOR_BATCH_UNAVAILABLE,
-    BEHAVIOR_BATCH_READY,
-    BEHAVIOR_BATCH_NOT_EVENT,
-    BEHAVIOR_BATCH_EVENT_PAYLOAD,
-    BEHAVIOR_BATCH_GRAPH_RETURN,
-    BEHAVIOR_BATCH_WAITS,
-    BEHAVIOR_BATCH_BREAKPOINTS,
-    BEHAVIOR_BATCH_UNSUPPORTED_OPERATION,
-} behavior_batch_reason;
 typedef struct
 {
     void *data;            /* Stable even while the current value is null. */
@@ -255,13 +244,6 @@ bool behavior_function_has_invocations(const behavior_function *function);
 /* A parameterless event with synchronous, non-reentrant operations only.
  * Its component accesses may cross entities, so execution order still matters. */
 bool behavior_function_batchable(const behavior_function *function);
-/* Explains the first condition that prevents a lowered event from using the
- * ordered batch path. The result matches behavior_function_batchable(). */
-behavior_batch_reason behavior_function_batch_reason(
-    const behavior_function *function,
-    const graph *graph,
-    const node *entry
-);
 /* Immutable lowering proof. Other-entity reads must not overlap any component
  * written by another body in the same parallel span. */
 bool behavior_function_parallel(const behavior_function *function);

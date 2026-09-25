@@ -81,7 +81,7 @@ These are our decisions, drawing on the references above. Distances are screen d
 
 ### Node rows
 
-- Rows follow Blender and our ImGui editor: execution pins pair up on the first rows (Unreal), then every data output, then every data input.
+- Rows follow Blender: execution pins pair up on the first rows (Unreal), then every data output, then every data input.
 - Inputs therefore always sit below outputs, wires never cross inside a node, and each input row has the full node width.
 - Input labels share one width per node, so their editors line up in a column.
 - Unreal, Unity and ComfyUI instead set inputs and outputs side by side. That is shorter, but it pairs unrelated pins and leaves editors half a node wide.
@@ -172,7 +172,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
 ### Debugging
 
 - **Execution:**
-  - Executed exec wires pulse. Markers are spaced 30 units apart and move at 150 units/s for 2 s (imgui-node-editor `Flow`); the existing editor's flow-heat timings stay.
+  - Executed exec wires pulse. Markers are spaced 30 units apart and move at 150 units/s for 2 s (imgui-node-editor `Flow`); flow-heat timings stay.
   - The running node gets a 3 dp accent outline, and errors a red one (ComfyUI, Unity).
   - Branches that didn't run draw dashed (Rivet).
 - **Breakpoints:** F9 toggles a breakpoint, drawn as a red octagon; outlined means disabled (Unreal).
@@ -226,9 +226,9 @@ The canvas is a separately scaled RmlUi context, not a transformed element: RmlU
 - **Wires.** `kit_wires` draws the grid and wires. Its ends anchor to socket elements and resolve after layout, so a wire follows its node in the frame the node moves.
 - **Menus and search.** These live in the Studio document, so they stay unscaled.
 
-## Parity with the ImGui graph editor
+## Parity with the removed ImGui graph editor
 
-The RmlUi editor replaces `src/editor/graph` and the canvas side of `src/editor/panels`. It must keep:
+The ImGui graph canvas and panels were removed on September 25, 2026. Studio's graph editor keeps, or must restore, their capabilities:
 
 - Graph calls and caller history.
 - Behavior expressions and their inline math.

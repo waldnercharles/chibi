@@ -726,7 +726,6 @@ static void configured_motion()
             game_physics_configuration(f.live->physics)
         ));
         assert(game_physics_configure(f.live->physics, invalid) == 0);
-        assert(game_physics_worker_budget(f.live->physics) >= 1);
         dispose(&f);
     }
     for (int continuous = 0; continuous < 2; continuous++) {

@@ -1,6 +1,6 @@
 /* Studio Properties editor: context tabs, reflected component fields,
    behaviors and scene physics. */
-#include "editor/panels/scene_properties.h"
+#include "editor/documents/component_properties.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/labels.h"
 #include "graph/model/pin_fmt.h"
@@ -139,7 +139,6 @@ static void write_field(
                                                        .before = before,
                                                        .after = before };
             scene->property_dirty = scene->scene_dirty;
-            scene->property_seen = true;
             pending = true;
         }
         if (ecs_component_write_field(scene->world, actor->entity, component, field, value) ==

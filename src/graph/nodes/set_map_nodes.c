@@ -179,11 +179,10 @@ node_desc NODE_SetLength = {
     .keywords = "set length",
 };
 
-node_desc *const SET_MAP_NODES[] = { &NODE_MakeSet,
-                                     &NODE_SetAdd,
-                                     &NODE_SetContains,
-                                     &NODE_SetLength };
-const int SET_MAP_NODE_COUNT = sizeof SET_MAP_NODES / sizeof SET_MAP_NODES[0];
+static node_desc *const SET_MAP_NODES[] = { &NODE_MakeSet,
+                                            &NODE_SetAdd,
+                                            &NODE_SetContains,
+                                            &NODE_SetLength };
 
 const registry_pack CORE_SET_MAP_PACK = {
     .name = "core.set_map",

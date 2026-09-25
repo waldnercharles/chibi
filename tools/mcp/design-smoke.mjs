@@ -301,22 +301,26 @@ try {
   }
   request("captureRuntimeSnapshot", { kind: "scene", name: "Route", frames: 1,
     inputs: [{ events: [{ name: "Award", target: "missing" }] }] }, true);
-  // Component nodes: Get exposes a field, Set writes only the field inputs it
-  // names, and Has reads another component; each lowers when the scene runs.
+  // Component nodes: Break Struct splits a Get, Set writes only the field
+  // inputs it names, Has reads another component and Add attaches one; each
+  // lowers when the scene runs.
   assert.equal(request("searchNodes", { query: "Set Component" }).nodes[0].name, "Set Component");
   create("behavior", "Salvage", [
     { op: "add_node", type: "Event", event_name: "Begin", ref: "begin" },
     { op: "add_node", type: "Get Component", ref: "haul", inputs: { Component: "GameExperience" } },
-    { op: "expose_fields", node: "haul", pin: "Value", side: "output" },
+    { op: "add_node", type: "Break Struct", ref: "cargo", inputs: { Type: "GameExperience" } },
+    connect("haul", "Value", "cargo", "GameExperience"),
     { op: "add_node", type: "Set Component", ref: "condition", inputs: { Component: "GameHealth" } },
     connect("begin", "Then", "condition", "Exec", "exec"),
-    connect("haul", "current", "condition", "current"),
+    connect("cargo", "current", "condition", "current"),
     { op: "add_node", type: "Has Component", ref: "aimed", inputs: { Component: "GameAim" } },
     { op: "add_node", type: "Branch", ref: "armed" },
     { op: "add_node", type: "Set Component", ref: "capacity", inputs: { Component: "GameHealth", maximum: 250 } },
     connect("condition", "Then", "armed", "Exec", "exec"),
     connect("aimed", "Value", "armed", "Condition"),
     connect("armed", "True", "capacity", "Exec", "exec"),
+    { op: "add_node", type: "Add Component", ref: "boost", inputs: { Component: "GameDash" } },
+    connect("capacity", "Then", "boost", "Exec", "exec"),
   ], { owner_type: "ecs.entity" });
   create("prototype", "Hauler", [
     { op: "add_component", component: "GameExperience", fields: { current: 12 } },
@@ -328,6 +332,8 @@ try {
   const salvaged = request("captureRuntimeSnapshot", { kind: "scene", name: "Salvage", frames: 1 });
   assert.equal(field(salvaged, "hauler", "GameHealth", "current"), 12, "Set Component writes the field Get Component exposes");
   assert.equal(field(salvaged, "hauler", "GameHealth", "maximum"), 250, "Has Component gates the second write");
+  const hauler = salvaged.entities.find(item => item.name === "hauler");
+  assert.ok(hauler.components.some(item => item.name === "GameDash"), "Add Component attaches Dash");
   console.log("MCP design smoke passed: graph authoring, spawned dependencies, controls, refit/undo, saved progression, sound, visibility, component nodes, 20-minute timeline and replay");
 } finally {
   if (process.env.CHIBI_KEEP_DESIGN_FIXTURE === "1") {

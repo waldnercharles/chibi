@@ -35,7 +35,7 @@ void test_system_host_wait()
     assert(diagnostic->node_id == spawn->id);
     assert(strstr(diagnostic->message, "entity Behavior"));
     flow_error error;
-    assert(game_system_tick(system, 0, 0.016, &error) == FLOW_ERR_COMPILE);
+    assert(game_system_tick_mode(system, 0, 0.016, &error, GAME_SYSTEM_EXEC_AUTO) == FLOW_ERR_COMPILE);
     assert(error.node == spawn);
     game_system_free(system);
 

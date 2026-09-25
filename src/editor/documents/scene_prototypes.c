@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 
@@ -79,19 +78,14 @@ int app_scene_authoring_detach_prototype_behavior(
     return 0;
 }
 
-const game_prototype_component *prototype_component_by_id(const game_prototype *prototype, ecs_component_id id)
+bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id)
 {
     for (int i = 0; i < acount(prototype->components); i++) {
         if (prototype->components[i].desc->id == id) {
-            return &prototype->components[i];
+            return true;
         }
     }
-    return NULL;
-}
-
-bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id)
-{
-    return prototype_component_by_id(prototype, id) != NULL;
+    return false;
 }
 
 static int refresh_prototype_actor(
@@ -286,56 +280,6 @@ int app_scene_authoring_set_prototype_field(
     return write_prototype_field(scene, asset, component_name, field_name, value);
 }
 
-int app_scene_authoring_set_prototype_fields(
-    app_scene_authoring *scene,
-    const char *prototype_name,
-    const app_prototype_field_change *changes,
-    int count
-)
-{
-    scene_prototype_asset *asset = find_prototype(scene, prototype_name);
-    if (!asset || count < 1) {
-        return -1;
-    }
-    char error[256];
-    game_prototype *edited = game_prototype_clone(asset->prototype, error, sizeof error);
-    if (!edited) {
-        return -1;
-    }
-    for (int i = 0; i < count; i++) {
-        if (game_prototype_write_field(
-                edited,
-                changes[i].component,
-                changes[i].field,
-                changes[i].value
-            )) {
-            game_prototype_free(edited);
-            return -1;
-        }
-    }
-    if (scene->runtime_snapshot_valid &&
-        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP)) {
-        game_prototype_free(edited);
-        return -1;
-    }
-    game_prototype *before = asset->prototype;
-    asset->prototype = edited;
-    if (refresh_prototype_instances(scene, asset)) {
-        asset->prototype = before;
-        int restored = refresh_prototype_instances(scene, asset);
-        assert(restored == 0);
-        game_prototype_free(edited);
-        return -1;
-    }
-    asset->prototype = before;
-    prototype_history_before(scene, before);
-    asset->prototype = edited;
-    game_prototype_free(before);
-    asset->dirty = 1;
-    asset_index_invalidate(scene);
-    return 0;
-}
-
 static const ecs_component_desc *component_descriptor(const app_scene_authoring *scene, const char *name)
 {
     for (int i = 0; i < scene->registry.component_count; i++) {
@@ -384,118 +328,6 @@ int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, 
     return 0;
 }
 
-int app_scene_authoring_set_instance_component(app_scene_authoring *scene, const char *name, bool present)
-{
-    if (!scene || !name) {
-        return -1;
-    }
-    scene_actor *actor = selected_actor(scene);
-    const ecs_component_desc *desc = component_descriptor(scene, name);
-    if (!actor || !desc || scene->runtime_snapshot_valid) {
-        return -1;
-    }
-    finish_transform_edit(scene, false);
-    bool exists = ecs_component_has(scene->world, actor->entity, desc->id);
-    if (exists == present) {
-        return 0;
-    }
-    char *json = present ? NULL
-                         : game_prototype_entity_component_json(
-                               scene->world,
-                               actor->entity,
-                               desc,
-                               &scene->registry
-                           );
-    if (!present && !json) {
-        return -1;
-    }
-    char *retained_before = scene_retention_save(actor->retained);
-    int result = present
-                   ? ecs_world_record_add(scene->world, actor->entity, desc->id, NULL, 0)
-                   : ecs_world_record_remove(scene->world, actor->entity, desc->id, 0);
-    if (result == ECS_OK) {
-        result = ecs_world_apply_commands(scene->world);
-    }
-    if (result == ECS_OK && present) {
-        scene_retained_component *retained = scene_retention_find(actor->retained, desc->name);
-        char *defaults = NULL;
-        for (int i = 0; i < acount(actor->base->components); i++) {
-            if (actor->base->components[i].desc->id == desc->id) {
-                defaults = game_prototype_component_json(actor->base, desc->name);
-                break;
-            }
-        }
-        if (!defaults && desc->id == GAME_COMPONENT_GameVisualMotion.id) {
-            game_prototype *context = game_prototype_capture_entity(
-                actor->prototype_name,
-                scene->world,
-                actor->entity,
-                &scene->registry
-            );
-            if (context && game_prototype_remove_component(context, desc->name) == 0 &&
-                game_prototype_add_component(context, desc) == 0) {
-                defaults = game_prototype_component_json(context, desc->name);
-            }
-            game_prototype_free(context);
-        } else if (!defaults) {
-            defaults = game_prototype_component_defaults_json(&scene->registry, desc);
-        }
-        char *restored = NULL;
-        if (defaults) {
-            restored = retained ? game_prototype_rebase_component_json(
-                                      retained->values_json,
-                                      retained->defaults_json,
-                                      defaults
-                                  )
-                                : xstrdup(defaults);
-        }
-        free(defaults);
-        result = restored ? apply_components_json(scene, actor->entity, restored)
-                          : -1;
-        free(restored);
-        json = game_prototype_entity_component_json(
-            scene->world,
-            actor->entity,
-            desc,
-            &scene->registry
-        );
-    }
-    if ((present && result != ECS_OK) || (result == ECS_OK && !json)) {
-        if (present) {
-            ecs_world_record_remove(scene->world, actor->entity, desc->id, 0);
-            ecs_world_apply_commands(scene->world);
-        }
-        free(retained_before);
-        free(json);
-        return -1;
-    }
-    if (result == ECS_OK && json) {
-        scene_retention_remove(&actor->retained, desc->name);
-        if (!present) {
-            scene_retained_component retained = {
-                .name = xstrdup(desc->name),
-                .values_json = xstrdup(json),
-                .defaults_json = game_prototype_component_json(actor->base, desc->name),
-            };
-            apush(actor->retained, retained);
-        }
-        char *retained_after = scene_retention_save(actor->retained);
-        scene_component_edit edit = { .component = desc->id,
-                                      .state_json = json,
-                                      .retained_before_json = retained_before,
-                                      .retained_after_json = retained_after,
-                                      .added = present };
-        bool recorded = scene_history_push_component(scene->history, actor->entity, &edit);
-        free(retained_after);
-        assert(recorded);
-        scene->scene_dirty = true;
-        scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    }
-    free(json);
-    free(retained_before);
-    return result;
-}
-
 int app_scene_authoring_add_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
@@ -512,28 +344,6 @@ int app_scene_authoring_add_prototype_component(
     }
     prototype_history_before(scene, asset->prototype);
     if (game_prototype_add_component(asset->prototype, desc) != 0) {
-        return -1;
-    }
-    asset->dirty = 1;
-    asset_index_invalidate(scene);
-    return refresh_prototype_instances(scene, asset);
-}
-
-int app_scene_authoring_remove_prototype_component(
-    app_scene_authoring *scene,
-    const char *prototype_name,
-    const char *component_name
-)
-{
-    if (!scene || !prototype_name || !component_name) {
-        return -1;
-    }
-    scene_prototype_asset *asset = find_prototype(scene, prototype_name);
-    if (!asset) {
-        return -1;
-    }
-    prototype_history_before(scene, asset->prototype);
-    if (game_prototype_detach_component(asset->prototype, component_name) != 0) {
         return -1;
     }
     asset->dirty = 1;
@@ -586,7 +396,7 @@ int prototype_redo(app_scene_authoring *scene)
     return asset ? restore_prototype(scene, asset, &asset->redo, &asset->undo) : -1;
 }
 
-int append_prototype_asset(app_scene_authoring *scene, game_prototype *prototype, const char *path)
+static int append_prototype_asset(app_scene_authoring *scene, game_prototype *prototype, const char *path)
 {
     if (!scene || !prototype || !prototype->name ||
         find_prototype(scene, prototype->name)) {

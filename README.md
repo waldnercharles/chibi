@@ -105,12 +105,13 @@ Existing directories retain their generator. With GNU Make versions before 4,
 changed sources require a clean build because timestamp precision can miss relinks.
 
 The workspace checkpoint preserves unsaved scene, prototype and graph edits,
-Undo/Redo, selection, graph views, navigation, docking and native window geometry. Play restarts from the
+Undo/Redo, selection, graph navigation and native window geometry. Play restarts from the
 authored scene with its previous running or paused intent. Live simulation
 memory and in-progress pointer gestures are recreated. Checkpoints live in
 `.chibi/workspace.json`; source documents are saved only through editor Save.
 When a behavior source changed after the checkpoint was written, the editor
-asks whether to reload that source or keep the checkpointed workspace copy.
+keeps the checkpointed copy; File > Reload on that behavior replaces it with the
+source.
 
 ## Code map
 
@@ -118,7 +119,7 @@ asks whether to reload that source or keep the checkpointed workspace copy.
 | --- | --- |
 | `include/chibi` | Versioned application lifecycle contract shared with the host |
 | `src/host` | Window lifetime, module replacement, checkpoint files, native source watching |
-| `src/editor` | Workspace, documents, graph canvas, panels and native UI |
+| `src/editor` | Workspace, documents, graph editing and the RmlUi Studio |
 | `src/graph` | Graph model, node catalog, documents, compilation and execution |
 | `src/runtime` | ECS-backed behavior, system and scene execution |
 | `src/ecs` | Entity storage, component layout and queries |

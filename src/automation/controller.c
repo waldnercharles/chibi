@@ -214,7 +214,7 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
 };
 static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
-    { "sections", "string[]", false, "nodes, types, services, operators, or components; defaults to all but nodes." },
+    { "sections", "string[]", false, "nodes, types, services, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -1914,7 +1914,6 @@ static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
     yyjson_mut_obj_add_int(doc, object, "nodes", registry_node_count());
     yyjson_mut_obj_add_int(doc, object, "types", registry_type_count());
     yyjson_mut_obj_add_int(doc, object, "services", registry_service_count());
-    yyjson_mut_obj_add_int(doc, object, "operators", registry_operator_count());
     yyjson_mut_obj_add_int(doc, object, "components", GAME_REGISTRY_COMPONENT_COUNT);
 }
 
@@ -7205,7 +7204,10 @@ static int handle_describe_components(yyjson_val *request, response *result, int
 }
 
 static const char *const REGISTRY_SECTIONS[] = {
-    "nodes", "types", "services", "operators", "components",
+    "nodes",
+    "types",
+    "services",
+    "components",
 };
 
 /* Nodes dominate the registry; searchNodes serves focused node lookups. */
@@ -7255,7 +7257,7 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 {
     yyjson_val *sections = request ? yyjson_obj_get(request, "sections") : NULL;
     if (!valid_registry_sections(sections)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, operators, or components");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, or components");
         return -1;
     }
     yyjson_mut_doc *doc = result->doc;
@@ -7291,33 +7293,6 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
             yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, services);
             yyjson_mut_obj_add_strcpy(doc, object, "name", service->name);
             yyjson_mut_obj_add_uint(doc, object, "stable_id", service->stable_id);
-        }
-    }
-    if (registry_section(sections, "operators")) {
-        yyjson_mut_val *operators = yyjson_mut_obj_add_arr(doc, value, "operators");
-        for (int i = 0; i < registry_operator_count(); i++) {
-            const operator_signature *signature = registry_operator(i);
-            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, operators);
-            yyjson_mut_obj_add_strcpy(doc, object, "name", signature->name);
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "left",
-                pin_json_name(signature->left)
-            );
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "right",
-                pin_json_name(signature->right)
-            );
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "result",
-                pin_json_name(signature->result)
-            );
-            yyjson_mut_obj_add_int(doc, object, "priority", signature->priority);
         }
     }
     if (registry_section(sections, "components")) {
@@ -8433,134 +8408,4 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     free(root);
     yyjson_doc_free(document);
     return response_finish(&result);
-}
-
-static const char *legacy_operation(const char *method)
-{
-    if (!method) {
-        return NULL;
-    }
-    if (!strcmp(method, "project.status")) {
-        return "status";
-    }
-    if (!strcmp(method, "assets.list")) {
-        return "list_assets";
-    }
-    if (!strcmp(method, "asset.read")) {
-        return "read_asset";
-    }
-    if (!strcmp(method, "asset.validate")) {
-        return "validate_asset";
-    }
-    return NULL;
-}
-
-static char *legacy_request(const yyjson_val *input, const char *operation, const char *root)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *object = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, object);
-    yyjson_mut_obj_add_uint(doc, object, "contract", CHIBI_AUTOMATION_CONTRACT);
-    yyjson_mut_obj_add_strcpy(doc, object, "operation", operation ? operation : "");
-    if (root && root[0]) {
-        yyjson_mut_obj_add_strcpy(doc, object, "project_root", root);
-    }
-    const yyjson_val *params = yyjson_obj_get(input, "params");
-    const char *path = params ? request_string((yyjson_val *)params, "path") : NULL;
-    if (path) {
-        yyjson_mut_obj_add_strcpy(doc, object, "path", path);
-    }
-    static const char *const page_fields[] = { "cursor", "limit", "summary" };
-    for (int i = 0; i < (int)(sizeof page_fields / sizeof *page_fields); i++) {
-        yyjson_val *value = params ? yyjson_obj_get(params, page_fields[i]) : NULL;
-        if (value) {
-            yyjson_mut_obj_add_val(doc, object, page_fields[i], yyjson_val_mut_copy(doc, value));
-        }
-    }
-    char *request = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    return request;
-}
-
-static void legacy_aliases(yyjson_mut_doc *doc, yyjson_mut_val *root, const char *method)
-{
-    yyjson_mut_val *result = yyjson_mut_obj_get(root, "result");
-    if (!result || !strcmp(method, "project.status")) {
-        if (result && !strcmp(method, "project.status")) {
-            yyjson_mut_val *project = yyjson_mut_obj_add_obj(doc, result, "project");
-            yyjson_mut_obj_add_strcpy(doc, project, "name", "chibi");
-            yyjson_mut_val *registry = yyjson_mut_obj_get(result, "registry");
-            yyjson_mut_val *nodes = registry ? yyjson_mut_obj_get(registry, "nodes")
-                                             : NULL;
-            yyjson_mut_obj_add_uint(
-                doc,
-                result,
-                "reflection_node_count",
-                nodes && yyjson_mut_is_int(nodes) ? yyjson_mut_get_uint(nodes) : 0
-            );
-        }
-        return;
-    }
-    if (!strcmp(method, "asset.read")) {
-        yyjson_mut_val *document = yyjson_mut_obj_get(result, "document");
-        if (document) {
-            yyjson_mut_obj_add_val(doc, result, "asset", yyjson_mut_val_mut_copy(doc, document));
-        }
-    }
-}
-
-static char *legacy_response(const char *response_json, const char *id, const char *method, int *status)
-{
-    yyjson_doc *document = yyjson_read(response_json, strlen(response_json), 0);
-    if (!document) {
-        return xstrdup("{\"version\":1,\"ok\":false,\"error\":{\"code\":\"execution_failed\"}}");
-    }
-    yyjson_mut_doc *mutable = yyjson_doc_mut_copy(document, NULL);
-    yyjson_doc_free(document);
-    if (!mutable) {
-        return xstrdup("{\"version\":1,\"ok\":false,\"error\":{\"code\":\"execution_failed\"}}");
-    }
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(mutable);
-    yyjson_mut_obj_add_uint(mutable, root, "version", CHIBI_AUTOMATION_CONTRACT);
-    yyjson_mut_obj_add_strcpy(mutable, root, "id", id ? id : "");
-    yyjson_mut_obj_add_strcpy(mutable, root, "method", method ? method : "");
-    legacy_aliases(mutable, root, method ? method : "");
-    yyjson_mut_val *error = yyjson_mut_obj_get(root, "error");
-    if (error && status && *status == CHIBI_AUTOMATION_INVALID_REQUEST) {
-        yyjson_mut_obj_remove_str(error, "code");
-        yyjson_mut_obj_add_strcpy(mutable, error, "code", "invalid_json");
-    }
-    char *result = yyjson_mut_write(mutable, 0, NULL);
-    yyjson_mut_doc_free(mutable);
-    return result ? result : xstrdup("{\"version\":1,\"ok\":false}");
-}
-
-char *chibi_ctl_handle(const chibi_ctl_context *context, const char *request, int *exit_code)
-{
-    const char *root = context && context->root ? context->root : ".";
-    yyjson_doc *document = request ? yyjson_read(request, strlen(request), 0) : NULL;
-    if (!document || !yyjson_is_obj(yyjson_doc_get_root(document))) {
-        if (document) {
-            yyjson_doc_free(document);
-        }
-        char *response = chibi_automation_handle(request, root, exit_code);
-        char *legacy = legacy_response(response, "", "", exit_code);
-        free(response);
-        return legacy;
-    }
-    yyjson_val *input = yyjson_doc_get_root(document);
-    const char *id = request_string(input, "id");
-    const char *method = request_string(input, "method");
-    const char *operation = legacy_operation(method);
-    char *canonical = legacy_request(input, operation, root);
-    yyjson_doc_free(document);
-    int automation_status = CHIBI_AUTOMATION_OK;
-    char *response = chibi_automation_handle(canonical, root, &automation_status);
-    free(canonical);
-    if (exit_code) {
-        *exit_code = automation_status;
-    }
-    char *legacy = legacy_response(response, id, method, &automation_status);
-    free(response);
-    return legacy;
 }

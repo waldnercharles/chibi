@@ -88,7 +88,6 @@ struct game_behavior_world
     void *sink_user;
     bool defer_begin;
     bool batch_disabled;
-    int breakpoints_enabled;
     int *pump_results;
     int pump_result_capacity;
     behavior_pending pending;
@@ -881,7 +880,6 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
     if (!instance) {
         return -1;
     }
-    behavior_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
     append_attachment(
         world,
         (behavior_attachment){
@@ -983,7 +981,6 @@ int game_behavior_set_attachments(
         if (!instance) {
             goto fail;
         }
-        behavior_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
         behavior_attachment attachment = {
             .entity = entity,
             .asset = asset,
@@ -1137,34 +1134,6 @@ int game_behavior_detach_asset(game_behavior_world *world, ecs_entity entity, co
     behavior_asset_record *asset = world && asset_name ? find_asset(world, asset_name)
                                                        : NULL;
     return asset ? detach_asset_entity(world, asset, entity) : -1;
-}
-
-int game_behavior_set_breakpoints_enabled_for_asset(
-    game_behavior_world *world,
-    ecs_entity entity,
-    const char *asset_name,
-    int enabled
-)
-{
-    behavior_instance *instance = game_behavior_instance(world, entity, asset_name);
-    if (!instance) {
-        return -1;
-    }
-    behavior_instance_set_breakpoints_enabled(instance, enabled);
-    if (enabled) {
-        behavior_instance_set_trace_enabled(instance, 1);
-    }
-    return 0;
-}
-
-int game_behavior_breakpoints_enabled_for_asset(
-    const game_behavior_world *world,
-    ecs_entity entity,
-    const char *asset_name
-)
-{
-    behavior_instance *instance = game_behavior_instance((game_behavior_world *)world, entity, asset_name);
-    return instance ? behavior_instance_breakpoints_enabled(instance) : 0;
 }
 
 int game_behavior_set_debug_hold(
@@ -1669,7 +1638,7 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
     game_behavior_set_time(world, monotonic_time);
     aclear(world->pumped);
     world->last_pump_count = 0;
-    bool serial = world->breakpoints_enabled;
+    bool serial = false;
     for (int i = behavior_pending_next(&world->pending, 0); i >= 0;
          i = behavior_pending_next(&world->pending, i + 1)) {
         behavior_instance *instance = world->attachments[i].instance;
@@ -1790,16 +1759,6 @@ void game_behavior_set_parallel_for(
     }
     world->parallel_for = parallel_for;
     world->parallel_user = parallel_user;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_instance_set_parallel_for(world->attachments[i].instance, parallel_for, parallel_user);
-    }
-}
-
-void game_behavior_set_breakpoints_enabled(game_behavior_world *world, int enabled)
-{
-    if (world) {
-        world->breakpoints_enabled = enabled != 0;
-    }
 }
 
 void game_behavior_set_sink(game_behavior_world *world, flow_sink_fn sink, void *user)
@@ -1948,24 +1907,6 @@ behavior_instance *game_behavior_instance(game_behavior_world *world, ecs_entity
     behavior_attachment *attachment = world ? find_attachment(world, entity, asset_name)
                                             : NULL;
     return attachment ? attachment->instance : NULL;
-}
-
-int game_behavior_promote_variable(
-    game_behavior_world *world,
-    const char *asset_name,
-    uint64_t variable_id,
-    ecs_component_id component_id,
-    game_behavior_promote_fn promote,
-    void *user
-)
-{
-    behavior_asset_record *asset = world && asset_name ? find_asset(world, asset_name)
-                                                       : NULL;
-    if (!asset || !promote ||
-        !behavior_asset_find_variable_by_id(asset->definition, variable_id)) {
-        return -1;
-    }
-    return promote(asset->definition, variable_id, component_id, user);
 }
 
 void game_behavior_inspect(game_behavior_world *world, const behavior_instance *instance)

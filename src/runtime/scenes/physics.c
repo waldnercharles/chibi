@@ -285,11 +285,6 @@ game_physics_settings game_physics_configuration(const game_physics *physics)
     return physics->configuration;
 }
 
-int game_physics_worker_budget(const game_physics *physics)
-{
-    return physics->tasks.workers > 0 ? physics->tasks.workers : 1;
-}
-
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks)
 {
     assert(!acount(physics->bodies));

@@ -852,8 +852,6 @@ flow_run *flow_run_start_reuse(
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
     set_event_name(run, options ? options->event_name : NULL);
-    run->parallel_for = options ? options->parallel_for : NULL;
-    run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
@@ -1017,17 +1015,6 @@ int flow_run_resume(flow_run *run)
         run->instance->schedule_revision++;
     }
     return flow_run_continue(run, 1);
-}
-
-int flow_run_tick(flow_run *run)
-{
-    if (!run) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    if (run->now) {
-        run->current_time = run->now(run->now_user);
-    }
-    return flow_run_continue(run, 0);
 }
 
 int flow_run_tick_at(flow_run *run, double monotonic_time)
@@ -1941,8 +1928,6 @@ int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs input
         .call_depth = parent->call_depth + 1,
         .breakpoints_override = 1,
         .breakpoints_enabled = parent->breakpoints_enabled,
-        .parallel_for = parent->parallel_for,
-        .parallel_user = parent->parallel_user,
     };
     flow_error error = { 0 };
     flow_run *child = NULL;
@@ -2004,15 +1989,6 @@ int flow_context_return(struct flow_context *ctx)
     frame_arrays_free(ctx->run);
     aclear(ctx->run->frames);
     return FLOW_OK;
-}
-
-int flow_context_retain_run(struct flow_context *ctx, flow_run *child)
-{
-    if (!ctx || !ctx->run || !child || child == ctx->run) {
-        return -1;
-    }
-    apush(ctx->run->children, child);
-    return 0;
 }
 
 void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)

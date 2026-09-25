@@ -13,7 +13,6 @@ typedef struct
     bool automatic;
 } scene_retained_component;
 
-scene_retained_component *scene_retention_find(scene_retained_component *components, const char *name);
 void scene_retention_remove(scene_retained_component **components, const char *name);
 void scene_retention_free(scene_retained_component *components);
 char *scene_retention_save(const scene_retained_component *components);

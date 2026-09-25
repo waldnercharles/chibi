@@ -30,7 +30,6 @@ int pin_set_unique(arena *storage, pin_value *out, const pin_value *items, int c
 /* TYPE-8/TYPE-9: arrays own their item storage. Struct elements remain
  * borrowed until a type-specific copy callback exists. */
 pin_array *pin_array_new(pin_type element_type, const char *type_name, int capacity);
-pin_array *pin_array_clone(const pin_array *src);
 pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src);
 pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src);
 /* Fixed-size typed zero values, owned by the arena. */
@@ -41,8 +40,6 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
 int pin_array_push(pin_array *array, const pin_value *value);
-int pin_array_insert(pin_array *array, int index, const pin_value *value);
-int pin_array_remove(pin_array *array, int index);
 int pin_array_equal(const pin_array *a, const pin_array *b);
 
 /* Copy and destruction dispatch. `dst` owns copied array and string storage;

@@ -64,14 +64,12 @@ int material_mask_carve(material_mask *mask, float x, float y, float radius);
 /* Batch damage edits cells locally. Rebuild once before using rectangles. */
 int material_mask_apply_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness);
 void material_mask_rebuild(material_mask *mask);
-/* Retains the largest connected component in mask. Returns an owned array of
- * other components with at least min_cells; smaller components are discarded.
- * The caller frees each mask and then the array with afree. */
-material_mask *material_mask_split(material_mask *mask, int min_cells, int *dust);
-/* Terrain keeps every component touching a chunk edge; internal islands detach. */
-material_mask *material_mask_split_anchored(material_mask *mask, int min_cells, int *dust);
 bool material_mask_contains(const material_mask *mask, float x, float y);
 
+/* Retains the largest connected component in mask, or with anchored every
+ * component touching a chunk edge. Returns an owned array of the other
+ * components with at least minimum cells; smaller components are discarded.
+ * The caller frees each mask and then the array with afree. */
 material_mask *material_mask_extract_fragments(material_mask *mask, int minimum, bool anchored, int *dust);
 
 #endif

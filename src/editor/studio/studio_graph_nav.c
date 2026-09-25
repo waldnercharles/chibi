@@ -6,8 +6,8 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "support/array.h"
 
+#include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 enum
@@ -42,10 +42,14 @@ static void track(studio *s)
     if (acount(g->visits) && same_visit(&g->visits[g->visit], &visit)) {
         return;
     }
-    editor_location location = editor_capture_location(sg_graph_editor(s));
-    free(location.nodes);
-    visit.caller_count = location.caller_count;
-    memcpy(visit.callers, location.callers, sizeof visit.callers);
+    const editor *e = sg_graph_editor(s);
+    visit.caller_count = acount(e->graph_callers);
+    assert(visit.caller_count <= ED_CALLER_LIMIT);
+    memcpy(
+        visit.callers,
+        e->graph_callers,
+        (size_t)visit.caller_count * sizeof *visit.callers
+    );
     asetlen(g->visits, acount(g->visits) ? g->visit + 1 : 0);
     apush(g->visits, visit);
     if (acount(g->visits) > VISIT_LIMIT) {
@@ -73,7 +77,7 @@ static bool open_visit(studio *s, const studio_visit *visit)
     if (!studio_graph_active(s) || editor_open_graph(e, visit->graph_id) != 0) {
         return false;
     }
-    editor_restore_callers(e, visit->callers, visit->caller_count);
+    ed_restore_callers(e, visit->callers, visit->caller_count);
     return true;
 }
 
@@ -221,7 +225,8 @@ void sg_nav_header(studio *s)
     asset_crumb(s);
     separator(k, 0);
     for (int i = 0; i < editor_graph_history_count(e); i++) {
-        const graph *caller = behavior_asset_find_graph(e->asset, editor_graph_history_id(e, i));
+        uint64_t id = e->graph_callers[i].graph_id;
+        const graph *caller = behavior_asset_find_graph(e->asset, id);
         if (!caller) {
             continue;
         }

@@ -66,12 +66,7 @@ int pin_array_reserve(pin_array *array, int capacity)
     return 0;
 }
 
-int pin_array_push(pin_array *array, const pin_value *value)
-{
-    return pin_array_insert(array, array ? array->count : -1, value);
-}
-
-int pin_array_insert(pin_array *array, int index, const pin_value *value)
+static int pin_array_insert(pin_array *array, int index, const pin_value *value)
 {
     if (!array || !value || index < 0 || index > array->count ||
         value->type != array->element_type) {
@@ -99,21 +94,9 @@ int pin_array_insert(pin_array *array, int index, const pin_value *value)
     return index;
 }
 
-int pin_array_remove(pin_array *array, int index)
+int pin_array_push(pin_array *array, const pin_value *value)
 {
-    if (!array || index < 0 || index >= array->count) {
-        return -1;
-    }
-    array->buckets = NULL;
-    array->bucket_mask = 0;
-    pin_value_destroy(&array->items[index]);
-    memmove(
-        array->items + index,
-        array->items + index + 1,
-        (size_t)(array->count - index - 1) * sizeof *array->items
-    );
-    array->count--;
-    return 0;
+    return pin_array_insert(array, array ? array->count : -1, value);
 }
 
 static pin_array *array_clone_heap(const pin_array *src)
@@ -132,7 +115,7 @@ static pin_array *array_clone_heap(const pin_array *src)
     return dst;
 }
 
-pin_array *pin_array_clone(const pin_array *src)
+static pin_array *pin_array_clone(const pin_array *src)
 {
     return array_clone_heap(src);
 }

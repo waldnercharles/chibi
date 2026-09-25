@@ -57,7 +57,7 @@ static void linked_runtime()
     graph *g = working->graph;
     node *begin = graph_add_node(g, &NODE_Event);
     node *set = graph_add_node(g, &NODE_SetComponent);
-    int setting = component_node_setting(COMPONENT_NODE_SET);
+    int setting = component_node_setting(set);
     pin_value transform = { .type = PIN_NAME, .str = "GameTransform" };
     assert(begin && set && graph_set_event_name(g, begin, "Begin") == 0);
     assert(graph_set_pin_default(g, set, 0, setting, &transform) == 0);
@@ -108,7 +108,6 @@ static void compatibility_cache()
         .graph_editor = e,
         .graph_document_kind = APP_EDITOR_DOCUMENT_BEHAVIOR,
         .graph_document_id = "DebugCache",
-        .debug_pinned = true,
         .debug_target = APP_RUNTIME_SCENE,
         .debug_sessions = { [APP_RUNTIME_SCENE] = 7 },
     };

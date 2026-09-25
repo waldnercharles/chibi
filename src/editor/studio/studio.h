@@ -3,9 +3,9 @@
 
 #include "editor/workspace/scene_authoring.h"
 
-/* The RmlUi Studio workspace: a full-window retained document that replaces the
- * ImGui shell. It reads and edits the scene authoring model directly and shows
- * the Scene render target inside its viewport area. */
+/* The RmlUi Studio workspace: a full-window retained document. It reads and
+ * edits the scene authoring model directly and shows the Scene render target
+ * inside its viewport area. */
 typedef struct studio studio;
 
 studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport);
@@ -15,7 +15,5 @@ void studio_free(studio *s);
 void studio_frame(studio *s, double delta_seconds);
 /* Fills the workspace with the graph canvas without changing saved preferences. */
 void studio_maximize_graph(studio *s);
-/* Test and inspection access to element rectangles by kit path. */
-bool studio_item_rect(const studio *s, const char *path, float rect[4]);
 
 #endif

@@ -592,7 +592,7 @@ static game_prototype *prepare_spawn(game_entities *entities, const char *identi
     return copy;
 }
 
-int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity)
+static int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity)
 {
     const char *message = NULL;
     game_prototype *copy = prepare_spawn(entities, identity, &message);

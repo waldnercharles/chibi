@@ -539,7 +539,7 @@ LITERAL_DESC(NODE_Real, "Real", PIN_F64, "double")
 LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name")
 LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *")
 
-node_desc *const EXTRA_NODES[] = {
+static node_desc *const EXTRA_NODES[] = {
 #define MATH_NODE_ENTRY(name) &NODE_##name,
     MATH_EXPRESSION_NODES(MATH_NODE_ENTRY)
 #undef MATH_NODE_ENTRY
@@ -593,7 +593,6 @@ node_desc *const EXTRA_NODES[] = {
     &NODE_To_Integer,
     &NODE_Format_Text,
 };
-const int EXTRA_NODE_COUNT = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0];
 
 const registry_pack CORE_EXTRA_PACK = {
     .name = "core.extra",

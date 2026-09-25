@@ -23,8 +23,7 @@ void test_automation_prototype_edit();
 void test_automation_scene_edit();
 void test_automation_asset_write();
 
-int shader_ui_run(const char *program);
-int arena_ui_run(const char *program, bool profile_only);
+int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
 int arena_scene_scale_run(const char *program, int count, int frames, bool profile);
 int bench_arena_scale(int count, int frames, bool portable, bool profile, int mode);
@@ -52,7 +51,6 @@ void test_component_presentation();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
-bool test_rmlui_menu();
 bool test_rmlui_kit();
 int rmlui_render_run(const char *program);
 
@@ -141,7 +139,6 @@ TEST_CASE(all_checks)
     test_field_outputs();
     test_function_wait();
     test_function_fields();
-    test_flags();
     test_particles();
     test_labels();
     test_math_expression();
@@ -151,7 +148,7 @@ TEST_CASE(all_checks)
     test_editor_flow();
     test_component_fields();
     test_component_nodes();
-    test_scene_navigation();
+    test_editor_documents();
     test_scene_debug();
     test_appearance_geometry();
     test_orientation();
@@ -166,16 +163,10 @@ TEST_CASE(all_checks)
     test_system_arithmetic();
     run_engine_checks();
     run_parallel_checks();
-    run_ecs_migration_checks();
-    run_scene_checks();
     run_editor_command_checks();
     test_component_presentation();
     test_editor_checkpoint();
-    test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
-    test_check(test_rmlui_menu(), "RmlUi menu commands, focus, layout, and lifecycle");
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_ui_scroll_smoothing(), "smooth scrolling is refresh-rate independent");
-    test_check(test_gameplay_keyboard(), "gameplay keyboard navigation and text editing capture");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -720,10 +711,9 @@ int main(int argc, char **argv)
         behavior_debug_backend(BEHAVIOR_UNAVAILABLE);
         return fails ? 1 : 0;
     }
-    if (argc > 1 && (strcmp(argv[1], "--arena-ui") == 0 ||
-                     strcmp(argv[1], "--behavior-profile-ui") == 0)) {
+    if (argc > 1 && strcmp(argv[1], "--arena-play") == 0) {
         registry_validate();
-        return arena_ui_run(program_name, strcmp(argv[1], "--behavior-profile-ui") == 0);
+        return arena_play_run(program_name);
     }
     if (argc > 1 && (strcmp(argv[1], "--arena-play-review") == 0 ||
                      strcmp(argv[1], "--arena-editor-review") == 0 ||
@@ -743,27 +733,14 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--scene-documents") == 0) {
         registry_validate();
-        test_scene_navigation();
+        test_editor_documents();
         return scene_documents_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--shader-ui") == 0) {
-        registry_validate();
-        return shader_ui_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--ui-keyboard") == 0) {
-        return test_ui_keyboard() ? 0 : 1;
-    }
-    if (argc > 1 && strcmp(argv[1], "--rmlui-menu") == 0) {
-        return test_rmlui_menu() ? 0 : 1;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
     }
-    if (argc > 1 && strcmp(argv[1], "--rmlui-menu-render") == 0) {
+    if (argc > 1 && strcmp(argv[1], "--rmlui-render") == 0) {
         return rmlui_render_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--ui-scroll") == 0) {
-        return test_ui_scroll_smoothing() ? 0 : 1;
     }
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();

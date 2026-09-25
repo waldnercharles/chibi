@@ -180,7 +180,7 @@ Reflected component Get, Has, Set and field Set now lower into checked native
 loads/stores, including explicit entity targets, Self/default-Self handles and
 component input bindings. The ECS supplies a small storage view; generated code
 checks the entity generation, membership, presence and reflected layout before
-accessing a row. Registration and migration refresh that view. Straight control
+accessing a row. Registration refreshes that view. Straight control
 paths reuse validated addresses and forward local snapshots through typed slots;
 field values still reflect intervening writes. No node evaluator, component C
 accessor or temporary full-component allocation is required by these bodies.
@@ -286,8 +286,7 @@ cover logical frames, stored outputs and guarded optimization.
 
 [Tick profiling and frame reuse](research/tick-profiling.md) documents the new
 execution/setup measurements, bounded call-frame storage, stress results and
-remaining compiler work. The focused rendered check is
-`test_suite --behavior-profile-ui`.
+remaining compiler work.
 
 [Pure-function body measurements](research/whole-pure-functions.md) cover independent
 publication, direct execution inside general compiled events, expanded coverage

@@ -94,26 +94,6 @@ const scene_behavior_edit *scene_history_peek_behaviors(
 );
 void scene_history_complete_behaviors(scene_history *history, bool redo);
 
-typedef struct
-{
-    ecs_component_id component;
-    const char *state_json;
-    bool added;
-    const char *retained_before_json;
-    const char *retained_after_json;
-} scene_component_edit;
-
-/* Owns the captured single-component JSON. The app replays presence changes
- * and completes only after successful application; failed replay keeps history. */
-bool scene_history_push_component(scene_history *history, ecs_entity entity, const scene_component_edit *edit);
-const scene_component_edit *scene_history_peek_component(
-    const scene_history *history,
-    bool redo,
-    ecs_entity *entity,
-    bool *present
-);
-void scene_history_complete_component(scene_history *history, bool redo);
-
 bool scene_history_can_undo(const scene_history *history);
 bool scene_history_can_redo(const scene_history *history);
 /* Returns 1 after applying, 0 when empty, or -1 if the entity/component/field

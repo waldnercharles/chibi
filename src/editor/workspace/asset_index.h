@@ -60,23 +60,6 @@ typedef struct
     uint64_t symbol_id; /* the called graph or the variable within the target */
 } asset_index_reference;
 
-/* Binding provenance stays graph-local: variables, component fields and
- * evaluation context have no authored asset target to invent. */
-typedef struct
-{
-    int source;
-    pin_binding_kind kind;
-    uint64_t variable_id;
-    const char *variable_name;
-    const char *source_asset;
-    const char *component;
-    const char *field;
-    uint64_t graph_id;
-    uint64_t node_id;
-    uint64_t pin_id;
-    bool dormant;
-} asset_index_binding_usage;
-
 asset_index *asset_index_new();
 void asset_index_free(asset_index *index);
 void asset_index_clear(asset_index *index);
@@ -96,18 +79,14 @@ int asset_index_ensure_name(asset_index *index, asset_index_kind kind, const cha
 int asset_index_add_reference(asset_index *index, asset_index_reference reference);
 /* The kind that indexes a graph asset of domain. */
 asset_index_kind asset_index_domain_kind(behavior_domain domain);
-/* Indexes the calls, spawns, events, variables and bindings in source's
- * graphs. A local call or variable targets source itself. */
+/* Indexes the calls, spawns, events and variable uses in source's graphs.
+ * A local call or variable targets source itself. */
 void asset_index_add_graph_references(asset_index *index, int source, const behavior_asset *asset);
-int asset_index_binding_usage_count(const asset_index *index);
-const asset_index_binding_usage *asset_index_binding_usage_at(const asset_index *index, int position);
 
 int asset_index_asset_count(const asset_index *index);
 const asset_index_asset *asset_index_asset_at(const asset_index *index, int position);
-bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind);
 int asset_index_reference_count(const asset_index *index);
 const asset_index_reference *asset_index_reference_at(const asset_index *index, int position);
-int asset_index_score(const asset_index_asset *asset, const char *query);
 
 /* Find References (Unreal): an asset, or a function graph or variable in it. */
 typedef enum

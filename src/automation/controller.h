@@ -34,30 +34,10 @@ enum
     CHIBI_AUTOMATION_CONFLICT = 7,
 };
 
-/* The short controller API is also used by the native regression suite. Keep
- * it independent from the line-oriented executable so callers can exercise
- * the public JSON seam without spawning a process. */
-typedef struct
-{
-    const char *root;
-} chibi_ctl_context;
-
-enum
-{
-    CHIBI_CTL_OK = CHIBI_AUTOMATION_OK,
-    CHIBI_CTL_INVALID_REQUEST = CHIBI_AUTOMATION_INVALID_REQUEST,
-    CHIBI_CTL_NOT_FOUND = CHIBI_AUTOMATION_NOT_FOUND,
-};
-
 /* Handle one JSON request and return one JSON response owned by the caller.
  * `default_root` is used when the request omits project_root. The response is
  * safe to print to stdout; diagnostics are data, never process logging. */
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code);
-
-/* Compatibility entry point for in-process editor and test callers. It uses
- * the same contract as the executable while preserving request IDs and the
- * method-shaped vocabulary used by the first controller prototype. */
-char *chibi_ctl_handle(const chibi_ctl_context *context, const char *request, int *exit_code);
 
 /* Rewrites every authored asset under root in the canonical form its loader
  * and saver produce. With check, only reports differences. Returns the

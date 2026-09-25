@@ -25,11 +25,6 @@ void render_gpu_timing_enable(bool enabled)
     g_timing.enabled = enabled;
 }
 
-bool render_gpu_timing_enabled(void)
-{
-    return g_timing.enabled;
-}
-
 void render_gpu_timing_start(void)
 {
     if (!g_timing.enabled) {

@@ -1,16 +1,11 @@
 #include "editor/graph/eval_view.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
-#include "graph/shader/shader_graph.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
-
-#undef IMGUI_STB_NAMESPACE
-#include <imgui/dcimgui_internal.h>
 
 static void ed_format_text_repair(editor *e, node *n);
 
@@ -62,55 +57,14 @@ void ed_cancel_snapshot(editor *e)
     e->pending_snapshot = NULL;
 }
 
-static void accept_image_drop(editor *e)
+void ed_show_error(editor *e, const char *message)
 {
-    if (e->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
-        e->asset->domain != BEHAVIOR_DOMAIN_SHAPE &&
-        e->asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
-        return;
-    }
-    const ImGuiPayload *payload = ImGui_AcceptDragDropPayload("CHIBI_IMAGE", 0);
-    if (!payload || !payload->Delivery || payload->DataSize <= 1) {
-        return;
-    }
-    const char *path = payload->Data;
-    if (path[payload->DataSize - 1] != '\0') {
-        return;
-    }
-    ImVec2 position = ed_screen_to_world(e, ImGui_GetMousePos());
-    node *n = editor_spawn(
-        e,
-        registry_node_by_name("Shader Image Texture"),
-        position.x,
-        position.y
-    );
-    assert(n);
-    pin_value value = { .type = PIN_STR, .str = path };
-    int result = graph_set_pin_default(e->active_graph, n, 0, SHADER_IMAGE_INPUT_IMAGE, &value);
-    assert(result == 0);
-    (void)result;
-    ed_select_node(e, n, false);
+    snprintf(e->connect_error, sizeof e->connect_error, "%s", message);
 }
 
-void ed_accept_graph_call_drop(editor *e)
+void ed_clear_connect_error(editor *e)
 {
-    if (e->active_graph->math_expression) {
-        return;
-    }
-    if (!ImGui_BeginDragDropTarget()) {
-        return;
-    }
-    const ImGuiPayload *payload = ImGui_AcceptDragDropPayload("CB_GRAPH_CALL", 0);
-    if (payload && payload->Delivery && payload->DataSize == sizeof(uint64_t)) {
-        uint64_t graph_id;
-        memcpy(&graph_id, payload->Data, sizeof graph_id);
-        graph *target = behavior_asset_find_graph(e->asset, graph_id);
-        if (target && (target->kind == GRAPH_FUNCTION || target->kind == GRAPH_MACRO)) {
-            (void)ed_place_graph_call_at(e, target, ed_screen_to_world(e, ImGui_GetMousePos()));
-        }
-    }
-    accept_image_drop(e);
-    ImGui_EndDragDropTarget();
+    e->connect_error[0] = '\0';
 }
 
 void ed_destroy_preview(editor *e)
@@ -119,10 +73,8 @@ void ed_destroy_preview(editor *e)
         behavior_instance_destroy(e->instance);
         e->instance = NULL;
     }
-    e->activation = NULL;
     behavior_asset_free(e->preview_behavior_asset);
     e->preview_behavior_asset = NULL;
-    e->instance_destroyed = 1;
     eval_view_set_run(e->ev, NULL);
 }
 
@@ -131,7 +83,6 @@ int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t 
 {
     ed_destroy_preview(e);
     uint64_t active_graph_id = e->active_graph ? e->active_graph->graph_id : 0;
-    ed_save_graph_view(e);
     behavior_asset *fresh = behavior_asset_load_json(json);
     if (!fresh) {
         return -1;
@@ -143,39 +94,21 @@ int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t 
     eval_view_free(e->ev);
     e->ev = eval_view_new();
     eval_view_set_formatter(e->ev, e->value_formatter, e->value_formatter_user);
-    asetlen(e->views, 0);
-    asetlen(e->pins, 0);
     behavior_asset_free(e->asset);
     e->asset = fresh;
-    e->fields_node = 0;
-    e->open_call_node = 0;
     e->active_graph = behavior_asset_find_graph(e->asset, active_graph_id);
     if (!e->active_graph) {
         e->active_graph = e->asset->graph;
     }
-    ed_load_graph_view(e);
     e->arrange_pending = false;
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     behavior_asset_free(e->compiled);
     e->compiled = NULL;
-    ed_rebuild_compile_text(e);
     ed_clear_selection(e);
-    e->selected_variable = NULL;
-    e->behavior_asset_search[0] = '\0';
-    e->dragging = 0;
-    e->linking = 0;
-    e->reveal_target = NULL;
-    e->context_node = NULL;
-    e->context_graph = NULL;
-    e->graph_rename[0] = '\0';
-    e->has_context_link = 0;
     e->front_node = NULL;
     e->spawn_link_pending = 0;
-    e->edit_text_node = NULL;
-    aclear(e->drag_nodes);
     e->log_count = 0;
-    ed_rebuild_log_text(e);
     e->edit_pending = 1;
     return 0;
 }
@@ -267,46 +200,6 @@ void ed_delete_selected(editor *e)
     afree(ids);
 }
 
-void ed_copy_selected(editor *e)
-{
-    if (acount(e->selected) == 0) {
-        return;
-    }
-    char *json = graph_save_nodes_json(e->active_graph, e->selected, acount(e->selected));
-    if (!json) {
-        return;
-    }
-    ImGui_SetClipboardText(json);
-    free(e->clipboard);
-    e->clipboard = json;
-}
-
-void ed_cut_selected(editor *e)
-{
-    ed_copy_selected(e);
-    if (acount(e->selected) == 0) {
-        return;
-    }
-    ed_delete_selected(e);
-}
-
-void ed_paste(editor *e)
-{
-    const char *clipboard = ImGui_GetClipboardText();
-    if (!clipboard || !clipboard[0]) {
-        clipboard = e->clipboard;
-    }
-    if (!clipboard) {
-        return;
-    }
-    ed_snapshot_before(e);
-    int first = acount(e->active_graph->nodes);
-    if (graph_append_json(e->active_graph, clipboard, 24.0f, 24.0f) == 0) {
-        ed_clear_selection(e);
-        ed_select_appended_visible(e, first);
-    }
-}
-
 void ed_duplicate_selected(editor *e)
 {
     if (acount(e->selected) == 0) {
@@ -323,38 +216,6 @@ void ed_duplicate_selected(editor *e)
         ed_select_appended_visible(e, first);
     }
     free(json);
-}
-
-void ed_begin_drag(editor *e, ImVec2 mouse)
-{
-    asetlen(e->drag_nodes, acount(e->selected));
-    for (int i = 0; i < acount(e->drag_nodes); i++) {
-        e->drag_nodes[i] = (ed_drag_node){ e->selected[i],
-                                           e->selected[i]->x,
-                                           e->selected[i]->y };
-    }
-    e->drag_start_mouse = mouse;
-    e->dragging = 1;
-    e->pending_snapshot = ed_snapshot(e);
-}
-
-void ed_update_drag(editor *e, ImVec2 mouse)
-{
-    ImVec2 delta = ed_scale(ed_sub(mouse, e->drag_start_mouse), 1.0f / e->zoom);
-    for (int i = 0; i < acount(e->drag_nodes); i++) {
-        e->drag_nodes[i].n->x = e->drag_nodes[i].x + delta.x;
-        e->drag_nodes[i].n->y = e->drag_nodes[i].y + delta.y;
-        e->drag_nodes[i].n->placed = true;
-    }
-}
-
-void ed_update_handle_drag(editor *e, ImVec2 mouse)
-{
-    edge *ed = &e->active_graph->edges[e->handle_edge];
-    assert(e->handle_side >= 0 && e->handle_side < ed->reroute_count);
-    ImVec2 point = ed_screen_to_world(e, mouse);
-    ed->reroutes[e->handle_side].x = point.x;
-    ed->reroutes[e->handle_side].y = point.y;
 }
 
 /* CAT-38: a Format Text node always carries one trailing Generic argument
@@ -475,7 +336,6 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     const char *in_name = ed_pin_type_name(in_spec);
     if (!ed_connection_specs_valid(out_spec, in_spec, out_spec->kind)) {
         snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
-        e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
         return 0;
     }
     /* PIN-11: a Generic data input accepts any data peer and adopts its
@@ -604,7 +464,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                         );
                     }
                 }
-                e->expression_error = error;
+                ed_show_error(e, error.message);
                 free(reference_before);
                 return 0;
             }
@@ -660,10 +520,10 @@ bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out)
     char *before = ed_snapshot(e);
     uint64_t id = n->id;
     graph_remove_edge(g, from, from_pin, to, to_pin);
-    ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin, { 0, 0 }, 0 };
-    ed_pin_view b = { n, ED_PIN_INPUT, in, { 0, 0 }, 0 };
-    ed_pin_view c = { n, ED_PIN_OUTPUT, out, { 0, 0 }, 0 };
-    ed_pin_view d = { to, ED_PIN_INPUT, to_pin, { 0, 0 }, 0 };
+    ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin };
+    ed_pin_view b = { n, ED_PIN_INPUT, in };
+    ed_pin_view c = { n, ED_PIN_OUTPUT, out };
+    ed_pin_view d = { to, ED_PIN_INPUT, to_pin };
     bool inserted = ed_connect(e, &a, &b) && ed_connect(e, &c, &d);
     if (!inserted) {
         /* Only a check made while connecting gets here, such as an
@@ -738,10 +598,7 @@ void ed_refresh_stale_behavior_expressions(editor *e)
                 continue;
             }
             behavior_expression_error error = { 0 };
-            if (behavior_expression_refresh(e->asset, call, &error) != 0 &&
-                error.message[0]) {
-                e->expression_error = error;
-            }
+            (void)behavior_expression_refresh(e->asset, call, &error);
         }
     }
 }

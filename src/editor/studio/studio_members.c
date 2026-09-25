@@ -178,12 +178,6 @@ static void add_graph(studio *s, graph_kind kind, const char *base)
     start_rename(s, STUDIO_MEMBER_GRAPH, made->graph_id);
 }
 
-/* Pointers into the variables go stale when one is added or removed. */
-static void variables_moved(editor *e)
-{
-    e->selected_variable = NULL;
-}
-
 /* A new variable takes the selected variable's type, else Boolean (Unreal). */
 static void add_variable(studio *s)
 {
@@ -203,7 +197,6 @@ static void add_variable(studio *s)
         NULL,
         NULL
     );
-    variables_moved(e);
     if (sm_record(e, before, v != NULL)) {
         select_member(s, STUDIO_MEMBER_VARIABLE, v->id);
         start_rename(s, STUDIO_MEMBER_VARIABLE, v->id);
@@ -221,7 +214,6 @@ static void duplicate_variable(studio *s)
     unique_variable_name(e->asset, v->name, name, sizeof name);
     char *before = ed_snapshot(e);
     behavior_variable *copy = behavior_asset_duplicate_variable(e->asset, v->id, name);
-    variables_moved(e);
     if (sm_record(e, before, copy != NULL)) {
         select_member(s, STUDIO_MEMBER_VARIABLE, copy->id);
     }
@@ -308,7 +300,6 @@ static void delete_member(studio *s)
             before = ed_snapshot(e);
             behavior_asset_remove_variable_uses(e->asset, m->id);
             deleted = sm_record(e, before, behavior_asset_delete_variable(e->asset, m->id) == 0);
-            variables_moved(e);
             break;
         case STUDIO_MEMBER_LOCAL:
             before = ed_snapshot(e);
@@ -919,7 +910,7 @@ static node *drop_node(studio *s, char kind, uint64_t id)
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     if (kind == 'v') {
-        bool set = kit_modifiers(s->kit) & KIT_MOD_ALT;
+        bool set = s->mods & SDL_KMOD_ALT;
         return set ? behavior_asset_add_set_node_to_graph(e->asset, gr, id)
                    : behavior_asset_add_get_node_to_graph(e->asset, gr, id);
     }

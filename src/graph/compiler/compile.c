@@ -1,8 +1,7 @@
 /* graph/compiler/compile.c -- the CMPL compile and validation pass. One explicit,
  * deterministic, read-only pass over a behavior_asset's default event graph and
- * variable list (CMPL-1). CMPL-17 (editor navigation) and CMPL-19 (operator
- * ambiguity) are deferred: navigation is editor surface, and operator
- * signatures arrive with the reflection v2 widening ladder. */
+ * variable list (CMPL-1). CMPL-17 (editor navigation) is deferred to the
+ * editor surface. */
 #include "graph/compiler/compile.h"
 
 #include "graph/compiler/field_program.h"
@@ -233,8 +232,6 @@ const char *cmpl_rule_name(int rule)
         case CMPL_RULE_MISSING_REFERENCE: return "CMPL-7";
         case CMPL_RULE_DUPLICATE_NAME: return "CMPL-8";
         case CMPL_RULE_UNRESOLVED_WILDCARD: return "CMPL-12";
-        case CMPL_RULE_UNREACHABLE: return "CMPL-13";
-        case CMPL_RULE_UNCONNECTED_DATA: return "CMPL-14";
         case CMPL_RULE_UNUSED_VARIABLE: return "CMPL-15";
         case CMPL_RULE_FUNCTION_LATENT: return "CMPL-9";
         case CMPL_RULE_FUNCTION_SHAPE: return "CMPL-10";
@@ -927,77 +924,6 @@ static void pass_macro_recursion(compile_report *out, const graph *g)
             "macro '%s' recursively calls itself",
             g->name ? g->name : "?"
         );
-    }
-}
-
-static void reach_exec(const graph *g, uint64_t id, uint8_t *seen)
-{
-    if (id >= (uint64_t)acount(g->id_table) || seen[id]) {
-        return;
-    }
-    seen[id] = 1;
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *e = &g->edges[i];
-        if (e->kind == GRAPH_EDGE_EXEC && e->from_id == id) {
-            reach_exec(g, e->to_id, seen);
-        }
-    }
-}
-
-static void pass_unreachable(compile_report *out, const graph *g, arena *tmp)
-{
-    if (g->kind != GRAPH_EVENT) {
-        return;
-    }
-    uint8_t *seen = (uint8_t *)arena_alloc(tmp, acount(g->id_table));
-    memset(seen, 0, acount(g->id_table));
-    for (int i = 0; i < acount(g->nodes); i++) {
-        if (!g->nodes[i]->disabled &&
-            node_behavior_for(g->nodes[i]) == NODE_BEHAVIOR_ENTRY) {
-            reach_exec(g, g->nodes[i]->id, seen);
-        }
-    }
-    for (int i = 0; i < acount(g->nodes); i++) {
-        const node *n = g->nodes[i];
-        if (!n->disabled && node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
-            !seen[n->id]) {
-            emit(
-                out,
-                CMPL_WARNING,
-                n->id,
-                0,
-                CMPL_RULE_UNREACHABLE,
-                "node '%s' is unreachable from an event entry",
-                node_label(n)
-            );
-        }
-    }
-}
-
-static void pass_unconnected_data(compile_report *out, const graph *g)
-{
-    for (int i = 0; i < acount(g->nodes); i++) {
-        const node *n = g->nodes[i];
-        if (n->disabled || node_behavior_for(n) == NODE_BEHAVIOR_PURE) {
-            continue;
-        }
-        for (int p = 0; p < n->input_count; p++) {
-            const pin_spec *pin = &n->input_pins[p];
-            node *source = NULL;
-            int source_pin = -1;
-            if (pin->kind == PIN_DATA &&
-                !graph_input_source(g, n, p, &source, &source_pin) && !pin->binding) {
-                emit(
-                    out,
-                    CMPL_WARNING,
-                    n->id,
-                    pin->id,
-                    CMPL_RULE_UNCONNECTED_DATA,
-                    "data input '%s' is unconnected and uses its default",
-                    pin_name(pin)
-                );
-            }
-        }
     }
 }
 

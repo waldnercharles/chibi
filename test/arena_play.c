@@ -1,7 +1,5 @@
 #include "assets/physics_settings.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
-#include "editor/workspace/frame_profile.h"
 #include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
@@ -24,15 +22,29 @@
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>
 #include <assert.h>
+#include <imgui/dcimgui.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 extern int test_arena_input();
-extern void test_navigation_runtime();
 
+/* CPU scopes of one editor frame, in milliseconds. */
+typedef enum
+{
+    ARENA_STAGE_INPUT,
+    ARENA_STAGE_DOCUMENTS,
+    ARENA_STAGE_SIMULATION,
+    ARENA_STAGE_SCENE,
+    ARENA_STAGE_PRESENT,
+    ARENA_STAGE_COUNT,
+} arena_stage;
+
+/* An editor session without Studio: the Scene area fills the window and reads
+ * the mouse and keyboard as Studio reports them to the viewport. */
 typedef struct
 {
     ecs_world *world;
@@ -44,48 +56,106 @@ typedef struct
     double time;
     bool sample_controls;
     bool profile_behaviors;
-    editor_frame_profile profile;
+    bool focused;
+    double stages[ARENA_STAGE_COUNT];
 } arena_fixture;
+
+static void arena_app_start()
+{
+    app_scene_renderer_initialize();
+    cf_app_init_imgui();
+    ImGui_GetIO()->IniFilename = NULL;
+    cf_app_set_imgui_render_target(cf_app_get_canvas());
+    app_input_initialize();
+}
+
+static void arena_app_stop()
+{
+    app_input_shutdown();
+    cf_destroy_app();
+}
+
+static double elapsed_ms(uint64_t *since)
+{
+    uint64_t now = cf_get_ticks();
+    double ms = 1000.0 * (double)(now - *since) / (double)cf_get_tick_frequency();
+    *since = now;
+    return ms;
+}
+
+static void viewport_input(arena_fixture *f)
+{
+    engine_viewport_host_input in = {
+        .width = (float)cf_app_get_width(),
+        .height = (float)cf_app_get_height(),
+        .x = cf_mouse_x(),
+        .y = cf_mouse_y(),
+        .hovered = true,
+        .focused = f->focused,
+        .wheel = cf_mouse_wheel_motion(),
+        .alt = cf_key_alt(),
+        .escape = cf_key_just_pressed(CF_KEY_ESCAPE),
+    };
+    for (int b = 0; b < 3; b++) {
+        in.down[b] = cf_mouse_down((CF_MouseButton)b);
+        in.pressed[b] = cf_mouse_just_pressed((CF_MouseButton)b);
+        in.released[b] = cf_mouse_just_released((CF_MouseButton)b);
+    }
+    engine_viewport_set_host_input(f->viewport, &in);
+}
+
+/* Shows the viewport texture over the window, as Studio composites it, so
+ * captures and pixel reads include the Scene. */
+static void present_viewport(arena_fixture *f)
+{
+    ImGuiIO *io = ImGui_GetIO();
+    ImVec2 size = { (float)cf_app_get_width(), (float)cf_app_get_height() };
+    io->DisplaySize = size;
+    ImGuiViewport *view = ImGui_GetMainViewport();
+    view->Pos = view->WorkPos = (ImVec2){ 0 };
+    view->Size = view->WorkSize = size;
+    ImGui_SetNextWindowPos((ImVec2){ 0 }, ImGuiCond_Always);
+    ImGui_SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 0 });
+    ImGui_PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
+    ImGui_Begin(
+        "Scene",
+        NULL,
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBringToFrontOnFocus
+    );
+    CF_Texture texture = { engine_viewport_texture(f->viewport) };
+    ImGui_Image((ImTextureRef){ ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(texture) }, size);
+    ImGui_End();
+    ImGui_PopStyleVarEx(2);
+}
 
 static void draw_frame(arena_fixture *f)
 {
-    editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
+    uint64_t since = cf_get_ticks();
     f->time += 1.0 / 60.0;
     editor_tick(f->graph, f->time);
     if (f->sample_controls) {
         app_gameplay_input(f->scene, f->runtime, f->viewport);
     }
-    editor_frame_mark(&f->profile, EDITOR_FRAME_DOCUMENTS);
-    app_scene_authoring_set_behavior_profiling(
-        f->scene,
-        f->profile_behaviors ||
-            (editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE) && !f->profile.frozen)
-    );
+    f->stages[ARENA_STAGE_DOCUMENTS] = elapsed_ms(&since);
+    engine_set_behavior_profiling(f->runtime, f->profile_behaviors);
     assert(app_scene_authoring_frame(f->scene, f->time) == FLOW_OK);
-    editor_frame_mark(&f->profile, EDITOR_FRAME_SIMULATION);
-    editor_prepare_docking();
+    f->stages[ARENA_STAGE_SIMULATION] = elapsed_ms(&since);
+    viewport_input(f);
     assert(app_scene_authoring_draw_viewport(f->scene, f->viewport) == 0);
-    editor_frame_mark(&f->profile, EDITOR_FRAME_SCENE);
-    app_scene_authoring_draw(f->scene);
-    editor_draw(f->graph);
-    editor_frame_profile_draw(&f->profile);
-    editor_ui_render();
-    editor_frame_mark(&f->profile, EDITOR_FRAME_UI);
+    present_viewport(f);
+    f->stages[ARENA_STAGE_SCENE] = elapsed_ms(&since);
     cf_app_draw_onto_screen(true);
-    editor_frame_mark(&f->profile, EDITOR_FRAME_PRESENT);
-    editor_frame_end(
-        &f->profile,
-        app_scene_authoring_runtime_timing(f->scene),
-        app_scene_authoring_behavior_profile(f->scene)
-    );
+    f->stages[ARENA_STAGE_PRESENT] = elapsed_ms(&since);
 }
 
 static void frame(arena_fixture *f)
 {
-    editor_frame_begin(&f->profile);
+    uint64_t since = cf_get_ticks();
     cf_app_update(NULL);
     app_input_frame();
-    editor_frame_mark(&f->profile, EDITOR_FRAME_INPUT);
+    f->stages[ARENA_STAGE_INPUT] = elapsed_ms(&since);
     draw_frame(f);
 }
 
@@ -127,8 +197,57 @@ static arena_fixture fixture_new()
     assert(app_scene_authoring_set_runtime_target(f.scene, APP_RUNTIME_SCENE) == 0);
     engine_set_focus(f.runtime, ENGINE_FOCUS_VIEWPORT);
     engine_viewport_set_render_callback(f.viewport, app_scene_authoring_render, f.scene);
-    editor_ui_reset_layout();
     return f;
+}
+
+static void fixture_free(arena_fixture *f)
+{
+    app_scene_authoring_free(f->scene);
+    engine_viewport_free(f->viewport);
+    engine_free(f->runtime);
+    game_live_world_free(f->live);
+    editor_free(f->graph);
+    ecs_world_free(f->world);
+}
+
+static void key_event(SDL_Scancode key, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
+    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.key.scancode = key;
+    event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
+    event.key.down = down;
+    assert(SDL_PushEvent(&event));
+}
+
+static void mouse_button_event(bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     : SDL_EVENT_MOUSE_BUTTON_UP };
+    event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = down;
+    event.button.clicks = 1;
+    event.button.x = cf_mouse_x();
+    event.button.y = cf_mouse_y();
+    assert(SDL_PushEvent(&event));
+}
+
+static void window_focus_event(bool focused)
+{
+    SDL_Event event = { .type = focused ? SDL_EVENT_WINDOW_FOCUS_GAINED
+                                        : SDL_EVENT_WINDOW_FOCUS_LOST };
+    event.window.windowID = SDL_GetWindowID(cf_app_get_window());
+    assert(SDL_PushEvent(&event));
+}
+
+static void mouse_move_event(CF_V2 position)
+{
+    SDL_Event event = { .type = SDL_EVENT_MOUSE_MOTION };
+    event.motion.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.motion.x = position.x;
+    event.motion.y = position.y;
+    assert(SDL_PushEvent(&event));
 }
 
 static int player_index(arena_fixture *f)
@@ -149,18 +268,14 @@ static render_arena_camera camera(arena_fixture *f)
     return view;
 }
 
-static ImVec2 screen_ndc(arena_fixture *f, CF_V2 ndc)
+/* Window coordinates of a viewport NDC position. */
+static CF_V2 screen_ndc(arena_fixture *, CF_V2 ndc)
 {
-    editor_ui_rect image;
-    assert(editor_ui_item_rect("viewport.image", &image));
-    float border = ImGui_GetStyle()->ImageBorderSize;
-    return (ImVec2){
-        image.x + border + (ndc.x * 0.5f + 0.5f) * (image.width - 2 * border),
-        image.y + border + (0.5f - ndc.y * 0.5f) * (image.height - 2 * border)
-    };
+    return (CF_V2){ (ndc.x * 0.5f + 0.5f) * (float)cf_app_get_width(),
+                    (0.5f - ndc.y * 0.5f) * (float)cf_app_get_height() };
 }
 
-static ImVec2 screen_point(arena_fixture *f, CF_V3 point)
+static CF_V2 screen_point(arena_fixture *f, CF_V3 point)
 {
     render_arena_camera view = camera(f);
     CF_V3 ndc = render_arena_project(&view, point);
@@ -183,7 +298,7 @@ static void assert_framed(arena_fixture *f)
     }
 }
 
-static ImVec2 player_ribbon_point(arena_fixture *f, ecs_entity entity)
+static CF_V2 player_ribbon_point(arena_fixture *f, ecs_entity entity)
 {
     arena_visual visuals[ARENA_PART_LIMIT];
     char error[160];
@@ -192,10 +307,10 @@ static ImVec2 player_ribbon_point(arena_fixture *f, ecs_entity entity)
     CF_V3 triangles[ARENA_MESH_TRIANGLE_LIMIT][3];
     int count = render_arena_mesh_triangles(visuals[0].part.primitive, triangles);
     assert(count > 0);
-    ImVec2 best = { 0 };
+    CF_V2 best = { 0 };
     float margin = 0;
     for (int i = 0; i < count; i++) {
-        ImVec2 p[3];
+        CF_V2 p[3];
         for (int j = 0; j < 3; j++) {
             p[j] = screen_point(f, cf_m4_transform_point(model, triangles[i][j]));
         }
@@ -208,20 +323,20 @@ static ImVec2 player_ribbon_point(arena_fixture *f, ecs_entity entity)
         int right = (int)floorf(fmaxf(p[0].x, fmaxf(p[1].x, p[2].x)));
         int top = (int)ceilf(fminf(p[0].y, fminf(p[1].y, p[2].y)));
         int bottom = (int)floorf(fmaxf(p[0].y, fmaxf(p[1].y, p[2].y)));
-        /* ImGui rounds pointer positions to pixels. Choose an interior pixel
+        /* The window reports pointer positions in pixels. Choose an interior pixel
          * with the most edge clearance, rather than a hollow bounding center. */
         for (int y = top; y <= bottom; y++) {
             for (int x = left; x <= right; x++) {
                 float clearance = INFINITY;
                 for (int j = 0; j < 3; j++) {
-                    ImVec2 a = p[j], b = p[(j + 1) % 3];
+                    CF_V2 a = p[j], b = p[(j + 1) % 3];
                     float dx = b.x - a.x, dy = b.y - a.y;
                     float edge = (dx * (y - a.y) - dy * (x - a.x)) / hypotf(dx, dy);
                     clearance = fminf(clearance, area > 0 ? edge : -edge);
                 }
                 if (clearance > margin) {
                     margin = clearance;
-                    best = (ImVec2){ x, y };
+                    best = (CF_V2){ x, y };
                 }
             }
         }
@@ -235,21 +350,21 @@ static void drag_player(arena_fixture *f)
     int index = player_index(f);
     ecs_entity entity = f->scene->actors[index].entity;
     GameTransform before = *GAME_GameTransform_get_const(f->world, entity);
-    ImVec2 mouse = player_ribbon_point(f, entity);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), mouse.x, mouse.y);
+    CF_V2 mouse = player_ribbon_point(f, entity);
+    mouse_move_event(mouse);
     frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+    mouse_button_event(true);
     frame(f);
     assert(f->scene->selected == index);
     engine_viewport_pointer start;
     engine_viewport_get_pointer(f->viewport, &start);
     assert(start.pressed && start.hovered);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), mouse.x + 32, mouse.y + 18);
+    mouse_move_event((CF_V2){ mouse.x + 32, mouse.y + 18 });
     frame(f);
     engine_viewport_pointer moved;
     engine_viewport_get_pointer(f->viewport, &moved);
     assert(moved.dragging);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+    mouse_button_event(false);
     frame(f);
     GameTransform after = *GAME_GameTransform_get_const(f->world, entity);
     /* Perspective and pane size determine world units per screen pixel. */
@@ -307,16 +422,17 @@ static void current_mouse_aim(arena_fixture *f)
     ecs_entity player = f->scene->actors[player_index(f)].entity;
     GameTransform position = *GAME_GameTransform_get_const(f->world, player);
     CF_V2 target = { position.x + 120, position.y - 60 };
-    ImVec2 mouse = screen_point(f, (CF_V3){ target.x, 0, target.y });
+    CF_V2 mouse = screen_point(f, (CF_V3){ target.x, 0, target.y });
     engine_viewport_pointer previous;
     engine_viewport_get_pointer(f->viewport, &previous);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), mouse.x, mouse.y);
+    mouse_move_event(mouse);
     cf_app_update(NULL);
     app_input_frame();
+    viewport_input(f);
     float x, y;
     assert(engine_viewport_mouse_world(f->viewport, &x, &y));
-    ImVec2 projected = screen_point(f, (CF_V3){ x, 0, -y });
-    /* ImGui quantizes events to pixels; the world footprint grows with zoom. */
+    CF_V2 projected = screen_point(f, (CF_V3){ x, 0, -y });
+    /* Events arrive in whole pixels; the world footprint grows with zoom. */
     assert(fabsf(projected.x - mouse.x) < 1.5f && fabsf(projected.y - mouse.y) < 1.5f);
     assert(hypotf(x - previous.world_x, y - previous.world_y) > 10);
     assert(app_scene_authoring_aim_at(f->scene, (CF_V2){ x, -y }, true) == 0);
@@ -344,376 +460,6 @@ static int projectiles(arena_fixture *f)
     return count;
 }
 
-static void click_item(arena_fixture *f, const char *id)
-{
-    editor_ui_rect rect;
-    if (!editor_ui_item_rect(id, &rect)) {
-        fprintf(stderr, "Arena UI item not visible: %s\n", id);
-        assert(!"Required authoring control is not visible");
-    }
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), rect.x + rect.width / 2, rect.y + rect.height / 2);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    frame(f);
-}
-
-static void replace_focused_text(arena_fixture *f, const char *text)
-{
-    ImGuiKey modifier = ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super
-                                                             : ImGuiMod_Ctrl;
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, true);
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, true);
-    frame(f);
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, false);
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, false);
-    frame(f);
-    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), text);
-    frame(f);
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, true);
-    frame(f);
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, false);
-    frame(f);
-}
-
-static void enter_item_text(arena_fixture *f, const char *id, const char *text)
-{
-    click_item(f, id);
-    replace_focused_text(f, text);
-}
-
-static GameSurfaceInfluence surface_influence(arena_fixture *f)
-{
-    ecs_entity entity = f->scene->actors[player_index(f)].entity;
-    const GameSurfaceInfluence *light = GAME_GameSurfaceInfluence_get_const(f->world, entity);
-    assert(light);
-    return *light;
-}
-
-static void expect_surface_influence(arena_fixture *f, GameSurfaceInfluence expected)
-{
-    GameSurfaceInfluence actual = surface_influence(f);
-    assert(actual.color == expected.color);
-    assert(fabsf(actual.strength - expected.strength) < 0.00001f);
-    assert(fabsf(actual.radius - expected.radius) < 0.00001f);
-    assert(fabsf(actual.linger - expected.linger) < 0.00001f);
-}
-
-static void surface_influence_history(arena_fixture *f, GameSurfaceInfluence before, GameSurfaceInfluence after)
-{
-    expect_surface_influence(f, after);
-    assert(replay_scene_edit(f->scene, false) == 0);
-    frame(f);
-    expect_surface_influence(f, before);
-    assert(replay_scene_edit(f->scene, true) == 0);
-    frame(f);
-    expect_surface_influence(f, after);
-}
-
-static editor_ui_rect inspector_input_rect()
-{
-    editor_ui_rect inspector;
-    assert(editor_ui_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector));
-    ImGuiIO *io = ImGui_GetIO();
-    assert(io->DisplaySize.x > 0 && io->DisplaySize.y > 0);
-    float scale_x = cf_app_get_canvas_width() / io->DisplaySize.x;
-    float scale_y = cf_app_get_canvas_height() / io->DisplaySize.y;
-    assert(scale_x > 0 && scale_y > 0);
-    return (editor_ui_rect){
-        inspector.x / scale_x,
-        inspector.y / scale_y,
-        inspector.width / scale_x,
-        inspector.height / scale_y,
-    };
-}
-
-static void show_surface_influence(arena_fixture *f)
-{
-    editor_ui_rect inspector = inspector_input_rect();
-    bool reduced_motion = editor_ui_reduced_motion();
-    editor_ui_set_reduced_motion(true);
-    ImGuiIO_AddMousePosEvent(
-        ImGui_GetIO(),
-        inspector.x + inspector.width * .5f,
-        inspector.y + inspector.height * .5f
-    );
-    frame(f);
-    for (int scroll = 0; scroll < 40; scroll++) {
-        editor_ui_rect color, linger;
-        if (editor_ui_item_rect("instance.color.GameSurfaceInfluence.color", &color) &&
-            editor_ui_item_rect("instance.field.GameSurfaceInfluence.linger", &linger) &&
-            color.y > inspector.y + 35 &&
-            linger.y + linger.height < inspector.y + inspector.height - 10) {
-            editor_ui_set_reduced_motion(reduced_motion);
-            return;
-        }
-        ImGuiIO_AddMouseWheelEvent(ImGui_GetIO(), 0, -3);
-        frame(f);
-    }
-    editor_ui_set_reduced_motion(reduced_motion);
-    assert(!"Surface Influence controls must be reachable in the Inspector");
-}
-
-static void surface_influence_authoring(arena_fixture *f)
-{
-    GameSurfaceInfluence original = surface_influence(f);
-    select_instance(f->scene, player_index(f));
-    scene_authoring_select_document(f->scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    for (int i = 0; i < 4; i++) {
-        frame(f);
-    }
-    show_surface_influence(f);
-    GameSurfaceInfluence edited = original;
-    edited.radius += 17.5f;
-    char text[32];
-    snprintf(text, sizeof text, "%g", edited.radius);
-    enter_item_text(f, "instance.field.GameSurfaceInfluence.radius", text);
-    surface_influence_history(f, original, edited);
-
-    GameSurfaceInfluence before = edited;
-    edited.strength += 6.25f;
-    snprintf(text, sizeof text, "%g", edited.strength);
-    enter_item_text(f, "instance.field.GameSurfaceInfluence.strength", text);
-    surface_influence_history(f, before, edited);
-
-    before = edited;
-    edited.linger += .125f;
-    snprintf(text, sizeof text, "%g", edited.linger);
-    enter_item_text(f, "instance.field.GameSurfaceInfluence.linger", text);
-    surface_influence_history(f, before, edited);
-
-    before = edited;
-    click_item(f, "instance.color.GameSurfaceInfluence.color");
-    frame(f);
-    editor_ui_rect picker;
-    assert(editor_ui_item_rect("color.picker", &picker));
-    edited.color = 0xffa040ffu;
-    assert(edited.color != before.color);
-    enter_item_text(f, "color.hex", "FFA040FF");
-    click_item(f, "color.done");
-    frame(f);
-    surface_influence_history(f, before, edited);
-
-    char path[] = "/tmp/arena-ui-surface-influence-XXXXXX";
-    int descriptor = mkstemp(path);
-    assert(descriptor >= 0 && close(descriptor) == 0);
-    assert(app_scene_authoring_save(f->scene, path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    expect_surface_influence(f, original);
-    assert(app_scene_authoring_load(f->scene, path) == 0);
-    expect_surface_influence(f, edited);
-    assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    frame(f);
-    expect_surface_influence(f, original);
-    editor_ui_rect inspector = inspector_input_rect();
-    ImGuiIO_AddMousePosEvent(
-        ImGui_GetIO(),
-        inspector.x + inspector.width * .5f,
-        inspector.y + inspector.height * .5f
-    );
-    frame(f);
-    ImGuiIO_AddMouseWheelEvent(ImGui_GetIO(), 0, 100);
-    frame(f);
-    puts("Surface Influence UI PASS: ArenaPlayer radius/strength/linger inputs, color picker, Undo/Redo and saved scene overrides");
-}
-
-static arena_parts player_parts(arena_fixture *f)
-{
-    ecs_entity entity = f->scene->actors[player_index(f)].entity;
-    const GameMeshParts *mesh = GAME_GameMeshParts_get_const(f->world, entity);
-    assert(mesh);
-    arena_parts parts;
-    char error[160];
-    assert(render_arena_parts_parse(mesh->parts, &parts, error, sizeof error));
-    return parts;
-}
-
-static void expect_parts(arena_fixture *f, arena_parts expected)
-{
-    arena_parts actual = player_parts(f);
-    assert(actual.count == expected.count);
-    for (int i = 0; i < actual.count; i++) {
-        arena_part a = actual.parts[i], b = expected.parts[i];
-        assert(a.primitive == b.primitive && !strcmp(a.material, b.material));
-        assert(cf_len_v3(cf_sub_v3(a.dimensions, b.dimensions)) < .0001f);
-        assert(cf_len_v3(cf_sub_v3(a.position, b.position)) < .0001f);
-        assert(cf_len_v3(cf_sub_v3(a.rotation, b.rotation)) < .0001f);
-    }
-}
-
-static void parts_history(arena_fixture *f, arena_parts before, arena_parts after)
-{
-    expect_parts(f, after);
-    assert(replay_scene_edit(f->scene, false) == 0);
-    frame(f);
-    expect_parts(f, before);
-    assert(replay_scene_edit(f->scene, true) == 0);
-    frame(f);
-    expect_parts(f, after);
-}
-
-static void show_inspector_item(arena_fixture *f, const char *id)
-{
-    editor_ui_rect inspector = inspector_input_rect(), item;
-    bool reduced_motion = editor_ui_reduced_motion();
-    editor_ui_set_reduced_motion(true);
-    ImGuiIO_AddMousePosEvent(
-        ImGui_GetIO(),
-        inspector.x + inspector.width / 2,
-        inspector.y + inspector.height / 2
-    );
-    frame(f);
-    ImGuiIO_AddMouseWheelEvent(ImGui_GetIO(), 0, 100);
-    frame(f);
-    for (int scroll = 0; scroll < 50; scroll++) {
-        if (editor_ui_item_rect(id, &item) && item.y > inspector.y + 35 &&
-            item.y + item.height < inspector.y + inspector.height - 10) {
-            editor_ui_set_reduced_motion(reduced_motion);
-            return;
-        }
-        ImGuiIO_AddMouseWheelEvent(ImGui_GetIO(), 0, -3);
-        frame(f);
-    }
-    editor_ui_set_reduced_motion(reduced_motion);
-    fprintf(stderr, "Inspector control unreachable: %s\n", id);
-    assert(false);
-}
-
-static void enter_vector_item(arena_fixture *f, const char *id, int axis, const char *text)
-{
-    show_inspector_item(f, id);
-    editor_ui_rect item;
-    assert(editor_ui_item_rect(id, &item));
-    ImGuiIO_AddMousePosEvent(
-        ImGui_GetIO(),
-        item.x + item.width / 2,
-        item.y + item.height * (axis + .5f) / 3
-    );
-    frame(f);
-    ImGuiKey modifier = ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super
-                                                             : ImGuiMod_Ctrl;
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, true);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, false);
-    frame(f);
-    replace_focused_text(f, text);
-}
-
-static void mesh_parts_authoring(arena_fixture *f)
-{
-    select_instance(f->scene, player_index(f));
-    assert(!GAME_GameMeshParts_has(f->world, f->scene->actors[player_index(f)].entity));
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameMeshParts", true) == 0);
-    arena_parts original = player_parts(f);
-    assert(original.count == 0);
-    scene_authoring_select_document(f->scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    frame(f);
-    show_inspector_item(f, "mesh.parts.add");
-    click_item(f, "mesh.parts.add");
-    frame(f);
-    arena_parts edited = player_parts(f);
-    assert(edited.count == original.count + 1);
-    parts_history(f, original, edited);
-    int index = edited.count - 1;
-    char id[80];
-    arena_parts before = edited;
-    edited.parts[index].dimensions.x = 18.5f;
-    snprintf(id, sizeof id, "mesh.part.%d.size", index);
-    enter_vector_item(f, id, 0, "18.5");
-    parts_history(f, before, edited);
-    before = edited;
-    edited.parts[index].rotation.z = 3.141592654f / 4;
-    snprintf(id, sizeof id, "mesh.part.%d.rotation", index);
-    enter_vector_item(f, id, 2, "45");
-    parts_history(f, before, edited);
-    char path[] = "/tmp/arena-ui-parts-XXXXXX";
-    int descriptor = mkstemp(path);
-    assert(descriptor >= 0 && close(descriptor) == 0);
-    assert(app_scene_authoring_save(f->scene, path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    assert(!GAME_GameMeshParts_has(f->world, f->scene->actors[player_index(f)].entity));
-    assert(app_scene_authoring_load(f->scene, path) == 0);
-    expect_parts(f, edited);
-    assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    frame(f);
-    assert(!GAME_GameMeshParts_has(f->world, f->scene->actors[player_index(f)].entity));
-    select_instance(f->scene, player_index(f));
-    frame(f);
-    show_inspector_item(f, "instance.field.GameTransform.x");
-    puts("Mesh Parts UI PASS: added part, edited size and roll, Undo/Redo, saved scene overrides");
-}
-
-static int environment_index(arena_fixture *f)
-{
-    for (int i = 0; i < acount(f->scene->actors); i++) {
-        if (GAME_GameEnvironment_has(f->world, f->scene->actors[i].entity)) {
-            return i;
-        }
-    }
-    assert(!"Arena scene requires an Environment actor");
-    return -1;
-}
-
-static GameEnvironment environment(arena_fixture *f)
-{
-    ecs_entity entity = f->scene->actors[environment_index(f)].entity;
-    assert(!GAME_GameTransform_has(f->world, entity));
-    return *GAME_GameEnvironment_get_const(f->world, entity);
-}
-
-static void expect_environment(arena_fixture *f, GameEnvironment expected)
-{
-    GameEnvironment actual = environment(f);
-    assert(fabsf(actual.exposure - expected.exposure) < 0.00001f);
-    assert(fabsf(actual.bloom_strength - expected.bloom_strength) < 0.00001f);
-    assert(fabsf(actual.bloom_threshold - expected.bloom_threshold) < 0.00001f);
-    assert(fabsf(actual.bloom_radius - expected.bloom_radius) < 0.00001f);
-}
-
-static void expect_camera(arena_fixture *f, engine_viewport_camera expected)
-{
-    engine_viewport_camera actual;
-    engine_viewport_get_camera(f->viewport, &actual);
-    assert(fabsf(actual.center_x - expected.center_x) < 0.001f);
-    assert(fabsf(actual.center_y - expected.center_y) < 0.001f);
-    assert(fabsf(actual.span_width - expected.span_width) < 0.001f);
-    assert(fabsf(actual.span_height - expected.span_height) < 0.001f);
-}
-
-static GameEnvironment edit_environment(arena_fixture *f, const char *field, float fraction)
-{
-    GameEnvironment before = environment(f);
-    char id[128];
-    snprintf(id, sizeof id, "instance.field.GameEnvironment.%s", field);
-    editor_ui_rect rect;
-    assert(editor_ui_item_rect(id, &rect));
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), rect.x + rect.width * .5f, rect.y + rect.height * .5f);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), rect.x + rect.width * fraction, rect.y + rect.height * .5f);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    frame(f);
-    editor_ui_rect edited_rect;
-    assert(editor_ui_item_rect(id, &edited_rect));
-    assert(edited_rect.x == rect.x && edited_rect.width == rect.width);
-    GameEnvironment after = environment(f);
-    /* One drag, including its initial click, is one authoring operation. */
-    assert(replay_scene_edit(f->scene, false) == 0);
-    frame(f);
-    expect_environment(f, before);
-    assert(replay_scene_edit(f->scene, true) == 0);
-    frame(f);
-    expect_environment(f, after);
-    return after;
-}
-
 static CF_Pixel *canvas_pixels()
 {
     CF_Readback readback = cf_canvas_readback(cf_app_get_canvas());
@@ -733,440 +479,6 @@ static CF_Pixel *canvas_pixels()
     return pixels;
 }
 
-static double viewport_light()
-{
-    editor_ui_rect rect;
-    assert(editor_ui_item_rect("viewport.image", &rect));
-    CF_Pixel *pixels = canvas_pixels();
-    int width = cf_app_get_canvas_width(), height = cf_app_get_canvas_height();
-    ImVec2 display = ImGui_GetIO()->DisplaySize;
-    int left = (int)((rect.x + 4) * width / display.x);
-    int right = (int)((rect.x + rect.width - 4) * width / display.x);
-    int top = (int)((rect.y + 4) * height / display.y);
-    int bottom = (int)((rect.y + rect.height - 4) * height / display.y);
-    assert(left >= 0 && right <= width && top >= 0 && bottom <= height);
-    assert(right > left && bottom > top);
-    double light = 0;
-    for (int y = top; y < bottom; y++) {
-        for (int x = left; x < right; x++) {
-            CF_Pixel pixel = pixels[y * width + x];
-            light += pixel.colors.r + pixel.colors.g + pixel.colors.b;
-        }
-    }
-    free(pixels);
-    return light / ((right - left) * (bottom - top) * 3.0);
-}
-
-static void expect_retained_viewport(const CF_Pixel *before)
-{
-    editor_ui_rect rect;
-    assert(editor_ui_item_rect("viewport.image", &rect));
-    CF_Pixel *after = canvas_pixels();
-    int width = cf_app_get_canvas_width(), height = cf_app_get_canvas_height();
-    ImVec2 display = ImGui_GetIO()->DisplaySize;
-    int left = (int)((rect.x + 4) * width / display.x);
-    int right = (int)((rect.x + rect.width - 4) * width / display.x);
-    /* The diagnostic overlays the top; compare the unobstructed lower half. */
-    int top = (int)((rect.y + rect.height * .5f) * height / display.y);
-    int bottom = (int)((rect.y + rect.height - 4) * height / display.y);
-    assert(left >= 0 && right <= width && top >= 0 && bottom <= height);
-    assert(right > left && bottom > top);
-    for (int y = top; y < bottom; y++) {
-        assert(!memcmp(
-            before + y * width + left,
-            after + y * width + left,
-            (size_t)(right - left) * sizeof(CF_Pixel)
-        ));
-    }
-    free(after);
-}
-
-static void expect_environment_error(arena_fixture *f, const char *message, const CF_Pixel *before)
-{
-    frame(f);
-    frame(f); /* Let the diagnostic child size to its rendered text. */
-    const char *error = app_scene_renderer_error(f->scene->renderer);
-    assert(strstr(error, message));
-    editor_ui_rect overlay;
-    assert(editor_ui_item_rect("viewport.error", &overlay));
-    assert(overlay.width > 0 && overlay.height > 0);
-    expect_retained_viewport(before);
-}
-
-static void expect_environment_recovered(arena_fixture *f, const CF_Pixel *before)
-{
-    frame(f);
-    assert(!app_scene_renderer_error(f->scene->renderer)[0]);
-    editor_ui_rect overlay;
-    assert(!editor_ui_item_rect("viewport.error", &overlay));
-    expect_retained_viewport(before);
-}
-
-static void environment_diagnostics(arena_fixture *f)
-{
-    frame(f);
-    assert(!app_scene_renderer_error(f->scene->renderer)[0]);
-    CF_Pixel *before = canvas_pixels();
-    GameEnvironment original = environment(f);
-    ecs_entity duplicate = ecs_world_create_entity(f->world);
-    assert(
-        ecs_world_record_add(f->world, duplicate, GAME_COMPONENT_GameEnvironment.id, &original, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(f->world) == ECS_OK);
-    assert(!GAME_GameTransform_has(f->world, duplicate));
-    expect_environment_error(f, "only one Environment", before);
-    editor_ui_rect normal, navigating;
-    assert(editor_ui_item_rect("viewport.error", &normal));
-    ImVec2 center = screen_ndc(f, (CF_V2){ 0 });
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), center.x, center.y);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 2, true);
-    frame(f);
-    assert(editor_ui_item_rect("viewport.error", &navigating));
-    assert(fabsf(navigating.width - normal.width) < .01f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 2, false);
-    frame(f);
-    assert(ecs_world_destroy_entity(f->world, duplicate) == ECS_OK);
-    expect_environment_recovered(f, before);
-
-    ecs_entity entity = f->scene->actors[environment_index(f)].entity;
-    const float invalid[] = { NAN, 17 };
-    for (int i = 0; i < 2; i++) {
-        GAME_GameEnvironment_get(f->world, entity)->exposure = invalid[i];
-        expect_environment_error(f, "finite exposure [-16,16]", before);
-        *GAME_GameEnvironment_get(f->world, entity) = original;
-        expect_environment_recovered(f, before);
-    }
-    free(before);
-}
-
-static void environment_authoring(arena_fixture *f)
-{
-    GameEnvironment original = environment(f);
-    engine_viewport_camera before;
-    engine_viewport_get_camera(f->viewport, &before);
-    select_instance(f->scene, environment_index(f));
-    scene_authoring_select_document(f->scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    for (int i = 0; i < 4; i++) {
-        frame(f);
-    }
-    assert(f->scene->selected == environment_index(f));
-    expect_camera(f, before);
-
-    /* Bloom controls need a known HDR source; idle game art can stay below the
-     * threshold. This fixture is removed before persistence and captures. */
-    ecs_entity reference = ecs_world_create_entity(f->world);
-    GameTransform reference_position = { 320, -140 };
-    GameGeometry3D reference_shape = { GAME_PRIMITIVE_BOX, 32, 32, 2, 6 };
-    GameMaterial reference_material = { .scene = 0x000000ffu,
-                                        .emission_color = 0xffffffffu,
-                                        .emission_intensity = 16,
-                                        .emission_multiplier = 1 };
-    assert(
-        ecs_world_record_add(f->world, reference, GAME_COMPONENT_GameTransform.id, &reference_position, 0) ==
-        ECS_OK
-    );
-    assert(
-        ecs_world_record_add(f->world, reference, GAME_COMPONENT_GameGeometry3D.id, &reference_shape, 0) ==
-        ECS_OK
-    );
-    assert(
-        ecs_world_record_add(f->world, reference, GAME_COMPONENT_GameMaterial.id, &reference_material, 0) ==
-        ECS_OK
-    );
-    assert(ecs_world_apply_commands(f->world) == ECS_OK);
-    frame(f);
-
-    GameEnvironment edited = edit_environment(f, "exposure", .25f);
-    assert(edited.exposure < -3 && edited.exposure > -5);
-    double dark = viewport_light();
-    edited = edit_environment(f, "exposure", .75f);
-    assert(edited.exposure > 3 && edited.exposure < 5);
-    double bright = viewport_light();
-    assert(bright > dark + 5);
-    edited = edit_environment(f, "exposure", .5f);
-    assert(fabsf(edited.exposure) < .1f);
-    edited = edit_environment(f, "bloom_strength", 0);
-    assert(edited.bloom_strength == 0);
-    double plain = viewport_light();
-    edited = edit_environment(f, "bloom_strength", .8f);
-    assert(edited.bloom_strength > 1.4f && edited.bloom_strength < 1.8f);
-    double glowing = viewport_light();
-    assert(glowing > plain + .1);
-    edited = edit_environment(f, "bloom_radius", .7f);
-    /* The displayed percent of viewport height persists as a fraction. */
-    assert(edited.bloom_radius > .03f && edited.bloom_radius < .04f);
-    assert(edited.bloom_threshold == original.bloom_threshold);
-    expect_camera(f, before);
-    assert(ecs_world_destroy_entity(f->world, reference) == ECS_OK);
-    frame(f);
-
-    char path[] = "/tmp/arena-ui-environment-XXXXXX";
-    int descriptor = mkstemp(path);
-    assert(descriptor >= 0 && close(descriptor) == 0);
-    assert(app_scene_authoring_save(f->scene, path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    expect_environment(f, original);
-    assert(app_scene_authoring_load(f->scene, path) == 0);
-    expect_environment(f, edited);
-    select_instance(f->scene, environment_index(f));
-    frame(f);
-    expect_camera(f, before);
-    environment_diagnostics(f);
-    expect_camera(f, before);
-    const char *capture = getenv("CHIBI_ARENA_ENVIRONMENT_CAPTURE");
-    if (capture && *capture) {
-        assert(app_save_screenshot(capture) == 0);
-    }
-    assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    frame(f);
-    expect_environment(f, original);
-    printf(
-        "Environment UI PASS: exposure %.2f -> %.2f, bloom %.2f -> %.2f "
-        "viewport brightness; slider history, saved overrides, fixed "
-        "camera and diagnostic recovery with retained pixels\n",
-        dark,
-        bright,
-        plain,
-        glowing
-    );
-}
-
-static const char *component_selection(arena_fixture *f, uint64_t id)
-{
-    const node *query = graph_node_by_id(editor_active_graph(f->graph), id);
-    assert(query && query->input_pins[0].default_value.type == PIN_NAME);
-    return query->input_pins[0].default_value.str;
-}
-
-static void component_selector(arena_fixture *f)
-{
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
-    assert(app_scene_authoring_open_behavior(f->scene, "ArenaWaveBehavior") == 0);
-    graph *members = behavior_asset_find_graph_by_name(editor_behavior_asset(f->graph), "Count Members Snapshot");
-    assert(members);
-    uint64_t graph_id = members->graph_id;
-    assert(editor_open_graph(f->graph, graph_id) == 0);
-    node *query = NULL;
-    const graph *active = editor_active_graph(f->graph);
-    for (int i = 0; i < acount(active->nodes); i++) {
-        if (!strcmp(active->nodes[i]->desc->name, "Find Entities With Component")) {
-            query = active->nodes[i];
-            break;
-        }
-    }
-    assert(query);
-    uint64_t id = query->id;
-    char original[128];
-    snprintf(original, sizeof original, "%s", component_selection(f, id));
-    assert(strcmp(original, "GAME.GameTransform"));
-    editor_reveal_node(f->graph, query);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    char control[96];
-    snprintf(control, sizeof control, "choices.%llu.0.0", (unsigned long long)id);
-    click_item(f, control);
-    /* ImGui sizes a new popup before its contents become visible. */
-    frame(f);
-    click_item(f, "choice.GAME.GameTransform");
-    assert(!strcmp(component_selection(f, id), "GAME.GameTransform"));
-    editor_undo(f->graph);
-    frame(f);
-    assert(!strcmp(component_selection(f, id), original));
-    editor_redo(f->graph);
-    frame(f);
-    assert(!strcmp(component_selection(f, id), "GAME.GameTransform"));
-
-    char path[] = "/tmp/arena-ui-component-XXXXXX";
-    int descriptor = mkstemp(path);
-    assert(descriptor >= 0 && close(descriptor) == 0);
-    assert(editor_save(f->graph, path) == 0);
-    editor_undo(f->graph);
-    assert(!strcmp(component_selection(f, id), original));
-    assert(editor_load(f->graph, path) == 0);
-    assert(editor_open_graph(f->graph, graph_id) == 0);
-    frame(f);
-    assert(!strcmp(component_selection(f, id), "GAME.GameTransform"));
-    assert(unlink(path) == 0);
-}
-
-static void close_active_document(arena_fixture *f)
-{
-    editor_ui_rect tab;
-    assert(editor_ui_item_rect("workspace.tab.behavior:ArenaEnemyVisualBehavior", &tab));
-    const ImGuiStyle *style = ImGui_GetStyle();
-    float button = ImGui_GetFontSize() + 2 * style->FramePadding.y;
-    float x = tab.x + tab.width - style->FramePadding.x - button / 2;
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), x, tab.y + tab.height / 2);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    frame(f);
-    frame(f); /* ImGui sizes the new modal before its contents are visible. */
-}
-
-static void document_controls(arena_fixture *f)
-{
-    assert(app_scene_authoring_open_prototype(f->scene, "ArenaPlayer") == 0);
-    frame(f);
-    assert(app_scene_authoring_open_behavior(f->scene, "ArenaEnemyVisualBehavior") == 0);
-    ed_clear_selection(f->graph);
-    editor_ui_pane navigator[] = { EDITOR_UI_PANE_CONTENT,
-                                   EDITOR_UI_PANE_WORLD_OUTLINER,
-                                   EDITOR_UI_PANE_MY_BEHAVIOR_ASSET };
-    bool visible[3];
-    for (int i = 0; i < 3; i++) {
-        visible[i] = editor_ui_pane_visible(navigator[i]);
-        editor_ui_set_pane_visible(navigator[i], false);
-    }
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    assert(!editor_ui_navigator_visible());
-    editor_ui_rect inspector;
-    assert(editor_ui_item_rect("inspector.document", &inspector));
-    click_item(f, "workspace.back");
-    assert(f->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE);
-    click_item(f, "workspace.forward");
-    assert(f->scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
-    assert(!strcmp(editor_behavior_asset(f->graph)->name, "ArenaEnemyVisualBehavior"));
-
-    node *first = f->graph->active_graph->nodes[0];
-    uint64_t id = first->id;
-    ed_snapshot_before(f->graph);
-    first->x += 400;
-    ed_commit_snapshot(f->graph);
-    float displaced = first->x;
-    ImGuiIO_AddMousePosEvent(
-        ImGui_GetIO(),
-        f->graph->canvas_min.x + 20,
-        f->graph->canvas_min.y + 20
-    );
-    frame(f);
-    frame(f);
-    click_item(f, "graph.arrange");
-    assert(graph_node_by_id(f->graph->active_graph, id)->x != displaced);
-    editor_undo(f->graph);
-    assert(graph_node_by_id(f->graph->active_graph, id)->x == displaced);
-    /* Opening arranges automatic nodes only; a placed node stays put. */
-    graph_node_by_id(f->graph->active_graph, id)->placed = true;
-    f->graph->arrange_pending = true;
-    frame(f);
-    assert(!f->graph->arrange_pending);
-    assert(graph_node_by_id(f->graph->active_graph, id)->x == displaced);
-    assert(graph_node_by_id(f->graph->active_graph, id)->placed);
-    click_item(f, "graph.arrange");
-    assert(graph_node_by_id(f->graph->active_graph, id)->x != displaced);
-    assert(!graph_node_by_id(f->graph->active_graph, id)->placed);
-    editor_undo(f->graph);
-    assert(graph_node_by_id(f->graph->active_graph, id)->x == displaced);
-    assert(graph_node_by_id(f->graph->active_graph, id)->placed);
-    editor_undo(f->graph);
-    ed_zoom_fit(f->graph, false);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    int tab_count = acount(f->scene->tabs);
-    float original = graph_node_by_id(f->graph->active_graph, id)->x;
-    ed_snapshot_before(f->graph);
-    graph_node_by_id(f->graph->active_graph, id)->x += 100;
-    ed_commit_snapshot(f->graph);
-    frame(f);
-    game_live_definition *definition = game_live_find_definition(f->live, "ArenaEnemyVisualBehavior");
-    assert(definition && definition->unsaved);
-    close_active_document(f);
-    click_item(f, "workspace.close.cancel");
-    assert(acount(f->scene->tabs) == tab_count && definition->unsaved);
-    assert(!strcmp(editor_behavior_asset(f->graph)->name, "ArenaEnemyVisualBehavior"));
-    close_active_document(f);
-    click_item(f, "workspace.close.discard");
-    assert(acount(f->scene->tabs) == tab_count - 1);
-    assert(!definition->dirty && !definition->unsaved);
-    assert(app_scene_authoring_open_behavior(f->scene, "ArenaEnemyVisualBehavior") == 0);
-    assert(graph_node_by_id(f->graph->active_graph, id)->x == original);
-    ed_clear_selection(f->graph);
-    ed_zoom_fit(f->graph, false);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    const char *capture = getenv("CHIBI_DOCUMENTS_CAPTURE");
-    if (capture && *capture) {
-        assert(app_save_screenshot(capture) == 0);
-    }
-    for (int i = 0; i < 3; i++) {
-        editor_ui_set_pane_visible(navigator[i], visible[i]);
-    }
-    frame(f);
-    puts("Document controls PASS: global history with Navigator hidden, active asset Inspector, direct Arrange and Undo");
-}
-
-static void enemy_visual_graph(arena_fixture *f)
-{
-    const char *capture = getenv("CHIBI_ARENA_ENEMY_GRAPH_CAPTURE");
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, true);
-    assert(app_scene_authoring_open_behavior(f->scene, "ArenaEnemyVisualBehavior") == 0);
-    const graph *active = editor_active_graph(f->graph);
-    node *range = NULL;
-    for (int i = 0; i < acount(active->nodes); i++) {
-        if (!strcmp(active->nodes[i]->desc->name, "Random Range Vector")) {
-            range = active->nodes[i];
-            break;
-        }
-    }
-    assert(
-        range && ed_vector_width(&range->input_pins[0]) == 3 &&
-        ed_vector_width(&range->input_pins[1]) == 3
-    );
-    uint64_t range_id = range->id;
-    uint64_t graph_id = active->graph_id;
-    editor_reveal_node(f->graph, range);
-    ed_zoom_fit(f->graph, false);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    char control[96];
-    snprintf(
-        control,
-        sizeof control,
-        "vector.%llu.0.0",
-        (unsigned long long)range->id
-    );
-    enter_vector_item(f, control, 0, "-0.25");
-    range = graph_node_by_id(editor_active_graph(f->graph), range_id);
-    assert(range && range->input_pins[0].default_value.ptr);
-    assert(((const CF_V3 *)range->input_pins[0].default_value.ptr)->x == -.25f);
-    editor_undo(f->graph);
-    frame(f);
-    range = graph_node_by_id(editor_active_graph(f->graph), range_id);
-    assert(((const CF_V3 *)range->input_pins[0].default_value.ptr)->x == 0);
-    editor_redo(f->graph);
-    frame(f);
-    range = graph_node_by_id(editor_active_graph(f->graph), range_id);
-    assert(((const CF_V3 *)range->input_pins[0].default_value.ptr)->x == -.25f);
-    char path[] = "/tmp/arena-ui-enemy-graph-XXXXXX";
-    int descriptor = mkstemp(path);
-    assert(descriptor >= 0 && close(descriptor) == 0);
-    assert(editor_save(f->graph, path) == 0);
-    assert(editor_load(f->graph, path) == 0);
-    assert(editor_open_graph(f->graph, graph_id) == 0);
-    range = graph_node_by_id(editor_active_graph(f->graph), range_id);
-    assert(range && ((const CF_V3 *)range->input_pins[0].default_value.ptr)->x == -.25f);
-    frame(f);
-    ed_zoom_fit(f->graph, false);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    if (capture && *capture) {
-        assert(app_save_screenshot(capture) == 0);
-    }
-    assert(unlink(path) == 0);
-    puts("Arena Enemy Visual UI PASS: vector ranges expose editable XYZ fields with Undo/Redo and save/reload");
-}
-
 static void write_fixture(const char *path, const char *text)
 {
     FILE *file = fopen(path, "wb");
@@ -1175,12 +487,11 @@ static void write_fixture(const char *path, const char *text)
     assert(fclose(file) == 0);
 }
 
-static int screen_light(const CF_Pixel *pixels, ImVec2 point)
+static int screen_light(const CF_Pixel *pixels, CF_V2 point)
 {
     int width = cf_app_get_canvas_width(), height = cf_app_get_canvas_height();
-    ImVec2 display = ImGui_GetIO()->DisplaySize;
-    int x = (int)(point.x * width / display.x);
-    int y = (int)(point.y * height / display.y);
+    int x = (int)(point.x * width / cf_app_get_width());
+    int y = (int)(point.y * height / cf_app_get_height());
     assert(x > 0 && x < width - 1 && y > 0 && y < height - 1);
     int light = 0;
     for (int dy = -1; dy <= 1; dy++) {
@@ -1242,7 +553,7 @@ static void planar_orientation(arena_fixture *f)
         CF_V2 tip = { 24 * aim.x, 24 * aim.y };
         CF_V2 empty = { tip.x - 18 * aim.y, tip.y + 18 * aim.x };
         CF_V2 points[] = { empty, tip };
-        ImVec2 screen[2];
+        CF_V2 screen[2];
         for (int j = 0; j < 2; j++) {
             screen[j] = screen_ndc(
                 f,
@@ -1259,11 +570,11 @@ static void planar_orientation(arena_fixture *f)
         }
         assert(inside >= 100 && outside <= inside - 50);
         for (int j = 0; j < 2; j++) {
-            ImGuiIO_AddMousePosEvent(ImGui_GetIO(), screen[j].x, screen[j].y);
+            mouse_move_event(screen[j]);
             frame(f);
-            ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+            mouse_button_event(true);
             frame(f);
-            ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+            mouse_button_event(false);
             frame(f);
             assert(f->scene->selected == (j ? 0 : -1));
         }
@@ -1273,385 +584,6 @@ static void planar_orientation(arena_fixture *f)
     assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
     puts("planar orientation PASS: authored aim, rendered tips and empty-corner picking in four quadrants");
-}
-
-static void spatial_marquee(arena_fixture *f)
-{
-    ecs_entity entity = f->scene->actors[0].entity;
-    assert(!GAME_GameAppearance_has(f->world, entity));
-    CF_V3 corners[8];
-    assert(render_arena_entity_bounds(f->world, entity, corners));
-    render_arena_camera view = camera(f);
-    CF_Aabb bounds;
-    assert(render_arena_screen_bounds(&view, corners, &bounds));
-    float bottom = bounds.max.y - (bounds.max.y - bounds.min.y) * 0.3f;
-    const GameTransform *position = GAME_GameTransform_get_const(f->world, entity);
-    CF_V3 ground = render_arena_project(&view, (CF_V3){ position->x, 0, position->y });
-    assert(ground.y < bottom);
-    ImVec2 start = screen_ndc(f, (CF_V2){ bounds.min.x - 0.025f, bounds.max.y + 0.025f });
-    ImVec2 end = screen_ndc(f, (CF_V2){ bounds.max.x + 0.025f, bottom });
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), start.x, start.y);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    assert(f->scene->marquee);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), end.x, end.y);
-    frame(f);
-    assert(
-        f->scene->marquee_visible && f->scene->actors[0].marked &&
-        !f->scene->actors[1].marked
-    );
-    const char *capture = getenv("CHIBI_ARENA_EDIT_CAPTURE");
-    if (capture && *capture) {
-        frame(f);
-        assert(app_save_screenshot(capture) == 0);
-    }
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    frame(f);
-    assert(!f->scene->marquee_visible && f->scene->actors[0].marked);
-}
-
-static void place_spatial_prototype(arena_fixture *f, const char *name)
-{
-    editor_ui_request_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER);
-    for (int i = 0; i < 3; i++) {
-        frame(f);
-    }
-    click_item(f, "content.view");
-    frame(f);
-    click_item(f, "content.view.catalog");
-    frame(f);
-    click_item(f, "content.search");
-    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), name);
-    frame(f);
-    const asset_index *index = app_scene_authoring_asset_index(f->scene);
-    int asset_position = index
-                           ? asset_index_find_name(index, ASSET_INDEX_PROTOTYPE, name)
-                           : -1;
-    assert(asset_position >= 0);
-    char source_id[96];
-    snprintf(source_id, sizeof source_id, "content.asset.Prototype.%d", asset_position);
-    editor_ui_rect source;
-    assert(editor_ui_item_rect(source_id, &source));
-    ImVec2 start = { source.x + source.width * 0.5f, source.y + source.height * 0.5f };
-    ImVec2 destination = screen_ndc(f, (CF_V2){ 0.45f, -0.45f });
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), start.x, start.y);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), start.x + 16, start.y + 12);
-    frame(f);
-    assert(ImGui_GetDragDropPayload());
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), destination.x, destination.y);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    frame(f);
-    assert(acount(f->scene->actors) == 3);
-    ecs_entity placed = f->scene->actors[2].entity;
-    const GameTransform *position = GAME_GameTransform_get_const(f->world, placed);
-    const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(f->world, placed);
-    assert(!GAME_GameAppearance_has(f->world, placed) && shape->elevation == 135);
-    ImVec2 projected = screen_point(f, (CF_V3){ position->x, 0, position->y });
-    assert(
-        fabsf(projected.x - destination.x) < 1.5f &&
-        fabsf(projected.y - destination.y) < 1.5f
-    );
-    assert(replay_scene_edit(f->scene, false) == 0 && acount(f->scene->actors) == 2);
-    assert(replay_scene_edit(f->scene, true) == 0 && acount(f->scene->actors) == 3);
-}
-
-static void planar_marquee(arena_fixture *f)
-{
-    GameAppearance appearance = { .width = 80,
-                                  .height = 24,
-                                  .color = 0x4080ffff,
-                                  .shape = GAME_SHAPE_DIAMOND };
-    for (int i = 0; i < acount(f->scene->actors); i++) {
-        assert(
-            ecs_world_record_add(
-                f->world,
-                f->scene->actors[i].entity,
-                GAME_COMPONENT_GameAppearance.id,
-                &appearance,
-                0
-            ) == ECS_OK
-        );
-    }
-    assert(ecs_world_apply_commands(f->world) == ECS_OK);
-    f->scene->perspective = false;
-    frame(f);
-    fit_scene_view(f->viewport, f->world, (ecs_entity){ 0 });
-    frame(f);
-    engine_viewport_camera view;
-    engine_viewport_get_camera(f->viewport, &view);
-    const GameTransform
-        *position = GAME_GameTransform_get_const(f->world, f->scene->actors[0].entity);
-    ImVec2 start = screen_ndc(f, (CF_V2){ -0.97f, 0.97f });
-    ImVec2 end = screen_ndc(
-        f,
-        (CF_V2){ 2 * (position->x + 60 - view.center_x) / view.span_width,
-                 2 * (-position->y - 60 - view.center_y) / view.span_height }
-    );
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), start.x, start.y);
-    frame(f);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
-    frame(f);
-    assert(f->scene->marquee);
-    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), end.x, end.y);
-    frame(f);
-    assert(f->scene->actors[0].marked && !f->scene->actors[1].marked);
-    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
-    frame(f);
-}
-
-static void spatial_authoring(arena_fixture *f)
-{
-    const char
-        *prototype = "{\"name\":\"SpatialOnly\",\"components\":{"
-                     "\"GameTransform\":{\"x\":0,\"y\":0},"
-                     "\"GameGeometry3D\":{\"primitive\":0,\"width\":80,"
-                     "\"depth\":24,\"height\":180,\"elevation\":135},"
-                     "\"GameOrientation\":{\"radians\":0.65},"
-                     "\"GameMaterial\":{\"scene\":1082195967}},\"behaviors\":[]"
-                     "}";
-    const char *scene = "{\"version\":1,\"name\":\"Spatial "
-                        "authoring\",\"presentation\":\"3d\",\"entities\":["
-                        "{\"name\":\"Tall\",\"prototype\":\"SpatialOnly\","
-                        "\"components\":{\"GameTransform\":{\"x\":-130,\"y\":0}"
-                        "},\"behaviors\":[]},"
-                        "{\"name\":\"Short\",\"prototype\":\"SpatialOnly\","
-                        "\"components\":{\"GameTransform\":{\"x\":150,\"y\":0},"
-                        "\"GameGeometry3D\":{\"height\":60,"
-                        "\"elevation\":30}},\"behaviors\":[]}]}";
-    char directory[] = "/tmp/arena-ui-spatial-XXXXXX";
-    assert(mkdtemp(directory));
-    char prototype_path[256], scene_path[256];
-    snprintf(prototype_path, sizeof prototype_path, "%s/SpatialOnly.yaml", directory);
-    snprintf(scene_path, sizeof scene_path, "%s/Scene.yaml", directory);
-    write_fixture(prototype_path, prototype);
-    write_fixture(scene_path, scene);
-    assert(app_scene_authoring_register_prototype(f->scene, prototype, prototype_path) == 0);
-    assert(app_scene_authoring_set_content_root(f->scene, directory) == 0);
-    assert(app_scene_authoring_load(f->scene, scene_path) == 0);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    assert_framed(f);
-    spatial_marquee(f);
-    cf_app_set_size(1280, 960);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    assert_framed(f);
-    spatial_marquee(f);
-    assert(app_scene_authoring_open_prototype(f->scene, "SpatialOnly") == 0);
-    for (int i = 0; i < 20; i++) {
-        frame(f);
-    }
-    editor_ui_rect preview;
-    assert(editor_ui_item_rect("prototype.preview.image", &preview));
-    assert(engine_viewport_perspective(prototype_still_viewport(f->scene->still_preview)));
-    ecs_entity still_entity;
-    const ecs_world *still = app_scene_authoring_still_preview(f->scene, &still_entity);
-    assert(still && !GAME_GameAppearance_has(still, still_entity));
-    place_spatial_prototype(f, "SpatialOnly");
-    assert(app_scene_authoring_save(f->scene, scene_path) == 0);
-    assert(app_scene_authoring_load(f->scene, scene_path) == 0);
-    frame(f);
-    assert(acount(f->scene->actors) == 3 && f->scene->perspective);
-    assert_framed(f);
-    assert(GAME_GameGeometry3D_get_const(f->world, f->scene->actors[2].entity)->elevation == 135);
-    planar_marquee(f);
-    assert(unlink(scene_path) == 0 && unlink(prototype_path) == 0 && rmdir(directory) == 0);
-}
-
-static void choose_physics_field(arena_fixture *f, const char *id, const char *choice)
-{
-    click_item(f, id);
-    frame(f); /* Combo sizing settles before capturing an option rectangle. */
-    click_item(f, choice);
-    frame(f);
-}
-
-static void collider_fields(const char *prefix, bool box)
-{
-    const char *fields[] = { "radius", "width", "height", "ignore_entity" };
-    for (int i = 0; i < 4; i++) {
-        char id[128];
-        snprintf(id, sizeof id, "%s.field.GameCollider.%s", prefix, fields[i]);
-        editor_ui_rect rect;
-        bool visible = editor_ui_item_rect(id, &rect);
-        assert(visible == (i == 3 || (i == 0 ? !box : box)));
-    }
-}
-
-static void component_authoring_defaults(arena_fixture *f)
-{
-    ecs_entity entity = f->scene->actors[0].entity;
-    assert(!GAME_GameVisualTransform_has(f->world, entity));
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualTransform", true) == 0);
-    assert(GAME_GameVisualTransform_get_const(f->world, entity)->scale == 1);
-    frame(f);
-    show_inspector_item(f, "instance.field.GameVisualTransform.scale");
-    enter_item_text(f, "instance.field.GameVisualTransform.scale", "1.25");
-    assert(GAME_GameVisualTransform_get_const(f->world, entity)->scale == 1.25f);
-    GameVisualTransform pose = { .pitch = .3f, .yaw = -.2f, .roll = .7f, .scale = 1.25f };
-    *GAME_GameVisualTransform_get(f->world, entity) = pose;
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameGeometry3D", true) == 0);
-    *GAME_GameGeometry3D_get(f->world, entity) = (GameGeometry3D){ .primitive = GAME_PRIMITIVE_BOX,
-                                                                   .width = 11,
-                                                                   .height = 11,
-                                                                   .depth = 11,
-                                                                   .elevation = 17 };
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualMotion", true) == 0);
-    const GameVisualMotion *motion = GAME_GameVisualMotion_get_const(f->world, entity);
-    assert(motion->speed == 1 && motion->reaction_duration == .32f && motion->reaction_age == .32f);
-    assert(
-        motion->rotation.x == pose.pitch && motion->rotation.y == pose.yaw &&
-        motion->rotation.z == pose.roll
-    );
-    assert(motion->rest_elevation == 17);
-    assert(replay_scene_edit(f->scene, false) == 0);
-    assert(!GAME_GameVisualMotion_has(f->world, entity));
-    assert(replay_scene_edit(f->scene, true) == 0);
-    assert(GAME_GameVisualMotion_get_const(f->world, entity)->rest_elevation == 17);
-    frame(f);
-    show_inspector_item(f, "instance.field.GameVisualMotion.speed");
-    enter_item_text(f, "instance.field.GameVisualMotion.speed", "2");
-    assert(GAME_GameVisualMotion_get_const(f->world, entity)->speed == 2);
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualMotion", false) == 0);
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualMotion", true) == 0);
-    assert(GAME_GameVisualMotion_get_const(f->world, entity)->speed == 2);
-    assert(GAME_GameVisualMotion_get_const(f->world, entity)->rest_elevation == 17);
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualMotion", false) == 0);
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameGeometry3D", false) == 0);
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualTransform", false) == 0);
-    assert(!GAME_GameVisualTransform_has(f->world, entity));
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualTransform", true) == 0);
-    assert(GAME_GameVisualTransform_get_const(f->world, entity)->scale == 1.25f);
-    assert(app_scene_authoring_set_instance_component(f->scene, "GameVisualTransform", false) == 0);
-
-    assert(
-        app_scene_authoring_add_prototype_component(f->scene, "PhysicsControls", "GameVisualTransform") == 0
-    );
-    pin_value value;
-    assert(
-        app_scene_authoring_read_prototype_field(f->scene, "PhysicsControls", "GameVisualTransform", "scale", &value) ==
-        0
-    );
-    assert(value.type == PIN_F32 && value.f == 1);
-    assert(
-        app_scene_authoring_remove_prototype_component(f->scene, "PhysicsControls", "GameVisualTransform") == 0
-    );
-    assert(
-        app_scene_authoring_add_prototype_component(f->scene, "PhysicsControls", "GameRhythm") == 0
-    );
-    assert(
-        app_scene_authoring_read_prototype_field(f->scene, "PhysicsControls", "GameRhythm", "bpm", &value) == 0
-    );
-    assert(value.type == PIN_F32 && value.f == 120);
-    assert(
-        app_scene_authoring_remove_prototype_component(f->scene, "PhysicsControls", "GameRhythm") == 0
-    );
-    select_instance(f->scene, 0);
-    scene_authoring_select_document(f->scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    frame(f);
-    show_inspector_item(f, "instance.field.GameBody.type");
-    puts("component defaults PASS: scene and prototype visible scale, retained scene edit on remove/readd, prototype rhythm");
-}
-
-static void physics_authoring(arena_fixture *f)
-{
-    const char *prototype = "{\"name\":\"PhysicsControls\",\"components\":{"
-                            "\"GameTransform\":{\"x\":0,\"y\":0},"
-                            "\"GameBody\":{\"type\":0,\"continuous\":false},"
-                            "\"GameCollider\":{\"shape\":0,\"radius\":8,"
-                            "\"width\":12,\"height\":20,"
-                            "\"category\":1,\"mask\":2,\"sensor\":false,"
-                            "\"ignore_entity\":null}},\"behaviors\":[]}";
-    const char
-        *scene = "{\"version\":1,\"name\":\"Physics "
-                 "authoring\",\"presentation\":\"3d\","
-                 "\"entities\":[{\"name\":\"Body\",\"prototype\":"
-                 "\"PhysicsControls\",\"components\":{},\"behaviors\":[]}]}";
-    char directory[] = "/tmp/arena-ui-physics-XXXXXX";
-    assert(mkdtemp(directory));
-    char prototype_path[256], scene_path[256], saved_path[256];
-    snprintf(prototype_path, sizeof prototype_path, "%s/PhysicsControls.yaml", directory);
-    snprintf(scene_path, sizeof scene_path, "%s/Scene.yaml", directory);
-    snprintf(saved_path, sizeof saved_path, "%s/Saved.yaml", directory);
-    write_fixture(prototype_path, prototype);
-    write_fixture(scene_path, scene);
-    assert(app_scene_authoring_register_prototype(f->scene, prototype, prototype_path) == 0);
-    assert(app_scene_authoring_load(f->scene, scene_path) == 0);
-    select_instance(f->scene, 0);
-    scene_authoring_select_document(f->scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    for (int i = 0; i < 4; i++) {
-        frame(f);
-    }
-    component_authoring_defaults(f);
-    ecs_entity entity = f->scene->actors[0].entity;
-    collider_fields("instance", false);
-    choose_physics_field(f, "instance.field.GameBody.type", "choice.2");
-    assert(GAME_GameBody_get_const(f->world, entity)->type == GAME_BODY_KINEMATIC);
-    assert(replay_scene_edit(f->scene, false) == 0);
-    frame(f);
-    assert(GAME_GameBody_get_const(f->world, entity)->type == GAME_BODY_STATIC);
-    assert(replay_scene_edit(f->scene, true) == 0);
-    frame(f);
-    assert(GAME_GameBody_get_const(f->world, entity)->type == GAME_BODY_KINEMATIC);
-    choose_physics_field(f, "instance.field.GameCollider.shape", "choice.1");
-    collider_fields("instance", true);
-    assert(GAME_GameCollider_get_const(f->world, entity)->shape == GAME_COLLIDER_BOX);
-    assert(replay_scene_edit(f->scene, false) == 0);
-    frame(f);
-    collider_fields("instance", false);
-    assert(replay_scene_edit(f->scene, true) == 0);
-    frame(f);
-    collider_fields("instance", true);
-    choose_physics_field(f, "instance.field.GameCollider.mask", "flags.choice.8");
-    assert(GAME_GameCollider_get_const(f->world, entity)->mask == (2 | 8));
-    assert(replay_scene_edit(f->scene, false) == 0);
-    frame(f);
-    assert(GAME_GameCollider_get_const(f->world, entity)->mask == 2);
-    assert(replay_scene_edit(f->scene, true) == 0);
-    frame(f);
-    assert(app_scene_authoring_save(f->scene, saved_path) == 0);
-    assert(app_scene_authoring_load(f->scene, scene_path) == 0);
-    entity = f->scene->actors[0].entity;
-    assert(GAME_GameBody_get_const(f->world, entity)->type == GAME_BODY_STATIC);
-    assert(app_scene_authoring_load(f->scene, saved_path) == 0);
-    entity = f->scene->actors[0].entity;
-    const GameCollider *collider = GAME_GameCollider_get_const(f->world, entity);
-    assert(GAME_GameBody_get_const(f->world, entity)->type == GAME_BODY_KINEMATIC);
-    assert(
-        collider->shape == GAME_COLLIDER_BOX && collider->mask == 10 &&
-        collider->ignore_entity == 0
-    );
-    assert(collider->width == 12 && collider->height == 20);
-    assert(app_scene_authoring_open_prototype(f->scene, "PhysicsControls") == 0);
-    for (int i = 0; i < 4; i++) {
-        frame(f);
-    }
-    collider_fields("prototype", false);
-    choose_physics_field(f, "prototype.field.GameCollider.shape", "choice.1");
-    collider_fields("prototype", true);
-    pin_value shape;
-    assert(
-        app_scene_authoring_read_prototype_field(f->scene, "PhysicsControls", "GameCollider", "shape", &shape) ==
-        0
-    );
-    assert(shape.i == GAME_COLLIDER_BOX);
-    assert(prototype_undo(f->scene) == 0);
-    frame(f);
-    collider_fields("prototype", false);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
-    frame(f);
-    assert(
-        unlink(prototype_path) == 0 && unlink(scene_path) == 0 &&
-        unlink(saved_path) == 0 && rmdir(directory) == 0
-    );
-    puts("physics authoring UI PASS: actual Body/Collider dropdowns, dimensions, World filter, typed entity field, Undo/Redo and save/reload");
 }
 
 static int standalone_frame(arena_fixture *f, app_game_presentation *game)
@@ -1664,48 +596,11 @@ static int standalone_frame(arena_fixture *f, app_game_presentation *game)
     return result;
 }
 
-static void key_event(SDL_Scancode key, bool down)
-{
-    SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
-    event.key.windowID = (SDL_WindowID)(uintptr_t)ImGui_GetMainViewport()->PlatformHandle;
-    event.key.scancode = key;
-    event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
-    event.key.down = down;
-    assert(SDL_PushEvent(&event));
-}
-
-static void mouse_fire_event(bool down)
-{
-    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
-                                     : SDL_EVENT_MOUSE_BUTTON_UP };
-    event.button.windowID = (SDL_WindowID)(uintptr_t)ImGui_GetMainViewport()->PlatformHandle;
-    event.button.button = SDL_BUTTON_LEFT;
-    event.button.down = down;
-    event.button.clicks = 1;
-    event.button.x = ImGui_GetIO()->MousePos.x;
-    event.button.y = ImGui_GetIO()->MousePos.y;
-    assert(SDL_PushEvent(&event));
-}
-
-static void window_focus_event(bool focused)
-{
-    SDL_Event event = { .type = focused ? SDL_EVENT_WINDOW_FOCUS_GAINED
-                                        : SDL_EVENT_WINDOW_FOCUS_LOST };
-    event.window.windowID = (SDL_WindowID)(uintptr_t)ImGui_GetMainViewport()->PlatformHandle;
-    assert(SDL_PushEvent(&event));
-}
-
-static void mouse_move_event(ImVec2 position)
-{
-    SDL_Event event = { .type = SDL_EVENT_MOUSE_MOTION };
-    event.motion.windowID = (SDL_WindowID)(uintptr_t)ImGui_GetMainViewport()->PlatformHandle;
-    event.motion.x = position.x;
-    event.motion.y = position.y;
-    assert(SDL_PushEvent(&event));
-}
-
 static void editor_mouse_play(arena_fixture *f)
 {
+    /* Studio gives the Scene area the keyboard once it is clicked; a playing
+     * game then receives bare keys. */
+    f->focused = true;
     f->sample_controls = true;
     window_focus_event(true);
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
@@ -1722,7 +617,7 @@ static void editor_mouse_play(arena_fixture *f)
     assert(app_scene_authoring_runtime_state(f->scene).playing);
     ecs_entity player = f->scene->actors[player_index(f)].entity;
     GameTransform initial = *GAME_GameTransform_get_const(f->world, player);
-    ImVec2 target = screen_point(f, (CF_V3){ initial.x + 150, 0, initial.y });
+    CF_V2 target = screen_point(f, (CF_V3){ initial.x + 150, 0, initial.y });
     mouse_move_event(target);
     frame(f);
     key_event(SDL_SCANCODE_D, true);
@@ -1730,7 +625,7 @@ static void editor_mouse_play(arena_fixture *f)
         frame(f);
     }
     assert(GAME_GameTransform_get_const(f->world, player)->x > initial.x + 8);
-    mouse_fire_event(true);
+    mouse_button_event(true);
     GameTransform before = *GAME_GameTransform_get_const(f->world, player);
     const SDL_Scancode keys[] = { SDL_SCANCODE_D, SDL_SCANCODE_W, SDL_SCANCODE_A, SDL_SCANCODE_S };
     const CF_V2 directions[] = { { 1, 0 }, { 0, -1 }, { -1, 0 }, { 0, 1 } };
@@ -1741,12 +636,11 @@ static void editor_mouse_play(arena_fixture *f)
             key_event(keys[direction], true);
         }
         if (i == 5) {
-            mouse_move_event((ImVec2){ target.x - 35, target.y + 25 });
+            mouse_move_event((CF_V2){ target.x - 35, target.y + 25 });
         }
         frame(f);
-        /* Cute starts ImGui's frame before polling SDL; the backend's queued
-         * mouse event becomes visible to the viewport on the following frame. */
-        assert(i == 0 || ImGui_GetIO()->MouseDown[ImGuiMouseButton_Left]);
+        assert(cf_mouse_down(CF_MOUSE_BUTTON_LEFT));
+        assert(engine_viewport_focused(f->viewport) && !editor_host_captures_keyboard());
         assert(app_scene_authoring_runtime_state(f->scene).playing);
         assert(engine_get_focus(f->runtime) == ENGINE_FOCUS_VIEWPORT);
         CF_V2 move = GAME_GameInput_get_const(f->world, player)->move;
@@ -1763,7 +657,7 @@ static void editor_mouse_play(arena_fixture *f)
     engine_viewport_pointer pointer;
     engine_viewport_get_pointer(f->viewport, &pointer);
     assert(pointer.dragging);
-    mouse_fire_event(false);
+    mouse_button_event(false);
     for (int i = 0; i < 4; i++) {
         frame(f);
         assert(!GAME_GameAim_get_const(f->world, player)->firing);
@@ -1799,7 +693,7 @@ static int standalone_fire(arena_fixture *f, app_game_presentation *game, bool m
     }
     assert(keyboard_binding);
     if (mouse) {
-        mouse_fire_event(true);
+        mouse_button_event(true);
     } else {
         key_event(SDL_SCANCODE_SPACE, true);
     }
@@ -1810,7 +704,7 @@ static int standalone_fire(arena_fixture *f, app_game_presentation *game, bool m
     int shots = projectiles(f);
     assert(shots >= 2);
     if (mouse) {
-        mouse_fire_event(false);
+        mouse_button_event(false);
     } else {
         key_event(SDL_SCANCODE_SPACE, false);
     }
@@ -1826,7 +720,7 @@ static int standalone_key(arena_fixture *f, app_game_presentation *game, SDL_Sca
 {
     key_event(key, down);
     /* Cute polls SDL after ImGui NewFrame. The first frame delivers the native
-     * event; the second processes its ImGui shortcut. */
+     * event; the second processes the pause menu's ImGui shortcut. */
     assert(standalone_frame(f, game) == 0);
     return standalone_frame(f, game);
 }
@@ -1843,7 +737,6 @@ static void standalone_play(arena_fixture *f)
         }
     }
     cf_app_set_size(1280, 960);
-    editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     app_game_presentation *game = app_game_presentation_new(f->scene, f->viewport, true);
     assert(game);
     window_focus_event(true);
@@ -1871,7 +764,7 @@ static void standalone_play(arena_fixture *f)
     int keyboard_shots = standalone_fire(f, game, false);
     assert(standalone_fire(f, game, true) == keyboard_shots);
     player = f->scene->actors[player_index(f)].entity;
-    mouse_fire_event(true);
+    mouse_button_event(true);
     assert(standalone_frame(f, game) == 0);
     assert(GAME_GameAim_get_const(f->world, player)->firing);
     assert(standalone_key(f, game, SDL_SCANCODE_ESCAPE, true) == 0);
@@ -1881,7 +774,7 @@ static void standalone_play(arena_fixture *f)
     const GameInput *input = GAME_GameInput_get_const(f->world, player);
     assert(input->move.x == 0 && input->move.y == 0);
     double paused = engine_last_timing(f->runtime)->simulation_time;
-    mouse_fire_event(false);
+    mouse_button_event(false);
     assert(standalone_key(f, game, SDL_SCANCODE_ESCAPE, false) == 0);
     for (int i = 0; i < 4; i++) {
         assert(standalone_frame(f, game) == 0);
@@ -1891,7 +784,7 @@ static void standalone_play(arena_fixture *f)
     assert(app_scene_authoring_runtime_state(f->scene).playing);
     assert(standalone_key(f, game, SDL_SCANCODE_RETURN, false) == 0);
     assert(!GAME_GameAim_get_const(f->world, player)->firing);
-    mouse_fire_event(true);
+    mouse_button_event(true);
     assert(standalone_frame(f, game) == 0);
     assert(GAME_GameAim_get_const(f->world, player)->firing);
     window_focus_event(false);
@@ -1899,7 +792,7 @@ static void standalone_play(arena_fixture *f)
     assert(!app_scene_authoring_runtime_state(f->scene).playing);
     assert(!GAME_GameAim_get_const(f->world, player)->firing);
     assert(engine_get_focus(f->runtime) == ENGINE_FOCUS_NONE);
-    mouse_fire_event(false);
+    mouse_button_event(false);
     window_focus_event(true);
     assert(standalone_key(f, game, SDL_SCANCODE_RETURN, true) == 0);
     assert(standalone_key(f, game, SDL_SCANCODE_RETURN, false) == 0);
@@ -2034,12 +927,7 @@ static void review_input(arena_fixture *f, int *waypoint, bool held[5], int revi
         desired[4] = shooting && review_frame >= 360;
         render_arena_camera view = camera(f);
         CF_V3 aim = render_arena_project(&view, (CF_V3){ target.x, 0, target.y });
-        ImVec2 display = ImGui_GetIO()->DisplaySize;
-        mouse_move_event(
-            f->sample_controls ? screen_ndc(f, (CF_V2){ aim.x, aim.y })
-                               : (ImVec2){ (aim.x * .5f + .5f) * display.x,
-                                           (.5f - aim.y * .5f) * display.y }
-        );
+        mouse_move_event(screen_ndc(f, (CF_V2){ aim.x, aim.y }));
     }
     for (int i = 0; i < 5; i++) {
         if (desired[i] != held[i]) {
@@ -2154,13 +1042,7 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
         cf_present_mode_string(cf_app_get_present_mode()),
         immediate ? "yes" : "no"
     );
-    app_scene_renderer_initialize();
-    cf_app_init_imgui();
-    app_input_initialize();
-    editor_ui_initialize(false);
-    ImGui_GetIO()->IniFilename = NULL;
-    cf_app_set_imgui_render_target(cf_app_get_canvas());
-    editor_ui_set_framebuffer_target(true);
+    arena_app_start();
     arena_fixture f = fixture_new();
     f.profile_behaviors = crowd;
     game_behavior_set_profiling(f.live->behaviors, crowd);
@@ -2172,23 +1054,17 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
         f.sample_controls = true;
         window_focus_event(true);
         assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
-        assert(
-            app_scene_authoring_set_debug_target(
-                f.scene,
-                APP_RUNTIME_SCENE,
-                f.scene->actors[player_index(&f)].entity,
-                "TwinStickWeaponBehavior"
-            ) == 0
-        );
-        editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
+        /* Inspect the player's open weapon graph, as selecting it in Studio does. */
+        select_instance(f.scene, player_index(&f));
+        f.focused = true;
         frame(&f);
         frame(&f);
         mouse_move_event(screen_ndc(&f, (CF_V2){ 0, 0 }));
         frame(&f);
-        mouse_fire_event(true);
+        mouse_button_event(true);
         frame(&f);
         frame(&f);
-        mouse_fire_event(false);
+        mouse_button_event(false);
         frame(&f);
         frame(&f);
         assert(engine_viewport_focused(f.viewport) && !editor_host_captures_keyboard());
@@ -2200,10 +1076,9 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
     const char *capture = getenv("CHIBI_ARENA_PLAY_CAPTURE");
     const char *impact_capture = getenv("CHIBI_ARENA_IMPACT_CAPTURE");
     const char *video_directory = getenv("CHIBI_ARENA_VIDEO_FRAMES");
-    const char *performance_capture = getenv("CHIBI_ARENA_PERFORMANCE_CAPTURE");
     int video_frames = 0;
     double times[REVIEW_FRAMES];
-    editor_frame_sample totals = { 0 };
+    double stages[ARENA_STAGE_COUNT] = { 0 }, runtime[3] = { 0 };
     double crowd_simulation[6] = { 0 }, crowd_behavior[6] = { 0 },
            crowd_physics[6] = { 0 };
     int crowd_samples[6] = { 0 };
@@ -2221,11 +1096,6 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
     GameEncounter encounter = { 0 };
     cf_draw3d_stats();
     for (int i = 0; i < REVIEW_FRAMES; i++) {
-        bool capture_profile = editor_mode && i == 720 && performance_capture &&
-                             *performance_capture;
-        if (capture_profile) {
-            editor_ui_set_pane_visible(EDITOR_UI_PANE_PERFORMANCE, true);
-        }
         uint64_t start = cf_get_ticks();
         review_input(&f, &waypoint, held, i, !crowd);
         if (editor_mode && i == 360) {
@@ -2240,11 +1110,6 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
         }
         double elapsed = 1000.0 * (double)(cf_get_ticks() - start) /
                          cf_get_tick_frequency();
-        if (capture_profile) {
-            assert(app_save_screenshot(performance_capture) == 0);
-            editor_ui_set_pane_visible(EDITOR_UI_PANE_PERFORMANCE, false);
-            editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
-        }
         encounter = review_encounter(f.world);
         if (i >= WARMUP_FRAMES && encounter.status == GAME_ENCOUNTER_ACTIVE) {
             times[samples++] = elapsed;
@@ -2261,13 +1126,13 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
                 }
             }
             if (editor_mode) {
-                const editor_frame_sample *sample = editor_frame_latest(&f.profile);
-                for (int stage = 0; stage < EDITOR_FRAME_STAGE_COUNT; stage++) {
-                    totals.stages[stage] += sample->stages[stage];
+                for (int stage = 0; stage < ARENA_STAGE_COUNT; stage++) {
+                    stages[stage] += f.stages[stage];
                 }
-                totals.runtime.behavior_ms += sample->runtime.behavior_ms;
-                totals.runtime.physics_ms += sample->runtime.physics_ms;
-                totals.runtime.systems_ms += sample->runtime.systems_ms;
+                const engine_frame_timing *timing = engine_last_timing(f.runtime);
+                runtime[0] += timing->behavior_ms;
+                runtime[1] += timing->physics_ms;
+                runtime[2] += timing->systems_ms;
             }
         }
         CF_DrawStats3d stats = cf_draw3d_stats();
@@ -2410,33 +1275,24 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
     if (editor_mode) {
         printf(
             "Editor CPU scopes (mean ms): input %.3f, documents %.3f, "
-            "simulation %.3f, scene %.3f, UI %.3f, present %.3f; behavior "
+            "simulation %.3f, scene %.3f, present %.3f; behavior "
             "%.3f, physics %.3f, other systems %.3f\n",
-            totals.stages[0] / samples,
-            totals.stages[1] / samples,
-            totals.stages[2] / samples,
-            totals.stages[3] / samples,
-            totals.stages[4] / samples,
-            totals.stages[5] / samples,
-            totals.runtime.behavior_ms / samples,
-            totals.runtime.physics_ms / samples,
-            totals.runtime.systems_ms / samples
+            stages[ARENA_STAGE_INPUT] / samples,
+            stages[ARENA_STAGE_DOCUMENTS] / samples,
+            stages[ARENA_STAGE_SIMULATION] / samples,
+            stages[ARENA_STAGE_SCENE] / samples,
+            stages[ARENA_STAGE_PRESENT] / samples,
+            runtime[0] / samples,
+            runtime[1] / samples,
+            runtime[2] / samples
         );
     }
     if (video_frames) {
         printf("arena review video: %d frames at 30 fps, simulation seconds 5 through 15\n", video_frames);
     }
     app_game_presentation_free(game);
-    editor_frame_profile_free(&f.profile);
-    app_scene_authoring_free(f.scene);
-    engine_viewport_free(f.viewport);
-    engine_free(f.runtime);
-    game_live_world_free(f.live);
-    editor_free(f.graph);
-    ecs_world_free(f.world);
-    app_input_shutdown();
-    editor_ui_deactivate();
-    cf_destroy_app();
+    fixture_free(&f);
+    arena_app_stop();
     return !ok;
 }
 
@@ -2457,7 +1313,6 @@ static void ship_motion_review(arena_fixture *f, const char *directory)
     write_fixture(path, json);
     assert(app_scene_authoring_load(f->scene, path) == 0);
     assert(unlink(path) == 0);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, false);
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
     frame(f);
     ecs_entity player = f->scene->actors[player_index(f)].entity;
@@ -2505,142 +1360,10 @@ static void ship_motion_review(arena_fixture *f, const char *directory)
     printf("Ship rendered review PASS: 12 seconds, 30 fps capture; largest fixed-step roll %.3f degrees\n", max_step * 180 / CF_PI);
 }
 
-static void performance_panel(arena_fixture *f)
-{
-    /* Standalone play uses a smaller window. Restore the wide layout this
-     * test uses to interact with history, scopes and details side by side. */
-    cf_app_set_size(1920, 1080);
-    assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
-    frame(f);
-    frame(f);
-    assert(!game_behavior_profile(f->live->behaviors)->count);
-    assert(game_behavior_last_update(f->live->behaviors).native_loop > 0);
-    editor_frame_profile owned = { 0 };
-    char *behavior = xstrdup("Captured behavior"), *event = xstrdup("Wait");
-    game_behavior_profile_frame source = { .count = 1,
-                                           .rows = {
-                                               { .behavior = behavior,
-                                                 .event = event,
-                                                 .starts = 2,
-                                                 .resumes = 3,
-                                                 .cpu_ms = 4,
-                                                 .setup_ms = 2 },
-                                           } };
-    engine_frame_timing timing = { .frame = 7 };
-    editor_frame_begin(&owned);
-    editor_frame_end(&owned, &timing, &source);
-    /* Give the visible rolling window a known sample independent of prior UI frames. */
-    editor_frame_begin(&f->profile);
-    editor_frame_end(&f->profile, &timing, &source);
-    free(behavior);
-    free(event);
-    assert(
-        !strcmp(owned.behavior_keys[0].behavior, "Captured behavior") &&
-        !strcmp(owned.behavior_keys[0].event, "Wait")
-    );
-    owned.frozen = true;
-    timing.frame++;
-    editor_frame_begin(&owned);
-    editor_frame_end(&owned, &timing, NULL);
-    assert(
-        editor_frame_latest(&owned)->runtime.frame == 7 &&
-        owned.behaviors[0].rows[0].starts == 2 &&
-        owned.behaviors[0].rows[0].resumes == 3 &&
-        owned.behaviors[0].rows[0].cpu_ms == 4 &&
-        owned.behaviors[0].rows[0].setup_ms == 2
-    );
-    editor_frame_profile_free(&owned);
-    click_item(f, "activity.performance");
-    frame(f);
-    assert(game_behavior_profile(f->live->behaviors)->count > 0);
-    assert(!game_behavior_last_update(f->live->behaviors).native_loop);
-    editor_ui_rect history;
-    assert(editor_ui_item_rect("performance.history", &history));
-    assert(history.width > 100 && history.height > 100);
-    click_item(f, "performance.simulation");
-    frame(f);
-    assert(f->profile.simulation_expanded);
-    editor_ui_rect behavior_row;
-    assert(editor_ui_item_rect("performance.behavior.first", &behavior_row));
-    click_item(f, "performance.behavior.first");
-    frame(f);
-    assert(editor_ui_item_rect("performance.event.first", &behavior_row));
-    click_item(f, "performance.freeze");
-    assert(f->profile.frozen);
-    uint64_t frozen = editor_frame_latest(&f->profile)->runtime.frame;
-    frame(f);
-    frame(f);
-    assert(editor_frame_latest(&f->profile)->runtime.frame == frozen);
-    assert(!game_behavior_profile(f->live->behaviors)->count);
-    assert(game_behavior_last_update(f->live->behaviors).native_loop > 0);
-    click_item(f, "performance.freeze");
-    frame(f);
-    assert(!f->profile.frozen && editor_frame_latest(&f->profile)->runtime.frame > frozen);
-    const char *capture = getenv("CHIBI_PERFORMANCE_CAPTURE");
-    if (capture && *capture) {
-        assert(app_save_screenshot(capture) == 0);
-    }
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_PERFORMANCE, false);
-    frame(f);
-    assert(!game_behavior_profile(f->live->behaviors)->count);
-    assert(game_behavior_last_update(f->live->behaviors).native_loop > 0);
-    assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
-    puts("performance UI PASS: View menu, live history, behavior/event expansion, owned labels, freeze and resume");
-}
-
-static void event_batch_status(arena_fixture *f)
-{
-    editor *e = f->graph;
-    behavior_asset *asset = behavior_asset_new("Event status");
-    assert(editor_open_behavior_asset(e, asset, asset->graph->graph_id) == 0);
-    behavior_asset_free(asset);
-    graph *g = e->active_graph;
-    node *event = graph_add_node(g, &NODE_Event);
-    assert(graph_set_event_name(g, event, "Tick") == 0);
-    pin_spec payload = { "Unused", PIN_F32, "float", PIN_DATA };
-    assert(graph_add_pin(g, event, 1, &payload) >= 0);
-    event->x = 80;
-    event->y = 80;
-    editor_set_graph_visible(e, true);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
-    e->zoom = 1;
-    e->pan = (ImVec2){ 40, 40 };
-    e->view_initialized = true;
-    e->fit_mode = false;
-    e->arrange_pending = false;
-    e->camera_moving = false;
-    frame(f);
-    frame(f);
-    frame(f);
-    char status_id[96];
-    snprintf(
-        status_id,
-        sizeof status_id,
-        "graph.event.status.%llu",
-        (unsigned long long)event->id
-    );
-    editor_ui_rect status, repair;
-    assert(editor_ui_item_rect(status_id, &status));
-    assert(ed_event_unused_payload_count(e, event) == 1);
-    click_item(f, status_id);
-    frame(f);
-    assert(editor_ui_item_rect("graph.event.status.repair", &repair));
-    assert(repair.y > status.y + status.height);
-    click_item(f, "graph.event.status.repair");
-    behavior_event_batch_info info;
-    behavior_program_event_batch_info(behavior_program_publish(e->asset), event, &info);
-    assert(event->output_count == 1 && info.reason == BEHAVIOR_BATCH_READY);
-    puts("event batch status PASS: warning, popup placement and payload repair");
-}
-
-int arena_ui_run(const char *program, bool profile_only)
+int arena_play_run(const char *program)
 {
     CF_Result result = cf_make_app(
-        "Arena 3D editor regression",
+        "Arena 3D play regression",
         0,
         0,
         0,
@@ -2650,29 +1373,18 @@ int arena_ui_run(const char *program, bool profile_only)
         program
     );
     if (cf_is_error(result)) {
-        fprintf(stderr, "Arena UI app: %s\n", result.details);
+        fprintf(stderr, "Arena play app: %s\n", result.details);
         return 1;
     }
-    app_scene_renderer_initialize();
-    cf_app_init_imgui();
-    app_input_initialize();
-    editor_ui_initialize(false);
-    ImGui_GetIO()->IniFilename = NULL;
-    cf_app_set_imgui_render_target(cf_app_get_canvas());
-    editor_ui_set_framebuffer_target(true);
+    arena_app_start();
     bool input_only = getenv("CHIBI_ARENA_INPUT_ONLY") != NULL;
-    bool event_only = getenv("CHIBI_EVENT_BATCH_STATUS_ONLY") != NULL;
-    if (!input_only && !profile_only && !event_only) {
+    if (!input_only) {
         assert(test_arena_input() == 0);
     }
     fflush(stdout);
     arena_fixture f = fixture_new();
     for (int i = 0; i < 30; i++) {
         frame(&f);
-    }
-    if (event_only) {
-        event_batch_status(&f);
-        goto cleanup;
     }
     key_event(SDL_SCANCODE_SPACE, true);
     key_event(SDL_SCANCODE_SPACE, false);
@@ -2685,10 +1397,6 @@ int arena_ui_run(const char *program, bool profile_only)
     assert(!(app_input_controls() & (UINT64_C(1) << GAME_CONTROL_SPACE)));
     assert(!app_input_pressed(APP_INPUT_DELETE));
     puts("gameplay quick tap PASS: press and release in one frame survives for exactly one sample");
-    if (profile_only) {
-        performance_panel(&f);
-        goto cleanup;
-    }
     const char *motion_frames = getenv("CHIBI_ARENA_MOTION_FRAMES");
     if (motion_frames && *motion_frames) {
         ship_motion_review(&f, motion_frames);
@@ -2704,10 +1412,6 @@ int arena_ui_run(const char *program, bool profile_only)
     persistence(&f);
     preview_projection(&f);
     planar_orientation(&f);
-    environment_authoring(&f);
-    surface_influence_authoring(&f);
-    mesh_parts_authoring(&f);
-    physics_authoring(&f);
     cf_app_set_size(1280, 960);
     for (int i = 0; i < 20; i++) {
         frame(&f);
@@ -2731,40 +1435,15 @@ int arena_ui_run(const char *program, bool profile_only)
     if (capture && *capture) {
         assert(app_save_screenshot(capture) == 0);
     }
-    const char *game_capture = getenv("CHIBI_ARENA_GAME_CAPTURE");
-    if (game_capture && *game_capture) {
-        editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, false);
-        for (int i = 0; i < 20; i++) {
-            frame(&f);
-        }
-        assert(app_save_screenshot(game_capture) == 0);
-    }
     assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     assert(projectiles(&f) == 0);
     assert(f.scene->perspective);
-    document_controls(&f);
-    enemy_visual_graph(&f);
-    component_selector(&f);
-    spatial_authoring(&f);
     standalone_play(&f);
-    performance_panel(&f);
-    event_batch_status(&f);
 cleanup:
-    editor_frame_profile_free(&f.profile);
-    app_scene_authoring_free(f.scene);
-    engine_viewport_free(f.viewport);
-    engine_free(f.runtime);
-    game_live_world_free(f.live);
-    editor_free(f.graph);
-    ecs_world_free(f.world);
-    if (!input_only && !profile_only && !event_only) {
-        test_navigation_runtime();
-    }
-    app_input_shutdown();
-    editor_ui_deactivate();
-    cf_destroy_app();
-    if (!input_only && !profile_only && !event_only) {
-        puts("arena UI PASS: scene save/reload, independent preview projection, actual pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, component dropdown/Undo/Redo/save/reload, spatial-only fit/marquee/preview/placement");
+    fixture_free(&f);
+    arena_app_stop();
+    if (!input_only) {
+        puts("arena play PASS: scene save/reload, independent preview projection, pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, standalone game");
     }
     return 0;
 }
@@ -2909,9 +1588,7 @@ static void scene_scale_aim(arena_fixture *f)
     assert(review_target(f, &player, &target));
     render_arena_camera view = camera(f);
     CF_V3 aim = render_arena_project(&view, (CF_V3){ target.x, 0, target.y });
-    ImVec2 size = ImGui_GetIO()->DisplaySize;
-    mouse_move_event((ImVec2){ (aim.x * .5f + .5f) * size.x,
-                               (.5f - aim.y * .5f) * size.y });
+    mouse_move_event(screen_ndc(f, (CF_V2){ aim.x, aim.y }));
 }
 
 static void scene_scale_verify_encounter(arena_fixture *f)
@@ -2999,13 +1676,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         return 1;
     }
     cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
-    app_scene_renderer_initialize();
-    cf_app_init_imgui();
-    app_input_initialize();
-    editor_ui_initialize(false);
-    ImGui_GetIO()->IniFilename = NULL;
-    cf_app_set_imgui_render_target(cf_app_get_canvas());
-    editor_ui_set_framebuffer_target(true);
+    arena_app_start();
     behavior_backend previous = behavior_debug_backend(BEHAVIOR_SLJIT);
     srand(12345);
     arena_fixture f = fixture_new();
@@ -3065,7 +1736,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
              * input still enters through the normal presentation controls. */
             scene_scale_aim(&f);
             if (!i) {
-                mouse_fire_event(true);
+                mouse_button_event(true);
             }
         }
         double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
@@ -3289,7 +1960,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         );
         fflush(stdout);
         assert(encounter.alive < count && experience > 0 && firing_frames > 0);
-        mouse_fire_event(false);
+        mouse_button_event(false);
         double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
         assert(!app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART));
         double restart_ms = cf_get_ticks() * 1000.0 / cf_get_tick_frequency() - start;
@@ -3318,18 +1989,10 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     fflush(stdout);
     afree(enemies);
     app_game_presentation_free(game);
-    editor_frame_profile_free(&f.profile);
-    app_scene_authoring_free(f.scene);
-    engine_viewport_free(f.viewport);
-    engine_free(f.runtime);
-    game_live_world_free(f.live);
+    fixture_free(&f);
     test_physics_executor_close(&executor);
-    editor_free(f.graph);
-    ecs_world_free(f.world);
     behavior_debug_backend(previous);
-    app_input_shutdown();
-    editor_ui_deactivate();
-    cf_destroy_app();
+    arena_app_stop();
     return 0;
 }
 
@@ -3348,13 +2011,7 @@ int compiled_arena_run(const char *program)
     if (cf_is_error(result)) {
         return 1;
     }
-    app_scene_renderer_initialize();
-    cf_app_init_imgui();
-    app_input_initialize();
-    editor_ui_initialize(false);
-    ImGui_GetIO()->IniFilename = NULL;
-    cf_app_set_imgui_render_target(cf_app_get_canvas());
-    editor_ui_set_framebuffer_target(true);
+    arena_app_start();
     behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
     for (int mode = 0; mode < 2; mode++) {
         behavior_backend previous = behavior_debug_backend(modes[mode]);
@@ -3508,17 +2165,9 @@ int compiled_arena_run(const char *program)
             behavior_backend_name(modes[mode]),
             instances
         );
-        editor_frame_profile_free(&f.profile);
-        app_scene_authoring_free(f.scene);
-        engine_viewport_free(f.viewport);
-        engine_free(f.runtime);
-        game_live_world_free(f.live);
-        editor_free(f.graph);
-        ecs_world_free(f.world);
+        fixture_free(&f);
         behavior_debug_backend(previous);
     }
-    app_input_shutdown();
-    editor_ui_deactivate();
-    cf_destroy_app();
+    arena_app_stop();
     return 0;
 }

@@ -89,18 +89,14 @@ void run_prototype_checks(void)
     game_prototype *plain = game_prototype_load("{\"name\":\"Plain\"}", &registry, error, sizeof error);
     game_prototype *other = game_prototype_load("{\"name\":\"Other\"}", &registry, error, sizeof error);
     char *saved_plain = plain ? game_prototype_save(plain) : NULL;
-    char *saved_renamed = plain && game_prototype_set_name(plain, "Renamed") == 0
-                            ? game_prototype_save(plain)
-                            : NULL;
     test_check(
         plain && other &&
             strcmp(game_prototype_identity(plain), game_prototype_identity(other)) != 0 &&
-            saved_plain && !strstr(saved_plain, "identity") && saved_renamed &&
-            strstr(saved_renamed, game_prototype_identity(plain)),
-        "identity derives from the name and is written only after a rename"
+            saved_plain && !strstr(saved_plain, "identity"),
+        "identity derives from the name and is not written for a named "
+        "prototype"
     );
     free(saved_plain);
-    free(saved_renamed);
     game_prototype_free(plain);
     game_prototype_free(other);
     free(saved);
@@ -273,20 +269,6 @@ behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
         return NULL;
     }
     return asset;
-}
-
-static int g_promote_probe;
-static int behavior_promote_probe(
-    behavior_asset *definition,
-    uint64_t variable_id,
-    ecs_component_id component_id,
-    void *user
-)
-{
-    (void)definition;
-    (void)user;
-    g_promote_probe = variable_id != 0 && component_id != 0;
-    return 0;
 }
 
 void run_scene_document_checks(void)
@@ -511,19 +493,6 @@ void run_behavior_checks(void)
             game_behavior_pool_size(world, "move") == 0,
         "steady-state attach/detach reuses the same instance storage"
     );
-    g_promote_probe = 0;
-    test_check(
-        game_behavior_promote_variable(
-            world,
-            "move",
-            counter->id,
-            GAME_COMPONENT_GameHealth.id,
-            behavior_promote_probe,
-            NULL
-        ) == 0 &&
-            g_promote_probe,
-        "the editor promotion operation has a component-bound callback"
-    );
     test_check(
         game_behavior_attach(world, e1, "logging") == 0 &&
             game_behavior_dispatch(world, e1, "Log", (flow_inputs){ 0 }, NULL) == 1 &&
@@ -560,13 +529,7 @@ void run_behavior_checks(void)
             acount(e2_windup->activations) == 1,
         "two entities of one graph share no activation state"
     );
-    test_check(
-        game_behavior_set_debug_hold(world, e1, "windup", 1) == 0 &&
-            game_behavior_set_breakpoints_enabled_for_asset(world, e1, "windup", 0) == 0 &&
-            game_behavior_breakpoints_enabled_for_asset(world, e1, "windup") == 0,
-        "breakpoint and activation retention can be scoped to one "
-        "entity asset"
-    );
+    test_check(game_behavior_set_debug_hold(world, e1, "windup", 1) == 0, "activation retention can be scoped to one entity asset");
     game_behavior_pump(world, 2.0);
     test_check(
         game_behavior_entity_state_at(world, e1, "windup", &entity_state) == 0 &&

@@ -77,11 +77,6 @@ void app_scene_renderer_initialize()
     cf_shader_directory("/chibi-render");
 }
 
-unsigned app_scene_renderer_shader_compile_count()
-{
-    return render_shader_compile_count();
-}
-
 app_scene_renderer *app_scene_renderer_new()
 {
     app_scene_renderer *renderer = xcalloc(1, sizeof *renderer);
@@ -1268,89 +1263,6 @@ bool app_scene_renderer_draw(
         NULL,
         renderer->time
     );
-}
-
-bool app_scene_renderer_preview(
-    app_scene_renderer *renderer,
-    const behavior_asset *asset,
-    float time,
-    int width,
-    int height
-)
-{
-    shader_error error = { 0 };
-    if (!renderer || !asset) {
-        return false;
-    }
-    renderer->time = time;
-    renderer->error[0] = 0;
-    if (asset->domain == BEHAVIOR_DOMAIN_MATERIAL) {
-        if (!arena_ready(renderer)) {
-            return false;
-        }
-        CF_V3 corners[8];
-        for (int i = 0; i < 8; i++) {
-            corners[i] = (CF_V3){ i & 1 ? 50 : -50, i & 2 ? 50 : -50, i & 4 ? 50 : -50 };
-        }
-        CF_Aabb bounds = render_arena_fit(corners, 8, (float)width / height);
-        render_arena_camera camera = render_arena_camera_make(
-            (bounds.min.x + bounds.max.x) * .5f,
-            (bounds.min.y + bounds.max.y) * .5f,
-            bounds.max.x - bounds.min.x,
-            bounds.max.y - bounds.min.y
-        );
-        GameEnvironment settings = render_arena_post_defaults();
-        if (!arena_prepare(renderer, width, height, &settings)) {
-            return false;
-        }
-        return arena_finish(
-            renderer,
-            render_arena_preview(renderer->arena, asset, &camera, NULL, time, &(render_arena_activity){ 0 })
-        );
-    }
-    if (!render_shader_upsert(asset, &error)) {
-        snprintf(renderer->error, sizeof renderer->error, "%s", error.message);
-    }
-    int id = render_shader_find(asset->name);
-    if (!id) {
-        return false;
-    }
-    GameAppearance appearance = { .width = 100,
-                                  .height = 100,
-                                  .shape = GAME_SHAPE_CIRCLE,
-                                  .color = 0xFFFFFFFF,
-                                  .antialias = 0.5f };
-    float bounds[2];
-    if (render_shader_bounds(id, bounds)) {
-        appearance.width = 2 * bounds[0];
-        appearance.height = 2 * bounds[1];
-        appearance.shape = GAME_SHAPE_BOX;
-    }
-    GameTransform position = { 0 };
-    asetlen(renderer->entities, 0);
-    aclear(renderer->reflectors);
-    renderer->time = time;
-    if (!append_entity(renderer, &position, &appearance, 0, NULL, NULL)) {
-        return false;
-    }
-    render_material_entity *draw = &renderer->entities[0];
-    if (render_shader_is_shape(id)) {
-        draw->reserved[1] = (float)id;
-        render_shader_parameters(id, NULL, (ecs_entity){ 0 }, NULL, draw->shape_parameters);
-    } else {
-        draw->reserved[0] = (float)id;
-        render_shader_parameters(id, NULL, (ecs_entity){ 0 }, NULL, draw->material_parameters);
-    }
-    if (!prepare_fragments(renderer)) {
-        return false;
-    }
-    render_shader_fragment_draw(
-        renderer->fragment,
-        renderer->fragment_programs[0],
-        draw,
-        (CF_V2){ 1, 1 }
-    );
-    return true;
 }
 
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)

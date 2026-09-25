@@ -48,10 +48,8 @@ add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit_wires.c
     # kit_wires.c draws through it, so it links with the kit.
     src/editor/ui/kit_wire_shape.c
-    src/editor/rmlui/menu.c
-    src/editor/rmlui/toolbar.c
-    # The editor's embedded faces; the ImGui panes read them through editor,
-    # which links this library, so single-pass linkers resolve them too.
+    # The editor's embedded faces; game UI reads the text face through the
+    # application, which links this library, so single-pass linkers resolve it.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
     ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT})
 add_dependencies(chibi_rmlui generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font

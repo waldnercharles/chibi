@@ -639,18 +639,26 @@ static void emit_conversions(studio *s)
         node *from = graph_node_by_id(gr, ed->from_id),
              *to = graph_node_by_id(gr, ed->to_id);
         int fo = 0, to_out = 0, fp = -1, tp = -1;
+        /* A named value's use draws no wire to label. */
         if (!ed->conversion || !sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
             !graph_pin_by_id(from, ed->from_pin_id, &fo, &fp) || !fo ||
-            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out) {
+            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out ||
+            graph_edge_is_local(gr, ed)) {
             continue;
         }
         float ax, ay, bx, by;
         sg_socket_at(s, from, ED_PIN_OUTPUT, fp, &ax, &ay);
         sg_socket_at(s, to, ED_PIN_INPUT, tp, &bx, &by);
+        /* On the wire as drawn: its authored reroutes, else its lane route. */
         float mx = (ax + bx) / 2, my = (ay + by) / 2;
+        int link = g->edge_route && i < acount(g->edge_route) ? g->edge_route[i] : -1;
         if (ed->reroute_count) {
             mx = ed->reroutes[ed->reroute_count / 2].x;
             my = ed->reroutes[ed->reroute_count / 2].y;
+        } else if (link >= 0 && g->routes.start[link + 1] > g->routes.start[link]) {
+            int middle = (g->routes.start[link] + g->routes.start[link + 1]) / 2;
+            mx = g->routes.points[middle].x;
+            my = g->routes.points[middle].y;
         }
         char key[32], text[96];
         const node_desc *c = ed->conversion;

@@ -131,6 +131,7 @@ struct editor_rml_backend
     uint64_t next_texture;
     CF_MAP(CF_Mesh) geometries;
     CF_MAP(held_texture) textures;
+    CF_Texture *released; /* destroyed once the frame that drew them renders */
     external_texture *externals;
     CF_Texture white_texture;
     CF_Shader ui_shader;
@@ -313,6 +314,10 @@ static void destroy_gpu(editor_rml_backend *backend)
             cf_destroy_texture(backend->textures[i].texture);
         }
     }
+    for (int i = 0; i < acount(backend->released); i++) {
+        cf_destroy_texture(backend->released[i]);
+    }
+    afree(backend->released);
     cf_destroy_texture(backend->white_texture);
     cf_destroy_mesh(backend->resolve_mesh);
     cf_destroy_shader(backend->ui_shader);
@@ -455,6 +460,14 @@ static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, 
     return hold_texture(backend, held);
 }
 
+static void destroy_released(editor_rml_backend *backend)
+{
+    for (int i = 0; i < acount(backend->released); i++) {
+        cf_destroy_texture(backend->released[i]);
+    }
+    asetlen(backend->released, 0);
+}
+
 static void release_texture(void *user, uintptr_t texture)
 {
     editor_rml_backend *backend = user;
@@ -462,8 +475,9 @@ static void release_texture(void *user, uintptr_t texture)
     if (!held) {
         return;
     }
+    /* Draws already queued this frame may still sample it. */
     if (held->external < 0) {
-        cf_destroy_texture(held->texture);
+        apush(backend->released, held->texture);
     }
     cf_map_del(backend->textures, texture);
 }
@@ -728,6 +742,7 @@ void editor_rml_backend_render(editor_rml_backend *backend)
     rml_context_render(backend->context);
     enable_scissor_region(backend, false);
     cf_render_layers_to(backend->premultiplied_canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, true);
+    destroy_released(backend);
     cf_draw_pop_scissor();
     cf_draw3d_pop_render_state();
     cf_draw3d_pop_shader();

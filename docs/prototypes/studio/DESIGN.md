@@ -73,7 +73,7 @@ Progress shows in the web build under `?design-preview=1`, where converted surfa
 
 ## Progress, September 23, 2026
 
-`?design-preview=1` (or `--design-preview` on desktop) now runs Studio in place of the ImGui workspace. The code is in `src/editor/studio` (shell, areas, editors, host), `src/editor/ui/kit.h` (the C API) and `src/editor/rmlui/kit.cpp` (reconciler and controllers). `build/test_suite --rmlui-kit` covers clicks, scrubbing, text entry with expressions, stepping, context clicks, menus, command ranking and keyed reconciliation.
+`?design-preview=1` (or `--design-preview` on desktop) now runs Studio in place of the ImGui workspace. The code is in `src/editor/studio` (shell, areas, editors, host), `src/editor/ui/kit.h` (the C API) and `src/editor/rmlui` (the reconciler in `kit.cpp`, controllers in the `kit_*.cpp` modules). `build/test_suite --rmlui-kit` covers clicks, scrubbing, text entry with expressions, stepping, context clicks, menus, command ranking and keyed reconciliation.
 
 | Phase | State |
 | --- | --- |

@@ -1,5 +1,6 @@
 /* Studio kit internals shared by the reconciler (kit.cpp) and its feature
- * modules: motion, toasts, lists, drag and drop, charts. Not part of the C API. */
+ * modules: controls, number fields, popups and menus, the command palette,
+ * motion, toasts, lists, drag and drop, charts. Not part of the C API. */
 #ifndef CHIBI_EDITOR_RMLUI_KIT_INTERNAL_HPP
 #define CHIBI_EDITOR_RMLUI_KIT_INTERNAL_HPP
 
@@ -395,10 +396,52 @@ void text_frame(kit *k, double dt);
 void morph_label(kit *k, Node *n, Rml::Element *box, const char *text);
 void forget_motion(kit *k, Node *n);
 
-/* Popups. */
+/* Event routing (kit.cpp): the listener dispatches each event by node kind to
+ * the handlers below. */
+unsigned event_modifiers(Rml::Event &e);
+
+/* Number fields (kit_number.cpp). */
+void repeat_steppers(kit *k);
+void number_press(kit *k, Node *n, Rml::Event &e);
+void number_release(Node *n);
+void number_click(kit *k, Node *n);
+void number_drag(kit *k, Node *n, Rml::Event &e, Rml::EventId id);
+void number_key(kit *k, Node *n, Rml::Event &e, int key);
+void number_blur(kit *k, Node *n, Rml::Element *target);
+
+/* Other controls (kit_controls.cpp); handlers ignore kinds they do not own. */
+void control_press(kit *k, Node *n, Rml::Event &e);
+void control_click(kit *k, Node *n, Rml::Element *target);
+void control_drag(kit *k, Node *n, Rml::Event &e, Rml::EventId id);
+void control_key(Node *n, Rml::Event &e, int key);
+void control_change(Node *n, Rml::Element *target);
+void control_focus(Node *n, Rml::Element *target);
+void control_blur(Node *n, Rml::Element *target);
+
+/* Popups, menus and tooltips (kit_popup.cpp). */
 void close_popup(kit *k, const std::string &key);
 void close_all_popups(kit *k);
 void open_popup(kit *k, const std::string &key, kit_rect anchor, bool at_point, float x, float y, const std::string &parent);
+void place_popups(kit *k);
+void open_hovered_submenus(kit *k);
+void close_activated_menus(kit *k);
+/* Sees every press; one outside the popups and their triggers closes them. */
+void popup_press(kit *k, Node *n, Rml::Element *target);
+void trigger_press(kit *k, Node *n, Rml::Event &e);
+void menu_click(kit *k, Node *n);
+void menu_hover(kit *k, Node *n);
+/* False when no popup is open. */
+bool popup_key(kit *k, Rml::Event &e, int key);
+void set_tip(Node *n, const char *label, const char *shortcut);
+void update_tooltip(kit *k);
+
+/* Command palette (kit_command.cpp). Key and change handlers return false for
+ * events that are not the palette's. */
+void command_press(kit *k, Rml::Element *target);
+bool command_key(kit *k, Rml::Event &e, int key);
+bool command_change(kit *k, Rml::Element *target);
+void command_click(kit *k, Node *n);
+void command_hover(kit *k, Node *n);
 
 } // namespace kit_impl
 

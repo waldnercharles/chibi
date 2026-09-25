@@ -426,6 +426,12 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g,
     if (n->breakpoint_enabled) {
         yyjson_mut_obj_add_bool(doc, o, "breakpoint_enabled", true);
     }
+    if (n->comment) {
+        yyjson_mut_obj_add_str(doc, o, "comment", n->comment);
+    }
+    if (n->comment_hidden) {
+        yyjson_mut_obj_add_bool(doc, o, "comment_hidden", true);
+    }
     write_pins(doc, o, g, n);
     yyjson_mut_arr_add_val(arr, o);
 }
@@ -586,7 +592,9 @@ static void write_comment_boxes(yyjson_mut_doc *doc, yyjson_mut_val *obj, const 
         yyjson_mut_obj_add_float(doc, value, "width", box->width);
         yyjson_mut_obj_add_float(doc, value, "height", box->height);
         yyjson_mut_obj_add_str(doc, value, "title", box->title ? box->title : "");
-        yyjson_mut_obj_add_uint(doc, value, "color", box->color);
+        if (box->color) {
+            yyjson_mut_obj_add_uint(doc, value, "color", box->color);
+        }
         yyjson_mut_arr_add_val(boxes, value);
     }
 }

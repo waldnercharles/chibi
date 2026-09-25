@@ -40,7 +40,7 @@ typedef struct graph_comment_box
     float width;
     float height;
     char *title;
-    uint32_t color;
+    uint32_t color; /* 0xRRGGBBAA; 0 takes the canvas's comment color */
 } graph_comment_box;
 
 #define GRAPH_EDGE_MAX_REROUTES 16
@@ -164,7 +164,8 @@ int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_bi
  * chosen Component, has exactly one outgoing edge (a data wire), and each
  * input is wired from an inline node or holds a value. The `auto`
  * presentation also requires a tree of at most GRAPH_INLINE_AUTO_NODES nodes
- * without breakpoints or watches, outside generated expression graphs. */
+ * without breakpoints, watches or comments, outside generated expression
+ * graphs. */
 #define GRAPH_INLINE_AUTO_NODES 3
 bool graph_node_is_inline(const graph *g, const node *n);
 /* Whether n would be inline with the `inline` presentation. */
@@ -213,6 +214,8 @@ int graph_presentation_by_name(const char *name);
 /* Folds n, persisting `inline` only when `auto` would draw its box. */
 int graph_inline_node(graph *g, node *n);
 int graph_set_breakpoint(graph *g, node *n, int enabled);
+/* Sets n's comment; NULL or "" removes it. */
+int graph_set_node_comment(graph *g, node *n, const char *comment, bool hidden);
 int graph_set_all_breakpoints(graph *g, int enabled);
 int graph_set_pin_watch(graph *g, node *n, int output, int index, int enabled);
 graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, float y, float width, float height);

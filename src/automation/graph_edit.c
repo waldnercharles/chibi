@@ -1167,6 +1167,30 @@ static int operation_set_node(edit_context *ctx, yyjson_val *op)
     return refresh_event(ctx, n);
 }
 
+/* A node comment: `comment` replaces the text ("" removes it) and `hidden`
+   shows it only on hover; either one alone keeps the other. */
+static int operation_set_comment(edit_context *ctx, yyjson_val *op)
+{
+    node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
+    if (!n) {
+        return -1;
+    }
+    yyjson_val *comment = yyjson_obj_get(op, "comment");
+    yyjson_val *hidden = yyjson_obj_get(op, "hidden");
+    if ((!comment && !hidden) || (comment && !yyjson_is_str(comment)) ||
+        (hidden && !yyjson_is_bool(hidden))) {
+        set_error(ctx, "set_comment needs a string comment or a boolean hidden");
+        return -1;
+    }
+    const char *text = comment ? yyjson_get_str(comment) : n->comment;
+    bool hide = hidden ? yyjson_get_bool(hidden) : n->comment_hidden;
+    if (graph_set_node_comment(ctx->graph, n, text, hide)) {
+        set_error(ctx, "could not set the node comment");
+        return -1;
+    }
+    return 0;
+}
+
 static int shader_stop_value(edit_context *ctx, yyjson_val *json, float out[4])
 {
     if (yyjson_is_arr(json)) {
@@ -1991,6 +2015,9 @@ static int apply_operation(edit_context *ctx, yyjson_val *op)
     }
     if (!strcmp(name, "set_node")) {
         return operation_set_node(ctx, op);
+    }
+    if (!strcmp(name, "set_comment")) {
+        return operation_set_comment(ctx, op);
     }
     if (!strcmp(name, "set_ramp")) {
         return operation_set_ramp(ctx, op);

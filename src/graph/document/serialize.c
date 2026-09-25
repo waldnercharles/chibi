@@ -551,6 +551,25 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
     return 0;
 }
 
+/* Documents omit an empty comment, and a hidden flag only a comment has. */
+static int load_node_comment(graph *g, node *n, yyjson_val *v)
+{
+    yyjson_val *comment = yyjson_obj_get(v, "comment");
+    yyjson_val *hidden = yyjson_obj_get(v, "comment_hidden");
+    if ((comment && !yyjson_is_str(comment)) || (hidden && !yyjson_is_bool(hidden))) {
+        serialize_error_set(
+            "node %llu has an invalid comment",
+            (unsigned long long)n->id
+        );
+        return -1;
+    }
+    if (yyjson_get_len(comment)) {
+        n->comment = graph_own_str(g, yyjson_get_str(comment), yyjson_get_len(comment));
+        n->comment_hidden = yyjson_get_bool(hidden);
+    }
+    return 0;
+}
+
 /* Documents omit `auto`, which new nodes already hold. */
 static int load_node_presentation(node *n, yyjson_val *v)
 {
@@ -668,7 +687,7 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
         yyjson_val *disabled = yyjson_obj_get(v, "disabled");
         n->disabled = disabled && yyjson_is_bool(disabled) &&
                       yyjson_get_bool(disabled);
-        if (load_node_presentation(n, v)) {
+        if (load_node_presentation(n, v) || load_node_comment(g, n, v)) {
             return -1;
         }
         yyjson_val *breakpoint = yyjson_obj_get(v, "breakpoint");

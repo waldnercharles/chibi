@@ -257,8 +257,11 @@ static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type 
              * while a wire temporarily supplies the resolved type when the
              * input also carries a dormant binding. Unbound wildcards retain
              * the original retype behavior used by shader graph inputs. */
+            /* Only aggregates, enums and handles are named types: a float
+               spelled "float" is the same float as an unnamed one. */
+            bool named = type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE;
             bool changed_type = p->type != type ||
-                                ((p->type_name || type_name) &&
+                                (named && (p->type_name || type_name) &&
                                  (!p->type_name || !type_name ||
                                   strcmp(p->type_name, type_name)));
             if (!p->binding) {

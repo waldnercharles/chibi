@@ -4,3 +4,6 @@ entities:
 - name: GraphView
   prototype: GraphView
   behaviors: [MenuKeys]
+- name: Settings
+  prototype: Settings
+  behaviors: [MenuKeys, Dismiss]

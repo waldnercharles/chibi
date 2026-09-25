@@ -272,30 +272,26 @@ static void report(studio *s, panel *p)
     }
 }
 
-void studio_ui_panel(studio *s, const char *key, const char *name)
+/* The panel's entity and its GameUi, or NULL when it has none. */
+static const GameUi *panel_ui(studio_ui *ui, const panel *p, ecs_entity *entity)
+{
+    ecs_world *world = game_prototype_preview_world(ui->world);
+    *entity = game_prototype_preview_entity_at(ui->world, p->index);
+    return GAME_GameUi_has(world, *entity) ? GAME_GameUi_get_const(world, *entity)
+                                           : NULL;
+}
+
+/* Mounts the panel's document in `host` and runs its settings and events. */
+static void show_panel(studio *s, panel *p, rml_element *host, ecs_entity entity, const char *document)
 {
     studio_ui *ui = s->ui;
-    panel *p = ui ? find_panel(ui, name) : NULL;
-    if (!p) {
-        return;
-    }
-    ecs_world *world = game_prototype_preview_world(ui->world);
-    ecs_entity entity = game_prototype_preview_entity_at(ui->world, p->index);
-    const GameUi *component = GAME_GameUi_has(world, entity)
-                                ? GAME_GameUi_get_const(world, entity)
-                                : NULL;
-    const char *document = component && component->document ? component->document : "";
     if (p->mount && strcmp(ui_mount_name(p->mount), document) != 0) {
         ui_mount_free(p->mount);
         p->mount = NULL;
     }
-    if (!document[0]) {
-        return;
-    }
     if (!p->mount) {
         p->mount = ui_mount_new(ui->content_root, document);
     }
-    rml_element *host = kit_host(s->kit, key, "panel-host");
     if (ui_mount_sync(p->mount, host, ui->listener, s->time)) {
         kit_style_sheet(s->kit, document, ui_mount_style(p->mount));
     }
@@ -303,4 +299,34 @@ void studio_ui_panel(studio *s, const char *key, const char *name)
     ui_mount_settings(p->mount, settings(ui));
     send_activations(ui, p, entity);
     report(s, p);
+}
+
+void studio_ui_panel(studio *s, const char *key, const char *name)
+{
+    panel *p = s->ui ? find_panel(s->ui, name) : NULL;
+    ecs_entity entity;
+    const GameUi *component = p ? panel_ui(s->ui, p, &entity) : NULL;
+    if (component && component->document && component->document[0]) {
+        show_panel(s, p, kit_host(s->kit, key, "panel-host"), entity, component->document);
+    }
+}
+
+void studio_ui_modal(studio *s, const char *name)
+{
+    panel *p = s->ui ? find_panel(s->ui, name) : NULL;
+    ecs_entity entity;
+    const GameUi *component = p ? panel_ui(s->ui, p, &entity) : NULL;
+    if (component && !component->hidden && component->document &&
+        component->document[0]) {
+        show_panel(s, p, kit_modal_host(s->kit, name), entity, component->document);
+    }
+}
+
+void studio_ui_show(studio *s, const char *name)
+{
+    panel *p = s->ui ? find_panel(s->ui, name) : NULL;
+    ecs_entity entity;
+    if (p && panel_ui(s->ui, p, &entity)) {
+        GAME_GameUi_get(game_prototype_preview_world(s->ui->world), entity)->hidden = false;
+    }
 }

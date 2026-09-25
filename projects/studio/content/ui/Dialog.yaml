@@ -1,0 +1,13 @@
+rml: |
+  <div class="dialog-backdrop" data-event="Close"/>
+  <div class="dialog-panel"><slot/></div>
+rcss: |
+  body {
+    position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dialog-backdrop { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: #0000008c; }
+  .dialog-panel {
+    position: relative; padding: 12dp; color: var(--fg); background-color: var(--popover);
+    border: 1dp var(--popover-edge); border-radius: var(--r-lg);
+  }

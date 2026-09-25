@@ -314,12 +314,6 @@ static bool item(kit *k, const char *key, const char *label, uint32_t icon, cons
     return kit_menu_item(k, key, &d);
 }
 
-static bool check_item(kit *k, const char *key, const char *label, bool checked)
-{
-    kit_menu_item_desc d = { .label = label, .checked = checked ? 1 : 0 };
-    return kit_menu_item(k, key, &d);
-}
-
 static void add_menu_items(studio *s)
 {
     kit *k = s->kit;
@@ -591,61 +585,16 @@ static void transport(studio *s)
     kit_pop(k);
 }
 
+/* Settings is an authored dialog in the Studio project. */
 static void settings(studio *s)
 {
-    kit *k = s->kit;
-    kit_button_desc d = { .icon = KIT_ICON_SETTINGS, .tip = "Settings" };
-    if (kit_button(k, "settings", &d)) {
-        kit_popup_open(k, "settings");
+    kit_button_desc d = { .icon = KIT_ICON_SETTINGS,
+                          .tip = "Settings",
+                          .shortcut = studio_chord(s, "Mod+,") };
+    if (kit_button(s->kit, "settings", &d)) {
+        studio_ui_show(s, "Settings");
     }
-    if (kit_popup_begin(k, "settings", "menu")) {
-        static const char *const themes[STUDIO_THEME_COUNT] = { "System", "Dark", "Light" };
-        kit_menu_group(k, "theme", "Theme");
-        for (int t = 0; t < STUDIO_THEME_COUNT; t++) {
-            char key[16];
-            snprintf(key, sizeof key, "theme%d", t);
-            if (check_item(k, key, themes[t], s->prefs.theme == (studio_theme)t)) {
-                s->prefs.theme = (studio_theme)t;
-            }
-        }
-        kit_menu_separator(k, "s0");
-        kit_menu_group(k, "density", "Density");
-        if (check_item(k, "compact", "Compact", !s->prefs.comfortable)) {
-            s->prefs.comfortable = false;
-        }
-        if (check_item(k, "comfortable", "Comfortable", s->prefs.comfortable)) {
-            s->prefs.comfortable = true;
-        }
-        kit_menu_separator(k, "s1");
-        kit_menu_group(k, "wires", "Graph Wires");
-        static const char *const wires[KIT_WIRE_STYLE_COUNT] = { "Curved",
-                                                                 "Orthogonal",
-                                                                 "Straight",
-                                                                 "Subway" };
-        for (int w = 0; w < KIT_WIRE_STYLE_COUNT; w++) {
-            char key[16];
-            snprintf(key, sizeof key, "wires%d", w);
-            if (check_item(k, key, wires[w], s->prefs.wires == (kit_wire_style)w)) {
-                s->prefs.wires = (kit_wire_style)w;
-            }
-        }
-        kit_menu_separator(k, "s2");
-        kit_menu_group(k, "nodes", "Graph Nodes");
-        if (check_item(k, "bindings", "Short Bindings", s->prefs.short_bindings)) {
-            s->prefs.short_bindings = !s->prefs.short_bindings;
-        }
-        if (check_item(k, "flow", "Flow in Titles", s->prefs.title_flow)) {
-            s->prefs.title_flow = !s->prefs.title_flow;
-        }
-        if (check_item(k, "operators", "Compact Nodes", s->prefs.compact_nodes)) {
-            s->prefs.compact_nodes = !s->prefs.compact_nodes;
-        }
-        kit_menu_separator(k, "s3");
-        if (check_item(k, "motion", "Reduce Motion", s->prefs.reduced_motion)) {
-            s->prefs.reduced_motion = !s->prefs.reduced_motion;
-        }
-        kit_popup_end(k);
-    }
+    studio_ui_modal(s, "Settings");
 }
 
 static void topbar(studio *s)
@@ -1183,6 +1132,8 @@ void studio_shortcuts(studio *s)
             kit_command_open(s->kit, "Search objects, assets and commands");
         } else if (mod && key == SDLK_S) {
             studio_save(s);
+        } else if (mod && key == SDLK_COMMA) {
+            studio_ui_show(s, "Settings");
         } else if (mod && key == SDLK_Z) {
             studio_history(s, shift);
         } else if (mod && key == SDLK_Y) {

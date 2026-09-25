@@ -1,0 +1,34 @@
+rml: |
+  <use ui="Dialog" data-keys="Escape:Close Enter:Choose Space:Choose Down:Next Up:Previous" autofocus>
+    <div class="title">Settings</div>
+    <div class="columns">
+      <div class="column">
+        <div class="menu-group">Theme</div>
+        <use ui="MenuOption" data-setting="theme" value="system">System</use>
+        <use ui="MenuOption" data-setting="theme" value="dark">Dark</use>
+        <use ui="MenuOption" data-setting="theme" value="light">Light</use>
+        <div class="menu-sep"/>
+        <div class="menu-group">Density</div>
+        <use ui="MenuOption" data-setting="density" value="compact">Compact</use>
+        <use ui="MenuOption" data-setting="density" value="comfortable">Comfortable</use>
+        <div class="menu-sep"/>
+        <use ui="MenuCheck" data-setting="reduceMotion">Reduce Motion</use>
+      </div>
+      <div class="column">
+        <div class="menu-group">Graph Wires</div>
+        <use ui="MenuOption" data-setting="wires" value="curved">Curved</use>
+        <use ui="MenuOption" data-setting="wires" value="orthogonal">Orthogonal</use>
+        <use ui="MenuOption" data-setting="wires" value="straight">Straight</use>
+        <use ui="MenuOption" data-setting="wires" value="subway">Subway</use>
+        <div class="menu-sep"/>
+        <div class="menu-group">Graph Nodes</div>
+        <use ui="MenuCheck" data-setting="shortBindings">Short Bindings</use>
+        <use ui="MenuCheck" data-setting="titleFlow">Flow in Titles</use>
+        <use ui="MenuCheck" data-setting="compactNodes">Compact Nodes</use>
+      </div>
+    </div>
+  </use>
+rcss: |
+  .title { display: block; padding: 2dp 6dp 10dp; font-size: 14dp; font-weight: 600; color: var(--fg); }
+  .columns { display: flex; gap: 12dp; }
+  .column { display: block; width: 200dp; }

@@ -273,8 +273,9 @@ static void set_checked(rml_element *control, bool checked)
 }
 
 /* Shows `value` in a data-setting element's controls: an option is checked
- * when the value is its own, a checkbox when it is "true". */
-static void show_setting(rml_element *element, const char *value)
+ * when the value is its own, a checkbox when it is "true". An option's radio
+ * is named for the key, so each setting's radios form their own group. */
+static void show_setting(rml_element *element, const char *key, const char *value)
 {
     char option[256];
     bool is_option = option_value(element, option, sizeof option);
@@ -288,6 +289,9 @@ static void show_setting(rml_element *element, const char *value)
         return;
     }
     if (is_option) {
+        if (input_type(found, "radio")) {
+            rml_element_set_attribute(found, "name", key);
+        }
         set_checked(found, !strcmp(option, value));
         return;
     }
@@ -310,7 +314,7 @@ static void refresh_settings(ui_mount *m)
         rml_element_attribute(elements[i], "data-setting", key, sizeof key);
         const char *value = game_save_get(m->settings, key);
         if (value) {
-            show_setting(elements[i], value);
+            show_setting(elements[i], key, value);
         }
     }
     m->refreshing = false;
@@ -799,7 +803,9 @@ static void install_styles(render_ui *ui)
         memcpy(sheet + start, style, strlen(style));
     }
     apush(sheet, '\0');
-    rml_document_set_style_sheet(ui->doc, sheet);
+    if (!rml_document_set_style_sheet(ui->doc, sheet)) {
+        snprintf(ui->error, sizeof ui->error, "RmlUi could not read the game UI style sheets");
+    }
     afree(sheet);
     afree(names);
 }

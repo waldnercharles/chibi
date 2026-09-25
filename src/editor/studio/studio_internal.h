@@ -308,6 +308,11 @@ void studio_ui_free(studio_ui *ui);
 void studio_ui_frame(studio *s);
 /* Shows the Studio scene entity `name`'s GameUi document in a kit host. */
 void studio_ui_panel(studio *s, const char *key, const char *name);
+/* Shows it over the editor while its GameUi is not hidden, as for a dialog
+ * whose behaviors hide it again. */
+void studio_ui_modal(studio *s, const char *name);
+/* Clears its GameUi.hidden. */
+void studio_ui_show(studio *s, const char *name);
 
 /* Shell. */
 void studio_emit(studio *s);

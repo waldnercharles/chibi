@@ -876,7 +876,14 @@ static void sync_styles(kit *k)
     }
     rml_document_reload_style_sheet(k->doc);
     for (int i = 0; i < acount(k->extra_styles); i++) {
-        rml_document_add_style_sheet(k->doc, k->extra_styles[i].value);
+        const char *rcss = k->extra_styles[i].value;
+        if (rcss[0] && !rml_document_add_style_sheet(k->doc, rcss)) {
+            fprintf(
+                stderr,
+                "RmlUi could not read the %s style sheet\n",
+                k->extra_styles[i].name
+            );
+        }
     }
     k->restyle = false;
 }
@@ -1096,6 +1103,13 @@ rml_element *kit_host(kit *k, const char *key, const char *cls)
     return n->el;
 }
 
+rml_element *kit_modal_host(kit *k, const char *key)
+{
+    node *n = emit_in(k, k->layer, key, KIND_BOX, "div", "modal-host");
+    n->hosted = true;
+    return n->el;
+}
+
 void kit_label(kit *k, const char *key, const char *cls, const char *text)
 {
     node *n = emit(k, key, KIND_BOX, "span", cls);
@@ -1238,8 +1252,10 @@ bool kit_wants_keyboard(const kit *k)
     }
     rml_element *focus = rml_context_focus_element(k->context);
     /* A focused number field handles its own keys during RmlUi dispatch; global
-       shortcuts still apply unless text is being edited. */
-    return focus && is_input(focus);
+       shortcuts still apply unless text is being edited. Hosted content owns
+       the keyboard while it holds focus. */
+    node *n = focus ? node_for(k, focus) : NULL;
+    return focus && (is_input(focus) || (n && n->hosted));
 }
 
 bool kit_accepts_text(const kit *k)

@@ -293,6 +293,7 @@ scrollbarcorner { background-color: transparent; }
 
 /* Overlay layer: popups, tooltips and the command palette. */
 #layer { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; z-index: 10; }
+.modal-host { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: auto; z-index: 15; }
 .popup {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
         border-radius: var(--r-lg); padding: 4dp; min-width: 180dp; max-width: 480dp; color: var(--fg);

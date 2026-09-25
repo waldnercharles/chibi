@@ -160,6 +160,46 @@ static void popup_navigation(const char *root)
     unlink(path);
 }
 
+/* Options bound to different settings keep their own checks. */
+static void option_groups(const char *root)
+{
+    char path[128];
+    snprintf(path, sizeof path, "%s/ui/Groups.yaml", root);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(
+        "rml: <input type=\"radio\" id=\"x\" data-setting=\"first\" "
+        "value=\"x\"/><input "
+        "type=\"radio\" id=\"y\" data-setting=\"second\" value=\"y\"/>\n",
+        file
+    );
+    fclose(file);
+    host_fixture f = { .host_key = "groups" };
+    f.backend = rml_backend_create(640, 480, 1);
+    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
+    f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
+    f.mount = ui_mount_new(root, "Groups");
+    f.listener = rml_listener_create(on_event, f.mount);
+    game_save *save = game_save_new();
+    game_save_set(save, "first", "x");
+    game_save_set(save, "second", "y");
+    for (int i = 0; i < 3; i++) {
+        frame(&f);
+        ui_mount_settings(f.mount, save);
+    }
+    test_check(
+        rml_element_has_attribute(rml_element_query_selector(f.host, "#x"), "checked") &&
+            rml_element_has_attribute(rml_element_query_selector(f.host, "#y"), "checked"),
+        "each setting's options form their own radio group"
+    );
+    kit_destroy(f.k);
+    rml_backend_destroy(f.backend);
+    ui_mount_free(f.mount);
+    rml_listener_destroy(f.listener);
+    game_save_free(save);
+    unlink(path);
+}
+
 void test_kit_host()
 {
     char root[] = "/tmp/chibi-kit-host-XXXXXX", folder[64], path[96];
@@ -211,6 +251,7 @@ void test_kit_host()
     rml_listener_destroy(f.listener);
     unlink(path);
     popup_navigation(root);
+    option_groups(root);
     rmdir(folder);
     rmdir(root);
 }

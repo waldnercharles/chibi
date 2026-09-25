@@ -1,8 +1,10 @@
-/* Debugger stepping through function calls, in every backend: Step enters a
-   call, Step Over runs one as a node, Step Out finishes the call it is in. */
+/* The debugger's runtime support: stepping through function calls in every
+   backend (Step enters a call, Step Over runs one as a node, Step Out finishes
+   the call it is in), and failed runs logged at their node. */
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
+#include "runtime/behaviors/behavior.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -154,8 +156,93 @@ static void step_at_call(behavior_backend backend, int command)
     behavior_asset_free(s.asset);
 }
 
-void test_step_out()
+static int fail(node *, struct flow_context *ctx)
 {
+    return flow_context_fail(ctx, FLOW_ERR_NODE, "resumed failure");
+}
+
+static pin_spec exec_in[] = { { .name = "Exec", .kind = PIN_EXEC } };
+static const node_desc failing = {
+    .name = "Resumed failure test",
+    .inputs = exec_in,
+    .input_count = 1,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = fail,
+};
+
+/* A run the debugger resumes into a failure is logged like one that fails at once. */
+static void resumed_failure()
+{
+    behavior_asset *asset = behavior_asset_new("Failing");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    assert(graph_set_event_name(asset->graph, event, "Go") == 0);
+    node *broken = graph_add_node(asset->graph, &failing);
+    graph_connect_exec(asset->graph, event, 0, broken, 0, 0);
+    assert(graph_set_breakpoint(asset->graph, broken, 1) == 0);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    assert(game_behavior_register_asset(world, "failing", asset) == 0);
+    ecs_entity entity = ecs_world_create_entity(ecs);
+    assert(game_behavior_attach(world, entity, "failing") == 0);
+    behavior_instance *instance = game_behavior_instance(world, entity, "failing");
+    assert(behavior_instance_set_backend(instance, BEHAVIOR_ORACLE) == 0);
+    behavior_instance_set_breakpoints_enabled(instance, true);
+    assert(game_behavior_dispatch(world, entity, "Go", (flow_inputs){ 0 }, NULL) >= 0);
+    game_behavior_attachment_info info;
+    flow_run *run = game_behavior_paused_run(world, &info);
+    assert(run && game_behavior_log_count(world) == 0);
+    assert(flow_run_resume(run) == FLOW_ERR_NODE);
+    game_behavior_pump(world, 0);
+    game_behavior_log_info log = { 0 };
+    test_check(
+        game_behavior_log_count(world) == 1 &&
+            game_behavior_log_info_at(world, 0, &log) == 0 && log.failure &&
+            log.origin == broken && !strcmp(log.asset_name, "failing") &&
+            !strcmp(log.message, "resumed failure") &&
+            !game_behavior_paused_run(world, &info),
+        "a run that fails after the debugger resumes it is logged at its node"
+    );
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+}
+
+/* A Tick that fails in the prepared update loop is logged at its node. */
+static void failed_tick()
+{
+    behavior_asset *asset = behavior_asset_new("Endless");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    node *tick = graph_add_node(asset->graph, &NODE_Event);
+    assert(graph_set_event_name(asset->graph, tick, "Tick") == 0);
+    node *loop = graph_add_node(asset->graph, &NODE_WhileLoop);
+    assert(
+        graph_set_pin_default(asset->graph, loop, 0, 1, &(pin_value){ .type = PIN_BOOL, .b = true }) == 0
+    );
+    graph_connect_exec(asset->graph, tick, 0, loop, 0, 0);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    assert(game_behavior_register_asset(world, "endless", asset) == 0);
+    ecs_entity entity = ecs_world_create_entity(ecs);
+    assert(game_behavior_attach(world, entity, "endless") == 0);
+    game_behavior_update(world, NULL);
+    game_behavior_log_info log = { 0 };
+    test_check(
+        game_behavior_last_update(world).prepared == 1 &&
+            game_behavior_log_count(world) == 1 &&
+            game_behavior_log_info_at(world, 0, &log) == 0 && log.failure &&
+            log.origin == loop,
+        "a Tick that fails in the prepared update loop is logged at its node"
+    );
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+}
+
+void test_debugging()
+{
+    failed_tick();
+    resumed_failure();
     const behavior_backend backends[] = { BEHAVIOR_ORACLE, BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 3; b++) {
         step_within_call(backends[b]);

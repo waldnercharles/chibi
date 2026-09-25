@@ -494,14 +494,20 @@ static void release_instance(behavior_asset_record *asset, behavior_instance *in
     behavior_instance_destroy(instance);
 }
 
-static void reap_instance(behavior_instance *instance)
+/* Releases finished runs. A run that failed after it waited, or after the
+   debugger resumed it, is logged here as dispatch logs one that fails at once. */
+static void reap_instance(game_behavior_world *world, const behavior_attachment *attachment)
 {
+    behavior_instance *instance = attachment->instance;
     for (int i = 0; i < acount(instance->activations);) {
         flow_run *run = instance->activations[i];
         flow_state state = flow_run_status(run);
         if (state != FLOW_COMPLETED && state != FLOW_FAILED) {
             i++;
             continue;
+        }
+        if (state == FLOW_FAILED) {
+            log_failure(world, attachment->entity, attachment->asset->name, flow_run_error(run));
         }
         behavior_instance_release_activation(instance, run);
     }
@@ -1559,6 +1565,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         if (result < 0) {
             game_entities_query_scope(world->entities, NULL);
             flow_run *failed = behavior_update_failure(stopped, result);
+            log_failure(world, attachment->entity, attachment->asset->name, flow_run_error(failed));
             behavior_instance_release_activation(stopped->instance, failed);
         } else if (ecs_entity_is_alive(world->ecs, attachment->entity)) {
             /* A changed binding is repaired at the next schedule boundary. The
@@ -1704,7 +1711,7 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         }
         behavior_attachment *attachment = &world->attachments[world->pumped[i]];
         if (!attachment->debug_hold) {
-            reap_instance(attachment->instance);
+            reap_instance(world, attachment);
         }
     }
     return result;

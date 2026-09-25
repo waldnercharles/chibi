@@ -14,10 +14,10 @@ graphs:
     reference_name: Islands
     reference_asset: FieldShapes
     inputs:
-      X: {declaration_id: 6, type: float, type_name: null}
-      "Y": {declaration_id: 7, type: float, type_name: null}
+      X: {declaration_id: 6, type: float}
+      "Y": {declaration_id: 7, type: float}
     outputs:
-      Value: {declaration_id: 8, type: float, type_name: null}
+      Value: {declaration_id: 8, type: float}
   - {id: 53, type: Field Output}
   edges:
   - {from: 45.Value, to: 49.X}

@@ -1,7 +1,7 @@
 version: 3
 name: Basalt
 domain: material
-id_counter: 10926
+id_counter: 17237
 description: 'Physically based basalt on the BasaltCave column grid: prisms with cross-joints, streaks, phenocrysts and relief.'
 graphs:
 - kind: event
@@ -20,1350 +20,1227 @@ graphs:
   - id: 12
     type: Shader X
     inputs:
-      Value: {type: struct, type_name: ShaderVec3}
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 17234}
   - id: 15
     type: Shader Z
     inputs:
-      Value: {type: struct, type_name: ShaderVec3}
-  - {id: 49, type: Shader Cos}
-  - id: 52
-    type: Shader Multiply
-    inputs: {A: 0.9}
-  - {id: 95, type: Shader Cos}
-  - id: 98
-    type: Shader Multiply
-    inputs: {A: 0.5}
-  - {id: 141, type: Shader Cos}
-  - id: 144
-    type: Shader Multiply
-    inputs: {A: 0.5}
-  - {id: 164, type: Shader Sin}
-  - {id: 167, type: Shader Cos}
-  - id: 210
-    type: Shader Multiply
-    inputs: {A: 0.00047619047}
-  - id: 218
-    type: Shader Multiply
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4659}
-      B: 0.0038461538
-  - {id: 238, type: Shader Fract}
-  - {id: 241, type: Shader Subtract}
-  - id: 245
-    type: Shader Subtract
-    inputs: {B: 0.5}
-  - id: 249
-    type: Shader Divide
-    inputs:
-      B:
-        binding: {kind: local, local_id: 4660}
-  - id: 253
-    type: Shader Divide
-    inputs:
-      A: 0.5
-      B:
-        binding: {kind: local, local_id: 4660}
-  - id: 377
-    type: Shader Divide
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4652}
-      B:
-        binding: {kind: local, local_id: 4653}
-  - id: 389
-    type: Shader Multiply
-    inputs:
-      A: 0.45
-      B:
-        binding: {kind: local, local_id: 4661}
-  - {id: 448, type: Shader Fract}
-  - id: 451
-    type: Shader Subtract
-    inputs:
-      B:
-        binding: {kind: local, local_id: 4655}
-  - id: 479
-    type: Shader Multiply
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4654}
-  - id: 483
-    type: Shader Multiply
-    inputs: {A: 1.2}
-  - id: 487
-    type: Shader Divide
-    inputs:
-      B:
-        binding: {kind: local, local_id: 4653}
-  - id: 495
-    type: Shader Cos
-    inputs:
       Value:
-        binding: {kind: local, local_id: 4662}
-  - id: 502
-    type: Shader Multiply
-    inputs: {B: -1.0}
-  - id: 511
-    type: Shader Add
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 17234}
+  - id: 16026
+    type: Call Pure Function
+    reference_id: 12137
+    reference_name: Column Grid
     inputs:
-      A:
-        binding: {kind: local, local_id: 4662}
-      B: 1.0471976
-  - {id: 515, type: Shader Cos}
-  - id: 531
-    type: Shader Add
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4662}
-      B: 2.0943952
-  - id: 565
-    type: Shader Vector3
-    inputs:
-      X:
-        binding: {kind: local, local_id: 4651}
-      "Y":
-        binding: {kind: local, local_id: 4656}
-      Z: 11.0
-  - id: 570
-    type: Shader Noise
-    inputs:
-      Position: {type: struct, type_name: ShaderVec3}
-  - id: 640
-    type: Shader Subtract
-    inputs:
-      A: 1.0
-      B:
-        binding: {kind: local, local_id: 4655}
-  - id: 674
-    type: Shader Abs
-    inputs:
-      Value:
-        binding: {kind: local, local_id: 4654}
-  - id: 677
-    type: Shader Smoothstep
-    inputs: {Min: 0.8}
-  - id: 682
-    type: Shader Vector3
-    inputs:
-      X:
-        binding: {kind: local, local_id: 4648}
-      Z:
-        binding: {kind: local, local_id: 4649}
-  - id: 707
-    type: Shader Add
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4648}
-      B: 0.8
-  - id: 711
-    type: Shader Vector3
-    inputs:
-      Z:
-        binding: {kind: local, local_id: 4649}
-  - id: 744
-    type: Shader Add
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4649}
-      B: 0.8
-  - id: 748
-    type: Shader Vector3
-    inputs:
-      X:
-        binding: {kind: local, local_id: 4648}
-  - id: 781
-    type: Shader Divide
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4648}
-      B: 0.9
-  - id: 785
-    type: Shader Divide
-    inputs:
-      A:
-        binding: {kind: local, local_id: 4649}
-      B: 0.9
-  - {id: 789, type: Shader Fract}
-  - {id: 792, type: Shader Subtract}
-  - {id: 796, type: Shader Fract}
-  - {id: 799, type: Shader Subtract}
-  - id: 803
-    type: Shader Subtract
-    inputs: {B: 0.5}
-  - id: 807
-    type: Shader Subtract
-    inputs: {B: 0.5}
-  - id: 900
-    type: Shader Smoothstep
-    inputs:
-      Value:
-        binding: {kind: local, local_id: 4654}
-      Min: 0.86
-  - id: 1062
-    type: Shader Multiply
-    inputs:
-      A: 0.037
-      B:
-        binding: {kind: local, local_id: 4666}
-  - id: 1083
-    type: Shader Multiply
-    inputs:
-      A: 0.007
-      B:
-        binding: {kind: local, local_id: 4666}
-  - id: 1104
-    type: Shader Multiply
-    inputs:
-      A: -0.016
-      B:
-        binding: {kind: local, local_id: 4666}
-  - id: 1108
-    type: Shader Add
-    inputs: {A: 0.08}
-  - id: 1235
-    type: Behavior Expression
-    reference_id: 1205
-    reference_name: 0.0055555557 * x + 0.0023809525 * z + 1.3
-    inputs:
-      x:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4648}
-      z:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4649}
+      X: {type: float}
+      Z: {type: float}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 1299
-    type: Behavior Expression
-    reference_id: 1269
-    reference_name: 0.010526316 * x - 0.0033333334 * z + 0.4
+      Column: {type: float}
+      Offset: {type: float}
+      Half Width: {type: float}
+      Across: {type: float}
+      Along: {type: float}
+  - id: 16034
+    type: Call Pure Function
+    reference_id: 14027
+    reference_name: Prism Facet
     inputs:
-      x:
+      Column:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4648}
-      z:
+        binding: {kind: local, local_id: 17230}
+      Across:
         type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4649}
+        binding: {kind: local, local_id: 17231}
+      Half Width:
+        type: float
+        binding: {kind: local, local_id: 17235}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 1357
-    type: Behavior Expression
-    reference_id: 1333
-    reference_name: 0.00076923077 * x + 0.00047619047 * z
+      Angle: {type: float}
+  - id: 16039
+    type: Call Pure Function
+    reference_id: 14488
+    reference_name: Cross Joints
     inputs:
-      x:
+      Column:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4648}
-      z:
+        binding: {kind: local, local_id: 17230}
+      Along: {type: float}
+      Offset: {type: float}
+      Across:
         type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4649}
+        binding: {kind: local, local_id: 17231}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 1407
-    type: Behavior Expression
-    reference_id: 1385
-    reference_name: 0.5 + 0.5 * sin(phaseC)
+      Joint: {type: float}
+      Block: {type: float}
+      Block T: {type: float}
+  - id: 16047
+    type: Call Pure Function
+    reference_id: 11473
+    reference_name: Phenocrysts
     inputs:
-      phaseC: {type: float, type_name: null, flags: 2, group: 1}
+      Position:
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 17234}
+      Joint:
+        type: float
+        binding: {kind: local, local_id: 17232}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 1462
-    type: Behavior Expression
-    reference_id: 1432
-    reference_name: 0.0011111111 * x + 0.0038461538 * z + 2.2
+      Mask: {type: float}
+      Tilt: {type: struct, type_name: ShaderVec3}
+  - id: 16052
+    type: Call Pure Function
+    reference_id: 11006
+    reference_name: Relief
     inputs:
-      x:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4648}
-      z:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4649}
+      Position:
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 17234}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 1553
+      Height: {type: float}
+      Slope: {type: struct, type_name: ShaderVec3}
+  - id: 16127
     type: Behavior Expression
-    reference_id: 1496
-    reference_name: x / 26 + 0.9 * sin(phaseA) + 0.5 * sin(phaseB) + 4.6 * swayAmount * sway
+    reference_id: 16056
+    reference_name: smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))
     inputs:
-      x:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4648}
-      phaseA: {type: float, type_name: null, flags: 2, group: 2}
-      phaseB: {type: float, type_name: null, flags: 2, group: 3}
-      swayAmount:
-        type: float
-        type_name: null
-        flags: 2
-        group: 4
-        binding: {kind: local, local_id: 4659}
-      sway:
-        type: float
-        type_name: null
-        flags: 2
-        group: 5
-        binding: {kind: local, local_id: 4650}
+      x: {type: float}
+      z: {type: float}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 6}
-  - id: 1685
+      Result: {type: float}
+  - id: 16337
     type: Behavior Expression
-    reference_id: 1617
-    reference_name: 0.03846154 + 0.0055555557 * slopeA + 0.010526316 * slopeB + 4.6 * (0.00076923077 * slopeC * sway + swayAmount * 0.0011111111 * swaySlope)
-    inputs:
-      slopeA: {type: float, type_name: null, flags: 2, group: 1}
-      slopeB: {type: float, type_name: null, flags: 2, group: 2}
-      slopeC: {type: float, type_name: null, flags: 2, group: 3}
-      sway:
-        type: float
-        type_name: null
-        flags: 2
-        group: 4
-        binding: {kind: local, local_id: 4650}
-      swayAmount:
-        type: float
-        type_name: null
-        flags: 2
-        group: 5
-        binding: {kind: local, local_id: 4659}
-      swaySlope: {type: float, type_name: null, flags: 2, group: 6}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 7}
-  - id: 1807
-    type: Behavior Expression
-    reference_id: 1761
-    reference_name: 26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))
-    inputs:
-      column:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 1890
-    type: Behavior Expression
-    reference_id: 1856
-    reference_name: 0.5 + 0.5 * sin(column * 1.93716 + 1.1)
-    inputs:
-      column:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 1998
-    type: Behavior Expression
-    reference_id: 1927
-    reference_name: z + (0.0023809525 * slopeA - 0.0033333334 * slopeB + 4.6 * (amountSlopeZ * sway + amountPerZ * swaySlope)) * -1 / dudx * offset
-    inputs:
-      z:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4649}
-      slopeA: {type: float, type_name: null, flags: 2, group: 2}
-      slopeB: {type: float, type_name: null, flags: 2, group: 3}
-      amountSlopeZ: {type: float, type_name: null, flags: 2, group: 4}
-      sway:
-        type: float
-        type_name: null
-        flags: 2
-        group: 5
-        binding: {kind: local, local_id: 4650}
-      amountPerZ: {type: float, type_name: null, flags: 2, group: 6}
-      swaySlope: {type: float, type_name: null, flags: 2, group: 7}
-      dudx:
-        type: float
-        type_name: null
-        flags: 2
-        group: 8
-        binding: {kind: local, local_id: 4660}
-      offset:
-        type: float
-        type_name: null
-        flags: 2
-        group: 9
-        binding: {kind: local, local_id: 4652}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 10}
-  - id: 2147
-    type: Behavior Expression
-    reference_id: 2080
-    reference_name: (along + waveHeight * wave - jointSpacing * jointPhase - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing
-    inputs:
-      along: {type: float, type_name: null, flags: 2, group: 1}
-      waveHeight: {type: float, type_name: null, flags: 2, group: 2}
-      wave: {type: float, type_name: null, flags: 2, group: 3}
-      jointSpacing:
-        type: float
-        type_name: null
-        flags: 2
-        group: 4
-        binding: {kind: local, local_id: 4661}
-      jointPhase: {type: float, type_name: null, flags: 2, group: 5}
-      tilt: {type: float, type_name: null, flags: 2, group: 6}
-      offset:
-        type: float
-        type_name: null
-        flags: 2
-        group: 7
-        binding: {kind: local, local_id: 4652}
-      bow: {type: float, type_name: null, flags: 2, group: 8}
-      across:
-        type: float
-        type_name: null
-        flags: 2
-        group: 9
-        binding: {kind: local, local_id: 4654}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 10}
-  - id: 2271
-    type: Behavior Expression
-    reference_id: 2225
-    reference_name: 2 * (0.5 + 0.5 * sin(column * 3.30119 + 2.2)) - 1
-    inputs:
-      column:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 2366
-    type: Behavior Expression
-    reference_id: 2320
-    reference_name: 2 * (0.5 + 0.5 * sin(column * 0.83261 + 4.4)) - 1
-    inputs:
-      column:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 2447
-    type: Behavior Expression
-    reference_id: 2415
-    reference_name: sin(along / (0.9 * jointSpacing) + 7 * jointPhase)
-    inputs:
-      along: {type: float, type_name: null, flags: 2, group: 1}
-      jointSpacing:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4661}
-      jointPhase: {type: float, type_name: null, flags: 2, group: 3}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 4}
-  - id: 2512
-    type: Behavior Expression
-    reference_id: 2484
-    reference_name: 1.0471976 * noise(vec3(column, 0, 1), 1)
-    inputs:
-      column:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 2563
-    type: Behavior Expression
-    reference_id: 2543
-    reference_name: cos(min(twist, 1.0471976 - twist))
-    inputs:
-      twist:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4662}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 2653
-    type: Behavior Expression
-    reference_id: 2586
-    reference_name: twist - 0.5235988 + 1.0471976 * (smoothstep(lowEdge, softness, vertex0 - hexX) + smoothstep(lowEdge, softness, vertex1 - hexX) + smoothstep(lowEdge, softness, cos(angle2) - hexX))
-    inputs:
-      twist:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4662}
-      lowEdge: {type: float, type_name: null, flags: 2, group: 2}
-      softness: {type: float, type_name: null, flags: 2, group: 3}
-      vertex0: {type: float, type_name: null, flags: 2, group: 4}
-      hexX: {type: float, type_name: null, flags: 2, group: 5}
-      vertex1: {type: float, type_name: null, flags: 2, group: 6}
-      angle2: {type: float, type_name: null, flags: 2, group: 7}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 8}
-  - id: 2758
-    type: Behavior Expression
-    reference_id: 2729
-    reference_name: step(0.64, gapNoise) * (0.6 + 1.4 * gapNoise)
-    inputs:
-      gapNoise: {type: float, type_name: null, flags: 2, group: 1}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 2817
-    type: Behavior Expression
-    reference_id: 2790
-    reference_name: noise(vec3(column, block + 1, 11), 1)
-    inputs:
-      column:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-      block:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4656}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 2877
-    type: Behavior Expression
-    reference_id: 2848
-    reference_name: Behavior Expression 2848
-    inputs:
-      gapNoise: {type: float, type_name: null, flags: 2, group: 1}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 2987
-    type: Behavior Expression
-    reference_id: 2909
-    reference_name: clamp(max(gapBelow * (1 - smoothstep(0, gapBelow + 0.01, blockT * jointSpacing)), gapAbove * (1 - smoothstep(0, gapAbove + 0.01, remaining * jointSpacing))), 0, 1)
-    inputs:
-      gapBelow: {type: float, type_name: null, flags: 2, group: 1}
-      blockT:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4655}
-      jointSpacing:
-        type: float
-        type_name: null
-        flags: 2
-        group: 3
-        binding: {kind: local, local_id: 4661}
-      gapAbove: {type: float, type_name: null, flags: 2, group: 4}
-      remaining: {type: float, type_name: null, flags: 2, group: 5}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 6}
-  - id: 3107
-    type: Behavior Expression
-    reference_id: 3072
-    reference_name: 0.7 * noise(ground, 0.08) + 0.3 * noise(ground, 0.45)
-    inputs:
-      ground: {type: struct, type_name: ShaderVec3, flags: 2, group: 1}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
-  - id: 3207
-    type: Behavior Expression
-    reference_id: 3145
-    reference_name: step(0.975, noise(vec3(cellX, cellZ, 21), 1)) * step(dx * dx + dz * dz, 0.1) * (1 - joint)
-    inputs:
-      cellX:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4657}
-      cellZ:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4658}
-      dx: {type: float, type_name: null, flags: 2, group: 3}
-      dz: {type: float, type_name: null, flags: 2, group: 4}
-      joint:
-        type: float
-        type_name: null
-        flags: 2
-        group: 5
-        binding: {kind: local, local_id: 4663}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 6}
-  - id: 3348
-    type: Behavior Expression
-    reference_id: 3276
-    reference_name: vec3(mix(facetX, 0.85, rightEdge) + reliefSlopeX * 0.45 + crystal * (tiltX * 0.6), sin(facet), jointNormal + reliefSlopeZ * 0.45 + crystal * tiltZ)
-    inputs:
-      facetX: {type: float, type_name: null, flags: 2, group: 1}
-      rightEdge: {type: float, type_name: null, flags: 2, group: 2}
-      reliefSlopeX: {type: float, type_name: null, flags: 2, group: 3}
-      crystal:
-        type: float
-        type_name: null
-        flags: 2
-        group: 4
-        binding: {kind: local, local_id: 4665}
-      tiltX: {type: float, type_name: null, flags: 2, group: 5}
-      facet: {type: float, type_name: null, flags: 2, group: 6}
-      jointNormal: {type: float, type_name: null, flags: 2, group: 7}
-      reliefSlopeZ: {type: float, type_name: null, flags: 2, group: 8}
-      tiltZ: {type: float, type_name: null, flags: 2, group: 9}
-    outputs:
-      Result: {type: struct, type_name: ShaderVec3, flags: 2, group: 10}
-  - id: 3471
-    type: Behavior Expression
-    reference_id: 3431
-    reference_name: 0.7 * noise(groundX, 0.08) + 0.3 * noise(groundX, 0.45) - relief
-    inputs:
-      groundX: {type: struct, type_name: ShaderVec3, flags: 2, group: 1}
-      relief:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4664}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 3555
-    type: Behavior Expression
-    reference_id: 3515
-    reference_name: Behavior Expression 3515
-    inputs:
-      groundZ: {type: struct, type_name: ShaderVec3, flags: 2, group: 1}
-      relief:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4664}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 3626
-    type: Behavior Expression
-    reference_id: 3599
-    reference_name: noise(vec3(cellX, cellZ, 22), 1) - 0.5
-    inputs:
-      cellX:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4657}
-      cellZ:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4658}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 3690
-    type: Behavior Expression
-    reference_id: 3657
-    reference_name: (noise(vec3(cellX, cellZ, 23), 1) - 0.5) * 0.6
-    inputs:
-      cellX:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4657}
-      cellZ:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4658}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 3760
-    type: Behavior Expression
-    reference_id: 3727
-    reference_name: mix(cos(facet), -0.85, smoothstep(0.86, 1, across * -1))
-    inputs:
-      facet: {type: float, type_name: null, flags: 2, group: 1}
-      across:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4654}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 3837
-    type: Behavior Expression
-    reference_id: 3797
-    reference_name: mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint)
-    inputs:
-      blockT:
-        type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4655}
-      joint:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4663}
-    outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 3945
-    type: Behavior Expression
-    reference_id: 3881
+    reference_id: 16273
     reference_name: (0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))
     inputs:
       column:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
-      block:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4656}
+        binding: {kind: local, local_id: 17230}
+      block: {type: float}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 4084
+      Result: {type: float}
+  - id: 16360
     type: Behavior Expression
-    reference_id: 4013
-    reference_name: smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))
+    reference_id: 16341
+    reference_name: smoothstep(0.8, 1, abs(across))
     inputs:
-      x:
+      across:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4648}
-      z:
-        type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4649}
+        binding: {kind: local, local_id: 17231}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 4195
+      Result: {type: float}
+  - id: 16399
     type: Behavior Expression
-    reference_id: 4159
+    reference_id: 16363
     reference_name: (1 - 0.7 * joint) * (1 - 0.45 * groove)
     inputs:
       joint:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4663}
-      groove: {type: float, type_name: null, flags: 2, group: 2}
+        binding: {kind: local, local_id: 17232}
+      groove:
+        type: float
+        binding: {kind: local, local_id: 17236}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
-  - id: 4309
+      Result: {type: float}
+  - id: 16486
     type: Behavior Expression
-    reference_id: 4235
-    reference_name: vec3(mix((0.068 + warmStreak) * tint, 0.12, crystal) * shade, mix((0.073 + greenStreak) * tint, 0.12, crystal) * shade, mix(blueBase * tint, 0.115, crystal) * shade)
+    reference_id: 16422
+    reference_name: mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade
     inputs:
-      warmStreak: {type: float, type_name: null, flags: 2, group: 1}
-      tint: {type: float, type_name: null, flags: 2, group: 2}
+      streaks: {type: float}
+      tint: {type: float}
       crystal:
         type: float
-        type_name: null
-        flags: 2
-        group: 3
-        binding: {kind: local, local_id: 4665}
-      shade: {type: float, type_name: null, flags: 2, group: 4}
-      greenStreak: {type: float, type_name: null, flags: 2, group: 5}
-      blueBase: {type: float, type_name: null, flags: 2, group: 6}
+        binding: {kind: local, local_id: 17233}
+      shade: {type: float}
     outputs:
-      Result: {type: struct, type_name: ShaderVec3, flags: 2, group: 7}
-  - id: 4441
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 16754
     type: Behavior Expression
-    reference_id: 4391
+    reference_id: 16663
+    reference_name: vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))
+    inputs:
+      facet: {type: float}
+      across:
+        type: float
+        binding: {kind: local, local_id: 17231}
+      blockT: {type: float}
+      joint:
+        type: float
+        binding: {kind: local, local_id: 17232}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 16777
+    type: Behavior Expression
+    reference_id: 16760
+    reference_name: prism + reliefSlope + crystalTilt
+    inputs:
+      prism: {type: struct, type_name: ShaderVec3}
+      reliefSlope: {type: struct, type_name: ShaderVec3}
+      crystalTilt: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 16923
+    type: Behavior Expression
+    reference_id: 16873
     reference_name: mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)
     inputs:
       column:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4651}
+        binding: {kind: local, local_id: 17230}
       joint:
         type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4663}
+        binding: {kind: local, local_id: 17232}
       crystal:
         type: float
-        type_name: null
-        flags: 2
-        group: 3
-        binding: {kind: local, local_id: 4665}
+        binding: {kind: local, local_id: 17233}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 4}
-  - id: 4568
+      Result: {type: float}
+  - id: 17000
     type: Behavior Expression
-    reference_id: 4496
+    reference_id: 16928
     reference_name: 0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal
     inputs:
       halfWidth:
         type: float
-        type_name: null
-        flags: 2
-        group: 1
-        binding: {kind: local, local_id: 4653}
+        binding: {kind: local, local_id: 17235}
       across:
         type: float
-        type_name: null
-        flags: 2
-        group: 2
-        binding: {kind: local, local_id: 4654}
-      groove: {type: float, type_name: null, flags: 2, group: 3}
+        binding: {kind: local, local_id: 17231}
+      groove:
+        type: float
+        binding: {kind: local, local_id: 17236}
       joint:
         type: float
-        type_name: null
-        flags: 2
-        group: 4
-        binding: {kind: local, local_id: 4663}
-      relief:
-        type: float
-        type_name: null
-        flags: 2
-        group: 5
-        binding: {kind: local, local_id: 4664}
+        binding: {kind: local, local_id: 17232}
+      relief: {type: float}
       crystal:
         type: float
-        type_name: null
-        flags: 2
-        group: 6
-        binding: {kind: local, local_id: 4665}
+        binding: {kind: local, local_id: 17233}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 7}
+      Result: {type: float}
   edges:
   - {from: 10.Value, to: 12.Value}
   - {from: 10.Value, to: 15.Value}
-  - {from: 12.Value, to: 682.X}
-  - {from: 12.Value, to: 707.A}
-  - {from: 12.Value, to: 748.X}
-  - {from: 12.Value, to: 781.A}
-  - {from: 12.Value, to: 1235.x}
-  - {from: 12.Value, to: 1299.x}
-  - {from: 12.Value, to: 1357.x}
-  - {from: 12.Value, to: 1462.x}
-  - {from: 12.Value, to: 1553.x}
-  - {from: 12.Value, to: 4084.x}
-  - {from: 15.Value, to: 682.Z}
-  - {from: 15.Value, to: 711.Z}
-  - {from: 15.Value, to: 744.A}
-  - {from: 15.Value, to: 785.A}
-  - {from: 15.Value, to: 1235.z}
-  - {from: 15.Value, to: 1299.z}
-  - {from: 15.Value, to: 1357.z}
-  - {from: 15.Value, to: 1462.z}
-  - {from: 15.Value, to: 1998.z}
-  - {from: 15.Value, to: 4084.z}
-  - {from: 49.Value, to: 52.B}
-  - {from: 52.Value, to: 1685.slopeA}
-  - {from: 52.Value, to: 1998.slopeA}
-  - {from: 95.Value, to: 98.B}
-  - {from: 98.Value, to: 1685.slopeB}
-  - {from: 98.Value, to: 1998.slopeB}
-  - {from: 141.Value, to: 144.B}
-  - {from: 144.Value, to: 210.B}
-  - {from: 144.Value, to: 1685.slopeC}
-  - {from: 164.Value, to: 1553.sway}
-  - {from: 164.Value, to: 1685.sway}
-  - {from: 164.Value, to: 1998.sway}
-  - {from: 167.Value, to: 1685.swaySlope}
-  - {from: 167.Value, to: 1998.swaySlope}
-  - {from: 210.Value, to: 1998.amountSlopeZ}
-  - {from: 218.Value, to: 1998.amountPerZ}
-  - {from: 238.Value, to: 241.B}
-  - {from: 238.Value, to: 245.A}
-  - {from: 241.Value, to: 565.X}
-  - {from: 241.Value, to: 1807.column}
-  - {from: 241.Value, to: 1890.column}
-  - {from: 241.Value, to: 2271.column}
-  - {from: 241.Value, to: 2366.column}
-  - {from: 241.Value, to: 2512.column}
-  - {from: 241.Value, to: 2817.column}
-  - {from: 241.Value, to: 3945.column}
-  - {from: 241.Value, to: 4441.column}
-  - {from: 245.Value, to: 249.A}
-  - {from: 249.Value, to: 377.A}
-  - {from: 249.Value, to: 1998.offset}
-  - {from: 249.Value, to: 2147.offset}
-  - {from: 253.Value, to: 377.B}
-  - {from: 253.Value, to: 487.B}
-  - {from: 253.Value, to: 4568.halfWidth}
-  - {from: 377.Value, to: 479.A}
-  - {from: 377.Value, to: 674.Value}
-  - {from: 377.Value, to: 900.Value}
-  - {from: 377.Value, to: 2147.across}
-  - {from: 377.Value, to: 3760.across}
-  - {from: 377.Value, to: 4568.across}
-  - {from: 389.Value, to: 2147.waveHeight}
-  - {from: 448.Value, to: 451.B}
-  - {from: 448.Value, to: 640.B}
-  - {from: 448.Value, to: 2987.blockT}
-  - {from: 448.Value, to: 3837.blockT}
-  - {from: 451.Value, to: 565.Y}
-  - {from: 451.Value, to: 2817.block}
-  - {from: 451.Value, to: 3945.block}
-  - {from: 479.Value, to: 2653.hexX}
-  - {from: 483.Value, to: 487.A}
-  - {from: 487.Value, to: 502.A}
-  - {from: 487.Value, to: 2653.softness}
-  - {from: 495.Value, to: 2653.vertex0}
-  - {from: 502.Value, to: 2653.lowEdge}
-  - {from: 511.Value, to: 515.Value}
-  - {from: 515.Value, to: 2653.vertex1}
-  - {from: 531.Value, to: 2653.angle2}
-  - {from: 565.Value, to: 570.Position}
-  - {from: 570.Value, to: 2758.gapNoise}
-  - {from: 640.Value, to: 2987.remaining}
-  - {from: 674.Value, to: 677.Value}
-  - {from: 677.Value, to: 4195.groove}
-  - {from: 677.Value, to: 4568.groove}
-  - {from: 682.Value, to: 3107.ground}
-  - {from: 707.Value, to: 711.X}
-  - {from: 711.Value, to: 3471.groundX}
-  - {from: 744.Value, to: 748.Z}
-  - {from: 748.Value, to: 3555.groundZ}
-  - {from: 781.Value, to: 789.Value}
-  - {from: 781.Value, to: 792.A}
-  - {from: 785.Value, to: 796.Value}
-  - {from: 785.Value, to: 799.A}
-  - {from: 789.Value, to: 792.B}
-  - {from: 789.Value, to: 803.A}
-  - {from: 792.Value, to: 3207.cellX}
-  - {from: 792.Value, to: 3626.cellX}
-  - {from: 792.Value, to: 3690.cellX}
-  - {from: 796.Value, to: 799.B}
-  - {from: 796.Value, to: 807.A}
-  - {from: 799.Value, to: 3207.cellZ}
-  - {from: 799.Value, to: 3626.cellZ}
-  - {from: 799.Value, to: 3690.cellZ}
-  - {from: 803.Value, to: 3207.dx}
-  - {from: 807.Value, to: 3207.dz}
-  - {from: 900.Value, to: 3348.rightEdge}
-  - {from: 1062.Value, to: 4309.warmStreak}
-  - {from: 1083.Value, to: 4309.greenStreak}
-  - {from: 1104.Value, to: 1108.B}
-  - {from: 1108.Value, to: 4309.blueBase}
-  - {from: 1235.Result, to: 49.Value}
-  - {from: 1235.Result, to: 1553.phaseA}
-  - {from: 1299.Result, to: 95.Value}
-  - {from: 1299.Result, to: 1553.phaseB}
-  - {from: 1357.Result, to: 141.Value}
-  - {from: 1357.Result, to: 1407.phaseC}
-  - {from: 1407.Result, to: 218.A}
-  - {from: 1407.Result, to: 1553.swayAmount}
-  - {from: 1407.Result, to: 1685.swayAmount}
-  - {from: 1462.Result, to: 164.Value}
-  - {from: 1462.Result, to: 167.Value}
-  - {from: 1553.Result, to: 238.Value}
-  - {from: 1553.Result, to: 241.A}
-  - {from: 1685.Result, to: 249.B}
-  - {from: 1685.Result, to: 253.B}
-  - {from: 1685.Result, to: 1998.dudx}
-  - {from: 1807.Result, to: 389.B}
-  - {from: 1807.Result, to: 2147.jointSpacing}
-  - {from: 1807.Result, to: 2447.jointSpacing}
-  - {from: 1807.Result, to: 2987.jointSpacing}
-  - {from: 1890.Result, to: 2147.jointPhase}
-  - {from: 1890.Result, to: 2447.jointPhase}
-  - {from: 1998.Result, to: 2147.along}
-  - {from: 1998.Result, to: 2447.along}
-  - {from: 2147.Result, to: 448.Value}
-  - {from: 2147.Result, to: 451.A}
-  - {from: 2271.Result, to: 2147.tilt}
-  - {from: 2366.Result, to: 2147.bow}
-  - {from: 2447.Result, to: 2147.wave}
-  - {from: 2512.Result, to: 495.Value}
-  - {from: 2512.Result, to: 511.A}
-  - {from: 2512.Result, to: 531.A}
-  - {from: 2512.Result, to: 2563.twist}
-  - {from: 2512.Result, to: 2653.twist}
-  - {from: 2563.Result, to: 479.B}
-  - {from: 2563.Result, to: 483.B}
-  - {from: 2653.Result, to: 3348.facet}
-  - {from: 2653.Result, to: 3760.facet}
-  - {from: 2758.Result, to: 2987.gapBelow}
-  - {from: 2817.Result, to: 2877.gapNoise}
-  - {from: 2877.Result, to: 2987.gapAbove}
-  - {from: 2987.Result, to: 3207.joint}
-  - {from: 2987.Result, to: 3837.joint}
-  - {from: 2987.Result, to: 4195.joint}
-  - {from: 2987.Result, to: 4441.joint}
-  - {from: 2987.Result, to: 4568.joint}
-  - {from: 3107.Result, to: 3471.relief}
-  - {from: 3107.Result, to: 3555.relief}
-  - {from: 3107.Result, to: 4568.relief}
-  - {from: 3207.Result, to: 3348.crystal}
-  - {from: 3207.Result, to: 4309.crystal}
-  - {from: 3207.Result, to: 4441.crystal}
-  - {from: 3207.Result, to: 4568.crystal}
-  - {from: 3348.Result, to: 1.Normal}
-  - {from: 3471.Result, to: 3348.reliefSlopeX}
-  - {from: 3555.Result, to: 3348.reliefSlopeZ}
-  - {from: 3626.Result, to: 3348.tiltX}
-  - {from: 3690.Result, to: 3348.tiltZ}
-  - {from: 3760.Result, to: 3348.facetX}
-  - {from: 3837.Result, to: 3348.jointNormal}
-  - {from: 3945.Result, to: 4309.tint}
-  - {from: 4084.Result, to: 1062.B}
-  - {from: 4084.Result, to: 1083.B}
-  - {from: 4084.Result, to: 1104.B}
-  - {from: 4195.Result, to: 4309.shade}
-  - {from: 4309.Result, to: 1.Base Color}
-  - {from: 4441.Result, to: 1.Roughness}
-  - {from: 4568.Result, to: 1.Height}
+  - {from: 10.Value, to: 16047.Position}
+  - {from: 10.Value, to: 16052.Position}
+  - {from: 12.Value, to: 16026.X}
+  - {from: 12.Value, to: 16127.x}
+  - {from: 15.Value, to: 16026.Z}
+  - {from: 15.Value, to: 16127.z}
+  - {from: 16026.Column, to: 16034.Column}
+  - {from: 16026.Column, to: 16039.Column}
+  - {from: 16026.Column, to: 16337.column}
+  - {from: 16026.Column, to: 16923.column}
+  - {from: 16026.Offset, to: 16039.Offset}
+  - {from: 16026.Half Width, to: 16034.Half Width}
+  - {from: 16026.Half Width, to: 17000.halfWidth}
+  - {from: 16026.Across, to: 16034.Across}
+  - {from: 16026.Across, to: 16039.Across}
+  - {from: 16026.Across, to: 16360.across}
+  - {from: 16026.Across, to: 16754.across}
+  - {from: 16026.Across, to: 17000.across}
+  - {from: 16026.Along, to: 16039.Along}
+  - {from: 16034.Angle, to: 16754.facet}
+  - {from: 16039.Joint, to: 16047.Joint}
+  - {from: 16039.Joint, to: 16399.joint}
+  - {from: 16039.Joint, to: 16754.joint}
+  - {from: 16039.Joint, to: 16923.joint}
+  - {from: 16039.Joint, to: 17000.joint}
+  - {from: 16039.Block, to: 16337.block}
+  - {from: 16039.Block T, to: 16754.blockT}
+  - {from: 16047.Mask, to: 16486.crystal}
+  - {from: 16047.Mask, to: 16923.crystal}
+  - {from: 16047.Mask, to: 17000.crystal}
+  - {from: 16047.Tilt, to: 16777.crystalTilt}
+  - {from: 16052.Height, to: 17000.relief}
+  - {from: 16052.Slope, to: 16777.reliefSlope}
+  - {from: 16127.Result, to: 16486.streaks}
+  - {from: 16337.Result, to: 16486.tint}
+  - {from: 16360.Result, to: 16399.groove}
+  - {from: 16360.Result, to: 17000.groove}
+  - {from: 16399.Result, to: 16486.shade}
+  - {from: 16486.Result, to: 1.Base Color}
+  - {from: 16754.Result, to: 16777.prism}
+  - {from: 16777.Result, to: 1.Normal}
+  - {from: 16923.Result, to: 1.Roughness}
+  - {from: 17000.Result, to: 1.Height}
   locals:
-  - {id: 4648, name: x, from: 12.Value}
-  - {id: 4649, name: z, from: 15.Value}
-  - {id: 4650, name: sway, from: 164.Value}
-  - {id: 4651, name: column, from: 241.Value}
-  - {id: 4652, name: offset, from: 249.Value}
-  - {id: 4653, name: halfWidth, from: 253.Value}
-  - {id: 4654, name: across, from: 377.Value}
-  - {id: 4655, name: blockT, from: 448.Value}
-  - {id: 4656, name: block, from: 451.Value}
-  - {id: 4657, name: cellX, from: 792.Value}
-  - {id: 4658, name: cellZ, from: 799.Value}
-  - {id: 4659, name: swayAmount, from: 1407.Result}
-  - {id: 4660, name: dudx, from: 1685.Result}
-  - {id: 4661, name: jointSpacing, from: 1807.Result}
-  - {id: 4662, name: twist, from: 2512.Result}
-  - {id: 4663, name: joint, from: 2987.Result}
-  - {id: 4664, name: relief, from: 3107.Result}
-  - {id: 4665, name: crystal, from: 3207.Result}
-  - {id: 4666, name: streaks, from: 4084.Result}
-- id: 1205
+  - {id: 17230, name: column, from: 16026.Column}
+  - {id: 17231, name: across, from: 16026.Across}
+  - {id: 17232, name: joint, from: 16039.Joint}
+  - {id: 17233, name: crystal, from: 16047.Mask}
+  - {id: 17234, name: world, from: 10.Value}
+  - {id: 17235, name: halfWidth, from: 16026.Half Width}
+  - {id: 17236, name: groove, from: 16360.Result}
+- id: 16928
   kind: function
-  name: 0.0055555557 * x + 0.0023809525 * z + 1.3
-  math_expression: 0.0055555557 * x + 0.0023809525 * z + 1.3
-  expression_mode: 1
-  entry_id: 4698
-  return_id: 4700
-  call_depth_limit: 64
-- id: 1269
-  kind: function
-  name: 0.010526316 * x - 0.0033333334 * z + 0.4
-  math_expression: 0.010526316 * x - 0.0033333334 * z + 0.4
-  expression_mode: 1
-  entry_id: 4758
-  return_id: 4760
-  call_depth_limit: 64
-- id: 1333
-  kind: function
-  name: 0.00076923077 * x + 0.00047619047 * z
-  math_expression: 0.00076923077 * x + 0.00047619047 * z
-  expression_mode: 1
-  entry_id: 4812
-  return_id: 4814
-  call_depth_limit: 64
-- id: 1385
-  kind: function
-  name: 0.5 + 0.5 * sin(phaseC)
-  math_expression: 0.5 + 0.5 * sin(phaseC)
-  expression_mode: 1
-  entry_id: 4836
-  return_id: 4838
-  call_depth_limit: 64
-- id: 1432
-  kind: function
-  name: 0.0011111111 * x + 0.0038461538 * z + 2.2
-  math_expression: 0.0011111111 * x + 0.0038461538 * z + 2.2
-  expression_mode: 1
-  entry_id: 4888
-  return_id: 4890
-  call_depth_limit: 64
-- id: 1496
-  kind: function
-  name: x / 26 + 0.9 * sin(phaseA) + 0.5 * sin(phaseB) + 4.6 * swayAmount * sway
-  math_expression: x / 26 + 0.9 * sin(phaseA) + 0.5 * sin(phaseB) + 4.6 * swayAmount * sway
-  expression_mode: 1
-  entry_id: 5146
-  return_id: 5148
-  call_depth_limit: 64
-- id: 1617
-  kind: function
-  name: 0.03846154 + 0.0055555557 * slopeA + 0.010526316 * slopeB + 4.6 * (0.00076923077 * slopeC * sway + swayAmount * 0.0011111111 * swaySlope)
-  math_expression: 0.03846154 + 0.0055555557 * slopeA + 0.010526316 * slopeB + 4.6 * (0.00076923077 * slopeC * sway + swayAmount * 0.0011111111 * swaySlope)
-  expression_mode: 1
-  entry_id: 5543
-  return_id: 5545
-  call_depth_limit: 64
-- id: 1761
-  kind: function
-  name: 26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))
-  math_expression: 26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))
-  expression_mode: 1
-  entry_id: 5611
-  return_id: 5613
-  call_depth_limit: 64
-- id: 1856
-  kind: function
-  name: 0.5 + 0.5 * sin(column * 1.93716 + 1.1)
-  math_expression: 0.5 + 0.5 * sin(column * 1.93716 + 1.1)
-  expression_mode: 1
-  entry_id: 5657
-  return_id: 5659
-  call_depth_limit: 64
-- id: 1927
-  kind: function
-  name: z + (0.0023809525 * slopeA - 0.0033333334 * slopeB + 4.6 * (amountSlopeZ * sway + amountPerZ * swaySlope)) * -1 / dudx * offset
-  math_expression: z + (0.0023809525 * slopeA - 0.0033333334 * slopeB + 4.6 * (amountSlopeZ * sway + amountPerZ * swaySlope)) * -1 / dudx * offset
-  expression_mode: 1
-  entry_id: 6259
-  return_id: 6261
-  call_depth_limit: 64
-- id: 2080
-  kind: function
-  name: (along + waveHeight * wave - jointSpacing * jointPhase - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing
-  math_expression: (along + waveHeight * wave - jointSpacing * jointPhase - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing
-  expression_mode: 1
-  entry_id: 6866
-  return_id: 6868
-  call_depth_limit: 64
-- id: 2225
-  kind: function
-  name: 2 * (0.5 + 0.5 * sin(column * 3.30119 + 2.2)) - 1
-  math_expression: 2 * (0.5 + 0.5 * sin(column * 3.30119 + 2.2)) - 1
-  expression_mode: 1
-  entry_id: 6933
-  return_id: 6935
-  call_depth_limit: 64
-- id: 2320
-  kind: function
-  name: 2 * (0.5 + 0.5 * sin(column * 0.83261 + 4.4)) - 1
-  math_expression: 2 * (0.5 + 0.5 * sin(column * 0.83261 + 4.4)) - 1
-  expression_mode: 1
-  entry_id: 6979
-  return_id: 6981
-  call_depth_limit: 64
-- id: 2415
-  kind: function
-  name: sin(along / (0.9 * jointSpacing) + 7 * jointPhase)
-  math_expression: sin(along / (0.9 * jointSpacing) + 7 * jointPhase)
-  expression_mode: 1
-  entry_id: 7089
-  return_id: 7091
-  call_depth_limit: 64
-- id: 2484
-  kind: function
-  name: 1.0471976 * noise(vec3(column, 0, 1), 1)
-  math_expression: 1.0471976 * noise(vec3(column, 0, 1), 1)
-  expression_mode: 1
-  entry_id: 7121
-  return_id: 7123
-  call_depth_limit: 64
-- id: 2543
-  kind: function
-  name: cos(min(twist, 1.0471976 - twist))
-  math_expression: cos(min(twist, 1.0471976 - twist))
-  expression_mode: 1
-  entry_id: 7149
-  return_id: 7151
-  call_depth_limit: 64
-- id: 2586
-  kind: function
-  name: twist - 0.5235988 + 1.0471976 * (smoothstep(lowEdge, softness, vertex0 - hexX) + smoothstep(lowEdge, softness, vertex1 - hexX) + smoothstep(lowEdge, softness, cos(angle2) - hexX))
-  math_expression: twist - 0.5235988 + 1.0471976 * (smoothstep(lowEdge, softness, vertex0 - hexX) + smoothstep(lowEdge, softness, vertex1 - hexX) + smoothstep(lowEdge, softness, cos(angle2) - hexX))
-  expression_mode: 1
-  entry_id: 7571
-  return_id: 7573
-  call_depth_limit: 64
-- id: 2729
-  kind: function
-  name: step(0.64, gapNoise) * (0.6 + 1.4 * gapNoise)
-  math_expression: step(0.64, gapNoise) * (0.6 + 1.4 * gapNoise)
-  expression_mode: 1
-  entry_id: 7638
-  return_id: 7640
-  call_depth_limit: 64
-- id: 2790
-  kind: function
-  name: noise(vec3(column, block + 1, 11), 1)
-  math_expression: noise(vec3(column, block + 1, 11), 1)
-  expression_mode: 1
-  entry_id: 7694
-  return_id: 7696
-  call_depth_limit: 64
-- id: 2848
-  kind: function
-  name: Behavior Expression 2848
-  math_expression: step(0.64, gapNoise) * (0.6 + 1.4 * gapNoise)
-  expression_mode: 1
-  entry_id: 7721
-  return_id: 7723
-  call_depth_limit: 64
-- id: 2909
-  kind: function
-  name: clamp(max(gapBelow * (1 - smoothstep(0, gapBelow + 0.01, blockT * jointSpacing)), gapAbove * (1 - smoothstep(0, gapAbove + 0.01, remaining * jointSpacing))), 0, 1)
-  math_expression: clamp(max(gapBelow * (1 - smoothstep(0, gapBelow + 0.01, blockT * jointSpacing)), gapAbove * (1 - smoothstep(0, gapAbove + 0.01, remaining * jointSpacing))), 0, 1)
-  expression_mode: 1
-  entry_id: 8062
-  return_id: 8064
-  call_depth_limit: 64
-- id: 3072
-  kind: function
-  name: 0.7 * noise(ground, 0.08) + 0.3 * noise(ground, 0.45)
-  math_expression: 0.7 * noise(ground, 0.08) + 0.3 * noise(ground, 0.45)
-  expression_mode: 1
-  entry_id: 8140
-  return_id: 8142
-  call_depth_limit: 64
-- id: 3145
-  kind: function
-  name: step(0.975, noise(vec3(cellX, cellZ, 21), 1)) * step(dx * dx + dz * dz, 0.1) * (1 - joint)
-  math_expression: step(0.975, noise(vec3(cellX, cellZ, 21), 1)) * step(dx * dx + dz * dz, 0.1) * (1 - joint)
-  expression_mode: 1
-  entry_id: 8423
-  return_id: 8425
-  call_depth_limit: 64
-- id: 3276
-  kind: function
-  name: vec3(mix(facetX, 0.85, rightEdge) + reliefSlopeX * 0.45 + crystal * (tiltX * 0.6), sin(facet), jointNormal + reliefSlopeZ * 0.45 + crystal * tiltZ)
-  math_expression: vec3(mix(facetX, 0.85, rightEdge) + reliefSlopeX * 0.45 + crystal * (tiltX * 0.6), sin(facet), jointNormal + reliefSlopeZ * 0.45 + crystal * tiltZ)
-  expression_mode: 1
-  entry_id: 9061
-  return_id: 9063
-  call_depth_limit: 64
-- id: 3431
-  kind: function
-  name: 0.7 * noise(groundX, 0.08) + 0.3 * noise(groundX, 0.45) - relief
-  math_expression: 0.7 * noise(groundX, 0.08) + 0.3 * noise(groundX, 0.45) - relief
-  expression_mode: 1
-  entry_id: 9173
-  return_id: 9175
-  call_depth_limit: 64
-- id: 3515
-  kind: function
-  name: Behavior Expression 3515
-  math_expression: 0.7 * noise(groundZ, 0.08) + 0.3 * noise(groundZ, 0.45) - relief
-  expression_mode: 1
-  entry_id: 9253
-  return_id: 9255
-  call_depth_limit: 64
-- id: 3599
-  kind: function
-  name: noise(vec3(cellX, cellZ, 22), 1) - 0.5
-  math_expression: noise(vec3(cellX, cellZ, 22), 1) - 0.5
-  expression_mode: 1
-  entry_id: 9320
-  return_id: 9322
-  call_depth_limit: 64
-- id: 3657
-  kind: function
-  name: (noise(vec3(cellX, cellZ, 23), 1) - 0.5) * 0.6
-  math_expression: (noise(vec3(cellX, cellZ, 23), 1) - 0.5) * 0.6
-  expression_mode: 1
-  entry_id: 9380
-  return_id: 9382
-  call_depth_limit: 64
-- id: 3727
-  kind: function
-  name: mix(cos(facet), -0.85, smoothstep(0.86, 1, across * -1))
-  math_expression: mix(cos(facet), -0.85, smoothstep(0.86, 1, across * -1))
-  expression_mode: 1
-  entry_id: 9446
-  return_id: 9448
-  call_depth_limit: 64
-- id: 3797
-  kind: function
-  name: mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint)
-  math_expression: mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint)
-  expression_mode: 1
-  entry_id: 9519
-  return_id: 9521
-  call_depth_limit: 64
-- id: 3881
-  kind: function
-  name: (0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))
-  math_expression: (0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))
-  expression_mode: 1
-  entry_id: 9623
-  return_id: 9625
-  call_depth_limit: 64
-- id: 4013
-  kind: function
-  name: smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))
-  math_expression: smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))
-  expression_mode: 1
-  entry_id: 9758
-  return_id: 9760
-  call_depth_limit: 64
-- id: 4159
-  kind: function
-  name: (1 - 0.7 * joint) * (1 - 0.45 * groove)
-  math_expression: (1 - 0.7 * joint) * (1 - 0.45 * groove)
-  expression_mode: 1
-  entry_id: 9865
-  return_id: 9867
-  call_depth_limit: 64
-- id: 4235
-  kind: function
-  name: vec3(mix((0.068 + warmStreak) * tint, 0.12, crystal) * shade, mix((0.073 + greenStreak) * tint, 0.12, crystal) * shade, mix(blueBase * tint, 0.115, crystal) * shade)
-  math_expression: vec3(mix((0.068 + warmStreak) * tint, 0.12, crystal) * shade, mix((0.073 + greenStreak) * tint, 0.12, crystal) * shade, mix(blueBase * tint, 0.115, crystal) * shade)
-  expression_mode: 1
-  entry_id: 10271
-  return_id: 10273
-  call_depth_limit: 64
-- id: 4391
-  kind: function
-  name: mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)
-  math_expression: mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)
-  expression_mode: 1
-  entry_id: 10445
-  return_id: 10447
-  call_depth_limit: 64
-- id: 4496
-  kind: function
-  name: 0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal
   math_expression: 0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal
-  expression_mode: 1
-  entry_id: 10855
-  return_id: 10857
+  entry_id: 17159
+- id: 16873
+  kind: function
+  math_expression: mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)
+  entry_id: 17109
+- id: 16760
+  kind: function
+  math_expression: prism + reliefSlope + crystalTilt
+  entry_id: 17092
+- id: 16663
+  kind: function
+  math_expression: vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))
+  entry_id: 16783
+- id: 16422
+  kind: function
+  math_expression: mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade
+  entry_id: 17028
+- id: 16363
+  kind: function
+  math_expression: (1 - 0.7 * joint) * (1 - 0.45 * groove)
+  entry_id: 16628
+- id: 16341
+  kind: function
+  math_expression: smoothstep(0.8, 1, abs(across))
+  entry_id: 17009
+- id: 16273
+  kind: function
+  math_expression: (0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))
+  entry_id: 16564
+- id: 16056
+  kind: function
+  math_expression: smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))
+  entry_id: 16493
+- id: 15734
+  kind: function
+  math_expression: saturate(max(below, above))
+  entry_id: 15988
+- id: 15620
+  kind: function
+  math_expression: (1 - blockT) * spacing
+  entry_id: 15717
+- {id: 15590, kind: function, math_expression: block + 1, entry_id: 15704}
+- {id: 15487, kind: function, math_expression: blockT * spacing, entry_id: 15579}
+- id: 15376
+  kind: function
+  math_expression: blockCoord - fract(blockCoord)
+  entry_id: 16003
+- {id: 15269, kind: function, math_expression: fract(blockCoord), entry_id: 16017}
+- id: 14760
+  kind: function
+  math_expression: (along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing
+  entry_id: 15394
+- id: 14713
+  kind: function
+  math_expression: sin(column * 0.83261 + 4.4)
+  entry_id: 15154
+- id: 14666
+  kind: function
+  math_expression: sin(column * 3.30119 + 2.2)
+  entry_id: 15038
+- id: 14595
+  kind: function
+  math_expression: 0.5 + 0.5 * sin(column * 1.93716 + 1.1)
+  entry_id: 15004
+- id: 14500
+  kind: function
+  math_expression: 26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))
+  entry_id: 15653
+- id: 14488
+  kind: function
+  name: Cross Joints
+  entry_id: 14489
+  return_id: 14491
   call_depth_limit: 64
+  nodes:
+  - id: 14489
+    type: Function Entry
+    outputs:
+    - {id: 14493, name: Column, type: float, kind: data}
+    - {id: 14494, name: Along, type: float, kind: data}
+    - {id: 14495, name: Offset, type: float, kind: data}
+    - {id: 14496, name: Across, type: float, kind: data}
+  - id: 14491
+    type: Return
+    inputs:
+    - {id: 14497, name: Joint, type: float, kind: data}
+    - {id: 14498, name: Block, type: float, kind: data}
+    - {id: 14499, name: Block T, type: float, kind: data}
+  - id: 14546
+    type: Behavior Expression
+    reference_id: 14500
+    reference_name: 26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))
+    inputs:
+      column:
+        type: float
+        binding: {kind: local, local_id: 15762}
+    outputs:
+      Result: {type: float}
+  - id: 14629
+    type: Behavior Expression
+    reference_id: 14595
+    reference_name: 0.5 + 0.5 * sin(column * 1.93716 + 1.1)
+    inputs:
+      column:
+        type: float
+        binding: {kind: local, local_id: 15762}
+    outputs:
+      Result: {type: float}
+  - id: 14688
+    type: Behavior Expression
+    reference_id: 14666
+    reference_name: sin(column * 3.30119 + 2.2)
+    inputs:
+      column:
+        type: float
+        binding: {kind: local, local_id: 15762}
+    outputs:
+      Result: {type: float}
+  - id: 14735
+    type: Behavior Expression
+    reference_id: 14713
+    reference_name: sin(column * 0.83261 + 4.4)
+    inputs:
+      column:
+        type: float
+        binding: {kind: local, local_id: 15762}
+    outputs:
+      Result: {type: float}
+  - id: 14854
+    type: Behavior Expression
+    reference_id: 14760
+    reference_name: (along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing
+    inputs:
+      along: {type: float}
+      spacing:
+        type: float
+        binding: {kind: local, local_id: 15763}
+      phase: {type: float}
+      tilt: {type: float}
+      offset: {type: float}
+      bow: {type: float}
+      across: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 15279
+    type: Behavior Expression
+    reference_id: 15269
+    reference_name: fract(blockCoord)
+    inputs:
+      blockCoord: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 15390
+    type: Behavior Expression
+    reference_id: 15376
+    reference_name: blockCoord - fract(blockCoord)
+    inputs:
+      blockCoord: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 15499
+    type: Behavior Expression
+    reference_id: 15487
+    reference_name: blockT * spacing
+    inputs:
+      blockT:
+        type: float
+        binding: {kind: local, local_id: 15764}
+      spacing:
+        type: float
+        binding: {kind: local, local_id: 15763}
+    outputs:
+      Result: {type: float}
+  - id: 15559
+    type: Call Pure Function
+    reference_id: 11249
+    reference_name: Joint Crack
+    inputs:
+      Column:
+        type: float
+        binding: {kind: local, local_id: 15762}
+      Block:
+        type: float
+        binding: {kind: local, local_id: 15765}
+      Distance: {type: float}
+    outputs:
+      Depth: {type: float}
+  - id: 15603
+    type: Behavior Expression
+    reference_id: 15590
+    reference_name: block + 1
+    inputs:
+      block:
+        type: float
+        binding: {kind: local, local_id: 15765}
+    outputs:
+      Result: {type: float}
+  - id: 15638
+    type: Behavior Expression
+    reference_id: 15620
+    reference_name: (1 - blockT) * spacing
+    inputs:
+      blockT:
+        type: float
+        binding: {kind: local, local_id: 15764}
+      spacing:
+        type: float
+        binding: {kind: local, local_id: 15763}
+    outputs:
+      Result: {type: float}
+  - id: 15698
+    type: Call Pure Function
+    reference_id: 11249
+    reference_name: Joint Crack
+    inputs:
+      Column:
+        type: float
+        binding: {kind: local, local_id: 15762}
+      Block: {type: float}
+      Distance: {type: float}
+    outputs:
+      Depth: {type: float}
+  - id: 15749
+    type: Behavior Expression
+    reference_id: 15734
+    reference_name: saturate(max(below, above))
+    inputs:
+      below: {type: float}
+      above: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 14489.Column, to: 14546.column}
+  - {from: 14489.Column, to: 14629.column}
+  - {from: 14489.Column, to: 14688.column}
+  - {from: 14489.Column, to: 14735.column}
+  - {from: 14489.Column, to: 15559.Column}
+  - {from: 14489.Column, to: 15698.Column}
+  - {from: 14489.Along, to: 14854.along}
+  - {from: 14489.Offset, to: 14854.offset}
+  - {from: 14489.Across, to: 14854.across}
+  - {from: 14546.Result, to: 14854.spacing}
+  - {from: 14546.Result, to: 15499.spacing}
+  - {from: 14546.Result, to: 15638.spacing}
+  - {from: 14629.Result, to: 14854.phase}
+  - {from: 14688.Result, to: 14854.tilt}
+  - {from: 14735.Result, to: 14854.bow}
+  - {from: 14854.Result, to: 15279.blockCoord}
+  - {from: 14854.Result, to: 15390.blockCoord}
+  - {from: 15279.Result, to: 14491.Block T}
+  - {from: 15279.Result, to: 15499.blockT}
+  - {from: 15279.Result, to: 15638.blockT}
+  - {from: 15390.Result, to: 14491.Block}
+  - {from: 15390.Result, to: 15559.Block}
+  - {from: 15390.Result, to: 15603.block}
+  - {from: 15499.Result, to: 15559.Distance}
+  - {from: 15559.Depth, to: 15749.below}
+  - {from: 15603.Result, to: 15698.Block}
+  - {from: 15638.Result, to: 15698.Distance}
+  - {from: 15698.Depth, to: 15749.above}
+  - {from: 15749.Result, to: 14491.Joint}
+  locals:
+  - {id: 15762, name: column, from: 14489.Column}
+  - {id: 15763, name: spacing, from: 14546.Result}
+  - {id: 15764, name: blockT, from: 15279.Result}
+  - {id: 15765, name: block, from: 15390.Result}
+- id: 14290
+  kind: function
+  math_expression: twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))
+  entry_id: 15859
+- {id: 14236, kind: function, math_expression: across * reach, entry_id: 14477}
+- id: 14170
+  kind: function
+  math_expression: 1.2 * reach / halfWidth
+  entry_id: 14459
+- id: 14107
+  kind: function
+  math_expression: cos(min(twist, pi / 3 - twist))
+  entry_id: 14265
+- id: 14036
+  kind: function
+  math_expression: pi / 3 * noise(vec3(column, 0, 1), 1)
+  entry_id: 14425
+- id: 14027
+  kind: function
+  name: Prism Facet
+  entry_id: 14028
+  return_id: 14030
+  call_depth_limit: 64
+  nodes:
+  - id: 14028
+    type: Function Entry
+    outputs:
+    - {id: 14032, name: Column, type: float, kind: data}
+    - {id: 14033, name: Across, type: float, kind: data}
+    - {id: 14034, name: Half Width, type: float, kind: data}
+  - id: 14030
+    type: Return
+    inputs:
+    - {id: 14035, name: Angle, type: float, kind: data}
+  - id: 14070
+    type: Behavior Expression
+    reference_id: 14036
+    reference_name: pi / 3 * noise(vec3(column, 0, 1), 1)
+    inputs:
+      column: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 14133
+    type: Behavior Expression
+    reference_id: 14107
+    reference_name: cos(min(twist, pi / 3 - twist))
+    inputs:
+      twist: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 14188
+    type: Behavior Expression
+    reference_id: 14170
+    reference_name: 1.2 * reach / halfWidth
+    inputs:
+      reach: {type: float}
+      halfWidth: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 14248
+    type: Behavior Expression
+    reference_id: 14236
+    reference_name: across * reach
+    inputs:
+      across: {type: float}
+      reach: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 14419
+    type: Behavior Expression
+    reference_id: 14290
+    reference_name: twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))
+    inputs:
+      twist: {type: float}
+      softness: {type: float}
+      hexX: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 14028.Column, to: 14070.column}
+  - {from: 14028.Across, to: 14248.across}
+  - {from: 14028.Half Width, to: 14188.halfWidth}
+  - {from: 14070.Result, to: 14133.twist}
+  - {from: 14070.Result, to: 14419.twist}
+  - {from: 14133.Result, to: 14188.reach}
+  - {from: 14133.Result, to: 14248.reach}
+  - {from: 14188.Result, to: 14419.softness}
+  - {from: 14248.Result, to: 14419.hexX}
+  - {from: 14419.Result, to: 14030.Angle}
+- id: 13756
+  kind: function
+  math_expression: z - columnsPerZ / columnsPerX * offset
+  entry_id: 15837
+- id: 13671
+  kind: function
+  math_expression: 2 * fract(columnCoord) - 1
+  entry_id: 15815
+- {id: 13549, kind: function, math_expression: 0.5 / columnsPerX, entry_id: 15802}
+- id: 13358
+  kind: function
+  math_expression: (fract(columnCoord) - 0.5) / columnsPerX
+  entry_id: 15781
+- id: 13281
+  kind: function
+  math_expression: columnCoord - fract(columnCoord)
+  entry_id: 15767
+- id: 13044
+  kind: function
+  math_expression: 0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)
+  entry_id: 13807
+- id: 12795
+  kind: function
+  math_expression: 1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)
+  entry_id: 13901
+- id: 12556
+  kind: function
+  math_expression: x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)
+  entry_id: 13697
+- id: 12507
+  kind: function
+  math_expression: 0.5 + 0.5 * sin(drift)
+  entry_id: 13260
+- id: 10926
+  kind: function
+  name: Rock Noise
+  entry_id: 10927
+  return_id: 10929
+  call_depth_limit: 64
+  nodes:
+  - id: 10927
+    type: Function Entry
+    outputs:
+    - {id: 10931, name: Position, type: struct, type_name: ShaderVec3, kind: data}
+  - id: 10929
+    type: Return
+    inputs:
+    - {id: 10932, name: Value, type: float, kind: data}
+  - id: 10968
+    type: Behavior Expression
+    reference_id: 10933
+    reference_name: 0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)
+    inputs:
+      position: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 10927.Position, to: 10968.position}
+  - {from: 10968.Result, to: 10929.Value}
+- id: 10933
+  kind: function
+  math_expression: 0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)
+  entry_id: 11909
+- id: 11006
+  kind: function
+  name: Relief
+  entry_id: 11007
+  return_id: 11009
+  call_depth_limit: 64
+  nodes:
+  - id: 11007
+    type: Function Entry
+    outputs:
+    - {id: 11011, name: Position, type: struct, type_name: ShaderVec3, kind: data}
+  - id: 11009
+    type: Return
+    inputs:
+    - {id: 11012, name: Height, type: float, kind: data}
+    - {id: 11013, name: Slope, type: struct, type_name: ShaderVec3, kind: data}
+  - id: 11028
+    type: Behavior Expression
+    reference_id: 11014
+    reference_name: vec3(position.x, 0, position.z)
+    inputs:
+      position: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 11051
+    type: Call Pure Function
+    reference_id: 10926
+    reference_name: Rock Noise
+    inputs:
+      Position:
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 11905}
+    outputs:
+      Value: {type: float}
+  - id: 11096
+    type: Behavior Expression
+    reference_id: 11074
+    reference_name: ground + vec3(0.8, 0, 0)
+    inputs:
+      ground:
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 11905}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 11119
+    type: Call Pure Function
+    reference_id: 10926
+    reference_name: Rock Noise
+    inputs:
+      Position: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Value: {type: float}
+  - id: 11166
+    type: Behavior Expression
+    reference_id: 11144
+    reference_name: ground + vec3(0, 0, 0.8)
+    inputs:
+      ground:
+        type: struct
+        type_name: ShaderVec3
+        binding: {kind: local, local_id: 11905}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 11189
+    type: Call Pure Function
+    reference_id: 10926
+    reference_name: Rock Noise
+    inputs:
+      Position: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Value: {type: float}
+  - id: 11244
+    type: Behavior Expression
+    reference_id: 11214
+    reference_name: vec3(east - height, 0, north - height) * 0.45
+    inputs:
+      east: {type: float}
+      height: {type: float}
+      north: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 11007.Position, to: 11028.position}
+  - {from: 11028.Result, to: 11051.Position}
+  - {from: 11028.Result, to: 11096.ground}
+  - {from: 11028.Result, to: 11166.ground}
+  - {from: 11051.Value, to: 11009.Height}
+  - {from: 11051.Value, to: 11244.height}
+  - {from: 11096.Result, to: 11119.Position}
+  - {from: 11119.Value, to: 11244.east}
+  - {from: 11166.Result, to: 11189.Position}
+  - {from: 11189.Value, to: 11244.north}
+  - {from: 11244.Result, to: 11009.Slope}
+  locals:
+  - {id: 11905, name: ground, from: 11028.Result}
+- id: 11014
+  kind: function
+  math_expression: vec3(position.x, 0, position.z)
+  entry_id: 11170
+- id: 11074
+  kind: function
+  math_expression: ground + vec3(0.8, 0, 0)
+  entry_id: 11123
+- id: 11144
+  kind: function
+  math_expression: ground + vec3(0, 0, 0.8)
+  entry_id: 11193
+- id: 11214
+  kind: function
+  math_expression: vec3(east - height, 0, north - height) * 0.45
+  entry_id: 11944
+- id: 11249
+  kind: function
+  name: Joint Crack
+  entry_id: 11250
+  return_id: 11252
+  call_depth_limit: 64
+  nodes:
+  - id: 11250
+    type: Function Entry
+    outputs:
+    - {id: 11254, name: Column, type: float, kind: data}
+    - {id: 11255, name: Block, type: float, kind: data}
+    - {id: 11256, name: Distance, type: float, kind: data}
+  - id: 11252
+    type: Return
+    inputs:
+    - {id: 11257, name: Depth, type: float, kind: data}
+  - id: 11279
+    type: Behavior Expression
+    reference_id: 11258
+    reference_name: noise(vec3(column, block, 11), 1)
+    inputs:
+      column: {type: float}
+      block: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 11354
+    type: Behavior Expression
+    reference_id: 11325
+    reference_name: step(0.64, open) * (0.6 + 1.4 * open)
+    inputs:
+      open: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 11409
+    type: Behavior Expression
+    reference_id: 11378
+    reference_name: width * (1 - smoothstep(0, width + 0.01, distance))
+    inputs:
+      width: {type: float}
+      distance: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 11250.Column, to: 11279.column}
+  - {from: 11250.Block, to: 11279.block}
+  - {from: 11250.Distance, to: 11409.distance}
+  - {from: 11279.Result, to: 11354.open}
+  - {from: 11354.Result, to: 11409.width}
+  - {from: 11409.Result, to: 11252.Depth}
+- id: 11258
+  kind: function
+  math_expression: noise(vec3(column, block, 11), 1)
+  entry_id: 11358
+- id: 11325
+  kind: function
+  math_expression: step(0.64, open) * (0.6 + 1.4 * open)
+  entry_id: 11414
+- id: 11378
+  kind: function
+  math_expression: width * (1 - smoothstep(0, width + 0.01, distance))
+  entry_id: 11974
+- id: 11473
+  kind: function
+  name: Phenocrysts
+  entry_id: 11474
+  return_id: 11476
+  call_depth_limit: 64
+  nodes:
+  - id: 11474
+    type: Function Entry
+    outputs:
+    - {id: 11478, name: Position, type: struct, type_name: ShaderVec3, kind: data}
+    - {id: 11479, name: Joint, type: float, kind: data}
+  - id: 11476
+    type: Return
+    inputs:
+    - {id: 11480, name: Mask, type: float, kind: data}
+    - {id: 11481, name: Tilt, type: struct, type_name: ShaderVec3, kind: data}
+  - id: 11495
+    type: Behavior Expression
+    reference_id: 11482
+    reference_name: position.xz / 0.9
+    inputs:
+      position: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 11535
+    type: Behavior Expression
+    reference_id: 11521
+    reference_name: grain - fract(grain)
+    inputs:
+      grain: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 11577
+    type: Behavior Expression
+    reference_id: 11561
+    reference_name: fract(grain) - 0.5
+    inputs:
+      grain: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 11655
+    type: Behavior Expression
+    reference_id: 11603
+    reference_name: step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)
+    inputs:
+      cell:
+        type: struct
+        type_name: ShaderVec2
+        binding: {kind: local, local_id: 11906}
+      spot: {type: struct, type_name: ShaderVec2}
+      joint: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 11805
+    type: Behavior Expression
+    reference_id: 11742
+    reference_name: vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask
+    inputs:
+      cell:
+        type: struct
+        type_name: ShaderVec2
+        binding: {kind: local, local_id: 11906}
+      mask:
+        type: float
+        binding: {kind: local, local_id: 11907}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 11474.Position, to: 11495.position}
+  - {from: 11474.Joint, to: 11655.joint}
+  - {from: 11495.Result, to: 11535.grain}
+  - {from: 11495.Result, to: 11577.grain}
+  - {from: 11535.Result, to: 11655.cell}
+  - {from: 11535.Result, to: 11805.cell}
+  - {from: 11577.Result, to: 11655.spot}
+  - {from: 11655.Result, to: 11476.Mask}
+  - {from: 11655.Result, to: 11805.mask}
+  - {from: 11805.Result, to: 11476.Tilt}
+  locals:
+  - {id: 11906, name: cell, from: 11535.Result}
+  - {id: 11907, name: mask, from: 11655.Result}
+- {id: 11482, kind: function, math_expression: position.xz / 0.9, entry_id: 11581}
+- id: 11521
+  kind: function
+  math_expression: grain - fract(grain)
+  entry_id: 11876
+- id: 11561
+  kind: function
+  math_expression: fract(grain) - 0.5
+  entry_id: 11890
+- id: 11603
+  kind: function
+  math_expression: step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)
+  entry_id: 12005
+- id: 11742
+  kind: function
+  math_expression: vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask
+  entry_id: 12063
+- id: 12137
+  kind: function
+  name: Column Grid
+  entry_id: 12138
+  return_id: 12140
+  call_depth_limit: 64
+  nodes:
+  - id: 12138
+    type: Function Entry
+    outputs:
+    - {id: 12142, name: X, type: float, kind: data}
+    - {id: 12143, name: Z, type: float, kind: data}
+  - id: 12140
+    type: Return
+    inputs:
+    - {id: 12144, name: Column, type: float, kind: data}
+    - {id: 12145, name: Offset, type: float, kind: data}
+    - {id: 12146, name: Half Width, type: float, kind: data}
+    - {id: 12147, name: Across, type: float, kind: data}
+    - {id: 12148, name: Along, type: float, kind: data}
+  - id: 12179
+    type: Behavior Expression
+    reference_id: 12149
+    reference_name: x / 180 + z / 420 + 1.3
+    inputs:
+      x:
+        type: float
+        binding: {kind: local, local_id: 15753}
+      z:
+        type: float
+        binding: {kind: local, local_id: 15754}
+    outputs:
+      Result: {type: float}
+  - id: 12273
+    type: Behavior Expression
+    reference_id: 12243
+    reference_name: x / 95 - z / 300 + 0.4
+    inputs:
+      x:
+        type: float
+        binding: {kind: local, local_id: 15753}
+      z:
+        type: float
+        binding: {kind: local, local_id: 15754}
+    outputs:
+      Result: {type: float}
+  - id: 12361
+    type: Behavior Expression
+    reference_id: 12337
+    reference_name: x / 1300 + z / 2100
+    inputs:
+      x:
+        type: float
+        binding: {kind: local, local_id: 15753}
+      z:
+        type: float
+        binding: {kind: local, local_id: 15754}
+    outputs:
+      Result: {type: float}
+  - id: 12443
+    type: Behavior Expression
+    reference_id: 12413
+    reference_name: x / 900 + z / 260 + 2.2
+    inputs:
+      x:
+        type: float
+        binding: {kind: local, local_id: 15753}
+      z:
+        type: float
+        binding: {kind: local, local_id: 15754}
+    outputs:
+      Result: {type: float}
+  - id: 12529
+    type: Behavior Expression
+    reference_id: 12507
+    reference_name: 0.5 + 0.5 * sin(drift)
+    inputs:
+      drift:
+        type: float
+        binding: {kind: local, local_id: 15757}
+    outputs:
+      Result: {type: float}
+  - id: 12616
+    type: Behavior Expression
+    reference_id: 12556
+    reference_name: x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)
+    inputs:
+      x:
+        type: float
+        binding: {kind: local, local_id: 15753}
+      wobbleA:
+        type: float
+        binding: {kind: local, local_id: 15755}
+      wobbleB:
+        type: float
+        binding: {kind: local, local_id: 15756}
+      swayAmount:
+        type: float
+        binding: {kind: local, local_id: 15759}
+      sway:
+        type: float
+        binding: {kind: local, local_id: 15758}
+    outputs:
+      Result: {type: float}
+  - id: 12901
+    type: Behavior Expression
+    reference_id: 12795
+    reference_name: 1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)
+    inputs:
+      wobbleA:
+        type: float
+        binding: {kind: local, local_id: 15755}
+      wobbleB:
+        type: float
+        binding: {kind: local, local_id: 15756}
+      drift:
+        type: float
+        binding: {kind: local, local_id: 15757}
+      sway:
+        type: float
+        binding: {kind: local, local_id: 15758}
+      swayAmount:
+        type: float
+        binding: {kind: local, local_id: 15759}
+    outputs:
+      Result: {type: float}
+  - id: 13138
+    type: Behavior Expression
+    reference_id: 13044
+    reference_name: 0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)
+    inputs:
+      wobbleA:
+        type: float
+        binding: {kind: local, local_id: 15755}
+      wobbleB:
+        type: float
+        binding: {kind: local, local_id: 15756}
+      drift:
+        type: float
+        binding: {kind: local, local_id: 15757}
+      sway:
+        type: float
+        binding: {kind: local, local_id: 15758}
+      swayAmount:
+        type: float
+        binding: {kind: local, local_id: 15759}
+    outputs:
+      Result: {type: float}
+  - id: 13295
+    type: Behavior Expression
+    reference_id: 13281
+    reference_name: columnCoord - fract(columnCoord)
+    inputs:
+      columnCoord:
+        type: float
+        binding: {kind: local, local_id: 15760}
+    outputs:
+      Result: {type: float}
+  - id: 13379
+    type: Behavior Expression
+    reference_id: 13358
+    reference_name: (fract(columnCoord) - 0.5) / columnsPerX
+    inputs:
+      columnCoord:
+        type: float
+        binding: {kind: local, local_id: 15760}
+      columnsPerX:
+        type: float
+        binding: {kind: local, local_id: 15761}
+    outputs:
+      Result: {type: float}
+  - id: 13562
+    type: Behavior Expression
+    reference_id: 13549
+    reference_name: 0.5 / columnsPerX
+    inputs:
+      columnsPerX:
+        type: float
+        binding: {kind: local, local_id: 15761}
+    outputs:
+      Result: {type: float}
+  - id: 13693
+    type: Behavior Expression
+    reference_id: 13671
+    reference_name: 2 * fract(columnCoord) - 1
+    inputs:
+      columnCoord:
+        type: float
+        binding: {kind: local, local_id: 15760}
+    outputs:
+      Result: {type: float}
+  - id: 13778
+    type: Behavior Expression
+    reference_id: 13756
+    reference_name: z - columnsPerZ / columnsPerX * offset
+    inputs:
+      z:
+        type: float
+        binding: {kind: local, local_id: 15754}
+      columnsPerZ: {type: float}
+      columnsPerX:
+        type: float
+        binding: {kind: local, local_id: 15761}
+      offset: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12138.X, to: 12179.x}
+  - {from: 12138.X, to: 12273.x}
+  - {from: 12138.X, to: 12361.x}
+  - {from: 12138.X, to: 12443.x}
+  - {from: 12138.X, to: 12616.x}
+  - {from: 12138.Z, to: 12179.z}
+  - {from: 12138.Z, to: 12273.z}
+  - {from: 12138.Z, to: 12361.z}
+  - {from: 12138.Z, to: 12443.z}
+  - {from: 12138.Z, to: 13778.z}
+  - {from: 12179.Result, to: 12616.wobbleA}
+  - {from: 12179.Result, to: 12901.wobbleA}
+  - {from: 12179.Result, to: 13138.wobbleA}
+  - {from: 12273.Result, to: 12616.wobbleB}
+  - {from: 12273.Result, to: 12901.wobbleB}
+  - {from: 12273.Result, to: 13138.wobbleB}
+  - {from: 12361.Result, to: 12529.drift}
+  - {from: 12361.Result, to: 12901.drift}
+  - {from: 12361.Result, to: 13138.drift}
+  - {from: 12443.Result, to: 12616.sway}
+  - {from: 12443.Result, to: 12901.sway}
+  - {from: 12443.Result, to: 13138.sway}
+  - {from: 12529.Result, to: 12616.swayAmount}
+  - {from: 12529.Result, to: 12901.swayAmount}
+  - {from: 12529.Result, to: 13138.swayAmount}
+  - {from: 12616.Result, to: 13295.columnCoord}
+  - {from: 12616.Result, to: 13379.columnCoord}
+  - {from: 12616.Result, to: 13693.columnCoord}
+  - {from: 12901.Result, to: 13379.columnsPerX}
+  - {from: 12901.Result, to: 13562.columnsPerX}
+  - {from: 12901.Result, to: 13778.columnsPerX}
+  - {from: 13138.Result, to: 13778.columnsPerZ}
+  - {from: 13295.Result, to: 12140.Column}
+  - {from: 13379.Result, to: 12140.Offset}
+  - {from: 13379.Result, to: 13778.offset}
+  - {from: 13562.Result, to: 12140.Half Width}
+  - {from: 13693.Result, to: 12140.Across}
+  - {from: 13778.Result, to: 12140.Along}
+  locals:
+  - {id: 15753, name: x, from: 12138.X}
+  - {id: 15754, name: z, from: 12138.Z}
+  - {id: 15755, name: wobbleA, from: 12179.Result}
+  - {id: 15756, name: wobbleB, from: 12273.Result}
+  - {id: 15757, name: drift, from: 12361.Result}
+  - {id: 15758, name: sway, from: 12443.Result}
+  - {id: 15759, name: swayAmount, from: 12529.Result}
+  - {id: 15760, name: columnCoord, from: 12616.Result}
+  - {id: 15761, name: columnsPerX, from: 12901.Result}
+- id: 12149
+  kind: function
+  math_expression: x / 180 + z / 420 + 1.3
+  entry_id: 13146
+- id: 12243
+  kind: function
+  math_expression: x / 95 - z / 300 + 0.4
+  entry_id: 13176
+- id: 12337
+  kind: function
+  math_expression: x / 1300 + z / 2100
+  entry_id: 13206
+- id: 12413
+  kind: function
+  math_expression: x / 900 + z / 260 + 2.2
+  entry_id: 13230

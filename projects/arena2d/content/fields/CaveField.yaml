@@ -1,7 +1,7 @@
 version: 3
 name: CaveField
 domain: field
-id_counter: 202
+id_counter: 2304
 variables:
 - {id: 5, name: Radius, type: float, default: 225.0}
 - {id: 9, name: Roughness, type: float, default: 100.0}
@@ -17,165 +17,218 @@ graphs:
   - id: 10
     type: Field Parameter
     inputs: {Name: Roughness}
-  - id: 13
-    type: Field Multiply
-    inputs: {B: 0.55}
-  - id: 17
-    type: Field Divide
-    inputs: {B: 700.0}
-  - id: 21
-    type: Field Noise
-    inputs: {Seed Offset: 3.0}
-  - {id: 26, type: Field Multiply}
-  - id: 30
-    type: Field Divide
-    inputs: {B: 420.0}
-  - id: 34
-    type: Field Noise
-    inputs: {Seed Offset: 4.0}
-  - id: 39
-    type: Field Multiply
-    inputs: {A: 0.4}
-  - id: 43
-    type: Field Add
-    inputs: {A: 1.0}
-  - {id: 47, type: Field Multiply}
-  - id: 51
-    type: Field Multiply
-    inputs: {B: 5.0}
-  - {id: 55, type: Field Divide}
-  - {id: 59, type: Field Floor}
-  - {id: 62, type: Field Subtract}
-  - id: 66
-    type: Field Multiply
-    inputs: {B: 3.1415927}
-  - {id: 70, type: Field Sin}
-  - id: 73
-    type: Field Hash
-    inputs: {Seed Offset: 5.0}
-  - id: 78
-    type: Field Select
-    inputs: {Positive: 1.0, Negative: -1.0}
-  - {id: 83, type: Field Multiply}
-  - id: 87
-    type: Field Multiply
-    inputs: {B: 2.15}
-  - {id: 91, type: Field Multiply}
-  - {id: 95, type: Field Add}
-  - {id: 99, type: Field Subtract}
-  - {id: 103, type: Field Abs}
-  - {id: 106, type: Field Subtract}
-  - {id: 110, type: Field Subtract}
-  - {id: 114, type: Field Abs}
-  - id: 117
-    type: Field Multiply
-    inputs: {B: 0.43}
-  - {id: 121, type: Field Subtract}
-  - id: 125
-    type: Field Divide
-    inputs: {B: 170.0}
-  - id: 129
-    type: Field Divide
-    inputs: {B: 170.0}
-  - {id: 133, type: Field Noise}
-  - id: 138
-    type: Field Multiply
-    inputs: {A: 0.57}
-  - id: 142
-    type: Field Divide
-    inputs: {B: 65.0}
-  - id: 146
-    type: Field Divide
-    inputs: {B: 65.0}
-  - id: 150
-    type: Field Noise
-    inputs: {Seed Offset: 1.0}
-  - id: 155
-    type: Field Multiply
-    inputs: {A: 0.28}
-  - {id: 159, type: Field Add}
-  - id: 163
-    type: Field Divide
-    inputs: {B: 23.0}
-  - id: 167
-    type: Field Divide
-    inputs: {B: 23.0}
-  - id: 171
-    type: Field Noise
-    inputs: {Seed Offset: 2.0}
-  - id: 176
-    type: Field Multiply
-    inputs: {A: 0.15}
-  - {id: 180, type: Field Add}
-  - {id: 184, type: Field Min}
-  - {id: 188, type: Field Multiply}
-  - {id: 192, type: Field Add}
-  - {id: 196, type: Field Negate}
   - {id: 199, type: Field Output}
+  - id: 2113
+    type: Call Pure Function
+    reference_id: 879
+    reference_name: Artery
+    inputs:
+      X: {type: float}
+      "Y": {type: float}
+      Radius: {type: float}
+    outputs:
+      Distance: {type: float}
+  - id: 2118
+    type: Call Pure Function
+    reference_id: 1792
+    reference_name: Wall Noise
+    inputs:
+      X: {type: float}
+      "Y": {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 2142
+    type: Behavior Expression
+    reference_id: 2122
+    reference_name: -(artery + roughness * wallNoise)
+    inputs:
+      artery: {type: float, flags: 0}
+      roughness: {type: float, flags: 0}
+      wallNoise: {type: float, flags: 0}
+    outputs:
+      Result: {type: float}
   edges:
-  - {from: 1.Value, to: 17.A}
-  - {from: 1.Value, to: 30.A}
-  - {from: 1.Value, to: 55.A}
-  - {from: 1.Value, to: 125.A}
-  - {from: 1.Value, to: 142.A}
-  - {from: 1.Value, to: 163.A}
-  - {from: 3.Value, to: 99.A}
-  - {from: 3.Value, to: 110.A}
-  - {from: 3.Value, to: 129.A}
-  - {from: 3.Value, to: 146.A}
-  - {from: 3.Value, to: 167.A}
-  - {from: 6.Value, to: 13.A}
-  - {from: 6.Value, to: 47.A}
-  - {from: 6.Value, to: 51.A}
-  - {from: 6.Value, to: 83.B}
-  - {from: 6.Value, to: 117.A}
-  - {from: 10.Value, to: 188.A}
-  - {from: 13.Value, to: 26.A}
-  - {from: 17.Value, to: 21.X}
-  - {from: 21.Value, to: 26.B}
-  - {from: 26.Value, to: 95.A}
-  - {from: 26.Value, to: 99.B}
-  - {from: 30.Value, to: 34.X}
-  - {from: 34.Value, to: 39.B}
-  - {from: 39.Value, to: 43.B}
-  - {from: 43.Value, to: 47.B}
-  - {from: 47.Value, to: 106.B}
-  - {from: 51.Value, to: 55.B}
-  - {from: 55.Value, to: 59.Value}
-  - {from: 55.Value, to: 62.A}
-  - {from: 59.Value, to: 62.B}
-  - {from: 59.Value, to: 73.X}
-  - {from: 62.Value, to: 66.A}
-  - {from: 66.Value, to: 70.Value}
-  - {from: 70.Value, to: 91.B}
-  - {from: 73.Value, to: 78.Condition}
-  - {from: 78.Value, to: 83.A}
-  - {from: 83.Value, to: 87.A}
-  - {from: 87.Value, to: 91.A}
-  - {from: 91.Value, to: 95.B}
-  - {from: 95.Value, to: 110.B}
-  - {from: 99.Value, to: 103.Value}
-  - {from: 103.Value, to: 106.A}
-  - {from: 106.Value, to: 184.A}
-  - {from: 110.Value, to: 114.Value}
-  - {from: 114.Value, to: 121.A}
-  - {from: 117.Value, to: 121.B}
-  - {from: 121.Value, to: 184.B}
-  - {from: 125.Value, to: 133.X}
-  - {from: 129.Value, to: 133.Y}
-  - {from: 133.Value, to: 138.B}
-  - {from: 138.Value, to: 159.A}
-  - {from: 142.Value, to: 150.X}
-  - {from: 146.Value, to: 150.Y}
-  - {from: 150.Value, to: 155.B}
-  - {from: 155.Value, to: 159.B}
-  - {from: 159.Value, to: 180.A}
-  - {from: 163.Value, to: 171.X}
-  - {from: 167.Value, to: 171.Y}
-  - {from: 171.Value, to: 176.B}
-  - {from: 176.Value, to: 180.B}
-  - {from: 180.Value, to: 188.B}
-  - {from: 184.Value, to: 192.A}
-  - {from: 188.Value, to: 192.B}
-  - {from: 192.Value, to: 196.Value}
-  - {from: 196.Value, to: 199.Value}
+  - {from: 1.Value, to: 2113.X}
+  - {from: 1.Value, to: 2118.X}
+  - {from: 3.Value, to: 2113.Y}
+  - {from: 3.Value, to: 2118.Y}
+  - {from: 6.Value, to: 2113.Radius}
+  - {from: 10.Value, to: 2142.roughness}
+  - {from: 2113.Distance, to: 2142.artery}
+  - {from: 2118.Value, to: 2142.wallNoise}
+  - {from: 2142.Result, to: 199.Value}
+- id: 879
+  kind: function
+  name: Artery
+  entry_id: 880
+  return_id: 882
+  call_depth_limit: 64
+  nodes:
+  - id: 880
+    type: Function Entry
+    outputs:
+    - {id: 884, name: X, type: float, kind: data}
+    - {id: 885, name: "Y", type: float, kind: data}
+    - {id: 886, name: Radius, type: float, kind: data}
+  - id: 882
+    type: Return
+    inputs:
+    - {id: 887, name: Distance, type: float, kind: data}
+  - id: 925
+    type: Behavior Expression
+    reference_id: 888
+    reference_name: 0.55 * radius * noise(x / 700, 0, 3)
+    inputs:
+      radius:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2187}
+      x:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2188}
+    outputs:
+      Result: {type: float}
+  - id: 1022
+    type: Behavior Expression
+    reference_id: 1003
+    reference_name: x / (5 * radius)
+    inputs:
+      x:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2188}
+      radius:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2187}
+    outputs:
+      Result: {type: float}
+  - id: 1134
+    type: Behavior Expression
+    reference_id: 1064
+    reference_name: arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)
+    inputs:
+      arteryCenter: {type: float, flags: 0}
+      segment: {type: float, flags: 0}
+      radius:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2187}
+    outputs:
+      Result: {type: float}
+  - id: 1322
+    type: Behavior Expression
+    reference_id: 1265
+    reference_name: abs(y - arteryCenter) - radius * (1 + 0.4 * noise(x / 420, 0, 4))
+    inputs:
+      "y": {type: float, flags: 0}
+      arteryCenter: {type: float, flags: 0}
+      radius:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2187}
+      x:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2188}
+    outputs:
+      Result: {type: float}
+  - id: 1563
+    type: Behavior Expression
+    reference_id: 1536
+    reference_name: abs(y - pocketCenter) - 0.43 * radius
+    inputs:
+      "y": {type: float, flags: 0}
+      pocketCenter: {type: float, flags: 0}
+      radius:
+        type: float
+        flags: 0
+        binding: {kind: local, local_id: 2187}
+    outputs:
+      Result: {type: float}
+  - id: 1704
+    type: Behavior Expression
+    reference_id: 1692
+    reference_name: min(tunnel, pocket)
+    inputs:
+      tunnel: {type: float, flags: 0}
+      pocket: {type: float, flags: 0}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 880.X, to: 925.x}
+  - {from: 880.X, to: 1022.x}
+  - {from: 880.X, to: 1322.x}
+  - {from: 880.Y, to: 1322.y}
+  - {from: 880.Y, to: 1563.y}
+  - {from: 880.Radius, to: 925.radius}
+  - {from: 880.Radius, to: 1022.radius}
+  - {from: 880.Radius, to: 1134.radius}
+  - {from: 880.Radius, to: 1322.radius}
+  - {from: 880.Radius, to: 1563.radius}
+  - {from: 925.Result, to: 1134.arteryCenter}
+  - {from: 925.Result, to: 1322.arteryCenter}
+  - {from: 1022.Result, to: 1134.segment}
+  - {from: 1134.Result, to: 1563.pocketCenter}
+  - {from: 1322.Result, to: 1704.tunnel}
+  - {from: 1563.Result, to: 1704.pocket}
+  - {from: 1704.Result, to: 882.Distance}
+  locals:
+  - {id: 2187, name: radius, from: 880.Radius}
+  - {id: 2188, name: x, from: 880.X}
+- id: 888
+  kind: function
+  math_expression: 0.55 * radius * noise(x / 700, 0, 3)
+  entry_id: 1386
+- {id: 1003, kind: function, math_expression: x / (5 * radius), entry_id: 1177}
+- id: 1064
+  kind: function
+  math_expression: arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)
+  entry_id: 1596
+- id: 1265
+  kind: function
+  math_expression: abs(y - arteryCenter) - radius * (1 + 0.4 * noise(x / 420, 0, 4))
+  entry_id: 1709
+- id: 1536
+  kind: function
+  math_expression: abs(y - pocketCenter) - 0.43 * radius
+  entry_id: 1766
+- {id: 1692, kind: function, math_expression: 'min(tunnel, pocket)', entry_id: 2190}
+- id: 1792
+  kind: function
+  name: Wall Noise
+  entry_id: 1793
+  return_id: 1795
+  call_depth_limit: 64
+  nodes:
+  - id: 1793
+    type: Function Entry
+    outputs:
+    - {id: 1797, name: X, type: float, kind: data}
+    - {id: 1798, name: "Y", type: float, kind: data}
+  - id: 1795
+    type: Return
+    inputs:
+    - {id: 1799, name: Value, type: float, kind: data}
+  - id: 1903
+    type: Behavior Expression
+    reference_id: 1800
+    reference_name: 0.57 * noise(x / 170, y / 170, 0) + 0.28 * noise(x / 65, y / 65, 1) + 0.15 * noise(x / 23, y / 23, 2)
+    inputs:
+      x: {type: float, flags: 0}
+      "y": {type: float, flags: 0}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 1793.X, to: 1903.x}
+  - {from: 1793.Y, to: 1903.y}
+  - {from: 1903.Result, to: 1795.Value}
+- id: 1800
+  kind: function
+  math_expression: 0.57 * noise(x / 170, y / 170, 0) + 0.28 * noise(x / 65, y / 65, 1) + 0.15 * noise(x / 23, y / 23, 2)
+  entry_id: 2202
+- id: 2122
+  kind: function
+  math_expression: -(artery + roughness * wallNoise)
+  entry_id: 2168

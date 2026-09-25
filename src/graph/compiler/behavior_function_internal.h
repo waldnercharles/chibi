@@ -73,8 +73,7 @@ typedef enum
 #define MATH_OP(op, name, fn) BF_##op,
     BEHAVIOR_MATH_UNARY(MATH_OP) BEHAVIOR_MATH_BINARY(MATH_OP)
 #undef MATH_OP
-        BF_ATAN2_F32,
-    BF_MOD_F32,
+        BF_MOD_F32,
     BF_MOD_F64,
     BF_HYPOT,
     BF_FMA,

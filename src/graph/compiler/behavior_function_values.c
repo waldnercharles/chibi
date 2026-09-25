@@ -935,19 +935,6 @@ static int output_value(builder *b, node *n, int pin)
     if (n->desc->jit_kind == NODE_JIT_IDENTITY) {
         result = behavior_lower_identity(b, behavior_lower_input(b, n, 0), n->desc, n, 0, false);
     }
-    if (n->desc->jit_kind == NODE_JIT_ATAN2_F32) {
-        int y = behavior_lower_input(b, n, 0), x = behavior_lower_input(b, n, 1);
-        if (x >= 0 && y >= 0 && b->function->slots[x] == PIN_F32 &&
-            b->function->slots[y] == PIN_F32) {
-            result = behavior_lower_value(
-                b,
-                (
-                    behavior_function_instruction
-                ){ .op = BF_ATAN2_F32, .type = PIN_F32, .left = y, .right = x }
-            );
-            result = behavior_lower_named_constant(b, result, NULL);
-        }
-    }
     if (n->desc->jit_kind == NODE_JIT_V2_LENGTH || n->desc->jit_kind == NODE_JIT_V2_DOT ||
         n->desc->jit_kind == NODE_JIT_V2_DISTANCE) {
         result = vector_scalar(b, n);

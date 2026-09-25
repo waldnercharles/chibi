@@ -601,7 +601,6 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
     case BF_##op: out->d = fn(a.d, b.d); break;
                 BEHAVIOR_MATH_BINARY(MATH_BINARY)
 #undef MATH_BINARY
-            case BF_ATAN2_F32: out->f = atan2f(a.f, b.f); break;
             case BF_MOD_F32: out->f = fmodf(a.f, b.f); break;
             case BF_MOD_F64: out->d = fmod(a.d, b.d); break;
             case BF_HYPOT: out->d = hypot(a.d, b.d); break;

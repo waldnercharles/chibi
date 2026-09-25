@@ -10,8 +10,14 @@
 static const node_access pure = { .flags = NODE_EFFECT_PURE };
 static const node_access random_access = { .flags = NODE_EFFECT_HOST_SINK };
 static pin_spec unary[] = { { .name = "Value", .type = PIN_F64, .type_name = "double" } };
-static pin_spec binary[] = { { .name = "A", .type = PIN_F64, .type_name = "double" },
-                             { .name = "B", .type = PIN_F64, .type_name = "double" } };
+static pin_spec power_inputs[] = {
+    { .name = "Base", .type = PIN_F64, .type_name = "double" },
+    { .name = "Exponent", .type = PIN_F64, .type_name = "double" }
+};
+static pin_spec atan2_inputs[] = {
+    { .name = "Y", .type = PIN_F64, .type_name = "double" },
+    { .name = "X", .type = PIN_F64, .type_name = "double" }
+};
 static pin_spec result[] = { { .name = "Result", .type = PIN_F64, .type_name = "double" } };
 
 #define UNARY(NAME, LABEL, FN)                                                 \
@@ -47,14 +53,14 @@ UNARY(Fract, "Fract", behavior_fract)
 UNARY(Sign, "Sign", behavior_sign)
 #undef UNARY
 
-#define BINARY(NAME, LABEL, FN)                                                       \
+#define BINARY(NAME, LABEL, FN, INPUTS)                                               \
     static pin_value NAME##_value(const pin_value *inputs, int count, arena *)        \
     {                                                                                 \
         assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64); \
         return (pin_value){ .type = PIN_F64, .d = FN(inputs[0].d, inputs[1].d) };     \
     }                                                                                 \
     node_desc NODE_##NAME = { .name = LABEL,                                          \
-                              .inputs = binary,                                       \
+                              .inputs = INPUTS,                                       \
                               .input_count = 2,                                       \
                               .outputs = result,                                      \
                               .output_count = 1,                                      \
@@ -63,8 +69,8 @@ UNARY(Sign, "Sign", behavior_sign)
                               .access = &pure,                                        \
                               .category = "Math/Functions",                           \
                               .foldable = true };
-BINARY(Power, "Power", pow)
-BINARY(ArcTangent2, "Arc Tangent 2", atan2)
+BINARY(Power, "Power", pow, power_inputs)
+BINARY(ArcTangent2, "Arc Tangent 2", atan2, atan2_inputs)
 #undef BINARY
 
 /* step(edge, x): 0 below the edge, 1 from it on (GLSL). */

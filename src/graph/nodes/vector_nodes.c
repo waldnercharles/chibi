@@ -165,33 +165,6 @@ node_desc NODE_Direction_To = {
     .access = &pure,
 };
 
-static pin_value atan2_value(const pin_value *inputs, int count, arena *)
-{
-    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
-    return (pin_value){ .type = PIN_F32, .f = atan2f(inputs[0].f, inputs[1].f) };
-}
-
-static pin_spec angle_inputs[] = {
-    { .name = "Y", .type = PIN_F32 },
-    { .name = "X", .type = PIN_F32 },
-};
-static pin_spec angle_outputs[] = { { .name = "Radians", .type = PIN_F32 } };
-
-node_desc NODE_Atan2 = {
-    .name = "Atan2",
-    .input_count = 2,
-    .output_count = 1,
-    .inputs = angle_inputs,
-    .outputs = angle_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = atan2_value,
-    .jit_kind = NODE_JIT_ATAN2_F32,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Math/Vector",
-    .keywords = "angle direction rotation radians",
-    .access = &pure,
-};
-
 static CF_V3 random_range_vector_min = { 0, 0, 0 };
 static CF_V3 random_range_vector_max = { 1, 1, 1 };
 

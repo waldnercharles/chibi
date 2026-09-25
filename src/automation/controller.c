@@ -1332,7 +1332,7 @@ static bool read_editor_asset(const char *json, char *error, size_t error_size)
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
-    component_presentation presentation;
+    component_presentation presentation = { 0 };
     bool ok = component_presentation_read(json, &registry, &presentation, error, error_size);
     component_presentation_free(&presentation);
     return ok;

@@ -109,5 +109,5 @@ Behavior changed from the ImGui editor:
 
 1. Density is an editor setting. Compact is the default.
 2. Areas (Blender splits) replace floating docking.
-3. Properties tabs, prototype icons, and number ranges and units are authored per project in `content/editor/Components.yaml` (`src/editor/documents/component_presentation.h`). Studio re-reads the file within a second of a change; without a valid file, components show under Object with no icon and plain numbers.
+3. Properties tabs, prototype icons, and number ranges and units are authored per project in `content/editor/Components.yaml` (`src/editor/documents/component_presentation.h`). Studio re-reads the file within a second of a change. An invalid edit keeps the last valid file and reports the error; without the file, components show under Object with no icon and plain numbers.
 4. Open: orange selection in the viewport and graph, blue in lists.

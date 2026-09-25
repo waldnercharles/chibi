@@ -65,9 +65,10 @@ typedef struct
     presented_field *fields;
 } component_presentation;
 
-/* Parses editor/Components.yaml, naming components as prototype documents do.
- * Returns false with a message in `error` and leaves `out` empty when the
- * document is invalid. */
+/* Parses editor/Components.yaml, naming components as prototype documents do,
+ * into `out`, which is empty or holds an earlier read. Returns false with a
+ * message in `error` and leaves `out` unchanged when the document is invalid,
+ * so a caller keeps the last valid presentation. */
 bool component_presentation_read(
     const char *text,
     const game_prototype_registry *registry,

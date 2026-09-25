@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
     "Scene",  "Behavior", "Outliner",   "Properties",
@@ -1098,30 +1097,18 @@ static void track_pointer(studio *s)
     }
 }
 
-/* editor/Components.yaml applies without a restart: its path and modification
-   are checked once a second. Components present generically while it is
-   missing or invalid. */
+/* editor/Components.yaml applies without a restart. An invalid edit keeps the
+   last valid file; components present generically while it is missing. */
 static void sync_presentation(studio *s)
 {
     studio_presentation *p = &s->presentation;
-    if (s->time < p->due) {
-        return;
-    }
-    p->due = s->time + 1;
-    char path[sizeof p->path];
+    char path[sizeof p->watch.path];
     snprintf(path, sizeof path, "%s/" COMPONENT_PRESENTATION_PATH, s->scene->content_root);
-    struct stat info;
-    bool exists = stat(path, &info) == 0;
-    long long modified = exists ? (long long)info.st_mtime : 0;
-    long long size = exists ? (long long)info.st_size : -1;
-    if (strcmp(path, p->path) == 0 && modified == p->modified && size == p->size) {
+    if (!file_watch_changed(&p->watch, path, s->time)) {
         return;
     }
-    snprintf(p->path, sizeof p->path, "%s", path);
-    p->modified = modified;
-    p->size = size;
-    component_presentation_free(&p->hints);
-    if (!exists) {
+    if (!file_watch_exists(&p->watch)) {
+        component_presentation_free(&p->hints);
         return;
     }
     char *text = text_file_read(path);

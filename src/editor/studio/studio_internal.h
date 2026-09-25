@@ -8,6 +8,7 @@
 #include "editor/ui/kit_icons.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
+#include "support/file_watch.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -212,10 +213,8 @@ typedef struct
 /* The open project's editor/Components.yaml, re-read when it changes. */
 typedef struct
 {
-    component_presentation hints; /* empty while the file is missing or invalid */
-    char path[1024];
-    long long modified, size; /* size is -1 while the file is missing */
-    double due;               /* next check */
+    component_presentation hints; /* the last valid file; empty while it is missing */
+    file_watch watch;
 } studio_presentation;
 
 struct studio

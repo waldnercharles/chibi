@@ -31,7 +31,7 @@ static const presented_field *field(
 
 static void valid_document()
 {
-    component_presentation p;
+    component_presentation p = { 0 };
     char error[256] = { 0 };
     bool ok = component_presentation_read(
         "components:\n"
@@ -73,7 +73,7 @@ static void valid_document()
         "prototype component names"
     );
     component_presentation_free(&p);
-    component_presentation empty;
+    component_presentation empty = { 0 };
     test_check(
         component_presentation_read("{}", &registry, &empty, error, sizeof error) &&
             component_presentation_tab(&empty, &GAME_COMPONENT_GameBody) ==
@@ -125,7 +125,7 @@ static void rejected_documents()
         { "components: [GAME.GameBody]", "components must be a mapping" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        component_presentation p;
+        component_presentation p = { 0 };
         char error[256] = { 0 };
         bool ok = component_presentation_read(cases[i].yaml, &registry, &p, error, sizeof error);
         char message[320];
@@ -183,6 +183,43 @@ static void shipped_document()
     free(text);
 }
 
+/* An invalid edit keeps the last valid presentation; a valid one replaces it. */
+static void last_valid_document()
+{
+    component_presentation p = { 0 };
+    char error[256] = { 0 };
+    bool first = component_presentation_read(
+        "components: {GAME.GameCollider: {tab: Physics}}",
+        &registry,
+        &p,
+        error,
+        sizeof error
+    );
+    bool rejected = !component_presentation_read(
+        "components: {GAME.GameCollider: {tab: Nowhere}}",
+        &registry,
+        &p,
+        error,
+        sizeof error
+    );
+    component_tab kept = component_presentation_tab(&p, &GAME_COMPONENT_GameCollider);
+    bool replaced = component_presentation_read(
+        "components: {GAME.GameBody: {tab: Physics}}",
+        &registry,
+        &p,
+        error,
+        sizeof error
+    );
+    test_check(
+        first && rejected && kept == COMPONENT_TAB_PHYSICS && replaced &&
+            component_presentation_tab(&p, &GAME_COMPONENT_GameCollider) ==
+                COMPONENT_TAB_OBJECT &&
+            component_presentation_tab(&p, &GAME_COMPONENT_GameBody) == COMPONENT_TAB_PHYSICS,
+        "an invalid component presentation keeps the last valid one"
+    );
+    component_presentation_free(&p);
+}
+
 void test_component_presentation()
 {
     registry = (game_prototype_registry){
@@ -192,4 +229,5 @@ void test_component_presentation()
     valid_document();
     rejected_documents();
     shipped_document();
+    last_valid_document();
 }

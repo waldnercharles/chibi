@@ -251,17 +251,20 @@ bool component_presentation_read(
 )
 {
     assert(text && registry && out);
-    *out = (component_presentation){ 0 };
     yyjson_doc *doc = asset_text_read(text, error, error_size);
     if (!doc) {
         return false;
     }
-    bool ok = read_document(out, registry, yyjson_doc_get_root(doc), error, error_size);
+    component_presentation next = { 0 };
+    bool ok = read_document(&next, registry, yyjson_doc_get_root(doc), error, error_size);
     yyjson_doc_free(doc);
     if (!ok) {
-        component_presentation_free(out);
+        component_presentation_free(&next);
+        return false;
     }
-    return ok;
+    component_presentation_free(out);
+    *out = next;
+    return true;
 }
 
 void component_presentation_free(component_presentation *presentation)

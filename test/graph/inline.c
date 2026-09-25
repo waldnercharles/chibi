@@ -167,6 +167,32 @@ static void removal()
     graph_free(&g);
 }
 
+/* Double(X) = X * 2: a pure function's entry has no Exec pin. */
+static void signature()
+{
+    behavior_asset *asset = behavior_asset_new("Signature");
+    graph *function = behavior_asset_add_function(asset, "Double", 1);
+    node *entry = graph_node_by_id(function, function->entry_id);
+    node *ret = graph_node_by_id(function, function->return_id);
+    pin_spec value = { .name = "X", .type = PIN_F64, .type_name = "double", .kind = PIN_DATA };
+    assert(graph_add_pin(function, entry, 1, &value) == 0);
+    assert(graph_add_pin(function, ret, 0, &value) == 0);
+    node *doubled = binary(function, "Multiply", entry, real(function, 2));
+    wire(function, doubled, 0, ret, 0);
+    test_check(
+        !graph_node_can_inline(function, entry) &&
+            !graph_node_is_inline(function, doubled),
+        "a function entry and the nodes it feeds keep their boxes"
+    );
+    test_check(
+        graph_remove_node_tree(function, doubled) == 0 &&
+            graph_node_by_id(function, function->entry_id) == entry &&
+            acount(function->nodes) == 2,
+        "removing a node tree keeps the function entry it reads"
+    );
+    behavior_asset_free(asset);
+}
+
 static behavior_asset *presentation_asset(node **modes)
 {
     behavior_asset *asset = behavior_asset_new("Presentation");
@@ -434,6 +460,7 @@ void run_graph_inline_checks()
 {
     eligibility();
     removal();
+    signature();
     serialization();
     arrangement();
     formatting();

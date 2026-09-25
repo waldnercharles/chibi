@@ -815,7 +815,10 @@ static bool inline_input(const graph *g, const node *n, int pin)
  * whatever its presentation. */
 static const edge *inline_edge(const graph *g, const node *n)
 {
-    if (n->disabled || node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
+    /* A flow node such as a pure function's Function Entry has no exec pins
+     * but anchors its graph. */
+    if (n->disabled || n->desc->flow_kind != NODE_FLOW_NONE ||
+        node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
         n->desc->pure_kind == NODE_PURE_FUNCTION ||
         n->desc->pure_kind == NODE_PURE_COPY) {
         return NULL;

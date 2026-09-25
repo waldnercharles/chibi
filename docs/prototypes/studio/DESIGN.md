@@ -73,7 +73,7 @@ Studio is the default editor on desktop and in the web build. `--imgui` (or `?im
 
 ## Progress, September 23, 2026
 
-Studio runs in place of the ImGui workspace unless `--imgui` (`?imgui`) is given. The code is in `src/editor/studio` (shell, areas, editors, host), `src/editor/ui/kit.h` (the C API) and `src/editor/rmlui` (the reconciler in `kit.cpp`, controllers in the `kit_*.cpp` modules). `build/test_suite --rmlui-kit` covers clicks, scrubbing, text entry with expressions, stepping, context clicks, menus, command ranking and keyed reconciliation.
+Studio runs in place of the ImGui workspace unless `--imgui` (`?imgui`) is given. The code is in `src/editor/studio` (shell, areas, editors, host), `src/editor/ui/kit.h` (the C API) and `src/editor/rmlui` (the reconciler in `kit.c`, controllers in the `kit_*.cpp` modules). `build/test_suite --rmlui-kit` covers clicks, scrubbing, text entry with expressions, stepping, context clicks, menus, command ranking and keyed reconciliation.
 
 | Phase | State |
 | --- | --- |

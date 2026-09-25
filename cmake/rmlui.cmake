@@ -34,19 +34,19 @@ chibi_rmlui_dependencies()
 add_library(chibi_rmlui STATIC
     src/editor/rmlui/rml.cpp
     src/editor/rmlui/backend.c
-    src/editor/rmlui/kit.cpp
-    src/editor/rmlui/kit_chart.cpp
-    src/editor/rmlui/kit_command.cpp
-    src/editor/rmlui/kit_controls.cpp
-    src/editor/rmlui/kit_drag.cpp
-    src/editor/rmlui/kit_list.cpp
-    src/editor/rmlui/kit_motion.cpp
-    src/editor/rmlui/kit_number.cpp
-    src/editor/rmlui/kit_popup.cpp
-    src/editor/rmlui/kit_text.cpp
-    src/editor/rmlui/kit_toast.cpp
-    src/editor/rmlui/kit_wires.cpp
-    # kit_wires.cpp draws through it, so it links with the kit.
+    src/editor/rmlui/kit.c
+    src/editor/rmlui/kit_chart.c
+    src/editor/rmlui/kit_command.c
+    src/editor/rmlui/kit_controls.c
+    src/editor/rmlui/kit_drag.c
+    src/editor/rmlui/kit_list.c
+    src/editor/rmlui/kit_motion.c
+    src/editor/rmlui/kit_number.c
+    src/editor/rmlui/kit_popup.c
+    src/editor/rmlui/kit_text.c
+    src/editor/rmlui/kit_toast.c
+    src/editor/rmlui/kit_wires.c
+    # kit_wires.c draws through it, so it links with the kit.
     src/editor/ui/kit_wire_shape.c
     src/editor/rmlui/menu.c
     src/editor/rmlui/toolbar.c

@@ -7,7 +7,7 @@
 
 /* Layered auto-arrange for the node canvas.
  *
- * This is pure geometry: no ImGui, no graph types, no editor state. The caller
+ * This is pure geometry: no UI, no graph types, no editor state. The caller
  * measures its nodes, describes its wires, and gets one position per node
  * back, so the layout quality is measurable in a headless test with
  * arrange_score.h.

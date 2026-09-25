@@ -2,7 +2,6 @@
 
 #include "editor/ui/labels.h"
 #include "editor/ui/search.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
 #include "graph/document/extract.h"
@@ -16,10 +15,6 @@
 #include "graph/shader/shader_graph.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
-
-#undef IMGUI_STB_NAMESPACE
-#include <imgui/dcimgui_internal.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -79,31 +74,6 @@ static int ed_search_match_cmp(const void *a, const void *b)
     }
     c = strcmp(ca, cb);
     return c ? c : strcmp(ma->name, mb->name);
-}
-
-void ed_open_context_menu(editor *e, ImVec2 mouse)
-{
-    if (e->active_graph->math_expression) {
-        return;
-    }
-    e->context_node = NULL;
-    e->has_context_link = 0;
-    ed_pin_view *pin = ed_hit_pin(e, mouse);
-    ed_node_view *node_view = pin ? NULL : ed_hit_node(e, mouse);
-    ed_link_ref link;
-    if (node_view) {
-        e->context_node = node_view->n;
-        ImGui_OpenPopup("node_menu", 0);
-    } else if (!pin && ed_hit_link(e, mouse, &link)) {
-        e->context_link = link;
-        e->has_context_link = 1;
-        ImGui_OpenPopup("link_menu", 0);
-    } else {
-        ImVec2 world = ed_screen_to_world(e, mouse);
-        e->popup_x = world.x;
-        e->popup_y = world.y;
-        ImGui_OpenPopup("spawn_menu", 0);
-    }
 }
 
 /* PIN-11: a Generic (wildcard) data pin accepts any data peer; the type is
@@ -678,7 +648,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     return matches;
 }
 
-node *ed_spawn_match(editor *e, const ed_search_match *match)
+static node *spawn_match(editor *e, const ed_search_match *match)
 {
     graph *g = e->active_graph;
     if (match->function) {
@@ -750,129 +720,7 @@ node *ed_spawn_match(editor *e, const ed_search_match *match)
     return n;
 }
 
-static int ed_search_match_base_output_count(const ed_search_match *match)
-{
-    if (!match) {
-        return 0;
-    }
-    if (match->function) {
-        node *ret = graph_node_by_id(match->function, match->function->return_id);
-        return ret ? ret->input_count : 0;
-    }
-    if (match->variable) {
-        return 1;
-    }
-    const node_desc *shape = match->desc
-                               ? component_node_shape(match->desc, match->setting)
-                               : NULL;
-    return shape       ? shape->output_count
-         : match->desc ? match->desc->output_count
-                       : 0;
-}
-
-static bool ed_search_match_base_output(
-    const editor *e,
-    const ed_search_match *match,
-    int index,
-    pin_spec *output
-)
-{
-    if (!e || !match || !output || index < 0) {
-        return false;
-    }
-    if (match->function) {
-        node *ret = graph_node_by_id(match->function, match->function->return_id);
-        if (!ret || index >= ret->input_count) {
-            return false;
-        }
-        *output = ret->input_pins[index];
-        return true;
-    }
-    if (match->variable) {
-        if (index != 0) {
-            return false;
-        }
-        *output = (pin_spec){ .name = match->variable->name,
-                              .type = match->variable->type,
-                              .type_name = match->variable->type_name,
-                              .kind = PIN_DATA,
-                              .container = match->variable->container };
-        return true;
-    }
-    const node_desc *shape = match->desc
-                               ? component_node_shape(match->desc, match->setting)
-                               : NULL;
-    const node_desc *desc = shape ? shape : match->desc;
-    if (!desc || index >= desc->output_count || !desc->outputs) {
-        return false;
-    }
-    *output = desc->outputs[index];
-    const ecs_component_desc *component = shape ? NULL
-                                                : component_by_key(match->setting);
-    if (component && output->type == PIN_STRUCT) {
-        output->type_name = component->type->name;
-    }
-    if (match->desc == &NODE_Self && index == 0) {
-        if (!e->asset->owner_type_name) {
-            return false;
-        }
-        output->type_name = e->asset->owner_type_name;
-    }
-    return true;
-}
-
-int ed_search_match_output_count(const editor *e, const ed_search_match *match)
-{
-    int base_count = ed_search_match_base_output_count(match);
-    int count = base_count;
-    for (int i = 0; i < base_count; i++) {
-        pin_spec output;
-        if (!ed_search_match_base_output(e, match, i, &output)) {
-            return count;
-        }
-        const type_desc *type = ed_struct_output_type(&output);
-        count += type ? type->field_count : 0;
-    }
-    return count;
-}
-
-bool ed_search_match_output(const editor *e, const ed_search_match *match, int index, ed_search_output *output)
-{
-    if (!output || index < 0) {
-        return false;
-    }
-    int base_count = ed_search_match_base_output_count(match);
-    int remaining = index;
-    int projected = 0;
-    for (int i = 0; i < base_count; i++) {
-        pin_spec base;
-        if (!ed_search_match_base_output(e, match, i, &base)) {
-            return false;
-        }
-        if (remaining == 0) {
-            output->pin = base;
-            output->node_pin = i;
-            return true;
-        }
-        remaining--;
-        const type_desc *type = ed_struct_output_type(&base);
-        if (!type) {
-            continue;
-        }
-        if (remaining < type->field_count) {
-            if (!ed_struct_field_pin(&base, remaining, &output->pin)) {
-                return false;
-            }
-            output->node_pin = base_count + projected + remaining;
-            return true;
-        }
-        remaining -= type->field_count;
-        projected += type->field_count;
-    }
-    return false;
-}
-
-int ed_expose_spawned_output_fields(editor *e, node *n)
+static int ed_expose_spawned_output_fields(editor *e, node *n)
 {
     if (!e || !e->active_graph || !n) {
         return -1;
@@ -894,7 +742,7 @@ static int ed_autowire_spawn_input(editor *e, node *n)
     int connected = 0;
     const pin_spec *input = &e->spawn_link_pin.n->input_pins[e->spawn_link_pin.index];
     for (int p = 0; !connected && p < n->output_count; p++) {
-        ed_pin_view target = { n, ED_PIN_OUTPUT, p, { 0.0f, 0.0f } };
+        ed_pin_view target = { n, ED_PIN_OUTPUT, p };
         const pin_spec *output = &n->output_pins[p];
         if (output->kind == input->kind && ed_data_connectable(output, input)) {
             connected = ed_connect(e, &e->spawn_link_pin, &target);
@@ -908,7 +756,7 @@ static int ed_autowire_spawn(editor *e, node *n)
     if (e->spawn_link_pin.kind == ED_PIN_OUTPUT) {
         int connected = 0;
         for (int p = 0; p < n->input_count && !connected; p++) {
-            ed_pin_view target = { n, ED_PIN_INPUT, p, { 0.0f, 0.0f } };
+            ed_pin_view target = { n, ED_PIN_INPUT, p };
             const pin_spec *a = &e->spawn_link_pin.n
                                      ->output_pins[e->spawn_link_pin.index];
             const pin_spec *b = &n->input_pins[p];
@@ -935,7 +783,7 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
     if (!e->spawn_link_pending) {
         ed_snapshot_before(e);
     }
-    node *n = ed_spawn_match(e, match);
+    node *n = spawn_match(e, match);
     if (n && !shader_graph_init_node(e->active_graph, n)) {
         graph_remove_node(e->active_graph, n);
         n = NULL;
@@ -963,25 +811,6 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
         e->spawn_link_pending = 0;
     }
     return n;
-}
-
-void ed_request_extraction(editor *e)
-{
-    if (e->active_graph->math_expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
-        return;
-    }
-    for (int i = 1;; i++) {
-        if (i == 1) {
-            snprintf(e->extract_name, sizeof e->extract_name, "New Function");
-        } else {
-            snprintf(e->extract_name, sizeof e->extract_name, "New Function %d", i);
-        }
-        if (!behavior_asset_find_graph_by_name(e->asset, e->extract_name)) {
-            break;
-        }
-    }
-    e->extract_error[0] = '\0';
-    e->extract_requested = true;
 }
 
 const char *ed_extract_selection(editor *e)
@@ -1035,349 +864,4 @@ node *ed_convert_behavior_expression_selection(
     }
     ed_select_node(e, call, 0);
     return call;
-}
-
-void ed_draw_extract_popup(editor *e)
-{
-    if (e->extract_requested) {
-        ImGui_OpenPopup("extract_function", 0);
-        e->extract_requested = false;
-    }
-    if (!ImGui_BeginPopup("extract_function", 0)) {
-        return;
-    }
-    ImGui_TextUnformatted("Extract Function");
-    if (ImGui_IsWindowAppearing()) {
-        ImGui_SetKeyboardFocusHere();
-    }
-    bool enter = ImGui_InputText(
-        "Name",
-        e->extract_name,
-        sizeof e->extract_name,
-        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll
-    );
-    editor_ui_track_item("graph.extract.name");
-    if (e->extract_error[0]) {
-        ImGui_TextColored((ImVec4){ 1.0f, 0.55f, 0.45f, 1.0f }, "%s", e->extract_error);
-    }
-    bool extract = ImGui_Button("Extract");
-    editor_ui_track_item("graph.extract.confirm");
-    if (extract || enter) {
-        const char *error = ed_extract_selection(e);
-        if (error) {
-            snprintf(e->extract_error, sizeof e->extract_error, "%s", error);
-        } else {
-            ImGui_CloseCurrentPopup();
-        }
-    }
-    ImGui_SameLine();
-    if (ImGui_Button("Cancel")) {
-        ImGui_CloseCurrentPopup();
-    }
-    ImGui_EndPopup();
-}
-
-/* Set Component writes its whole Value or the fields it shows. */
-static void ed_draw_write_menu(editor *e, node *n)
-{
-    const ecs_component_desc *component = component_node_component(n);
-    bool split = component_node_split(n);
-    if (ImGui_MenuItemEx("Value", NULL, !split, split)) {
-        ed_snapshot_before(e);
-        component_node_split_value(e->active_graph, n, false);
-    }
-    for (int i = 0; i < component->type->field_count; i++) {
-        const char *field = component->type->fields[i].name;
-        if (!component_field_settable(component, field)) {
-            continue;
-        }
-        bool shown = false;
-        for (int p = 0; split && p < n->input_count; p++) {
-            shown |= !strcmp(n->input_pins[p].name, field);
-        }
-        char label[128];
-        editor_identifier_label(field, label, sizeof label);
-        if (ImGui_MenuItemEx(label, NULL, shown, true)) {
-            ed_snapshot_before(e);
-            component_node_show_field(e->active_graph, n, field, !shown);
-        }
-    }
-}
-
-void ed_handle_popups(editor *e)
-{
-    if (e->active_graph->math_expression) {
-        return;
-    }
-    if (ImGui_BeginPopup("node_menu", 0)) {
-        node *n = e->context_node;
-        bool advanced = false;
-        for (int p = 0; n && p < n->input_count; p++) {
-            advanced |= (n->input_pins[p].flags &
-                         (PIN_FLAG_ADVANCED | PIN_FLAG_SETTING)) == PIN_FLAG_ADVANCED;
-        }
-        if (advanced &&
-            ImGui_MenuItemEx("Show Advanced Inputs", NULL, n->show_advanced, true)) {
-            ed_snapshot_before(e);
-            n->show_advanced = !n->show_advanced;
-            e->edit_changed = 1;
-        }
-        node *single[] = { n };
-        node *const *selection = n && !ed_node_selected(e, n) ? single : e->selected;
-        int selection_count = n && !ed_node_selected(e, n) ? 1 : acount(e->selected);
-        const char *extract_reason = behavior_asset_can_extract_function(
-            e->asset,
-            e->active_graph,
-            selection,
-            selection_count
-        );
-        if (ImGui_MenuItemEx("Extract Function...", NULL, false, !extract_reason && e->ui_context != EDITOR_UI_CONTEXT_SYSTEM)) {
-            if (selection == single) {
-                ed_select_node(e, n, 0);
-            }
-            ed_request_extraction(e);
-        }
-        const char *expression_reason = behavior_expression_can_convert_selection(
-            e->asset,
-            e->active_graph,
-            selection,
-            selection_count
-        );
-        if (ImGui_MenuItemEx(
-                "Convert to Behavior Expression",
-                NULL,
-                false,
-                !expression_reason && e->ui_context != EDITOR_UI_CONTEXT_SYSTEM
-            )) {
-            behavior_expression_error error;
-            node *call = ed_convert_behavior_expression_selection(e, selection, selection_count, &error);
-            if (!call) {
-                ed_show_error(e, error.message[0] ? error.message : "Could not convert the selection to a Behavior Expression.");
-            }
-            ImGui_CloseCurrentPopup();
-            ImGui_EndPopup();
-            return;
-        }
-        editor_ui_track_item("graph.node.convert_math");
-        ImGui_Separator();
-        if (ed_is_graph_call(n)) {
-            graph *target = behavior_asset_find_graph(e->asset, n->reference_id);
-            if (n->reference_asset) {
-                target = NULL;
-                for (int a = 0; a < acount(e->asset_catalog); a++) {
-                    if (strcmp(e->asset_catalog[a]->name, n->reference_asset) == 0) {
-                        target = behavior_asset_find_graph(e->asset_catalog[a], n->reference_id);
-                    }
-                }
-                if (ImGui_MenuItemEx("Refresh Signature", NULL, false, target != NULL)) {
-                    ed_snapshot_before(e);
-                    const char *error = graph_library_refresh_call(e->active_graph, n, target);
-                    if (error) {
-                        ed_show_error(e, error);
-                    } else {
-                        ed_commit_snapshot(e);
-                    }
-                }
-            }
-
-            if (ImGui_MenuItemEx(
-                    n->desc == &NODE_CallMacro ? "Open Macro" : "Open Function",
-                    "Double-click",
-                    false,
-                    target && target != e->active_graph
-                )) {
-                e->open_call_node = n->id;
-                ImGui_CloseCurrentPopup();
-                ImGui_EndPopup();
-                return;
-            }
-            ImGui_Separator();
-        }
-        if (n && n->desc && strcmp(n->desc->name, "Sequence") == 0) {
-            if (ImGui_MenuItem("Add output pin")) {
-                char name[32];
-                snprintf(name, sizeof name, "Then%d", n->output_count);
-                pin_spec pin = { name, PIN_FLOW, NULL, PIN_EXEC };
-                ed_snapshot_before(e);
-                graph_add_pin(e->active_graph, n, 1, &pin);
-            }
-            if (n->output_count > 2 && ImGui_MenuItem("Remove last output pin")) {
-                ed_snapshot_before(e);
-                graph_remove_pin(e->active_graph, n, 1, n->output_count - 1);
-            }
-            ImGui_Separator();
-        }
-        if (n && ImGui_MenuItem(n->disabled ? "Enable" : "Disable")) {
-            ed_snapshot_before(e);
-            graph_set_node_disabled(e->active_graph, n, !n->disabled);
-        }
-        if (n && node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
-            ImGui_MenuItem(n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint")) {
-            ed_snapshot_before(e);
-            graph_set_breakpoint(e->active_graph, n, !n->breakpoint);
-        }
-        if (n && ImGui_MenuItem(
-                     n->breakpoint_enabled ? "Disable All Breakpoints" : "Enable All Breakpoints"
-                 )) {
-            ed_snapshot_before(e);
-            graph_set_all_breakpoints(e->active_graph, !e->active_graph->breakpoints_enabled);
-        }
-        if (n && ImGui_MenuItem("Toggle data watches")) {
-            ed_snapshot_before(e);
-            for (int i = 0; i < n->input_count; i++) {
-                if (n->input_pins[i].kind == PIN_DATA) {
-                    graph_set_pin_watch(
-                        e->active_graph,
-                        n,
-                        0,
-                        i,
-                        !(n->input_pins[i].flags & PIN_FLAG_WATCH)
-                    );
-                }
-            }
-            for (int i = 0; i < n->output_count; i++) {
-                if (n->output_pins[i].kind == PIN_DATA) {
-                    graph_set_pin_watch(
-                        e->active_graph,
-                        n,
-                        1,
-                        i,
-                        !(n->output_pins[i].flags & PIN_FLAG_WATCH)
-                    );
-                }
-            }
-        }
-        bool can_inline = ed_source_scope_available(e) &&
-                          graph_node_can_inline(e->active_graph, n);
-        if (ImGui_MenuItemEx("Inline", NULL, false, can_inline)) {
-            ed_snapshot_before(e);
-            int result = graph_inline_node(e->active_graph, n);
-            assert(result == 0);
-            (void)result;
-            ImGui_CloseCurrentPopup();
-        }
-        editor_ui_track_item("graph.node.inline");
-        if (n && ed_field_output(n) >= 0 && ImGui_BeginMenu("Fields")) {
-            ed_draw_fields_menu(e, n);
-            ImGui_EndMenu();
-        }
-        if (n && component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
-            component_node_component(n) && ImGui_BeginMenu("Write")) {
-            ed_draw_write_menu(e, n);
-            ImGui_EndMenu();
-        }
-        if (ImGui_MenuItem("Delete")) {
-            ed_select_node(e, e->context_node, 0);
-            ed_delete_selected(e);
-        }
-        ImGui_EndPopup();
-    }
-    if (ImGui_BeginPopup("link_menu", 0)) {
-        if (ImGui_MenuItem("Delete Link") && e->has_context_link) {
-            aclear(e->selected);
-            aclear(e->selected_links);
-            ed_add_selected_link(e, &e->context_link);
-            ed_delete_selected(e);
-        }
-        ImGui_EndPopup();
-    }
-    ImVec2 search_space = ImGui_GetMainViewport()->WorkSize;
-    ImGui_SetNextWindowSize((ImVec2){ fminf(360.0f, search_space.x - 20.0f), 0.0f }, ImGuiCond_Always);
-    if (ImGui_BeginPopup("spawn_menu", 0)) {
-        bool reveal_result = ImGui_IsWindowAppearing();
-        if (reveal_result) {
-            ImGui_SetKeyboardFocusHere();
-            e->search_selected = 0;
-        }
-        ImGui_SetNextItemWidth(-1.0f);
-        if (editor_ui_search_field("graph.node_search", e->search, sizeof e->search, "Search nodes")) {
-            e->search_selected = 0;
-            reveal_result = true;
-        }
-        ed_search_match *matches = ed_search_matches(e, e->search);
-        int match_count = acount(matches);
-        if (match_count == 0) {
-            e->search_selected = -1;
-        } else {
-            if (e->search_selected < 0) {
-                e->search_selected = 0;
-            }
-            if (e->search_selected >= match_count) {
-                e->search_selected = match_count - 1;
-            }
-            if (ImGui_IsKeyPressed(ImGuiKey_DownArrow)) {
-                e->search_selected = (e->search_selected + 1) % match_count;
-                reveal_result = true;
-            }
-            if (ImGui_IsKeyPressed(ImGuiKey_UpArrow)) {
-                e->search_selected = (e->search_selected + match_count - 1) % match_count;
-                reveal_result = true;
-            }
-        }
-        int activate = ImGui_IsKeyPressed(ImGuiKey_Enter);
-        ImGui_BeginChild(
-            "node_results",
-            (ImVec2){ 0.0f, fmaxf(1.0f, fminf(300.0f, search_space.y - 140.0f)) },
-            0,
-            0
-        );
-        const char *category = NULL;
-        for (int m = 0; m < match_count; m++) {
-            const node_desc *desc = matches[m].desc;
-            const char *next_category = matches[m].category;
-            if (!category || strcmp(category, next_category) != 0) {
-                ImGui_TextDisabled("%s", next_category);
-                category = next_category;
-            }
-            char label[416], icon[4];
-            snprintf(
-                label,
-                sizeof label,
-                "%s  %s",
-                ed_node_prefix(desc, icon),
-                matches[m].name
-            );
-            ImGui_PushIDInt(m);
-            int clicked = ImGui_SelectableEx(label, m == e->search_selected, 0, (ImVec2){ 0.0f, 0.0f });
-            if (reveal_result && m == e->search_selected) {
-                ImGui_SetScrollHereY(0.5f);
-            }
-            if (m == e->search_selected) {
-                editor_ui_track_item("graph.node_search.selected");
-            }
-            ImGui_PopID();
-            if (clicked || (activate && m == e->search_selected)) {
-                bool comment = desc == &ed_comment_box_desc;
-                node *n = ed_spawn_match_at(e, &matches[m], e->popup_x, e->popup_y);
-                if (n && desc == &ed_math_desc) {
-                    e->inspector_active = true;
-                    editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
-                }
-                if (n || comment) {
-                    e->search[0] = '\0';
-                    e->search_selected = 0;
-                    ImGui_CloseCurrentPopup();
-                }
-            }
-        }
-        if (match_count == 0) {
-            ImGui_TextUnformatted(
-                e->spawn_link_pending ? "No compatible nodes" : "No matching nodes"
-            );
-        }
-        afree(matches);
-        ImGui_Dummy((ImVec2){ 0.0f, ImGui_GetStyle()->ItemSpacing.y });
-        ImGui_EndChild();
-        editor_ui_track_item("graph.node_results");
-        /* Keep search text focused while our result selection handles these keys. */
-        ImGuiID navigation = ImGui_GetID("node_search_navigation");
-        ImGui_SetKeyOwner(ImGuiKey_UpArrow, navigation, 0);
-        ImGui_SetKeyOwner(ImGuiKey_DownArrow, navigation, 0);
-        ImGui_SetKeyOwner(ImGuiKey_Enter, navigation, 0);
-        ImGui_EndPopup();
-    }
-    if (e->spawn_link_pending && !ImGui_IsPopupOpen("spawn_menu", 0)) {
-        ed_cancel_snapshot(e);
-        e->spawn_link_pending = 0;
-    }
 }

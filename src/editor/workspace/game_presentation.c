@@ -1,6 +1,5 @@
 #include "editor/workspace/game_presentation.h"
 
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
@@ -11,10 +10,15 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <float.h>
 #include <imgui/dcimgui.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+extern const unsigned char editor_ui_font[];
+extern const size_t editor_ui_font_size;
 
 struct app_game_presentation
 {
@@ -56,6 +60,51 @@ static void render_game(void *user)
     app_scene_authoring_render(scene);
 }
 
+/* Game UI text uses the embedded Inter face. The host keeps ImGui's atlas
+ * across application reloads, so the atlas owns a copy of the font. */
+static void prepare_ui()
+{
+    ImGuiIO *io = ImGui_GetIO();
+    io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    for (int i = 0; i < io->Fonts->Fonts.Size; i++) {
+        if (!strcmp(ImFont_GetDebugName(io->Fonts->Fonts.Data[i]), "Chibi UI")) {
+            return;
+        }
+    }
+    ImFontConfig config = { 0 };
+    config.FontDataOwnedByAtlas = true;
+    strcpy(config.Name, "Chibi UI");
+    config.GlyphMaxAdvanceX = FLT_MAX;
+    config.RasterizerMultiply = 1.0f;
+    config.RasterizerDensity = 1.0f;
+    config.ExtraSizeScale = 1.0f;
+    void *font = ImGui_MemAlloc(editor_ui_font_size);
+    memcpy(font, editor_ui_font, editor_ui_font_size);
+    io->FontDefault = ImFontAtlas_AddFontFromMemoryTTF(
+        io->Fonts,
+        font,
+        (int)editor_ui_font_size,
+        16.0f,
+        &config,
+        NULL
+    );
+    ImGui_GetStyle()->FontSizeBase = 16.0f;
+}
+
+/* ImGui lays out in logical pixels over the whole canvas it is drawn into. */
+static ImVec2 display_size()
+{
+    ImGuiIO *io = ImGui_GetIO();
+    ImVec2 scale = io->DisplayFramebufferScale;
+    ImVec2 size = { cf_app_get_canvas_width() / (scale.x > 0 ? scale.x : 1.0f),
+                    cf_app_get_canvas_height() / (scale.y > 0 ? scale.y : 1.0f) };
+    io->DisplaySize = size;
+    ImGuiViewport *view = ImGui_GetMainViewport();
+    view->Pos = view->WorkPos = (ImVec2){ 0 };
+    view->Size = view->WorkSize = size;
+    return size;
+}
+
 app_game_presentation *app_game_presentation_new(
     app_scene_authoring *scene,
     engine_viewport *viewport,
@@ -85,6 +134,7 @@ app_game_presentation *app_game_presentation_new(
                                      .viewport = viewport,
                                      .interactive = interactive };
     game->audio = render_audio_new();
+    prepare_ui();
     scene->selected = -1;
     for (int i = 0; i < acount(scene->actors); i++) {
         scene->actors[i].marked = false;
@@ -202,25 +252,19 @@ static int pause_menu(app_game_presentation *game, int status)
         title
     );
     ImGui_Dummy((ImVec2){ width - 48, 35 });
-    editor_ui_track_item(
-        outcome ? (cleared ? "game.outcome.cleared" : "game.outcome.defeated") : "game.paused"
-    );
     ImGui_Dummy((ImVec2){ 0, 2 });
     int result = 0;
     if (!outcome) {
         if (ImGui_ButtonEx("Resume  [Enter]", (ImVec2){ -1, 0 })) {
             result = command(game, APP_RUNTIME_PLAY);
         }
-        editor_ui_track_item("game.resume");
     }
     if (ImGui_ButtonEx(outcome ? "Restart  [Enter / R]" : "Restart  [R]", (ImVec2){ -1, 0 })) {
         result = command(game, APP_RUNTIME_RESTART);
     }
-    editor_ui_track_item("game.restart");
     if (ImGui_ButtonEx("Quit  [Q]", (ImVec2){ -1, 0 })) {
         result = 1;
     }
-    editor_ui_track_item("game.quit");
     ImGui_End();
     ImGui_PopStyleColorEx(5);
     ImGui_PopStyleVarEx(5);
@@ -229,6 +273,7 @@ static int pause_menu(app_game_presentation *game, int status)
 
 int app_game_presentation_frame(app_game_presentation *game, double now)
 {
+    ImVec2 size = display_size();
     int status = encounter_status(game->scene->world);
     bool playing = engine_is_playing(game->scene->runtime);
     if (!game->showcase_time_started) {
@@ -265,7 +310,6 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         }
         playing = true;
     }
-    ImVec2 size = ImGui_GetIO()->DisplaySize;
     if (size.x > 0 && size.y > 0) {
         engine_viewport_request_resize(game->viewport, (int)size.x, (int)size.y);
     }

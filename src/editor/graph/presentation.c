@@ -1,73 +1,12 @@
 #include "editor/ui/labels.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
-#include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "support/array.h"
 
-#include <assert.h>
-#include <imgui/dcimgui.h>
-
-#undef IMGUI_STB_NAMESPACE
-#include <imgui/dcimgui_internal.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
-const char ED_ICON_WARNING[] = "\xef\x81\xb1";
-const char ED_ICON_GRAPH[] = "\xef\x86\xb2";
-const ImVec4 ED_NODE_BODY = { 0.16f, 0.17f, 0.19f, 1.0f };
-const ImVec4 ED_NODE_BORDER = { 0.29f, 0.31f, 0.34f, 1.0f };
-const editor_icon ED_GRAPH_OPEN_GLYPH = EDITOR_ICON_MD_ARROW_TOP_RIGHT;
-
-static const ImVec4 ED_PIN_COLORS[] = {
-    [PIN_FLOW] = { 1.0f, 1.0f, 1.0f, 1.0f },
-    [PIN_BOOL] = { 0.95f, 0.43f, 0.48f, 1.0f },
-    [PIN_I8] = { 0.34f, 0.76f, 0.65f, 1.0f },
-    [PIN_U8] = { 0.34f, 0.76f, 0.65f, 1.0f },
-    [PIN_I16] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
-    [PIN_U16] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
-    [PIN_I32] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
-    [PIN_U32] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
-    [PIN_I64] = { 0.413575f, 0.770f, 0.429609f, 1.0f },
-    [PIN_U64] = { 0.413575f, 0.770f, 0.429609f, 1.0f },
-    [PIN_F32] = { 0.65f, 0.85f, 0.39f, 1.0f },
-    [PIN_F64] = { 0.65f, 0.85f, 0.39f, 1.0f },
-    [PIN_NAME] = { 0.73f, 0.57f, 0.90f, 1.0f },
-    [PIN_HANDLE] = { 0.36f, 0.77f, 0.85f, 1.0f },
-    [PIN_STR] = { 0.91f, 0.48f, 0.73f, 1.0f },
-    [PIN_STRUCT] = { 0.40f, 0.58f, 0.92f, 1.0f },
-    [PIN_ENUM] = { 0.34f, 0.76f, 0.65f, 1.0f },
-};
-
-static const ImVec4 ED_NODE_TITLES[] = {
-    [NODE_DISPLAY_PURE] = { 0.2f, 0.425f, 0.175f, 1.0f },
-    [NODE_DISPLAY_EVENT] = { 0.8f, 0.1f, 0.1f, 1.0f },
-    [NODE_DISPLAY_FUNCTION] = { 0.190525f, 0.583898f, 1.0f, 1.0f },
-    [NODE_DISPLAY_FLOW] = { 0.8f, 0.4f, 0.4f, 1.0f },
-    /* Unreal derives this from the variable's pin type; Phase 4 will do so too. */
-    [NODE_DISPLAY_VARIABLE] = { 0.36f, 0.22f, 0.18f, 1.0f },
-    [NODE_DISPLAY_LITERAL] = { 0.750f, 0.6f, 0.4f, 1.0f },
-};
-
-ImVec4 ed_pin_color(pin_type t)
-{
-    assert(t >= PIN_FLOW && t <= PIN_ENUM);
-    assert(ED_PIN_COLORS[t].w == 1.0f);
-    return ED_PIN_COLORS[t];
-}
-
-ImVec4 ed_node_title_color(const node *n)
-{
-    node_display_class display = n && n->desc ? n->desc->display_class
-                                              : NODE_DISPLAY_PURE;
-    if (display < NODE_DISPLAY_PURE || display > NODE_DISPLAY_LITERAL) {
-        display = NODE_DISPLAY_PURE;
-    }
-    return ED_NODE_TITLES[display];
-}
 
 bool ed_is_graph_call(const node *n)
 {
@@ -75,16 +14,8 @@ bool ed_is_graph_call(const node *n)
                  n->desc == &NODE_BehaviorExpression || n->desc == &NODE_CallMacro);
 }
 
-ed_node_presentation ed_node_appearance(const node_desc *desc)
+const char *ed_node_symbol(const node_desc *desc)
 {
-    if (desc == &NODE_CallMacro) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SEND };
-    }
-    if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction ||
-        desc == &NODE_BehaviorExpression) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SITEMAP };
-    }
-    const char *symbol = NULL;
     static const struct
     {
         const char *name;
@@ -97,105 +28,44 @@ ed_node_presentation ed_node_appearance(const node_desc *desc)
     };
     for (int i = 0; i < (int)(sizeof shader_symbols / sizeof *shader_symbols); i++) {
         if (!strcmp(desc->name, shader_symbols[i].name)) {
-            return (ed_node_presentation){ shader_symbols[i].symbol, 0 };
+            return shader_symbols[i].symbol;
         }
     }
     switch (desc->jit_kind) {
-        case NODE_JIT_ADD: symbol = "+"; break;
-        case NODE_JIT_SUB: symbol = "−"; break;
-        case NODE_JIT_MUL: symbol = "×"; break;
-        case NODE_JIT_DIV: symbol = "÷"; break;
+        case NODE_JIT_ADD: return "+";
+        case NODE_JIT_SUB: return "−";
+        case NODE_JIT_MUL: return "×";
+        case NODE_JIT_DIV: return "÷";
         default: break;
     }
     if (desc == &NODE_Less || desc == &NODE_Integer_Less) {
-        symbol = "<";
+        return "<";
     }
     if (desc == &NODE_Less_Or_Equal || desc == &NODE_Integer_Less_Or_Equal) {
-        symbol = "≤";
+        return "≤";
     }
     if (desc == &NODE_Greater || desc == &NODE_Integer_Greater) {
-        symbol = ">";
+        return ">";
     }
     if (desc == &NODE_Greater_Or_Equal || desc == &NODE_Integer_Greater_Or_Equal) {
-        symbol = "≥";
+        return "≥";
     }
     if (desc == &NODE_Equal || desc == &NODE_Integer_Equal) {
-        symbol = "=";
+        return "=";
     }
     if (desc == &NODE_Not_Equal || desc == &NODE_Integer_Not_Equal) {
-        symbol = "≠";
+        return "≠";
     }
     if (desc == &NODE_Sine) {
-        symbol = "SIN";
+        return "SIN";
     }
     if (desc == &NODE_Cosine) {
-        symbol = "COS";
+        return "COS";
     }
     if (desc == &NODE_Tangent) {
-        symbol = "TAN";
+        return "TAN";
     }
-    if (symbol) {
-        return (ed_node_presentation){ symbol, 0 };
-    }
-    if (desc->flow_kind == NODE_FLOW_BRANCH) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK };
-    }
-    if (desc->pure_kind == NODE_PURE_READ) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_EYE };
-    }
-    if (desc->access && desc->access->write_count) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_PENCIL };
-    }
-    switch (desc->display_class) {
-        case NODE_DISPLAY_EVENT:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_BOLT };
-        case NODE_DISPLAY_FLOW:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK };
-        case NODE_DISPLAY_VARIABLE:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_DATABASE };
-        case NODE_DISPLAY_LITERAL:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE };
-        case NODE_DISPLAY_PURE:
-        case NODE_DISPLAY_FUNCTION:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_COG };
-    }
-    assert(false);
-    return (ed_node_presentation){ 0 };
-}
-
-const char *ed_node_prefix(const node_desc *desc, char icon[4])
-{
-    ed_node_presentation appearance = ed_node_appearance(desc);
-    if (appearance.symbol) {
-        return appearance.symbol;
-    }
-    unsigned glyph = (unsigned)appearance.icon;
-    icon[0] = (char)(0xe0 | (glyph >> 12));
-    icon[1] = (char)(0x80 | ((glyph >> 6) & 0x3f));
-    icon[2] = (char)(0x80 | (glyph & 0x3f));
-    icon[3] = '\0';
-    return icon;
-}
-
-float ed_node_title_inset(const node *n)
-{
-    const char *symbol = ed_node_appearance(n->desc).symbol;
-    return symbol ? ed_max(ImGui_CalcTextSize(symbol).x, 20.0f) + 8.0f : 20.0f;
-}
-
-float ed_event_status_width(const node *n)
-{
-    return n->desc->flow_kind == NODE_FLOW_EVENT ? 28.0f : 0.0f;
-}
-
-float ed_node_title_padding(const node *)
-{
-    return ED_TITLE_PAD;
-}
-
-float ed_node_body_padding(const node *)
-{
-    return ED_PAD;
+    return NULL;
 }
 
 /* Component nodes and the generated nodes they lower to read the same:
@@ -277,60 +147,4 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
     }
     snprintf(buf, cap, "%s", label);
     return buf;
-}
-
-ImU32 ed_color(ImVec4 c)
-{
-    int r = (int)(c.x * 255.0f);
-    int g = (int)(c.y * 255.0f);
-    int b = (int)(c.z * 255.0f);
-    int a = (int)(c.w * 255.0f);
-    if (r < 0) {
-        r = 0;
-    }
-    if (r > 255) {
-        r = 255;
-    }
-    if (g < 0) {
-        g = 0;
-    }
-    if (g > 255) {
-        g = 255;
-    }
-    if (b < 0) {
-        b = 0;
-    }
-    if (b > 255) {
-        b = 255;
-    }
-    if (a < 0) {
-        a = 0;
-    }
-    if (a > 255) {
-        a = 255;
-    }
-    return IM_COL32(r, g, b, a);
-}
-
-ImU32 ed_dim_color(ImU32 c, float factor)
-{
-    int r = (int)((c & 255u) * factor);
-    int g = (int)(((c >> 8) & 255u) * factor);
-    int b = (int)(((c >> 16) & 255u) * factor);
-    if (r > 255) {
-        r = 255;
-    }
-    if (g > 255) {
-        g = 255;
-    }
-    if (b > 255) {
-        b = 255;
-    }
-    return IM_COL32(r, g, b, (c >> 24) & 255u);
-}
-
-ImVec4 ed_spec_color(const pin_spec *spec)
-{
-    return spec->kind == PIN_EXEC ? (ImVec4){ 1.0f, 0.55f, 0.20f, 1.0f }
-                                  : ed_pin_color(spec->type);
 }

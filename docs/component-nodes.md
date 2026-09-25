@@ -123,11 +123,7 @@ This is the test registry, which adds a few test-only nodes to the application's
 
 ## Editors and tools
 
-- **ImGui editor:**
-  - The Details panel shows a Component or Type choice, fed by the host's component and struct catalogs through `ed_pin_choices`.
-  - The node menu's **Write** submenu toggles Value and each settable field.
-  - **Fields** shows or hides Get's outputs.
-- **RmlUi graph editor:**
+- **Studio graph editor:**
   - It renders component nodes through `ed_search_matches`, `ed_spawn_match_at`, `ed_node_title` and the graph model.
   - Its Properties panel can offer the Component or Type setting through `ed_pin_choices`. The choices are a name catalog, so the selected item compares `editor_choice.name` with the pin's string, and the choice commits with `graph_set_pin_default`.
   - Write toggles call `component_node_show_field` and `component_node_split_value`.

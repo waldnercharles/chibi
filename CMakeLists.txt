@@ -88,7 +88,7 @@ if(NOT cute_framework_POPULATED)
     endif()
 endif()
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
+foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -103,7 +103,7 @@ if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options(cute PRIVATE -Wno-elaborated-enum-base)
 endif()
 
-# WebGL has no base-vertex draw support; large graph canvases exceed 16-bit indices.
+# WebGL has no base-vertex draw support; 32-bit indices keep large ImGui draw lists drawable.
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
 # --- SLJIT backend ----------------------------------------------------------
@@ -444,7 +444,7 @@ target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(engine)
 
-# --- editor UI (RmlUi shell and existing ImGui panes) ---
+# --- editor UI (RmlUi Studio) ---
 
 include(cmake/rmlui.cmake)
 add_library(editor STATIC ${EDITOR_SOURCES})
@@ -621,8 +621,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/automation_asset_write.c test/automation_graph_edit.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
-    test/ui_scroll.c
+    test/automation_asset_write.c test/automation_graph_edit.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
     test/arena_input.c
     test/physics.c
@@ -630,11 +629,8 @@ add_executable(test_suite
     test/encounter.c
     test/encounter_query_benchmark.c
     test/system_arithmetic.c
-    test/arena_ui.c
-    test/shader_ui.c
-    test/ui_keyboard.c
+    test/arena_play.c
     test/editor_checkpoint.c
-    test/gameplay_keyboard.c
     test/math_expression.c
     test/behavior_math.c
     test/surface.c
@@ -644,36 +640,27 @@ add_executable(test_suite
     test/shader_effects.c
     test/shader_program.c
     test/shader_image.c
-    test/shader_image_files.c
     test/shader_image_routes.c
     test/shader_graph.c
     test/typed_events.c
-    test/navigation_runtime.c
+    test/scene_instances.c
     src/render/screenshot.c
     src/render/shader_fragment.c
     src/assets/behavior_loader.c
     src/assets/project.c
     src/editor/workspace/scene_authoring.c
     src/editor/workspace/asset_index.c
-    src/editor/panels/asset_browser.c
-    src/editor/panels/asset_document.c
     src/editor/workspace/scene_actors.c
     src/editor/workspace/scene_runtime.c
     src/editor/workspace/scene_tabs.c
     src/editor/workspace/scene_viewport.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c
-    src/editor/workspace/scene_workspace.c
     src/editor/documents/scene_prototypes.c
     src/editor/workspace/scene_checkpoint.c
-    src/editor/panels/scene_properties.c
-    src/editor/panels/prototype_inspector.c
-    src/editor/panels/scene_inspector.c
-    src/editor/panels/scene_navigator.c
+    src/editor/documents/component_properties.c
     src/editor/documents/scene_history.c
     src/editor/documents/scene_retention.c
-    src/editor/workspace/prototype_still.c
-    src/editor/workspace/scene_navigation.c
     src/editor/workspace/scene_debug.c
     src/editor/workspace/gameplay_input.c
     src/editor/workspace/game_presentation.c
@@ -683,7 +670,7 @@ add_executable(test_suite
     test/retained_components.c
     test/editor_flow.c
     test/component_fields.c
-    test/scene_navigation.c
+    test/editor_documents.c
     test/scene_debug.c
     test/orientation.c
     test/movement_input.c
@@ -699,7 +686,6 @@ add_executable(test_suite
     test/sdf_coverage.c
     test/draw_backend.cpp
     src/host/stacktrace.c
-    src/editor/graph/preview_gate.c
     ${TEST_REGISTRY}
 )
 # Generated-C system benchmarks call the same runtime helpers as SLJIT.

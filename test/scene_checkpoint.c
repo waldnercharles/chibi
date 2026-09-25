@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
@@ -10,13 +9,12 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Runs after Cute and ImGui initialization; no rendering or input injection is
- * required to prove that a native generation can reconstruct authoring state. */
+/* Runs after Cute initialization; no rendering or input injection is required
+ * to prove that a native generation can reconstruct authoring state. */
 typedef struct
 {
     ecs_world *world;
@@ -238,9 +236,9 @@ static void scene_tabs_retain_authored_state()
     assert(scene_tabs_activate(f.scene, second) == 0);
     assert(GAME_GameTransform_get_const(f.world, f.scene->actors[0].entity)->x == 11);
     assert(f.scene->camera.view.center_x == 42 && f.scene->selected == 0);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(replay_scene_edit(f.scene, false) == 0);
     assert(GAME_GameTransform_get_const(f.world, f.scene->actors[0].entity)->x == 1);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(replay_scene_edit(f.scene, true) == 0);
     assert(GAME_GameTransform_get_const(f.world, f.scene->actors[0].entity)->x == 11);
     remove(first_path);
     remove(second_path);
@@ -263,15 +261,12 @@ static void scene_tabs_save_as_keeps_identity()
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
     int scene_tab = f.scene->active_tab;
     char *identity = xstrdup(f.scene->tabs[scene_tab].key);
-    app_scene_authoring_navigation_sync(f.scene);
     assert(app_scene_authoring_save(f.scene, second_path) == 0);
     assert(acount(f.scene->tabs) == 1 && f.scene->scene_path);
     assert(!strcmp(f.scene->scene_path, second_path));
     assert(!strcmp(f.scene->tabs[scene_tab].key, identity));
-    app_scene_authoring_navigation_sync(f.scene);
     assert(app_scene_authoring_open_behavior(f.scene, "ReloadBehavior") == 0);
-    app_scene_authoring_navigation_sync(f.scene);
-    assert(app_scene_authoring_navigate(f.scene, false) == 0);
+    assert(scene_tabs_activate(f.scene, scene_tab) == 0);
     assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_SCENE);
     assert(!strcmp(f.scene->scene_path, second_path));
     assert(app_scene_authoring_open_behavior(f.scene, "ReloadBehavior") == 0);
@@ -282,55 +277,6 @@ static void scene_tabs_save_as_keeps_identity()
     }
     assert(scene_tabs == 1);
     free(identity);
-    remove(first_path);
-    remove(second_path);
-    fixture_free(&f);
-}
-
-static void navigation_restores_underlying_scene_tab()
-{
-    checkpoint_fixture f = fixture_new();
-    assert(
-        app_scene_authoring_register_prototype(f.scene, "{\"name\":\"NavigationPrototype\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}}}", NULL) ==
-        0
-    );
-    assert(app_scene_authoring_add_instance(f.scene, "NavigationPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-navigation-a.yaml";
-    const char *second_path = "/tmp/chibi-39-navigation-c.yaml";
-    char *json = scene_authoring_scene_json(f.scene);
-    assert(json && write_text_file_atomic(first_path, json) == 0);
-    free(json);
-    assert(app_scene_authoring_load(f.scene, first_path) == 0);
-    app_scene_authoring_navigation_sync(f.scene);
-    assert(app_scene_authoring_open_behavior(f.scene, "ReloadBehavior") == 0);
-    app_scene_authoring_navigation_sync(f.scene);
-    json = scene_authoring_scene_json(f.scene);
-    assert(json && write_text_file_atomic(second_path, json) == 0);
-    free(json);
-    assert(scene_tabs_open_scene(f.scene, second_path) == 0);
-    assert(app_scene_authoring_navigate(f.scene, false) == 0);
-    assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
-    assert(!strcmp(f.scene->document.id, "ReloadBehavior"));
-    assert(!strcmp(f.scene->scene_path, first_path));
-    assert(f.scene->tabs[f.scene->active_tab].kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
-    assert(app_scene_authoring_navigate(f.scene, false) == 0);
-    assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_SCENE);
-    assert(!strcmp(f.scene->scene_path, first_path));
-    assert(f.scene->tabs[f.scene->active_tab].kind == APP_EDITOR_DOCUMENT_SCENE);
-    assert(f.scene->selected == 0);
-    assert(ecs_entity_is_alive(f.world, f.scene->actors[0].entity));
-    assert(app_scene_authoring_navigate(f.scene, true) == 0);
-    assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
-    assert(app_scene_authoring_navigate(f.scene, true) == 0);
-    assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_SCENE);
-    assert(!strcmp(f.scene->scene_path, second_path));
-    assert(app_scene_authoring_navigate(f.scene, false) == 0);
-    assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
-    assert(app_scene_authoring_navigate(f.scene, false) == 0);
-    assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_SCENE);
-    assert(!strcmp(f.scene->scene_path, first_path));
-    assert(f.scene->selected == 0);
-    assert(ecs_entity_is_alive(f.world, f.scene->actors[0].entity));
     remove(first_path);
     remove(second_path);
     fixture_free(&f);
@@ -571,7 +517,7 @@ static void scene_tabs_retain_system_state()
     fixture_free(&f);
 }
 
-static void scene_tabs_system_save_as_navigation_identity()
+static void scene_tabs_system_save_as_identity()
 {
     checkpoint_fixture f = fixture_new();
     const char *first_path = "/tmp/chibi-39-system-nav-a.yaml";
@@ -582,17 +528,16 @@ static void scene_tabs_system_save_as_navigation_identity()
     remove(save_as_path);
     assert(app_scene_authoring_set_content_root(f.scene, "/tmp") == 0);
     assert(app_scene_authoring_open_system(f.scene, first_path) == 0);
-    char *identity = xstrdup(f.scene->tabs[f.scene->active_tab].key);
-    app_scene_authoring_navigation_sync(f.scene);
+    int first = f.scene->active_tab;
+    char *identity = xstrdup(f.scene->tabs[first].key);
     assert(app_scene_authoring_save_as(f.scene) == 0);
     assert(!strcmp(f.scene->system_path, save_as_path));
     assert(!strcmp(f.scene->tabs[f.scene->active_tab].key, identity));
-    app_scene_authoring_navigation_sync(f.scene);
     assert(app_scene_authoring_open_system(f.scene, other_path) == 0);
-    app_scene_authoring_navigation_sync(f.scene);
-    assert(app_scene_authoring_navigate(f.scene, false) == 0);
+    int other = f.scene->active_tab;
+    assert(scene_tabs_activate(f.scene, first) == 0);
     assert(!strcmp(f.scene->system_path, save_as_path));
-    assert(app_scene_authoring_navigate(f.scene, true) == 0);
+    assert(scene_tabs_activate(f.scene, other) == 0);
     assert(!strcmp(f.scene->system_path, other_path));
     free(identity);
     remove(first_path);
@@ -882,61 +827,20 @@ static void physics_settings_checkpoint()
     fixture_free(&f);
 }
 
-static void checkpoint_detects_external_behavior_change()
-{
-    const char *path = "/tmp/chibi-39-behavior-source.yaml";
-    remove(path);
-    checkpoint_fixture f = fixture_new();
-    game_live_definition *definition = game_live_find_definition(f.live, "ReloadBehavior");
-    assert(definition && game_live_definition_set_path(definition, path) == 0);
-    char *source_json = behavior_asset_save_json(definition->working);
-    assert(source_json && write_text_file_atomic(path, source_json) == 0);
-    free(source_json);
-    char *checkpoint = app_scene_authoring_checkpoint(f.scene);
-    assert(checkpoint);
-
-    behavior_asset *external = behavior_asset_new("ReloadBehavior");
-    assert(external && graph_add_node(external->graph, registry_node_by_name("Integer")));
-    char *external_json = behavior_asset_save_json(external);
-    assert(external_json && write_text_file_atomic(path, external_json) == 0);
-    int source_nodes = acount(definition->working->graph->nodes);
-    behavior_asset_free(external);
-    fixture_free(&f);
-
-    checkpoint_fixture candidate = fixture_new();
-    assert(app_scene_authoring_restore_checkpoint(candidate.scene, checkpoint) == 0);
-    assert(acount(candidate.scene->external_behavior_changes) == 1);
-    definition = game_live_find_definition(candidate.live, "ReloadBehavior");
-    assert(definition && acount(definition->working->graph->nodes) == source_nodes);
-    const char *snapshot = scene_behavior_source_snapshot(candidate.scene, "ReloadBehavior", path);
-    assert(snapshot && strcmp(snapshot, external_json) != 0);
-    assert(reload_behavior_from_disk(candidate.scene, "ReloadBehavior") == 0);
-    assert(acount(definition->working->graph->nodes) == source_nodes + 1);
-    assert(acount(candidate.scene->external_behavior_changes) == 0);
-    snapshot = scene_behavior_source_snapshot(candidate.scene, "ReloadBehavior", path);
-    assert(snapshot && strcmp(snapshot, external_json) == 0);
-    free(external_json);
-    free(checkpoint);
-    remove(path);
-    fixture_free(&candidate);
-}
-
 static int test_scene_checkpoint()
 {
     physics_settings_checkpoint();
-    checkpoint_detects_external_behavior_change();
     asset_references_follow_authored_edits();
     shader_scene_load();
     scene_tabs_retain_authored_state();
     scene_tabs_save_as_keeps_identity();
-    navigation_restores_underlying_scene_tab();
     scene_tabs_failed_restore_rolls_back();
     scene_tabs_discard_reverts_shared_assets();
     scene_tabs_close_underlying_scene_keeps_context();
     scene_tabs_reject_last_scene_close();
     scene_tabs_failed_behavior_discard_is_atomic();
     scene_tabs_retain_system_state();
-    scene_tabs_system_save_as_navigation_identity();
+    scene_tabs_system_save_as_identity();
     checkpoint_restores_next_scene_key();
     checkpoint_fixture fixture = fixture_new();
     assert(
@@ -956,7 +860,6 @@ static int test_scene_checkpoint()
     assert(app_scene_authoring_open_behavior(fixture.scene, "ReloadBehavior") == 0);
     assert(editor_spawn(fixture.graph, registry_node_by_name("Integer"), 12, 34));
     fixture.scene->camera = (scene_camera){ .view = { 10, 20, 300, 200 }, .saved = true };
-    app_scene_authoring_navigation_sync(fixture.scene);
     fixture = roundtrip(&fixture);
     assert(fixture.scene->scene_dirty && acount(fixture.scene->actors) == 1);
     assert(
@@ -971,7 +874,7 @@ static int test_scene_checkpoint()
     editor_undo(fixture.graph);
     assert(acount(editor_active_graph(fixture.graph)->nodes) == 0);
     assert(app_scene_authoring_open_prototype(fixture.scene, "ReloadPrototype") == 0);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(prototype_undo(fixture.scene) == 0);
     pin_value value;
     assert(
         app_scene_authoring_read_prototype_field(fixture.scene, "ReloadPrototype", "GameTransform", "x", &value) ==
@@ -979,9 +882,9 @@ static int test_scene_checkpoint()
         value.f == 1
     );
     scene_authoring_select_document(fixture.scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(replay_scene_edit(fixture.scene, false) == 0);
     assert(acount(fixture.scene->actors) == 0);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(replay_scene_edit(fixture.scene, true) == 0);
     assert(acount(fixture.scene->actors) == 1);
     float authored_x = GAME_GameTransform_get_const(
                            fixture.world,
@@ -1014,7 +917,7 @@ static int test_scene_checkpoint()
     return 0;
 }
 
-void test_navigation_runtime();
+void test_scene_instances();
 
 int scene_documents_run(const char *program)
 {
@@ -1033,14 +936,9 @@ int scene_documents_run(const char *program)
         return 1;
     }
     app_scene_renderer_initialize();
-    cf_app_init_imgui();
     app_input_initialize();
-    editor_ui_initialize(false);
-    ImGui_GetIO()->IniFilename = NULL;
-    cf_app_set_imgui_render_target(cf_app_get_canvas());
-    editor_ui_set_framebuffer_target(true);
     int failed = test_scene_checkpoint();
-    test_navigation_runtime();
+    test_scene_instances();
     app_input_shutdown();
     cf_destroy_app();
     return failed;

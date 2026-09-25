@@ -2,7 +2,6 @@
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
-#include "editor/ui/search.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
@@ -32,7 +31,6 @@ struct asset_index
 {
     asset_index_asset *assets;
     asset_index_reference *references;
-    asset_index_binding_usage *binding_usages;
     asset_session *sessions;
     uint64_t next_session;
 };
@@ -66,14 +64,6 @@ static void free_reference(asset_index_reference *reference)
     free((char *)reference->actor);
 }
 
-static void free_binding_usage(asset_index_binding_usage *usage)
-{
-    free((char *)usage->variable_name);
-    free((char *)usage->source_asset);
-    free((char *)usage->component);
-    free((char *)usage->field);
-}
-
 void asset_index_clear(asset_index *index)
 {
     if (!index) {
@@ -85,12 +75,8 @@ void asset_index_clear(asset_index *index)
     for (int i = 0; i < acount(index->references); i++) {
         free_reference(&index->references[i]);
     }
-    for (int i = 0; i < acount(index->binding_usages); i++) {
-        free_binding_usage(&index->binding_usages[i]);
-    }
     asetlen(index->assets, 0);
     asetlen(index->references, 0);
-    asetlen(index->binding_usages, 0);
 }
 
 void asset_index_free(asset_index *index)
@@ -101,7 +87,6 @@ void asset_index_free(asset_index *index)
     asset_index_clear(index);
     afree(index->assets);
     afree(index->references);
-    afree(index->binding_usages);
     for (int i = 0; i < acount(index->sessions); i++) {
         free(index->sessions[i].owner);
     }
@@ -311,43 +296,6 @@ int asset_index_add_reference(asset_index *index, asset_index_reference referenc
     return 0;
 }
 
-static int asset_index_add_binding_usage(asset_index *index, asset_index_binding_usage usage)
-{
-    if (!index || usage.source < 0 || usage.source >= acount(index->assets) ||
-        !usage.node_id || !usage.pin_id) {
-        return -1;
-    }
-    apush(
-        index->binding_usages,
-        ((asset_index_binding_usage){
-            .source = usage.source,
-            .kind = usage.kind,
-            .variable_id = usage.variable_id,
-            .variable_name = usage.variable_name ? xstrdup(usage.variable_name) : NULL,
-            .source_asset = usage.source_asset ? xstrdup(usage.source_asset) : NULL,
-            .component = usage.component ? xstrdup(usage.component) : NULL,
-            .field = usage.field ? xstrdup(usage.field) : NULL,
-            .graph_id = usage.graph_id,
-            .node_id = usage.node_id,
-            .pin_id = usage.pin_id,
-            .dormant = usage.dormant,
-        })
-    );
-    return 0;
-}
-
-int asset_index_binding_usage_count(const asset_index *index)
-{
-    return index ? acount(index->binding_usages) : 0;
-}
-
-const asset_index_binding_usage *asset_index_binding_usage_at(const asset_index *index, int position)
-{
-    return index && position >= 0 && position < acount(index->binding_usages)
-             ? &index->binding_usages[position]
-             : NULL;
-}
-
 int asset_index_asset_count(const asset_index *index)
 {
     return index ? acount(index->assets) : 0;
@@ -370,11 +318,6 @@ const asset_index_reference *asset_index_reference_at(const asset_index *index, 
     return index && position >= 0 && position < acount(index->references)
              ? &index->references[position]
              : NULL;
-}
-
-int asset_index_score(const asset_index_asset *asset, const char *query)
-{
-    return editor_search_score(query, asset->name, asset->path);
 }
 
 static asset_index_kind kind_for_domain(behavior_domain domain)
@@ -462,38 +405,6 @@ static void add_graph_references(asset_index *index, int source_id, const behavi
                         }
                     );
                 }
-            }
-            for (int pin = 0; pin < node->input_count; pin++) {
-                const pin_spec *input = &node->input_pins[pin];
-                const pin_binding *binding = input->binding;
-                if (!binding || binding->kind == PIN_BINDING_LOCAL ||
-                    input->kind != PIN_DATA) {
-                    continue;
-                }
-                behavior_variable *variable = binding->kind == PIN_BINDING_VARIABLE
-                                                ? behavior_asset_find_variable_by_id(
-                                                      asset,
-                                                      binding->variable_id
-                                                  )
-                                                : NULL;
-                struct node *source = NULL;
-                int source_pin = -1;
-                asset_index_add_binding_usage(
-                    index,
-                    (asset_index_binding_usage){
-                        .source = source_id,
-                        .kind = binding->kind,
-                        .variable_id = binding->variable_id,
-                        .variable_name = variable ? variable->name : NULL,
-                        .source_asset = binding->source_asset,
-                        .component = binding->component_key,
-                        .field = binding->field_name,
-                        .graph_id = graph->graph_id,
-                        .node_id = node->id,
-                        .pin_id = input->id,
-                        .dormant = graph_input_source(graph, node, pin, &source, &source_pin),
-                    }
-                );
             }
             if (node->reference_name && node->reference_name[0] &&
                 !graph_event_host_name(node->reference_name)) {
@@ -1062,9 +973,6 @@ int app_scene_authoring_open_asset(app_scene_authoring *scene, int asset_positio
                                        : NULL;
     if (!asset || asset->unresolved) {
         return -1;
-    }
-    if (asset->path) {
-        content_select_path(scene, asset->path);
     }
     switch (asset->kind) {
         case ASSET_INDEX_SCENE:

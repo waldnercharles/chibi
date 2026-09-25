@@ -5,7 +5,6 @@
 #include "support/array.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,10 +56,7 @@ static void expect_graph(editor *editor, uint64_t id, bool back)
     editor_query state;
     editor_query_state(editor, &state);
     assert(state.active_graph && state.active_graph->graph_id == id);
-    assert(state.can_go_back == back);
-    if (!back) {
-        assert(editor_graph_history_count(editor) == 0);
-    }
+    assert((editor_graph_history_count(editor) > 0) == back);
 }
 
 static void expect_position(editor *editor, uint64_t id, float x, float y)
@@ -71,7 +67,6 @@ static void expect_position(editor *editor, uint64_t id, float x, float y)
 
 void test_graph_navigation()
 {
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     navigation_fixture f = fixture();
     editor *editor = editor_new(f.asset);
     assert(editor);
@@ -178,6 +173,5 @@ void test_graph_navigation()
     assert(editor_graph_back(editor) == -1);
     assert(unlink(path) == 0);
     editor_free(editor);
-    ImGui_DestroyContext(context);
     puts("PASS: graph calls support nested Back, reject invalid targets, preserve positions and clear history on document replacement");
 }

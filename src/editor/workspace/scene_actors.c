@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 
@@ -124,7 +123,6 @@ static int remove_actor_at(app_scene_authoring *scene, int index)
     asetlen(scene->actors, count - 1);
     scene->scene_dirty = true;
     asset_index_invalidate(scene);
-    scene->selected_attachment = -1;
     scene->selected = index < count - 1 ? index : count - 2;
     if (scene->selected >= 0) {
         select_instance(scene, scene->selected);
@@ -251,15 +249,6 @@ int app_scene_authoring_add_instance(app_scene_authoring *scene, const char *pro
     return add_instance_at(scene, prototype_name, NULL);
 }
 
-int app_scene_authoring_selection_count(const app_scene_authoring *scene)
-{
-    int count = 0;
-    for (int i = 0; i < acount(scene->actors); i++) {
-        count += scene->actors[i].marked || i == scene->selected;
-    }
-    return count;
-}
-
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity)
 {
     char **names = NULL;
@@ -322,7 +311,6 @@ int app_scene_authoring_set_instance_behavior(app_scene_authoring *scene, const 
                                          .after_count = acount(after) };
             bool recorded = scene_history_push_behaviors(scene->history, actor->entity, &edit);
             assert(recorded);
-            scene->selected_attachment = -1;
             scene->scene_dirty = true;
             asset_index_invalidate(scene);
             scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
@@ -652,7 +640,6 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
                 break;
             }
         }
-        scene->selected_attachment = -1;
         sync_editor_inspection(scene);
         return 0;
     }

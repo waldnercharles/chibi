@@ -166,13 +166,6 @@ bool app_input_pressed(app_input_action action)
             cf_button_binding_repeated(buttons[action]));
 }
 
-bool app_input_down(app_input_action action)
-{
-    assert(action >= 0 && action < APP_INPUT_COUNT);
-    return ready &&
-           (frame_actions[action] || cf_button_binding_down(buttons[action]));
-}
-
 bool app_input_released(app_input_action action)
 {
     assert(action >= 0 && action < APP_INPUT_COUNT);

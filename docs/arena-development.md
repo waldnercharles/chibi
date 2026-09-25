@@ -88,11 +88,11 @@ destruction; it requires no position, collider or arbitrary search radius.
 Validation entry points after `make build`:
 
 ```sh
-env MallocNanoZone=0 build/test_suite --arena-ui
+env MallocNanoZone=0 build/test_suite --arena-play
 ```
 
-Set `CHIBI_ARENA_CAPTURE=/tmp/arena3d-native.png` on the arena UI run to
-capture the real editor for visual review. Ordinary development does not produce
+Set `CHIBI_ARENA_CAPTURE=/tmp/arena3d-native.png` on that run to capture the
+played scene for visual review. Ordinary development does not produce
 recordings. These focused checks supplement `make test`; hardware controller
 feel, sustained performance and visual-quality comparisons require separate
 play evidence.
@@ -153,11 +153,10 @@ picker; selecting the current type preserves values. The supplied floor, rim,
 player, enemy and projectile assets use these graphs. See
 [shader graphs](shader-graphs.md) for input conventions and renderer limits.
 
-Focused validation also includes `build/test_suite --shader-ui`. Set
-`CHIBI_SHADER_CAPTURE_DIR=/tmp` for intentional editor captures. The integrated native checks
-pass for actual color/vector edits and history, Surface CPU/GPU inputs, Boolean
-parameters, instance overrides and batching, transparency, matching preview/scene
-output, and retained rendering with diagnostics during invalid edits. `make test`
+The integrated native checks passed for actual color/vector edits and history,
+Surface CPU/GPU inputs, Boolean parameters, instance overrides and batching,
+transparency, matching preview/scene output, and retained rendering with
+diagnostics during invalid edits. `make test`
 and the arena interaction checks pass. WebGL renders the arena materials and
 sphere preview; browser playback verifies enemy spawning, restart and Stop with
 no shader warnings or errors.

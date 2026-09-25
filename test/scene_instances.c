@@ -1,17 +1,21 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
-#include "editor/workspace/scene_authoring.h"
+#include "editor/workspace/scene_internal.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 
 #include <assert.h>
-#include <cute_defines.h>
-#define CF_MATH_H
-#include <imgui/dcimgui.h>
-#undef CF_MATH_H
 #include <stdio.h>
 #include <string.h>
+
+/* Undo and Redo for the open document, as Studio's Edit menu applies them. */
+static int history(app_scene_authoring *scene, bool redo)
+{
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+        return redo ? prototype_redo(scene) : prototype_undo(scene);
+    }
+    return replay_scene_edit(scene, redo);
+}
 
 static void first_attachment_redo_after_prototype_gain(app_scene_authoring *scene, ecs_world *world)
 {
@@ -30,7 +34,7 @@ static void first_attachment_redo_after_prototype_gain(app_scene_authoring *scen
     const GameHealth *health = GAME_GameHealth_get_const(world, entity);
     assert(health);
     GameHealth original = *health;
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(history(scene, false) == 0);
     assert(!GAME_GameHealth_has(world, entity));
     assert(app_scene_authoring_add_prototype_component(scene, "FirstAttachment", "GameHealth") == 0);
     assert(
@@ -53,16 +57,16 @@ static void first_attachment_redo_after_prototype_gain(app_scene_authoring *scen
     );
     health = GAME_GameHealth_get_const(world, entity);
     assert(health && health->current == 100 && health->maximum == 200);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(history(scene, true) == 0);
     health = GAME_GameHealth_get_const(world, entity);
     assert(
         health && health->current == original.current &&
         health->maximum == original.maximum
     );
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(history(scene, false) == 0);
     health = GAME_GameHealth_get_const(world, entity);
     assert(health && health->current == 100 && health->maximum == 200);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(history(scene, true) == 0);
     health = GAME_GameHealth_get_const(world, entity);
     assert(
         health && health->current == original.current &&
@@ -85,9 +89,9 @@ static void first_attachment_redo_after_prototype_gain(app_scene_authoring *scen
         health && health->current == original.current &&
         health->maximum == original.maximum
     );
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(history(scene, false) == 0);
     assert(!GAME_GameHealth_has(world, entity));
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(history(scene, true) == 0);
     health = GAME_GameHealth_get_const(world, entity);
     assert(
         health && health->current == original.current &&
@@ -162,11 +166,11 @@ static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world 
         }
         if (pass == 2) {
             assert(app_scene_authoring_open_prototype(scene, "RuntimeRefreshChild") == 0);
-            assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+            assert(history(scene, false) == 0);
         }
         if (pass == 3) {
             assert(app_scene_authoring_open_prototype(scene, "RuntimeRefreshChild") == 0);
-            assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+            assert(history(scene, true) == 0);
         }
         if (pass == 4) {
             assert(
@@ -216,10 +220,10 @@ static void duplicate_instance_preserves_edits(app_scene_authoring *scene, ecs_w
     assert(ecs_entity_to_u64(copy) != ecs_entity_to_u64(original));
     assert(GAME_GameTransform_get_const(world, copy)->x == 123);
     assert(GAME_GameHealth_get_const(world, copy)->current == 42);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(history(scene, false) == 0);
     assert(!ecs_entity_is_alive(world, copy));
     assert(ecs_entity_is_alive(world, original));
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(history(scene, true) == 0);
     copy = app_scene_authoring_runtime_state(scene).selected_entity;
     assert(GAME_GameHealth_get_const(world, copy)->current == 42);
     GAME_GameHealth_get(world, copy)->current = 10;
@@ -246,9 +250,9 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
     );
     assert(GAME_GameWidget_get_const(world, entity)->anchor.x == 0.5f);
     assert(app_scene_authoring_open_prototype(scene, "GuideTest") == 0);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(history(scene, false) == 0);
     assert(GAME_GameWidget_get_const(world, entity)->anchor.x == 0);
-    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(history(scene, true) == 0);
     assert(GAME_GameWidget_get_const(world, entity)->anchor.y == 1);
     char text[] = "Collect the blooms";
     assert(
@@ -265,20 +269,18 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
     puts("prototype fields PASS: vector Undo/Redo and owned text reach instances");
 }
 
-void test_navigation_runtime()
+void test_scene_instances()
 {
-    ImGuiContext *previous = ImGui_GetCurrentContext();
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    behavior_asset *asset = behavior_asset_new("NavigationRuntime");
+    behavior_asset *asset = behavior_asset_new("SceneInstances");
     editor *e = editor_new(asset);
     game_live_world *live = game_live_world_new(world);
     game_live_definition *definition = game_live_definition_new(
-        "NavigationRuntime",
-        behavior_asset_new("NavigationRuntime")
+        "SceneInstances",
+        behavior_asset_new("SceneInstances")
     );
     assert(game_live_add_definition(live, definition) == 0);
     engine *runtime = engine_new(world, live);
@@ -288,54 +290,7 @@ void test_navigation_runtime()
     const char *first = "{\"version\":1,\"name\":\"First\",\"components\":{"
                         "\"GameTransform\":{\"x\":0,\"y\":0},\"GameHealth\":{"
                         "\"current\":73,\"maximum\":100}},\"behaviors\":[]}";
-    const char *second = "{\"version\":1,\"name\":\"Second\",\"components\":{"
-                         "\"GameTransform\":{\"x\":10,\"y\":0},\"GameHealth\":{"
-                         "\"current\":50,\"maximum\":100}},\"behaviors\":[]}";
     assert(app_scene_authoring_register_prototype(scene, first, NULL) == 0);
-    assert(app_scene_authoring_register_prototype(scene, second, NULL) == 0);
-    assert(app_scene_authoring_add_instance(scene, "First") == 0);
-    ecs_entity first_entity = app_scene_authoring_runtime_state(scene).selected_entity;
-    app_scene_authoring_navigation_sync(scene);
-    assert(app_scene_authoring_add_instance(scene, "Second") == 0);
-    ecs_entity deleted = app_scene_authoring_runtime_state(scene).selected_entity;
-    app_scene_authoring_navigation_sync(scene);
-    assert(app_scene_authoring_delete_instance(scene) == 0);
-    assert(!ecs_entity_is_alive(world, deleted));
-    assert(app_scene_authoring_add_instance(scene, "Second") == 0);
-    ecs_entity replacement = app_scene_authoring_runtime_state(scene).selected_entity;
-    assert(ecs_entity_to_u64(replacement) != ecs_entity_to_u64(deleted));
-    app_scene_authoring_navigation_sync(scene);
-    assert(app_scene_authoring_navigate(scene, false) == 0);
-    assert(
-        ecs_entity_to_u64(app_scene_authoring_runtime_state(scene).selected_entity) ==
-        ecs_entity_to_u64(first_entity)
-    );
-    assert(strstr(app_scene_authoring_message(scene), "Skipped 1"));
-    assert(ecs_entity_is_alive(world, replacement));
-    assert(app_scene_authoring_navigate(scene, true) == 0);
-    assert(
-        ecs_entity_to_u64(app_scene_authoring_runtime_state(scene).selected_entity) ==
-        ecs_entity_to_u64(replacement)
-    );
-
-    assert(app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
-    app_scene_authoring_navigation_sync(scene);
-    const GameHealth *before = GAME_GameHealth_get_const(world, replacement);
-    assert(before);
-    int health = before->current;
-    assert(app_scene_authoring_open_prototype(scene, "First") == 0);
-    app_scene_authoring_navigation_sync(scene);
-    assert(app_scene_authoring_navigate(scene, false) == 0);
-    app_runtime_state state = app_scene_authoring_runtime_state(scene);
-    assert(state.playing && state.target == APP_RUNTIME_SCENE);
-    assert(ecs_entity_to_u64(state.selected_entity) == ecs_entity_to_u64(replacement));
-    assert(GAME_GameHealth_get_const(world, replacement)->current == health);
-    assert(app_scene_authoring_navigate(scene, true) == 0);
-    state = app_scene_authoring_runtime_state(scene);
-    assert(state.playing && state.target == APP_RUNTIME_SCENE);
-    assert(app_scene_authoring_document(scene).kind == APP_EDITOR_DOCUMENT_PROTOTYPE);
-    assert(GAME_GameHealth_get_const(world, replacement)->current == health);
-    assert(app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     first_attachment_redo_after_prototype_gain(scene, world);
     prototype_spawn_refresh(scene, live, world);
     duplicate_instance_preserves_edits(scene, world);
@@ -345,7 +300,4 @@ void test_navigation_runtime()
     game_live_world_free(live);
     editor_free(e);
     ecs_world_free(world);
-    ImGui_DestroyContext(context);
-    ImGui_SetCurrentContext(previous);
-    puts("scene navigation PASS: deleted entity generations are skipped; Back/Forward preserve a playing Scene target and component values");
 }

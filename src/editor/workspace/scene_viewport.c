@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
@@ -290,7 +289,6 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         afree(remove);
         scene->selected = -1;
         scene->runtime_selected = (ecs_entity){ 0 };
-        scene->selected_attachment = -1;
         for (int i = 0; i < acount(scene->actors); i++) {
             scene->actors[i].marked = false;
         }
@@ -329,7 +327,6 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         if (!picked.slot) {
             scene->selected = -1;
             scene->runtime_selected = (ecs_entity){ 0 };
-            scene->selected_attachment = -1;
             for (int i = 0; i < acount(scene->actors); i++) {
                 scene->actors[i].marked = false;
             }
@@ -399,11 +396,8 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     app_runtime_target target = scene->active_runtime_target;
     scene_prototype_asset *prototype = previewed_prototype(scene);
     bool preview = target == APP_RUNTIME_PREVIEW && prototype;
-    engine_viewport_set_widgets(
+    engine_viewport_set_runtime(
         viewport,
-        preview ? game_prototype_preview_world(scene->prototype_preview) : scene->world,
-        preview ? game_prototype_preview_entities(scene->prototype_preview)
-                : scene->live->entities,
         preview ? game_prototype_preview_runtime(scene->prototype_preview)
                 : scene->runtime
     );
@@ -457,7 +451,6 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         }
     }
     engine_viewport_controls controls = {
-        .error = app_scene_renderer_error(scene->renderer),
         .session = target == APP_RUNTIME_PREVIEW ? prototype != NULL
                                                  : scene->runtime_snapshot_valid,
         .editing = scene_can_move(scene),
@@ -481,30 +474,19 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
             snprintf(scene->message, sizeof scene->message, "GameCamera requires one active camera with positive spans.");
         }
     }
-    app_runtime_command command;
-    engine_viewport_action action = engine_viewport_draw(viewport, &controls);
+    int drawn = engine_viewport_draw(viewport, &controls);
     edit_scene_pointer(scene, viewport);
-    if (action == ENGINE_VIEWPORT_FIT || fit) {
+    if (fit) {
         fit_scene_view(
             viewport,
             preview ? game_prototype_preview_world(scene->prototype_preview)
                     : scene->world,
-            action == ENGINE_VIEWPORT_FIT ? (ecs_entity){ 0 } : fit_entity
+            fit_entity
         );
     }
     engine_viewport_get_view(viewport, &camera->view);
     camera->saved = true;
-    switch (action) {
-        case ENGINE_VIEWPORT_NONE: return 0;
-        case ENGINE_VIEWPORT_FIT: return 0;
-        case ENGINE_VIEWPORT_PLAY: command = APP_RUNTIME_PLAY; break;
-        case ENGINE_VIEWPORT_PAUSE: command = APP_RUNTIME_PAUSE; break;
-        case ENGINE_VIEWPORT_STEP: command = APP_RUNTIME_STEP; break;
-        case ENGINE_VIEWPORT_RESTART: command = APP_RUNTIME_RESTART; break;
-        case ENGINE_VIEWPORT_STOP: command = APP_RUNTIME_STOP; break;
-        default: return -1;
-    }
-    return app_scene_authoring_runtime_command(scene, target, command);
+    return drawn;
 }
 
 static CF_Color packed_color(unsigned color)

@@ -1,6 +1,5 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
@@ -8,8 +7,6 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -188,7 +185,6 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
     tab->scene_dirty = scene->scene_dirty;
     tab->selected = scene->selected;
     tab->selected_prototype = scene->selected_prototype;
-    tab->selected_attachment = scene->selected_attachment;
     free(tab->selected_prototype_name);
     tab->selected_prototype_name = selected_prototype(scene) &&
                                            selected_prototype(scene)->prototype
@@ -259,18 +255,6 @@ static void restore_scene_tab_view(app_scene_authoring *scene, const scene_docum
     if (scene->selected_prototype < 0 ||
         scene->selected_prototype >= acount(scene->prototypes)) {
         scene->selected_prototype = -1;
-    }
-    scene->selected_attachment = tab->selected_attachment;
-    if (scene->selected >= 0) {
-        int count = game_behavior_attachment_count_for_entity(
-            scene->live->behaviors,
-            scene->actors[scene->selected].entity
-        );
-        if (scene->selected_attachment < 0 || scene->selected_attachment >= count) {
-            scene->selected_attachment = count ? 0 : -1;
-        }
-    } else {
-        scene->selected_attachment = -1;
     }
 }
 
@@ -407,10 +391,8 @@ static scene_document_tab *add_tab(
 
 void scene_tabs_initialize(app_scene_authoring *scene)
 {
-    editor_ui_set_document_bar_visible(true);
     scene->active_tab = -1;
     scene->next_scene_key = 1;
-    scene->close_tab = -1;
     scene_document_tab *tab = add_tab(scene, APP_EDITOR_DOCUMENT_SCENE, "scene-1", NULL);
     assert(tab);
     scene->active_tab = 0;
@@ -426,7 +408,6 @@ void scene_tabs_free(app_scene_authoring *scene)
     scene->active_tab = -1;
     free(scene->current_scene_tab_key);
     scene->current_scene_tab_key = NULL;
-    editor_ui_set_document_bar_visible(false);
 }
 
 void scene_tabs_document_selected(
@@ -544,7 +525,6 @@ static int restore_scene_tab_contents(app_scene_authoring *scene, scene_document
         afree(replacement);
         return -1;
     }
-    scene_navigation_remap_entities(scene->navigation, tab->key, old, replacement, mapped);
     if (!tab->scene_history) {
         scene_history_clear(scene->history);
     }
@@ -600,7 +580,6 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
         if (target->kind == APP_EDITOR_DOCUMENT_SCENE) {
             set_current_scene_tab(scene, target);
         }
-        app_scene_authoring_navigation_sync(scene);
     } else {
         scene->active_tab = previous;
         if (target->kind == APP_EDITOR_DOCUMENT_SCENE && rollback_ready) {
@@ -880,149 +859,4 @@ int scene_tabs_discard(app_scene_authoring *scene, int index)
         return -1;
     }
     return remove_tab(scene, index);
-}
-
-static void request_close(app_scene_authoring *scene, int index)
-{
-    scene->close_tab = index;
-    if (scene_tabs_dirty(scene, &scene->tabs[index])) {
-        return;
-    }
-    remove_tab(scene, index);
-    scene->close_tab = -1;
-}
-
-static void draw_close_popup(app_scene_authoring *scene)
-{
-    if (scene->close_tab < 0 || scene->close_tab >= acount(scene->tabs) ||
-        !ImGui_BeginPopupModal("workspace.close", NULL, 0)) {
-        return;
-    }
-    scene_document_tab *tab = &scene->tabs[scene->close_tab];
-    ImGui_Text("Save changes to %s?", tab->label);
-    bool save = ImGui_Button("Save");
-    editor_ui_track_item("workspace.close.save");
-    if (save) {
-        int index = scene->close_tab;
-        if (scene_tabs_activate(scene, index) == 0 &&
-            save_active_document(scene) == 0 && remove_tab(scene, index) == 0) {
-            scene->close_tab = -1;
-            ImGui_CloseCurrentPopup();
-        }
-    }
-    ImGui_SameLine();
-    bool discard = ImGui_Button("Discard");
-    editor_ui_track_item("workspace.close.discard");
-    if (discard) {
-        int index = scene->close_tab;
-        if (scene_tabs_discard(scene, index) == 0) {
-            scene->close_tab = -1;
-            ImGui_CloseCurrentPopup();
-        }
-    }
-    ImGui_SameLine();
-    bool cancel = ImGui_Button("Cancel");
-    editor_ui_track_item("workspace.close.cancel");
-    if (cancel) {
-        scene->close_tab = -1;
-        ImGui_CloseCurrentPopup();
-    }
-    ImGui_EndPopup();
-}
-
-void scene_tabs_draw(app_scene_authoring *scene)
-{
-    if (!scene || !ImGui_GetCurrentContext()) {
-        return;
-    }
-    bool visible = editor_ui_begin_document_bar();
-    int activate = -1;
-    int close = -1;
-    if (visible) {
-        if (editor_ui_take_document_list_request()) {
-            ImGui_OpenPopup("workspace.document_list", 0);
-        }
-        editor_ui_rect list;
-        if (editor_ui_item_rect("workspace.documents.list", &list)) {
-            ImGui_SetNextWindowPos((ImVec2){ list.x, list.y + list.height + 4.0f }, ImGuiCond_Always);
-        }
-        if (ImGui_BeginPopup("workspace.document_list", 0)) {
-            for (int i = 0; i < acount(scene->tabs); i++) {
-                scene_document_tab *tab = &scene->tabs[i];
-                ImGui_PushID(tab->key);
-                if (ImGui_MenuItemEx(
-                        tab->label,
-                        scene_tabs_dirty(scene, tab) ? "Modified" : NULL,
-                        i == scene->active_tab,
-                        true
-                    )) {
-                    activate = i;
-                }
-                char item_id[320];
-                snprintf(item_id, sizeof item_id, "workspace.document.%s", tab->key);
-                editor_ui_track_item(item_id);
-                if (ImGui_IsItemHovered(0)) {
-                    ImGui_SetTooltip("%s", tab->path ? tab->path : tab->label);
-                }
-                ImGui_PopID();
-            }
-            ImGui_EndPopup();
-        }
-        if (ImGui_BeginTabBar("workspace.documents", ImGuiTabBarFlags_FittingPolicyScroll)) {
-            for (int i = 0; i < acount(scene->tabs); i++) {
-                scene_document_tab *tab = &scene->tabs[i];
-                bool open = true;
-                char label[256];
-                snprintf(label, sizeof label, "%s###%s", tab->label, tab->key);
-                ImGui_PushID(tab->key);
-                int flags = i == scene->active_tab ? ImGuiTabItemFlags_SetSelected : 0;
-                if (scene_tabs_dirty(scene, tab)) {
-                    flags |= ImGuiTabItemFlags_UnsavedDocument;
-                }
-                ImGui_SetNextItemWidth(
-                    fminf(220.0f, ImGui_CalcTextSize(tab->label).x + 40.0f)
-                );
-                bool active = ImGui_BeginTabItem(label, can_close_tab(scene, i) ? &open : NULL, flags);
-                char item_id[320];
-                snprintf(item_id, sizeof item_id, "workspace.tab.%s", tab->key);
-                editor_ui_track_item(item_id);
-                if ((ImGui_IsItemClicked() || ImGui_IsItemActivated()) &&
-                    i != scene->active_tab) {
-                    activate = i;
-                }
-                if (ImGui_IsItemHovered(0)) {
-                    ImGui_SetTooltip("%s", tab->path ? tab->path : tab->label);
-                }
-                if (ImGui_BeginPopupContextItemEx("tab_actions", 1)) {
-                    if (ImGui_MenuItemEx("Close", NULL, false, can_close_tab(scene, i))) {
-                        close = i;
-                    }
-                    editor_ui_track_item("workspace.tab.close");
-                    ImGui_EndPopup();
-                }
-                if (active) {
-                    ImGui_EndTabItem();
-                }
-                ImGui_PopID();
-                if (!open) {
-                    close = i;
-                }
-            }
-            ImGui_EndTabBar();
-        }
-        if (close >= 0) {
-            request_close(scene, close);
-            activate = -1;
-        }
-        if (scene->close_tab >= 0 && scene->close_tab < acount(scene->tabs) &&
-            scene_tabs_dirty(scene, &scene->tabs[scene->close_tab])) {
-            editor_ui_open_popup("workspace.close");
-            draw_close_popup(scene);
-        }
-    }
-    ImGui_End();
-    if (activate >= 0) {
-        scene->close_tab = -1;
-        scene_tabs_activate(scene, activate);
-    }
 }

@@ -78,38 +78,23 @@ void engine_set_behavior_profiling(engine *engine, bool enabled);
 bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out);
 
 /* Host viewport surface. Resize requests are coalesced; the target is
- * recreated only when engine_viewport_commit_resize is called. */
+ * recreated once a size has held for two draws. */
 engine_viewport *engine_viewport_new(int width, int height);
 void engine_viewport_free(engine_viewport *viewport);
 int engine_viewport_request_resize(engine_viewport *viewport, int width, int height);
-int engine_viewport_commit_resize(engine_viewport *viewport);
-typedef enum
-{
-    ENGINE_VIEWPORT_ERROR = -1,
-    ENGINE_VIEWPORT_NONE = 0,
-    ENGINE_VIEWPORT_PLAY,
-    ENGINE_VIEWPORT_PAUSE,
-    ENGINE_VIEWPORT_STEP,
-    ENGINE_VIEWPORT_RESTART,
-    ENGINE_VIEWPORT_STOP,
-    ENGINE_VIEWPORT_FIT,
-} engine_viewport_action;
 
 typedef struct
 {
     bool playing;
     bool session;
     bool editing;
-    const char *error; /* Borrowed renderer diagnostic, read after drawing. */
 } engine_viewport_controls;
 
-/* Controls are borrowed for this draw. NULL draws only the viewport. */
 /* Draw a framed, noninteractive canvas inside the current ImGui region. */
 int engine_viewport_image(engine_viewport *viewport, float width, float height);
-engine_viewport_action engine_viewport_draw(
-    engine_viewport *viewport,
-    const engine_viewport_controls *controls
-);
+/* Render the canvas and interpret this frame's host input. Returns -1 when the
+ * canvas cannot be resized. */
+int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_controls *controls);
 
 /* Pointer state from a retained UI host, in logical pixels relative to the image. */
 typedef struct engine_viewport_host_input
@@ -126,8 +111,7 @@ typedef struct engine_viewport_host_input
     char dropped_prototype[256];
 } engine_viewport_host_input;
 
-/* While set, engine_viewport_draw renders the canvas and interprets this input
- * instead of drawing an ImGui pane. The host displays the canvas texture. */
+/* Required before engine_viewport_draw. The host displays the canvas texture. */
 void engine_viewport_set_host_input(engine_viewport *viewport, const engine_viewport_host_input *input);
 /* CF texture id of the current canvas target; changes when the canvas resizes. */
 uint64_t engine_viewport_texture(const engine_viewport *viewport);
@@ -153,20 +137,11 @@ typedef struct engine_viewport_pointer
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer);
 /* Sample this frame's mouse against the last displayed image rectangle. */
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
-void engine_viewport_set_widgets(
-    engine_viewport *viewport,
-    ecs_world *world,
-    game_entities *entities,
-    const engine *runtime
-);
-bool engine_viewport_widgets_capture(const engine_viewport *viewport);
+/* The runtime whose audio plays while a session is shown. */
+void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtime);
 
-/* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
- * way to hand focus back so Escape can release the viewport. */
+/* ENG-3: whether the scene area held the keyboard as of the last draw. */
 int engine_viewport_focused(const engine_viewport *viewport);
-void engine_viewport_release_focus(void);
-uint64_t engine_viewport_binding(const engine_viewport *viewport);
-uint32_t engine_viewport_recreate_count(const engine_viewport *viewport);
 void engine_viewport_pixel_size(const engine_viewport *viewport, int *width, int *height);
 typedef struct engine_viewport_camera
 {

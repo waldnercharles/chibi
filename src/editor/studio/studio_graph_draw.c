@@ -58,6 +58,11 @@ static uint32_t pin_color(const studio *s, const pin_spec *spec, float alpha)
            (uint32_t)lroundf(fminf(c.w * alpha, 1) * 255);
 }
 
+uint32_t sg_pin_color(const studio *s, const pin_spec *spec)
+{
+    return pin_color(s, spec, 1);
+}
+
 /* ---------- Emission ---------- */
 
 /* Data rows are keyed i<pin> and o<pin> in the body; an execution row e<n>

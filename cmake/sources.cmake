@@ -59,6 +59,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/validate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/extract.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/events.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/function_signature.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/library.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_effects.c
@@ -183,6 +184,8 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keys.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_members.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_member_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c

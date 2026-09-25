@@ -513,8 +513,16 @@ int behavior_asset_set_variable_default(behavior_asset *asset, uint64_t id, cons
     if (!v || value->type != v->type) {
         return -1;
     }
-    v->default_value = *value;
-    v->default_value.container = v->container;
+    pin_value source = *value;
+    source.container = v->container;
+    source.type_name = v->type_name;
+    pin_value owned = source;
+    /* A vector or other struct is copied, as pin defaults are. */
+    if (source.container == PIN_CONTAINER_SINGLE && source.type == PIN_STRUCT &&
+        source.ptr && pin_value_copy_to_graph(asset->graph, &owned, &source)) {
+        return -1;
+    }
+    v->default_value = owned;
     v->default_value.type_name = v->type_name;
     if (v->container >= PIN_CONTAINER_ARRAY && value->ptr) {
         v->default_value.ptr = pin_array_clone_to_graph(
@@ -530,41 +538,94 @@ int behavior_asset_set_variable_default(behavior_asset *asset, uint64_t id, cons
     return 0;
 }
 
-node *behavior_asset_add_get_node(behavior_asset *asset, uint64_t variable_id)
+behavior_variable *behavior_asset_duplicate_variable(behavior_asset *asset, uint64_t id, const char *name)
 {
-    if (!asset || !behavior_asset_mutable(asset)) {
-        return NULL;
-    }
-    behavior_variable *v = behavior_asset_find_variable_by_id(asset, variable_id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
     if (!v) {
         return NULL;
     }
-    node *n = graph_add_node(asset->graph, &NODE_GetVariable);
+    /* Adding may move the variables, and with them v. */
+    behavior_variable source = *v;
+    return behavior_asset_add_variable(
+        asset,
+        name,
+        source.type,
+        source.type_name,
+        source.container,
+        &source.default_value,
+        source.category
+    );
+}
+
+static bool variable_node(const node *n, uint64_t id)
+{
+    return n->reference_id == id &&
+           (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable);
+}
+
+int behavior_asset_remove_variable_uses(behavior_asset *asset, uint64_t id)
+{
+    int removed = 0;
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        graph *target = asset->graphs[g];
+        for (int i = acount(target->nodes) - 1; i >= 0; i--) {
+            node *n = target->nodes[i];
+            if (variable_node(n, id)) {
+                removed += graph_remove_node(target, n) == 0;
+                continue;
+            }
+            for (int p = 0; p < n->input_count; p++) {
+                const pin_binding *binding = n->input_pins[p].binding;
+                if (binding && binding->kind == PIN_BINDING_VARIABLE &&
+                    binding->variable_id == id &&
+                    (!binding->source_asset ||
+                     !strcmp(binding->source_asset, asset->name))) {
+                    graph_set_pin_binding(target, n, 0, p, NULL);
+                }
+            }
+        }
+    }
+    return removed;
+}
+
+static node *add_variable_node(behavior_asset *asset, graph *g, uint64_t variable_id, bool set)
+{
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, variable_id);
+    if (!v || !behavior_asset_mutable(asset) || !g || g->owner != asset) {
+        return NULL;
+    }
+    node *n = graph_add_node(g, set ? &NODE_SetVariable : &NODE_GetVariable);
     if (!n) {
         return NULL;
     }
-    graph_set_node_reference(asset->graph, n, v->id, v->name);
-    graph_set_pin_type(asset->graph, n, 1, 0, v->type, v->type_name);
+    graph_set_node_reference(g, n, v->id, v->name);
+    if (set) {
+        graph_set_pin_type(g, n, 0, 1, v->type, v->type_name);
+        graph_set_pin_container(g, n, 0, 1, v->container);
+    }
+    graph_set_pin_type(g, n, 1, set, v->type, v->type_name);
+    graph_set_pin_container(g, n, 1, set, v->container);
     return n;
+}
+
+node *behavior_asset_add_get_node_to_graph(behavior_asset *asset, graph *g, uint64_t variable_id)
+{
+    return add_variable_node(asset, g, variable_id, false);
+}
+
+node *behavior_asset_add_set_node_to_graph(behavior_asset *asset, graph *g, uint64_t variable_id)
+{
+    return add_variable_node(asset, g, variable_id, true);
+}
+
+node *behavior_asset_add_get_node(behavior_asset *asset, uint64_t variable_id)
+{
+    return asset ? add_variable_node(asset, asset->graph, variable_id, false) : NULL;
 }
 
 node *behavior_asset_add_set_node(behavior_asset *asset, uint64_t variable_id)
 {
-    if (!asset || !behavior_asset_mutable(asset)) {
-        return NULL;
-    }
-    behavior_variable *v = behavior_asset_find_variable_by_id(asset, variable_id);
-    if (!v) {
-        return NULL;
-    }
-    node *n = graph_add_node(asset->graph, &NODE_SetVariable);
-    if (!n) {
-        return NULL;
-    }
-    graph_set_node_reference(asset->graph, n, v->id, v->name);
-    graph_set_pin_type(asset->graph, n, 0, 1, v->type, v->type_name);
-    graph_set_pin_type(asset->graph, n, 1, 1, v->type, v->type_name);
-    return n;
+    return asset ? add_variable_node(asset, asset->graph, variable_id, true) : NULL;
 }
 
 node *behavior_asset_add_self_node(behavior_asset *asset)

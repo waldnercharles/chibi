@@ -494,9 +494,10 @@ void BackendRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
     backend->geometries.erase(found);
 }
 
+/* Layout can load textures before the first render, as a headless run does. */
 Rml::TextureHandle BackendRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i dimensions)
 {
-    assert(backend->gpu_ready);
+    ensure_gpu(backend);
     CF_Texture texture = texture_from_pixels(dimensions.x, dimensions.y, source.data());
     uintptr_t handle = (uintptr_t)backend->next_texture++;
     backend->textures.emplace(handle, texture);
@@ -505,7 +506,7 @@ Rml::TextureHandle BackendRenderer::GenerateTexture(Rml::Span<const Rml::byte> s
 
 Rml::TextureHandle BackendRenderer::LoadTexture(Rml::Vector2i &dimensions, const Rml::String &source)
 {
-    assert(backend->gpu_ready);
+    ensure_gpu(backend);
     if (source.rfind("kit:", 0) == 0) {
         uintptr_t handle = (uintptr_t)backend->next_texture++;
         backend->external_handles.emplace(handle, source.substr(4));
@@ -745,10 +746,14 @@ extern "C" void editor_rml_backend_render(editor_rml_backend *backend)
     cf_draw3d_transform(cf_m4_invert(cf_draw3d_peek_transform()));
     cf_draw3d_push_shader(backend->ui_shader);
     cf_draw3d_push_render_state(ui_state);
+    /* SDL_GPU keeps a pass's last scissor for the draws after it, so geometry
+       RmlUi leaves unclipped is drawn under a scissor of the whole target. */
+    cf_draw_push_scissor(viewport);
     backend->renderer.EnableScissorRegion(false);
     backend->context->Render();
     backend->renderer.EnableScissorRegion(false);
     cf_render_layers_to(backend->premultiplied_canvas, k_rml_draw_layer, k_rml_draw_layer, true);
+    cf_draw_pop_scissor();
     cf_draw3d_pop_render_state();
     cf_draw3d_pop_shader();
     cf_draw3d_pop();

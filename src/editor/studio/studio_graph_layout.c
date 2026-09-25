@@ -248,6 +248,41 @@ static uint32_t binding_chip(const studio *s, const pin_binding *b, char *out, s
     return 0;
 }
 
+/* A folded source's chip: the expression the input receives. With Short
+   Bindings each value it reads is named as its binding chip names it, and a
+   chip that is one read takes that read's icon. */
+static uint32_t folded_chip(const studio *s, node *n, int p, char *out, size_t size)
+{
+    char text[256];
+    behavior_expression_read *reads = NULL;
+    behavior_expression_format(
+        sg_active_graph(s),
+        n,
+        p,
+        text,
+        sizeof text,
+        s->prefs.short_bindings ? &reads : NULL
+    );
+    uint32_t icon = 0;
+    size_t used = 0;
+    int at = 0;
+    out[0] = '\0';
+    for (int i = 0; i < acount(reads); i++) {
+        char name[160];
+        uint32_t read_icon = binding_chip(s, &reads[i].read, name, sizeof name);
+        bool whole = acount(reads) == 1 && reads[i].start == 0 &&
+                     reads[i].length == (int)strlen(text);
+        icon = whole ? read_icon : 0;
+        used += (size_t)
+            snprintf(out + used, size - used, "%.*s%s", reads[i].start - at, text + at, name);
+        used = used < size ? used : size - 1;
+        at = reads[i].start + reads[i].length;
+    }
+    snprintf(out + used, size - used, "%s", text + at);
+    afree(reads);
+    return icon;
+}
+
 void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 {
     editor *e = sg_graph_editor(s);
@@ -272,7 +307,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
     ed_pin_label(n, spec, out->label, sizeof out->label);
     out->show_label = !exec_label(spec, out->label);
     if (out->inline_source) {
-        ed_node_title(e, src, out->chip, sizeof out->chip);
+        out->chip_icon = folded_chip(s, n, p, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
     } else if (input && spec->binding) {
         out->chip_icon = binding_chip(s, spec->binding, out->chip, sizeof out->chip);

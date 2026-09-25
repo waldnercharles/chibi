@@ -88,7 +88,7 @@ void ed_handle_input(editor *e)
         if (mouse_released) {
             ed_pin_view *target = ed_hit_pin(e, mouse);
             if (target && target->n != e->link_pin.n &&
-                ed_connect_with_inline(e, &e->link_pin, target, editor_ui_inline_edge_nodes())) {
+                ed_connect(e, &e->link_pin, target)) {
                 ed_clear_connect_error(e);
                 ed_commit_snapshot(e);
                 e->linking = 0;

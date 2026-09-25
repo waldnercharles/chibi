@@ -3,6 +3,7 @@
 
 #include "graph/model/pin.h"
 #include "graph/model/type.h"
+#include "support/enum.h"
 
 #include <stdint.h>
 
@@ -278,6 +279,16 @@ typedef struct
     node_work_kind work;
 } node_desc;
 
+/* How the editor presents a pure source: `auto` folds it into its consumer's
+ * pin row when graph_node_is_inline allows, `inline` also folds larger trees,
+ * and `expanded` always draws its box. Evaluation ignores it. */
+#define NODE_PRESENTATION_LIST(X)                                              \
+    X(NODE_PRESENTATION_AUTO, "auto")                                          \
+    X(NODE_PRESENTATION_INLINE, "inline")                                      \
+    X(NODE_PRESENTATION_EXPANDED, "expanded")
+
+DEFINE_ENUM(node_presentation, NODE_PRESENTATION_LIST)
+
 struct node
 {
     const node_desc *desc;
@@ -294,7 +305,7 @@ struct node
      * position make it automatic, and the editor arranges automatic nodes. */
     bool placed;
     unsigned disabled;
-    bool inline_source;
+    node_presentation presentation;
     unsigned breakpoint;
     unsigned breakpoint_enabled;
     bool show_advanced;

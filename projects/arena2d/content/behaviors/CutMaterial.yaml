@@ -15,11 +15,9 @@ graphs:
       DeltaSeconds: {type: float, kind: data}
   - id: 4
     type: Self
-    x: 0.0
-    "y": 120.0
     outputs:
       Self: {type_name: ecs.entity}
-  - {id: 6, type: Get_GameTransform, x: 0.0, "y": 216.0}
+  - {id: 6, type: Get_GameTransform}
   - id: 8
     type: Damage Material
     x: 310.0

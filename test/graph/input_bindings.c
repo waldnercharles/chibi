@@ -1217,7 +1217,7 @@ static void inline_source_graphs()
     node *source = graph_add_node(&g, registry_node_by_name("Integer"));
     assert(source && target);
     assert(graph_connect_data_conversion(&g, source, 0, target, 0, &NODE_To_Real) == 0);
-    assert(graph_set_node_inline(&g, source, 1) == 0);
+    assert(graph_set_node_presentation(&g, source, NODE_PRESENTATION_INLINE) == 0);
     node *inline_source = NULL;
     int inline_pin = -1;
     test_check(
@@ -1262,7 +1262,7 @@ static void inline_source_graphs()
     node *pasted_source = NULL;
     node *pasted_target = NULL;
     for (int i = 0; i < acount(pasted.nodes); i++) {
-        if (pasted.nodes[i]->inline_source) {
+        if (pasted.nodes[i]->presentation == NODE_PRESENTATION_INLINE) {
             pasted_source = pasted.nodes[i];
         } else {
             pasted_target = pasted.nodes[i];
@@ -1280,7 +1280,10 @@ static void inline_source_graphs()
     free(json);
     graph_free(&pasted);
 
-    test_check(graph_remove_node(&g, target) == 0 && acount(g.nodes) == 0, "removing an inline target removes its owned source");
+    test_check(
+        graph_remove_node_tree(&g, target) == 0 && acount(g.nodes) == 0,
+        "removing an inline target removes its owned source"
+    );
     graph_free(&g);
 
     graph direct = { 0 };
@@ -1289,7 +1292,7 @@ static void inline_source_graphs()
     target = graph_add_node(&direct, registry_node_by_name("Add"));
     assert(source && target);
     assert(graph_connect_data_conversion(&direct, source, 0, target, 0, &NODE_To_Real) == 0);
-    assert(graph_set_node_inline(&direct, source, 1) == 0);
+    assert(graph_set_node_presentation(&direct, source, NODE_PRESENTATION_INLINE) == 0);
     test_check(
         graph_remove_node(&direct, source) == 0 && acount(direct.nodes) == 1 &&
             !graph_node_is_inline(&direct, target),
@@ -1305,7 +1308,7 @@ static void inline_source_graphs()
     assert(source && target && other);
     assert(graph_connect_data_conversion(&shared, source, 0, target, 0, &NODE_To_Real) == 0);
     assert(graph_connect_data_conversion(&shared, source, 0, other, 0, &NODE_To_Real) == 0);
-    assert(graph_set_node_inline(&shared, source, 1) == 0);
+    assert(graph_set_node_presentation(&shared, source, NODE_PRESENTATION_INLINE) == 0);
     test_check(!graph_node_is_inline(&shared, source), "shared sources expand instead of hiding a fanout");
     graph_free(&shared);
 }
@@ -1401,7 +1404,7 @@ static void inline_source_extraction()
     );
     assert(graph_connect_data_conversion(asset->graph, source, 0, target, 0, &NODE_To_Real) == 0);
     assert(graph_connect_data(asset->graph, target, 0, sink, 0) == 0);
-    assert(graph_set_node_inline(asset->graph, source, 1) == 0);
+    assert(graph_set_node_presentation(asset->graph, source, NODE_PRESENTATION_INLINE) == 0);
     float before = 0;
     char message[192];
     test_check(
@@ -1841,8 +1844,8 @@ static void numeric_output_to_text()
     ed_pin_view output = { add, ED_PIN_OUTPUT, 0, { 0 } };
     ed_pin_view input = { text, ED_PIN_INPUT, 0, { 0 } };
     test_check(
-        ed_connect_with_inline(&e, &output, &input, false) &&
-            add->output_pins[0].type == PIN_F64 && add->input_pins[0].type == PIN_F64 &&
+        ed_connect(&e, &output, &input) && add->output_pins[0].type == PIN_F64 &&
+            add->input_pins[0].type == PIN_F64 &&
             graph_input_conversion(asset->graph, text, 0) ==
                 registry_node_by_name("To String"),
         "displaying arithmetic as text preserves its existing numeric "

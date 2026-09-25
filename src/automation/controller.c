@@ -2549,7 +2549,7 @@ static void inspect_add_sorted_array(
                 }
             } else {
                 const char *const layout_keys[] = {
-                    "x", "y", "placed", "inline_source", "show_advanced",
+                    "x", "y", "placed", "presentation", "show_advanced",
                 };
                 for (int layout = 0;
                      layout < (int)(sizeof layout_keys / sizeof *layout_keys);

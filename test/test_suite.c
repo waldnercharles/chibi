@@ -82,6 +82,7 @@ TEST_CASE(all_checks)
     run_graph_model_checks();
     run_graph_document_checks();
     run_graph_arrange_checks();
+    run_graph_inline_checks();
     run_runtime_execution_checks();
     test_compiled_behaviors();
     test_encounter_backend_parity();
@@ -190,6 +191,11 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "--graph-arrange")) {
         run_graph_arrange_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--graph-inline")) {
+        registry_validate();
+        run_graph_inline_checks();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {

@@ -26,13 +26,13 @@ typedef struct graph_edge_index
 {
     int *inputs;         /* Destination pin ID -> edge slot + 1. */
     exec_edges *outputs; /* Source pin ID -> EXEC edge slots. */
-    int *next; /* EXEC edge slot -> next slot + 1, in authored edge order. */
+    int *next;    /* EXEC edge slot -> next slot + 1, in authored edge order. */
+    int *sources; /* Source node ID -> its only outgoing edge slot + 1, or -1. */
     atomic_ullong revision;
     atomic_flag building;
 } graph_edge_index;
 
 static atomic_ullong graph_lifetime;
-static bool inline_tree(const graph *g, const node *n, int remaining);
 
 void graph_init(graph *g)
 {
@@ -565,17 +565,6 @@ int graph_remove_node(graph *g, node *n)
             (void)expand_local_result;
         }
     }
-    uint64_t *inline_sources = NULL;
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *e = &g->edges[i];
-        if (e->kind != GRAPH_EDGE_DATA || e->to_id != n->id) {
-            continue;
-        }
-        node *source = graph_node_by_id(g, e->from_id);
-        if (source && inline_tree(g, source, acount(g->nodes))) {
-            apush(inline_sources, source->id);
-        }
-    }
     int w = 0;
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
@@ -599,14 +588,35 @@ int graph_remove_node(graph *g, node *n)
     }
     asetlen(g->nodes, acount(g->nodes) - 1);
     graph_changed(g);
-    for (int i = 0; i < acount(inline_sources); i++) {
-        node *source = graph_node_by_id(g, inline_sources[i]);
-        if (source) {
-            graph_remove_node(g, source);
+    graph_prune_locals(g);
+    return 0;
+}
+
+void graph_inline_tree(const graph *g, const node *n, uint64_t **ids)
+{
+    apush(*ids, n->id);
+    for (int pin = 0; pin < n->input_count; pin++) {
+        node *source = NULL;
+        int source_pin = -1;
+        if (graph_inline_source(g, n, pin, &source, &source_pin)) {
+            graph_inline_tree(g, source, ids);
         }
     }
-    afree(inline_sources);
-    graph_prune_locals(g);
+}
+
+int graph_remove_node_tree(graph *g, node *n)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
+        return -1;
+    }
+    uint64_t *ids = NULL;
+    graph_inline_tree(g, n, &ids);
+    for (int i = 0; i < acount(ids); i++) {
+        int removed = graph_remove_node(g, graph_node_by_id(g, ids[i]));
+        assert(removed == 0);
+        (void)removed;
+    }
+    afree(ids);
     return 0;
 }
 
@@ -669,9 +679,12 @@ static node *edge_to_node(const graph *g, const edge *e, int *pin)
 
 static void index_edges(const graph *g, graph_edge_index *index)
 {
-    uint64_t input = 0, output = 0;
+    uint64_t input = 0, output = 0, source = 0;
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
+        if (e->from_id > source) {
+            source = e->from_id;
+        }
         if (e->kind == GRAPH_EDGE_DATA && e->to_pin_id > input) {
             input = e->to_pin_id;
         }
@@ -679,14 +692,18 @@ static void index_edges(const graph *g, graph_edge_index *index)
             output = e->from_pin_id;
         }
     }
-    assert(input < INT_MAX && output < INT_MAX);
+    assert(input < INT_MAX && output < INT_MAX && source < INT_MAX);
     asetlen(index->inputs, (int)input + 1);
     asetlen(index->outputs, (int)output + 1);
     asetlen(index->next, acount(g->edges));
+    asetlen(index->sources, (int)source + 1);
     memset(index->inputs, 0, (size_t)acount(index->inputs) * sizeof *index->inputs);
     memset(index->outputs, 0, (size_t)acount(index->outputs) * sizeof *index->outputs);
+    memset(index->sources, 0, (size_t)acount(index->sources) * sizeof *index->sources);
     for (int i = acount(g->edges) - 1; i >= 0; i--) {
         const edge *e = &g->edges[i];
+        int *only = &index->sources[e->from_id];
+        *only = *only ? -1 : i + 1;
         if (e->kind == GRAPH_EDGE_DATA) {
             index->inputs[e->to_pin_id] = i + 1;
         }
@@ -768,81 +785,135 @@ const node_desc *graph_vector_constructor(const pin_spec *pin)
     return NULL;
 }
 
+/* A component node's Component setting names what it reads, which its chip
+ * shows, so it does not keep the node expanded once chosen. */
+static bool component_setting(const node *n, int pin)
+{
+    component_node_kind kind = component_node_kind_of(n->desc);
+    return kind && pin == component_node_setting(kind) && component_node_key(n)[0];
+}
+
+static bool inline_input(const graph *g, const node *n, int pin)
+{
+    const pin_spec *spec = &n->input_pins[pin];
+    if (spec->kind != PIN_DATA || spec->type == PIN_FLOW) {
+        return false;
+    }
+    if (spec->flags & PIN_FLAG_SETTING) {
+        return component_setting(n, pin);
+    }
+    if (input_edge(g, n, pin) || spec->binding ||
+        (spec->flags & (PIN_FLAG_DEFAULT_SELF | PIN_FLAG_SERVICE))) {
+        return true;
+    }
+    return spec->type == PIN_STRUCT ? spec->default_value.ptr != NULL
+         : spec->type == PIN_HANDLE ? spec->default_value.u64 != 0
+                                    : true;
+}
+
+/* The single outgoing wire of a node that may fold into its consumer,
+ * whatever its presentation. */
 static const edge *inline_edge(const graph *g, const node *n)
 {
-    if (!n || !n->inline_source || !n->desc || n->disabled ||
-        node_behavior_for(n) != NODE_BEHAVIOR_PURE) {
+    /* A flow node such as a pure function's Function Entry has no exec pins
+     * but anchors its graph. */
+    if (n->disabled || n->desc->flow_kind != NODE_FLOW_NONE ||
+        node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
+        n->desc->pure_kind == NODE_PURE_FUNCTION ||
+        n->desc->pure_kind == NODE_PURE_COPY) {
         return NULL;
     }
+    for (int p = 0; p < n->input_count; p++) {
+        if (!inline_input(g, n, p)) {
+            return NULL;
+        }
+    }
     for (int p = 0; p < n->output_count; p++) {
-        if (graph_output_local(g, n, p)) {
+        if ((n->output_pins[p].flags & PIN_FLAG_SETTING) ||
+            graph_output_local(g, n, p)) {
             return NULL;
         }
     }
-    const edge *outgoing = NULL;
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *e = &g->edges[i];
-        if (e->from_id != n->id) {
-            continue;
-        }
-        if (e->kind != GRAPH_EDGE_DATA || outgoing) {
-            return NULL;
-        }
-        outgoing = e;
-    }
-    if (!outgoing || outgoing->to_id == n->id) {
+    graph_edge_index *index = edge_index(g);
+    int slot = index && n->id < (uint64_t)acount(index->sources)
+                 ? index->sources[n->id]
+                 : 0;
+    const edge *outgoing = slot > 0 ? &g->edges[slot - 1] : NULL;
+    if (!outgoing || outgoing->kind != GRAPH_EDGE_DATA || outgoing->to_id == n->id) {
         return NULL;
     }
     node *target = graph_node_by_id(g, outgoing->to_id);
-    int output = -1, input = -1, is_output = 0, is_input_output = 0;
-    const pin_spec *source_pin = graph_pin_by_id(n, outgoing->from_pin_id, &is_output, &output);
+    int is_output = 0, is_input_output = 0;
+    const pin_spec *source_pin = graph_pin_by_id(n, outgoing->from_pin_id, &is_output, NULL);
     const pin_spec *target_pin = target
-                                   ? graph_pin_by_id(target, outgoing->to_pin_id, &is_input_output, &input)
+                                   ? graph_pin_by_id(target, outgoing->to_pin_id, &is_input_output, NULL)
                                    : NULL;
     if (!source_pin || !target_pin || !is_output || is_input_output ||
-        source_pin->kind != PIN_DATA || target_pin->kind != PIN_DATA ||
-        ((source_pin->flags | target_pin->flags) & PIN_FLAG_SETTING)) {
+        target_pin->kind != PIN_DATA || (target_pin->flags & PIN_FLAG_SETTING)) {
         return NULL;
     }
     return outgoing;
 }
 
-static bool inline_tree(const graph *g, const node *n, int remaining)
+static bool debug_state(const node *n)
 {
-    if (!remaining || !inline_edge(g, n)) {
-        return false;
+    for (int output = 0; output < 2; output++) {
+        const pin_spec *pins = output ? n->output_pins : n->input_pins;
+        for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
+            if (pins[p].flags & PIN_FLAG_WATCH) {
+                return true;
+            }
+        }
     }
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *e = &g->edges[i];
-        if (e->to_id != n->id) {
+    return n->breakpoint;
+}
+
+/* Nodes in the inline tree rooted at n, or 0 when n draws its own box.
+ * `forced` is treated as explicitly inline. */
+static int inline_size(const graph *g, const node *n, const node *forced, int remaining)
+{
+    node_presentation presentation = n == forced ? NODE_PRESENTATION_INLINE
+                                                 : n->presentation;
+    if (!remaining || presentation == NODE_PRESENTATION_EXPANDED ||
+        !inline_edge(g, n)) {
+        return 0;
+    }
+    bool automatic = presentation == NODE_PRESENTATION_AUTO;
+    if (automatic && (g->math_expression || debug_state(n))) {
+        return 0;
+    }
+    int size = 1;
+    for (int p = 0; p < n->input_count; p++) {
+        /* A local is a named value, like a binding. */
+        const edge *e = input_edge(g, n, p);
+        if (!e || graph_input_local(g, n, p)) {
             continue;
         }
-        if (e->kind != GRAPH_EDGE_DATA || !graph_node_is_vector_constructor(n) ||
-            !inline_tree(g, graph_node_by_id(g, e->from_id), remaining - 1)) {
-            return false;
+        int source = inline_size(g, graph_node_by_id(g, e->from_id), forced, remaining - 1);
+        if (!source) {
+            return 0;
+        }
+        size += source;
+        if (automatic && size > GRAPH_INLINE_AUTO_NODES) {
+            return 0;
         }
     }
-    return true;
+    return size;
+}
+
+static bool node_indexed(const graph *g, const node *n)
+{
+    return g && n && n->id < (uint64_t)acount(g->id_table) && g->id_table[n->id] == n;
 }
 
 bool graph_node_is_inline(const graph *g, const node *n)
 {
-    if (!g || !n || !node_in_graph(g, n)) {
-        return false;
-    }
-    const node *root = n;
-    for (int remaining = acount(g->nodes); remaining; remaining--) {
-        const edge *e = inline_edge(g, root);
-        if (!e) {
-            return false;
-        }
-        const node *parent = graph_node_by_id(g, e->to_id);
-        if (!parent->inline_source) {
-            return inline_tree(g, root, acount(g->nodes));
-        }
-        root = parent;
-    }
-    return false;
+    return node_indexed(g, n) && inline_size(g, n, NULL, acount(g->nodes)) > 0;
+}
+
+bool graph_node_can_inline(const graph *g, const node *n)
+{
+    return node_indexed(g, n) && inline_size(g, n, n, acount(g->nodes)) > 0;
 }
 
 node *graph_inline_owner(const graph *g, node *n)
@@ -855,18 +926,13 @@ node *graph_inline_owner(const graph *g, node *n)
 
 int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin)
 {
-    if (!g || !target || !src || !src_pin || !node_in_graph(g, target) || pin < 0 ||
-        pin >= target->input_count || target->input_pins[pin].kind != PIN_DATA ||
-        (target->input_pins[pin].flags & PIN_FLAG_SETTING)) {
+    if (!node_indexed(g, target) || !src || !src_pin || pin < 0 ||
+        pin >= target->input_count || target->input_pins[pin].kind != PIN_DATA) {
         return 0;
     }
     const edge *e = input_edge(g, target, pin);
-    if (!e || e->kind != GRAPH_EDGE_DATA) {
-        return 0;
-    }
-    node *source = edge_from_node(g, e, src_pin);
-    if (!source || !graph_node_is_inline(g, source) || e->to_id != target->id ||
-        e->to_pin_id != target->input_pins[pin].id) {
+    node *source = e ? edge_from_node(g, e, src_pin) : NULL;
+    if (!source || !graph_node_is_inline(g, source)) {
         return 0;
     }
     *src = source;
@@ -1446,14 +1512,36 @@ int graph_set_node_disabled(graph *g, node *n, int disabled)
     return 0;
 }
 
-int graph_set_node_inline(graph *g, node *n, int enabled)
+int graph_set_node_presentation(graph *g, node *n, node_presentation presentation)
 {
+    assert(presentation >= NODE_PRESENTATION_AUTO && presentation <= NODE_PRESENTATION_EXPANDED);
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
         return -1;
     }
-    n->inline_source = enabled != 0;
+    n->presentation = presentation;
     graph_changed(g);
     return 0;
+}
+
+int graph_presentation_by_name(const char *name)
+{
+    for (int i = NODE_PRESENTATION_AUTO; name && i <= NODE_PRESENTATION_EXPANDED; i++) {
+        if (!strcmp(name, node_presentation_name(i))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int graph_inline_node(graph *g, node *n)
+{
+    if (!graph_node_can_inline(g, n) ||
+        graph_set_node_presentation(g, n, NODE_PRESENTATION_AUTO) != 0) {
+        return -1;
+    }
+    return graph_node_is_inline(g, n)
+             ? 0
+             : graph_set_node_presentation(g, n, NODE_PRESENTATION_INLINE);
 }
 
 int graph_set_breakpoint(graph *g, node *n, int enabled)
@@ -1964,6 +2052,7 @@ void graph_free(graph *g)
         afree(g->edge_index->inputs);
         afree(g->edge_index->outputs);
         afree(g->edge_index->next);
+        afree(g->edge_index->sources);
         free(g->edge_index);
     }
     afree(g->comment_boxes);

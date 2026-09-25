@@ -40,7 +40,6 @@
                     <button id="view.output_log" class="workspace-only menu-item checkable" data-action="view.output_log" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Output Log</span></button>
                     <button id="view.performance" class="workspace-only menu-item checkable" data-action="view.performance" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Performance</span></button>
                     <div class="workspace-only separator"></div>
-                    <button id="view.inline_edge_nodes" class="workspace-only menu-item checkable" data-action="view.inline_edge_nodes" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Inline nodes on edge drop</span></button>
                     <button id="view.reduced_motion" class="menu-item checkable" data-action="view.reduced_motion" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Reduce Motion</span></button>
                     <div class="workspace-only separator"></div>
                     <button id="view.reset_layout" class="workspace-only menu-item" data-action="view.reset_layout" role="menuitem"><span class="item-label">Reset Layout</span></button>

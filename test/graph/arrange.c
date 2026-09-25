@@ -8,8 +8,8 @@
 #include <sys/stat.h>
 #include <time.h>
 
-/* Mirrors graph_layout's input, fixed measurement, node-ID order and zeroed
- * seeds, so the benchmark times the layout alone. */
+/* Mirrors graph_layout's input, fixed measurement, node-ID order, zeroed
+ * seeds and skipped inline nodes, so the benchmark times the layout alone. */
 typedef struct arrange_case
 {
     arrange_box *boxes;
@@ -28,6 +28,9 @@ static int arrange_node_slot(const graph *g, uint64_t id)
     int slot = 0;
     bool found = false;
     for (int i = 0; i < acount(g->nodes); i++) {
+        if (graph_node_is_inline(g, g->nodes[i])) {
+            continue;
+        }
         slot += g->nodes[i]->id < id;
         found |= g->nodes[i]->id == id;
     }
@@ -53,12 +56,19 @@ static int arrange_compare_links(const void *a, const void *b)
 static arrange_case arrange_case_of(const graph *g)
 {
     arrange_case c = { 0 };
-    asetlen(c.boxes, acount(g->nodes));
-    asetlen(c.seeds, acount(g->nodes));
+    int boxes = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        boxes += !graph_node_is_inline(g, g->nodes[i]);
+    }
+    asetlen(c.boxes, boxes);
+    asetlen(c.seeds, boxes);
     for (int i = 0; i < acount(g->nodes); i++) {
         const node *n = g->nodes[i];
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         int slot = arrange_node_slot(g, n->id);
+        if (slot < 0) {
+            continue;
+        }
         c.boxes[slot] = (arrange_box){ .width = 220, .height = 36 + 24 * rows };
         c.seeds[slot] = (arrange_point){ 0, 0 };
     }
@@ -68,7 +78,8 @@ static arrange_case arrange_case_of(const graph *g)
         node *to = graph_node_by_id(g, e->to_id);
         int from_pin, to_pin;
         if (!from || !to || !graph_pin_by_id(from, e->from_pin_id, NULL, &from_pin) ||
-            !graph_pin_by_id(to, e->to_pin_id, NULL, &to_pin)) {
+            !graph_pin_by_id(to, e->to_pin_id, NULL, &to_pin) ||
+            arrange_node_slot(g, from->id) < 0 || arrange_node_slot(g, to->id) < 0) {
             continue;
         }
         apush(

@@ -81,6 +81,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/registry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/type.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/array_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/behavior_expression_format.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/compare_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/const_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/conv_nodes.c

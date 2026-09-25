@@ -133,6 +133,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Every unconnected data input shows its editor: number field, checkbox, choice, color or text.
   - Connecting hides the editor but keeps its value, and disconnecting brings it back (Blockly shadow values; our pins already keep `default_value`).
   - Bindings (component fields, variables) show as chips.
+  - A folded pure source (see `graph_node_is_inline`) shows as a chip with the expression the input receives, from `behavior_expression_format`, such as `Movement › Speed × 2`. With Short Bindings each value it reads is named like its binding chip, and a chip that is a single read takes that read's icon. The node menu's **Inline** folds an eligible node, and **Expand Inputs** draws a node's folded sources as nodes, which automatic arrangement then places.
   - Per-input policy: connection only, constant only, or either (egui_node_graph).
 - **Add menu:**
   - Shift+A, Space or Tab opens the command surface at the pointer, and typing searches immediately (Blender, Houdini).

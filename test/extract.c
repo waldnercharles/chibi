@@ -167,6 +167,7 @@ static void rejected_extractions()
     connect(caller, first, outside, 0);
     connect(caller, outside, second, 0);
     connect(caller, second, sink, 0);
+    graph_set_node_presentation(caller, outside, NODE_PRESENTATION_EXPANDED);
     node *cycle[] = { first, second };
     assert(behavior_asset_can_extract_function(asset, caller, cycle, 2));
     rejected(asset, caller, cycle, 2, "Cycle");

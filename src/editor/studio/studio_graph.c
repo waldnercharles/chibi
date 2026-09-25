@@ -77,6 +77,39 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon,
     return kit_menu_item(k, key, &d);
 }
 
+static bool folded_inputs(const graph *gr, node *n)
+{
+    node *source = NULL;
+    int pin = -1;
+    for (int p = 0; p < n->input_count; p++) {
+        if (graph_inline_source(gr, n, p, &source, &pin)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Draws the sources folded into n's inputs as their own nodes; automatic
+   arrangement places them clear of their neighbours. */
+static void expand_inputs(editor *e, node *n)
+{
+    graph *gr = e->active_graph;
+    node **sources = NULL;
+    for (int p = 0; p < n->input_count; p++) {
+        node *source = NULL;
+        int pin = -1;
+        if (graph_inline_source(gr, n, p, &source, &pin)) {
+            apush(sources, source);
+        }
+    }
+    for (int i = 0; i < acount(sources); i++) {
+        (void)graph_set_node_presentation(gr, sources[i], NODE_PRESENTATION_EXPANDED);
+        sources[i]->placed = false;
+    }
+    afree(sources);
+    e->arrange_pending = true;
+}
+
 /* An action may free the node, its graph or the whole asset, so the menu stops
    after one runs; the click closes it. */
 static void node_menu(studio *s, node *n)
@@ -147,6 +180,19 @@ static void node_menu(studio *s, node *n)
         menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
         ed_snapshot_before(e);
         graph_set_breakpoint(gr, n, !n->breakpoint);
+        return;
+    }
+    if (ed_source_scope_available(e) && graph_node_can_inline(gr, n) &&
+        menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
+        ed_snapshot_before(e);
+        (void)graph_inline_node(gr, n);
+        ed_select_node(e, graph_inline_owner(gr, n), false);
+        return;
+    }
+    if (folded_inputs(gr, n) &&
+        menu_item(k, "expand", "Expand Inputs", KIT_ICON_MAXIMIZE, NULL, readonly)) {
+        ed_snapshot_before(e);
+        expand_inputs(e, n);
     }
 }
 

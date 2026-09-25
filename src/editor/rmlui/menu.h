@@ -30,7 +30,6 @@ extern "C"
         bool can_redo;
         bool navigator_visible;
         bool panes[EDITOR_RML_MENU_PANE_COUNT];
-        bool inline_edge_nodes;
         bool reduced_motion;
         bool mac_shortcuts;
     } editor_rml_menu_state;

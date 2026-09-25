@@ -85,7 +85,7 @@ bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_k
     ed_pin_view to = { b, b_kind, b_pin, { 0, 0 }, 0 };
     ed_clear_connect_error(e);
     e->pending_snapshot = ed_snapshot(e);
-    int connected = ed_connect_with_inline(e, &from, &to, false);
+    int connected = ed_connect(e, &from, &to);
     if (connected) {
         ed_commit_snapshot(e);
     } else {

@@ -548,6 +548,22 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
     return 0;
 }
 
+/* Documents omit `auto`, which new nodes already hold. */
+static int load_node_presentation(node *n, yyjson_val *v)
+{
+    yyjson_val *presentation = yyjson_obj_get(v, "presentation");
+    if (!presentation) {
+        return 0;
+    }
+    int mode = graph_presentation_by_name(yyjson_get_str(presentation));
+    if (mode < 0) {
+        serialize_error_set("node presentation must be auto, inline or expanded");
+        return -1;
+    }
+    n->presentation = (node_presentation)mode;
+    return 0;
+}
+
 /* A component node's Value pins follow its Component setting, and a Set that
  * names field inputs writes those fields instead of Value. Documents may name
  * the component; the setting stores its key. */
@@ -649,12 +665,9 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
         yyjson_val *disabled = yyjson_obj_get(v, "disabled");
         n->disabled = disabled && yyjson_is_bool(disabled) &&
                       yyjson_get_bool(disabled);
-        yyjson_val *inline_source = yyjson_obj_get(v, "inline_source");
-        if (inline_source && !yyjson_is_bool(inline_source)) {
-            serialize_error_set("node inline_source must be a boolean");
+        if (load_node_presentation(n, v)) {
             return -1;
         }
-        n->inline_source = inline_source && yyjson_get_bool(inline_source);
         yyjson_val *breakpoint = yyjson_obj_get(v, "breakpoint");
         yyjson_val *breakpoint_enabled = yyjson_obj_get(v, "breakpoint_enabled");
         n->show_advanced = yyjson_get_bool(yyjson_obj_get(v, "show_advanced"));

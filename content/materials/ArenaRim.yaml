@@ -33,11 +33,9 @@ graphs:
         flags: 64
         group: 0
         default: {x: 0.012000000104308128, "y": 0.14000000059604645, z: 0.23999999463558197}
-  - {id: 11, type: Shader Time, x: 0.0, "y": 250.0}
+  - {id: 11, type: Shader Time}
   - id: 13
     type: Shader Parameter
-    x: 0.0
-    "y": 390.0
     reference_id: 1
     reference_name: Pulse Speed
     outputs:
@@ -74,8 +72,6 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 27
     type: Shader Parameter
-    x: 550.0
-    "y": 470.0
     reference_id: 2
     reference_name: Glow
     outputs:

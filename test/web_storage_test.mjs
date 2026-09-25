@@ -137,8 +137,10 @@ const importFile = async (page, bytes, name) => {
   page.Module.chibiImportProject();
   const input = page.inputs.at(-1);
   input.files = [{ name, arrayBuffer: async () => bytes }];
-  const done = input.onchange();
-  await settle();
+  let finished = false;
+  const done = input.onchange().finally(() => { finished = true; });
+  // Unzipping takes as long as it takes; answer the sync once it is asked for.
+  while (!finished && !fs.syncs.length) await settle();
   fs.syncs.splice(0).forEach(sync => sync.callback(null));
   await done;
 };

@@ -272,6 +272,55 @@ static void collect_enum_alias(collect_ctx *ctx, CXCursor c, const char *name)
     apush(ctx->enums, enumeration);
 }
 
+static bool parse_range(const char *text, double *min, double *max)
+{
+    char *end;
+    *min = strtod(text, &end);
+    if (end == text || *end != ':') {
+        return false;
+    }
+    text = end + 1;
+    *max = strtod(text, &end);
+    return end != text && !*end && *min < *max;
+}
+
+/* NODE_RANGE and NODE_UNIT describe how editors show a float field. */
+static bool collect_field_hints(CXCursor c, field_info *f)
+{
+    f->min = f->max = 0;
+    f->unit = annotation_value(c, "node:unit:");
+    char *range = annotation_value(c, "node:range:");
+    bool valid = !range || parse_range(range, &f->min, &f->max);
+    bool hinted = range || f->unit;
+    free(range);
+    if (!valid) {
+        reflect_error(c, "a range needs numeric bounds with the minimum below the maximum");
+    } else if (hinted && strcmp(f->pin, "PIN_F32") && strcmp(f->pin, "PIN_F64")) {
+        reflect_error(c, "range and unit annotations require float fields");
+        valid = false;
+    } else if (f->unit && !f->unit[0]) {
+        reflect_error(c, "units must not be empty");
+        valid = false;
+    }
+    if (!valid) {
+        free(f->unit);
+    }
+    return valid;
+}
+
+/* NODE_CATEGORY and NODE_ICON group and mark a component in editors. */
+static void collect_component_hints(CXCursor c, struct_info *s)
+{
+    s->category = annotation_value(c, "node:category:");
+    s->icon = annotation_value(c, "node:icon:");
+    if ((s->category || s->icon) && !s->component) {
+        reflect_error(c, "categories and icons require a component");
+    }
+    if ((s->category && !s->category[0]) || (s->icon && !s->icon[0])) {
+        reflect_error(c, "categories and icons must not be empty");
+    }
+}
+
 static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData data)
 {
     if (clang_getCursorKind(c) != CXCursor_FieldDecl) {
@@ -319,6 +368,12 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
     if (!strcmp(f.pin, "PIN_ENUM") &&
         clang_Type_getSizeOf(clang_getCanonicalType(t)) != sizeof(int32_t)) {
         reflect_error(c, "enum fields must use a 32-bit representation");
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        return CXChildVisit_Continue;
+    }
+    if (!collect_field_hints(c, &f)) {
         free(f.name);
         free(f.spelling);
         free(f.handle);
@@ -386,6 +441,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
     s.size = clang_Type_getSizeOf(underlying);
     s.component = component;
     s.dense = dense;
+    collect_component_hints(c, &s);
     CXString definition_name = clang_getCursorSpelling(definition);
     const char *underlying_name = clang_getCString(definition_name);
     if (underlying_name && strcmp(name, underlying_name) != 0) {
@@ -397,6 +453,8 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
         free(s.name);
         free(s.file);
         free(s.alias_of);
+        free(s.category);
+        free(s.icon);
         afree(s.fields);
         return;
     }
@@ -436,12 +494,15 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             s.size = clang_Type_getSizeOf(clang_getCursorType(c));
             s.component = is_component;
             s.dense = has_annotate(c, "node:component:index:dense");
+            collect_component_hints(c, &s);
             s.fields = NULL;
             clang_visitChildren(c, field_visitor, &s.fields);
             if (g_failed) {
                 free(s.name);
                 free(s.file);
                 free(s.alias_of);
+                free(s.category);
+                free(s.icon);
                 afree(s.fields);
             } else {
                 apush(ctx->structs, s);
@@ -574,6 +635,7 @@ static void dispose_fields(field_info *fields)
         free(fields[i].name);
         free(fields[i].spelling);
         free(fields[i].handle);
+        free(fields[i].unit);
     }
     afree(fields);
 }
@@ -585,6 +647,8 @@ void reflect_dispose(collect_ctx *ctx)
         free(s->name);
         free(s->file);
         free(s->alias_of);
+        free(s->category);
+        free(s->icon);
         dispose_fields(s->fields);
     }
     for (int i = 0; i < acount(ctx->fns); i++) {

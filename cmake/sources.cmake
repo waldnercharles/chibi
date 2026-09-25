@@ -185,6 +185,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c

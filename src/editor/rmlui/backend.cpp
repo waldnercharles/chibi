@@ -494,9 +494,10 @@ void BackendRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle geometry)
     backend->geometries.erase(found);
 }
 
+/* Layout can load textures before the first render, as a headless run does. */
 Rml::TextureHandle BackendRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i dimensions)
 {
-    assert(backend->gpu_ready);
+    ensure_gpu(backend);
     CF_Texture texture = texture_from_pixels(dimensions.x, dimensions.y, source.data());
     uintptr_t handle = (uintptr_t)backend->next_texture++;
     backend->textures.emplace(handle, texture);
@@ -505,7 +506,7 @@ Rml::TextureHandle BackendRenderer::GenerateTexture(Rml::Span<const Rml::byte> s
 
 Rml::TextureHandle BackendRenderer::LoadTexture(Rml::Vector2i &dimensions, const Rml::String &source)
 {
-    assert(backend->gpu_ready);
+    ensure_gpu(backend);
     if (source.rfind("kit:", 0) == 0) {
         uintptr_t handle = (uintptr_t)backend->next_texture++;
         backend->external_handles.emplace(handle, source.substr(4));

@@ -1578,7 +1578,11 @@ static int operation_add_self_node(edit_context *ctx, yyjson_val *op)
 static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operation)
 {
     node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
-    const char *side = "input";
+    /* Locals and exposed fields exist only on outputs. */
+    bool output_only = !strcmp(operation, "create_local") ||
+                       !strcmp(operation, "expose_fields") ||
+                       !strcmp(operation, "hide_fields");
+    const char *side = output_only ? "output" : "input";
     yyjson_val *side_json = yyjson_obj_get(op, "side");
     if (!n || (side_json && !string_value(side_json, &side)) ||
         (strcmp(side, "input") && strcmp(side, "output"))) {

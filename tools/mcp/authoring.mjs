@@ -158,7 +158,7 @@ const operationProperties = {
   side: {
     type: "string",
     enum: ["input", "output"],
-    description: "Pin side for pin operations; defaults to input except add_pin, which requires it.",
+    description: "Pin side for pin operations; defaults to output for create_local, expose_fields and hide_fields, and to input otherwise; add_pin requires it.",
   },
   disabled: {
     type: "boolean",

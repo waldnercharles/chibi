@@ -30,11 +30,11 @@ static void show_behavior_area(studio *s)
     }
 }
 
+/* The graph editor holds `asset`: a behavior, or a system's graphs. */
 static bool behavior_open(const studio *s, const char *asset)
 {
-    const app_scene_authoring *scene = s->scene;
-    return scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
-           scene->graph_document_id && !strcmp(scene->graph_document_id, asset);
+    const char *open = s->scene->graph_document_id;
+    return open && !strcmp(open, asset);
 }
 
 /* Opens the behavior and graph `at` names in a Behavior area. */

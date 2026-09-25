@@ -1,5 +1,6 @@
 #include "graph/nodes/math_nodes.h"
 
+#include "graph/compiler/behavior_scalar.h"
 #include "graph/runtime/random.h"
 
 #include <assert.h>
@@ -42,16 +43,8 @@ UNARY(Logarithm10, "Logarithm 10", log10)
 UNARY(Floor, "Floor", floor)
 UNARY(Ceiling, "Ceiling", ceil)
 UNARY(Round, "Round", round)
-static double fract(double x)
-{
-    return x - floor(x);
-}
-static double sign(double x)
-{
-    return (x > 0) - (x < 0);
-}
-UNARY(Fract, "Fract", fract)
-UNARY(Sign, "Sign", sign)
+UNARY(Fract, "Fract", behavior_fract)
+UNARY(Sign, "Sign", behavior_sign)
 #undef UNARY
 
 #define BINARY(NAME, LABEL, FN)                                                       \
@@ -108,9 +101,10 @@ static pin_value mix_value(const pin_value *inputs, int count, arena *)
         count == 3 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64 &&
         inputs[2].type == PIN_F64
     );
-    return (pin_value){ .type = PIN_F64,
-                        .d = inputs[0].d +
-                             (inputs[1].d - inputs[0].d) * inputs[2].d };
+    /* Separate steps, as every backend computes it, never a fused multiply-add. */
+    double span = inputs[1].d - inputs[0].d;
+    double offset = span * inputs[2].d;
+    return (pin_value){ .type = PIN_F64, .d = inputs[0].d + offset };
 }
 node_desc NODE_Mix = { .name = "Mix",
                        .inputs = mix_inputs,

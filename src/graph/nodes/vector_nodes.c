@@ -64,7 +64,10 @@ static pin_value vector_dot(const pin_value *inputs, int count, arena *)
 {
     assert(count == 2);
     CF_V2 a = v2_input(&inputs[0]), b = v2_input(&inputs[1]);
-    return (pin_value){ .type = PIN_F64, .d = (double)a.x * b.x + (double)a.y * b.y };
+    /* Separate steps, as every backend computes it, never a fused multiply-add. */
+    double x = (double)a.x * b.x;
+    double y = (double)a.y * b.y;
+    return (pin_value){ .type = PIN_F64, .d = x + y };
 }
 
 static pin_value vector_distance(const pin_value *inputs, int count, arena *)

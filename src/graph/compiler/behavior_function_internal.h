@@ -15,6 +15,8 @@
     X(EXP, Exponential, exp)                                                   \
     X(LOG, Logarithm, log)                                                     \
     X(LOG10, Logarithm10, log10)                                               \
+    X(FRACT, Fract, behavior_fract)                                            \
+    X(SIGN, Sign, behavior_sign)                                               \
     X(SQRT, SquareRoot, sqrt)                                                  \
     X(FLOOR, Floor, floor)                                                     \
     X(CEIL, Ceiling, ceil)                                                     \

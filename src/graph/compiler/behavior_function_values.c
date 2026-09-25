@@ -5,6 +5,7 @@
 #include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/math_nodes.h"
+#include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/flow.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -309,6 +310,72 @@ static int aggregate_binary(builder *b, int op, int left, int right, node *n)
     }
     return behavior_lower_aggregate_value(b, result);
 }
+/* Vector Length, Dot and Distance read CF_V2 fields in double, as the nodes do. */
+static int vector_scalar(builder *b, node *n)
+{
+    bool length = n->desc == &NODE_Vector_Length;
+    int x[2] = { -1, -1 }, y[2] = { -1, -1 };
+    for (int i = 0; i < (length ? 1 : 2); i++) {
+        aggregate *a = behavior_lower_aggregate(b, behavior_lower_input(b, n, i));
+        if (!a || acount(a->fields) != 2 ||
+            !pin_compatible(
+                &(pin_spec){ .type = PIN_STRUCT, .type_name = a->type->name },
+                &(pin_spec){ .type = PIN_STRUCT, .type_name = "CF_V2" }
+            )) {
+            return -1;
+        }
+        behavior_lower_require(b, a, n, i);
+        x[i] = behavior_lower_convert(b, a->fields[0].slot, PIN_F64);
+        y[i] = behavior_lower_convert(b, a->fields[1].slot, PIN_F64);
+    }
+    if (n->desc == &NODE_Vector_Dot) {
+        return binary(
+            b,
+            BF_ADD,
+            binary(b, BF_MUL, x[0], x[1], n),
+            binary(b, BF_MUL, y[0], y[1], n),
+            n
+        );
+    }
+    int dx = length ? x[0] : binary(b, BF_SUB, x[0], x[1], n);
+    int dy = length ? y[0] : binary(b, BF_SUB, y[0], y[1], n);
+    return behavior_lower_value(
+        b,
+        (
+            behavior_function_instruction
+        ){ .op = BF_HYPOT, .type = PIN_F64, .left = dx, .right = dy }
+    );
+}
+
+/* Step and Mix in double, as the nodes compute them. */
+static int step_or_mix(builder *b, node *n)
+{
+    int in[3] = { -1, -1, -1 };
+    for (int i = 0; i < n->input_count && i < 3; i++) {
+        in[i] = behavior_lower_convert(b, behavior_lower_input(b, n, i), PIN_F64);
+        if (in[i] < 0) {
+            return -1;
+        }
+    }
+    if (n->desc == &NODE_Mix) {
+        int span = binary(b, BF_SUB, in[1], in[0], n);
+        return binary(b, BF_ADD, in[0], binary(b, BF_MUL, span, in[2], n), n);
+    }
+    int zero = behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64 } }
+    );
+    int one = behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64, .d = 1 } }
+    );
+    return select_value(b, binary(b, BF_LT, in[0], in[1], n), zero, one);
+}
+
 static int normalize_aggregate(builder *b, node *n, int slot)
 {
     aggregate *source = behavior_lower_aggregate(b, slot);
@@ -816,9 +883,10 @@ static int output_value(builder *b, node *n, int pin)
         }
         if (n->desc->jit_kind == NODE_JIT_CLAMP && n->input_count == 3 &&
             (type == PIN_F32 || type == PIN_F64 || type == PIN_I32 || type == PIN_I64)) {
-            int x = behavior_lower_input(b, n, 0),
-                low = behavior_lower_input(b, n, 1),
-                high = behavior_lower_input(b, n, 2);
+            /* A float operand of a double clamp widens first. */
+            int x = behavior_lower_convert(b, behavior_lower_input(b, n, 0), type),
+                low = behavior_lower_convert(b, behavior_lower_input(b, n, 1), type),
+                high = behavior_lower_convert(b, behavior_lower_input(b, n, 2), type);
             if (x >= 0 && low >= 0 && high >= 0 && b->function->slots[x] == type &&
                 b->function->slots[low] == type && b->function->slots[high] == type) {
                 /* The language defines Max(Min(value, high), low), including
@@ -880,6 +948,13 @@ static int output_value(builder *b, node *n, int pin)
             );
             result = behavior_lower_named_constant(b, result, NULL);
         }
+    }
+    if (n->desc == &NODE_Vector_Length || n->desc == &NODE_Vector_Dot ||
+        n->desc == &NODE_Vector_Distance) {
+        result = vector_scalar(b, n);
+    }
+    if (n->desc == &NODE_Step || n->desc == &NODE_Mix) {
+        result = step_or_mix(b, n);
     }
     if (n->desc == &NODE_To_Name && n->input_count == 1) {
         result = to_name(b, behavior_lower_input(b, n, 0));
@@ -1078,12 +1153,15 @@ static int input_value(builder *b, node *n, int pin)
             return behavior_lower_coerce(b, value, s, true);
         }
     }
-    if (binding->kind == PIN_BINDING_DELTA_TIME && s->type == PIN_F32) {
-        return behavior_lower_named_constant(
+    /* Delta time is a float; a double input widens it. */
+    if (binding->kind == PIN_BINDING_DELTA_TIME &&
+        (s->type == PIN_F32 || s->type == PIN_F64)) {
+        int delta = behavior_lower_named_constant(
             b,
             behavior_lower_value(b, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }),
-            s->type_name
+            s->type == PIN_F32 ? s->type_name : "float"
         );
+        return behavior_lower_coerce(b, delta, s, true);
     }
     if (binding->kind == PIN_BINDING_EVENT_OUTPUT) {
         return behavior_lower_event_output(b, n, pin, binding, s);

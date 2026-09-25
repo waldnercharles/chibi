@@ -88,7 +88,7 @@ if(NOT cute_framework_POPULATED)
     endif()
 endif()
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
+foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -103,7 +103,7 @@ if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options(cute PRIVATE -Wno-elaborated-enum-base)
 endif()
 
-# WebGL has no base-vertex draw support; large graph canvases exceed 16-bit indices.
+# WebGL has no base-vertex draw support; 32-bit indices keep large ImGui draw lists drawable.
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
 # --- SLJIT backend ----------------------------------------------------------
@@ -444,7 +444,7 @@ target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(engine)
 
-# --- editor UI (RmlUi shell and existing ImGui panes) ---
+# --- editor UI (RmlUi Studio) ---
 
 include(cmake/rmlui.cmake)
 add_library(editor STATIC ${EDITOR_SOURCES})

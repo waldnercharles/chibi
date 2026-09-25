@@ -18,7 +18,7 @@ static const float HEAD = 24, PAD = 4;
    graph.rcss metrics, so a node's box and sockets are known before it is laid
    out: arrange, framing and hit tests never wait a frame.
 
-   A full node's rows follow the ImGui editor and Blender: execution pins pair
+   A full node's rows follow Blender: execution pins pair
    up first, then every data output, then every data input, so inputs always
    sit below outputs. Unlabeled execution pins may sit in the title instead
    (Unity Visual Scripting). Operators draw as a symbol between their inputs

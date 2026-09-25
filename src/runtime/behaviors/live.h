@@ -60,6 +60,8 @@ const char *game_live_definition_path(const game_live_definition *definition);
 int game_live_definition_set_path(game_live_definition *definition, const char *path);
 int game_live_definition_count(const game_live_world *world);
 game_live_definition *game_live_definition_at(game_live_world *world, int index);
+/* Copies source into the working copy. Moving automatic nodes leaves the
+   definition saved and applied. */
 int game_live_sync_working(game_live_definition *definition, const behavior_asset *source);
 int game_live_mark_dirty(game_live_definition *definition);
 

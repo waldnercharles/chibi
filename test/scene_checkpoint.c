@@ -415,6 +415,28 @@ static void scene_tabs_discard_reverts_shared_assets()
     fixture_free(&f);
 }
 
+/* The canvas arranges an opened graph's automatic nodes. Opening another
+   behavior keeps both tabs saved. */
+static void opening_behaviors_keeps_them_saved()
+{
+    checkpoint_fixture f = fixture_new();
+    behavior_asset *asset = behavior_asset_new("ArrangedBehavior");
+    node *automatic = graph_add_node(asset->graph, registry_node_by_name("Integer"));
+    automatic->placed = false;
+    uint64_t id = automatic->id;
+    game_live_definition *arranged = game_live_definition_new("ArrangedBehavior", asset);
+    assert(arranged && game_live_add_definition(f.live, arranged) == 0);
+    assert(app_scene_authoring_open_behavior(f.scene, "ArrangedBehavior") == 0);
+    graph_node_by_id(editor_active_graph(f.graph), id)->x += 300;
+    assert(app_scene_authoring_open_behavior(f.scene, "ReloadBehavior") == 0);
+    assert(sync_behavior_working(f.scene) == 0);
+    for (int i = 0; i < acount(f.scene->tabs); i++) {
+        assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[i]));
+    }
+    assert(!arranged->unsaved && !arranged->dirty);
+    fixture_free(&f);
+}
+
 static void scene_tabs_close_underlying_scene_keeps_context()
 {
     checkpoint_fixture f = fixture_new();
@@ -932,6 +954,7 @@ static int test_scene_checkpoint()
     navigation_restores_underlying_scene_tab();
     scene_tabs_failed_restore_rolls_back();
     scene_tabs_discard_reverts_shared_assets();
+    opening_behaviors_keeps_them_saved();
     scene_tabs_close_underlying_scene_keeps_context();
     scene_tabs_reject_last_scene_close();
     scene_tabs_failed_behavior_discard_is_atomic();

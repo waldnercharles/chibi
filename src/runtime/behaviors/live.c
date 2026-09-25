@@ -7,6 +7,7 @@
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -103,6 +104,20 @@ game_live_definition *game_live_definition_at(game_live_world *world, int index)
     return world->definitions[index];
 }
 
+/* Files omit the positions of automatic nodes (asset_text.h), so arranging
+   them changes neither the document nor what runs. */
+static bool same_document(const char *a, const char *b)
+{
+    char error[128];
+    char *left = asset_text_to_disk(a, error, sizeof error);
+    char *right = asset_text_to_disk(b, error, sizeof error);
+    assert(left && right);
+    bool same = strcmp(left, right) == 0;
+    free(left);
+    free(right);
+    return same;
+}
+
 int game_live_sync_working(game_live_definition *definition, const behavior_asset *source)
 {
     if (!definition || !source) {
@@ -111,6 +126,7 @@ int game_live_sync_working(game_live_definition *definition, const behavior_asse
     char *json = behavior_asset_save_json(source);
     char *previous = behavior_asset_save_json(definition->working);
     bool unchanged = json && previous && strcmp(json, previous) == 0;
+    bool edited = !unchanged && !(json && previous && same_document(json, previous));
     free(previous);
     if (unchanged) {
         free(json);
@@ -123,8 +139,8 @@ int game_live_sync_working(game_live_definition *definition, const behavior_asse
     }
     behavior_asset_free(definition->working);
     definition->working = copy;
-    definition->dirty = 1;
-    definition->unsaved = true;
+    definition->dirty |= edited;
+    definition->unsaved |= edited;
     return 0;
 }
 

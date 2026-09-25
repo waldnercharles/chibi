@@ -61,8 +61,7 @@ typedef struct
     value_kind value;
 } pin_parts;
 
-/* Model access and menus (studio_graph.c). */
-bool sg_menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled);
+/* Model access (studio_graph.c). */
 editor *sg_graph_editor(const studio *s);
 graph *sg_active_graph(const studio *s);
 bool sg_graph_readonly(const studio *s);

@@ -269,22 +269,13 @@ static align_box *selected_boxes(studio *s, node ***nodes)
     return boxes;
 }
 
-static void arrange_selection(studio *s, int edge, bool distribute, bool vertical)
+/* Moves the nodes to their boxes as one undo step, and frees both. */
+static void apply_boxes(studio *s, node **nodes, align_box *boxes)
 {
     editor *e = sg_graph_editor(s);
-    if (sg_graph_readonly(s)) {
-        return;
-    }
-    node **nodes = NULL;
-    align_box *boxes = selected_boxes(s, &nodes);
-    if (distribute) {
-        distribute_boxes(boxes, acount(boxes), vertical);
-    } else {
-        align_boxes(boxes, acount(boxes), (align_edge)edge);
-    }
-    char *before = ed_snapshot(e);
+    char *before = sg_graph_readonly(s) ? NULL : ed_snapshot(e);
     bool moved = false;
-    for (int i = 0; i < acount(nodes); i++) {
+    for (int i = 0; before && i < acount(nodes); i++) {
         move_node(nodes[i], roundf(boxes[i].x), roundf(boxes[i].y), &moved);
     }
     commit_moves(e, before, moved);
@@ -294,12 +285,18 @@ static void arrange_selection(studio *s, int edge, bool distribute, bool vertica
 
 void sg_align(studio *s, align_edge edge)
 {
-    arrange_selection(s, edge, false, false);
+    node **nodes = NULL;
+    align_box *boxes = selected_boxes(s, &nodes);
+    align_boxes(boxes, acount(boxes), edge);
+    apply_boxes(s, nodes, boxes);
 }
 
 void sg_distribute(studio *s, bool vertical)
 {
-    arrange_selection(s, 0, true, vertical);
+    node **nodes = NULL;
+    align_box *boxes = selected_boxes(s, &nodes);
+    distribute_boxes(boxes, acount(boxes), vertical);
+    apply_boxes(s, nodes, boxes);
 }
 
 /* Moves one end of a drawn wire so the wire runs level. */

@@ -2,11 +2,9 @@
  * and variadic pins. Each action is one undo step; an action may free the
  * node, so the menu stops after one runs. */
 #include "editor/studio/studio_graph_internal.h"
-#include "editor/ui/labels.h"
 #include "graph/authoring/optimize.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/model/local.h"
-#include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "support/array.h"
@@ -17,6 +15,16 @@
 static const pin_spec *pin_of(const node *n, int kind, int pin)
 {
     return kind == ED_PIN_OUTPUT ? &n->output_pins[pin] : &n->input_pins[pin];
+}
+
+static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
+{
+    kit_menu_item_desc d = { .label = label,
+                             .icon = icon,
+                             .shortcut = shortcut,
+                             .checked = -1,
+                             .disabled = disabled };
+    return kit_menu_item(k, key, &d);
 }
 
 static bool touches(const edge *ed, const node *n, int kind, uint64_t pin_id)
@@ -61,14 +69,9 @@ static bool link_items(studio *s, node *n, int kind, int p)
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
     int links = sg_pin_links(gr, n, kind, p);
-    if (sg_menu_item(
-            k,
-            "break",
-            links > 1 ? "Break All Links" : "Break Link",
-            KIT_ICON_CLOSE,
-            studio_chord(s, "Alt+Click"),
-            readonly || !links
-        )) {
+    const char *label = links > 1 ? "Break All Links" : "Break Link";
+    const char *chord = studio_chord(s, "Alt+Click");
+    if (menu_item(k, "break", label, KIT_ICON_CLOSE, chord, readonly || !links)) {
         sg_break_links(s, n, kind, p);
         return true;
     }
@@ -87,11 +90,12 @@ static bool link_items(studio *s, node *n, int kind, int p)
         node *other = kind == ED_PIN_OUTPUT ? to : from;
         const pin_spec *far = kind == ED_PIN_OUTPUT ? &to->input_pins[to_pin]
                                                     : &from->output_pins[from_pin];
-        char title[128], label[128], text[272], key[16];
-        ed_pin_label(other, far, label, sizeof label);
-        snprintf(text, sizeof text, "%s \xe2\x80\xba %s", ed_node_title(e, other, title, sizeof title), label);
+        char title[128], name[128], text[272], key[16];
+        ed_node_title(e, other, title, sizeof title);
+        ed_pin_label(other, far, name, sizeof name);
+        snprintf(text, sizeof text, "%s \xe2\x80\xba %s", title, name);
         snprintf(key, sizeof key, "l%d", i);
-        if (sg_menu_item(k, key, text, 0, NULL, readonly)) {
+        if (menu_item(k, key, text, 0, NULL, readonly)) {
             ed_snapshot_before(e);
             graph_remove_edge(gr, from, from_pin, to, to_pin);
             broke = true;
@@ -196,51 +200,46 @@ static void name_value(studio *s, node *n, int p)
     sg_select_only(e, n);
 }
 
-static bool value_items(studio *s, node *n, int kind, int p)
+/* Name Value, or Remove Name once named. */
+static bool name_items(studio *s, node *n, int p)
 {
     kit *k = s->kit;
-    editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
-    const pin_spec *spec = pin_of(n, kind, p);
-    if (kind == ED_PIN_INPUT && sg_menu_item(
-                                    k,
-                                    "reset",
-                                    "Reset to Default",
-                                    KIT_ICON_RESET,
-                                    NULL,
-                                    readonly || !resettable(gr, n, p)
-                                )) {
-        reset_pin(s, n, p);
-        return true;
-    }
-    if (promotable(s, spec) &&
-        sg_menu_item(k, "promote", "Promote to Variable", KIT_ICON_VARIABLE, NULL, readonly)) {
-        promote(s, n, kind, p);
-        return true;
-    }
-    if (kind != ED_PIN_OUTPUT) {
-        return false;
-    }
     const graph_local *local = graph_output_local(gr, n, p);
-    if (local &&
-        sg_menu_item(k, "unname", "Remove Name", KIT_ICON_LOCAL, NULL, readonly)) {
-        ed_snapshot_before(e);
+    if (local) {
+        if (!menu_item(k, "unname", "Remove Name", KIT_ICON_LOCAL, NULL, readonly)) {
+            return false;
+        }
+        ed_snapshot_before(sg_graph_editor(s));
         graph_expand_local(gr, local->id);
         return true;
     }
-    if (!local && sg_menu_item(
-                      k,
-                      "name",
-                      "Name Value",
-                      KIT_ICON_LOCAL,
-                      NULL,
-                      readonly || !sg_pin_links(gr, n, kind, p)
-                  )) {
-        name_value(s, n, p);
+    bool unused = !sg_pin_links(gr, n, ED_PIN_OUTPUT, p);
+    if (!menu_item(k, "name", "Name Value", KIT_ICON_LOCAL, NULL, readonly || unused)) {
+        return false;
+    }
+    name_value(s, n, p);
+    return true;
+}
+
+static bool value_items(studio *s, node *n, int kind, int p)
+{
+    kit *k = s->kit;
+    bool readonly = sg_graph_readonly(s);
+    if (kind == ED_PIN_INPUT) {
+        bool fixed = readonly || !resettable(sg_active_graph(s), n, p);
+        if (menu_item(k, "reset", "Reset to Default", KIT_ICON_RESET, NULL, fixed)) {
+            reset_pin(s, n, p);
+            return true;
+        }
+    }
+    if (promotable(s, pin_of(n, kind, p)) &&
+        menu_item(k, "promote", "Promote to Variable", KIT_ICON_VARIABLE, NULL, readonly)) {
+        promote(s, n, kind, p);
         return true;
     }
-    return false;
+    return kind == ED_PIN_OUTPUT && name_items(s, n, p);
 }
 
 /* ---------- Struct fields ----------
@@ -279,16 +278,27 @@ static bool splittable(const node *n, int kind, int p)
     return type && exposed_fields(n, p) < type->field_count;
 }
 
-/* The pin a recombine collapses into, or -1. */
-static int recombined(const node *n, int kind, int p)
+/* Set Component's field inputs, pins split by automation, and exposed
+   fields or the struct output that shows them. */
+static bool recombinable(const node *n, int kind, int p)
 {
-    if (kind == ED_PIN_INPUT) {
-        bool field = component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
-                     component_node_split(n) &&
-                     p > component_node_setting(COMPONENT_NODE_SET) + 1;
-        return field ? p : -1;
+    if (kind == ED_PIN_OUTPUT) {
+        return n->output_pins[p].split_parent || exposed_fields(n, p) ||
+               field_parent(n, p) >= 0;
     }
-    return exposed_fields(n, p) ? p : field_parent(n, p);
+    bool field = component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
+                 component_node_split(n) &&
+                 p > component_node_setting(COMPONENT_NODE_SET) + 1;
+    return field || n->input_pins[p].split_parent;
+}
+
+static void recombine(graph *gr, node *n, int kind, int p)
+{
+    if (kind == ED_PIN_INPUT || n->output_pins[p].split_parent) {
+        graph_recombine_pin(gr, n, kind == ED_PIN_OUTPUT, p);
+        return;
+    }
+    graph_hide_output_fields(gr, n, exposed_fields(n, p) ? p : field_parent(n, p));
 }
 
 static bool struct_items(studio *s, node *n, int kind, int p)
@@ -298,7 +308,7 @@ static bool struct_items(studio *s, node *n, int kind, int p)
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
     if (splittable(n, kind, p) &&
-        sg_menu_item(k, "split", "Split Struct Pin", KIT_ICON_MAXIMIZE, NULL, readonly)) {
+        menu_item(k, "split", "Split Struct Pin", KIT_ICON_MAXIMIZE, NULL, readonly)) {
         ed_snapshot_before(e);
         if (kind == ED_PIN_INPUT) {
             graph_split_pin(gr, n, 0, p);
@@ -307,15 +317,10 @@ static bool struct_items(studio *s, node *n, int kind, int p)
         }
         return true;
     }
-    int whole = recombined(n, kind, p);
-    if (whole >= 0 &&
-        sg_menu_item(k, "recombine", "Recombine Struct Pin", KIT_ICON_FRAME, NULL, readonly)) {
+    if (recombinable(n, kind, p) &&
+        menu_item(k, "recombine", "Recombine Struct Pin", KIT_ICON_FRAME, NULL, readonly)) {
         ed_snapshot_before(e);
-        if (kind == ED_PIN_INPUT) {
-            graph_recombine_pin(gr, n, 0, whole);
-        } else {
-            graph_hide_output_fields(gr, n, whole);
-        }
+        recombine(gr, n, kind, p);
         return true;
     }
     return false;
@@ -344,7 +349,7 @@ void sg_pin_menu(studio *s, node *n, int kind, int p)
     }
     bool output = kind == ED_PIN_OUTPUT;
     if (graph_run_pin_removable(n, output, p) &&
-        sg_menu_item(k, "remove", "Remove Pin", KIT_ICON_TRASH, NULL, sg_graph_readonly(s))) {
+        menu_item(k, "remove", "Remove Pin", KIT_ICON_TRASH, NULL, sg_graph_readonly(s))) {
         ed_snapshot_before(sg_graph_editor(s));
         graph_remove_run_pin(sg_active_graph(s), n, output, p);
     }

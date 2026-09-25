@@ -1,5 +1,7 @@
 /* Canvas editing rules shared by Studio and automation: variadic pins, pin
    links and defaults, promotion, and node alignment. */
+#include "editor/graph/search.h"
+#include "editor/ui/labels.h"
 #include "graph/authoring/align.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/nodes/state_nodes.h"
@@ -208,6 +210,33 @@ static void promotion()
     behavior_asset_free(asset);
 }
 
+/* Studio places these by holding a key and clicking the canvas; each must stay
+   in an event behavior's add-node catalog under its label. */
+static void key_spawn_catalog()
+{
+    static const char *const NAMES[] = { "Branch",  "Sequence", "Delay",
+                                         "ForEach", "DoN",      "DoOnce",
+                                         "Gate" };
+    editor *e = editor_new(behavior_asset_new("Key spawns"));
+    bool listed = true;
+    for (int i = 0; i < (int)(sizeof NAMES / sizeof *NAMES); i++) {
+        const node_desc *desc = registry_node_by_name(NAMES[i]);
+        char label[128];
+        bool found = false;
+        if (desc) {
+            editor_node_label(desc, label, sizeof label);
+            ed_search_match *matches = ed_search_matches(e, label);
+            for (int m = 0; m < acount(matches); m++) {
+                found |= matches[m].desc == desc;
+            }
+            afree(matches);
+        }
+        listed &= found;
+    }
+    test_check(listed, "every key-placed node is in the add-node catalog");
+    editor_free(e);
+}
+
 static bool at(const align_box *box, float x, float y)
 {
     return fabsf(box->x - x) < 1e-4f && fabsf(box->y - y) < 1e-4f;
@@ -250,5 +279,6 @@ void run_graph_editing_checks()
     wildcard_runs();
     pin_links();
     promotion();
+    key_spawn_catalog();
     alignment();
 }

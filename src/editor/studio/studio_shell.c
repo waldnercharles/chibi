@@ -905,6 +905,15 @@ static void statusbar(studio *s)
             hint(k, "frame", "F", 0, "Frame");
             hint(k, "delete", "X", 0, "Delete");
             break;
+        case STUDIO_EDITOR_BEHAVIOR:
+            if (s->graph.gesture == STUDIO_GRAPH_MOVE) {
+                hint(k, "snap", studio_chord(s, "Ctrl"), 0, "Snap");
+                break;
+            }
+            hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
+            hint(k, "add", studio_chord(s, "Shift+A"), 0, "Add");
+            hint(k, "straighten", "Q", 0, "Straighten");
+            break;
         default:
             hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
             hint(k, "search", studio_chord(s, "Mod+K"), 0, "Search");

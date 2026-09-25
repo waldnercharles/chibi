@@ -1,8 +1,10 @@
 /* Node sizes, rows and socket positions for the graph canvas. */
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/fmt_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "support/array.h"
@@ -495,7 +497,11 @@ static node_layout measure_operator(const studio *s, node *n, node_layout l, con
 static node_layout measure_node(const studio *s, node *n)
 {
     graph *gr = sg_active_graph(s);
-    node_layout l = { .id = n->id, .form = form_of(s, n), .head_in = -1, .head_out = -1 };
+    node_layout l = { .id = n->id,
+                      .form = form_of(s, n),
+                      .head_in = -1,
+                      .head_out = -1,
+                      .add_pin = -1 };
     char title[256];
     sg_node_title(s, n, l.form, title, sizeof title);
     ed_node_presentation look = ed_node_appearance(n->desc);
@@ -558,7 +564,13 @@ static node_layout measure_node(const studio *s, node *n)
     }
     l.top = EDGE + HEAD + PAD +
             (l.code_lines ? CODE_PAD + (float)l.code_lines * CODE_LINE : 0);
-    int rows = sg_row_count(gr, n, &l);
+    /* Variadic nodes end with a row that adds a pin (Unreal); Format Text
+       keeps a spare argument itself. */
+    graph_pin_run run;
+    if (graph_pin_run_of(n, &run) && n->desc != &NODE_Format_Text) {
+        l.add_pin = run.output ? ED_PIN_OUTPUT : ED_PIN_INPUT;
+    }
+    int rows = sg_row_count(gr, n, &l) + (l.add_pin >= 0);
     l.h = rows || l.code_lines ? l.top + (float)rows * ROW + BOTTOM + EDGE
                                : 2 * EDGE + HEAD;
     return l;

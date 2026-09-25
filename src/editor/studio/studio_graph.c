@@ -5,6 +5,7 @@
  * into it in graph units. Interaction follows docs/editor-graph-references.md;
  * edits go through the graph editor's mutation helpers and history. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/document/extract.h"
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
@@ -77,7 +78,7 @@ bool sg_edge_ends(const graph *gr, const edge *ed, node **from, int *from_pin, n
 
 /* ---------- Menus ---------- */
 
-static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
+bool sg_menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
 {
     kit_menu_item_desc d = { .label = label,
                              .icon = icon,
@@ -135,6 +136,54 @@ static void expand_inputs(editor *e, node *n)
     e->arrange_pending = true;
 }
 
+/* Alignment for two or more selected nodes, and straightening (Unreal). */
+static bool selection_items(studio *s)
+{
+    static const struct
+    {
+        const char *key, *label;
+        align_edge edge;
+    } ALIGN[] = {
+        { "top", "Align Top", ALIGN_TOP },
+        { "middle", "Align Middle", ALIGN_MIDDLE },
+        { "bottom", "Align Bottom", ALIGN_BOTTOM },
+        { "left", "Align Left", ALIGN_LEFT },
+        { "center", "Align Center", ALIGN_CENTER },
+        { "right", "Align Right", ALIGN_RIGHT },
+    };
+    kit *k = s->kit;
+    editor *e = sg_graph_editor(s);
+    bool readonly = sg_graph_readonly(s);
+    int count = acount(e->selected);
+    bool ran = false;
+    if (count > 1 && kit_submenu_begin(k, "align", "Alignment", KIT_ICON_LAYOUT)) {
+        for (int i = 0; i < (int)(sizeof ALIGN / sizeof *ALIGN) && !ran; i++) {
+            if (sg_menu_item(k, ALIGN[i].key, ALIGN[i].label, 0, NULL, readonly)) {
+                sg_align(s, ALIGN[i].edge);
+                ran = true;
+            }
+        }
+        kit_menu_separator(k, "s0");
+        if (!ran &&
+            sg_menu_item(k, "horizontal", "Distribute Horizontally", 0, NULL, readonly || count < 3)) {
+            sg_distribute(s, false);
+            ran = true;
+        }
+        if (!ran &&
+            sg_menu_item(k, "vertical", "Distribute Vertically", 0, NULL, readonly || count < 3)) {
+            sg_distribute(s, true);
+            ran = true;
+        }
+        kit_submenu_end(k);
+    }
+    if (!ran &&
+        sg_menu_item(k, "straighten", "Straighten Connections", KIT_ICON_MOVE, "Q", readonly || !count)) {
+        sg_straighten(s);
+        ran = true;
+    }
+    return ran;
+}
+
 /* An action may free the node, its graph or the whole asset, so the menu stops
    after one runs; the click closes it. */
 static void node_menu(studio *s, node *n)
@@ -146,21 +195,27 @@ static void node_menu(studio *s, node *n)
     char title[256];
     kit_menu_group(k, "title", ed_node_title(e, n, title, sizeof title));
     if (ed_is_graph_call(n) &&
-        menu_item(k, "open", "Open Graph", KIT_ICON_EXTERNAL, NULL, false)) {
+        sg_menu_item(k, "open", "Open Graph", KIT_ICON_EXTERNAL, NULL, false)) {
         editor_open_graph_call(e, n->id);
         return;
     }
-    if (menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
+    graph_pin_run run;
+    if (graph_pin_run_of(n, &run) &&
+        sg_menu_item(k, "addpin", "Add Pin", KIT_ICON_ADD, NULL, readonly)) {
+        sg_add_run_pin(s, n);
+        return;
+    }
+    if (sg_menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
         ed_duplicate_selected(e);
         return;
     }
-    if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
+    if (sg_menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
         sg_delete_selection(s);
         return;
     }
     kit_menu_separator(k, "s1");
     const char *extract = behavior_asset_can_extract_function(e->asset, gr, e->selected, acount(e->selected));
-    if (menu_item(
+    if (sg_menu_item(
             k,
             "collapse",
             "Collapse to Function",
@@ -177,7 +232,7 @@ static void node_menu(studio *s, node *n)
         e->selected,
         acount(e->selected)
     );
-    if (menu_item(
+    if (sg_menu_item(
             k,
             "expression",
             "Convert to Expression",
@@ -188,8 +243,12 @@ static void node_menu(studio *s, node *n)
         sg_convert_to_expression(s);
         return;
     }
+    kit_menu_separator(k, "s2");
+    if (selection_items(s)) {
+        return;
+    }
     kit_menu_separator(k, "s0");
-    if (menu_item(
+    if (sg_menu_item(
             k,
             "mute",
             n->disabled ? "Enable" : "Disable",
@@ -202,14 +261,14 @@ static void node_menu(studio *s, node *n)
         return;
     }
     if (node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
-        menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
+        sg_menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
         ed_snapshot_before(e);
         graph_set_breakpoint(gr, n, !n->breakpoint);
         return;
     }
     int watch = node_watched(n);
     if (watch >= 0 &&
-        menu_item(k, "watch", watch ? "Stop Watching" : "Watch Values", KIT_ICON_TARGET, NULL, readonly)) {
+        sg_menu_item(k, "watch", watch ? "Stop Watching" : "Watch Values", KIT_ICON_TARGET, NULL, readonly)) {
         ed_snapshot_before(e);
         for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
             int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
@@ -224,14 +283,14 @@ static void node_menu(studio *s, node *n)
         return;
     }
     if (ed_source_scope_available(e) && graph_node_can_inline(gr, n) &&
-        menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
+        sg_menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
         ed_snapshot_before(e);
         (void)graph_inline_node(gr, n);
         ed_select_node(e, graph_inline_owner(gr, n), false);
         return;
     }
     if (folded_inputs(gr, n) &&
-        menu_item(k, "expand", "Expand Inputs", KIT_ICON_MAXIMIZE, NULL, readonly)) {
+        sg_menu_item(k, "expand", "Expand Inputs", KIT_ICON_MAXIMIZE, NULL, readonly)) {
         ed_snapshot_before(e);
         expand_inputs(e, n);
     }
@@ -252,21 +311,26 @@ void studio_graph_menus(studio *s)
     graph *gr = sg_active_graph(s);
     node *n = sg_node_by_id(s, g->menu_node);
     bool readonly = sg_graph_readonly(s);
-    if (n) {
+    int output = 0, pin = -1;
+    if (n && graph_pin_by_id(n, g->menu_pin, &output, &pin)) {
+        sg_pin_menu(s, n, output ? ED_PIN_OUTPUT : ED_PIN_INPUT, pin);
+    } else if (n) {
         node_menu(s, n);
     } else if (sg_comment_by_id(s, g->menu_comment)) {
-        if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
+        if (sg_menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
             ed_snapshot_before(e);
             graph_remove_comment_box(gr, g->menu_comment);
         }
     } else if (g->menu_edge >= 0 && g->menu_edge < acount(gr->edges)) {
         edge *ed = &gr->edges[g->menu_edge];
         if (ed->reroute_count &&
-            menu_item(k, "reroutes", "Clear Reroutes", KIT_ICON_RESET, NULL, readonly)) {
+            sg_menu_item(k, "reroutes", "Clear Reroutes", KIT_ICON_RESET, NULL, readonly)) {
             ed_snapshot_before(e);
             ed->reroute_count = 0;
+        } else if (sg_menu_item(k, "straighten", "Straighten Connection", KIT_ICON_MOVE, "Q", readonly)) {
+            sg_straighten_wire(s, g->menu_edge);
         }
-        if (menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, studio_chord(s, "Alt+Click"), readonly)) {
+        if (sg_menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, studio_chord(s, "Alt+Click"), readonly)) {
             ed_link_ref link;
             sg_link_ref_of(&gr->edges[g->menu_edge], &link);
             ed_clear_selection(e);
@@ -541,16 +605,16 @@ void studio_behavior_header(studio *s, int area)
         }
         kit_menu_separator(k, "s0");
         bool locked = !behavior_asset_mutable(e->asset);
-        if (menu_item(k, "function", "New Function", KIT_ICON_ADD, NULL, locked)) {
+        if (sg_menu_item(k, "function", "New Function", KIT_ICON_ADD, NULL, locked)) {
             create_graph(e, GRAPH_FUNCTION, "New Function");
         }
-        if (menu_item(k, "macro", "New Macro", KIT_ICON_ADD, NULL, locked)) {
+        if (sg_menu_item(k, "macro", "New Macro", KIT_ICON_ADD, NULL, locked)) {
             create_graph(e, GRAPH_MACRO, "New Macro");
         }
         /* Functions and macros are named; the event graph is the behavior. */
         if (gr->kind == GRAPH_FUNCTION || gr->kind == GRAPH_MACRO) {
             kit_menu_separator(k, "s1");
-            if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, NULL, locked)) {
+            if (sg_menu_item(k, "rename", "Rename", KIT_ICON_EDIT, NULL, locked)) {
                 g->renaming = true;
                 g->rename_graph = gr->graph_id;
                 g->rename_area = area;
@@ -559,7 +623,7 @@ void studio_behavior_header(studio *s, int area)
             }
             const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro"
                                                          : "Delete Function";
-            if (menu_item(k, "delete", remove, KIT_ICON_TRASH, NULL, locked)) {
+            if (sg_menu_item(k, "delete", remove, KIT_ICON_TRASH, NULL, locked)) {
                 editor_delete_graph(e, gr->graph_id);
             }
         }
@@ -597,12 +661,14 @@ void studio_behavior_header(studio *s, int area)
         kit_popup_open(k, "graph-actions");
     }
     if (kit_popup_begin(k, "graph-actions", "menu")) {
-        if (menu_item(k, "optimize", "Optimize", KIT_ICON_EXPRESSION, NULL, readonly)) {
+        if (sg_menu_item(k, "optimize", "Optimize", KIT_ICON_EXPRESSION, NULL, readonly)) {
             sg_optimize(s);
         }
-        if (menu_item(k, "collapse", "Math to Expressions", KIT_ICON_EXPRESSION, NULL, readonly)) {
+        if (sg_menu_item(k, "collapse", "Math to Expressions", KIT_ICON_EXPRESSION, NULL, readonly)) {
             sg_collapse_math(s);
         }
+        kit_menu_separator(k, "s0");
+        selection_items(s);
         kit_popup_end(k);
     }
     kit_button_desc tidy = { .icon = KIT_ICON_LAYOUT,

@@ -401,6 +401,17 @@ static void emit_rows(studio *s, node *n, const node_layout *l)
             emit_pin(s, n, ED_PIN_INPUT, p, "grow in", l->label);
         }
     }
+    if (l->add_pin >= 0) {
+        kit_push(k, "add", NULL, l->add_pin == ED_PIN_OUTPUT ? "grow gadd out" : "grow gadd in");
+        kit_button_desc add = { .label = "Add Pin",
+                                .icon = KIT_ICON_ADD,
+                                .size = KIT_SM,
+                                .flags = sg_graph_readonly(s) ? KIT_DISABLED : 0 };
+        if (kit_button(k, "b", &add)) {
+            sg_add_run_pin(s, n);
+        }
+        kit_pop(k);
+    }
     kit_pop(k);
 }
 

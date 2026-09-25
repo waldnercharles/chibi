@@ -4,6 +4,7 @@
 /* Shared by the graph canvas modules (studio_graph*.c). */
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/align.h"
 
 enum
 {
@@ -33,6 +34,7 @@ struct studio_node_layout
     float column;          /* an operator's input column */
     int head_in, head_out; /* pins drawn in the title, or -1 */
     int code_lines;        /* an expression's source lines */
+    int add_pin;           /* a last row adds a pin to this side, or -1 */
 };
 typedef struct studio_node_layout node_layout;
 
@@ -59,7 +61,8 @@ typedef struct
     value_kind value;
 } pin_parts;
 
-/* Model access (studio_graph.c). */
+/* Model access and menus (studio_graph.c). */
+bool sg_menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled);
 editor *sg_graph_editor(const studio *s);
 graph *sg_active_graph(const studio *s);
 bool sg_graph_readonly(const studio *s);
@@ -117,6 +120,22 @@ void sg_collapse_to_function(studio *s);
 void sg_convert_to_expression(studio *s);
 void sg_optimize(studio *s);
 void sg_collapse_math(studio *s);
+/* Selection layout, each one undo step. Straightening moves each selected
+   node level with the wire that drives it, left to right (Unreal's Q). */
+void sg_align(studio *s, align_edge edge);
+void sg_distribute(studio *s, bool vertical);
+void sg_straighten(studio *s);
+/* Moves the wire's target level with its source. */
+void sg_straighten_wire(studio *s, int edge);
+/* Places a catalog node by name, as the add-node search would. */
+bool sg_spawn_node(studio *s, const char *name, float x, float y);
+
+/* Pins (studio_graph_pins.c). */
+int sg_pin_links(const graph *gr, const node *n, int kind, int pin);
+/* Alt+click: every wire at the pin, as one undo step. */
+void sg_break_links(studio *s, node *n, int kind, int pin);
+void sg_add_run_pin(studio *s, node *n);
+void sg_pin_menu(studio *s, node *n, int kind, int pin);
 
 /* Input (studio_graph_input.c). */
 void sg_replay(studio *s);

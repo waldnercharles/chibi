@@ -218,6 +218,9 @@ typedef struct
     char expression[512];
     char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
+    uint64_t menu_pin;  /* the menu's pin on menu_node, or 0 */
+    bool box_subtract;  /* a Ctrl marquee removes what it touches */
+    bool frame_pending; /* F frames on release unless it placed a node */
 } studio_graph;
 
 /* The open project's editor/Components.yaml, re-read when it changes. */

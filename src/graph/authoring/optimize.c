@@ -410,7 +410,7 @@ static void skip(graph_optimize_report *report, const node *n, uint64_t pin, int
     apush(report->skipped, ((graph_optimize_skip){ n->id, pin, (graph_optimize_skip_reason)reason }));
 }
 
-static void local_name(const graph *g, const node *n, int pin, char *name, size_t size)
+void graph_local_name(const graph *g, const node *n, int pin, char *name, size_t size)
 {
     const char *source = n->output_pins[pin].name;
     const ecs_component_desc *component = component_node_kind_of(n->desc)
@@ -515,7 +515,7 @@ static void alias_outputs(graph *g, node *source, const graph_optimize_options *
             continue;
         }
         char name[128];
-        local_name(g, source, p, name, sizeof name);
+        graph_local_name(g, source, p, name, sizeof name);
         uint64_t local_id = graph_create_local(g, source, p, name);
         assert(local_id);
         (void)local_id;

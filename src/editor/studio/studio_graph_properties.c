@@ -216,6 +216,7 @@ void studio_node_properties(studio *s)
             }
             kit_prop_end(k);
         }
+        sg_comment_properties(s, n);
         if (ed_node_has_advanced_inputs(n)) {
             bool advanced = n->show_advanced;
             kit_prop_begin(k, "advanced", "Advanced Inputs");

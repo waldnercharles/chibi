@@ -36,6 +36,11 @@ uint32_t studio_asset_kind_icon(int kind)
     return KIND_ICONS[kind];
 }
 
+const char *studio_asset_kind_label(int kind)
+{
+    return KIND_LABELS[kind];
+}
+
 static bool contains(const char *text, const char *filter)
 {
     if (!filter[0]) {
@@ -90,12 +95,41 @@ static int by_name(const void *a, const void *b)
                               : strcasecmp(x->name, y->name);
 }
 
+static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon)
+{
+    kit_menu_item_desc d = { .label = label, .icon = icon, .checked = -1 };
+    return kit_menu_item(k, key, &d);
+}
+
+/* A row's menu opens the asset or lists what references it (Find References). */
+static void asset_menu(studio *s, const char *key)
+{
+    kit *k = s->kit;
+    const asset_index *index = app_scene_authoring_asset_index(s->scene);
+    const asset_index_asset *asset = asset_index_asset_at(index, s->assets_menu);
+    if (!kit_popup_begin(k, key, "menu")) {
+        return;
+    }
+    if (asset) {
+        kit_menu_group(k, "group", asset->name);
+    }
+    if (asset && menu_item(k, "open", "Open", KIT_ICON_EXTERNAL)) {
+        finish_transform_edit(s->scene, false);
+        app_scene_authoring_open_asset(s->scene, s->assets_menu);
+    }
+    if (asset && menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES)) {
+        studio_find_asset_references(s, s->assets_menu);
+    }
+    kit_popup_end(k);
+}
+
 /* All kinds show as collapsible groups sorted by name, each asset with how often
    it is used, so unused and unresolved assets stand out. One kind is a flat list. */
 void studio_assets_body(studio *s, int area)
 {
-    (void)area;
     kit *k = s->kit;
+    char menu_key[24];
+    snprintf(menu_key, sizeof menu_key, "asset:%d", area);
     app_scene_authoring *scene = s->scene;
     const asset_index *index = app_scene_authoring_asset_index(scene);
     int count = index ? asset_index_asset_count(index) : 0;
@@ -192,8 +226,13 @@ void studio_assets_body(studio *s, int area)
             finish_transform_edit(scene, false);
             app_scene_authoring_open_asset(scene, rows[r].asset);
         }
+        if (events & KIT_ROW_CONTEXT) {
+            s->assets_menu = rows[r].asset;
+            kit_popup_open_at(k, menu_key, s->in.mouse_x, s->in.mouse_y);
+        }
     }
     kit_list_end(k);
+    asset_menu(s, menu_key);
     if (!acount(rows)) {
         kit_label(k, "empty", "output-empty", count ? "No matches" : "No assets");
     }

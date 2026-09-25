@@ -20,6 +20,8 @@ body.graph-canvas {
     --conversion: #1d1d20e6;
     --selected-object: #e0701c;
     --active-object: #ffa53a;
+    --bubble: #e6e2cbf2;
+    --bubble-fg: #1f1f22;
 }
 /* Light canvases keep full-color titles in lighter tints (Blender's light theme). */
 body.graph-canvas.light {
@@ -36,6 +38,7 @@ body.graph-canvas.light {
     --chip: #ececef;
     --chip-fg: #6d4fb0;
     --conversion: #ffffffe6;
+    --bubble: #fff6ccf2;
 }
 
 #back, #front { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; }
@@ -134,12 +137,41 @@ body.graph-canvas.light {
 body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented, body.far .gcode { visibility: hidden; }
 body.far .gnode-head .title { font-size: 16dp; }
 
-.gcomment { position: absolute; border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f; }
+/* Comment frames (studio_graph_comment.c): a tint layer keyed by the frame's
+   color, the title, and grips on the edges and corners that resize it. */
+.gcomment { position: absolute; }
+.gcomment-tint {
+    position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp;
+    border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f;
+}
 .gcomment-title {
-    display: block; height: 28dp; padding: 0dp 10dp; line-height: 28dp; font-size: 14dp; font-weight: 600;
+    position: relative; display: block; height: 28dp; padding: 0dp 10dp; line-height: 28dp; font-size: 14dp; font-weight: 600;
     color: var(--fg); white-space: nowrap; overflow: hidden; cursor: move;
 }
+.gcomment-edit { position: relative; display: block; padding: 3dp 4dp; }
+.gcomment-edit .field { font-size: 14dp; font-weight: 600; }
 body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
+.grip { position: absolute; }
+.grip.n, .grip.s { left: 8dp; right: 8dp; height: 8dp; cursor: ns-resize; }
+.grip.w, .grip.e { top: 8dp; bottom: 8dp; width: 8dp; cursor: ew-resize; }
+.grip.n { top: -4dp; }
+.grip.s { bottom: -4dp; }
+.grip.w { left: -4dp; }
+.grip.e { right: -4dp; }
+.grip.nw, .grip.ne, .grip.sw, .grip.se { width: 12dp; height: 12dp; }
+.grip.nw { left: -4dp; top: -4dp; cursor: nwse-resize; }
+.grip.se { right: -4dp; bottom: -4dp; cursor: nwse-resize; }
+.grip.ne { right: -4dp; top: -4dp; cursor: nesw-resize; }
+.grip.sw { left: -4dp; bottom: -4dp; cursor: nesw-resize; }
+
+/* A node's comment floats above it (Unreal's comment bubble). */
+.gbubble {
+    position: absolute; left: 0dp; bottom: 100%; margin-bottom: 6dp;
+    padding: 3dp 8dp; border-radius: 6dp; background-color: var(--bubble); border: 1dp var(--node-edge);
+    color: var(--bubble-fg); font-size: 12dp; line-height: 16dp;
+}
+.gbubble-text { display: block; }
+body.far .gbubble { visibility: hidden; }
 
 /* Centered on the wire's middle by a negative margin (emit_conversions). */
 .gconversion {

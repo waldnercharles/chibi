@@ -213,6 +213,7 @@ void run_scene_checks(void);
 void run_graph_model_checks();
 void run_graph_document_checks();
 void run_graph_comment_checks();
+void run_graph_find_checks();
 void run_graph_arrange_checks();
 void run_graph_inline_checks();
 int bench_graph_arrange(int repeats, const char *only, const char *style);

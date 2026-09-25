@@ -6,6 +6,7 @@
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
 #include "editor/ui/kit_icons.h"
+#include "editor/workspace/asset_index.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
 
@@ -117,6 +118,7 @@ typedef enum
     STUDIO_GRAPH_LINK,    /* dragging a wire from a socket */
     STUDIO_GRAPH_RIGHT,   /* right press, below the pan threshold */
     STUDIO_GRAPH_REROUTE, /* dragging a wire's reroute point */
+    STUDIO_GRAPH_RESIZE,  /* dragging a comment frame's edge or corner */
 } studio_graph_gesture;
 
 typedef struct
@@ -124,6 +126,36 @@ typedef struct
     uint64_t graph_id;
     float zoom, x, y;
 } studio_graph_view;
+
+/* A Find in graph result (studio_graph_find.c). */
+typedef struct
+{
+    uint64_t graph_id; /* the graph's saved ID */
+    uint64_t node_id; /* the node drawn for the match: an inline match's owner */
+    uint32_t icon;
+    char title[96];
+    char text[160]; /* what matched */
+} studio_find_hit;
+
+/* A graph Back and Forward return to (studio_graph_nav.c). */
+typedef struct
+{
+    int kind; /* app_editor_document_kind */
+    char document[128];
+    char path[512]; /* a System's file */
+    uint64_t graph_id;
+} studio_visit;
+
+/* A Find References result in Output (studio_find.c). */
+typedef struct
+{
+    int kind; /* asset_index_kind of the referencing asset */
+    char asset[128];
+    uint64_t graph_id, node_id; /* 0 for an asset-level reference */
+    char place[160];            /* graph or object */
+    bool object;                /* place names a scene object */
+    const char *use;            /* Call, Read, Handles... */
+} studio_reference;
 
 enum
 {
@@ -163,8 +195,13 @@ typedef struct
     int press_button;         /* -1 when no press arrived this frame */
     float world_x, world_y;   /* pointer in graph units */
     uint64_t press_node;
-    uint64_t press_comment; /* a comment frame grabbed by its title */
-    float comment_x, comment_y;
+    uint64_t press_comment; /* a comment frame grabbed by its title or an edge */
+    float comment_x, comment_y, comment_w, comment_h; /* its bounds at the press */
+    unsigned resize_edges; /* the SG_EDGE_* a resize moves */
+    uint64_t reveal;       /* a node to frame once laid out, or 0 */
+    uint64_t title_edit;   /* the frame whose title is being edited, or 0 */
+    uint64_t bubble_edit;  /* the node whose comment is being edited, or 0 */
+    bool comment_focus;    /* focus the comment field on its first frame */
     uint64_t menu_comment;
     bool press_toggle;
     struct
@@ -218,6 +255,18 @@ typedef struct
     char expression[512];
     char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
+    struct
+    {
+        bool open;
+        bool focus;  /* focus the field on the next frame */
+        bool typing; /* the field had focus last frame */
+        char query[128];
+        char seen[128]; /* the query the results follow */
+        int current;    /* the result shown in the graph, or -1 */
+        studio_find_hit *hits;
+    } find;
+    studio_visit *visits; /* graphs visited, for Back and Forward */
+    int visit;            /* the current one */
 } studio_graph;
 
 /* The open project's editor/Components.yaml, re-read when it changes. */
@@ -262,9 +311,12 @@ struct studio
     int assets_kind;           /* asset_index_kind, or -1 for all */
     unsigned assets_collapsed; /* bit per asset_index_kind */
     char assets_filter[128];
+    int assets_menu;             /* the asset under the row menu */
     char dropped_prototype[256]; /* placed by the viewport this frame */
     int output_view;
     char output_filter[128];
+    char references_title[160]; /* what Output's Find view lists references to */
+    studio_reference *references;
     char outliner_filter[128];
     bool outliner_collapsed;
     bool outliner_reveal; /* scroll the selection into view on the next frame */
@@ -283,7 +335,8 @@ struct studio
     SDL_Event *events; /* queued by the SDL event watch, replayed in order */
     studio_key *keys;  /* keys pressed this frame */
     SDL_Keymod mods;   /* modifier state as of the last replayed key event */
-    int undo_toast;    /* toast offering Undo for undo_toast_group */
+    int nav_button; /* mouse button 4 (-1, Back) or 5 (1, Forward) this frame */
+    int undo_toast; /* toast offering Undo for undo_toast_group */
     uint64_t undo_toast_group;
     char status[256];
     char seen_message[256]; /* last authoring message reported */
@@ -346,11 +399,30 @@ void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
 const char *studio_asset_kind_name(int kind);
 uint32_t studio_asset_kind_icon(int kind);
+const char *studio_asset_kind_label(int kind); /* plural: "Behaviors" */
 void studio_performance_sample(studio *s, double delta_seconds);
 void studio_performance_header(studio *s, int area);
 void studio_performance_body(studio *s, int area);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
+/* Shows Output's Find view, opening the drawer when no area shows Output. */
+void studio_output_find(studio *s);
+
+/* Find References (studio_find.c): lists what references an asset, or a
+   function, variable, event or prototype, in Output's Find view; rows open
+   their asset and reveal the node. Functions and variables belong to the open
+   graph document. */
+void studio_find_document_references(studio *s);
+void studio_find_asset_references(studio *s, int asset);
+void studio_find_graph_references(studio *s, const graph *gr);
+void studio_find_variable_references(studio *s, uint64_t variable_id);
+/* Calls, variable nodes, events and spawns reference something. */
+bool studio_node_referable(const node *n);
+void studio_find_node_references(studio *s, const node *n);
+void studio_find_view(studio *s, float row);
+void studio_find_clear(studio *s);
+/* Opens a graph of the open document and frames one of its nodes. */
+void studio_reveal_node(studio *s, uint64_t graph_id, uint64_t node_id);
 void studio_record(studio *s, kit_toast_type kind, const char *text);
 
 /* Commands shared by menus, shortcuts and the command palette. */

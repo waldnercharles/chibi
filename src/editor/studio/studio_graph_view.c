@@ -153,9 +153,11 @@ void sg_follow_graph(studio *s)
     g->graph_id = id;
     /* What the gesture held belongs to the graph that left, so nothing moves
        back; only its pending snapshot goes. */
-    if (g->gesture == STUDIO_GRAPH_MOVE || g->gesture == STUDIO_GRAPH_REROUTE) {
+    if (g->gesture == STUDIO_GRAPH_MOVE || g->gesture == STUDIO_GRAPH_REROUTE ||
+        g->gesture == STUDIO_GRAPH_RESIZE) {
         ed_cancel_snapshot(sg_graph_editor(s));
     }
+    g->title_edit = g->bubble_edit = 0;
     g->gesture = STUDIO_GRAPH_IDLE;
     g->camera.active = false;
     studio_graph_view *view = view_for(g, id);

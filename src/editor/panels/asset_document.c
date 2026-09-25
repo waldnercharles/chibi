@@ -16,6 +16,8 @@ static const char *reference_kind_label(asset_index_reference_kind kind)
         case ASSET_INDEX_COMPONENT_BINDING: return "Component";
         case ASSET_INDEX_GRAPH_CALL: return "Call";
         case ASSET_INDEX_PROTOTYPE_SPAWN: return "Spawn";
+        case ASSET_INDEX_VARIABLE_READ: return "Read";
+        case ASSET_INDEX_VARIABLE_WRITE: return "Write";
     }
     return "Usage";
 }

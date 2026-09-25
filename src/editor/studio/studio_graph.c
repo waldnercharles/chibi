@@ -150,6 +150,11 @@ static void node_menu(studio *s, node *n)
         editor_open_graph_call(e, n->id);
         return;
     }
+    if (studio_node_referable(n) &&
+        menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, studio_chord(s, "Shift+Alt+F"), false)) {
+        studio_find_node_references(s, n);
+        return;
+    }
     if (menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
         ed_duplicate_selected(e);
         return;
@@ -223,6 +228,9 @@ static void node_menu(studio *s, node *n)
         }
         return;
     }
+    if (sg_node_comment_items(s, n)) {
+        return;
+    }
     if (ed_source_scope_available(e) && graph_node_can_inline(gr, n) &&
         menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
         ed_snapshot_before(e);
@@ -255,10 +263,7 @@ void studio_graph_menus(studio *s)
     if (n) {
         node_menu(s, n);
     } else if (sg_comment_by_id(s, g->menu_comment)) {
-        if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
-            ed_snapshot_before(e);
-            graph_remove_comment_box(gr, g->menu_comment);
-        }
+        sg_comment_menu(s, sg_comment_by_id(s, g->menu_comment));
     } else if (g->menu_edge >= 0 && g->menu_edge < acount(gr->edges)) {
         edge *ed = &gr->edges[g->menu_edge];
         if (ed->reroute_count &&
@@ -342,6 +347,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     sg_replay(s);
     sg_pointer(s);
     sg_shortcuts(s);
+    sg_nav_keys(s);
     asetlen(g->layouts, 0); /* gestures may have edited the graph */
     sg_camera_step(s);
     if (e->arrange_pending) {
@@ -352,6 +358,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
         sg_frame_nodes(s, false, false);
         g->framed = true;
     }
+    sg_reveal_step(s);
     editor_rml_backend_resize_pixels(
         g->backend,
         (int)lroundf(r.w * scale),
@@ -390,6 +397,8 @@ void studio_graph_free(studio *s)
     afree(g->box_base);
     afree(g->layouts);
     afree(g->unused);
+    afree(g->find.hits);
+    afree(g->visits);
     *g = (studio_graph){ 0 };
 }
 
@@ -411,6 +420,9 @@ const char *studio_graph_cursor(const studio *s)
     }
     if (g->gesture == STUDIO_GRAPH_PAN || g->gesture == STUDIO_GRAPH_MOVE) {
         return "move";
+    }
+    if (g->gesture == STUDIO_GRAPH_RESIZE) {
+        return sg_resize_cursor(g->resize_edges);
     }
     if (g->gesture == STUDIO_GRAPH_LINK || g->hover_pin >= 0) {
         return "crosshair";
@@ -484,38 +496,28 @@ void studio_behavior_header(studio *s, int area)
     kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
-    char label[256];
     if (!gr) {
         kit_label(k, "title", "dim", "No behavior open");
         return;
     }
-    if (editor_graph_history_count(e) > 0) {
-        kit_button_desc back = { .icon = KIT_ICON_LEFT, .tip = "Back to the caller" };
-        if (kit_button(k, "back", &back)) {
-            editor_graph_back(e);
-        }
-    }
     char key[24];
     snprintf(key, sizeof key, "graphs:%d", area);
-    snprintf(
-        label,
-        sizeof label,
-        "%s \xe2\x80\xba %s",
-        s->scene->graph_document_id,
-        gr->name && gr->name[0] ? gr->name : "Event Graph"
-    );
     studio_graph *g = &s->graph;
+    sg_nav_header(s);
     if (g->renaming && g->rename_graph == gr->graph_id && g->rename_area == area) {
         rename_field(s, gr);
     } else {
-        kit_button_desc pick = { .label = label,
-                                 .icon = KIT_ICON_GRAPH,
-                                 .cls = "graph-pick",
-                                 .tip = "Graphs in this behavior" };
+        kit_button_desc pick = { .label = gr->name && gr->name[0] ? gr->name : "Event Graph",
+                                 .icon = gr->kind == GRAPH_FUNCTION ? KIT_ICON_FUNCTION
+                                       : gr->kind == GRAPH_MACRO ? KIT_ICON_EXPRESSION
+                                                                 : KIT_ICON_EVENT,
+                                 .cls = "crumb current",
+                                 .tip = "Graphs" };
         if (kit_button(k, "pick", &pick)) {
             kit_popup_open(k, key);
         }
     }
+    kit_pop(k);
     if (kit_popup_begin(k, key, "menu")) {
         kit_menu_group(k, "group", "Graphs");
         for (int i = 0; i < acount(e->asset->graphs); i++) {
@@ -556,6 +558,9 @@ void studio_behavior_header(studio *s, int area)
                 g->rename_area = area;
                 g->rename_focus = true;
                 snprintf(g->rename, sizeof g->rename, "%s", gr->name ? gr->name : "");
+            }
+            if (menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL, false)) {
+                studio_find_graph_references(s, gr);
             }
             const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro"
                                                          : "Delete Function";
@@ -613,6 +618,13 @@ void studio_behavior_header(studio *s, int area)
         sg_arrange(s, false);
         sg_frame_nodes(s, false, true);
     }
+    kit_button_desc find = { .icon = KIT_ICON_SEARCH,
+                             .tip = "Find",
+                             .shortcut = studio_chord(s, "Mod+F"),
+                             .flags = g->find.open ? KIT_ON : 0 };
+    if (kit_button(k, "find", &find)) {
+        sg_find_open(s);
+    }
     kit_button_desc fit = { .icon = KIT_ICON_FRAME, .tip = "Frame all", .shortcut = "Home" };
     if (kit_button(k, "frame", &fit)) {
         sg_frame_nodes(s, false, true);
@@ -633,5 +645,6 @@ void studio_behavior_body(studio *s, int area)
     }
     g->area = area;
     kit_surface(k, "graph", "graph-surface", "graph", &g->surface);
+    sg_find_panel(s);
     studio_graph_menus(s);
 }

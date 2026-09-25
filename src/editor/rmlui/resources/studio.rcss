@@ -40,8 +40,11 @@
 .area-head .btn { height: 22dp; }
 .area-head .editor-type { gap: 2dp; padding: 0dp 3dp 0dp 5dp; }
 .area-head .menu-btn { color: var(--fg); padding: 0dp 6dp; }
-.area-head .crumbs { display: flex; align-items: center; gap: 4dp; color: var(--fg-2); white-space: nowrap; overflow: hidden; }
-.area-head .crumbs .current { color: var(--fg); }
+/* Breadcrumbs (studio_graph_nav.c): the behavior, the calls entered and the open graph. */
+.area-head .crumbs { display: flex; align-items: center; gap: 2dp; color: var(--fg-2); white-space: nowrap; overflow: hidden; flex: 0 1 auto; min-width: 0dp; }
+.area-head .crumbs .crumb { padding: 0dp 4dp; color: var(--fg-2); flex: 0 1 auto; min-width: 0dp; }
+.area-head .crumbs .crumb.current { color: var(--fg); }
+.area-head .crumbs .crumb-sep { color: var(--fg-off); font-size: 10dp; width: 10dp; flex: 0 0 auto; }
 .area-body { flex: 1 1 0dp; position: relative; overflow: hidden; }
 .area.live .area-head { border-bottom-color: var(--accent-edge); }
 
@@ -127,7 +130,6 @@ body.light .viewport {
 
 /* Behavior graph: the canvas is its own zoomed document (graph.rml), shown here. */
 .graph-surface { position: absolute; left: 0dp; top: 0dp; width: 100%; height: 100%; }
-.area-head .graph-pick { color: var(--fg); padding: 0dp 6dp; }
 .area-head .readout { color: var(--fg-3); font-size: 11dp; font-family: InterNumeric; padding: 0dp 4dp; }
 
 /* A source that feeds a pin, in Properties (the graph draws its own). */
@@ -137,7 +139,7 @@ body.light .viewport {
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--fg-3); background-color: var(--canvas); }
 
 /* Output. */
-.output-views { width: 220dp; display: flex; }
+.output-views { width: 260dp; display: flex; }
 .output-filter { width: 160dp; display: flex; }
 .output-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; padding: 2dp 0dp 6dp; font-family: InterNumeric; }
 .output-list .vlist-content > .output-line, .output-row { display: block; height: 20dp; line-height: 20dp; padding: 0dp 10dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -151,6 +153,24 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .output-row[data-kind=info] .kind { color: var(--fg-3); }
 .output-list .vlist-content > .output-line:hover, .output-row:hover { background-color: var(--hover); }
 .output-empty { position: absolute; left: 0dp; right: 0dp; top: 45%; text-align: center; color: var(--fg-3); pointer-events: none; }
+
+/* Output's Find view (studio_find.c): what the references are to, then a row per use. */
+.find-head { position: absolute; left: 0dp; top: 0dp; right: 0dp; height: 24dp; display: flex; align-items: center; gap: 6dp; padding: 0dp 10dp; border-bottom: 1dp var(--line); }
+.find-head .icon { color: var(--fg-3); font-size: 12dp; width: 14dp; }
+.find-title { display: block; line-height: 16dp; color: var(--fg); font-weight: 600; white-space: nowrap; }
+.find-count { display: block; line-height: 16dp; color: var(--fg-3); font-family: InterNumeric; }
+.output-list.find-list { top: 24dp; padding: 2dp 4dp 6dp; }
+
+/* Find in graph (studio_graph_find.c): floats over the canvas's top right. */
+.graph-find {
+    position: absolute; top: 8dp; right: 8dp; width: 340dp; display: flex; flex-direction: column; gap: 4dp;
+    padding: 4dp; background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
+}
+.graph-find-bar { display: flex; align-items: center; gap: 2dp; }
+.graph-find-bar .search { flex: 1 1 0dp; min-width: 0dp; }
+.graph-find-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: 16dp; color: var(--fg-3); font-size: 11dp; font-family: InterNumeric; white-space: nowrap; }
+.graph-find-list { position: relative; }
+.graph-find-list .tree-row .meta { display: block; flex: 0 1 auto; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* Assets. */
 .assets-kind { width: 140dp; display: flex; }

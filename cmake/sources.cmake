@@ -76,6 +76,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/local.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_set.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_cleanup.c
@@ -174,8 +175,12 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/retained_menu.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_comment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_find.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_nav.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_layout.c

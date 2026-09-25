@@ -15,6 +15,8 @@ enum
     OUTPUT_LOG,
     OUTPUT_PROBLEMS,
     OUTPUT_INFO,
+    OUTPUT_FIND, /* Find References (studio_find.c) */
+    OUTPUT_VIEWS,
 };
 
 #define OUTPUT_LINE 1536
@@ -70,9 +72,9 @@ void studio_output_header(studio *s, int area)
     int count = report ? report->error_count + report->warning_count : 0;
     char problems_label[32];
     snprintf(problems_label, sizeof problems_label, count ? "Problems %d" : "Problems", count);
-    const char *views[] = { "Log", problems_label, "Info" };
+    const char *views[OUTPUT_VIEWS] = { "Log", problems_label, "Info", "Find" };
     kit_push(k, "views", NULL, "output-views");
-    kit_choice(k, "view", &s->output_view, views, 3, 0);
+    kit_toggle_group(k, "view", &s->output_view, views, OUTPUT_VIEWS, 0);
     kit_pop(k);
     kit_leaf(k, "spacer", NULL, "spacer");
     kit_push(k, "filter", NULL, "output-filter");
@@ -82,6 +84,7 @@ void studio_output_header(studio *s, int area)
                        ? s->scene->graph_editor &&
                              editor_log_count(s->scene->graph_editor) > 0
                    : s->output_view == OUTPUT_INFO ? acount(s->records) > 0
+                   : s->output_view == OUTPUT_FIND ? s->references_title[0] != '\0'
                                                    : false;
     kit_button_desc clear = { .icon = KIT_ICON_TRASH,
                               .tip = "Clear",
@@ -89,6 +92,8 @@ void studio_output_header(studio *s, int area)
     if (kit_button(k, "clear", &clear)) {
         if (s->output_view == OUTPUT_LOG) {
             editor_clear_log(s->scene->graph_editor);
+        } else if (s->output_view == OUTPUT_FIND) {
+            studio_find_clear(s);
         } else {
             asetlen(s->records, 0);
         }
@@ -259,6 +264,23 @@ void studio_output_body(studio *s, int area)
     switch (s->output_view) {
         case OUTPUT_PROBLEMS: problems_view(s, row); break;
         case OUTPUT_INFO: info_view(s, row); break;
+        case OUTPUT_FIND: studio_find_view(s, row); break;
         default: log_view(s, row); break;
     }
+}
+
+/* A maximized area gives way so the results show. */
+void studio_output_find(studio *s)
+{
+    s->output_view = OUTPUT_FIND;
+    if (s->maximized >= 0 && s->prefs.editors[s->maximized] != STUDIO_EDITOR_OUTPUT) {
+        s->maximized = -1;
+    }
+    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
+        bool shown = area != STUDIO_AREA_DRAWER || s->prefs.drawer_open;
+        if (shown && s->prefs.editors[area] == STUDIO_EDITOR_OUTPUT) {
+            return;
+        }
+    }
+    studio_toggle_drawer(s, STUDIO_EDITOR_OUTPUT);
 }

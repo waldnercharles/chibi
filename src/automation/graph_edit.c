@@ -369,34 +369,9 @@ static int refresh_event(edit_context *ctx, node *n)
                                strcmp(n->desc->name, "Send Event"))) {
         return 0;
     }
-    if (n->desc == &NODE_Event && n->output_count == 1) {
-        pin_spec parameter = { 0 };
-        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_TICK)) {
-            parameter = (pin_spec){ .name = "DeltaSeconds",
-                                    .type = PIN_F32,
-                                    .type_name = "float" };
-        }
-        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_INPUT)) {
-            parameter = (pin_spec){ .name = "Direction",
-                                    .type = PIN_STRUCT,
-                                    .type_name = "CF_V2" };
-        }
-        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_CONTACT_BEGIN)) {
-            parameter = (pin_spec){ .name = "Other",
-                                    .type = PIN_HANDLE,
-                                    .type_name = "ecs.entity" };
-        }
-        if (parameter.name && graph_add_pin(ctx->graph, n, true, &parameter) < 0) {
-            set_error(ctx, "could not apply host event payload");
-            return -1;
-        }
-        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_CONTACT_BEGIN)) {
-            pin_spec point = { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" };
-            if (graph_add_pin(ctx->graph, n, true, &point) < 0) {
-                set_error(ctx, "could not apply contact point payload");
-                return -1;
-            }
-        }
+    if (n->desc == &NODE_Event && graph_host_event_apply(ctx->graph, n)) {
+        set_error(ctx, "could not apply host event payload");
+        return -1;
     }
     for (int i = 0; i < ctx->library_count; i++) {
         const behavior_asset *event = ctx->libraries[i];

@@ -1416,7 +1416,8 @@ static node_desc NEAREST_NODE = {
     .host_call = &NEAREST_CALL,
     .work = NODE_WORK_WORLD_QUERY,
     .category = "Entities",
-    .keywords = "nearest find search entity position radius category target",
+    .keywords = "nearest closest find search entity enemy position radius "
+                "category target",
     .access = &NEAREST_PARALLEL_ACCESS,
 };
 
@@ -1433,6 +1434,7 @@ static pin_spec DESTROY_IN[] = {
 };
 static pin_spec DESTROY_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
 static node_desc SPAWN_NODE = { .name = "Spawn Prototype",
+                                .keywords = "instantiate create entity prefab",
                                 .input_count = 2,
                                 .output_count = 2,
                                 .inputs = SPAWN_IN,
@@ -1445,6 +1447,7 @@ static node_desc SPAWN_NODE = { .name = "Spawn Prototype",
                                 .category = "Entities",
                                 .access = &STRUCTURAL_ACCESS };
 static node_desc DESTROY_NODE = { .name = "Destroy Entity",
+                                  .keywords = "kill despawn remove delete",
                                   .input_count = 2,
                                   .output_count = 1,
                                   .inputs = DESTROY_IN,

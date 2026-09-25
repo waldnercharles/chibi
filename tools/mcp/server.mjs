@@ -1040,7 +1040,7 @@ function responseNextSteps(name, response) {
     return ["Broaden the search query or call getAssetCatalog for project-wide context."];
   }
   if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
-    return ["Broaden the node query or remove a restrictive pin filter."];
+    return ["Use fewer or different words, remove a restrictive pin filter, or call searchNodes without a query to list the node types."];
   }
   if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {

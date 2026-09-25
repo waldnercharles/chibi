@@ -18,6 +18,7 @@
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_automation_search();
 void test_automation_graph_optimize();
 void test_automation_prototype_edit();
 void test_automation_scene_edit();
@@ -71,6 +72,7 @@ TEST_CASE(all_checks)
     stacktrace_init(program_name);
     registry_validate();
     test_automation_graph_edit();
+    test_automation_search();
     test_automation_graph_optimize();
     test_automation_prototype_edit();
     test_automation_scene_edit();
@@ -745,6 +747,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();
         test_automation_graph_edit();
+        test_automation_search();
         test_automation_graph_optimize();
         test_automation_prototype_edit();
         test_automation_scene_edit();

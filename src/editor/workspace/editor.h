@@ -3,6 +3,7 @@
 
 #include "editor/graph/eval_view.h"
 #include "editor/ui/choices.h"
+#include "graph/document/events.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/instance.h"
@@ -157,22 +158,8 @@ void editor_set_retained_keyboard(bool captured);
 /* The fixed event signatures supplied by the host. Core keeps lifecycle names
  * out of its runtime vocabulary; the editor uses this catalog when it creates
  * event nodes and their pins. */
-typedef struct
-{
-    const char *name;
-    pin_type type;
-    const char *type_name;
-} editor_event_param;
-
-typedef struct
-{
-    const char *name;
-    const editor_event_param *params;
-    int param_count;
-} editor_event_signature;
-
 /* `events` is borrowed and must outlive the editor. */
-void editor_set_event_catalog(editor *e, const editor_event_signature *events, int count);
+void editor_set_event_catalog(editor *e, const graph_host_event_desc *events, int count);
 void editor_set_asset_opener(editor *e, int (*open)(void *, const char *, uint64_t), void *user);
 void editor_set_prototype_catalog(editor *e, const char *const *names, int count);
 void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, int count);

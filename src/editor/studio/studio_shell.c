@@ -8,6 +8,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+/* Present only when the browser keeps projects itself (no local server). */
+EM_JS(bool, web_projects_available, (), {
+    return !!Module['chibiExportProject'];
+})
+EM_JS(void, web_export_project, (), { Module['chibiExportProject'](); })
+EM_JS(void, web_import_project, (), { Module['chibiImportProject'](); })
+#endif
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
     "Scene",  "Behavior", "Outliner",    "Properties",
@@ -191,6 +201,19 @@ static bool active_dirty(studio *s)
     return tab ? scene_tabs_dirty(scene, tab) : scene->scene_dirty;
 }
 
+#ifdef __EMSCRIPTEN__
+static bool any_dirty(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        if (scene_tabs_dirty(scene, &scene->tabs[i])) {
+            return true;
+        }
+    }
+    return scene->scene_dirty;
+}
+#endif
+
 /* The active scene or prototype document's history. */
 static void document_history(studio *s, bool redo)
 {
@@ -361,6 +384,27 @@ static void studio_toggle_maximized(studio *s, int area)
     s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
+#ifdef __EMSCRIPTEN__
+/* Export archives saved files and import reloads the page, so both need saved work. */
+static void project_menu_items(studio *s)
+{
+    kit *k = s->kit;
+    kit_menu_separator(k, "s2");
+    bool importing = item(k, "import", "Import Project", 0, NULL, false);
+    bool exporting = item(k, "export", "Export Project", 0, NULL, false);
+    if ((importing || exporting) && any_dirty(s)) {
+        toast(s, KIT_TOAST_WARNING, "Save changes first", NULL);
+        return;
+    }
+    if (importing) {
+        web_import_project();
+    }
+    if (exporting) {
+        web_export_project();
+    }
+}
+#endif
+
 static void menus(studio *s)
 {
     kit *k = s->kit;
@@ -380,6 +424,11 @@ static void menus(studio *s)
         if (item(k, "reload", "Reload", 0, NULL, !can_edit)) {
             app_scene_authoring_reload(scene);
         }
+#ifdef __EMSCRIPTEN__
+        if (web_projects_available()) {
+            project_menu_items(s);
+        }
+#endif
         kit_popup_end(k);
     }
     if (kit_menubar_trigger(k, "edit", "Edit")) {

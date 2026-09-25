@@ -123,6 +123,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
 )
 
@@ -156,7 +157,6 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/input_bindings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/choices.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_debug.c

@@ -436,6 +436,7 @@ node_desc NODE_Event = {
 node_desc NODE_Branch = {
     .access = &control_access,
     .name = "Branch",
+    .keywords = "if else condition true false",
     .input_count = 2,
     .output_count = 2,
     .inputs = branch_inputs,
@@ -447,6 +448,7 @@ node_desc NODE_Branch = {
 node_desc NODE_Sequence = {
     .access = &control_access,
     .name = "Sequence",
+    .keywords = "then order steps",
     .input_count = 1,
     .output_count = 2,
     .inputs = sequence_inputs,
@@ -457,6 +459,7 @@ node_desc NODE_Sequence = {
 };
 node_desc NODE_ForLoop = {
     .name = "ForLoop",
+    .keywords = "repeat times count index",
     .input_count = 3,
     .output_count = 3,
     .inputs = for_inputs,
@@ -479,6 +482,7 @@ node_desc NODE_ForLoopWithBreak = {
 };
 node_desc NODE_WhileLoop = {
     .name = "WhileLoop",
+    .keywords = "repeat until condition",
     .input_count = 2,
     .output_count = 2,
     .inputs = while_inputs,
@@ -489,6 +493,7 @@ node_desc NODE_WhileLoop = {
 };
 node_desc NODE_ForEach = {
     .name = "ForEach",
+    .keywords = "each iterate array items",
     .input_count = 2,
     .output_count = 4,
     .inputs = foreach_inputs,
@@ -519,6 +524,7 @@ node_desc NODE_Break = {
 /* Temporary proof node: this validates yielding and host-time resume. */
 node_desc NODE_Delay = {
     .name = "Delay",
+    .keywords = "wait timer seconds after later",
     .input_count = 2,
     .output_count = 1,
     .inputs = delay_inputs,
@@ -531,6 +537,7 @@ node_desc NODE_Delay = {
 static const node_access print_access = { .flags = NODE_EFFECT_HOST_SINK };
 node_desc NODE_PrintString = {
     .name = "Print String",
+    .keywords = "log debug message",
     .input_count = 2,
     .output_count = 1,
     .inputs = print_text_inputs,
@@ -561,6 +568,7 @@ node_desc NODE_SetVariable = {
 };
 node_desc NODE_Self = {
     .name = "Self",
+    .keywords = "owner this entity",
     .input_count = 0,
     .output_count = 1,
     .inputs = NULL,

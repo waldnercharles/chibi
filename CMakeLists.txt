@@ -619,11 +619,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
     target_link_options(chibi PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "-lidbfs.js"
         "-sEXPORTED_RUNTIME_METHODS=['FS']"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
@@ -642,7 +645,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/automation_asset_write.c test/automation_graph_edit.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
+    test/automation_asset_write.c test/automation_graph_edit.c test/automation_search.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
     test/arena_input.c
     test/physics.c

@@ -150,6 +150,7 @@ check-format:
 test:
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
+	node test/web_storage_test.mjs
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite

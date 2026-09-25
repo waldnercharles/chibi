@@ -207,7 +207,7 @@ static bool frame()
 
 #ifdef __EMSCRIPTEN__
 EM_JS(void, web_startup_error, (const char *message), {
-    Module['showError'](UTF8ToString(message));
+    Module['showStopped'](UTF8ToString(message));
 })
 
 static void web_frame()

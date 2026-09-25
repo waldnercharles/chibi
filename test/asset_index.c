@@ -1,8 +1,8 @@
 #include "editor/workspace/asset_index.h"
 
-#include "editor/ui/search.h"
 #include "graph/model/behavior_asset.h"
 #include "support/array.h"
+#include "support/text_search.h"
 
 #include <assert.h>
 #include <string.h>
@@ -127,43 +127,50 @@ void test_asset_index()
     assert(resolved == event);
     assert(!asset_index_asset_at(index, event)->unresolved);
 
-    assert(editor_search_score("  ", "Player", NULL) == 0);
+    assert(text_search_score("  ", "Player", NULL) == 0);
+    /* Word search skips letters scattered through a name, but keeps typos. */
+    assert(text_search_score("hit", "Switch on Int", NULL) >= 0);
+    assert(text_search_word_score("hit", "Switch on Int", NULL) < 0);
+    assert(text_search_word_score("playre", "Player", NULL) >= 0);
+    assert(text_search_word_score("gate", "GameHealth", NULL) < 0);
+    assert(text_search_word_score("if", "lifetime", NULL) < 0);
+    assert(text_search_word_score("aevb", "ArenaEnemyVisualBehavior", NULL) < 0);
     assert(
-        editor_search_score(" \tplayer  ", "Player", NULL) ==
-        editor_search_score("player", "Player", NULL)
+        text_search_score(" \tplayer  ", "Player", NULL) ==
+        text_search_score("player", "Player", NULL)
     );
     assert(
-        editor_search_score("player", "Player", NULL) >
-        editor_search_score("player", "PlayerMovement", NULL)
+        text_search_score("player", "Player", NULL) >
+        text_search_score("player", "PlayerMovement", NULL)
     );
     assert(
-        editor_search_score("player", "PlayerMovement", NULL) >
-        editor_search_score("player", "ArenaPlayer", NULL)
+        text_search_score("player", "PlayerMovement", NULL) >
+        text_search_score("player", "ArenaPlayer", NULL)
     );
     assert(
-        editor_search_score("player", "ArenaPlayer", NULL) >
-        editor_search_score("player", "PlaybackRenderer", NULL)
+        text_search_score("player", "ArenaPlayer", NULL) >
+        text_search_score("player", "PlaybackRenderer", NULL)
     );
     assert(
-        editor_search_score("player", "Player", NULL) >
-        editor_search_score("player", "Spawn", "player")
+        text_search_score("player", "Player", NULL) >
+        text_search_score("player", "Spawn", "player")
     );
-    assert(editor_search_score("lerp", "Linear Interpolate", "blend lerp") >= 0);
-    assert(editor_search_score("math blend", "Linear Interpolate", "Math blend lerp") >= 0);
+    assert(text_search_score("lerp", "Linear Interpolate", "blend lerp") >= 0);
+    assert(text_search_score("math blend", "Linear Interpolate", "Math blend lerp") >= 0);
     assert(
-        editor_search_score("aevb", "ArenaEnemyVisualBehavior", NULL) >
-        editor_search_score("aevb", "ArenaEveryVerb", NULL)
+        text_search_score("aevb", "ArenaEnemyVisualBehavior", NULL) >
+        text_search_score("aevb", "ArenaEveryVerb", NULL)
     );
-    assert(editor_search_score("playr", "Player", NULL) >= 0);
-    assert(editor_search_score("playyer", "Player", NULL) >= 0);
-    assert(editor_search_score("playar", "Player", NULL) >= 0);
-    assert(editor_search_score("plsyr", "Player", NULL) < 0);
+    assert(text_search_score("playr", "Player", NULL) >= 0);
+    assert(text_search_score("playyer", "Player", NULL) >= 0);
+    assert(text_search_score("playar", "Player", NULL) >= 0);
+    assert(text_search_score("plsyr", "Player", NULL) < 0);
     assert(
-        editor_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.yaml") <
+        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.yaml") <
         0
     );
-    assert(editor_search_score("cat", "Cast", NULL) >= 0);
-    assert(editor_search_score("cot", "Cat", NULL) < 0);
+    assert(text_search_score("cat", "Cast", NULL) >= 0);
+    assert(text_search_score("cot", "Cat", NULL) < 0);
 
     uint64_t session = asset_index_session_id(index, ASSET_INDEX_BEHAVIOR, "behavior:Scratch");
     assert(session != 0);

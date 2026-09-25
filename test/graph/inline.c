@@ -393,6 +393,21 @@ static void formatting()
         graph_node_is_inline(g, self) && formats(g, self_has, "has(Self.GameMovement)"),
         "a wired Self formats as Self"
     );
+    /* Make Struct reads like the generated Make it lowers to. */
+    const char *structs[] = { "GameHealth", "GameTransform" };
+    for (int i = 0; i < 2; i++) {
+        char generated_name[64], generated_text[128], authored_text[128];
+        snprintf(generated_name, sizeof generated_name, "Make_%s", structs[i]);
+        node *generated = add(g, generated_name);
+        node *authored = add(g, "Make Struct");
+        assert(component_node_retarget(g, authored, structs[i]) == 0);
+        node *first = add(g, "Reroute Data"), *second = add(g, "Reroute Data");
+        wire(g, generated, 0, first, 0);
+        wire(g, authored, 0, second, 0);
+        behavior_expression_format(g, first, 0, generated_text, sizeof generated_text, NULL);
+        behavior_expression_format(g, second, 0, authored_text, sizeof authored_text, NULL);
+        test_check(!strcmp(generated_text, authored_text), "Make Struct formats like its generated Make");
+    }
     node *getter = add(g, "Get_GameMovement");
     assert(graph_expose_output_fields(g, getter, 0) == 0);
     int field = -1;

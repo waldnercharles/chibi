@@ -1537,7 +1537,7 @@ char *editor_command_model_result(const char *packet_json, const char *response,
                                      : NULL;
     yyjson_val *local = yyjson_doc_get_root(local_doc);
     bool native = (!strcmp(command_string(local, "provider"), "quick_edit") &&
-                   !strcmp(command_string(local, "status"), "needs_review")) ||
+                   !strcmp(command_string(local, "status"), "proposed")) ||
                   (!strcmp(command_string(local, "provider"), "native") &&
                    (!strcmp(command_string(local, "status"), "needs_clarification") ||
                     !strcmp(command_string(local, "status"), "unsupported")));
@@ -1802,10 +1802,8 @@ char *editor_command_model_result(const char *packet_json, const char *response,
             );
             yyjson_mut_obj_add_str(result_doc, result, "binding", "answer");
         } else if (valid) {
-            bool review = !getenv("CHIBI_COMMAND_REVIEW") ||
-                          strcmp(getenv("CHIBI_COMMAND_REVIEW"), "0");
-            yyjson_mut_obj_add_str(result_doc, result, "status", review ? "needs_review" : "ready");
-            yyjson_mut_obj_add_str(result_doc, result, "message", review ? "Review changes" : "Ready");
+            yyjson_mut_obj_add_str(result_doc, result, "status", "proposed");
+            yyjson_mut_obj_add_str(result_doc, result, "message", "Proposed");
             yyjson_mut_obj_add_str(result_doc, result, "revision", command_string(catalog, "revision"));
             yyjson_mut_val *context = yyjson_mut_obj_add_obj(result_doc, result, "context");
             yyjson_mut_obj_add_str(result_doc, context, "document", command_string(catalog, "document"));

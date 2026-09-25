@@ -216,7 +216,7 @@ typedef enum
     STUDIO_ASK_IDLE,
     STUDIO_ASK_WAITING, /* a loading toast shows the request */
     STUDIO_ASK_CLARIFY, /* the palette lists answers */
-    STUDIO_ASK_REVIEW,  /* the palette lists the proposed changes */
+    STUDIO_ASK_CONFIRM, /* the palette confirms irreversible changes */
 } studio_ask_phase;
 
 typedef struct
@@ -365,7 +365,7 @@ void studio_commands_attach(studio *s);
 void studio_commands_detach(studio *s);
 void studio_ask(studio *s, const char *query);
 void studio_ask_frame(studio *s);
-/* Clarification and review: rows for the command surface while they are open. */
+/* Clarification and confirmation: rows for the command surface while they are open. */
 bool studio_ask_palette(studio *s);
 
 /* Commands shared by menus, shortcuts and the command palette. */

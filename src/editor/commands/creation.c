@@ -410,13 +410,35 @@ static int set_start_scene(
     return result;
 }
 
-static int capture(yyjson_val *op, bool dry, char *error, int size)
+/* A PNG file name without directories, so captures stay in .chibi/. */
+static bool capture_name(const char *name)
 {
-    const char *path = command_string(op, "path");
-    if (!*path || strlen(path) > 1024) {
-        return fail(error, size, "Capture requires a PNG path");
+    size_t length = strlen(name);
+    return length > 4 && length <= 128 && name[0] != '.' &&
+           !strpbrk(name, "/\\") && !strcmp(name + length - 4, ".png");
+}
+
+/* Captures go to the project's .chibi directory. */
+static int capture(app_scene_authoring *scene, yyjson_val *op, bool dry, char *error, int size)
+{
+    const char *name = command_string(op, "path");
+    if (!capture_name(name)) {
+        return fail(error, size, "Capture requires a PNG file name");
     }
-    return dry ? 0 : app_save_screenshot(path);
+    if (dry) {
+        return 0;
+    }
+    char *directory = content_path_join(scene->content_root, "../.chibi");
+    char *path = content_path_join(directory, name);
+    int result = ensure_directory(directory) || app_save_screenshot(path)
+                   ? fail(error, size, "Could not save the capture")
+                   : 0;
+    if (!result) {
+        snprintf(error, size, "Captured %s", path);
+    }
+    free(path);
+    free(directory);
+    return result;
 }
 
 int command_authoring_apply(
@@ -431,7 +453,7 @@ int command_authoring_apply(
     const char *op = command_string(operation, "op");
     snprintf(error, size, "%s", dry ? "Validated" : "Applied");
     if (!strcmp(op, "capture")) {
-        return capture(operation, dry, error, size);
+        return capture(scene, operation, dry, error, size);
     }
     if (!strcmp(op, "input")) {
         return command_input(scene, operation, dry, error, size);

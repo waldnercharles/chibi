@@ -28,6 +28,9 @@ void editor_commands_free(app_scene_authoring *scene);
 /* NULL hooks unregister them. */
 void editor_commands_set_hooks(app_scene_authoring *scene, const editor_command_hooks *hooks);
 const char *editor_commands_result(app_scene_authoring *scene);
+/* Whether a task's applied change is still its document's latest edit, so
+ * responding with undo would revert it. */
+bool editor_commands_undoable(app_scene_authoring *scene, const char *task_id);
 int editor_commands_apply(
     app_scene_authoring *scene,
     const char *catalog,

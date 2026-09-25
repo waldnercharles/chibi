@@ -167,13 +167,17 @@ sessions to choose from.
    validates without changing anything. Typed operations include `set`,
    `connect`, `open`, `select`, `runtime`, `save`, and the authoring operations
    `create_asset`, `edit_graph`, `create_project`, `set_start_scene`, `input`
-   and `capture`; `inspect` describes their fields.
-3. Poll `status` with the `task_id` while it is `pending`. Answer
-   `needs_clarification` with `respond` and a listed `value`; approve
-   `needs_review` with `respond` and `approve: true`, or `cancel` it.
-4. An `applied` task reports `after_revision`; `respond` with `undo: true`
-   reverts it while it is still the latest change. Reuse `request_id` after a
-   timeout instead of submitting again.
+   and `capture`; `inspect` describes their fields. A capture is a PNG file
+   name saved in the project's `.chibi/` directory.
+3. Poll `status` with the `task_id` while it is `pending`. Changes that Undo
+   can revert (`set`, `assert`, `duplicate`, `connect`, `edit_graph`) and
+   navigation apply at once. `create_project`, `create_asset`,
+   `set_start_scene`, `save` and `capture` stop at `needs_confirmation`:
+   `respond` with `approve: true` to run them, or `cancel`. Answer
+   `needs_clarification` with `respond` and a listed `value`.
+4. An `applied` task reports `after_revision` and `undoable`; `respond` with
+   `undo: true` reverts it while it is still the latest edit of its document.
+   Reuse `request_id` after a timeout instead of submitting again.
 
 ## Check adapter distribution
 

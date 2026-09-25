@@ -1026,7 +1026,7 @@ function defaultNextSteps(name) {
 function editorCommandNextSteps(status) {
   switch (status) {
     case "pending": return ["Poll status with the returned task_id."];
-    case "needs_review": return ["Review the proposed operations, then respond with the task_id and approve or cancel."];
+    case "needs_confirmation": return ["Confirm the irreversible operations by responding with the task_id and approve, or cancel."];
     case "needs_clarification": return ["Respond with a listed choice or answer, or choose a browser session."];
     case "failed": case "unsupported": case "busy":
       return ["Read the message, inspect the current revision, and correct the request before retrying."];

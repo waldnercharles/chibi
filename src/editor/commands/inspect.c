@@ -108,8 +108,8 @@ static void authoring_help(yyjson_mut_doc *doc, yyjson_mut_val *root)
     yyjson_mut_obj_add_str(doc, authoring, "inspect", "kinds: [nodes] or [components], optional query filters reflected names. Default returns current objects, values and revision.");
     yyjson_mut_obj_add_str(doc, authoring, "resolve_objects", "query: names to look up, optional kinds filter object kinds. Returns up to six observed objects ranked by name.");
     yyjson_mut_obj_add_str(doc, authoring, "input", "action: enabled GameActionBinding action name, pressed: boolean, frames: optional 1-600 (default 1). Holds the bound control for that many input samples, then releases it. Requires scene playback. Stop clears held input.");
-    yyjson_mut_obj_add_str(doc, authoring, "capture", "path: local PNG filename. Captures the rendered editor including the playing scene.");
-    yyjson_mut_obj_add_str(doc, authoring, "transactions", "Submit one authoring operation per transaction, with the latest inspect revision. dry_run validates without mutation. Asset definitions are validated before publication.");
+    yyjson_mut_obj_add_str(doc, authoring, "capture", "path: PNG file name, saved in the project .chibi directory. Captures the rendered editor including the playing scene.");
+    yyjson_mut_obj_add_str(doc, authoring, "transactions", "Submit one authoring operation per transaction, with the latest inspect revision. dry_run validates without mutation. Undoable changes apply at once; create_project, create_asset, set_start_scene, save and capture wait for respond with approve. Asset definitions are validated before publication.");
 }
 
 char *command_inspect(app_scene_authoring *scene, const char *query, yyjson_val *kinds)

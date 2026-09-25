@@ -27,6 +27,7 @@ typedef struct
     Uint64 started, elapsed;
     int model_calls;
     bool dry, measuring;
+    command_mark mark; /* where an applied change can be undone */
 } command_task;
 
 struct editor_command_runtime
@@ -157,6 +158,20 @@ static char *summary_value(yyjson_val *field, yyjson_val *value)
     return xstrdup(color);
 }
 
+/* The active document's name from the catalog's "<kind>:<id>", without a
+ * directory or extension. */
+static void document_name(yyjson_val *catalog, char *out, size_t size)
+{
+    const char *document = command_string(catalog, "document");
+    const char *colon = strrchr(document, ':'), *slash = strrchr(document, '/');
+    const char *name = slash ? slash + 1 : colon ? colon + 1 : document;
+    snprintf(out, size, "%s", name);
+    char *extension = strrchr(out, '.');
+    if (extension && extension != out) {
+        *extension = 0;
+    }
+}
+
 static void describe(command_task *task, yyjson_mut_doc *doc, yyjson_val *proposal)
 {
     yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
@@ -175,15 +190,22 @@ static void describe(command_task *task, yyjson_mut_doc *doc, yyjson_val *propos
         object = object ? object : command_find(panels, target);
         yyjson_val *field = command_find(yyjson_obj_get(object, "fields"), command_string(op, "field"));
         char *literal = summary_value(field, yyjson_obj_get(op, "value"));
+        const char *named = object ? command_string(object, "name")
+                          : *command_string(op, "name") ? command_string(op, "name")
+                          : *command_string(op, "path") ? command_string(op, "path")
+                                                        : target;
+        char subject[256];
+        snprintf(subject, sizeof subject, "%s", named);
+        if (!*subject) {
+            document_name(yyjson_doc_get_root(catalog), subject, sizeof subject);
+        }
         char line[1024];
         snprintf(
             line,
             sizeof line,
             "%s %s%s%s%s%s",
             command_string(op, "op"),
-            object                        ? command_string(object, "name")
-            : *command_string(op, "name") ? command_string(op, "name")
-                                          : target,
+            subject,
             field ? " · " : "",
             command_string(field, "label"),
             literal ? " → " : "",
@@ -295,6 +317,57 @@ static bool verify_sets(yyjson_val *operations, yyjson_val *catalog)
     return true;
 }
 
+/* Content operations change one document through its history. */
+static bool undoable_operation(const char *op)
+{
+    return !strcmp(op, "set") || !strcmp(op, "assert") || !strcmp(op, "duplicate") ||
+           !strcmp(op, "connect") || !strcmp(op, "edit_graph");
+}
+
+/* Operations no Undo reverts wait for confirmation. */
+static bool irreversible(yyjson_val *ops)
+{
+    static const char *const names[] = { "create_project",
+                                         "create_asset",
+                                         "set_start_scene",
+                                         "save",
+                                         "capture" };
+    size_t i, count;
+    yyjson_val *op;
+    yyjson_arr_foreach(ops, i, count, op)
+    {
+        for (size_t n = 0; n < sizeof names / sizeof names[0]; n++) {
+            if (!strcmp(command_string(op, "op"), names[n])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* The document an applied content command changed; prototypes also name it. */
+static command_edited edited_document(command_task *task, yyjson_val *ops, char *name, size_t size)
+{
+    yyjson_val *first = yyjson_arr_get(ops, 0);
+    const char *op = command_string(first, "op");
+    if (!strcmp(op, "edit_graph")) {
+        return COMMAND_EDITED_GRAPH;
+    }
+    if (!undoable_operation(op)) {
+        return COMMAND_EDITED_NONE;
+    }
+    yyjson_doc *catalog = yyjson_read(task->catalog, strlen(task->catalog), 0);
+    yyjson_val *objects = yyjson_obj_get(yyjson_doc_get_root(catalog), "objects");
+    yyjson_val *target = command_find(objects, command_string(first, "target"));
+    const char *kind = command_string(target, "kind");
+    command_edited edited = !strcmp(kind, "node") ? COMMAND_EDITED_GRAPH
+                          : !strcmp(kind, "prototype") ? COMMAND_EDITED_PROTOTYPE
+                                                       : COMMAND_EDITED_SCENE;
+    snprintf(name, size, "%s", command_string(target, "name"));
+    yyjson_doc_free(catalog);
+    return edited;
+}
+
 static void execute(app_scene_authoring *scene, command_task *task)
 {
     task->started = SDL_GetTicks();
@@ -323,15 +396,19 @@ static void execute(app_scene_authoring *scene, command_task *task)
     free(history_before);
     free(history_after);
     yyjson_val *ops = yyjson_obj_get(yyjson_doc_get_root(read), "operations");
-    const char *first = command_string(yyjson_arr_get(ops, 0), "op");
     bool check_readback = yyjson_arr_size(ops) > 0;
     for (size_t i = 0; i < yyjson_arr_size(ops); i++) {
         check_readback &= !strcmp(command_string(yyjson_arr_get(ops, i), "op"), "set");
     }
-    bool content = !strcmp(first, "set") || !strcmp(first, "assert") ||
-                   !strcmp(first, "duplicate") || !strcmp(first, "connect") ||
-                   !strcmp(first, "edit_graph");
-    yyjson_mut_obj_add_bool(doc, root, "undoable", applied && !task->dry && content && changed);
+    char name[256] = "";
+    command_edited edited = applied && !task->dry && changed
+                              ? edited_document(task, ops, name, sizeof name)
+                              : COMMAND_EDITED_NONE;
+    command_mark_free(&task->mark);
+    if (edited != COMMAND_EDITED_NONE) {
+        task->mark = command_mark_take(scene, edited, name);
+    }
+    yyjson_mut_obj_add_bool(doc, root, "undoable", edited != COMMAND_EDITED_NONE);
     char *after = editor_commands_catalog(scene);
     yyjson_doc *after_doc = yyjson_read(after, strlen(after), 0);
     bool verified = applied && !task->dry && check_readback &&
@@ -441,14 +518,27 @@ static void start(app_scene_authoring *scene, command_task *task)
     }
 }
 
-static bool validate_review(app_scene_authoring *scene, command_task *task)
+/* Replaces the task's status and message, keeping its proposal. */
+static void set_status(command_task *task, const char *status, const char *message)
 {
     yyjson_doc *read = yyjson_read(task->result, strlen(task->result), 0);
-    const char *status = command_string(yyjson_doc_get_root(read), "status");
-    if (strcmp(status, "needs_review") && strcmp(status, "ready")) {
-        yyjson_doc_free(read);
-        return true;
-    }
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_obj_remove_key(root, "ok");
+    yyjson_mut_obj_remove_key(root, "status");
+    yyjson_mut_obj_remove_key(root, "message");
+    yyjson_mut_obj_add_bool(doc, root, "ok", true);
+    yyjson_mut_obj_add_str(doc, root, "status", status);
+    yyjson_mut_obj_add_str(doc, root, "message", message);
+    set_result(task, yyjson_mut_write(doc, 0, NULL));
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read);
+}
+
+/* A dry run of a proposal; a rejected one becomes the task's failure. */
+static bool validate_proposal(app_scene_authoring *scene, command_task *task)
+{
+    yyjson_doc *read = yyjson_read(task->result, strlen(task->result), 0);
     yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
     yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
     yyjson_mut_obj_remove_key(root, "dry_run");
@@ -475,6 +565,37 @@ static bool validate_review(app_scene_authoring *scene, command_task *task)
         );
     }
     return valid;
+}
+
+static void finish(app_scene_authoring *scene, command_task *task)
+{
+    runtime(scene)->active = NULL;
+    trace(task);
+}
+
+/* A proposal applies at once when Undo can revert all of it; irreversible
+ * operations wait for confirmation. A question waits for its answer. */
+static void settle(app_scene_authoring *scene, command_task *task)
+{
+    yyjson_doc *read = yyjson_read(task->result, strlen(task->result), 0);
+    yyjson_val *root = yyjson_doc_get_root(read);
+    bool proposed = !strcmp(command_string(root, "status"), "proposed");
+    bool asking = !strcmp(command_string(root, "status"), "needs_clarification");
+    bool confirm = proposed && !task->dry &&
+                   irreversible(yyjson_obj_get(root, "operations"));
+    yyjson_doc_free(read);
+    if (proposed && !validate_proposal(scene, task)) {
+        finish(scene, task);
+    } else if (confirm) {
+        set_status(task, "needs_confirmation", "Confirm");
+        trace(task);
+    } else if (proposed) {
+        execute(scene, task);
+    } else if (asking) {
+        trace(task);
+    } else {
+        finish(scene, task);
+    }
 }
 
 const char *editor_commands_result(app_scene_authoring *scene)
@@ -532,22 +653,7 @@ void editor_commands_frame(app_scene_authoring *scene)
         result = response("failed", error[0] ? error : "Could not parse the model command");
     }
     set_result(task, result);
-    if (!validate_review(scene, task)) {
-        runtime(scene)->active = NULL;
-        trace(task);
-        return;
-    }
-    yyjson_doc *doc = yyjson_read(task->result, strlen(task->result), 0);
-    const char *status = command_string(yyjson_doc_get_root(doc), "status");
-    if (!strcmp(status, "ready")) {
-        execute(scene, task);
-    } else if (strcmp(status, "needs_review") && strcmp(status, "needs_clarification")) {
-        runtime(scene)->active = NULL;
-        trace(task);
-    } else {
-        trace(task);
-    }
-    yyjson_doc_free(doc);
+    settle(scene, task);
 }
 
 static command_task *find_task(struct editor_command_runtime *state, const char *id)
@@ -563,71 +669,25 @@ static command_task *find_task(struct editor_command_runtime *state, const char 
     return NULL;
 }
 
-/* The document a content command edited: node (the open graph), prototype
- * or entity (the scene). */
-static const char *edited_kind(command_task *task, yyjson_val *result)
+bool editor_commands_undoable(app_scene_authoring *scene, const char *task_id)
 {
-    yyjson_doc *catalog = yyjson_read(task->catalog, strlen(task->catalog), 0);
-    yyjson_val *objects = yyjson_obj_get(yyjson_doc_get_root(catalog), "objects");
-    yyjson_val *first = yyjson_arr_get(yyjson_obj_get(result, "operations"), 0);
-    const char *kind = command_string(command_find(objects, command_string(first, "target")), "kind");
-    bool graph = !strcmp(kind, "node") ||
-                 !strcmp(command_string(first, "op"), "edit_graph");
-    const char *known = graph                      ? "node"
-                      : !strcmp(kind, "prototype") ? "prototype"
-                                                   : "entity";
-    yyjson_doc_free(catalog);
-    return known;
+    command_task *task = find_task(runtime(scene), task_id);
+    return task && !runtime(scene)->active && command_mark_latest(scene, &task->mark);
 }
 
-/* Undoes the document the command changed, as that document's Undo would. */
-static int undo_document(app_scene_authoring *scene, const char *kind)
-{
-    if (!strcmp(kind, "node")) {
-        if (!editor_can_undo(scene->graph_editor)) {
-            return -1;
-        }
-        editor_undo(scene->graph_editor);
-        return 0;
-    }
-    if (!strcmp(kind, "prototype")) {
-        return prototype_undo(scene);
-    }
-    finish_transform_edit(scene, false);
-    return replay_scene_edit(scene, false);
-}
-
-/* Undo is offered only while the command's change is still the latest. */
+/* Undo is offered only while the command's change is its document's latest. */
 static char *undo_task(app_scene_authoring *scene, command_task *task)
 {
     struct editor_command_runtime *state = runtime(scene);
-    yyjson_doc *prior = yyjson_read(task->result, strlen(task->result), 0);
-    yyjson_val *previous = yyjson_doc_get_root(prior);
-    char *catalog = editor_commands_catalog(scene);
-    yyjson_doc *current = yyjson_read(catalog, strlen(catalog), 0);
-    bool latest = !state->active &&
-                  !strcmp(command_string(previous, "status"), "applied") &&
-                  yyjson_get_bool(yyjson_obj_get(previous, "undoable")) &&
-                  !strcmp(
-                      command_string(previous, "after_revision"),
-                      command_string(yyjson_doc_get_root(current), "revision")
-                  );
-    char *result = NULL;
-    if (!latest) {
-        result = response("failed", "The editor changed. Use document Undo.");
-    } else if (undo_document(scene, edited_kind(task, previous))) {
-        result = response("failed", "Undo failed");
-    } else {
-        set_result(task, response("undone", "Undone"));
-        free(state->context);
-        state->context = NULL;
-        trace(task);
-        result = xstrdup(task->result);
+    if (state->active || command_mark_undo(scene, &task->mark)) {
+        return response("failed", "The editor changed. Use document Undo.");
     }
-    yyjson_doc_free(prior);
-    yyjson_doc_free(current);
-    free(catalog);
-    return result;
+    command_mark_free(&task->mark);
+    set_result(task, response("undone", "Undone"));
+    free(state->context);
+    state->context = NULL;
+    trace(task);
+    return xstrdup(task->result);
 }
 
 static char *mark_incorrect(command_task *task)
@@ -677,14 +737,13 @@ static char *reply(app_scene_authoring *scene, command_task *task, yyjson_val *r
     yyjson_val *previous = yyjson_doc_get_root(prior);
     const char *status = command_string(previous, "status");
     char *result = NULL;
-    if (!strcmp(status, "needs_review") &&
-        yyjson_get_bool(yyjson_obj_get(root, "approve")) &&
-        yyjson_arr_size(yyjson_obj_get(previous, "operations"))) {
+    if (!strcmp(status, "needs_confirmation") &&
+        yyjson_get_bool(yyjson_obj_get(root, "approve"))) {
         execute(scene, task);
     } else if (!strcmp(status, "needs_clarification")) {
         result = clarify(scene, task, previous, root);
     } else {
-        result = response("failed", "Review the proposed operations");
+        result = response("failed", "Confirm with approve or cancel the task");
     }
     yyjson_doc_free(prior);
     return result ? result : xstrdup(task->result);
@@ -754,7 +813,8 @@ static command_task *new_task(app_scene_authoring *scene, yyjson_doc *doc, const
     return task;
 }
 
-/* Typed operations execute at once; a natural language command asks the model. */
+/* Typed operations are a proposal at once; a natural language command asks
+ * the model for one. */
 static char *submit(app_scene_authoring *scene, yyjson_doc *doc, const char *request)
 {
     struct editor_command_runtime *state = runtime(scene);
@@ -777,7 +837,8 @@ static char *submit(app_scene_authoring *scene, yyjson_doc *doc, const char *req
     state->active = state->latest = task;
     if (yyjson_obj_get(root, "operations")) {
         set_result(task, xstrdup(request));
-        execute(scene, task);
+        set_status(task, "proposed", "Proposed");
+        settle(scene, task);
     } else {
         start(scene, task);
     }
@@ -825,6 +886,7 @@ void editor_commands_free(app_scene_authoring *scene)
         free(task->input);
         free(task->catalog);
         free(task->result);
+        command_mark_free(&task->mark);
         free(task);
     }
     afree(state->tasks);

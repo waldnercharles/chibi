@@ -16,15 +16,22 @@ A request takes one of two local decision paths:
    by a per-request schema. The C adapter normalizes literal colors and listed
    choices, checks target and field IDs, and rejects unavailable operations.
 
-Both paths use the same review and execution contract. A dry run checks the
-proposal before it is shown. A loading toast shows the request while the model
-works; its Cancel stops it. A proposal reopens the palette with its changes:
-Enter applies them against the original catalog revision and Escape cancels.
-A question reopens the palette with its choices, or takes a typed answer. A
-fresh catalog readback verifies set values, and a failed readback is reported
-as unverified; the editor never silently retries a mutation. An applied change
-shows a toast with Undo, which reverts the edited document while the change is
-still the latest one. Failures show a toast and appear in Output.
+Both paths use the same execution contract. A dry run checks every proposal
+against the original catalog revision. A loading toast shows the request while
+the model works; its Cancel stops it. Changes that Undo can revert (`set`,
+`assert`, `duplicate`, `connect`, `edit_graph`) and navigation apply at once,
+and a success toast lists their targets and values with Undo. The toast
+dismisses itself once the document has a later edit, so it never offers a
+stale Undo. `create_project`, `create_asset`, `set_start_scene`, `save` and
+`capture` reopen the palette with one Confirm row under what will happen:
+Enter confirms and Escape cancels. A question reopens the palette with its
+choices, or takes a typed answer. A fresh catalog readback verifies set
+values; a failed readback shows an error toast, and the editor never silently
+retries a mutation. Failures show a toast and appear in Output. Captures are
+saved in the project's `.chibi/` directory.
+
+The palette ranks its commands, objects and assets itself and always lists the
+Ask row last.
 
 The catalog spells enum values and choices by label, as asset documents do.
 Graph pins are fields keyed by side and name (`in.<name>`, `out.<name>`).
@@ -59,9 +66,9 @@ Each finished request is appended to `.chibi/command-traces.jsonl`
 ## Checks
 
 Headless checks use the same command API and execution path as the palette.
-They create an isolated scene, submit each request, inspect the exact
-proposal, approve supported edits, and read back affected and preserved fields.
-The first two run in `make test` without a model host:
+They create an isolated scene, submit each request, compare the applied
+operations with the expected ones, and read back affected and preserved
+fields. The first two run in `make test` without a model host:
 
 ```sh
 make build
@@ -78,8 +85,8 @@ CHIBI_LIVE_HOST=http://127.0.0.1:11435/api \
 `COMMAND_LIVE_CASE` runs one case, `COMMAND_LIVE_LIMIT` the first cases, and
 `COMMAND_LIVE_VERBOSE` prints failing replies. The project check loads the
 authored start scene and Player prototype without a window, asks for one
-exact width change, approves it as a dry run, reads the original value back,
-and compares the Player asset bytes before and after.
+exact width change as a dry run, reads the original value back, and
+compares the Player asset bytes before and after.
 
 The numbered `command-validation-v*.json` files are broader exact-operation
 corpora. Use a new unseen fixture to measure generalization after changing
@@ -87,8 +94,8 @@ decision rules. A quick edit has zero model calls and must not be counted as
 model latency. Requests outside the observed editor catalog, and batches
 spanning documents, are unsupported. Unspecified targets, fields or amounts
 require clarification. These are synthetic scene tests, not evidence of
-general autonomous app use: the runner approves only proposals that match the
-expected operations exactly. The live checks register Studio's drawers as
+general autonomous app use: a case passes only when the applied operations
+match the expected ones exactly. The live checks register Studio's drawers as
 panels, so panel cases name only Assets, Output and Performance. With
 `gpt-oss:20b` on Ollama, v7 matched 45/49 expected outcomes; five were quick
 edits with no model call.

@@ -619,8 +619,8 @@ char *editor_command_quick_edit(const char *packet_json)
     yyjson_mut_doc_set_root(result_doc, result);
     yyjson_mut_obj_add_bool(result_doc, result, "ok", true);
     yyjson_mut_obj_add_str(result_doc, result, "provider", "quick_edit");
-    yyjson_mut_obj_add_str(result_doc, result, "status", "needs_review");
-    yyjson_mut_obj_add_str(result_doc, result, "message", "Review changes");
+    yyjson_mut_obj_add_str(result_doc, result, "status", "proposed");
+    yyjson_mut_obj_add_str(result_doc, result, "message", "Proposed");
     yyjson_mut_obj_add_strcpy(result_doc, result, "revision", revision);
     yyjson_mut_val *operations = yyjson_mut_obj_add_arr(result_doc, result, "operations");
     yyjson_mut_val *operation = yyjson_mut_arr_add_obj(result_doc, operations);

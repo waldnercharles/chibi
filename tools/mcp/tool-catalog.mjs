@@ -327,10 +327,10 @@ const entries = [
     operation: "editorCommand",
     adapter: "live-editor",
     title: "Run a command in a live editor",
-    description: "Use the Studio command runtime of a running editor through its native socket or a registered browser session. Inspect, resolve names, submit, poll, clarify, review, and cancel revision-checked editor transactions.",
+    description: "Use the Studio command runtime of a running editor through its native socket or a registered browser session. Inspect, resolve names, submit, poll, clarify, confirm, undo, and cancel revision-checked editor transactions.",
     intentTerms: ["editor", "command"],
     candidates: ["editorCommand"],
-    nextSteps: ["Poll the returned task ID. Reply to listed choices or review concrete operations. Verify applied status before continuing."],
+    nextSteps: ["Poll the returned task ID. Reply to listed choices or confirm irreversible operations. Verify applied status before continuing."],
     annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false, openWorldHint: false },
   },
 ];

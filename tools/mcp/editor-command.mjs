@@ -8,7 +8,7 @@ export const editorCommandDefinition = {
   name: 'editorCommand',
   title: 'Run a command in a live editor',
   annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false, openWorldHint: false },
-  description: 'Inspect, resolve names, submit natural language or typed operations, poll, reply, and cancel in a running editor. Uses the same revision-checked transaction and Undo path as the Studio command palette. Specify a native socket (CHIBI_EDITOR_SOCKET) or a browser connection file plus session. Inspect first for typed operations and pass its revision. A submit returns a task ID; poll status while it is pending, until applied, failed, ready (dry run), needs_review, or needs_clarification. Reuse request_id after a timeout. Never substitute offline file edits for live commands.',
+  description: 'Inspect, resolve names, submit natural language or typed operations, poll, reply, and cancel in a running editor. Uses the same revision-checked transaction and Undo path as the Studio command palette. Specify a native socket (CHIBI_EDITOR_SOCKET) or a browser connection file plus session. Inspect first for typed operations and pass its revision. A submit returns a task ID; poll status while it is pending, until applied, failed, ready (dry run), needs_confirmation (irreversible operations), or needs_clarification. Undoable changes apply at once; respond with undo while the change is the latest edit of its document. Reuse request_id after a timeout. Never substitute offline file edits for live commands.',
   outputSchema: { type: 'object', additionalProperties: true },
   inputSchema: {
     type: 'object',

@@ -199,6 +199,7 @@ set(EDITOR_COMMAND_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/catalog.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/creation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/history.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/inspect.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/quick_edit.c

@@ -1,7 +1,7 @@
 {
   "native_default_scope": "prototype",
   "native_scoring_contract": {
-    "operation_cases": "native_expected_operations is an exact, order-independent operation set. Supported requests must reach needs_review, be approved and applied, then read back every field or panel value. native_unchanged values must remain unchanged.",
+    "operation_cases": "native_expected_operations is an exact, order-independent operation set. A supported request applies at once, its applied operations must match, and every set field or panel value must read back. native_unchanged values must remain unchanged.",
     "single_set_cases": "Without native_expected_operations, expected_target/component/field/value describes one prototype set operation.",
     "no_operation_cases": "native_expected_status requires that exact unsupported or needs_clarification status with no proposed operations."
   },

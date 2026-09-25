@@ -1,8 +1,8 @@
 /* Natural language commands from the command palette. An Ask row submits the
  * query to the editor command API; a loading toast follows the request
- * (Sonner's promise toast) and becomes its result. Clarification and review
- * reopen the palette with the choices or the proposed changes. Applied
- * changes offer Undo while they are still the latest edit. */
+ * (Sonner's promise toast) and becomes its result. Undoable changes apply at
+ * once and offer Undo while they are still their document's latest edit.
+ * Irreversible changes and questions reopen the palette to confirm or answer. */
 #include "editor/commands/command.h"
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
@@ -202,12 +202,13 @@ static void follow(studio *s, yyjson_val *root)
         );
         return;
     }
-    if (!strcmp(status, "needs_review") || !strcmp(status, "needs_clarification")) {
-        bool review = !strcmp(status, "needs_review");
-        s->ask.phase = review ? STUDIO_ASK_REVIEW : STUDIO_ASK_CLARIFY;
+    if (!strcmp(status, "needs_confirmation") ||
+        !strcmp(status, "needs_clarification")) {
+        bool confirm = !strcmp(status, "needs_confirmation");
+        s->ask.phase = confirm ? STUDIO_ASK_CONFIRM : STUDIO_ASK_CLARIFY;
         kit_toast_dismiss(s->kit, s->ask.toast);
         s->ask.toast = 0;
-        kit_command_open(s->kit, review ? s->ask.query : text(root, "message"));
+        kit_command_open(s->kit, confirm ? s->ask.query : text(root, "message"));
         return;
     }
     finish(s, root);
@@ -253,19 +254,27 @@ static void undo(studio *s)
     reply_free(&r);
 }
 
+static bool in_palette(const studio *s)
+{
+    return s->ask.phase == STUDIO_ASK_CONFIRM || s->ask.phase == STUDIO_ASK_CLARIFY;
+}
+
 void studio_ask_frame(studio *s)
 {
     if (s->ask.undo_toast && kit_toast_action(s->kit, s->ask.undo_toast)) {
         s->ask.undo_toast = 0;
         undo(s);
     }
+    /* A later edit of the same document retires the Undo. */
+    if (s->ask.undo_toast && !editor_commands_undoable(s->scene, s->ask.undo_task)) {
+        kit_toast_dismiss(s->kit, s->ask.undo_toast);
+        s->ask.undo_toast = 0;
+    }
     if (s->ask.phase == STUDIO_ASK_WAITING && kit_toast_action(s->kit, s->ask.toast)) {
         s->ask.toast = 0;
         cancel(s);
     }
-    bool palette = s->ask.phase == STUDIO_ASK_REVIEW ||
-                   s->ask.phase == STUDIO_ASK_CLARIFY;
-    if (palette && !kit_command_is_open(s->kit)) {
+    if (in_palette(s) && !kit_command_is_open(s->kit)) {
         cancel(s); /* Escape or a press outside the palette */
     }
     if (s->ask.phase != STUDIO_ASK_WAITING) {
@@ -282,21 +291,16 @@ void studio_ask_frame(studio *s)
 
 /* ---------- Palette ---------- */
 
-static void review(studio *s, yyjson_val *root)
+/* One Confirm row under what will happen; Enter confirms, Escape cancels. */
+static void confirm(studio *s, yyjson_val *root)
 {
-    kit_command_item *rows = NULL;
-    apush(rows, ((kit_command_item){ "Apply", "", NULL, "↵", NULL, KIT_ICON_CHECK }));
-    size_t i, count;
-    yyjson_val *line;
-    yyjson_arr_foreach(yyjson_obj_get(root, "summary"), i, count, line)
-    {
-        apush(rows, ((kit_command_item){ yyjson_get_str(line), "Changes", NULL, NULL, NULL, KIT_ICON_EDIT }));
-    }
-    /* Enter applies from any row; Escape cancels. */
-    if (kit_command_ranked(s->kit, rows, acount(rows)) >= 0) {
+    char changes[512];
+    summary(root, changes, sizeof changes);
+    const kit_command_item row = { "Confirm", changes, NULL,
+                                   "↵",       NULL,    KIT_ICON_CHECK };
+    if (kit_command_ranked(s->kit, &row, 1) >= 0) {
         respond(s, "approve", NULL);
     }
-    afree(rows);
 }
 
 /* The listed choices, or the typed answer when the question lists none. */
@@ -330,12 +334,12 @@ static void clarify(studio *s, yyjson_val *root)
 
 bool studio_ask_palette(studio *s)
 {
-    if (s->ask.phase != STUDIO_ASK_REVIEW && s->ask.phase != STUDIO_ASK_CLARIFY) {
+    if (!in_palette(s)) {
         return false;
     }
     ask_reply r = parse(xstrdup(editor_commands_result(s->scene)));
-    if (s->ask.phase == STUDIO_ASK_REVIEW) {
-        review(s, r.root);
+    if (s->ask.phase == STUDIO_ASK_CONFIRM) {
+        confirm(s, r.root);
     } else {
         clarify(s, r.root);
     }

@@ -205,12 +205,12 @@ static bool run_case(yyjson_val *item)
                        : native || *command_string(item, "expected_target") ? 1
                                                                             : 0;
     if (!*expected_status) {
-        expected_status = expected_count ? "needs_review" : "";
+        expected_status = expected_count ? "applied" : "";
     }
     if (!expected_operations && !expected_single && expected_count) {
         expected_single = item;
     }
-    bool supported = !strcmp(expected_status, "needs_review");
+    bool supported = !strcmp(expected_status, "applied");
     bool proposal_matches = asked && supported && !strcmp(status, expected_status) &&
                             yyjson_arr_size(operations) == (size_t)expected_count &&
                             expected_count > 0;
@@ -238,16 +238,11 @@ static bool run_case(yyjson_val *item)
             proposal_matches = false;
         }
     }
+    /* Undoable proposals apply at once; the applied operations must be exactly
+       the expected ones and read back. */
     if (proposal_matches) {
-        yyjson_doc_free(read);
-        free(reply);
-        reply = editor_commands_api(f.scene, "{\"operation\":\"respond\",\"approve\":true}");
-        read = yyjson_read(reply, strlen(reply), 0);
-        result = yyjson_doc_get_root(read);
-        status = command_string(result, "status");
         yyjson_val *verified = yyjson_obj_get(result, "verified");
-        correct = !strcmp(status, "applied") &&
-                  (!verified || yyjson_get_bool(verified));
+        correct = !verified || yyjson_get_bool(verified);
         for (int i = 0; correct && i < expected_count; i++) {
             yyjson_val *expected = expected_operations
                                      ? yyjson_arr_get(expected_operations, i)

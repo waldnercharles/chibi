@@ -95,7 +95,7 @@ static void expect_set(
     bool matches = label ? !strcmp(string_value(operation, "value"), label)
                          : fabs(yyjson_get_num(value) - expected) < 0.00001;
     bool ok = root && operation &&
-              !strcmp(string_value(root, "status"), "needs_review") &&
+              !strcmp(string_value(root, "status"), "proposed") &&
               !strcmp(string_value(root, "provider"), "quick_edit") &&
               !strcmp(string_value(root, "revision"), "revision-1") &&
               !strcmp(string_value(operation, "target"), target) &&

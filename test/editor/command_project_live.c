@@ -144,7 +144,7 @@ static bool exact_proposal(yyjson_val *result, const char *target, const char *f
 {
     yyjson_val *operations = yyjson_obj_get(result, "operations");
     yyjson_val *operation = yyjson_arr_get(operations, 0);
-    return !strcmp(command_string(result, "status"), "needs_review") &&
+    return !strcmp(command_string(result, "status"), "ready") &&
            yyjson_arr_size(operations) == 1 &&
            !strcmp(command_string(operation, "op"), "set") &&
            !strcmp(command_string(operation, "target"), target) &&
@@ -225,19 +225,12 @@ int test_editor_command_project_live(const char *provider, const char *project_p
     passed &= proposal;
     test_check(proposal, "model proposes the exact prototype edit on the authored scene");
 
-    if (proposal) {
-        free(reply);
-        reply = settled(f.scene, editor_commands_api(f.scene, "{\"operation\":\"respond\",\"approve\":true}"));
-        yyjson_doc_free(result_doc);
-        result_doc = yyjson_read(reply, strlen(reply), 0);
-        result = yyjson_doc_get_root(result_doc);
-    }
     double after = 0;
     bool dry_readback = !strcmp(command_string(result, "status"), "ready") &&
                         field_number(f.scene, target, field_id, &after) &&
                         fabs(after - before) < 0.00001;
     passed &= dry_readback;
-    test_check(dry_readback, "approved dry run reads back the unchanged authored catalog value");
+    test_check(dry_readback, "a dry run validates without changing the authored catalog value");
 
     bool unchanged_file = false;
     file = fopen(path, "rb");

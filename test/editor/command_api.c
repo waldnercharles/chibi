@@ -126,32 +126,80 @@ static void typed_edit_and_undo(app_scene_authoring *scene)
     reply_free(&stale);
 }
 
+/* Submits typed operations against the current revision; `%s` in the
+ * operations becomes the Player prototype ID. */
+static reply submit_typed(app_scene_authoring *scene, const char *operations, bool dry)
+{
+    reply catalog = api(scene, "{\"operation\":\"inspect\"}");
+    yyjson_val *player = named(catalog.root, "prototype", "Player");
+    char ops[1024], request[2048];
+    snprintf(ops, sizeof ops, operations, command_string(player, "id"));
+    snprintf(
+        request,
+        sizeof request,
+        "{\"operation\":\"submit\",\"dry_run\":%s,\"revision\":\"%s\","
+        "\"operations\":%s}",
+        dry ? "true" : "false",
+        command_string(catalog.root, "revision"),
+        ops
+    );
+    reply_free(&catalog);
+    return api(scene, request);
+}
+
+static reply task_request(
+    app_scene_authoring *scene,
+    const char *operation,
+    const char *task,
+    const char *extra
+)
+{
+    char request[512];
+    snprintf(request, sizeof request, "{\"operation\":\"%s\",\"task_id\":\"%s\"%s}", operation, task, extra);
+    return api(scene, request);
+}
+
 static void quick_edit(app_scene_authoring *scene)
 {
     char host[256], model[128], error[256];
     editor_command_model_get_settings(host, sizeof host, model, sizeof model);
     /* A quick edit decides locally, so the unreachable host is never contacted. */
     editor_command_model_set_settings("http://127.0.0.1:9/api", "gpt-oss:20b", error, sizeof error);
-    reply proposal = parse(
+    reply applied = parse(
         command_fixture_settled(scene, command_fixture_submit(scene, "Set Ship's visual width to 80"))
     );
-    yyjson_val *operation = yyjson_arr_get(yyjson_obj_get(proposal.root, "operations"), 0);
-    test_check(
-        !strcmp(status(&proposal), "needs_review") &&
-            !strcmp(command_string(operation, "field"), "GAME.GameAppearance.width") &&
-            yyjson_get_int(yyjson_obj_get(proposal.root, "model_calls")) == 0 &&
-            player_is(scene, "GAME.GameAppearance.width", "32.0"),
-        "quick edit proposes a named-target change for review without the model"
-    );
-    reply_free(&proposal);
-    reply applied = api(scene, "{\"operation\":\"respond\",\"approve\":true}");
+    char first[64];
+    snprintf(first, sizeof first, "%s", command_string(applied.root, "task_id"));
+    yyjson_val *operation = yyjson_arr_get(yyjson_obj_get(applied.root, "operations"), 0);
     test_check(
         !strcmp(status(&applied), "applied") &&
+            !strcmp(command_string(operation, "field"), "GAME.GameAppearance.width") &&
+            yyjson_get_int(yyjson_obj_get(applied.root, "model_calls")) == 0 &&
+            editor_commands_undoable(scene, first) &&
             player_is(scene, "GAME.GameAppearance.width", "80.0"),
-        "approving a reviewed proposal applies it to the prototype"
+        "an undoable proposal applies at once without the model"
     );
     reply_free(&applied);
     editor_command_model_set_settings(host, model, error, sizeof error);
+
+    reply later = submit_typed(scene, "[{\"op\":\"set\",\"target\":\"%s\",\"field\":\"GAME.GameCollider.width\",\"value\":40}]", false);
+    char second[64];
+    snprintf(second, sizeof second, "%s", command_string(later.root, "task_id"));
+    reply_free(&later);
+    reply stale = task_request(scene, "respond", first, ",\"undo\":true");
+    test_check(
+        !editor_commands_undoable(scene, first) && !strcmp(status(&stale), "failed") &&
+            player_is(scene, "GAME.GameAppearance.width", "80.0"),
+        "a later edit of the document retires a command's Undo"
+    );
+    reply_free(&stale);
+    reply undone = task_request(scene, "respond", second, ",\"undo\":true");
+    test_check(
+        !strcmp(status(&undone), "undone") && editor_commands_undoable(scene, first) &&
+            player_is(scene, "GAME.GameCollider.width", "32.0"),
+        "undoing the later edit makes the earlier command the latest again"
+    );
+    reply_free(&undone);
 }
 
 static bool drawer_open;
@@ -220,36 +268,48 @@ static void inspection(app_scene_authoring *scene)
     reply_free(&found);
 }
 
-static char *create_request(app_scene_authoring *scene, const char *definition)
-{
-    reply catalog = api(scene, "{\"operation\":\"inspect\"}");
-    char *request = xmalloc(1024);
-    snprintf(
-        request,
-        1024,
-        "{\"operation\":\"submit\",\"dry_run\":true,\"revision\":\"%s\","
-        "\"operations\":["
-        "{\"op\":\"create_asset\",\"kind\":\"prototype\",\"name\":\"Marker\","
-        "\"definition\":%s}]}",
-        command_string(catalog.root, "revision"),
-        definition
-    );
-    reply_free(&catalog);
-    return request;
-}
-
 static void creation(app_scene_authoring *scene)
 {
-    char *request = create_request(scene, "{\"components\":{\"GameCollider\":{\"shape\":\"Circle\"}}}");
-    reply valid = api(scene, request);
-    free(request);
+    static const char
+        valid_op[] = "[{\"op\":\"create_asset\",\"kind\":\"prototype\","
+                     "\"name\":\"Marker\","
+                     "\"definition\":{\"components\":{\"GameCollider\":{"
+                     "\"shape\":\"Circle\"}}}}]";
+    reply valid = submit_typed(scene, valid_op, true);
     test_check(!strcmp(status(&valid), "ready"), "create_asset validates a new prototype in a dry run");
     reply_free(&valid);
-    request = create_request(scene, "{\"components\":{\"GameCollider\":{\"shape\":\"Hexagon\"}}}");
-    reply invalid = api(scene, request);
-    free(request);
+    reply invalid = submit_typed(
+        scene,
+        "[{\"op\":\"create_asset\",\"kind\":\"prototype\",\"name\":\"Marker\","
+        "\"definition\":{\"components\":{\"GameCollider\":{\"shape\":"
+        "\"Hexagon\"}}}}]",
+        true
+    );
     test_check(!strcmp(status(&invalid), "failed"), "create_asset rejects an invalid prototype");
     reply_free(&invalid);
+    reply confirm = submit_typed(scene, valid_op, false);
+    char task[64];
+    snprintf(task, sizeof task, "%s", command_string(confirm.root, "task_id"));
+    test_check(
+        !strcmp(status(&confirm), "needs_confirmation") &&
+            yyjson_arr_size(yyjson_obj_get(confirm.root, "summary")) == 1,
+        "an irreversible operation waits for confirmation"
+    );
+    reply_free(&confirm);
+    reply cancelled = task_request(scene, "cancel", task, "");
+    test_check(!strcmp(status(&cancelled), "cancelled"), "an unconfirmed operation can be cancelled");
+    reply_free(&cancelled);
+    static const char *const escapes[] = { "../shot.png",
+                                           "/tmp/shot.png",
+                                           "shots/shot.png",
+                                           "shot.txt" };
+    for (int i = 0; i < 4; i++) {
+        char op[256];
+        snprintf(op, sizeof op, "[{\"op\":\"capture\",\"path\":\"%s\"}]", escapes[i]);
+        reply rejected = submit_typed(scene, op, false);
+        test_check(!strcmp(status(&rejected), "failed"), "captures stay in the project .chibi directory");
+        reply_free(&rejected);
+    }
 }
 
 void test_editor_command_api()

@@ -4495,6 +4495,11 @@ static int prepare_scene_scenario(
         scenario_context_free(context);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
+    if (!acount(context->scene->entities)) {
+        scenario_context_free(context);
+        set_error(error, error_size, "scene has no entities");
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     context->registry = (game_prototype_registry){
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,

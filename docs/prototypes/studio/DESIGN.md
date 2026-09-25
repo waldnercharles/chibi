@@ -109,5 +109,5 @@ Behavior changed from the ImGui editor:
 
 1. Density is an editor setting. Compact is the default.
 2. Areas (Blender splits) replace floating docking.
-3. Properties tabs, prototype icons, and field ranges and units come from reflected component metadata: `NODE_CATEGORY` and `NODE_ICON` on components, `NODE_RANGE` and `NODE_UNIT` on float fields (`src/graph/model/annotate.h`).
+3. Properties tabs, prototype icons, and number ranges and units are authored per project in `content/editor/Components.yaml` (`src/editor/documents/component_presentation.h`). Studio re-reads the file within a second of a change; without a valid file, components show under Object with no icon and plain numbers.
 4. Open: orange selection in the viewport and graph, blue in lists.

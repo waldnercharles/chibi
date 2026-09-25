@@ -322,6 +322,17 @@ const entries = [
     nextSteps: ["Use the public names in tools/list when calling the MCP."],
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
+  {
+    name: "editorCommand",
+    operation: "editorCommand",
+    adapter: "live-editor",
+    title: "Run a command in a live editor",
+    description: "Use the Studio command runtime of a running editor through its native socket or a registered browser session. Inspect, resolve names, submit, poll, clarify, review, and cancel revision-checked editor transactions.",
+    intentTerms: ["editor", "command"],
+    candidates: ["editorCommand"],
+    nextSteps: ["Poll the returned task ID. Reply to listed choices or review concrete operations. Verify applied status before continuing."],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false, openWorldHint: false },
+  },
 ];
 
 export const toolCatalog = Object.freeze(entries.map((entry) => Object.freeze(entry)));

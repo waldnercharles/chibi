@@ -36,6 +36,7 @@ const expectedPublicNames = [
   "replayScenario",
   "describeRegistry",
   "describeContract",
+  "editorCommand",
 ];
 
 function nativeRequestAt(projectRoot, operation, args = {}) {

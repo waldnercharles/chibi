@@ -21,13 +21,16 @@
     "authoring.mjs",
     "launch.sh",
     "server.mjs",
-    "tool-catalog.mjs"
+    "tool-catalog.mjs",
+    "editor-command.mjs",
+    "editor-command-cli.mjs"
   ],
   "bin": {
     "chibi-mcp": "./server.mjs"
   },
   "scripts": {
-    "check": "node --check server.mjs && node --check authoring.mjs && node --check tool-catalog.mjs && node --check name-audit.mjs && node --check setup-codex.mjs",
+    "check": "node --check server.mjs && node --check authoring.mjs && node --check tool-catalog.mjs && node --check name-audit.mjs && node --check setup-codex.mjs && node --check editor-command.mjs",
+    "test:editor": "node --test editor-command.test.mjs",
     "audit:names": "node name-audit.mjs",
     "pack:check": "npm pack --dry-run"
   },

@@ -14,6 +14,7 @@ import {
   validateAuthoringArguments,
 } from "./authoring.mjs";
 import { parseControllerJson } from "./controller.mjs";
+import { editorCommand, editorCommandDefinition } from "./editor-command.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -859,6 +860,7 @@ function buildToolDefinitions() {
       outputSchema,
     },
     ...authoringToolDefinitions(),
+    editorCommandDefinition,
   ];
 }
 
@@ -1004,6 +1006,9 @@ async function toolCall(name, args, requestId) {
     throw protocolError(-32602, "tools/call requires a tool name");
   }
   validateToolArguments(name, args);
+  if (name === "editorCommand") {
+    return editorCommand(args);
+  }
   if (isAuthoringTool(name)) {
     return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
   }
@@ -1018,7 +1023,23 @@ function defaultNextSteps(name) {
   return getToolCatalogEntry(name)?.nextSteps || [];
 }
 
+function editorCommandNextSteps(status) {
+  switch (status) {
+    case "pending": return ["Poll status with the returned task_id."];
+    case "needs_review": return ["Review the proposed operations, then respond with the task_id and approve or cancel."];
+    case "needs_clarification": return ["Respond with a listed choice or answer, or choose a browser session."];
+    case "failed": case "unsupported": case "busy":
+      return ["Read the message, inspect the current revision, and correct the request before retrying."];
+    case "ready": return ["The dry run passed. Submit the operations with dry_run false and the current revision."];
+    case "applied": case "cancelled": case "undone": case "resolved": return [];
+    default: return ["Use this revision and the observed object IDs for the next command."];
+  }
+}
+
 function responseNextSteps(name, response) {
+  if (name === "editorCommand") {
+    return editorCommandNextSteps(response?.status);
+  }
   const code = response?.error?.code;
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
@@ -1071,8 +1092,28 @@ function withToolGuidance(name, response) {
   return nextSteps.length ? { ...publicResponse, next_steps: nextSteps } : publicResponse;
 }
 
+// Inspections are catalogs and commands return task records; both use top-level
+// fields rather than the offline controller's result envelope.
+function editorCommandResult(response, guidedResponse) {
+  const ok = response.ok ?? typeof response.revision === "string";
+  const summary = { ok, tool: "editorCommand" };
+  const keys = ["status", "task_id", "revision", "after_revision", "message", "error", "summary", "choices", "sessions", "objects"];
+  for (const key of keys) {
+    if (Object.hasOwn(response, key)) summary[key] = response[key];
+  }
+  if (guidedResponse.next_steps) summary.next_steps = guidedResponse.next_steps;
+  return {
+    content: [{ type: "text", text: boundedJson(summary, "editor task") }],
+    structuredContent: { ...guidedResponse, ok },
+    isError: !ok && response.status !== "needs_clarification",
+  };
+}
+
 function toolResult(name, response) {
   const guidedResponse = withToolGuidance(name, response);
+  if (name === "editorCommand") {
+    return editorCommandResult(response, guidedResponse);
+  }
   const authoringResult = authoringToolResult(guidedResponse, name);
   if (authoringResult) {
     return authoringResult;

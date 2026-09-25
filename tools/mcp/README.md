@@ -23,3 +23,9 @@ works without compiling. Uncommitted native edits skip the cache.
 
 See the repository's [MCP workflow](https://github.com/waldnercharles/c-blueprints/blob/main/docs/mcp.md)
 for authoring and validation guidance.
+
+`editorCommand` sends requests to a running Studio editor through the command
+palette's runtime, over a native socket (`CHIBI_EDITOR_SOCKET`) or a browser
+session registered with `tools/web_serve.py`. Inspect the editor first, then
+submit and poll a task until it is applied or needs input.
+`editor-command-cli.mjs` sends one request from a JSON file or stdin.

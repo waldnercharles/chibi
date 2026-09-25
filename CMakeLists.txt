@@ -570,6 +570,7 @@ if(NODE_EXECUTABLE)
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/tools/mcp/editor-command.test.mjs
         DEPENDS chibi_ctl
         VERBATIM)
     add_custom_target(check-mcp-gpu

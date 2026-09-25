@@ -136,6 +136,44 @@ saving them. Tool results include complete `structuredContent` and
 - `replayScenario`: replay a returned recording and report divergence.
 - `describeRegistry`: inspect reflected types, services, operators, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
+- `editorCommand`: inspect and command a running editor through its local socket or browser session.
+
+## Drive a live editor
+
+`editorCommand` reaches a running Studio editor instead of the offline
+controller. It uses the same command runtime as the Studio command palette,
+described in [editor-command-palette.md](editor-command-palette.md): every
+transaction is checked against the observed catalog revision, and content
+changes use the document's Undo.
+
+Start a native editor with a private socket, or serve the browser build:
+
+```sh
+CHIBI_EDITOR_SOCKET=/tmp/chibi-editor.sock build/chibi --project-root projects/arena2d
+python3 tools/web_serve.py --build build-web --project projects/arena2d --port 8099
+```
+
+Pass `socket` (or set `CHIBI_EDITOR_SOCKET` for the adapter) for a native
+editor. For a browser editor pass `connection_file:
+".chibi/web-editor-8099.json"`; a call without `session` lists the live
+sessions to choose from.
+
+1. `inspect` returns the objects, fields, panels and `revision`. Add
+   `kinds: ["nodes"]` or `["components"]` with an optional `query` for
+   reflected types. `resolve_objects` with a `query` finds the IDs of objects
+   the text names.
+2. `submit` takes either `command` (natural language, resolved by the local
+   model) or typed `operations` with the inspected `revision`. `dry_run: true`
+   validates without changing anything. Typed operations include `set`,
+   `connect`, `open`, `select`, `runtime`, `save`, and the authoring operations
+   `create_asset`, `edit_graph`, `create_project`, `set_start_scene`, `input`
+   and `capture`; `inspect` describes their fields.
+3. Poll `status` with the `task_id` while it is `pending`. Answer
+   `needs_clarification` with `respond` and a listed `value`; approve
+   `needs_review` with `respond` and `approve: true`, or `cancel` it.
+4. An `applied` task reports `after_revision`; `respond` with `undo: true`
+   reverts it while it is still the latest change. Reuse `request_id` after a
+   timeout instead of submitting again.
 
 ## Check adapter distribution
 
@@ -154,8 +192,10 @@ The client can also read these MCP resources:
 - `chibi://recording/{id}` for a generated deterministic recording.
 
 All public tools report safety metadata through `describeContract`. They do not
-provide arbitrary shell commands, network access, editor UI control, or access
-to files outside the project data needed by the native controller. `buildGraph`
+provide arbitrary shell commands, network access, or access to files outside
+the project data needed by the native controller. Only `editorCommand` reaches
+a running editor, through its private local socket or a token-guarded loopback
+browser session. `buildGraph`
 writes authored graph assets after validation and an expected-hash check. They are marked as modifying tools. `recordScenario`
 writes only its bounded generated recording artifact under `/tmp`, and
 `replayScenario` accepts only a returned

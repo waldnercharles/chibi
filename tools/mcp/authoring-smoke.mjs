@@ -313,7 +313,7 @@ try {
   const operationProperties = graphTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
-  assert(tools.length === 26, `public tool catalog has ${tools.length} tools instead of 26`);
+  assert(tools.length === 27, `public tool catalog has ${tools.length} tools instead of 27`);
   assert(graphTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library,material,shape,shader-library,field,system", "graph kind selector is incomplete");
   assert(graphTool?.title && ["material", "shader", "behavior", "event", "field", "system"].every((term) => graphTool.description.includes(term)), "authoring description does not expose its intent");
   assert(previewTool?.inputSchema?.properties?.width?.maximum === 512, "preview width limit is missing");

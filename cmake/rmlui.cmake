@@ -35,9 +35,13 @@ add_library(chibi_rmlui STATIC
     src/editor/rmlui/backend.cpp
     src/editor/rmlui/kit.cpp
     src/editor/rmlui/kit_chart.cpp
+    src/editor/rmlui/kit_command.cpp
+    src/editor/rmlui/kit_controls.cpp
     src/editor/rmlui/kit_drag.cpp
     src/editor/rmlui/kit_list.cpp
     src/editor/rmlui/kit_motion.cpp
+    src/editor/rmlui/kit_number.cpp
+    src/editor/rmlui/kit_popup.cpp
     src/editor/rmlui/kit_text.cpp
     src/editor/rmlui/kit_toast.cpp
     src/editor/rmlui/kit_wires.cpp

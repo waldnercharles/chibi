@@ -1,5 +1,5 @@
 #include "editor/ui/kit.h"
-#include "graph/authoring/arrange.h"
+#include "graph/authoring/arrange_path.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -13,7 +13,7 @@ static_assert(
     "kit wire styles follow arrange_route_style"
 );
 
-/* The C side of kit_wires: its C++ renderer cannot include arrange.h. */
+/* The C side of kit_wires: its C++ renderer cannot include arrange_path.h. */
 int kit_wire_shape(kit_wire_style style, const float *knots, int count, float *pieces, int max)
 {
     assert(count >= 2);

@@ -119,7 +119,7 @@ typedef struct
     float zoom, x, y;
 } studio_graph_view;
 
-/* The behavior graph canvas (studio_graph.c): its own RmlUi context whose dp
+/* The behavior graph canvas (studio_graph*.c): its own RmlUi context whose dp
  * ratio is the zoom, so text stays crisp and clipping works at every scale. The
  * canvas logical space is graph units; `x, y` is the graph point at the canvas
  * top-left. */

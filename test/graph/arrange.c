@@ -1,5 +1,6 @@
 #include "graph/authoring/arrange.h"
 
+#include "graph/authoring/arrange_score.h"
 #include "graph/authoring/layout.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"

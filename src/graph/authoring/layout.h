@@ -15,6 +15,9 @@ void graph_place_unplaced(graph *graph);
  * Begin, Tick, the other host events such as input and contact, custom
  * events, End, then everything else. Chains that share nodes form one band. */
 int graph_layout_band(const node *n);
+/* Whether a node draws a pin: settings never, and advanced inputs only when
+ * the node shows them or they are bound or wired. */
+bool graph_pin_visible(const graph *g, const node *n, bool output, int pin);
 /* The fixed measurement graph_layout arranges with. Rows follow Studio's full
  * nodes: execution pins, then data outputs, then data inputs, counting only
  * the pins a node draws. */

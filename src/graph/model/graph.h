@@ -148,9 +148,6 @@ int graph_remove_node_tree(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
-/* Whether a node draws a pin: settings never, and advanced inputs only when
- * the node shows them, they are bound or wired, or the node shades. */
-bool graph_pin_visible(const graph *g, const node *n, bool output, int pin);
 /* Resolve a reference-capable data output to a stable writable binding. The
  * returned strings are borrowed from the graph or registry; a field path
  * assembled from nested projections is graph-owned. */

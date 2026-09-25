@@ -59,9 +59,11 @@ void ui_mount_listen(ui_mount *mount, const rml_event *event);
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
-/* Binds each data-setting element to that key in `settings`, both ways: a
- * checkbox holds "true" or "false", a checked radio its value, and other
- * inputs and selects their value. Refreshes the elements when a key changes. */
+/* Binds each data-setting element to that key in `settings`, both ways. An
+ * element with a value attribute (a radio, or a widget used with one) is an
+ * option: checked while the setting is its value, and choosing it sets it. A
+ * checkbox holds "true" or "false", and other inputs and selects their value.
+ * Refreshes the elements when a key changes. */
 void ui_mount_settings(ui_mount *mount, game_save *settings);
 
 /* ---------- Game host ---------- */

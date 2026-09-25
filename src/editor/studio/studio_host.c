@@ -358,6 +358,11 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
     s->prefs = studio_prefs_load();
+    char error[256];
+    s->ui = studio_ui_new(CHIBI_STUDIO_PROJECT_DIR, error, sizeof error);
+    if (!s->ui) {
+        fprintf(stderr, "Studio UI: %s\n", error);
+    }
     s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
     s->mac = studio_detect_mac();
     apply_prefs(s, true);
@@ -400,6 +405,7 @@ void studio_free(studio *s)
     studio_graph_free(s);
     component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
+    studio_ui_free(s->ui);
     rml_backend_destroy(s->backend);
     free(s);
 }
@@ -417,6 +423,7 @@ void studio_frame(studio *s, double delta_seconds)
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
+    studio_ui_frame(s);
     kit_begin(s->kit, &s->in);
     studio_emit(s);
     kit_end(s->kit);

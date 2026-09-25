@@ -233,3 +233,50 @@ bool studio_prefs_save(const studio_prefs *p)
     free(json);
     return ok;
 }
+
+/* ---------- Shared with authored panels ---------- */
+
+static const char *const DENSITIES[] = { "compact", "comfortable" };
+
+static void share_name(game_save *save, const char *key, const char *const *names, int count, int *value)
+{
+    const char *text = game_save_get(save, key);
+    for (int i = 0; text && i < count; i++) {
+        if (!strcmp(text, names[i])) {
+            *value = i;
+        }
+    }
+}
+
+static void share_flag(game_save *save, const char *key, bool *value)
+{
+    const char *text = game_save_get(save, key);
+    if (text) {
+        *value = !strcmp(text, "true");
+    }
+}
+
+void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
+{
+    if (game_save_revision(save) != *seen) {
+        int theme = (int)p->theme, density = p->comfortable, wires = (int)p->wires;
+        share_name(save, "theme", THEMES, STUDIO_THEME_COUNT, &theme);
+        share_name(save, "density", DENSITIES, 2, &density);
+        share_name(save, "wires", WIRES, KIT_WIRE_STYLE_COUNT, &wires);
+        p->theme = (studio_theme)theme;
+        p->comfortable = density == 1;
+        p->wires = (kit_wire_style)wires;
+        share_flag(save, "shortBindings", &p->short_bindings);
+        share_flag(save, "titleFlow", &p->title_flow);
+        share_flag(save, "compactNodes", &p->compact_nodes);
+        share_flag(save, "reduceMotion", &p->reduced_motion);
+    }
+    game_save_set(save, "theme", THEMES[p->theme]);
+    game_save_set(save, "density", DENSITIES[p->comfortable]);
+    game_save_set(save, "wires", WIRES[p->wires]);
+    game_save_set(save, "shortBindings", p->short_bindings ? "true" : "false");
+    game_save_set(save, "titleFlow", p->title_flow ? "true" : "false");
+    game_save_set(save, "compactNodes", p->compact_nodes ? "true" : "false");
+    game_save_set(save, "reduceMotion", p->reduced_motion ? "true" : "false");
+    *seen = game_save_revision(save);
+}

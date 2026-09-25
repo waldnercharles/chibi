@@ -7,6 +7,7 @@
 #include "editor/ui/kit_icons.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
+#include "runtime/save.h"
 #include "support/file_watch.h"
 #include "ui/rml_backend.h"
 
@@ -220,12 +221,16 @@ typedef struct
     file_watch watch;
 } studio_presentation;
 
+/* The editor's authored UI world (studio_ui.c). */
+typedef struct studio_ui studio_ui;
+
 struct studio
 {
     app_scene_authoring *scene;
     engine_viewport *viewport;
     rml_backend *backend;
     kit *kit;
+    studio_ui *ui; /* NULL when the Studio project could not load */
     kit_frame_input in;
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
@@ -291,6 +296,18 @@ studio_prefs studio_prefs_default();
 studio_prefs studio_prefs_load();
 bool studio_prefs_save(const studio_prefs *prefs);
 bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
+/* Shares the preferences with authored panels as saved keys: a change a panel
+ * made since `seen` applies first, then the preferences are written back. */
+void studio_prefs_share(studio_prefs *prefs, game_save *save, uint64_t *seen);
+
+/* Authored UI. Loads the Studio project's scene; NULL with an error when it
+ * cannot. Free it after the kit, whose hosts hold its listener. */
+studio_ui *studio_ui_new(const char *project_root, char *error, size_t size);
+void studio_ui_free(studio_ui *ui);
+/* Steps the panels' behaviors and shares preferences; call after input. */
+void studio_ui_frame(studio *s);
+/* Shows the Studio scene entity `name`'s GameUi document in a kit host. */
+void studio_ui_panel(studio *s, const char *key, const char *name);
 
 /* Shell. */
 void studio_emit(studio *s);

@@ -515,6 +515,12 @@ the pointer through to the game except over `data-event` elements and inputs;
 set `pointer-events: auto` where a document should block it, such as a menu's
 backdrop.
 
+An element with `data-setting="key"` shows and edits that saved key (the
+same store as `Read Saved Text`): a checkbox holds `true` or `false`, an
+element with a `value` attribute is an option that is checked while the key
+holds that value, and other inputs hold their value. Changes stay pending
+until a behavior commits the save.
+
 The player shows `content/ui/PauseMenu.yaml` while paused. Its `body` has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
 events control the session.

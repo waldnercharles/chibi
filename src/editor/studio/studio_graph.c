@@ -603,6 +603,16 @@ void studio_behavior_header(studio *s, int area)
     if (kit_button(k, "frame", &fit)) {
         sg_frame_nodes(s, false, true);
     }
+    char view[24];
+    snprintf(view, sizeof view, "graph-view:%d", area);
+    kit_button_desc show = { .icon = KIT_ICON_OVERLAY, .tip = "View" };
+    if (kit_button(k, "view", &show)) {
+        kit_popup_open(k, view);
+    }
+    if (kit_popup_begin(k, view, "menu")) {
+        studio_ui_panel(s, "panel", "GraphView");
+        kit_popup_end(k);
+    }
 }
 
 void studio_behavior_body(studio *s, int area)

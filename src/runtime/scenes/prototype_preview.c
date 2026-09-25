@@ -27,6 +27,11 @@ game_entities *game_prototype_preview_entities(game_prototype_preview *preview)
     return preview->live->entities;
 }
 
+game_live_world *game_prototype_preview_live(game_prototype_preview *preview)
+{
+    return preview->live;
+}
+
 static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user)
 {
     game_prototype_preview *preview = user;

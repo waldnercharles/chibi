@@ -208,25 +208,69 @@ static bool input_type(rml_element *element, const char *type)
     return !strcmp(own, type);
 }
 
-/* Stores a changed data-setting element's value under its key. */
-static void write_setting(ui_mount *m, rml_element *target)
+/* The value a data-setting element stands for when it is an option: its own
+ * value attribute, as on a radio or a <use> of an option widget. */
+static bool option_value(rml_element *element, char *value, size_t size)
+{
+    return rml_element_attribute(element, "value", value, size) > 0 &&
+           (!strcmp(rml_element_tag_name(element), "div") ||
+            input_type(element, "radio"));
+}
+
+/* Stores the setting a changed control inside a data-setting element holds. */
+static void write_setting(ui_mount *m, rml_element *control)
 {
     char key[128], value[256];
-    rml_element *element = setting_source(m, target, key, sizeof key);
+    rml_element *element = setting_source(m, control, key, sizeof key);
     if (!element) {
         return;
     }
-    if (input_type(element, "checkbox")) {
-        snprintf(value, sizeof value, "%s", rml_element_has_attribute(element, "checked") ? "true" : "false");
-    } else if (input_type(element, "radio")) {
-        if (!rml_element_has_attribute(element, "checked")) {
+    bool checked = rml_element_has_attribute(control, "checked");
+    if (option_value(element, value, sizeof value)) {
+        if (!checked) {
             return;
         }
-        rml_element_attribute(element, "value", value, sizeof value);
+    } else if (input_type(control, "checkbox")) {
+        snprintf(value, sizeof value, "%s", checked ? "true" : "false");
     } else {
-        rml_element_value(element, value, sizeof value);
+        rml_element_value(control, value, sizeof value);
     }
     game_save_set(m->settings, key, value);
+}
+
+static void set_checked(rml_element *control, bool checked)
+{
+    if (checked) {
+        rml_element_set_attribute(control, "checked", "");
+        return;
+    }
+    rml_element_remove_attribute(control, "checked");
+}
+
+/* Shows `value` in a data-setting element's controls: an option is checked
+ * when the value is its own, a checkbox when it is "true". */
+static void show_setting(rml_element *element, const char *value)
+{
+    char option[256];
+    bool is_option = option_value(element, option, sizeof option);
+    const char *tag = rml_element_tag_name(element);
+    bool control = !strcmp(tag, "input") || !strcmp(tag, "select") ||
+                   !strcmp(tag, "textarea");
+    rml_element *found = control
+                           ? element
+                           : rml_element_query_selector(element, "input, select, textarea");
+    if (!found) {
+        return;
+    }
+    if (is_option) {
+        set_checked(found, !strcmp(option, value));
+        return;
+    }
+    if (input_type(found, "checkbox")) {
+        set_checked(found, !strcmp(value, "true"));
+        return;
+    }
+    rml_element_set_value(found, value);
 }
 
 /* Shows each data-setting element's stored value; unset keys stay as authored. */
@@ -237,26 +281,12 @@ static void refresh_settings(ui_mount *m)
     rml_element_query_selector_all(m->root, "[data-setting]", elements, count);
     m->refreshing = true;
     for (int i = 0; i < count; i++) {
-        char key[128], own[256];
+        char key[128];
         rml_element_attribute(elements[i], "data-setting", key, sizeof key);
         const char *value = game_save_get(m->settings, key);
-        if (!value) {
-            continue;
+        if (value) {
+            show_setting(elements[i], value);
         }
-        bool check = input_type(elements[i], "checkbox") && !strcmp(value, "true");
-        if (input_type(elements[i], "radio")) {
-            rml_element_attribute(elements[i], "value", own, sizeof own);
-            check = !strcmp(own, value);
-        }
-        if (!input_type(elements[i], "checkbox") && !input_type(elements[i], "radio")) {
-            rml_element_set_value(elements[i], value);
-            continue;
-        }
-        if (check) {
-            rml_element_set_attribute(elements[i], "checked", "");
-            continue;
-        }
-        rml_element_remove_attribute(elements[i], "checked");
     }
     m->refreshing = false;
     free(elements);

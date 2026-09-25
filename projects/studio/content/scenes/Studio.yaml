@@ -1,0 +1,4 @@
+version: 1
+name: Studio
+entities:
+- {name: GraphView, prototype: GraphView}

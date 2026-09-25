@@ -3,6 +3,7 @@
 #include "editor/ui/labels.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/layout.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
@@ -178,9 +179,6 @@ int ed_pin_rows(const editor *e, const graph *g, const node *n, int kind, int pi
 
 bool ed_node_has_advanced_inputs(const node *n)
 {
-    if (n->desc->category && !strncmp(n->desc->category, "Shader", 6)) {
-        return false;
-    }
     for (int p = 0; p < n->input_count; p++) {
         if (n->input_pins[p].flags & PIN_FLAG_ADVANCED) {
             return true;

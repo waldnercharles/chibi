@@ -33,6 +33,8 @@ static int action_index;
 static bool keyboard_captured;
 static bool restore_focus;
 static bool keyboard_action;
+static bool alt_tap; /* Alt is down and nothing else has been pressed since */
+static bool alt_tapped; /* this frame released Alt from a tap */
 static ImGuiID bar_window_id;
 static ImGuiID return_window_id;
 static ImGuiID return_item_id;
@@ -76,9 +78,9 @@ static void key_input(ImGuiKey native, editor_rml_key key, bool allow)
         return;
     }
     keyboard_action |= down;
-    bool enter_bar = native == ImGuiKey_F10 || native == ImGuiKey_LeftAlt ||
-                     native == ImGuiKey_RightAlt;
-    if (down && enter_bar && !editor_rml_menu_captures_keyboard(menu)) {
+    bool alt = native == ImGuiKey_LeftAlt || native == ImGuiKey_RightAlt;
+    bool enter_bar = (down && native == ImGuiKey_F10) || (up && alt && alt_tapped);
+    if (enter_bar && !editor_rml_menu_captures_keyboard(menu)) {
         ImGui_ClearActiveID();
         editor_rml_menu_focus_bar(menu);
     }
@@ -104,6 +106,29 @@ static bool contains(editor_rml_menu_rect rect, float x, float y)
            y < rect.y + rect.height;
 }
 
+/* Alt enters the bar when tapped alone, as ImGui's menu layer does: another
+   key, modifier, button or wheel while it is down cancels the tap, so Alt
+   drags and Alt navigation keep their input, and a widget still active at
+   the release keeps its interaction. */
+static void track_alt_tap()
+{
+    ImGuiIO *io = ImGui_GetIO();
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    bool pressed = ImGui_IsKeyPressedEx(ImGuiKey_LeftAlt, false) ||
+                   ImGui_IsKeyPressedEx(ImGuiKey_RightAlt, false);
+    bool held = ImGui_IsKeyDown(ImGuiKey_LeftAlt) ||
+                ImGui_IsKeyDown(ImGuiKey_RightAlt);
+    bool other = io->KeyCtrl || io->KeyShift || io->KeySuper ||
+                 io->MouseWheel || io->MouseWheelH ||
+                 (!pressed && context->LastKeyboardKeyPressTime == context->Time);
+    for (int b = 0; b < (int)(sizeof io->MouseDown / sizeof *io->MouseDown); b++) {
+        other |= io->MouseDown[b] || io->MouseReleased[b];
+    }
+    alt_tap = (alt_tap || pressed) && !other;
+    alt_tapped = alt_tap && !held && !context->ActiveId;
+    alt_tap &= held;
+}
+
 static void menu_input()
 {
     ImGuiIO *io = ImGui_GetIO();
@@ -126,8 +151,10 @@ static void menu_input()
         editor_rml_menu_close(menu);
         editor_rml_toolbar_blur(toolbar);
         keyboard_captured = false;
+        alt_tap = false;
         return;
     }
+    track_alt_tap();
     editor_rml_input input = {
         .type = EDITOR_RML_POINTER_MOVE,
         .x = io->MousePos.x - origin.x,
@@ -422,6 +449,7 @@ void editor_menu_shutdown()
     }
     keyboard_captured = false;
     restore_focus = false;
+    alt_tap = false;
     bar_window_id = return_window_id = return_item_id = 0;
     bar = popup = toolbar_surface = (menu_surface){ 0 };
     toolbar_visible = false;

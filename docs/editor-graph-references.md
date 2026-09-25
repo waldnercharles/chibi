@@ -74,8 +74,9 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste. Pasted nodes center on the pointer (Unreal).
   - M mutes (disables), H collapses, F2 renames.
   - Arrow keys walk along wires to the next node in that direction; Shift extends the selection upstream or downstream (n8n).
-  - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. L arranges the selection (Houdini).
-- **Alignment:** with two or more nodes selected, the node menu's Alignment submenu aligns their tops, middles, bottoms, lefts, centers or rights to the selection's bounds, and distributes three or more with equal gaps (Unreal, Figma). The graph menu offers the same for the selection.
+  - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. Shift+L arranges the selection (Houdini).
+  - L adds the nodes wired to the selection's inputs and Alt+L those wired to its outputs, one step at a time (Blender's Select Linked From and To; Blender's Shift+L is Arrange here). The node menu's Select submenu also follows the wires to the end (Unreal's Select All Input and Output Nodes). Nodes folded into their consumer are passed through.
+- **Alignment:** with two or more nodes selected, the node menu's Alignment submenu aligns their tops, middles, bottoms, lefts, centers or rights to the selection's bounds, and distributes three or more with equal gaps (Unreal, Figma). Each item shows its alignment icon. The graph menu offers the same for the selection.
 - **Undo:** each gesture is one undo step. The editor already snapshots per mutation; camera and selection changes never enter history.
 
 ### Node rows
@@ -149,13 +150,18 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Dragging a frame carries its contents; Shift leaves them in place.
   - Double-clicking a frame's title renames it in place (Unreal); its edges and corners resize it (Blender, Unreal), and its menu sets a color from a palette.
   - Titles stay readable when zoomed out (Unreal, imgui-node-editor).
-  - A node can carry a comment, drawn as a bubble above it (Unreal's node comments). It is edited from the node menu, a double-click on the bubble or the Node tab. A hidden comment shows only while the node is hovered, and titles-only zoom hides bubbles.
+  - Clicking a frame selects it; the Node tab then edits its title and color, and Delete removes it (Unreal's comment Details). The model has no font size, so none is offered.
+  - A node can carry a comment, drawn as a bubble above it (Unreal's node comments). It is edited from the node menu, a double-click on the bubble or the Node tab. Comments span lines: Shift+Enter starts a line and Enter commits. A hidden comment shows only while the node is hovered, and titles-only zoom hides bubbles.
 - **Find:**
   - Ctrl+F (⌘F) opens a field over the canvas that lists the behavior's nodes whose title, pin names, values, bindings, expression source or comment contain the query, graph by graph (Unreal's Find Results, Blender's Find Node).
   - Up and Down step through the results in the graph; Enter or a click jumps to one, selecting and framing it.
   - Find References (Shift+Alt+F, the node, graph and asset menus) lists every node across the project that calls, raises, handles, spawns, reads or writes a function, variable, event or asset, in Output's Find view; a row opens its asset and reveals the node (Unreal).
 - **Functions:**
   - Ctrl+G collapses the selection to a function; the interface is generated from the wires crossing the selection boundary (Blender, Unreal).
+  - Collapse to Macro makes a macro instead. Every execution wire crossing the selection becomes a tunnel pin named after the pin it crosses at, so a Branch keeps its True and False exits and latent nodes such as Delay can move inside (Unreal).
+  - Expand Node puts the body of a call to one of the behavior's own functions or macros back in the call's place, wired as the call was; the called graph stays (Unreal). A function expands only when every execution output in its body is wired, since its call continues wherever the body ends.
+  - Refresh Nodes updates the selection's library calls to their functions' current signatures (Unreal). Local calls follow signature edits as they happen.
+  - Unreal's Collapse Nodes has no counterpart: every graph is a named function or macro of the behavior, and no graph belongs to a single node.
   - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
   - These map to `editor_open_graph_call`, `editor_graph_back` and `editor_graph_ancestor`.
 - **History:** Back and Forward (Alt+Left and Alt+Right, or mouse buttons 4 and 5) move through the graphs visited, across behaviors (Unreal).

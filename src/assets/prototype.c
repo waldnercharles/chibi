@@ -73,7 +73,10 @@ static char *own_string(game_prototype *prototype, const char *text)
     return copy;
 }
 
-static const ecs_component_desc *find_descriptor(const game_prototype_registry *registry, const char *name)
+const ecs_component_desc *game_prototype_registry_find(
+    const game_prototype_registry *registry,
+    const char *name
+)
 {
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
@@ -305,7 +308,7 @@ static int parse_components(
     yyjson_val *key;
     while ((key = yyjson_obj_iter_next(&iterator))) {
         const char *name = yyjson_get_str(key);
-        const ecs_component_desc *desc = find_descriptor(prototype->registry, name);
+        const ecs_component_desc *desc = game_prototype_registry_find(prototype->registry, name);
         yyjson_val *value = yyjson_obj_iter_get_val(key);
         if (!desc) {
             set_error(error, error_size, "component %s is unavailable", name);
@@ -1156,7 +1159,7 @@ int game_prototype_apply_components_json(
     yyjson_obj_iter iterator = yyjson_obj_iter_with(root);
     yyjson_val *key;
     while ((key = yyjson_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = find_descriptor(registry, yyjson_get_str(key));
+        const ecs_component_desc *desc = game_prototype_registry_find(registry, yyjson_get_str(key));
         if (!desc) {
             set_error(error, error_size, "unknown override component %s", yyjson_get_str(key));
             yyjson_doc_free(doc);
@@ -1189,7 +1192,7 @@ int game_prototype_apply_components_json(
     }
     iterator = yyjson_obj_iter_with(root);
     while ((key = yyjson_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = find_descriptor(registry, yyjson_get_str(key));
+        const ecs_component_desc *desc = game_prototype_registry_find(registry, yyjson_get_str(key));
         if (yyjson_is_null(yyjson_obj_iter_get_val(key))) {
             continue;
         }

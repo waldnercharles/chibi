@@ -16,8 +16,6 @@ typedef struct
     const char *pin;  /* pin_type enum name, e.g. "PIN_F32" */
     long long offset; /* bytes */
     long long size;   /* bytes */
-    double min, max;  /* NODE_RANGE, equal when absent */
-    char *unit;       /* NODE_UNIT */
 } field_info;
 
 static inline const char *field_type_name(const field_info *field)
@@ -35,8 +33,6 @@ typedef struct
     int component;
     int dense;
     char *alias_of;
-    char *category; /* NODE_CATEGORY editor group */
-    char *icon;     /* NODE_ICON editor icon name */
 } struct_info;
 
 typedef struct

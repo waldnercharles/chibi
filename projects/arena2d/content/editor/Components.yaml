@@ -1,0 +1,91 @@
+components:
+  GAME.EngineSystem: {icon: system}
+  GAME.GameActionBinding: {tab: Gameplay, icon: keyboard}
+  GAME.GameAim: {tab: Gameplay}
+  GAME.GameAppearance:
+    icon: shape
+    fields:
+      antialias:
+        range: [0, 1]
+  GAME.GameBody: {tab: Physics}
+  GAME.GameCamera: {icon: camera}
+  GAME.GameCollider:
+    tab: Physics
+    fields:
+      radius: {unit: u}
+      restitution:
+        range: [0, 1]
+      friction:
+        range: [0, 1]
+  GAME.GameCombustion: {tab: Gameplay}
+  GAME.GameDash:
+    fields:
+      speed: {unit: u/s}
+      cooldown: {unit: s}
+  GAME.GameDestructible: {tab: Physics, icon: diamond}
+  GAME.GameDrive:
+    tab: Physics
+    fields:
+      acceleration: {unit: u/s²}
+  GAME.GameFluidVolume:
+    tab: Physics
+    icon: water
+    fields:
+      absorption:
+        range: [0, 1]
+  GAME.GameFragmentGlow: {tab: Material}
+  GAME.GameFuel: {tab: Gameplay}
+  GAME.GameHRC2D: {tab: Material, icon: light}
+  game.GameHealth: {tab: Gameplay, icon: health}
+  game.GameInput: {tab: Gameplay, icon: gamepad}
+  GAME.GameMaterial:
+    tab: Material
+    fields:
+      emission_intensity:
+        range: [0, 4]
+      absorption:
+        range: [0, 1]
+      edge_light:
+        range: [0, 1]
+  GAME.GameMaterialCavity:
+    fields:
+      radius: {unit: u}
+  game.GameMovement:
+    tab: Gameplay
+    fields:
+      speed: {unit: u/s}
+  GAME.GameParticleEmitter:
+    icon: emitter
+    fields:
+      absorption:
+        range: [0, 1]
+  GAME.GamePickup:
+    fields:
+      lifetime: {unit: s}
+  GAME.GamePointLight:
+    fields:
+      radius: {unit: u}
+  GAME.GameProjectile:
+    icon: projectile
+    fields:
+      speed: {unit: u/s}
+      lifetime: {unit: s}
+  GAME.GameReflection: {tab: Material}
+  GAME.GameStarfield2D: {tab: Material}
+  GAME.GameSubstance: {tab: Physics}
+  GAME.GameSurfaceInfluence:
+    fields:
+      radius: {unit: u}
+  GAME.GameTrail:
+    fields:
+      lifetime: {unit: s}
+  GAME.GameVelocity: {tab: Physics}
+  GAME.GameVision:
+    fields:
+      radius: {unit: u}
+  GAME.GameWeapon:
+    tab: Gameplay
+    fields:
+      cooldown: {unit: s}
+  GAME.MaterialBreakProfile: {tab: Physics}
+  GAME.MaterialTerrain: {tab: Material, icon: terrain}

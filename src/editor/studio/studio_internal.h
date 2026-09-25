@@ -1,6 +1,7 @@
 #ifndef CHIBI_EDITOR_STUDIO_INTERNAL_H
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
+#include "editor/documents/component_presentation.h"
 #include "editor/rmlui/backend.h"
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
@@ -45,6 +46,10 @@ typedef enum
     STUDIO_TAB_NODE, /* the graph node selected in the Behavior area */
     STUDIO_TAB_COUNT,
 } studio_tab;
+_Static_assert(
+    STUDIO_TAB_GAMEPLAY - STUDIO_TAB_OBJECT + 1 == COMPONENT_TAB_COUNT,
+    "Object through Gameplay follow component_tab"
+);
 
 typedef enum
 {
@@ -194,6 +199,15 @@ typedef struct
     char expression_error[192];
 } studio_graph;
 
+/* The open project's editor/Components.yaml, re-read when it changes. */
+typedef struct
+{
+    component_presentation hints; /* empty while the file is missing or invalid */
+    char path[1024];
+    long long modified, size; /* size is -1 while the file is missing */
+    double due;               /* next check */
+} studio_presentation;
+
 struct studio
 {
     app_scene_authoring *scene;
@@ -236,6 +250,7 @@ struct studio
     bool text_input;
     kit_surface_input surface;
     studio_graph graph;
+    studio_presentation presentation;
     struct
     {
         uint64_t entity;

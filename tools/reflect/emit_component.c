@@ -648,7 +648,7 @@ void emit_component_accessors(FILE *out, const struct_info *s)
         "const ecs_component_desc %s_COMPONENT_%s = { .id = UINT64_C(%llu), "
         ".key = \"%s\", .name = \"%s\", .element_size = sizeof(%s), .type = "
         "&%s_T_%s, "
-        ".layout_hash = UINT64_C(%llu), .index = %s",
+        ".layout_hash = UINT64_C(%llu), .index = %s };\n",
         g_prefix,
         name,
         (unsigned long long)id,
@@ -660,13 +660,6 @@ void emit_component_accessors(FILE *out, const struct_info *s)
         (unsigned long long)component_layout_hash(s),
         s->dense ? "ECS_INDEX_DENSE" : "ECS_INDEX_BITSET"
     );
-    if (s->category) {
-        fprintf(out, ", .category = \"%s\"", s->category);
-    }
-    if (s->icon) {
-        fprintf(out, ", .icon = \"%s\"", s->icon);
-    }
-    fputs(" };\n", out);
     fprintf(
         out,
         "%s *%s_%s_get(ecs_world *world, ecs_entity entity) { return "

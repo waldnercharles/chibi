@@ -1,3 +1,3 @@
 name: GraphView
 components:
-  GAME.GameUi: {document: GraphView}
+  GAME.GameUi: {document: GraphView, hidden: true}

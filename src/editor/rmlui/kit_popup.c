@@ -468,11 +468,6 @@ void kit_popup_open_at(kit *k, const char *key, float x, float y)
     open_popup(k, key, (kit_rect){ 0 }, true, x, y, "");
 }
 
-void kit_popup_close(kit *k, const char *key)
-{
-    close_popup(k, key);
-}
-
 bool kit_popup_is_open(const kit *k, const char *key)
 {
     popup *p = popup_find(k, key);

@@ -93,11 +93,3 @@ const operator_signature *operator_resolve(const char *name, pin_type left, pin_
     }
     return best;
 }
-
-const operator_signature *operator_signatures(int *count)
-{
-    if (count) {
-        *count = acount(g_signatures);
-    }
-    return g_signatures;
-}

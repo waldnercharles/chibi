@@ -135,7 +135,6 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/audio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/widgets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/commands.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/component_presentation.c

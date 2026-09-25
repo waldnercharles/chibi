@@ -237,7 +237,8 @@ static void node_menu(studio *s, node *n)
     }
 }
 
-void studio_graph_menus(studio *s)
+/* Canvas menus live in the Studio document; emitted with the Behavior area. */
+static void studio_graph_menus(studio *s)
 {
     studio_graph *g = &s->graph;
     kit *k = s->kit;

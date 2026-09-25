@@ -144,20 +144,6 @@ char *read_scene_file(const char *path)
     return json;
 }
 
-int app_scene_authoring_load_prototype(app_scene_authoring *scene, const char *path)
-{
-    if (!scene || !path) {
-        return -1;
-    }
-    char *json = read_scene_file(path);
-    if (!json) {
-        return -1;
-    }
-    int result = app_scene_authoring_register_prototype(scene, json, path);
-    free(json);
-    return result;
-}
-
 static int load_content_prototype(app_scene_authoring *scene, const char *path)
 {
     char *json = read_scene_file(path);

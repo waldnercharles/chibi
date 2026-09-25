@@ -166,12 +166,6 @@ bool app_input_pressed(app_input_action action)
             cf_button_binding_repeated(buttons[action]));
 }
 
-bool app_input_released(app_input_action action)
-{
-    assert(action >= 0 && action < APP_INPUT_COUNT);
-    return ready && cf_button_binding_released(buttons[action]);
-}
-
 void app_input_movement(float *x, float *y)
 {
     *x = ready ? cf_axis_binding_value(horizontal) : 0;

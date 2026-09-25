@@ -173,7 +173,6 @@ void scene_authoring_select_document(
 void scene_tabs_initialize(app_scene_authoring *scene);
 void scene_tabs_free(app_scene_authoring *scene);
 void scene_tabs_sync_current(app_scene_authoring *scene);
-void scene_tabs_mark_saved(app_scene_authoring *scene);
 void scene_tabs_mark_document_saved(
     app_scene_authoring *scene,
     app_editor_document_kind kind,

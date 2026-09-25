@@ -7,11 +7,9 @@
 #include "runtime/components.h"
 
 bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
-int render_shader_load(const char *content_root);
 int render_shader_find(const char *name);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
-void render_shader_parameter_default(int index, int slot, float value[4]);
 bool render_shader_parameters_validate(int index, const char *json, shader_error *error);
 bool render_shader_is_shape(int index);
 bool render_shader_may_be_transparent(int index);
@@ -36,7 +34,6 @@ typedef struct
     int count;
 } render_shader_set;
 bool render_shader_set_add(render_shader_set *set, int asset, shader_error *error);
-bool render_shader_set_contains(const render_shader_set *set, int asset);
 int render_shader_ramp_vec4_count(const render_shader_set *set);
 void render_shader_ramp_payload(const render_shader_set *set, float (*payload)[4]);
 char *render_shader_glsl(const render_shader_set *set, int sampler_set, int first_binding);

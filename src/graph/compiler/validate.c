@@ -217,7 +217,9 @@ static int enum_identity_unique(
     return 1;
 }
 
-int registry_validate_packs(const registry_pack *const packs[], int pack_count)
+/* A pack is valid when every descriptor is valid and all identities are
+ * unique in the supplied, explicit pack order. */
+static int registry_validate_packs(const registry_pack *const packs[], int pack_count)
 {
     if (pack_count < 0 || (pack_count > 0 && !packs)) {
         return 0;

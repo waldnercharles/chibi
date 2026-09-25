@@ -76,7 +76,6 @@ int asset_index_add_reference(asset_index *index, asset_index_reference referenc
 
 int asset_index_asset_count(const asset_index *index);
 const asset_index_asset *asset_index_asset_at(const asset_index *index, int position);
-bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind);
 int asset_index_reference_count(const asset_index *index);
 const asset_index_reference *asset_index_reference_at(const asset_index *index, int position);
 

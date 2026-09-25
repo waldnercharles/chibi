@@ -92,7 +92,6 @@ int app_scene_authoring_register_prototype(
     const char *json,
     const char *path
 );
-int app_scene_authoring_load_prototype(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_open_prototype(app_scene_authoring *scene, const char *name);
 int app_scene_authoring_save_prototype(
     app_scene_authoring *scene,
@@ -114,25 +113,12 @@ int app_scene_authoring_set_prototype_field(
     const char *field_name,
     pin_value value
 );
-typedef struct
-{
-    const char *component, *field;
-    pin_value value;
-} app_prototype_field_change;
-/* Validates the complete edit and records one Undo step. */
-int app_scene_authoring_set_prototype_fields(
-    app_scene_authoring *scene,
-    const char *prototype_name,
-    const app_prototype_field_change *changes,
-    int count
-);
 int app_scene_authoring_add_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *component_name
 );
 void app_scene_authoring_free(app_scene_authoring *scene);
-int app_scene_authoring_seed_default(app_scene_authoring *scene);
 int app_scene_authoring_open_behavior(app_scene_authoring *scene, const char *asset_name);
 int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_attach_prototype_behavior(
@@ -168,7 +154,6 @@ app_editor_document_context app_scene_authoring_document(const app_scene_authori
 void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active);
 int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewport *viewport);
 void app_scene_authoring_render(void *user);
-app_sdf_shapes app_scene_authoring_shapes(const app_scene_authoring *scene);
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time);
 int app_scene_authoring_move(app_scene_authoring *scene, float x, float y);
 /* Sample aiming independently of movement; points use game coordinates. */

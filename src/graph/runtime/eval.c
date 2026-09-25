@@ -447,7 +447,6 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
         return fail(ctx, n, -1, NODE_EVAL_INVALID, "node runtime state is unavailable");
     }
     pin_value *inputs = runtime_node_inputs(state);
-    pin_value *outputs = runtime_node_outputs(state);
     if (runtime_node_computed(state)) {
         return 0;
     }
@@ -697,11 +696,4 @@ int eval_context_output(const eval_context *ctx, const node *n, int pin, pin_val
         return -1;
     }
     return projected_output(n, pin, runtime_node_outputs_const(state), out);
-}
-
-/* Deprecated: the graph no longer owns memo state, so only the caller's
- * eval_context can be reset. */
-void graph_eval_reset(graph *g)
-{
-    (void)g;
 }

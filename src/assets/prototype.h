@@ -72,8 +72,6 @@ game_prototype *game_prototype_clone(const game_prototype *prototype, char *erro
 int game_prototype_set_name(game_prototype *prototype, const char *name);
 const char *game_prototype_identity(const game_prototype *prototype);
 const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype);
-int game_prototype_register_tag(const game_prototype *prototype, ecs_world *world);
-int game_prototype_matches(const game_prototype *prototype, const ecs_world *world, ecs_entity entity);
 game_prototype *game_prototype_capture_entity(
     const char *name,
     const ecs_world *world,

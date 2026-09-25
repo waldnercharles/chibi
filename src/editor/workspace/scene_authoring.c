@@ -1124,16 +1124,6 @@ void app_scene_authoring_refresh_content(app_scene_authoring *scene)
     }
 }
 
-int app_scene_authoring_seed_default(app_scene_authoring *scene)
-{
-    if (!scene) {
-        return -1;
-    }
-    char path[CONTENT_PATH_CAP];
-    snprintf(path, sizeof path, "%s/scenes/Arena3D" ASSET_EXTENSION, scene->content_root);
-    return app_scene_authoring_load(scene, path);
-}
-
 void app_scene_authoring_free(app_scene_authoring *scene)
 {
     if (!scene) {

@@ -455,7 +455,7 @@ void unmap(kit *k, node *n)
     }
 }
 
-void prune(kit *k, node *n)
+static void prune(kit *k, node *n)
 {
     while (acount(n->children) > n->cursor) {
         retire(k, apop(n->children));
@@ -1049,12 +1049,6 @@ void kit_markup(kit *k, const char *key, const char *cls, const char *rml)
     rml_element_set_inner_rml(n->el, n->text);
 }
 
-void kit_text(kit *k, const char *text)
-{
-    assert(k->last);
-    set_text(k->last, text);
-}
-
 void kit_attr(kit *k, const char *name, const char *value)
 {
     assert(k->last);
@@ -1084,24 +1078,9 @@ bool kit_item_clicked(kit *k)
     return k->last && (k->last->events & EV_CLICK);
 }
 
-bool kit_item_double_clicked(kit *k)
-{
-    return k->last && (k->last->events & EV_DOUBLE);
-}
-
 bool kit_item_context_clicked(kit *k)
 {
     return k->last && (k->last->events & EV_CONTEXT);
-}
-
-bool kit_item_pressed(kit *k)
-{
-    return k->last && (k->last->events & EV_PRESS);
-}
-
-bool kit_item_hovered(kit *k)
-{
-    return k->last && rml_element_is_pseudo_class_set(k->last->el, "hover");
 }
 
 bool kit_item_active(kit *k)
@@ -1125,11 +1104,6 @@ bool kit_item_committed(kit *k)
 kit_rect kit_item_rect(kit *k)
 {
     return k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
-}
-
-unsigned kit_modifiers(const kit *k)
-{
-    return k->in.modifiers;
 }
 
 const char *kit_string(kit *k, const char *text)
@@ -1266,11 +1240,6 @@ bool kit_pointer_on_control(const kit *k)
         }
     }
     return false;
-}
-
-const char *kit_item_path(const kit *k)
-{
-    return k->last ? k->last->path : NULL;
 }
 
 bool kit_find(const kit *k, const char *path, kit_rect *out)

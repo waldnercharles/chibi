@@ -141,6 +141,5 @@ int graph_ir_add_value(graph_ir *ir, graph_ir_value value);
 int graph_ir_add_instruction(graph_ir *ir, const graph_ir_instruction *instruction);
 int graph_ir_validate(const graph_ir *ir, const char **reason);
 uint64_t graph_ir_name_id(const char *name);
-uint64_t graph_ir_hash(const graph_ir *ir);
 
 #endif

@@ -464,20 +464,6 @@ static const struct
     { "GameShader", "shape", ASSET_INDEX_SHAPE },
 };
 
-bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind)
-{
-    for (int i = 0;
-         i < (int)(sizeof component_bindings / sizeof component_bindings[0]);
-         i++) {
-        if (!strcmp(component, component_bindings[i].component) &&
-            !strcmp(field, component_bindings[i].field)) {
-            *kind = component_bindings[i].kind;
-            return true;
-        }
-    }
-    return false;
-}
-
 static void add_component_references(
     asset_index *index,
     int source_id,

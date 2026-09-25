@@ -8,10 +8,6 @@
 /* Runtime state belongs to one pull-eval context or flow activation. */
 typedef struct runtime_store runtime_store;
 
-/* Deprecated compatibility symbol. A graph cannot own runtime state now;
- * reset the owning eval_context with eval_context_reset_runtime(). */
-void graph_eval_reset(graph *g);
-
 typedef struct
 {
     int code;

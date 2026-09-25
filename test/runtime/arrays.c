@@ -95,14 +95,6 @@ void run_runtime_arrays_checks()
         );
         test_check(registry_node_by_name("Make Array")->category != NULL, "array nodes expose a category for context-sensitive spawn filtering");
         test_check(registry_node_by_name("Get")->keywords != NULL, "array connection targets expose compatible spawn keywords");
-        test_check(
-            strcmp(cmpl_rule_name(CMPL_RULE_UNREACHABLE), "CMPL-13") == 0,
-            "unreachable-node diagnostics have a stable warning rule"
-        );
-        test_check(
-            strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_DATA), "CMPL-14") == 0,
-            "unconnected impure data diagnostics have a stable warning rule"
-        );
         test_check(array_value.container == PIN_CONTAINER_ARRAY && array_value.ptr != NULL, "invalid and unresolved container values remain explicit errors, not silent nodes");
 
         /* DBG-5: struct array copies borrow their elements consistently. The

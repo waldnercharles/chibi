@@ -7,12 +7,6 @@ typedef struct game_behavior_parallel game_behavior_parallel;
 game_behavior_parallel *game_behavior_parallel_new();
 void game_behavior_parallel_free(game_behavior_parallel *parallel);
 void game_behavior_parallel_invalidate(game_behavior_parallel *parallel);
-void game_behavior_parallel_prepare(
-    game_behavior_parallel *parallel,
-    const behavior_update_row *rows,
-    const behavior_update_span *spans,
-    uint32_t slots
-);
 void game_behavior_parallel_prepare_incremental(
     game_behavior_parallel *parallel,
     const behavior_update_row *rows,

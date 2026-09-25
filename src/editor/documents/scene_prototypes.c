@@ -285,56 +285,6 @@ int app_scene_authoring_set_prototype_field(
     return write_prototype_field(scene, asset, component_name, field_name, value);
 }
 
-int app_scene_authoring_set_prototype_fields(
-    app_scene_authoring *scene,
-    const char *prototype_name,
-    const app_prototype_field_change *changes,
-    int count
-)
-{
-    scene_prototype_asset *asset = find_prototype(scene, prototype_name);
-    if (!asset || count < 1) {
-        return -1;
-    }
-    char error[256];
-    game_prototype *edited = game_prototype_clone(asset->prototype, error, sizeof error);
-    if (!edited) {
-        return -1;
-    }
-    for (int i = 0; i < count; i++) {
-        if (game_prototype_write_field(
-                edited,
-                changes[i].component,
-                changes[i].field,
-                changes[i].value
-            )) {
-            game_prototype_free(edited);
-            return -1;
-        }
-    }
-    if (scene->runtime_snapshot_valid &&
-        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP)) {
-        game_prototype_free(edited);
-        return -1;
-    }
-    game_prototype *before = asset->prototype;
-    asset->prototype = edited;
-    if (refresh_prototype_instances(scene, asset)) {
-        asset->prototype = before;
-        int restored = refresh_prototype_instances(scene, asset);
-        assert(restored == 0);
-        game_prototype_free(edited);
-        return -1;
-    }
-    asset->prototype = before;
-    prototype_history_before(scene, before);
-    asset->prototype = edited;
-    game_prototype_free(before);
-    asset->dirty = 1;
-    asset_index_invalidate(scene);
-    return 0;
-}
-
 static const ecs_component_desc *component_descriptor(const app_scene_authoring *scene, const char *name)
 {
     for (int i = 0; i < scene->registry.component_count; i++) {

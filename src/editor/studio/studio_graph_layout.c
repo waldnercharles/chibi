@@ -286,7 +286,6 @@ static uint32_t folded_chip(const studio *s, node *n, int p, char *out, size_t s
 
 void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 {
-    editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool input = kind == ED_PIN_INPUT;
     const pin_spec *spec = input ? &n->input_pins[p] : &n->output_pins[p];

@@ -545,7 +545,7 @@ const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototyp
     return prototype ? &prototype->tag.desc : NULL;
 }
 
-int game_prototype_register_tag(const game_prototype *prototype, ecs_world *world)
+static int game_prototype_register_tag(const game_prototype *prototype, ecs_world *world)
 {
     if (!prototype || !world) {
         return ECS_ERR_ARGUMENT;
@@ -559,12 +559,6 @@ int game_prototype_register_tag(const game_prototype *prototype, ecs_world *worl
         }
     }
     return ecs_world_register_component(world, &prototype->tag.desc, NULL);
-}
-
-int game_prototype_matches(const game_prototype *prototype, const ecs_world *world, ecs_entity entity)
-{
-    return prototype && world && ecs_entity_is_alive(world, entity) &&
-           ecs_component_has(world, entity, prototype->tag.desc.id);
 }
 
 int game_prototype_set_name(game_prototype *prototype, const char *name)

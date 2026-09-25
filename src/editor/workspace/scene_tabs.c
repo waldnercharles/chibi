@@ -301,22 +301,6 @@ void scene_tabs_sync_current(app_scene_authoring *scene)
     }
 }
 
-void scene_tabs_mark_saved(app_scene_authoring *scene)
-{
-    scene_document_tab *tab = active_tab(scene);
-    if (!tab) {
-        return;
-    }
-    if (tab->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
-        free(tab->system_saved);
-        tab->system_saved = tab->system_json ? xstrdup(tab->system_json) : NULL;
-    } else if (tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE || tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
-        free(tab->asset_saved);
-        tab->asset_saved = NULL;
-        capture_asset_baseline(scene, tab);
-    }
-}
-
 void scene_tabs_mark_document_saved(
     app_scene_authoring *scene,
     app_editor_document_kind kind,

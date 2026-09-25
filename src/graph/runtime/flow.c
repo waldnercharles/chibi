@@ -1012,17 +1012,6 @@ int flow_run_resume(flow_run *run)
     return flow_run_continue(run, 1);
 }
 
-int flow_run_tick(flow_run *run)
-{
-    if (!run) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    if (run->now) {
-        run->current_time = run->now(run->now_user);
-    }
-    return flow_run_continue(run, 0);
-}
-
 int flow_run_tick_at(flow_run *run, double monotonic_time)
 {
     if (!run) {
@@ -1965,15 +1954,6 @@ int flow_context_return(struct flow_context *ctx)
     frame_arrays_free(ctx->run);
     aclear(ctx->run->frames);
     return FLOW_OK;
-}
-
-int flow_context_retain_run(struct flow_context *ctx, flow_run *child)
-{
-    if (!ctx || !ctx->run || !child || child == ctx->run) {
-        return -1;
-    }
-    apush(ctx->run->children, child);
-    return 0;
 }
 
 void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)

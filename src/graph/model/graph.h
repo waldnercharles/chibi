@@ -126,14 +126,6 @@ int graph_connect_data_conversion(
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin);
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order);
 int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint64_t to_node, uint64_t to_pin);
-int graph_connect_exec_ids(
-    graph *g,
-    uint64_t from_node,
-    uint64_t from_pin,
-    uint64_t to_node,
-    uint64_t to_pin,
-    int exec_order
-);
 unsigned long long graph_topology_revision(const graph *g);
 
 int graph_set_event_name(graph *g, node *event_node, const char *name);
@@ -176,15 +168,6 @@ node *graph_inline_owner(const graph *g, node *n);
 int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
-int graph_exec_input_source_at(
-    const graph *g,
-    const node *n,
-    int pin,
-    int ordinal,
-    node **src,
-    int *src_pin,
-    int *order
-);
 int graph_exec_input_count(const graph *g, const node *n, int pin);
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
 /* Counts all edges, including invalid fan-out; first is borrowed until mutation. */
@@ -214,7 +197,6 @@ int graph_set_all_breakpoints(graph *g, int enabled);
 int graph_set_pin_watch(graph *g, node *n, int output, int index, int enabled);
 graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, float y, float width, float height);
 int graph_remove_comment_box(graph *g, uint64_t id);
-int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, uint32_t color);
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name);
 int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin);
 /* The default value a new pin receives from its template. */

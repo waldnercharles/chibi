@@ -467,24 +467,6 @@ int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint
     return graph_connect_data(g, from, fp, to, tp);
 }
 
-int graph_connect_exec_ids(
-    graph *g,
-    uint64_t from_node,
-    uint64_t from_pin,
-    uint64_t to_node,
-    uint64_t to_pin,
-    int exec_order
-)
-{
-    node *from = graph_node_by_id(g, from_node), *to = graph_node_by_id(g, to_node);
-    int fp = -1, tp = -1, out = 0, in = 0;
-    if (!graph_pin_by_id(from, from_pin, &out, &fp) ||
-        !graph_pin_by_id(to, to_pin, &in, &tp) || !out || in) {
-        return -1;
-    }
-    return graph_connect_exec(g, from, fp, to, tp, exec_order);
-}
-
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, from) ||
@@ -1112,40 +1094,6 @@ int graph_exec_input_count(const graph *g, const node *n, int pin)
     return count;
 }
 
-int graph_exec_input_source_at(
-    const graph *g,
-    const node *n,
-    int pin,
-    int ordinal,
-    node **src,
-    int *src_pin,
-    int *order
-)
-{
-    if (!g || !n || !src || !src_pin || !order || ordinal < 0 || pin < 0 ||
-        pin >= n->input_count || n->input_pins[pin].kind != PIN_EXEC) {
-        return 0;
-    }
-    int at = 0;
-    for (int i = 0; i < acount(g->edges); i++) {
-        edge *e = &g->edges[i];
-        if (e->kind != GRAPH_EDGE_EXEC || e->to_id != n->id ||
-            e->to_pin_id != n->input_pins[pin].id) {
-            continue;
-        }
-        if (at++ != ordinal) {
-            continue;
-        }
-        *src = edge_from_node(g, e, src_pin);
-        if (!*src) {
-            return 0;
-        }
-        *order = e->exec_order;
-        return 1;
-    }
-    return 0;
-}
-
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin)
 {
     if (!g || !n || !dst || !dst_pin || pin < 0 || pin >= n->output_count ||
@@ -1616,24 +1564,6 @@ int graph_remove_comment_box(graph *g, uint64_t id)
         }
     }
     return -1;
-}
-
-int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, uint32_t color)
-{
-    if (!graph_mutation_allowed(g) || !box || !title) {
-        return -1;
-    }
-    int found = 0;
-    for (int i = 0; i < acount(g->comment_boxes); i++) {
-        found |= &g->comment_boxes[i] == box;
-    }
-    if (!found) {
-        return -1;
-    }
-    box->title = graph_own_str(g, title, strlen(title));
-    box->color = color;
-    graph_changed(g);
-    return 0;
 }
 
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name)

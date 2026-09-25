@@ -80,7 +80,6 @@ extern "C"
      * highlight_markup; reapplied only when it changes. */
     void kit_markup(kit *k, const char *key, const char *cls, const char *rml);
     /* Modify the last emitted element. */
-    void kit_text(kit *k, const char *text);
     void kit_attr(kit *k, const char *name, const char *value);
     void kit_flag(kit *k, const char *name, bool on);
     void kit_style(kit *k, const char *property, const char *value);
@@ -116,11 +115,8 @@ extern "C"
 
     /* Last-item queries, valid until the next emitted item. */
     bool kit_item_clicked(kit *k);
-    bool kit_item_double_clicked(kit *k);
     bool kit_item_context_clicked(kit *k); /* right press; open a context menu */
-    bool kit_item_pressed(kit *k);         /* left press this frame */
-    bool kit_item_hovered(kit *k);
-    bool kit_item_active(kit *k);    /* scrubbing, editing or held */
+    bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
 
@@ -221,12 +217,9 @@ extern "C"
         KIT_ROW_CONTEXT = 1 << 2,
         KIT_ROW_TWISTY = 1 << 3,
     };
-    /* Begins a row; emit trailing toggles inside, then kit_row_end. Returns KIT_ROW_* flags;
-     * modifier state for selection comes from kit_modifiers(). */
+    /* Begins a row; emit trailing toggles inside, then kit_row_end. Returns KIT_ROW_* flags. */
     unsigned kit_row_begin(kit *k, const char *key, const kit_row_desc *desc);
     void kit_row_end(kit *k);
-
-    unsigned kit_modifiers(const kit *k);
 
     /* Virtualized list (Virtuoso) of fixed-height rows. Begin sizes a scroll
      * container for every row and returns the visible range with overscan; emit
@@ -254,7 +247,6 @@ extern "C"
      * or at a point; begin returns true while open; end closes on activation. */
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
-    void kit_popup_close(kit *k, const char *key);
     bool kit_popup_is_open(const kit *k, const char *key);
     bool kit_popup_begin(kit *k, const char *key, const char *cls);
     void kit_popup_end(kit *k);
@@ -463,8 +455,6 @@ extern "C"
     const char *kit_hovered_path(const kit *k);
     /* True over a control that takes the pointer itself: fields, buttons, choices. */
     bool kit_pointer_on_control(const kit *k);
-    /* The path of the item emitted last, valid while it stays emitted. */
-    const char *kit_item_path(const kit *k);
     bool kit_find(const kit *k, const char *path, kit_rect *out);
     void kit_set_theme(kit *k, const char *name, bool active);
     void kit_set_body_class(kit *k, const char *name, bool on);

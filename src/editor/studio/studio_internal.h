@@ -297,7 +297,6 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
 void studio_emit(studio *s);
 void studio_report(studio *s, const char *message);
 void studio_shortcuts(studio *s);
-bool studio_key_pressed(const studio *s, SDL_Keycode key);
 const char *studio_scene_title(const app_scene_authoring *scene, char *out, size_t size);
 
 /* Scene edits are allowed: the scene can move and shows no runtime snapshot. */
@@ -318,8 +317,6 @@ void studio_behavior_body(studio *s, int area);
 /* After the Studio document is emitted: drive and render the graph canvas. */
 void studio_graph_frame(studio *s, double delta_seconds);
 void studio_graph_free(studio *s);
-/* Canvas menus live in the Studio document; emitted with the Behavior area. */
-void studio_graph_menus(studio *s);
 bool studio_graph_wants_keyboard(const studio *s);
 bool studio_graph_accepts_text(const studio *s);
 const char *studio_graph_cursor(const studio *s);
@@ -343,10 +340,6 @@ void studio_output_body(studio *s, int area);
 void studio_record(studio *s, kit_toast_type kind, const char *text);
 
 /* Commands shared by menus, shortcuts and the command palette. */
-void studio_toggle_drawer(studio *s, studio_editor editor);
-void studio_save(studio *s);
-void studio_history(studio *s, bool redo);
-void studio_runtime(studio *s, app_runtime_command command);
 void studio_frame_selection(studio *s);
 void studio_duplicate(studio *s);
 void studio_delete(studio *s);

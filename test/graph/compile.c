@@ -237,8 +237,8 @@ void run_graph_compile_checks()
             NULL,
             ""
         );
-        node *get = behavior_asset_add_get_node(asset, v->id);
-        node *set = behavior_asset_add_set_node(asset, v->id);
+        behavior_asset_add_get_node(asset, v->id);
+        behavior_asset_add_set_node(asset, v->id);
         node *ev = graph_add_node(asset->graph, &NODE_Event);
         graph_set_event_name(asset->graph, ev, "Go");
         compile_report rep;

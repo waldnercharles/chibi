@@ -126,11 +126,6 @@ int game_prototype_preview_register_behavior(
     return 0;
 }
 
-int game_prototype_preview_unregister_behavior(game_prototype_preview *preview, const char *asset_name)
-{
-    return game_live_remove_definition(preview->live, asset_name);
-}
-
 int game_prototype_preview_prepare_library(
     game_prototype_preview *preview,
     const char *name,
@@ -354,14 +349,6 @@ int game_prototype_preview_sample_movement(game_prototype_preview *preview, floa
         return FLOW_ERR_ARGUMENT;
     }
     return engine_sample_movement(preview->runtime, x, y);
-}
-
-int game_prototype_preview_sample_aim(game_prototype_preview *preview, CF_V2 aim, bool firing, bool point)
-{
-    if (!preview || !preview->entity.slot) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    return engine_sample_aim(preview->runtime, aim, firing, point);
 }
 
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)

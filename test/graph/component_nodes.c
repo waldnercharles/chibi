@@ -191,11 +191,6 @@ static void data(fixture *f, node *from, int from_pin, node *to, int to_pin)
 
 static GameHealth health_value = { 5, 9 };
 
-static pin_value health_default()
-{
-    return (pin_value){ .type = PIN_STRUCT, .type_name = "GameHealth", .ptr = &health_value };
-}
-
 static node *rebuild_event(fixture *f)
 {
     node *event = graph_add_node(f->g, &NODE_Event);

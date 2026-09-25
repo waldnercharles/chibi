@@ -1,5 +1,3 @@
-#include "graph/nodes/switch_nodes.h"
-
 #include "graph/model/registry.h"
 #include "graph/runtime/flow.h"
 
@@ -133,11 +131,10 @@ node_desc NODE_Select = {
     .keywords = "select ternary option",
 };
 
-node_desc *const SWITCH_NODES[] = {
+static node_desc *const SWITCH_NODES[] = {
     &NODE_SwitchInt,  &NODE_SwitchString, &NODE_SwitchName,
     &NODE_SwitchEnum, &NODE_Select,
 };
-const int SWITCH_NODE_COUNT = sizeof SWITCH_NODES / sizeof SWITCH_NODES[0];
 
 const registry_pack CORE_SWITCH_PACK = {
     .name = "core.switch",

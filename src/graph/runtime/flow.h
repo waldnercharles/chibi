@@ -139,7 +139,6 @@ extern "C"
     behavior_backend flow_run_backend(const flow_run *run);
 
     int flow_run_resume(flow_run *run);
-    int flow_run_tick(flow_run *run);
     int flow_run_tick_at(flow_run *run, double monotonic_time);
 
     /* Request an external pause between activations, or enter persistent
@@ -245,8 +244,6 @@ extern "C"
     int flow_context_emit(struct flow_context *ctx, const char *message);
     flow_inputs flow_context_inputs(const struct flow_context *ctx);
     behavior_instance *flow_context_instance(const struct flow_context *ctx);
-    /* Retain a completed nested run until this activation is reset/freed. */
-    int flow_context_retain_run(struct flow_context *ctx, flow_run *child);
     int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs inputs);
     int flow_context_return(struct flow_context *ctx);
     int flow_context_entry_output(const struct flow_context *ctx);

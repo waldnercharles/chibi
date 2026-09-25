@@ -109,7 +109,7 @@ static bool SDLCALL queue_event(void *user, SDL_Event *event)
     return true;
 }
 
-bool studio_key_pressed(const studio *s, SDL_Keycode key)
+static bool studio_key_pressed(const studio *s, SDL_Keycode key)
 {
     for (int i = 0; i < acount(s->keys); i++) {
         if (s->keys[i].key == key) {
@@ -433,17 +433,4 @@ void studio_frame(studio *s, double delta_seconds)
     editor_rml_backend_update(s->backend, delta_seconds);
     editor_rml_backend_render(s->backend);
     editor_rml_backend_present(s->backend);
-}
-
-bool studio_item_rect(const studio *s, const char *path, float rect[4])
-{
-    kit_rect r;
-    if (!kit_find(s->kit, path, &r)) {
-        return false;
-    }
-    rect[0] = r.x;
-    rect[1] = r.y;
-    rect[2] = r.w;
-    rect[3] = r.h;
-    return true;
 }

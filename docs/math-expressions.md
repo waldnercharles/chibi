@@ -20,8 +20,12 @@ The constants `pi` and `e` are built in. Use parentheses to make grouping explic
 | --- | --- |
 | `sin`, `cos`, `tan`, `asin`, `acos`, `atan` | One angle or scalar; angles use radians |
 | `sqrt`, `exp`, `log`, `ln`, `log10` | One scalar; `log` and `ln` are natural logarithms |
-| `floor`, `ceil`, `round`, `abs`, `negate` | One scalar |
+| `floor`, `ceil`, `round`, `fract`, `sign`, `abs`, `negate` | One scalar |
 | `min`, `max`, `pow` | Two scalars |
+| `mix` | `a, b, alpha`; `a` at 0, `b` at 1 |
+| `step` | `edge, x`; 0 below the edge, 1 from it on |
+| `length`, `normalize` | One `CF_V2` |
+| `dot`, `distance` | Two `CF_V2` |
 | `atan2` | `y, x` |
 | `clamp` | `value, minimum, maximum` |
 | `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive |

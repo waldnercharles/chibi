@@ -42,6 +42,16 @@ UNARY(Logarithm10, "Logarithm 10", log10)
 UNARY(Floor, "Floor", floor)
 UNARY(Ceiling, "Ceiling", ceil)
 UNARY(Round, "Round", round)
+static double fract(double x)
+{
+    return x - floor(x);
+}
+static double sign(double x)
+{
+    return (x > 0) - (x < 0);
+}
+UNARY(Fract, "Fract", fract)
+UNARY(Sign, "Sign", sign)
 #undef UNARY
 
 #define BINARY(NAME, LABEL, FN)                                                       \
@@ -63,6 +73,56 @@ UNARY(Round, "Round", round)
 BINARY(Power, "Power", pow)
 BINARY(ArcTangent2, "Arc Tangent 2", atan2)
 #undef BINARY
+
+/* step(edge, x): 0 below the edge, 1 from it on (GLSL). */
+static pin_spec step_inputs[] = {
+    { .name = "Value", .type = PIN_F64, .type_name = "double" },
+    { .name = "Edge", .type = PIN_F64, .type_name = "double" }
+};
+static pin_value step_value(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64);
+    return (pin_value){ .type = PIN_F64, .d = inputs[0].d < inputs[1].d ? 0 : 1 };
+}
+node_desc NODE_Step = { .name = "Step",
+                        .inputs = step_inputs,
+                        .input_count = 2,
+                        .outputs = result,
+                        .output_count = 1,
+                        .pure_kind = NODE_PURE_CALL,
+                        .fn = step_value,
+                        .access = &pure,
+                        .category = "Math/Functions",
+                        .keywords = "step edge threshold",
+                        .foldable = true };
+
+/* mix(a, b, alpha): a at 0, b at 1 (GLSL; Unreal's Lerp). */
+static pin_spec mix_inputs[] = {
+    { .name = "A", .type = PIN_F64, .type_name = "double" },
+    { .name = "B", .type = PIN_F64, .type_name = "double" },
+    { .name = "Alpha", .type = PIN_F64, .type_name = "double" }
+};
+static pin_value mix_value(const pin_value *inputs, int count, arena *)
+{
+    assert(
+        count == 3 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64 &&
+        inputs[2].type == PIN_F64
+    );
+    return (pin_value){ .type = PIN_F64,
+                        .d = inputs[0].d +
+                             (inputs[1].d - inputs[0].d) * inputs[2].d };
+}
+node_desc NODE_Mix = { .name = "Mix",
+                       .inputs = mix_inputs,
+                       .input_count = 3,
+                       .outputs = result,
+                       .output_count = 1,
+                       .pure_kind = NODE_PURE_CALL,
+                       .fn = mix_value,
+                       .access = &pure,
+                       .category = "Math/Functions",
+                       .keywords = "mix lerp interpolate blend",
+                       .foldable = true };
 
 static pin_value random_sample(const pin_value *, int count, arena *)
 {

@@ -15,7 +15,10 @@
     X(Logarithm)                                                               \
     X(Logarithm10)                                                             \
     X(Floor)                                                                   \
-    X(Ceiling) X(Round) X(Power) X(ArcTangent2) X(RandomReal) X(RandomRangeReal)
+    X(Ceiling)                                                                 \
+    X(Round)                                                                   \
+    X(Fract) X(Sign) X(Step) X(Mix) X(Power) X(ArcTangent2) X(RandomReal)      \
+        X(RandomRangeReal)
 #define MATH_OPERATION_NODES(X)                                                \
     X(Advance_Damped_Spring)                                                   \
     X(Quantize_Angle)                                                          \

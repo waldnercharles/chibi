@@ -1585,6 +1585,8 @@ void test_math_expression()
     expect("log(e) + log10(100) + floor(2.9) + ceil(2.1) + round(1.6)", 10);
     expect("cos(0) + tan(0) + asin(0) + acos(1) + atan(0) + atan2(0, 1)", 1);
     expect("pow(2, 3) / exp(0)", 8);
+    expect("mix(2, 4, 0.25) + step(1, 2) + fract(2.75) + sign(-3)", 3.25);
+    expect("length(vec2(3, 4)) + dot(vec2(1, 2), vec2(3, 4)) + distance(vec2(1, 1), vec2(4, 5))", 21);
 
     behavior_asset *asset = behavior_asset_new("Expression edits");
     graph *g = asset->graph;

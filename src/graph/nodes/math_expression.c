@@ -105,20 +105,22 @@ static const math_function functions[] = {
     { "floor", 1, { "Floor", NULL, "Field Floor" } },
     { "ceil", 1, { "Ceiling" } },
     { "round", 1, { "Round" } },
-    { "fract", 1, { NULL, "Shader Fract" } },
+    { "fract", 1, { "Fract", "Shader Fract" } },
+    { "sign", 1, { "Sign" } },
     { "abs", 1, { "Abs", "Shader Abs", "Field Abs" } },
     { "negate", 1, { "Negate", NULL, "Field Negate" } },
     { "min", 2, { "Min", "Shader Min", "Field Min" } },
     { "max", 2, { "Max", "Shader Max", "Field Max" } },
     { "clamp", 3, { "Clamp", "Shader Clamp", "Field Clamp" } },
     { "saturate", 1, { NULL, "Shader Saturate" } },
-    { "mix", 3, { NULL, "Shader Mix" } },
-    { "step", 2, { NULL, "Shader Step" }, { 1, 0 } },
+    { "mix", 3, { "Mix", "Shader Mix" } },
+    { "step", 2, { "Step", "Shader Step" }, { 1, 0 } },
     { "smoothstep", 3, { NULL, "Shader Smoothstep" }, { 1, 2, 0 } },
     { "remap", 5, { NULL, NULL, "Field Remap" } },
     { "select", 3, { NULL, NULL, "Field Select" } },
-    { "length", 1, { NULL, "Shader Length" } },
-    { "dot", 2, { NULL, "Shader Dot" } },
+    { "length", 1, { "Vector Length", "Shader Length" } },
+    { "dot", 2, { "Vector Dot", "Shader Dot" } },
+    { "distance", 2, { "Vector Distance" } },
     { "normalize", 1, { "Normalize Vector 2", "Shader Normalize" } },
     { "rand", 0, { "Random Real" } },
     { "vec2", 2, { "Make_CF_V2", "Shader Vector2" } },
@@ -1841,21 +1843,30 @@ static behavior_asset *generate(
         bool comparison = expression_comparison(term->desc);
         bool aggregate = term->desc && term->desc->pure_kind == NODE_PURE_MAKE;
         if (!aggregate) {
+            /* Numbers become doubles; a vector pin such as Vector Length's
+               keeps its declared type. */
             for (int j = 0; j < n->input_count; j++) {
+                if (n->input_pins[j].type == PIN_STRUCT &&
+                    !(n->input_pins[j].flags & PIN_FLAG_WILDCARD)) {
+                    continue;
+                }
                 rc = graph_set_pin_type(target, n, 0, j, logical ? PIN_BOOL : PIN_F64, logical ? "bool" : "double");
                 assert(rc == 0);
                 (void)rc;
             }
-            rc = graph_set_pin_type(
-                target,
-                n,
-                1,
-                0,
-                logical || comparison ? PIN_BOOL : PIN_F64,
-                logical || comparison ? "bool" : "double"
-            );
-            assert(rc == 0);
-            (void)rc;
+            if (n->output_pins[0].type != PIN_STRUCT ||
+                (n->output_pins[0].flags & PIN_FLAG_WILDCARD)) {
+                rc = graph_set_pin_type(
+                    target,
+                    n,
+                    1,
+                    0,
+                    logical || comparison ? PIN_BOOL : PIN_F64,
+                    logical || comparison ? "bool" : "double"
+                );
+                assert(rc == 0);
+                (void)rc;
+            }
         }
         if (!term->desc) {
             pin_value value = { .type = PIN_F64, .d = term->number };
@@ -1872,7 +1883,7 @@ static behavior_asset *generate(
         depths[i] = 1;
         for (int j = 0; j < term->count; j++) {
             value_source input = values[term->args[j]];
-            rc = graph_connect_data(target, input.node, input.pin, n, j);
+            rc = graph_connect_data(target, input.node, input.pin, n, term->order ? term->order[j] : j);
             assert(rc == 0);
             (void)rc;
             int depth = depths[term->args[j]] + 1;

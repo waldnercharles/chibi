@@ -91,11 +91,6 @@ static bool graph_focused(const studio *s)
            s->focus_area == s->graph.area;
 }
 
-static bool editable(const studio *s)
-{
-    return scene_can_move(s->scene) && !s->scene->runtime_snapshot_valid;
-}
-
 static void toast(studio *s, kit_toast_type type, const char *title, const char *description)
 {
     char text[256];
@@ -114,7 +109,7 @@ static void toast(studio *s, kit_toast_type type, const char *title, const char 
 void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
-    if (!editable(s) || runtime_session(scene)) {
+    if (!studio_editable(s) || runtime_session(scene)) {
         toast(s, KIT_TOAST_WARNING, "Stop the scene to save", NULL);
         return;
     }
@@ -198,7 +193,7 @@ static bool active_dirty(studio *s)
 
 void studio_history(studio *s, bool redo)
 {
-    if (!editable(s) || !can_replay(s, redo)) {
+    if (!studio_editable(s) || !can_replay(s, redo)) {
         return;
     }
     if (graph_focused(s)) {
@@ -238,7 +233,7 @@ void studio_frame_selection(studio *s)
 
 void studio_duplicate(studio *s)
 {
-    if (editable(s) && selected_actor(s->scene)) {
+    if (studio_editable(s) && selected_actor(s->scene)) {
         finish_transform_edit(s->scene, false);
         app_scene_authoring_duplicate_instance(s->scene);
     }
@@ -248,7 +243,7 @@ void studio_duplicate(studio *s)
 void studio_delete(studio *s)
 {
     scene_actor *actor = selected_actor(s->scene);
-    if (!editable(s) || !actor) {
+    if (!studio_editable(s) || !actor) {
         return;
     }
     char title[160];
@@ -298,7 +293,7 @@ static void undo_toast(studio *s)
 
 void studio_add_object(studio *s, const char *prototype)
 {
-    if (!editable(s)) {
+    if (!studio_editable(s)) {
         return;
     }
     finish_transform_edit(s->scene, false);
@@ -335,7 +330,7 @@ static void add_menu_items(studio *s)
         }
         char key[32];
         snprintf(key, sizeof key, "p%d", i);
-        if (item(k, key, prototype->name, studio_prototype_icon(s, prototype->name), NULL, !editable(s))) {
+        if (item(k, key, prototype->name, studio_prototype_icon(s, prototype->name), NULL, !studio_editable(s))) {
             studio_add_object(s, prototype->name);
         }
     }
@@ -345,7 +340,7 @@ static void menus(studio *s)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
-    bool can_edit = editable(s);
+    bool can_edit = studio_editable(s);
     bool selection = selected_actor(scene) != NULL;
     app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
     kit_push(k, "menus", "nav", "menus");

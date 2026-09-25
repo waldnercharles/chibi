@@ -151,7 +151,8 @@ int graph_expand_local(graph *g, uint64_t id)
 void graph_prune_locals(graph *g)
 {
     for (int i = acount(g->locals) - 1; i >= 0; i--) {
-        bool used = false;
+        /* A local still loading has no source yet, and its uses follow. */
+        bool used = !g->locals[i].source_id;
         for (int n = 0; n < acount(g->nodes) && !used; n++) {
             for (int p = 0; p < g->nodes[n]->input_count; p++) {
                 const pin_binding *b = g->nodes[n]->input_pins[p].binding;

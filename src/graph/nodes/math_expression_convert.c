@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/model/type.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/field_nodes.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -58,6 +59,7 @@ typedef struct expression_build
     expression_input *inputs;
     expression_term *terms;
     expression_output *outputs;
+    uint64_t *inlined; /* Unselected component reads spelled in place. */
     node *result_node;
     int result_pin;
     const char *error;
@@ -177,22 +179,18 @@ static bool finite_number(const pin_value *value)
            (value->type == PIN_F32 ? isfinite(value->f) : isfinite(value->d));
 }
 
-/* The shortest text that reads back as the same number: 0.9f is 0.9, not
-   0.899999976. */
+/* The shortest text that reads back as the same number, in plain decimals at
+   everyday magnitudes: 700, not 7e+02. */
 static char *number_text(const pin_value *value)
 {
+    bool single = value->type == PIN_F32;
+    double number = single ? (double)value->f : value->d;
+    const char *format = fabs(number) >= 1e-4 && fabs(number) < 1e9 ? "%.*f" : "%.*g";
     char text[64];
-    for (int digits = 1; digits <= 17; digits++) {
-        if (value->type == PIN_F32) {
-            snprintf(text, sizeof text, "%.*g", digits, (double)value->f);
-            if (strtof(text, NULL) == value->f) {
-                break;
-            }
-        } else {
-            snprintf(text, sizeof text, "%.*g", digits, value->d);
-            if (strtod(text, NULL) == value->d) {
-                break;
-            }
+    for (int digits = 0; digits <= 24; digits++) {
+        snprintf(text, sizeof text, format, digits, number);
+        if (single ? strtof(text, NULL) == value->f : strtod(text, NULL) == number) {
+            break;
         }
     }
     return xstrdup(text);
@@ -246,8 +244,8 @@ static char *input_label(
     label[0] = 0;
     if (source) {
         /* Named sources keep their name: an output's (Seconds), a
-           parameter's or function's (Glow), a built-in's (Shader X reads as
-           X). A computed value has none of its own. */
+           parameter's or function's (Glow), a built-in's (Shader UV reads
+           as UV). A computed value has none of its own. */
         const pin_spec *output = &source->output_pins[source_pin];
         bool computed = source->desc == &NODE_BehaviorExpression || spellable(source);
         const char *builtin = source->desc->name;
@@ -258,7 +256,8 @@ static char *input_label(
                          : computed                    ? NULL
                          : source->reference_name && source->reference_name[0]
                              ? source->reference_name
-                             : builtin;
+                         : field_parameter_name(source) ? field_parameter_name(source)
+                                                        : builtin;
         if (generic_name(name)) {
             return NULL;
         }
@@ -383,6 +382,30 @@ static int term_index(const expression_build *build, const node *n)
 }
 
 static char *term_node(expression_build *build, node *n, int *binding);
+static char member_axis(const node_desc *desc);
+
+/* A component read shared with other consumers still reads in place, UV.x,
+   rather than as a letter; NULL when source is not one. */
+static char *inline_member(expression_build *build, node *source, int source_pin)
+{
+    node *vector = NULL;
+    int vector_pin = -1;
+    if (!member_axis(source->desc) || source->disabled ||
+        graph_output_local(build->graph, source, source_pin) ||
+        !graph_input_source(build->graph, source, 0, &vector, &vector_pin) ||
+        graph_input_conversion(build->graph, source, 0)) {
+        return NULL;
+    }
+    int input = add_input(build, vector, vector_pin, NULL, &source->input_pins[0]);
+    if (input < 0) {
+        return NULL;
+    }
+    apush(build->inlined, source->id);
+    size_t size = strlen(build->inputs[input].name) + 3;
+    char *text = xmalloc(size);
+    snprintf(text, size, "%s.%c", build->inputs[input].name, member_axis(source->desc));
+    return text;
+}
 
 /* An operand's source text and how tightly it binds. */
 static char *term_input(expression_build *build, node *n, int index, int *binding)
@@ -406,6 +429,10 @@ static char *term_input(expression_build *build, node *n, int index, int *bindin
                 return NULL;
             }
             return term_node(build, source, binding);
+        }
+        char *member = inline_member(build, source, source_pin);
+        if (member || build->error) {
+            return member;
         }
         int input = add_input(build, source, source_pin, NULL, pin);
         return input < 0 ? NULL : xstrdup(build->inputs[input].name);
@@ -432,10 +459,40 @@ static void append_operand(expression_text *text, const char *source, int bindin
     append_text(text, binding < needed ? ")" : "");
 }
 
+/* Shader X..W read one component, spelled as a member: v.x. */
+static char member_axis(const node_desc *desc)
+{
+    static const char *const AXES[] = { "Shader X", "Shader Y", "Shader Z", "Shader W" };
+    for (int i = 0; i < 4; i++) {
+        if (!strcmp(desc->name, AXES[i])) {
+            return "xyzw"[i];
+        }
+    }
+    return 0;
+}
+
+static char *spell_member(expression_build *build, node *n, int *binding)
+{
+    int operand = 0;
+    char *vector = term_input(build, n, 0, &operand);
+    if (!vector) {
+        return NULL;
+    }
+    expression_text text = { 0 };
+    append_operand(&text, vector, operand, ATOM_BINDING);
+    append_text(&text, (char[]){ '.', member_axis(n->desc), 0 });
+    free(vector);
+    *binding = ATOM_BINDING;
+    return take_text(&text);
+}
+
 /* Spells n with the shared expression vocabulary: an infix or prefix
-   operator, or a function call with GLSL argument order. */
+   operator, a function call with GLSL argument order, or a member. */
 static char *spell_node(expression_build *build, node *n, int *binding)
 {
+    if (member_axis(n->desc)) {
+        return spell_member(build, n, binding);
+    }
     int power = 0;
     const char *spelling = behavior_expression_spelling(n->desc, &power);
     int arity = power == BEHAVIOR_EXPRESSION_PREFIX_BINDING ? 1
@@ -454,7 +511,18 @@ static char *spell_node(expression_build *build, node *n, int *binding)
         failed = !arguments[i];
     }
     expression_text text = { 0 };
-    if (!failed && power == BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
+    /* a * -1 reads as -a, which lowers back to the same multiply. */
+    int negated = -1;
+    if (!failed && power && !strcmp(spelling, "*")) {
+        negated = !strcmp(arguments[1], "-1") ? 0
+                : !strcmp(arguments[0], "-1") ? 1
+                                              : -1;
+    }
+    if (negated >= 0) {
+        power = BEHAVIOR_EXPRESSION_PREFIX_BINDING;
+        append_text(&text, "-");
+        append_operand(&text, arguments[negated], bindings[negated], power + 1);
+    } else if (!failed && power == BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
         append_text(&text, spelling);
         append_operand(&text, arguments[0], bindings[0], power + 1);
     } else if (!failed && power) {
@@ -670,6 +738,17 @@ static void free_build(expression_build *build)
     afree(build->inputs);
     afree(build->terms);
     afree(build->outputs);
+    afree(build->inlined);
+}
+
+static bool has_consumer(const graph *g, const node *n)
+{
+    for (int i = 0; i < acount(g->edges); i++) {
+        if (g->edges[i].kind == GRAPH_EDGE_DATA && g->edges[i].from_id == n->id) {
+            return true;
+        }
+    }
+    return false;
 }
 
 const char *behavior_expression_can_convert_selection(
@@ -779,6 +858,14 @@ node *behavior_expression_convert_selection(
             (void)result;
         }
     }
+    for (int i = 0; i < acount(build.inlined); i++) {
+        node *n = graph_node_by_id(source, build.inlined[i]);
+        if (n && !has_consumer(source, n)) {
+            int result = graph_remove_node(source, n);
+            assert(result == 0);
+            (void)result;
+        }
+    }
     free_build(&build);
     return call;
 }
@@ -797,6 +884,9 @@ static bool spellable(const node *n)
     }
     if (constant_value(n)) {
         return true;
+    }
+    if (member_axis(desc)) {
+        return n->input_count == 1;
     }
     int binding = 0;
     const char *spelling = behavior_expression_spelling(desc, &binding);

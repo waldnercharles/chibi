@@ -238,6 +238,33 @@ int pin_types_compatible(const pin_spec *a, const pin_spec *b)
     return pin_compatible(a, b);
 }
 
+/* Retypes one wildcard pin, keeping its default as authored data where the
+ * type holds. */
+static void graph_wildcard_resolve_pin(graph *g, pin_spec *p, pin_type type, const char *type_name)
+{
+    char *copy = type_name ? graph_own_str(g, type_name, strlen(type_name)) : NULL;
+    /* Only aggregates, enums and handles are named types: a float spelled
+     * "float" is the same float as an unnamed one. */
+    bool named = type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE;
+    bool changed_type = p->type != type || (named && (p->type_name || type_name) &&
+                                            (!p->type_name || !type_name ||
+                                             strcmp(p->type_name, type_name)));
+    /* A wildcard's default is still authored data. Keep it intact while a
+     * wire temporarily supplies the resolved type when the input also
+     * carries a dormant binding. Unbound wildcards retain the original retype
+     * behavior used by shader graph inputs. */
+    if (!p->binding || p->default_value.type != PIN_FLOW) {
+        if (changed_type) {
+            p->default_value = (pin_value){ 0 };
+        }
+        p->default_value.type = type;
+        p->default_value.container = p->container;
+        p->default_value.type_name = copy;
+    }
+    p->type = type;
+    p->type_name = copy;
+}
+
 static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type type, const char *type_name)
 {
     if (group == 0) {
@@ -247,40 +274,9 @@ static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type 
         pin_spec *pins = output ? n->output_pins : n->input_pins;
         int count = output ? n->output_count : n->input_count;
         for (int i = 0; i < count; i++) {
-            pin_spec *p = &pins[i];
-            if (!(p->flags & PIN_FLAG_WILDCARD) || p->group != group) {
-                continue;
+            if ((pins[i].flags & PIN_FLAG_WILDCARD) && pins[i].group == group) {
+                graph_wildcard_resolve_pin(g, &pins[i], type, type_name);
             }
-            char *copy = type_name ? graph_own_str(g, type_name, strlen(type_name))
-                                   : NULL;
-            /* A wildcard's default is still authored data. Keep it intact
-             * while a wire temporarily supplies the resolved type when the
-             * input also carries a dormant binding. Unbound wildcards retain
-             * the original retype behavior used by shader graph inputs. */
-            /* Only aggregates, enums and handles are named types: a float
-               spelled "float" is the same float as an unnamed one. */
-            bool named = type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE;
-            bool changed_type = p->type != type ||
-                                (named && (p->type_name || type_name) &&
-                                 (!p->type_name || !type_name ||
-                                  strcmp(p->type_name, type_name)));
-            if (!p->binding) {
-                if (changed_type) {
-                    p->default_value = (pin_value){ 0 };
-                }
-                p->default_value.type = type;
-                p->default_value.container = p->container;
-                p->default_value.type_name = copy;
-            } else if (p->default_value.type != PIN_FLOW) {
-                if (changed_type) {
-                    p->default_value = (pin_value){ 0 };
-                }
-                p->default_value.type = type;
-                p->default_value.container = p->container;
-                p->default_value.type_name = copy;
-            }
-            p->type = type;
-            p->type_name = copy;
         }
     }
 }
@@ -385,9 +381,13 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
             return -1;
         }
         pin_spec *p = &to->input_pins[to_pin];
+        p->container = value->container;
+        /* An ungrouped wildcard resolves alone. */
+        if (!p->group) {
+            graph_wildcard_resolve_pin(g, p, value->type, owned);
+        }
         p->type = value->type;
         p->type_name = owned;
-        p->container = value->container;
         graph_wildcard_resolve_group(g, to, p->group, value->type, value->type_name);
         in = &to->input_pins[to_pin];
     }

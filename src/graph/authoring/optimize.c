@@ -5,6 +5,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/field_nodes.h"
 #include "graph/runtime/eval.h"
 #include "support/arena.h"
 
@@ -422,6 +423,7 @@ static void local_name(const graph *g, const node *n, int pin, char *name, size_
         source = component                           ? component->name
                : n->desc == &NODE_BehaviorExpression ? "Value"
                : n->reference_name                   ? n->reference_name
+               : field_parameter_name(n)             ? field_parameter_name(n)
                                                      : n->desc->name;
     }
     if (!strncmp(source, "Shader ", 7) || !strncmp(source, "Field ", 6)) {

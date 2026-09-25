@@ -1,8 +1,10 @@
 #include "ecs/ecs.h"
 #include "graph/compiler/compile.h"
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/conv_nodes.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -41,6 +43,8 @@ typedef struct
     double number;
     bool boolean;
     bool is_boolean_literal;
+    bool member; /* field reads term `base`, a computed value */
+    int base;
     char field[256];
     int indices[4];
     int index_count;
@@ -96,17 +100,17 @@ static const math_function functions[] = {
     { "acos", 1, { "Arc Cosine" } },
     { "atan", 1, { "Arc Tangent" } },
     { "atan2", 2, { "Arc Tangent 2" } },
-    { "sqrt", 1, { "Square Root" } },
+    { "sqrt", 1, { "Square Root", "Shader Sqrt" } },
     { "pow", 2, { "Power" } },
     { "exp", 1, { "Exponential" } },
     { "log", 1, { "Logarithm" } },
     { "ln", 1, { "Logarithm" } },
     { "log10", 1, { "Logarithm 10" } },
-    { "floor", 1, { "Floor", NULL, "Field Floor" } },
+    { "floor", 1, { "Floor", "Shader Floor", "Field Floor" } },
     { "ceil", 1, { "Ceiling" } },
     { "round", 1, { "Round" } },
     { "fract", 1, { "Fract", "Shader Fract" } },
-    { "sign", 1, { "Sign" } },
+    { "sign", 1, { "Sign", "Shader Sign" } },
     { "abs", 1, { "Abs", "Shader Abs", "Field Abs" } },
     { "negate", 1, { "Negate", NULL, "Field Negate" } },
     { "min", 2, { "Min", "Shader Min", "Field Min" } },
@@ -185,15 +189,29 @@ static const math_function *function_of(const node_desc *desc)
     return NULL;
 }
 
-static expression_dialect dialect_of(const behavior_asset *asset)
+/* A library holds functions of any domain, so its graph speaks the dialect
+   of the nodes it holds. */
+static expression_dialect dialect_of(const behavior_asset *asset, const graph *caller)
 {
     switch (asset->domain) {
         case BEHAVIOR_DOMAIN_MATERIAL:
         case BEHAVIOR_DOMAIN_SHAPE:
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return DIALECT_SHADER;
         case BEHAVIOR_DOMAIN_FIELD: return DIALECT_FIELD;
-        default: return DIALECT_BEHAVIOR;
+        default: break;
     }
+    for (int i = 0;
+         asset->domain == BEHAVIOR_DOMAIN_LIBRARY && i < acount(caller->nodes);
+         i++) {
+        const char *name = caller->nodes[i]->desc->name;
+        if (!strncmp(name, "Field ", 6)) {
+            return DIALECT_FIELD;
+        }
+        if (!strncmp(name, "Shader ", 7)) {
+            return DIALECT_SHADER;
+        }
+    }
+    return DIALECT_BEHAVIOR;
 }
 
 static const char *dialect_name(expression_dialect dialect)
@@ -354,6 +372,22 @@ static int append(parser *p, term value)
 
 static int expression(parser *p, int precedence);
 
+/* Member reads of a computed value: normalize(v).x, (a + b).xy. */
+static int members(parser *p, int value)
+{
+    while (value >= 0 && p->token == '.') {
+        next(p);
+        if (p->token != TOKEN_NAME) {
+            return fail(p, "Expected a field name after '.'");
+        }
+        term read = { .symbol = -1, .member = true, .base = value };
+        snprintf(read.field, sizeof read.field, "%.*s", p->length, p->start);
+        next(p);
+        value = append(p, read);
+    }
+    return value;
+}
+
 static int identifier(parser *p)
 {
     const char *name = p->start;
@@ -450,10 +484,21 @@ static int identifier(parser *p)
                                                                      : NULL,
                    .symbol = -1 };
     assert(value.desc);
+    /* Shader vectors pack like GLSL's: vec3(uv, 0) fills three components
+       from a vec2 and a scalar. */
+    bool packs = p->dialect == DIALECT_SHADER && !strncmp(function->name, "vec", 3);
+    char arity[96];
+    snprintf(
+        arity,
+        sizeof arity,
+        "%s() takes %d arguments",
+        function->name,
+        function->arity
+    );
     next(p);
     while (p->token != ')') {
         if (value.count == function->arity) {
-            return fail(p, "Too many function arguments");
+            return fail(p, arity);
         }
         int argument = expression(p, 0);
         if (argument < 0) {
@@ -468,14 +513,14 @@ static int identifier(parser *p)
             return fail(p, "Expected an expression after ','");
         }
     }
-    if (value.count != function->arity) {
-        return fail(p, "Wrong number of function arguments");
+    if (value.count != function->arity && !(packs && value.count)) {
+        return fail(p, arity);
     }
     if (p->token != ')') {
         return fail(p, "Expected ')' after function arguments");
     }
     next(p);
-    return append(p, value);
+    return members(p, append(p, value));
 }
 
 /* Shader and field graphs fold a negated literal; otherwise fields negate and
@@ -483,7 +528,8 @@ static int identifier(parser *p)
 static int negate_dataflow(parser *p, int argument)
 {
     term *value = &p->terms[argument];
-    if (!value->desc && value->symbol < 0 && !value->is_boolean_literal) {
+    if (!value->desc && value->symbol < 0 && !value->is_boolean_literal &&
+        !value->member) {
         value->number = -value->number;
         return argument;
     }
@@ -529,7 +575,7 @@ static int primary(parser *p)
             return fail(p, "Expected ')' to close expression");
         }
         next(p);
-        return result;
+        return members(p, result);
     }
     if (p->token == '+' || p->token == '-' || p->token == '!') {
         if (p->token == '!' && p->dialect != DIALECT_BEHAVIOR) {
@@ -698,6 +744,7 @@ static int parse_source(parser *p)
 
 static int parse_symbols(
     const behavior_asset *asset,
+    const graph *caller,
     const char *source,
     char ***symbols,
     behavior_expression_error *error
@@ -705,7 +752,7 @@ static int parse_symbols(
 {
     parser p = { .source = source,
                  .cursor = source,
-                 .dialect = dialect_of(asset),
+                 .dialect = dialect_of(asset, caller),
                  .error = error };
     int result = parse_source(&p);
     if (result < 0) {
@@ -850,6 +897,10 @@ static void expression_require_term(
 )
 {
     const term *value = &p->terms[index];
+    if (value->member) {
+        expression_require_term(p, value->base, PIN_FLOW, types, known, arrays, structs, invalid);
+        return;
+    }
     if (value->symbol >= 0) {
         expression_require_symbol(p, index, expected, types, known, arrays, structs, invalid);
         for (int i = 0; i < value->index_count; i++) {
@@ -993,6 +1044,22 @@ static bool expression_branch_context(const graph *caller)
         }
     }
     return false;
+}
+
+/* A condition read only through its Result, such as a While's, is a value
+   rather than a branch. */
+static bool expression_read_as_value(const graph *caller, const node *previous)
+{
+    bool read = false;
+    for (int i = 0; previous && i < acount(caller->edges); i++) {
+        const edge *e = &caller->edges[i];
+        bool touches = e->from_id == previous->id || e->to_id == previous->id;
+        if (touches && e->kind != GRAPH_EDGE_DATA) {
+            return false;
+        }
+        read |= e->kind == GRAPH_EDGE_DATA && e->from_id == previous->id;
+    }
+    return read;
 }
 
 static bool expression_previous_bool(const node *previous, const char *name)
@@ -1403,6 +1470,64 @@ static int swizzle(parser *p, graph *target, value_source *value, int *width, co
     return 0;
 }
 
+/* vecN(...) from scalars and vectors whose components add up to N. */
+static int pack_vector(
+    parser *p,
+    graph *target,
+    const term *t,
+    value_source *values,
+    int *widths,
+    int *depths,
+    int i,
+    bool provisional
+)
+{
+    static const char *const AXES[] = { "Shader X", "Shader Y", "Shader Z", "Shader W" };
+    node *vector = graph_add_node(target, t->desc);
+    assert(vector);
+    int filled = 0;
+    depths[i] = 1;
+    for (int j = 0; j < t->count; j++) {
+        value_source part = values[t->args[j]];
+        int width = widths[t->args[j]];
+        depths[i] = depths[t->args[j]] + 1 > depths[i] ? depths[t->args[j]] + 1
+                                                       : depths[i];
+        for (int axis = 0; axis < width; axis++) {
+            if (filled == vector->input_count) {
+                break;
+            }
+            value_source component = part;
+            if (width > 1) {
+                node *read = graph_add_node(target, registry_node_by_name(AXES[axis]));
+                assert(read);
+                set_width(target, read, 0, 0, width, false);
+                if (graph_connect_data(target, part.node, part.pin, read, 0) != 0) {
+                    return fail(p, "Could not read a vector component");
+                }
+                component = (value_source){ read, 0 };
+            }
+            if (graph_connect_data(target, component.node, component.pin, vector, filled++) !=
+                0) {
+                return fail(p, "Could not build a vector");
+            }
+        }
+    }
+    char message[64];
+    snprintf(
+        message,
+        sizeof message,
+        "vec%d() needs %d components",
+        vector->input_count,
+        vector->input_count
+    );
+    if (filled != vector->input_count && !provisional) {
+        return fail(p, message);
+    }
+    values[i] = (value_source){ vector, 0 };
+    widths[i] = dataflow_width(&vector->output_pins[0]);
+    return 0;
+}
+
 /* A shader input keeps the width of what feeds its call; field inputs are floats. */
 static void type_dataflow_inputs(const parser *p, graph *target, node *entry, const int *symbol_pins)
 {
@@ -1430,6 +1555,17 @@ static int lower_dataflow(
     bool shader = p->dialect == DIALECT_SHADER;
     int *widths = xcalloc((size_t)acount(p->terms), sizeof *widths);
     int result = 0;
+    /* Before every input is wired, widths are guesses: a short vector waits
+       for the connection that regenerates it. */
+    bool provisional = !previous;
+    for (int s = 0; previous && s < acount(p->symbols); s++) {
+        int input = find_named_input(previous, p->symbols[s]);
+        node *source = NULL;
+        int source_pin = -1;
+        provisional |= input < 0 ||
+                       (!previous->input_pins[input].binding &&
+                        !graph_input_source(caller, previous, input, &source, &source_pin));
+    }
     for (int i = 0; i < acount(p->terms) && result >= 0; i++) {
         const term *t = &p->terms[i];
         if (t->symbol >= 0) {
@@ -1456,10 +1592,26 @@ static int lower_dataflow(
             widths[i] = width;
             continue;
         }
+        if (t->member) {
+            value_source value = values[t->base];
+            int width = widths[t->base];
+            result = shader
+                       ? swizzle(p, target, &value, &width, t->field)
+                       : fail(p, "Field expressions read scalars; members need a shader graph");
+            values[i] = value;
+            widths[i] = width;
+            depths[i] = depths[t->base] + 1;
+            continue;
+        }
         if (t->is_boolean_literal || expression_logical(t->desc) ||
             expression_comparison(t->desc)) {
             result = fail(p, "Boolean logic needs a behavior graph");
             break;
+        }
+        if (shader && t->desc && t->desc->output_count == 1 &&
+            dataflow_width(&t->desc->outputs[0]) > 1 && t->desc->input_count > 1) {
+            result = pack_vector(p, target, t, values, widths, depths, i, provisional);
+            continue;
         }
         if (!t->desc) {
             node *n = graph_add_node(target, registry_node_by_name(shader ? "Shader Constant" : "Field Constant"));
@@ -1534,6 +1686,59 @@ static int lower_dataflow(
 }
 
 /* Generation allocates the function's IDs in one run, starting at first_id. */
+static bool scalar_number(const pin_spec *pin)
+{
+    return pin->container == PIN_CONTAINER_SINGLE && pin->type >= PIN_I8 &&
+           pin->type <= PIN_F64;
+}
+
+/* Behavior arithmetic runs in double. A number of another width converts on
+   its way in or out, so it neither retypes an operation away from its
+   literals nor reaches an int as raw bits. */
+static int connect_number(graph *g, value_source from, node *to, int pin)
+{
+    const pin_spec *out = &from.node->output_pins[from.pin];
+    const pin_spec *in = &to->input_pins[pin];
+    bool numbers = scalar_number(out) && scalar_number(in) && out->type != in->type;
+    bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
+    const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
+    int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
+    /* A float shares the Real category, so it connects as is; the operation
+       stays double. */
+    return rc || !widened || conversion
+             ? rc
+             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "double");
+}
+
+/* A double result reaching an integer or float input, such as an int field
+   it assigns, converts there instead of passing raw bits. */
+static void convert_numbers(graph *g)
+{
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge e = g->edges[i];
+        node *from = graph_node_by_id(g, e.from_id);
+        node *to = graph_node_by_id(g, e.to_id);
+        int from_pin = -1, to_pin = -1;
+        const pin_spec *out = e.kind == GRAPH_EDGE_DATA && !e.conversion
+                                ? graph_pin_by_id(from, e.from_pin_id, NULL, &from_pin)
+                                : NULL;
+        const pin_spec *in = out ? graph_pin_by_id(to, e.to_pin_id, NULL, &to_pin)
+                                 : NULL;
+        if (in && scalar_number(out) && scalar_number(in) && out->type != in->type) {
+            int rc = graph_connect_data_conversion(
+                g,
+                from,
+                from_pin,
+                to,
+                to_pin,
+                conversion_for(out->type, in->type)
+            );
+            assert(rc == 0);
+            (void)rc;
+        }
+    }
+}
+
 static behavior_asset *generate(
     behavior_asset *asset,
     graph *caller,
@@ -1547,7 +1752,7 @@ static behavior_asset *generate(
 {
     parser p = { .source = source,
                  .cursor = source,
-                 .dialect = dialect_of(asset),
+                 .dialect = dialect_of(asset, caller),
                  .error = error };
     int result = parse_source(&p);
     if (result >= 0 && p.assignment_operator && p.dialect != DIALECT_BEHAVIOR) {
@@ -1610,7 +1815,8 @@ static behavior_asset *generate(
                             )));
     graph_expression_mode mode = p.assignment_operator
                                    ? GRAPH_EXPRESSION_ACTION
-                                   : (expression_branch_context(caller) && boolean_result
+                                   : (expression_branch_context(caller) && boolean_result &&
+                                              !expression_read_as_value(caller, previous)
                                           ? GRAPH_EXPRESSION_BRANCH
                                           : GRAPH_EXPRESSION_VALUE);
     behavior_asset *staged = behavior_asset_new("Expression staging");
@@ -1833,6 +2039,17 @@ static behavior_asset *generate(
             values[i] = value;
             continue;
         }
+        if (term->member) {
+            value_source value = values[term->base];
+            if (expression_field_source(target, entry, value, term->field, true, &value, error) !=
+                0) {
+                result = -1;
+                break;
+            }
+            values[i] = value;
+            depths[i] = depths[term->base] + 1;
+            continue;
+        }
         const node_desc *term_desc = term->is_boolean_literal
                                        ? registry_node_by_name("Bool")
                                        : (term->desc ? term->desc
@@ -1883,7 +2100,7 @@ static behavior_asset *generate(
         depths[i] = 1;
         for (int j = 0; j < term->count; j++) {
             value_source input = values[term->args[j]];
-            rc = graph_connect_data(target, input.node, input.pin, n, term->order ? term->order[j] : j);
+            rc = connect_number(target, input, n, term->order ? term->order[j] : j);
             assert(rc == 0);
             (void)rc;
             int depth = depths[term->args[j]] + 1;
@@ -1926,30 +2143,21 @@ static behavior_asset *generate(
             const pin_spec *left = &values[p.assignment_left]
                                         .node
                                         ->output_pins[values[p.assignment_left].pin];
+            /* count += 1 on an int adds in double like the rest. */
+            pin_type type = scalar_number(left) ? PIN_F64 : left->type;
+            const char *type_name = scalar_number(left) ? "double" : left->type_name;
             for (int pin = 0; pin < compound->input_count; pin++) {
-                rc = graph_set_pin_type(target, compound, 0, pin, left->type, left->type_name);
+                rc = graph_set_pin_type(target, compound, 0, pin, type, type_name);
                 assert(rc == 0);
                 (void)rc;
             }
-            rc = graph_set_pin_type(target, compound, 1, 0, left->type, left->type_name);
+            rc = graph_set_pin_type(target, compound, 1, 0, type, type_name);
             assert(rc == 0);
             (void)rc;
-            rc = graph_connect_data(
-                target,
-                values[p.assignment_left].node,
-                values[p.assignment_left].pin,
-                compound,
-                0
-            );
+            rc = connect_number(target, values[p.assignment_left], compound, 0);
             assert(rc == 0);
             (void)rc;
-            rc = graph_connect_data(
-                target,
-                values[p.assignment_right].node,
-                values[p.assignment_right].pin,
-                compound,
-                1
-            );
+            rc = connect_number(target, values[p.assignment_right], compound, 1);
             assert(rc == 0);
             (void)rc;
             final = (value_source){ compound, 0 };
@@ -2069,7 +2277,7 @@ static behavior_asset *generate(
                 } else if (
                     result >= 0 &&
                     (graph_connect_exec(target, entry, 0, setter, 0, 0) != 0 ||
-                     graph_connect_data(target, write_value.node, write_value.pin, setter, 1) != 0)
+                     connect_number(target, write_value, setter, 1) != 0)
                 ) {
                     result = fail(&p, "Could not connect variable assignment");
                 } else if (!member_write && left->index_count == 0 && setter->output_count > 1) {
@@ -2112,7 +2320,7 @@ static behavior_asset *generate(
                 } else if (
                     result >= 0 &&
                     (graph_connect_exec(target, entry, 0, setter, 0, 0) != 0 ||
-                     graph_connect_data(target, write_value.node, write_value.pin, setter, 1) != 0)
+                     connect_number(target, write_value, setter, 1) != 0)
                 ) {
                     result = fail(&p, "Could not connect component assignment");
                 } else if (
@@ -2152,6 +2360,7 @@ static behavior_asset *generate(
         behavior_asset_free(staged);
         return NULL;
     }
+    convert_numbers(target);
     ret->x = (float)(max_depth + 1) * 220;
     ret->y = final.node->y;
     free(depths);
@@ -2275,6 +2484,39 @@ const char *behavior_expression_source(const behavior_asset *asset, const node *
 {
     graph *g = expression_graph(asset, call);
     return g ? g->math_expression : NULL;
+}
+
+/* Retypes a call's result and keeps every consumer that can take the new
+   type, converting where needed: a double result still feeds an int field. */
+static void retype_result(graph *caller, node *call, int output, const pin_spec *source)
+{
+    uint64_t *consumers = NULL; /* node and pin ID pairs */
+    for (int i = 0; i < acount(caller->edges); i++) {
+        const edge *e = &caller->edges[i];
+        if (e->kind == GRAPH_EDGE_DATA && e->from_id == call->id &&
+            e->from_pin_id == call->output_pins[output].id) {
+            apush(consumers, e->to_id);
+            apush(consumers, e->to_pin_id);
+        }
+    }
+    int rc = graph_set_pin_type(caller, call, 1, output, source->type, source->type_name);
+    assert(rc == 0);
+    for (int i = 0; i < acount(consumers); i += 2) {
+        node *to = graph_node_by_id(caller, consumers[i]);
+        int pin = -1;
+        const pin_spec *in = to ? graph_pin_by_id(to, consumers[i + 1], NULL, &pin)
+                                : NULL;
+        const pin_spec *out = &call->output_pins[output];
+        const node_desc *conversion = in && !pin_compatible(out, in)
+                                        ? conversion_for_pins(out, in)
+                                        : NULL;
+        if (in && (conversion || pin_compatible(out, in))) {
+            rc = graph_connect_data_conversion(caller, call, output, to, pin, conversion);
+            assert(rc == 0);
+        }
+    }
+    (void)rc;
+    afree(consumers);
 }
 
 static void synchronize_call(graph *caller, node *call, const node *entry, const node *ret)
@@ -2413,6 +2655,7 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
         if (found < 0) {
             pin_spec pin = *source;
             pin.id = 0;
+            pin.binding = NULL;
             if (pin.type_name) {
                 pin.type_name = graph_own_str(caller, pin.type_name, strlen(pin.type_name));
             }
@@ -2432,16 +2675,7 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
                  call->output_pins[output].type_name ? call->output_pins[output].type_name : "",
                  source->type_name ? source->type_name : ""
              ) != 0)) {
-            int rc = graph_set_pin_type(
-                caller,
-                call,
-                1,
-                output,
-                source->type,
-                source->type_name
-            );
-            assert(rc == 0);
-            (void)rc;
+            retype_result(caller, call, output, source);
         }
         output++;
     }
@@ -2675,14 +2909,27 @@ static graph *adopt(behavior_asset *asset, behavior_asset *staged, graph *previo
     return previous;
 }
 
+/* Calls reach an expression by ID, so two with the same source share it as
+   their name. */
 static void sync_expression_title(behavior_asset *asset, graph *generated, const char *source)
 {
-    graph *same = behavior_asset_find_graph_by_name(asset, source);
-    if (same && same != generated) {
-        return;
-    }
-    int rc = behavior_asset_rename_graph(asset, generated->graph_id, source);
+    int rc = graph_set_metadata(
+        generated,
+        source,
+        generated->description ? generated->description : ""
+    );
     assert(rc == 0);
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            node *n = caller->nodes[j];
+            if (n->desc == &NODE_BehaviorExpression &&
+                n->reference_id == generated->graph_id) {
+                rc = graph_set_node_reference(caller, n, generated->graph_id, source);
+                assert(rc == 0);
+            }
+        }
+    }
     (void)rc;
 }
 
@@ -2751,13 +2998,13 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
         snprintf(error->message, sizeof error->message, "Node is not an expression call in this asset");
         return -1;
     }
+    /* The same source regenerates against the current wiring. */
     if (!strcmp(previous->math_expression, source)) {
-        synchronize_connected_inputs(asset, call);
-        return 0;
+        return behavior_expression_refresh(asset, call, error);
     }
     bool follows_source = !strcmp(previous->name, previous->math_expression);
     char **symbols = NULL;
-    if (parse_symbols(asset, source, &symbols, error) != 0) {
+    if (parse_symbols(asset, caller_graph(asset, call), source, &symbols, error) != 0) {
         return -1;
     }
     expression_rename *renames = expression_renames(call, symbols, acount(symbols));

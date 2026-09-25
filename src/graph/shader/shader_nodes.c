@@ -68,6 +68,7 @@ static const type_desc *const types[] = { &vec2_type, &vec3_type, &vec4_type, &r
 static pin_spec scalar_out[] = { FLOAT_PIN("Value") };
 static pin_spec any_out[] = { ANY_PIN("Value") };
 static pin_spec position_out[] = { VECTOR_PIN("Position", 2) };
+static pin_spec uv_out[] = { VECTOR_PIN("UV", 2) };
 static pin_spec vector2_out[] = { VECTOR_PIN("Value", 2) };
 static pin_spec vector3_out[] = { VECTOR_PIN("Value", 3) };
 static pin_spec influence_out[] = { VECTOR_PIN("Color", 3) };
@@ -212,7 +213,7 @@ static pin_spec shape[] = { FLOAT_PIN("Distance") };
 NODE(constant, "Constant", 0, NULL, any_out);
 NODE(parameter, "Parameter", 0, NULL, any_out);
 NODE(position, "Position", 0, NULL, position_out);
-NODE(uv, "UV", 0, NULL, position_out);
+NODE(uv, "UV", 0, NULL, uv_out);
 NODE(world_position, "WorldPosition", 0, NULL, vector3_out);
 NODE(surface_influence, "Surface Influence", 1, influence_in, influence_out);
 NODE(object_position, "ObjectPosition", 0, NULL, vector3_out);
@@ -231,6 +232,9 @@ NODE(absolute, "Abs", 1, unary, any_out);
 NODE(sine, "Sin", 1, unary, any_out);
 NODE(cosine, "Cos", 1, unary, any_out);
 NODE(fraction, "Fract", 1, unary, any_out);
+NODE(floor_node, "Floor", 1, unary, any_out);
+NODE(sqrt_node, "Sqrt", 1, unary, any_out);
+NODE(sign_node, "Sign", 1, unary, any_out);
 NODE(length_node, "Length", 1, unary, scalar_out);
 NODE(dot, "Dot", 2, binary, scalar_out);
 NODE(mix_node, "Mix", 3, ternary, any_out);
@@ -305,6 +309,9 @@ static node_desc *const nodes[] = { &constant,
                                     &sine,
                                     &cosine,
                                     &fraction,
+                                    &floor_node,
+                                    &sqrt_node,
+                                    &sign_node,
                                     &length_node,
                                     &dot,
                                     &mix_node,

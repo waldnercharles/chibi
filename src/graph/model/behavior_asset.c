@@ -585,6 +585,9 @@ static int behavior_asset_add_call_pin(graph *caller, node *call, int output, co
     pin_spec pin = *source;
     pin.id = 0;
     pin.declaration_id = source->id;
+    /* A signature pin's binding reads inside the function: a Return input
+       bound to a local names a value there, not on the caller's node. */
+    pin.binding = NULL;
     if (pin.type_name) {
         pin.type_name = graph_own_str(caller, pin.type_name, strlen(pin.type_name));
     }

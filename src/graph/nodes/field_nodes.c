@@ -306,6 +306,14 @@ const registry_pack FIELD_NODE_PACK = { .name = "core.fields",
                                         .nodes = FIELD_NODES,
                                         .node_count = FIELD_OP_COUNT };
 
+const char *field_parameter_name(const node *n)
+{
+    const char *name = n->desc == &NODE_PARAMETER
+                         ? n->input_pins[0].default_value.str
+                         : NULL;
+    return name && name[0] ? name : NULL;
+}
+
 int field_node_opcode(const node_desc *desc)
 {
     for (int i = 0; i < FIELD_OP_COUNT; i++) {

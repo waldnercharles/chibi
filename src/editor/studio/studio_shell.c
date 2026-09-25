@@ -42,27 +42,27 @@ const char *studio_scene_title(const app_scene_authoring *scene, char *out, size
 }
 
 /* A prototype's icon follows from what it is made of, never from its name: the
-   first component in this order that it has decides. Shared components only, so
-   every project gets sensible icons without authoring them. */
+   first icon in this order that one of its components names with NODE_ICON
+   decides. */
 uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 {
     static const struct
     {
-        const char *component;
+        const char *name;
         uint32_t icon;
     } icons[] = {
-        { "GameCamera", KIT_ICON_CAMERA },
-        { "EngineSystem", KIT_ICON_SYSTEM },
-        { "GameHRC2D", KIT_ICON_LIGHT },
-        { "GameParticleEmitter", KIT_ICON_EMITTER },
-        { "GameFluidVolume", KIT_ICON_WATER },
-        { "MaterialTerrain", KIT_ICON_TERRAIN },
-        { "GameInput", KIT_ICON_GAMEPAD },
-        { "GameActionBinding", KIT_ICON_KEYBOARD },
-        { "GameProjectile", KIT_ICON_PROJECTILE },
-        { "GameHealth", KIT_ICON_HEALTH },
-        { "GameDestructible", KIT_ICON_DIAMOND },
-        { "GameAppearance", KIT_ICON_SHAPE },
+        { "camera", KIT_ICON_CAMERA },
+        { "system", KIT_ICON_SYSTEM },
+        { "light", KIT_ICON_LIGHT },
+        { "emitter", KIT_ICON_EMITTER },
+        { "water", KIT_ICON_WATER },
+        { "terrain", KIT_ICON_TERRAIN },
+        { "gamepad", KIT_ICON_GAMEPAD },
+        { "keyboard", KIT_ICON_KEYBOARD },
+        { "projectile", KIT_ICON_PROJECTILE },
+        { "health", KIT_ICON_HEALTH },
+        { "diamond", KIT_ICON_DIAMOND },
+        { "shape", KIT_ICON_SHAPE },
     };
     scene_prototype_asset *asset = prototype ? find_prototype(s->scene, prototype)
                                              : NULL;
@@ -72,9 +72,8 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
     const game_prototype *p = asset->prototype;
     for (size_t i = 0; i < sizeof icons / sizeof *icons; i++) {
         for (int c = 0; c < acount(p->components); c++) {
-            const char *name = p->components[c].desc->name;
-            const char *dot = strrchr(name, '.');
-            if (strcmp(dot ? dot + 1 : name, icons[i].component) == 0) {
+            const char *icon = p->components[c].desc->icon;
+            if (icon && strcmp(icon, icons[i].name) == 0) {
                 return icons[i].icon;
             }
         }
@@ -90,11 +89,6 @@ static bool graph_focused(const studio *s)
 {
     return studio_graph_active(s) && s->graph.area >= 0 &&
            s->focus_area == s->graph.area;
-}
-
-static bool editable(const studio *s)
-{
-    return scene_can_move(s->scene) && !s->scene->runtime_snapshot_valid;
 }
 
 static void toast(studio *s, kit_toast_type type, const char *title, const char *description)
@@ -115,7 +109,7 @@ static void toast(studio *s, kit_toast_type type, const char *title, const char 
 void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
-    if (!editable(s) || runtime_session(scene)) {
+    if (!studio_editable(s) || runtime_session(scene)) {
         toast(s, KIT_TOAST_WARNING, "Stop the scene to save", NULL);
         return;
     }
@@ -199,7 +193,7 @@ static bool active_dirty(studio *s)
 
 void studio_history(studio *s, bool redo)
 {
-    if (!editable(s) || !can_replay(s, redo)) {
+    if (!studio_editable(s) || !can_replay(s, redo)) {
         return;
     }
     if (graph_focused(s)) {
@@ -239,7 +233,7 @@ void studio_frame_selection(studio *s)
 
 void studio_duplicate(studio *s)
 {
-    if (editable(s) && selected_actor(s->scene)) {
+    if (studio_editable(s) && selected_actor(s->scene)) {
         finish_transform_edit(s->scene, false);
         app_scene_authoring_duplicate_instance(s->scene);
     }
@@ -249,7 +243,7 @@ void studio_duplicate(studio *s)
 void studio_delete(studio *s)
 {
     scene_actor *actor = selected_actor(s->scene);
-    if (!editable(s) || !actor) {
+    if (!studio_editable(s) || !actor) {
         return;
     }
     char title[160];
@@ -299,7 +293,7 @@ static void undo_toast(studio *s)
 
 void studio_add_object(studio *s, const char *prototype)
 {
-    if (!editable(s)) {
+    if (!studio_editable(s)) {
         return;
     }
     finish_transform_edit(s->scene, false);
@@ -336,7 +330,7 @@ static void add_menu_items(studio *s)
         }
         char key[32];
         snprintf(key, sizeof key, "p%d", i);
-        if (item(k, key, prototype->name, studio_prototype_icon(s, prototype->name), NULL, !editable(s))) {
+        if (item(k, key, prototype->name, studio_prototype_icon(s, prototype->name), NULL, !studio_editable(s))) {
             studio_add_object(s, prototype->name);
         }
     }
@@ -346,7 +340,7 @@ static void menus(studio *s)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
-    bool can_edit = editable(s);
+    bool can_edit = studio_editable(s);
     bool selection = selected_actor(scene) != NULL;
     app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
     kit_push(k, "menus", "nav", "menus");

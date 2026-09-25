@@ -145,3 +145,44 @@ foreach(signature "Alias convert()" "Alias convert(float value)" "float convert(
     assert_generation_unchanged(identity "${manifest}")
 endforeach()
 message(STATUS "PASS: explicit JIT identity aliases and rejected scalar, pointer, arity and layout contracts")
+
+# Editor metadata reflects without changing component identity.
+set(hint_header "#define COMPONENT(T) struct __attribute__((annotate(\"node:type\"), annotate(\"node:component:index:dense\"))) T\n#define TYPE(T) struct __attribute__((annotate(\"node:type\"))) T\n")
+function(component_identity out)
+    file(READ "${output}" registry)
+    string(REGEX MATCH "TEST_COMPONENT_Mover = {[^}]*\\.index = [A-Z_]+" identity "${registry}")
+    file(STRINGS "${manifest}" rows REGEX "Mover")
+    set(${out} "${identity};${rows}" PARENT_SCOPE)
+endfunction()
+file(WRITE "${source}" "${hint_header}typedef COMPONENT(Mover) { float speed; float grip; } Mover;\n")
+run_checked(${command})
+component_identity(plain)
+file(WRITE "${source}" "${hint_header}typedef COMPONENT(Mover) { float speed __attribute__((annotate(\"node:unit:u/s\"))); float grip __attribute__((annotate(\"node:range:0:1\"))); } __attribute__((annotate(\"node:category:Physics\"), annotate(\"node:icon:camera\"))) Mover;\n")
+run_checked(${command})
+component_identity(hinted)
+file(READ "${output}" hints)
+if(NOT hints MATCHES "\"float\", 0, 0, \"u/s\" }" OR NOT hints MATCHES "\"float\", 0, 1, NULL }" OR
+   NOT hints MATCHES "\\.category = \"Physics\", \\.icon = \"camera\" }")
+    message(FATAL_ERROR "Editor metadata was not reflected")
+endif()
+if(NOT plain MATCHES "layout_hash" OR NOT hinted STREQUAL plain)
+    message(FATAL_ERROR "Editor metadata changed component identity: ${plain} vs ${hinted}")
+endif()
+snapshot_generated(registry "${output}")
+snapshot_generated(identity "${manifest}")
+foreach(declaration
+        "COMPONENT(Mover) { float grip __attribute__((annotate(\"node:range:1:0\"))); } Mover"
+        "COMPONENT(Mover) { float grip __attribute__((annotate(\"node:range:0\"))); } Mover"
+        "COMPONENT(Mover) { int grip __attribute__((annotate(\"node:range:0:1\"))); } Mover"
+        "COMPONENT(Mover) { int grip __attribute__((annotate(\"node:unit:s\"))); } Mover"
+        "COMPONENT(Mover) { float grip; } __attribute__((annotate(\"node:category:\"))) Mover"
+        "TYPE(Mover) { float grip; } __attribute__((annotate(\"node:icon:camera\"))) Mover")
+    file(WRITE "${source}" "${hint_header}typedef ${declaration};\n")
+    execute_process(COMMAND ${command} RESULT_VARIABLE result OUTPUT_QUIET ERROR_VARIABLE error)
+    if(result EQUAL 0 OR NOT error MATCHES "range|unit|categories")
+        message(FATAL_ERROR "Invalid editor metadata accepted: ${declaration}: ${error}")
+    endif()
+    assert_generation_unchanged(registry "${output}")
+    assert_generation_unchanged(identity "${manifest}")
+endforeach()
+message(STATUS "PASS: editor categories, icons, ranges and units leave identity unchanged and reject malformed hints")

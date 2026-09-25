@@ -440,10 +440,11 @@ Each input can contain:
 - `events: [{"name": "Award", "target": "ship", "values": [{"type": "int", "value": 42}]}]`,
   up to 32 events with up to 16 payload values. Types are bool, int, uint,
   float, double, name, string, or entity. Entity values resolve scene names.
-- `ui: [{"target": "hud", "element": "volume", "event": "Volume", "value": 0.5}]`,
+- `ui: [{"target": "hud", "element": "#volume", "event": "Volume", "value": 0.5}]`,
   a player activating an element of a `GameUi` document: the optional `value`
-  is stored for `Get UI Value`, then the element's `data-event` is sent to the
-  target entity, as the rendered document does.
+  is stored under the `element` selector for `Get UI Value`, then the
+  element's `data-event` is sent to the target entity, as the rendered
+  document does.
 
 Aim goes through the engine's normal input path. An `Aim` event and the old
 object-shaped `actions` input are not part of this contract.
@@ -481,7 +482,7 @@ extraction policy.
 | --- | --- |
 | Camera | One enabled `GameCamera` plus `GameTransform`. Positive width/height set the logical span; offset follows the entity. Disable it to release the camera. |
 | Controls | `GameActionBinding` maps one physical source to an event name. Multiple entities can bind the same action; their held states combine. `firing` also sets GameAim.firing. Remove GameInput while fitting to suspend ship controls. |
-| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change its elements by id; `Get UI Value` reads an input. An element's `data-event` sends that event to the entity when clicked or, for an input, changed. |
+| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Get UI Value` reads what was last set under the same selector, and a player-changed input under `#id`. An element's `data-event` sends that event to the entity when clicked or, for an input, changed. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
 | Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |

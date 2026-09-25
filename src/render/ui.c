@@ -41,7 +41,7 @@ typedef struct ui_event
 {
     uint64_t entity;
     char *name;
-    char *element;
+    char *id; /* the source element's, "" when it has none */
     bool has_value;
     float value;
 } ui_event;
@@ -78,7 +78,7 @@ static void clear_pending(render_ui *ui)
 {
     for (int i = 0; i < acount(ui->pending); i++) {
         free(ui->pending[i].name);
-        free(ui->pending[i].element);
+        free(ui->pending[i].id);
     }
     asetlen(ui->pending, 0);
 }
@@ -173,7 +173,7 @@ static rml_element *event_source(rml_element *element, char *name, size_t size)
 }
 
 /* A click activates buttons and other elements; inputs report changes, which
- * carry their value into the model before the event is sent. */
+ * carry their value into the model under `#id` before the event is sent. */
 static void on_event(void *user, const rml_event *event)
 {
     render_ui *ui = user;
@@ -195,7 +195,7 @@ static void on_event(void *user, const rml_event *event)
     }
     ui_event pending = { .entity = view->entity,
                          .name = xstrdup(name),
-                         .element = xstrdup(rml_element_id(source)) };
+                         .id = xstrdup(rml_element_id(source)) };
     char value[64];
     if (event->id == RML_EVENT_CHANGE &&
         rml_element_value(source, value, sizeof value) > 0) {
@@ -251,8 +251,10 @@ static void send_pending(render_ui *ui, game_ui *model, game_entities *entities)
 {
     for (int i = 0; i < acount(ui->pending); i++) {
         ui_event *e = &ui->pending[i];
-        if (model && e->has_value) {
-            game_ui_set_value(model, e->entity, e->element, e->value);
+        if (model && e->has_value && e->id[0]) {
+            char selector[256];
+            snprintf(selector, sizeof selector, "#%s", e->id);
+            game_ui_set_value(model, e->entity, selector, e->value);
         }
         if (entities) {
             game_entities_request_event(
@@ -310,12 +312,8 @@ static void escape_text(char *out, size_t size, const char *text)
     out[n] = '\0';
 }
 
-static void apply_element(rml_element *doc, game_ui_element *e)
+static void apply_to(rml_element *element, const game_ui_element *e)
 {
-    rml_element *element = rml_element_by_id(doc, e->id);
-    if (!element) {
-        return;
-    }
     if (e->text) {
         char text[1024];
         escape_text(text, sizeof text, e->text);
@@ -334,10 +332,23 @@ static void apply_element(rml_element *doc, game_ui_element *e)
         snprintf(value, sizeof value, "%g", e->value);
         rml_element_set_attribute(element, "value", value);
     }
-    if (e->focus) {
-        rml_element_focus(element, true);
-        e->focus = false;
+}
+
+/* Applies the setting to every element its selector matches; focus goes to
+ * the first. */
+static void apply_element(rml_element *doc, game_ui_element *e)
+{
+    int count = rml_element_query_selector_all(doc, e->selector, NULL, 0);
+    rml_element **matches = count ? xmalloc((size_t)count * sizeof *matches) : NULL;
+    rml_element_query_selector_all(doc, e->selector, matches, count);
+    for (int i = 0; i < count; i++) {
+        apply_to(matches[i], e);
     }
+    if (e->focus && count) {
+        rml_element_focus(matches[0], true);
+    }
+    e->focus = false;
+    free(matches);
 }
 
 static void apply_model(render_ui *ui, game_ui *model)

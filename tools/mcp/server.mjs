@@ -611,7 +611,7 @@ function buildToolDefinitions() {
         description: "Held physical GameControl codes, interpreted by authored action bindings." },
       ui: { type: "array", maxItems: 32, items: { type: "object", properties: {
         target: { type: "string", description: "Scene entity name with a GameUi." },
-        element: { type: "string", description: "Element id in its ui document." },
+        element: { type: "string", description: "RCSS selector of the element in its ui document, such as #volume." },
         event: { type: "string", description: "The element's data-event name." },
         value: { type: "number", description: "An input's new value, readable with Get UI Value." },
       }, required: ["target", "element", "event"], additionalProperties: false },

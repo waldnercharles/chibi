@@ -7,8 +7,9 @@
 #include <stdint.h>
 
 /* What behaviors set on the elements of GameUi documents, keyed by entity and
- * element id. A presenter applies it to the documents it shows and records
- * input values back, so UI state stays headless and part of the world. */
+ * the RCSS selector that picks the elements. A presenter applies each setting
+ * to every match in the documents it shows and records input values back
+ * under `#id`, so UI state stays headless and part of the world. */
 typedef struct game_ui game_ui;
 
 typedef struct game_ui_class
@@ -20,7 +21,7 @@ typedef struct game_ui_class
 typedef struct game_ui_element
 {
     uint64_t entity;
-    char *id;
+    char *selector;
     char *text;             /* NULL until set */
     game_ui_class *classes; /* the last setting of each class */
     int visible;            /* -1 until set, else 0 or 1 */
@@ -34,14 +35,14 @@ game_ui *game_ui_new();
 void game_ui_free(game_ui *ui);
 void game_ui_reset(game_ui *ui);
 
-/* Each returns false, changing nothing, for an empty element id or an
- * invalid argument. */
+/* Each returns false, changing nothing, for an empty selector or an invalid
+ * argument. */
 bool game_ui_set_text(game_ui *ui, uint64_t entity, const char *element, const char *text);
 bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const char *name, bool on);
 bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool visible);
 bool game_ui_set_value(game_ui *ui, uint64_t entity, const char *element, float value);
 bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element);
-/* The value behaviors or input last set, or false when none was. */
+/* The value last set under this selector, or false when none was. */
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value);
 /* Drops an entity's elements, as when its GameUi goes away. */
 void game_ui_forget(game_ui *ui, uint64_t entity);

@@ -56,19 +56,19 @@ graphs:
       Result: {id: 100, type: double, flags: 2, group: 3}
   - id: 180
     type: Get UI Value
-    inputs: {Element: score}
+    inputs: {Element: '#score'}
   - id: 185
     type: Set UI Text
-    inputs: {Element: score}
+    inputs: {Element: '#score'}
   - id: 191
     type: Set UI Value
-    inputs: {Element: score}
+    inputs: {Element: '#score'}
   - id: 197
     type: Set UI Value
-    inputs: {Element: score}
+    inputs: {Element: '#score'}
   - id: 203
     type: Set UI Text
-    inputs: {Element: score, Text: "0"}
+    inputs: {Element: '#score', Text: "0"}
   edges:
   - {from: 1.Then, to: 3.Exec}
   - {from: 3.Then, to: 8.Exec}

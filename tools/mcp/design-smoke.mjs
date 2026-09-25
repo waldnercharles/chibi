@@ -157,16 +157,16 @@ try {
   // A UI activation fits a part: GameHealth records it, the label shows it.
   create("behavior", "RecipeSlot", [
     { op: "add_node", type: "Event", event_name: "Fit", ref: "fit" },
-    { op: "add_node", type: "Set UI Text", ref: "label", inputs: { Element: "slot", Text: "Ricochet fitted" } },
+    { op: "add_node", type: "Set UI Text", ref: "label", inputs: { Element: "#slot", Text: "Ricochet fitted" } },
     connect("fit", "Then", "label", "Exec", "exec"),
-    { op: "add_node", type: "Get UI Value", ref: "chosen", inputs: { Element: "slot" } },
+    { op: "add_node", type: "Get UI Value", ref: "chosen", inputs: { Element: "#slot" } },
     { op: "add_node", type: "Set_GameHealth_current", ref: "part" },
     connect("label", "Then", "part", "Exec", "exec"),
     connect("chosen", "Value", "part", "Value"),
     { op: "add_node", type: "Play Sound", ref: "sound", inputs: { Frequency: 600, "End Frequency": 900, Duration: 0.12, Volume: 0.3 } },
     connect("part", "Then", "sound", "Exec", "exec"),
     { op: "add_node", type: "Event", event_name: "Undo", ref: "undo" },
-    { op: "add_node", type: "Set UI Text", ref: "restored", inputs: { Element: "slot", Text: "Empty modifier slot" } },
+    { op: "add_node", type: "Set UI Text", ref: "restored", inputs: { Element: "#slot", Text: "Empty modifier slot" } },
     { op: "add_node", type: "Set_GameHealth_current", ref: "clear", inputs: { Value: 0 } },
     connect("undo", "Then", "restored", "Exec", "exec"),
     connect("restored", "Then", "clear", "Exec", "exec"),
@@ -180,7 +180,7 @@ try {
     { op: "add_entity", name: "slot", prototype: "PartSlot", behaviors: ["RecipeSlot"] },
     { op: "add_entity", name: "wall", prototype: "Wall" },
   ]);
-  const fit = { target: "slot", element: "slot", event: "Fit", value: 2 };
+  const fit = { target: "slot", element: "#slot", event: "Fit", value: 2 };
   const fitted = request("captureRuntimeSnapshot", { kind: "scene", name: "Refit", frames: 2,
     inputs: [{ ui: [fit] }] });
   assert.equal(field(fitted, "slot", "GameHealth", "current"), 2);
@@ -240,7 +240,7 @@ try {
     }
   }
   const banked = request("captureRuntimeSnapshot", { kind: "scene", name: "Dock", frames: 1,
-    inputs: [{ ui: [{ target: "bank", element: "extract", event: "Extract" }] }] });
+    inputs: [{ ui: [{ target: "bank", element: "#extract", event: "Extract" }] }] });
   assert.deepEqual(banked.saved_state, { "test.blueprint": "ricochet" });
   const nextRun = request("captureRuntimeSnapshot", { kind: "scene", name: "Dock", frames: 1, saved_state: banked.saved_state });
   assert.equal(field(nextRun, "bank", "GameHealth", "current"), 77, "a committed unlock survives a fresh run");
@@ -248,7 +248,7 @@ try {
     inputs: [{ events: [{ name: "Stage", target: "bank" }] }] });
   assert.deepEqual(unsecured.saved_state, {}, "uncommitted discoveries do not survive a run");
   const dockRecord = request("recordScenario", { kind: "scene", name: "Dock", frames: 2,
-    saved_state: banked.saved_state, inputs: [{ ui: [{ target: "bank", element: "extract", event: "Extract" }] }] });
+    saved_state: banked.saved_state, inputs: [{ ui: [{ target: "bank", element: "#extract", event: "Extract" }] }] });
   assert.equal(request("replayScenario", { recording_path: dockRecord.recording_path }).deterministic, true);
   const inputs = [{ movement: { x: 1, y: 0 }, aim: { x: 100, y: 20, point: true },
     events: [{ name: "Award", target: "ship", values: [{ type: "int", value: 42 }] }] }];

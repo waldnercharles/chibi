@@ -24,7 +24,7 @@ game_ui *game_ui_new()
 
 static void element_free(game_ui_element *e)
 {
-    free(e->id);
+    free(e->selector);
     free(e->text);
     for (int i = 0; i < acount(e->classes); i++) {
         free(e->classes[i].name);
@@ -54,7 +54,7 @@ static game_ui_element *find(const game_ui *ui, uint64_t entity, const char *ele
 {
     for (int i = 0; i < acount(ui->elements); i++) {
         game_ui_element *e = &ui->elements[i];
-        if (e->entity == entity && strcmp(e->id, element) == 0) {
+        if (e->entity == entity && strcmp(e->selector, element) == 0) {
             return e;
         }
     }
@@ -62,7 +62,7 @@ static game_ui_element *find(const game_ui *ui, uint64_t entity, const char *ele
 }
 
 /* The element to change, created on first use and stamped with a new
- * revision, or NULL for an empty id. */
+ * revision, or NULL for an empty selector. */
 static game_ui_element *change(game_ui *ui, uint64_t entity, const char *element)
 {
     if (!element || !element[0]) {
@@ -72,7 +72,7 @@ static game_ui_element *change(game_ui *ui, uint64_t entity, const char *element
     if (!e) {
         apush(
             ui->elements,
-            ((game_ui_element){ .entity = entity, .id = xstrdup(element), .visible = -1 })
+            ((game_ui_element){ .entity = entity, .selector = xstrdup(element), .visible = -1 })
         );
         e = &alast(ui->elements);
     }
@@ -187,7 +187,7 @@ game_ui_element *game_ui_element_at(game_ui *ui, int index)
    Element, then the node's own values. */
 
 static const char MISSING_UI[] = "UI nodes require a game world";
-static const char INVALID_UI[] = "Name an element and a valid value";
+static const char INVALID_UI[] = "Select an element and give a valid value";
 
 static const char *text_call(void *ui, const pin_value *a, pin_value *)
 {
@@ -259,7 +259,8 @@ static const char *get_value(const eval_context *ctx, const pin_value *inputs, a
 #define EXEC_IN { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC }
 #define ENTITY_IN                                                              \
     { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity", .flags = PIN_FLAG_DEFAULT_SELF }
-#define ELEMENT_IN { .name = "Element", .type = PIN_NAME, .type_name = "name" }
+#define ELEMENT_IN                                                             \
+    { .name = "Element", .type = PIN_STR, .type_name = "const char *" }
 
 static pin_spec TEXT_IN[] = {
     EXEC_IN,

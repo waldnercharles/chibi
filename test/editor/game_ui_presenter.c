@@ -120,6 +120,37 @@ void test_game_ui_presenter()
     render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
     test_check(game_ui_element_count(model) == 0, "removing a GameUi forgets its elements");
 
+    char tags[96];
+    snprintf(tags, sizeof tags, "%s/Tags.yaml", folder);
+    write_file(
+        tags,
+        "rml: <div class=\"tag\" data-event=\"A\">A</div><div class=\"tag\" "
+        "data-event=\"B\">B</div>\n"
+        "rcss: '.tag { display: block; height: 60dp; }'\n"
+    );
+    ecs_entity strip = ecs_world_create_entity(world);
+    assert(GAME_GameUi_add(world, strip, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Tags" };
+    game_ui_set_visible(model, ecs_entity_to_u64(strip), ".tag", false);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    before = game_entities_pending_events(live->entities);
+    click(ui, 40, 20);
+    click(ui, 40, 90);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    bool hidden = game_entities_pending_events(live->entities) == before;
+    game_ui_set_visible(model, ecs_entity_to_u64(strip), ".tag", true);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    click(ui, 40, 20);
+    click(ui, 40, 90);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    test_check(
+        hidden && game_entities_pending_events(live->entities) == before + 2,
+        "a selector applies a setting to every element it matches"
+    );
+    unlink(tags);
+
     render_ui_free(ui);
     game_live_world_free(live);
     ecs_world_free(world);

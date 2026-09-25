@@ -24,7 +24,7 @@ graphs:
       Arg0: {type: float, type_name: null}
   - id: 11
     type: Set UI Text
-    inputs: {Element: score}
+    inputs: {Element: '#score'}
   - id: 17
     type: Get Global Variable
     inputs: {Name: Lives}
@@ -37,7 +37,7 @@ graphs:
       Arg0: {type: double}
   - id: 24
     type: Set UI Text
-    inputs: {Element: lives}
+    inputs: {Element: '#lives'}
   - id: 30
     type: Get Global Variable
     inputs: {Name: Rank}
@@ -50,13 +50,13 @@ graphs:
       Arg0: {type: float, type_name: null}
   - id: 37
     type: Set UI Text
-    inputs: {Element: rank}
+    inputs: {Element: '#rank'}
   - id: 43
     type: Get Global Variable
     inputs: {Name: Charge}
   - id: 46
     type: Set UI Value
-    inputs: {Element: charge}
+    inputs: {Element: '#charge'}
   - id: 66
     type: Behavior Expression
     reference_id: 52
@@ -70,7 +70,7 @@ graphs:
       Result: {id: 68, type: bool, flags: 2, group: 2}
   - id: 86
     type: Set UI Text
-    inputs: {Element: mission, Text: GAME OVER}
+    inputs: {Element: '#mission', Text: GAME OVER}
   - id: 92
     type: Get Global Variable
     inputs: {Name: Hits}
@@ -85,7 +85,7 @@ graphs:
       Arg0: {type: float, type_name: null}
   - id: 99
     type: Set UI Text
-    inputs: {Element: mission}
+    inputs: {Element: '#mission'}
   edges:
   - {from: 1.Then, to: 11.Exec}
   - {from: 4.Value, to: 7.Arg0}

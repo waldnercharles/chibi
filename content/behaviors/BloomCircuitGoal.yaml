@@ -26,7 +26,7 @@ graphs:
   - {id: 23, type: Branch}
   - id: 34
     type: Set UI Text
-    inputs: {Element: goal, Text: CIRCUIT COMPLETE!  All 8 blooms collected.}
+    inputs: {Element: '#goal', Text: CIRCUIT COMPLETE!  All 8 blooms collected.}
   edges:
   - {from: 1.Then, to: 23.Exec}
   - {from: 4.Entity, to: 13.Entity}

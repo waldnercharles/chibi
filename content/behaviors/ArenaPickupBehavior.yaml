@@ -1,6 +1,6 @@
 version: 3
 name: ArenaPickupBehavior
-id_counter: 1301
+id_counter: 2219
 description: Small flat outline pickups keep a random initial rotation, ease through the shared beat, fade smoothly at expiry and trace a short spiral into the player.
 owner_type: ecs.entity
 variables:
@@ -14,34 +14,12 @@ graphs:
     reference_name: Tick
     outputs:
       Then: {id: 11}
-  - id: 14
-    type: Get_GamePickup
-    outputs:
-      Value: {id: 13, flags: 0}
-      Value.state: {id: 15}
-  - id: 19
-    type: Integer Equal
-    inputs:
-      A: {id: 16}
-  - id: 24
-    type: Branch
-    inputs:
-      Exec: {id: 20}
   - id: 27
     type: Call Function
     reference_id: 1
     reference_name: Wait and Pulse
     inputs:
       Exec: {id: 25}
-  - id: 31
-    type: Integer Equal
-    inputs:
-      A: {id: 28}
-      B: 1
-  - id: 36
-    type: Branch
-    inputs:
-      Exec: {id: 32}
   - id: 39
     type: Call Function
     reference_id: 6
@@ -65,10 +43,6 @@ graphs:
     reference_name: Begin
     outputs:
       Then: {id: 448}
-  - id: 453
-    type: Random Real
-    outputs:
-      Result: {id: 452}
   - id: 458
     type: Set Variable
     reference_id: 447
@@ -77,34 +51,24 @@ graphs:
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 507
-    type: Multiply
+  - id: 1539
+    type: Switch on Int
     inputs:
-      A: {id: 504, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0, default: 6.283185307179586}
+      Selection:
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
+  - id: 1567
+    type: Behavior Expression
+    reference_id: 1545
+    reference_name: 2 * pi * rand()
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 511
-    type: Add
-    inputs:
-      A: {id: 508, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
+      Result: {type: double}
   edges:
-  - {from: 12.Then, to: 24.Exec}
-  - {from: 14.Value.state, to: 19.A}
-  - {from: 14.Value.state, to: 31.A}
-  - {from: 19.Result, to: 24.Condition}
-  - {from: 24.True, to: 27.Exec}
-  - {from: 24.False, to: 36.Exec}
-  - {from: 31.Result, to: 36.Condition}
-  - {from: 36.True, to: 39.Exec}
+  - {from: 12.Then, to: 1539.Exec}
   - {from: 217.Then, to: 221.Exec}
   - {from: 449.Then, to: 458.Exec}
-  - {from: 453.Result, to: 507.A}
-  - {from: 507.Result, to: 511.B}
-  - {from: 511.Result, to: 458.Value}
+  - {from: 1539.Case0, to: 27.Exec}
+  - {from: 1539.Case1, to: 39.Exec}
+  - {from: 1567.Result, to: 458.Value}
 - id: 1
   kind: function
   name: Wait and Pulse
@@ -120,37 +84,6 @@ graphs:
     type: Return
     inputs:
       Exec: {id: 4}
-  - id: 41
-    type: Get_GamePickup
-    outputs:
-      Value: {id: 40, flags: 0}
-      Value.age: {id: 42}
-      Value.lifetime: {}
-  - id: 45
-    type: Delta Time
-    outputs:
-      Seconds: {id: 44}
-  - id: 49
-    type: Add
-    inputs:
-      A: {id: 46, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 55
-    type: Set_GamePickup_age
-    inputs:
-      Exec: {id: 50}
-    outputs:
-      Value.age: {id: 56}
-  - id: 60
-    type: Greater Or Equal
-    inputs:
-      A: {id: 57}
-  - id: 65
-    type: Branch
-    inputs:
-      Exec: {id: 61}
   - id: 69
     type: Destroy Entity
     inputs:
@@ -163,14 +96,6 @@ graphs:
     type: Scene Rhythm
     outputs:
       Phase: {id: 72}
-  - id: 129
-    type: Set_GameVisualTransform_yaw
-    inputs:
-      Exec: {id: 124}
-  - id: 139
-    type: Set_GameVisualTransform_scale
-    inputs:
-      Exec: {id: 134}
   - id: 149
     type: Call Function
     reference_id: 140
@@ -184,100 +109,105 @@ graphs:
       Value: {id: 471}
     outputs:
       Result: {id: 473}
-  - id: 484
-    type: Multiply
-    inputs:
-      A: {id: 481, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 488
-    type: Multiply
-    inputs:
-      A: {id: 485, type: double, flags: 0, group: 0, default: 2.0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 492
-    type: Subtract
-    inputs:
-      A: {id: 489, type: double, flags: 0, group: 0, default: 3.0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 496
-    type: Multiply
-    inputs:
-      A: {id: 493, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
   - id: 533
     type: Behavior Expression
     reference_id: 512
     reference_name: Pulse Angle
     inputs:
-      Eased: {type: double, flags: 2, group: 1}
+      Eased: {type: double}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 569
     type: Behavior Expression
     reference_id: 536
     reference_name: Pulse Fade
     inputs:
-      Lifetime: {type: float, flags: 2, group: 1}
-      UpdatedAge: {type: float, flags: 2, group: 2}
+      Lifetime:
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: lifetime}
+      Age:
+        type: double
+        binding: {kind: component_field, component: GAME.GamePickup, field: age}
     outputs:
-      Result: {type: float, flags: 2, group: 3}
+      Result: {type: float}
   - id: 585
     type: Behavior Expression
     reference_id: 573
     reference_name: Pulse Yaw
     inputs:
-      Angle: {type: double, flags: 2, group: 1}
+      Angle: {type: double}
       BaseRotation:
         type: float
-        flags: 2
-        group: 2
         binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
     outputs:
-      Result: {type: double, flags: 2, group: 3}
+      Result: {type: double}
   - id: 618
     type: Behavior Expression
     reference_id: 589
     reference_name: Pulse Scale
     inputs:
-      Angle: {type: double, flags: 2, group: 1}
-      Fade: {type: float, flags: 2, group: 2}
+      Angle: {type: double}
+      Fade: {type: float}
     outputs:
-      Result: {type: double, flags: 2, group: 3}
+      Result: {type: double}
+  - id: 1603
+    type: Behavior Expression
+    reference_id: 1591
+    reference_name: Age += Delta
+    inputs:
+      Exec: {id: 1607, kind: exec}
+      Age:
+        id: 1604
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: age}
+      Delta:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 1608, kind: exec}
+      Result: {id: 1606, type: float}
+  - id: 1695
+    type: Behavior Expression
+    reference_id: 1683
+    reference_name: Age >= Lifetime
+    inputs:
+      Exec: {id: 1699, kind: exec}
+      Age:
+        id: 1696
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GamePickup, field: age}
+      Lifetime:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GamePickup, field: lifetime}
+    outputs:
+      "True": {id: 1700, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1698, type: bool}
+  - id: 1759
+    type: Set Component
+    inputs:
+      Component: GAME.GameVisualTransform
+      yaw: {id: 1766}
+      scale: {id: 1779}
+    outputs:
+      Then: {id: 1764}
   edges:
-  - {from: 3.Then, to: 55.Exec}
-  - {from: 41.Value.age, to: 49.A}
-  - {from: 41.Value.lifetime, to: 60.B}
-  - {from: 41.Value.lifetime, to: 569.Lifetime}
-  - {from: 45.Seconds, to: 49.B}
-  - {from: 49.Result, to: 55.Value}
-  - {from: 55.Then, to: 65.Exec}
-  - {from: 55.Value.age, to: 60.A}
-  - {from: 55.Value.age, to: 569.UpdatedAge}
-  - {from: 60.Result, to: 65.Condition}
-  - {from: 65.True, to: 69.Exec}
-  - {from: 65.False, to: 129.Exec}
+  - {from: 3.Then, to: 1603.Exec}
   - {from: 71.Entity, to: 69.Entity}
   - {from: 76.Phase, to: 474.Value}
-  - {from: 129.Then, to: 139.Exec}
-  - {from: 139.Then, to: 149.Exec}
   - {from: 149.Then, to: 5.Exec}
   - {from: 474.Result, to: 533.Eased}
-  - {from: 484.Result, to: 496.A}
-  - {from: 488.Result, to: 492.B}
-  - {from: 492.Result, to: 496.B}
   - {from: 533.Result, to: 585.Angle}
   - {from: 533.Result, to: 618.Angle}
   - {from: 569.Result, to: 618.Fade}
-  - {from: 585.Result, to: 129.Value}
-  - {from: 618.Result, to: 139.Value}
+  - {from: 585.Result, to: 1759.yaw}
+  - {from: 618.Result, to: 1759.scale}
+  - {from: 1603.Then, to: 1695.Exec}
+  - {from: 1695.True, to: 69.Exec}
+  - {from: 1695.False, to: 1759.Exec}
+  - {from: 1759.Then, to: 149.Exec}
 - id: 6
   kind: function
   name: Collect Along Spiral
@@ -309,7 +239,11 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-      Item: {id: 230}
+      Item:
+        id: 230
+        type: handle
+        type_name: ecs.entity
+        binding: {kind: local, local_id: 1301}
     outputs:
     - {id: 231, name: Result}
   - id: 237
@@ -330,15 +264,6 @@ graphs:
       Exec: {id: 250}
     outputs:
       Value.collection_age: {id: 256}
-  - id: 260
-    type: Greater Or Equal
-    inputs:
-      A: {id: 257}
-      B: 0.6
-  - id: 265
-    type: Branch
-    inputs:
-      Exec: {id: 261}
   - id: 271
     type: Set_GamePickup_state
     inputs:
@@ -347,7 +272,9 @@ graphs:
   - id: 274
     type: GetEntity_GameExperience
     inputs:
-      Entity: {id: 272}
+      Entity:
+        id: 272
+        binding: {kind: local, local_id: 1301}
     outputs:
       Value.current: {id: 275}
   - id: 279
@@ -361,6 +288,8 @@ graphs:
     type: Set_GameExperience_current
     inputs:
       Exec: {id: 280}
+      Target:
+        binding: {kind: local, local_id: 1301}
   - id: 289
     type: Destroy Entity
     inputs:
@@ -372,30 +301,12 @@ graphs:
   - id: 328
     type: GetEntity_GameTransform
     inputs:
-      Entity: {id: 326}
+      Entity:
+        id: 326
+        binding: {kind: local, local_id: 1301}
     outputs:
       Value.x: {id: 329}
       Value.y: {}
-  - id: 384
-    type: Set_GameTransform_x
-    inputs:
-      Exec: {id: 379}
-  - id: 390
-    type: Set_GameTransform_y
-    inputs:
-      Exec: {id: 385}
-  - id: 396
-    type: Set_GameVisualTransform_yaw
-    inputs:
-      Exec: {id: 391}
-  - id: 410
-    type: Set_GameVisualTransform_scale
-    inputs:
-      Exec: {id: 405}
-  - id: 441
-    type: Break_CF_V2
-    inputs:
-    - {id: 438, name: Value}
   - id: 445
     type: Find Entities With Component
     inputs:
@@ -408,53 +319,73 @@ graphs:
     reference_id: 622
     reference_name: Spiral T
     inputs:
-      CollectionAge: {type: float, flags: 2, group: 1}
+      CollectionAge: {type: float}
     outputs:
-      Result: {type: float, flags: 2, group: 2}
+      Result: {type: float}
   - id: 660
     type: Behavior Expression
     reference_id: 639
     reference_name: Spiral Angle
     inputs:
-      T: {type: float, flags: 2, group: 1}
+      T:
+        type: float
+        binding: {kind: local, local_id: 1302}
     outputs:
-      Result: {type: float, flags: 2, group: 2}
+      Result: {type: float}
   - id: 706
     type: Behavior Expression
     reference_id: 663
     reference_name: Spiral Weight
     inputs:
-      T: {type: float, flags: 2, group: 1}
+      T:
+        type: float
+        binding: {kind: local, local_id: 1302}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 784
     type: Behavior Expression
     reference_id: 709
     reference_name: Spiral X
     inputs:
-      TargetX: {flags: 2, group: 1}
-      Weight: {type: double, flags: 2, group: 2}
-      OriginX: {flags: 2, group: 3}
-      Theta: {type: float, flags: 2, group: 4}
-      OriginY: {flags: 2, group: 5}
-      TargetY: {flags: 2, group: 6}
-      T: {type: float, flags: 2, group: 7}
+      TargetX: {type: float}
+      Weight: {type: double}
+      OriginX:
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: origin.x}
+      Theta:
+        type: float
+        binding: {kind: local, local_id: 1303}
+      OriginY:
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: origin.y}
+      TargetY: {type: float}
+      T:
+        type: float
+        binding: {kind: local, local_id: 1302}
     outputs:
-      Result: {flags: 2, group: 8}
+      Result: {type: float}
   - id: 868
     type: Behavior Expression
     reference_id: 793
     reference_name: Spiral Y
     inputs:
-      TargetY: {flags: 2, group: 1}
-      Weight: {type: double, flags: 2, group: 2}
-      OriginX: {flags: 2, group: 3}
-      TargetX: {flags: 2, group: 4}
-      Theta: {type: float, flags: 2, group: 5}
-      OriginY: {flags: 2, group: 6}
-      T: {type: float, flags: 2, group: 7}
+      TargetY: {type: float}
+      Weight: {type: double}
+      OriginX:
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: origin.x}
+      TargetX: {type: float}
+      Theta:
+        type: float
+        binding: {kind: local, local_id: 1303}
+      OriginY:
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: origin.y}
+      T:
+        type: float
+        binding: {kind: local, local_id: 1302}
     outputs:
-      Result: {flags: 2, group: 8}
+      Result: {type: float}
   - id: 889
     type: Behavior Expression
     reference_id: 877
@@ -462,33 +393,64 @@ graphs:
     inputs:
       BaseRotation:
         type: float
-        flags: 2
-        group: 1
         binding: {kind: variable, variable_id: 447, source_asset: ArenaPickupBehavior}
-      Theta: {type: float, flags: 2, group: 2}
+      Theta:
+        type: float
+        binding: {kind: local, local_id: 1303}
     outputs:
-      Result: {flags: 2, group: 3}
+      Result: {type: float}
   - id: 914
     type: Behavior Expression
     reference_id: 893
     reference_name: Spiral Scale
     inputs:
-      T: {type: float, flags: 2, group: 1}
+      T:
+        type: float
+        binding: {kind: local, local_id: 1302}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 929
     type: Behavior Expression
     reference_id: 917
     reference_name: Collection Age
     inputs:
-      CollectionAge: {flags: 2, group: 1}
+      CollectionAge: {type: float}
       Delta:
         type: float
-        flags: 2
-        group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {flags: 2, group: 3}
+      Result: {type: float}
+  - id: 1318
+    type: Behavior Expression
+    reference_id: 1304
+    reference_name: CollectionAge >= 0.6
+    inputs:
+      Exec: {id: 1321, kind: exec}
+      CollectionAge:
+        id: 1319
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GamePickup, field: collection_age}
+    outputs:
+      "True": {id: 1322, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1320, type: bool}
+  - id: 1338
+    type: Set Component
+    inputs:
+      Component: game.GameTransform
+      x: {id: 1345}
+      "y": {id: 1421}
+    outputs:
+      Then: {id: 1343}
+  - id: 1497
+    type: Set Component
+    inputs:
+      Component: GAME.GameVisualTransform
+      yaw: {id: 1504}
+      scale: {id: 1517}
+    outputs:
+      Then: {id: 1502}
   edges:
   - {from: 8.Then, to: 237.Exec}
   - {from: 223.Value.collection_age, to: 929.CollectionAge}
@@ -496,18 +458,13 @@ graphs:
   - {from: 223.Value.target, to: 274.Entity}
   - {from: 223.Value.target, to: 285.Target}
   - {from: 223.Value.target, to: 328.Entity}
-  - {from: 223.Value.origin, to: 441.Value}
   - {from: 223.Value.value, to: 279.B}
   - {from: 232.Result, to: 237.Condition}
   - {from: 237.True, to: 255.Exec}
   - {from: 237.False, to: 241.Exec}
   - {from: 243.Entity, to: 241.Entity}
-  - {from: 255.Then, to: 265.Exec}
-  - {from: 255.Value.collection_age, to: 260.A}
+  - {from: 255.Then, to: 1318.Exec}
   - {from: 255.Value.collection_age, to: 636.CollectionAge}
-  - {from: 260.Result, to: 265.Condition}
-  - {from: 265.True, to: 271.Exec}
-  - {from: 265.False, to: 384.Exec}
   - {from: 271.Then, to: 285.Exec}
   - {from: 274.Value.current, to: 279.A}
   - {from: 279.Result, to: 285.Value}
@@ -517,14 +474,6 @@ graphs:
   - {from: 328.Value.x, to: 868.TargetX}
   - {from: 328.Value.y, to: 784.TargetY}
   - {from: 328.Value.y, to: 868.TargetY}
-  - {from: 384.Then, to: 390.Exec}
-  - {from: 390.Then, to: 396.Exec}
-  - {from: 396.Then, to: 410.Exec}
-  - {from: 410.Then, to: 10.Exec}
-  - {from: 441.x, to: 784.OriginX}
-  - {from: 441.x, to: 868.OriginX}
-  - {from: 441.y, to: 784.OriginY}
-  - {from: 441.y, to: 868.OriginY}
   - {from: 445.Entities, to: 232.Array}
   - {from: 636.Result, to: 660.T}
   - {from: 636.Result, to: 706.T}
@@ -536,11 +485,19 @@ graphs:
   - {from: 660.Result, to: 889.Theta}
   - {from: 706.Result, to: 784.Weight}
   - {from: 706.Result, to: 868.Weight}
-  - {from: 784.Result, to: 384.Value}
-  - {from: 868.Result, to: 390.Value}
-  - {from: 889.Result, to: 396.Value}
-  - {from: 914.Result, to: 410.Value}
+  - {from: 784.Result, to: 1338.x}
+  - {from: 868.Result, to: 1338.y}
+  - {from: 889.Result, to: 1497.yaw}
+  - {from: 914.Result, to: 1497.scale}
   - {from: 929.Result, to: 255.Value}
+  - {from: 1318.True, to: 271.Exec}
+  - {from: 1318.False, to: 1338.Exec}
+  - {from: 1338.Then, to: 1497.Exec}
+  - {from: 1497.Then, to: 10.Exec}
+  locals:
+  - {id: 1301, name: Target, from: 223.Value.target}
+  - {id: 1302, name: Spiral T, from: 636.Result}
+  - {id: 1303, name: Spiral Angle, from: 660.Result}
 - id: 140
   kind: function
   name: Start Collection
@@ -557,16 +514,6 @@ graphs:
     type: Return
     inputs:
       Exec: {id: 143}
-  - id: 156
-    type: Integer Equal
-    inputs:
-      A:
-        id: 153
-        binding: {kind: component_field, component: GAME.GamePickup, field: state}
-  - id: 161
-    type: Branch
-    inputs:
-      Exec: {id: 157}
   - id: 163
     type: Get_GameTransform
     outputs:
@@ -591,142 +538,118 @@ graphs:
     type: Branch
     inputs:
       Exec: {id: 181}
-  - id: 191
-    type: Set_GamePickup_target
-    inputs:
-      Exec: {id: 186}
-  - id: 197
-    type: Set_GamePickup_origin
-    inputs:
-      Exec: {id: 192}
-  - id: 203
-    type: Set_GamePickup_collection_age
-    inputs:
-      Exec: {id: 198}
-  - id: 209
-    type: Set_GamePickup_state
-    inputs:
-      Exec: {id: 204}
-      Value: 1
   - id: 215
     type: Set_GameTrail_width
     inputs:
       Exec: {id: 210}
       Value: 0.65
+  - id: 1823
+    type: Behavior Expression
+    reference_id: 1809
+    reference_name: State == 0
+    inputs:
+      Exec: {id: 1826, kind: exec}
+      State:
+        id: 1824
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
+    outputs:
+      "True": {id: 1827, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1825, type: bool}
+  - id: 1843
+    type: Set Component
+    inputs:
+      Component: GAME.GamePickup
+      state: {id: 1851, default: 1}
+      collection_age: {id: 1850}
+      target: {id: 1852}
+      origin: {}
+    outputs:
+      Then: {id: 1848}
   edges:
-  - {from: 142.Then, to: 161.Exec}
+  - {from: 142.Then, to: 1823.Exec}
   - {from: 142.Radius, to: 172.Radius}
-  - {from: 156.Result, to: 161.Condition}
-  - {from: 161.True, to: 177.Exec}
-  - {from: 161.False, to: 144.Exec}
   - {from: 163.Value, to: 172.Position, conversion: game_transform_to_cf}
-  - {from: 163.Value, to: 197.Value, conversion: game_transform_to_cf}
+  - {from: 163.Value, to: 1843.origin, conversion: game_transform_to_cf}
   - {from: 172.Found, to: 177.Condition}
   - {from: 172.Entity, to: 180.Entity}
-  - {from: 172.Entity, to: 191.Value}
+  - {from: 172.Entity, to: 1843.target}
   - {from: 177.True, to: 185.Exec}
   - {from: 177.False, to: 144.Exec}
   - {from: 180.Result, to: 185.Condition}
-  - {from: 185.True, to: 191.Exec}
+  - {from: 185.True, to: 1843.Exec}
   - {from: 185.False, to: 144.Exec}
-  - {from: 191.Then, to: 197.Exec}
-  - {from: 197.Then, to: 203.Exec}
-  - {from: 203.Then, to: 209.Exec}
-  - {from: 209.Then, to: 215.Exec}
   - {from: 215.Then, to: 144.Exec}
+  - {from: 1823.True, to: 177.Exec}
+  - {from: 1823.False, to: 144.Exec}
+  - {from: 1843.Then, to: 215.Exec}
 - id: 512
   kind: function
   name: Pulse Angle
-  math_expression: Eased*2*pi
-  expression_mode: 1
-  entry_id: 934
-  return_id: 936
-  call_depth_limit: 64
+  math_expression: Eased * 2 * pi
+  entry_id: 1855
 - id: 536
   kind: function
   name: Pulse Fade
-  math_expression: min(max((Lifetime-UpdatedAge)/2,0),1)
-  expression_mode: 1
-  entry_id: 955
-  return_id: 957
-  call_depth_limit: 64
+  math_expression: clamp((Lifetime - Age) / 2, 0, 1)
+  entry_id: 1876
 - id: 573
   kind: function
   name: Pulse Yaw
-  math_expression: Angle+BaseRotation
-  expression_mode: 1
-  entry_id: 988
-  return_id: 990
-  call_depth_limit: 64
+  math_expression: Angle + BaseRotation
+  entry_id: 1906
 - id: 589
   kind: function
   name: Pulse Scale
-  math_expression: (0.9+0.1*cos(Angle))*Fade
-  expression_mode: 1
-  entry_id: 1000
-  return_id: 1002
-  call_depth_limit: 64
+  math_expression: (0.9 + 0.1 * cos(Angle)) * Fade
+  entry_id: 1918
 - id: 622
   kind: function
   name: Spiral T
-  math_expression: CollectionAge/0.6
-  expression_mode: 1
-  entry_id: 1029
-  return_id: 1031
-  call_depth_limit: 64
+  math_expression: CollectionAge / 0.6
+  entry_id: 1947
 - id: 639
   kind: function
   name: Spiral Angle
-  math_expression: T*2.5*pi
-  expression_mode: 1
-  entry_id: 1043
-  return_id: 1045
-  call_depth_limit: 64
+  math_expression: T * 2.5 * pi
+  entry_id: 1961
 - id: 663
   kind: function
   name: Spiral Weight
-  math_expression: (1-T)*(1-T)*(1+5*T)
-  expression_mode: 1
-  entry_id: 1064
-  return_id: 1066
-  call_depth_limit: 64
+  math_expression: (1 - T) * (1 - T) * (1 + 5 * T)
+  entry_id: 1982
 - id: 709
   kind: function
   name: Spiral X
-  math_expression: TargetX+Weight*((OriginX-TargetX)*cos(Theta)-(OriginY-TargetY)*sin(Theta))+12*sin(pi*T)*cos(Theta)
-  expression_mode: 1
-  entry_id: 1107
-  return_id: 1109
-  call_depth_limit: 64
+  math_expression: TargetX + Weight * ((OriginX - TargetX) * cos(Theta) - (OriginY - TargetY) * sin(Theta)) + 12 * sin(pi * T) * cos(Theta)
+  entry_id: 2025
 - id: 793
   kind: function
   name: Spiral Y
-  math_expression: TargetY+Weight*((OriginX-TargetX)*sin(Theta)+(OriginY-TargetY)*cos(Theta))+12*sin(pi*T)*sin(Theta)
-  expression_mode: 1
-  entry_id: 1182
-  return_id: 1184
-  call_depth_limit: 64
+  math_expression: TargetY + Weight * ((OriginX - TargetX) * sin(Theta) + (OriginY - TargetY) * cos(Theta)) + 12 * sin(pi * T) * sin(Theta)
+  entry_id: 2100
 - id: 877
   kind: function
   name: Spiral Yaw
-  math_expression: BaseRotation+Theta
-  expression_mode: 1
-  entry_id: 1257
-  return_id: 1259
-  call_depth_limit: 64
+  math_expression: BaseRotation + Theta
+  entry_id: 2175
 - id: 893
   kind: function
   name: Spiral Scale
-  math_expression: 1-0.5*T
-  expression_mode: 1
-  entry_id: 1269
-  return_id: 1271
-  call_depth_limit: 64
+  math_expression: 1 - 0.5 * T
+  entry_id: 2187
 - id: 917
   kind: function
   name: Collection Age
-  math_expression: CollectionAge+Delta
-  expression_mode: 1
-  entry_id: 1290
-  return_id: 1292
-  call_depth_limit: 64
+  math_expression: CollectionAge + Delta
+  entry_id: 2208
+- id: 1304
+  kind: function
+  math_expression: CollectionAge >= 0.6
+  entry_id: 1325
+- {id: 1545, kind: function, math_expression: 2 * pi * rand(), entry_id: 1570}
+- {id: 1591, kind: function, math_expression: Age += Delta, entry_id: 1647}
+- {id: 1683, kind: function, math_expression: Age >= Lifetime, entry_id: 1715}
+- {id: 1809, kind: function, math_expression: State == 0, entry_id: 1830}

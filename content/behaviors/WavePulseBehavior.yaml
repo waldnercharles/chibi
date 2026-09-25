@@ -31,17 +31,13 @@ graphs:
       Age:
         id: 92
         type: float
-        flags: 6
-        group: 1
         binding: {kind: variable, variable_id: 1, source_asset: WavePulseBehavior}
       dt:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: delta_time}
     outputs:
       Then: {id: 96, kind: exec}
-      Result: {id: 94, type: float, flags: 2, group: 3}
+      Result: {id: 94, type: float}
   - id: 145
     type: Behavior Expression
     reference_id: 131
@@ -49,11 +45,9 @@ graphs:
     inputs:
       Age:
         type: double
-        flags: 2
-        group: 1
         binding: {kind: variable, variable_id: 1, source_asset: WavePulseBehavior}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 176
     type: Behavior Expression
     reference_id: 162
@@ -63,12 +57,12 @@ graphs:
       progress:
         id: 177
         type: double
-        group: 1
+        flags: 0
         binding: {kind: local, local_id: 390}
     outputs:
       "True": {id: 180, kind: exec}
       "False": {kind: exec}
-      Result: {id: 178, type: bool, flags: 2, group: 2}
+      Result: {id: 178, type: bool}
   - id: 217
     type: Behavior Expression
     reference_id: 196
@@ -76,19 +70,17 @@ graphs:
     inputs:
       progress:
         type: double
-        flags: 2
-        group: 1
         binding: {kind: local, local_id: 390}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 255
     type: Behavior Expression
     reference_id: 234
     reference_name: max(0, radius - 28)
     inputs:
-      radius: {type: double, flags: 2, group: 1}
+      radius: {type: double}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 300
     type: Behavior Expression
     reference_id: 279
@@ -96,11 +88,9 @@ graphs:
     inputs:
       progress:
         type: double
-        flags: 2
-        group: 1
         binding: {kind: local, local_id: 390}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 317
     type: Set Component
     inputs:
@@ -125,51 +115,9 @@ graphs:
   - {from: 300.Result, to: 317.strength}
   locals:
   - {id: 390, name: Progress, from: 145.Result}
-- id: 79
-  kind: function
-  name: Age += dt
-  math_expression: Age += dt
-  expression_mode: 2
-  entry_id: 115
-  return_id: 117
-  call_depth_limit: 64
-- id: 131
-  kind: function
-  name: Age / 0.8
-  math_expression: Age / 0.8
-  expression_mode: 1
-  entry_id: 304
-  return_id: 306
-  call_depth_limit: 64
-- id: 162
-  kind: function
-  name: progress >= 1
-  math_expression: progress >= 1
-  expression_mode: 3
-  entry_id: 163
-  return_id: 165
-  call_depth_limit: 64
-- id: 196
-  kind: function
-  name: 24 + 336 * progress
-  math_expression: 24 + 336 * progress
-  expression_mode: 1
-  entry_id: 326
-  return_id: 328
-  call_depth_limit: 64
-- id: 234
-  kind: function
-  name: max(0, radius - 28)
-  math_expression: max(0, radius - 28)
-  expression_mode: 1
-  entry_id: 348
-  return_id: 350
-  call_depth_limit: 64
-- id: 279
-  kind: function
-  name: 0.65 * (1 - progress)
-  math_expression: 0.65 * (1 - progress)
-  expression_mode: 1
-  entry_id: 370
-  return_id: 372
-  call_depth_limit: 64
+- {id: 79, kind: function, math_expression: Age += dt, entry_id: 115}
+- {id: 131, kind: function, math_expression: Age / 0.8, entry_id: 304}
+- {id: 162, kind: function, math_expression: progress >= 1, entry_id: 163}
+- {id: 196, kind: function, math_expression: 24 + 336 * progress, entry_id: 326}
+- {id: 234, kind: function, math_expression: 'max(0, radius - 28)', entry_id: 348}
+- {id: 279, kind: function, math_expression: 0.65 * (1 - progress), entry_id: 370}

@@ -1,6 +1,6 @@
 version: 3
 name: PhaseWardenBehavior
-id_counter: 82
+id_counter: 84
 variables:
 - {id: 1, name: Orbit Radius, type: float, category: Tuning, default: 72.0}
 - {id: 2, name: Move Speed, type: float, category: Tuning, default: 55.0}
@@ -9,25 +9,47 @@ graphs:
   name: ""
   nodes:
   - {id: 3, type: Event, reference_name: Tick}
-  - id: 5
-    type: Get_GameTransform
-    outputs:
-      Value: {flags: 0}
   - id: 7
     type: Find Nearest Entity
-    inputs: {Radius: 2000.0, Categories: 1}
+    inputs:
+      Position:
+        binding: {kind: component, component: game.GameTransform}
+      Radius: 2000.0
+      Categories: 1
   - {id: 16, type: Branch}
   - {id: 21, type: Scene Rhythm}
   - {id: 26, type: Cosine}
   - {id: 29, type: Sine}
-  - {id: 32, type: Multiply}
-  - {id: 36, type: Multiply}
+  - id: 32
+    type: Multiply
+    inputs:
+      B:
+        binding: {kind: variable, variable_id: 1, source_asset: PhaseWardenBehavior}
+  - id: 36
+    type: Multiply
+    inputs:
+      B:
+        binding: {kind: variable, variable_id: 1, source_asset: PhaseWardenBehavior}
   - {id: 40, type: Make_CF_V2}
   - {id: 44, type: Add}
-  - {id: 48, type: Direction To}
-  - {id: 52, type: Break_CF_V2}
-  - {id: 56, type: Multiply}
-  - {id: 60, type: Multiply}
+  - id: 48
+    type: Direction To
+    inputs:
+      Origin:
+        binding: {kind: component, component: game.GameTransform}
+    outputs:
+      Direction.x: {id: 82}
+      Direction.y: {}
+  - id: 56
+    type: Multiply
+    inputs:
+      B:
+        binding: {kind: variable, variable_id: 2, source_asset: PhaseWardenBehavior}
+  - id: 60
+    type: Multiply
+    inputs:
+      B:
+        binding: {kind: variable, variable_id: 2, source_asset: PhaseWardenBehavior}
   - {id: 64, type: Make_GameVelocity}
   - {id: 68, type: Set_GameVelocity}
   - id: 73
@@ -35,22 +57,8 @@ graphs:
     inputs:
       Value:
         default: {x: 0.0, "y": 0.0}
-  - id: 78
-    type: Get Variable
-    reference_id: 1
-    reference_name: Orbit Radius
-    outputs:
-      Value: {type: float, type_name: null, flags: 0}
-  - id: 80
-    type: Get Variable
-    reference_id: 2
-    reference_name: Move Speed
-    outputs:
-      Value: {type: float, type_name: null, flags: 0}
   edges:
   - {from: 3.Then, to: 16.Exec}
-  - {from: 5.Value, to: 7.Position}
-  - {from: 5.Value, to: 48.Origin}
   - {from: 7.Found, to: 16.Condition}
   - {from: 7.Position, to: 44.A}
   - {from: 16.True, to: 68.Exec}
@@ -63,13 +71,8 @@ graphs:
   - {from: 36.Result, to: 40.y}
   - {from: 40.CF_V2, to: 44.B}
   - {from: 44.Result, to: 48.Target}
-  - {from: 48.Direction, to: 52.CF_V2}
-  - {from: 52.x, to: 56.A}
-  - {from: 52.y, to: 60.A}
+  - {from: 48.Direction.x, to: 56.A}
+  - {from: 48.Direction.y, to: 60.A}
   - {from: 56.Result, to: 64.x}
   - {from: 60.Result, to: 64.y}
   - {from: 64.GameVelocity, to: 68.Value}
-  - {from: 78.Value, to: 32.B}
-  - {from: 78.Value, to: 36.B}
-  - {from: 80.Value, to: 56.B}
-  - {from: 80.Value, to: 60.B}

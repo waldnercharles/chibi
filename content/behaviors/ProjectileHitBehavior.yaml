@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileHitBehavior
-id_counter: 142
+id_counter: 146
 description: Damages the contacted enemy, emits an impact burst, then destroys the projectile.
 owner_type: ecs.entity
 graphs:
@@ -13,11 +13,6 @@ graphs:
     outputs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {id: 140, type: struct, type_name: CF_V2, kind: data}
-  - id: 4
-    type: Get_GameProjectile
-    outputs:
-      Value: {flags: 0}
-      Value.damage: {id: 26}
   - id: 14
     type: Self
     outputs:
@@ -26,19 +21,22 @@ graphs:
     type: Send Event
     reference_name: Damage
     inputs:
-      Amount: {declaration_id: 2, type: int}
+      Amount:
+        declaration_id: 2
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
       Source: {declaration_id: 3}
   - {id: 22, type: Destroy Entity}
-  - id: 27
-    type: Get_GameTransform
-    outputs:
-      Value: {flags: 0}
   - id: 35
     type: Call Function
     reference_id: 51
     reference_name: Impact Particles
     inputs:
-      Position: {type: struct, type_name: GameTransform, kind: data}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
       Elevation: {id: 124, type: float, kind: data}
     outputs:
       Then: {id: 42}
@@ -55,28 +53,30 @@ graphs:
     type: Branch
     inputs:
       Exec: {id: 127}
-  - id: 133
-    type: Get_GameGeometry3D
-    outputs:
-      Value: {id: 132, flags: 0}
-      Value.elevation: {id: 134}
   - id: 135
     type: Call Function
     reference_id: 51
     reference_name: Impact Particles
     inputs:
-      Position: {type: struct, type_name: GameTransform, kind: data}
-      Elevation: {type: float, kind: data}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
+      Elevation:
+        type: float
+        kind: data
+        binding: {kind: component_field, component: GAME.GameGeometry3D, field: elevation}
+  - id: 142
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
   edges:
   - {from: 1.Then, to: 46.Exec}
   - {from: 1.Other, to: 16.Entity}
   - {from: 1.Other, to: 43.Entity}
-  - {from: 4.Value.damage, to: 16.Amount}
   - {from: 14.Self, to: 16.Source}
-  - {from: 14.Self, to: 22.Entity}
   - {from: 16.Then, to: 131.Exec}
-  - {from: 27.Value, to: 35.Position}
-  - {from: 27.Value, to: 135.Position}
   - {from: 35.Then, to: 22.Exec}
   - {from: 43.Has, to: 46.Condition}
   - {from: 46.True, to: 16.Exec}
@@ -84,8 +84,8 @@ graphs:
   - {from: 126.Result, to: 131.Condition}
   - {from: 131.True, to: 135.Exec}
   - {from: 131.False, to: 35.Exec}
-  - {from: 133.Value.elevation, to: 135.Elevation}
   - {from: 135.Then, to: 22.Exec}
+  - {from: 142.Self, to: 22.Entity}
 - id: 51
   kind: function
   name: Impact Particles
@@ -106,6 +106,8 @@ graphs:
   - id: 58
     type: Emit Directed Particles
     inputs:
+      Position:
+        binding: {kind: local, local_id: 144}
       Direction:
         default: {x: 1.0, "y": 0.0}
       Count: 8
@@ -123,10 +125,14 @@ graphs:
       Min Emission: 1.1
       Max Emission: 1.8
       Size Exponent: 0.7
+      Elevation:
+        binding: {kind: local, local_id: 145}
       Shape: {flags: 0, default: 4}
   - id: 80
     type: Emit Directed Particles
     inputs:
+      Position:
+        binding: {kind: local, local_id: 144}
       Direction:
         default: {x: 1.0, "y": 0.0}
       Count: 3
@@ -143,10 +149,14 @@ graphs:
       Min Emission: 1.2
       Max Emission: 1.8
       Size Exponent: 0.7
+      Elevation:
+        binding: {kind: local, local_id: 145}
       Shape: {flags: 0}
   - id: 102
     type: Emit Directed Particles
     inputs:
+      Position:
+        binding: {kind: local, local_id: 144}
       Direction:
         default: {x: 1.0, "y": 0.0}
       Color: 2448359423
@@ -163,6 +173,8 @@ graphs:
       Min Emission: 0.8
       Max Emission: 0.8
       Size Exponent: 0.7
+      Elevation:
+        binding: {kind: local, local_id: 145}
       Shape: {flags: 0, default: 3}
   edges:
   - {from: 55.Then, to: 58.Exec}
@@ -175,3 +187,6 @@ graphs:
   - {from: 58.Then, to: 80.Exec}
   - {from: 80.Then, to: 102.Exec}
   - {from: 102.Then, to: 57.Exec}
+  locals:
+  - {id: 144, name: Position, from: 55.Position}
+  - {id: 145, name: Elevation, from: 55.Elevation}

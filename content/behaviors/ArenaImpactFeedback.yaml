@@ -1,6 +1,6 @@
 version: 3
 name: ArenaImpactFeedback
-id_counter: 606
+id_counter: 675
 description: Accepted hits energize nearby floor cells. Death emits fragments and a wider rose floor pulse. Pulses are ordinary prototypes with an authored lifetime.
 owner_type: ecs.entity
 variables:
@@ -16,23 +16,6 @@ graphs:
       Then: {id: 19}
       Amount: {declaration_id: 2, type: int, kind: data}
       Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
-  - id: 24
-    type: Get_GameHealth
-    outputs:
-      Value: {id: 23, flags: 0}
-      Value.current: {id: 25}
-  - id: 29
-    type: Integer Greater
-    inputs:
-      A: {id: 26}
-  - id: 34
-    type: Branch
-    inputs:
-      Exec: {id: 30}
-  - id: 36
-    type: Get_GameTransform
-    outputs:
-      Value: {id: 35, flags: 0}
   - id: 41
     type: Call Function
     reference_id: 1
@@ -40,7 +23,11 @@ graphs:
     inputs:
       Exec: {id: 37}
       Prototype: {type: name, kind: data, default: ArenaHitPulse}
-      Position: {type: struct, type_name: GameTransform, kind: data}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
   - id: 44
     type: Event
     reference_name: Died
@@ -54,16 +41,17 @@ graphs:
     inputs:
       Exec: {id: 65}
       Prototype: {type: name, kind: data, default: ArenaDeathPulse}
-      Position: {type: struct, type_name: GameTransform, kind: data}
-  - id: 72
-    type: Get Variable
-    reference_id: 70
-    outputs:
-      Value: {id: 71, type: bool, flags: 0}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
   - id: 77
     type: Branch
     inputs:
       Exec: {id: 73}
+      Condition:
+        binding: {kind: variable, variable_id: 70, source_asset: ArenaImpactFeedback}
   - id: 82
     type: Set Variable
     reference_id: 70
@@ -80,76 +68,81 @@ graphs:
     type: Branch
     inputs:
       Exec: {id: 85}
-  - id: 91
-    type: Get_GameEncounterMember
-    outputs:
-      Value: {id: 90, flags: 0}
-      Value.role: {id: 92}
-  - id: 96
-    type: Integer Equal
-    inputs:
-      A: {id: 93}
-      B: 1
-  - id: 101
-    type: Branch
-    inputs:
-      Exec: {id: 97}
   - id: 117
     type: Call Function
     reference_id: 543
     reference_name: Prepare Enemy Experience
     inputs:
       Exec: {id: 111}
-      Position: {type: struct, type_name: GameTransform, kind: data}
-      Appearance: {type: struct, type_name: GameGeometry3D, kind: data}
-      Material: {type: struct, type_name: GameShader, kind: data}
-      Orientation: {type: struct, type_name: GameOrientation, kind: data}
-      Visual: {id: 595, type: struct, type_name: GameVisualTransform, kind: data}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: game.GameTransform}
+      Appearance:
+        type: struct
+        type_name: GameGeometry3D
+        kind: data
+        binding: {kind: component, component: GAME.GameGeometry3D}
+      Material:
+        type: struct
+        type_name: GameShader
+        kind: data
+        binding: {kind: component, component: GAME.GameShader}
+      Orientation:
+        type: struct
+        type_name: GameOrientation
+        kind: data
+        binding: {kind: component, component: GAME.GameOrientation}
+      Visual:
+        id: 595
+        type: struct
+        type_name: GameVisualTransform
+        kind: data
+        binding: {kind: component, component: GAME.GameVisualTransform}
     outputs:
       Then: {id: 116}
-  - id: 119
-    type: Get_GameTransform
+  - id: 621
+    type: Behavior Expression
+    reference_id: 607
+    reference_name: Health > 0
+    inputs:
+      Exec: {id: 624, kind: exec}
+      Health:
+        id: 622
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: game.GameHealth, field: current}
     outputs:
-      Value: {id: 118, flags: 0}
-  - id: 121
-    type: Get_GameGeometry3D
+      "True": {id: 625, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 623, type: bool}
+  - id: 655
+    type: Behavior Expression
+    reference_id: 641
+    reference_name: Role == 1
+    inputs:
+      Exec: {id: 658, kind: exec}
+      Role:
+        id: 656
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameEncounterMember, field: role}
     outputs:
-      Value: {id: 120, flags: 0}
-  - id: 123
-    type: Get_GameShader
-    outputs:
-      Value: {id: 122, flags: 0}
-  - id: 125
-    type: Get_GameOrientation
-    outputs:
-      Value: {id: 124, flags: 0}
-  - id: 597
-    type: Get_GameVisualTransform
-    outputs:
-      Value: {id: 596, flags: 0}
+      "True": {id: 659, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 657, type: bool}
   edges:
-  - {from: 22.Then, to: 34.Exec}
-  - {from: 24.Value.current, to: 29.A}
-  - {from: 29.Result, to: 34.Condition}
-  - {from: 34.True, to: 41.Exec}
-  - {from: 36.Value, to: 41.Position}
-  - {from: 36.Value, to: 69.Position}
+  - {from: 22.Then, to: 621.Exec}
   - {from: 44.Then, to: 77.Exec}
-  - {from: 72.Value, to: 77.Condition}
   - {from: 77.False, to: 82.Exec}
   - {from: 82.Then, to: 89.Exec}
   - {from: 84.Result, to: 89.Condition}
-  - {from: 89.True, to: 101.Exec}
+  - {from: 89.True, to: 655.Exec}
   - {from: 89.False, to: 69.Exec}
-  - {from: 91.Value.role, to: 96.A}
-  - {from: 96.Result, to: 101.Condition}
-  - {from: 101.True, to: 117.Exec}
-  - {from: 101.False, to: 69.Exec}
-  - {from: 119.Value, to: 117.Position}
-  - {from: 121.Value, to: 117.Appearance}
-  - {from: 123.Value, to: 117.Material}
-  - {from: 125.Value, to: 117.Orientation}
-  - {from: 597.Value, to: 117.Visual}
+  - {from: 621.True, to: 41.Exec}
+  - {from: 655.True, to: 117.Exec}
+  - {from: 655.False, to: 69.Exec}
 - id: 1
   kind: function
   name: Spawn Surface Pulse
@@ -220,27 +213,39 @@ graphs:
     type: SetEntity_GameTransform
     inputs:
       Exec: {id: 557}
+      Entity:
+        binding: {kind: local, local_id: 606}
   - id: 568
     type: SetEntity_GameGeometry3D
     inputs:
       Exec: {id: 563}
+      Entity:
+        binding: {kind: local, local_id: 606}
   - id: 574
     type: SetEntity_GameShader
     inputs:
       Exec: {id: 569}
+      Entity:
+        binding: {kind: local, local_id: 606}
   - id: 580
     type: SetEntity_GameOrientation
     inputs:
       Exec: {id: 575}
+      Entity:
+        binding: {kind: local, local_id: 606}
   - id: 592
     type: Set_GamePickup_state
     inputs:
       Exec: {id: 587}
       Value: 3
+      Target:
+        binding: {kind: local, local_id: 606}
   - id: 603
     type: SetEntity_GameVisualTransform
     inputs:
       Exec: {id: 598}
+      Entity:
+        binding: {kind: local, local_id: 606}
   edges:
   - {from: 549.Then, to: 556.Exec}
   - {from: 549.Position, to: 562.Value}
@@ -261,3 +266,7 @@ graphs:
   - {from: 580.Then, to: 603.Exec}
   - {from: 592.Then, to: 551.Exec}
   - {from: 603.Then, to: 592.Exec}
+  locals:
+  - {id: 606, name: Experience, from: 556.Entity}
+- {id: 607, kind: function, math_expression: Health > 0, entry_id: 628}
+- {id: 641, kind: function, math_expression: Role == 1, entry_id: 662}

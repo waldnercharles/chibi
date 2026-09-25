@@ -1,6 +1,6 @@
 version: 3
 name: TwinStickInputBehavior
-id_counter: 420
+id_counter: 488
 description: Set movement velocity from local input while facing independent aim.
 owner_type: ecs.entity
 graphs:
@@ -23,7 +23,10 @@ graphs:
     reference_asset: MovementActions
     inputs:
       direction: {id: 132, type: struct, type_name: CF_V2}
-      speed: {type: struct, type_name: GameMovement}
+      speed:
+        type: struct
+        type_name: GameMovement
+        binding: {kind: component, component: game.GameMovement}
     outputs:
       Velocity: {id: 108, type: struct, type_name: GameVelocity}
   - {id: 356, type: Event, reference_name: Tick}
@@ -46,25 +49,38 @@ graphs:
   - {id: 371, type: Set_GameOrientation}
   - {id: 380, type: Has_GameDash}
   - {id: 382, type: Branch}
-  - id: 390
-    type: Less
-    inputs:
-      B:
-        binding: {kind: component_field, component: GAME.GameDash, field: remaining}
-  - {id: 394, type: Branch}
   - {id: 399, type: Has_GameDash}
   - {id: 401, type: Branch}
-  - id: 406
-    type: Get_GameDash
+  - id: 434
+    type: Behavior Expression
+    reference_id: 420
+    reference_name: Dashing While Moving
+    inputs:
+      Exec: {id: 437, kind: exec}
+      DashRemaining:
+        id: 435
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameDash, field: remaining}
     outputs:
-      Value: {flags: 0}
-      Value.remaining: {}
-  - {id: 409, type: Less}
-  - {id: 413, type: Branch}
-  - id: 418
-    type: Get_GameMovement
+      "True": {id: 438, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 436, type: bool}
+  - id: 468
+    type: Behavior Expression
+    reference_id: 454
+    reference_name: Dashing While Aiming
+    inputs:
+      Exec: {id: 471, kind: exec}
+      DashRemaining:
+        id: 469
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameDash, field: remaining}
     outputs:
-      Value: {flags: 0}
+      "True": {id: 472, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 470, type: bool}
   edges:
   - {from: 1.Then, to: 382.Exec}
   - {from: 1.Direction, to: 105.direction}
@@ -72,14 +88,20 @@ graphs:
   - {from: 356.Then, to: 401.Exec}
   - {from: 367.Orientation, to: 371.Value}
   - {from: 380.Value, to: 382.Condition}
-  - {from: 382.True, to: 394.Exec}
+  - {from: 382.True, to: 434.Exec}
   - {from: 382.False, to: 14.Exec}
-  - {from: 390.Result, to: 394.Condition}
-  - {from: 394.False, to: 14.Exec}
   - {from: 399.Value, to: 401.Condition}
-  - {from: 401.True, to: 413.Exec}
+  - {from: 401.True, to: 468.Exec}
   - {from: 401.False, to: 371.Exec}
-  - {from: 406.Value.remaining, to: 409.B}
-  - {from: 409.Result, to: 413.Condition}
-  - {from: 413.False, to: 371.Exec}
-  - {from: 418.Value, to: 105.speed}
+  - {from: 434.False, to: 14.Exec}
+  - {from: 468.False, to: 371.Exec}
+- id: 420
+  kind: function
+  name: Dashing While Moving
+  math_expression: DashRemaining > 0
+  entry_id: 441
+- id: 454
+  kind: function
+  name: Dashing While Aiming
+  math_expression: DashRemaining > 0
+  entry_id: 475

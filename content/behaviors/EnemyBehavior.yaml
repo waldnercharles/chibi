@@ -1,6 +1,6 @@
 version: 3
 name: EnemyBehavior
-id_counter: 89
+id_counter: 334
 description: Pursue the nearest player with a velocity that slows for arrival; stop when no target is in range.
 owner_type: ecs.entity
 graphs:
@@ -8,32 +8,35 @@ graphs:
   name: ""
   nodes:
   - {id: 1, type: Event, reference_name: Tick}
-  - id: 3
-    type: Get_GameTransform
-    outputs:
-      Value: {flags: 0}
   - id: 5
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
   - id: 7
     type: Find Nearest Entity
-    inputs: {Radius: 2000.0, Categories: 1}
+    inputs:
+      Position:
+        binding: {kind: component, component: game.GameTransform}
+      Radius: 2000.0
+      Categories: 1
   - {id: 16, type: Branch}
-  - id: 28
-    type: Get_GameMovement
-    outputs:
-      Value: {flags: 0}
   - {id: 52, type: Set_GameVelocity}
   - id: 66
     type: Call Pure Function
     reference_id: 57
     reference_name: Pursuit Velocity
     inputs:
-      Position: {type: struct, type_name: CF_V2}
+      Position:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component, component: game.GameTransform}
       Target: {type: struct, type_name: CF_V2}
-      Speed: {type: float}
-      Delta Seconds: {type: float}
+      Speed:
+        type: float
+        binding: {kind: component_field, component: game.GameMovement, field: speed}
+      Delta Seconds:
+        type: float
+        binding: {kind: delta_time}
       Distance: {type: float}
     outputs:
       Velocity: {type: struct, type_name: GameVelocity}
@@ -42,20 +45,15 @@ graphs:
     inputs:
       Value:
         default: {x: 0.0, "y": 0.0}
-  - {id: 78, type: Delta Time}
   edges:
   - {from: 1.Then, to: 16.Exec}
-  - {from: 3.Value, to: 7.Position}
-  - {from: 3.Value, to: 66.Position}
   - {from: 5.Self, to: 7.Exclude}
   - {from: 7.Found, to: 16.Condition}
   - {from: 7.Position, to: 66.Target}
   - {from: 7.Distance, to: 66.Distance}
   - {from: 16.True, to: 52.Exec}
   - {from: 16.False, to: 73.Exec}
-  - {from: 28.Value, to: 66.Speed, conversion: Unwrap_GameMovement}
   - {from: 66.Velocity, to: 52.Value}
-  - {from: 78.Seconds, to: 66.Delta Seconds}
 - id: 57
   kind: function
   name: Pursuit Velocity
@@ -63,9 +61,6 @@ graphs:
   return_id: 64
   call_depth_limit: 64
   nodes:
-  - {id: 21, type: Subtract}
-  - {id: 25, type: Normalize Vector 2}
-  - {id: 44, type: Multiply}
   - id: 58
     type: Function Entry
     outputs:
@@ -78,29 +73,26 @@ graphs:
     type: Return
     inputs:
     - {id: 65, name: Velocity, type: struct, type_name: GameVelocity, kind: data}
-  - id: 80
-    type: Divide
+  - id: 123
+    type: Behavior Expression
+    reference_id: 89
+    reference_name: normalize(Target - Position) * clamp(Speed, 0, Distance / DeltaSeconds)
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      Target: {type: struct, type_name: CF_V2}
+      Position: {type: struct, type_name: CF_V2}
+      Speed: {type: float}
+      Distance: {type: float}
+      DeltaSeconds: {type: float}
     outputs:
-      Result: {flags: 0, group: 0}
-  - id: 84
-    type: Clamp
-    inputs:
-      Value: {flags: 0, group: 0}
-      Min: {flags: 0, group: 0}
-      Max: {flags: 0, group: 0}
-    outputs:
-      Result: {flags: 0, group: 0}
+      Result: {type: struct, type_name: CF_V2}
   edges:
-  - {from: 21.Result, to: 25.Value}
-  - {from: 25.Result, to: 44.A}
-  - {from: 44.Result, to: 64.Velocity}
-  - {from: 58.Position, to: 21.B}
-  - {from: 58.Target, to: 21.A}
-  - {from: 58.Speed, to: 84.Value}
-  - {from: 58.Delta Seconds, to: 80.B}
-  - {from: 58.Distance, to: 80.A}
-  - {from: 80.Result, to: 84.Max}
-  - {from: 84.Result, to: 44.B}
+  - {from: 58.Position, to: 123.Position}
+  - {from: 58.Target, to: 123.Target}
+  - {from: 58.Speed, to: 123.Speed}
+  - {from: 58.Delta Seconds, to: 123.DeltaSeconds}
+  - {from: 58.Distance, to: 123.Distance}
+  - {from: 123.Result, to: 64.Velocity}
+- id: 89
+  kind: function
+  math_expression: normalize(Target - Position) * clamp(Speed, 0, Distance / DeltaSeconds)
+  entry_id: 301

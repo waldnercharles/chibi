@@ -68,6 +68,11 @@ game_audio *engine_audio(const engine *engine)
     return game_behavior_audio(engine->live->behaviors);
 }
 
+game_ui *engine_ui(const engine *engine)
+{
+    return game_behavior_ui(engine->live->behaviors);
+}
+
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity)
 {
     const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);

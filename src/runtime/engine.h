@@ -69,6 +69,7 @@ int engine_frame(engine *engine, double monotonic_time);
 const char *engine_error(const engine *engine);
 const game_visibility *engine_visibility(const engine *engine);
 game_audio *engine_audio(const engine *engine);
+game_ui *engine_ui(const engine *engine);
 const game_materials *engine_materials(const engine *engine);
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity);
 const engine_frame_timing *engine_last_timing(const engine *engine);
@@ -160,6 +161,9 @@ void engine_viewport_set_widgets(
     const engine *runtime
 );
 bool engine_viewport_widgets_capture(const engine_viewport *viewport);
+/* Shows the widget world's GameUi documents from content_root/ui over the
+ * scene, applying `model` (NULL shows them as authored). */
+void engine_viewport_set_ui(engine_viewport *viewport, game_ui *model, const char *content_root);
 
 /* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
  * way to hand focus back so Escape can release the viewport. */

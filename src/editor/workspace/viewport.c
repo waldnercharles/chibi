@@ -3,6 +3,7 @@
 #include "platform/cute.h"
 #include "render/arena3d.h"
 #include "render/audio.h"
+#include "render/ui.h"
 #include "render/widgets.h"
 #include "runtime/engine.h"
 #include "support/xalloc.h"
@@ -46,6 +47,8 @@ struct engine_viewport
     CF_V2 host_delta, press_origin;
     float press_distance_sq;
     render_audio *audio;
+    render_ui *ui;
+    game_ui *ui_model;
     engine_viewport_render_fn render;
     void *render_user;
 };
@@ -205,7 +208,16 @@ void engine_viewport_free(engine_viewport *viewport)
         cf_destroy_canvas(viewport->canvas);
     }
     render_audio_free(viewport->audio);
+    render_ui_free(viewport->ui);
     free(viewport);
+}
+
+void engine_viewport_set_ui(engine_viewport *viewport, game_ui *model, const char *content_root)
+{
+    viewport->ui_model = model;
+    if (!viewport->ui) {
+        viewport->ui = render_ui_new(content_root);
+    }
 }
 
 int engine_viewport_request_resize(engine_viewport *viewport, int width, int height)
@@ -411,6 +423,17 @@ static void draw_viewport_canvas(engine_viewport *viewport)
     }
     cf_render_to(viewport->canvas, true);
     cf_draw_pop();
+    if (viewport->ui && viewport->widget_world) {
+        render_ui_update(
+            viewport->ui,
+            viewport->widget_world,
+            viewport->ui_model,
+            viewport->width,
+            viewport->height,
+            CF_DELTA_TIME
+        );
+        render_ui_composite(viewport->ui, viewport->canvas);
+    }
 }
 
 static engine_viewport_action draw_control(

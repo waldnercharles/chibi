@@ -407,6 +407,11 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         preview ? game_prototype_preview_runtime(scene->prototype_preview)
                 : scene->runtime
     );
+    engine_viewport_set_ui(
+        viewport,
+        preview ? NULL : engine_ui(scene->runtime),
+        scene->content_root
+    );
     bool perspective = scene->perspective;
     if (preview) {
         ecs_world *world = game_prototype_preview_world(scene->prototype_preview);

@@ -429,9 +429,10 @@ add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c sr
     src/render/geometry_2d.c src/render/light_field_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
-    src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
+    src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c
+    src/render/ui.c)
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(chibi_render PUBLIC runtime_support core cute)
+target_link_libraries(chibi_render PUBLIC runtime_support core cute chibi_ui)
 target_compile_options(chibi_render PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(chibi_render)
 set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)

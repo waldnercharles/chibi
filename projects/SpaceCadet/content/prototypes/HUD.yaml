@@ -1,0 +1,4 @@
+name: HUD
+components:
+  GAME.GameUi: {document: HUD, order: 50}
+behaviors: [HudDisplay]

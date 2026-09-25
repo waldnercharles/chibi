@@ -70,6 +70,7 @@ static int instruction(compiler *c, field_ir ir, int inputs)
         return -1;
     }
     ir.spatial = ir.op == FIELD_X ? 1 : ir.op == FIELD_Y ? 2 : 0;
+    ir.count = inputs;
     for (int i = 0; i < inputs; i++) {
         ir.spatial |= c->program->code[ir.inputs[i]].spatial;
     }
@@ -229,6 +230,74 @@ static int compile_node(compiler *c, node *n, int output)
     return c->slots[index];
 }
 
+static bool same_instruction(const field_ir *a, const field_ir *b)
+{
+    bool same = a->op == b->op && a->count == b->count &&
+                a->parameter == b->parameter &&
+                !memcmp(&a->value, &b->value, sizeof a->value);
+    for (int k = 0; same && k < a->count; k++) {
+        same = a->inputs[k] == b->inputs[k];
+    }
+    return same;
+}
+
+/* Copies read through to their source, repeated instructions merge, and
+   instructions nothing reads drop out: a function's Return, a Constant node,
+   a stage two calls both compute, and nodes the output never reads cost
+   nothing extra per cell. */
+static void prune(field_program *p)
+{
+    int count = acount(p->code);
+    int *index = xmalloc((size_t)count * sizeof *index);
+    int *same = xmalloc((size_t)count * sizeof *same);
+    bool *live = xcalloc((size_t)count, sizeof *live);
+    for (int i = 0; i < count; i++) {
+        field_ir *ir = &p->code[i];
+        for (int k = 0; k < ir->count; k++) {
+            int from = ir->inputs[k];
+            while (p->code[from].op == FIELD_OUTPUT) {
+                from = p->code[from].inputs[0];
+            }
+            ir->inputs[k] = same[from];
+        }
+        same[i] = i;
+        for (int j = 0; j < i && ir->op != FIELD_OUTPUT; j++) {
+            if (same[j] == j && same_instruction(&p->code[j], ir)) {
+                same[i] = j;
+                break;
+            }
+        }
+    }
+    int output = p->output;
+    while (p->code[output].op == FIELD_OUTPUT) {
+        output = p->code[output].inputs[0];
+    }
+    output = same[output];
+    live[output] = true;
+    for (int i = count - 1; i >= 0; i--) {
+        for (int k = 0; live[i] && k < p->code[i].count; k++) {
+            live[p->code[i].inputs[k]] = true;
+        }
+    }
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (!live[i]) {
+            continue;
+        }
+        field_ir ir = p->code[i];
+        for (int k = 0; k < FIELD_INPUT_MAX; k++) {
+            ir.inputs[k] = k < ir.count ? index[ir.inputs[k]] : 0;
+        }
+        index[i] = kept;
+        p->code[kept++] = ir;
+    }
+    asetlen(p->code, kept);
+    p->output = index[output];
+    free(index);
+    free(same);
+    free(live);
+}
+
 field_program *field_program_compile(const behavior_asset *asset, char *error, size_t size)
 {
     if (size) {
@@ -325,6 +394,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
         field_program_free(p);
         return NULL;
     }
+    prune(p);
     return p;
 }
 

@@ -45,6 +45,7 @@ typedef struct
     field_op op;
     unsigned spatial; /* X=1, Y=2; propagated once during compilation. */
     int inputs[FIELD_INPUT_MAX];
+    int count; /* Inputs in use. */
     int parameter;
     float value;
 } field_ir;

@@ -1,4 +1,5 @@
 #include "editor/studio/studio_internal.h"
+#include "editor/ui/search.h"
 #include "editor/workspace/asset_index.h"
 #include "support/array.h"
 #include "support/text_file.h"
@@ -954,25 +955,75 @@ enum
     COMMAND_COUNT,
 };
 
-/* The Ask row quotes the query with no-break spaces, so the palette shows it
-   unhighlighted; its keywords match the query after a quotation mark, a
-   mid-word jump for command-score, so Ask ranks below direct matches. */
-static void ask_row(const char *query, char *label, size_t label_size, char *keywords, size_t keywords_size)
+/* Rows kept per group while a query filters the palette. */
+#define PALETTE_GROUP_LIMIT 8
+
+typedef struct
 {
-    static const char open[] = "\xe2\x80\x9c", close[] = "\xe2\x80\x9d",
-                      space[] = "\xc2\xa0";
-    size_t used = (size_t)snprintf(label, label_size, "%s", open);
-    for (const char *c = query; *c && used + sizeof space + sizeof close < label_size;
-         c++) {
-        used += (size_t)snprintf(
-            label + used,
-            label_size - used,
-            "%s",
-            *c == ' ' ? space : (char[]){ *c, 0 }
-        );
+    int index; /* into the items */
+    int group; /* numbered by first appearance */
+    int score;
+    int group_score; /* the best score in its group */
+} palette_row;
+
+/* Groups by best match, then by first appearance; rows by score, then by
+   item order (cmdk). */
+static int compare_rows(const void *a, const void *b)
+{
+    const palette_row *x = a, *y = b;
+    if (x->group_score != y->group_score) {
+        return y->group_score - x->group_score;
     }
-    snprintf(label + used, label_size - used, "%s", close);
-    snprintf(keywords, keywords_size, "%s%s", open, query);
+    if (x->group != y->group) {
+        return x->group - y->group;
+    }
+    return x->score != y->score ? y->score - x->score : x->index - y->index;
+}
+
+/* The items to show for the query, in order; the caller owns the array. */
+static int *palette_order(const kit_command_item *items, int count, const char *query)
+{
+    palette_row *rows = NULL;
+    const char **groups = NULL;
+    for (int i = 0; i < count; i++) {
+        int score = editor_search_score(query, items[i].label, items[i].keywords);
+        if (score < 0) {
+            continue;
+        }
+        int group = 0;
+        while (group < acount(groups) && strcmp(groups[group], items[i].group)) {
+            group++;
+        }
+        if (group == acount(groups)) {
+            apush(groups, items[i].group);
+        }
+        apush(rows, ((palette_row){ .index = i, .group = group, .score = score }));
+    }
+    int *best = NULL;
+    asetlen(best, acount(groups));
+    for (int g = 0; g < acount(groups); g++) {
+        best[g] = -1;
+    }
+    for (int r = 0; r < acount(rows); r++) {
+        best[rows[r].group] = rows[r].score > best[rows[r].group]
+                                ? rows[r].score
+                                : best[rows[r].group];
+    }
+    for (int r = 0; r < acount(rows); r++) {
+        rows[r].group_score = best[rows[r].group];
+    }
+    afree(best);
+    qsort(rows, (size_t)acount(rows), sizeof *rows, compare_rows);
+    int *order = NULL;
+    for (int r = 0, run = 0; r < acount(rows); r++) {
+        run = r && rows[r].group == rows[r - 1].group ? run + 1 : 0;
+        if (!query[0] || run < PALETTE_GROUP_LIMIT) {
+            apush(order, rows[r].index);
+        }
+    }
+    afree(groups);
+    afree(rows);
+    return order;
 }
 
 static void palette(studio *s)
@@ -1059,15 +1110,24 @@ static void palette(studio *s)
                                  studio_asset_kind_icon(asset->kind) })
         );
     }
-    /* A query can also go to the editor command model. */
-    int ask = acount(items);
-    char query[256], label[800], keywords[272];
+    /* Studio ranks the rows itself so a query can always go to the command
+       model from the last row. */
+    char query[256];
     snprintf(query, sizeof query, "%s", kit_command_query(s->kit));
-    ask_row(query, label, sizeof label, keywords, sizeof keywords);
+    int *order = palette_order(items, acount(items), query);
+    int ask = acount(items);
     if (query[0]) {
-        apush(items, ((kit_command_item){ label, "Ask", NULL, NULL, keywords, KIT_ICON_TERMINAL }));
+        apush(items, ((kit_command_item){ "Ask", "", NULL, NULL, NULL, KIT_ICON_TERMINAL }));
+        apush(order, ask);
     }
-    int chosen = kit_command(s->kit, items, acount(items));
+    kit_command_item *shown = NULL;
+    for (int i = 0; i < acount(order); i++) {
+        apush(shown, items[order[i]]);
+    }
+    int row = kit_command_ranked(s->kit, shown, acount(shown));
+    int chosen = row >= 0 ? order[row] : -1;
+    afree(shown);
+    afree(order);
     if (chosen >= 0 && chosen < objects) {
         switch (chosen) {
             case COMMAND_SAVE: studio_save(s); break;

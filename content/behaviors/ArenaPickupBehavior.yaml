@@ -1,6 +1,6 @@
 version: 3
 name: ArenaPickupBehavior
-id_counter: 2219
+id_counter: 2223
 description: Small flat outline pickups keep a random initial rotation, ease through the shared beat, fade smoothly at expiry and trace a short spiral into the player.
 owner_type: ecs.entity
 variables:
@@ -231,21 +231,6 @@ graphs:
       Value.target: {}
       Value.origin: {}
       Value.value: {}
-  - id: 232
-    type: Contains
-    inputs:
-      Array:
-        id: 442
-        type: handle
-        type_name: ecs.entity
-        default: []
-      Item:
-        id: 230
-        type: handle
-        type_name: ecs.entity
-        binding: {kind: local, local_id: 1301}
-    outputs:
-    - {id: 231, name: Result}
   - id: 237
     type: Branch
     inputs:
@@ -307,13 +292,6 @@ graphs:
     outputs:
       Value.x: {id: 329}
       Value.y: {}
-  - id: 445
-    type: Find Entities With Component
-    inputs:
-      Component: {id: 443, type_name: name, default: GAME.GameExperience}
-    outputs:
-      Entities:
-        default: []
   - id: 636
     type: Behavior Expression
     reference_id: 622
@@ -451,15 +429,20 @@ graphs:
       scale: {id: 1517}
     outputs:
       Then: {id: 1502}
+  - id: 2219
+    type: Has Component
+    inputs:
+      Component: GAME.GameExperience
+      Entity:
+        binding: {kind: local, local_id: 1301}
   edges:
   - {from: 8.Then, to: 237.Exec}
   - {from: 223.Value.collection_age, to: 929.CollectionAge}
-  - {from: 223.Value.target, to: 232.Item}
   - {from: 223.Value.target, to: 274.Entity}
   - {from: 223.Value.target, to: 285.Target}
   - {from: 223.Value.target, to: 328.Entity}
+  - {from: 223.Value.target, to: 2219.Entity}
   - {from: 223.Value.value, to: 279.B}
-  - {from: 232.Result, to: 237.Condition}
   - {from: 237.True, to: 255.Exec}
   - {from: 237.False, to: 241.Exec}
   - {from: 243.Entity, to: 241.Entity}
@@ -474,7 +457,6 @@ graphs:
   - {from: 328.Value.x, to: 868.TargetX}
   - {from: 328.Value.y, to: 784.TargetY}
   - {from: 328.Value.y, to: 868.TargetY}
-  - {from: 445.Entities, to: 232.Array}
   - {from: 636.Result, to: 660.T}
   - {from: 636.Result, to: 706.T}
   - {from: 636.Result, to: 784.T}
@@ -494,6 +476,7 @@ graphs:
   - {from: 1318.False, to: 1338.Exec}
   - {from: 1338.Then, to: 1497.Exec}
   - {from: 1497.Then, to: 10.Exec}
+  - {from: 2219.Value, to: 237.Condition}
   locals:
   - {id: 1301, name: Target, from: 223.Value.target}
   - {id: 1302, name: Spiral T, from: 636.Result}

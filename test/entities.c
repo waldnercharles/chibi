@@ -284,6 +284,16 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
             0,
             (pin_value){ .type = PIN_HANDLE,
                          .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(child) }
+        );
+        eval_context_reset_runtime(&ctx);
+        assert(graph_eval_output(&g, has, 0, &a, &result, &ctx) == 0 && !result.b);
+        input(
+            &g,
+            has,
+            0,
+            (pin_value){ .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
                          .u64 = ecs_entity_to_u64(owner) }
         );
         eval_context_reset_runtime(&ctx);

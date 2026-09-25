@@ -13,7 +13,7 @@ import yaml
 
 
 def content_directory(project):
-    manifest = json.loads((project / 'project.json').read_text())
+    manifest = yaml.safe_load((project / 'project.yaml').read_text())
     content = (project / manifest['content']).resolve()
     if not content.is_relative_to(project):
         raise ValueError('Project content must be inside the project directory')
@@ -84,7 +84,7 @@ def main():
                         return
                     assets = {str(p.relative_to(project)): p.read_text()
                               for p in content.rglob('*.yaml') if p.resolve().is_relative_to(content)}
-                    assets['project.json'] = (project / 'project.json').read_text()
+                    assets['project.yaml'] = (project / 'project.yaml').read_text()
                     body = json.dumps(assets).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')

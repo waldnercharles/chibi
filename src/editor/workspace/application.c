@@ -175,7 +175,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             scene_path = argv[++i];
         } else if ((strcmp(argv[i], "--project") == 0 || strcmp(argv[i], "--project-root") == 0)) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
-                snprintf(error, error_size, "%s requires a project directory or project.json", argv[i]);
+                snprintf(error, error_size, "%s requires a project directory or project.yaml", argv[i]);
                 return NULL;
             }
             project_path = argv[++i];

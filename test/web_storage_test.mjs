@@ -6,7 +6,7 @@ import { deflateRawSync } from 'node:zlib';
 const storage = readFileSync(new URL('../tools/web_storage.js', import.meta.url), 'utf8');
 const launchSource = readFileSync(new URL('../tools/web_launch.js', import.meta.url), 'utf8');
 const DIRECTORY = 1;
-const manifest = JSON.stringify({ version: 1, name: 'Neon Swarm', content: 'content', start_scene: 'scenes/Sandbox.yaml' });
+const manifest = 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n';
 const text = data => typeof data === 'string' ? data : new TextDecoder().decode(data);
 
 const makeFS = entries => {
@@ -82,11 +82,11 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(bridge.chibiExportProject, undefined);
 }
 
-// Opening a sample the first time copies it into a project of the user's own.
+// Opening a sample the first time copies its folder into a project of the user's own.
 const fs = makeFS({
-  '/projects/arena2d/project.json': manifest,
+  '/projects/arena2d/project.yaml': manifest,
   '/projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
-  '/content/scenes/Arena3D.yaml': 'packaged reference',
+  '/projects/arena3d/content/scenes/Arena3D.yaml': 'packaged reference',
 });
 const first = launch('?project-root=projects/arena2d&scene=scenes/Sandbox.yaml', fs);
 assert.deepEqual([...first.Module.arguments], ['--project-root', '', '--scene', 'scenes/Sandbox.yaml']);
@@ -97,18 +97,18 @@ assert.equal(fs.syncs[0].populate, true);
 fs.syncs.shift().callback(null);
 assert.deepEqual(first.dependencies, []);
 first.Module.onRuntimeInitialized();
-assert.equal(first.Module.arguments[1], '/workspace/neon-swarm/');
-assert.equal(fs.file('/workspace/neon-swarm/project.json'), manifest);
-assert.equal(fs.file('/workspace/neon-swarm/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
-assert.equal(fs.file('/workspace/neon-swarm/content/scenes/Arena3D.yaml'), undefined);
-assert.equal(fs.file('/workspace/.last'), 'neon-swarm');
+assert.equal(first.Module.arguments[1], '/workspace/arena2d/');
+assert.equal(fs.file('/workspace/arena2d/project.yaml'), manifest);
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Arena3D.yaml'), undefined);
+assert.equal(fs.file('/workspace/.last'), 'arena2d');
 first.flush();
 assert.equal(fs.syncs.shift().populate, false);
 assert.equal(first.persisted, 0);
 
 // Saves flush once after a burst, ask to keep storage, and report failures.
-assert.equal(first.Module.chibiSaveAsset('/workspace/neon-swarm/content/scenes/Sandbox.yaml', 'a'), 0);
-assert.equal(first.Module.chibiSaveAsset('/workspace/neon-swarm/content/scenes/Sandbox.yaml', 'b'), 0);
+assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.yaml', 'a'), 0);
+assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.yaml', 'b'), 0);
 assert.equal(first.persisted, 1);
 assert.equal(first.timers.length, 1);
 first.flush();
@@ -118,20 +118,20 @@ await settle();
 assert.deepEqual(first.errors, ['Browser storage failed: quota exceeded']);
 
 // A later visit reopens the last project with its edits.
-fs.writeFile('/workspace/neon-swarm/content/scenes/Sandbox.yaml', 'name: Edited\n');
+fs.writeFile('/workspace/arena2d/content/scenes/Sandbox.yaml', 'name: Edited\n');
 const second = launch('', fs);
 second.start();
-assert.equal(second.Module.arguments[1], '/workspace/neon-swarm/');
-assert.equal(fs.file('/workspace/neon-swarm/content/scenes/Sandbox.yaml'), 'name: Edited\n');
+assert.equal(second.Module.arguments[1], '/workspace/arena2d/');
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Edited\n');
 assert.equal(second.timers.length, 0);
 
 // Export downloads the project as a zip; importing it creates a separate project and opens it.
 second.Module.chibiExportProject();
 const download = second.links[0];
-assert.equal(download.download, 'neon-swarm.zip');
+assert.equal(download.download, 'arena2d.zip');
 const exported = await download.href.arrayBuffer();
 const archive = new TextDecoder('latin1').decode(exported);
-assert.ok(archive.includes('neon-swarm/content/scenes/Sandbox.yaml'));
+assert.ok(archive.includes('arena2d/content/scenes/Sandbox.yaml'));
 assert.ok(archive.includes('name: Edited\n'));
 const importFile = async (page, bytes, name) => {
   page.Module.chibiImportProject();
@@ -142,11 +142,11 @@ const importFile = async (page, bytes, name) => {
   fs.syncs.splice(0).forEach(sync => sync.callback(null));
   await done;
 };
-await importFile(second, exported, 'neon-swarm.zip');
-assert.equal(second.location.search, '?project=neon-swarm-2');
-assert.equal(fs.file('/workspace/neon-swarm-2/content/scenes/Sandbox.yaml'), 'name: Edited\n');
-assert.equal(fs.file('/workspace/neon-swarm/content/scenes/Sandbox.yaml'), 'name: Edited\n');
-assert.equal(fs.file('/workspace/.last'), 'neon-swarm-2');
+await importFile(second, exported, 'arena2d.zip');
+assert.equal(second.location.search, '?project=arena2d-2');
+assert.equal(fs.file('/workspace/arena2d-2/content/scenes/Sandbox.yaml'), 'name: Edited\n');
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Edited\n');
+assert.equal(fs.file('/workspace/.last'), 'arena2d-2');
 assert.equal(second.persisted, 1);
 
 // Archives from other tools use deflate and may carry a top folder and platform extras.
@@ -171,23 +171,23 @@ const deflated = entries => {
   const bytes = Buffer.concat([...parts, ...directory, end]);
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length);
 };
-const third = launch('?project=neon-swarm', fs);
+const third = launch('?project=arena2d', fs);
 third.start();
 await importFile(third, deflated([
-  ['My Game/project.json', JSON.stringify({ version: 1, name: 'My Game', content: 'content' })],
+  ['My Game/project.yaml', 'version: 1\nname: My Game\n'],
   ['My Game/content/scenes/Level.yaml', 'name: Level\n'],
-  ['My Game/notes.txt', 'outside the content folder'],
-  ['__MACOSX/My Game/._project.json', 'resource fork'],
+  ['My Game/notes.txt', 'part of the project folder'],
+  ['__MACOSX/My Game/._project.yaml', 'resource fork'],
 ]), 'My Game.zip');
 assert.equal(third.location.search, '?project=my-game');
 assert.equal(fs.file('/workspace/my-game/content/scenes/Level.yaml'), 'name: Level\n');
-assert.equal(fs.file('/workspace/my-game/notes.txt'), undefined);
+assert.equal(fs.file('/workspace/my-game/notes.txt'), 'part of the project folder');
 assert.equal([...fs.nodes.keys()].some(path => path.includes('MACOSX')), false);
 
 // Archives that are not projects leave storage untouched.
 const before = fs.nodes.size;
 await importFile(third, deflated([['readme.txt', 'hello']]), 'readme.zip');
-assert.deepEqual(third.errors, ['Could not import project: The archive has no project.json']);
+assert.deepEqual(third.errors, ['Could not import project: The archive has no project.yaml']);
 assert.equal(fs.nodes.size, before);
 
 // Once Chibi stops, the shell offers export of the open project and a new project.
@@ -202,12 +202,12 @@ missing.Module.recovery[0][1]();
 assert.equal(missing.location.search, '?new=&project-root=projects%2Farena2d');
 const fresh = launch('?new=&project-root=projects/arena2d', fs);
 fresh.start();
-assert.equal(fresh.Module.arguments[1], '/workspace/neon-swarm-3/');
-assert.equal(fresh.location.search, '?project=neon-swarm-3');
-assert.equal(fs.file('/workspace/neon-swarm-3/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
+assert.equal(fresh.Module.arguments[1], '/workspace/arena2d-3/');
+assert.equal(fresh.location.search, '?project=arena2d-3');
+assert.equal(fs.file('/workspace/arena2d-3/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
 
-// The root sample copies under its own name.
-const root = makeFS({ '/project.json': JSON.stringify({ version: 1, name: 'Arena3D', content: 'content' }), '/content/scenes/Arena3D.yaml': 'name: Root\n' });
+// Without a project-root, the Arena3D sample opens.
+const root = makeFS({ '/projects/arena3d/project.yaml': 'version: 1\nname: Arena3D\n', '/projects/arena3d/content/scenes/Arena3D.yaml': 'name: Root\n' });
 const packaged = launch('', root);
 packaged.start();
 assert.equal(packaged.Module.arguments[1], '/workspace/arena3d/');

@@ -613,7 +613,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(chibi PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/project.yaml"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
@@ -628,8 +628,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "-lidbfs.js"
         "-sEXPORTED_RUNTIME_METHODS=['FS']"
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
+        # Each sample is a self-contained project folder.
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.yaml@projects/arena3d/project.yaml"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@projects/arena3d/content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"

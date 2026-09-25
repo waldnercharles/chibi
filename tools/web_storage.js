@@ -1,4 +1,5 @@
 // Without the local server bridge, projects persist in IndexedDB, one folder each under /workspace.
+// A project is its folder: project.yaml plus everything beside it.
 if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     const launch = new URLSearchParams(window.location.search);
     const workspace = '/workspace';
@@ -23,14 +24,14 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     };
     const exists = path => fs().analyzePath(path).exists;
     const slug = name => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const found = id => /^[a-z0-9-]+$/.test(id) && exists(`${workspace}/${id}/project.json`);
+    const manifest = 'project.yaml';
+    const found = id => /^[a-z0-9-]+$/.test(id) && exists(`${workspace}/${id}/${manifest}`);
     const unique = name => {
         const base = slug(name) || 'project';
         let id = base;
         for (let n = 2; exists(`${workspace}/${id}`); n++) id = `${base}-${n}`;
         return id;
     };
-    const readManifest = root => JSON.parse(fs().readFile(root + 'project.json', {encoding: 'utf8'}));
     const walk = (path, visit, name = '') => {
         if (!fs().isDir(fs().stat(path).mode)) {
             visit(name, fs().readFile(path));
@@ -44,14 +45,11 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         fs().mkdirTree(path.slice(0, path.lastIndexOf('/')));
         fs().writeFile(path, data);
     };
-    const projectFiles = (root, visit) => {
-        visit('project.json', fs().readFile(root + 'project.json'));
-        const content = readManifest(root).content;
-        walk(root + content, (name, data) => visit(`${content}/${name}`, data));
-    };
-    const bundled = `/${launch.get('project-root') || ''}/`.replace(/\/+/g, '/');
+    // Samples are bundled as project folders under /projects.
+    const bundled = `/${launch.get('project-root') || 'projects/arena3d'}`.replace(/\/+/g, '/').replace(/\/$/, '');
+    const sample = bundled.slice(bundled.lastIndexOf('/') + 1);
     const copySample = id => {
-        projectFiles(bundled, (name, data) => write(`${workspace}/${id}/${name}`, data));
+        walk(bundled, (name, data) => write(`${workspace}/${id}/${name}`, data));
         persist();
         return id;
     };
@@ -63,13 +61,13 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         if (requested !== null && !found(requested)) throw new Error(`Project not found: ${requested}`);
         if (requested) return requested;
         if (launch.has('new')) {
-            const id = copySample(unique(readManifest(bundled).name));
+            const id = copySample(unique(sample));
             history.replaceState(null, '', `?project=${id}`);
             return id;
         }
         const previous = lastOpened();
         if (!launch.has('project-root') && found(previous)) return previous;
-        const id = slug(readManifest(bundled).name) || 'project';
+        const id = slug(sample) || 'project';
         return found(id) ? id : copySample(id);
     };
 
@@ -133,23 +131,19 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         }
         return files;
     };
-    // A project archive holds project.json and its content folder, possibly inside one top folder.
+    // The shallowest project.yaml marks the project folder, at the archive root or in one
+    // top folder; the project takes that folder's name, or the archive's.
     const importFiles = (archive, file) => {
         const manifestName = archive.map(([name]) => name)
-            .filter(name => name === 'project.json' || name.endsWith('/project.json'))
+            .filter(name => name === manifest || name.endsWith('/' + manifest))
             .sort((a, b) => a.split('/').length - b.split('/').length)[0];
-        if (!manifestName) throw new Error('The archive has no project.json');
-        const prefix = manifestName.slice(0, -'project.json'.length);
-        const manifest = JSON.parse(new TextDecoder().decode(archive.find(([name]) => name === manifestName)[1]));
-        const content = manifest.content;
-        if (typeof content !== 'string' || !content || content.startsWith('/') || content.split('/').includes('..')) {
-            throw new Error('The project content folder must be inside the project');
-        }
-        const id = unique(manifest.name || file.replace(/\.zip$/i, ''));
+        if (!manifestName) throw new Error(`The archive has no ${manifest}`);
+        const prefix = manifestName.slice(0, -manifest.length);
+        const id = unique(prefix.split('/').at(-2) || file.replace(/\.zip$/i, ''));
         for (const [name, data] of archive) {
             const path = name.slice(prefix.length);
-            const inProject = path === 'project.json' || path.startsWith(content + '/');
-            if (name.startsWith(prefix) && inProject && !path.split('/').includes('..')) write(`${workspace}/${id}/${path}`, data);
+            const inside = name.startsWith(prefix) && !name.startsWith('__MACOSX/') && !path.split('/').includes('..');
+            if (inside) write(`${workspace}/${id}/${path}`, data);
         }
         return id;
     };
@@ -161,7 +155,7 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     };
     const exportProject = () => {
         const files = [];
-        projectFiles(`${workspace}/${project}/`, (name, data) => files.push([`${project}/${name}`, data]));
+        walk(`${workspace}/${project}`, (name, data) => files.push([`${project}/${name}`, data]));
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zip(files));
         link.download = `${project}.zip`;

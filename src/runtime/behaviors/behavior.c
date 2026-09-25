@@ -276,20 +276,47 @@ static behavior_asset_record *find_asset(game_behavior_world *world, const char 
     return NULL;
 }
 
+static void add_log(game_behavior_world *world, game_behavior_log_info entry)
+{
+    if (acount(world->logs) == GAME_BEHAVIOR_LOG_MAX) {
+        adel(world->logs, 0);
+    }
+    apush(world->logs, entry);
+}
+
+/* A failed run stops its event where it failed; the log says where and why,
+   as Unreal's message log reports a runtime error. */
+static void log_failure(
+    game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name,
+    const flow_error *error
+)
+{
+    game_behavior_log_info entry = { .entity = entity,
+                                     .asset_name = asset_name,
+                                     .origin = error ? error->node : NULL,
+                                     .failure = true };
+    snprintf(
+        entry.message,
+        sizeof entry.message,
+        "%s",
+        error && error->message ? error->message : "run failed"
+    );
+    add_log(world, entry);
+}
+
 static void behavior_sink(const node *origin, const char *message, void *user)
 {
     behavior_sink_context *context = (behavior_sink_context *)user;
     game_behavior_world *world = context->world;
-    if (acount(world->logs) == GAME_BEHAVIOR_LOG_MAX) {
-        adel(world->logs, 0);
-    }
     game_behavior_log_info entry = {
         .entity = context->entity,
         .asset_name = context->asset_name,
         .origin = origin,
     };
     snprintf(entry.message, sizeof entry.message, "%s", message ? message : "");
-    apush(world->logs, entry);
+    add_log(world, entry);
     if (world->sink) {
         world->sink(origin, message, world->sink_user);
     }
@@ -656,6 +683,7 @@ static int begin_instance(game_behavior_world *world, behavior_attachment *attac
     if (!failed) {
         return 0;
     }
+    log_failure(world, attachment->entity, attachment->asset->name, begin ? flow_run_error(begin) : &error);
     for (int i = 0; i < acount(world->attachments); i++) {
         if (world->attachments[i].sequence == sequence) {
             world->attachments[i].begin_state = -1;
@@ -1244,6 +1272,9 @@ static int dispatch_attachment(
             *error = local;
         }
         return local.code;
+    }
+    if (flow_run_status(run) == FLOW_FAILED) {
+        log_failure(world, attachment->entity, attachment->asset->name, flow_run_error(run));
     }
     if (!debug_hold && (flow_run_status(run) == FLOW_COMPLETED ||
                         flow_run_status(run) == FLOW_FAILED)) {

@@ -57,6 +57,7 @@ typedef struct
     ecs_entity entity;
     const char *asset_name;
     const node *origin;
+    bool failure; /* a run that stopped on this node's error */
     char message[GAME_BEHAVIOR_LOG_MESSAGE_MAX];
 } game_behavior_log_info;
 

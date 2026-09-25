@@ -3886,6 +3886,30 @@ static int register_preview_assets(
     return 0;
 }
 
+/* What every scenario shares, as the game loads it: libraries and events,
+   then shader libraries and the materials and shapes behaviors write to. */
+static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
+{
+    static const char *const FAMILIES[] = { "library",
+                                            "event",
+                                            "shader-library",
+                                            "material",
+                                            "shape" };
+    int status = CHIBI_AUTOMATION_OK;
+    for (int f = 0; f < (int)(sizeof FAMILIES / sizeof *FAMILIES) &&
+                    status == CHIBI_AUTOMATION_OK;
+         f++) {
+        behavior_asset **assets = NULL;
+        status = load_behavior_family_assets(root, family_by_kind(FAMILIES[f]), &assets, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK &&
+            register_preview_assets(preview, assets, error, error_size) != 0) {
+            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        free_behavior_assets(assets);
+    }
+    return status;
+}
+
 static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "timing");
@@ -4383,22 +4407,7 @@ static int prepare_scenario(
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
 
-    behavior_asset **libraries = NULL;
-    behavior_asset **events = NULL;
-    int result = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
-    if (result == CHIBI_AUTOMATION_OK) {
-        result = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
-    }
-    if (result == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, libraries, error, error_size) != 0) {
-        result = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (result == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, events, error, error_size) != 0) {
-        result = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    free_behavior_assets(libraries);
-    free_behavior_assets(events);
+    int result = register_shared_assets(root, context->preview, error, error_size);
     if (result != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return result;
@@ -4490,22 +4499,7 @@ static int prepare_scene_scenario(
         set_error(error, error_size, "could not create scene preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    behavior_asset **libraries = NULL;
-    behavior_asset **events = NULL;
-    status = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
-    }
-    if (status == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, libraries, error, error_size) != 0) {
-        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (status == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, events, error, error_size) != 0) {
-        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    free_behavior_assets(libraries);
-    free_behavior_assets(events);
+    status = register_shared_assets(root, context->preview, error, error_size);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;
@@ -4592,6 +4586,8 @@ static int prepare_scene_scenario(
     return status;
 }
 
+static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context);
+
 static int handle_scene_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *name = request_string(request, "name");
@@ -4656,8 +4652,61 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
     );
     add_scenario_timing(result->doc, value, frames, fixed_dt);
     add_saved_state(result->doc, value, &context);
+    add_behavior_failures(result->doc, value, &context);
     scenario_context_free(&context);
     return 0;
+}
+
+/* Runs that stopped on an error, grouped by node and message, so a scenario
+   that looks fine but aborts a Tick every frame says so. */
+static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
+{
+    enum
+    {
+        FAILURES_MAX = 16
+    };
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
+    yyjson_mut_val *failures = yyjson_mut_obj_add_arr(doc, value, "behavior_failures");
+    game_behavior_log_info seen[FAILURES_MAX];
+    int counts[FAILURES_MAX] = { 0 }, kinds = 0;
+    for (int i = 0; i < game_behavior_log_count(behaviors); i++) {
+        game_behavior_log_info info = { 0 };
+        if (game_behavior_log_info_at(behaviors, i, &info) != 0 || !info.failure) {
+            continue;
+        }
+        int k = 0;
+        while (k < kinds && (seen[k].origin != info.origin ||
+                             strcmp(seen[k].message, info.message))) {
+            k++;
+        }
+        if (k == FAILURES_MAX) {
+            continue;
+        }
+        if (k == kinds) {
+            seen[kinds++] = info;
+        }
+        counts[k]++;
+    }
+    for (int k = 0; k < kinds; k++) {
+        yyjson_mut_val *failure = yyjson_mut_arr_add_obj(doc, failures);
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            failure,
+            "behavior",
+            seen[k].asset_name ? seen[k].asset_name : ""
+        );
+        if (seen[k].origin) {
+            yyjson_mut_obj_add_uint(doc, failure, "node", seen[k].origin->id);
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                failure,
+                "node_type",
+                seen[k].origin->desc->name
+            );
+        }
+        yyjson_mut_obj_add_strcpy(doc, failure, "message", seen[k].message);
+        yyjson_mut_obj_add_int(doc, failure, "count", counts[k]);
+    }
 }
 
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -6471,6 +6520,9 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
         yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
+        if (info.failure) {
+            yyjson_mut_obj_add_bool(result->doc, log, "failure", true);
+        }
         emitted_logs++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
@@ -6639,6 +6691,9 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
         yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
+        if (info.failure) {
+            yyjson_mut_obj_add_bool(result->doc, log, "failure", true);
+        }
         if (info.origin) {
             yyjson_mut_val *origin = yyjson_mut_obj_add_obj(result->doc, log, "origin");
             yyjson_mut_obj_add_uint(result->doc, origin, "id", info.origin->id);

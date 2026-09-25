@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/model/type.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/runtime/value_array.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -920,6 +921,97 @@ static node *sole_spellable_consumer(const graph *g, const node *n)
     return uses == 1 && consumer && spellable(consumer) ? consumer : NULL;
 }
 
+static bool same_read(const pin_binding *a, const pin_binding *b)
+{
+    return a->kind == b->kind && a->variable_id == b->variable_id &&
+           a->local_id == b->local_id && a->event_node_id == b->event_node_id &&
+           a->event_pin_id == b->event_pin_id &&
+           same_text(a->source_asset, b->source_asset) &&
+           same_text(a->component_key, b->component_key) &&
+           same_text(a->field_name, b->field_name);
+}
+
+/* Whether two inputs are fed alike: the same wire, read or value. */
+static bool same_feed(const graph *g, const node *a, int pa, const node *b, int pb)
+{
+    node *from_a = NULL, *from_b = NULL;
+    int pin_a = -1, pin_b = -1;
+    bool wired_a = graph_input_source(g, a, pa, &from_a, &pin_a),
+         wired_b = graph_input_source(g, b, pb, &from_b, &pin_b);
+    const pin_binding *read_a = a->input_pins[pa].binding,
+                      *read_b = b->input_pins[pb].binding;
+    if (wired_a || wired_b) {
+        return wired_a && wired_b && from_a == from_b && pin_a == pin_b &&
+               graph_input_conversion(g, a, pa) == graph_input_conversion(g, b, pb);
+    }
+    if (read_a || read_b) {
+        return read_a && read_b && same_read(read_a, read_b);
+    }
+    return pin_value_equal(&a->input_pins[pa].default_value, &b->input_pins[pb].default_value);
+}
+
+/* A value expression whose source and inputs repeat an earlier one computes
+   the same value: its readers take the earlier result and it goes. */
+static bool repeats(const behavior_asset *asset, const graph *g, const node *first, const node *later)
+{
+    const char *source = behavior_expression_source(asset, first);
+    const graph *body = behavior_asset_find_graph(asset, first->reference_id);
+    if (later == first || later->desc != &NODE_BehaviorExpression || !source ||
+        body->expression_mode != GRAPH_EXPRESSION_VALUE ||
+        !same_text(source, behavior_expression_source(asset, later)) ||
+        first->input_count != later->input_count ||
+        first->output_count != later->output_count) {
+        return false;
+    }
+    for (int p = 0; p < later->output_count; p++) {
+        if (graph_output_local(g, later, p)) {
+            return false;
+        }
+    }
+    for (int p = 0; p < first->input_count; p++) {
+        if (first->input_pins[p].kind != PIN_DATA ||
+            !same_feed(g, first, p, later, p)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int merge_repeated_expressions(behavior_asset *asset, graph *g)
+{
+    int merged = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        node *first = g->nodes[i];
+        for (int j = i + 1;
+             first->desc == &NODE_BehaviorExpression && j < acount(g->nodes);
+             j++) {
+            node *later = g->nodes[j];
+            if (!repeats(asset, g, first, later)) {
+                continue;
+            }
+            for (int e = acount(g->edges) - 1; e >= 0; e--) {
+                const edge ed = g->edges[e];
+                int from_pin = -1, to_pin = -1;
+                node *to = graph_node_by_id(g, ed.to_id);
+                if (ed.kind != GRAPH_EDGE_DATA || ed.from_id != later->id ||
+                    !graph_pin_by_id(later, ed.from_pin_id, NULL, &from_pin) ||
+                    !graph_pin_by_id(to, ed.to_pin_id, NULL, &to_pin)) {
+                    continue;
+                }
+                int rc = graph_connect_data_conversion(g, first, from_pin, to, to_pin, ed.conversion);
+                assert(rc == 0);
+                (void)rc;
+            }
+            int rc = graph_remove_node(g, later);
+            assert(rc == 0);
+            (void)rc;
+            merged++;
+            j--;
+        }
+    }
+    return merged;
+}
+
 /* About a line of formula: long enough to read as one idea. */
 #define COLLAPSE_OPERATIONS_MAX 12
 
@@ -968,5 +1060,6 @@ int behavior_expression_collapse_math(behavior_asset *asset, graph *g, int min_n
             afree(tree);
         }
     }
+    merge_repeated_expressions(asset, g);
     return created;
 }

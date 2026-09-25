@@ -1687,6 +1687,47 @@ static void shader_math_collapse()
     behavior_asset_free(asset);
 }
 
+/* Two formulas with one source over the same inputs become one expression
+   that feeds both readers. */
+static void shader_repeated_formula_merge()
+{
+    behavior_asset *asset = behavior_asset_new("Repeated formula");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    for (int copy = 0; copy < 2; copy++) {
+        node *x = add_named(g, "Shader X"),
+             *scale = add_named(g, "Shader Multiply"),
+             *offset = add_named(g, "Shader Add"),
+             *wave = add_named(g, "Shader Sin");
+        assert(graph_connect_data(g, uv, 0, x, 0) == 0);
+        assert(graph_connect_data(g, x, 0, scale, 0) == 0);
+        assert(
+            graph_set_pin_default(g, scale, 0, 1, &(pin_value){ .type = PIN_F32, .f = 2 }) == 0
+        );
+        assert(graph_connect_data(g, scale, 0, offset, 0) == 0);
+        assert(
+            graph_set_pin_default(g, offset, 0, 1, &(pin_value){ .type = PIN_F32, .f = 1 }) == 0
+        );
+        assert(graph_connect_data(g, offset, 0, wave, 0) == 0);
+        assert(graph_connect_data(g, wave, 0, out, 2 + copy) == 0);
+    }
+    behavior_expression_error error;
+    assert(behavior_expression_collapse_math(asset, g, 3, &error) == 2);
+    int expressions = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        expressions += behavior_expression_source(asset, g->nodes[i]) != NULL;
+    }
+    node *first = NULL, *second = NULL;
+    int pin = -1;
+    assert(
+        expressions == 1 && graph_input_source(g, out, 2, &first, &pin) &&
+        graph_input_source(g, out, 3, &second, &pin) && first == second
+    );
+    behavior_asset_free(asset);
+}
+
 /* A component read feeding several operations reads in place in each one,
    and the node goes away once nothing else reads it; a * -1 reads as -a. */
 static void shader_shared_component_collapse()
@@ -1777,6 +1818,7 @@ void test_math_expression()
     shader_selection_conversion();
     shader_math_collapse();
     shader_shared_component_collapse();
+    shader_repeated_formula_merge();
     shader_rounding_expression();
     field_domain_expression();
     test_system_expression();

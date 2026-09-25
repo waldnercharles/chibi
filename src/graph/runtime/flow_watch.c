@@ -78,12 +78,19 @@ static const flow_watch *watch_find(const flow_run *run, const node *n, int outp
     }
     uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
     int index = run->watch_index[watch_slot(run, n->id, pin_id, output)];
-    if (index) {
-        return &run->watches[index - 1];
+    return index ? &run->watches[index - 1] : NULL;
+}
+
+/* Lowering can move a pin to a node of its own, keeping the pin's ID: a
+   multi-field Set's outputs belong to its last setter. Pin IDs are unique
+   within a graph, so a read finds the watch by the pin alone. */
+static const flow_watch *watch_read(const flow_run *run, const node *n, int output, int pin)
+{
+    const flow_watch *found = watch_find(run, n, output, pin);
+    if (found || !n || pin < 0 || pin >= (output ? n->output_count : n->input_count)) {
+        return found;
     }
-    /* Lowering can move a pin to a node of its own, keeping the pin's ID: a
-       multi-field Set's outputs belong to its last setter. Pin IDs are unique
-       within a graph, so the pin alone finds its watch. */
+    uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
     for (int i = 0; i < acount(run->watches); i++) {
         const flow_watch *watch = &run->watches[i];
         if (watch->pin_id == pin_id && watch->output == output) {
@@ -274,7 +281,7 @@ static int flow_run_watch_get(const flow_run *run, const node *n, int output, in
     if (!run || !n || !out || pin < 0) {
         return -1;
     }
-    const flow_watch *w = watch_find(run, n, output, pin);
+    const flow_watch *w = watch_read(run, n, output, pin);
     if (!w && (run->compiled || run->compiled_owner)) {
         const flow_run *owner = flow_compiled_watch_owner(run, n, output, pin);
         if (owner) {
@@ -315,7 +322,7 @@ int flow_run_watch_copy_output(
     if (!run || !n || !out || pin < 0) {
         return -1;
     }
-    const flow_watch *w = watch_find(run, n, 1, pin);
+    const flow_watch *w = watch_read(run, n, 1, pin);
     if (!w && (run->compiled || run->compiled_owner)) {
         const flow_run *owner = flow_compiled_watch_owner(run, n, true, pin);
         if (owner) {
@@ -350,6 +357,6 @@ const pin_value *flow_watch_input_value(const flow_run *run, const node *n, int 
 
 const pin_value *flow_watch_value(const flow_run *run, const node *n, int output, int pin)
 {
-    const flow_watch *watch = watch_find(run, n, output, pin);
+    const flow_watch *watch = watch_read(run, n, output, pin);
     return watch ? &watch->value : NULL;
 }

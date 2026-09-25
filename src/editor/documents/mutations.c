@@ -230,9 +230,10 @@ void ed_delete_selected(editor *e)
     if (acount(e->selected) == 0 && acount(e->selected_links) == 0) {
         return;
     }
-    uint64_t *selected_ids = NULL;
+    /* Before any removal, which can fold a shared source into a survivor. */
+    uint64_t *ids = NULL;
     for (int i = 0; i < acount(e->selected); i++) {
-        apush(selected_ids, e->selected[i]->id);
+        graph_inline_tree(e->active_graph, e->selected[i], &ids);
     }
     ed_snapshot_before(e);
     for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
@@ -252,16 +253,16 @@ void ed_delete_selected(editor *e)
         }
     }
 
-    for (int i = acount(selected_ids) - 1; i >= 0; i--) {
-        node *target = graph_node_by_id(e->active_graph, selected_ids[i]);
+    for (int i = acount(ids) - 1; i >= 0; i--) {
+        node *target = graph_node_by_id(e->active_graph, ids[i]);
         if (target) {
-            int removed = graph_remove_node_tree(e->active_graph, target);
+            int removed = graph_remove_node(e->active_graph, target);
             assert(removed == 0);
             (void)removed;
         }
     }
     ed_reset_node_interaction(e);
-    afree(selected_ids);
+    afree(ids);
 }
 
 void ed_copy_selected(editor *e)

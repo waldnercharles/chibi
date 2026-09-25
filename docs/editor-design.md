@@ -11,7 +11,7 @@ RmlUi is the chosen UI foundation. LichtFeld Studio and
 [Blender](references/blender/README.md) are references for compact desktop
 controls, consistent styling and a prominent viewport. Application
 models, authoring commands and Undo/Redo remain in C. RML owns structure and RCSS
-owns presentation; a C++ adapter contains the RmlUi API and renderer integration.
+owns presentation; a pass-through C binding (`src/editor/rmlui/rml.h`) contains the RmlUi API, and the renderer integration and kit are C.
 This supersedes the earlier decision to retain ImGui for all editor UI.
 
 The first conversion replaces File, Edit and View, including their keyboard
@@ -1462,15 +1462,18 @@ to every component. Shader lowering uses the same broadcast behavior. Inline
 scalar constants remain editable on the node.
 
 Pure sources are drawn inside their consumer's input by default. A node folds
-when it is pure and enabled; is not a function call, reroute, or local source;
-has no setting pins besides a component node's chosen Component; has exactly
-one outgoing wire, a data wire into a non-setting input; and each input is
-wired from a folded node or holds a value (a literal, binding, local, or
-implied Self). `graph_node_is_inline` decides this for the canvas,
-arrangement, extraction, copying, and saving. Trees of up to three nodes fold
-into one chip written in Behavior Expression grammar with the typographic
-operators node titles use, such as `elapsed ≥ Self.GameWeapon.cooldown`. Nodes
-with breakpoints or watches, and generated expression graphs, keep their boxes.
+when it is pure and enabled; is not a flow node such as a pure function's
+Function Entry, a function call, reroute, or local source; has no setting pins
+besides a component node's chosen Component; has exactly one outgoing wire, a
+data wire into a non-setting input; and each input is wired from a folded node
+or holds a value (a literal, binding, local, or implied Self).
+`graph_node_is_inline` decides this for the canvas, arrangement, extraction,
+copying, and saving. Trees of up to three nodes fold into one chip written in
+Behavior Expression grammar with the typographic operators node titles use,
+such as `elapsed ≥ Self.GameWeapon.cooldown`. Literal nodes read as their
+value, named sources such as shader parameters as their name, and other nodes
+as calls, such as `multiply(time, Glow)`. Nodes with breakpoints or watches, and
+generated expression graphs, keep their boxes.
 Folded nodes remain ordinary nodes and wires, so evaluation, compilation, and
 debugging are unchanged. They have no box, wires, or saved position, and
 arrangement skips them.

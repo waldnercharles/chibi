@@ -96,7 +96,7 @@ void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy);
 bool sg_far(const studio *s);
 void sg_camera_step(studio *s);
 void sg_frame_nodes(studio *s, bool selection, bool animate);
-bool sg_follow_graph(studio *s);
+void sg_follow_graph(studio *s);
 void sg_update_routes(studio *s);
 void sg_arrange(studio *s, bool automatic_only);
 
@@ -122,6 +122,7 @@ void sg_collapse_math(studio *s);
 void sg_replay(studio *s);
 void sg_pointer(studio *s);
 void sg_shortcuts(studio *s);
+void sg_cancel_gesture(studio *s);
 
 /* Rendering (studio_graph_draw.c). */
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p);

@@ -1319,8 +1319,10 @@ static void editor_delete_expression()
     assert(second);
     uint64_t second_id = second->id;
     node *value = literal(asset->graph, 4);
+    uint64_t value_id = value->id;
     node *sink = graph_add_node(asset->graph, registry_node_by_name("Abs"));
     assert(graph_connect_data(asset->graph, value, 0, call, 0) == 0);
+    assert(graph_node_is_inline(asset->graph, value));
     assert(graph_connect_data(asset->graph, call, 0, sink, 0) == 0);
     char *before = behavior_asset_save_json(asset);
     editor *e = editor_new(asset);
@@ -1331,6 +1333,7 @@ static void editor_delete_expression()
     assert(editor_graph_history_count(e) == 0);
     assert(!behavior_asset_find_graph(current, graph_id));
     assert(!graph_node_by_id(current->graph, call_id));
+    assert(!graph_node_by_id(current->graph, value_id));
     assert(!graph_node_by_id(behavior_asset_find_graph(current, other_id), second_id));
     assert(acount(current->graph->edges) == 0);
     editor_undo(e);

@@ -155,7 +155,7 @@ int editor_delete_graph(editor *e, uint64_t graph_id)
                 if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction ||
                      n->desc == &NODE_BehaviorExpression) &&
                     !n->reference_asset && n->reference_id == graph_id) {
-                    int removed = graph_remove_node(g, n);
+                    int removed = graph_remove_node_tree(g, n);
                     assert(removed == 0);
                     (void)removed;
                     j = acount(g->nodes);

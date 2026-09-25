@@ -11,6 +11,7 @@ typedef struct
     int native_presses;
     bool focus_native;
     bool native_focused;
+    ImVec2 native_center;
     editor_ui_rect toolbar_host;
     bool toolbar_host_visible;
 } rmlui_menu_fixture;
@@ -57,6 +58,9 @@ static void menu_frame()
     if (ImGui_Button("Native button")) {
         active_fixture->native_presses++;
     }
+    ImVec2 min = ImGui_GetItemRectMin(), max = ImGui_GetItemRectMax();
+    active_fixture->native_center = (ImVec2){ (min.x + max.x) / 2,
+                                              (min.y + max.y) / 2 };
     active_fixture->native_focused = ImGui_IsItemFocused();
     ImGui_End();
     ImGui_Render();
@@ -652,6 +656,39 @@ bool test_rmlui_menu()
                          first_escape_keeps_bar_focus && keyboard_released &&
                          native_focus_retained && native_released && f10_open &&
                          keyboard_command && disabled_skip;
+
+        /* Alt enters the bar only when tapped alone; a click or a held widget
+           while it is down keeps the input it was for. */
+        bool mac_behaviors = io->ConfigMacOSXBehaviors;
+        io->ConfigMacOSXBehaviors = false;
+        menu_key(ImGuiKey_LeftAlt);
+        bool alt_tap = editor_ui_captures_keyboard();
+        dismiss_menu();
+        ImGuiIO_AddKeyEvent(io, ImGuiKey_LeftAlt, true);
+        menu_frame();
+        click_at((ImVec2){ 700, 600 });
+        ImGuiIO_AddKeyEvent(io, ImGuiKey_LeftAlt, false);
+        menu_frame();
+        bool alt_click = !editor_ui_captures_keyboard();
+        ImGuiIO_AddMousePosEvent(
+            io,
+            fixture.native_center.x,
+            fixture.native_center.y
+        );
+        menu_frame();
+        ImGuiIO_AddMouseButtonEvent(io, 0, true);
+        menu_frame();
+        ImGuiIO_AddKeyEvent(io, ImGuiKey_LeftAlt, true);
+        menu_frame();
+        bool alt_keeps_active = ImGui_IsAnyItemActive();
+        ImGuiIO_AddMouseButtonEvent(io, 0, false);
+        menu_frame();
+        ImGuiIO_AddKeyEvent(io, ImGuiKey_LeftAlt, false);
+        menu_frame();
+        bool alt_drag = alt_keeps_active && !editor_ui_captures_keyboard();
+        io->ConfigMacOSXBehaviors = mac_behaviors;
+        dismiss_menu();
+        input_routing &= alt_tap && alt_click && alt_drag;
 
         toolbar_action_ok = toolbar_actions(&fixture, toolbar_rects_1x);
         toolbar_layout_1x = toolbar_layout(toolbar_rects_1x);

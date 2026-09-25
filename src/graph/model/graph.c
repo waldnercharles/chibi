@@ -595,14 +595,14 @@ int graph_remove_node(graph *g, node *n)
     return 0;
 }
 
-static void inline_tree_ids(const graph *g, const node *n, uint64_t **ids)
+void graph_inline_tree(const graph *g, const node *n, uint64_t **ids)
 {
     apush(*ids, n->id);
     for (int pin = 0; pin < n->input_count; pin++) {
         node *source = NULL;
         int source_pin = -1;
         if (graph_inline_source(g, n, pin, &source, &source_pin)) {
-            inline_tree_ids(g, source, ids);
+            graph_inline_tree(g, source, ids);
         }
     }
 }
@@ -613,7 +613,7 @@ int graph_remove_node_tree(graph *g, node *n)
         return -1;
     }
     uint64_t *ids = NULL;
-    inline_tree_ids(g, n, &ids);
+    graph_inline_tree(g, n, &ids);
     for (int i = 0; i < acount(ids); i++) {
         int removed = graph_remove_node(g, graph_node_by_id(g, ids[i]));
         assert(removed == 0);
@@ -818,7 +818,10 @@ static bool inline_input(const graph *g, const node *n, int pin)
  * whatever its presentation. */
 static const edge *inline_edge(const graph *g, const node *n)
 {
-    if (n->disabled || node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
+    /* A flow node such as a pure function's Function Entry has no exec pins
+     * but anchors its graph. */
+    if (n->disabled || n->desc->flow_kind != NODE_FLOW_NONE ||
+        node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
         n->desc->pure_kind == NODE_PURE_FUNCTION ||
         n->desc->pure_kind == NODE_PURE_COPY) {
         return NULL;

@@ -329,7 +329,6 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_input(t, g, n, 1, binding + !right);
         return;
     }
-    /* Before literals: component nodes leave pure_kind at its default. */
     if (put_component(t, g, n, output)) {
         return;
     }
@@ -359,9 +358,14 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         }
         return;
     }
-    /* Named sources such as shader parameters read as their name. */
+    /* Named sources such as shader and field parameters read as their name. */
     if (!n->input_count && n->reference_name && n->reference_name[0]) {
         put(t, n->reference_name);
+        return;
+    }
+    const char *named = n->input_count == 1 ? graph_node_name_literal(g, n) : NULL;
+    if (named) {
+        put(t, named);
         return;
     }
     const char *function = behavior_expression_spelling(desc, &binding);

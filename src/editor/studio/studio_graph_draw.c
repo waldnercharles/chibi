@@ -96,7 +96,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
         return;
     }
     pin_value value = spec->default_value;
-    bool changed = false, streaming = false;
+    bool changed = false, streaming = false, committed = false;
     unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
     const editor_choices *choices = ed_pin_choices(e, n, output, p);
     int width = ed_vector_width(spec);
@@ -156,9 +156,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
                 vector[a] = (float)axis;
                 changed = streaming = true;
             }
-            if (kit_item_committed(k)) {
-                g->value_editing = false;
-            }
+            committed |= kit_item_committed(k);
         }
         if (changed) {
             value.ptr = vector;
@@ -202,18 +200,20 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
             }
             changed = streaming = true;
         }
-        if (kit_item_committed(k)) {
-            g->value_editing = false;
-        }
+        committed = kit_item_committed(k);
     }
     if (!changed || sg_graph_readonly(s)) {
+        if (committed) {
+            g->value_editing = false;
+        }
         return;
     }
-    /* A scrub is one undo step; discrete edits are one each. */
+    /* A scrub is one undo step; discrete edits, and a step or typed value that
+       commits as it changes, are one each. */
     if (!streaming || !g->value_editing) {
         ed_snapshot_before(e);
-        g->value_editing = streaming;
     }
+    g->value_editing = streaming && !committed;
     graph_set_pin_default(gr, n, output, p, &value);
     touched(e);
 }

@@ -460,14 +460,6 @@ static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, 
     return hold_texture(backend, held);
 }
 
-static void destroy_released(editor_rml_backend *backend)
-{
-    for (int i = 0; i < acount(backend->released); i++) {
-        cf_destroy_texture(backend->released[i]);
-    }
-    asetlen(backend->released, 0);
-}
-
 static void release_texture(void *user, uintptr_t texture)
 {
     editor_rml_backend *backend = user;
@@ -480,6 +472,14 @@ static void release_texture(void *user, uintptr_t texture)
         apush(backend->released, held->texture);
     }
     cf_map_del(backend->textures, texture);
+}
+
+static void destroy_released(editor_rml_backend *backend)
+{
+    for (int i = 0; i < acount(backend->released); i++) {
+        cf_destroy_texture(backend->released[i]);
+    }
+    asetlen(backend->released, 0);
 }
 
 static void enable_scissor_region(void *user, bool enable)
@@ -858,7 +858,9 @@ unsigned editor_rml_backend_process_input(editor_rml_backend *backend, const edi
 void editor_rml_backend_set_texture(editor_rml_backend *backend, const char *name, uint64_t texture)
 {
     assert(backend && name);
-    backend->externals[external_index(backend, name)].texture = (CF_Texture){ texture };
+    /* The lookup may grow externals, so it runs before the array is read. */
+    int i = external_index(backend, name);
+    backend->externals[i].texture = (CF_Texture){ texture };
 }
 
 const char *editor_rml_backend_cursor(const editor_rml_backend *backend)

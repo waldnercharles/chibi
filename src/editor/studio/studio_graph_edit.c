@@ -5,6 +5,7 @@
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -209,7 +210,7 @@ void sg_find_unused(studio *s)
     graph *gr = sg_active_graph(s);
     asetlen(g->unused, 0);
     int count = acount(gr->nodes);
-    bool *used = calloc((size_t)(count ? count : 1), sizeof *used);
+    bool *used = xcalloc((size_t)(count ? count : 1), sizeof *used);
     bool roots = false;
     for (int i = 0; i < count; i++) {
         const node *n = gr->nodes[i];
@@ -447,6 +448,11 @@ bool studio_graph_palette(studio *s)
             if (linked) {
                 place_on_wire(s, n, &from);
             }
+        }
+        if (e->spawn_link_pending) {
+            /* Nothing took the wire: a comment, or a spawn the editor refused. */
+            ed_cancel_snapshot(e);
+            e->spawn_link_pending = 0;
         }
         g->spawn_pending = false;
     }

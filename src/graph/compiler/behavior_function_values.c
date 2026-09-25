@@ -5,7 +5,6 @@
 #include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/math_nodes.h"
-#include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/flow.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -313,7 +312,7 @@ static int aggregate_binary(builder *b, int op, int left, int right, node *n)
 /* Vector Length, Dot and Distance read CF_V2 fields in double, as the nodes do. */
 static int vector_scalar(builder *b, node *n)
 {
-    bool length = n->desc == &NODE_Vector_Length;
+    bool length = n->desc->jit_kind == NODE_JIT_V2_LENGTH;
     int x[2] = { -1, -1 }, y[2] = { -1, -1 };
     for (int i = 0; i < (length ? 1 : 2); i++) {
         aggregate *a = behavior_lower_aggregate(b, behavior_lower_input(b, n, i));
@@ -328,7 +327,7 @@ static int vector_scalar(builder *b, node *n)
         x[i] = behavior_lower_convert(b, a->fields[0].slot, PIN_F64);
         y[i] = behavior_lower_convert(b, a->fields[1].slot, PIN_F64);
     }
-    if (n->desc == &NODE_Vector_Dot) {
+    if (n->desc->jit_kind == NODE_JIT_V2_DOT) {
         return binary(
             b,
             BF_ADD,
@@ -949,8 +948,8 @@ static int output_value(builder *b, node *n, int pin)
             result = behavior_lower_named_constant(b, result, NULL);
         }
     }
-    if (n->desc == &NODE_Vector_Length || n->desc == &NODE_Vector_Dot ||
-        n->desc == &NODE_Vector_Distance) {
+    if (n->desc->jit_kind == NODE_JIT_V2_LENGTH || n->desc->jit_kind == NODE_JIT_V2_DOT ||
+        n->desc->jit_kind == NODE_JIT_V2_DISTANCE) {
         result = vector_scalar(b, n);
     }
     if (n->desc == &NODE_Step || n->desc == &NODE_Mix) {

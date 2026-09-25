@@ -143,6 +143,9 @@ const char *graph_event_name(const node *event_node);
 void graph_flow_pause(graph *g);
 void graph_flow_resume(graph *g);
 int graph_remove_node(graph *g, node *n);
+/* Appends the IDs of n and the inline nodes drawn inside it to *ids
+ * (support/array.h). */
+void graph_inline_tree(const graph *g, const node *n, uint64_t **ids);
 /* Removes n and the inline nodes drawn inside it. */
 int graph_remove_node_tree(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
@@ -156,10 +159,10 @@ int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_bi
  * row instead of drawing a box. The node and edge remain ordinary graph data
  * that evaluation uses unchanged; the canvas, arrangement, extraction and
  * serialization share this predicate.
- * An inline node is pure, enabled, not a function call, reroute or local
- * source, has no setting pins besides a chosen Component, has exactly one
- * outgoing edge (a data wire),
- * and each input is wired from an inline node or holds a value. The `auto`
+ * An inline node is pure, enabled, not a flow node such as Function Entry, a
+ * function call, reroute or local source, has no setting pins besides a
+ * chosen Component, has exactly one outgoing edge (a data wire), and each
+ * input is wired from an inline node or holds a value. The `auto`
  * presentation also requires a tree of at most GRAPH_INLINE_AUTO_NODES nodes
  * without breakpoints or watches, outside generated expression graphs. */
 #define GRAPH_INLINE_AUTO_NODES 3

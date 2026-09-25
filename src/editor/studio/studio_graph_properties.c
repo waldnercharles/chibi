@@ -6,6 +6,7 @@
 #include "support/array.h"
 
 #include <stdio.h>
+#include <string.h>
 
 uint64_t studio_graph_node(const studio *s)
 {
@@ -95,8 +96,11 @@ void studio_node_properties(studio *s)
         /* The expression is the node: edit it here, see errors in place. */
         if (kit_panel_begin(k, "expression", "Expression", NULL, true)) {
             studio_graph *g = &s->graph;
-            if (g->expression_node != n->id) {
+            /* A rejected draft stays until the source changes, as undo does. */
+            if (g->expression_node != n->id ||
+                strncmp(g->expression_source, source, sizeof g->expression_source - 1)) {
                 snprintf(g->expression, sizeof g->expression, "%s", source);
+                snprintf(g->expression_source, sizeof g->expression_source, "%s", source);
                 g->expression_node = n->id;
                 g->expression_error[0] = '\0';
             }

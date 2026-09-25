@@ -598,11 +598,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
     target_link_options(chibi PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "-lidbfs.js"
         "-sEXPORTED_RUNTIME_METHODS=['FS']"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"

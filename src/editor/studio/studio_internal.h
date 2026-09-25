@@ -541,6 +541,9 @@ void studio_debug_frame(studio *s);
 void studio_reveal(studio *s, const studio_node_ref *at);
 /* "Graph › Node" for a node of the open behavior; the graph alone without one. */
 void studio_node_place(const studio *s, const studio_node_ref *at, char *out, size_t size);
+/* Where the open behavior's compile problem was authored: in a library it
+   calls, or in the behavior itself. */
+studio_node_ref studio_problem_at(const studio *s, const compile_diagnostic *d);
 /* Continues the paused run; false while none is paused. */
 bool studio_debug(studio *s, studio_debug_command command);
 /* F5, F10, F11 and Shift F11 act while a run is paused, even over a focused

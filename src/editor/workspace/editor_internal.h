@@ -143,6 +143,7 @@ struct editor
     int edit_pending;
     flow_run *activation; /* selected activation the toolbar controls */
     compile_report compile;
+    behavior_asset *compiled; /* the linked snapshot compile describes; NULL when unlinked */
     int instance_destroyed; /* the preview was reset or has not been created */
     int entry_index;
     double monotonic_time;

@@ -215,8 +215,7 @@ static void problems_view(studio *s, float row)
     kit_list_begin(k, "problems", "output-list", &list, &first, &last);
     for (int r = first; r <= last && r < acount(shown); r++) {
         const compile_diagnostic *d = &report->items[shown[r]];
-        studio_node_ref at = { .graph_id = d->graph_id, .node_id = d->node_id };
-        snprintf(at.asset, sizeof at.asset, "%s", behavior ? behavior : "");
+        studio_node_ref at = studio_problem_at(s, d);
         char key[24], place[256];
         snprintf(key, sizeof key, "p%d", shown[r]);
         studio_node_place(s, &at, place, sizeof place);

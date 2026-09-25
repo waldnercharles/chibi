@@ -157,6 +157,8 @@ int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t 
     e->arrange_pending = false;
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
+    behavior_asset_free(e->compiled);
+    e->compiled = NULL;
     ed_rebuild_compile_text(e);
     ed_clear_selection(e);
     e->selected_variable = NULL;

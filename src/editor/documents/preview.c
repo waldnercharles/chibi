@@ -113,16 +113,16 @@ void ed_compile(editor *e)
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     char message[256];
-    behavior_asset *linked = behavior_asset_link_libraries(
+    behavior_asset_free(e->compiled);
+    e->compiled = behavior_asset_link_libraries(
         e->asset,
         e->asset_catalog,
         acount(e->asset_catalog),
         message,
         sizeof message
     );
-    if (linked) {
-        behavior_asset_compile(linked, &e->compile);
-        behavior_asset_free(linked);
+    if (e->compiled) {
+        behavior_asset_compile(e->compiled, &e->compile);
     } else {
         compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
                                           .rule = CMPL_RULE_MISSING_REFERENCE };

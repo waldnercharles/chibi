@@ -101,6 +101,23 @@ static studio_node_ref authored(const char *behavior, const graph *g, uint64_t n
     return at;
 }
 
+/* A behavior compiles linked: with copies of the libraries it calls and of
+   its macros. */
+studio_node_ref studio_problem_at(const studio *s, const compile_diagnostic *d)
+{
+    const editor *e = sg_graph_editor(s);
+    const char *behavior = s->scene->graph_document_id ? s->scene->graph_document_id
+                                                       : "";
+    if (!e->compiled) {
+        studio_node_ref at = { .graph_id = d->graph_id, .node_id = d->node_id };
+        snprintf(at.asset, sizeof at.asset, "%s", behavior);
+        return at;
+    }
+    const graph *g = behavior_asset_find_graph(e->compiled, d->graph_id);
+    assert(g);
+    return authored(behavior, g, d->node_id);
+}
+
 static const graph *graph_holding(const behavior_asset *definition, const node *n)
 {
     for (int i = 0; i < acount(definition->graphs); i++) {

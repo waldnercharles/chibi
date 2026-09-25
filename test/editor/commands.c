@@ -279,6 +279,46 @@ static void check_inline_node_layout()
     }
 }
 
+/* Wires shared into two new Adds; the first also folds its own Real. */
+static node *add_shared_consumers(graph *g, node *shared, node **second)
+{
+    node *folded = graph_add_node(g, registry_node_by_name("Real"));
+    node *first = graph_add_node(g, registry_node_by_name("Add"));
+    *second = graph_add_node(g, registry_node_by_name("Add"));
+    assert(graph_connect_data(g, shared, 0, first, 0) == 0);
+    assert(graph_connect_data(g, shared, 0, *second, 0) == 0);
+    assert(graph_connect_data(g, folded, 0, first, 1) == 0);
+    return first;
+}
+
+static void check_delete_shared_source()
+{
+    behavior_asset *asset = behavior_asset_new("Delete shared source");
+    graph *g = asset->graph;
+    node *shared = graph_add_node(g, registry_node_by_name("Real"));
+    editor *e = editor_new(asset);
+    node *second = NULL;
+    node *first = add_shared_consumers(g, shared, &second);
+    ed_select_node(e, first, false);
+    ed_select_node(e, second, true);
+    ed_delete_selected(e);
+    test_check(acount(g->nodes) == 1 && g->nodes[0] == shared, "deleting consumers keeps the source they shared");
+
+    first = add_shared_consumers(g, shared, &second);
+    ed_link_ref link = { shared->id,
+                         shared->output_pins[0].id,
+                         second->id,
+                         second->input_pins[0].id };
+    ed_select_node(e, first, false);
+    ed_add_selected_link(e, &link);
+    ed_delete_selected(e);
+    test_check(
+        acount(g->nodes) == 2 && g->nodes[0] == shared && g->nodes[1] == second,
+        "deleting a consumer and a wire keeps the source they shared"
+    );
+    editor_free(e);
+}
+
 static void check_value_layout()
 {
     behavior_asset *asset = behavior_asset_new("Value layout");
@@ -1221,6 +1261,7 @@ void run_editor_command_checks(void)
     remove(save_path);
     editor_free(e);
     check_inline_node_layout();
+    check_delete_shared_source();
     check_value_layout();
     check_context_layout();
     check_bound_scalar_layout();

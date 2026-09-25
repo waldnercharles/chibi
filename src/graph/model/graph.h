@@ -143,6 +143,9 @@ const char *graph_event_name(const node *event_node);
 void graph_flow_pause(graph *g);
 void graph_flow_resume(graph *g);
 int graph_remove_node(graph *g, node *n);
+/* Appends the IDs of n and the inline nodes drawn inside it to *ids
+ * (support/array.h). */
+void graph_inline_tree(const graph *g, const node *n, uint64_t **ids);
 /* Removes n and the inline nodes drawn inside it. */
 int graph_remove_node_tree(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);

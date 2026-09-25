@@ -416,10 +416,16 @@ static void local_name(const graph *g, const node *n, int pin, char *name, size_
     const ecs_component_desc *component = component_node_kind_of(n->desc)
                                             ? component_node_component(n)
                                             : NULL;
+    /* An expression's reference name is its whole source; a name that long
+       reads worse than a plain Value the author renames. */
     if (!source || !strcmp(source, "Value") || !strcmp(source, "Result")) {
-        source = component         ? component->name
-               : n->reference_name ? n->reference_name
-                                   : n->desc->name;
+        source = component                           ? component->name
+               : n->desc == &NODE_BehaviorExpression ? "Value"
+               : n->reference_name                   ? n->reference_name
+                                                     : n->desc->name;
+    }
+    if (!strncmp(source, "Shader ", 7) || !strncmp(source, "Field ", 6)) {
+        source = strchr(source, ' ') + 1;
     }
     if (!strcmp(n->desc->name, "Spawn Prototype")) {
         source = "SpawnedEntity";

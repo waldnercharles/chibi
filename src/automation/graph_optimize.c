@@ -4,6 +4,7 @@
 #include "graph/authoring/optimize.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
+#include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -262,6 +263,7 @@ int automation_graph_optimize(
     int fanout = 0;
     bool preserve_debug = true;
     bool local_aliases = true;
+    bool math_expressions = false;
     bool dry_run = true;
     if (!request_int(
             &context,
@@ -274,6 +276,7 @@ int automation_graph_optimize(
         ) ||
         !request_bool(&context, request, "preserve_debug", true, &preserve_debug) ||
         !request_bool(&context, request, "local_aliases", true, &local_aliases) ||
+        !request_bool(&context, request, "math_expressions", false, &math_expressions) ||
         !request_bool(&context, request, "dry_run", true, &dry_run)) {
         int status = fail(
             &context,
@@ -296,6 +299,23 @@ int automation_graph_optimize(
      * gives dry runs and publishes the same exact transformed graph. The caller
      * decides whether the returned text is published. */
     options.dry_run = false;
+    /* Math becomes expressions first, so values used three or more times
+       leave the expressions and become named locals. */
+    int expressions = 0;
+    if (math_expressions) {
+        behavior_expression_error expression_error;
+        expressions = behavior_expression_collapse_math(asset, context.graph, 3, &expression_error);
+        if (expressions < 0) {
+            int status = fail(
+                &context,
+                CHIBI_AUTOMATION_VALIDATION_ERROR,
+                "math could not become expressions: %s",
+                expression_error.message
+            );
+            behavior_asset_free(asset);
+            return status;
+        }
+    }
     graph_optimize_report report = { 0 };
     if (graph_optimize(context.graph, &options, &report) < 0) {
         graph_optimize_report_free(&report);
@@ -303,6 +323,8 @@ int automation_graph_optimize(
         behavior_asset_free(asset);
         return status;
     }
+    report.changed_edges += expressions;
+    yyjson_mut_obj_add_int(doc, result, "created_expressions", expressions);
     bool changed = add_report(&context, &report, before_nodes, before_edges);
     /* Use the source bytes for a no-op, keeping a dry run side-effect free and
      * avoiding a formatting-only publish. */

@@ -547,6 +547,10 @@ const optimizeGraphDefinition = {
       type: "boolean",
       description: "Allow safe high-fanout values to become local aliases; defaults to true.",
     },
+    math_expressions: {
+      type: "boolean",
+      description: "First replace each tree of three or more math nodes with one expression; computed inputs get placeholder letters to rename. Defaults to false.",
+    },
   }),
   outputSchema: { type: "object", additionalProperties: true },
 };

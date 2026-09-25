@@ -25,7 +25,7 @@ graphs:
     type: Make_GameOrientation
     inputs:
       radians: {id: 76}
-  - {id: 100, type: Arc Tangent 2}
+  - {id: 100, type: Atan2}
   edges:
   - {from: 2.X, to: 100.X}
   - {from: 2.Y, to: 100.Y}

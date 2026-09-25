@@ -19,7 +19,7 @@
     X(Round)                                                                   \
     X(Fract)                                                                   \
     X(Sign)                                                                    \
-    X(Step) X(Mix) X(Power) X(ArcTangent2) X(RandomReal) X(RandomRangeReal)
+    X(Step) X(Mix) X(Power) X(Atan2) X(RandomReal) X(RandomRangeReal)
 #define MATH_OPERATION_NODES(X)                                                \
     X(Advance_Damped_Spring)                                                   \
     X(Quantize_Angle)                                                          \

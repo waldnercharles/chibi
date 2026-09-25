@@ -23,7 +23,7 @@
     X(ROUND, Round, round)
 #define BEHAVIOR_MATH_BINARY(X)                                                \
     X(POW, Power, pow)                                                         \
-    X(ATAN2, ArcTangent2, atan2)
+    X(ATAN2, Atan2, atan2)
 
 typedef enum
 {

@@ -53,7 +53,7 @@ UNARY(Fract, "Fract", behavior_fract)
 UNARY(Sign, "Sign", behavior_sign)
 #undef UNARY
 
-#define BINARY(NAME, LABEL, FN, INPUTS)                                               \
+#define BINARY(NAME, LABEL, FN, INPUTS, KEYWORDS)                                     \
     static pin_value NAME##_value(const pin_value *inputs, int count, arena *)        \
     {                                                                                 \
         assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64); \
@@ -68,9 +68,10 @@ UNARY(Sign, "Sign", behavior_sign)
                               .fn = NAME##_value,                                     \
                               .access = &pure,                                        \
                               .category = "Math/Functions",                           \
+                              .keywords = KEYWORDS,                                   \
                               .foldable = true };
-BINARY(Power, "Power", pow, power_inputs)
-BINARY(ArcTangent2, "Arc Tangent 2", atan2, atan2_inputs)
+BINARY(Power, "Power", pow, power_inputs, "exponent pow")
+BINARY(Atan2, "Atan2", atan2, atan2_inputs, "arc tangent angle direction radians")
 #undef BINARY
 
 /* step(edge, x): 0 below the edge, 1 from it on (GLSL). */

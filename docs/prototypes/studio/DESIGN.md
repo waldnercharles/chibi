@@ -1,6 +1,6 @@
 # Studio: design direction for the RmlUi editor
 
-This study refines the approved **A · Studio** layout from the `cwaldner/editor-design-prototype` branch. It uses real Neon Swarm content: `fixture.py` bundles `projects/arena2d` (the Sandbox scene, 24 prototypes and 14 behaviors). The [component kit](kit.html) is the specification for the RmlUi port. Each control there lists its behavior contract, states and keys.
+This study refines the approved **A · Studio** layout from the `cwaldner/editor-design-prototype` branch. It uses real Neon Swarm content: `fixture.js` is a snapshot of `projects/arena2d` (the Sandbox scene, 24 prototypes and 14 behaviors). The [component kit](kit.html) is the specification for the RmlUi port. Each control there lists its behavior contract, states and keys.
 
 ## Sources and what each contributes
 

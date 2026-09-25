@@ -77,6 +77,79 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon,
     return kit_menu_item(k, key, &d);
 }
 
+/* An action may free the node, its graph or the whole asset, so the menu stops
+   after one runs; the click closes it. */
+static void node_menu(studio *s, node *n)
+{
+    kit *k = s->kit;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    bool readonly = sg_graph_readonly(s);
+    char title[256];
+    kit_menu_group(k, "title", ed_node_title(e, n, title, sizeof title));
+    if (ed_is_graph_call(n) &&
+        menu_item(k, "open", "Open Graph", KIT_ICON_EXTERNAL, NULL, false)) {
+        editor_open_graph_call(e, n->id);
+        return;
+    }
+    if (menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
+        ed_duplicate_selected(e);
+        return;
+    }
+    if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
+        sg_delete_selection(s);
+        return;
+    }
+    kit_menu_separator(k, "s1");
+    const char *extract = behavior_asset_can_extract_function(e->asset, gr, e->selected, acount(e->selected));
+    if (menu_item(
+            k,
+            "collapse",
+            "Collapse to Function",
+            KIT_ICON_FUNCTION,
+            studio_chord(s, "Mod+G"),
+            readonly || extract || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+        )) {
+        sg_collapse_to_function(s);
+        return;
+    }
+    const char *expression = behavior_expression_can_convert_selection(
+        e->asset,
+        gr,
+        e->selected,
+        acount(e->selected)
+    );
+    if (menu_item(
+            k,
+            "expression",
+            "Convert to Expression",
+            KIT_ICON_EXPRESSION,
+            NULL,
+            readonly || expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+        )) {
+        sg_convert_to_expression(s);
+        return;
+    }
+    kit_menu_separator(k, "s0");
+    if (menu_item(
+            k,
+            "mute",
+            n->disabled ? "Enable" : "Disable",
+            n->disabled ? KIT_ICON_EYE : KIT_ICON_EYE_OFF,
+            NULL,
+            readonly
+        )) {
+        ed_snapshot_before(e);
+        graph_set_node_disabled(gr, n, !n->disabled);
+        return;
+    }
+    if (node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
+        menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
+        ed_snapshot_before(e);
+        graph_set_breakpoint(gr, n, !n->breakpoint);
+    }
+}
+
 void studio_graph_menus(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -93,68 +166,7 @@ void studio_graph_menus(studio *s)
     node *n = sg_node_by_id(s, g->menu_node);
     bool readonly = sg_graph_readonly(s);
     if (n) {
-        char title[256];
-        kit_menu_group(k, "title", ed_node_title(e, n, title, sizeof title));
-        if (ed_is_graph_call(n) &&
-            menu_item(k, "open", "Open Graph", KIT_ICON_EXTERNAL, NULL, false)) {
-            editor_open_graph_call(e, n->id);
-        }
-        if (menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
-            ed_duplicate_selected(e);
-        }
-        if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
-            sg_delete_selection(s);
-        }
-        kit_menu_separator(k, "s1");
-        const char *extract = behavior_asset_can_extract_function(
-            e->asset,
-            gr,
-            e->selected,
-            acount(e->selected)
-        );
-        if (menu_item(
-                k,
-                "collapse",
-                "Collapse to Function",
-                KIT_ICON_FUNCTION,
-                studio_chord(s, "Mod+G"),
-                readonly || extract || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
-            )) {
-            sg_collapse_to_function(s);
-        }
-        const char *expression = behavior_expression_can_convert_selection(
-            e->asset,
-            gr,
-            e->selected,
-            acount(e->selected)
-        );
-        if (menu_item(
-                k,
-                "expression",
-                "Convert to Expression",
-                KIT_ICON_EXPRESSION,
-                NULL,
-                readonly || expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
-            )) {
-            sg_convert_to_expression(s);
-        }
-        kit_menu_separator(k, "s0");
-        if (menu_item(
-                k,
-                "mute",
-                n->disabled ? "Enable" : "Disable",
-                n->disabled ? KIT_ICON_EYE : KIT_ICON_EYE_OFF,
-                NULL,
-                readonly
-            )) {
-            ed_snapshot_before(e);
-            graph_set_node_disabled(gr, n, !n->disabled);
-        }
-        if (node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
-            menu_item(k, "break", n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint", KIT_ICON_CIRCLE, "F9", readonly)) {
-            ed_snapshot_before(e);
-            graph_set_breakpoint(gr, n, !n->breakpoint);
-        }
+        node_menu(s, n);
     } else if (sg_comment_by_id(s, g->menu_comment)) {
         if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
             ed_snapshot_before(e);

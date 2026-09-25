@@ -1,8 +1,7 @@
 /* graph/compiler/compile.c -- the CMPL compile and validation pass. One explicit,
  * deterministic, read-only pass over a behavior_asset's default event graph and
- * variable list (CMPL-1). CMPL-17 (editor navigation) and CMPL-19 (operator
- * ambiguity) are deferred: navigation is editor surface, and operator
- * signatures arrive with the reflection v2 widening ladder. */
+ * variable list (CMPL-1). CMPL-17 (editor navigation) is deferred to the
+ * editor surface. */
 #include "graph/compiler/compile.h"
 
 #include "graph/compiler/field_program.h"

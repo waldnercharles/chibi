@@ -10,7 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-scene_retained_component *scene_retention_find(scene_retained_component *components, const char *name)
+static scene_retained_component *scene_retention_find(
+    scene_retained_component *components,
+    const char *name
+)
 {
     for (int i = 0; i < acount(components); i++) {
         if (!strcmp(components[i].name, name)) {

@@ -2,7 +2,6 @@
 #define CHIBI_REGISTRY_H
 
 #include "graph/model/node.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/service.h"
 
 typedef struct registry_pack
@@ -14,8 +13,6 @@ typedef struct registry_pack
     int type_count;
     const service_desc *const *services;
     int service_count;
-    const operator_signature *operators;
-    int operator_count;
     const enum_desc *const *enums;
     int enum_count;
 } registry_pack;
@@ -60,9 +57,6 @@ const type_desc *registry_type_by_name(const char *name);
 
 int registry_service_count(void);
 const service_desc *registry_service(int index);
-
-int registry_operator_count(void);
-const operator_signature *registry_operator(int index);
 
 const enum_desc *registry_enum_by_name(const char *name);
 /* Documents spell reflected enum values by label; NULL when unknown. */

@@ -417,7 +417,6 @@ void run_graph_model_checks()
     );
     test_check(registry_node_count() > 0, "the parity surface is a classified registry, not a fixed count claim");
     test_check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "the complete primitive pin set is distinct");
-    test_check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "operator resolution has no implicit C fallback");
 
     {
         graph defaults;

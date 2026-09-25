@@ -106,30 +106,6 @@ const service_desc *registry_service(int index)
     return NULL;
 }
 
-int registry_operator_count(void)
-{
-    int count = 0;
-    for (int i = 0; i < REGISTRY_PACK_COUNT; i++) {
-        count += REGISTRY_PACKS[i]->operator_count;
-    }
-    return count;
-}
-
-const operator_signature *registry_operator(int index)
-{
-    if (index < 0) {
-        return NULL;
-    }
-    for (int i = 0; i < REGISTRY_PACK_COUNT; i++) {
-        const registry_pack *pack = REGISTRY_PACKS[i];
-        if (index < pack->operator_count) {
-            return &pack->operators[index];
-        }
-        index -= pack->operator_count;
-    }
-    return NULL;
-}
-
 const enum_desc *registry_enum_by_name(const char *name)
 {
     if (!name) {

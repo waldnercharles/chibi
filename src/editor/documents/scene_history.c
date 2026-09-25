@@ -17,7 +17,6 @@ typedef struct
     scene_field_edit *fields;
     scene_actor_edit *actor;
     scene_behavior_edit *behaviors;
-    scene_component_edit *component;
     bool physics;
     game_physics_settings physics_before, physics_after;
 } scene_edit;
@@ -64,13 +63,6 @@ static void clear_edits(scene_edit **edits)
             free((void *)actor->state_json);
             free((void *)actor->retained_json);
             free(actor);
-        }
-        scene_component_edit *component = (*edits)[i].component;
-        if (component) {
-            free((void *)component->state_json);
-            free((void *)component->retained_before_json);
-            free((void *)component->retained_after_json);
-            free(component);
         }
         scene_behavior_edit *behaviors = (*edits)[i].behaviors;
         if (behaviors) {
@@ -418,59 +410,6 @@ void scene_history_complete_behaviors(scene_history *history, bool redo)
     apush(*destination, edit);
 }
 
-bool scene_history_push_component(scene_history *history, ecs_entity entity, const scene_component_edit *edit)
-{
-    assert(history && entity.slot && edit);
-    if (!edit->component || !edit->state_json || !edit->state_json[0]) {
-        return false;
-    }
-    scene_component_edit *copy = xmalloc(sizeof *copy);
-    *copy = *edit;
-    copy->state_json = xstrdup(edit->state_json);
-    copy->retained_before_json = xstrdup(
-        edit->retained_before_json ? edit->retained_before_json : "{}"
-    );
-    copy->retained_after_json = xstrdup(
-        edit->retained_after_json ? edit->retained_after_json : "{}"
-    );
-    apush(history->undo, ((scene_edit){ .entity = entity, .group = history->group, .component = copy }));
-    clear_edits(&history->redo);
-    return true;
-}
-
-const scene_component_edit *scene_history_peek_component(
-    const scene_history *history,
-    bool redo,
-    ecs_entity *entity,
-    bool *present
-)
-{
-    assert(history);
-    const scene_edit *source = redo ? history->redo : history->undo;
-    if (!acount(source) || !alast(source).component) {
-        return NULL;
-    }
-    const scene_edit *edit = &alast(source);
-    if (entity) {
-        *entity = edit->entity;
-    }
-    if (present) {
-        *present = edit->component->added ? redo : !redo;
-    }
-    return edit->component;
-}
-
-void scene_history_complete_component(scene_history *history, bool redo)
-{
-    assert(history);
-    scene_edit **source = redo ? &history->redo : &history->undo;
-    scene_edit **destination = redo ? &history->undo : &history->redo;
-    assert(acount(*source) && alast(*source).component);
-    scene_edit edit = alast(*source);
-    asetlen(*source, acount(*source) - 1);
-    apush(*destination, edit);
-}
-
 bool scene_history_can_undo(const scene_history *history)
 {
     assert(history);
@@ -528,7 +467,7 @@ static int apply_edit(scene_history *history, ecs_world *world, ecs_entity *out_
         return 0;
     }
     scene_edit edit = alast(*source);
-    if (edit.actor || edit.behaviors || edit.component || edit.physics ||
+    if (edit.actor || edit.behaviors || edit.physics ||
         !ecs_entity_is_alive(world, edit.entity)) {
         return -1;
     }
@@ -794,22 +733,6 @@ static yyjson_mut_val *history_edits(yyjson_mut_doc *doc, const scene_edit *edit
             checkpoint_text(doc, item, "state", actor->state_json);
             checkpoint_text(doc, item, "retained", actor->retained_json);
         }
-        if (edit->component) {
-            const scene_component_edit *component = edit->component;
-            yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "component");
-            const ecs_component_desc *desc = NULL;
-            for (int j = 0; j < GAME_REGISTRY_COMPONENT_COUNT; j++) {
-                if (GAME_REGISTRY_COMPONENTS[j]->id == component->component) {
-                    desc = GAME_REGISTRY_COMPONENTS[j];
-                }
-            }
-            assert(desc);
-            checkpoint_text(doc, item, "name", desc->name);
-            checkpoint_text(doc, item, "state", component->state_json);
-            checkpoint_text(doc, item, "before", component->retained_before_json);
-            checkpoint_text(doc, item, "after", component->retained_after_json);
-            yyjson_mut_obj_add_bool(doc, item, "added", component->added);
-        }
         if (edit->behaviors) {
             yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "behaviors");
             yyjson_mut_val *before = yyjson_mut_obj_add_arr(doc, item, "before");
@@ -933,25 +856,6 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
             actor->retained_json = checkpoint_copy_text(item, "retained");
             if (actor->index < 0 || !actor->name || !actor->prototype_name ||
                 !actor->base_json || !actor->state_json) {
-                return false;
-            }
-        }
-        item = yyjson_obj_get(object, "component");
-        if (item) {
-            const ecs_component_desc *desc = history_component(
-                yyjson_get_str(yyjson_obj_get(item, "name"))
-            );
-            if (!desc) {
-                return false;
-            }
-            out->component = xcalloc(1, sizeof *out->component);
-            scene_component_edit *component = out->component;
-            component->component = desc->id;
-            component->added = yyjson_get_bool(yyjson_obj_get(item, "added"));
-            component->state_json = checkpoint_copy_text(item, "state");
-            component->retained_before_json = checkpoint_copy_text(item, "before");
-            component->retained_after_json = checkpoint_copy_text(item, "after");
-            if (!component->state_json) {
                 return false;
             }
         }

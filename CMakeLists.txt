@@ -426,7 +426,7 @@ target_link_libraries(automation PUBLIC runtime_support core authoring_graph edi
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/gpu_timing.c
-    src/render/geometry_2d.c src/render/light_field_2d.c
+    src/render/geometry_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
@@ -712,10 +712,6 @@ add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
 target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_activation PRIVATE core)
 
-add_executable(scene_benchmark test/scene_benchmark.c ${BASE_REGISTRY})
-target_include_directories(scene_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(scene_benchmark PRIVATE runtime_support)
-
 add_executable(system_benchmark test/system_benchmark.c ${APP_REGISTRY})
 target_include_directories(system_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(system_benchmark PRIVATE runtime_support ecs)
@@ -805,7 +801,7 @@ endif()
 # active when measuring optimized runtime libraries, which retain their normal
 # Release flags. Otherwise a Release review silently skips the workload.
 foreach(driver test_suite test_reload test_dev concurrent_runner bench_activation
-               scene_benchmark system_benchmark query_benchmark contact_benchmark)
+               system_benchmark query_benchmark contact_benchmark)
     if(TARGET ${driver})
         target_compile_options(${driver} PRIVATE -UNDEBUG)
     endif()

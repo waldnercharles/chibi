@@ -163,7 +163,6 @@ int app_scene_authoring_input(app_scene_authoring *scene, const char *action, do
 /* Authored lifecycle actions, recorded in Scene Undo. */
 int app_scene_authoring_add_instance(app_scene_authoring *scene, const char *prototype_name);
 int app_scene_authoring_duplicate_instance(app_scene_authoring *scene);
-int app_scene_authoring_set_instance_component(app_scene_authoring *scene, const char *name, bool present);
 int app_scene_authoring_delete_instance(app_scene_authoring *scene);
 int app_scene_authoring_set_instance_behavior(
     app_scene_authoring *scene,

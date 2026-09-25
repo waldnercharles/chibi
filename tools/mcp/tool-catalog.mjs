@@ -303,7 +303,7 @@ const entries = [
     operation: "describe_registry",
     adapter: "native",
     title: "Describe the node registry",
-    description: "Describe reflected types, services, operators, and components; request the nodes section for every node and pin. Use searchNodes for focused node or pin lookups.",
+    description: "Describe reflected types, services, and components; request the nodes section for every node and pin. Use searchNodes for focused node or pin lookups.",
     intentTerms: ["describe", "registry"],
     candidates: ["inspectRegistry", "describeRegistry"],
     legacyName: "describe_registry",

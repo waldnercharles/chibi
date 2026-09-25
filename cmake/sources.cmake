@@ -94,7 +94,6 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_expression_convert.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/nodes.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/operator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/reroute_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/set_map_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/state_nodes.c
@@ -248,7 +247,6 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/gameplay.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/physics.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/prototype_preview.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/access.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/query.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/schedule.c

@@ -211,10 +211,6 @@ void free_behavior_names(char **names);
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
 
-const game_prototype_component *prototype_component_by_id(
-    const game_prototype *prototype,
-    ecs_component_id id
-);
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype);
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);

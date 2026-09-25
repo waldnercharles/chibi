@@ -376,8 +376,7 @@ Scene and isolated prototype previews use the same live-definition owner and
 receive working graph revisions independently. Each target keeps its own state
 and last valid snapshot. Newly authored behaviors register automatically; launching
 a prototype synchronizes its definitions. Graph inspection follows the active
-runtime target, including an isolated preview that is paused. Delegate bindings,
-borrowed struct state, variable schema changes, and incompatible stateful nodes
+runtime target, including an isolated preview that is paused. Borrowed struct state, variable schema changes, and incompatible stateful nodes
 require restart. Busy updates currently recompile on retry; candidate caching is
 still needed for large graphs. Runtime tests cover atomic deferral, state retention,
 changed execution, invalid edits, recovery, and restart requirements. Native editor

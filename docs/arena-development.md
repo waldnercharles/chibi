@@ -56,7 +56,7 @@ Radiance Cascades section edits Work scale, Trace levels and Feedback. The
 Performance pane reports frame history and p95 timing. The prototype Inspector's
 `GameHRC2D` fields tune transport and composition. HRC transport
 uses a fixed work grid, so its dispatch cost does not grow with the number of
-entities. The 2D path feeds material emission directly into HRC and does not allocate or run a point-light field.
+entities. The 2D path feeds material emission directly into HRC.
 The GLES3 path shows an explicit unavailable diagnostic when desktop compute is
 not available.
 

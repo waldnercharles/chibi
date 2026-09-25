@@ -67,22 +67,6 @@ typedef struct
     int error_code;
 } behavior_instance_trace_entry;
 
-typedef struct behavior_delegate_binding
-{
-    uint64_t id;
-    behavior_instance *target;
-    uint64_t event_id;
-    uint64_t *pin_ids;
-    pin_type *types;
-    const char **type_names;
-} behavior_delegate_binding;
-
-typedef struct behavior_delegate_ref
-{
-    behavior_instance *source;
-    uint64_t binding_id;
-} behavior_delegate_ref;
-
 struct behavior_instance
 {
     /* Borrowed; must outlive the instance. */
@@ -112,8 +96,6 @@ struct behavior_instance
     behavior_clock local_clock;
     flow_clock_fn now;
     void *now_user;
-    flow_parallel_for_fn parallel_for;
-    void *parallel_user;
     flow_sink_fn sink;
     void *sink_user;
     void *profile_user;
@@ -130,15 +112,12 @@ struct behavior_instance
     int pool_enabled;
     int breakpoints_override;
     int breakpoints_enabled;
-    behavior_delegate_binding *delegates; /* outgoing weak bindings */
-    behavior_delegate_ref *delegate_incoming;
     service_binding *services;
     /* Optional owner notification. May invalidate caches, never execute graphs. */
     void (*services_changed)(behavior_instance *instance);
     /* Queue empty/nonempty transition. May update owner scheduling metadata,
      * never execute graphs. Different instances may notify in parallel. */
     void (*activations_changed)(behavior_instance *instance);
-    uint64_t next_delegate_id;
 
     /* RUN-12: cached compile report, rebuilt whenever the topology revision
      * moves. Any error refuses every dispatch/enqueue start. The report's
@@ -272,11 +251,6 @@ int behavior_instance_copy_variable(behavior_instance *bi, uint64_t id, arena *s
 int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin_value *value);
 void behavior_instance_bind_values(behavior_instance *bi, behavior_function_context *ctx);
 pin_value behavior_instance_owner(const behavior_instance *bi);
-void behavior_instance_set_parallel_for(
-    behavior_instance *bi,
-    flow_parallel_for_fn parallel_for,
-    void *parallel_user
-);
 void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enabled);
 void behavior_instance_set_delta_seconds(behavior_instance *bi, double delta_seconds);
 
@@ -290,22 +264,6 @@ pin_value *behavior_instance_scratch(behavior_instance *bi, uint64_t node_id);
  * structured error. The scheduler runs it on the next pump. */
 flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inputs inputs, flow_error *error);
 
-/* EVT-13..18: weak, ID-addressed, deterministic delegate bindings. Runtime
- * bindings belong to instances and never enter Behavior Asset JSON. */
-uint64_t behavior_instance_bind_event(behavior_instance *source, behavior_instance *target, uint64_t event_id);
-int behavior_instance_unbind_event(behavior_instance *source, uint64_t binding_id);
-flow_run *behavior_instance_dispatch_delegate(
-    behavior_instance *source,
-    uint64_t binding_id,
-    flow_inputs inputs,
-    flow_error *error
-);
-int behavior_instance_broadcast_event(
-    behavior_instance *source,
-    uint64_t event_id,
-    flow_inputs inputs,
-    flow_error *error
-);
 int behavior_instance_bind_service(behavior_instance *bi, const char *type_name, void *value);
 void *behavior_instance_service(const behavior_instance *bi, const char *type_name);
 

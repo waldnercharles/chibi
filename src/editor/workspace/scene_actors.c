@@ -464,32 +464,6 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     return result;
 }
 
-static char *inherited_component_before_add(
-    const scene_actor *actor,
-    const scene_component_edit *edit,
-    bool redo
-)
-{
-    if (redo || !edit->added) {
-        return NULL;
-    }
-    const game_prototype_component *component = prototype_component_by_id(actor->base, edit->component);
-    if (!component) {
-        return NULL;
-    }
-    scene_retained_component *retained = NULL;
-    int result = scene_retention_load(edit->retained_before_json, &retained);
-    assert(result == 0);
-    bool had_retained = scene_retention_find(retained, component->desc->name) != NULL;
-    scene_retention_free(retained);
-    if (had_retained) {
-        return NULL;
-    }
-    char *json = game_prototype_component_json(actor->base, component->desc->name);
-    assert(json);
-    return json;
-}
-
 static void apply_physics_settings(app_scene_authoring *scene, game_physics_settings settings)
 {
     game_physics_reset(scene->live->physics);
@@ -556,66 +530,6 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         scene_history_complete_actor(scene->history, redo, replacement);
         scene->scene_dirty = true;
         asset_index_invalidate(scene);
-        return 0;
-    }
-    const scene_component_edit *
-        component_edit = scene_history_peek_component(scene->history, redo, &entity, &present);
-    if (component_edit) {
-        scene_actor *actor = NULL;
-        for (int i = 0; i < acount(scene->actors); i++) {
-            if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
-                actor = &scene->actors[i];
-                break;
-            }
-        }
-        if (!actor) {
-            return -1;
-        }
-        if (scene->runtime_snapshot_valid ||
-            !ecs_entity_is_alive(scene->world, entity)) {
-            return -1;
-        }
-        char *inherited = inherited_component_before_add(actor, component_edit, redo);
-        if (!present && !inherited &&
-            !ecs_component_has(scene->world, entity, component_edit->component)) {
-            return -1;
-        }
-        int result = 0;
-        if (present || inherited) {
-            result = apply_components_json(
-                scene,
-                entity,
-                inherited ? inherited : component_edit->state_json
-            );
-        } else {
-            result = ecs_world_record_remove(
-                scene->world,
-                entity,
-                component_edit->component,
-                0
-            );
-            if (result == ECS_OK) {
-                result = ecs_world_apply_commands(scene->world);
-            }
-        }
-        free(inherited);
-        if (result != 0) {
-            return -1;
-        }
-        int restored = scene_retention_load(
-            redo ? component_edit->retained_after_json : component_edit->retained_before_json,
-            &actor->retained
-        );
-        assert(restored == 0);
-        scene_history_complete_component(scene->history, redo);
-        scene->scene_dirty = true;
-        asset_index_invalidate(scene);
-        for (int i = 0; i < acount(scene->actors); i++) {
-            if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
-                select_instance(scene, i);
-                break;
-            }
-        }
         return 0;
     }
     const scene_behavior_edit

@@ -212,7 +212,7 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
 };
 static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
-    { "sections", "string[]", false, "nodes, types, services, operators, or components; defaults to all but nodes." },
+    { "sections", "string[]", false, "nodes, types, services, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -1904,7 +1904,6 @@ static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
     yyjson_mut_obj_add_int(doc, object, "nodes", registry_node_count());
     yyjson_mut_obj_add_int(doc, object, "types", registry_type_count());
     yyjson_mut_obj_add_int(doc, object, "services", registry_service_count());
-    yyjson_mut_obj_add_int(doc, object, "operators", registry_operator_count());
     yyjson_mut_obj_add_int(doc, object, "components", GAME_REGISTRY_COMPONENT_COUNT);
 }
 
@@ -7062,7 +7061,10 @@ static int handle_describe_components(yyjson_val *request, response *result, int
 }
 
 static const char *const REGISTRY_SECTIONS[] = {
-    "nodes", "types", "services", "operators", "components",
+    "nodes",
+    "types",
+    "services",
+    "components",
 };
 
 /* Nodes dominate the registry; searchNodes serves focused node lookups. */
@@ -7112,7 +7114,7 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 {
     yyjson_val *sections = request ? yyjson_obj_get(request, "sections") : NULL;
     if (!valid_registry_sections(sections)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, operators, or components");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, or components");
         return -1;
     }
     yyjson_mut_doc *doc = result->doc;
@@ -7148,33 +7150,6 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
             yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, services);
             yyjson_mut_obj_add_strcpy(doc, object, "name", service->name);
             yyjson_mut_obj_add_uint(doc, object, "stable_id", service->stable_id);
-        }
-    }
-    if (registry_section(sections, "operators")) {
-        yyjson_mut_val *operators = yyjson_mut_obj_add_arr(doc, value, "operators");
-        for (int i = 0; i < registry_operator_count(); i++) {
-            const operator_signature *signature = registry_operator(i);
-            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, operators);
-            yyjson_mut_obj_add_strcpy(doc, object, "name", signature->name);
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "left",
-                pin_json_name(signature->left)
-            );
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "right",
-                pin_json_name(signature->right)
-            );
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "result",
-                pin_json_name(signature->result)
-            );
-            yyjson_mut_obj_add_int(doc, object, "priority", signature->priority);
         }
     }
     if (registry_section(sections, "components")) {

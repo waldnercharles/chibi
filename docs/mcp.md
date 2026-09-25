@@ -134,7 +134,7 @@ saving them. Tool results include complete `structuredContent` and
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
-- `describeRegistry`: inspect reflected types, services, operators, and components; request `sections: ["nodes"]` for every node and pin.
+- `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
 
 ## Check adapter distribution

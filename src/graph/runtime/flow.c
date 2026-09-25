@@ -845,8 +845,6 @@ flow_run *flow_run_start_reuse(
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
     set_event_name(run, options ? options->event_name : NULL);
-    run->parallel_for = options ? options->parallel_for : NULL;
-    run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
@@ -1891,8 +1889,6 @@ int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs input
         .call_depth = parent->call_depth + 1,
         .breakpoints_override = 1,
         .breakpoints_enabled = parent->breakpoints_enabled,
-        .parallel_for = parent->parallel_for,
-        .parallel_user = parent->parallel_user,
     };
     flow_error error = { 0 };
     flow_run *child = NULL;

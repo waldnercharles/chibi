@@ -157,8 +157,6 @@ TEST_CASE(all_checks)
     test_system_arithmetic();
     run_engine_checks();
     run_parallel_checks();
-    run_ecs_migration_checks();
-    run_scene_checks();
     run_editor_command_checks();
     test_component_presentation();
     test_editor_checkpoint();

@@ -1,7 +1,6 @@
 #include "graph/compiler/behavior_function.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_loop_fixture.h"

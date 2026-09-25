@@ -76,13 +76,6 @@ void run_runtime_catalog_checks()
             "common language node families are registered"
         );
         test_check(
-            operator_register(
-                &(operator_signature){ "SelfCheckAdd", PIN_I64, PIN_I64, PIN_I64, 0 }
-            ) == 0 &&
-                operator_resolve("SelfCheckAdd", PIN_I32, PIN_I32) != NULL,
-            "operator signatures resolve through the widening ladder"
-        );
-        test_check(
             registry_node_by_name("FlipFlop") && registry_node_by_name("Gate") &&
                 registry_node_by_name("MultiGate"),
             "stateful alternating and gate families are registered"

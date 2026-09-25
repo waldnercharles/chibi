@@ -15,7 +15,6 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/fmt_nodes.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"
@@ -27,7 +26,6 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
-#include "runtime/scenes/scene.h"
 #include "support/arena.h"
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -202,8 +200,6 @@ void run_prototype_live_checks();
 void run_live_checks(void);
 void run_engine_checks(void);
 void run_parallel_checks(void);
-void run_ecs_migration_checks(void);
-void run_scene_checks(void);
 void run_graph_model_checks();
 void run_graph_document_checks();
 void run_graph_arrange_checks();

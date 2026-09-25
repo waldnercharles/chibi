@@ -127,9 +127,8 @@ tracy-mcp: build-tracy-mcp
 
 benchmark:
 	sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
-	cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation scene_benchmark system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
+	cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/scene_benchmark"
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/system_benchmark" $(ARGS)
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"

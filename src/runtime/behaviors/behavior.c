@@ -846,7 +846,6 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
     if (!instance) {
         return -1;
     }
-    behavior_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
     append_attachment(
         world,
         (behavior_attachment){
@@ -948,7 +947,6 @@ int game_behavior_set_attachments(
         if (!instance) {
             goto fail;
         }
-        behavior_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
         behavior_attachment attachment = {
             .entity = entity,
             .asset = asset,
@@ -1693,9 +1691,6 @@ void game_behavior_set_parallel_for(
     }
     world->parallel_for = parallel_for;
     world->parallel_user = parallel_user;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_instance_set_parallel_for(world->attachments[i].instance, parallel_for, parallel_user);
-    }
 }
 
 void game_behavior_set_sink(game_behavior_world *world, flow_sink_fn sink, void *user)

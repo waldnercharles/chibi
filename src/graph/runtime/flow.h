@@ -65,8 +65,6 @@ extern "C"
         void *sink_user;   /* borrowed by the run */
         const char *event_name; /* copied by the run for runtime inspection */
         behavior_instance *instance; /* owning instance, or NULL for a standalone run */
-        flow_parallel_for_fn parallel_for; /* host-supplied, never owned */
-        void *parallel_user;
         unsigned call_depth; /* internal function-call depth, zero at an entry */
         int breakpoints_override; /* use instance or host setting instead of graph state */
         int breakpoints_enabled;

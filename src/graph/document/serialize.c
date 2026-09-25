@@ -548,18 +548,10 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
     return 0;
 }
 
-/* Documents omit `auto`. Older documents mark explicit inline sources with
- * `inline_source: true`. */
+/* Documents omit `auto`, which new nodes already hold. */
 static int load_node_presentation(node *n, yyjson_val *v)
 {
     yyjson_val *presentation = yyjson_obj_get(v, "presentation");
-    yyjson_val *inline_source = yyjson_obj_get(v, "inline_source");
-    if (inline_source && !yyjson_is_bool(inline_source)) {
-        serialize_error_set("node inline_source must be a boolean");
-        return -1;
-    }
-    n->presentation = yyjson_is_true(inline_source) ? NODE_PRESENTATION_INLINE
-                                                    : NODE_PRESENTATION_AUTO;
     if (!presentation) {
         return 0;
     }

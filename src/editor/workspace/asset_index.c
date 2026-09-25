@@ -551,6 +551,7 @@ static const struct
     { "EngineSystem", "asset", ASSET_INDEX_SYSTEM },
     { "GameShader", "material", ASSET_INDEX_MATERIAL },
     { "GameShader", "shape", ASSET_INDEX_SHAPE },
+    { "GameUi", "document", ASSET_INDEX_UI },
 };
 
 bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind)
@@ -809,6 +810,7 @@ static asset_index_kind content_asset_kind(const app_scene_authoring *scene, con
         { "libraries", ASSET_INDEX_LIBRARY },
         { "shader-libraries", ASSET_INDEX_LIBRARY },
         { "systems", ASSET_INDEX_SYSTEM },
+        { "ui", ASSET_INDEX_UI },
     };
     for (int i = 0; i < (int)(sizeof folders / sizeof *folders); i++) {
         if (content_path_in_folder(scene, path, folders[i].folder)) {
@@ -1105,6 +1107,7 @@ int app_scene_authoring_open_asset(app_scene_authoring *scene, int asset_positio
         case ASSET_INDEX_FIELD:
         case ASSET_INDEX_LIBRARY:
             return app_scene_authoring_open_behavior(scene, asset->name);
+        case ASSET_INDEX_UI: return asset->path ? 0 : -1;
         case ASSET_INDEX_KIND_COUNT: break;
     }
     return -1;

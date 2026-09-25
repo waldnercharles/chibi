@@ -151,6 +151,9 @@ try {
     { op: "add_behavior", behavior: "Banking" },
   ]);
   create("scene", "Dock", [{ op: "add_entity", name: "bank", prototype: "Bank", behaviors: ["Banking"] }]);
+  const bankUsers = request("inspectAssetDependencies", { kind: "ui", name: "Bank", direction: "incoming" });
+  assert.ok(bankUsers.edges.some(edge => edge.from.kind === "prototype" && edge.from.name === "Bank"),
+    "a GameUi document is a dependency of its prototype");
   // A UI activation fits a part: GameHealth records it, the label shows it.
   create("behavior", "RecipeSlot", [
     { op: "add_node", type: "Event", event_name: "Fit", ref: "fit" },

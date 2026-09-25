@@ -1205,6 +1205,10 @@ static void catalog_scan_references(catalog_asset *asset, yyjson_val *value)
                                          !strcmp(field, "GAME.EngineSystem"))) {
                 catalog_reference_add(asset, "system", request_string(child, "asset"));
             }
+            if (yyjson_is_obj(child) &&
+                (!strcmp(field, "GameUi") || !strcmp(field, "GAME.GameUi"))) {
+                catalog_reference_add(asset, "ui", request_string(child, "document"));
+            }
             if (yyjson_is_str(child)) {
                 const char *kind = NULL;
                 if (!strcmp(field, "reference_asset") ||

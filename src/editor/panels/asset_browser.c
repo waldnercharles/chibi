@@ -23,6 +23,7 @@ static const char *asset_kind_label(asset_index_kind kind)
         case ASSET_INDEX_SHAPE: return "Shape";
         case ASSET_INDEX_LIBRARY: return "Library";
         case ASSET_INDEX_SYSTEM: return "System";
+        case ASSET_INDEX_UI: return "UI";
         case ASSET_INDEX_KIND_COUNT: return "All types";
     }
     return "Asset";

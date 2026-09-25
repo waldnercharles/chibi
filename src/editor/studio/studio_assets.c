@@ -14,16 +14,16 @@
 
 static const char *const KIND_LABELS[ASSET_INDEX_KIND_COUNT] = {
     "Scenes", "Prototypes", "Behaviors", "Events",  "Materials",
-    "Shapes", "Fields",     "Libraries", "Systems",
+    "Shapes", "Fields",     "Libraries", "Systems", "UI",
 };
 static const char *const KIND_NAMES[ASSET_INDEX_KIND_COUNT] = {
     "scene", "prototype", "behavior", "event",  "material",
-    "shape", "field",     "library",  "system",
+    "shape", "field",     "library",  "system", "ui",
 };
 static const uint32_t KIND_ICONS[ASSET_INDEX_KIND_COUNT] = {
-    KIT_ICON_SCENE, KIT_ICON_PROTOTYPE, KIT_ICON_GRAPH,
-    KIT_ICON_EVENT, KIT_ICON_MATERIAL,  KIT_ICON_HEXAGON,
-    KIT_ICON_GRID,  KIT_ICON_LIBRARY,   KIT_ICON_SYSTEM,
+    KIT_ICON_SCENE,    KIT_ICON_PROTOTYPE, KIT_ICON_GRAPH, KIT_ICON_EVENT,
+    KIT_ICON_MATERIAL, KIT_ICON_HEXAGON,   KIT_ICON_GRID,  KIT_ICON_LIBRARY,
+    KIT_ICON_SYSTEM,   KIT_ICON_LAYOUT,
 };
 
 const char *studio_asset_kind_name(int kind)

@@ -19,6 +19,7 @@ typedef enum
     ASSET_INDEX_FIELD,
     ASSET_INDEX_LIBRARY,
     ASSET_INDEX_SYSTEM,
+    ASSET_INDEX_UI,
     ASSET_INDEX_KIND_COUNT,
 } asset_index_kind;
 

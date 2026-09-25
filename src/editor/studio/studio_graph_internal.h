@@ -128,6 +128,9 @@ void sg_distribute(studio *s, bool vertical);
 void sg_straighten(studio *s);
 /* Moves the wire's target level with its source. */
 void sg_straighten_wire(studio *s, int edge);
+/* Adds the nodes wired to the selection's inputs or outputs: one step, or
+   with `all` every node reached. */
+void sg_select_linked(studio *s, bool upstream, bool all);
 /* Places a catalog node by name, as the add-node search would. */
 bool sg_spawn_node(studio *s, const char *name, float x, float y);
 

@@ -142,14 +142,15 @@ static bool selection_items(studio *s)
     static const struct
     {
         const char *key, *label;
+        uint32_t icon;
         align_edge edge;
     } ALIGN[] = {
-        { "top", "Align Top", ALIGN_TOP },
-        { "middle", "Align Middle", ALIGN_MIDDLE },
-        { "bottom", "Align Bottom", ALIGN_BOTTOM },
-        { "left", "Align Left", ALIGN_LEFT },
-        { "center", "Align Center", ALIGN_CENTER },
-        { "right", "Align Right", ALIGN_RIGHT },
+        { "top", "Align Top", KIT_ICON_ALIGN_TOP, ALIGN_TOP },
+        { "middle", "Align Middle", KIT_ICON_ALIGN_MIDDLE, ALIGN_MIDDLE },
+        { "bottom", "Align Bottom", KIT_ICON_ALIGN_BOTTOM, ALIGN_BOTTOM },
+        { "left", "Align Left", KIT_ICON_ALIGN_LEFT, ALIGN_LEFT },
+        { "center", "Align Center", KIT_ICON_ALIGN_CENTER, ALIGN_CENTER },
+        { "right", "Align Right", KIT_ICON_ALIGN_RIGHT, ALIGN_RIGHT },
     };
     kit *k = s->kit;
     editor *e = sg_graph_editor(s);
@@ -158,19 +159,25 @@ static bool selection_items(studio *s)
     bool ran = false;
     if (count > 1 && kit_submenu_begin(k, "align", "Alignment", KIT_ICON_LAYOUT)) {
         for (int i = 0; i < (int)(sizeof ALIGN / sizeof *ALIGN) && !ran; i++) {
-            if (menu_item(k, ALIGN[i].key, ALIGN[i].label, 0, NULL, readonly)) {
+            if (menu_item(k, ALIGN[i].key, ALIGN[i].label, ALIGN[i].icon, NULL, readonly)) {
                 sg_align(s, ALIGN[i].edge);
                 ran = true;
             }
         }
         kit_menu_separator(k, "s0");
-        if (!ran &&
-            menu_item(k, "horizontal", "Distribute Horizontally", 0, NULL, readonly || count < 3)) {
+        if (!ran && menu_item(
+                        k,
+                        "horizontal",
+                        "Distribute Horizontally",
+                        KIT_ICON_DISTRIBUTE_X,
+                        NULL,
+                        readonly || count < 3
+                    )) {
             sg_distribute(s, false);
             ran = true;
         }
         if (!ran &&
-            menu_item(k, "vertical", "Distribute Vertically", 0, NULL, readonly || count < 3)) {
+            menu_item(k, "vertical", "Distribute Vertically", KIT_ICON_DISTRIBUTE_Y, NULL, readonly || count < 3)) {
             sg_distribute(s, true);
             ran = true;
         }
@@ -181,6 +188,39 @@ static bool selection_items(studio *s)
         sg_straighten(s);
         ran = true;
     }
+    return ran;
+}
+
+/* Grows the selection along its wires: one step (Blender's Select Linked From
+   and To) or to the end (Unreal's Select All Input and Output Nodes). */
+static bool select_items(studio *s)
+{
+    static const struct
+    {
+        const char *key, *label, *chord;
+        bool upstream, all;
+    } LINKED[] = {
+        { "inputs", "Input Nodes", "L", true, false },
+        { "outputs", "Output Nodes", "Alt+L", false, false },
+        { "all-inputs", "All Input Nodes", NULL, true, true },
+        { "all-outputs", "All Output Nodes", NULL, false, true },
+    };
+    kit *k = s->kit;
+    if (!kit_submenu_begin(k, "select", "Select", KIT_ICON_SELECT)) {
+        return false;
+    }
+    bool ran = false;
+    for (int i = 0; i < (int)(sizeof LINKED / sizeof *LINKED) && !ran; i++) {
+        if (i == 2) {
+            kit_menu_separator(k, "s0");
+        }
+        const char *chord = LINKED[i].chord ? studio_chord(s, LINKED[i].chord) : NULL;
+        if (menu_item(k, LINKED[i].key, LINKED[i].label, 0, chord, false)) {
+            sg_select_linked(s, LINKED[i].upstream, LINKED[i].all);
+            ran = true;
+        }
+    }
+    kit_submenu_end(k);
     return ran;
 }
 
@@ -249,7 +289,7 @@ static void node_menu(studio *s, node *n)
         return;
     }
     kit_menu_separator(k, "s2");
-    if (selection_items(s)) {
+    if (select_items(s) || selection_items(s)) {
         return;
     }
     kit_menu_separator(k, "s0");

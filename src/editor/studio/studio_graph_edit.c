@@ -2,6 +2,7 @@
 #include "editor/graph/search.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
+#include "graph/authoring/linked.h"
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
@@ -478,6 +479,21 @@ void sg_find_unused(studio *s)
         }
     }
     free(used);
+}
+
+/* ---------- Selection ---------- */
+
+/* Grows the selection along its wires (Blender's L and Alt+L, Unreal's Select
+   All Input and Output Nodes); selection never enters history. */
+void sg_select_linked(studio *s, bool upstream, bool all)
+{
+    editor *e = sg_graph_editor(s);
+    node **linked = NULL;
+    graph_linked_nodes(sg_active_graph(s), e->selected, acount(e->selected), upstream, all, &linked);
+    for (int i = 0; i < acount(linked); i++) {
+        ed_add_selected(e, linked[i]);
+    }
+    afree(linked);
 }
 
 /* ---------- Refactoring ---------- */

@@ -1026,6 +1026,9 @@ void sg_shortcuts(studio *s)
             }
         } else if (!mod && !shift && key == SDLK_C && !sg_graph_readonly(s)) {
             sg_frame_selection(s);
+        } else if (!mod && !shift && key == SDLK_L) {
+            /* Blender's Select Linked From (L) and To; Shift+L arranges. */
+            sg_select_linked(s, !alt, false);
         } else if (!mod && shift && key == SDLK_L && !sg_graph_readonly(s)) {
             sg_arrange(s, false);
         } else if (key == SDLK_F9 && !sg_graph_readonly(s)) {

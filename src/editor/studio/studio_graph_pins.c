@@ -153,12 +153,28 @@ static void place_facing(studio *s, node *placed, int placed_kind, int placed_pi
 {
     const float gap = 60;
     float px, py, x, y;
-    asetlen(s->graph.layouts, 0);
     sg_socket_at(s, n, kind, p, &px, &py);
     sg_socket_at(s, placed, placed_kind, placed_pin, &x, &y);
     placed->x += (kind == ED_PIN_INPUT ? px - gap : px + gap) - x;
     placed->y += py - y;
-    placed->placed = true;
+}
+
+/* A Set that runs after the node continues its flow level with it; one left
+   unwired sits below the node, clear of the flow (Unreal wires it only to a
+   free Then). */
+static void place_set(studio *s, node *set, node *n, int p)
+{
+    const float gap = 30;
+    node *source = NULL;
+    int then = -1, order = 0;
+    if (graph_exec_input_source(sg_active_graph(s), set, 0, &source, &then, &order)) {
+        place_facing(s, set, ED_PIN_INPUT, 0, n, ED_PIN_OUTPUT, then);
+        return;
+    }
+    float box[4];
+    place_facing(s, set, ED_PIN_INPUT, 1, n, ED_PIN_OUTPUT, p);
+    sg_node_box(s, n, box);
+    set->y = box[1] + box[3] + gap;
 }
 
 static void promote(studio *s, node *n, int kind, int p)
@@ -176,10 +192,17 @@ static void promote(studio *s, node *n, int kind, int p)
         return;
     }
     ed_commit_snapshot(e);
-    if (acount(gr->nodes) > before) {
-        node *access = alast(gr->nodes);
-        place_facing(s, access, output ? ED_PIN_INPUT : ED_PIN_OUTPUT, output, n, kind, p);
+    if (acount(gr->nodes) == before) {
+        return;
     }
+    node *access = alast(gr->nodes);
+    asetlen(s->graph.layouts, 0);
+    if (output) {
+        place_set(s, access, n, p);
+    } else {
+        place_facing(s, access, ED_PIN_OUTPUT, 0, n, kind, p);
+    }
+    access->placed = true;
 }
 
 /* Names an output as a graph local (Unreal's named reroute): its uses read

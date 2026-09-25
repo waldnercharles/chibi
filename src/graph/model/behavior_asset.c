@@ -471,6 +471,22 @@ static node *add_access(graph *g, const behavior_variable *v, bool set)
     return n;
 }
 
+/* The execution output a node goes on from when it has only one, or -1. */
+static int continuation(const node *n)
+{
+    int found = -1;
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].kind != PIN_EXEC) {
+            continue;
+        }
+        if (found >= 0) {
+            return -1;
+        }
+        found = i;
+    }
+    return found;
+}
+
 static graph *graph_of(const behavior_asset *asset, const node *n)
 {
     for (int i = 0; i < acount(asset->graphs); i++) {
@@ -510,6 +526,11 @@ behavior_variable *behavior_asset_promote_pin_to_variable(
     node *access = v ? add_access(g, v, output) : NULL;
     if (access && output) {
         graph_connect_data(g, n, index, access, 1);
+        int then = continuation(n);
+        const edge *next = NULL;
+        if (then >= 0 && !graph_exec_output_edges(g, n, then, &next)) {
+            graph_connect_exec(g, n, then, access, 0, 0);
+        }
     } else if (access) {
         graph_connect_data(g, access, 0, n, index);
     }

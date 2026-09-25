@@ -125,7 +125,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
   - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
-  - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get or Set beside the pin; Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
+  - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get beside an input or a Set beside an output (the Set runs after the node when the node's only execution output is free, as Unreal wires it to Then, and otherwise sits below the node, unwired); Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
   - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
   - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
 

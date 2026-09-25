@@ -384,6 +384,35 @@ static void check_pure_domains()
     editor_free(e);
 }
 
+/* Promote to Variable on an output runs the new Set after the node when the
+   node's Then is free, as Unreal wires it, and leaves it unwired otherwise. */
+static void check_promote_flow()
+{
+    behavior_asset *asset = behavior_asset_new("Promote");
+    graph *fn = behavior_asset_add_function(asset, "Roll", 0);
+    pin_spec roll = { .name = "Roll", .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
+    graph_signature_add(asset, fn, true, &roll);
+    node *free_call = behavior_asset_add_function_call_node(asset, fn);
+    node *busy_call = behavior_asset_add_function_call_node(asset, fn);
+    node *next = graph_add_node(asset->graph, &NODE_PrintString);
+    graph_connect_exec(asset->graph, busy_call, 0, next, 0, 0);
+    behavior_asset_promote_pin_to_variable(asset, free_call, 1, find_pin(free_call, 1, "Roll"), "Rolled");
+    node *set = alast(asset->graph->nodes);
+    test_check(
+        set->desc == &NODE_SetVariable &&
+            exec_edges(asset->graph, free_call->id, set->id) == 1,
+        "a promoted output's Set runs after the node's free Then"
+    );
+    behavior_asset_promote_pin_to_variable(asset, busy_call, 1, find_pin(busy_call, 1, "Roll"), "Busy");
+    set = alast(asset->graph->nodes);
+    test_check(
+        exec_edges(asset->graph, busy_call->id, set->id) == 0 &&
+            exec_edges(asset->graph, busy_call->id, next->id) == 1,
+        "a node whose Then is wired keeps its flow, and its Set is left unwired"
+    );
+    behavior_asset_free(asset);
+}
+
 void run_graph_signature_checks()
 {
     check_signature_edits();
@@ -393,4 +422,5 @@ void run_graph_signature_checks()
     check_macro_paths();
     check_input_defaults();
     check_pure_domains();
+    check_promote_flow();
 }

@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 typedef struct
 {
@@ -117,18 +116,11 @@ void test_graph_navigation()
     assert(editor_open_graph(editor, f.pure) == 0);
     expect_graph(editor, f.pure, true);
     assert(editor_graph_history_count(editor) == 2);
-    assert(editor_graph_history_id(editor, 0) == f.root);
-    assert(editor_graph_history_id(editor, 1) == f.function);
-    assert(editor_graph_ancestor(editor, -1) == -1);
-    assert(editor_graph_ancestor(editor, 2) == -1);
-    expect_graph(editor, f.pure, true);
-    assert(editor_graph_history_count(editor) == 2);
-    assert(editor_graph_ancestor(editor, 1) == 0);
+    assert(editor_graph_back(editor) == 0);
     expect_graph(editor, f.function, true);
     assert(editor_graph_history_count(editor) == 1);
     expect_position(editor, f.nested_call, -120, 350);
-    assert(editor_open_graph_call(editor, f.nested_call) == 0);
-    assert(editor_graph_ancestor(editor, 0) == 0);
+    assert(editor_graph_back(editor) == 0);
     expect_graph(editor, f.root, false);
     assert(editor_graph_history_count(editor) == 0);
     expect_position(editor, f.root_call, 231, -83);
@@ -150,7 +142,7 @@ void test_graph_navigation()
     assert(editor_open_graph_call(editor, f.root_call) == 0);
     assert(editor_open_graph_call(editor, f.nested_call) == 0);
     assert(behavior_asset_delete_graph(f.asset, f.function) == 0);
-    assert(editor_graph_ancestor(editor, 1) == 0);
+    assert(editor_graph_back(editor) == 0);
     expect_graph(editor, f.root, false);
     expect_position(editor, f.root_call, 231, -83);
 
@@ -161,17 +153,6 @@ void test_graph_navigation()
     expect_graph(editor, replacement.macro, false);
     assert(editor_graph_back(editor) == -1);
     behavior_asset_free(replacement.asset);
-    char path[] = "/tmp/chibi-navigation-XXXXXX";
-    int file = mkstemp(path);
-    assert(file >= 0 && close(file) == 0);
-    assert(editor_save(editor, path) == 0);
-    assert(editor_open_graph(editor, replacement.root) == 0);
-    assert(editor_open_graph_call(editor, replacement.root_call) == 0);
-    expect_graph(editor, replacement.function, true);
-    assert(editor_load(editor, path) == 0);
-    expect_graph(editor, replacement.function, false);
-    assert(editor_graph_back(editor) == -1);
-    assert(unlink(path) == 0);
     editor_free(editor);
     puts("PASS: graph calls support nested Back, reject invalid targets, preserve positions and clear history on document replacement");
 }

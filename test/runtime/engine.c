@@ -600,7 +600,7 @@ static void action_checks()
         "losing local input ownership sends one zero movement release before "
         "physics"
     );
-    assert(engine_route_escape(f.runtime) == 0);
+    assert(engine_set_focus(f.runtime, ENGINE_FOCUS_NONE) == 0);
     assert(engine_dispatch_input(f.runtime, "Dash", 1, 1, NULL) == FLOW_ERR_STATE);
     clock_free(&f);
 }
@@ -1007,10 +1007,6 @@ void run_parallel_checks(void)
     game_behavior_set_parallel_for(behaviors, host_parallel, NULL);
     game_behavior_pump(behaviors, 1.0);
     test_check(g_parallel_calls == 1, "host parallel dispatch reaches reflected behavior effects");
-    game_behavior_set_breakpoints_enabled(behaviors, 1);
-    g_parallel_calls = 0;
-    game_behavior_pump(behaviors, 2.0);
-    test_check(g_parallel_calls == 0, "enabling a breakpoint forces single-threaded behavior execution");
     game_live_world_free(live);
     ecs_world_free(ecs);
 

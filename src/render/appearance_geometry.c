@@ -250,10 +250,3 @@ bool game_appearance_rotated_bounds(const GameAppearance *appearance, float radi
     *max = upper;
     return true;
 }
-
-bool game_appearance_contains_rotated(const GameAppearance *appearance, float radians, CF_V2 point)
-{
-    CF_V2 local;
-    return game_appearance_rotate_point(point, -radians, &local) &&
-           game_appearance_contains(appearance, local);
-}

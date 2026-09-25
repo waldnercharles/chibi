@@ -48,7 +48,7 @@ static void destruction()
     assert(!material_mask_contains(&mask, 0, 0));
     check_cover(&mask);
     int dust;
-    material_mask *pieces = material_mask_split(&mask, 3, &dust);
+    material_mask *pieces = material_mask_extract_fragments(&mask, 3, false, &dust);
     assert(acount(pieces) == 1);
     int retained = mask.count + dust;
     for (int i = 0; i < acount(pieces); i++) {
@@ -71,7 +71,7 @@ static void destruction()
     check_cover(&mask);
     material_mask_carve(&mask, 0, 0, 13);
     before = mask.count;
-    pieces = material_mask_split(&mask, 1000, &dust);
+    pieces = material_mask_extract_fragments(&mask, 1000, false, &dust);
     assert(!acount(pieces) && dust > 0 && mask.count + dust == before);
     check_cover(&mask);
     material_mask_free(&mask);
@@ -221,7 +221,7 @@ static void cave_generation()
     cells[0] = cells[7] = cells[63] = cells[27] = cells[28] = 1;
     material_mask mask = material_mask_from_cells(8, 8, 2, cells);
     int dust;
-    material_mask *pieces = material_mask_split_anchored(&mask, 2, &dust);
+    material_mask *pieces = material_mask_extract_fragments(&mask, 2, true, &dust);
     assert(mask.count == 3 && acount(pieces) == 1 && pieces[0].count == 2 && !dust);
     material_mask_free(&pieces[0]);
     afree(pieces);

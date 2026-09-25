@@ -48,31 +48,6 @@ static node_desc g_editor_int_desc = {
     .inputs = g_editor_int_inputs,
 };
 
-static int make_editor_save_path(char *path, size_t path_size)
-{
-#ifdef _WIN32
-    char directory[MAX_PATH];
-    DWORD directory_size = GetTempPathA(sizeof directory, directory);
-    if (!directory_size || directory_size >= sizeof directory ||
-        path_size < MAX_PATH || !GetTempFileNameA(directory, "cbp", 0, path)) {
-        return -1;
-    }
-    return 0;
-#else
-    static const char template[] = "chibi-editor-XXXXXX";
-    if (path_size < sizeof template) {
-        return -1;
-    }
-    memcpy(path, template, sizeof template);
-    int fd = mkstemp(path);
-    if (fd < 0) {
-        return -1;
-    }
-    close(fd);
-    return 0;
-#endif
-}
-
 /* Inserts the top search result, as choosing the first command result does. */
 static void search_insert(editor *e, const char *query)
 {
@@ -658,11 +633,6 @@ void run_editor_command_checks(void)
     check_typed_wire_search();
     check_event_catalog_search();
     check_insert_on_wire();
-    char save_path[512];
-    if (make_editor_save_path(save_path, sizeof save_path) != 0) {
-        test_check(0, "a temporary path can be generated for editor persistence");
-        return;
-    }
     behavior_asset *asset = behavior_asset_new("Editor command test");
     node *source = graph_add_node(asset->graph, &g_editor_float_desc);
     node *sink = graph_add_node(asset->graph, &g_editor_int_desc);
@@ -671,7 +641,6 @@ void run_editor_command_checks(void)
     test_check(e != NULL, "editor command seam constructs a headless editor");
     if (!e) {
         behavior_asset_free(asset);
-        remove(save_path);
         return;
     }
 
@@ -815,35 +784,8 @@ void run_editor_command_checks(void)
         .data.rename_graph = { worker->graph_id, "Renamed" },
     };
     test_check(editor_command_apply(e, rename_graph) == 0, "the command seam renames a graph");
-    /* The local seam fixtures are not registry descriptors, so remove them
-     * before exercising the file round trip. */
-    graph_remove_node(asset->graph, source);
-    graph_remove_node(asset->graph, sink);
-    graph_remove_node(asset->graph, float_sink);
     editor_query_state(e, &state);
     test_check(state.dirty, "authored graph changes are observable as dirty");
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { save_path } }
-        ) == 0,
-        "the command seam saves the authored asset"
-    );
-    editor_query_state(e, &state);
-    test_check(!state.dirty, "saving establishes the clean dirty baseline");
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { save_path } }
-        ) == 0,
-        "the command seam reloads the saved asset"
-    );
-    editor_query_state(e, &state);
-    test_check(
-        state.graph_count == 2 && state.active_graph &&
-            strcmp(state.active_graph->name, "Renamed") == 0 && !state.dirty,
-        "reload preserves authored graphs and the clean dirty baseline"
-    );
     behavior_asset *other = behavior_asset_new("Other asset");
     test_check(
         other && editor_open_behavior_asset(e, other, other->graph->graph_id) == 0,
@@ -864,21 +806,6 @@ void run_editor_command_checks(void)
     editor_query_state(e, &state);
     test_check(state.dirty, "edits after opening a different asset are observable as dirty");
     behavior_asset_free(other);
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { NULL } }
-        ) == -1,
-        "a save command rejects a null path"
-    );
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { NULL } }
-        ) == -1,
-        "a load command rejects a null path"
-    );
-    remove(save_path);
     editor_free(e);
     check_delete_shared_source();
 }

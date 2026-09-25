@@ -97,17 +97,6 @@ int game_behavior_set_attachments(
     int count
 );
 int game_behavior_detach_asset(game_behavior_world *world, ecs_entity entity, const char *asset_name);
-int game_behavior_set_breakpoints_enabled_for_asset(
-    game_behavior_world *world,
-    ecs_entity entity,
-    const char *asset_name,
-    int enabled
-);
-int game_behavior_breakpoints_enabled_for_asset(
-    const game_behavior_world *world,
-    ecs_entity entity,
-    const char *asset_name
-);
 int game_behavior_set_debug_hold(
     game_behavior_world *world,
     ecs_entity entity,
@@ -179,7 +168,6 @@ void game_behavior_set_parallel_for(
     flow_parallel_for_fn parallel_for,
     void *parallel_user
 );
-void game_behavior_set_breakpoints_enabled(game_behavior_world *world, int enabled);
 void game_behavior_set_sink(game_behavior_world *world, flow_sink_fn sink, void *user);
 int game_behavior_log_count(const game_behavior_world *world);
 int game_behavior_log_info_at(const game_behavior_world *world, int index, game_behavior_log_info *out);
@@ -231,24 +219,6 @@ behavior_instance *game_behavior_instance(
     game_behavior_world *world,
     ecs_entity entity,
     const char *asset_name
-);
-
-/* The editor supplies the component-specific node replacement operation. The
- * runtime owns the shared entity and instance invariants; it does not put ECS
- * types into core. */
-typedef int (*game_behavior_promote_fn)(
-    behavior_asset *definition,
-    uint64_t variable_id,
-    ecs_component_id component_id,
-    void *user
-);
-int game_behavior_promote_variable(
-    game_behavior_world *world,
-    const char *asset_name,
-    uint64_t variable_id,
-    ecs_component_id component_id,
-    game_behavior_promote_fn promote,
-    void *user
 );
 
 #endif

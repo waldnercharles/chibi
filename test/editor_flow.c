@@ -58,7 +58,6 @@ void test_editor_flow()
     editor_set_inspection_instance(editor, instance);
     editor_set_inspection_run(editor, run);
     editor_tick(editor, 10);
-    editor_set_execution_pulse(editor, 10);
 
     editor_edge_activity result = activity(editor, taken);
     assert(result.traversed && result.timestamp == 10 && result.opacity > 0);
@@ -96,8 +95,6 @@ void test_editor_flow()
     assert(activity(editor, taken).timestamp == 9);
     assert(activity(editor, untaken).opacity == 0);
     editor_set_inspection_instance(editor, NULL);
-    editor_set_execution_pulse(editor, 12);
-    assert(activity(editor, untaken).opacity > 0);
     assert(activity(editor, data).opacity == 0);
 
     editor_set_inspection_blocked(editor, true);

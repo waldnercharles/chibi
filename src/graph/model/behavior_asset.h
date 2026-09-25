@@ -89,13 +89,6 @@ int behavior_asset_rename_variable(behavior_asset *asset, uint64_t id, const cha
 int behavior_asset_retype_variable(behavior_asset *asset, uint64_t id, pin_type type, const char *type_name);
 int behavior_asset_set_variable_container(behavior_asset *asset, uint64_t id, pin_container container);
 int behavior_asset_set_variable_category(behavior_asset *asset, uint64_t id, const char *category);
-behavior_variable *behavior_asset_promote_pin_to_variable(
-    behavior_asset *asset,
-    node *n,
-    int output,
-    int index,
-    const char *name
-);
 int behavior_asset_delete_variable(behavior_asset *asset, uint64_t id);
 int behavior_asset_set_variable_default(behavior_asset *asset, uint64_t id, const pin_value *value);
 

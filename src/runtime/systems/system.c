@@ -2040,11 +2040,6 @@ int game_system_tick_mode(
     return result;
 }
 
-int game_system_tick(game_system *system, double monotonic_time, double delta_seconds, flow_error *error)
-{
-    return game_system_tick_mode(system, monotonic_time, delta_seconds, error, GAME_SYSTEM_EXEC_AUTO);
-}
-
 const behavior_asset *game_system_behavior_asset(const game_system *system)
 {
     return system ? system->definition : NULL;

@@ -447,47 +447,6 @@ int behavior_asset_set_variable_category(behavior_asset *asset, uint64_t id, con
     return v->category ? 0 : -1;
 }
 
-behavior_variable *behavior_asset_promote_pin_to_variable(
-    behavior_asset *asset,
-    node *n,
-    int output,
-    int index,
-    const char *name
-)
-{
-    if (!asset || !n || !behavior_asset_mutable(asset) || !name || !name[0]) {
-        return NULL;
-    }
-    pin_spec *pins = output ? n->output_pins : n->input_pins;
-    int count = output ? n->output_count : n->input_count;
-    if (index < 0 || index >= count || pins[index].kind != PIN_DATA) {
-        return NULL;
-    }
-    behavior_variable *v = behavior_asset_add_variable(
-        asset,
-        name,
-        pins[index].type,
-        pins[index].type_name,
-        pins[index].container,
-        &pins[index].default_value,
-        "Promoted"
-    );
-    if (!v) {
-        return NULL;
-    }
-    node *access = output ? behavior_asset_add_set_node(asset, v->id)
-                          : behavior_asset_add_get_node(asset, v->id);
-    if (!access) {
-        return v;
-    }
-    if (output) {
-        graph_connect_data(asset->graph, n, index, access, 1);
-    } else {
-        graph_connect_data(asset->graph, access, 0, n, index);
-    }
-    return v;
-}
-
 int behavior_asset_delete_variable(behavior_asset *asset, uint64_t id)
 {
     if (!asset || !behavior_asset_mutable(asset)) {

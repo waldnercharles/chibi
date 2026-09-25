@@ -48,49 +48,44 @@ void run_graph_compile_checks()
         behavior_asset_free(asset);
     }
 
-    /* PERF-1: event batch status explains the same eligibility proof used by
-     * publication and exposes the common repairable payload case. */
+    /* PERF-1: publication batches a parameterless event, and not one with a
+     * payload or a duplicate name. */
     {
         behavior_asset *asset = behavior_asset_new("PERF1");
         node *event = graph_add_node(asset->graph, &NODE_Event);
         graph_set_event_name(asset->graph, event, "Tick");
-        behavior_event_batch_info info;
         behavior_program *program = behavior_program_publish(asset);
-        behavior_program_event_batch_info(program, event, &info);
+        node *entry = NULL;
         test_check(
-            info.found && !info.duplicate && info.function &&
-                info.reason == BEHAVIOR_BATCH_READY &&
+            behavior_program_batch_event(program, "Tick", &entry) && entry == event &&
                 behavior_program_backend(program) != BEHAVIOR_UNAVAILABLE,
-            "a parameterless event reports a ready batch path"
+            "a parameterless event has a batch path"
         );
         pin_spec payload = { "Unused", PIN_F32, "float", PIN_DATA };
-        test_check(graph_add_pin(asset->graph, event, 1, &payload) >= 0, "an event can expose a payload pin");
+        int payload_pin = graph_add_pin(asset->graph, event, 1, &payload);
+        test_check(payload_pin >= 0, "an event can expose a payload pin");
         program = behavior_program_publish(asset);
-        behavior_program_event_batch_info(program, event, &info);
-        test_check(
-            info.reason == BEHAVIOR_BATCH_EVENT_PAYLOAD &&
-                behavior_program_batch_event(program, "Tick", NULL) == NULL,
-            "an event payload reports why batching is unavailable"
-        );
+        test_check(behavior_program_batch_event(program, "Tick", NULL) == NULL, "an event payload prevents batching");
+        graph_remove_pin(asset->graph, event, 1, payload_pin);
         node *duplicate = graph_add_node(asset->graph, &NODE_Event);
         graph_set_event_name(asset->graph, duplicate, "Tick");
         program = behavior_program_publish(asset);
-        behavior_program_event_batch_info(program, event, &info);
-        test_check(info.found && info.duplicate, "duplicate event names report an ambiguous batch status");
+        test_check(behavior_program_batch_event(program, "Tick", NULL) == NULL, "duplicate event names are not batched");
         behavior_asset_free(asset);
     }
 
-    /* PERF-2: latent flow remains visible as an activation path rather than
-     * being mistaken for a fast batch. */
+    /* PERF-2: latent flow stays on the activation path rather than being
+     * mistaken for a fast batch. */
     {
         behavior_asset *asset = behavior_asset_new("PERF2");
         node *event = graph_add_node(asset->graph, &NODE_Event);
         graph_set_event_name(asset->graph, event, "Go");
         node *delay = graph_add_node(asset->graph, &NODE_Delay);
         graph_connect_exec(asset->graph, event, 0, delay, 0, 0);
-        behavior_event_batch_info info;
-        behavior_program_event_batch_info(behavior_program_publish(asset), event, &info);
-        test_check(info.reason == BEHAVIOR_BATCH_WAITS, "a latent event reports its wait blocker");
+        test_check(
+            behavior_program_batch_event(behavior_program_publish(asset), "Go", NULL) == NULL,
+            "a latent event is not batched"
+        );
         behavior_asset_free(asset);
     }
 

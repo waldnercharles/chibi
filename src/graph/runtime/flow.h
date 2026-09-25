@@ -188,17 +188,6 @@ extern "C"
     int flow_run_watch_input(const flow_run *run, const node *n, int pin, pin_value *out);
     int flow_run_watch_output(const flow_run *run, const node *n, int pin, pin_value *out);
 
-    /* Copy a recorded output into caller-owned storage. This is the safe path
-     * when a struct watch must outlive the flow_run and its scratch arena. */
-    int flow_run_watch_copy_output(
-        const flow_run *run,
-        const node *n,
-        int pin,
-        pin_value *out,
-        void *struct_storage,
-        size_t struct_storage_size
-    );
-
     /* Helpers available to hand-authored node_desc.flow callbacks. */
     struct flow_context;
     double flow_context_now(const struct flow_context *ctx);

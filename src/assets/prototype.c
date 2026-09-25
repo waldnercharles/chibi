@@ -561,17 +561,6 @@ static int game_prototype_register_tag(const game_prototype *prototype, ecs_worl
     return ecs_world_register_component(world, &prototype->tag.desc, NULL);
 }
 
-int game_prototype_set_name(game_prototype *prototype, const char *name)
-{
-    if (!prototype || !name || !name[0]) {
-        return -1;
-    }
-    char *copy = xstrdup(name);
-    free(prototype->name);
-    prototype->name = copy;
-    return 0;
-}
-
 game_prototype *game_prototype_capture_entity(
     const char *name,
     const ecs_world *world,

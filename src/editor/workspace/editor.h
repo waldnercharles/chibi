@@ -32,8 +32,6 @@ typedef enum
     EDITOR_COMMAND_CONNECT_DATA,
     EDITOR_COMMAND_CONNECT_EXEC,
     EDITOR_COMMAND_COMPILE,
-    EDITOR_COMMAND_SAVE,
-    EDITOR_COMMAND_LOAD,
 } editor_command_kind;
 
 typedef struct
@@ -75,10 +73,6 @@ typedef struct
             uint64_t to_node;
             int to_pin;
         } connect;
-        struct
-        {
-            const char *path;
-        } file;
     } data;
 } editor_command;
 
@@ -143,10 +137,8 @@ int editor_delete_graph(editor *e, uint64_t graph_id);
 /* Drill into an authored call; Back restores the caller view and selects the call. */
 int editor_open_graph_call(editor *e, uint64_t node_id);
 int editor_graph_back(editor *e);
-/* Caller history is ordered oldest first. Ancestors restore their call-site view. */
+/* Callers that Back can return to. */
 int editor_graph_history_count(const editor *e);
-uint64_t editor_graph_history_id(const editor *e, int index);
-int editor_graph_ancestor(editor *e, int index);
 void editor_set_value_formatter(editor *e, editor_value_formatter formatter, void *user);
 void editor_set_choices_resolver(editor *e, editor_choices_resolver resolver, void *user);
 const graph *editor_active_graph(const editor *e);
@@ -220,14 +212,6 @@ node *editor_add_behavior_expression(
 );
 int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error);
 
-/* Save the behavior_asset to `path` as JSON and update the editor's saved
- * baseline used by dirty queries. Returns 0 on success, -1 on error. */
-int editor_save(editor *e, const char *path);
-
-/* Replace the editor's behavior_asset with the JSON at `path`. Returns 0 on
- * success, -1 on error (the existing behavior_asset is left untouched). */
-int editor_load(editor *e, const char *path);
-
 /* Borrow a runtime instance for read-only graph inspection. The caller owns
  * the instance and must clear or replace it before the instance is detached or
  * destroyed. */
@@ -236,8 +220,6 @@ void editor_set_inspection_run(editor *e, const flow_run *run);
 void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count);
 /* Disable live overlays and standalone fallback while a debug target is unavailable or stale. */
 void editor_set_inspection_blocked(editor *e, bool blocked);
-/* Updates render-only activity for a host execution path without tracing nodes. */
-void editor_set_execution_pulse(editor *e, double monotonic_time);
 
 /* Preview instance (UI-54/55/57). The editor owns a runtime instance over a
  * cloned applied snapshot. Authoring mutations stay on the working Behavior

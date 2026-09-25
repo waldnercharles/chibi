@@ -604,17 +604,6 @@ void run_graph_model_checks()
             free(id_loaded);
         }
         free(id_json);
-        test_check(
-            graph_connect_data_ids(
-                &ids,
-                p1->id,
-                p1->output_pins[0].id,
-                p2->id,
-                p2->input_pins[0].id
-            ) != 0 ||
-                acount(ids.edges) == 1,
-            "cross-entity APIs address endpoints by IDs"
-        );
         graph_free(&ids);
     }
 

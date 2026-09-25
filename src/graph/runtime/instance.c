@@ -1416,15 +1416,6 @@ void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enable
     bi->breakpoints_enabled = enabled != 0;
 }
 
-int behavior_instance_breakpoints_enabled(const behavior_instance *bi)
-{
-    if (!bi || !bi->asset || !bi->asset->graph) {
-        return 0;
-    }
-    return bi->breakpoints_override ? bi->breakpoints_enabled
-                                    : bi->asset->graph->breakpoints_enabled != 0;
-}
-
 pin_value *behavior_instance_scratch(behavior_instance *bi, uint64_t node_id)
 {
     for (int i = 0; i < acount(bi->node_states); i++) {

@@ -182,16 +182,6 @@ void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry 
     e->inspection_trace_count = count > 0 ? count : 0;
 }
 
-void editor_set_execution_pulse(editor *e, double monotonic_time)
-{
-    if (!e || !e->active_graph) {
-        return;
-    }
-    e->execution_pulse_time = monotonic_time;
-    e->execution_pulse_graph_id = e->active_graph->graph_id;
-    e->execution_pulse_active = 1;
-}
-
 int editor_log_count(const editor *e)
 {
     return e->log_count;

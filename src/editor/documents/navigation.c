@@ -113,19 +113,3 @@ int editor_graph_history_count(const editor *e)
 {
     return e ? acount(e->graph_callers) : 0;
 }
-
-uint64_t editor_graph_history_id(const editor *e, int index)
-{
-    return e && index >= 0 && index < acount(e->graph_callers)
-             ? e->graph_callers[index].graph_id
-             : 0;
-}
-
-int editor_graph_ancestor(editor *e, int index)
-{
-    if (!e || index < 0 || index >= acount(e->graph_callers)) {
-        return -1;
-    }
-    asetlen(e->graph_callers, index + 1);
-    return editor_graph_back(e);
-}

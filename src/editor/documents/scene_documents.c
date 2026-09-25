@@ -159,8 +159,6 @@ static char *document_default_path(app_scene_authoring *scene)
         folder = scene->definition ? folders[scene->definition->working->domain]
                                    : "behaviors";
         name = scene->definition ? scene->definition->name : NULL;
-    } else {
-        name = "Scene";
     }
     if (!name || !name[0] || ensure_directory(scene->content_root) != 0) {
         return NULL;
@@ -489,9 +487,7 @@ static int save_as_active_document(app_scene_authoring *scene)
         return -1;
     }
     int result = -1;
-    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
-        result = scene->system_document ? save_system_document(scene, path) : -1;
-    } else if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         result = asset
                    ? app_scene_authoring_save_prototype(scene, asset->prototype->name, path)
@@ -524,8 +520,6 @@ static int save_as_active_document(app_scene_authoring *scene)
                 definition->name
             );
         }
-    } else {
-        result = app_scene_authoring_save(scene, path);
     }
     free(path);
     return result;
@@ -601,11 +595,6 @@ int save_active_document(app_scene_authoring *scene)
         return -1;
     }
     return app_scene_authoring_save(scene, scene->scene_path);
-}
-
-int app_scene_authoring_save_as(app_scene_authoring *scene)
-{
-    return scene ? save_as_active_document(scene) : -1;
 }
 
 int app_scene_authoring_reload(app_scene_authoring *scene)

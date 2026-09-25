@@ -69,7 +69,6 @@ game_prototype *game_prototype_load(
     size_t error_size
 );
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);
-int game_prototype_set_name(game_prototype *prototype, const char *name);
 const char *game_prototype_identity(const game_prototype *prototype);
 const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype);
 game_prototype *game_prototype_capture_entity(

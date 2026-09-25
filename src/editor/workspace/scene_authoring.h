@@ -143,7 +143,6 @@ int app_scene_authoring_runtime_command(
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
-int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_reload(app_scene_authoring *scene);
 const char *app_scene_authoring_message(const app_scene_authoring *scene);

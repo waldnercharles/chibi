@@ -96,9 +96,6 @@ struct editor
     int edit_pending;
     compile_report compile;
     double monotonic_time;
-    double execution_pulse_time;
-    uint64_t execution_pulse_graph_id;
-    int execution_pulse_active;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
     bool arrange_pending;

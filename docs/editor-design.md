@@ -1530,9 +1530,7 @@ outputs, then data inputs, counting only drawn pins.
 Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
 other host events such as input and contact, custom events, End, then
 everything else (`graph_layout_band`). Event chains that share nodes form one
-band. `arrange_long_links` reports links whose ends are three or more columns
-apart, or whose path crosses at least a given number of wires, so an editor can
-offer to name the value as a local; it changes nothing.
+band.
 
 `test_suite --arrange-bench [repeats] [filter] [style]`, run from the
 repository root, arranges and routes every graph under `content/` and

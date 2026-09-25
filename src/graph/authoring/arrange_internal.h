@@ -102,7 +102,6 @@ void ar_ctx_solve(ar_ctx *c);
 /* arrange_route.c */
 arrange_point ar_link_start(const arrange_graph *g, const arrange_point *pos, const arrange_link *l);
 arrange_point ar_link_end(const arrange_point *pos, const arrange_link *l);
-void ar_columns(const arrange_graph *g, const arrange_point *pos, int *column, float **left, float **right);
 void ar_assign_tracks(ar_pass *passes, int count, int *gap_tracks);
 float ar_gap_width(arrange_route_style style, int tracks);
 

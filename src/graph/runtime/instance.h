@@ -279,7 +279,6 @@ void behavior_instance_set_parallel_for(
 );
 void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enabled);
 void behavior_instance_set_delta_seconds(behavior_instance *bi, double delta_seconds);
-int behavior_instance_breakpoints_enabled(const behavior_instance *bi);
 
 /* Per-node scratch keyed by node ID (EXEC-15). Returns a zero-initialized
  * slot, created on first access; the pointer stays valid until the instance

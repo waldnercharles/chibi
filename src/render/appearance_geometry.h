@@ -22,6 +22,5 @@ bool game_appearance_rotated_bounds(
     CF_V2 *min,
     CF_V2 *max
 );
-bool game_appearance_contains_rotated(const GameAppearance *appearance, float radians, CF_V2 point);
 
 #endif

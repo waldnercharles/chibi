@@ -456,17 +456,6 @@ int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin)
     return graph_connect_data(g, from, from_pin, to, to_pin);
 }
 
-int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint64_t to_node, uint64_t to_pin)
-{
-    node *from = graph_node_by_id(g, from_node), *to = graph_node_by_id(g, to_node);
-    int fp = -1, tp = -1, out = 0, in = 0;
-    if (!graph_pin_by_id(from, from_pin, &out, &fp) ||
-        !graph_pin_by_id(to, to_pin, &in, &tp) || !out || in) {
-        return -1;
-    }
-    return graph_connect_data(g, from, fp, to, tp);
-}
-
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, from) ||
@@ -1055,27 +1044,6 @@ const node_desc *graph_input_conversion(const graph *g, const node *n, int pin)
     }
     const edge *e = input_edge(g, n, pin);
     return e ? e->conversion : NULL;
-}
-
-int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order)
-{
-    if (!g || !n || !src || !src_pin || !order || pin < 0 ||
-        pin >= n->input_count || n->input_pins[pin].kind != PIN_EXEC) {
-        return 0;
-    }
-    uint64_t id = n->input_pins[pin].id;
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *e = &g->edges[i];
-        if (e->kind == GRAPH_EDGE_EXEC && e->to_id == n->id && e->to_pin_id == id) {
-            *src = edge_from_node(g, e, src_pin);
-            if (!*src) {
-                return 0;
-            }
-            *order = e->exec_order;
-            return 1;
-        }
-    }
-    return 0;
 }
 
 int graph_exec_input_count(const graph *g, const node *n, int pin)

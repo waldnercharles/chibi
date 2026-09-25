@@ -54,7 +54,6 @@ const system_schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);
 int engine_set_focus(engine *engine, engine_focus focus);
 engine_focus engine_get_focus(const engine *engine);
-int engine_route_escape(engine *engine);
 int engine_set_playing(engine *engine, bool playing);
 bool engine_is_playing(const engine *engine);
 int engine_step(engine *engine);

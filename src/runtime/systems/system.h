@@ -35,7 +35,6 @@ int game_system_tick_mode(
     flow_error *error,
     game_system_exec_mode mode
 );
-int game_system_tick(game_system *system, double monotonic_time, double delta_seconds, flow_error *error);
 
 const behavior_asset *game_system_behavior_asset(const game_system *system);
 const compile_report *game_system_compile(const game_system *system);

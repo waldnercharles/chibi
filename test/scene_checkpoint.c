@@ -517,35 +517,6 @@ static void scene_tabs_retain_system_state()
     fixture_free(&f);
 }
 
-static void scene_tabs_system_save_as_identity()
-{
-    checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-system-nav-a.yaml";
-    const char *other_path = "/tmp/chibi-39-system-nav-b.yaml";
-    const char *save_as_path = "/tmp/Scene.yaml";
-    write_system_fixture(first_path, "SystemA");
-    write_system_fixture(other_path, "SystemB");
-    remove(save_as_path);
-    assert(app_scene_authoring_set_content_root(f.scene, "/tmp") == 0);
-    assert(app_scene_authoring_open_system(f.scene, first_path) == 0);
-    int first = f.scene->active_tab;
-    char *identity = xstrdup(f.scene->tabs[first].key);
-    assert(app_scene_authoring_save_as(f.scene) == 0);
-    assert(!strcmp(f.scene->system_path, save_as_path));
-    assert(!strcmp(f.scene->tabs[f.scene->active_tab].key, identity));
-    assert(app_scene_authoring_open_system(f.scene, other_path) == 0);
-    int other = f.scene->active_tab;
-    assert(scene_tabs_activate(f.scene, first) == 0);
-    assert(!strcmp(f.scene->system_path, save_as_path));
-    assert(scene_tabs_activate(f.scene, other) == 0);
-    assert(!strcmp(f.scene->system_path, other_path));
-    free(identity);
-    remove(first_path);
-    remove(other_path);
-    remove(save_as_path);
-    fixture_free(&f);
-}
-
 static void checkpoint_restores_next_scene_key()
 {
     checkpoint_fixture f = fixture_new();
@@ -840,7 +811,6 @@ static int test_scene_checkpoint()
     scene_tabs_reject_last_scene_close();
     scene_tabs_failed_behavior_discard_is_atomic();
     scene_tabs_retain_system_state();
-    scene_tabs_system_save_as_identity();
     checkpoint_restores_next_scene_key();
     checkpoint_fixture fixture = fixture_new();
     assert(

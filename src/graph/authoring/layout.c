@@ -18,19 +18,25 @@ static int compare_node_ids(const void *a, const void *b)
     return left->id < right->id ? -1 : left->id > right->id;
 }
 
+/* A fixed measurement: a 28 unit title, 4 of padding and 24 unit pin rows. */
+static float pin_y(int row)
+{
+    return 32 + ((float)row + 0.5f) * 24;
+}
+
 static int compare_links(const void *a, const void *b)
 {
     const arrange_link *left = a, *right = b;
     if (left->from != right->from) {
         return left->from < right->from ? -1 : 1;
     }
-    if (left->from_pin != right->from_pin) {
-        return left->from_pin < right->from_pin ? -1 : 1;
+    if (left->from_y != right->from_y) {
+        return left->from_y < right->from_y ? -1 : 1;
     }
     if (left->to != right->to) {
         return left->to < right->to ? -1 : 1;
     }
-    return left->to_pin < right->to_pin ? -1 : left->to_pin > right->to_pin;
+    return left->to_y < right->to_y ? -1 : left->to_y > right->to_y;
 }
 
 static int node_index(const graph *graph, uint64_t id)
@@ -60,11 +66,7 @@ static void default_layout(const graph *graph, vec2 *positions)
         const node *node = graph->nodes[order[i].index];
         int rows = node->input_count > node->output_count ? node->input_count
                                                           : node->output_count;
-        boxes[i] = (arrange_box){ .width = 220,
-                                  .height = 36 + 24 * rows,
-                                  .title_height = 28,
-                                  .row_height = 24,
-                                  .pad = 4 };
+        boxes[i] = (arrange_box){ .width = 220, .height = 36 + 24 * rows };
         slot[order[i].index] = i;
     }
     arrange_link *links = NULL;
@@ -78,7 +80,13 @@ static void default_layout(const graph *graph, vec2 *positions)
             !graph_pin_by_id(graph->nodes[to], edge->to_pin_id, NULL, &to_pin)) {
             continue;
         }
-        apush(links, ((arrange_link){ .from = slot[from], .to = slot[to], .from_pin = from_pin, .to_pin = to_pin }));
+        apush(
+            links,
+            ((arrange_link){ .from = slot[from],
+                             .to = slot[to],
+                             .from_y = pin_y(from_pin),
+                             .to_y = pin_y(to_pin) })
+        );
     }
     if (acount(links)) {
         qsort(links, (size_t)acount(links), sizeof *links, compare_links);

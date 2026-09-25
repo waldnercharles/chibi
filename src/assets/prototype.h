@@ -57,6 +57,11 @@ typedef struct game_prototype
     char **strings;
 } game_prototype;
 
+/* The component a document names by stable key or reflected name, or NULL. */
+const ecs_component_desc *game_prototype_registry_find(
+    const game_prototype_registry *registry,
+    const char *name
+);
 game_prototype *game_prototype_load(
     const char *json,
     const game_prototype_registry *registry,

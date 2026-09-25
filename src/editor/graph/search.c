@@ -965,6 +965,46 @@ static int ed_autowire_spawn(editor *e, node *n)
     return ed_autowire_spawn_input(e, n, inline_source);
 }
 
+node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
+{
+    if (match->desc == &ed_comment_box_desc) {
+        ed_snapshot_before(e);
+        graph_add_comment_box(e->active_graph, "Comment", x, y, 320.0f, 160.0f);
+        return NULL;
+    }
+    if (!e->spawn_link_pending) {
+        ed_snapshot_before(e);
+    }
+    node *n = ed_spawn_match(e, match);
+    if (n && !shader_graph_init_node(e->active_graph, n)) {
+        graph_remove_node(e->active_graph, n);
+        n = NULL;
+        ed_show_error(e, "This shader already has 32 parameters.");
+    }
+    if (n && ed_compact_system_node(e, n) != 0) {
+        graph_remove_node(e->active_graph, n);
+        n = NULL;
+    }
+    if (n && !match->event && !match->host_event && ed_name_spawned_event(e, n) != 0) {
+        graph_remove_node(e->active_graph, n);
+        n = NULL;
+    }
+    if (!n) {
+        return NULL;
+    }
+    n->x = x;
+    n->y = y;
+    if (match->desc == &ed_math_desc) {
+        ed_select_node(e, n, 0);
+    }
+    if (e->spawn_link_pending) {
+        ed_autowire_spawn(e, n);
+        ed_commit_snapshot(e);
+        e->spawn_link_pending = 0;
+    }
+    return n;
+}
+
 void ed_request_extraction(editor *e)
 {
     if (e->active_graph->math_expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
@@ -984,7 +1024,7 @@ void ed_request_extraction(editor *e)
     e->extract_requested = true;
 }
 
-static const char *ed_extract_selection(editor *e)
+const char *ed_extract_selection(editor *e)
 {
     if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
         return "Systems do not support extracted functions.";
@@ -1021,7 +1061,7 @@ static const char *ed_extract_selection(editor *e)
     return NULL;
 }
 
-static node *ed_convert_behavior_expression_selection(
+node *ed_convert_behavior_expression_selection(
     editor *e,
     node *const *selection,
     int count,
@@ -1346,45 +1386,13 @@ void ed_handle_popups(editor *e)
             }
             ImGui_PopID();
             if (clicked || (activate && m == e->search_selected)) {
-                if (desc == &ed_comment_box_desc) {
-                    ed_snapshot_before(e);
-                    graph_add_comment_box(e->active_graph, "Comment", e->popup_x, e->popup_y, 320.0f, 160.0f);
-                    e->search[0] = '\0';
-                    e->search_selected = 0;
-                    ImGui_CloseCurrentPopup();
-                    continue;
+                bool comment = desc == &ed_comment_box_desc;
+                node *n = ed_spawn_match_at(e, &matches[m], e->popup_x, e->popup_y);
+                if (n && desc == &ed_math_desc) {
+                    e->inspector_active = true;
+                    editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
                 }
-                if (!e->spawn_link_pending) {
-                    ed_snapshot_before(e);
-                }
-                node *n = ed_spawn_match(e, &matches[m]);
-                if (n && !shader_graph_init_node(e->active_graph, n)) {
-                    graph_remove_node(e->active_graph, n);
-                    n = NULL;
-                    ed_show_error(e, "This shader already has 32 parameters.");
-                }
-                if (n && ed_compact_system_node(e, n) != 0) {
-                    graph_remove_node(e->active_graph, n);
-                    n = NULL;
-                }
-                if (n && !matches[m].event && !matches[m].host_event &&
-                    ed_name_spawned_event(e, n) != 0) {
-                    graph_remove_node(e->active_graph, n);
-                    n = NULL;
-                }
-                if (n) {
-                    n->x = e->popup_x;
-                    n->y = e->popup_y;
-                    if (desc == &ed_math_desc) {
-                        ed_select_node(e, n, 0);
-                        e->inspector_active = true;
-                        editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
-                    }
-                    if (e->spawn_link_pending) {
-                        ed_autowire_spawn(e, n);
-                        ed_commit_snapshot(e);
-                        e->spawn_link_pending = 0;
-                    }
+                if (n || comment) {
                     e->search[0] = '\0';
                     e->search_selected = 0;
                     ImGui_CloseCurrentPopup();

@@ -69,6 +69,7 @@ static void draw_frame(arena_fixture *f)
     app_scene_authoring_draw(f->scene);
     editor_draw(f->graph);
     editor_frame_profile_draw(&f->profile);
+    editor_ui_render();
     editor_frame_mark(&f->profile, EDITOR_FRAME_UI);
     cf_app_draw_onto_screen(true);
     editor_frame_mark(&f->profile, EDITOR_FRAME_PRESENT);
@@ -2434,6 +2435,7 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
     editor_free(f.graph);
     ecs_world_free(f.world);
     app_input_shutdown();
+    editor_ui_deactivate();
     cf_destroy_app();
     return !ok;
 }
@@ -2759,6 +2761,7 @@ cleanup:
         test_navigation_runtime();
     }
     app_input_shutdown();
+    editor_ui_deactivate();
     cf_destroy_app();
     if (!input_only && !profile_only && !event_only) {
         puts("arena UI PASS: scene save/reload, independent preview projection, actual pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, component dropdown/Undo/Redo/save/reload, spatial-only fit/marquee/preview/placement");
@@ -3325,6 +3328,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     ecs_world_free(f.world);
     behavior_debug_backend(previous);
     app_input_shutdown();
+    editor_ui_deactivate();
     cf_destroy_app();
     return 0;
 }
@@ -3514,6 +3518,7 @@ int compiled_arena_run(const char *program)
         behavior_debug_backend(previous);
     }
     app_input_shutdown();
+    editor_ui_deactivate();
     cf_destroy_app();
     return 0;
 }

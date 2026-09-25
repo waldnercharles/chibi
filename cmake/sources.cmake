@@ -134,6 +134,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/commands.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/component_presentation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/mutations.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/navigation.c
@@ -163,9 +164,27 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/choices.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/color.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/flags.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/retained_menu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_layout.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keys.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_scene.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/frame_profile.c
 )

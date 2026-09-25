@@ -1,0 +1,89 @@
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0dp;
+    padding: 0dp;
+    font-family: Inter;
+    font-size: 13dp;
+    line-height: 18dp;
+    color: #e8eaf0;
+    background-color: transparent;
+    pointer-events: none;
+    overflow: hidden;
+}
+.toolbar-root {
+    position: absolute;
+    z-index: 0;
+    display: flex;
+    align-items: center;
+    gap: 4dp;
+    width: 196dp;
+    height: 26dp;
+    padding: 0dp 4dp;
+    box-sizing: border-box;
+    visibility: hidden;
+    pointer-events: none;
+    white-space: nowrap;
+}
+.toolbar-root.visible {
+    visibility: visible;
+    pointer-events: auto;
+}
+button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 26dp;
+    padding: 0dp;
+    border: 1dp transparent;
+    border-radius: 4dp;
+    box-sizing: border-box;
+    font-family: Inter;
+    font-size: 13dp;
+    line-height: 18dp;
+    color: #c8cad0;
+    background-color: transparent;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.12s quadratic-out, color 0.12s quadratic-out;
+}
+.icon-button {
+    width: 26dp;
+    flex: 0 0 26dp;
+}
+.quick-open {
+    flex-grow: 1;
+    justify-content: flex-start;
+    padding: 0dp 10dp;
+}
+.arrow {
+    font-size: 16dp;
+    line-height: 18dp;
+}
+.documents-caret {
+    font-size: 16dp;
+    line-height: 16dp;
+}
+.toolbar-root:not(.keyboard-mode) .toolbar-button:hover {
+    color: #ffffff;
+    background-color: #303137;
+}
+.toolbar-button:active {
+    color: #ffffff;
+    background-color: #383a42;
+    transition: none;
+}
+.toolbar-root.keyboard-mode .toolbar-button:focus {
+    color: #ffffff;
+    background-color: #303137;
+    border: 1dp #6a8dbd;
+}
+.toolbar-button.disabled {
+    color: #666972;
+    pointer-events: none;
+}
+.toolbar-root.reduced-motion .toolbar-button,
+.toolbar-root.keyboard-mode .toolbar-button {
+    transition: none;
+}

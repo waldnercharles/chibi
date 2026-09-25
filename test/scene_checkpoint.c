@@ -214,6 +214,8 @@ static void scene_tabs_retain_authored_state()
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
     scene_tabs_document_selected(f.scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     int first = f.scene->active_tab;
+    /* Loading into the untitled tab names it after the file. */
+    assert(!strcmp(f.scene->tabs[first].label, "chibi-39-scene-a"));
     f.scene->camera = (scene_camera){ .view = { 1, 2, 300, 200 }, .saved = true };
     assert(f.scene->selected == 0);
     char *second_json = scene_authoring_scene_json(f.scene);

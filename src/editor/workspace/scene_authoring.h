@@ -195,6 +195,8 @@ const char *app_scene_authoring_content_root(const app_scene_authoring *scene);
 int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity);
 const char *app_scene_authoring_selected_content(const app_scene_authoring *scene);
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene);
+/* Catalogs, inspection and asset index upkeep without drawing; ui_active defers indexing. */
+void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active);
 void app_scene_authoring_draw(app_scene_authoring *scene);
 int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewport *viewport);
 void app_scene_authoring_render(void *user);

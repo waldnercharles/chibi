@@ -3,6 +3,7 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
+#include "editor/studio/studio.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
@@ -22,6 +23,7 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 
+#include <imgui/dcimgui.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,11 +43,13 @@ typedef struct
     engine_viewport *viewport;
     app_scene_authoring *authoring;
     app_game_presentation *game;
+    studio *studio;
     int frames;
     int frame;
     const char *screenshot_path;
     int capture_error;
     int headless;
+    bool design_preview;
     double monotonic_time;
     double fixed_dt;
     const chibi_host *host;
@@ -73,7 +77,8 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Application frame");
-    if (!loop->game) {
+    bool full_editor = !loop->game && !loop->design_preview;
+    if (full_editor) {
         editor_frame_begin(&loop->profile);
     }
     CHIBI_TRACE_ZONE_BEGIN(window_zone, "Window update");
@@ -86,7 +91,7 @@ static int app_frame(app_loop *loop)
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
     loop->monotonic_time += loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME;
-    if (!loop->game) {
+    if (full_editor) {
         editor_frame_mark(&loop->profile, EDITOR_FRAME_INPUT);
     }
     int status = 0;
@@ -94,6 +99,13 @@ static int app_frame(app_loop *loop)
         CHIBI_TRACE_ZONE_BEGIN(game_zone, "Game presentation");
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
         CHIBI_TRACE_ZONE_END(game_zone);
+    } else if (loop->design_preview) {
+        editor_tick(loop->graph_editor, loop->monotonic_time);
+        app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
+        if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
+            fprintf(stderr, "runtime frame failed\n");
+        }
+        studio_frame(loop->studio, loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME);
     } else {
         CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor input and documents");
         editor_tick(loop->graph_editor, loop->monotonic_time);
@@ -119,6 +131,7 @@ static int app_frame(app_loop *loop)
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
         editor_frame_profile_draw(&loop->profile);
+        editor_ui_render();
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
         CHIBI_TRACE_ZONE_END(ui_zone);
     }
@@ -126,7 +139,7 @@ static int app_frame(app_loop *loop)
     cf_app_draw_onto_screen(true);
     CHIBI_TRACE_ZONE_END(present_zone);
     CHIBI_TRACE_FRAME_MARK("Application frame");
-    if (!loop->game) {
+    if (full_editor) {
         editor_frame_mark(&loop->profile, EDITOR_FRAME_PRESENT);
         editor_frame_end(
             &loop->profile,
@@ -159,6 +172,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     int frames = 0;
     int headless = 0;
     bool play = false;
+    bool design_preview = false;
     double fixed_dt = 0;
     const char *scene_path = NULL;
     const char *project_path = NULL;
@@ -177,6 +191,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             headless = 1;
         } else if (strcmp(argv[i], "--play") == 0) {
             play = true;
+        } else if (strcmp(argv[i], "--design-preview") == 0) {
+            design_preview = true;
         } else if (strcmp(argv[i], "--scene") == 0) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
                 snprintf(error, error_size, "--scene requires an authored scene path");
@@ -306,7 +322,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     }
     /* Captures start from a known dock tree for consistent framing. */
-    if (screenshot_path && !play) {
+    if (screenshot_path && !play && !design_preview) {
         editor_ui_reset_layout();
     }
     editor_set_event_catalog(
@@ -332,6 +348,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         .screenshot_path = screenshot_path,
         .capture_error = 0,
         .headless = headless,
+        .design_preview = design_preview,
         .fixed_dt = fixed_dt,
     };
     if (play) {
@@ -410,7 +427,13 @@ static char *application_checkpoint(void *state)
 static void application_activate(void *state)
 {
     app_loop *loop = state;
-    editor_ui_initialize(!loop->game && !loop->headless && !loop->screenshot_path);
+    editor_ui_initialize(
+        !loop->game && !loop->headless && !loop->screenshot_path && !loop->design_preview
+    );
+    editor_ui_set_design_preview(loop->design_preview);
+    if (loop->design_preview) {
+        editor_ui_set_document_bar_visible(true);
+    }
     if (loop->workspace) {
         editor_ui_restore_checkpoint(loop->workspace);
         free(loop->workspace);
@@ -426,10 +449,16 @@ static void application_activate(void *state)
     }
 #endif
     app_input_initialize();
+    if (loop->design_preview && !loop->game) {
+        loop->studio = studio_new(loop->authoring, loop->viewport);
+    }
 }
 
-static void application_deactivate(void *)
+static void application_deactivate(void *state)
 {
+    app_loop *loop = state;
+    studio_free(loop->studio);
+    loop->studio = NULL;
     app_input_shutdown();
     editor_ui_deactivate();
 }

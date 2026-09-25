@@ -17,6 +17,12 @@ typedef struct arrange_case
     arrange_point *seeds;
 } arrange_case;
 
+/* Pin rows on graph_layout's fixed measurement: a 28 unit title, 4 of
+ * padding and 24 unit rows. */
+#define PIN_Y(row) (32 + ((float)(row) + 0.5f) * 24)
+#define LINK(a, b, from_row, to_row)                                           \
+    { .from = a, .to = b, .from_y = PIN_Y(from_row), .to_y = PIN_Y(to_row) }
+
 static int arrange_node_slot(const graph *g, uint64_t id)
 {
     int slot = 0;
@@ -32,10 +38,10 @@ static int arrange_compare_links(const void *a, const void *b)
 {
     const arrange_link *x = a;
     const arrange_link *y = b;
-    int keys[][2] = { { x->from, y->from },
-                      { x->from_pin, y->from_pin },
-                      { x->to, y->to },
-                      { x->to_pin, y->to_pin } };
+    float keys[][2] = { { (float)x->from, (float)y->from },
+                        { x->from_y, y->from_y },
+                        { (float)x->to, (float)y->to },
+                        { x->to_y, y->to_y } };
     for (int i = 0; i < 4; i++) {
         if (keys[i][0] != keys[i][1]) {
             return keys[i][0] < keys[i][1] ? -1 : 1;
@@ -53,11 +59,7 @@ static arrange_case arrange_case_of(const graph *g)
         const node *n = g->nodes[i];
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         int slot = arrange_node_slot(g, n->id);
-        c.boxes[slot] = (arrange_box){ .width = 220,
-                                       .height = 36 + 24 * rows,
-                                       .title_height = 28,
-                                       .row_height = 24,
-                                       .pad = 4 };
+        c.boxes[slot] = (arrange_box){ .width = 220, .height = 36 + 24 * rows };
         c.seeds[slot] = (arrange_point){ 0, 0 };
     }
     for (int i = 0; i < acount(g->edges); i++) {
@@ -73,8 +75,8 @@ static arrange_case arrange_case_of(const graph *g)
             c.links,
             ((arrange_link){ .from = arrange_node_slot(g, from->id),
                              .to = arrange_node_slot(g, to->id),
-                             .from_pin = from_pin,
-                             .to_pin = to_pin })
+                             .from_y = PIN_Y(from_pin),
+                             .to_y = PIN_Y(to_pin) })
         );
     }
     if (acount(c.links)) {
@@ -95,7 +97,7 @@ static arrange_graph arrange_input(const arrange_case *c)
     return (arrange_graph){ c->boxes, acount(c->boxes), c->links, acount(c->links) };
 }
 
-static const arrange_box arrange_test_box = { 200, 84, 28, 24, 4 };
+static const arrange_box arrange_test_box = { 200, 84 };
 
 static arrange_score arrange_measure_links(
     const arrange_point *pos,
@@ -116,16 +118,16 @@ static void arrange_measure_checks()
     /* Skewed so the wires do not cross exactly on a shared sample point,
      * which the strict segment test only resolves under fused rounding. */
     const arrange_point grid[] = { { 0, 0 }, { 0, 300 }, { 600, 0 }, { 600, 240 } };
-    const arrange_link swapped[] = { { .from = 0, .to = 3 }, { .from = 1, .to = 2 } };
-    const arrange_link parallel[] = { { .from = 0, .to = 2 }, { .from = 1, .to = 3 } };
-    const arrange_link fanned[] = { { .from = 0, .to = 2 }, { .from = 0, .to = 3 } };
+    const arrange_link swapped[] = { LINK(0, 3, 0, 0), LINK(1, 2, 0, 0) };
+    const arrange_link parallel[] = { LINK(0, 2, 0, 0), LINK(1, 3, 0, 0) };
+    const arrange_link fanned[] = { LINK(0, 2, 0, 0), LINK(0, 3, 0, 0) };
     test_check(arrange_measure_links(grid, 4, swapped, 2).wire_crossings == 1, "arrange counts crossing wires");
     test_check(arrange_measure_links(grid, 4, parallel, 2).wire_crossings == 0, "arrange ignores parallel wires");
     test_check(arrange_measure_links(grid, 4, fanned, 2).wire_crossings == 0, "arrange ignores wires sharing a pin");
 
     /* A backward wire keeps its looping curve, straight through the middle. */
     const arrange_point row[] = { { 0, 0 }, { 400, -20 }, { 800, 0 } };
-    const arrange_link back[] = { { .from = 2, .to = 0 } };
+    const arrange_link back[] = { LINK(2, 0, 0, 0) };
     arrange_score through = arrange_measure_links(row, 3, back, 1);
     test_check(through.wire_node_hits == 1 && through.node_overlaps == 0, "arrange counts a wire through an unrelated node");
 
@@ -137,8 +139,7 @@ static void arrange_route_checks()
 {
     arrange_box boxes[3] = { arrange_test_box, arrange_test_box, arrange_test_box };
     const arrange_point row[] = { { 0, 0 }, { 400, -20 }, { 800, 0 } };
-    const arrange_link links[] = { { .from = 0, .to = 2 },
-                                   { .from = 0, .to = 1, .from_pin = 1 } };
+    const arrange_link links[] = { LINK(0, 2, 0, 0), LINK(0, 1, 1, 0) };
     arrange_graph g = { boxes, 3, links, 2 };
     arrange_routes routes = { 0 };
     arrange_route(&g, row, &routes);
@@ -172,15 +173,9 @@ static void arrange_layout_checks()
 {
     /* Fan-out, a long edge, a cycle, a self-loop, and a second component. */
     const arrange_link links[] = {
-        { .from = 0, .to = 1 },
-        { .from = 0, .to = 2, .from_pin = 1 },
-        { .from = 0, .to = 4, .from_pin = 2 },
-        { .from = 1, .to = 3 },
-        { .from = 2, .to = 3, .to_pin = 1 },
-        { .from = 3, .to = 4, .to_pin = 1 },
-        { .from = 4, .to = 1, .from_pin = 1, .to_pin = 1 },
-        { .from = 2, .to = 2, .from_pin = 1, .to_pin = 2 },
-        { .from = 5, .to = 6 },
+        LINK(0, 1, 0, 0), LINK(0, 2, 1, 0), LINK(0, 4, 2, 0),
+        LINK(1, 3, 0, 0), LINK(2, 3, 0, 1), LINK(3, 4, 0, 1),
+        LINK(4, 1, 1, 1), LINK(2, 2, 1, 2), LINK(5, 6, 0, 0),
     };
     arrange_box boxes[7];
     arrange_point first[7];
@@ -199,14 +194,8 @@ static void arrange_layout_checks()
 
     /* A chain with wires fanning out past several of its columns. */
     const arrange_link fans[] = {
-        { .from = 0, .to = 1 },
-        { .from = 1, .to = 2 },
-        { .from = 2, .to = 3 },
-        { .from = 3, .to = 4 },
-        { .from = 0, .to = 2, .from_pin = 1, .to_pin = 1 },
-        { .from = 0, .to = 3, .from_pin = 2, .to_pin = 1 },
-        { .from = 0, .to = 4, .from_pin = 1, .to_pin = 1 },
-        { .from = 1, .to = 4, .from_pin = 1, .to_pin = 2 },
+        LINK(0, 1, 0, 0), LINK(1, 2, 0, 0), LINK(2, 3, 0, 0), LINK(3, 4, 0, 0),
+        LINK(0, 2, 1, 1), LINK(0, 3, 2, 1), LINK(0, 4, 1, 1), LINK(1, 4, 1, 2),
     };
     arrange_graph fanned = { boxes, 5, fans, (int)(sizeof fans / sizeof *fans) };
     arrange_layout(&fanned, first);

@@ -26,3 +26,33 @@ effects clear.
 
 Use explicit graph structure for larger control-flow blocks, sequencing, and
 stateful logic that benefits from step-by-step inspection.
+
+## Editor UI
+
+The editor UI is RmlUi, driven from C through the Studio kit (`src/editor/ui/kit.h`).
+Its design is in `docs/prototypes/studio/DESIGN.md`. Before building any UI mechanism
+in a panel, read `docs/editor-ui-references.md`. It maps each reference library to the
+kit primitive that solves the same problem:
+
+- Base UI, shadcn/ui, cmdk and DialKit
+- Motion, NumberFlow, Torph and Sonner
+- Virtuoso, dnd-kit, Shiki, Liveline and Recharts
+- zustand, next-themes, clsx and cva
+
+The behavior graph editor follows `docs/editor-graph-references.md` (xyflow, imgui-node-editor,
+Blender, Unreal, ComfyUI and others).
+
+Use the kit primitive. If it is missing, add it to the kit following that library's
+contract instead of building a one-off in the panel.
+
+Common mismatches to catch:
+
+- Toasts built by hand, or a modal used for a notice: use `kit_toast` (Sonner).
+- Hand-written open, close, focus or outside-press logic: use kit popups, menus and the command palette (Base UI).
+- A number animated by rewriting its text: use `kit_number_flow` (NumberFlow).
+- 1,000 or more rows emitted directly: use `kit_list` (Virtuoso).
+- Shared state threaded through parameters or copied into statics: authoring state stays in the C model, and view settings go in `studio_prefs` (zustand).
+- Class strings built with ternaries: use `KIT_CX` (clsx) and `kit_variant`/`kit_size` (cva); state goes in `data-*` attributes.
+- Instant show and hide, or motion interpolated by hand: use `kit_presence` and `kit_layout` (Motion).
+
+Verify UI changes in the web build (`make web`, then `?design-preview=1`).

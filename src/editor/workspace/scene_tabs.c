@@ -196,7 +196,22 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
                                            selected_prototype(scene)->prototype->name
                                        )
                                      : NULL;
-    tab_set_path(tab, scene->scene_path);
+    /* A scene loaded into an untitled tab names it: "scene-1" becomes Sandbox.
+       A titled tab keeps its identity through Save As. */
+    const char *path = scene->scene_path;
+    if (path && path[0] && !tab->path) {
+        /* A tab being created has no key yet. */
+        bool current = scene->current_scene_tab_key && tab->key &&
+                       !strcmp(scene->current_scene_tab_key, tab->key);
+        free(tab->key);
+        tab->key = tab_key(tab->kind, NULL, path);
+        free(tab->label);
+        tab->label = tab_label(tab->kind, NULL, path);
+        if (current) {
+            set_current_scene_tab(scene, tab);
+        }
+    }
+    tab_set_path(tab, path);
 }
 
 static void capture_system_tab(app_scene_authoring *scene, scene_document_tab *tab)
@@ -677,7 +692,7 @@ bool scene_tabs_path_in_use(
     return false;
 }
 
-static bool tab_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
+bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
 {
     if (tab->kind == APP_EDITOR_DOCUMENT_SCENE) {
         int current = scene_tab_for_current_document(scene);
@@ -870,7 +885,7 @@ int scene_tabs_discard(app_scene_authoring *scene, int index)
 static void request_close(app_scene_authoring *scene, int index)
 {
     scene->close_tab = index;
-    if (tab_dirty(scene, &scene->tabs[index])) {
+    if (scene_tabs_dirty(scene, &scene->tabs[index])) {
         return;
     }
     remove_tab(scene, index);
@@ -924,20 +939,12 @@ void scene_tabs_draw(app_scene_authoring *scene)
     int activate = -1;
     int close = -1;
     if (visible) {
-        if (ImGui_Button("Quick Open")) {
-            asset_browser_request_quick_open(scene);
-        }
-        editor_ui_track_item("content.quick_open");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Open an asset (Cmd+P / Ctrl+P)");
-        }
-        ImGui_SameLine();
-        if (editor_ui_icon_button("workspace.documents.list", EDITOR_ICON_CODICON_CHEVRON_DOWN, true)) {
+        if (editor_ui_take_document_list_request()) {
             ImGui_OpenPopup("workspace.document_list", 0);
         }
-        editor_ui_track_item("workspace.documents.list");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Open documents");
+        editor_ui_rect list;
+        if (editor_ui_item_rect("workspace.documents.list", &list)) {
+            ImGui_SetNextWindowPos((ImVec2){ list.x, list.y + list.height + 4.0f }, ImGuiCond_Always);
         }
         if (ImGui_BeginPopup("workspace.document_list", 0)) {
             for (int i = 0; i < acount(scene->tabs); i++) {
@@ -945,7 +952,7 @@ void scene_tabs_draw(app_scene_authoring *scene)
                 ImGui_PushID(tab->key);
                 if (ImGui_MenuItemEx(
                         tab->label,
-                        tab_dirty(scene, tab) ? "Modified" : NULL,
+                        scene_tabs_dirty(scene, tab) ? "Modified" : NULL,
                         i == scene->active_tab,
                         true
                     )) {
@@ -961,7 +968,6 @@ void scene_tabs_draw(app_scene_authoring *scene)
             }
             ImGui_EndPopup();
         }
-        ImGui_SameLine();
         if (ImGui_BeginTabBar("workspace.documents", ImGuiTabBarFlags_FittingPolicyScroll)) {
             for (int i = 0; i < acount(scene->tabs); i++) {
                 scene_document_tab *tab = &scene->tabs[i];
@@ -970,7 +976,7 @@ void scene_tabs_draw(app_scene_authoring *scene)
                 snprintf(label, sizeof label, "%s###%s", tab->label, tab->key);
                 ImGui_PushID(tab->key);
                 int flags = i == scene->active_tab ? ImGuiTabItemFlags_SetSelected : 0;
-                if (tab_dirty(scene, tab)) {
+                if (scene_tabs_dirty(scene, tab)) {
                     flags |= ImGuiTabItemFlags_UnsavedDocument;
                 }
                 ImGui_SetNextItemWidth(
@@ -1009,7 +1015,7 @@ void scene_tabs_draw(app_scene_authoring *scene)
             activate = -1;
         }
         if (scene->close_tab >= 0 && scene->close_tab < acount(scene->tabs) &&
-            tab_dirty(scene, &scene->tabs[scene->close_tab])) {
+            scene_tabs_dirty(scene, &scene->tabs[scene->close_tab])) {
             editor_ui_open_popup("workspace.close");
             draw_close_popup(scene);
         }

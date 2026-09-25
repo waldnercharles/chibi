@@ -115,7 +115,7 @@ const entries = [
     intentTerms: ["search", "nodes"],
     candidates: ["findNodes", "searchNodes"],
     legacyName: "search_nodes",
-    nextSteps: ["Pass the returned node and pin signatures to buildShader or buildBehavior."],
+    nextSteps: ["Pass the returned node and pin signatures to buildGraph."],
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
   {

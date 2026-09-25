@@ -250,7 +250,8 @@ Read and write components with `Get Component`, `Set Component` and
 `Break Struct` (`inputs: {"Type": "GameTransform"}`). Choose the component with
 the `Component` input, by name or stable key, for example
 `{"op":"add_node","type":"Set Component","inputs":{"Component":"GameHealth","current":5}}`.
-`Entity` defaults to Self; connect it to address another entity. Set writes its
+`add_node` applies a `Component` or `Type` input before the pins it creates, so
+their order in `inputs` doesn't matter. `Entity` defaults to Self; connect it to address another entity. Set writes its
 `Value`, or only the field inputs it shows: naming a settable field in `inputs` or
 `connect` shows it, and `split_pin`/`recombine_pin` switch between every field and
 `Value`. Get exposes fields with `expose_fields`. These nodes lower to the

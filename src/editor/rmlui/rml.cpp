@@ -557,6 +557,11 @@ rml_element *rml_context_load_document(rml_context *c, const char *path)
     return wrap(context(c)->LoadDocument(path));
 }
 
+rml_element *rml_context_load_document_from_memory(rml_context *c, const char *rml, const char *source_url)
+{
+    return wrap(context(c)->LoadDocumentFromMemory(rml, source_url));
+}
+
 rml_element *rml_context_hover_element(rml_context *c)
 {
     return wrap(context(c)->GetHoverElement());
@@ -634,6 +639,11 @@ void rml_document_update(rml_element *d)
     document(d)->UpdateDocument();
 }
 
+void rml_document_reload_style_sheet(rml_element *d)
+{
+    document(d)->ReloadStyleSheet();
+}
+
 /* ---------- Elements ---------- */
 
 rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before)
@@ -690,9 +700,25 @@ rml_element *rml_element_by_id(rml_element *e, const char *id)
     return wrap(element(e)->GetElementById(id));
 }
 
+rml_element *rml_element_owner_document(const rml_element *e)
+{
+    return wrap(element(e)->GetOwnerDocument());
+}
+
 rml_element *rml_element_query_selector(rml_element *e, const char *selector)
 {
     return wrap(element(e)->QuerySelector(selector));
+}
+
+int rml_element_query_selector_all(rml_element *e, const char *selectors, rml_element **matches, int max)
+{
+    Rml::ElementList list;
+    element(e)->QuerySelectorAll(list, selectors);
+    int count = (int)list.size();
+    for (int i = 0; i < count && i < max; ++i) {
+        matches[i] = wrap(list[(size_t)i]);
+    }
+    return count;
 }
 
 const char *rml_element_id(const rml_element *e)

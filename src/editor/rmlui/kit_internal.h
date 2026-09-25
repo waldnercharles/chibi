@@ -29,6 +29,7 @@
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "support/file_watch.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -326,7 +327,8 @@ struct kit
     rml_context *context;
     rml_element *doc;
     rml_listener *listener;
-    node **roots;              /* owned: the layer, then kit_root elements */
+    file_watch *styles; /* the resource stylesheets the document reloads */
+    node **roots;       /* owned: the layer, then kit_root elements */
     CF_MAP(node *) by_element; /* keyed by the element pointer */
     CF_MAP(node *) by_path;    /* keyed by str_hash(path) */
     node **stack;

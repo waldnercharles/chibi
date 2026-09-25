@@ -7,6 +7,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -837,6 +838,40 @@ static const rml_event_id kit_events[] = {
 
 #define KIT_EVENT_COUNT (sizeof kit_events / sizeof *kit_events)
 
+/* ---------- Stylesheet reload ---------- */
+
+/* RCSS edits apply without a rebuild: the document re-reads its stylesheets
+   when a resource stylesheet changes. */
+static void watch_styles(kit *k)
+{
+    DIR *dir = opendir(CHIBI_RMLUI_RESOURCE_DIR);
+    assert(dir);
+    struct dirent *entry;
+    while ((entry = readdir(dir))) {
+        const char *dot = strrchr(entry->d_name, '.');
+        if (!dot || strcmp(dot, ".rcss") != 0) {
+            continue;
+        }
+        file_watch w = { 0 };
+        char path[sizeof w.path];
+        snprintf(path, sizeof path, "%s/%s", CHIBI_RMLUI_RESOURCE_DIR, entry->d_name);
+        file_watch_changed(&w, path, 0);
+        apush(k->styles, w);
+    }
+    closedir(dir);
+}
+
+static void sync_styles(kit *k)
+{
+    bool changed = false;
+    for (int i = 0; i < acount(k->styles); i++) {
+        changed |= file_watch_changed(&k->styles[i], k->styles[i].path, k->in.time);
+    }
+    if (changed) {
+        rml_document_reload_style_sheet(k->doc);
+    }
+}
+
 /* ---------- API ---------- */
 
 kit *kit_create(void *context, const char *document_path)
@@ -868,6 +903,7 @@ kit *kit_create(void *context, const char *document_path)
     apush(k->roots, k->layer);
     k->tooltip = raw(layer, "div", "tooltip", NULL);
     rml_element_set_property(k->tooltip, "display", "none");
+    watch_styles(k);
     return k;
 }
 
@@ -916,6 +952,7 @@ static void kit_free(kit *k)
     afree(k->entering);
     afree(k->layout_nodes);
     afree(k->text_motion);
+    afree(k->styles);
     free(k);
 }
 
@@ -948,6 +985,7 @@ static void close_root(kit *k)
 void kit_begin(kit *k, const kit_frame_input *input)
 {
     k->in = *input;
+    sync_styles(k);
     aclear(k->triggers);
     place_popups(k);
     drag_begin_frame(k);

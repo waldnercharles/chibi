@@ -18,7 +18,9 @@ bool file_watch_changed(file_watch *w, const char *path, double now)
     if (same && modified == w->modified && size == w->size) {
         return false;
     }
-    snprintf(w->path, sizeof w->path, "%s", path);
+    if (!same) {
+        snprintf(w->path, sizeof w->path, "%s", path);
+    }
     w->modified = modified;
     w->size = size;
     return true;

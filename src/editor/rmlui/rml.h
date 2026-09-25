@@ -342,6 +342,12 @@ extern "C"
     bool rml_context_update(rml_context *context);
     bool rml_context_render(rml_context *context);
     rml_element *rml_context_load_document(rml_context *context, const char *path);
+    /* `source_url` names the document in messages and resolves relative paths. */
+    rml_element *rml_context_load_document_from_memory(
+        rml_context *context,
+        const char *rml,
+        const char *source_url
+    );
     rml_element *rml_context_hover_element(rml_context *context);
     rml_element *rml_context_focus_element(rml_context *context);
     void rml_context_activate_theme(rml_context *context, const char *name, bool active);
@@ -367,6 +373,8 @@ extern "C"
     );
     void rml_document_close(rml_element *document);
     void rml_document_update(rml_element *document);
+    /* Re-reads the document's source for its style sheets; elements stay. */
+    void rml_document_reload_style_sheet(rml_element *document);
 
     /* ---------- Elements ---------- */
 
@@ -383,8 +391,16 @@ extern "C"
     rml_element *rml_element_first_child(const rml_element *element);
     bool rml_element_contains(const rml_element *element, rml_element *other);
     rml_context *rml_element_context(const rml_element *element);
+    rml_element *rml_element_owner_document(const rml_element *element);
     rml_element *rml_element_by_id(rml_element *element, const char *id);
     rml_element *rml_element_query_selector(rml_element *element, const char *selector);
+    /* Writes up to `max` matches and returns how many there are. */
+    int rml_element_query_selector_all(
+        rml_element *element,
+        const char *selectors,
+        rml_element **matches,
+        int max
+    );
 
     /* Valid while the element keeps its id and tag. */
     const char *rml_element_id(const rml_element *element);

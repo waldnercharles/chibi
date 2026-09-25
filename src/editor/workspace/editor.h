@@ -316,6 +316,15 @@ node *editor_add_behavior_expression(
     behavior_expression_error *error
 );
 int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error);
+/* Sets source as a rename of from to to, so from's wire or binding moves to to. */
+int editor_rewire_behavior_expression(
+    editor *e,
+    node *call,
+    const char *source,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
 
 /* Save the behavior_asset to `path` as JSON and update the editor's saved
  * baseline used by dirty queries. Returns 0 on success, -1 on error. */

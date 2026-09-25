@@ -2989,6 +2989,49 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
     return set_source(asset, call, source, NULL, 0, error);
 }
 
+static bool fed(const graph *g, const node *n, int pin)
+{
+    node *source = NULL;
+    int source_pin = -1;
+    return n->input_pins[pin].kind == PIN_DATA &&
+           (n->input_pins[pin].binding ||
+            graph_input_source(g, n, pin, &source, &source_pin));
+}
+
+char **behavior_expression_fed_inputs(const graph *g, const node *call)
+{
+    char **names = NULL;
+    for (int i = 0; i < call->input_count; i++) {
+        if (fed(g, call, i)) {
+            apush(names, xstrdup(call->input_pins[i].name));
+        }
+    }
+    return names;
+}
+
+void behavior_expression_keep_unfed(const graph *g, const node *call, char ***names)
+{
+    for (int i = acount(*names) - 1; i >= 0; i--) {
+        bool still = false;
+        for (int p = 0; p < call->input_count; p++) {
+            still |= !strcmp(call->input_pins[p].name, (*names)[i]) &&
+                     fed(g, call, p);
+        }
+        if (still) {
+            free((*names)[i]);
+            adel(*names, i);
+        }
+    }
+}
+
+void behavior_expression_free_names(char **names)
+{
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i]);
+    }
+    afree(names);
+}
+
 static bool identifier_char(char c)
 {
     return isalnum((unsigned char)c) || c == '_';

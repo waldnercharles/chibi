@@ -1278,6 +1278,39 @@ static void expression_title()
     ImGui_SetCurrentContext(previous);
 }
 
+static void editor_rewire()
+{
+    ImGuiContext *previous = ImGui_GetCurrentContext();
+    ImGuiContext *context = ImGui_CreateContext(NULL);
+    editor *e = editor_new(behavior_asset_new("Expression rewire"));
+    behavior_expression_error error;
+    node *call = editor_add_behavior_expression(e, "speed * 2", 0, 0, &error);
+    graph *g = editor_behavior_asset(e)->graph;
+    node *real = graph_add_node(g, registry_node_by_name("Real"));
+    assert(call && real && !graph_connect_data(g, real, 0, call, 0));
+    uint64_t id = call->id;
+    char **lost = behavior_expression_fed_inputs(g, call);
+    assert(editor_set_behavior_expression(e, call, "rate * 2", &error) == 0);
+    behavior_expression_keep_unfed(g, call, &lost);
+    assert(acount(lost) == 1 && !strcmp(lost[0], "speed"));
+    behavior_expression_free_names(lost);
+    editor_undo(e);
+    g = editor_behavior_asset(e)->graph;
+    call = graph_node_by_id(g, id);
+    assert(editor_rewire_behavior_expression(e, call, "rate * 2", "speed", "rate", &error) == 0);
+    g = editor_behavior_asset(e)->graph;
+    call = graph_node_by_id(g, id);
+    lost = behavior_expression_fed_inputs(g, call);
+    assert(acount(lost) == 1 && !strcmp(lost[0], "rate"));
+    behavior_expression_free_names(lost);
+    editor_undo(e);
+    call = graph_node_by_id(editor_behavior_asset(e)->graph, id);
+    assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "speed * 2"));
+    editor_free(e);
+    ImGui_DestroyContext(context);
+    ImGui_SetCurrentContext(previous);
+}
+
 static void editor_history()
 {
     ImGuiContext *previous = ImGui_GetCurrentContext();
@@ -1928,5 +1961,6 @@ void test_math_expression()
     assert(later >= 0 && later < 2 && later != first + next);
     behavior_asset_free(asset);
     editor_history();
+    editor_rewire();
     puts("Behavior Expression PASS: precedence, functions, named pins, stable wires, atomic errors, serialization and random sampling");
 }

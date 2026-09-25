@@ -269,6 +269,26 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
     return 0;
 }
 
+int editor_rewire_behavior_expression(
+    editor *e,
+    node *call,
+    const char *source,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+)
+{
+    char *before = ed_snapshot(e);
+    if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0 ||
+        behavior_expression_set(e->asset, call, source, error) != 0) {
+        ed_adopt_behavior_asset(e, before);
+        free(before);
+        return -1;
+    }
+    ed_record_math_edit(e, before);
+    return 0;
+}
+
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
 {
     if (e->active_graph->math_expression) {

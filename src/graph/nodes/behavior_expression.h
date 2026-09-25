@@ -33,6 +33,11 @@ int behavior_expression_rename_input(
     const char *to,
     behavior_expression_error *error
 );
+/* Names of the call's inputs a wire or binding feeds, as a support/array.h
+ * array; after a source edit, keep_unfed leaves those no longer fed. */
+char **behavior_expression_fed_inputs(const graph *g, const node *call);
+void behavior_expression_keep_unfed(const graph *g, const node *call, char ***names);
+void behavior_expression_free_names(char **names);
 int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error);
 int behavior_expression_repair(behavior_asset *asset, node *call);
 /* An expression function's body is derived from its source and first call.

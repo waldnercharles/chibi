@@ -653,7 +653,9 @@ void rml_document_add_style_sheet(rml_element *d, const char *rcss)
 {
     Rml::SharedPtr<Rml::StyleSheetContainer> added = Rml::Factory::InstanceStyleSheetString(rcss);
     const Rml::StyleSheetContainer *current = document(d)->GetStyleSheetContainer();
-    document(d)->SetStyleSheetContainer(current ? current->CombineStyleSheetContainer(*added) : added);
+    document(d)->SetStyleSheetContainer(
+        current ? current->CombineStyleSheetContainer(*added) : added
+    );
 }
 
 /* ---------- Elements ---------- */
@@ -840,6 +842,11 @@ void rml_element_select(rml_element *e)
 void rml_element_set_selection_range(rml_element *e, int start, int end)
 {
     input(e)->SetSelectionRange(start, end);
+}
+
+void rml_element_click(rml_element *e)
+{
+    element(e)->Click();
 }
 
 bool rml_element_focus(rml_element *e, bool focus_visible)

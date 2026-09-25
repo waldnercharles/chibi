@@ -312,7 +312,8 @@ extern "C"
     void kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input);
 
     /* A host element whose children the kit leaves alone, for content mounted
-     * from a ui asset (render/ui.h). It lasts while its key is emitted. */
+     * from a ui asset (render/ui.h). It lasts while its key is emitted. Keys
+     * typed inside it are the content's, except Escape and Tab in a popup. */
     typedef struct rml_element rml_element;
     rml_element *kit_host(kit *k, const char *key, const char *cls);
     /* Adds `rcss` after the kit's stylesheets under `key`, replacing what the key

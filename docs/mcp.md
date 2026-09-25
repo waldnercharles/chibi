@@ -486,7 +486,7 @@ extraction policy.
 | --- | --- |
 | Camera | One enabled `GameCamera` plus `GameTransform`. Positive width/height set the logical span; offset follows the entity. Disable it to release the camera. |
 | Controls | `GameActionBinding` maps one physical source to an event name. Multiple entities can bind the same action; their held states combine. `firing` also sets GameAim.firing. Remove GameInput while fitting to suspend ship controls. |
-| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Get UI Value` reads what was last set under the same selector, and a player-changed input under `#id`. An element's `data-event` sends that event to the entity when clicked or, for an input, changed. |
+| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and a player-changed input under `#id`. An element's `data-event` sends that event to the entity when clicked or, for an input, changed. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
 | Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
@@ -514,6 +514,14 @@ element, so `body.paused #title` styles a state class set on it. Game UI lets
 the pointer through to the game except over `data-event` elements and inputs;
 set `pointer-events: auto` where a document should block it, such as a menu's
 backdrop.
+
+`data-keys="Enter:Choose Down:Next"` sends the named event when that key is
+pressed while focus is on the element or inside it, and stops the key there.
+Keys are A-Z, 0-9, Space, Enter, Escape, Tab, Backspace, Delete, Up, Down,
+Left, Right, Home, End, PageUp and PageDown. A document focuses its first
+`autofocus` element when it is shown. RmlUi gives `:focus` to every element on
+the way to the focused one, so pick the focused row with a class, such as
+`.row:focus`.
 
 An element with `data-setting="key"` shows and edits that saved key (the
 same store as `Read Saved Text`): a checkbox holds `true` or `false`, an

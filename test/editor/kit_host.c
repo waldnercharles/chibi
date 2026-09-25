@@ -66,6 +66,100 @@ static void click(host_fixture *f, rml_element *el)
     }
 }
 
+/* A hosted menu in a kit popup: its autofocus row takes focus, its data-keys
+ * bindings get the arrow keys and Enter, and Move UI Focus steps the focus. */
+static void popup_frame(host_fixture *f, bool open)
+{
+    kit *k = f->k;
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    kit_leaf(k, "trigger", NULL, NULL);
+    if (open) {
+        kit_popup_open(k, "menu");
+    }
+    if (kit_popup_begin(k, "menu", "menu")) {
+        f->host = kit_host(k, f->host_key, NULL);
+        if (ui_mount_sync(f->mount, f->host, f->listener, f->in.time)) {
+            kit_style_sheet(k, "Menu", ui_mount_style(f->mount));
+        }
+        kit_popup_end(k);
+    }
+    kit_end(k);
+    rml_backend_update(f->backend, 1.0 / 60.0);
+    f->in.time += 1.0 / 60.0;
+}
+
+static const char *focused_id(host_fixture *f)
+{
+    rml_element *focus = rml_context_focus_element(rml_backend_context(f->backend));
+    return focus ? rml_element_id(focus) : "";
+}
+
+static void press(host_fixture *f, rml_input_key key)
+{
+    rml_backend_process_input(f->backend, &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = key });
+    rml_backend_process_input(f->backend, &(rml_input){ .type = RML_INPUT_KEY_RELEASE, .key = key });
+}
+
+static void popup_navigation(const char *root)
+{
+    char path[128];
+    snprintf(path, sizeof path, "%s/ui/Menu.yaml", root);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(
+        "rml: <div data-keys=\"Enter:Choose Down:Next\"><div class=\"row\" "
+        "id=\"a\" "
+        "autofocus>A</div><div class=\"row\" id=\"b\"><input type=\"radio\" "
+        "id=\"pick\"/>B</div></div>\n"
+        "rcss: '.row { display: block; height: 20dp; tab-index: auto; }'\n",
+        file
+    );
+    fclose(file);
+    host_fixture f = { .host_key = "menu-host" };
+    f.backend = rml_backend_create(640, 480, 1);
+    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
+    f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
+    f.mount = ui_mount_new(root, "Menu");
+    f.listener = rml_listener_create(on_event, f.mount);
+    popup_frame(&f, true);
+    for (int i = 0; i < 4; i++) {
+        popup_frame(&f, false);
+    }
+    bool first = !strcmp(focused_id(&f), "a");
+    ui_activation a;
+    press(&f, RML_INPUT_KEY_DOWN);
+    popup_frame(&f, false);
+    bool next = ui_mount_take(f.mount, &a) && !strcmp(a.event, "Next");
+    game_ui *model = game_ui_new();
+    game_ui_move_focus(model, 0, ".row", 1);
+    ui_mount_apply(f.mount, model, 0);
+    bool moved = !strcmp(focused_id(&f), "b");
+    game_ui_move_focus(model, 0, ".row", 1);
+    ui_mount_apply(f.mount, model, 0);
+    bool wrapped = !strcmp(focused_id(&f), "a");
+    press(&f, RML_INPUT_KEY_ENTER);
+    popup_frame(&f, false);
+    bool chose = ui_mount_take(f.mount, &a) && !strcmp(a.event, "Choose");
+    game_ui_move_focus(model, 0, ".row", 1);
+    game_ui_click(model, 0, ".row:focus input");
+    ui_mount_apply(f.mount, model, 0);
+    popup_frame(&f, false);
+    rml_element *pick = rml_element_query_selector(f.host, "#pick");
+    test_check(
+        first && next && moved && wrapped && chose &&
+            rml_element_has_attribute(pick, "checked"),
+        "a hosted menu in a popup takes focus, binds its keys, steps focus and "
+        "clicks the focused row"
+    );
+    game_ui_free(model);
+    kit_destroy(f.k);
+    rml_backend_destroy(f.backend);
+    ui_mount_free(f.mount);
+    rml_listener_destroy(f.listener);
+    unlink(path);
+}
+
 void test_kit_host()
 {
     char root[] = "/tmp/chibi-kit-host-XXXXXX", folder[64], path[96];
@@ -116,6 +210,7 @@ void test_kit_host()
     ui_mount_free(f.mount);
     rml_listener_destroy(f.listener);
     unlink(path);
+    popup_navigation(root);
     rmdir(folder);
     rmdir(root);
 }

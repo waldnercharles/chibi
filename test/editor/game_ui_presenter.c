@@ -203,6 +203,26 @@ void test_game_ui_presenter()
     test_check(unchecked && !strcmp(game_save_get(settings, "sound"), "false"), "a data-setting checkbox shows its saved value and saves the player's change");
     unlink(options);
 
+    char keys[96];
+    snprintf(keys, sizeof keys, "%s/Keys.yaml", folder);
+    write_file(
+        keys,
+        "rml: <div data-keys=\"Enter:Choose\"><div id=\"row\" autofocus "
+        "data-event=\"Row\">Row</div></div>\n"
+        "rcss: '#row { display: block; height: 40dp; tab-index: auto; }'\n"
+    );
+    *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Keys" };
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    before = game_entities_pending_events(live->entities);
+    render_ui_input(ui, &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_ENTER });
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool keyed = game_entities_pending_events(live->entities) == before + 1;
+    game_ui_click(model, ecs_entity_to_u64(strip), "#row");
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    test_check(keyed && game_entities_pending_events(live->entities) == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
+    unlink(keys);
+
     render_ui_free(ui);
     game_live_world_free(live);
     ecs_world_free(world);

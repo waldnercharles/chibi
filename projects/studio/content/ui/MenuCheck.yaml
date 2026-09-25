@@ -1,8 +1,10 @@
 rml: <label class="menu-item menu-check"><input type="checkbox"/><span class="icon lead">&#xeab2;</span><span class="label"><slot/></span></label>
 rcss: |
-  .menu-check { position: relative; }
-  .menu-check input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; }
+  .menu-check { position: relative; tab-index: auto; }
+  .menu-check input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; tab-index: none; }
   .menu-check .lead { opacity: 0; }
   .menu-check input:checked ~ .lead { opacity: 1; }
   .menu-check:hover { background-color: var(--accent); color: var(--on-accent); }
   .menu-check:hover .lead { color: var(--on-accent); }
+  .menu-check:focus-visible { background-color: var(--accent); color: var(--on-accent); }
+  .menu-check:focus-visible .lead { color: var(--on-accent); }

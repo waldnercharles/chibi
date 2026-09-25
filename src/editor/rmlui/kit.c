@@ -754,6 +754,10 @@ static void keydown(kit *k, const rml_event *e, node *n)
         rml_event_stop_propagation(e);
         return;
     }
+    /* Hosted content handles its own keys, and RmlUi navigates it. */
+    if (n && n->hosted && e->key != RML_KEY_ESCAPE && e->key != RML_KEY_TAB) {
+        return;
+    }
     if (command_key(k, e) || popup_key(k, e) || !n) {
         return;
     }
@@ -1087,7 +1091,9 @@ void kit_leaf(kit *k, const char *key, const char *tag, const char *cls)
 
 rml_element *kit_host(kit *k, const char *key, const char *cls)
 {
-    return emit(k, key, KIND_BOX, "div", cls)->el;
+    node *n = emit(k, key, KIND_BOX, "div", cls);
+    n->hosted = true;
+    return n->el;
 }
 
 void kit_label(kit *k, const char *key, const char *cls, const char *text)

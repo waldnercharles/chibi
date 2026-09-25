@@ -53,7 +53,11 @@ const char *ui_mount_error(const ui_mount *mount);
 /* Whether `element` is the mount's root or inside it. */
 bool ui_mount_holds(const ui_mount *mount, rml_element *element);
 /* Records the activation an event in the mount's root makes, if any: a click
- * on a data-event element, or a change or submit of a data-event input. */
+ * on a data-event element, a change or submit of a data-event input, or a key
+ * bound by data-keys="Key:Event ..." on the focused element or an ancestor
+ * (keys are A-Z, 0-9, Space, Enter, Escape, Tab, Backspace, Delete, arrows as
+ * Up/Down/Left/Right, Home, End, PageUp and PageDown). An installed asset
+ * focuses its first autofocus element. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
 /* Takes the oldest activation; false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);

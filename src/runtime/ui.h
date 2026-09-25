@@ -28,6 +28,8 @@ typedef struct game_ui_element
     bool has_value;
     float value;
     bool focus;        /* requested and not yet applied */
+    bool click;        /* requested and not yet applied */
+    int move_focus;    /* a requested step through the matches; 0 for none */
     uint64_t revision; /* the ui revision of its last change */
 } game_ui_element;
 
@@ -42,6 +44,11 @@ bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const 
 bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool visible);
 bool game_ui_set_value(game_ui *ui, uint64_t entity, const char *element, float value);
 bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element);
+/* Clicks the first element the selector matches, as the player would. */
+bool game_ui_click(game_ui *ui, uint64_t entity, const char *element);
+/* Moves focus `step` places through the elements the selector matches, from
+ * the one that holds focus, wrapping at the ends. */
+bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step);
 /* The value last set under this selector, or false when none was. */
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value);
 /* Drops an entity's elements, as when its GameUi goes away. */

@@ -30,12 +30,30 @@ struct ui_mount
     game_save *settings;
     uint64_t settings_seen; /* the settings revision shown; UINT64_MAX when stale */
     bool refreshing;        /* ignore the change events a refresh raises */
+    bool autofocus; /* installed, and its autofocus element not yet focused */
 };
 
 /* The events a mount's root reports. */
 static const rml_event_id MOUNT_EVENTS[] = { RML_EVENT_CLICK,
                                              RML_EVENT_CHANGE,
-                                             RML_EVENT_SUBMIT };
+                                             RML_EVENT_SUBMIT,
+                                             RML_EVENT_KEYDOWN };
+
+/* The names data-keys binds, for keys that are not letters or digits. */
+static const struct
+{
+    rml_key key;
+    const char *name;
+} KEY_NAMES[] = {
+    { RML_KEY_SPACE, "Space" },       { RML_KEY_RETURN, "Enter" },
+    { RML_KEY_NUMPADENTER, "Enter" }, { RML_KEY_ESCAPE, "Escape" },
+    { RML_KEY_TAB, "Tab" },           { RML_KEY_BACK, "Backspace" },
+    { RML_KEY_DELETE, "Delete" },     { RML_KEY_UP, "Up" },
+    { RML_KEY_DOWN, "Down" },         { RML_KEY_LEFT, "Left" },
+    { RML_KEY_RIGHT, "Right" },       { RML_KEY_HOME, "Home" },
+    { RML_KEY_END, "End" },           { RML_KEY_PRIOR, "PageUp" },
+    { RML_KEY_NEXT, "PageDown" },
+};
 
 ui_mount *ui_mount_new(const char *content_root, const char *name)
 {
@@ -165,7 +183,14 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         m->installed = true;
         m->applied = 0;
         m->settings_seen = UINT64_MAX;
+        m->autofocus = true;
     }
+    /* A host may keep the root hidden for a frame, and hidden elements refuse
+       focus, so this repeats until the focus takes. */
+    rml_element *first = m->autofocus
+                           ? rml_element_query_selector(root, "[autofocus]")
+                           : NULL;
+    m->autofocus = first && !rml_element_focus(first, false);
     return restyled;
 }
 
@@ -305,11 +330,75 @@ void ui_mount_settings(ui_mount *m, game_save *settings)
     m->settings_seen = game_save_revision(settings);
 }
 
+/* The name data-keys uses for `key`, or NULL for keys it cannot bind. */
+static const char *key_name(rml_key key, char *letter)
+{
+    if (key >= RML_KEY_A && key <= RML_KEY_Z) {
+        letter[0] = (char)('A' + (key - RML_KEY_A));
+        letter[1] = '\0';
+        return letter;
+    }
+    if (key >= RML_KEY_0 && key <= RML_KEY_9) {
+        letter[0] = (char)('0' + (key - RML_KEY_0));
+        letter[1] = '\0';
+        return letter;
+    }
+    for (size_t i = 0; i < sizeof KEY_NAMES / sizeof *KEY_NAMES; i++) {
+        if (KEY_NAMES[i].key == key) {
+            return KEY_NAMES[i].name;
+        }
+    }
+    return NULL;
+}
+
+/* The event `bindings` ("Key:Event Key:Event") names for `key`, if any. */
+static bool bound_event(const char *bindings, const char *key, char *event, size_t size)
+{
+    size_t length = strlen(key);
+    for (const char *p = bindings; *p;) {
+        while (*p == ' ') {
+            p++;
+        }
+        const char *end = p + strcspn(p, " ");
+        if (!strncmp(p, key, length) && p[length] == ':') {
+            snprintf(event, size, "%.*s", (int)(end - p - (int)length - 1), p + length + 1);
+            return event[0] != '\0';
+        }
+        p = end;
+    }
+    return false;
+}
+
+/* A key pressed inside a data-keys element sends the event bound to it from
+ * the nearest such element, and goes no further. */
+static void listen_key(ui_mount *m, const rml_event *event)
+{
+    char letter[2];
+    const char *key = key_name(event->key, letter);
+    for (rml_element *el = event->target;
+         key && el && el != rml_element_parent(m->root);
+         el = rml_element_parent(el)) {
+        char bindings[256];
+        ui_activation a = { 0 };
+        if (rml_element_attribute(el, "data-keys", bindings, sizeof bindings) > 0 &&
+            bound_event(bindings, key, a.event, sizeof a.event)) {
+            snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
+            apush(m->pending, a);
+            rml_event_stop_propagation(event);
+            return;
+        }
+    }
+}
+
 /* A click activates buttons and other elements; inputs report changes, which
  * carry their value and first update a bound setting. */
 void ui_mount_listen(ui_mount *m, const rml_event *event)
 {
     if (m->refreshing) {
+        return;
+    }
+    if (event->id == RML_EVENT_KEYDOWN) {
+        listen_key(m, event);
         return;
     }
     if (event->id == RML_EVENT_CHANGE && m->settings) {
@@ -385,6 +474,23 @@ static void apply_to(rml_element *element, const game_ui_element *e)
     }
 }
 
+/* Focuses the match `step` places from the one holding focus, wrapping; with
+ * none holding it, the first for a forward step and the last for a back one. */
+static void move_focus(rml_element *root, rml_element **matches, int count, int step)
+{
+    rml_element *focus = rml_context_focus_element(rml_element_context(root));
+    int at = -1;
+    for (int i = 0; focus && i < count && at < 0; i++) {
+        for (rml_element *el = focus; el && at < 0; el = rml_element_parent(el)) {
+            at = el == matches[i] ? i : -1;
+        }
+    }
+    int next = at < 0 ? (step > 0 ? 0 : count - 1)
+                      : ((at + step) % count + count) % count;
+    rml_element_focus(matches[next], true);
+    rml_element_scroll_into_view(matches[next], RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+}
+
 /* Applies the setting to every element its selector matches in `root`;
  * focus goes to the first. */
 static void apply_element(rml_element *root, game_ui_element *e)
@@ -398,7 +504,14 @@ static void apply_element(rml_element *root, game_ui_element *e)
     if (e->focus && count) {
         rml_element_focus(matches[0], true);
     }
-    e->focus = false;
+    if (e->click && count) {
+        rml_element_click(matches[0]);
+    }
+    if (e->move_focus && count) {
+        move_focus(root, matches, count, e->move_focus);
+    }
+    e->focus = e->click = false;
+    e->move_focus = 0;
     free(matches);
 }
 

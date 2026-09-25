@@ -6,13 +6,16 @@
 #include "assets/behavior_loader.h"
 #include "assets/scene_document.h"
 #include "editor/studio/studio_internal.h"
+#include "graph/document/serialize.h"
 #include "render/ui.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
+#include "support/file_watch.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +36,7 @@ struct studio_ui
     game_prototype_preview *world;
     game_prototype **prototypes;
     panel *panels;
+    file_watch *behaviors; /* the panel behaviors, recompiled when edited */
     rml_listener *listener;
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
@@ -105,6 +109,60 @@ static bool launch(studio_ui *ui, char *error, size_t size)
     return ok;
 }
 
+/* Watches each behavior file the world loaded. */
+static void watch_behaviors(studio_ui *ui)
+{
+    char folder[1024];
+    snprintf(folder, sizeof folder, "%s/behaviors", ui->content_root);
+    DIR *dir = opendir(folder);
+    struct dirent *entry;
+    while (dir && (entry = readdir(dir))) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+        file_watch w = { 0 };
+        char path[sizeof w.path];
+        snprintf(path, sizeof path, "%s/%s", folder, entry->d_name);
+        file_watch_changed(&w, path, 0);
+        apush(ui->behaviors, w);
+    }
+    if (dir) {
+        closedir(dir);
+    }
+}
+
+/* Recompiles edited panel behaviors into the running world, keeping their
+ * state; a behavior that fails keeps its last valid version. */
+static void reload_behaviors(studio *s)
+{
+    studio_ui *ui = s->ui;
+    for (int i = 0; i < acount(ui->behaviors); i++) {
+        file_watch *w = &ui->behaviors[i];
+        if (!file_watch_changed(w, w->path, s->time)) {
+            continue;
+        }
+        char *text = text_file_read(w->path);
+        behavior_asset *asset = text ? behavior_asset_load_json(text) : NULL;
+        free(text);
+        char message[256] = "is not a behavior";
+        if (!asset ||
+            game_prototype_preview_update_behavior(ui->world, asset->name, asset, false, message, sizeof message) <
+                0) {
+            char error[1024];
+            snprintf(error, sizeof error, "%s %s", w->path, message);
+            kit_toast(
+                s->kit,
+                0,
+                &(kit_toast_desc){ .type = KIT_TOAST_ERROR,
+                                   .title = "Studio UI",
+                                   .description = error }
+            );
+            studio_record(s, KIT_TOAST_ERROR, error);
+        }
+        behavior_asset_free(asset);
+    }
+}
+
 studio_ui *studio_ui_new(const char *project_root, char *error, size_t size)
 {
     studio_ui *ui = xcalloc(1, sizeof *ui);
@@ -115,11 +173,12 @@ studio_ui *studio_ui_new(const char *project_root, char *error, size_t size)
                                               .component_count = GAME_REGISTRY_COMPONENT_COUNT };
     ui->world = game_prototype_preview_new(&ui->registry);
     ui->listener = rml_listener_create(on_event, ui);
-    app_behavior_fixtures_load(game_prototype_preview_live(ui->world), ui->world, ui->content_root);
+    app_behavior_fixtures_load(game_prototype_preview_live(ui->world), NULL, ui->content_root);
     if (!launch(ui, error, size)) {
         studio_ui_free(ui);
         return NULL;
     }
+    watch_behaviors(ui);
     return ui;
 }
 
@@ -140,6 +199,7 @@ void studio_ui_free(studio_ui *ui)
         game_prototype_free(ui->prototypes[i]);
     }
     afree(ui->prototypes);
+    afree(ui->behaviors);
     rml_listener_destroy(ui->listener);
     free(ui->content_root);
     free(ui);
@@ -155,6 +215,7 @@ void studio_ui_frame(studio *s)
     if (!s->ui) {
         return;
     }
+    reload_behaviors(s);
     game_prototype_preview_tick(s->ui->world, s->time);
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }

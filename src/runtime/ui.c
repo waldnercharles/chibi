@@ -138,6 +138,26 @@ bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element)
     return true;
 }
 
+bool game_ui_click(game_ui *ui, uint64_t entity, const char *element)
+{
+    game_ui_element *e = change(ui, entity, element);
+    if (!e) {
+        return false;
+    }
+    e->click = true;
+    return true;
+}
+
+bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step)
+{
+    game_ui_element *e = step ? change(ui, entity, element) : NULL;
+    if (!e) {
+        return false;
+    }
+    e->move_focus = step;
+    return true;
+}
+
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value)
 {
     const game_ui_element *e = element ? find(ui, entity, element) : NULL;
@@ -216,6 +236,16 @@ static const char *focus_call(void *ui, const pin_value *a, pin_value *)
     return game_ui_focus(ui, a[0].u64, a[1].str) ? NULL : INVALID_UI;
 }
 
+static const char *click_call(void *ui, const pin_value *a, pin_value *)
+{
+    return game_ui_click(ui, a[0].u64, a[1].str) ? NULL : INVALID_UI;
+}
+
+static const char *move_focus_call(void *ui, const pin_value *a, pin_value *)
+{
+    return game_ui_move_focus(ui, a[0].u64, a[1].str, a[2].i) ? NULL : INVALID_UI;
+}
+
 static const char *get_call(void *ui, const pin_value *a, pin_value *results)
 {
     float value = 0;
@@ -288,6 +318,13 @@ static pin_spec VALUE_IN[] = { EXEC_IN,
                                ELEMENT_IN,
                                { .name = "Value", .type = PIN_F32, .type_name = "float" } };
 static pin_spec FOCUS_IN[] = { EXEC_IN, ENTITY_IN, ELEMENT_IN };
+static pin_spec MOVE_FOCUS_IN[] = { EXEC_IN,
+                                    ENTITY_IN,
+                                    ELEMENT_IN,
+                                    { .name = "Step",
+                                      .type = PIN_I32,
+                                      .type_name = "int",
+                                      .default_value = { .type = PIN_I32, .i = 1 } } };
 static pin_spec THEN_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
 static pin_spec GET_IN[] = { ENTITY_IN, ELEMENT_IN };
 static pin_spec GET_OUT[] = {
@@ -320,6 +357,8 @@ EFFECT_NODE(SET_CLASS, "Set UI Class", "style state highlight rcss", CLASS_IN, c
 EFFECT_NODE(SET_VISIBLE, "Set UI Visible", "show hide display", VISIBLE_IN, visible_call);
 EFFECT_NODE(SET_VALUE, "Set UI Value", "progress slider meter bar", VALUE_IN, value_call);
 EFFECT_NODE(FOCUS, "Focus UI Element", "keyboard select input", FOCUS_IN, focus_call);
+EFFECT_NODE(CLICK, "Click UI Element", "press activate button choose", FOCUS_IN, click_call);
+EFFECT_NODE(MOVE_FOCUS, "Move UI Focus", "next previous navigate arrow keyboard", MOVE_FOCUS_IN, move_focus_call);
 
 static const node_host_call GET_CALL = {
     .service = "game.ui",
@@ -339,8 +378,9 @@ static node_desc GET_VALUE = { .name = "Get UI Value",
                                .host_call = &GET_CALL,
                                .access = &READ };
 
-static node_desc *const NODES[] = { &SET_TEXT,  &SET_CLASS, &SET_VISIBLE,
-                                    &SET_VALUE, &FOCUS,     &GET_VALUE };
+static node_desc *const NODES[] = { &SET_TEXT,   &SET_CLASS, &SET_VISIBLE,
+                                    &SET_VALUE,  &FOCUS,     &CLICK,
+                                    &MOVE_FOCUS, &GET_VALUE };
 const registry_pack GAME_UI_PACK = { .name = "game.ui",
                                      .nodes = NODES,
                                      .node_count = sizeof NODES / sizeof *NODES };

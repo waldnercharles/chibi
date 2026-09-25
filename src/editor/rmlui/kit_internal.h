@@ -242,6 +242,7 @@ struct node
     morph_state *morph; /* owned, NULL until used */
     chart_state *chart; /* owned, NULL until used */
     char *drop_type; /* accepted drag type, set each frame by kit_drop_target */
+    bool hosted;     /* kit_host: its children are mounted content */
 };
 
 /* A toast (kit_toast.c). Positions are springs around their targets, in dp. */

@@ -1,6 +1,6 @@
 version: 3
 name: Pursuit
-id_counter: 504
+id_counter: 539
 description: Approach a player within 600 units, limiting acceleration to 120 units per second squared.
 owner_type: ecs.entity
 graphs:
@@ -28,26 +28,19 @@ graphs:
   - id: 44
     type: Behavior Expression
     reference_id: 22
-    reference_name: direction * speed - vec2(vx, vy)
+    reference_name: direction * speed - velocity
     inputs:
-      direction: {flags: 2, group: 1}
+      direction: {}
       speed:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: component_field, component: game.GameMovement, field: speed}
-      vx:
-        type: float
-        flags: 2
-        group: 3
-        binding: {kind: component_field, component: GAME.GameVelocity, field: x}
-      vy:
-        type: float
-        flags: 2
-        group: 4
-        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      velocity:
+        id: 521
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
     outputs:
-      Result: {type: struct, type_name: CF_V2, flags: 2, group: 5}
+      Result: {id: 49, type: struct, type_name: CF_V2}
   - id: 160
     type: Behavior Expression
     reference_id: 138
@@ -58,19 +51,15 @@ graphs:
         id: 161
         type: struct
         type_name: GameVelocity
-        flags: 6
-        group: 1
         binding: {kind: component, component: GAME.GameVelocity}
-      delta: {type: struct, type_name: CF_V2, flags: 2, group: 2}
-      acceleration: {type: double, flags: 2, group: 3, default: 120.0}
+      delta: {type: struct, type_name: CF_V2}
+      acceleration: {type: double, default: 120.0}
       dt:
         type: double
-        flags: 2
-        group: 4
         binding: {kind: delta_time}
     outputs:
       Then: {id: 167, kind: exec}
-      Result: {id: 165, type: struct, type_name: GameVelocity, flags: 2, group: 5}
+      Result: {id: 165, type: struct, type_name: GameVelocity}
   - id: 323
     type: Behavior Expression
     reference_id: 306
@@ -81,12 +70,10 @@ graphs:
         id: 324
         type: struct
         type_name: GameVelocity
-        flags: 6
-        group: 1
         binding: {kind: component, component: GAME.GameVelocity}
     outputs:
       Then: {id: 327, kind: exec}
-      Result: {id: 325, type: struct, type_name: GameVelocity, flags: 2, group: 2}
+      Result: {id: 325, type: struct, type_name: GameVelocity}
   edges:
   - {from: 1.Then, to: 13.Exec}
   - {from: 4.Found, to: 13.Condition}
@@ -97,25 +84,10 @@ graphs:
   - {from: 44.Result, to: 160.delta}
 - id: 22
   kind: function
-  name: direction * speed - vec2(vx, vy)
-  math_expression: direction * speed - vec2(vx, vy)
-  expression_mode: 1
-  entry_id: 351
-  return_id: 353
-  call_depth_limit: 64
+  math_expression: direction * speed - velocity
+  entry_id: 523
 - id: 138
   kind: function
-  name: velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))
   math_expression: velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))
-  expression_mode: 2
   entry_id: 457
-  return_id: 459
-  call_depth_limit: 64
-- id: 306
-  kind: function
-  name: velocity = vec2(0, 0)
-  math_expression: velocity = vec2(0, 0)
-  expression_mode: 2
-  entry_id: 435
-  return_id: 437
-  call_depth_limit: 64
+- {id: 306, kind: function, math_expression: 'velocity = vec2(0, 0)', entry_id: 435}

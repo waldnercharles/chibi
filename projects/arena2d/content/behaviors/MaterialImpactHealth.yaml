@@ -1,6 +1,6 @@
 version: 3
 name: MaterialImpactHealth
-id_counter: 252
+id_counter: 379
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -10,52 +10,14 @@ graphs:
     type: Event
     reference_name: Material Impact
     outputs:
-      Energy: {declaration_id: 1, type: float, type_name: null, kind: data}
-      Cause: {declaration_id: 2, type: int, type_name: null, kind: data}
+      Energy: {declaration_id: 1, type: float, kind: data}
+      Cause: {declaration_id: 2, type: int, kind: data}
       Point:
         declaration_id: 3
         type: struct
         type_name: CF_V2
         kind: data
         default: {x: 0.0, "y": 0.0}
-  - id: 6
-    type: Get Component
-    inputs:
-      Component: {id: 249, default: game.GameHealth}
-    outputs:
-      Value: {id: 7}
-      Value.current: {}
-      Value.maximum: {}
-  - id: 32
-    type: Behavior Expression
-    reference_id: 10
-    reference_name: max(current - damage, 0)
-    inputs:
-      current: {flags: 2, group: 1}
-      damage: {flags: 2, group: 2}
-    outputs:
-      Result: {flags: 2, group: 3}
-  - id: 80
-    type: Set Component
-    inputs:
-      Component: {id: 251, default: game.GameHealth}
-      Entity: {id: 83}
-      current: {id: 82}
-    outputs:
-      Then: {id: 84}
-      Value.current: {id: 108}
-      Value.maximum: {}
-  - id: 124
-    type: Behavior Expression
-    reference_id: 110
-    reference_name: current <= 0
-    inputs:
-      Exec: {id: 127, kind: exec}
-      current: {id: 125, type: double, group: 1}
-    outputs:
-      "True": {id: 128, kind: exec}
-      "False": {kind: exec}
-      Result: {id: 126, type: bool, flags: 2, group: 2}
   - id: 144
     type: Self
     outputs:
@@ -63,31 +25,45 @@ graphs:
   - {id: 146, type: Destroy Entity}
   - {id: 191, type: Ceiling}
   - {id: 194, type: To Integer}
+  - id: 271
+    type: Behavior Expression
+    reference_id: 252
+    reference_name: health = max(health - damage, 0)
+    inputs:
+      Exec: {id: 275, kind: exec}
+      health:
+        id: 272
+        type: int
+        binding: {kind: component_field, component: game.GameHealth, field: current}
+      damage: {}
+    outputs:
+      Then: {id: 276, kind: exec}
+      Result: {id: 274, type: int}
+  - id: 359
+    type: Behavior Expression
+    reference_id: 345
+    reference_name: health <= 0
+    inputs:
+      Exec: {id: 362, kind: exec}
+      health:
+        id: 360
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: game.GameHealth, field: current}
+    outputs:
+      "True": {id: 363, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 361, type: bool}
   edges:
-  - {from: 1.Then, to: 80.Exec}
+  - {from: 1.Then, to: 271.Exec}
   - {from: 1.Energy, to: 191.Value}
-  - {from: 6.Value.current, to: 32.current}
-  - {from: 32.Result, to: 80.current}
-  - {from: 80.Then, to: 124.Exec}
-  - {from: 80.Value.current, to: 124.current, conversion: To Real}
-  - {from: 124.True, to: 146.Exec}
-  - {from: 144.Self, to: 80.Entity}
   - {from: 144.Self, to: 146.Entity}
   - {from: 191.Result, to: 194.Value}
-  - {from: 194.Integer, to: 32.damage}
-- id: 10
+  - {from: 194.Integer, to: 271.damage}
+  - {from: 271.Then, to: 359.Exec}
+  - {from: 359.True, to: 146.Exec}
+- id: 252
   kind: function
-  name: max(current - damage, 0)
-  math_expression: max(current - damage, 0)
-  expression_mode: 1
-  entry_id: 217
-  return_id: 219
-  call_depth_limit: 64
-- id: 110
-  kind: function
-  name: current <= 0
-  math_expression: current <= 0
-  expression_mode: 3
-  entry_id: 236
-  return_id: 238
-  call_depth_limit: 64
+  math_expression: health = max(health - damage, 0)
+  entry_id: 312
+- {id: 345, kind: function, math_expression: health <= 0, entry_id: 366}

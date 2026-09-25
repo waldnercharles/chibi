@@ -27,21 +27,12 @@ graphs:
         id: 16
         type: bool
         type_name: _Bool
-        flags: 6
-        group: 1
         binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
-      action: {flags: 2, group: 2}
+      action: {}
     outputs:
       Then: {id: 20, kind: exec}
-      Result: {id: 18, type: bool, flags: 2, group: 3}
+      Result: {id: 18, type: bool}
   edges:
   - {from: 1.Then, to: 15.Exec}
   - {from: 4.Value, to: 15.action}
-- id: 7
-  kind: function
-  name: active = action.pressed
-  math_expression: active = action.pressed
-  expression_mode: 2
-  entry_id: 246
-  return_id: 248
-  call_depth_limit: 64
+- {id: 7, kind: function, math_expression: active = action.pressed, entry_id: 246}

@@ -1,6 +1,6 @@
 version: 3
 name: Nudge
-id_counter: 241
+id_counter: 496
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -10,47 +10,34 @@ graphs:
   - id: 44
     type: Behavior Expression
     reference_id: 3
-    reference_name: clamp(v + (rand()-0.5)*170, -900, 900)
+    reference_name: clamp(vx + (rand() - 0.5) * 170, -900, 900)
     inputs:
-      v:
+      vx:
         type: double
-        flags: 2
-        group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: x}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - {id: 88, type: Set_GameVelocity_x}
-  - id: 149
+  - id: 339
     type: Behavior Expression
-    reference_id: 135
-    reference_name: v-100
+    reference_id: 325
+    reference_name: velocity.y -= 100
     inputs:
-      v:
-        type: double
-        flags: 2
-        group: 1
-        binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
+      Exec: {id: 342, kind: exec}
+      velocity:
+        id: 340
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
-  - {id: 166, type: Set_GameVelocity_y}
+      Then: {id: 343, kind: exec}
+      Result: {id: 341, type: float}
   edges:
   - {from: 1.Then, to: 88.Exec}
   - {from: 44.Result, to: 88.Value}
-  - {from: 88.Then, to: 166.Exec}
-  - {from: 149.Result, to: 166.Value}
+  - {from: 88.Then, to: 339.Exec}
 - id: 3
   kind: function
-  name: clamp(v + (rand()-0.5)*170, -900, 900)
-  math_expression: clamp(v + (rand()-0.5)*170, -900, 900)
-  expression_mode: 1
-  entry_id: 187
-  return_id: 189
-  call_depth_limit: 64
-- id: 135
-  kind: function
-  name: v-100
-  math_expression: v-100
-  expression_mode: 1
-  entry_id: 228
-  return_id: 230
-  call_depth_limit: 64
+  math_expression: clamp(vx + (rand() - 0.5) * 170, -900, 900)
+  entry_id: 456
+- {id: 325, kind: function, math_expression: velocity.y -= 100, entry_id: 345}

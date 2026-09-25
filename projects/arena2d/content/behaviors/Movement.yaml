@@ -1,6 +1,6 @@
 version: 3
 name: Movement
-id_counter: 742
+id_counter: 956
 description: Face aim; drive from movement input or boost along the ship heading.
 owner_type: ecs.entity
 graphs:
@@ -12,31 +12,6 @@ graphs:
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 17
-    type: Behavior Expression
-    reference_id: 4
-    reference_name: heading = atan2(y, x)
-    inputs:
-      Exec: {id: 22, kind: exec}
-      heading:
-        id: 18
-        type: float
-        flags: 6
-        group: 1
-        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
-      "y":
-        type: double
-        flags: 2
-        group: 2
-        binding: {kind: component_field, component: GAME.GameAim, field: direction.y}
-      x:
-        type: double
-        flags: 2
-        group: 3
-        binding: {kind: component_field, component: GAME.GameAim, field: direction.x}
-    outputs:
-      Then: {id: 23, kind: exec}
-      Result: {id: 21, type: double, flags: 2, group: 4}
   - id: 102
     type: Branch
     inputs:
@@ -52,74 +27,16 @@ graphs:
         id: 138
         type: struct
         type_name: CF_V2
-        flags: 6
-        group: 1
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       heading:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
         type: double
-        flags: 2
-        group: 3
         binding: {kind: component_field, component: game.GameMovement, field: speed}
     outputs:
       Then: {id: 143, kind: exec}
-      Result: {id: 141, type: struct, type_name: CF_V2, flags: 2, group: 4}
-  - id: 306
-    type: Behavior Expression
-    reference_id: 279
-    reference_name: x * x + y * y > 0.01
-    inputs:
-      Exec: {id: 310, kind: exec}
-      x:
-        id: 307
-        type: double
-        flags: 2
-        group: 1
-        binding: {kind: component_field, component: game.GameInput, field: move.x}
-      "y":
-        type: double
-        flags: 2
-        group: 2
-        binding: {kind: component_field, component: game.GameInput, field: move.y}
-    outputs:
-      "True": {id: 311, kind: exec}
-      "False": {kind: exec}
-      Result: {id: 309, type: bool, flags: 2, group: 3}
-  - id: 385
-    type: Behavior Expression
-    reference_id: 367
-    reference_name: target = vec2(x, y) * speed
-    inputs:
-      Exec: {id: 391, kind: exec}
-      target:
-        id: 386
-        type: struct
-        type_name: CF_V2
-        flags: 6
-        group: 1
-        binding: {kind: component_field, component: GAME.GameDrive, field: target}
-      x:
-        type: float
-        flags: 2
-        group: 2
-        binding: {kind: component_field, component: game.GameInput, field: move.x}
-      "y":
-        type: float
-        flags: 2
-        group: 3
-        binding: {kind: component_field, component: game.GameInput, field: move.y}
-      speed:
-        type: double
-        flags: 2
-        group: 4
-        binding: {kind: component_field, component: game.GameMovement, field: speed}
-    outputs:
-      Then: {id: 392, kind: exec}
-      Result: {id: 390, type: struct, type_name: CF_V2, flags: 2, group: 5}
+      Result: {id: 141, type: struct, type_name: CF_V2}
   - id: 542
     type: Behavior Expression
     reference_id: 525
@@ -130,56 +47,78 @@ graphs:
         id: 543
         type: struct
         type_name: CF_V2
-        flags: 6
-        group: 1
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
     outputs:
       Then: {id: 546, kind: exec}
-      Result: {id: 544, type: struct, type_name: CF_V2, flags: 2, group: 2}
+      Result: {id: 544, type: struct, type_name: CF_V2}
+  - id: 754
+    type: Behavior Expression
+    reference_id: 742
+    reference_name: heading = atan2(aim.y, aim.x)
+    inputs:
+      Exec: {id: 758, kind: exec}
+      heading:
+        id: 755
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      aim:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
+    outputs:
+      Then: {id: 759, kind: exec}
+      Result: {id: 757, type: double}
+  - id: 829
+    type: Behavior Expression
+    reference_id: 812
+    reference_name: length(move) > 0.1
+    inputs:
+      Exec: {id: 832, kind: exec}
+      move:
+        id: 830
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: game.GameInput, field: move}
+    outputs:
+      "True": {id: 833, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 831, type: bool}
+  - id: 865
+    type: Behavior Expression
+    reference_id: 852
+    reference_name: target = move * speed
+    inputs:
+      Exec: {id: 870, kind: exec}
+      target:
+        id: 866
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      move:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: game.GameInput, field: move}
+      speed:
+        type: double
+        binding: {kind: component_field, component: game.GameMovement, field: speed}
+    outputs:
+      Then: {id: 871, kind: exec}
+      Result: {id: 869, type: struct, type_name: CF_V2}
   edges:
-  - {from: 1.Then, to: 17.Exec}
-  - {from: 17.Then, to: 102.Exec}
+  - {from: 1.Then, to: 754.Exec}
   - {from: 102.True, to: 137.Exec}
-  - {from: 102.False, to: 306.Exec}
-  - {from: 306.True, to: 385.Exec}
-  - {from: 306.False, to: 542.Exec}
-- id: 4
-  kind: function
-  name: heading = atan2(y, x)
-  math_expression: heading = atan2(y, x)
-  expression_mode: 2
-  entry_id: 580
-  return_id: 582
-  call_depth_limit: 64
+  - {from: 102.False, to: 829.Exec}
+  - {from: 754.Then, to: 102.Exec}
+  - {from: 829.True, to: 865.Exec}
+  - {from: 829.False, to: 542.Exec}
+- {id: 525, kind: function, math_expression: 'target = vec2(0, 0)', entry_id: 711}
 - id: 107
   kind: function
-  name: target = vec2(cos(heading), sin(heading)) * speed * 2
   math_expression: target = vec2(cos(heading), sin(heading)) * speed * 2
-  expression_mode: 2
   entry_id: 606
-  return_id: 608
-  call_depth_limit: 64
-- id: 279
+- id: 742
   kind: function
-  name: x * x + y * y > 0.01
-  math_expression: x * x + y * y > 0.01
-  expression_mode: 3
-  entry_id: 651
-  return_id: 653
-  call_depth_limit: 64
-- id: 367
-  kind: function
-  name: target = vec2(x, y) * speed
-  math_expression: target = vec2(x, y) * speed
-  expression_mode: 2
-  entry_id: 678
-  return_id: 680
-  call_depth_limit: 64
-- id: 525
-  kind: function
-  name: target = vec2(0, 0)
-  math_expression: target = vec2(0, 0)
-  expression_mode: 2
-  entry_id: 711
-  return_id: 713
-  call_depth_limit: 64
+  math_expression: heading = atan2(aim.y, aim.x)
+  entry_id: 786
+- {id: 812, kind: function, math_expression: length(move) > 0.1, entry_id: 836}
+- {id: 852, kind: function, math_expression: target = move * speed, entry_id: 929}

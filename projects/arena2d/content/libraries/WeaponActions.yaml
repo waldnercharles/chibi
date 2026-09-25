@@ -5,36 +5,32 @@ id_counter: 298
 description: Shared weapon cooldown and projectile initialization functions.
 graphs:
 - {kind: event, name: Events}
-- id: 149
+- id: 256
   kind: function
-  name: Check Firing Interval
-  entry_id: 150
-  return_id: 153
+  name: Spawn Prototype At
+  entry_id: 257
+  return_id: 259
   call_depth_limit: 64
   nodes:
-  - id: 67
-    type: Max
-    inputs: {B: 0.01}
-  - {id: 73, type: Greater Or Equal}
-  - {id: 82, type: Subtract}
-  - id: 150
+  - id: 257
     type: Function Entry
     outputs:
-    - {id: 151, name: Elapsed, type: float, kind: data}
-    - {id: 152, name: Cooldown, type: float, kind: data}
-  - id: 153
+      Prototype: {id: 261, type: name, kind: data}
+      Transform: {type: struct, type_name: GameTransform, kind: data}
+  - id: 259
     type: Return
     inputs:
-    - {id: 154, name: Ready, type: bool, kind: data}
-    - {id: 155, name: Remainder, type: float, kind: data}
+      Entity: {id: 263, type: handle, type_name: ecs.entity, kind: data}
+  - {id: 264, type: Spawn Prototype}
+  - {id: 269, type: SetEntity_GameTransform}
   edges:
-  - {from: 67.Result, to: 73.B}
-  - {from: 67.Result, to: 82.B}
-  - {from: 73.Result, to: 153.Ready}
-  - {from: 82.Result, to: 153.Remainder}
-  - {from: 150.Elapsed, to: 73.A}
-  - {from: 150.Elapsed, to: 82.A}
-  - {from: 150.Cooldown, to: 67.A}
+  - {from: 257.Exec, to: 264.Exec}
+  - {from: 257.Prototype, to: 264.Prototype}
+  - {from: 257.Transform, to: 269.Value, conversion: game_transform_to_cf}
+  - {from: 264.Then, to: 269.Exec}
+  - {from: 264.Entity, to: 259.Entity}
+  - {from: 264.Entity, to: 269.Entity}
+  - {from: 269.Then, to: 259.Exec}
 - id: 173
   kind: function
   name: Fire Projectile
@@ -98,7 +94,7 @@ graphs:
     reference_id: 256
     reference_name: Spawn Prototype At
     inputs:
-      Prototype: {id: 295, type: name, type_name: null, kind: data}
+      Prototype: {id: 295, type: name, kind: data}
       Transform: {type: struct, type_name: GameTransform, kind: data}
     outputs:
       Then: {id: 294}
@@ -127,29 +123,3 @@ graphs:
   - {from: 292.Entity, to: 229.Entity}
   - {from: 292.Entity, to: 239.Entity}
   - {from: 292.Entity, to: 247.Target}
-- id: 256
-  kind: function
-  name: Spawn Prototype At
-  entry_id: 257
-  return_id: 259
-  call_depth_limit: 64
-  nodes:
-  - id: 257
-    type: Function Entry
-    outputs:
-      Prototype: {id: 261, type: name, type_name: null, kind: data}
-      Transform: {type: struct, type_name: GameTransform, kind: data}
-  - id: 259
-    type: Return
-    inputs:
-      Entity: {id: 263, type: handle, type_name: ecs.entity, kind: data}
-  - {id: 264, type: Spawn Prototype}
-  - {id: 269, type: SetEntity_GameTransform}
-  edges:
-  - {from: 257.Exec, to: 264.Exec}
-  - {from: 257.Prototype, to: 264.Prototype}
-  - {from: 257.Transform, to: 269.Value, conversion: game_transform_to_cf}
-  - {from: 264.Then, to: 269.Exec}
-  - {from: 264.Entity, to: 259.Entity}
-  - {from: 264.Entity, to: 269.Entity}
-  - {from: 269.Then, to: 259.Exec}

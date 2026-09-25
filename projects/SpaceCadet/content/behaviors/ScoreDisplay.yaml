@@ -15,12 +15,12 @@ graphs:
     type: Get Global Variable
     inputs: {Name: Score}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 7
     type: Format Text
     inputs:
       Format: '{:08.0f}'
-      Arg0: {type: float, type_name: null}
+      Arg0: {type: float}
   - {id: 11, type: Set_GameWidget_text}
   edges:
   - {from: 1.Then, to: 11.Exec}

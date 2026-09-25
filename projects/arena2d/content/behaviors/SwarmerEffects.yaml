@@ -13,13 +13,7 @@ graphs:
     reference_name: Spawn Prototype At
     reference_asset: WeaponActions
     inputs:
-      Prototype:
-        id: 17
-        declaration_id: 261
-        type: name
-        type_name: null
-        kind: data
-        default: SpawnEmitter
+      Prototype: {id: 17, declaration_id: 261, type: name, kind: data, default: SpawnEmitter}
       Transform:
         declaration_id: 262
         type: struct

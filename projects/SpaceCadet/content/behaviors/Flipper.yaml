@@ -18,10 +18,9 @@ graphs:
     inputs:
       Value:
         type: float
-        type_name: null
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 12
     type: Set Variable
     reference_id: 2
@@ -48,17 +47,17 @@ graphs:
     reference_id: 4
     reference_name: stroke
     inputs:
-      Value: {type: float, type_name: null, default: 0.92}
+      Value: {type: float, default: 0.92}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 35
     type: Set Variable
     reference_id: 4
     reference_name: stroke
     inputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 1562
     type: Behavior Expression
     reference_id: 1508
@@ -68,32 +67,22 @@ graphs:
       spin:
         id: 1563
         type: float
-        flags: 6
-        group: 1
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
       restAngle:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       stroke:
         type: double
-        flags: 2
-        group: 3
         binding: {kind: variable, variable_id: 4, source_asset: Flipper}
       angle:
         type: double
-        flags: 2
-        group: 4
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       dt:
         type: double
-        flags: 2
-        group: 5
         binding: {kind: delta_time}
     outputs:
       Then: {id: 1570, kind: exec}
-      Result: {id: 1568, type: float, flags: 2, group: 6}
+      Result: {id: 1568, type: float}
   - id: 2005
     type: Behavior Expression
     reference_id: 1926
@@ -104,44 +93,30 @@ graphs:
         id: 2006
         type: struct
         type_name: GameVelocity
-        flags: 6
-        group: 1
         binding: {kind: component, component: GAME.GameVelocity}
       restPosition:
         type: struct
         type_name: CF_V2
-        flags: 2
-        group: 2
         binding: {kind: variable, variable_id: 2, source_asset: Flipper}
       angle:
         type: double
-        flags: 2
-        group: 3
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       spin:
         type: double
-        flags: 2
-        group: 4
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
       dt:
         type: double
-        flags: 2
-        group: 5
         binding: {kind: delta_time}
       restAngle:
         type: double
-        flags: 2
-        group: 6
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       position:
         type: struct
         type_name: GameTransform
-        flags: 2
-        group: 7
         binding: {kind: component, component: game.GameTransform}
     outputs:
       Then: {id: 2015, kind: exec}
-      Result: {id: 2013, type: struct, type_name: GameVelocity, flags: 2, group: 8}
+      Result: {id: 2013, type: struct, type_name: GameVelocity}
   edges:
   - {from: 5.Then, to: 7.Exec}
   - {from: 7.Then, to: 12.Exec}
@@ -153,17 +128,9 @@ graphs:
   - {from: 1562.Then, to: 2005.Exec}
 - id: 1508
   kind: function
-  name: spin = clamp((restAngle - sign(cos(restAngle)) * stroke - angle) / max(dt, 0.001), -24, 24)
   math_expression: spin = clamp((restAngle - sign(cos(restAngle)) * stroke - angle) / max(dt, 0.001), -24, 24)
-  expression_mode: 2
   entry_id: 1856
-  return_id: 1858
-  call_depth_limit: 64
 - id: 1926
   kind: function
-  name: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
   math_expression: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
-  expression_mode: 2
   entry_id: 2521
-  return_id: 2523
-  call_depth_limit: 64

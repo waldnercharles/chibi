@@ -1,6 +1,6 @@
 version: 3
 name: Plunger
-id_counter: 414
+id_counter: 527
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -14,21 +14,25 @@ graphs:
   - id: 4
     type: Get Global Variable
     inputs: {Name: Ready}
+    outputs:
+      Value: {type: double}
   - id: 7
     type: Get Global Variable
     inputs: {Name: Lives}
+    outputs:
+      Value: {type: double}
   - id: 36
     type: Behavior Expression
     reference_id: 10
     reference_name: ready > 0.5 && lives > 0
     inputs:
       Exec: {id: 40, kind: exec}
-      ready: {id: 37, type: double, group: 1}
-      lives: {type: double, group: 2}
+      ready: {id: 37, type: double, flags: 0}
+      lives: {type: double, flags: 0}
     outputs:
       "True": {id: 41, kind: exec}
       "False": {kind: exec}
-      Result: {id: 39, type: bool, flags: 2, group: 3}
+      Result: {id: 39, type: bool}
   - id: 95
     type: Branch
     inputs:
@@ -44,14 +48,14 @@ graphs:
     reference_id: 103
     reference_name: min(charge + dt, 1)
     inputs:
-      charge: {type: double, flags: 2, group: 1}
+      charge:
+        type: double
+        binding: {kind: local, local_id: 526}
       dt:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {type: double, flags: 2, group: 3}
+      Result: {type: double}
   - id: 164
     type: Set Global Variable
     inputs:
@@ -65,38 +69,49 @@ graphs:
     reference_name: charge > 0.01
     inputs:
       Exec: {id: 206, kind: exec}
-      charge: {id: 204, type: double, group: 1}
+      charge:
+        id: 204
+        type: double
+        flags: 0
+        binding: {kind: local, local_id: 526}
     outputs:
       "True": {id: 207, kind: exec}
       "False": {kind: exec}
-      Result: {id: 205, type: bool, flags: 2, group: 2}
-  - id: 247
-    type: Behavior Expression
-    reference_id: 223
-    reference_name: -800 - 230 * charge
-    inputs:
-      charge: {type: double, flags: 2, group: 1}
-    outputs:
-      Result: {type: double, flags: 2, group: 2}
-  - {id: 274, type: Set_GameVelocity_y}
-  - {id: 304, type: Set_GameVelocity_x}
+      Result: {id: 205, type: bool}
   - id: 310
     type: Set Global Variable
     inputs:
       Name: Ready
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 316
     type: Set Global Variable
     inputs:
       Name: Charge
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 322
     type: Play Sound
     inputs: {Frequency: 100.0, End Frequency: 720.0, Duration: 0.16, Volume: 0.35}
+  - id: 446
+    type: Behavior Expression
+    reference_id: 414
+    reference_name: velocity = vec2(0, -800 - 230 * charge)
+    inputs:
+      Exec: {id: 450, kind: exec}
+      velocity:
+        id: 447
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      charge:
+        type: double
+        binding: {kind: local, local_id: 526}
+    outputs:
+      Then: {id: 451, kind: exec}
+      Result: {id: 449, type: struct, type_name: GameVelocity}
   edges:
   - {from: 1.Then, to: 36.Exec}
   - {from: 4.Value, to: 36.ready}
@@ -106,43 +121,21 @@ graphs:
   - {from: 95.False, to: 203.Exec}
   - {from: 100.Value, to: 122.charge}
   - {from: 100.Value, to: 203.charge}
-  - {from: 100.Value, to: 247.charge}
+  - {from: 100.Value, to: 446.charge}
   - {from: 122.Result, to: 164.Value}
-  - {from: 203.True, to: 274.Exec}
-  - {from: 247.Result, to: 274.Value}
-  - {from: 274.Then, to: 304.Exec}
-  - {from: 304.Then, to: 310.Exec}
+  - {from: 203.True, to: 446.Exec}
   - {from: 310.Then, to: 316.Exec}
   - {from: 316.Then, to: 322.Exec}
+  - {from: 446.Then, to: 310.Exec}
+  locals:
+  - {id: 526, name: charge, from: 100.Value}
 - id: 10
   kind: function
-  name: ready > 0.5 && lives > 0
   math_expression: ready > 0.5 && lives > 0
-  expression_mode: 3
   entry_id: 332
-  return_id: 334
-  call_depth_limit: 64
-- id: 103
+- {id: 103, kind: function, math_expression: 'min(charge + dt, 1)', entry_id: 358}
+- {id: 189, kind: function, math_expression: charge > 0.01, entry_id: 377}
+- id: 414
   kind: function
-  name: min(charge + dt, 1)
-  math_expression: min(charge + dt, 1)
-  expression_mode: 1
-  entry_id: 358
-  return_id: 360
-  call_depth_limit: 64
-- id: 189
-  kind: function
-  name: charge > 0.01
-  math_expression: charge > 0.01
-  expression_mode: 3
-  entry_id: 377
-  return_id: 379
-  call_depth_limit: 64
-- id: 223
-  kind: function
-  name: -800 - 230 * charge
-  math_expression: -800 - 230 * charge
-  expression_mode: 1
-  entry_id: 391
-  return_id: 393
-  call_depth_limit: 64
+  math_expression: velocity = vec2(0, -800 - 230 * charge)
+  entry_id: 490

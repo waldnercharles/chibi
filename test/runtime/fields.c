@@ -294,6 +294,38 @@ static void functions()
     behavior_asset_free(a);
 }
 
+/* A function returns several values, and a stage both results share
+   compiles once. */
+static void multiple_results()
+{
+    behavior_asset *a = field("pair");
+    graph *fn = behavior_asset_add_function(a, "Pair", true);
+    node *entry = graph_node_by_id(fn, fn->entry_id),
+         *ret = graph_node_by_id(fn, fn->return_id);
+    assert(graph_add_pin(fn, entry, 1, &(pin_spec){ .name = "V", .type = PIN_F32 }) == 0);
+    assert(graph_add_pin(fn, ret, 0, &(pin_spec){ .name = "Sum", .type = PIN_F32 }) == 0);
+    assert(graph_add_pin(fn, ret, 0, &(pin_spec){ .name = "Product", .type = PIN_F32 }) == 1);
+    node *plus = graph_add_node(fn, registry_node_by_name("Field Add")),
+         *times = graph_add_node(fn, registry_node_by_name("Field Multiply"));
+    assert(!graph_connect_data(fn, entry, 0, plus, 0));
+    assert(!graph_connect_data(fn, entry, 0, plus, 1));
+    assert(!graph_connect_data(fn, plus, 0, times, 0));
+    assert(!graph_connect_data(fn, plus, 0, times, 1));
+    assert(!graph_connect_data(fn, plus, 0, ret, 0));
+    assert(!graph_connect_data(fn, times, 0, ret, 1));
+    node *call = behavior_asset_add_function_call_node(a, fn),
+         *minus = add(a, "Field Subtract"), *out = add(a, "Field Output");
+    value(a, call, 0, 3);
+    assert(!graph_connect_data(a->graph, call, 1, minus, 0));
+    assert(!graph_connect_data(a->graph, call, 0, minus, 1));
+    wire(a, minus, out, 0);
+    field_program *p = compile(a);
+    assert(sample(p, 0, 0) == 36 - 6);
+    assert(field_program_instruction_count(p) <= 6);
+    field_program_free(p);
+    behavior_asset_free(a);
+}
+
 static void chunks()
 {
     field_grid grid = { 130, 129, 2 };
@@ -531,6 +563,7 @@ void test_fields()
     parameters_and_errors();
     noise_and_composition();
     functions();
+    multiple_results();
     chunks();
     library_hot_apply();
     puts("PASS: pure field compilation, parameters, deterministic noise, composition, connectivity and chunks");

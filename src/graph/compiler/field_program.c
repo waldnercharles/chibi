@@ -23,6 +23,11 @@ struct field_program
     parameter *parameters;
     int output;
 };
+struct call_result
+{
+    const node *call;
+    int output, slot;
+};
 typedef struct compiler
 {
     const behavior_asset *asset;
@@ -32,6 +37,7 @@ typedef struct compiler
     const graph *graph;
     field_program *program;
     int *slots, *state;
+    struct call_result *calls; /* one slot per call output compiled */
     int depth;
     char *error;
     size_t size;
@@ -79,13 +85,33 @@ static int instruction(compiler *c, field_ir ir, int inputs)
     return slot;
 }
 
+static int compile_node(compiler *c, node *n, int output);
+
+/* The value a function returns at one of its outputs. */
+static int compile_return(compiler *c, node *ret, int input)
+{
+    node *from = NULL;
+    int pin = -1;
+    if (graph_input_source(c->graph, ret, input, &from, &pin)) {
+        return compile_node(c, from, pin);
+    }
+    float value;
+    if (!scalar(ret->input_pins[input].default_value, &value)) {
+        fail(c->error, c->size, "Field inputs require finite scalar values");
+        return -1;
+    }
+    return instruction(c, (field_ir){ .op = FIELD_CONSTANT, .value = value }, 0);
+}
+
 static int compile_node(compiler *c, node *n, int output)
 {
     if (n->desc == &NODE_FunctionEntry && !n->disabled && c->arguments &&
         output >= 0 && output < c->argument_count) {
         return c->arguments[output];
     }
-    if (output != 0) {
+    /* A function call may return several values; every other node one. */
+    bool call = n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression;
+    if (output != 0 && !call) {
         fail(c->error, c->size, "Field nodes return one scalar");
         return -1;
     }
@@ -99,8 +125,13 @@ static int compile_node(compiler *c, node *n, int output)
     if (index < 0) {
         return -1;
     }
-    if (c->state[index] == 2) {
+    if (c->state[index] == 2 && !call) {
         return c->slots[index];
+    }
+    for (int i = 0; call && i < acount(c->calls); i++) {
+        if (c->calls[i].call == n && c->calls[i].output == output) {
+            return c->calls[i].slot;
+        }
     }
     if (c->state[index] == 1) {
         fail(c->error, c->size, "Recursive field dependency");
@@ -112,7 +143,6 @@ static int compile_node(compiler *c, node *n, int output)
     }
     c->state[index] = 1;
     int op = field_node_opcode(n->desc);
-    bool call = n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression;
     if (n->desc == &NODE_Return && c->caller) {
         op = FIELD_OUTPUT;
     }
@@ -174,8 +204,8 @@ static int compile_node(compiler *c, node *n, int output)
     }
     if (call) {
         graph *target = behavior_asset_find_graph(c->asset, n->reference_id);
-        if (!target || target->kind != GRAPH_FUNCTION || n->output_count != 1) {
-            fail(c->error, c->size, "Field call requires a resolved pure function returning one scalar");
+        if (!target || target->kind != GRAPH_FUNCTION || output >= n->output_count) {
+            fail(c->error, c->size, "Field call requires a resolved pure function");
             return -1;
         }
         for (const compiler *parent = c; parent; parent = parent->caller) {
@@ -187,7 +217,7 @@ static int compile_node(compiler *c, node *n, int output)
         node *entry = graph_node_by_id(target, target->entry_id),
              *ret = graph_node_by_id(target, target->return_id);
         if (!entry || !ret || entry->output_count != n->input_count ||
-            ret->input_count != 1) {
+            ret->input_count != n->output_count) {
             fail(c->error, c->size, "Field function signature mismatch");
             return -1;
         }
@@ -203,7 +233,7 @@ static int compile_node(compiler *c, node *n, int output)
                            .state = xcalloc((size_t)count, sizeof(int)),
                            .error = c->error,
                            .size = c->size };
-        int result = compile_node(&child, ret, 0);
+        int result = compile_return(&child, ret, output);
         for (int i = 0; i < count && result >= 0; i++) {
             if (target->nodes[i] != entry &&
                 compile_node(&child, target->nodes[i], 0) < 0) {
@@ -212,11 +242,12 @@ static int compile_node(compiler *c, node *n, int output)
         }
         free(child.slots);
         free(child.state);
+        afree(child.calls);
         if (result < 0) {
             return -1;
         }
-        c->slots[index] = result;
-        c->state[index] = 2;
+        apush(c->calls, ((struct call_result){ n, output, result }));
+        c->state[index] = 0;
         c->depth--;
         return result;
     }
@@ -387,6 +418,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
     }
     free(c.slots);
     free(c.state);
+    afree(c.calls);
     if (!valid || outputs != 1) {
         if (size && !error[0]) {
             fail(error, size, "Field requires exactly one Field Output");

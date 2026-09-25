@@ -172,25 +172,45 @@ int highlight_runs(highlight_language language, const char *text, int length, hi
     return count;
 }
 
-static size_t append(char *out, size_t size, size_t used, const char *text, size_t length)
+static const char *entity(char c)
 {
-    if (used + length >= size) {
-        length = used + 1 < size ? size - used - 1 : 0;
+    switch (c) {
+        case '&': return "&amp;";
+        case '<': return "&lt;";
+        case '>': return "&gt;";
+        case '"': return "&quot;";
+        default: return NULL;
     }
+}
+
+/* How many of text's characters fit in room bytes once escaped. */
+static int fitting(const char *text, int length, size_t room)
+{
+    size_t used = 0;
+    int count = 0;
+    while (count < length) {
+        const char *escaped = entity(text[count]);
+        used += escaped ? strlen(escaped) : 1;
+        if (used > room) {
+            break;
+        }
+        count++;
+    }
+    return count;
+}
+
+static size_t append(char *out, size_t used, const char *text, size_t length)
+{
     memcpy(out + used, text, length);
     return used + length;
 }
 
-static size_t append_escaped(char *out, size_t size, size_t used, const char *text, int length)
+static size_t append_escaped(char *out, size_t used, const char *text, int length)
 {
     for (int i = 0; i < length; i++) {
-        const char *entity = text[i] == '&' ? "&amp;"
-                           : text[i] == '<' ? "&lt;"
-                           : text[i] == '>' ? "&gt;"
-                           : text[i] == '"' ? "&quot;"
-                                            : NULL;
-        used = entity ? append(out, size, used, entity, strlen(entity))
-                      : append(out, size, used, text + i, 1);
+        const char *escaped = entity(text[i]);
+        used = escaped ? append(out, used, escaped, strlen(escaped))
+                       : append(out, used, text + i, 1);
     }
     return used;
 }
@@ -205,16 +225,29 @@ size_t highlight_markup(highlight_language language, const char *text, char *out
     int length = (int)strlen(text);
     int count = highlight_runs(language, text, length, runs, MAX_RUNS);
     size_t used = 0;
+    /* A run that does not fit ends the markup after as many whole characters
+       as fit inside its tags, so no tag or entity is ever cut. */
     for (int r = 0; r < count; r++) {
         const char *cls = CLASSES[runs[r].token];
+        char open[48] = "";
         if (cls) {
-            char open[48];
-            int written = snprintf(open, sizeof open, "<span class=\"%s\">", cls);
-            used = append(out, size, used, open, (size_t)written);
+            snprintf(open, sizeof open, "<span class=\"%s\">", cls);
         }
-        used = append_escaped(out, size, used, text + runs[r].start, runs[r].length);
-        if (cls) {
-            used = append(out, size, used, "</span>", 7);
+        const char *close = cls ? "</span>" : "";
+        size_t tags = strlen(open) + strlen(close);
+        if (used + tags >= size) {
+            break;
+        }
+        const char *start = text + runs[r].start;
+        int fit = fitting(start, runs[r].length, size - 1 - used - tags);
+        if (fit == 0) {
+            break;
+        }
+        used = append(out, used, open, strlen(open));
+        used = append_escaped(out, used, start, fit);
+        used = append(out, used, close, strlen(close));
+        if (fit < runs[r].length) {
+            break;
         }
     }
     if (size) {

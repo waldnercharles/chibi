@@ -321,6 +321,7 @@ void engine_reset(engine *engine)
         game_materials_reset(engine->live->materials);
         game_visibility_reset(engine->live->visibility);
         game_audio_reset(engine_audio(engine));
+        game_ui_reset(game_behavior_ui(engine->live->behaviors));
     }
 }
 

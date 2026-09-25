@@ -739,6 +739,18 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameWidget)
 }
 GameWidget;
 
+/* Shows the ui asset content/ui/<document>.yaml over the game view, above
+ * documents with a lower order. An element's data-event attribute names the
+ * event its activation sends to this entity (Element: its id, Value: its
+ * value); UI nodes set the document's text, classes and values. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameUi)
+{
+    const char *document;
+    int order;
+    bool hidden;
+}
+GameUi;
+
 /* One optional finite visibility grid. The main view conceals unseen space;
  * map widgets display explored cells and remembered obstacle occupancy. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFog)

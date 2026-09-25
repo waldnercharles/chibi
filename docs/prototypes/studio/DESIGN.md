@@ -59,7 +59,7 @@ Required native work:
 
 ## Migration plan
 
-Progress shows in the web build under `?design-preview=1`, where converted surfaces replace their ImGui counterparts.
+Studio is the default editor on desktop and in the web build. `--imgui` (or `?imgui` in the browser) opens the ImGui workspace, which keeps the surfaces Studio hasn't converted.
 
 | Phase | Replaces | Result |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ Progress shows in the web build under `?design-preview=1`, where converted surfa
 
 ## Progress, September 23, 2026
 
-`?design-preview=1` (or `--design-preview` on desktop) now runs Studio in place of the ImGui workspace. The code is in `src/editor/studio` (shell, areas, editors, host), `src/editor/ui/kit.h` (the C API) and `src/editor/rmlui/kit.cpp` (reconciler and controllers). `build/test_suite --rmlui-kit` covers clicks, scrubbing, text entry with expressions, stepping, context clicks, menus, command ranking and keyed reconciliation.
+Studio runs in place of the ImGui workspace unless `--imgui` (`?imgui`) is given. The code is in `src/editor/studio` (shell, areas, editors, host), `src/editor/ui/kit.h` (the C API) and `src/editor/rmlui/kit.cpp` (reconciler and controllers). `build/test_suite --rmlui-kit` covers clicks, scrubbing, text entry with expressions, stepping, context clicks, menus, command ranking and keyed reconciliation.
 
 | Phase | State |
 | --- | --- |

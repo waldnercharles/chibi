@@ -161,8 +161,8 @@ static bool add_reroute(studio *s, int index)
         &ed->reroutes[at],
         (size_t)(ed->reroute_count - at) * sizeof *ed->reroutes
     );
-    ed->reroutes[at].x = g->world_x;
-    ed->reroutes[at].y = g->world_y;
+    ed->reroutes[at].x = g->reroute_x = g->press_wx;
+    ed->reroutes[at].y = g->reroute_y = g->press_wy;
     ed->reroute_count++;
     g->gesture = STUDIO_GRAPH_REROUTE;
     g->reroute_edge = index;
@@ -211,13 +211,13 @@ static bool insert_pins(const studio *s, node *n, int index, int *in, int *out)
 }
 
 /* A lone unwired node dragged over a wire offers to join it (Blender,
-   Node-RED); Alt keeps it out. */
+   Node-RED); Alt keeps it out, and so does a frame carrying its contents. */
 static int insert_target(const studio *s)
 {
     const studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
     node *n = acount(g->drag) == 1 ? sg_node_by_id(s, g->drag[0].id) : NULL;
-    if (!n || (g->in.modifiers & KIT_MOD_ALT)) {
+    if (!n || g->press_comment || (g->in.modifiers & KIT_MOD_ALT)) {
         return -1;
     }
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -475,9 +475,13 @@ static void drag(studio *s)
             }
             break;
         case STUDIO_GRAPH_REROUTE: {
+            /* A drag moves the point by the pointer's travel; a click leaves it. */
+            if (drag_distance(g) < THRESHOLD) {
+                break;
+            }
             edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
-            ed->reroutes[g->reroute_point].x = g->world_x;
-            ed->reroutes[g->reroute_point].y = g->world_y;
+            ed->reroutes[g->reroute_point].x = g->reroute_x + g->world_x - g->press_wx;
+            ed->reroutes[g->reroute_point].y = g->reroute_y + g->world_y - g->press_wy;
             break;
         }
         default: break;
@@ -813,9 +817,15 @@ void sg_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
-        if (key == SDLK_ESCAPE && g->gesture != STUDIO_GRAPH_IDLE) {
-            cancel_gesture(s);
-        } else if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
+        /* A gesture holds an undo snapshot and edge indices, so edits wait
+           for it to end; Escape cancels it. */
+        if (g->gesture != STUDIO_GRAPH_IDLE) {
+            if (key == SDLK_ESCAPE) {
+                cancel_gesture(s);
+            }
+            continue;
+        }
+        if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
         } else if (!mod && !shift && key == SDLK_F) {
             sg_frame_nodes(s, acount(e->selected) > 0, true);

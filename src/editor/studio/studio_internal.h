@@ -124,6 +124,11 @@ typedef struct
     float zoom, x, y;
 } studio_graph_view;
 
+enum
+{
+    STUDIO_VALUE_NAMES = 8, /* outputs per node the Outputs panel can name */
+};
+
 /* The behavior graph canvas (studio_graph*.c): its own RmlUi context whose dp
  * ratio is the zoom, so text stays crisp and clipping works at every scale. The
  * canvas logical space is graph units; `x, y` is the graph point at the canvas
@@ -186,9 +191,12 @@ typedef struct
     int reroute_edge, reroute_point;    /* the reroute being dragged */
     float reroute_x, reroute_y;         /* where it was before the drag */
     bool reroute_added;                 /* the drag began by adding it */
-    int hover_reroute; /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
-    int insert_edge;   /* the wire a dragged node would join, or -1 */
-    bool renaming;     /* the name of rename_graph is being edited */
+    int hover_reroute;   /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
+    int insert_edge;     /* the wire a dragged node would join, or -1 */
+    uint64_t names_node; /* node whose output names the Outputs panel edits */
+    unsigned long long names_revision;
+    char names[STUDIO_VALUE_NAMES][64];
+    bool renaming; /* the name of rename_graph is being edited */
     uint64_t rename_graph;
     bool rename_focus;
     char rename[128];

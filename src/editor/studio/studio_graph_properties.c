@@ -1,5 +1,6 @@
 /* The Node tab in Properties: the selected graph node's pins and settings. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
@@ -14,6 +15,56 @@ uint64_t studio_graph_node(const studio *s)
 
 /* The Node tab: every pin, advanced ones included, with what feeds it; the
    canvas shows the common case, this shows everything (Unreal's Details). */
+static bool used(const graph *gr, const node *n, int p)
+{
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *e = &gr->edges[i];
+        if (e->from_id == n->id && e->from_pin_id == n->output_pins[p].id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sync_value_names(studio_graph *g, const graph *gr, const node *n)
+{
+    g->names_node = n->id;
+    g->names_revision = graph_topology_revision(gr);
+    for (int p = 0; p < STUDIO_VALUE_NAMES; p++) {
+        const graph_local *local = p < n->output_count
+                                     ? graph_output_local(gr, n, p)
+                                     : NULL;
+        snprintf(g->names[p], sizeof g->names[p], "%s", local ? local->name : "");
+    }
+}
+
+/* Names, renames or, with an empty name, unnames a value. */
+static void name_value(studio *s, node *n, int p, const char *name)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    const graph_local *local = graph_output_local(gr, n, p);
+    if (!local && !name[0]) {
+        return;
+    }
+    if (local && !strcmp(local->name, name)) {
+        return;
+    }
+    ed_snapshot_before(e);
+    bool ok = !name[0] ? graph_expand_local(gr, local->id) == 0
+            : local    ? graph_rename_local(gr, local->id, name) == 0
+                       : graph_create_local(gr, n, p, name) != 0;
+    if (!ok) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = local ? "A value has that name" : "Can't name this value" }
+        );
+    }
+    sync_value_names(&s->graph, gr, n);
+}
+
 void studio_node_properties(studio *s)
 {
     kit *k = s->kit;
@@ -107,6 +158,11 @@ void studio_node_properties(studio *s)
         kit_panel_end(k);
     }
     if (n->output_count && kit_panel_begin(k, "outputs", "Outputs", NULL, true)) {
+        studio_graph *g = &s->graph;
+        if (g->names_node != n->id ||
+            g->names_revision != graph_topology_revision(gr)) {
+            sync_value_names(g, gr, n);
+        }
         for (int p = 0; p < n->output_count; p++) {
             const pin_spec *spec = &n->output_pins[p];
             char key[16];
@@ -116,6 +172,19 @@ void studio_node_properties(studio *s)
             if (ed_pin_editable(gr, n, ED_PIN_OUTPUT, p) && !readonly &&
                 sg_value_kind_of(s, n, 1, p) != VALUE_NONE) {
                 sg_emit_value_in(s, k, n, 1, p);
+            } else if (p < STUDIO_VALUE_NAMES && spec->kind == PIN_DATA && used(gr, n, p)) {
+                /* A named value (Unreal's named reroute): uses read the name
+                   instead of drawing a wire; clearing it brings wires back. */
+                if (kit_text_field(
+                        k,
+                        "name",
+                        g->names[p],
+                        sizeof g->names[p],
+                        ed_pin_type_name(spec),
+                        readonly ? KIT_READONLY : 0
+                    )) {
+                    name_value(s, n, p, g->names[p]);
+                }
             } else {
                 kit_label(k, "v", "dim", spec->kind == PIN_EXEC ? "Execution" : ed_pin_type_name(spec));
             }

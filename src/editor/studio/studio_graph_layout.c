@@ -298,6 +298,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
     } else {
         out->connected = graph_output_local(gr, n, p) != NULL;
     }
+    const graph_local *local = input ? NULL : graph_output_local(gr, n, p);
     /* Execution pins, and outputs, are wired when any edge touches them. */
     for (int i = 0; i < acount(gr->edges) && !out->connected; i++) {
         const edge *ed = &gr->edges[i];
@@ -305,6 +306,9 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
                                : ed->from_id == n->id && ed->from_pin_id == spec->id;
     }
     ed_pin_label(n, spec, out->label, sizeof out->label);
+    if (local) {
+        editor_identifier_label(local->name, out->label, sizeof out->label);
+    }
     out->show_label = !exec_label(spec, out->label);
     if (out->inline_source) {
         out->chip_icon = folded_chip(s, n, p, out->chip, sizeof out->chip);
@@ -369,7 +373,8 @@ static node_form form_of(const studio *s, node *n)
     }
     pin_parts parts;
     sg_pin_parts_of(s, n, ED_PIN_OUTPUT, output, &parts);
-    if (parts.value != VALUE_NONE) {
+    /* A named value shows its name, so its node keeps a labeled row. */
+    if (parts.value != VALUE_NONE || graph_output_local(sg_active_graph(s), n, output)) {
         return FORM_FULL;
     }
     if (!inputs) {

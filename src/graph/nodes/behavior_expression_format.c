@@ -172,6 +172,17 @@ static int binding_of(const node *n)
 
 static void put_node(text *t, const graph *g, const node *n, int output);
 
+/* Literals read as their value. Shader and field nodes leave pure_kind at its
+   zero default, so only their Constant nodes are literals; a built-in such as
+   Shader UV reads as its name. */
+static bool literal_node(const node_desc *desc)
+{
+    return desc->display_class == NODE_DISPLAY_LITERAL ||
+           (desc->pure_kind == NODE_PURE_CONST && desc->flow_kind != NODE_FLOW_NONE) ||
+           !strcmp(desc->name, "Shader Constant") ||
+           !strcmp(desc->name, "Field Constant");
+}
+
 /* Writes the source wired into an input, calling its edge conversion by name
  * so a conversion such as truncation stays visible. */
 static int put_source(text *t, const graph *g, const node *n, int pin, const node *source, int source_pin)
@@ -340,8 +351,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_read(t, g, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME });
         return;
     }
-    if (desc->pure_kind == NODE_PURE_CONST ||
-        desc->display_class == NODE_DISPLAY_LITERAL) {
+    if (literal_node(desc)) {
         if (n->input_count == 1) {
             put_input(t, g, n, 0, 0);
         } else {
@@ -363,7 +373,12 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     if (function) {
         put(t, function);
     } else {
-        put_identifier(t, !strncmp(desc->name, "Shader ", 7) ? desc->name + 7 : desc->name);
+        put_identifier(
+            t,
+            !strncmp(desc->name, "Shader ", 7)  ? desc->name + 7
+            : !strncmp(desc->name, "Field ", 6) ? desc->name + 6
+                                                : desc->name
+        );
     }
     if (n->input_count || function) {
         put_arguments(t, g, n);

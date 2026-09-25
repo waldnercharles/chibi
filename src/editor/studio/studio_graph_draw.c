@@ -2,6 +2,7 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
+#include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 
@@ -484,9 +485,11 @@ static void emit_wires(studio *s)
         node *from = graph_node_by_id(gr, ed->from_id),
              *to = graph_node_by_id(gr, ed->to_id);
         int fo = 0, to_out = 0, fp = -1, tp = -1;
+        /* A use of a named value reads the name instead of a wire. */
         if (!sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
             !graph_pin_by_id(from, ed->from_pin_id, &fo, &fp) || !fo ||
-            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out) {
+            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out ||
+            graph_edge_is_local(gr, ed)) {
             continue;
         }
         apush(g->wire_edges, i);

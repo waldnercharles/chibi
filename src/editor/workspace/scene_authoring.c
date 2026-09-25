@@ -864,6 +864,13 @@ static ecs_world *debug_world(app_scene_authoring *scene, app_runtime_target tar
              : scene->world;
 }
 
+static game_live_world *debug_live(app_scene_authoring *scene, app_runtime_target target)
+{
+    return target == APP_RUNTIME_PREVIEW
+             ? game_prototype_preview_live(scene->prototype_preview)
+             : scene->live;
+}
+
 static game_behavior_world *debug_behaviors(app_scene_authoring *scene, app_runtime_target target)
 {
     return target == APP_RUNTIME_PREVIEW
@@ -896,10 +903,12 @@ void sync_editor_inspection(app_scene_authoring *scene)
                 scene->graph_document_id &&
                 !strcmp(scene->graph_document_id, info.asset_name)) {
                 editor *e = scene->graph_editor;
+                game_live_world *live = debug_live(scene, scene->debug_target);
                 bool matches = editor_has_pending_edits(e)
-                                 ? scene_debug_matches(editor_behavior_asset(e), info.definition)
-                                 : scene_debug_matches_cached(
+                                 ? scene_debug_runs(live, editor_behavior_asset(e), info.definition)
+                                 : scene_debug_runs_cached(
                                        &scene->debug,
+                                       live,
                                        editor_behavior_asset(e),
                                        editor_edit_revision(e),
                                        info.definition

@@ -84,5 +84,8 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
 
 /* Returns INSTANCE_UPDATE_* or -1 for invalid edits. Never recreates instances. */
 int game_live_preview(game_live_world *world, game_live_definition *definition, char *message, size_t message_size);
+/* What applying source would run: libraries linked from the running
+   definitions and component nodes lowered. NULL when it does not link. */
+behavior_asset *game_live_link(game_live_world *world, const behavior_asset *source);
 
 #endif

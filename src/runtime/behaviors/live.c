@@ -631,6 +631,12 @@ int game_live_preview(game_live_world *world, game_live_definition *definition, 
     return update_definition(world, definition, message, message_size, false);
 }
 
+behavior_asset *game_live_link(game_live_world *world, const behavior_asset *source)
+{
+    char message[256];
+    return linked_snapshot(world, source, NULL, message, sizeof message);
+}
+
 static const ecs_component_desc *resolve_system_component(const char *name, void *)
 {
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {

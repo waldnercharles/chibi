@@ -387,6 +387,11 @@ game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *pr
     return preview ? preview->live->behaviors : NULL;
 }
 
+game_live_world *game_prototype_preview_live(game_prototype_preview *preview)
+{
+    return preview->live;
+}
+
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview)
 {
     return preview ? preview->entity : (ecs_entity){ 0 };

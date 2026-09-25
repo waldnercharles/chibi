@@ -62,8 +62,8 @@ static const char *resolved_alias(const char *name)
     return name;
 }
 
-/* Linking resolves type aliases and turns library calls into local ones; pin
- * groups and declarations only guide editing. None changes execution. */
+/* Type aliases name the same type; pin groups and declarations only guide
+ * editing. None changes execution. */
 static void normalize_pins(behavior_asset *asset)
 {
     for (int g = 0; g < acount(asset->graphs); g++) {
@@ -82,6 +82,8 @@ static void normalize_pins(behavior_asset *asset)
     }
 }
 
+/* Linking imports library graphs at the ID counter, so calls into them
+ * compare by the library's IDs and the imports themselves drop out. */
 static yyjson_mut_doc *execution_json(const behavior_asset *source_asset)
 {
     char *json = behavior_asset_save_json(source_asset);
@@ -154,9 +156,9 @@ static yyjson_mut_doc *execution_json(const behavior_asset *source_asset)
     return doc;
 }
 
-bool scene_debug_matches(const behavior_asset *working, const behavior_asset *applied)
+bool scene_debug_matches(const behavior_asset *linked, const behavior_asset *applied)
 {
-    yyjson_mut_doc *authored = execution_json(working);
+    yyjson_mut_doc *authored = execution_json(linked);
     yyjson_mut_doc *runtime = execution_json(applied);
     bool matches = authored && runtime &&
                    yyjson_mut_equals(yyjson_mut_doc_get_root(authored), yyjson_mut_doc_get_root(runtime));
@@ -165,8 +167,17 @@ bool scene_debug_matches(const behavior_asset *working, const behavior_asset *ap
     return matches;
 }
 
-bool scene_debug_matches_cached(
+bool scene_debug_runs(game_live_world *live, const behavior_asset *working, const behavior_asset *applied)
+{
+    behavior_asset *linked = game_live_link(live, working);
+    bool runs = linked && scene_debug_matches(linked, applied);
+    behavior_asset_free(linked);
+    return runs;
+}
+
+bool scene_debug_runs_cached(
     scene_debug *debug,
+    game_live_world *live,
     const behavior_asset *working,
     unsigned revision,
     const behavior_asset *applied
@@ -174,7 +185,7 @@ bool scene_debug_matches_cached(
 {
     if (!debug->comparison.valid || debug->comparison.working != working ||
         debug->comparison.revision != revision || debug->comparison.applied != applied) {
-        debug->comparison.matches = scene_debug_matches(working, applied);
+        debug->comparison.matches = scene_debug_runs(live, working, applied);
         debug->comparison.working = working;
         debug->comparison.applied = applied;
         debug->comparison.revision = revision;

@@ -2,6 +2,7 @@
 #define CHIBI_SCENE_DEBUG_H
 
 #include "runtime/behaviors/behavior.h"
+#include "runtime/behaviors/live.h"
 
 typedef struct
 {
@@ -28,9 +29,14 @@ bool scene_debug_resolve(
     uint64_t session,
     game_behavior_attachment_info *out
 );
-bool scene_debug_matches(const behavior_asset *working, const behavior_asset *applied);
-bool scene_debug_matches_cached(
+/* Whether two linked snapshots execute alike; layout aside. */
+bool scene_debug_matches(const behavior_asset *linked, const behavior_asset *applied);
+/* Whether applied runs working: working linked as applying it would link it
+   (live's definitions, lowered component nodes) matches applied. */
+bool scene_debug_runs(game_live_world *live, const behavior_asset *working, const behavior_asset *applied);
+bool scene_debug_runs_cached(
     scene_debug *debug,
+    game_live_world *live,
     const behavior_asset *working,
     unsigned revision,
     const behavior_asset *applied

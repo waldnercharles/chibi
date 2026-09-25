@@ -84,7 +84,7 @@ static bool graph_focused(const studio *s)
            s->focus_area == s->graph.area;
 }
 
-static void toast(studio *s, kit_toast_type type, const char *title, const char *description)
+void studio_toast(studio *s, kit_toast_type type, const char *title, const char *description)
 {
     char text[256];
     snprintf(text, sizeof text, description ? "%s: %s" : "%s", title, description);
@@ -103,7 +103,7 @@ void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
     if (!studio_editable(s) || runtime_session(scene)) {
-        toast(s, KIT_TOAST_WARNING, "Stop the scene to save", NULL);
+        studio_toast(s, KIT_TOAST_WARNING, "Stop the scene to save", NULL);
         return;
     }
     finish_transform_edit(scene, false);
@@ -112,9 +112,9 @@ void studio_save(studio *s)
         char title[160];
         snprintf(title, sizeof title, "Saved %s", scene->graph_document_id);
         if (save_behavior_document(scene) == 0) {
-            toast(s, KIT_TOAST_SUCCESS, title, NULL);
+            studio_toast(s, KIT_TOAST_SUCCESS, title, NULL);
         } else {
-            toast(
+            studio_toast(
                 s,
                 KIT_TOAST_ERROR,
                 "Could not save",
@@ -131,9 +131,9 @@ void studio_save(studio *s)
         char title[160];
         snprintf(title, sizeof title, "Saved %s", label ? label : "document");
         if (save_active_document(scene) == 0) {
-            toast(s, KIT_TOAST_SUCCESS, title, NULL);
+            studio_toast(s, KIT_TOAST_SUCCESS, title, NULL);
         } else {
-            toast(
+            studio_toast(
                 s,
                 KIT_TOAST_ERROR,
                 "Could not save",
@@ -143,16 +143,21 @@ void studio_save(studio *s)
         return;
     }
     if (!scene->scene_path || !scene->scene_path[0]) {
-        toast(s, KIT_TOAST_WARNING, "Scene has no file", NULL);
+        studio_toast(s, KIT_TOAST_WARNING, "Scene has no file", NULL);
         return;
     }
     char name[128];
     char title[160];
     if (app_scene_authoring_save(scene, scene->scene_path) == 0) {
         snprintf(title, sizeof title, "Saved %s", studio_scene_title(scene, name, sizeof name));
-        toast(s, KIT_TOAST_SUCCESS, title, content_basename(scene->scene_path));
+        studio_toast(s, KIT_TOAST_SUCCESS, title, content_basename(scene->scene_path));
     } else {
-        toast(s, KIT_TOAST_ERROR, "Could not save", scene->message[0] ? scene->message : NULL);
+        studio_toast(
+            s,
+            KIT_TOAST_ERROR,
+            "Could not save",
+            scene->message[0] ? scene->message : NULL
+        );
     }
 }
 
@@ -246,7 +251,7 @@ void studio_delete(studio *s)
     int result = app_scene_authoring_delete_instance(s->scene);
     scene_history_end_group(s->scene->history);
     if (result != 0) {
-        toast(
+        studio_toast(
             s,
             KIT_TOAST_ERROR,
             "Could not delete",
@@ -949,9 +954,31 @@ enum
     COMMAND_COUNT,
 };
 
+/* The Ask row quotes the query with no-break spaces, so the palette shows it
+   unhighlighted; its keywords match the query after a quotation mark, a
+   mid-word jump for command-score, so Ask ranks below direct matches. */
+static void ask_row(const char *query, char *label, size_t label_size, char *keywords, size_t keywords_size)
+{
+    static const char open[] = "\xe2\x80\x9c", close[] = "\xe2\x80\x9d",
+                      space[] = "\xc2\xa0";
+    size_t used = (size_t)snprintf(label, label_size, "%s", open);
+    for (const char *c = query; *c && used + sizeof space + sizeof close < label_size;
+         c++) {
+        used += (size_t)snprintf(
+            label + used,
+            label_size - used,
+            "%s",
+            *c == ' ' ? space : (char[]){ *c, 0 }
+        );
+    }
+    snprintf(label + used, label_size - used, "%s", close);
+    snprintf(keywords, keywords_size, "%s%s", open, query);
+}
+
 static void palette(studio *s)
 {
-    if (studio_graph_palette(s) || !kit_command_is_open(s->kit)) {
+    if (studio_graph_palette(s) || studio_ask_palette(s) ||
+        !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1032,6 +1059,14 @@ static void palette(studio *s)
                                  studio_asset_kind_icon(asset->kind) })
         );
     }
+    /* A query can also go to the editor command model. */
+    int ask = acount(items);
+    char query[256], label[800], keywords[272];
+    snprintf(query, sizeof query, "%s", kit_command_query(s->kit));
+    ask_row(query, label, sizeof label, keywords, sizeof keywords);
+    if (query[0]) {
+        apush(items, ((kit_command_item){ label, "Ask", NULL, NULL, keywords, KIT_ICON_TERMINAL }));
+    }
     int chosen = kit_command(s->kit, items, acount(items));
     if (chosen >= 0 && chosen < objects) {
         switch (chosen) {
@@ -1066,6 +1101,8 @@ static void palette(studio *s)
         finish_transform_edit(scene, false);
         select_instance(scene, chosen - objects);
         studio_frame_selection(s);
+    } else if (chosen == ask) {
+        studio_ask(s, query);
     } else if (chosen >= assets) {
         int position = 0;
         for (int i = 0; i < asset_count; i++) {
@@ -1115,7 +1152,7 @@ static void sync_presentation(studio *s)
     char error[256] = "could not be read";
     if (!text ||
         !component_presentation_read(text, &s->scene->registry, &p->hints, error, sizeof error)) {
-        toast(s, KIT_TOAST_ERROR, COMPONENT_PRESENTATION_PATH, error);
+        studio_toast(s, KIT_TOAST_ERROR, COMPONENT_PRESENTATION_PATH, error);
     }
     free(text);
 }
@@ -1128,6 +1165,7 @@ void studio_emit(studio *s)
     topbar(s);
     workspace(s);
     statusbar(s);
+    studio_ask_frame(s);
     palette(s);
     undo_toast(s);
 }

@@ -210,6 +210,25 @@ typedef struct
     char expression_error[192];
 } studio_graph;
 
+/* A natural language command the palette follows (studio_ask.c). */
+typedef enum
+{
+    STUDIO_ASK_IDLE,
+    STUDIO_ASK_WAITING, /* a loading toast shows the request */
+    STUDIO_ASK_CLARIFY, /* the palette lists answers */
+    STUDIO_ASK_REVIEW,  /* the palette lists the proposed changes */
+} studio_ask_phase;
+
+typedef struct
+{
+    studio_ask_phase phase;
+    char task[64];
+    char query[256];
+    int toast; /* the loading toast while waiting */
+    int undo_toast;
+    char undo_task[64];
+} studio_ask_state;
+
 /* The open project's editor/Components.yaml, re-read when it changes. */
 typedef struct
 {
@@ -272,6 +291,7 @@ struct studio
     SDL_Keymod mods;   /* modifier state as of the last replayed key event */
     int undo_toast;    /* toast offering Undo for undo_toast_group */
     uint64_t undo_toast_group;
+    studio_ask_state ask;
     char status[256];
     char seen_message[256]; /* last authoring message reported */
     double status_time;
@@ -337,6 +357,16 @@ void studio_performance_body(studio *s, int area);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
 void studio_record(studio *s, kit_toast_type kind, const char *text);
+/* A toast that is also recorded in Output. */
+void studio_toast(studio *s, kit_toast_type type, const char *title, const char *description);
+
+/* Natural language commands (studio_ask.c). */
+void studio_commands_attach(studio *s);
+void studio_commands_detach(studio *s);
+void studio_ask(studio *s, const char *query);
+void studio_ask_frame(studio *s);
+/* Clarification and review: rows for the command surface while they are open. */
+bool studio_ask_palette(studio *s);
 
 /* Commands shared by menus, shortcuts and the command palette. */
 void studio_toggle_drawer(studio *s, studio_editor editor);

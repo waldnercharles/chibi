@@ -140,6 +140,23 @@ static char *response(const char *status, const char *message)
     return json;
 }
 
+/* A value as the summary shows it: colors in hex, text and labels unquoted. */
+static char *summary_value(yyjson_val *field, yyjson_val *value)
+{
+    if (!value) {
+        return NULL;
+    }
+    if (yyjson_is_str(value)) {
+        return xstrdup(yyjson_get_str(value));
+    }
+    if (strcmp(command_string(field, "type"), "color")) {
+        return yyjson_val_write(value, 0, NULL);
+    }
+    char color[16];
+    snprintf(color, sizeof color, "#%08x", (unsigned)yyjson_get_uint(value));
+    return xstrdup(color);
+}
+
 static void describe(command_task *task, yyjson_mut_doc *doc, yyjson_val *proposal)
 {
     yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
@@ -149,26 +166,24 @@ static void describe(command_task *task, yyjson_mut_doc *doc, yyjson_val *propos
     yyjson_mut_val *summary = yyjson_mut_obj_add_arr(doc, root, "summary");
     yyjson_doc *catalog = yyjson_read(task->catalog, strlen(task->catalog), 0);
     yyjson_val *objects = yyjson_obj_get(yyjson_doc_get_root(catalog), "objects");
+    yyjson_val *panels = yyjson_obj_get(yyjson_doc_get_root(catalog), "panels");
     yyjson_val *ops = yyjson_obj_get(proposal, "operations");
     for (int i = 0; i < (int)yyjson_arr_size(ops); i++) {
         yyjson_val *op = yyjson_arr_get(ops, i);
-        yyjson_val *object = command_find(objects, command_string(op, "target"));
+        const char *target = command_string(op, "target");
+        yyjson_val *object = command_find(objects, target);
+        object = object ? object : command_find(panels, target);
         yyjson_val *field = command_find(yyjson_obj_get(object, "fields"), command_string(op, "field"));
-        yyjson_val *value = yyjson_obj_get(op, "value");
-        char *literal = value ? yyjson_val_write(value, 0, NULL) : NULL;
-        char color[16];
-        if (!strcmp(command_string(field, "type"), "color")) {
-            snprintf(color, sizeof color, "#%08x", (unsigned)yyjson_get_uint(value));
-            free(literal);
-            literal = xstrdup(color);
-        }
+        char *literal = summary_value(field, yyjson_obj_get(op, "value"));
         char line[1024];
         snprintf(
             line,
             sizeof line,
             "%s %s%s%s%s%s",
             command_string(op, "op"),
-            object ? command_string(object, "name") : command_string(op, "name"),
+            object                        ? command_string(object, "name")
+            : *command_string(op, "name") ? command_string(op, "name")
+                                          : target,
             field ? " · " : "",
             command_string(field, "label"),
             literal ? " → " : "",
@@ -391,11 +406,11 @@ static void execute(app_scene_authoring *scene, command_task *task)
     trace(task);
 }
 
-static void start(command_task *task)
+static void start(app_scene_authoring *scene, command_task *task)
 {
     task->started = SDL_GetTicks();
     task->measuring = true;
-    char error[256];
+    char error[256] = { 0 };
     char *packet = yyjson_mut_write(task->packet, 0, NULL);
     char *model_request = editor_command_model_prepare(packet, error, sizeof error);
     free(packet);
@@ -419,6 +434,11 @@ static void start(command_task *task)
                           : "Could not start model request"
         )
     );
+    /* A request that never started leaves nothing to wait for. */
+    if (!task->request) {
+        runtime(scene)->active = NULL;
+        trace(task);
+    }
 }
 
 static bool validate_review(app_scene_authoring *scene, command_task *task)
@@ -625,7 +645,7 @@ static char *mark_incorrect(command_task *task)
 }
 
 /* Binds the answer to a clarification and asks the model again. NULL on success. */
-static char *clarify(command_task *task, yyjson_val *reply, yyjson_val *root)
+static char *clarify(app_scene_authoring *scene, command_task *task, yyjson_val *reply, yyjson_val *root)
 {
     const char *value = command_string(root, "value"),
                *binding = command_string(reply, "binding");
@@ -644,7 +664,7 @@ static char *clarify(command_task *task, yyjson_val *reply, yyjson_val *root)
         yyjson_mut_strcpy(task->packet, binding),
         yyjson_mut_strcpy(task->packet, value)
     );
-    start(task);
+    start(scene, task);
     return NULL;
 }
 
@@ -662,7 +682,7 @@ static char *reply(app_scene_authoring *scene, command_task *task, yyjson_val *r
         yyjson_arr_size(yyjson_obj_get(previous, "operations"))) {
         execute(scene, task);
     } else if (!strcmp(status, "needs_clarification")) {
-        result = clarify(task, previous, root);
+        result = clarify(scene, task, previous, root);
     } else {
         result = response("failed", "Review the proposed operations");
     }
@@ -759,7 +779,7 @@ static char *submit(app_scene_authoring *scene, yyjson_doc *doc, const char *req
         set_result(task, xstrdup(request));
         execute(scene, task);
     } else {
-        start(task);
+        start(scene, task);
     }
     return xstrdup(task->result);
 }

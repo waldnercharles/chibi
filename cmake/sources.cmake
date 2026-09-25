@@ -174,6 +174,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/retained_menu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_ask.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c

@@ -370,6 +370,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
     SDL_AddEventWatch(queue_event, s);
+    studio_commands_attach(s);
     return s;
 }
 
@@ -381,6 +382,7 @@ void studio_free(studio *s)
     if (s->text_input) {
         cf_input_disable_ime();
     }
+    studio_commands_detach(s);
     SDL_RemoveEventWatch(queue_event, s);
     if (s->prefs_changed_at > 0) {
         studio_prefs_save(&s->prefs);

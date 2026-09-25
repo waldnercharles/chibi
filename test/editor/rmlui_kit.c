@@ -1,5 +1,6 @@
 /* Studio kit contracts without a GPU: reconciliation, number fields, menus, command. */
 #include "editor/rmlui/backend.h"
+#include "editor/rmlui/rml.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
 
@@ -185,6 +186,28 @@ static void type(kit_fixture *f, const char *text)
     editor_rml_backend_process_input(f->backend, &input);
 }
 
+/* The first palette row's label as RML with its tags removed. */
+static void first_row_text(kit_fixture *f, char *text, size_t size)
+{
+    rml_element *input = rml_context_focus_element(editor_rml_backend_context(f->backend));
+    rml_element *label = input
+                           ? rml_element_query_selector(rml_element_owner_document(input), ".cmd-item .label")
+                           : NULL;
+    char rml[256] = "";
+    if (label) {
+        rml_element_inner_rml(label, rml, sizeof rml);
+    }
+    size_t n = 0;
+    bool tag = false;
+    for (const char *c = rml; *c && n + 1 < size; c++) {
+        tag = *c == '<' || (tag && *c != '>');
+        if (!tag && *c != '>') {
+            text[n++] = *c;
+        }
+    }
+    text[n] = '\0';
+}
+
 static bool check(bool ok, const char *what)
 {
     if (!ok) {
@@ -316,6 +339,26 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(f.chosen == 2, "command-score ranks Frame Selected for \"fs\"");
     ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
+
+    /* Match highlighting keeps the spaces RmlUi would drop as blank text:
+       one inside a bold run and one alone between two. */
+    char matched_space[64], gap_space[64];
+    f.open_command = true;
+    settle(&f);
+    type(&f, "frame sel");
+    frame(&f);
+    first_row_text(&f, matched_space, sizeof matched_space);
+    key(&f, EDITOR_RML_KEY_ESCAPE, 0);
+    frame(&f);
+    f.open_command = true;
+    settle(&f);
+    type(&f, "es");
+    frame(&f);
+    first_row_text(&f, gap_space, sizeof gap_space);
+    key(&f, EDITOR_RML_KEY_ESCAPE, 0);
+    frame(&f);
+    ok &= check(strcmp(matched_space, "Frame Selected") == 0, "highlighting keeps a matched space");
+    ok &= check(strcmp(gap_space, "Frame Selected") == 0, "highlighting keeps a space between matches");
 
     /* Keyed children reorder and prune without recreating survivors. */
     float ay, cy;

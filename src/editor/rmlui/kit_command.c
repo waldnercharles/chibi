@@ -372,29 +372,51 @@ static bool same_letter(char a, char b)
     return tolower((unsigned char)a) == tolower((unsigned char)b);
 }
 
+/* Appends label[start, end). RmlUi drops a text node of only whitespace, so
+ * such a run keeps its spaces as &nbsp;. */
+static void match_run(char **rml, const char *label, size_t start, size_t end)
+{
+    bool blank = true;
+    for (size_t i = start; i < end; i++) {
+        blank &= label[i] == ' ';
+    }
+    for (size_t i = start; i < end; i++) {
+        if (blank) {
+            str_cat(rml, "&nbsp;");
+            continue;
+        }
+        escape(rml, (char[]){ label[i], 0 });
+    }
+}
+
 /* The label with the query's characters in bold when they all appear in
- * order, else the plain label. */
+ * order, else the plain label. Consecutive matches share one <b>. */
 static char *match_rml(const char *label, const char *query)
 {
-    char *rml = NULL;
-    size_t matched = 0, length = strlen(query);
-    for (const char *ch = label; *ch; ch++) {
-        bool hit = matched < length && same_letter(*ch, query[matched]);
-        if (hit) {
-            str_cat(&rml, "<b>");
-        }
-        escape(&rml, (char[]){ *ch, 0 });
-        if (hit) {
-            str_cat(&rml, "</b>");
-            matched++;
-        }
+    size_t count = strlen(label), length = strlen(query), matched = 0;
+    bool *hits = xcalloc(count + 1, sizeof *hits);
+    for (size_t i = 0; i < count; i++) {
+        hits[i] = matched < length && same_letter(label[i], query[matched]);
+        matched += hits[i];
     }
-    if (matched == length) {
+    char *rml = NULL;
+    if (matched < length) {
+        free(hits);
+        escape(&rml, label);
         return rml;
     }
-    free(rml);
-    rml = NULL;
-    escape(&rml, label);
+    size_t start = 0;
+    while (start < count) {
+        size_t end = start;
+        while (end < count && hits[end] == hits[start]) {
+            end++;
+        }
+        str_cat(&rml, hits[start] ? "<b>" : "");
+        match_run(&rml, label, start, end);
+        str_cat(&rml, hits[start] ? "</b>" : "");
+        start = end;
+    }
+    free(hits);
     return rml;
 }
 

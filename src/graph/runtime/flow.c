@@ -322,13 +322,20 @@ static int flow_run_advance_child(flow_run *run)
         run->call_node = NULL;
         return FLOW_OK;
     }
-    if (!ret) {
+    /* A function without results may end anywhere, as a void function does;
+       one with results must reach Return to produce them. */
+    bool results = false;
+    for (int i = 0; i < call->output_count; i++) {
+        results |= call->output_pins[i].kind == PIN_DATA &&
+                   !call->output_pins[i].field_source;
+    }
+    if (!ret && results) {
         flow_fail(run, FLOW_ERR_INVALID_GRAPH, call, "function completed without Return");
         return FLOW_ERR_INVALID_GRAPH;
     }
     pin_value *outputs = runtime_node_outputs(flow_runtime_node(run, call));
     int at = 0;
-    for (int i = 0; i < ret->input_count; i++) {
+    for (int i = 0; ret && i < ret->input_count; i++) {
         if (ret->input_pins[i].kind != PIN_DATA) {
             continue;
         }

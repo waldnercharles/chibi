@@ -79,7 +79,7 @@ static void put_read(text *t, const graph *g, const pin_binding *read)
 }
 
 /* Typographic operators, as node titles draw them. */
-static const char *display_symbol(const char *symbol)
+const char *behavior_expression_symbol(const char *symbol)
 {
     static const char *const symbols[][2] = {
         { "*", "×" },  { "/", "÷" },  { "-", "−" },  { "<=", "≤" },
@@ -234,7 +234,9 @@ static void put_arguments(text *t, const graph *g, const node *n)
 {
     put(t, "(");
     bool first = true;
-    for (int p = 0; p < n->input_count; p++) {
+    bool spelled = behavior_expression_arity(n->desc) == n->input_count;
+    for (int a = 0; a < n->input_count; a++) {
+        int p = spelled ? behavior_expression_argument_input(n->desc, a) : a;
         if (n->input_pins[p].flags & PIN_FLAG_SERVICE) {
             continue;
         }
@@ -302,7 +304,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     const node_desc *desc = n->desc;
     int binding = binding_of(n);
     if (binding == BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
-        put(t, display_symbol(behavior_expression_spelling(desc, &binding)));
+        put(t, behavior_expression_symbol(behavior_expression_spelling(desc, &binding)));
         put_input(t, g, n, 0, binding);
         return;
     }
@@ -311,7 +313,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         bool right = !strcmp(spelling, "^");
         put_input(t, g, n, 0, binding + right);
         put(t, " ");
-        put(t, display_symbol(spelling));
+        put(t, behavior_expression_symbol(spelling));
         put(t, " ");
         put_input(t, g, n, 1, binding + !right);
         return;

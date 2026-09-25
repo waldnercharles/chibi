@@ -56,6 +56,13 @@ static bool scalar(pin_value v, float *out)
     return v.container == PIN_CONTAINER_SINGLE && isfinite(*out);
 }
 
+/* A binding other than a local: a local names a wire the graph still holds,
+   so it reads exactly like that wire. */
+static bool state_binding(const pin_spec *pin)
+{
+    return pin->binding && pin->binding->kind != PIN_BINDING_LOCAL;
+}
+
 static int instruction(compiler *c, field_ir ir, int inputs)
 {
     if (acount(c->program->code) >= FIELD_INSTRUCTION_MAX) {
@@ -104,7 +111,7 @@ static int compile_node(compiler *c, node *n, int output)
     }
     c->state[index] = 1;
     int op = field_node_opcode(n->desc);
-    bool call = n->desc == &NODE_CallPureFunction;
+    bool call = n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression;
     if (n->desc == &NODE_Return && c->caller) {
         op = FIELD_OUTPUT;
     }
@@ -113,8 +120,10 @@ static int compile_node(compiler *c, node *n, int output)
         return -1;
     }
     field_ir ir = { .op = call ? FIELD_OUTPUT : op };
-    if (n->input_count > 7) {
-        fail(c->error, c->size, "Field functions accept at most seven scalar arguments");
+    int arguments[FIELD_CALL_ARGUMENT_MAX];
+    int *inputs = call ? arguments : ir.inputs;
+    if (n->input_count > (call ? FIELD_CALL_ARGUMENT_MAX : FIELD_INPUT_MAX)) {
+        fail(c->error, c->size, call ? "Field functions accept at most 32 scalar arguments" : "Field nodes accept at most seven inputs");
         return -1;
     }
     if (op == FIELD_PARAMETER) {
@@ -141,12 +150,12 @@ static int compile_node(compiler *c, node *n, int output)
         for (int i = 0; i < n->input_count; i++) {
             node *from = NULL;
             int pin = -1;
-            if (n->input_pins[i].binding) {
+            if (state_binding(&n->input_pins[i])) {
                 fail(c->error, c->size, "Field inputs cannot read ECS, event, or mutable state bindings");
                 return -1;
             }
             if (graph_input_source(c->graph, n, i, &from, &pin)) {
-                if ((ir.inputs[i] = compile_node(c, from, pin)) < 0) {
+                if ((inputs[i] = compile_node(c, from, pin)) < 0) {
                     return -1;
                 }
             } else {
@@ -155,8 +164,8 @@ static int compile_node(compiler *c, node *n, int output)
                     fail(c->error, c->size, "Field inputs require finite scalar values");
                     return -1;
                 }
-                ir.inputs[i] = instruction(c, (field_ir){ .op = FIELD_CONSTANT, .value = value }, 0);
-                if (ir.inputs[i] < 0) {
+                inputs[i] = instruction(c, (field_ir){ .op = FIELD_CONSTANT, .value = value }, 0);
+                if (inputs[i] < 0) {
                     return -1;
                 }
             }
@@ -187,7 +196,7 @@ static int compile_node(compiler *c, node *n, int output)
                            .graph = target,
                            .program = c->program,
                            .depth = c->depth,
-                           .arguments = ir.inputs,
+                           .arguments = arguments,
                            .argument_count = n->input_count,
                            .slots = xcalloc((size_t)count, sizeof(int)),
                            .state = xcalloc((size_t)count, sizeof(int)),
@@ -240,7 +249,8 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
             const node *n = graph->nodes[i];
             bool signature = n->desc == &NODE_FunctionEntry ||
                              n->desc == &NODE_Return ||
-                             n->desc == &NODE_CallPureFunction;
+                             n->desc == &NODE_CallPureFunction ||
+                             n->desc == &NODE_BehaviorExpression;
             if (n->disabled || (field_node_opcode(n->desc) < 0 && !signature) ||
                 (g && field_node_opcode(n->desc) == FIELD_OUTPUT) ||
                 (!g && (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return))) {
@@ -254,7 +264,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
                     for (int p = 0; p < count; p++) {
                         if (pins[p].kind != PIN_DATA || pins[p].type != PIN_F32 ||
                             pins[p].container != PIN_CONTAINER_SINGLE ||
-                            pins[p].binding) {
+                            state_binding(&pins[p])) {
                             fail(error, size, "Field functions require pure scalar pins");
                             return NULL;
                         }

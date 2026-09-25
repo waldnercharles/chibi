@@ -2,6 +2,7 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/math_nodes.h"
@@ -84,22 +85,9 @@ ed_node_presentation ed_node_appearance(const node_desc *desc)
         desc == &NODE_BehaviorExpression) {
         return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SITEMAP };
     }
+    /* Arithmetic and comparisons draw as their expression operator in every
+       graph kind; reflected vector math marks itself through jit_kind. */
     const char *symbol = NULL;
-    static const struct
-    {
-        const char *name;
-        const char *symbol;
-    } shader_symbols[] = {
-        { "Shader Add", "+" },
-        { "Shader Subtract", "−" },
-        { "Shader Multiply", "×" },
-        { "Shader Divide", "÷" },
-    };
-    for (int i = 0; i < (int)(sizeof shader_symbols / sizeof *shader_symbols); i++) {
-        if (!strcmp(desc->name, shader_symbols[i].name)) {
-            return (ed_node_presentation){ shader_symbols[i].symbol, 0 };
-        }
-    }
     switch (desc->jit_kind) {
         case NODE_JIT_ADD: symbol = "+"; break;
         case NODE_JIT_SUB: symbol = "−"; break;
@@ -107,32 +95,16 @@ ed_node_presentation ed_node_appearance(const node_desc *desc)
         case NODE_JIT_DIV: symbol = "÷"; break;
         default: break;
     }
-    if (desc == &NODE_Less || desc == &NODE_Integer_Less) {
-        symbol = "<";
+    int binding = 0;
+    const char *spelling = behavior_expression_spelling(desc, &binding);
+    if (spelling && binding >= 3 && binding != BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
+        symbol = behavior_expression_symbol(spelling);
     }
-    if (desc == &NODE_Less_Or_Equal || desc == &NODE_Integer_Less_Or_Equal) {
-        symbol = "≤";
-    }
-    if (desc == &NODE_Greater || desc == &NODE_Integer_Greater) {
-        symbol = ">";
-    }
-    if (desc == &NODE_Greater_Or_Equal || desc == &NODE_Integer_Greater_Or_Equal) {
-        symbol = "≥";
-    }
-    if (desc == &NODE_Equal || desc == &NODE_Integer_Equal) {
-        symbol = "=";
-    }
-    if (desc == &NODE_Not_Equal || desc == &NODE_Integer_Not_Equal) {
-        symbol = "≠";
-    }
-    if (desc == &NODE_Sine) {
-        symbol = "SIN";
-    }
-    if (desc == &NODE_Cosine) {
-        symbol = "COS";
-    }
-    if (desc == &NODE_Tangent) {
-        symbol = "TAN";
+    static const char *const TRIG[][2] = { { "sin", "SIN" },
+                                           { "cos", "COS" },
+                                           { "tan", "TAN" } };
+    for (int i = 0; spelling && !binding && i < 3; i++) {
+        symbol = !strcmp(spelling, TRIG[i][0]) ? TRIG[i][1] : symbol;
     }
     if (symbol) {
         return (ed_node_presentation){ symbol, 0 };

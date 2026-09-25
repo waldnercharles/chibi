@@ -28,6 +28,34 @@ The constants `pi` and `e` are built in. Use parentheses to make grouping explic
 | `vec2` | `x, y`; constructs a `CF_V2` |
 | `vec3` | `x, y, z`; constructs a `CF_V3` |
 
+## Shader and field graphs
+
+The same language works in materials, shapes, shader libraries and procedural
+fields. One table in `graph/nodes/math_expression.c` names the behavior, shader
+and field node behind each function; a function a graph kind lacks reports
+`floor() is not available in shader graphs`. Shader and field expressions are
+values only: no assignments, comparisons or boolean logic, and `%` and `^` need
+a behavior graph.
+
+| Graph | Functions |
+| --- | --- |
+| Shader | `sin`, `cos`, `fract`, `abs`, `min`, `max`, `clamp`, `saturate`, `mix`, `step`, `smoothstep`, `length`, `dot`, `normalize`, `noise(position, scale)`, `vec2`, `vec3`, `vec4` |
+| Field | `sin`, `cos`, `floor`, `abs`, `negate`, `min`, `max`, `clamp`, `remap`, `select`, `noise(x, y, seed)`, `hash(x, y, seed)`, `fractal`, `circle`, `box`, `capsule`, `rotate_x`, `rotate_y`, `smooth_union`, `smooth_subtract` |
+
+Arguments follow GLSL: `step(edge, x)` and `smoothstep(edge0, edge1, x)`. In
+shaders an input keeps the width of the value wired into it, operations take
+their widest operand, and a scalar operand broadcasts: `color * glow` scales a
+`ShaderVec3`. Mixing 2- and 3-component operands is an error. Members swizzle:
+`uv.y`, `color.zyx`, `color.rgb`. A member read passes the input through until
+the input is connected, then regenerates with the real width. Field
+expressions read and return one float.
+
+**Convert to Expression** works on shader and field math too: it spells each
+node with the table above, in GLSL argument order, with spaces and only the
+parentheses precedence needs. Converted inputs are named after their source:
+a parameter's name, a shader or field built-in (`X`, `UV`), or a component
+field as `transform_x`.
+
 Inputs and the result infer their connected graph types. Numeric operators support
 scalar broadcasting across reflected numeric structs such as `CF_V2` and
 `GameTransform`; the result keeps the aggregate type. Use member access such as

@@ -37,6 +37,7 @@ typedef enum
 } field_op;
 
 #define FIELD_INPUT_MAX 7
+#define FIELD_CALL_ARGUMENT_MAX 32
 #define FIELD_INSTRUCTION_MAX 4096
 
 typedef struct

@@ -556,6 +556,7 @@ static void emit_node(studio *s, node *n)
     kit_flag(k, "data-error", problem && problem->error);
     kit_flag(k, "data-warning", problem && !problem->error);
     kit_flag(k, "data-paused", paused);
+    sg_emit_bubble(s, n);
     if (l.form == FORM_OPERATOR) {
         emit_operator(s, n, &l);
     } else {
@@ -818,31 +819,6 @@ static void emit_reroutes(studio *s)
     }
 }
 
-/* Comment frames sit behind nodes; their titles stay readable when zoomed
-   out (Unreal). The frame's color tints its fill and edge. */
-static void emit_comment(studio *s, const graph_comment_box *box)
-{
-    kit *k = s->graph.kit;
-    char key[32], value[48];
-    snprintf(key, sizeof key, "c%llu", (unsigned long long)box->id);
-    kit_push(k, key, NULL, "gcomment");
-    snprintf(value, sizeof value, "%.1fdp", box->x);
-    kit_style(k, "left", value);
-    snprintf(value, sizeof value, "%.1fdp", box->y);
-    kit_style(k, "top", value);
-    snprintf(value, sizeof value, "%.1fdp", box->width);
-    kit_style(k, "width", value);
-    snprintf(value, sizeof value, "%.1fdp", box->height);
-    kit_style(k, "height", value);
-    uint32_t c = box->color ? box->color : 0x8a8a96ffu;
-    snprintf(value, sizeof value, "#%02x%02x%02x1f", c >> 24, (c >> 16) & 255, (c >> 8) & 255);
-    kit_style(k, "background-color", value);
-    snprintf(value, sizeof value, "#%02x%02x%02x66", c >> 24, (c >> 16) & 255, (c >> 8) & 255);
-    kit_style(k, "border-color", value);
-    kit_label(k, "t", "gcomment-title", box->title && box->title[0] ? box->title : "Comment");
-    kit_pop(k);
-}
-
 void sg_emit_canvas(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -859,7 +835,7 @@ void sg_emit_canvas(studio *s)
     snprintf(value, sizeof value, "%.2fdp", -g->y);
     kit_style(k, "top", value);
     for (int i = 0; i < acount(gr->comment_boxes); i++) {
-        emit_comment(s, &gr->comment_boxes[i]);
+        sg_emit_comment(s, &gr->comment_boxes[i]);
     }
     emit_conversions(s);
     emit_reroutes(s);

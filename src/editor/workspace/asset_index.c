@@ -9,6 +9,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/graph.h"
 #include "graph/model/node.h"
+#include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -306,6 +307,7 @@ int asset_index_add_reference(asset_index *index, asset_index_reference referenc
             .graph_id = reference.graph_id,
             .node_id = reference.node_id,
             .pin_id = reference.pin_id,
+            .symbol_id = reference.symbol_id,
         })
     );
     return 0;
@@ -377,7 +379,7 @@ int asset_index_score(const asset_index_asset *asset, const char *query)
     return editor_search_score(query, asset->name, asset->path);
 }
 
-static asset_index_kind kind_for_domain(behavior_domain domain)
+asset_index_kind asset_index_domain_kind(behavior_domain domain)
 {
     switch (domain) {
         case BEHAVIOR_DOMAIN_EVENT: return ASSET_INDEX_BEHAVIOR;
@@ -416,7 +418,61 @@ static const char *graph_node_pin_string(const node *node, const char *name, uin
     return NULL;
 }
 
-static void add_graph_references(asset_index *index, int source_id, const behavior_asset *asset)
+static bool graph_call(const node *n)
+{
+    return n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction ||
+           n->desc == &NODE_CallMacro;
+}
+
+/* A call names its library, or calls a graph of its own asset. */
+static void add_graph_call(asset_index *index, int source_id, const graph *graph, const node *node)
+{
+    bool library = node->reference_asset && node->reference_asset[0];
+    if (!library && !graph_call(node)) {
+        return;
+    }
+    asset_index_add_reference(
+        index,
+        (asset_index_reference){
+            .kind = ASSET_INDEX_GRAPH_CALL,
+            .source = source_id,
+            .target = library ? asset_index_ensure_name(index, ASSET_INDEX_LIBRARY, node->reference_asset)
+                              : source_id,
+            .detail = graph->name,
+            .graph_id = graph->graph_id,
+            .node_id = node->id,
+            .symbol_id = node->reference_id,
+        }
+    );
+}
+
+/* Get and Set Variable nodes, and inputs bound to a variable, use it. */
+static void add_variable_access(
+    asset_index *index,
+    int source_id,
+    const graph *graph,
+    const node *node,
+    uint64_t variable,
+    uint64_t pin
+)
+{
+    bool write = node->desc == &NODE_SetVariable && !pin;
+    asset_index_add_reference(
+        index,
+        (asset_index_reference){
+            .kind = write ? ASSET_INDEX_VARIABLE_WRITE : ASSET_INDEX_VARIABLE_READ,
+            .source = source_id,
+            .target = source_id,
+            .detail = graph->name,
+            .graph_id = graph->graph_id,
+            .node_id = node->id,
+            .pin_id = pin,
+            .symbol_id = variable,
+        }
+    );
+}
+
+void asset_index_add_graph_references(asset_index *index, int source_id, const behavior_asset *asset)
 {
     for (int i = 0; i < acount(asset->graphs); i++) {
         const graph *graph = asset->graphs[i];
@@ -429,19 +485,9 @@ static void add_graph_references(asset_index *index, int source_id, const behavi
                 continue;
             }
             const char *node_name = node->desc->name;
-            if (node->reference_asset && node->reference_asset[0]) {
-                int target = asset_index_ensure_name(index, ASSET_INDEX_LIBRARY, node->reference_asset);
-                asset_index_add_reference(
-                    index,
-                    (asset_index_reference){
-                        .kind = ASSET_INDEX_GRAPH_CALL,
-                        .source = source_id,
-                        .target = target,
-                        .detail = graph->name,
-                        .graph_id = graph->graph_id,
-                        .node_id = node->id,
-                    }
-                );
+            add_graph_call(index, source_id, graph, node);
+            if (node->desc == &NODE_GetVariable || node->desc == &NODE_SetVariable) {
+                add_variable_access(index, source_id, graph, node, node->reference_id, 0);
             }
             if (!strcmp(node_name, "Spawn Prototype")) {
                 uint64_t pin_id = 0;
@@ -476,6 +522,16 @@ static void add_graph_references(asset_index *index, int source_id, const behavi
                                                       binding->variable_id
                                                   )
                                                 : NULL;
+                if (binding->kind == PIN_BINDING_VARIABLE) {
+                    add_variable_access(
+                        index,
+                        source_id,
+                        graph,
+                        node,
+                        binding->variable_id,
+                        input->id
+                    );
+                }
                 struct node *source = NULL;
                 int source_pin = -1;
                 asset_index_add_binding_usage(
@@ -767,7 +823,7 @@ static void add_live_definitions(asset_index *index, app_scene_authoring *scene)
 {
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         game_live_definition *definition = game_live_definition_at(scene->live, i);
-        asset_index_kind kind = kind_for_domain(definition->working->domain);
+        asset_index_kind kind = asset_index_domain_kind(definition->working->domain);
         uint64_t session = definition->path
                              ? 0
                              : asset_index_session_id(index, kind, definition->name);
@@ -788,7 +844,7 @@ static void add_live_definitions(asset_index *index, app_scene_authoring *scene)
                 working = current;
             }
         }
-        add_graph_references(index, source, working);
+        asset_index_add_graph_references(index, source, working);
     }
 }
 
@@ -1002,14 +1058,14 @@ static void add_system_references(app_scene_authoring *scene, asset_index *index
                                               : game_system_document_behavior_asset(
                                                     scene->system_document
                                                 );
-            add_graph_references(index, source, working);
+            asset_index_add_graph_references(index, source, working);
             continue;
         }
         behavior_asset *asset = tab->system_json
                                   ? behavior_asset_load_json(tab->system_json)
                                   : NULL;
         if (asset) {
-            add_graph_references(index, source, asset);
+            asset_index_add_graph_references(index, source, asset);
             behavior_asset_free(asset);
         }
     }
@@ -1048,6 +1104,36 @@ int app_scene_authoring_refresh_asset_index(app_scene_authoring *scene)
     add_system_references(scene, index);
     scene->asset_index_built_generation = scene->asset_index_generation;
     return 0;
+}
+
+static bool uses_target(const asset_index_reference *r, asset_index_target target)
+{
+    if (r->target != target.asset) {
+        return false;
+    }
+    switch (target.symbol) {
+        case ASSET_INDEX_SYMBOL_ASSET: return r->source != target.asset;
+        case ASSET_INDEX_SYMBOL_FUNCTION:
+            return r->kind == ASSET_INDEX_GRAPH_CALL && r->symbol_id == target.id;
+        case ASSET_INDEX_SYMBOL_VARIABLE:
+            return (r->kind == ASSET_INDEX_VARIABLE_READ ||
+                    r->kind == ASSET_INDEX_VARIABLE_WRITE) &&
+                   r->symbol_id == target.id;
+    }
+    return false;
+}
+
+void asset_index_find_uses(
+    const asset_index *index,
+    asset_index_target target,
+    const asset_index_reference ***uses
+)
+{
+    for (int i = 0; i < acount(index->references); i++) {
+        if (uses_target(&index->references[i], target)) {
+            apush(*uses, &index->references[i]);
+        }
+    }
 }
 
 const asset_index *app_scene_authoring_asset_index(const app_scene_authoring *scene)

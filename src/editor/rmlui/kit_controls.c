@@ -514,10 +514,15 @@ static bool choice_select(kit *k, const char *key, int *value, const char *const
     return changed;
 }
 
+bool kit_toggle_group(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags)
+{
+    return choice_toggle(k, key, value, labels, count, flags);
+}
+
 bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags)
 {
     if (count <= 3) {
-        return choice_toggle(k, key, value, labels, count, flags);
+        return kit_toggle_group(k, key, value, labels, count, flags);
     }
     return choice_select(k, key, value, labels, count, flags);
 }

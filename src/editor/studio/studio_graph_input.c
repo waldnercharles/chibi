@@ -19,20 +19,34 @@ typedef struct
     uint64_t node;
     int kind; /* -1 on the node body */
     int pin;
-    uint64_t comment;                /* a comment frame's title */
+    uint64_t comment;                /* a comment frame */
     int reroute_edge, reroute_point; /* a wire's reroute point, or -1 */
+    bool title;                      /* on the frame's title */
+    unsigned edges;                  /* the frame's SG_EDGE_* grip, or 0 */
+    bool bubble;                     /* on the node's comment bubble */
 } graph_hit;
 
 static const graph_hit NO_HIT = { 0, -1, -1, 0, -1, -1 };
+
+/* A frame drags from anywhere inside it (Blender); its grips resize it. */
+static graph_hit parse_comment_hit(unsigned long long id, const char *part)
+{
+    graph_hit hit = NO_HIT;
+    hit.comment = id;
+    hit.title = !strcmp(part, "/t");
+    if (sscanf(part, "/h%u", &hit.edges) != 1) {
+        hit.edges = 0;
+    }
+    return hit;
+}
 
 static graph_hit parse_hit(const char *path)
 {
     graph_hit hit = NO_HIT;
     unsigned long long id;
     int used = 0;
-    if (path && sscanf(path, "world/stage/c%llu/t", &id) == 1) {
-        hit.comment = id;
-        return hit;
+    if (path && sscanf(path, "world/stage/c%llu%n", &id, &used) == 1) {
+        return parse_comment_hit(id, path + used);
     }
     if (path &&
         sscanf(path, "world/stage/r%d_%d", &hit.reroute_edge, &hit.reroute_point) == 2) {
@@ -46,6 +60,7 @@ static graph_hit parse_hit(const char *path)
     /* Only a pin's socket and label take a wire; the rest of its row
    belongs to the node, so the node stays easy to grab. */
     const char *row = path + used;
+    hit.bubble = !strncmp(row, "/cm", 3);
     int exec, pin, end = 0;
     char side;
     if (sscanf(row, "/b/e%d/%c%d%n", &exec, &side, &pin, &end) != 3 &&
@@ -334,6 +349,24 @@ static void wheel(studio_graph *g, const editor_rml_input *ev)
     sg_zoom_at(g, g->zoom * factor, ev->x, ev->y);
 }
 
+/* A frame's grip resizes it and a double-click on its title renames it
+   (Unreal); true when the press went to one of them. */
+static bool press_comment(studio *s, graph_comment_box *box, graph_hit hit)
+{
+    if (sg_graph_readonly(s)) {
+        return false;
+    }
+    if (hit.edges) {
+        sg_begin_resize(s, box, hit.edges);
+        return true;
+    }
+    if (hit.title && s->graph.double_click) {
+        sg_edit_title(s, box->id);
+        return true;
+    }
+    return false;
+}
+
 static void press(studio *s, int button, graph_hit hit, bool on_control)
 {
     studio_graph *g = &s->graph;
@@ -358,6 +391,9 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     graph_comment_box *box = sg_comment_by_id(s, hit.comment);
+    if (box && press_comment(s, box, hit)) {
+        return;
+    }
     if (box) {
         /* Dragging a frame's title carries what it frames; Shift moves the
            frame alone (Unreal, Blender). */
@@ -370,6 +406,10 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     node *n = sg_node_by_id(s, hit.node);
+    if (n && hit.bubble && g->double_click && !sg_graph_readonly(s)) {
+        sg_edit_bubble(s, n->id);
+        return;
+    }
     if (n && g->double_click && ed_is_graph_call(n)) {
         /* Double-click enters a call (Blender's Tab); Back returns. */
         editor_open_graph_call(e, n->id);
@@ -474,6 +514,7 @@ static void drag(studio *s)
                 g->gesture = STUDIO_GRAPH_PAN;
             }
             break;
+        case STUDIO_GRAPH_RESIZE: sg_resize(s); break;
         case STUDIO_GRAPH_REROUTE: {
             /* A drag moves the point by the pointer's travel; a click leaves it. */
             if (drag_distance(g) < THRESHOLD) {
@@ -539,6 +580,7 @@ static void release(studio *s, graph_hit hit)
             }
             break;
         }
+        case STUDIO_GRAPH_RESIZE: sg_end_resize(s, false); break;
         case STUDIO_GRAPH_LINK: end_link(s, hit); return;
         case STUDIO_GRAPH_RIGHT: {
             /* A right click that didn't move opens the node or wire menu, or on
@@ -588,6 +630,9 @@ void sg_cancel_gesture(studio *s)
             }
         }
         ed_cancel_snapshot(e);
+    }
+    if (g->gesture == STUDIO_GRAPH_RESIZE) {
+        sg_end_resize(s, true);
     }
     if (g->gesture == STUDIO_GRAPH_REROUTE) {
         edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
@@ -726,7 +771,7 @@ static void auto_pan(studio *s)
     double dt = fmin(s->time - g->pan_time, 0.05);
     g->pan_time = s->time;
     if (g->gesture != STUDIO_GRAPH_MOVE && g->gesture != STUDIO_GRAPH_BOX &&
-        g->gesture != STUDIO_GRAPH_LINK) {
+        g->gesture != STUDIO_GRAPH_LINK && g->gesture != STUDIO_GRAPH_RESIZE) {
         return;
     }
     const float edge = 40, speed = 900;
@@ -834,8 +879,15 @@ void sg_shortcuts(studio *s)
             }
             continue;
         }
+        bool alt = s->keys[i].mod & SDL_KMOD_ALT;
         if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
+        } else if (mod && key == SDLK_F) {
+            sg_find_open(s);
+        } else if (shift && alt && key == SDLK_F) {
+            if (acount(e->selected) && studio_node_referable(e->selected[0])) {
+                studio_find_node_references(s, e->selected[0]);
+            }
         } else if (!mod && !shift && key == SDLK_F) {
             sg_frame_nodes(s, acount(e->selected) > 0, true);
         } else if (!mod && key == SDLK_HOME) {

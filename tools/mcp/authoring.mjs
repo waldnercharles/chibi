@@ -56,6 +56,7 @@ const operationProperties = {
       "set_input",
       "set_output",
       "set_node",
+      "set_comment",
       "set_expression",
       "connect",
       "disconnect",
@@ -167,6 +168,14 @@ const operationProperties = {
   presentation: {
     enum: ["auto", "inline", "expanded"],
     description: "Draw a pure source inside its consumer's input, or as its own node.",
+  },
+  comment: {
+    type: "string",
+    description: "Node comment for set_comment, shown in a bubble above the node; an empty string removes it.",
+  },
+  hidden: {
+    type: "boolean",
+    description: "For set_comment: show the comment only while the node is hovered.",
   },
   event_name: {
     type: "string",

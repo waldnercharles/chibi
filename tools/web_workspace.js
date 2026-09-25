@@ -8,6 +8,9 @@
     if (scene) Module['arguments'].push('--scene', scene);
     if (query.get('play') === '1') Module['arguments'].push('--play');
     if (query.has('imgui')) Module['arguments'].push('--imgui');
+    for (const name of ['open', 'graph']) {
+        if (query.get(name)) Module['arguments'].push(`--${name}`, query.get(name));
+    }
     const request = (method, path, body) => {
         const xhr = new XMLHttpRequest();
         xhr.open(method, path, false);

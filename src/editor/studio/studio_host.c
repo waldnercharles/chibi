@@ -127,6 +127,7 @@ static void forward_input(studio *s)
     }
     in->wheel = 0;
     asetlen(s->keys, 0);
+    s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
         editor_rml_input input = { .x = in->mouse_x,
@@ -141,6 +142,11 @@ static void forward_input(studio *s)
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP: {
                 int b = kit_button_index(e->button.button);
+                bool down = e->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+                if (down && (e->button.button == SDL_BUTTON_X1 ||
+                             e->button.button == SDL_BUTTON_X2)) {
+                    s->nav_button = e->button.button == SDL_BUTTON_X1 ? -1 : 1;
+                }
                 if (b < 0) {
                     continue;
                 }
@@ -150,7 +156,6 @@ static void forward_input(studio *s)
                 move.type = EDITOR_RML_POINTER_MOVE;
                 editor_rml_backend_process_input(s->backend, &move);
                 apush(s->graph.events, move);
-                bool down = e->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
                 in->down[b] = down;
                 in->pressed[b] |= down;
                 in->released[b] |= !down;
@@ -219,6 +224,8 @@ static void sync_cursor(studio *s)
         { "ew-resize", SDL_SYSTEM_CURSOR_EW_RESIZE },
         { "col-resize", SDL_SYSTEM_CURSOR_EW_RESIZE },
         { "ns-resize", SDL_SYSTEM_CURSOR_NS_RESIZE },
+        { "nwse-resize", SDL_SYSTEM_CURSOR_NWSE_RESIZE },
+        { "nesw-resize", SDL_SYSTEM_CURSOR_NESW_RESIZE },
         { "row-resize", SDL_SYSTEM_CURSOR_NS_RESIZE },
         { "crosshair", SDL_SYSTEM_CURSOR_CROSSHAIR },
         { "pointer", SDL_SYSTEM_CURSOR_POINTER },

@@ -81,6 +81,8 @@ TEST_CASE(all_checks)
     test_asset_index();
     run_graph_model_checks();
     run_graph_document_checks();
+    run_graph_comment_checks();
+    run_graph_find_checks();
     run_graph_arrange_checks();
     run_graph_inline_checks();
     run_runtime_execution_checks();

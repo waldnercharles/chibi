@@ -858,7 +858,8 @@ static const edge *inline_edge(const graph *g, const node *n)
     return outgoing;
 }
 
-static bool debug_state(const node *n)
+/* Watches, breakpoints and comments draw on the node's own box. */
+static bool annotated(const node *n)
 {
     for (int output = 0; output < 2; output++) {
         const pin_spec *pins = output ? n->output_pins : n->input_pins;
@@ -868,7 +869,7 @@ static bool debug_state(const node *n)
             }
         }
     }
-    return n->breakpoint;
+    return n->breakpoint || n->comment;
 }
 
 /* Nodes in the inline tree rooted at n, or 0 when n draws its own box.
@@ -882,7 +883,7 @@ static int inline_size(const graph *g, const node *n, const node *forced, int re
         return 0;
     }
     bool automatic = presentation == NODE_PRESENTATION_AUTO;
-    if (automatic && (g->math_expression || debug_state(n))) {
+    if (automatic && (g->math_expression || annotated(n))) {
         return 0;
     }
     int size = 1;
@@ -1558,6 +1559,18 @@ int graph_set_breakpoint(graph *g, node *n, int enabled)
     return 0;
 }
 
+int graph_set_node_comment(graph *g, node *n, const char *comment, bool hidden)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
+        return -1;
+    }
+    bool empty = !comment || !comment[0];
+    n->comment = empty ? NULL : graph_own_str(g, comment, strlen(comment));
+    n->comment_hidden = !empty && hidden;
+    graph_changed(g);
+    return 0;
+}
+
 int graph_set_all_breakpoints(graph *g, int enabled)
 {
     if (!graph_mutation_allowed(g)) {
@@ -1599,7 +1612,6 @@ graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, f
         .width = width,
         .height = height,
         .title = graph_own_str(g, title, strlen(title)),
-        .color = 0xff808080u,
     };
     apush(g->comment_boxes, box);
     graph_changed(g);

@@ -126,6 +126,36 @@ void sg_pointer(studio *s);
 void sg_shortcuts(studio *s);
 void sg_cancel_gesture(studio *s);
 
+/* Comment frames and node comments (studio_graph_comment.c). */
+enum
+{
+    SG_EDGE_LEFT = 1,
+    SG_EDGE_TOP = 2,
+    SG_EDGE_RIGHT = 4,
+    SG_EDGE_BOTTOM = 8,
+};
+void sg_emit_comment(studio *s, graph_comment_box *box);
+void sg_comment_menu(studio *s, graph_comment_box *box);
+void sg_edit_title(studio *s, uint64_t comment);
+void sg_begin_resize(studio *s, graph_comment_box *box, unsigned edges);
+void sg_resize(studio *s);
+void sg_end_resize(studio *s, bool cancel);
+const char *sg_resize_cursor(unsigned edges);
+void sg_emit_bubble(studio *s, node *n);
+void sg_edit_bubble(studio *s, uint64_t node_id);
+bool sg_node_comment_items(studio *s, node *n);
+void sg_comment_properties(studio *s, node *n);
+
+/* Find in graph (studio_graph_find.c). */
+void sg_find_open(studio *s);
+void sg_find_panel(studio *s);
+
+/* Navigation (studio_graph_nav.c). */
+/* Back, Forward and the crumbs up to the open graph's own, which the caller
+   emits before closing the crumbs with kit_pop. */
+void sg_nav_header(studio *s);
+void sg_nav_keys(studio *s);
+
 /* Rendering (studio_graph_draw.c). */
 /* A pin's socket color as 0xRRGGBBAA. */
 uint32_t sg_pin_color(const studio *s, const pin_spec *spec);

@@ -142,11 +142,18 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
 - **Comments:**
   - C wraps the selection in a comment frame.
   - Dragging a frame carries its contents; Shift leaves them in place.
+  - Double-clicking a frame's title renames it in place (Unreal); its edges and corners resize it (Blender, Unreal), and its menu sets a color from a palette.
   - Titles stay readable when zoomed out (Unreal, imgui-node-editor).
+  - A node can carry a comment, drawn as a bubble above it (Unreal's node comments). It is edited from the node menu, a double-click on the bubble or the Node tab. A hidden comment shows only while the node is hovered, and titles-only zoom hides bubbles.
+- **Find:**
+  - Ctrl+F (⌘F) opens a field over the canvas that lists the behavior's nodes whose title, pin names, values, bindings, expression source or comment contain the query, graph by graph (Unreal's Find Results, Blender's Find Node).
+  - Up and Down step through the results in the graph; Enter or a click jumps to one, selecting and framing it.
+  - Find References (Shift+Alt+F, the node, graph and asset menus) lists every node across the project that calls, raises, handles, spawns, reads or writes a function, variable, event or asset, in Output's Find view; a row opens its asset and reveals the node (Unreal).
 - **Functions:**
   - Ctrl+G collapses the selection to a function; the interface is generated from the wires crossing the selection boundary (Blender, Unreal).
-  - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the path.
-  - These map to `editor_open_graph_call` and `editor_graph_back`.
+  - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
+  - These map to `editor_open_graph_call`, `editor_graph_back` and `editor_graph_ancestor`.
+- **History:** Back and Forward (Alt+Left and Alt+Right, or mouse buttons 4 and 5) move through the graphs visited, across behaviors (Unreal).
 
 ### Debugging
 

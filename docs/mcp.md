@@ -164,8 +164,9 @@ writes only its bounded generated recording artifact under `/tmp`, and
 recording or a safe generated recording path.
 
 For graph work, the agent should reason from node identity, pins, edges, calls,
-effects, and diagnostics. `inspectGraph` omits node coordinates, inline UI
-hints, comment-box positions, and wire routing by default. Pass
+effects, and diagnostics. Node comments (`comment`) are part of that record.
+`inspectGraph` omits node coordinates, inline UI hints, hidden comment
+bubbles, comment-box positions, and wire routing by default. Pass
 `include_layout: true` when those editor details are needed. Placement is
 presentation data; the graph arranger assigns coordinates after graph content
 changes, so an agent does not need to choose node positions by hand.
@@ -227,6 +228,10 @@ Graph batches also support `select_graph`, `rename_graph`, `remove_graph`,
 `remove_variable`, `set_pin`, `remove_pin`, `split_pin`, `recombine_pin`,
 `expose_fields`, `hide_fields`, `bind_input`, `clear_binding`, and `create_local`.
 `create_local` on an output that already has a local renames that local.
+`set_comment` gives a node a comment, drawn as a bubble above it like
+Unreal's node comments: `{"op":"set_comment","node":12,"comment":"Clamp before
+the dash"}`. An empty `comment` removes it, and `"hidden": true` shows the
+bubble only while the node is hovered; either field alone keeps the other.
 Select the owning graph before referring to one of its nodes. Graph selectors
 accept IDs, names, or aliases created in the same request. Function calls can
 resolve `reference_name` without a numeric graph ID.

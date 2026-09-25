@@ -295,6 +295,51 @@ void test_automation_graph_edit(void)
     yyjson_mut_doc_free(response);
     free(edited);
 
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"note\",\"type\":"
+        "\"Integer\"},"
+        "{\"op\":\"set_comment\",\"node\":\"note\",\"comment\":\"Starting "
+        "health\"},"
+        "{\"op\":\"set_comment\",\"node\":\"note\",\"hidden\":true}]}",
+        &edited,
+        &response
+    );
+    behavior_asset *commented = edited ? behavior_asset_load_json(edited) : NULL;
+    node *note = commented ? find_node_type(commented->graph, "Integer") : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && note && note->comment &&
+            !strcmp(note->comment, "Starting health") && note->comment_hidden,
+        "MCP set_comment writes a node comment and hides it separately"
+    );
+    behavior_asset_free(commented);
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"note\",\"type\":"
+        "\"Integer\"},"
+        "{\"op\":\"set_comment\",\"node\":\"note\"}]}",
+        &edited,
+        &response
+    );
+    test_check(status != CHIBI_AUTOMATION_OK && !edited, "MCP set_comment needs a comment or hidden");
+    yyjson_mut_doc_free(response);
+    free(edited);
+
     behavior_asset *function_asset = behavior_asset_new("FunctionVariables");
     behavior_asset_set_owner_type(function_asset, "ecs.entity");
     behavior_asset_add_variable(function_asset, "items", PIN_F32, NULL, PIN_CONTAINER_ARRAY, NULL, "Test");

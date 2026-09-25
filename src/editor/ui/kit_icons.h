@@ -13,6 +13,9 @@ enum
     KIT_ICON_DOWN = 0xeab4,         /* nf-cod-chevron_down */
     KIT_ICON_RIGHT = 0xeab6,        /* nf-cod-chevron_right */
     KIT_ICON_LEFT = 0xeab5,         /* nf-cod-chevron_left */
+    KIT_ICON_UP = 0xeab7,           /* nf-cod-chevron_up */
+    KIT_ICON_BACK = 0xea9b,         /* nf-cod-arrow_left */
+    KIT_ICON_FORWARD = 0xea9c,      /* nf-cod-arrow_right */
     KIT_ICON_MORE = 0xea7c,         /* nf-cod-ellipsis */
     KIT_ICON_GRIP = 0xeb04,         /* nf-cod-gripper */
     KIT_ICON_PLAY = 0xf040a,        /* nf-md-play */
@@ -86,6 +89,9 @@ enum
     KIT_ICON_LIGHT = 0xf0336,       /* nf-md-lightbulb_outline */
     KIT_ICON_DIAMOND = 0xf0b8b,     /* nf-md-diamond_outline */
     KIT_ICON_CIRCLE = 0xf0766,      /* nf-md-circle_outline */
+    KIT_ICON_DOT = 0xf0765,         /* nf-md-circle */
+    KIT_ICON_COMMENT = 0xea6b,      /* nf-cod-comment */
+    KIT_ICON_REFERENCES = 0xeb36,   /* nf-cod-references */
     KIT_ICON_SYSTEM = 0xeba2,       /* nf-cod-server_process */
     KIT_ICON_TERMINAL = 0xea85,     /* nf-cod-terminal */
     KIT_ICON_LAYOUT = 0xebeb,       /* nf-cod-layout */

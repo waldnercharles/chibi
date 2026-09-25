@@ -90,6 +90,7 @@ TEST_CASE(all_checks)
     run_graph_compile_checks();
     run_graph_conversion_checks();
     run_graph_functions_checks();
+    test_step_out();
     run_runtime_arrays_checks();
     run_runtime_catalog_checks();
     run_support_format_checks();
@@ -208,6 +209,11 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--component-nodes")) {
         registry_validate();
         test_component_nodes();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--stepping")) {
+        registry_validate();
+        test_step_out();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {

@@ -220,6 +220,7 @@ void run_runtime_instance_checks();
 void run_graph_compile_checks();
 void run_graph_conversion_checks();
 void run_graph_functions_checks();
+void test_step_out();
 void run_runtime_arrays_checks();
 void run_runtime_catalog_checks();
 void run_support_format_checks();

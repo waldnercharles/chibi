@@ -1720,18 +1720,48 @@ void game_behavior_set_time(game_behavior_world *world, double simulation_time)
     world->clock.current_time = simulation_time;
 }
 
-bool game_behavior_paused(const game_behavior_world *world)
+static game_behavior_attachment_info info_of(behavior_attachment *attachment)
+{
+    return (game_behavior_attachment_info){
+        .entity = attachment->entity,
+        .asset_name = attachment->asset->name,
+        .definition = attachment->asset->definition,
+        .instance = attachment->instance,
+        .sequence = attachment->sequence,
+        .debug_hold = attachment->debug_hold,
+    };
+}
+
+/* The first activation paused at a breakpoint or step, and its attachment. */
+static flow_run *first_paused(const game_behavior_world *world, int *attachment)
 {
     for (int i = behavior_pending_next(&world->pending, 0); i >= 0;
          i = behavior_pending_next(&world->pending, i + 1)) {
         const behavior_instance *instance = world->attachments[i].instance;
         for (int j = 0; j < acount(instance->activations); j++) {
             if (flow_run_status(instance->activations[j]) == FLOW_PAUSED) {
-                return true;
+                *attachment = i;
+                return instance->activations[j];
             }
         }
     }
-    return false;
+    return NULL;
+}
+
+bool game_behavior_paused(const game_behavior_world *world)
+{
+    int attachment;
+    return first_paused(world, &attachment) != NULL;
+}
+
+flow_run *game_behavior_paused_run(game_behavior_world *world, game_behavior_attachment_info *out)
+{
+    int attachment;
+    flow_run *run = first_paused(world, &attachment);
+    if (run) {
+        *out = info_of(&world->attachments[attachment]);
+    }
+    return run;
 }
 
 void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds)
@@ -1837,14 +1867,7 @@ int game_behavior_attachment_info_at(
         if (index-- != 0) {
             continue;
         }
-        *out = (game_behavior_attachment_info){
-            .entity = attachment->entity,
-            .asset_name = attachment->asset->name,
-            .definition = attachment->asset->definition,
-            .instance = attachment->instance,
-            .sequence = attachment->sequence,
-            .debug_hold = attachment->debug_hold,
-        };
+        *out = info_of(attachment);
         return 0;
     }
     return -1;

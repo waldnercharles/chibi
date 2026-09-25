@@ -143,10 +143,14 @@ extern "C"
     int flow_run_tick_at(flow_run *run, double monotonic_time);
 
     /* Request an external pause between activations, or enter persistent
-     * single-step mode. Step mode survives latent suspension until resume. */
+     * single-step mode. Step mode survives latent suspension until resume.
+     * Step runs one node of the innermost call and enters the calls it makes;
+     * Step Over runs such a call as one node; Step Out finishes the innermost
+     * call and pauses in its caller, or resumes outside any call. */
     int flow_run_pause(flow_run *run);
     int flow_run_step(flow_run *run);
     int flow_run_step_over(flow_run *run);
+    int flow_run_step_out(flow_run *run);
 
     /* Stop discards pending continuations and leaves the run idle. Reset also
      * clears graph-side evaluation state and releases run-owned storage. */

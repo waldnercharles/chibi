@@ -5,51 +5,29 @@ The September 6 usability review and proposed next refactor are in
 That review includes current screenshots, validation results, and an ImGui/Clay
 assessment. Its recommendations are not yet implemented.
 
-## RmlUi conversion, September 23, 2026
+## RmlUi Studio, September 25, 2026
 
-RmlUi is the chosen UI foundation. LichtFeld Studio and
+RmlUi is the editor's UI foundation. LichtFeld Studio and
 [Blender](references/blender/README.md) are references for compact desktop
 controls, consistent styling and a prominent viewport. Application
 models, authoring commands and Undo/Redo remain in C. RML owns structure and RCSS
 owns presentation; a pass-through C binding (`src/editor/rmlui/rml.h`) contains the RmlUi API, and the renderer integration and kit are C.
-This supersedes the earlier decision to retain ImGui for all editor UI.
 
-The first conversion replaces File, Edit and View, including their keyboard
-navigation and command state, and adds Quick Open to File. It uses the
-same C commands and stable UI inspection IDs as the existing editor. Docking,
-documents, graph editing, inspectors and their specialized controls still use
-ImGui during the conversion.
-
-The document bar's Back, Forward, Quick Open and Open Documents buttons now use
-the same RmlUi context. Their commands remain in the C workspace. F6 enters the
-toolbar; arrows, Home and End move between enabled buttons, Enter or Space
-activates, and Escape or Tab returns focus to the editor. The existing document
-tabs and document-list popup still use ImGui. The list opens from its retained
-button's current bounds, including when invoked by keyboard.
-
-The editor opens as Studio, the full-window RmlUi editor. Use `--imgui` on
-desktop or `?imgui` in the browser for the ImGui workspace, which still has the
-panels Studio hasn't converted. Its
-direction, component kit and migration progress are in
+Studio (`src/editor/studio`), the full-window RmlUi editor, is the only editor.
+The ImGui editor, with its docking workspace, panels, graph canvas and retained
+menu windows, was removed on September 25, 2026. Later sections that describe
+ImGui panes, docking or the ImGui graph canvas record that editor's history.
+Studio's direction, component kit and progress are in
 [the Studio design](prototypes/studio/DESIGN.md). Studio has Blender-style
-areas, a command palette, the Outliner, Properties and the scene viewport. It
-edits the same C authoring model with one undo step per gesture. The behavior
-graph, Assets and Output are not converted yet. Launch without the flag to use
-the ImGui editor.
+areas, a command palette, the Outliner, Properties, the scene viewport, the
+behavior graph, Assets and Output. It edits the C authoring model with one undo
+step per gesture.
 
-Menu labels share a centered 18dp line box. Popups align with their triggers,
-and checkable and ordinary View items share one text column. Pointer presses
-give immediate color feedback; keyboard navigation suppresses hover highlights
-and transitions.
+ImGui remains for game presentation only: the pause and outcome menu, runtime
+widgets in played games (`src/render/widgets.c`) and scene preview captures.
 
 `src/editor/rmlui` owns the RmlUi context, FreeType font rendering, Cute geometry
-backend, menu and toolbar controllers and resources.
-`src/editor/ui/retained_menu.c` adapts the current host input and composes the
-resulting transparent texture into native menu and toolbar windows. ImGui
-supplies those window containers so the converted controls obey existing popup
-focus and modal stacking. Popup regions are excluded from the other surfaces to
-avoid drawing their translucent pixels twice. RmlUi owns layout, hit testing,
-buttons and styling. Its geometry renderer does not depend on ImGui.
+backend, the kit and resources. Its geometry renderer does not depend on ImGui.
 
 Sizes at the C boundary are logical pixels. The RmlUi context and render canvas
 use framebuffer pixels, and RCSS uses `dp` for display scaling. Application
@@ -58,18 +36,14 @@ the application library. Plain game presentation does not create this UI.
 
 Resources live in `src/editor/rmlui/resources` and currently load at startup from
 the source checkout. Restart the editor after editing RML or RCSS. CMake pins
-RmlUi 6.3 and FreeType 2.14.3; no system installation is required. Subsequent panels
-should consume C state and emit C commands rather than expose engine objects to
-markup. Text entry and IME, custom graph elements, accessibility integration and
-docking need their own working conversions before ImGui can be removed.
+RmlUi 6.3 and FreeType 2.14.3; no system installation is required. Panels
+consume C state and emit C commands rather than expose engine objects to
+markup.
 
-`build/test_suite --rmlui-menu` exercises command dispatch, keyboard focus,
-disabled items, design preview, pane state, menu alignment, toolbar navigation, scaling and
-context teardown without a GPU. The `--rmlui-menu-render` smoke test covers GPU
-composition, display scaling, resize and preserving queued scene geometry.
-`make test-render` includes that smoke test. Set `CHIBI_RMLUI_CAPTURE_DIR` to an
-existing directory to save menu and toolbar states, including opening and
-dismissed popups.
+`build/test_suite --rmlui-kit` exercises kit reconciliation, number fields,
+menus and commands without a GPU. The `--rmlui-render` smoke test renders the
+retained UI while preserving queued scene geometry. `make test-render` includes
+that smoke test.
 
 ## Current goal, September 9, 2026
 

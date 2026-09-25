@@ -1,11 +1,10 @@
 version: 3
 name: Flipper
-id_counter: 1508
+id_counter: 2604
 owner_type: ecs.entity
 variables:
-- {id: 1, name: rest, type: float}
-- {id: 2, name: restX, type: float}
-- {id: 3, name: restY, type: float}
+- {id: 1, name: restAngle, type: float}
+- {id: 2, name: restPosition, type: struct, type_name: CF_V2}
 - {id: 4, name: stroke, type: float}
 graphs:
 - kind: event
@@ -15,7 +14,7 @@ graphs:
   - id: 7
     type: Set Variable
     reference_id: 1
-    reference_name: rest
+    reference_name: restAngle
     inputs:
       Value:
         type: float
@@ -26,25 +25,14 @@ graphs:
   - id: 12
     type: Set Variable
     reference_id: 2
-    reference_name: restX
+    reference_name: restPosition
     inputs:
       Value:
-        type: float
-        type_name: null
-        binding: {kind: component_field, component: game.GameTransform, field: x}
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component, component: game.GameTransform}
     outputs:
-      Value: {type: float, type_name: null}
-  - id: 17
-    type: Set Variable
-    reference_id: 3
-    reference_name: restY
-    inputs:
-      Value:
-        type: float
-        type_name: null
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
-    outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: struct, type_name: CF_V2}
   - id: 22
     type: Event
     reference_name: Tick
@@ -71,145 +59,111 @@ graphs:
       Value: {type: float, type_name: null}
     outputs:
       Value: {type: float, type_name: null}
-  - id: 100
+  - id: 1562
     type: Behavior Expression
-    reference_id: 40
-    reference_name: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
+    reference_id: 1508
+    reference_name: spin = clamp((restAngle - sign(cos(restAngle)) * stroke - angle) / max(dt, 0.001), -24, 24)
     inputs:
-      rest:
+      Exec: {id: 1569, kind: exec}
+      spin:
+        id: 1563
+        type: float
+        flags: 6
+        group: 1
+        binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
+      restAngle:
         type: double
         flags: 2
-        group: 1
+        group: 2
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       stroke:
         type: double
         flags: 2
-        group: 2
+        group: 3
         binding: {kind: variable, variable_id: 4, source_asset: Flipper}
       angle:
         type: double
         flags: 2
-        group: 3
+        group: 4
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       dt:
         type: double
         flags: 2
-        group: 4
+        group: 5
         binding: {kind: delta_time}
     outputs:
-      Result: {type: double, flags: 2, group: 5}
-  - {id: 346, type: Set_GameBody_angular_velocity}
-  - id: 468
+      Then: {id: 1570, kind: exec}
+      Result: {id: 1568, type: float, flags: 2, group: 6}
+  - id: 2005
     type: Behavior Expression
-    reference_id: 412
-    reference_name: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
+    reference_id: 1926
+    reference_name: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
     inputs:
-      origin:
-        type: double
-        flags: 2
+      Exec: {id: 2014, kind: exec}
+      velocity:
+        id: 2006
+        type: struct
+        type_name: GameVelocity
+        flags: 6
         group: 1
+        binding: {kind: component, component: GAME.GameVelocity}
+      restPosition:
+        type: struct
+        type_name: CF_V2
+        flags: 2
+        group: 2
         binding: {kind: variable, variable_id: 2, source_asset: Flipper}
       angle:
         type: double
         flags: 2
-        group: 2
+        group: 3
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
-      speed:
+      spin:
         type: double
         flags: 2
-        group: 3
+        group: 4
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
       dt:
         type: double
         flags: 2
-        group: 4
-        binding: {kind: delta_time}
-      rest:
-        type: double
-        flags: 2
         group: 5
-        binding: {kind: variable, variable_id: 1, source_asset: Flipper}
-      position:
+        binding: {kind: delta_time}
+      restAngle:
         type: double
         flags: 2
         group: 6
-        binding: {kind: component_field, component: game.GameTransform, field: x}
-    outputs:
-      Result: {type: double, flags: 2, group: 7}
-  - {id: 812, type: Set_GameVelocity_x}
-  - id: 930
-    type: Behavior Expression
-    reference_id: 874
-    reference_name: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
-    inputs:
-      origin:
-        type: double
-        flags: 2
-        group: 1
-        binding: {kind: variable, variable_id: 3, source_asset: Flipper}
-      angle:
-        type: double
-        flags: 2
-        group: 2
-        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
-      speed:
-        type: double
-        flags: 2
-        group: 3
-        binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
-      dt:
-        type: double
-        flags: 2
-        group: 4
-        binding: {kind: delta_time}
-      rest:
-        type: double
-        flags: 2
-        group: 5
         binding: {kind: variable, variable_id: 1, source_asset: Flipper}
       position:
-        type: double
+        type: struct
+        type_name: GameTransform
         flags: 2
-        group: 6
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        group: 7
+        binding: {kind: component, component: game.GameTransform}
     outputs:
-      Result: {type: double, flags: 2, group: 7}
-  - {id: 1274, type: Set_GameVelocity_y}
+      Then: {id: 2015, kind: exec}
+      Result: {id: 2013, type: struct, type_name: GameVelocity, flags: 2, group: 8}
   edges:
   - {from: 5.Then, to: 7.Exec}
   - {from: 7.Then, to: 12.Exec}
-  - {from: 12.Then, to: 17.Exec}
   - {from: 22.Then, to: 25.Exec}
   - {from: 25.True, to: 30.Exec}
   - {from: 25.False, to: 35.Exec}
-  - {from: 30.Then, to: 346.Exec}
-  - {from: 35.Then, to: 346.Exec}
-  - {from: 100.Result, to: 346.Value}
-  - {from: 346.Then, to: 812.Exec}
-  - {from: 468.Result, to: 812.Value}
-  - {from: 812.Then, to: 1274.Exec}
-  - {from: 930.Result, to: 1274.Value}
-- id: 40
+  - {from: 30.Then, to: 1562.Exec}
+  - {from: 35.Then, to: 1562.Exec}
+  - {from: 1562.Then, to: 2005.Exec}
+- id: 1508
   kind: function
-  name: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
-  math_expression: clamp((rest - cos(rest) / abs(cos(rest)) * stroke - angle) / max(dt, 0.001), -24, 24)
-  expression_mode: 1
-  entry_id: 1337
-  return_id: 1339
+  name: spin = clamp((restAngle - sign(cos(restAngle)) * stroke - angle) / max(dt, 0.001), -24, 24)
+  math_expression: spin = clamp((restAngle - sign(cos(restAngle)) * stroke - angle) / max(dt, 0.001), -24, 24)
+  expression_mode: 2
+  entry_id: 1856
+  return_id: 1858
   call_depth_limit: 64
-- id: 412
+- id: 1926
   kind: function
-  name: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
-  math_expression: (origin + 38 * (cos(angle + speed * dt) - cos(rest)) - position) / max(dt, 0.001)
-  expression_mode: 1
-  entry_id: 1397
-  return_id: 1399
-  call_depth_limit: 64
-- id: 874
-  kind: function
-  name: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
-  math_expression: (origin + 38 * (sin(angle + speed * dt) - sin(rest)) - position) / max(dt, 0.001)
-  expression_mode: 1
-  entry_id: 1453
-  return_id: 1455
+  name: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
+  math_expression: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
+  expression_mode: 2
+  entry_id: 2521
+  return_id: 2523
   call_depth_limit: 64

@@ -1,6 +1,6 @@
 version: 3
 name: ArenaWaveBehavior
-id_counter: 3613
+id_counter: 3955
 description: 'Five telegraphed formations: edge rows, opposing pincers and an arc. Markers count as pending arrivals, hold for one second, and create enemies at their exact marked positions. Final pickups are collected before clearing.'
 owner_type: ecs.entity
 variables:
@@ -41,12 +41,11 @@ graphs:
     type: Call Function
     reference_id: 2005
     reference_name: Refresh Encounter
-  - id: 2037
-    type: Get_GameEncounter
-    outputs:
-      Value: {flags: 0}
-      Value.status: {}
-  - {id: 2040, type: Integer Equal}
+  - id: 2040
+    type: Integer Equal
+    inputs:
+      A:
+        binding: {kind: component_field, component: GAME.GameEncounter, field: status}
   - {id: 2044, type: Branch}
   - id: 2049
     type: Get_GameTransform
@@ -62,7 +61,6 @@ graphs:
   - {from: 2027.Then, to: 2029.Exec}
   - {from: 2029.Then, to: 2044.Exec}
   - {from: 2032.Then, to: 2034.Exec}
-  - {from: 2037.Value.status, to: 2040.A}
   - {from: 2040.Result, to: 2044.Condition}
   - {from: 2044.True, to: 2051.Exec}
   - {from: 2049.Value, to: 2051.Arena Center, conversion: game_transform_to_cf}
@@ -77,45 +75,26 @@ graphs:
     outputs:
     - {id: 2007, name: Then}
   - {id: 2008, type: Return}
-  - id: 2126
-    type: Get_GameEncounter
-    outputs:
-      Value: {flags: 0}
-      Value.status: {}
-      Value.spawned: {}
-      Value.total: {}
-  - id: 2131
-    type: Integer Not Equal
-    inputs: {B: 2}
-  - {id: 2135, type: Branch}
   - id: 2140
     type: Call Function
     reference_id: 2010
     reference_name: Count Living Members
-  - id: 2143
-    type: Get Variable
-    reference_id: 2004
-    outputs:
-      Value: {type: bool, flags: 0}
-  - {id: 2145, type: Branch}
-  - id: 2150
-    type: Get Variable
-    reference_id: 2003
-    outputs:
-      Value: {flags: 0}
-  - {id: 2152, type: Set_GameEncounter_alive}
+  - id: 2145
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: variable, variable_id: 2004, source_asset: ArenaWaveBehavior}
+  - id: 2152
+    type: Set_GameEncounter_alive
+    inputs:
+      Value:
+        binding: {kind: variable, variable_id: 2003, source_asset: ArenaWaveBehavior}
   - id: 2158
     type: Set_GameEncounter_status
     inputs: {Value: 2}
-  - {id: 2164, type: Integer Greater Or Equal}
-  - {id: 2168, type: Branch}
-  - {id: 2173, type: Integer Equal}
-  - {id: 2177, type: Branch}
   - id: 2182
     type: Set_GameEncounter_status
     inputs: {Value: 1}
-  - {id: 2317, type: Integer Equal}
-  - {id: 2321, type: Branch}
   - id: 2363
     type: Find Entities With Component
     inputs:
@@ -133,14 +112,6 @@ graphs:
         default: []
     outputs:
     - {id: 2365, name: Length}
-  - id: 2370
-    type: Integer Equal
-    inputs:
-      A: {id: 2367}
-  - id: 2375
-    type: Branch
-    inputs:
-      Exec: {id: 2371}
   - id: 2382
     type: ForEach
     inputs:
@@ -154,54 +125,83 @@ graphs:
     reference_name: CollectExperience
     inputs:
       Exec: {id: 2383}
-  - id: 2399
-    type: Get Variable
-    reference_id: 2387
-    outputs:
-      Value: {id: 2398, type: bool, flags: 0}
-  - id: 2404
-    type: Branch
+  - id: 3627
+    type: Behavior Expression
+    reference_id: 3613
+    reference_name: status != 2
     inputs:
-      Exec: {id: 2400}
+      Exec: {id: 3630, kind: exec}
+      status:
+        id: 3628
+        type: double
+        group: 1
+        binding: {kind: component_field, component: GAME.GameEncounter, field: status}
+    outputs:
+      "True": {id: 3631, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 3629, type: bool, flags: 2, group: 2}
+  - id: 3691
+    type: Behavior Expression
+    reference_id: 3647
+    reference_name: status == 0 && spawned >= total && enemyCount == 0 && !pendingDeaths
+    inputs:
+      Exec: {id: 3698, kind: exec}
+      status:
+        id: 3692
+        type: double
+        group: 1
+        binding: {kind: component_field, component: GAME.GameEncounter, field: status}
+      spawned:
+        type: double
+        group: 2
+        binding: {kind: component_field, component: GAME.GameEncounter, field: spawned}
+      total:
+        type: double
+        group: 3
+        binding: {kind: component_field, component: GAME.GameEncounter, field: total}
+      enemyCount:
+        type: double
+        group: 4
+        binding: {kind: variable, variable_id: 2003, source_asset: ArenaWaveBehavior}
+      pendingDeaths:
+        type: bool
+        group: 5
+        binding: {kind: variable, variable_id: 2387, source_asset: ArenaWaveBehavior}
+    outputs:
+      "True": {id: 3699, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 3697, type: bool, flags: 2, group: 6}
+  - id: 3935
+    type: Behavior Expression
+    reference_id: 3921
+    reference_name: pickupCount == 0
+    inputs:
+      Exec: {id: 3938, kind: exec}
+      pickupCount: {id: 3936, type: double, group: 1}
+    outputs:
+      "True": {id: 3939, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 3937, type: bool, flags: 2, group: 2}
   edges:
-  - {from: 2006.Then, to: 2135.Exec}
-  - {from: 2126.Value.status, to: 2131.A}
-  - {from: 2126.Value.status, to: 2317.A}
-  - {from: 2126.Value.spawned, to: 2164.A}
-  - {from: 2126.Value.total, to: 2164.B}
-  - {from: 2131.Result, to: 2135.Condition}
-  - {from: 2135.True, to: 2140.Exec}
-  - {from: 2135.False, to: 2008.Exec}
+  - {from: 2006.Then, to: 3627.Exec}
   - {from: 2140.Then, to: 2152.Exec}
-  - {from: 2143.Value, to: 2145.Condition}
-  - {from: 2145.True, to: 2321.Exec}
+  - {from: 2145.True, to: 3691.Exec}
   - {from: 2145.False, to: 2158.Exec}
-  - {from: 2150.Value, to: 2152.Value}
-  - {from: 2150.Value, to: 2173.A}
   - {from: 2152.Then, to: 2145.Exec}
   - {from: 2158.Then, to: 2008.Exec}
-  - {from: 2164.Result, to: 2168.Condition}
-  - {from: 2168.True, to: 2177.Exec}
-  - {from: 2168.False, to: 2008.Exec}
-  - {from: 2173.Result, to: 2177.Condition}
-  - {from: 2177.True, to: 2404.Exec}
-  - {from: 2177.False, to: 2008.Exec}
   - {from: 2182.Then, to: 2008.Exec}
-  - {from: 2317.Result, to: 2321.Condition}
-  - {from: 2321.True, to: 2168.Exec}
-  - {from: 2321.False, to: 2008.Exec}
   - {from: 2363.Entities, to: 2366.Array}
   - {from: 2363.Entities, to: 2382.Array}
-  - {from: 2366.Length, to: 2370.A}
-  - {from: 2370.Result, to: 2375.Condition}
-  - {from: 2375.True, to: 2182.Exec}
-  - {from: 2375.False, to: 2382.Exec}
+  - {from: 2366.Length, to: 3935.pickupCount, conversion: To Real}
   - {from: 2382.Body, to: 2386.Exec}
   - {from: 2382.Array Element, to: 2386.Entity}
   - {from: 2382.Completed, to: 2008.Exec}
-  - {from: 2399.Value, to: 2404.Condition}
-  - {from: 2404.True, to: 2008.Exec}
-  - {from: 2404.False, to: 2375.Exec}
+  - {from: 3627.True, to: 2140.Exec}
+  - {from: 3627.False, to: 2008.Exec}
+  - {from: 3691.True, to: 3935.Exec}
+  - {from: 3691.False, to: 2008.Exec}
+  - {from: 3935.True, to: 2182.Exec}
+  - {from: 3935.False, to: 2382.Exec}
 - id: 2010
   kind: function
   name: Count Living Members
@@ -262,25 +262,22 @@ graphs:
     - {id: 2017, name: Then}
     - {id: 2018, name: Arena Center, type: struct, type_name: CF_V2, kind: data}
   - {id: 2019, type: Return}
-  - id: 2188
-    type: Get_GameEncounter
-    outputs:
-      Value: {flags: 0}
-      Value.spawned: {}
-      Value.total: {}
-      Value.alive: {}
-  - {id: 2193, type: Integer Less}
+  - id: 2193
+    type: Integer Less
+    inputs:
+      A:
+        binding: {kind: component_field, component: GAME.GameEncounter, field: spawned}
+      B:
+        binding: {kind: component_field, component: GAME.GameEncounter, field: total}
   - {id: 2197, type: Branch}
-  - id: 2202
-    type: Get Variable
-    reference_id: 2002
-    outputs:
-      Value: {type: float, flags: 0}
-  - {id: 2204, type: Delta Time}
   - id: 2206
     type: Add
     inputs:
-      B: {group: 1}
+      A:
+        binding: {kind: variable, variable_id: 2002, source_asset: ArenaWaveBehavior}
+      B:
+        group: 1
+        binding: {kind: delta_time}
   - id: 2210
     type: Set Variable
     reference_id: 2002
@@ -288,26 +285,24 @@ graphs:
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 2215
-    type: Get Variable
-    reference_id: 2001
-    outputs:
-      Value: {type: float, flags: 0, default: 0.65}
   - id: 2217
     type: Max
     inputs:
+      A:
+        binding: {kind: variable, variable_id: 2001, source_asset: ArenaWaveBehavior}
       B: {group: 1, default: 0.01}
-  - id: 2221
-    type: Get Variable
-    reference_id: 2002
-    outputs:
-      Value: {type: float, flags: 0}
-  - {id: 2223, type: Greater Or Equal}
+  - id: 2223
+    type: Greater Or Equal
+    inputs:
+      A:
+        binding: {kind: variable, variable_id: 2002, source_asset: ArenaWaveBehavior}
   - {id: 2227, type: WhileLoop}
   - {id: 2232, type: Branch}
   - id: 2237
     type: Subtract
     inputs:
+      A:
+        binding: {kind: variable, variable_id: 2002, source_asset: ArenaWaveBehavior}
       B: {group: 1}
   - id: 2241
     type: Set Variable
@@ -322,17 +317,27 @@ graphs:
     reference_name: Spawn Telegraph
     inputs:
       Arena Center: {type: struct, type_name: CF_V2, kind: data}
-      Index: {id: 3338, type: int, kind: data}
+      Index:
+        id: 3338
+        type: int
+        kind: data
+        binding: {kind: component_field, component: GAME.GameEncounter, field: spawned}
     outputs:
       Then: {id: 2249}
   - id: 2250
     type: Add
     inputs:
+      A:
+        type: int
+        binding: {kind: component_field, component: GAME.GameEncounter, field: spawned}
       B: {type: int, group: 1, default: 1}
   - {id: 2254, type: Set_GameEncounter_spawned}
   - id: 2260
     type: Add
     inputs:
+      A:
+        type: int
+        binding: {kind: component_field, component: GAME.GameEncounter, field: alive}
       B: {type: int, group: 1, default: 1}
   - {id: 2264, type: Set_GameEncounter_alive}
   - id: 2411
@@ -343,7 +348,11 @@ graphs:
   - id: 2415
     type: Integer Less
     inputs:
-      A: {id: 2412}
+      A:
+        id: 2412
+        binding: {kind: component_field, component: GAME.GameEncounter, field: spawned}
+      B:
+        binding: {kind: component_field, component: GAME.GameEncounter, field: total}
   - id: 2420
     type: Branch
     inputs:
@@ -351,26 +360,14 @@ graphs:
   edges:
   - {from: 2016.Then, to: 2197.Exec}
   - {from: 2016.Arena Center, to: 2246.Arena Center}
-  - {from: 2188.Value.spawned, to: 2193.A}
-  - {from: 2188.Value.spawned, to: 2246.Index}
-  - {from: 2188.Value.spawned, to: 2250.A}
-  - {from: 2188.Value.spawned, to: 2415.A}
-  - {from: 2188.Value.total, to: 2193.B}
-  - {from: 2188.Value.total, to: 2415.B}
-  - {from: 2188.Value.alive, to: 2260.A}
   - {from: 2193.Result, to: 2197.Condition}
   - {from: 2193.Result, to: 2232.Condition}
   - {from: 2197.True, to: 2210.Exec}
   - {from: 2197.False, to: 2019.Exec}
-  - {from: 2202.Value, to: 2206.A}
-  - {from: 2204.Seconds, to: 2206.B}
   - {from: 2206.Result, to: 2210.Value}
   - {from: 2210.Then, to: 2227.Exec}
-  - {from: 2215.Value, to: 2217.A}
   - {from: 2217.Result, to: 2223.B}
   - {from: 2217.Result, to: 2237.B}
-  - {from: 2221.Value, to: 2223.A}
-  - {from: 2221.Value, to: 2237.A}
   - {from: 2223.Result, to: 2227.Condition}
   - {from: 2227.Body, to: 2232.Exec}
   - {from: 2227.Completed, to: 2019.Exec}
@@ -968,3 +965,27 @@ graphs:
   - {from: 3366.Result, to: 3342.Enemy Count}
   - {from: 3370.Result, to: 3342.Player Alive}
   - {from: 3374.Result, to: 3342.Pending Deaths}
+- id: 3613
+  kind: function
+  name: status != 2
+  math_expression: status != 2
+  expression_mode: 3
+  entry_id: 3634
+  return_id: 3636
+  call_depth_limit: 64
+- id: 3647
+  kind: function
+  name: status == 0 && spawned >= total && enemyCount == 0 && !pendingDeaths
+  math_expression: status == 0 && spawned >= total && enemyCount == 0 && !pendingDeaths
+  expression_mode: 3
+  entry_id: 3878
+  return_id: 3880
+  call_depth_limit: 64
+- id: 3921
+  kind: function
+  name: pickupCount == 0
+  math_expression: pickupCount == 0
+  expression_mode: 3
+  entry_id: 3942
+  return_id: 3944
+  call_depth_limit: 64

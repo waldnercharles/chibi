@@ -1,6 +1,6 @@
 version: 3
 name: Pursuit
-id_counter: 456
+id_counter: 504
 description: Approach a player within 600 units, limiting acceleration to 120 units per second squared.
 owner_type: ecs.entity
 graphs:
@@ -51,7 +51,7 @@ graphs:
   - id: 160
     type: Behavior Expression
     reference_id: 138
-    reference_name: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
+    reference_name: velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))
     inputs:
       Exec: {id: 166, kind: exec}
       velocity:
@@ -105,11 +105,11 @@ graphs:
   call_depth_limit: 64
 - id: 138
   kind: function
-  name: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
-  math_expression: velocity += delta * min(1, acceleration * dt / max(sqrt(delta.x * delta.x + delta.y * delta.y), 0.0001))
+  name: velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))
+  math_expression: velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))
   expression_mode: 2
-  entry_id: 373
-  return_id: 375
+  entry_id: 457
+  return_id: 459
   call_depth_limit: 64
 - id: 306
   kind: function

@@ -415,6 +415,11 @@ bool studio_graph_palette(studio *s)
                 place_on_wire(s, n, &from);
             }
         }
+        if (e->spawn_link_pending) {
+            /* Nothing took the wire: a comment, or a spawn the editor refused. */
+            ed_cancel_snapshot(e);
+            e->spawn_link_pending = 0;
+        }
         g->spawn_pending = false;
     }
     afree(items);

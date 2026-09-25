@@ -45,7 +45,11 @@ source permissions without changing their contents.
 The check fingerprints source inputs and the CMake cache. A matching fingerprint
 skips configure and build; if the accepted immutable generation also matches
 the source, resident inputs and application binary, it is returned without
-copying a new generation.
+copying a new generation. Source roots are the project directories and any local
+`FETCHCONTENT_SOURCE_DIR_*` checkouts; pinned FetchContent downloads change only
+through their pins and patches. A build directory configured for reload is not
+reconfigured by each build; its generated build reruns CMake when CMake inputs
+change.
 
 Source fingerprints before and after each build reject results made stale by
 newer edits. Ninja retries incrementally, preserving unchanged resident binaries.

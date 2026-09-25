@@ -168,10 +168,18 @@ if(NOT SKIP_BUILD AND NOT EXISTS "${rebuild_marker}" AND EXISTS "${compiled_snap
     endif()
 endif()
 if(NOT SKIP_BUILD)
-    execute_process(COMMAND "${cmake}" -S "${source_dir}" -B "${build_dir}"
-        -DCHIBI_DEVELOPMENT_RELOAD=ON RESULT_VARIABLE result)
-    if(NOT result EQUAL 0)
-        message(FATAL_ERROR "Development configure failed")
+    # A generated build reruns CMake itself when CMake inputs change, so only
+    # configure a build directory that has none or was not configured for reload.
+    set(reload_cache "")
+    if(EXISTS "${build_dir}/CMakeCache.txt")
+        file(STRINGS "${build_dir}/CMakeCache.txt" reload_cache REGEX "^CHIBI_DEVELOPMENT_RELOAD:BOOL=ON$")
+    endif()
+    if(NOT reload_cache OR (NOT EXISTS "${build_dir}/build.ninja" AND NOT EXISTS "${build_dir}/Makefile"))
+        execute_process(COMMAND "${cmake}" -S "${source_dir}" -B "${build_dir}"
+            -DCHIBI_DEVELOPMENT_RELOAD=ON RESULT_VARIABLE result)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "Development configure failed")
+        endif()
     endif()
     string(JSON build_config ERROR_VARIABLE config_error GET "${config}" build_config)
     set(config_args)

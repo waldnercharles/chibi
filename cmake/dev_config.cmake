@@ -32,13 +32,18 @@ set(roots "${CMAKE_SOURCE_DIR}/CMakeLists.txt" "${CMAKE_SOURCE_DIR}/Makefile")
 foreach(directory src include tools cmake third_party projects)
     list(APPEND roots "${CMAKE_SOURCE_DIR}/${directory}")
 endforeach()
-file(GLOB fetched_sources LIST_DIRECTORIES true "${FETCHCONTENT_BASE_DIR}/*-src")
-list(APPEND roots ${fetched_sources})
+# Pinned FetchContent downloads under FETCHCONTENT_BASE_DIR change only with
+# their pins and patches, which live in the roots above; hashing their sources
+# dominated every reload. Local FETCHCONTENT_SOURCE_DIR_* checkouts elsewhere
+# are edited, so they stay watched.
+file(REAL_PATH "${FETCHCONTENT_BASE_DIR}" fetched_root)
 get_cmake_property(cache_variables CACHE_VARIABLES)
 foreach(variable IN LISTS cache_variables)
-    if(variable MATCHES "^FETCHCONTENT_SOURCE_DIR_")
-        if(IS_DIRECTORY "${${variable}}")
-            list(APPEND roots "${${variable}}")
+    if(variable MATCHES "^FETCHCONTENT_SOURCE_DIR_" AND IS_DIRECTORY "${${variable}}")
+        file(REAL_PATH "${${variable}}" checkout)
+        cmake_path(IS_PREFIX fetched_root "${checkout}" fetched)
+        if(NOT fetched)
+            list(APPEND roots "${checkout}")
         endif()
     endif()
 endforeach()

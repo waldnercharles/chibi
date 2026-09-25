@@ -393,6 +393,7 @@ void studio_free(studio *s)
     }
     afree(s->events);
     afree(s->records);
+    afree(s->runtime_errors);
     afree(s->perf);
     afree(s->keys);
     engine_viewport_set_host_input(s->viewport, NULL);
@@ -417,6 +418,7 @@ void studio_frame(studio *s, double delta_seconds)
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
+    studio_debug_frame(s);
     kit_begin(s->kit, &s->in);
     studio_emit(s);
     kit_end(s->kit);

@@ -352,6 +352,11 @@ void studio_graph_frame(studio *s, double delta_seconds)
         sg_frame_nodes(s, false, false);
         g->framed = true;
     }
+    node *reveal = sg_node_by_id(s, g->reveal);
+    if (reveal) {
+        sg_show_node(s, reveal, g->reveal_frame);
+    }
+    g->reveal = 0;
     editor_rml_backend_resize_pixels(
         g->backend,
         (int)lroundf(r.w * scale),
@@ -390,6 +395,7 @@ void studio_graph_free(studio *s)
     afree(g->box_base);
     afree(g->layouts);
     afree(g->unused);
+    afree(g->problems);
     *g = (studio_graph){ 0 };
 }
 
@@ -634,5 +640,6 @@ void studio_behavior_body(studio *s, int area)
     g->area = area;
     kit_surface(k, "graph", "graph-surface", "graph", &g->surface);
     studio_members_drop(s);
+    studio_debug_call_stack(s);
     studio_graph_menus(s);
 }

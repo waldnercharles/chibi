@@ -218,6 +218,10 @@ void studio_history(studio *s, bool redo)
 
 void studio_runtime(studio *s, app_runtime_command command)
 {
+    /* Play resumes a run paused at a breakpoint (Unreal). */
+    if (command == APP_RUNTIME_PLAY && studio_debug(s, STUDIO_RESUME)) {
+        return;
+    }
     finish_transform_edit(s->scene, false);
     app_runtime_state state = app_scene_authoring_runtime_state(s->scene);
     if (command == APP_RUNTIME_PLAY && state.playing) {
@@ -463,9 +467,11 @@ static void menus(studio *s)
         if (item(k, "stop", "Stop", KIT_ICON_STOP, NULL, !runtime_session(scene))) {
             studio_runtime(s, APP_RUNTIME_STOP);
         }
-        if (item(k, "step", "Step", KIT_ICON_STEP, NULL, false)) {
+        if (item(k, "step", "Step", KIT_ICON_STEP, NULL, s->pause.active)) {
             studio_runtime(s, APP_RUNTIME_STEP);
         }
+        kit_menu_separator(k, "s1");
+        studio_debug_menu(s);
         kit_popup_end(k);
     }
     kit_pop(k);
@@ -581,11 +587,18 @@ static void transport(studio *s)
     kit_push(k, "transport", NULL, "transport");
     runtime_target(s, runtime, session);
     kit_push(k, "group", NULL, "group");
+    /* A run paused at a breakpoint trades Pause for Resume and the frame step
+       for the debugger's steps (Unreal). */
+    bool paused = s->pause.active;
     kit_button_desc play = {
-        .icon = runtime.playing ? KIT_ICON_PAUSE : KIT_ICON_PLAY,
-        .tip = runtime.playing ? "Pause" : "Play",
-        .shortcut = "Space",
-        .flags = runtime.playing ? KIT_ON : 0,
+        .icon = paused          ? KIT_ICON_CONTINUE
+              : runtime.playing ? KIT_ICON_PAUSE
+                                : KIT_ICON_PLAY,
+        .tip = paused          ? "Resume"
+             : runtime.playing ? "Pause"
+                               : "Play",
+        .shortcut = paused ? "F5" : "Space",
+        .flags = runtime.playing && !paused ? KIT_ON : 0,
     };
     if (kit_button(k, "play", &play)) {
         studio_runtime(s, APP_RUNTIME_PLAY);
@@ -597,7 +610,9 @@ static void transport(studio *s)
         studio_runtime(s, APP_RUNTIME_STOP);
     }
     kit_button_desc step = { .icon = KIT_ICON_STEP, .tip = "Step" };
-    if (kit_button(k, "step", &step)) {
+    if (paused) {
+        studio_debug_steps(s);
+    } else if (kit_button(k, "step", &step)) {
         studio_runtime(s, APP_RUNTIME_STEP);
     }
     kit_pop(k);
@@ -1237,6 +1252,9 @@ void studio_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if (studio_debug_key(s, key, shift)) {
+            continue;
+        }
         if ((gameplay && !mod) || (s->keys[i].repeat && !repeats(key, mod))) {
             continue;
         }

@@ -155,6 +155,17 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - The running node gets a 3 dp accent outline, and errors a red one (ComfyUI, Unity).
   - Branches that didn't run draw dashed (Rivet).
 - **Breakpoints:** F9 toggles a breakpoint, drawn as a red octagon; outlined means disabled (Unreal).
+- **Stepping:**
+  - A run paused at a breakpoint pauses the scene, opens its node's graph, rings the node and makes its instance the debug target (Unreal).
+  - The transport trades Pause for Resume (F5) and the frame step for Step Over (F10), Step Into (F11) and Step Out (Shift F11), Visual Studio's keys, which Unreal follows. Space also resumes.
+  - Step Over runs a call as one node, Step Into stops at the call's first node, and Step Out finishes the call and stops in its caller.
+  - Each step pans the node into view unless it is well inside it (VS Code).
+  - The call stack floats over the canvas's corner, innermost call first; a row opens its node.
+- **Problems:**
+  - The open behavior compiles whenever it changes, so no Compile button is needed.
+  - A node with an error or warning gets a badge on its top edge whose tooltip gives the message (Blender's node warnings).
+  - While the scene plays, a node where runs failed gets an error badge.
+  - Output ▸ Problems lists diagnostics as "Graph › Node" and the message (Unreal's Compiler Results). Output ▸ Runtime lists failed runs as "Behavior › Node", one row per node and message with a count (Unreal's PIE message log). A row opens the node's graph, selects the node and frames it.
 - **Values:** Watch Values in the node menu watches its data pins. Watched pins show value bubbles beside their sockets, and hovering a pin shows its value the same way (Unreal, Blender). Values come from the inspected run, such as one paused at a breakpoint, or from the preview for pins it can evaluate; previews can't read bindings.
 - **Timings:** an optional per-node timing overlay (Blender).
 

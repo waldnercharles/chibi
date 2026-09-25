@@ -211,6 +211,10 @@ typedef struct
 } game_behavior_entity_state;
 
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity);
+/* The first activation paused at a breakpoint or step, with its attachment in
+ * `out`; NULL while none is. Borrowed until the run resumes or the world
+ * changes its attachments. */
+flow_run *game_behavior_paused_run(game_behavior_world *world, game_behavior_attachment_info *out);
 int game_behavior_attachment_info_at(
     game_behavior_world *world,
     ecs_entity entity,

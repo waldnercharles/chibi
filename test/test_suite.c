@@ -91,6 +91,7 @@ TEST_CASE(all_checks)
     run_graph_conversion_checks();
     run_graph_functions_checks();
     run_graph_signature_checks();
+    test_debugging();
     run_runtime_arrays_checks();
     run_runtime_catalog_checks();
     run_support_format_checks();
@@ -214,6 +215,11 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
         registry_validate();
         run_graph_signature_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--debugging")) {
+        registry_validate();
+        test_debugging();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {

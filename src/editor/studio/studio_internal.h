@@ -102,6 +102,32 @@ typedef struct
     char text[256];
 } studio_record_entry;
 
+/* A node where it was authored: the behavior or library holding it, its graph
+ * and its id (0 for the graph alone). */
+typedef struct
+{
+    char asset[128];
+    uint64_t graph_id, node_id;
+} studio_node_ref;
+
+/* Runs of the playing scene that failed at one node with one message. */
+typedef struct
+{
+    char behavior[128];
+    studio_node_ref at;
+    char node[96];
+    char message[256];
+    int count;
+} studio_runtime_error;
+
+/* A compile diagnostic or runtime failure drawn on a node of the open graph. */
+typedef struct
+{
+    uint64_t node;
+    bool error; /* else a warning */
+    char text[256];
+} studio_node_problem;
+
 typedef struct
 {
     SDL_Keycode key;
@@ -220,6 +246,9 @@ typedef struct
     char expression[512];
     char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
+    studio_node_problem *problems; /* this frame's, by node */
+    uint64_t reveal;   /* node to show once the canvas is laid out */
+    bool reveal_frame; /* frame it, rather than pan it into view */
 } studio_graph;
 
 typedef enum
@@ -287,6 +316,18 @@ struct studio
     uint64_t shown_node; /* graph node the Properties tabs last followed */
     int shown_actor;     /* scene selection the Properties tabs last followed */
     studio_record_entry *records;
+    studio_runtime_error *runtime_errors;
+    bool session;          /* the scene or a preview ran last frame */
+    uint64_t compiled_key; /* the revision the open behavior's problems describe */
+    struct
+    {
+        bool active;        /* a run is paused at a breakpoint or step */
+        studio_node_ref at; /* its current node */
+        const void *run, *node; /* the run and node last shown; never dereferenced */
+        unsigned long steps;
+        bool holding; /* the pause chose the debug target */
+        bool pinned;  /* the debug target's pin before that */
+    } pause;
     studio_perf_sample *perf;
     double perf_readout_time;
     char perf_readout[96];
@@ -398,6 +439,33 @@ void studio_performance_body(studio *s, int area);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
 void studio_record(studio *s, kit_toast_type kind, const char *text);
+
+/* Debugging (studio_debug.c). */
+typedef enum
+{
+    STUDIO_RESUME,
+    STUDIO_STEP_OVER,
+    STUDIO_STEP_INTO,
+    STUDIO_STEP_OUT,
+} studio_debug_command;
+/* Before the frame is emitted: runtime errors, problems and the paused run. */
+void studio_debug_frame(studio *s);
+/* Opens the node's behavior and graph in a Behavior area, then selects and
+   frames the node. */
+void studio_reveal(studio *s, const studio_node_ref *at);
+/* "Graph › Node" for a node of the open behavior; the graph alone without one. */
+void studio_node_place(const studio *s, const studio_node_ref *at, char *out, size_t size);
+/* Continues the paused run; false while none is paused. */
+bool studio_debug(studio *s, studio_debug_command command);
+/* F5, F10, F11 and Shift F11 act while a run is paused, even over a focused
+   game, and repeat to walk a run. True when the key continued the run. */
+bool studio_debug_key(studio *s, SDL_Keycode key, bool shift);
+/* Step Over, Into and Out in the transport while a run is paused. */
+void studio_debug_steps(studio *s);
+/* Resume and the steps as menu items, enabled while a run is paused. */
+void studio_debug_menu(studio *s);
+/* The paused run's call stack over the Behavior area. */
+void studio_debug_call_stack(studio *s);
 
 /* Commands shared by menus, shortcuts and the command palette. */
 void studio_toggle_drawer(studio *s, studio_editor editor);

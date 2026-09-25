@@ -141,6 +141,16 @@ static bool connected_pin(const graph *g, const node *call, const pin_spec *pin)
     return false;
 }
 
+/* A copy's graph and node ids moved by the same offset (shift_graph). */
+graph_node_source graph_node_authored(const graph *g, uint64_t node_id)
+{
+    if (!g->source_asset) {
+        return (graph_node_source){ NULL, g->graph_id, node_id };
+    }
+    uint64_t offset = g->graph_id - g->source_graph_id;
+    return (graph_node_source){ g->source_asset, g->source_graph_id, node_id - offset };
+}
+
 const char *graph_library_refresh_call(graph *caller, node *call, const graph *target)
 {
     if (!caller || !call || !target || !call_node(call) ||

@@ -383,6 +383,9 @@ static int ar_channel_route(ar_channel *ch)
  * counts each gap's tracks into `gap_tracks`. */
 void ar_assign_tracks(ar_pass *passes, int count, int *gap_tracks)
 {
+    if (!count) {
+        return;
+    }
     ar_key *order = NULL;
     asetlen(order, count);
     for (int i = 0; i < count; i++) {
@@ -696,8 +699,9 @@ void arrange_route(
         ar_assign_tracks(passes, acount(passes), gap_tracks);
     }
 
-    /* Wires with authored handles, and curved backward wires, keep their own
-     * curve. */
+    /* Wires with authored handles, and forward wires within one column, keep
+     * their own curve. Bands arrange apart, so one band's neighbouring ranks
+     * can share a column where another band's wider box spans both. */
     arrange_point *knot = NULL;
     for (int i = 0; i < g->link_count; i++) {
         apush(routes->start, acount(routes->points));
@@ -705,6 +709,9 @@ void arrange_route(
         int from = column[l->from];
         int to = column[l->to];
         if (l->custom_handles) {
+            continue;
+        }
+        if (from == to && ar_link_end(pos, l).x >= ar_link_start(g, pos, l).x) {
             continue;
         }
         if (from >= to) {

@@ -569,11 +569,17 @@ static void release(studio *s, graph_hit hit)
     g->gesture = STUDIO_GRAPH_IDLE;
 }
 
-static void cancel_gesture(studio *s)
+/* A cancelled move puts the frame and nodes back and records nothing. */
+void sg_cancel_gesture(studio *s)
 {
     studio_graph *g = &s->graph;
     editor *e = sg_graph_editor(s);
     if (g->gesture == STUDIO_GRAPH_MOVE) {
+        graph_comment_box *box = sg_comment_by_id(s, g->press_comment);
+        if (box) {
+            box->x = g->comment_x;
+            box->y = g->comment_y;
+        }
         for (int i = 0; i < acount(g->drag); i++) {
             node *n = sg_node_by_id(s, g->drag[i].id);
             if (n) {
@@ -817,11 +823,14 @@ void sg_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if (s->keys[i].repeat) {
+            continue; /* a held key acts once */
+        }
         /* A gesture holds an undo snapshot and edge indices, so edits wait
            for it to end; Escape cancels it. */
         if (g->gesture != STUDIO_GRAPH_IDLE) {
             if (key == SDLK_ESCAPE) {
-                cancel_gesture(s);
+                sg_cancel_gesture(s);
             }
             continue;
         }
@@ -861,7 +870,7 @@ void sg_shortcuts(studio *s)
             }
         } else if (!mod && !shift && key == SDLK_C && !sg_graph_readonly(s)) {
             sg_frame_selection(s);
-        } else if (!mod && shift && key == SDLK_L) {
+        } else if (!mod && shift && key == SDLK_L && !sg_graph_readonly(s)) {
             sg_arrange(s, false);
         } else if (key == SDLK_F9 && !sg_graph_readonly(s)) {
             /* Breakpoints on the selected nodes that run (Unreal). */

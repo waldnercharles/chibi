@@ -414,6 +414,9 @@ float arrange_cost(arrange_score score)
  * shared runs count once toward the ink. */
 static float ar_ink(const ar_drawing *d, int *group, int count)
 {
+    if (!count) {
+        return 0.0f;
+    }
     ar_key *order = NULL;
     asetlen(order, count);
     for (int i = 0; i < count; i++) {

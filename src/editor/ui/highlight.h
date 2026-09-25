@@ -39,7 +39,8 @@ typedef struct
  * at most max. */
 int highlight_runs(highlight_language language, const char *text, int length, highlight_run *runs, int max);
 /* Writes RmlUi markup: escaped text with a <span class="tok-..."> per colored
- * run. Returns the length written, truncated to fit size. */
+ * run. Returns the length written, cut to fit size between whole characters,
+ * so every tag and entity stays whole. */
 size_t highlight_markup(highlight_language language, const char *text, char *out, size_t size);
 const char *highlight_class(highlight_token token);
 

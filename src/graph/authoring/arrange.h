@@ -73,8 +73,9 @@ typedef struct arrange_routes
  * column, and for orthogonal and subway wires assigns each vertical run a
  * track. Routes depend only on the graph, the positions and the style, so
  * callers recompute them rather than store them. `routes` is reused across
- * calls. Wires with custom handles, and curved backward wires, keep their own
- * curve and get no waypoints. */
+ * calls. Backward wires route around the boxes in every style. Wires with
+ * custom handles, and forward wires within one column, keep their own curve
+ * and get no waypoints. */
 void arrange_route(
     const arrange_graph *g,
     const arrange_point *pos,

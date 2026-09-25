@@ -316,7 +316,6 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_input(t, g, n, 1, binding + !right);
         return;
     }
-    /* Before literals: component nodes leave pure_kind at its default. */
     if (put_component(t, g, n, output)) {
         return;
     }
@@ -338,18 +337,16 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_read(t, g, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME });
         return;
     }
-    if (desc->pure_kind == NODE_PURE_CONST ||
-        desc->display_class == NODE_DISPLAY_LITERAL) {
-        if (n->input_count == 1) {
-            put_input(t, g, n, 0, 0);
-        } else {
-            put_value(t, &n->output_pins[output], &n->output_pins[output].default_value);
-        }
-        return;
-    }
     /* Named sources such as shader parameters read as their name. */
     if (!n->input_count && n->reference_name && n->reference_name[0]) {
         put(t, n->reference_name);
+        return;
+    }
+    /* Shader and field nodes also leave pure_kind at its default, so only a
+     * literal node's value is its text. */
+    if (desc->display_class == NODE_DISPLAY_LITERAL) {
+        assert(n->input_count == 1);
+        put_input(t, g, n, 0, 0);
         return;
     }
     const char *function = behavior_expression_spelling(desc, &binding);

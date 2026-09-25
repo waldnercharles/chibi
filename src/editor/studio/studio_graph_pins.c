@@ -292,6 +292,22 @@ static bool recombinable(const node *n, int kind, int p)
     return field || n->input_pins[p].split_parent;
 }
 
+/* Recombining exposed fields keeps the wired ones, so it needs an unwired one. */
+static bool hides_field(const graph *gr, const node *n, int kind, int p)
+{
+    if (kind == ED_PIN_INPUT || n->output_pins[p].split_parent) {
+        return true;
+    }
+    int source = exposed_fields(n, p) ? p : field_parent(n, p);
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].field_source == n->output_pins[source].id &&
+            !sg_pin_links(gr, n, ED_PIN_OUTPUT, i)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void recombine(graph *gr, node *n, int kind, int p)
 {
     if (kind == ED_PIN_INPUT || n->output_pins[p].split_parent) {
@@ -317,8 +333,9 @@ static bool struct_items(studio *s, node *n, int kind, int p)
         }
         return true;
     }
+    bool idle = readonly || !hides_field(gr, n, kind, p);
     if (recombinable(n, kind, p) &&
-        menu_item(k, "recombine", "Recombine Struct Pin", KIT_ICON_FRAME, NULL, readonly)) {
+        menu_item(k, "recombine", "Recombine Struct Pin", KIT_ICON_FRAME, NULL, idle)) {
         ed_snapshot_before(e);
         recombine(gr, n, kind, p);
         return true;

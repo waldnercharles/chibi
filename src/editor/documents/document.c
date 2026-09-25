@@ -224,13 +224,13 @@ editor_location editor_capture_location(const editor *e)
     return location;
 }
 
-static void ed_restore_callers(editor *e, const editor_location *location)
+void editor_restore_callers(editor *e, const editor_caller_location *callers, int count)
 {
-    assert(location->caller_count >= 0 && location->caller_count <= EDITOR_LOCATION_CALLER_LIMIT);
-    int first = location->caller_count;
-    uint64_t target_id = location->graph_id;
-    for (int i = location->caller_count - 1; i >= 0; i--) {
-        const editor_caller_location *caller = &location->callers[i];
+    assert(count >= 0 && count <= EDITOR_LOCATION_CALLER_LIMIT);
+    int first = count;
+    uint64_t target_id = e->active_graph->graph_id;
+    for (int i = count - 1; i >= 0; i--) {
+        const editor_caller_location *caller = &callers[i];
         graph *parent = behavior_asset_find_graph(e->asset, caller->graph_id);
         node *call = parent ? graph_node_by_id(parent, caller->node_id) : NULL;
         if (!ed_is_graph_call(call) || call->reference_id != target_id) {
@@ -240,8 +240,8 @@ static void ed_restore_callers(editor *e, const editor_location *location)
         target_id = caller->graph_id;
     }
     aclear(e->graph_callers);
-    for (int i = first; i < location->caller_count; i++) {
-        const editor_caller_location *caller = &location->callers[i];
+    for (int i = first; i < count; i++) {
+        const editor_caller_location *caller = &callers[i];
         ed_graph_caller restored = {
             .view = {
                 .graph_id = caller->graph_id,
@@ -271,7 +271,7 @@ int editor_restore_location(editor *e, const editor_location *location)
     if (editor_open_graph(e, location->graph_id) != 0) {
         return -1;
     }
-    ed_restore_callers(e, location);
+    editor_restore_callers(e, location->callers, location->caller_count);
     ed_clear_selection(e);
     e->selected_variable = NULL;
     e->front_node = NULL;

@@ -151,6 +151,28 @@ void test_graph_navigation()
     expect_graph(editor, f.function, false);
     assert(editor_graph_back(editor) == -1);
 
+    /* Back and Forward return to a graph with the calls that reached it. */
+    assert(editor_open_graph(editor, f.root) == 0);
+    assert(editor_open_graph_call(editor, f.root_call) == 0);
+    assert(editor_open_graph_call(editor, f.nested_call) == 0);
+    editor_location trail = editor_capture_location(editor);
+    free(trail.nodes);
+    assert(editor_open_graph(editor, f.root) == 0);
+    assert(editor_open_graph(editor, f.pure) == 0);
+    expect_graph(editor, f.pure, false);
+    editor_restore_callers(editor, trail.callers, trail.caller_count);
+    expect_graph(editor, f.pure, true);
+    assert(editor_graph_history_count(editor) == 2);
+    assert(editor_graph_history_id(editor, 0) == f.root);
+    assert(editor_graph_history_id(editor, 1) == f.function);
+    /* A call that no longer leads on drops out with those before it. */
+    trail.callers[0].node_id = f.ordinary;
+    editor_restore_callers(editor, trail.callers, trail.caller_count);
+    assert(editor_graph_history_count(editor) == 1);
+    assert(editor_graph_history_id(editor, 0) == f.function);
+    assert(editor_graph_back(editor) == 0);
+    expect_graph(editor, f.function, false);
+
     assert(editor_open_graph(editor, f.root) == 0);
     assert(editor_open_graph_call(editor, f.root_call) == 0);
     assert(editor_open_graph_call(editor, f.nested_call) == 0);

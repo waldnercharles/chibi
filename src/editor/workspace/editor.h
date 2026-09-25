@@ -192,6 +192,9 @@ bool editor_can_visit_location(
     const editor_location *location
 );
 int editor_restore_location(editor *e, const editor_location *location);
+/* Restores the calls entered to reach the open graph, oldest first. A caller
+ * whose call no longer leads on drops out with those before it. */
+void editor_restore_callers(editor *e, const editor_caller_location *callers, int count);
 /* Workspace visits retain document Undo/Redo and working values by stable key. */
 int editor_visit_behavior_asset(
     editor *e,

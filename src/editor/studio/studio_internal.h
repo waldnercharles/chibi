@@ -172,6 +172,8 @@ typedef struct
     char document[128];
     char path[512]; /* a System's file */
     uint64_t graph_id;
+    int caller_count; /* the calls entered to reach it, for the breadcrumb */
+    editor_caller_location callers[EDITOR_LOCATION_CALLER_LIMIT];
 } studio_visit;
 
 /* A Find References result in Output (studio_find.c). */

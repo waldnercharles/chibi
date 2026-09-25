@@ -1,11 +1,13 @@
 /* Graph navigation in the Behavior header (Unreal): Back and Forward through
- * the graphs visited, across behaviors, with Alt+Left and Alt+Right or mouse
- * buttons 4 and 5; and a breadcrumb of the behavior and the calls entered to
- * reach the open graph, each of which returns to its graph. */
+ * the graphs visited and their breadcrumbs, across behaviors, with Alt+Left
+ * and Alt+Right or mouse buttons 4 and 5; and a breadcrumb of the behavior
+ * and the calls entered to reach the open graph, each of which returns to its
+ * graph. */
 #include "editor/studio/studio_graph_internal.h"
 #include "support/array.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum
@@ -31,8 +33,8 @@ static bool same_visit(const studio_visit *a, const studio_visit *b)
            !strcmp(a->document, b->document);
 }
 
-/* Records the open graph when it differs from the current visit, dropping
-   the visits ahead of it (browser history). */
+/* Records the open graph and its breadcrumb when it differs from the current
+   visit, dropping the visits ahead of it (browser history). */
 static void track(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -40,6 +42,10 @@ static void track(studio *s)
     if (acount(g->visits) && same_visit(&g->visits[g->visit], &visit)) {
         return;
     }
+    editor_location location = editor_capture_location(sg_graph_editor(s));
+    free(location.nodes);
+    visit.caller_count = location.caller_count;
+    memcpy(visit.callers, location.callers, sizeof visit.callers);
     asetlen(g->visits, acount(g->visits) ? g->visit + 1 : 0);
     apush(g->visits, visit);
     if (acount(g->visits) > VISIT_LIMIT) {
@@ -63,8 +69,12 @@ static bool open_visit(studio *s, const studio_visit *visit)
             return false;
         }
     }
-    return studio_graph_active(s) &&
-           editor_open_graph(sg_graph_editor(s), visit->graph_id) == 0;
+    editor *e = sg_graph_editor(s);
+    if (!studio_graph_active(s) || editor_open_graph(e, visit->graph_id) != 0) {
+        return false;
+    }
+    editor_restore_callers(e, visit->callers, visit->caller_count);
+    return true;
 }
 
 static bool can_step(const studio *s, int direction)

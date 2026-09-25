@@ -360,6 +360,12 @@ static void check_input_defaults()
     );
     node *later = behavior_asset_add_function_call_node(asset, fn);
     test_check(later->input_pins[find_pin(later, 0, "Speed")].default_value.f == 5, "a new call takes its inputs' defaults");
+    const pin_spec *declared = graph_signature_call_input(asset, edited, find_pin(edited, 0, "Speed"));
+    test_check(
+        declared && declared->default_value.f == 5 &&
+            !graph_signature_call_input(asset, entry, 0),
+        "a call's input finds the default its function declares"
+    );
     test_check(
         graph_signature_set_default(asset, fn, at, &(pin_value){ .type = PIN_BOOL, .b = true }) !=
             0,

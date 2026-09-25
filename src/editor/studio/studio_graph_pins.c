@@ -4,6 +4,7 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/authoring/optimize.h"
 #include "graph/authoring/pin_edit.h"
+#include "graph/document/graph_signature.h"
 #include "graph/model/local.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
@@ -107,16 +108,24 @@ static bool link_items(studio *s, node *n, int kind, int p)
 
 /* ---------- Values ---------- */
 
+/* A call's input resets to its function's or macro's declared default. */
+static pin_value reset_value(const studio *s, const node *n, int p)
+{
+    const pin_spec *declared = graph_signature_call_input(sg_graph_editor(s)->asset, n, p);
+    return declared ? declared->default_value : graph_pin_reset_value(n, 0, p);
+}
+
 /* An unwired input holding a binding or a value other than its default. */
-static bool resettable(const graph *gr, const node *n, int p)
+static bool resettable(const studio *s, const node *n, int p)
 {
     const pin_spec *spec = &n->input_pins[p];
     node *source = NULL;
     int source_pin = -1;
-    if (spec->type == PIN_FLOW || graph_input_source(gr, n, p, &source, &source_pin)) {
+    if (spec->type == PIN_FLOW ||
+        graph_input_source(sg_active_graph(s), n, p, &source, &source_pin)) {
         return false;
     }
-    pin_value reset = graph_pin_reset_value(n, 0, p);
+    pin_value reset = reset_value(s, n, p);
     return spec->binding || !pin_value_equal(&spec->default_value, &reset);
 }
 
@@ -125,7 +134,7 @@ static void reset_pin(studio *s, node *n, int p)
     graph *gr = sg_active_graph(s);
     ed_snapshot_before(sg_graph_editor(s));
     graph_set_pin_binding(gr, n, 0, p, NULL);
-    pin_value reset = graph_pin_reset_value(n, 0, p);
+    pin_value reset = reset_value(s, n, p);
     graph_set_pin_default(gr, n, 0, p, &reset);
 }
 
@@ -251,7 +260,7 @@ static bool value_items(studio *s, node *n, int kind, int p)
     kit *k = s->kit;
     bool readonly = sg_graph_readonly(s);
     if (kind == ED_PIN_INPUT) {
-        bool fixed = readonly || !resettable(sg_active_graph(s), n, p);
+        bool fixed = readonly || !resettable(s, n, p);
         if (menu_item(k, "reset", "Reset to Default", KIT_ICON_RESET, NULL, fixed)) {
             reset_pin(s, n, p);
             return true;

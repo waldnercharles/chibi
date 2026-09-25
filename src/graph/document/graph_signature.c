@@ -440,3 +440,20 @@ int graph_signature_set_pure(behavior_asset *asset, graph *function, bool pure)
     refresh_calls(asset, function);
     return 0;
 }
+
+const pin_spec *graph_signature_call_input(const behavior_asset *asset, const node *call, int input)
+{
+    const graph *g = call->reference_asset
+                       ? NULL
+                       : behavior_asset_find_graph(asset, call->reference_id);
+    if (!g || !calls(call, g)) {
+        return NULL;
+    }
+    node *entry = signature_node(g, false);
+    for (int i = 0; i < entry->output_count; i++) {
+        if (call_pin((node *)call, 0, &entry->output_pins[i]) == input) {
+            return &entry->output_pins[i];
+        }
+    }
+    return NULL;
+}

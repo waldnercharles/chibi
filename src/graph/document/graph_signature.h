@@ -30,5 +30,8 @@ int graph_signature_retype(behavior_asset *asset, graph *g, bool result, int ind
 /* A data input's default, which unwired call pins show. Calls still holding
  * the old default take the new one; values set on a call stay (Unreal). */
 int graph_signature_set_default(behavior_asset *asset, graph *g, int index, const pin_value *value);
+/* The Entry pin that declares a call's input, or NULL for other nodes and
+ * calls into other assets. */
+const pin_spec *graph_signature_call_input(const behavior_asset *asset, const node *call, int input);
 
 #endif

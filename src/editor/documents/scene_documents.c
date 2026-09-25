@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
@@ -211,7 +210,6 @@ static int open_behavior_graph(app_scene_authoring *scene, const char *asset_nam
     }
     scene->definition = target;
     scene->editor_working = editor_behavior_asset(scene->graph_editor);
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
     return 0;
 }
 
@@ -222,7 +220,6 @@ int open_behavior_asset(app_scene_authoring *scene, const char *asset_name)
     }
     set_behavior_component_context(scene, asset_name);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
-    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     snprintf(scene->message, sizeof scene->message, "Editing behavior asset %s.", asset_name);
     return 0;
 }
@@ -233,8 +230,6 @@ int focus_prototype_behavior(app_scene_authoring *scene, const char *asset_name)
         return -1;
     }
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
-    editor_set_graph_visible(scene->graph_editor, 1);
-    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     snprintf(scene->message, sizeof scene->message, "Editing %s in the Prototype.", asset_name);
     return 0;
 }
@@ -322,7 +317,6 @@ static int save_behavior_definition(
     if (result == 0) {
         game_live_definition_set_path(definition, path);
         definition->unsaved = false;
-        scene_behavior_source_set(scene, definition->name, path, json);
         scene_tabs_mark_document_saved(
             scene,
             APP_EDITOR_DOCUMENT_BEHAVIOR,
@@ -369,8 +363,6 @@ int create_scene_asset(app_scene_authoring *scene, const char *name)
         result = scene_tabs_open_scene(scene, path);
     }
     if (!result) {
-        editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, true);
-        editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
         snprintf(scene->message, sizeof scene->message, "Created %s.", name);
     } else {
         snprintf(scene->message, sizeof scene->message, "Could not create %s.", name);
@@ -477,7 +469,6 @@ int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name
     if (!game_live_definition_path(definition)) {
         game_live_definition_set_path(definition, path);
     }
-    char *source = behavior_asset_save_json(loaded);
     behavior_asset *previous = definition->working;
     definition->working = loaded;
     definition->dirty = 1;
@@ -486,9 +477,6 @@ int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name
     definition->unsaved = false;
     scene->preview_retry = true;
     behavior_asset_free(previous);
-    scene_behavior_source_set(scene, definition->name, path, source);
-    free(source);
-    scene_external_behavior_change_remove(scene, definition->name);
     scene_tabs_mark_document_saved(
         scene,
         APP_EDITOR_DOCUMENT_BEHAVIOR,
@@ -660,8 +648,6 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     if (tab && !tab->system_saved) {
         tab->system_saved = xstrdup(json);
     }
-    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
-    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     snprintf(
         scene->message,
         sizeof scene->message,
@@ -712,9 +698,7 @@ void open_content_entry(app_scene_authoring *scene, const scene_content_entry *e
         return;
     }
     if (content_path_in_folder(scene, entry->path, "scenes")) {
-        if (scene_tabs_open_scene(scene, entry->path) == 0) {
-            editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
-        }
+        scene_tabs_open_scene(scene, entry->path);
         return;
     }
     if (content_path_in_folder(scene, entry->path, "systems")) {

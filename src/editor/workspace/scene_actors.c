@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 

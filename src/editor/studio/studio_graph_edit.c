@@ -81,8 +81,8 @@ void sg_show_error(studio *s, const char *message)
 bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin)
 {
     editor *e = sg_graph_editor(s);
-    ed_pin_view from = { a, a_kind, a_pin, { 0, 0 }, 0 };
-    ed_pin_view to = { b, b_kind, b_pin, { 0, 0 }, 0 };
+    ed_pin_view from = { a, a_kind, a_pin };
+    ed_pin_view to = { b, b_kind, b_pin };
     ed_clear_connect_error(e);
     e->pending_snapshot = ed_snapshot(e);
     int connected = ed_connect(e, &from, &to);

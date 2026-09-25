@@ -2,13 +2,10 @@
 #define CHIBI_SCENE_INTERNAL_H
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
-#include "editor/ui/color.h"
 #include "editor/workspace/asset_index.h"
 #include "editor/workspace/editor.h"
-#include "editor/workspace/prototype_still.h"
 #include "editor/workspace/scene_authoring.h"
 #include "editor/workspace/scene_debug.h"
-#include "editor/workspace/scene_navigation.h"
 #include "render/scene_renderer.h"
 #include "runtime/scenes/prototype_preview.h"
 
@@ -72,13 +69,6 @@ typedef struct
     unsigned system_query_revision;
 } scene_document_tab;
 
-typedef struct
-{
-    char *name;
-    char *path;
-    char *source;
-} scene_behavior_source;
-
 /* Private authoring state. Module replacement transfers versioned document
  * checkpoints, never this layout or its runtime pointers. */
 struct app_scene_authoring
@@ -110,7 +100,6 @@ struct app_scene_authoring
     char *system_path;
     engine *runtime;
     game_prototype_preview *prototype_preview;
-    prototype_still *still_preview;
     char *preview_prototype_id;
     int runtime_preview_prototype;
     scene_actor *actors;
@@ -132,9 +121,6 @@ struct app_scene_authoring
     uint64_t debug_sessions[2];
     bool debug_pinned;
     app_debug_status debug_status;
-    editor_color_state property_color;
-    char component_search[128];
-    char behavior_search[128];
     bool runtime_snapshot_valid;
     bool runtime_playing;
     bool runtime_step;
@@ -147,14 +133,10 @@ struct app_scene_authoring
     scene_camera camera;
     int camera_target;
     scene_history *history;
-    scene_navigation *navigation;
-    bool navigation_replaying;
-    char navigation_error[256];
     ecs_entity edit_actor;
     ecs_entity property_actor;
     scene_field_edit property_edit;
     bool property_dirty;
-    bool property_seen;
     GameTransform edit_before;
     GameTransform drag_origin;
     bool edit_dirty;
@@ -163,22 +145,10 @@ struct app_scene_authoring
     bool marquee_visible;
     CF_V2 marquee_start; /* Normalized viewport coordinates. */
     CF_V2 marquee_end;
-    int edit_field;
     float selection_scale;
-    bool navigator_scene;
-    bool content_catalog;
-    char asset_search[128];
-    char quick_open_query[128];
-    asset_index_kind quick_open_kind;
-    int quick_open_selected;
-    bool quick_open;
-    bool quick_open_focus;
-    asset_index_kind content_kind;
-    double content_scan_time;
     unsigned asset_index_editor_revision;
     unsigned asset_index_system_revision;
     unsigned system_runtime_editor_revision;
-    char scene_search[128];
     app_editor_document_context document;
     char *document_id;
     char *graph_document_id;
@@ -189,12 +159,8 @@ struct app_scene_authoring
     int active_tab;
     char *current_scene_tab_key;
     int next_scene_key;
-    int close_tab;
     bool tabs_transitioning;
     bool scene_tab_restoring;
-    scene_behavior_source *behavior_sources;
-    char **external_behavior_changes;
-    bool external_behavior_prompt_open;
     char message[256];
     char prototype_message[256];
 };
@@ -232,9 +198,8 @@ int scene_tabs_activate(app_scene_authoring *scene, int index);
 int scene_tabs_discard(app_scene_authoring *scene, int index);
 bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab);
 const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
-void scene_tabs_draw(app_scene_authoring *scene);
 int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload);
-/* Scene model operations used by its native panels. */
+/* Scene model operations shared by the authoring modules and Studio. */
 
 void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity);
 
@@ -244,19 +209,9 @@ bool content_path_is_child(const char *parent, const char *path);
 int content_prototype_index(const app_scene_authoring *scene, const char *path);
 void content_refresh(app_scene_authoring *scene);
 void asset_index_invalidate(app_scene_authoring *scene);
-void draw_quick_open(app_scene_authoring *scene);
-void draw_asset_catalog(app_scene_authoring *scene);
-void asset_browser_request_quick_open(app_scene_authoring *scene);
-bool draw_asset_document_overview(app_scene_authoring *scene);
-void draw_asset_references(app_scene_authoring *scene, int asset_position);
-void draw_asset_binding_usages(app_scene_authoring *scene, int asset_position);
-void draw_component_asset_links(app_scene_authoring *scene, const char *json, const char *id);
 int create_behavior_asset(app_scene_authoring *scene);
 int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const char *name);
 int create_new_prototype(app_scene_authoring *scene, const char *name);
-void draw_navigator(app_scene_authoring *scene);
-void draw_prototype_inspector(app_scene_authoring *scene);
-void draw_scene_inspector(app_scene_authoring *scene);
 bool editable_scalar(const pin_value *value);
 
 void finish_property_edit(app_scene_authoring *scene);
@@ -336,19 +291,4 @@ void sync_editor_inspection(app_scene_authoring *scene);
 const char *system_component_name(ecs_component_id id, void *);
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
 int write_text_file_atomic(const char *path, const char *text);
-const char *scene_behavior_source_snapshot(
-    const app_scene_authoring *scene,
-    const char *name,
-    const char *path
-);
-void scene_behavior_source_set(
-    app_scene_authoring *scene,
-    const char *name,
-    const char *path,
-    const char *source
-);
-void scene_behavior_sources_clear(app_scene_authoring *scene);
-void scene_external_behavior_changes_clear(app_scene_authoring *scene);
-void scene_external_behavior_change_add(app_scene_authoring *scene, const char *name);
-void scene_external_behavior_change_remove(app_scene_authoring *scene, const char *name);
 #endif

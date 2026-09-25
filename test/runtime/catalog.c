@@ -1,4 +1,4 @@
-#include "editor/panels/scene_properties.h"
+#include "editor/documents/component_properties.h"
 #include "editor/ui/choices.h"
 #include "test/suite_internal.h"
 
@@ -240,10 +240,6 @@ void run_runtime_catalog_checks()
             fabs(flow_visual_heat(sample_30) - flow_visual_heat(sample_60)) < 0.001 &&
                 fabs(flow_visual_heat(sample_60) - flow_visual_heat(sample_144)) < 0.001,
             "flow animation is time-constant across 30, 60, and 144 FPS"
-        );
-        test_check(
-            flow_visual_settled(3.0) && flow_visual_marker(0.5, 64.0) >= 0.0,
-            "stopped flow settles and markers remain bounded"
         );
         graph_free(&g_break);
         test_check(

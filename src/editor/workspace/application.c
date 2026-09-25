@@ -261,10 +261,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     chibi_project_free(&project);
     /* Put the shipped movement graph on screen on first launch. The graph is
      * still reachable through Files after switching documents. */
-    if (!play && authoring &&
-        game_live_find_definition(live, "TwinStickInputBehavior")) {
+    if (!play && game_live_find_definition(live, "TwinStickInputBehavior")) {
         (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
-        editor_set_graph_visible(graph_editor, 1);
     }
     editor_set_event_catalog(
         graph_editor,

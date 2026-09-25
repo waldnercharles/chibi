@@ -1,7 +1,6 @@
 #include "assets/scene_document.h"
 
 #include "assets/behavior_loader.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "runtime/generated.h"
@@ -381,7 +380,6 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
     game_behavior_set_deferred(scene->live->behaviors, true);
     scene->runtime_playing = false;
     scene->runtime_step = false;
-    editor_ui_set_scene_play_expanded(false);
     app_scene_authoring_stop_prototype_preview(scene);
     invalidate_runtime_snapshot(scene);
     game_entities_reset(scene->live->entities);

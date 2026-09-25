@@ -33,7 +33,6 @@
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
 
-#include <imgui/dcimgui.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,12 +126,8 @@ extern void test_component_conversion();
 extern void test_field_outputs();
 extern void test_function_wait();
 extern void test_function_fields();
-extern void test_flags();
 extern void test_particles();
 extern void test_labels();
-extern bool test_ui_keyboard();
-extern bool test_ui_scroll_smoothing();
-extern bool test_gameplay_keyboard();
 extern void test_math_expression();
 extern void test_behavior_math();
 extern void test_appearance();
@@ -140,7 +135,7 @@ extern void test_retained_components();
 extern void test_editor_flow();
 extern void test_component_fields();
 extern void test_component_nodes();
-extern void test_scene_navigation();
+extern void test_editor_documents();
 extern void test_scene_debug();
 extern void test_appearance_geometry();
 extern void test_orientation();

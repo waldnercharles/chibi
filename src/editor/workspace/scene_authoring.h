@@ -197,7 +197,6 @@ const char *app_scene_authoring_selected_content(const app_scene_authoring *scen
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene);
 /* Catalogs, inspection and asset index upkeep without drawing; ui_active defers indexing. */
 void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active);
-void app_scene_authoring_draw(app_scene_authoring *scene);
 int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewport *viewport);
 void app_scene_authoring_render(void *user);
 app_sdf_shapes app_scene_authoring_shapes(const app_scene_authoring *scene);
@@ -219,11 +218,6 @@ int app_scene_authoring_set_instance_behavior(
     const char *asset_name,
     bool attached
 );
-
-/* Capture explicit programmatic visits; native frames capture automatically. */
-void app_scene_authoring_navigation_sync(app_scene_authoring *scene);
-bool app_scene_authoring_can_navigate(const app_scene_authoring *scene, bool forward);
-int app_scene_authoring_navigate(app_scene_authoring *scene, bool forward);
 
 /* Owned, versioned workspace JSON; restore only into a disposable candidate. */
 char *app_scene_authoring_checkpoint(app_scene_authoring *scene);

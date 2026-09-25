@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
@@ -196,7 +195,6 @@ int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char
     }
     int result = game_prototype_preview_launch(scene->prototype_preview, asset->prototype, error, sizeof error);
     if (result == ECS_OK) {
-        editor_ui_set_scene_play_expanded(false);
         scene->active_runtime_target = APP_RUNTIME_PREVIEW;
         scene->preview_prototype_id = xstrdup(game_prototype_identity(asset->prototype));
         scene->runtime_preview_prototype = (int)(asset - scene->prototypes);
@@ -292,11 +290,7 @@ int app_scene_authoring_runtime_command(
         if (command == APP_RUNTIME_PLAY || command == APP_RUNTIME_PAUSE) {
             *playing = command == APP_RUNTIME_PLAY;
             *step = false;
-            int result = engine_set_playing(scene->runtime, *playing);
-            if (result == 0 && *playing) {
-                editor_ui_set_scene_play_expanded(true);
-            }
-            return result;
+            return engine_set_playing(scene->runtime, *playing);
         }
         if (command == APP_RUNTIME_STEP) {
             *playing = false;
@@ -316,7 +310,6 @@ int app_scene_authoring_runtime_command(
         }
         if (command == APP_RUNTIME_STOP) {
             invalidate_runtime_snapshot(scene);
-            editor_ui_set_scene_play_expanded(false);
             return 0;
         }
         game_behavior_set_deferred(scene->live->behaviors, false);
@@ -325,21 +318,15 @@ int app_scene_authoring_runtime_command(
             return -1;
         }
         *playing = true;
-        result = engine_set_playing(scene->runtime, true);
-        if (result == 0) {
-            editor_ui_set_scene_play_expanded(true);
-        }
-        return result;
+        return engine_set_playing(scene->runtime, true);
     }
     if (command == APP_RUNTIME_PLAY || command == APP_RUNTIME_PAUSE) {
-        editor_ui_set_scene_play_expanded(false);
         scene->active_runtime_target = APP_RUNTIME_PREVIEW;
         *playing = command == APP_RUNTIME_PLAY;
         *step = false;
         return engine_set_playing(game_prototype_preview_runtime(scene->prototype_preview), *playing);
     }
     if (command == APP_RUNTIME_STEP) {
-        editor_ui_set_scene_play_expanded(false);
         scene->active_runtime_target = APP_RUNTIME_PREVIEW;
         *playing = false;
         *step = true;
@@ -423,22 +410,6 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
         return FLOW_ERR_ARGUMENT;
     }
     preview_behavior_edits(scene);
-    char status[128] = { 0 };
-    if (scene->active_runtime_target == APP_RUNTIME_PREVIEW) {
-        const scene_prototype_asset *asset = previewed_prototype(scene);
-        if (asset) {
-            snprintf(
-                status,
-                sizeof status,
-                "%s preview %s",
-                asset->prototype->name,
-                scene->preview_playing ? "running" : "paused"
-            );
-        }
-    } else if (scene->runtime_snapshot_valid) {
-        snprintf(status, sizeof status, "Scene %s", scene->runtime_playing ? "running" : "paused");
-    }
-    editor_ui_set_runtime_status(status);
     int result = FLOW_OK;
     ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
     engine *preview_runtime = game_prototype_preview_runtime(scene->prototype_preview);

@@ -3,6 +3,7 @@
 #include "editor/ui/labels.h"
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "support/array.h"
 
@@ -310,6 +311,15 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
         editor_identifier_label(local->name, out->label, sizeof out->label);
     }
     out->show_label = !exec_label(spec, out->label);
+    /* An unwired shader input that samples its surface says what it reads
+       (Fresnel's Normal reads the Surface Normal), not a zero vector. */
+    const char *context = NULL;
+    if (input && !out->connected && !spec->binding && !spec->default_value.ptr &&
+        shader_node_input_context(n, p, &context) >= 0 && context) {
+        snprintf(out->chip, sizeof out->chip, "%s", context);
+        out->value = VALUE_CHIP;
+        return;
+    }
     if (out->inline_source) {
         out->chip_icon = folded_chip(s, n, p, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
@@ -400,12 +410,17 @@ static int title_pin(const graph *gr, node *n, int kind)
     return -1;
 }
 
-/* Expressions show their source in the body, and pills drop the "Get" every
-   read would repeat. */
+/* Expressions show their source in the body, so the title carries a name the
+   author gave instead; pills drop the "Get" every read would repeat. */
 const char *sg_node_title(const studio *s, node *n, node_form form, char *buf, size_t size)
 {
-    if (is_expression(s, n)) {
-        snprintf(buf, size, "Expression");
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    const char *source = behavior_expression_source(asset, n);
+    if (source) {
+        const graph *generated = behavior_asset_find_graph(asset, n->reference_id);
+        const char *name = generated->name && generated->name[0] ? generated->name
+                                                                 : source;
+        snprintf(buf, size, "%s", strcmp(name, source) ? name : "Expression");
         return buf;
     }
     ed_node_title(sg_graph_editor(s), n, buf, size);

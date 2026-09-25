@@ -556,13 +556,15 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
         ed_format_text_ensure_spare(e, input->n);
     }
     if (ok) {
-        node *expression = (output->n->desc == &NODE_CallPureFunction ||
-                            output->n->desc == &NODE_BehaviorExpression)
-                             ? output->n
+        /* The wired input changed type, so its expression regenerates first;
+           the source's result, then, below. */
+        node *expression = (input->n->desc == &NODE_CallPureFunction ||
+                            input->n->desc == &NODE_BehaviorExpression)
+                             ? input->n
                              : NULL;
-        if (!expression && (input->n->desc == &NODE_CallPureFunction ||
-                            input->n->desc == &NODE_BehaviorExpression)) {
-            expression = input->n;
+        if (!expression && (output->n->desc == &NODE_CallPureFunction ||
+                            output->n->desc == &NODE_BehaviorExpression)) {
+            expression = output->n;
         }
         if (expression &&
             behavior_asset_find_graph(e->asset, expression->reference_id) &&
@@ -603,6 +605,15 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                 free(reference_before);
                 return 0;
             }
+        }
+        graph *source = output->n != expression &&
+                                (output->n->desc == &NODE_CallPureFunction ||
+                                 output->n->desc == &NODE_BehaviorExpression)
+                          ? behavior_asset_find_graph(e->asset, output->n->reference_id)
+                          : NULL;
+        if (source && source->math_expression) {
+            behavior_expression_error error;
+            (void)behavior_expression_refresh(e->asset, output->n, &error);
         }
         ed_drop_replaced_source(e, output, input, replaced_id);
         if (!reference_input) {

@@ -228,6 +228,11 @@ void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap)
         editor_identifier_label(pin == &n->input_pins[1] ? field : "Entity", buf, cap);
         return;
     }
+    /* An expression's inputs are the names its source text uses. */
+    if (n->desc == &NODE_BehaviorExpression && pin->kind == PIN_DATA && pin->name) {
+        snprintf(buf, cap, "%s", pin->name);
+        return;
+    }
     editor_identifier_label(pin->name ? pin->name : "Pin", buf, cap);
     if (!pin->field_source) {
         return;

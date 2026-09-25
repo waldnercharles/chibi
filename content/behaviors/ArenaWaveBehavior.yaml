@@ -1,6 +1,6 @@
 version: 3
 name: ArenaWaveBehavior
-id_counter: 4635
+id_counter: 4784
 description: 'Five telegraphed formations: edge rows, opposing pincers and an arc. Markers count as pending arrivals, hold for one second, and create enemies at their exact marked positions. Final pickups are collected before clearing.'
 owner_type: ecs.entity
 variables:
@@ -468,31 +468,10 @@ graphs:
       Index:
         type: int
         kind: data
-        binding: {kind: local, local_id: 4359}
+        binding: {kind: local, local_id: 4783}
       Pattern: {type: int, kind: data}
     outputs:
       Position: {type: struct, type_name: GameTransform, kind: data}
-  - id: 2610
-    type: Modulo
-    inputs:
-      A: {id: 2607, type: int, flags: 0, group: 0}
-      B: {type: int, flags: 0, group: 0, default: 8}
-    outputs:
-      Result: {type: int, flags: 0, group: 0}
-  - id: 2614
-    type: Divide
-    inputs:
-      A: {id: 2611, type: int, flags: 0, group: 0}
-      B: {type: int, flags: 0, group: 0, default: 8}
-    outputs:
-      Result: {type: int, flags: 0, group: 0}
-  - id: 2618
-    type: Modulo
-    inputs:
-      A: {id: 2615, type: int, flags: 0, group: 0}
-      B: {type: int, flags: 0, group: 0, default: 4}
-    outputs:
-      Result: {type: int, flags: 0, group: 0}
   - id: 2646
     type: Set_GameOrientation_radians
     inputs:
@@ -513,7 +492,7 @@ graphs:
         id: 4246
         type: double
         flags: 0
-        binding: {kind: local, local_id: 4359}
+        binding: {kind: local, local_id: 4783}
     outputs:
       "True": {id: 4249, kind: exec}
       "False": {kind: exec}
@@ -527,14 +506,30 @@ graphs:
       position: {type: struct, type_name: GameTransform}
     outputs:
       Result: {type: double}
+  - id: 4649
+    type: Behavior Expression
+    reference_id: 4635
+    reference_name: Index % 8
+    inputs:
+      Index: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 4690
+    type: Behavior Expression
+    reference_id: 4666
+    reference_name: floor(Index / 8) % 4
+    inputs:
+      Index: {type: int}
+    outputs:
+      Result: {type: double}
   edges:
   - {from: 2022.Then, to: 2606.Exec}
   - {from: 2022.Arena Center, to: 2606.Center}
   - {from: 2022.Arena Center, to: 4285.center}
   - {from: 2022.Arena Center.x, to: 2650.x}
   - {from: 2022.Arena Center.y, to: 2650.y}
-  - {from: 2022.Index, to: 2610.A}
-  - {from: 2022.Index, to: 2614.A}
+  - {from: 2022.Index, to: 4649.Index}
+  - {from: 2022.Index, to: 4690.Index}
   - {from: 2305.Then, to: 2310.Exec}
   - {from: 2305.Entity, to: 2310.Entity}
   - {from: 2305.Entity, to: 2646.Target}
@@ -545,17 +540,16 @@ graphs:
   - {from: 2606.Then, to: 2305.Exec}
   - {from: 2606.Position, to: 2310.Value}
   - {from: 2606.Position, to: 4285.position}
-  - {from: 2610.Result, to: 2606.Index}
-  - {from: 2610.Result, to: 4245.slot, conversion: To Real}
-  - {from: 2614.Result, to: 2618.A}
-  - {from: 2618.Result, to: 2606.Pattern}
   - {from: 2646.Then, to: 4245.Exec}
   - {from: 2650.Result, to: 2360.Value}
   - {from: 4245.True, to: 2354.Exec}
   - {from: 4245.False, to: 2025.Exec}
   - {from: 4285.Result, to: 2646.Value}
+  - {from: 4649.Result, to: 2606.Index, conversion: To Integer}
+  - {from: 4649.Result, to: 4245.slot}
+  - {from: 4690.Result, to: 2606.Pattern, conversion: To Integer}
   locals:
-  - {id: 4359, name: Slot, from: 2610.Result}
+  - {id: 4783, name: Slot, from: 4649.Result}
 - id: 2421
   kind: function
   name: Formation Position
@@ -986,9 +980,14 @@ graphs:
   name: Spawns Left In Burst
   math_expression: spawned < total
   entry_id: 4220
-- {id: 4231, kind: function, math_expression: slot == 0, entry_id: 4252}
+- {id: 4231, kind: function, math_expression: slot == 0, entry_id: 4732}
 - id: 4265
   kind: function
   math_expression: atan2(center.y - position.y, center.x - position.x)
   entry_id: 4336
 - {id: 4581, kind: function, math_expression: sign(Index - 3.5), entry_id: 4619}
+- {id: 4635, kind: function, math_expression: Index % 8, entry_id: 4746}
+- id: 4666
+  kind: function
+  math_expression: floor(Index / 8) % 4
+  entry_id: 4760

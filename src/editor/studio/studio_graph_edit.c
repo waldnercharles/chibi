@@ -1,7 +1,10 @@
 /* Graph canvas edits, refactoring, usage and the add-node palette. */
 #include "editor/graph/search.h"
 #include "editor/studio/studio_graph_internal.h"
+#include "editor/ui/labels.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
+#include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
 #include "support/array.h"
@@ -165,6 +168,50 @@ void sg_copy_selection(studio *s)
     }
 }
 
+/* Where a paste lands: the pointer over the canvas, else the view's center. */
+static void paste_point(const studio *s, float *x, float *y)
+{
+    const studio_graph *g = &s->graph;
+    if (g->in.mouse_x > -1e8f) {
+        *x = g->world_x;
+        *y = g->world_y;
+        return;
+    }
+    *x = g->x + g->surface.rect.w / 2 / g->zoom;
+    *y = g->y + g->surface.rect.h / 2 / g->zoom;
+}
+
+/* Pasted nodes center on the pointer (Unreal) and are selected. */
+static void place_pasted(studio *s, int first)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    float lo[2] = { INFINITY, INFINITY }, hi[2] = { -INFINITY, -INFINITY };
+    for (int i = first; i < acount(gr->nodes); i++) {
+        float b[4];
+        if (sg_node_visible(gr, gr->nodes[i]) && sg_node_box(s, gr->nodes[i], b)) {
+            lo[0] = fminf(lo[0], b[0]);
+            lo[1] = fminf(lo[1], b[1]);
+            hi[0] = fmaxf(hi[0], b[0] + b[2]);
+            hi[1] = fmaxf(hi[1], b[1] + b[3]);
+        }
+    }
+    float x, y;
+    paste_point(s, &x, &y);
+    float dx = lo[0] <= hi[0] ? roundf(x - (lo[0] + hi[0]) / 2) : 0;
+    float dy = lo[1] <= hi[1] ? roundf(y - (lo[1] + hi[1]) / 2) : 0;
+    ed_clear_selection(e);
+    for (int i = first; i < acount(gr->nodes); i++) {
+        node *n = gr->nodes[i];
+        n->x += dx;
+        n->y += dy;
+        if (sg_node_visible(gr, n)) {
+            n->placed = true;
+            ed_add_selected(e, n);
+        }
+    }
+}
+
 void sg_paste(studio *s)
 {
     editor *e = sg_graph_editor(s);
@@ -176,18 +223,198 @@ void sg_paste(studio *s)
     if (text) {
         ed_snapshot_before(e);
         int first = acount(e->active_graph->nodes);
-        if (graph_append_json(e->active_graph, text, 24, 24) == 0) {
-            ed_clear_selection(e);
-            for (int i = first; i < acount(e->active_graph->nodes); i++) {
-                if (sg_node_visible(e->active_graph, e->active_graph->nodes[i])) {
-                    ed_add_selected(e, e->active_graph->nodes[i]);
-                }
-            }
+        if (graph_append_json(e->active_graph, text, 0, 0) == 0) {
+            place_pasted(s, first);
         }
     }
     if (clipboard) {
         cf_free(clipboard);
     }
+}
+
+/* ---------- Selection layout ---------- */
+
+/* Applies moved positions as one undo step; `before` is the asset as it was. */
+static void commit_moves(editor *e, char *before, bool moved)
+{
+    if (!moved) {
+        free(before);
+        return;
+    }
+    e->pending_snapshot = before;
+    ed_commit_snapshot(e);
+}
+
+static void move_node(node *n, float x, float y, bool *moved)
+{
+    *moved |= n->x != x || n->y != y;
+    n->x = x;
+    n->y = y;
+    n->placed = true;
+}
+
+/* The selected nodes that draw a box, with their boxes. */
+static align_box *selected_boxes(studio *s, node ***nodes)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    align_box *boxes = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        float b[4];
+        if (sg_node_visible(gr, e->selected[i]) && sg_node_box(s, e->selected[i], b)) {
+            apush(*nodes, e->selected[i]);
+            apush(boxes, ((align_box){ b[0], b[1], b[2], b[3] }));
+        }
+    }
+    return boxes;
+}
+
+/* Moves the nodes to their boxes as one undo step, and frees both. */
+static void apply_boxes(studio *s, node **nodes, align_box *boxes)
+{
+    editor *e = sg_graph_editor(s);
+    char *before = sg_graph_readonly(s) ? NULL : ed_snapshot(e);
+    bool moved = false;
+    for (int i = 0; before && i < acount(nodes); i++) {
+        move_node(nodes[i], roundf(boxes[i].x), roundf(boxes[i].y), &moved);
+    }
+    commit_moves(e, before, moved);
+    afree(nodes);
+    afree(boxes);
+}
+
+void sg_align(studio *s, align_edge edge)
+{
+    node **nodes = NULL;
+    align_box *boxes = selected_boxes(s, &nodes);
+    align_boxes(boxes, acount(boxes), edge);
+    apply_boxes(s, nodes, boxes);
+}
+
+void sg_distribute(studio *s, bool vertical)
+{
+    node **nodes = NULL;
+    align_box *boxes = selected_boxes(s, &nodes);
+    distribute_boxes(boxes, acount(boxes), vertical);
+    apply_boxes(s, nodes, boxes);
+}
+
+/* Moves one end of a drawn wire so the wire runs level. */
+static void level_wire(studio *s, const edge *ed, bool move_source, bool *moved)
+{
+    graph *gr = sg_active_graph(s);
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!sg_edge_ends(gr, ed, &from, &from_pin, &to, &to_pin) ||
+        !sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
+        graph_edge_is_local(gr, ed)) {
+        return;
+    }
+    float ax, ay, bx, by;
+    sg_socket_at(s, from, ED_PIN_OUTPUT, from_pin, &ax, &ay);
+    sg_socket_at(s, to, ED_PIN_INPUT, to_pin, &bx, &by);
+    node *n = move_source ? from : to;
+    move_node(n, n->x, n->y + (move_source ? by - ay : ay - by), moved);
+}
+
+/* A node's leading wire: its first wired execution input, else its first
+   wired data input; a node without inputs leads with its first output. */
+static const edge *leading_wire(const graph *gr, const node *n, bool *source)
+{
+    const edge *data = NULL, *out = NULL;
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *ed = &gr->edges[i];
+        if (ed->to_id == n->id && ed->kind == GRAPH_EDGE_EXEC) {
+            *source = false;
+            return ed;
+        }
+        if (ed->to_id == n->id && !data && !graph_edge_is_local(gr, ed) &&
+            !graph_node_is_inline(gr, graph_node_by_id(gr, ed->from_id))) {
+            data = ed;
+        }
+        out = !out && ed->from_id == n->id ? ed : out;
+    }
+    *source = !data;
+    return data ? data : out;
+}
+
+static int by_x(const void *a, const void *b)
+{
+    const node *left = *(node *const *)a, *right = *(node *const *)b;
+    return (left->x > right->x) - (left->x < right->x);
+}
+
+void sg_straighten(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    if (sg_graph_readonly(s)) {
+        return;
+    }
+    char *before = ed_snapshot(e);
+    bool moved = false;
+    for (int i = 0; i < acount(e->selected_links); i++) {
+        for (int w = 0; w < acount(gr->edges); w++) {
+            ed_link_ref ref;
+            sg_link_ref_of(&gr->edges[w], &ref);
+            if (ed_link_equal(&ref, &e->selected_links[i])) {
+                level_wire(s, &gr->edges[w], false, &moved);
+            }
+        }
+    }
+    node **order = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        apush(order, e->selected[i]);
+    }
+    if (acount(order) > 1) {
+        qsort(order, (size_t)acount(order), sizeof *order, by_x);
+    }
+    for (int i = 0; i < acount(order); i++) {
+        bool source = false;
+        const edge *ed = leading_wire(gr, order[i], &source);
+        if (ed) {
+            level_wire(s, ed, source, &moved);
+        }
+    }
+    afree(order);
+    commit_moves(e, before, moved);
+}
+
+void sg_straighten_wire(studio *s, int index)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    if (sg_graph_readonly(s) || index < 0 || index >= acount(gr->edges)) {
+        return;
+    }
+    char *before = ed_snapshot(e);
+    bool moved = false;
+    level_wire(s, &gr->edges[index], false, &moved);
+    commit_moves(e, before, moved);
+}
+
+bool sg_spawn_node(studio *s, const char *name, float x, float y)
+{
+    editor *e = sg_graph_editor(s);
+    const node_desc *desc = registry_node_by_name(name);
+    if (!desc || sg_graph_readonly(s)) {
+        return false;
+    }
+    char label[128];
+    editor_node_label(desc, label, sizeof label);
+    ed_search_match *found = ed_search_matches(e, label);
+    node *n = NULL;
+    for (int i = 0; i < acount(found) && !n; i++) {
+        if (found[i].desc == desc && !found[i].function && !found[i].variable) {
+            n = ed_spawn_match_at(e, &found[i], x, y);
+        }
+    }
+    afree(found);
+    if (n) {
+        n->placed = true;
+        sg_select_only(e, n);
+    }
+    return n != NULL;
 }
 
 /* ---------- Usage ----------

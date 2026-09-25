@@ -1,6 +1,7 @@
 #include "automation/graph_edit.h"
 
 #include "graph/authoring/layout.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/events.h"
 #include "graph/document/library.h"
@@ -1395,34 +1396,13 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
         return -1;
     }
     bool output = !strcmp(side, "output");
-    int count = output ? n->output_count : n->input_count;
-    const pin_spec *last = count
-                             ? &(output ? n->output_pins : n->input_pins)[count - 1]
-                             : NULL;
     pin_spec template_pin = { .name = name,
                               .type = type,
                               .type_name = type_name,
                               .kind = kind,
                               .container = container,
                               .default_value = { .type = type, .type_name = type_name } };
-    /* A pin after a wildcard group member, such as Select's options, joins
-       that group and takes its type. */
-    if (last && last->kind == kind && (last->flags & PIN_FLAG_WILDCARD) && last->group) {
-        template_pin.type = last->type;
-        template_pin.type_name = last->type_name;
-        template_pin.container = last->container;
-        template_pin.flags = last->flags;
-        template_pin.group = last->group;
-        template_pin.default_value = (pin_value){ .type = last->type,
-                                                  .type_name = last->type_name };
-    }
-    /* A switch's Default stays its last output, so a new pin is a case. */
-    bool before_default = last && kind == PIN_EXEC && output && last->name &&
-                          !strcmp(last->name, "Default");
-    int index = graph_add_pin(ctx->graph, n, output, &template_pin);
-    if (index >= 0 && before_default) {
-        index = graph_move_pin(ctx->graph, n, 1, index, index - 1);
-    }
+    int index = graph_append_pin(ctx->graph, n, output, &template_pin);
     if (index < 0) {
         set_error(ctx, "could not add pin '%s'", name);
         return -1;

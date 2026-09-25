@@ -63,7 +63,7 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Clicking empty canvas clears the selection.
 - **Dragging nodes:**
   - Dragging moves the whole selection, and selected nodes are raised.
-  - Snapping to the 20 world-unit grid is off by default; Ctrl inverts it while dragging.
+  - Snapping to a 16 world-unit grid, half a drawn cell, is off by default; holding Ctrl while dragging snaps.
   - Snapping aligns the nearest pin to the grid rather than the node corner, so wires stay straight (imgui-node-editor).
   - When several nodes move, the lead node is snapped and the rest move by the same offset (xyflow).
 - **Wires while dragging a node:**
@@ -71,10 +71,11 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Alt skips the insert. Neighbors don't shift aside yet.
 - **Keys:**
   - X or Delete deletes; Ctrl+Delete deletes and reconnects matching wires through (Node-RED, ComfyUI).
-  - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste.
+  - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste. Pasted nodes center on the pointer (Unreal).
   - M mutes (disables), H collapses, F2 renames.
   - Arrow keys walk along wires to the next node in that direction; Shift extends the selection upstream or downstream (n8n).
-  - Q straightens the selection (Unreal); L arranges it (Houdini).
+  - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. L arranges the selection (Houdini).
+- **Alignment:** with two or more nodes selected, the node menu's Alignment submenu aligns their tops, middles, bottoms, lefts, centers or rights to the selection's bounds, and distributes three or more with equal gaps (Unreal, Figma). The graph menu offers the same for the selection.
 - **Undo:** each gesture is one undo step. The editor already snapshots per mutation; camera and selection changes never enter history.
 
 ### Node rows
@@ -124,6 +125,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
   - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
+  - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get or Set beside the pin; Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
   - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
   - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
 
@@ -139,6 +141,9 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Shift+A, Space or Tab opens the command surface at the pointer, and typing searches immediately (Blender, Houdini).
   - Categories stay browsable, and synonyms match (Shader Graph).
   - It reuses `kit_command` and the editor's existing search catalog.
+  - Holding a key and clicking empty canvas places a node there (Unreal): B Branch, S Sequence, D Delay, F For Each, N Do N, O Do Once, G Gate. F alone frames once released; M stays free to mute.
+- **Variadic nodes:** Sequence, MultiGate, the Int, String and Name switches, Select, Make Array, Make Set and Format Text grow a run of like pins. The node menu's Add Pin and a last Add Pin row add one (Unreal); Format Text keeps a spare argument instead of the row. The pin menu removes one while another remains. A switch's Default stays last, a new Select or Make Array pin joins its wildcard group with the resolved type, and generated names renumber.
+- **Struct pins:** Split Struct Pin shows a struct output's fields as outputs beside it, which any node can evaluate; Recombine hides the unwired ones. On Set Component, Value splits into the settable field inputs.
 - **Comments:**
   - C wraps the selection in a comment frame.
   - Dragging a frame carries its contents; Shift leaves them in place.

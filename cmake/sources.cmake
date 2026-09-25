@@ -1,11 +1,13 @@
 # Explicit compilation ownership, independent of conceptual folder boundaries.
 
 set(CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/align.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_path.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_route.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_score.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/layout.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/pin_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_program.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_jit.c
     src/graph/compiler/behavior_expression.c
@@ -186,6 +188,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_layout.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_pins.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c

@@ -216,6 +216,7 @@ void run_graph_comment_checks();
 void run_graph_find_checks();
 void run_graph_arrange_checks();
 void run_graph_inline_checks();
+void run_graph_editing_checks();
 int bench_graph_arrange(int repeats, const char *only, const char *style);
 void run_runtime_execution_checks();
 void run_runtime_instance_checks();

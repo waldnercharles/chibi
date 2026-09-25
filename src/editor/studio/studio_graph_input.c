@@ -13,6 +13,7 @@ enum
 
 static const float THRESHOLD = 4; /* window px before a press drags */
 static const float WIRE_HIT = 6;  /* window px */
+static const float SNAP = 16;     /* graph units: half a drawn grid cell */
 
 typedef struct
 {
@@ -313,6 +314,8 @@ static void end_link(studio *s, graph_hit hit)
     }
 }
 
+/* The marquee adds what it touches to the selection it began with; with Ctrl
+   it removes it (Blender). */
 static void finish_box(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -330,14 +333,49 @@ static void finish_box(studio *s)
     for (int i = 0; i < acount(gr->nodes); i++) {
         node *n = gr->nodes[i];
         float b[4];
-        if (!sg_node_visible(gr, n) || !sg_node_box(s, n, b)) {
+        if (!sg_node_visible(gr, n) || !sg_node_box(s, n, b) ||
+            !(b[0] < x1 && b[0] + b[2] > x0 && b[1] < y1 && b[1] + b[3] > y0)) {
             continue;
         }
-        bool inside = b[0] < x1 && b[0] + b[2] > x0 && b[1] < y1 && b[1] + b[3] > y0;
-        if (inside && !ed_node_selected(e, n)) {
+        if (g->box_subtract) {
+            ed_remove_selected(e, n);
+        } else if (!ed_node_selected(e, n)) {
             ed_add_selected(e, n);
         }
     }
+}
+
+/* Keys follow the layout, as the key's letter reads. */
+static bool key_held(SDL_Keycode key)
+{
+    return SDL_GetKeyboardState(NULL)[SDL_GetScancodeFromKey(key, NULL)];
+}
+
+/* Holding a key and clicking empty canvas places a node there (Unreal). M
+   stays free to mute (Blender). */
+static const struct
+{
+    SDL_Keycode key;
+    const char *node;
+} SPAWN_KEYS[] = {
+    { SDLK_B, "Branch" },  { SDLK_S, "Sequence" }, { SDLK_D, "Delay" },
+    { SDLK_F, "ForEach" }, { SDLK_N, "DoN" },      { SDLK_O, "DoOnce" },
+    { SDLK_G, "Gate" },
+};
+
+static bool spawn_held(studio *s)
+{
+    studio_graph *g = &s->graph;
+    for (int i = 0; i < (int)(sizeof SPAWN_KEYS / sizeof *SPAWN_KEYS); i++) {
+        if (!key_held(SPAWN_KEYS[i].key)) {
+            continue;
+        }
+        if (SPAWN_KEYS[i].key == SDLK_F) {
+            g->frame_pending = false;
+        }
+        return sg_spawn_node(s, SPAWN_KEYS[i].node, g->press_wx, g->press_wy);
+    }
+    return false;
 }
 
 /* Scrolling zooms at the pointer, from a wheel or a trackpad alike (Blender,
@@ -373,7 +411,8 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     unsigned mods = g->in.modifiers;
-    bool additive = mods & (KIT_MOD_SHIFT | KIT_MOD_CTRL | KIT_MOD_META);
+    bool subtract = mods & (KIT_MOD_CTRL | KIT_MOD_META);
+    bool additive = subtract || (mods & KIT_MOD_SHIFT);
     if (button == 2 || (button == 0 && g->space)) {
         g->gesture = STUDIO_GRAPH_PAN;
         return;
@@ -415,6 +454,11 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         editor_open_graph_call(e, n->id);
         return;
     }
+    if (n && hit.kind >= 0 && hit.pin >= 0 && (mods & KIT_MOD_ALT)) {
+        /* Alt+click breaks every wire at the pin (Unreal). */
+        sg_break_links(s, n, hit.kind, hit.pin);
+        return;
+    }
     if (n && hit.kind >= 0 && hit.pin >= 0 && !sg_graph_readonly(s)) {
         begin_link(s, n, hit.kind, hit.pin);
         return;
@@ -451,11 +495,15 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         ed_add_selected_link(e, &link);
         return;
     }
+    if (!mods && !sg_graph_readonly(s) && spawn_held(s)) {
+        return;
+    }
     g->gesture = STUDIO_GRAPH_BOX;
     g->box[0] = g->press_wx;
     g->box[1] = g->press_wy;
     g->box[2] = g->world_x;
     g->box[3] = g->world_y;
+    g->box_subtract = subtract;
     asetlen(g->box_base, 0);
     if (additive) {
         for (int i = 0; i < acount(e->selected); i++) {
@@ -463,6 +511,48 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         }
     }
     ed_clear_selection(e);
+}
+
+/* Where n's pin nearest `y` sits below its top, or 0 without pins. */
+static float nearest_pin(const studio *s, node *n, float y)
+{
+    graph *gr = sg_active_graph(s);
+    float best = 0, distance = INFINITY;
+    for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
+        int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
+        for (int p = 0; p < count; p++) {
+            float at = ed_pin_visible(gr, n, kind, p) ? sg_pin_y(s, n, kind, p)
+                                                      : INFINITY;
+            if (fabsf(at - y) < distance) {
+                distance = fabsf(at - y);
+                best = at;
+            }
+        }
+    }
+    return best;
+}
+
+/* Ctrl snaps the lead node's pin nearest the press to the grid, so wires
+   between snapped nodes run level, and the rest of the selection keeps its
+   offset (imgui-node-editor, xyflow). A frame dragged by its title snaps its
+   corner. */
+static void snap_move(studio *s, float *dx, float *dy)
+{
+    studio_graph *g = &s->graph;
+    int lead = 0;
+    for (int i = 0; i < acount(g->drag); i++) {
+        lead = g->drag[i].id == g->press_node ? i : lead;
+    }
+    node *n = g->press_comment || !acount(g->drag)
+                ? NULL
+                : sg_node_by_id(s, g->drag[lead].id);
+    if (!n && !g->press_comment) {
+        return;
+    }
+    float x = n ? g->drag[lead].x : g->comment_x, y = n ? g->drag[lead].y : g->comment_y;
+    float pin = n ? nearest_pin(s, n, g->press_wy - y) : 0;
+    *dx = roundf((x + *dx) / SNAP) * SNAP - x;
+    *dy = roundf((y + *dy + pin) / SNAP) * SNAP - pin - y;
 }
 
 static void drag(studio *s)
@@ -488,6 +578,9 @@ static void drag(studio *s)
             /* fallthrough */
         case STUDIO_GRAPH_MOVE: {
             float dx = g->world_x - g->press_wx, dy = g->world_y - g->press_wy;
+            if (g->in.modifiers & KIT_MOD_CTRL) {
+                snap_move(s, &dx, &dy);
+            }
             g->insert_edge = insert_target(s);
             graph_comment_box *box = sg_comment_by_id(s, g->press_comment);
             if (box) {
@@ -583,14 +676,18 @@ static void release(studio *s, graph_hit hit)
         case STUDIO_GRAPH_RESIZE: sg_end_resize(s, false); break;
         case STUDIO_GRAPH_LINK: end_link(s, hit); return;
         case STUDIO_GRAPH_RIGHT: {
-            /* A right click that didn't move opens the node or wire menu, or on
-               empty canvas the add-node search (Unreal's action menu). */
+            /* A right click that didn't move opens the pin, node or wire menu,
+               or on empty canvas the add-node search (Unreal's action menu). */
             graph_hit at = parse_hit(g->press_path[0] ? g->press_path : NULL);
             node *n = sg_node_by_id(s, at.node);
             int wire = n || at.comment ? -1 : hit_wire(s);
+            bool pin = n && at.kind >= 0 && at.pin >= 0;
             g->menu_comment = at.comment;
+            g->menu_pin = !pin                     ? 0
+                        : at.kind == ED_PIN_OUTPUT ? n->output_pins[at.pin].id
+                                                   : n->input_pins[at.pin].id;
             if (n || wire >= 0 || at.comment) {
-                if (n && !ed_node_selected(e, n)) {
+                if (n && !pin && !ed_node_selected(e, n)) {
                     sg_select_only(e, n);
                 }
                 g->menu_node = n ? n->id : 0;
@@ -860,6 +957,11 @@ void sg_shortcuts(studio *s)
     bool over = s->hover_area == g->area ||
                 (s->hover_area < 0 && s->focus_area == g->area);
     g->space = over && SDL_GetKeyboardState(NULL)[SDL_SCANCODE_SPACE];
+    /* F also places For Each with a click, so it frames once released. */
+    if (g->frame_pending && !key_held(SDLK_F)) {
+        g->frame_pending = false;
+        sg_frame_nodes(s, acount(e->selected) > 0, true);
+    }
     if (!over || kit_wants_keyboard(s->kit) || kit_wants_keyboard(g->kit) ||
         kit_command_is_open(s->kit)) {
         return;
@@ -889,7 +991,9 @@ void sg_shortcuts(studio *s)
                 studio_find_node_references(s, e->selected[0]);
             }
         } else if (!mod && !shift && key == SDLK_F) {
-            sg_frame_nodes(s, acount(e->selected) > 0, true);
+            g->frame_pending = true;
+        } else if (!mod && !shift && key == SDLK_Q) {
+            sg_straighten(s);
         } else if (!mod && key == SDLK_HOME) {
             sg_frame_nodes(s, false, true);
         } else if (mod && key == SDLK_A) {

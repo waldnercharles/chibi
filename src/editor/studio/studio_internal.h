@@ -306,6 +306,9 @@ typedef struct
     } find;
     studio_visit *visits; /* graphs visited, for Back and Forward */
     int visit;            /* the current one */
+    uint64_t menu_pin;    /* the menu's pin on menu_node, or 0 */
+    bool box_subtract;    /* a Ctrl marquee removes what it touches */
+    bool frame_pending;   /* F frames on release unless it placed a node */
 } studio_graph;
 
 typedef enum

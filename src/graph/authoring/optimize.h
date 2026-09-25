@@ -47,5 +47,7 @@ void graph_optimize_report_free(graph_optimize_report *report);
 int graph_optimize(graph *g, const graph_optimize_options *options, graph_optimize_report *report);
 /* Used after wire drags; intentionally limited to one component consumer. */
 bool graph_fold_component_getter(graph *g, node *source);
+/* A free name for a local of n's output, after what the output carries. */
+void graph_local_name(const graph *g, const node *n, int pin, char *name, size_t size);
 
 #endif

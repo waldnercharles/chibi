@@ -107,6 +107,8 @@ body.graph-canvas.light {
 .grow .chip .icon { flex: 0 0 auto; width: 12dp; font-size: 11dp; line-height: 18dp; color: var(--fg-3); }
 .chip-text { display: block; flex: 1 1 auto; min-width: 0dp; white-space: nowrap; overflow: hidden; }
 .grow .chip.source { color: var(--tok-name); }
+/* A variadic node's last row adds a pin on its side (Unreal's Add pin). */
+.gadd .btn { color: var(--fg-3); }
 
 /* An expression's source, lines wrapped by measure_node: 16 dp lines, 12 dp of
    padding and margin below, 28 dp across. */
@@ -136,7 +138,7 @@ body.graph-canvas.light {
 .socket kit-dot { position: absolute; left: 3dp; top: 3dp; width: 10dp; height: 10dp; }
 
 /* Level of detail: far out, pins and values give way to titles. */
-body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented, body.far .gcode { visibility: hidden; }
+body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented, body.far .gcode, body.far .gadd { visibility: hidden; }
 body.far .gnode-head .title { font-size: 16dp; }
 
 /* Comment frames (studio_graph_comment.c): a tint layer keyed by the frame's

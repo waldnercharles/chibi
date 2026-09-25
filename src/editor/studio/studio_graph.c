@@ -5,6 +5,7 @@
  * into it in graph units. Interaction follows docs/editor-graph-references.md;
  * edits go through the graph editor's mutation helpers and history. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/document/extract.h"
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
@@ -135,6 +136,54 @@ static void expand_inputs(editor *e, node *n)
     e->arrange_pending = true;
 }
 
+/* Alignment for two or more selected nodes, and straightening (Unreal). */
+static bool selection_items(studio *s)
+{
+    static const struct
+    {
+        const char *key, *label;
+        align_edge edge;
+    } ALIGN[] = {
+        { "top", "Align Top", ALIGN_TOP },
+        { "middle", "Align Middle", ALIGN_MIDDLE },
+        { "bottom", "Align Bottom", ALIGN_BOTTOM },
+        { "left", "Align Left", ALIGN_LEFT },
+        { "center", "Align Center", ALIGN_CENTER },
+        { "right", "Align Right", ALIGN_RIGHT },
+    };
+    kit *k = s->kit;
+    editor *e = sg_graph_editor(s);
+    bool readonly = sg_graph_readonly(s);
+    int count = acount(e->selected);
+    bool ran = false;
+    if (count > 1 && kit_submenu_begin(k, "align", "Alignment", KIT_ICON_LAYOUT)) {
+        for (int i = 0; i < (int)(sizeof ALIGN / sizeof *ALIGN) && !ran; i++) {
+            if (menu_item(k, ALIGN[i].key, ALIGN[i].label, 0, NULL, readonly)) {
+                sg_align(s, ALIGN[i].edge);
+                ran = true;
+            }
+        }
+        kit_menu_separator(k, "s0");
+        if (!ran &&
+            menu_item(k, "horizontal", "Distribute Horizontally", 0, NULL, readonly || count < 3)) {
+            sg_distribute(s, false);
+            ran = true;
+        }
+        if (!ran &&
+            menu_item(k, "vertical", "Distribute Vertically", 0, NULL, readonly || count < 3)) {
+            sg_distribute(s, true);
+            ran = true;
+        }
+        kit_submenu_end(k);
+    }
+    if (!ran &&
+        menu_item(k, "straighten", "Straighten Connections", KIT_ICON_MOVE, "Q", readonly || !count)) {
+        sg_straighten(s);
+        ran = true;
+    }
+    return ran;
+}
+
 /* An action may free the node, its graph or the whole asset, so the menu stops
    after one runs; the click closes it. */
 static void node_menu(studio *s, node *n)
@@ -153,6 +202,12 @@ static void node_menu(studio *s, node *n)
     if (studio_node_referable(n) &&
         menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, studio_chord(s, "Shift+Alt+F"), false)) {
         studio_find_node_references(s, n);
+        return;
+    }
+    graph_pin_run run;
+    if (graph_pin_run_of(n, &run) &&
+        menu_item(k, "addpin", "Add Pin", KIT_ICON_ADD, NULL, readonly)) {
+        sg_add_run_pin(s, n);
         return;
     }
     if (menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
@@ -191,6 +246,10 @@ static void node_menu(studio *s, node *n)
             readonly || expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
         )) {
         sg_convert_to_expression(s);
+        return;
+    }
+    kit_menu_separator(k, "s2");
+    if (selection_items(s)) {
         return;
     }
     kit_menu_separator(k, "s0");
@@ -260,7 +319,10 @@ void studio_graph_menus(studio *s)
     graph *gr = sg_active_graph(s);
     node *n = sg_node_by_id(s, g->menu_node);
     bool readonly = sg_graph_readonly(s);
-    if (n) {
+    int output = 0, pin = -1;
+    if (n && graph_pin_by_id(n, g->menu_pin, &output, &pin)) {
+        sg_pin_menu(s, n, output ? ED_PIN_OUTPUT : ED_PIN_INPUT, pin);
+    } else if (n) {
         node_menu(s, n);
     } else if (sg_comment_by_id(s, g->menu_comment)) {
         sg_comment_menu(s, sg_comment_by_id(s, g->menu_comment));
@@ -270,6 +332,8 @@ void studio_graph_menus(studio *s)
             menu_item(k, "reroutes", "Clear Reroutes", KIT_ICON_RESET, NULL, readonly)) {
             ed_snapshot_before(e);
             ed->reroute_count = 0;
+        } else if (menu_item(k, "straighten", "Straighten Connection", KIT_ICON_MOVE, "Q", readonly)) {
+            sg_straighten_wire(s, g->menu_edge);
         }
         if (menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, studio_chord(s, "Alt+Click"), readonly)) {
             ed_link_ref link;
@@ -613,6 +677,8 @@ void studio_behavior_header(studio *s, int area)
         if (menu_item(k, "collapse", "Math to Expressions", KIT_ICON_EXPRESSION, NULL, readonly)) {
             sg_collapse_math(s);
         }
+        kit_menu_separator(k, "s0");
+        selection_items(s);
         kit_popup_end(k);
     }
     kit_button_desc tidy = { .icon = KIT_ICON_LAYOUT,

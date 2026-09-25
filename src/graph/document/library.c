@@ -115,8 +115,10 @@ static const pin_spec *signature_match(const pin_spec *pins, int count, const pi
 
 static bool same_parameter_type(const pin_spec *a, const pin_spec *b)
 {
+    /* A number's type names it; only named types compare their names. */
+    bool named = a->type == PIN_STRUCT || a->type == PIN_ENUM || a->type == PIN_HANDLE;
     return a->type == b->type && a->container == b->container &&
-           ((!a->type_name && !b->type_name) ||
+           (!named || (!a->type_name && !b->type_name) ||
             (a->type_name && b->type_name && strcmp(a->type_name, b->type_name) == 0));
 }
 
@@ -210,6 +212,7 @@ const char *graph_library_refresh_call(graph *caller, node *call, const graph *t
                 pin_spec added = *source;
                 added.id = 0;
                 added.declaration_id = source->id;
+                added.binding = NULL; /* Signature bindings read inside the function. */
                 added.type_name = source->type_name ? graph_own_str(
                                                           caller,
                                                           source->type_name,
@@ -474,6 +477,9 @@ behavior_asset *behavior_asset_link_libraries(
     behavior_asset *result = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!result) {
+        if (error && error_size) {
+            snprintf(error, error_size, "the asset does not load back: %s", graph_last_error());
+        }
         return NULL;
     }
     library_link link = { .result = result,

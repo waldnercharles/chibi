@@ -2,6 +2,7 @@
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/state_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
@@ -12,6 +13,15 @@
 const pin_spec *serialize_pin_template(const node_desc *desc, int output, int index)
 {
     static const pin_spec extension = { .name = "Pin", .type = PIN_FLOW, .kind = PIN_DATA };
+    /* An expression call's pins mirror its generated function: wildcards
+       whose groups and reference flag loading repairs from it. */
+    static const pin_spec expression = { .name = "Pin",
+                                         .type = PIN_FLOW,
+                                         .kind = PIN_DATA,
+                                         .flags = PIN_FLAG_WILDCARD };
+    if (desc == &NODE_BehaviorExpression) {
+        return &expression;
+    }
     const pin_spec *pins = output ? desc->outputs : desc->inputs;
     int count = output ? desc->output_count : desc->input_count;
     if (index < count) {
@@ -122,6 +132,23 @@ static void write_binding(yyjson_mut_doc *doc, yyjson_mut_val *o, const graph *g
     yyjson_mut_obj_add_val(doc, o, "binding", binding);
 }
 
+/* What loading repairs on an expression call's pin from its generated
+   function: its group and reference flag. */
+static pin_spec repaired_baseline(const node *n, const pin_spec *p, pin_spec base)
+{
+    if (n->desc != &NODE_BehaviorExpression) {
+        return base;
+    }
+    if (p->kind == PIN_EXEC) {
+        base.flags &= ~PIN_FLAG_WILDCARD;
+    }
+    base.group = p->group;
+    if (!((p->flags ^ base.flags) & ~PIN_FLAG_REFERENCE)) {
+        base.flags = p->flags;
+    }
+    return base;
+}
+
 /* Adds the fields where the pin differs from the pin loading starts from. */
 static void write_pin_fields(
     yyjson_mut_doc *doc,
@@ -142,7 +169,11 @@ static void write_pin_fields(
     const char *type_name = retyped
                               ? serialize_implied_type_name(p->type, base->type_name)
                               : base->type_name;
-    write_str_change(doc, o, "type_name", p->type_name, type_name);
+    /* A primitive's type already names it; shader floats leave it unset. */
+    bool implied = !p->type_name && same_str(type_name, pin_type_name(p->type));
+    if (!implied) {
+        write_str_change(doc, o, "type_name", p->type_name, type_name);
+    }
     if (p->kind != base->kind) {
         yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
     }
@@ -192,7 +223,8 @@ static void write_listed_pins(
     for (int i = 0; i < count; i++) {
         yyjson_mut_val *pin = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_uint(doc, pin, "id", pins[i].id);
-        write_pin_fields(doc, pin, g, &pins[i], serialize_pin_template(n->desc, output, i));
+        pin_spec base = repaired_baseline(n, &pins[i], *serialize_pin_template(n->desc, output, i));
+        write_pin_fields(doc, pin, g, &pins[i], &base);
         if (yyjson_mut_obj_size(pin) == 1) {
             yyjson_mut_arr_add_uint(doc, arr, pins[i].id);
         } else {
@@ -290,6 +322,7 @@ static void write_keyed_pins(
         *next_id = pins[i].id + 1;
         pin_spec base;
         keyed_baseline(n, output, i, &base);
+        base = repaired_baseline(n, &pins[i], base);
         write_pin_fields(doc, pin, g, &pins[i], &base);
         if (!yyjson_mut_obj_size(pin) && i < template_count) {
             continue;
@@ -704,7 +737,13 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
         yyjson_mut_obj_add_uint(doc, obj, "id", g->graph_id);
     }
     yyjson_mut_obj_add_str(doc, obj, "kind", graph_kind_name(g->kind));
-    yyjson_mut_obj_add_str(doc, obj, "name", g->name ? g->name : "");
+    /* A derived expression keeps its source and the ID its rebuild starts
+       from; its name follows the source unless renamed, and rebuilding
+       restores its mode, return node and depth limit. */
+    bool derived = derived_body(g);
+    if (!derived || strcmp(g->name ? g->name : "", g->math_expression)) {
+        yyjson_mut_obj_add_str(doc, obj, "name", g->name ? g->name : "");
+    }
     write_description(doc, obj, g->description);
     if (g->source_asset) {
         yyjson_mut_obj_add_str(doc, obj, "source_asset", g->source_asset);
@@ -712,18 +751,20 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     }
     if (g->math_expression) {
         yyjson_mut_obj_add_str(doc, obj, "math_expression", g->math_expression);
+    }
+    if (g->math_expression && !derived) {
         yyjson_mut_obj_add_int(doc, obj, "expression_mode", g->expression_mode);
     }
     if (g->entry_id) {
         yyjson_mut_obj_add_uint(doc, obj, "entry_id", g->entry_id);
     }
-    if (g->return_id) {
+    if (g->return_id && !derived) {
         yyjson_mut_obj_add_uint(doc, obj, "return_id", g->return_id);
     }
-    if (g->call_depth_limit) {
+    if (g->call_depth_limit && !derived) {
         yyjson_mut_obj_add_int(doc, obj, "call_depth_limit", g->call_depth_limit);
     }
-    if (!derived_body(g)) {
+    if (!derived) {
         write_graph_body(doc, obj, g, NULL, 0);
         serialize_omit_implied_shapes(obj, g);
         serialize_omit_derived_declarations(doc, obj, g);
@@ -734,6 +775,30 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
 /* FMT-1/FMT-2/FMT-16/FMT-18: the version-3 Behavior Asset document carries the
  * schema version, Behavior Asset name, ID counter, description, optional owner
  * handle type, variable list, and every graph. Runtime state never appears. */
+/* An expression's generated graph lives only while a node calls it; deleting
+   the last call drops it on save, and undo restores it from memory. A named
+   function stays, and a library's functions are called from other assets. */
+static bool kept(const behavior_asset *asset, const graph *g)
+{
+    if (!g->math_expression || strcmp(g->name, g->math_expression) ||
+        asset->domain == BEHAVIOR_DOMAIN_LIBRARY ||
+        asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        return true;
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            const node *n = caller->nodes[j];
+            if (n->reference_id == g->graph_id &&
+                (n->desc == &NODE_BehaviorExpression ||
+                 n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 char *behavior_asset_save_json(const behavior_asset *asset)
 {
     if (!asset || !asset->graph) {
@@ -769,7 +834,10 @@ char *behavior_asset_save_json(const behavior_asset *asset)
     yyjson_mut_val *graphs = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "graphs", graphs);
     for (int i = 0; i < acount(asset->graphs); i++) {
-        write_behavior_asset_graph(doc, graphs, asset->graphs[i]);
+        const graph *g = asset->graphs[i];
+        if (kept(asset, g)) {
+            write_behavior_asset_graph(doc, graphs, g);
+        }
     }
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);

@@ -172,6 +172,9 @@ static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_r
     }
     if (flags && yyjson_is_uint(flags)) {
         p->flags = (unsigned)yyjson_get_uint(flags);
+    } else if (n->desc == &NODE_BehaviorExpression && p->kind == PIN_EXEC) {
+        /* An expression call's template is a wildcard data pin. */
+        p->flags &= ~PIN_FLAG_WILDCARD;
     }
     yyjson_val *group = yyjson_obj_get(v, "group");
     if (group && yyjson_is_int(group)) {
@@ -1137,6 +1140,10 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
     yyjson_val *nodes = yyjson_obj_get(obj, "nodes");
     yyjson_val *edges = yyjson_obj_get(obj, "edges");
     graph_kind kind;
+    /* An expression's name defaults to its source. */
+    if (!name_json) {
+        name_json = yyjson_obj_get(obj, "math_expression");
+    }
     if (!yyjson_is_str(kind_json) ||
         graph_kind_from_name(yyjson_get_str(kind_json), &kind) ||
         !yyjson_is_str(name_json) ||

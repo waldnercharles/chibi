@@ -32,23 +32,24 @@ endfunction()
 chibi_rmlui_dependencies()
 
 add_library(chibi_rmlui STATIC
-    src/editor/rmlui/backend.cpp
-    src/editor/rmlui/kit.cpp
-    src/editor/rmlui/kit_chart.cpp
-    src/editor/rmlui/kit_command.cpp
-    src/editor/rmlui/kit_controls.cpp
-    src/editor/rmlui/kit_drag.cpp
-    src/editor/rmlui/kit_list.cpp
-    src/editor/rmlui/kit_motion.cpp
-    src/editor/rmlui/kit_number.cpp
-    src/editor/rmlui/kit_popup.cpp
-    src/editor/rmlui/kit_text.cpp
-    src/editor/rmlui/kit_toast.cpp
-    src/editor/rmlui/kit_wires.cpp
-    # kit_wires.cpp draws through it, so it links with the kit.
+    src/editor/rmlui/rml.cpp
+    src/editor/rmlui/backend.c
+    src/editor/rmlui/kit.c
+    src/editor/rmlui/kit_chart.c
+    src/editor/rmlui/kit_command.c
+    src/editor/rmlui/kit_controls.c
+    src/editor/rmlui/kit_drag.c
+    src/editor/rmlui/kit_list.c
+    src/editor/rmlui/kit_motion.c
+    src/editor/rmlui/kit_number.c
+    src/editor/rmlui/kit_popup.c
+    src/editor/rmlui/kit_text.c
+    src/editor/rmlui/kit_toast.c
+    src/editor/rmlui/kit_wires.c
+    # kit_wires.c draws through it, so it links with the kit.
     src/editor/ui/kit_wire_shape.c
-    src/editor/rmlui/menu.cpp
-    src/editor/rmlui/toolbar.cpp
+    src/editor/rmlui/menu.c
+    src/editor/rmlui/toolbar.c
     # The editor's embedded faces; the ImGui panes read them through editor,
     # which links this library, so single-pass linkers resolve them too.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
@@ -65,5 +66,6 @@ target_compile_definitions(chibi_rmlui PRIVATE
 target_link_libraries(chibi_rmlui PRIVATE RmlUi::Core cute core)
 set_target_properties(chibi_rmlui PROPERTIES
     POSITION_INDEPENDENT_CODE ON
+    C_VISIBILITY_PRESET hidden
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)

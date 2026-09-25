@@ -109,5 +109,5 @@ Behavior changed from the ImGui editor:
 
 1. Density is an editor setting. Compact is the default.
 2. Areas (Blender splits) replace floating docking.
-3. Open: Properties categories still come from a table in `studio_scene.c` instead of reflection metadata.
+3. Properties tabs, prototype icons, and field ranges and units come from reflected component metadata: `NODE_CATEGORY` and `NODE_ICON` on components, `NODE_RANGE` and `NODE_UNIT` on float fields (`src/graph/model/annotate.h`).
 4. Open: orange selection in the viewport and graph, blue in lists.

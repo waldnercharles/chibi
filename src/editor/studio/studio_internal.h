@@ -272,6 +272,11 @@ void studio_shortcuts(studio *s);
 bool studio_key_pressed(const studio *s, SDL_Keycode key);
 const char *studio_scene_title(const app_scene_authoring *scene, char *out, size_t size);
 
+/* Scene edits are allowed: the scene can move and shows no runtime snapshot. */
+bool studio_editable(const studio *s);
+/* Case-insensitive substring filter; an empty query matches everything. */
+bool studio_matches(const char *query, const char *text);
+
 /* Editors emit into an area body; headers into the area header. */
 void studio_scene_header(studio *s, int area);
 void studio_scene_body(studio *s, int area);

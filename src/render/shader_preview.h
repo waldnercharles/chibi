@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_SHADER_PREVIEW_H
 
 #include "graph/model/behavior_asset.h"
+#include "render/arena3d.h"
 #include "render/shader_catalog.h"
 
 #include <stdbool.h>
@@ -13,6 +14,7 @@ typedef struct
     bool has_camera;
     float center_x, center_y;
     float span_width, span_height;
+    render_arena_activity activity; /* Materials only; shapes read no scene. */
 } render_shader_preview_options;
 
 /* Tool-owned GPU preview state. Materials use the production arena surface and

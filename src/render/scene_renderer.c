@@ -1303,7 +1303,10 @@ bool app_scene_renderer_preview(
         if (!arena_prepare(renderer, width, height, &settings)) {
             return false;
         }
-        return arena_finish(renderer, render_arena_preview(renderer->arena, asset, &camera, NULL, time));
+        return arena_finish(
+            renderer,
+            render_arena_preview(renderer->arena, asset, &camera, NULL, time, &(render_arena_activity){ 0 })
+        );
     }
     if (!render_shader_upsert(asset, &error)) {
         snprintf(renderer->error, sizeof renderer->error, "%s", error.message);

@@ -8,6 +8,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
+#include "render/arena_influence.h"
 #include "render/shader_catalog.h"
 #include "render/shader_dir.h"
 #include "render/shader_images.h"
@@ -120,6 +121,44 @@ static bool read_preview_pair(yyjson_val *object, const char *key, float pair[2]
             return false;
         }
         pair[i] = (float)yyjson_get_num(component);
+    }
+    return true;
+}
+
+/* Beat and surface-influence values a material reads from its scene. */
+static bool parse_preview_activity(yyjson_val *root, render_arena_activity *activity, char *error, size_t error_size)
+{
+    *activity = (render_arena_activity){ 0 };
+    static const char *beats[] = { "beat_phase", "beat_pulse" };
+    float *targets[] = { &activity->beat_phase, &activity->beat_pulse };
+    for (int i = 0; i < 2; i++) {
+        yyjson_val *value = yyjson_obj_get(root, beats[i]);
+        if (!value) {
+            continue;
+        }
+        double number = yyjson_is_num(value) ? yyjson_get_num(value) : NAN;
+        if (!(number >= 0 && number <= 1)) {
+            snprintf(error, error_size, "%s must be between 0 and 1", beats[i]);
+            return false;
+        }
+        *targets[i] = (float)number;
+    }
+    yyjson_val *influence = yyjson_obj_get(root, "influence");
+    if (!influence) {
+        return true;
+    }
+    if (!yyjson_is_arr(influence) || yyjson_arr_size(influence) != 3) {
+        set_error(error, error_size, "influence must be an array of three colors between 0 and 64");
+        return false;
+    }
+    for (int i = 0; i < 3; i++) {
+        yyjson_val *component = yyjson_arr_get(influence, (size_t)i);
+        double number = yyjson_is_num(component) ? yyjson_get_num(component) : NAN;
+        if (!(number >= 0 && number <= 64)) {
+            set_error(error, error_size, "influence must be an array of three colors between 0 and 64");
+            return false;
+        }
+        activity->influence[i] = (float)number;
     }
     return true;
 }
@@ -661,6 +700,7 @@ static bool add_sample_grid(
     const behavior_asset *asset,
     const char *parameters_json,
     float time,
+    const render_arena_activity *activity,
     const preview_sample_grid *grid,
     char *error,
     size_t error_size
@@ -694,9 +734,14 @@ static bool add_sample_grid(
     }
     yyjson_mut_obj_add_strcpy(doc, sampled, "evaluation", "CPU shader graph evaluation at the returned UV coordinates");
     yyjson_mut_val *samples = yyjson_mut_obj_add_arr(doc, sampled, "samples");
-    for (int y = 0; y < grid->rows; y++) {
+    /* Shapes render without a scene, so only materials read the activity. */
+    bool material = !render_shader_is_shape(shader);
+    render_influences *influences = render_influences_new();
+    render_influences_preview(influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
+    bool sampled_all = true;
+    for (int y = 0; sampled_all && y < grid->rows; y++) {
         float row = grid->rows == 1 ? 0.5f : (float)y / (float)(grid->rows - 1);
-        for (int x = 0; x < grid->columns; x++) {
+        for (int x = 0; sampled_all && x < grid->columns; x++) {
             float column = grid->columns == 1
                              ? 0.5f
                              : (float)x / (float)(grid->columns - 1);
@@ -712,6 +757,10 @@ static bool add_sample_grid(
                 .normal = { 0, 1, 0 },
                 .view_direction = { 0, 1, 0 },
                 .time = time,
+                .beat_phase = material ? activity->beat_phase : 0,
+                .beat_pulse = material ? activity->beat_pulse : 0,
+                .resolve_influence = material ? render_influences_sample : NULL,
+                .influence_userdata = influences,
             };
             float output[SHADER_OUTPUT_MAX][4] = { 0 };
             shader_error sample_error = { 0 };
@@ -721,14 +770,15 @@ static bool add_sample_grid(
                     error_size,
                     sample_error.message[0] ? sample_error.message : "Shader sample failed."
                 );
-                return false;
+                sampled_all = false;
+                break;
             }
             for (int output_index = 0; output_index < SHADER_OUTPUT_MAX;
                  output_index++) {
                 for (int component = 0; component < 4; component++) {
                     if (!isfinite(output[output_index][component])) {
                         set_error(error, error_size, "Shader sample produced a nonfinite output.");
-                        return false;
+                        sampled_all = false;
                     }
                 }
             }
@@ -743,7 +793,8 @@ static bool add_sample_grid(
             }
         }
     }
-    return true;
+    render_influences_free(influences);
+    return sampled_all;
 }
 
 static bool render_asset(
@@ -793,7 +844,17 @@ static bool render_asset(
     cf_app_update(NULL);
     cf_app_set_canvas_size(width, height);
     if (sample_grid && sample_grid->enabled &&
-        !add_sample_grid(response->doc, response->result, asset, parameters_json, time, sample_grid, error, error_size)) {
+        !add_sample_grid(
+            response->doc,
+            response->result,
+            asset,
+            parameters_json,
+            time,
+            &options->activity,
+            sample_grid,
+            error,
+            error_size
+        )) {
         render_shader_preview_free(renderer);
         render_shader_catalog_clear();
         cf_destroy_app();
@@ -951,6 +1012,15 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     }
     preview_camera camera;
     if (!parse_preview_camera(yyjson_obj_get(root, "camera"), &camera, error, sizeof error)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, error);
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    render_arena_activity activity;
+    if (!parse_preview_activity(root, &activity, error, sizeof error)) {
         response_error(&response, PREVIEW_INVALID_REQUEST, error);
         if (exit_code) {
             *exit_code = response.status;
@@ -1127,6 +1197,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         .center_y = camera.center_y,
         .span_width = camera.span_width,
         .span_height = camera.span_height,
+        .activity = activity,
     };
     char original_directory[PATH_MAX];
     if (!getcwd(original_directory, sizeof original_directory) || chdir(root_abs)) {

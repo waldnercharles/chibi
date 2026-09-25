@@ -1081,7 +1081,7 @@ static void draw(fixture *f, const behavior_asset *preview, float time, CF_Pixel
     cf_draw3d_stats();
     cf_app_update(NULL);
     bool ok = preview
-                ? render_arena_preview(f->renderer, preview, &f->camera, NULL, time)
+                ? render_arena_preview(f->renderer, preview, &f->camera, NULL, time, &(render_arena_activity){ 0 })
                 : render_arena_draw(f->renderer, f->world, f->particles, &f->camera, time, NULL);
     if (!ok) {
         fprintf(stderr, "Surface draw: %s\n", render_arena_error(f->renderer));

@@ -764,6 +764,15 @@ static void member_menu(studio *s, int area)
         menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
         duplicate_variable(s);
     }
+    bool callable = g && (g->kind == GRAPH_FUNCTION || g->kind == GRAPH_MACRO);
+    if ((m->kind == STUDIO_MEMBER_VARIABLE || callable) &&
+        menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL, false)) {
+        if (callable) {
+            studio_find_graph_references(s, g);
+        } else {
+            studio_find_variable_references(s, m->id);
+        }
+    }
     kit_menu_separator(k, "s0");
     if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
         delete_member(s);

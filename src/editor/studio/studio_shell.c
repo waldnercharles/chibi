@@ -1215,6 +1215,7 @@ void studio_emit(studio *s)
     statusbar(s);
     palette(s);
     undo_toast(s);
+    studio_rewire_toast(s);
 }
 
 /* Up and Down walk the Outliner's visible rows (Blender). */

@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -66,6 +67,130 @@ static void name_value(studio *s, node *n, int p, const char *name)
     sync_value_names(&s->graph, gr, n);
 }
 
+static bool listed(char **names, const char *name)
+{
+    for (int i = 0; i < acount(names); i++) {
+        if (!strcmp(names[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The one input an edit added that nothing feeds, or NULL. */
+static const char *added_input(const graph *gr, const node *n, char **before)
+{
+    char **fed = behavior_expression_fed_inputs(gr, n);
+    const char *added = NULL;
+    int count = 0;
+    for (int p = 0; p < n->input_count; p++) {
+        const char *name = n->input_pins[p].name;
+        if (n->input_pins[p].kind == PIN_DATA && !listed(before, name) &&
+            !listed(fed, name)) {
+            added = name;
+            count++;
+        }
+    }
+    behavior_expression_free_names(fed);
+    return count == 1 ? added : NULL;
+}
+
+/* Inputs match by name, so a rename drops its wire, as in Unreal's Math
+   Expression; the toast keeps it, or undoes an edit that dropped several. */
+static void offer_rewire(studio *s, const node *n, char **before, char **lost)
+{
+    studio_graph *g = &s->graph;
+    const char *to = acount(lost) == 1 ? added_input(sg_active_graph(s), n, before)
+                                       : NULL;
+    char title[160];
+    snprintf(title, sizeof title, "Unwired %s%s", lost[0], acount(lost) > 1 ? " and more" : "");
+    snprintf(g->rewire.from, sizeof g->rewire.from, "%s", to ? lost[0] : "");
+    snprintf(g->rewire.to, sizeof g->rewire.to, "%s", to ? to : "");
+    snprintf(g->rewire.source, sizeof g->rewire.source, "%s", g->expression);
+    g->rewire.node = n->id;
+    g->rewire.history = acount(sg_graph_editor(s)->undo);
+    kit_toast_dismiss(s->kit, g->rewire.toast);
+    g->rewire.toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                           .title = title,
+                           .action = to ? "Keep Wire" : "Undo",
+                           .duration = 6 }
+    );
+}
+
+static char **input_names(const node *n)
+{
+    char **names = NULL;
+    for (int p = 0; p < n->input_count; p++) {
+        apush(names, xstrdup(n->input_pins[p].name));
+    }
+    return names;
+}
+
+static void set_expression(studio *s, node *n)
+{
+    studio_graph *g = &s->graph;
+    graph *gr = sg_active_graph(s);
+    char **before = input_names(n), **lost = behavior_expression_fed_inputs(gr, n);
+    behavior_expression_error error = { 0 };
+    if (editor_set_behavior_expression(sg_graph_editor(s), n, g->expression, &error) != 0) {
+        snprintf(
+            g->expression_error,
+            sizeof g->expression_error,
+            "%s",
+            error.message[0] ? error.message : "Invalid expression"
+        );
+    } else {
+        g->expression_error[0] = '\0';
+        behavior_expression_keep_unfed(gr, n, &lost);
+        if (acount(lost)) {
+            offer_rewire(s, n, before, lost);
+        }
+    }
+    behavior_expression_free_names(before);
+    behavior_expression_free_names(lost);
+}
+
+void studio_rewire_toast(studio *s)
+{
+    studio_graph *g = &s->graph;
+    if (!g->rewire.toast) {
+        return;
+    }
+    editor *e = s->scene->graph_editor;
+    bool current = e && acount(e->undo) == g->rewire.history;
+    if (!kit_toast_action(s->kit, g->rewire.toast)) {
+        if (!current) {
+            kit_toast_dismiss(s->kit, g->rewire.toast);
+            g->rewire.toast = 0;
+        }
+        return;
+    }
+    g->rewire.toast = 0;
+    if (!current) {
+        return;
+    }
+    editor_undo(e);
+    node *n = sg_node_by_id(s, g->rewire.node);
+    if (!n) {
+        return;
+    }
+    sg_select_only(e, n);
+    behavior_expression_error error = { 0 };
+    if (g->rewire.from[0] && editor_rewire_behavior_expression(
+                                 e,
+                                 n,
+                                 g->rewire.source,
+                                 g->rewire.from,
+                                 g->rewire.to,
+                                 &error
+                             )) {
+        kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_ERROR, .title = "Could not keep the wire" });
+    }
+}
+
 void studio_node_properties(studio *s)
 {
     kit *k = s->kit;
@@ -105,17 +230,7 @@ void studio_node_properties(studio *s)
                 g->expression_error[0] = '\0';
             }
             if (kit_text_field(k, "source", g->expression, sizeof g->expression, "a + b", readonly ? KIT_READONLY : 0)) {
-                behavior_expression_error error = { 0 };
-                if (editor_set_behavior_expression(e, n, g->expression, &error) != 0) {
-                    snprintf(
-                        g->expression_error,
-                        sizeof g->expression_error,
-                        "%s",
-                        error.message[0] ? error.message : "Invalid expression"
-                    );
-                } else {
-                    g->expression_error[0] = '\0';
-                }
+                set_expression(s, n);
             }
             if (g->expression_error[0]) {
                 kit_label(k, "error", "notice", g->expression_error);

@@ -282,6 +282,15 @@ typedef struct
     char expression[512];
     char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
+    struct
+    {
+        int toast;   /* offers Keep Wire or Undo after a source edit */
+        int history; /* the graph's undo depth when offered */
+        uint64_t node;
+        char from[128]; /* the renamed input, or empty for Undo */
+        char to[128];
+        char source[512];
+    } rewire;
     studio_node_problem *problems; /* this frame's, by node */
     uint64_t reveal;   /* node to show once the canvas is laid out */
     bool reveal_frame; /* frame it, rather than pan it into view */
@@ -468,6 +477,7 @@ bool studio_graph_active(const studio *s);
 /* The graph node Properties shows, or 0; and its panels. */
 uint64_t studio_graph_node(const studio *s);
 void studio_node_properties(studio *s);
+void studio_rewire_toast(studio *s);
 /* Members: the open behavior's graphs, variables and named values. */
 void studio_members_header(studio *s, int area);
 void studio_members_body(studio *s, int area);

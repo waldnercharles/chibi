@@ -1469,8 +1469,10 @@ or holds a value (a literal, binding, local, or implied Self).
 `graph_node_is_inline` decides this for the canvas, arrangement, extraction,
 copying, and saving. Trees of up to three nodes fold into one chip written in
 Behavior Expression grammar with the typographic operators node titles use,
-such as `elapsed ≥ Self.GameWeapon.cooldown`. Nodes with breakpoints or
-watches, and generated expression graphs, keep their boxes.
+such as `elapsed ≥ Self.GameWeapon.cooldown`. Literal nodes read as their
+value, named sources such as shader parameters as their name, and other nodes
+as calls, such as `multiply(time, Glow)`. Nodes with breakpoints or watches, and
+generated expression graphs, keep their boxes.
 Folded nodes remain ordinary nodes and wires, so evaluation, compilation, and
 debugging are unchanged. They have no box, wires, or saved position, and
 arrangement skips them.

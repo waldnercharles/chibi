@@ -456,6 +456,43 @@ static void formatting()
     behavior_asset_free(asset);
 }
 
+static node *named(graph *g, const char *type, const char *name)
+{
+    node *n = add(g, type);
+    assert(graph_set_node_reference(g, n, 0, name) == 0);
+    return n;
+}
+
+/* Shader and field nodes leave pure_kind at its default, as constants do. */
+static void domain_formatting()
+{
+    graph g = { 0 };
+    graph_init(&g);
+    node *gain = named(&g, "Shader Parameter", "Reaction Gain");
+    pin_value value = { .type = PIN_F32, .f = 0.84f };
+    assert(graph_set_pin_default(&g, gain, true, 0, &value) == 0);
+    test_check(formats(&g, gain, "Reaction Gain"), "shader parameters format as their name");
+    node *glow = named(&g, "Shader Parameter", "Glow");
+    node *vector = add(&g, "Shader Vector3");
+    for (int axis = 0; axis < 3; axis++) {
+        value.f = (float)axis + 1;
+        assert(graph_set_pin_default(&g, vector, false, axis, &value) == 0);
+    }
+    test_check(
+        formats(&g, binary(&g, "Shader Multiply", add(&g, "Shader Time"), glow), "multiply(time, Glow)") &&
+            formats(&g, vector, "vec3(1, 2, 3)"),
+        "shader operations and vectors format as calls"
+    );
+    node *origin = add(&g, "Field Parameter");
+    pin_value name = { .type = PIN_STR, .str = "OriginX" };
+    assert(graph_set_pin_default(&g, origin, false, 0, &name) == 0);
+    test_check(
+        formats(&g, binary(&g, "Field Add", add(&g, "Field X"), origin), "field_add(field_x, field_parameter(\"OriginX\"))"),
+        "field operations format as calls"
+    );
+    graph_free(&g);
+}
+
 void run_graph_inline_checks()
 {
     eligibility();
@@ -464,4 +501,5 @@ void run_graph_inline_checks()
     serialization();
     arrangement();
     formatting();
+    domain_formatting();
 }

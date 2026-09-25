@@ -4,14 +4,6 @@
 #include <assert.h>
 #include <math.h>
 
-static const flow_run *flow_run_for_display(const editor *e)
-{
-    if (ed_inspection_blocked(e)) {
-        return NULL;
-    }
-    return e->inspection_instance ? e->inspection_run : e->activation;
-}
-
 bool ed_inspection_blocked(const editor *e)
 {
     return e->inspection_blocked ||
@@ -38,7 +30,7 @@ static const flow_traversal *latest_flow_record(const editor *e, const edge *ed)
         return NULL;
     }
     const flow_traversal *latest = NULL;
-    const flow_run *run = flow_run_for_display(e);
+    const flow_run *run = ed_display_run(e);
     if (run) {
         int count = 0;
         const flow_traversal *records = flow_run_traversals(run, &count);
@@ -66,7 +58,7 @@ static bool execution_pulse_active(const editor *e)
 {
     /* Whole-graph feedback is only for hosts without an execution trace. */
     return !ed_inspection_blocked(e) && !e->inspection_instance &&
-           !flow_run_for_display(e) && e->execution_pulse_active && e->active_graph &&
+           !ed_display_run(e) && e->execution_pulse_active && e->active_graph &&
            e->execution_pulse_graph_id == e->active_graph->graph_id;
 }
 

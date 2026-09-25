@@ -351,20 +351,6 @@ const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_au
     return engine_last_timing(runtime);
 }
 
-const game_behavior_profile_frame *app_scene_authoring_behavior_profile(const app_scene_authoring *scene)
-{
-    engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
-                        ? game_prototype_preview_runtime(scene->prototype_preview)
-                        : scene->runtime;
-    return engine_behavior_profile(runtime);
-}
-
-void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool enabled)
-{
-    engine_set_behavior_profiling(scene->runtime, enabled);
-    engine_set_behavior_profiling(game_prototype_preview_runtime(scene->prototype_preview), enabled);
-}
-
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene)
 {
     app_runtime_state state = { 0 };

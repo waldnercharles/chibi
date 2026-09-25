@@ -54,7 +54,6 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
         yyjson_mut_obj_add_bool(doc, item, "dirty", tab->scene_dirty);
         yyjson_mut_obj_add_int(doc, item, "selected", tab->selected);
         yyjson_mut_obj_add_int(doc, item, "selected_prototype", tab->selected_prototype);
-        yyjson_mut_obj_add_int(doc, item, "selected_attachment", tab->selected_attachment);
         checkpoint_text(doc, item, "selected_prototype_name", tab->selected_prototype_name);
         yyjson_mut_val *entities = yyjson_mut_obj_add_arr(doc, item, "entities");
         for (int j = 0; j < tab->scene_entity_count; j++) {
@@ -134,7 +133,6 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
             .scene_dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty")),
             .selected = yyjson_get_int(yyjson_obj_get(item, "selected")),
             .selected_prototype = yyjson_get_int(yyjson_obj_get(item, "selected_prototype")),
-            .selected_attachment = yyjson_get_int(yyjson_obj_get(item, "selected_attachment")),
             .selected_prototype_name = checkpoint_copy_text(item, "selected_prototype_name"),
             .system_json = checkpoint_copy_text(item, "system"),
             .system_saved = checkpoint_copy_text(item, "system_saved"),
@@ -236,9 +234,7 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
             ? selected_prototype(scene)->prototype->name
             : NULL
     );
-    yyjson_mut_obj_add_int(doc, root, "selected_attachment", scene->selected_attachment);
     yyjson_mut_obj_add_int(doc, root, "next_scene_key", scene->next_scene_key);
-    checkpoint_text(doc, root, "selected_content", scene->content_selected_path);
     yyjson_mut_obj_add_int(doc, root, "runtime_target", scene->active_runtime_target);
     yyjson_mut_obj_add_bool(
         doc,
@@ -608,7 +604,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->selected_prototype = selected_prototype_name
                                   ? prototype_index(scene, selected_prototype_name)
                                   : yyjson_get_int(yyjson_obj_get(root, "selected_prototype"));
-    scene->selected_attachment = yyjson_get_int(yyjson_obj_get(root, "selected_attachment"));
     if (scene->selected < -1 || scene->selected >= acount(scene->actors) ||
         scene->selected_prototype < -1 ||
         scene->selected_prototype >= acount(scene->prototypes)) {
@@ -616,8 +611,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     }
     free(scene->content_root);
     scene->content_root = xstrdup(content);
-    free(scene->content_selected_path);
-    scene->content_selected_path = checkpoint_copy_text(root, "selected_content");
     const char *definition_name = yyjson_get_str(yyjson_obj_get(root, "definition"));
     scene->definition = definition_name
                           ? game_live_find_definition(scene->live, definition_name)

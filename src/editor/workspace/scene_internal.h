@@ -60,7 +60,6 @@ typedef struct
     bool scene_dirty;
     int selected;
     int selected_prototype;
-    int selected_attachment;
     char *selected_prototype_name;
     char *asset_saved;
     char *system_json;
@@ -109,17 +108,13 @@ struct app_scene_authoring
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
     char *content_root;
-    char *content_selected_path;
     int selected;
     ecs_entity reveal_actor;
     ecs_entity runtime_selected;
-    ecs_entity *runtime_entities;
     int selected_prototype;
-    int selected_attachment;
     scene_debug debug;
     app_runtime_target debug_target;
     uint64_t debug_sessions[2];
-    bool debug_pinned;
     app_debug_status debug_status;
     bool runtime_snapshot_valid;
     bool runtime_playing;
@@ -205,22 +200,15 @@ void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity);
 
 const char *content_basename(const char *path);
 bool content_path_in_folder(const app_scene_authoring *scene, const char *path, const char *folder);
-bool content_path_is_child(const char *parent, const char *path);
-int content_prototype_index(const app_scene_authoring *scene, const char *path);
 void content_refresh(app_scene_authoring *scene);
 void asset_index_invalidate(app_scene_authoring *scene);
-int create_behavior_asset(app_scene_authoring *scene);
-int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const char *name);
-int create_new_prototype(app_scene_authoring *scene, const char *name);
 bool editable_scalar(const pin_value *value);
 
 void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only);
-int focus_prototype_behavior(app_scene_authoring *scene, const char *asset_name);
 void free_behavior_names(char **names);
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
-void open_content_entry(app_scene_authoring *scene, const scene_content_entry *entry);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
 
 const game_prototype_component *prototype_component_by_id(
@@ -232,12 +220,8 @@ void prototype_history_before(app_scene_authoring *scene, game_prototype *protot
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);
 bool runtime_session(const app_scene_authoring *scene);
 bool scene_can_move(const app_scene_authoring *scene);
-bool scene_search_matches(const char *query, const char *text);
-void select_content_entry(app_scene_authoring *scene, const scene_content_entry *entry);
 void select_instance(app_scene_authoring *scene, int actor_index);
 scene_actor *selected_actor(app_scene_authoring *scene);
-int selected_attachment(app_scene_authoring *scene, game_behavior_attachment_info *out);
-int selected_behavior_attachment(app_scene_authoring *scene, game_behavior_attachment_info *out);
 scene_prototype_asset *selected_prototype(app_scene_authoring *scene);
 ecs_entity selected_scene_entity(const app_scene_authoring *scene);
 int write_prototype_field(
@@ -253,19 +237,14 @@ int actor_has_behavior(game_behavior_world *behaviors, const scene_actor *actor,
 int add_actor(app_scene_authoring *scene, const char *name, const char *prototype_name);
 int add_instance_at(app_scene_authoring *scene, const char *prototype_name, const GameTransform *position);
 game_prototype_registry app_component_registry(void);
-int append_prototype_asset(app_scene_authoring *scene, game_prototype *prototype, const char *path);
 int apply_components_json(app_scene_authoring *scene, ecs_entity entity, const char *components_json);
 int attach_prototype_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user);
 void clear_prototype_history(scene_prototype_asset *asset);
 char *content_path_join(const char *base, const char *name);
-void content_select_path(app_scene_authoring *scene, const char *path);
 scene_prototype_asset *find_prototype(app_scene_authoring *scene, const char *name);
 void free_behavior_snapshots(game_prototype **snapshots);
 void invalidate_runtime_snapshot(app_scene_authoring *scene);
-int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
-int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name);
-void open_prototype(app_scene_authoring *scene, int index);
 int open_system_asset(app_scene_authoring *scene, const char *path);
 void preview_behavior_edits(app_scene_authoring *scene);
 scene_prototype_asset *prototype_at(app_scene_authoring *scene, int index);
@@ -274,16 +253,12 @@ int prototype_redo(app_scene_authoring *scene);
 int prototype_undo(app_scene_authoring *scene);
 char *read_scene_file(const char *path);
 int refresh_prototype_instances(app_scene_authoring *scene, scene_prototype_asset *asset);
-int reload_active_document(app_scene_authoring *scene);
 void remove_selected(app_scene_authoring *scene);
 int replay_scene_edit(app_scene_authoring *scene, bool redo);
 const ecs_component_desc *resolve_system_component(const char *name, void *);
 int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, const game_prototype *prototype);
 int save_active_document(app_scene_authoring *scene);
 int save_behavior_document(app_scene_authoring *scene);
-int save_all_documents(app_scene_authoring *scene);
-int save_as_active_document(app_scene_authoring *scene);
-int create_scene_asset(app_scene_authoring *scene, const char *name);
 void select_prototype(app_scene_authoring *scene, int index);
 void set_behavior_component_context(app_scene_authoring *scene, const char *asset_name);
 int sync_behavior_working(app_scene_authoring *scene);

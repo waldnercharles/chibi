@@ -208,11 +208,6 @@ int editor_log_count(const editor *e);
 editor_log_line editor_log_at(const editor *e, int index, char *origin, size_t origin_size);
 void editor_clear_log(editor *e);
 
-/* Selects and centers a node in the canvas. */
-void editor_select_node(editor *e, node *n);
-void editor_reveal_node(editor *e, node *n);
-int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id);
-
 /* Adds a node of type desc to the graph at canvas (x, y) and returns the core
  * node for wiring, or NULL on allocation failure. */
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y);
@@ -233,11 +228,6 @@ int editor_save(editor *e, const char *path);
  * success, -1 on error (the existing behavior_asset is left untouched). */
 int editor_load(editor *e, const char *path);
 
-/* Preview instance (UI-54/55/57). The editor owns a runtime instance over a
- * cloned applied snapshot. Authoring mutations stay on the working Behavior
- * Asset; an explicit reset replaces the snapshot. */
-behavior_instance *editor_preview_instance(const editor *e);
-
 /* Borrow a runtime instance for read-only graph inspection. The caller owns
  * the instance and must clear or replace it before the instance is detached or
  * destroyed. */
@@ -249,18 +239,11 @@ void editor_set_inspection_blocked(editor *e, bool blocked);
 /* Updates render-only activity for a host execution path without tracing nodes. */
 void editor_set_execution_pulse(editor *e, double monotonic_time);
 
-/* Monotonic counter bumped on every instance (re)creation, so the host can
- * dispatch a once-per-instance event such as the demo Begin() convention. */
-unsigned editor_preview_generation(const editor *e);
-
-/* Create the preview runtime if missing. No-op when one is attached. */
+/* Preview instance (UI-54/55/57). The editor owns a runtime instance over a
+ * cloned applied snapshot. Authoring mutations stay on the working Behavior
+ * Asset; an explicit reset replaces the snapshot. Create is a no-op when one is
+ * attached. */
 void editor_preview_create(editor *e);
 void editor_preview_reset(editor *e);
-
-/* Dispatch an authored event through the selected inspection instance, or
- * the editor preview when no runtime instance is selected. */
-flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_error *error);
-/* Dispatch only through the editor preview, regardless of inspection state. */
-flow_run *editor_dispatch_preview(editor *e, const char *name, flow_inputs inputs, flow_error *error);
 
 #endif

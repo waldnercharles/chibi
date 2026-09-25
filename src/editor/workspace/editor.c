@@ -1,5 +1,4 @@
 #include "editor/graph/eval_view.h"
-#include "editor/graph/preview_gate.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -209,14 +208,12 @@ void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, in
 }
 
 /* The values pins show: the inspected run's watches, or a preview
-   evaluation while previews are allowed. */
+   evaluation while no run owns pin storage. */
 void ed_refresh_values(editor *e)
 {
-    flow_state preview_state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
     eval_view_set_instance(e->ev, ed_display_instance(e));
     eval_view_set_catalog(e->ev, e->asset_catalog, acount(e->asset_catalog));
-    if (ed_inspection_blocked(e) ||
-        (!e->inspection_run && editor_preview_allowed(preview_state))) {
+    if (ed_inspection_blocked(e) || !e->inspection_run) {
         eval_view_refresh(e->ev, e->active_graph);
     }
     eval_view_set_run(e->ev, ed_display_run(e));

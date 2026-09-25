@@ -221,9 +221,6 @@ void run_runtime_catalog_checks()
         test_check(break_sink->breakpoint_enabled != 0, "breakpoint state is available to node rendering");
         test_check(g_break.breakpoints_enabled == 0, "breakpoint list has a global toggle");
         test_check(registry_node_by_name("Reroute Data") != NULL, "direct node spawning has a catalog target");
-        test_check(editor_preview_allowed(FLOW_COMPLETED) == 0, "flow heat settles after execution");
-        test_check(editor_preview_allowed(FLOW_IDLE) == 1, "node activation highlights are idle-safe");
-        test_check(editor_preview_allowed(FLOW_RUNNING) == 0, "data flashes are tied to a live run");
         double sample_30 = 0.0;
         double sample_60 = 0.0;
         double sample_144 = 0.0;

@@ -48,13 +48,6 @@ enum
     CONTENT_PATH_CAP = 512,
 };
 
-int save_active_document(app_scene_authoring *scene);
-char *read_scene_file(const char *path);
-int open_system_asset(app_scene_authoring *scene, const char *path);
-int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
-bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
-bool scene_search_matches(const char *query, const char *text);
-
 #ifdef __EMSCRIPTEN__
 EM_JS(int, web_save_asset, (const char *path, const char *text), {
     return Module['chibiSaveAsset']
@@ -381,17 +374,6 @@ const char *content_basename(const char *path)
     return slash ? slash + 1 : path;
 }
 
-bool content_path_is_child(const char *parent, const char *path)
-{
-    size_t parent_size = strlen(parent);
-    size_t path_size = strlen(path);
-    if (path_size <= parent_size || strncmp(parent, path, parent_size) != 0 ||
-        path[parent_size] != '/') {
-        return false;
-    }
-    return strchr(path + parent_size + 1, '/') == NULL;
-}
-
 static bool content_path_is_descendant(const char *parent, const char *path)
 {
     size_t parent_size = strlen(parent);
@@ -405,12 +387,6 @@ bool content_path_in_folder(const app_scene_authoring *scene, const char *path, 
     int length = snprintf(directory, sizeof directory, "%s/%s", scene->content_root, folder);
     return length > 0 && length < (int)sizeof directory &&
            content_path_is_descendant(directory, path);
-}
-
-void content_select_path(app_scene_authoring *scene, const char *path)
-{
-    free(scene->content_selected_path);
-    scene->content_selected_path = xstrdup(path);
 }
 
 scene_actor *selected_actor(app_scene_authoring *scene)
@@ -551,23 +527,6 @@ void scene_authoring_select_document(
     );
 }
 
-static bool document_asset_active(
-    const app_scene_authoring *scene,
-    app_editor_document_kind kind,
-    const char *id
-)
-{
-    switch (scene->document.kind) {
-        case APP_EDITOR_DOCUMENT_SCENE: return false;
-        case APP_EDITOR_DOCUMENT_PROTOTYPE:
-        case APP_EDITOR_DOCUMENT_BEHAVIOR:
-            return kind == scene->document.kind && scene->document.id && id &&
-                   strcmp(scene->document.id, id) == 0;
-        case APP_EDITOR_DOCUMENT_SYSTEM: return false;
-    }
-    return false;
-}
-
 int prototype_index(app_scene_authoring *scene, const char *name)
 {
     scene_prototype_asset *asset = find_prototype(scene, name);
@@ -595,26 +554,7 @@ void set_behavior_component_context(app_scene_authoring *scene, const char *asse
     scene->selected_prototype = behavior_prototype_index(scene, asset_name);
 }
 
-int selected_attachment(app_scene_authoring *scene, game_behavior_attachment_info *out)
-{
-    ecs_entity entity = selected_scene_entity(scene);
-    if (!entity.slot || !out) {
-        return 0;
-    }
-    game_behavior_world *behaviors = scene->live->behaviors;
-    int count = game_behavior_attachment_count_for_entity(behaviors, entity);
-    if (count == 0) {
-        scene->selected_attachment = -1;
-        return 0;
-    }
-    if (scene->selected_attachment < 0 || scene->selected_attachment >= count) {
-        scene->selected_attachment = 0;
-    }
-    return game_behavior_attachment_info_at(behaviors, entity, scene->selected_attachment, out) ==
-           0;
-}
-
-int selected_behavior_attachment(app_scene_authoring *scene, game_behavior_attachment_info *out)
+static int selected_behavior_attachment(app_scene_authoring *scene, game_behavior_attachment_info *out)
 {
     if (!scene->definition || !scene->definition->name || !out) {
         return 0;
@@ -657,7 +597,7 @@ void select_prototype(app_scene_authoring *scene, int index)
     );
 }
 
-void open_prototype(app_scene_authoring *scene, int index)
+static void open_prototype(app_scene_authoring *scene, int index)
 {
     if (index < 0 || index >= acount(scene->prototypes)) {
         return;
@@ -675,9 +615,6 @@ int app_scene_authoring_open_prototype(app_scene_authoring *scene, const char *n
     scene_prototype_asset *asset = find_prototype(scene, name);
     if (!asset) {
         return -1;
-    }
-    if (asset->path) {
-        content_select_path(scene, asset->path);
     }
     open_prototype(scene, (int)(asset - scene->prototypes));
     return 0;
@@ -699,12 +636,6 @@ void select_instance(app_scene_authoring *scene, int actor_index)
     if (scene->document.kind != APP_EDITOR_DOCUMENT_BEHAVIOR) {
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     }
-    scene->selected_attachment = game_behavior_attachment_count_for_entity(
-                                     scene->live->behaviors,
-                                     scene->actors[actor_index].entity
-                                 )
-                                   ? 0
-                                   : -1;
 }
 
 int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity)
@@ -715,7 +646,6 @@ int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_en
     finish_transform_edit(scene, scene->dragging_actor);
     scene->runtime_selected = entity;
     scene->selected = -1;
-    scene->selected_attachment = 0;
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     return 0;
 }
@@ -826,7 +756,7 @@ static game_behavior_world *debug_behaviors(app_scene_authoring *scene, app_runt
 void sync_editor_inspection(app_scene_authoring *scene)
 {
     game_behavior_attachment_info info;
-    if (!scene->debug_pinned && selected_behavior_attachment(scene, &info) &&
+    if (selected_behavior_attachment(scene, &info) &&
         (!scene->debug.asset_name || scene->debug_target != scene->active_runtime_target ||
          ecs_entity_to_u64(scene->debug.entity) != ecs_entity_to_u64(info.entity) ||
          strcmp(scene->debug.asset_name, info.asset_name))) {
@@ -887,49 +817,6 @@ void sync_editor_inspection(app_scene_authoring *scene)
     editor_set_inspection_trace(scene->graph_editor, trace, trace_count);
 }
 
-int app_scene_authoring_set_debug_target(
-    app_scene_authoring *scene,
-    app_runtime_target target,
-    ecs_entity entity,
-    const char *asset_name
-)
-{
-    if (target < APP_RUNTIME_PREVIEW || target > APP_RUNTIME_SCENE ||
-        !asset_name || !ecs_entity_is_alive(debug_world(scene, target), entity)) {
-        return -1;
-    }
-    game_behavior_world *behaviors = debug_behaviors(scene, target);
-    for (int i = 0; i < game_behavior_attachment_count_for_entity(behaviors, entity);
-         i++) {
-        game_behavior_attachment_info info;
-        if (game_behavior_attachment_info_at(behaviors, entity, i, &info) == 0 &&
-            !strcmp(info.asset_name, asset_name)) {
-            scene_debug_select(&scene->debug, &info, scene->debug_sessions[target]);
-            scene->debug_target = target;
-            scene->debug_pinned = true;
-            sync_editor_inspection(scene);
-            return 0;
-        }
-    }
-    return -1;
-}
-
-void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned)
-{
-    scene->debug_pinned = pinned;
-    sync_editor_inspection(scene);
-}
-
-app_debug_state app_scene_authoring_debug_state(app_scene_authoring *scene)
-{
-    sync_editor_inspection(scene);
-    return (app_debug_state){ scene->debug_target,
-                              scene->debug.entity,
-                              scene->debug.asset_name,
-                              scene->debug_pinned,
-                              scene->debug_status };
-}
-
 app_scene_authoring *app_scene_authoring_new_with_content_root(
     ecs_world *world,
     game_live_world *live,
@@ -979,7 +866,6 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->selected = -1;
     scene->selected_prototype = -1;
     scene->runtime_preview_prototype = -1;
-    scene->selected_attachment = -1;
     scene_tabs_initialize(scene);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     editor_set_value_formatter(graph_editor, format_entity_value, scene);
@@ -1209,8 +1095,6 @@ int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char 
     char *copy = xstrdup(path);
     free(scene->content_root);
     scene->content_root = copy;
-    free(scene->content_selected_path);
-    scene->content_selected_path = NULL;
     content_refresh(scene);
     return 0;
 }
@@ -1256,7 +1140,6 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         remove_selected(scene);
     }
     afree(scene->actors);
-    afree(scene->runtime_entities);
     asset_index_free(scene->asset_index);
     scene_tabs_free(scene);
     scene_history_free(scene->history);
@@ -1278,7 +1161,6 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     game_system_document_free(scene->system_document);
     free(scene->system_path);
     free(scene->current_scene_tab_key);
-    free(scene->content_selected_path);
     free(scene->document_id);
     free(scene->graph_document_id);
     free(scene);
@@ -1314,7 +1196,6 @@ static void refresh_catalogs(app_scene_authoring *scene)
     if (scene->runtime_selected.slot &&
         !game_entities_owns(scene->live->entities, scene->runtime_selected)) {
         scene->runtime_selected = (ecs_entity){ 0 };
-        scene->selected_attachment = -1;
         sync_editor_inspection(scene);
     }
 }

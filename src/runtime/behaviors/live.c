@@ -329,29 +329,6 @@ int game_live_remove_definition(game_live_world *world, const char *asset_name)
     return -1;
 }
 
-int game_live_duplicate_definition(game_live_world *world, const char *asset_name, const behavior_asset *source)
-{
-    if (!world || !asset_name || !asset_name[0] || !source ||
-        find_definition(world, asset_name)) {
-        return -1;
-    }
-    char *json = behavior_asset_save_json(source);
-    behavior_asset *working = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
-    game_live_definition *definition = working
-                                         ? game_live_definition_new(asset_name, working)
-                                         : NULL;
-    if (!definition) {
-        behavior_asset_free(working);
-        return -1;
-    }
-    if (game_live_add_definition(world, definition) != 0) {
-        game_live_definition_free(definition);
-        return -1;
-    }
-    return 0;
-}
-
 static int update_library(
     game_live_world *world,
     game_live_definition *definition,

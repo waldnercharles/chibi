@@ -369,15 +369,6 @@ void run_graph_model_checks()
     pasted_edge_indexes();
     exec_index_edits();
     invalid_exec_index();
-    test_check(editor_preview_allowed(FLOW_IDLE), "idle preview is allowed");
-    test_check(
-        !editor_preview_allowed(FLOW_RUNNING) &&
-            !editor_preview_allowed(FLOW_SUSPENDED) &&
-            !editor_preview_allowed(FLOW_PAUSED) &&
-            !editor_preview_allowed(FLOW_COMPLETED) &&
-            !editor_preview_allowed(FLOW_FAILED),
-        "preview is suspended for every non-idle run state"
-    );
 
     arena a;
     arena_init(&a, 4096);

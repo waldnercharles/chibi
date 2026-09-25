@@ -73,7 +73,6 @@ void ed_destroy_preview(editor *e)
         behavior_instance_destroy(e->instance);
         e->instance = NULL;
     }
-    e->activation = NULL;
     behavior_asset_free(e->preview_behavior_asset);
     e->preview_behavior_asset = NULL;
     eval_view_set_run(e->ev, NULL);
@@ -461,7 +460,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                         );
                     }
                 }
-                e->expression_error = error;
+                ed_show_error(e, error.message);
                 free(reference_before);
                 return 0;
             }
@@ -586,10 +585,7 @@ void ed_refresh_stale_behavior_expressions(editor *e)
                 continue;
             }
             behavior_expression_error error = { 0 };
-            if (behavior_expression_refresh(e->asset, call, &error) != 0 &&
-                error.message[0]) {
-                e->expression_error = error;
-            }
+            (void)behavior_expression_refresh(e->asset, call, &error);
         }
     }
 }

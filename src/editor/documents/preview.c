@@ -1,5 +1,4 @@
 #include "editor/graph/eval_view.h"
-#include "editor/graph/preview_gate.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/library.h"
@@ -15,19 +14,9 @@ static void ed_log_sink(const node *origin, const char *message, void *user);
 #include <stdlib.h>
 #include <string.h>
 
-static int ed_activation_live(const editor *e)
-{
-    return e && e->activation &&
-           !editor_preview_allowed(flow_run_status(e->activation));
-}
-
 const flow_run *ed_display_run(const editor *e)
 {
-    if (ed_inspection_blocked(e)) {
-        return NULL;
-    }
-    return e->inspection_instance ? e->inspection_run
-                                  : (ed_activation_live(e) ? e->activation : NULL);
+    return ed_inspection_blocked(e) || !e->inspection_instance ? NULL : e->inspection_run;
 }
 
 /* Authoring edits mutate the working Behavior Asset, not the preview snapshot. */
@@ -55,16 +44,6 @@ void ed_compile(editor *e)
         apush(e->compile.items, diagnostic);
         e->compile.error_count++;
     }
-}
-
-behavior_instance *editor_preview_instance(const editor *e)
-{
-    return e ? e->instance : NULL;
-}
-
-unsigned editor_preview_generation(const editor *e)
-{
-    return e ? e->instance_generation : 0;
 }
 
 unsigned editor_edit_revision(const editor *e)
@@ -115,8 +94,6 @@ void editor_preview_create(editor *e)
     }
     e->instance->sink = ed_log_sink;
     e->instance->sink_user = e;
-    e->instance_generation++;
-    e->activation = NULL;
 }
 
 void editor_preview_reset(editor *e)
@@ -124,57 +101,6 @@ void editor_preview_reset(editor *e)
     if (e) {
         ed_destroy_preview(e);
     }
-}
-
-static flow_run *editor_dispatch_instance(
-    editor *e,
-    behavior_instance *target,
-    const char *name,
-    flow_inputs inputs,
-    flow_error *error
-)
-{
-    if (!target) {
-        return NULL;
-    }
-    flow_run *act = behavior_instance_dispatch(target, name, inputs, error);
-    if (!act) {
-        return NULL;
-    }
-    e->activation = act;
-    e->run_started_at = e->monotonic_time;
-    return act;
-}
-
-flow_run *editor_dispatch_preview(editor *e, const char *name, flow_inputs inputs, flow_error *error)
-{
-    if (!e) {
-        return NULL;
-    }
-    if (!e->instance) {
-        editor_preview_create(e);
-    }
-    return editor_dispatch_instance(e, e->instance, name, inputs, error);
-}
-
-flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_error *error)
-{
-    if (!e) {
-        return NULL;
-    }
-    if (ed_inspection_blocked(e)) {
-        if (error) {
-            *error = (flow_error){
-                .code = FLOW_ERR_STATE,
-                .message = "Debug target is unavailable or has unapplied edits"
-            };
-        }
-        return NULL;
-    }
-    if (e->inspection_instance) {
-        return editor_dispatch_instance(e, (behavior_instance *)e->inspection_instance, name, inputs, error);
-    }
-    return editor_dispatch_preview(e, name, inputs, error);
 }
 
 static void ed_refresh_edit_revision(editor *e)
@@ -219,14 +145,10 @@ void editor_set_inspection_instance(editor *e, const behavior_instance *instance
         return;
     }
     if (!instance && e->inspection_instance) {
-        e->activation = NULL;
         e->inspection_trace = NULL;
         e->inspection_trace_count = 0;
     }
     e->inspection_instance = instance;
-    if (instance) {
-        e->activation = (flow_run *)e->inspection_run;
-    }
 }
 
 void editor_set_inspection_blocked(editor *e, bool blocked)
@@ -239,7 +161,6 @@ void editor_set_inspection_blocked(editor *e, bool blocked)
     e->inspection_run = NULL;
     e->inspection_trace = NULL;
     e->inspection_trace_count = 0;
-    e->activation = NULL;
     eval_view_set_instance(e->ev, NULL);
     eval_view_set_run(e->ev, NULL);
 }
@@ -250,9 +171,6 @@ void editor_set_inspection_run(editor *e, const flow_run *run)
         return;
     }
     e->inspection_run = run;
-    if (e->inspection_instance) {
-        e->activation = (flow_run *)run;
-    }
 }
 
 void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count)
@@ -306,36 +224,8 @@ static void ed_log_sink(const node *origin, const char *message, void *user)
     }
     ed_log_entry *entry = &e->log[e->log_count < ED_LOG_MAX ? e->log_count++ : ED_LOG_MAX - 1];
     entry->origin = origin;
-    entry->timestamp = e->monotonic_time - e->run_started_at;
-    entry->step = e->activation ? flow_run_steps(e->activation) : 0;
+    const flow_run *run = ed_display_run(e);
+    entry->timestamp = e->monotonic_time;
+    entry->step = run ? flow_run_steps(run) : 0;
     snprintf(entry->message, sizeof entry->message, "%s", message ? message : "");
-}
-
-void editor_select_node(editor *e, node *n)
-{
-    if (e) {
-        ed_select_node(e, n, 0);
-    }
-}
-
-void editor_reveal_node(editor *e, node *n)
-{
-    if (!e || !n) {
-        return;
-    }
-    n = graph_inline_owner(e->active_graph, n);
-    ed_select_node(e, n, 0);
-}
-
-int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id)
-{
-    if (!e || editor_open_graph(e, graph_id) != 0) {
-        return -1;
-    }
-    node *n = graph_node_by_id(e->active_graph, node_id);
-    if (!n) {
-        return -1;
-    }
-    editor_reveal_node(e, n);
-    return 0;
 }

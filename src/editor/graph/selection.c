@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-int ed_link_equal(const ed_link_ref *a, const ed_link_ref *b)
+static int ed_link_equal(const ed_link_ref *a, const ed_link_ref *b)
 {
     return a->from_id == b->from_id && a->from_pin_id == b->from_pin_id &&
            a->to_id == b->to_id && a->to_pin_id == b->to_pin_id;

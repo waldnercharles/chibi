@@ -686,7 +686,6 @@ add_executable(test_suite
     test/sdf_coverage.c
     test/draw_backend.cpp
     src/host/stacktrace.c
-    src/editor/graph/preview_gate.c
     ${TEST_REGISTRY}
 )
 # Generated-C system benchmarks call the same runtime helpers as SLJIT.

@@ -139,7 +139,7 @@ static void draw_frame(arena_fixture *f)
         app_gameplay_input(f->scene, f->runtime, f->viewport);
     }
     f->stages[ARENA_STAGE_DOCUMENTS] = elapsed_ms(&since);
-    app_scene_authoring_set_behavior_profiling(f->scene, f->profile_behaviors);
+    engine_set_behavior_profiling(f->runtime, f->profile_behaviors);
     assert(app_scene_authoring_frame(f->scene, f->time) == FLOW_OK);
     f->stages[ARENA_STAGE_SIMULATION] = elapsed_ms(&since);
     viewport_input(f);
@@ -1054,14 +1054,8 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
         f.sample_controls = true;
         window_focus_event(true);
         assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
-        assert(
-            app_scene_authoring_set_debug_target(
-                f.scene,
-                APP_RUNTIME_SCENE,
-                f.scene->actors[player_index(&f)].entity,
-                "TwinStickWeaponBehavior"
-            ) == 0
-        );
+        /* Inspect the player's open weapon graph, as selecting it in Studio does. */
+        select_instance(f.scene, player_index(&f));
         f.focused = true;
         frame(&f);
         frame(&f);

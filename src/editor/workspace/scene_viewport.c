@@ -289,7 +289,6 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         afree(remove);
         scene->selected = -1;
         scene->runtime_selected = (ecs_entity){ 0 };
-        scene->selected_attachment = -1;
         for (int i = 0; i < acount(scene->actors); i++) {
             scene->actors[i].marked = false;
         }
@@ -328,7 +327,6 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         if (!picked.slot) {
             scene->selected = -1;
             scene->runtime_selected = (ecs_entity){ 0 };
-            scene->selected_attachment = -1;
             for (int i = 0; i < acount(scene->actors); i++) {
                 scene->actors[i].marked = false;
             }

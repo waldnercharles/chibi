@@ -75,7 +75,6 @@ struct editor
     behavior_asset *asset;
     editor_ui_context ui_context;
     graph *active_graph;
-    behavior_expression_error expression_error;
     ed_graph_caller *graph_callers;
     eval_view *ev;
     editor_value_formatter value_formatter;
@@ -89,14 +88,12 @@ struct editor
     bool inspection_blocked;
     const behavior_instance_trace_entry *inspection_trace;
     int inspection_trace_count;
-    unsigned instance_generation;
     unsigned edit_revision;
     const behavior_asset *edit_revision_asset;
     char *edit_revision_snapshot;
     char *saved_snapshot;
     int edit_revision_initialized;
     int edit_pending;
-    flow_run *activation; /* the latest preview or inspected activation */
     compile_report compile;
     double monotonic_time;
     double execution_pulse_time;
@@ -104,7 +101,6 @@ struct editor
     int execution_pulse_active;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
-    double run_started_at;
     bool arrange_pending;
 
     node **selected;
@@ -191,7 +187,6 @@ node *ed_convert_behavior_expression_selection(
     int count,
     behavior_expression_error *error
 );
-int ed_link_equal(const ed_link_ref *a, const ed_link_ref *b);
 void ed_clear_selection(editor *e);
 void ed_reset_node_interaction(editor *e);
 int ed_switch_graph(editor *e, graph *graph);

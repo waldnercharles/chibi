@@ -147,7 +147,6 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/pins.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/presentation.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/preview_gate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/selection.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/input_bindings.c

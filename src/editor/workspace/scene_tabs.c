@@ -185,7 +185,6 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
     tab->scene_dirty = scene->scene_dirty;
     tab->selected = scene->selected;
     tab->selected_prototype = scene->selected_prototype;
-    tab->selected_attachment = scene->selected_attachment;
     free(tab->selected_prototype_name);
     tab->selected_prototype_name = selected_prototype(scene) &&
                                            selected_prototype(scene)->prototype
@@ -256,18 +255,6 @@ static void restore_scene_tab_view(app_scene_authoring *scene, const scene_docum
     if (scene->selected_prototype < 0 ||
         scene->selected_prototype >= acount(scene->prototypes)) {
         scene->selected_prototype = -1;
-    }
-    scene->selected_attachment = tab->selected_attachment;
-    if (scene->selected >= 0) {
-        int count = game_behavior_attachment_count_for_entity(
-            scene->live->behaviors,
-            scene->actors[scene->selected].entity
-        );
-        if (scene->selected_attachment < 0 || scene->selected_attachment >= count) {
-            scene->selected_attachment = count ? 0 : -1;
-        }
-    } else {
-        scene->selected_attachment = -1;
     }
 }
 

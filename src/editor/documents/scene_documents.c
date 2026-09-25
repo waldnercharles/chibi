@@ -14,171 +14,7 @@
 
 static const mode_t DOCUMENT_DIRECTORY_MODE = 511;
 
-static void duplicate_current_behavior(app_scene_authoring *scene)
-{
-    for (int i = 1; i < 1000; i++) {
-        char name[64];
-        snprintf(name, sizeof name, "SceneBehaviorCopy%d", i);
-        if (game_behavior_asset_registered(scene->live->behaviors, name)) {
-            continue;
-        }
-        if (game_live_duplicate_definition(scene->live, name, scene->editor_working) == 0) {
-            game_live_mark_dirty(game_live_find_definition(scene->live, name));
-            snprintf(scene->message, sizeof scene->message, "Created %s.", name);
-        } else {
-            snprintf(scene->message, sizeof scene->message, "Could not create %s.", name);
-        }
-        return;
-    }
-    snprintf(scene->message, sizeof scene->message, "Behavior asset name space is full.");
-}
-
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
-
-static bool valid_asset_name(const char *name)
-{
-    return name[0] && strspn(name, " ") != strlen(name) && strlen(name) <= 127 &&
-           strspn(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-") ==
-               strlen(name);
-}
-
-int create_new_prototype(app_scene_authoring *scene, const char *requested_name)
-{
-    if (requested_name && !valid_asset_name(requested_name)) {
-        snprintf(scene->message, sizeof scene->message, "Use letters, numbers, spaces, hyphens or underscores.");
-        return -1;
-    }
-    for (int i = 1; i < 1000; i++) {
-        char name[128];
-        char json[512];
-        snprintf(name, sizeof name, "NewPrototype%d", i);
-        if (requested_name) {
-            snprintf(name, sizeof name, "%s", requested_name);
-        }
-        if (find_prototype(scene, name)) {
-            if (requested_name) {
-                snprintf(scene->message, sizeof scene->message, "A prototype named %s already exists.", name);
-                return -1;
-            }
-            continue;
-        }
-        snprintf(
-            json,
-            sizeof json,
-            "{\"name\":\"%s\",\"components\":{"
-            "\"GameTransform\":{\"x\":0,\"y\":0}}}",
-            name
-        );
-        if (app_scene_authoring_register_prototype(scene, json, NULL) != 0) {
-            break;
-        }
-        open_prototype(scene, acount(scene->prototypes) - 1);
-        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
-        return 0;
-    }
-    snprintf(scene->message, sizeof scene->message, "Prototype name space is full.");
-    return -1;
-}
-
-static int duplicate_selected_prototype(app_scene_authoring *scene)
-{
-    scene_prototype_asset *source = selected_prototype(scene);
-    if (!source) {
-        snprintf(scene->message, sizeof scene->message, "Select a prototype to duplicate.");
-        return -1;
-    }
-    char error[256];
-    for (int i = 1; i < 1000; i++) {
-        char name[64];
-        snprintf(name, sizeof name, "%sCopy%d", source->prototype->name, i);
-        if (find_prototype(scene, name)) {
-            continue;
-        }
-        game_prototype *copy = game_prototype_clone(source->prototype, error, sizeof error);
-        if (!copy) {
-            snprintf(scene->message, sizeof scene->message, "Could not duplicate prototype: %s", error);
-            return -1;
-        }
-        if (game_prototype_set_name(copy, name) != 0) {
-            game_prototype_free(copy);
-            snprintf(scene->message, sizeof scene->message, "Could not duplicate prototype.");
-            return -1;
-        }
-        if (append_prototype_asset(scene, copy, NULL) != 0) {
-            snprintf(scene->message, sizeof scene->message, "Could not duplicate prototype.");
-            return -1;
-        }
-        select_prototype(scene, acount(scene->prototypes) - 1);
-        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
-        return 0;
-    }
-    snprintf(scene->message, sizeof scene->message, "Prototype name space is full.");
-    return -1;
-}
-
-int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const char *requested_name)
-{
-    if (requested_name && !valid_asset_name(requested_name)) {
-        snprintf(scene->message, sizeof scene->message, "Use letters, numbers, spaces, hyphens or underscores.");
-        return -1;
-    }
-    for (int i = 1; i < 1000; i++) {
-        char name[128];
-        const char *labels[] = { "Behavior", "Library", "Material",
-                                 "Shape",    "Event",   "ShaderLibrary",
-                                 "Field" };
-        snprintf(name, sizeof name, "New%s%d", labels[domain], i);
-        if (requested_name) {
-            snprintf(name, sizeof name, "%s", requested_name);
-        }
-        if (game_live_find_definition(scene->live, name)) {
-            if (requested_name) {
-                snprintf(scene->message, sizeof scene->message, "An asset named %s already exists.", name);
-                return -1;
-            }
-            continue;
-        }
-        behavior_asset *working = behavior_asset_new(name);
-        if (!working) {
-            behavior_asset_free(working);
-            break;
-        }
-        working->domain = domain;
-        if (domain == BEHAVIOR_DOMAIN_EVENT) {
-            behavior_asset_set_owner_type(working, "ecs.entity");
-        }
-        if (domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE) {
-            working->bounds[0] = working->bounds[1] = 32;
-            shader_graph_add_output(working->graph, domain == BEHAVIOR_DOMAIN_SHAPE);
-        }
-        if (domain == BEHAVIOR_DOMAIN_FIELD) {
-            graph_add_node(working->graph, registry_node_by_name("Field Output"));
-        }
-        game_live_definition *definition = game_live_definition_new(name, working);
-        if (!definition || game_live_add_definition(scene->live, definition) != 0) {
-            if (definition) {
-                game_live_definition_free(definition);
-            } else {
-                behavior_asset_free(working);
-            }
-            break;
-        }
-        game_live_mark_dirty(definition);
-        if (open_behavior_asset(scene, name) != 0) {
-            snprintf(scene->message, sizeof scene->message, "Created %s, but could not open it.", name);
-            return -1;
-        }
-        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
-        return 0;
-    }
-    snprintf(scene->message, sizeof scene->message, "Behavior asset name space is full.");
-    return -1;
-}
-
-int create_behavior_asset(app_scene_authoring *scene)
-{
-    return create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT, NULL);
-}
 
 static int sync_open_behavior(app_scene_authoring *scene)
 {
@@ -224,36 +60,9 @@ int open_behavior_asset(app_scene_authoring *scene, const char *asset_name)
     return 0;
 }
 
-int focus_prototype_behavior(app_scene_authoring *scene, const char *asset_name)
-{
-    if (open_behavior_graph(scene, asset_name) != 0) {
-        return -1;
-    }
-    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
-    snprintf(scene->message, sizeof scene->message, "Editing %s in the Prototype.", asset_name);
-    return 0;
-}
-
 int app_scene_authoring_open_behavior(app_scene_authoring *scene, const char *asset_name)
 {
     return open_behavior_asset(scene, asset_name);
-}
-
-static int spawn_selected_prototype(app_scene_authoring *scene)
-{
-    scene_prototype_asset *asset = selected_prototype(scene);
-    return asset ? app_scene_authoring_add_instance(scene, asset->prototype->name)
-                 : -1;
-}
-
-int content_prototype_index(const app_scene_authoring *scene, const char *path)
-{
-    for (int i = 0; i < acount(scene->prototypes); i++) {
-        if (scene->prototypes[i].path && strcmp(scene->prototypes[i].path, path) == 0) {
-            return i;
-        }
-    }
-    return -1;
 }
 
 static int content_behavior_index(const app_scene_authoring *scene, const char *path)
@@ -335,42 +144,6 @@ static int ensure_directory(const char *path)
     return -1;
 }
 
-int create_scene_asset(app_scene_authoring *scene, const char *name)
-{
-    if (!valid_asset_name(name)) {
-        snprintf(scene->message, sizeof scene->message, "Use letters, numbers, spaces, hyphens or underscores.");
-        return -1;
-    }
-    char *directory = content_path_join(scene->content_root, "scenes");
-    int result = ensure_directory(directory);
-    char filename[160];
-    snprintf(filename, sizeof filename, "%s" ASSET_EXTENSION, name);
-    char *path = content_path_join(directory, filename);
-    free(directory);
-    FILE *existing = fopen(path, "rb");
-    if (existing) {
-        fclose(existing);
-        snprintf(scene->message, sizeof scene->message, "A scene named %s already exists.", name);
-        free(path);
-        return -1;
-    }
-    char json[256];
-    snprintf(json, sizeof json, "{\"version\":1,\"name\":\"%s\",\"presentation\":\"2d\",\"entities\":[]}", name);
-    if (!result) {
-        result = write_text_file_atomic(path, json);
-    }
-    if (!result) {
-        result = scene_tabs_open_scene(scene, path);
-    }
-    if (!result) {
-        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
-    } else {
-        snprintf(scene->message, sizeof scene->message, "Could not create %s.", name);
-    }
-    free(path);
-    return result;
-}
-
 static char *document_default_path(app_scene_authoring *scene)
 {
     const char *folder = NULL;
@@ -407,7 +180,7 @@ static char *document_default_path(app_scene_authoring *scene)
     return path;
 }
 
-int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name)
+static int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name)
 {
     game_live_definition *definition = asset_name
                                          ? game_live_find_definition(scene->live, asset_name)
@@ -509,6 +282,8 @@ static int reload_behavior_document(app_scene_authoring *scene)
     return reload_behavior_from_disk(scene, NULL);
 }
 
+static int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
+
 static int reload_prototype_document(app_scene_authoring *scene)
 {
     scene_prototype_asset *asset = selected_prototype(scene);
@@ -561,7 +336,7 @@ static int reload_prototype_document(app_scene_authoring *scene)
     return 0;
 }
 
-int reload_active_document(app_scene_authoring *scene)
+static int reload_active_document(app_scene_authoring *scene)
 {
     if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
         return scene->system_path ? load_system_asset(scene, scene->system_path, true)
@@ -578,18 +353,6 @@ int reload_active_document(app_scene_authoring *scene)
         return -1;
     }
     return app_scene_authoring_load(scene, scene->scene_path);
-}
-
-void select_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
-{
-    content_select_path(scene, entry->path);
-    if (entry->directory) {
-        return;
-    }
-    int prototype_index = content_prototype_index(scene, entry->path);
-    if (prototype_index >= 0) {
-        select_prototype(scene, prototype_index);
-    }
 }
 
 int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload)
@@ -658,7 +421,7 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     return 0;
 }
 
-int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
+static int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
 {
     char *json = read_scene_file(path);
     if (!json) {
@@ -677,35 +440,6 @@ int open_system_asset(app_scene_authoring *scene, const char *path)
 int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path)
 {
     return scene && path ? open_system_asset(scene, path) : -1;
-}
-
-void open_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
-{
-    if (entry->directory) {
-        return;
-    }
-    int prototype_index = content_prototype_index(scene, entry->path);
-    if (prototype_index >= 0) {
-        open_prototype(scene, prototype_index);
-        return;
-    }
-    int behavior_index = content_behavior_index(scene, entry->path);
-    if (behavior_index >= 0) {
-        const char *name = game_live_definition_at(scene->live, behavior_index)->name;
-        if (open_behavior_asset(scene, name) != 0) {
-            snprintf(scene->message, sizeof scene->message, "Could not open behavior asset.");
-        }
-        return;
-    }
-    if (content_path_in_folder(scene, entry->path, "scenes")) {
-        scene_tabs_open_scene(scene, entry->path);
-        return;
-    }
-    if (content_path_in_folder(scene, entry->path, "systems")) {
-        if (open_system_asset(scene, entry->path) != 0) {
-            snprintf(scene->message, sizeof scene->message, "Could not open System asset.");
-        }
-    }
 }
 
 static int save_system_document(app_scene_authoring *scene, const char *path)
@@ -747,7 +481,7 @@ static int save_system_document(app_scene_authoring *scene, const char *path)
     return result;
 }
 
-int save_as_active_document(app_scene_authoring *scene)
+static int save_as_active_document(app_scene_authoring *scene)
 {
     char *path = document_default_path(scene);
     if (!path) {
@@ -867,63 +601,6 @@ int save_active_document(app_scene_authoring *scene)
         return -1;
     }
     return app_scene_authoring_save(scene, scene->scene_path);
-}
-
-int save_all_documents(app_scene_authoring *scene)
-{
-    int result = 0;
-    int apply_blocked = 0;
-    if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
-        apply_blocked = sync_behavior_working(scene) != 0;
-    }
-    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM &&
-        (!scene->system_document || !scene->system_path ||
-         save_system_document(scene, scene->system_path) != 0)) {
-        result = -1;
-    }
-    for (int i = 0; i < acount(scene->prototypes); i++) {
-        scene_prototype_asset *asset = &scene->prototypes[i];
-        if (!asset->dirty) {
-            continue;
-        }
-        if (!asset->path || app_scene_authoring_save_prototype(
-                                scene,
-                                asset->prototype->name,
-                                asset->path
-                            ) != 0) {
-            result = -1;
-        }
-    }
-    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
-        game_live_definition *definition = game_live_definition_at(scene->live, i);
-        if (!definition || !definition->unsaved) {
-            continue;
-        }
-        if (save_behavior_definition(scene, definition, NULL) != 0) {
-            result = -1;
-            continue;
-        }
-        if (game_live_preview(
-                scene->live,
-                definition,
-                scene->preview_message,
-                sizeof scene->preview_message
-            ) != 0) {
-            apply_blocked = 1;
-        }
-    }
-    if (scene->scene_dirty) {
-        if (!scene->scene_path ||
-            app_scene_authoring_save(scene, scene->scene_path) != 0) {
-            result = -1;
-        }
-    }
-    if (apply_blocked) {
-        snprintf(scene->message, sizeof scene->message, "Saved authored data; one or more behavior applies are blocked.");
-    } else if (result == 0) {
-        snprintf(scene->message, sizeof scene->message, "Saved all dirty documents.");
-    }
-    return result;
 }
 
 int app_scene_authoring_save_as(app_scene_authoring *scene)

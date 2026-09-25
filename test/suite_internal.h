@@ -5,7 +5,6 @@
 #include "assets/scene_document.h"
 #include "ecs/ecs.h"
 #include "editor/graph/flow_visual.h"
-#include "editor/graph/preview_gate.h"
 #include "editor/workspace/editor.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"

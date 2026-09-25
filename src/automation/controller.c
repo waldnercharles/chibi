@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef enum
@@ -5930,8 +5931,36 @@ static bool safe_recording_path(const char *path)
     return safe;
 }
 
+/* Recordings serve the replays and reads that follow them; a day on, they
+   are removed instead of accumulating in /tmp. */
+static void prune_recordings()
+{
+    enum
+    {
+        RECORDING_LIFETIME = 24 * 60 * 60
+    };
+    const char *prefix = strrchr(SCENARIO_RECORDING_PATH_PREFIX, '/') + 1;
+    DIR *dir = opendir("/tmp");
+    struct dirent *entry;
+    while (dir && (entry = readdir(dir))) {
+        char path[PATH_MAX];
+        struct stat info;
+        if (strncmp(entry->d_name, prefix, strlen(prefix)) ||
+            snprintf(path, sizeof path, "/tmp/%s", entry->d_name) >= (int)sizeof path ||
+            lstat(path, &info) || !S_ISREG(info.st_mode) ||
+            time(NULL) - info.st_mtime < RECORDING_LIFETIME) {
+            continue;
+        }
+        unlink(path);
+    }
+    if (dir) {
+        closedir(dir);
+    }
+}
+
 static int create_recording_path(char *path, size_t path_size, char *error, size_t error_size)
 {
+    prune_recordings();
     char template[] = SCENARIO_RECORDING_PATH_PREFIX "XXXXXX";
     int fd = mkstemp(template);
     if (fd < 0) {

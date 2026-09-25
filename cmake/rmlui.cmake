@@ -33,7 +33,7 @@ chibi_rmlui_dependencies()
 
 add_library(chibi_rmlui STATIC
     src/editor/rmlui/rml.cpp
-    src/editor/rmlui/backend.cpp
+    src/editor/rmlui/backend.c
     src/editor/rmlui/kit.cpp
     src/editor/rmlui/kit_chart.cpp
     src/editor/rmlui/kit_command.cpp
@@ -66,5 +66,6 @@ target_compile_definitions(chibi_rmlui PRIVATE
 target_link_libraries(chibi_rmlui PRIVATE RmlUi::Core cute core)
 set_target_properties(chibi_rmlui PROPERTIES
     POSITION_INDEPENDENT_CODE ON
+    C_VISIBILITY_PRESET hidden
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)

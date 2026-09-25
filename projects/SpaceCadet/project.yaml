@@ -1,0 +1,4 @@
+version: 1
+name: SpaceCadet
+content: content
+start_scene: scenes/SpaceCadet.yaml

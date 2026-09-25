@@ -6,7 +6,7 @@ const files = new Map([['/content/scenes/Arena3D.yaml', 'packaged reference']]);
 const requests = [];
 const errors = [];
 const assets = {
-  'project.json': JSON.stringify({ version: 1, name: 'Neon Swarm', content: 'content', start_scene: 'scenes/Sandbox.yaml' }),
+  'project.yaml': 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n',
   'content/scenes/Sandbox.yaml': 'name: Sandbox\n',
 };
 const Module = {
@@ -27,7 +27,7 @@ const source = readFileSync(new URL('../tools/web_workspace.js', import.meta.url
 vm.runInNewContext(source, { Module, XMLHttpRequest: Request, URLSearchParams, location: { search: '' } });
 Module.onRuntimeInitialized();
 assert.equal(Module.arguments.join(' '), '--project-root /workspace/');
-assert.equal(files.get('/workspace/project.json'), assets['project.json']);
+assert.equal(files.get('/workspace/project.yaml'), assets['project.yaml']);
 assert.equal(files.get('/workspace/content/scenes/Sandbox.yaml'), assets['content/scenes/Sandbox.yaml']);
 assert.equal(files.get('/content/scenes/Arena3D.yaml'), 'packaged reference');
 assert.equal(Module.chibiSaveAsset('/workspace/content/scenes/Sandbox.yaml', 'name: Edited\n'), 0);

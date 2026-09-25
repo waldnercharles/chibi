@@ -1,7 +1,7 @@
 # Working on the arena game
 
 Run `make play` to launch the Arena2D project in a standalone game window. A
-project is a directory containing `project.json` and its own `content` tree.
+project is a directory containing `project.yaml` and its own `content` tree.
 Use `make play PROJECT=. SCENE=scenes/Arena3D.yaml` to launch the Arena3D
 reference project, or pass `--project-root PATH` to `build/chibi` directly. Both
 routes use the same scene runtime, input and Surface renderer as editor Play.

@@ -1,4 +1,4 @@
-- When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.json`.
+- When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.yaml`.
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.
 - Name shared modules for their capability. Turn game-specific geometry, camera choreography, and outcome handling into authored data and behaviors; add native capabilities when authoring exposes a concrete gap.

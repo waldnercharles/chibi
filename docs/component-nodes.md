@@ -107,7 +107,7 @@ Loading prepares a component node from its key and field names before it applies
 - Set for each settable field, such as `Set Velocity X`.
 - Make and Break for each reflected struct, such as `Make Transform`.
 
-A preset spawns the component node already configured. Its `ed_search_match.setting` and `.field` carry the preset, and wire compatibility uses the configured pin types.
+A preset spawns the component node already configured. Its `ed_search_match.setting` and `.field` carry the preset, and wire compatibility uses the configured pin types. `component_node_presets` lists them for the editor and for MCP `searchNodes`, which returns each as `add_node`'s `type` and `inputs`.
 
 Browsing the catalog of a behavior graph owned by an entity, measured by `test_suite --editor-graph`:
 

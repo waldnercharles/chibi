@@ -110,7 +110,7 @@ struct editor
     char *clipboard;
     char extract_name[128];
     char connect_error[ED_LOG_MESSAGE];
-    const editor_event_signature *event_catalog;
+    const graph_host_event_desc *event_catalog;
     int event_catalog_count;
     int (*open_asset)(void *, const char *, uint64_t);
     void *open_asset_user;
@@ -125,7 +125,7 @@ struct editor
 
 /* Private collaboration between document, graph and runtime owners. */
 int ed_name_spawned_event(editor *e, node *n);
-int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature);
+int ed_event_add_declared_params(editor *e, node *n, const graph_host_event_desc *signature);
 void ed_free_string_stack(char ***stack);
 void ed_push_string(char ***stack, char *value);
 bool ed_is_graph_call(const node *n);

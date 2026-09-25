@@ -1,7 +1,6 @@
 #include "editor/graph/search.h"
 
 #include "editor/ui/labels.h"
-#include "editor/ui/search.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
 #include "graph/document/extract.h"
@@ -13,6 +12,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
+#include "support/text_search.h"
 
 #include <assert.h>
 #include <math.h>
@@ -52,8 +52,8 @@ static int ed_desc_score(const node_desc *desc, const char *filter)
         desc->category ? desc->category : "",
         desc->keywords ? desc->keywords : ""
     );
-    int score = editor_search_score(filter, label, secondary);
-    int raw = editor_search_score(filter, desc->name, secondary);
+    int score = text_search_score(filter, label, secondary);
+    int raw = text_search_score(filter, desc->name, secondary);
     return score > raw ? score : raw;
 }
 
@@ -348,53 +348,29 @@ static void ed_add_preset(
     ed_add_search_match(e, matches, match, &signature, filter);
 }
 
-/* Component nodes replace the generated per-component and per-struct nodes.
- * A query offers every component's and struct's presets, and Set one per
- * settable field. */
+/* Component nodes replace the generated per-component and per-struct nodes;
+ * a query offers their presets. */
 static void ed_search_components(const editor *e, ed_search_match **matches, const char *filter)
 {
-    const node_desc *access[] = { &NODE_GetComponent,
-                                  &NODE_SetComponent,
-                                  &NODE_HasComponent,
-                                  &NODE_AddComponent,
-                                  &NODE_RemoveComponent };
-    for (int i = 0; filter && filter[0] && i < registry_node_count(); i++) {
-        const node_desc *d = registry_node(i);
-        if (d->type &&
-            (d->pure_kind == NODE_PURE_MAKE || d->pure_kind == NODE_PURE_BREAK)) {
-            ed_search_match match = { .desc = d->pure_kind == NODE_PURE_MAKE
-                                                ? &NODE_MakeStruct
-                                                : &NODE_BreakStruct,
-                                      .setting = d->type->name };
-            ed_add_preset(e, matches, match, d->type, d, filter);
-            continue;
-        }
-        if (d->component_kind != NODE_COMPONENT_GET_SELF) {
-            continue;
-        }
-        const ecs_component_desc *component = d->component;
-        for (int a = 0; a < 5; a++) {
-            ed_search_match match = { .desc = access[a], .setting = component->key };
-            const node_desc *shape = component_node_shape(access[a], component->key);
-            if (a < 3 || shape) {
-                ed_add_preset(e, matches, match, component->type, shape, filter);
-            }
-        }
-        for (int f = 0; f < component->type->field_count; f++) {
-            ed_search_match match = { .desc = &NODE_SetComponent,
-                                      .setting = component->key,
-                                      .field = component->type->fields[f].name };
-            if (component_field_settable(component, match.field)) {
-                ed_add_preset(e, matches, match, component->type, NULL, filter);
-            }
-        }
+    if (!filter || !filter[0]) {
+        return;
     }
+    component_node_preset *presets = component_node_presets();
+    for (int i = 0; i < acount(presets); i++) {
+        const component_node_preset *p = &presets[i];
+        ed_search_match match = { .desc = p->desc,
+                                  .setting = p->setting,
+                                  .field = p->field };
+        const node_desc *shape = component_node_shape(p->desc, p->setting);
+        ed_add_preset(e, matches, match, p->type, shape, filter);
+    }
+    afree(presets);
 }
 
 static void ed_search_host_events(const editor *e, ed_search_match **matches, const char *filter)
 {
     for (int i = 0; i < e->event_catalog_count; i++) {
-        const editor_event_signature *event = &e->event_catalog[i];
+        const graph_host_event_desc *event = &e->event_catalog[i];
         bool used = false;
         for (int g = 0; g < acount(e->asset->graphs); g++) {
             const graph *graph = e->asset->graphs[g];
@@ -410,18 +386,13 @@ static void ed_search_host_events(const editor *e, ed_search_match **matches, co
         }
         pin_spec *outputs = NULL;
         apush(outputs, NODE_Event.outputs[0]);
-        for (int p = 0; p < event->param_count; p++) {
-            const editor_event_param *param = &event->params[p];
-            apush(
-                outputs,
-                ((pin_spec){ .name = param->name,
-                             .type = param->type,
-                             .type_name = param->type_name })
-            );
+        for (int p = 0; p < event->payload_count; p++) {
+            apush(outputs, event->payload[p]);
         }
         node_desc signature = NODE_Event;
         signature.outputs = outputs;
         signature.output_count = acount(outputs);
+        signature.keywords = event->keywords;
         ed_search_match match = { .desc = &NODE_Event,
                                   .host_event = i + 1,
                                   .category = "Events" };
@@ -696,7 +667,7 @@ static node *spawn_match(editor *e, const ed_search_match *match)
         graph_set_pin_container(g, n, 1, set ? 1 : 0, v->container);
     }
     if (match->host_event) {
-        const editor_event_signature *signature = &e->event_catalog[match->host_event - 1];
+        const graph_host_event_desc *signature = &e->event_catalog[match->host_event - 1];
         graph_set_node_reference(g, n, 0, signature->name);
         ed_event_add_declared_params(e, n, signature);
     }
@@ -708,14 +679,9 @@ static node *spawn_match(editor *e, const ed_search_match *match)
         pin_value value = { .type = PIN_NAME, .str = match->prototype };
         graph_set_pin_default(g, n, 0, 1, &value);
     }
-    if (match->setting) {
-        pin_value key = { .type = PIN_NAME, .str = match->setting };
-        int setting = component_node_setting(n);
-        if (graph_set_pin_default(g, n, 0, setting, &key) ||
-            (match->field && component_node_show_field(g, n, match->field, true))) {
-            graph_remove_node(g, n);
-            return NULL;
-        }
+    if (match->setting && component_node_configure(g, n, match->setting, match->field)) {
+        graph_remove_node(g, n);
+        return NULL;
     }
     return n;
 }

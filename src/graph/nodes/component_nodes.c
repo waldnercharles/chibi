@@ -566,6 +566,69 @@ int component_node_prepare(graph *g, node *n, const char *key, bool split)
     return 0;
 }
 
+component_node_preset *component_node_presets()
+{
+    static const node_desc *const access[] = { &NODE_GetComponent,
+                                               &NODE_SetComponent,
+                                               &NODE_HasComponent,
+                                               &NODE_AddComponent,
+                                               &NODE_RemoveComponent };
+    component_node_preset *presets = NULL;
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *d = registry_node(i);
+        if (d->type &&
+            (d->pure_kind == NODE_PURE_MAKE || d->pure_kind == NODE_PURE_BREAK)) {
+            const node_desc *desc = d->pure_kind == NODE_PURE_MAKE
+                                      ? &NODE_MakeStruct
+                                      : &NODE_BreakStruct;
+            apush(
+                presets,
+                ((component_node_preset){ .desc = desc,
+                                          .setting = d->type->name,
+                                          .type = d->type })
+            );
+            continue;
+        }
+        if (d->component_kind != NODE_COMPONENT_GET_SELF) {
+            continue;
+        }
+        const ecs_component_desc *component = d->component;
+        for (size_t a = 0; a < sizeof access / sizeof *access; a++) {
+            component_node_kind made = component_node_kind_of(access[a]);
+            if (!direct(made) || direct_target(made, component->key)) {
+                apush(
+                    presets,
+                    ((component_node_preset){ .desc = access[a],
+                                              .setting = component->key,
+                                              .type = component->type })
+                );
+            }
+        }
+        for (int f = 0; f < component->type->field_count; f++) {
+            const char *field = component->type->fields[f].name;
+            if (component_field_settable(component, field)) {
+                apush(
+                    presets,
+                    ((component_node_preset){ .desc = &NODE_SetComponent,
+                                              .setting = component->key,
+                                              .field = field,
+                                              .type = component->type })
+                );
+            }
+        }
+    }
+    return presets;
+}
+
+int component_node_configure(graph *g, node *n, const char *setting, const char *field)
+{
+    pin_value key = { .type = PIN_NAME, .str = setting };
+    return graph_set_pin_default(g, n, 0, component_node_setting(n), &key) ||
+                   (field && component_node_show_field(g, n, field, true))
+             ? -1
+             : 0;
+}
+
 int component_node_template_count(const node *n, int output)
 {
     component_node_kind kind = component_node_kind_of(n->desc);

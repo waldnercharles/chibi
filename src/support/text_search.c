@@ -1,4 +1,4 @@
-#include "editor/ui/search.h"
+#include "support/text_search.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -55,16 +55,27 @@ static bool one_edit(const char *word, int length, const char *query, int count)
            equal(word + i + 2, query + i + 2, count - i - 2);
 }
 
-static int token_score(const char *text, const char *query, int count, bool fuzzy)
+/* How loosely a query word matches: a name also by its letters in order, text
+ * by initials and one typo in four or more letters, and words only from a word
+ * start, with one typo in five or more letters. */
+typedef enum
+{
+    MATCH_NAME,
+    MATCH_TEXT,
+    MATCH_WORDS,
+} match_mode;
+
+static int token_score(const char *text, const char *query, int count, match_mode mode)
 {
     if (!text || !text[0]) {
         return -1;
     }
     int best = -1;
     int initials = 0, starts = 0, sequence = 0;
+    bool typos = count >= (mode == MATCH_WORDS ? 5 : 4);
     for (int i = 0; text[i]; i++) {
         bool start = boundary(text, i);
-        if (equal(text + i, query, count)) {
+        if ((start || mode != MATCH_WORDS) && equal(text + i, query, count)) {
             bool end = !text[i + count] || boundary(text, i + count) ||
                        !isalnum((unsigned char)text[i + count]);
             int score = start ? (end ? 600 : 500) : 360;
@@ -87,24 +98,24 @@ static int token_score(const char *text, const char *query, int count, bool fuzz
         while (text[end] && isalnum((unsigned char)text[end]) && !boundary(text, end)) {
             end++;
         }
-        if (one_edit(text + i, end - i, query, count)) {
+        if (typos && one_edit(text + i, end - i, query, count)) {
             best = 180;
         }
     }
     int abbreviation = starts == count ? 340 : 280;
-    if (initials == count && best < abbreviation) {
+    if (mode != MATCH_WORDS && initials == count && best < abbreviation) {
         best = abbreviation;
     }
-    if (fuzzy && sequence == count && best < 100) {
+    if (mode == MATCH_NAME && sequence == count && best < 100) {
         best = 100;
     }
-    if (best < 180 && one_edit(text, (int)strlen(text), query, count)) {
+    if (typos && best < 180 && one_edit(text, (int)strlen(text), query, count)) {
         best = 180;
     }
     return best;
 }
 
-int editor_search_score(const char *query, const char *name, const char *secondary)
+static int search_score(const char *query, const char *name, const char *secondary, match_mode mode)
 {
     if (!query) {
         return 0;
@@ -119,8 +130,8 @@ int editor_search_score(const char *query, const char *name, const char *seconda
         while (word[count] && !isspace((unsigned char)word[count])) {
             count++;
         }
-        int primary = token_score(name, word, count, true);
-        int extra = token_score(secondary, word, count, false);
+        int primary = token_score(name, word, count, mode);
+        int extra = token_score(secondary, word, count, mode == MATCH_WORDS ? MATCH_WORDS : MATCH_TEXT);
         if (extra >= 0) {
             extra = extra / 2;
         }
@@ -144,4 +155,14 @@ int editor_search_score(const char *query, const char *name, const char *seconda
     }
     bool exact = name && equal(name, query, length) && !name[length];
     return score / words + (exact ? 1000 : 0);
+}
+
+int text_search_score(const char *query, const char *name, const char *secondary)
+{
+    return search_score(query, name, secondary, MATCH_NAME);
+}
+
+int text_search_word_score(const char *query, const char *name, const char *secondary)
+{
+    return search_score(query, name, secondary, MATCH_WORDS);
 }

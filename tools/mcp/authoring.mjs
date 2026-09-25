@@ -231,16 +231,16 @@ const operationSchema = {
 const searchNodesDefinition = {
   name: "searchNodes",
   operation: "search_nodes",
-  description: "Find graph nodes by name, category, keyword, domain, or typed pin signature without loading the full registry.",
+  description: "Find graph nodes and events by words, domain, or typed pin signature. Without a query or filter, list the domain's node types by category, its events, and the settings they take.",
   inputSchema: object({
     query: {
       type: "string",
-      description: "Case-insensitive text matched against node names, categories, and keywords.",
+      description: "Words that must all start a word in a node's or event's name, keywords, pins, or expression function, such as \"set health current\", \"on hit\" or \"clamp\". Results rank by relevance.",
     },
     domain: {
       type: "string",
-      enum: ["behavior", "shader", "field"],
-      description: "Restrict results to behavior, shader, or field nodes.",
+      enum: ["behavior", "shader", "field", "system"],
+      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity.",
     },
     pin_type: {
       type: "string",
@@ -273,7 +273,7 @@ const searchNodesDefinition = {
     },
     include_pins: {
       type: "boolean",
-      description: "Include input and output pin descriptors; defaults to true.",
+      description: "Include input and output pins as \"name: type\"; defaults to true.",
     },
   }),
   outputSchema: { type: "object", additionalProperties: true },

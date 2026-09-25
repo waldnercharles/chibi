@@ -1,6 +1,5 @@
 #include "editor/graph/search.h"
 #include "editor/workspace/editor_internal.h"
-#include "editor/workspace/event_catalog.h"
 #include "graph/document/events.h"
 #include "graph/nodes/component_nodes.h"
 #include "test/suite_internal.h"
@@ -296,8 +295,10 @@ static void check_search_catalog()
     int edge_count = acount(asset->graph->edges);
     search_insert(e, "Repeat Step");
     test_check(acount(asset->graph->edges) == edge_count + 1, "pin-drag search finds macros and connects the compatible execution input");
-    const editor_event_param input_params[] = { { "Move", PIN_F64, NULL } };
-    const editor_event_signature host_events[] = { { "Input", input_params, 1 } };
+    const pin_spec input_params[] = { { .name = "Move", .type = PIN_F64 } };
+    const graph_host_event_desc host_events[] = {
+        { .name = "Input", .payload = input_params, .payload_count = 1 },
+    };
     editor_set_event_catalog(e, host_events, 1);
     int host_count = acount(asset->graph->nodes);
     search_insert(e, "On Input");
@@ -501,7 +502,7 @@ static void check_event_catalog_search()
 {
     behavior_asset *asset = behavior_asset_new("Event catalog search");
     editor *e = editor_new(asset);
-    editor_set_event_catalog(e, APP_EVENT_CATALOG, sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG);
+    editor_set_event_catalog(e, GRAPH_HOST_EVENTS, GRAPH_HOST_EVENT_COUNT);
     search_insert(e, "On Begin");
     node *begin = asset->graph->nodes[acount(asset->graph->nodes) - 1];
     test_check(begin->reference_name && !strcmp(begin->reference_name, "Begin"), "the application event catalog exposes behavior initialization through node search");

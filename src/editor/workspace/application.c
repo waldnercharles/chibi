@@ -449,7 +449,7 @@ static void application_activate(void *state)
     }
 #endif
     app_input_initialize();
-    if (loop->design_preview) {
+    if (loop->design_preview && !loop->game) {
         loop->studio = studio_new(loop->authoring, loop->viewport);
     }
 }

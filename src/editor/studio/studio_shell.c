@@ -185,6 +185,18 @@ static bool active_dirty(studio *s)
     return tab ? scene_tabs_dirty(scene, tab) : scene->scene_dirty;
 }
 
+/* The active scene or prototype document's history. */
+static void document_history(studio *s, bool redo)
+{
+    finish_transform_edit(s->scene, false);
+    int result = s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE
+                   ? (redo ? prototype_redo(s->scene) : prototype_undo(s->scene))
+                   : replay_scene_edit(s->scene, redo);
+    if (result == 0) {
+        studio_report(s, redo ? "Redo" : "Undo");
+    }
+}
+
 void studio_history(studio *s, bool redo)
 {
     if (!studio_editable(s) || !can_replay(s, redo)) {
@@ -195,13 +207,7 @@ void studio_history(studio *s, bool redo)
         studio_report(s, redo ? "Redo" : "Undo");
         return;
     }
-    finish_transform_edit(s->scene, false);
-    int result = s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE
-                   ? (redo ? prototype_redo(s->scene) : prototype_undo(s->scene))
-                   : replay_scene_edit(s->scene, redo);
-    if (result == 0) {
-        studio_report(s, redo ? "Redo" : "Undo");
-    }
+    document_history(s, redo);
 }
 
 void studio_runtime(studio *s, app_runtime_command command)
@@ -274,8 +280,9 @@ static void undo_toast(studio *s)
                    scene_history_group_id(s->scene->history, false) == s->undo_toast_group;
     if (kit_toast_action(s->kit, s->undo_toast)) {
         s->undo_toast = 0;
-        if (current) {
-            studio_history(s, false);
+        /* The deletion, even when a graph under the toast has focus. */
+        if (current && studio_editable(s)) {
+            document_history(s, false);
         }
         return;
     }
@@ -1158,14 +1165,27 @@ static void step_selection(studio *s, int direction)
     afree(rows);
 }
 
+/* Held keys repeat to walk the Outliner and to undo or redo, never to toggle
+   or delete. */
+static bool repeats(SDL_Keycode key, bool mod)
+{
+    return mod ? key == SDLK_Z || key == SDLK_Y : key == SDLK_UP || key == SDLK_DOWN;
+}
+
 void studio_shortcuts(studio *s)
 {
     studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
                                               : STUDIO_EDITOR_COUNT;
+    /* A game playing in the focused viewport owns keys without a modifier,
+       such as Space for a dash. */
+    bool gameplay = engine_viewport_focused(s->viewport);
     for (int i = 0; i < acount(s->keys); i++) {
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if ((gameplay && !mod) || (s->keys[i].repeat && !repeats(key, mod))) {
+            continue;
+        }
         if (mod && shift && (key == SDLK_A || key == SDLK_U)) {
             studio_toggle_drawer(s, key == SDLK_A ? STUDIO_EDITOR_ASSETS : STUDIO_EDITOR_OUTPUT);
         } else if (mod && (key == SDLK_K || key == SDLK_P)) {

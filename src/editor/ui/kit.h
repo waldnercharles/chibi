@@ -380,15 +380,18 @@ extern "C"
     } kit_chart_desc;
     float kit_chart(kit *k, const char *key, const char *cls, const kit_chart_desc *desc);
 
-    /* Node-editor wires and the canvas grid, drawn by one element (xyflow edges,
-     * Blender noodles). A wire end anchors to the center of the element at a kit
-     * path, resolved after layout, or to a point; points and waypoints are in the
-     * element's own dp. Curves leave rightward and enter leftward. */
+    /* Node-editor wires and the canvas grid, drawn by one element (xyflow
+     * edges, Blender noodles). A wire end anchors to the center of the element
+     * at a kit path, resolved after layout, or to a point; points and waypoints
+     * are in the element's own dp. Wires take the shape arrange_path gives
+     * their style, so the styles follow arrange_route_style. */
     typedef enum kit_wire_style
     {
         KIT_WIRE_CURVED,
+        KIT_WIRE_ORTHOGONAL, /* level and vertical runs with rounded corners */
         KIT_WIRE_STRAIGHT,
-        KIT_WIRE_ANGULAR, /* horizontal and vertical runs with rounded corners */
+        KIT_WIRE_SUBWAY, /* level runs joined by 45 degree diagonals */
+        KIT_WIRE_STYLE_COUNT,
     } kit_wire_style;
     enum
     {
@@ -416,6 +419,11 @@ extern "C"
         uint32_t grid_color, grid_major_color;
     } kit_wires_desc;
     void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *desc);
+    /* The cubic pieces of a wire drawn in `style` through `count` knots, given
+     * as x, y pairs with both ends included. Writes up to `max` pieces as
+     * x0 y0 x1 y1 x2 y2 x3 y3 and returns the piece count, which may exceed
+     * max. */
+    int kit_wire_shape(kit_wire_style style, const float *knots, int count, float *pieces, int max);
     /* The last drawn curve of wire `index` as x, y pairs in the element's dp.
      * Returns the point count, which may exceed max. */
     int kit_wire_points(const kit *k, const char *path, int index, float *xy, int max);

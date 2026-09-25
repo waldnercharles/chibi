@@ -1,5 +1,6 @@
 /* The graph canvas camera, per-graph views and arrangement. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/authoring/layout.h"
 #include "support/array.h"
 
 #include <math.h>
@@ -195,7 +196,7 @@ static void arrange_input_build(const studio *s, arrange_input *in)
             continue;
         }
         apush(in->nodes, n);
-        apush(in->boxes, ((arrange_box){ box[2], box[3] }));
+        apush(in->boxes, ((arrange_box){ box[2], box[3], graph_layout_band(n) }));
         apush(in->pos, ((arrange_point){ n->x, n->y }));
     }
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -219,7 +220,8 @@ static void arrange_input_build(const studio *s, arrange_input *in)
             ((arrange_link){ .from = a,
                              .to = b,
                              .from_y = sg_pin_y(s, from, ED_PIN_OUTPUT, from_pin),
-                             .to_y = sg_pin_y(s, to, ED_PIN_INPUT, to_pin) })
+                             .to_y = sg_pin_y(s, to, ED_PIN_INPUT, to_pin),
+                             .flow = sg_pin_exec(from, ED_PIN_OUTPUT, from_pin) })
         );
     }
 }
@@ -253,13 +255,14 @@ void sg_update_routes(studio *s)
     studio_graph *g = &s->graph;
     arrange_input in = { 0 };
     arrange_input_build(s, &in);
-    uint64_t key = 14695981039346656037ull;
+    uint64_t
+        key = hash(14695981039346656037ull, &s->prefs.wires, sizeof s->prefs.wires);
     key = hash(key, in.boxes, sizeof *in.boxes * (size_t)acount(in.boxes));
     key = hash(key, in.pos, sizeof *in.pos * (size_t)acount(in.pos));
     key = hash(key, in.links, sizeof *in.links * (size_t)acount(in.links));
     if (key != g->measured_key || !g->routes.start) {
         arrange_graph layout = arrange_of(&in);
-        arrange_route(&layout, in.pos, &g->routes);
+        arrange_route(&layout, in.pos, (arrange_route_style)s->prefs.wires, &g->routes);
         g->measured_key = key;
     }
     afree(g->edge_route);
@@ -277,7 +280,7 @@ void sg_arrange(studio *s, bool automatic_only)
     arrange_input in = { 0 };
     arrange_input_build(s, &in);
     arrange_graph layout = arrange_of(&in);
-    arrange_layout(&layout, in.pos);
+    arrange_layout(&layout, (arrange_route_style)s->prefs.wires, in.pos);
     bool moved = false;
     for (int i = 0; i < acount(in.nodes) && !moved; i++) {
         moved = !(automatic_only && in.nodes[i]->placed) &&

@@ -278,9 +278,10 @@ void studio_graph_frame(studio *s, double delta_seconds)
         return;
     }
     sg_follow_graph(s);
-    /* Node settings change node sizes, so automatic nodes arrange again. */
+    /* Node settings change node sizes and the wire style changes column gaps,
+       so automatic nodes arrange again. */
     int forms = s->prefs.short_bindings | s->prefs.title_flow << 1 |
-                s->prefs.compact_nodes << 2;
+                s->prefs.compact_nodes << 2 | (int)s->prefs.wires << 3;
     e->arrange_pending |= forms != g->forms;
     g->forms = forms;
     float scale = cf_app_get_pixel_scale();

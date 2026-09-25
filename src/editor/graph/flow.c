@@ -159,49 +159,8 @@ void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_a
 static void ed_draw_flow_markers(
     const editor *e,
     ImDrawList *dl,
-    ImVec2 p0,
-    ImVec2 p1,
-    ImVec2 p2,
-    ImVec2 p3,
-    ImVec4 color,
-    float radius,
-    float opacity,
-    double age
-)
-{
-    if (opacity <= 0.0f) {
-        return;
-    }
-    float length = ed_curve_length(p0, p1, p2, p3);
-    float spacing = ED_FLOW_DOT_SPACING * e->zoom;
-    if (length <= 0.0f || spacing <= 0.0f) {
-        return;
-    }
-    float canvas_length = length / e->zoom;
-    float offset = (float)(flow_visual_marker(age, canvas_length) *
-                           canvas_length * e->zoom);
-    offset = fmodf(offset, spacing);
-    if (offset < 0.0f) {
-        offset += spacing;
-    }
-    int bubble_count = (int)ceilf(length / spacing);
-    color.w *= opacity;
-    for (int i = 0; i < bubble_count; i++) {
-        float distance = (float)i * spacing + offset;
-        if (distance >= length) {
-            continue;
-        }
-        ImVec2 position = ed_curve_at_distance(p0, p1, p2, p3, distance, length);
-        ImDrawList_AddCircleFilled(dl, position, radius, ed_color(color), 12);
-    }
-}
-
-static void ed_draw_reroute_markers(
-    const editor *e,
-    ImDrawList *dl,
-    const edge *ed,
-    ImVec2 p0,
-    ImVec2 p3,
+    const arrange_piece *pieces,
+    int piece_count,
     ImVec4 color,
     float radius,
     float opacity,
@@ -212,12 +171,11 @@ static void ed_draw_reroute_markers(
         return;
     }
     ImVec2 *points = NULL;
-    int routes = ed_route_count(e, ed);
-    for (int segment = 0; segment <= routes; segment++) {
-        ImVec2 start, c1, c2, end;
-        ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
-        for (int sample = segment ? 1 : 0; sample <= 16; sample++) {
-            apush(points, ed_bezier(start, c1, c2, end, (float)sample / 16.0f));
+    apush(points, ed_im(pieces[0].p0));
+    for (int k = 0; k < piece_count; k++) {
+        int samples = ed_piece_samples(&pieces[k]);
+        for (int sample = 1; sample <= samples; sample++) {
+            apush(points, ed_piece_at(&pieces[k], (float)sample / (float)samples));
         }
     }
     int count = acount(points);
@@ -256,8 +214,10 @@ static void ed_draw_reroute_markers(
 
 void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
 {
-    ImVec2 p0, p1, p2, p3;
-    if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
+    arrange_piece *pieces = NULL;
+    int piece_count = ed_link_pieces(e, ed, &pieces);
+    if (!piece_count) {
+        afree(pieces);
         return;
     }
     ed_link_ref ref = { ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
@@ -285,16 +245,22 @@ void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     } else if (style.opacity > 0.0f) {
         color = ed_color(style.wire_color);
     }
-    int routes = ed_route_count(e, ed);
-    if (!routes) {
-        ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
-    } else {
-        for (int segment = 0; segment <= routes; segment++) {
-            ImVec2 start, c1, c2, end;
-            ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
-            ImDrawList_AddBezierCubic(dl, start, c1, c2, end, color, style.thickness, 0);
+    ImDrawList_PathLineTo(dl, ed_im(pieces[0].p0));
+    for (int k = 0; k < piece_count; k++) {
+        const arrange_piece *piece = &pieces[k];
+        if (ed_piece_samples(piece) == 1) {
+            ImDrawList_PathLineTo(dl, ed_im(piece->p3));
+            continue;
         }
+        ImDrawList_PathBezierCubicCurveTo(
+            dl,
+            ed_im(piece->p1),
+            ed_im(piece->p2),
+            ed_im(piece->p3),
+            0
+        );
     }
+    ImDrawList_PathStroke(dl, color, 0, style.thickness);
     if (selected || hovered) {
         ImU32 guide = IM_COL32(190, 205, 230, 150);
         ImU32 knob = selected ? IM_COL32(255, 190, 70, 255)
@@ -316,32 +282,17 @@ void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
                                  ed_execution_pulse_active(e))
                           ? e->monotonic_time
                           : 0.0;
-    if (routes) {
-        ed_draw_reroute_markers(
-            e,
-            dl,
-            ed,
-            p0,
-            p3,
-            style.bubble_color,
-            style.bubble_radius,
-            style.bubble_opacity,
-            marker_age
-        );
-    } else {
-        ed_draw_flow_markers(
-            e,
-            dl,
-            p0,
-            p1,
-            p2,
-            p3,
-            style.bubble_color,
-            style.bubble_radius,
-            style.bubble_opacity,
-            marker_age
-        );
-    }
+    ed_draw_flow_markers(
+        e,
+        dl,
+        pieces,
+        piece_count,
+        style.bubble_color,
+        style.bubble_radius,
+        style.bubble_opacity,
+        marker_age
+    );
+    afree(pieces);
 }
 
 bool editor_query_node_ui(const editor *e, uint64_t node_id, editor_node_ui *out)

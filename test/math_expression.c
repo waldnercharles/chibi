@@ -3,6 +3,7 @@
 #include "graph/compiler/compile.h"
 #include "graph/compiler/field_program.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/eval.h"
@@ -236,7 +237,7 @@ static void expression_input_rename()
     node *second = behavior_asset_add_function_call_node(asset, generated);
     assert(second);
     uint64_t second_a_id = second->input_pins[0].id;
-    assert(behavior_expression_set(asset, call, "target + b", &error) == 0);
+    assert(behavior_expression_rename_input(asset, call, "a", "target", &error) == 0);
     assert(!strcmp(behavior_expression_source(asset, call), "target + b"));
     assert(call->input_count == 2);
     assert(!strcmp(call->input_pins[0].name, "target") && call->input_pins[0].id == a_id);
@@ -543,6 +544,32 @@ static node *configured_variable_getter(graph *g, const behavior_variable *varia
     assert(graph_set_pin_type(g, getter, 1, 0, variable->type, variable->type_name) == 0);
     assert(graph_set_pin_container(g, getter, 1, 0, variable->container) == 0);
     return getter;
+}
+
+/* A source edit matches inputs by name: a new name starts unfed unless a
+   named value carries it, and members and calls keep their spelling. */
+static void expression_source_names()
+{
+    behavior_asset *asset = behavior_asset_new("Expression source names");
+    graph *g = asset->graph;
+    behavior_expression_error error;
+    node *speed = literal(g, 4);
+    node *user = behavior_expression_add(asset, g, "speed * 2", &error);
+    assert(user && graph_connect_data(g, speed, 0, user, 0) == 0);
+    assert(graph_create_local(g, speed, 0, "speed"));
+    node *call = behavior_expression_add(asset, g, "a + b", &error);
+    assert(call && graph_connect_data(g, literal(g, 2), 0, call, 0) == 0);
+    assert(behavior_expression_set(asset, call, "c + b", &error) == 0);
+    node *source = NULL;
+    int pin = -1;
+    assert(!graph_input_source(g, call, named_pin(call, false, "c"), &source, &pin));
+    assert(behavior_expression_set(asset, call, "speed + sin(b)", &error) == 0);
+    int read = named_pin(call, false, "speed");
+    assert(read >= 0 && graph_input_source(g, call, read, &source, &pin) && source == speed);
+    assert(graph_input_local(g, call, read));
+    assert(behavior_expression_rename_input(asset, call, "b", "sin", &error) == 0);
+    assert(!strcmp(behavior_expression_source(asset, call), "speed + sin(sin)"));
+    behavior_asset_free(asset);
 }
 
 /* Integer values join double arithmetic: literals keep their value, and an
@@ -920,7 +947,8 @@ static void assignment_root_rename_preserves_binding()
         graph_set_pin_default(asset->graph, call, 0, amount_pin, &(pin_value){ .type = PIN_F64, .d = 2 }) == 0
     );
     assert(graph_connect_exec(asset->graph, event, 0, call, exec_pin, 0) == 0);
-    assert(behavior_expression_set(asset, call, "velocity += amount", &error) == 0);
+    assert(behavior_expression_rename_input(asset, call, "position", "velocity", &error) == 0);
+    assert(!strcmp(behavior_expression_source(asset, call), "velocity += amount"));
     int velocity_pin = named_pin(call, false, "velocity");
     amount_pin = named_pin(call, false, "amount");
     assert(velocity_pin >= 0 && amount_pin >= 0);
@@ -1770,6 +1798,7 @@ void test_math_expression()
     selected_struct_conversion();
     terminal_selection_conversion();
     expression_input_rename();
+    expression_source_names();
     expression_title();
     editor_delete_expression();
     expect("negate(3) + negate(-2)", -1);

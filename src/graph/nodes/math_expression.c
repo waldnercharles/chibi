@@ -1,5 +1,6 @@
 #include "ecs/ecs.h"
 #include "graph/compiler/compile.h"
+#include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
@@ -773,49 +774,6 @@ static bool contains_symbol(char **symbols, int count, const char *name)
         }
     }
     return false;
-}
-
-static expression_rename *expression_renames(const node *previous, char **symbols, int symbol_count)
-{
-    /* A source edit does not carry an explicit rename operation. Pairing only
-     * equal-sized unmatched sets lets a name change retain its pin identity while
-     * leaving add/remove edits to the normal signature synchronization. */
-    const char **old_names = NULL;
-    const char **new_names = NULL;
-    for (int i = 0; previous && i < previous->input_count; i++) {
-        const pin_spec *input = &previous->input_pins[i];
-        if (input->kind != PIN_DATA || input->field_source || !input->name ||
-            contains_symbol(symbols, symbol_count, input->name)) {
-            continue;
-        }
-        apush(old_names, input->name);
-    }
-    for (int i = 0; i < symbol_count; i++) {
-        bool found = false;
-        for (int j = 0; previous && j < previous->input_count; j++) {
-            const pin_spec *input = &previous->input_pins[j];
-            if (input->kind == PIN_DATA && !input->field_source &&
-                !strcmp(input->name, expression_pin_name(symbols[i]))) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            apush(new_names, symbols[i]);
-        }
-    }
-    if (acount(old_names) != acount(new_names)) {
-        afree(old_names);
-        afree(new_names);
-        return NULL;
-    }
-    expression_rename *renames = NULL;
-    for (int i = 0; i < acount(old_names); i++) {
-        apush(renames, ((expression_rename){ .from = old_names[i], .to = new_names[i] }));
-    }
-    afree(old_names);
-    afree(new_names);
-    return renames;
 }
 
 static bool renamed_to(const char *from, const char *to, const expression_rename *renames, int rename_count)
@@ -2943,6 +2901,8 @@ static bool prepare_error(behavior_expression_error *error, const behavior_asset
     return true;
 }
 
+static void read_named_values(behavior_asset *asset, node *call);
+
 node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *source, behavior_expression_error *error)
 {
     behavior_expression_error local;
@@ -2979,10 +2939,142 @@ node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *
         graph_node_by_id(generated, generated->entry_id),
         graph_node_by_id(generated, generated->return_id)
     );
+    read_named_values(asset, call);
     return call;
 }
 
+/* An input named like one of the graph's named values reads it, as code reads
+   a variable in scope. */
+static void read_named_values(behavior_asset *asset, node *call)
+{
+    graph *caller = caller_graph(asset, call);
+    bool bound = false;
+    for (int p = 0; p < call->input_count; p++) {
+        const pin_spec *pin = &call->input_pins[p];
+        node *source = NULL;
+        int source_pin = -1;
+        if (pin->kind != PIN_DATA || pin->binding || (pin->flags & PIN_FLAG_REFERENCE) ||
+            graph_input_source(caller, call, p, &source, &source_pin)) {
+            continue;
+        }
+        for (int l = 0; l < acount(caller->locals); l++) {
+            if (!strcmp(caller->locals[l].name, pin->name) &&
+                graph_use_local(caller, caller->locals[l].id, call, p) == 0) {
+                bound = true;
+                break;
+            }
+        }
+    }
+    if (bound) {
+        int rc = behavior_expression_refresh(asset, call, NULL);
+        assert(rc == 0);
+        (void)rc;
+    }
+}
+
+static int set_source(
+    behavior_asset *asset,
+    node *call,
+    const char *source,
+    const expression_rename *renames,
+    int rename_count,
+    behavior_expression_error *error
+);
+
+/* Source edits match inputs by name, as Unreal's Math Expression does: a name
+   that stays keeps its wire, and a new one starts unfed unless a named value
+   carries it. behavior_expression_rename_input renames an input with its wire. */
 int behavior_expression_set(behavior_asset *asset, node *call, const char *source, behavior_expression_error *error)
+{
+    return set_source(asset, call, source, NULL, 0, error);
+}
+
+static bool identifier_char(char c)
+{
+    return isalnum((unsigned char)c) || c == '_';
+}
+
+/* The source with every read of one input renamed; members (v.x) and
+   function names (sin) keep their spelling. */
+static char *rename_identifier(const char *source, const char *from, const char *to)
+{
+    size_t length = strlen(source), from_length = strlen(from),
+           to_length = strlen(to);
+    char *out = xmalloc(length * (to_length + 1) + 1);
+    size_t used = 0;
+    for (size_t i = 0; i < length;) {
+        if (!identifier_char(source[i]) || (i && identifier_char(source[i - 1]))) {
+            out[used++] = source[i++];
+            continue;
+        }
+        size_t end = i;
+        while (end < length && identifier_char(source[end])) {
+            end++;
+        }
+        size_t before = i, after = end;
+        while (before && source[before - 1] == ' ') {
+            before--;
+        }
+        while (after < length && source[after] == ' ') {
+            after++;
+        }
+        bool member = before && source[before - 1] == '.';
+        bool function = after < length && source[after] == '(';
+        bool match = end - i == from_length && !strncmp(source + i, from, from_length);
+        const char *word = match && !member && !function ? to : source + i;
+        size_t word_length = match && !member && !function ? to_length : end - i;
+        memcpy(out + used, word, word_length);
+        used += word_length;
+        i = end;
+    }
+    out[used] = 0;
+    return out;
+}
+
+int behavior_expression_rename_input(
+    behavior_asset *asset,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+)
+{
+    behavior_expression_error local;
+    error = error ? error : &local;
+    *error = (behavior_expression_error){ 0 };
+    const char *source = behavior_expression_source(asset, call);
+    bool valid = to && to[0] && !isdigit((unsigned char)to[0]);
+    for (int i = 0; valid && to[i]; i++) {
+        valid = identifier_char(to[i]);
+    }
+    if (!source || !from || !valid) {
+        snprintf(error->message, sizeof error->message, "An input name is a letter or _ followed by letters, digits or _");
+        return -1;
+    }
+    char *renamed = rename_identifier(source, from, to);
+    /* Setting the source frees the graph that owns the old text, and may
+       rename the pin a caller took `from` from. */
+    char *old = xstrdup(from), *new = xstrdup(to);
+    expression_rename rename = { .from = old, .to = new };
+    bool unchanged = !strcmp(renamed, source);
+    if (unchanged) {
+        snprintf(error->message, sizeof error->message, "The expression reads no input named %s", old);
+    }
+    int result = unchanged ? -1 : set_source(asset, call, renamed, &rename, 1, error);
+    free(renamed);
+    free(old);
+    free(new);
+    return result;
+}
+
+static int set_source(
+    behavior_asset *asset,
+    node *call,
+    const char *source,
+    const expression_rename *renames,
+    int rename_count,
+    behavior_expression_error *error
+)
 {
     behavior_expression_error local;
     error = error ? error : &local;
@@ -3007,7 +3099,6 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
     if (parse_symbols(asset, caller_graph(asset, call), source, &symbols, error) != 0) {
         return -1;
     }
-    expression_rename *renames = expression_renames(call, symbols, acount(symbols));
     synchronize_connected_inputs(asset, call);
     behavior_asset *staged = generate(
         asset,
@@ -3016,11 +3107,10 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
         source,
         error,
         renames,
-        acount(renames),
+        rename_count,
         asset->graph->id_counter
     );
     if (!staged) {
-        afree(renames);
         free_symbols(symbols);
         return -1;
     }
@@ -3036,7 +3126,7 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
             if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction ||
                  n->desc == &NODE_BehaviorExpression) &&
                 n->reference_id == generated->graph_id) {
-                rename_expression_call_inputs(caller, n, renames, acount(renames));
+                rename_expression_call_inputs(caller, n, renames, rename_count);
                 synchronize_expression_interface(
                     caller,
                     n,
@@ -3048,8 +3138,8 @@ int behavior_expression_set(behavior_asset *asset, node *call, const char *sourc
             }
         }
     }
-    afree(renames);
     free_symbols(symbols);
+    read_named_values(asset, call);
     return 0;
 }
 

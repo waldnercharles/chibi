@@ -122,6 +122,22 @@ uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
     return local.id;
 }
 
+int graph_use_local(graph *g, uint64_t id, node *n, int pin)
+{
+    const graph_local *local = graph_local_by_id(g, id);
+    node *source = local ? graph_node_by_id(g, local->source_id) : NULL;
+    int output = 0, index = -1;
+    if (!source || source == n ||
+        !graph_pin_by_id(source, local->source_pin_id, &output, &index) || !output) {
+        return -1;
+    }
+    pin_binding binding = { .kind = PIN_BINDING_LOCAL, .local_id = id };
+    return graph_connect_data(g, source, index, n, pin) ||
+                   graph_set_pin_binding(g, n, 0, pin, &binding)
+             ? -1
+             : 0;
+}
+
 int graph_expand_local(graph *g, uint64_t id)
 {
     if (g->flow_pause_count || !graph_local_by_id(g, id)) {

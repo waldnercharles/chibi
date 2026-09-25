@@ -27,11 +27,11 @@ each ends on a checkable state.
    exactly.
 4. **Naming pass.** Replace every placeholder the mechanical pass left:
    expression inputs `a`, `b`, … and locals `Value`, `Value2`, `X2`. Rename an
-   expression input with `set_expression`, the same source with that one name
-   replaced; renames pair old and new names in pin order, so change one name
-   per operation (several operations may share a batch). A rename keeps the
-   input's wire; to read a different value, `connect` the new source. Rename a local
-   with `create_local` on its source output. Name by meaning in the asset's
+   expression input with `set_pin` on that input and a new `name`; the source is
+   rewritten and the input keeps its wire. `set_expression` matches inputs by
+   name, so a name it drops loses its wire (reported as `unfed_inputs`) and a
+   name matching a local reads that local. Rename a local with `create_local`
+   on its source output. Name by meaning in the asset's
    existing style (`crackMask`, `rim_glow`); single letters stay only as true
    math variables (`t`, `x`). Rewrite noisy literals as the author meant them:
    `x / 180`, not `0.0055555557 * x`, and accept baseline drift within float

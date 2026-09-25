@@ -131,7 +131,7 @@ saving them. Tool results include complete `structuredContent` and
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
 - `getExecutionStatus`: report the backend selected for a behavior or system.
-- `runScenario`: run a bounded deterministic prototype or scene scenario.
+- `runScenario`: run a bounded deterministic prototype or scene scenario; `behavior_failures` lists runs that stopped on an error, by node and message.
 - `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, and timing.
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
@@ -235,7 +235,12 @@ Add a Behavior Expression with `add_node` and its `source` text, for example
 `{"op":"add_node","type":"Behavior Expression","source":"vec2(x, y)","ref":"motion"}`.
 Use `set_expression` with the node selector and new `source` to regenerate it;
 valid edits reconcile pins and disconnect incompatible wires, while invalid edits
-leave the previous generated graph in place. Bind an assignment's leftmost
+leave the previous generated graph in place. Inputs match by name, as in
+Unreal's Math Expression: a name that stays keeps its wire or binding, a name
+that disappears loses it (the result lists it under `unfed_inputs`), and a new
+name starts unfed unless it matches a graph local, which it then reads. To
+rename an input and keep its wire, use `set_pin` with the expression input and
+the new `name`; the source is rewritten to match. Bind an assignment's leftmost
 identifier pin with the normal `bind_input` operation; it does not need a special
 name.
 

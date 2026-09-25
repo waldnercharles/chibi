@@ -22,6 +22,8 @@ uint64_t graph_create_local(graph *g, node *source, int pin, const char *name);
 /* Names must stay unique within the graph. */
 int graph_rename_local(graph *g, uint64_t id, const char *name);
 int graph_expand_local(graph *g, uint64_t id);
+/* Wires the local's source into an input and names it there, as a use. */
+int graph_use_local(graph *g, uint64_t id, node *n, int pin);
 void graph_prune_locals(graph *g);
 const char *graph_validate_locals(const graph *g);
 

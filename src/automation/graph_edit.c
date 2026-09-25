@@ -1717,6 +1717,24 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
                    : graph_create_local(ctx->graph, n, index, name) ? 0
                                                                     : -1;
         }
+    } else if (
+        !strcmp(operation, "set_pin") && n->desc == &NODE_BehaviorExpression &&
+        !output && yyjson_is_str(yyjson_obj_get(op, "name"))
+    ) {
+        /* Renaming an expression input renames it in the source and keeps its
+           wire or binding. */
+        behavior_expression_error error = { 0 };
+        result = behavior_expression_rename_input(
+            ctx->asset,
+            n,
+            pin->name,
+            yyjson_get_str(yyjson_obj_get(op, "name")),
+            &error
+        );
+        if (result) {
+            set_error(ctx, "%s", error.message);
+            return -1;
+        }
     } else if (!strcmp(operation, "set_pin")) {
         result = 0;
         yyjson_val *name = yyjson_obj_get(op, "name");

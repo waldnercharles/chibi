@@ -25,6 +25,14 @@ int behavior_expression_set(
     const char *source,
     behavior_expression_error *error
 );
+/* Renames an input in the source and on the call, keeping its wire or binding. */
+int behavior_expression_rename_input(
+    behavior_asset *asset,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
 int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error);
 int behavior_expression_repair(behavior_asset *asset, node *call);
 /* An expression function's body is derived from its source and first call.

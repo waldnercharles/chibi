@@ -495,7 +495,7 @@ void studio_behavior_header(studio *s, int area)
         gr->name && gr->name[0] ? gr->name : "Event Graph"
     );
     studio_graph *g = &s->graph;
-    if (g->renaming && g->rename_graph == gr->graph_id) {
+    if (g->renaming && g->rename_graph == gr->graph_id && g->rename_area == area) {
         rename_field(s, gr);
     } else {
         kit_button_desc pick = { .label = label,
@@ -543,6 +543,7 @@ void studio_behavior_header(studio *s, int area)
             if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, NULL, locked)) {
                 g->renaming = true;
                 g->rename_graph = gr->graph_id;
+                g->rename_area = area;
                 g->rename_focus = true;
                 snprintf(g->rename, sizeof g->rename, "%s", gr->name ? gr->name : "");
             }

@@ -190,6 +190,7 @@ typedef struct
     int insert_edge;   /* the wire a dragged node would join, or -1 */
     bool renaming;     /* the name of rename_graph is being edited */
     uint64_t rename_graph;
+    int rename_area; /* the area whose header holds the name field */
     bool rename_focus;
     char rename[128];
     int forms;          /* node settings the layouts follow */

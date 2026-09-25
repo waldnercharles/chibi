@@ -30,16 +30,7 @@
 #define NODE_EXEC __attribute__((annotate("node:exec")))
 #define NODE_OUT __attribute__((annotate("node:out")))
 #define NODE_NAME(NAME) __attribute__((annotate("node:name:" NAME)))
-/* On a function: its node category. On a component, after the closing brace
- * or on an alias typedef: its editor group, e.g. "Physics". */
 #define NODE_CATEGORY(NAME) __attribute__((annotate("node:category:" NAME)))
-/* Component editor icon name, e.g. "camera", placed like NODE_CATEGORY. */
-#define NODE_ICON(NAME) __attribute__((annotate("node:icon:" NAME)))
-/* Editor range of a float field; MIN must be below MAX. */
-#define NODE_RANGE(MIN, MAX)                                                   \
-    __attribute__((annotate("node:range:" #MIN ":" #MAX)))
-/* Display unit of a float field, e.g. "s". */
-#define NODE_UNIT(UNIT) __attribute__((annotate("node:unit:" UNIT)))
 #define NODE_KEYWORDS(KEYWORDS)                                                \
     __attribute__((annotate("node:keywords:" KEYWORDS)))
 #define NODE_PIN_NAME(NAME) __attribute__((annotate("node:pin-name:" NAME)))

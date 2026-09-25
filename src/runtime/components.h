@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameTransform;
-typedef NODE_COMPONENT_ALIAS(CF_V2) NODE_CATEGORY("Physics") CF_V2 GameVelocity;
+typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameVelocity;
 
 /* Publishes this entity as a named global entity value. Behaviors can resolve
  * it without knowing how the entity was instantiated. */
@@ -40,11 +40,11 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
     bool continuous;
     float angular_velocity; /* Kinematic radians/second; requires Orientation. */
 }
-NODE_CATEGORY("Physics") GameBody;
+GameBody;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
 {
-    float radius NODE_UNIT("u");
+    float radius;
     unsigned category;
     unsigned mask;
     GameColliderShape shape;
@@ -53,18 +53,18 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
     bool sensor;
     bool pierce_fragments; /* Continuous sensors report debris hits without stopping. */
     uint64_t ignore_entity NODE_HANDLE(ecs.entity);
-    float restitution NODE_RANGE(0, 1);
-    float friction NODE_RANGE(0, 1);
+    float restitution;
+    float friction;
 }
-NODE_CATEGORY("Physics") GameCollider;
+GameCollider;
 
 /* Target velocity with finite acceleration; physics owns actual velocity. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 {
     CF_V2 target;
-    float acceleration NODE_UNIT("u/s²");
+    float acceleration;
 }
-NODE_CATEGORY("Physics") GameDrive;
+GameDrive;
 
 /* A Scene-owned reference to a standalone System document. */
 typedef NODE_COMPONENT_TYPE_DENSE(EngineSystem)
@@ -73,7 +73,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(EngineSystem)
     int phase;
     int order;
 }
-NODE_ICON("system") EngineSystem;
+EngineSystem;
 
 /* Optional material world. The camera activates nearby chunks; moving bodies
  * wake additional local regions. Population limits bound retained resources. */
@@ -129,7 +129,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
     /* Outward drift speed of the released gas in world units per second. */
     float smoke_speed;
 }
-NODE_CATEGORY("Physics") MaterialBreakProfile;
+MaterialBreakProfile;
 
 /* Optional local combustion. Heat is a gameplay quantity, not kelvin. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
@@ -147,13 +147,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
     float blast_speed;
     float blast_damage;
 }
-NODE_CATEGORY("Gameplay") GameCombustion;
+GameCombustion;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameFuel)
 {
     float amount;
 }
-NODE_CATEGORY("Gameplay") GameFuel;
+GameFuel;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameIgniter)
 {
@@ -168,12 +168,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSubstance)
     float blast_multiplier;
     bool retain_chips;
 }
-NODE_CATEGORY("Physics") GameSubstance;
+GameSubstance;
 
 /* Optional circular void in a destructible mask, for finite sealed pockets. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialCavity)
 {
-    float radius NODE_UNIT("u");
+    float radius;
 }
 GameMaterialCavity;
 
@@ -185,7 +185,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameReflection)
     float angle;
     float offset;
 }
-NODE_CATEGORY("Material") GameReflection;
+GameReflection;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameDestructible)
 {
@@ -196,7 +196,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDestructible)
     /* Detached fragments may be passed through by continuous sensors. */
     bool pierceable_fragments;
 }
-NODE_CATEGORY("Physics") NODE_ICON("diamond") GameDestructible;
+GameDestructible;
 
 /* Detached material keeps its collision but gradually loses emitted light. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFragmentGlow)
@@ -204,7 +204,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFragmentGlow)
     float duration;
     float flicker;
 }
-NODE_CATEGORY("Material") GameFragmentGlow;
+GameFragmentGlow;
 
 /* Where an entity's local frame sat when its material was laid out. Fragments
  * keep their source's frame, so world-space material patterns stay attached to
@@ -241,7 +241,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
      * wholly inside a tile are removed at generation; zero keeps them. */
     int island_cells;
 }
-NODE_CATEGORY("Material") NODE_ICON("terrain") MaterialTerrain;
+MaterialTerrain;
 
 /* A one-time, elliptical fill in local space; its matter then lives freely. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
@@ -252,7 +252,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
     float spacing;
     float mass;
     unsigned color;
-    float absorption NODE_RANGE(0, 1);
+    float absorption;
     float emission;
     /* Camera-only minimum visibility; contributes no radiance or bounce. */
     float visibility;
@@ -260,42 +260,42 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
     float refraction;
     CF_V2 velocity;
 }
-NODE_CATEGORY("Physics") NODE_ICON("water") GameFluidVolume;
+GameFluidVolume;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameHealth)
 {
     int current;
     int maximum;
 }
-NODE_CATEGORY("Gameplay") NODE_ICON("health") GameHealth;
+GameHealth;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameMovement)
 {
-    float speed NODE_UNIT("u/s");
+    float speed;
 }
-NODE_CATEGORY("Gameplay") GameMovement;
+GameMovement;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameInput)
 {
     CF_V2 move;
 }
-NODE_CATEGORY("Gameplay") NODE_ICON("gamepad") GameInput;
+GameInput;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameWeapon)
 {
     int damage;
-    float cooldown NODE_UNIT("s");
+    float cooldown;
 }
-NODE_CATEGORY("Gameplay") GameWeapon;
+GameWeapon;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
 {
-    float speed NODE_UNIT("u/s");
-    float lifetime NODE_UNIT("s");
+    float speed;
+    float lifetime;
     int damage;
     float age;
 }
-NODE_ICON("projectile") GameProjectile;
+GameProjectile;
 
 typedef enum
 {
@@ -320,10 +320,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
     float glow_radius;
     unsigned glow_color;
     float stroke_width;
-    float antialias NODE_RANGE(0, 1);
+    float antialias;
     int layer;
 }
-NODE_ICON("shape") GameAppearance;
+GameAppearance;
 
 /* Radians from gameplay +X toward +Y: atan2(direction.y, direction.x).
  * The 2D canvas flips Y at presentation; 3D maps gameplay Y to world Z. */
@@ -352,18 +352,18 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
     unsigned albedo;
     unsigned filter;
     unsigned emission_color;
-    float emission_intensity NODE_RANGE(0, 4);
+    float emission_intensity;
     float emission_multiplier;
-    float absorption NODE_RANGE(0, 1);
+    float absorption;
     unsigned border_scene;
     unsigned border_emission_color;
     unsigned border_albedo;
     unsigned border_filter;
     /* Gain of light received near the surface of a solid, reaching
      * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
-    float edge_light NODE_RANGE(0, 1);
+    float edge_light;
 }
-NODE_CATEGORY("Material") GameMaterial;
+GameMaterial;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameShader)
 {
@@ -408,13 +408,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAim)
     bool firing;
     bool manual;
 }
-NODE_CATEGORY("Gameplay") GameAim;
+GameAim;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameDash)
 {
-    float speed NODE_UNIT("u/s");
+    float speed;
     float duration;
-    float cooldown NODE_UNIT("s");
+    float cooldown;
     int damage;
     float remaining;
     float cooldown_remaining;
@@ -474,7 +474,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
 {
     unsigned color;
     float intensity;
-    float radius NODE_UNIT("u");
+    float radius;
     float elevation;
 }
 GamePointLight;
@@ -484,7 +484,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)
 {
     unsigned color;
     float strength;
-    float radius NODE_UNIT("u");
+    float radius;
     float linger;
     float inner_radius;
 }
@@ -563,7 +563,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     GameParticleCurve drag;
     GameParticleCurve emission;
     GameParticleCurve antialias;
-    float absorption NODE_RANGE(0, 1);
+    float absorption;
     int metaball_group;
     float metaball_blend;
     bool velocity_align;
@@ -579,7 +579,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     int fluid_kind;
     float fluid_mass;
 }
-NODE_ICON("emitter") GameParticleEmitter;
+GameParticleEmitter;
 
 static inline GameParticleEmitter game_particle_emitter_defaults()
 {
@@ -603,7 +603,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameTrail)
 {
     unsigned color;
     float width;
-    float lifetime NODE_UNIT("s");
+    float lifetime;
     float emission;
 }
 GameTrail;
@@ -617,7 +617,7 @@ GameExperience;
 typedef NODE_COMPONENT_TYPE_DENSE(GamePickup)
 {
     int value;
-    float lifetime NODE_UNIT("s");
+    float lifetime;
     float age;
     int state;
     float collection_age;
@@ -635,7 +635,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     CF_V2 offset;
     bool disabled;
 }
-NODE_ICON("camera") GameCamera;
+GameCamera;
 
 typedef enum
 {
@@ -694,7 +694,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
     bool disabled;
     bool pressed;
 }
-NODE_CATEGORY("Gameplay") NODE_ICON("keyboard") GameActionBinding;
+GameActionBinding;
 
 enum
 {
@@ -758,7 +758,7 @@ GameFog;
  * duration <= 0 is permanent. Only remembering sources update terrain memory. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameVision)
 {
-    float radius NODE_UNIT("u");
+    float radius;
     unsigned occluders;
     float duration;
     float age;
@@ -792,7 +792,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
     CF_V3 parallax;
     unsigned color_a, color_b, color_c, color_d;
 }
-NODE_CATEGORY("Material") GameStarfield2D;
+GameStarfield2D;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
@@ -842,7 +842,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
     float bloom;
 }
-NODE_CATEGORY("Material") NODE_ICON("light") GameHRC2D;
+GameHRC2D;
 
 static inline GameHRC2D game_hrc2d_defaults()
 {

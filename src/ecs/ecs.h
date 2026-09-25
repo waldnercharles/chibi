@@ -38,9 +38,7 @@ typedef struct ecs_component_desc
     const type_desc *type;
     uint64_t layout_hash;
     ecs_index_kind index;
-    const char *category; /* optional editor group, e.g. "Physics" */
-    const char *icon;     /* optional editor icon name, e.g. "camera" */
-    void *column_base;    /* filled by ecs_world_register_component */
+    void *column_base; /* filled by ecs_world_register_component */
 } ecs_component_desc;
 
 typedef enum

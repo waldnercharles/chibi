@@ -13,16 +13,20 @@
 #include <stdio.h>
 #include <string.h>
 
-static const struct
-{
-    uint32_t icon;
-    const char *label;
-} TABS[STUDIO_TAB_COUNT] = {
-    { KIT_ICON_SETTINGS, "Scene" },    { KIT_ICON_PROTOTYPE, "Object" },
-    { KIT_ICON_PHYSICS, "Physics" },   { KIT_ICON_MATERIAL, "Material" },
-    { KIT_ICON_GAMEPLAY, "Gameplay" }, { KIT_ICON_GRAPH, "Behaviors" },
-    { KIT_ICON_HEXAGON, "Node" },
+static const uint32_t TAB_ICONS[STUDIO_TAB_COUNT] = {
+    KIT_ICON_SETTINGS, KIT_ICON_PROTOTYPE, KIT_ICON_PHYSICS, KIT_ICON_MATERIAL,
+    KIT_ICON_GAMEPLAY, KIT_ICON_GRAPH,     KIT_ICON_HEXAGON,
 };
+
+static const char *tab_label(studio_tab tab)
+{
+    switch (tab) {
+        case STUDIO_TAB_SCENE: return "Scene";
+        case STUDIO_TAB_BEHAVIORS: return "Behaviors";
+        case STUDIO_TAB_NODE: return "Node";
+        default: return COMPONENT_TAB_NAMES[tab - STUDIO_TAB_OBJECT];
+    }
+}
 
 static const char *short_name(const char *name)
 {
@@ -30,15 +34,41 @@ static const char *short_name(const char *name)
     return dot ? dot + 1 : name;
 }
 
-/* A component's reflected category names its tab; the rest belong to Object. */
-static studio_tab component_tab(const ecs_component_desc *desc)
+/* editor/Components.yaml names a component's tab; the rest belong to Object. */
+static studio_tab tab_of(const studio *s, const ecs_component_desc *desc)
 {
-    for (int t = STUDIO_TAB_PHYSICS; desc->category && t <= STUDIO_TAB_GAMEPLAY; t++) {
-        if (strcmp(desc->category, TABS[t].label) == 0) {
-            return (studio_tab)t;
+    return (studio_tab)(STUDIO_TAB_OBJECT +
+                        component_presentation_tab(&s->presentation.hints, desc));
+}
+
+/* An authored range draws a slider; an authored unit follows the value. */
+static void number_hints(
+    const studio *s,
+    const ecs_component_desc *desc,
+    const type_field *field,
+    kit_number_desc *d
+)
+{
+    const presented_field *hint = component_presentation_field(
+        &s->presentation.hints,
+        desc,
+        (int)(field - desc->type->fields)
+    );
+    if (!hint) {
+        return;
+    }
+    if (hint->min < hint->max) {
+        d->min = hint->min;
+        d->max = hint->max;
+        d->slider = true;
+        if (!d->integer) {
+            d->step = 0.01;
+            d->precision = 3;
         }
     }
-    return STUDIO_TAB_OBJECT;
+    if (hint->unit) {
+        d->unit = hint->unit;
+    }
 }
 
 void studio_properties_header(studio *s, int area)
@@ -245,6 +275,7 @@ static bool value_control(
             }
             double v = *slot;
             kit_number_desc d = { .step = 1, .integer = true, .flags = flags };
+            number_hints(s, desc, field, &d);
             changed = kit_number(k, "value", &v, &d);
             *slot = (int32_t)v;
             *active = kit_item_active(k) && !kit_item_committed(k);
@@ -275,6 +306,7 @@ static bool value_control(
             bool unsigned_type = value->type == PIN_U32 || value->type == PIN_U8 ||
                                  value->type == PIN_U16 || value->type == PIN_U64;
             kit_number_desc d = { .step = 1, .integer = true, .flags = flags };
+            number_hints(s, desc, field, &d);
             changed = kit_number(k, "value", &v, &d);
             if (unsigned_type && v < 0) {
                 v = 0;
@@ -303,16 +335,7 @@ static bool value_control(
                 d.step = 1;
                 d.precision = 1;
             }
-            if (field->min != field->max) {
-                d.min = field->min;
-                d.max = field->max;
-                d.slider = true;
-                d.step = 0.01;
-                d.precision = 3;
-            }
-            if (field->unit) {
-                d.unit = field->unit;
-            }
+            number_hints(s, desc, field, &d);
             changed = kit_number(k, "value", &v, &d);
             if (radians) {
                 v = v * M_PI / 180;
@@ -782,7 +805,7 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
     for (int i = 0; i < acount(prototype->components); i++) {
         const game_prototype_component *component = &prototype->components[i];
         const ecs_component_desc *desc = component->desc;
-        if (component_tab(desc) != s->tab || !component->data) {
+        if (tab_of(s, desc) != s->tab || !component->data) {
             continue;
         }
         char title[128];
@@ -828,14 +851,14 @@ void studio_properties_body(studio *s, int area)
     if (asset && asset->prototype) {
         available[STUDIO_TAB_OBJECT] = true;
         for (int i = 0; i < acount(asset->prototype->components); i++) {
-            available[component_tab(asset->prototype->components[i].desc)] = true;
+            available[tab_of(s, asset->prototype->components[i].desc)] = true;
         }
     } else if (actor) {
         available[STUDIO_TAB_OBJECT] = available[STUDIO_TAB_BEHAVIORS] = true;
         for (int i = 0; i < scene->registry.component_count; i++) {
             const ecs_component_desc *desc = scene->registry.components[i];
             if (ecs_component_has(scene->world, actor->entity, desc->id)) {
-                available[component_tab(desc)] = true;
+                available[tab_of(s, desc)] = true;
             }
         }
     }
@@ -866,8 +889,8 @@ void studio_properties_body(studio *s, int area)
         }
         char key[16];
         snprintf(key, sizeof key, "tab%d", t);
-        kit_button_desc d = { .icon = TABS[t].icon,
-                              .tip = TABS[t].label,
+        kit_button_desc d = { .icon = TAB_ICONS[t],
+                              .tip = tab_label((studio_tab)t),
                               .flags = s->tab == (studio_tab)t ? KIT_ON : 0 };
         if (kit_button(k, key, &d)) {
             s->tab = (studio_tab)t;
@@ -894,7 +917,7 @@ void studio_properties_body(studio *s, int area)
             for (int i = 0; i < scene->registry.component_count; i++) {
                 const ecs_component_desc *desc = scene->registry.components[i];
                 if (ecs_component_has(scene->world, actor->entity, desc->id) &&
-                    component_tab(desc) == s->tab) {
+                    tab_of(s, desc) == s->tab) {
                     component_panel(s, actor, desc, locked);
                 }
             }

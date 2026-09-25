@@ -422,7 +422,7 @@ add_library(automation STATIC src/automation/controller.c src/automation/field_p
     src/automation/graph_optimize.c
     src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(automation PUBLIC runtime_support core authoring_graph)
+target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/gpu_timing.c

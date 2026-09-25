@@ -24,6 +24,13 @@ const char *behavior_domain_name(behavior_domain domain)
     return "invalid";
 }
 
+bool behavior_domain_pure(behavior_domain domain)
+{
+    return domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE ||
+           domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY ||
+           domain == BEHAVIOR_DOMAIN_FIELD;
+}
+
 static int var_name_unique(const behavior_asset *asset, const char *name, uint64_t except_id)
 {
     for (int i = 0; i < acount(asset->variables); i++) {
@@ -761,18 +768,27 @@ node *behavior_asset_add_macro_call_node(behavior_asset *asset, graph *macro_gra
     return behavior_asset_add_macro_call_node_to_graph(asset, asset ? asset->graph : NULL, macro_graph);
 }
 
+/* Entry, and Return a column to its right so neither hides the other. */
+static void add_signature_nodes(graph *g, node **entry, node **ret)
+{
+    static const float RETURN_COLUMN = 240;
+    *entry = graph_add_node(g, &NODE_FunctionEntry);
+    *ret = graph_add_node(g, &NODE_Return);
+    (*ret)->x = (*entry)->x + RETURN_COLUMN;
+    g->entry_id = (*entry)->id;
+    g->return_id = (*ret)->id;
+}
+
 graph *behavior_asset_add_function(behavior_asset *asset, const char *name, int pure)
 {
     graph *g = behavior_asset_add_graph(asset, GRAPH_FUNCTION, name);
     if (!g) {
         return NULL;
     }
-    node *entry = graph_add_node(g, &NODE_FunctionEntry);
-    node *ret = graph_add_node(g, &NODE_Return);
-    g->entry_id = entry ? entry->id : 0;
-    g->return_id = ret ? ret->id : 0;
+    node *entry, *ret;
+    add_signature_nodes(g, &entry, &ret);
     g->call_depth_limit = 64;
-    if (pure && entry && ret) {
+    if (pure) {
         if (entry->output_count && entry->output_pins[0].kind == PIN_EXEC) {
             graph_remove_pin(g, entry, 1, 0);
         }
@@ -789,9 +805,7 @@ graph *behavior_asset_add_macro(behavior_asset *asset, const char *name)
     if (!g) {
         return NULL;
     }
-    node *entry = graph_add_node(g, &NODE_FunctionEntry);
-    node *ret = graph_add_node(g, &NODE_Return);
-    g->entry_id = entry ? entry->id : 0;
-    g->return_id = ret ? ret->id : 0;
+    node *entry, *ret;
+    add_signature_nodes(g, &entry, &ret);
     return g;
 }

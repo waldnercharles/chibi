@@ -46,6 +46,9 @@ typedef struct behavior_asset
 } behavior_asset;
 
 const char *behavior_domain_name(behavior_domain domain);
+/* Materials, shapes, shader libraries and fields compute values only: their
+ * graphs have no execution pins, so their functions are pure. */
+bool behavior_domain_pure(behavior_domain domain);
 
 /* Create a behavior_asset with one empty default event graph. `name` is copied. */
 behavior_asset *behavior_asset_new(const char *name);

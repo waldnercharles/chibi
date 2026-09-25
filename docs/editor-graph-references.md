@@ -158,6 +158,9 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Ctrl+G collapses the selection to a function; the interface is generated from the wires crossing the selection boundary (Blender, Unreal).
   - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
   - These map to `editor_open_graph_call`, `editor_graph_back` and `editor_graph_ancestor`.
+  - The Member tab edits a function's or macro's inputs and outputs: name, type, container (Single, Array, Set or Map) and removal, and each data input's default. A macro's pins may also be Exec (Unreal's tunnels). Calls follow every edit (`graph/document/graph_signature.h`); a call pin still showing the old default takes the new one, and a value set on the call stays (Unreal).
+  - Functions of materials, shapes, shader libraries and fields are pure.
+  - A behavior has one event graph. Unreal's Add New Graph pages share one Ubergraph, but here only the default graph's events are dispatched, compiled for duplicates and batched, so extra event graphs would never run.
 - **History:** Back and Forward (Alt+Left and Alt+Right, or mouse buttons 4 and 5) move through the graphs visited, across behaviors (Unreal).
 
 ### Debugging

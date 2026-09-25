@@ -1,9 +1,10 @@
 /* The Member tab in Properties: the details of the member selected in
  * Members, as Unreal's Details shows a My Blueprint selection. A variable has
- * its type, container, category and default; a function its purity and its
- * inputs and outputs; a named value its name and source. Types are chosen
- * from a search over basic types, structures and enums (Unreal's pin type
- * picker), on the command surface. */
+ * its type, container, category and default; a function or macro its inputs
+ * and outputs, with their containers and the inputs' defaults, and a function
+ * its purity; a named value its name and source. Types are chosen from a
+ * search over basic types, structures and enums, and Exec for a macro
+ * (Unreal's pin type picker), on the command surface. */
 #include "editor/studio/studio_members_internal.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
@@ -29,6 +30,8 @@ enum
 {
     TYPE_COUNT = sizeof TYPES / sizeof *TYPES,
 };
+/* A macro's tunnels also carry execution (Unreal's Exec type). */
+static const type_choice EXEC = { "Exec", PIN_FLOW, NULL };
 
 static const char *const CONTAINERS[] = { "Single", "Array", "Set", "Map" };
 
@@ -43,6 +46,10 @@ static bool same_type(pin_type type, const char *type_name, const type_choice *c
 const char *sm_type_label(const pin_spec *pin, char *out, size_t size)
 {
     static const char *const SUFFIXES[] = { "", " Array", " Set", " Map" };
+    if (pin->kind == PIN_EXEC) {
+        snprintf(out, size, "%s", EXEC.label);
+        return out;
+    }
     const char *label = pin->type_name && pin->type_name[0]
                           ? pin->type_name
                           : pin_type_name(pin->type);
@@ -81,14 +88,17 @@ static void identity(kit *k, uint32_t icon, const char *title, const char *linea
 }
 
 /* The type as a swatch and a button that opens the type search for
-   `id` and `pin_id` (see studio_members.pick). */
+   `id` and `pin_id` (see studio_members.pick). The container has its own
+   control, so the button names the value type alone (Unreal). */
 static void type_button(studio *s, const pin_spec *pin, uint64_t id, uint64_t pin_id)
 {
     kit *k = s->kit;
     char label[96];
+    pin_spec value = *pin;
+    value.container = PIN_CONTAINER_SINGLE;
     kit_push(k, "type", NULL, "type-pick");
     sm_swatch(s, "swatch", pin);
-    kit_button_desc d = { .label = sm_type_label(pin, label, sizeof label),
+    kit_button_desc d = { .label = sm_type_label(&value, label, sizeof label),
                           .variant = KIT_SUBTLE,
                           .cls = "type-button",
                           .flags = locked(s) ? KIT_DISABLED : 0 };
@@ -156,76 +166,117 @@ static bool enum_control(kit *k, const enum_desc *enumeration, pin_value *value,
     return changed;
 }
 
-/* The default edits as the canvas edits pin values: numbers and vectors
-   scrub, and a scrub is one undo step. */
-static void default_value(studio *s, const behavior_variable *v)
+/* A value being edited in Properties; vectors and text edit in place. */
+typedef struct
+{
+    pin_value value;
+    float vector[4];
+    char text[256];
+    bool changed, streaming, committed;
+} value_edit;
+
+static void vector_control(kit *k, int width, value_edit *edit, unsigned flags)
+{
+    static const char *const AXES[] = { "X", "Y", "Z", "W" };
+    if (edit->value.ptr) {
+        memcpy(edit->vector, edit->value.ptr, (size_t)width * sizeof *edit->vector);
+    }
+    for (int a = 0; a < width; a++) {
+        char key[8];
+        snprintf(key, sizeof key, "v%d", a);
+        double axis = edit->vector[a];
+        kit_number_desc d = { .precision = 2, .step = 0.1, .addon = AXES[a], .flags = flags };
+        if (kit_number(k, key, &axis, &d)) {
+            edit->vector[a] = (float)axis;
+            edit->changed = edit->streaming = true;
+        }
+        edit->committed |= kit_item_committed(k);
+    }
+    edit->value.ptr = edit->vector;
+}
+
+static void number_control(kit *k, pin_type type, value_edit *edit, unsigned flags)
+{
+    bool integer = type < PIN_F32;
+    double number = number_of(&edit->value);
+    kit_number_desc d = { .integer = integer,
+                          .precision = integer ? 0 : 2,
+                          .step = integer ? 1 : 0.1,
+                          .flags = flags };
+    edit->changed = edit->streaming = kit_number(k, "v", &number, &d);
+    edit->committed = kit_item_committed(k);
+    set_number(&edit->value, number);
+}
+
+/* Single values of the types value_control edits. */
+static bool value_editable(const pin_spec *pin)
+{
+    bool enumeration = pin->type == PIN_ENUM && registry_enum_by_name(pin->type_name);
+    return pin->kind == PIN_DATA && pin->container == PIN_CONTAINER_SINGLE &&
+           (enumeration || pin->type == PIN_BOOL || pin_vector_width(pin) > 0 ||
+            pin->type == PIN_STR || pin->type == PIN_NAME ||
+            (pin->type >= PIN_I8 && pin->type <= PIN_F64));
+}
+
+/* The editor for a value_editable pin's value, as the canvas edits pin
+   values: numbers and vectors scrub. */
+static void value_control(studio *s, const pin_spec *pin, value_edit *edit)
 {
     kit *k = s->kit;
-    editor *e = member_editor(s);
-    studio_members *m = &s->members;
     unsigned flags = locked(s) ? KIT_READONLY : 0;
-    pin_spec pin = sm_variable_pin(v);
-    pin_value value = v->default_value;
-    const enum_desc *enumeration = v->type == PIN_ENUM
-                                     ? registry_enum_by_name(v->type_name)
-                                     : NULL;
-    int width = v->container == PIN_CONTAINER_SINGLE ? pin_vector_width(&pin) : 0;
-    bool changed = false, streaming = false, committed = false;
-    float vector[4] = { 0 };
-    char text[256];
-    kit_prop_begin(k, "value", "Value");
-    if (v->container != PIN_CONTAINER_SINGLE) {
-        kit_label(k, "v", "dim", sm_type_label(&pin, text, sizeof text));
-    } else if (enumeration) {
-        changed = enum_control(k, enumeration, &value, flags);
-    } else if (v->type == PIN_BOOL) {
-        bool b = value.b;
-        changed = kit_checkbox(k, "v", &b, NULL, flags);
-        value.b = b;
-    } else if (width > 0) {
-        static const char *const AXES[] = { "X", "Y", "Z", "W" };
-        if (value.ptr) {
-            memcpy(vector, value.ptr, (size_t)width * sizeof *vector);
-        }
-        for (int a = 0; a < width; a++) {
-            char key[8];
-            snprintf(key, sizeof key, "v%d", a);
-            double axis = vector[a];
-            kit_number_desc d = { .precision = 2, .step = 0.1, .addon = AXES[a], .flags = flags };
-            if (kit_number(k, key, &axis, &d)) {
-                vector[a] = (float)axis;
-                changed = streaming = true;
-            }
-            committed |= kit_item_committed(k);
-        }
-        value.ptr = vector;
-    } else if (v->type == PIN_STR || v->type == PIN_NAME) {
-        snprintf(text, sizeof text, "%s", value.str ? value.str : "");
-        changed = kit_text_field(k, "v", text, sizeof text, NULL, flags);
-        value.str = text;
-    } else if (v->type >= PIN_I8 && v->type <= PIN_F64) {
-        bool integer = v->type < PIN_F32;
-        double number = number_of(&value);
-        kit_number_desc d = { .integer = integer,
-                              .precision = integer ? 0 : 2,
-                              .step = integer ? 1 : 0.1,
-                              .flags = flags };
-        changed = streaming = kit_number(k, "v", &number, &d);
-        committed = kit_item_committed(k);
-        set_number(&value, number);
+    if (pin->type == PIN_ENUM) {
+        edit->changed = enum_control(k, registry_enum_by_name(pin->type_name), &edit->value, flags);
+    } else if (pin->type == PIN_BOOL) {
+        bool b = edit->value.b;
+        edit->changed = kit_checkbox(k, "v", &b, NULL, flags);
+        edit->value.b = b;
+    } else if (pin_vector_width(pin) > 0) {
+        vector_control(k, pin_vector_width(pin), edit, flags);
+    } else if (pin->type == PIN_STR || pin->type == PIN_NAME) {
+        snprintf(
+            edit->text,
+            sizeof edit->text,
+            "%s",
+            edit->value.str ? edit->value.str : ""
+        );
+        edit->changed = kit_text_field(k, "v", edit->text, sizeof edit->text, NULL, flags);
+        edit->value.str = edit->text;
     } else {
-        kit_label(k, "v", "dim", sm_type_label(&pin, text, sizeof text));
+        number_control(k, pin->type, edit, flags);
     }
-    kit_prop_end(k);
-    if (!changed || locked(s)) {
-        m->value_editing &= !committed;
-        return;
+}
+
+/* Opens the undo step an edit needs: one per discrete change, one per scrub.
+   True when the edit should be applied. */
+static bool value_step(studio *s, const value_edit *edit)
+{
+    studio_members *m = &s->members;
+    if (!edit->changed || locked(s)) {
+        m->value_editing &= !edit->committed;
+        return false;
     }
-    if (!streaming || !m->value_editing) {
-        ed_snapshot_before(e);
+    if (!edit->streaming || !m->value_editing) {
+        ed_snapshot_before(member_editor(s));
     }
-    m->value_editing = streaming && !committed;
-    behavior_asset_set_variable_default(e->asset, v->id, &value);
+    m->value_editing = edit->streaming && !edit->committed;
+    return true;
+}
+
+static void default_value(studio *s, const behavior_variable *v)
+{
+    pin_spec pin = sm_variable_pin(v);
+    value_edit edit = { .value = v->default_value };
+    char type[96];
+    kit_prop_begin(s->kit, "value", "Value");
+    if (value_editable(&pin)) {
+        value_control(s, &pin, &edit);
+    } else {
+        kit_label(s->kit, "v", "dim", sm_type_label(&pin, type, sizeof type));
+    }
+    kit_prop_end(s->kit);
+    if (value_step(s, &edit)) {
+        behavior_asset_set_variable_default(member_editor(s)->asset, v->id, &edit.value);
+    }
 }
 
 static void variable_properties(studio *s, const behavior_variable *v)
@@ -289,15 +340,27 @@ static node *signature_node(const graph *g, bool result)
     return graph_node_by_id(g, result ? g->return_id : g->entry_id);
 }
 
-static void signature_edit(studio *s, char *before, bool ok)
+/* An input's default, which its unwired call pins show. Returns true when
+   the default changed. */
+static bool default_row(studio *s, graph *g, int index)
 {
-    if (!sm_record(member_editor(s), before, ok)) {
-        sm_refused(s, "A parameter has that name");
+    const pin_spec *pin = &signature_node(g, false)->output_pins[index];
+    value_edit edit = { .value = pin->default_value };
+    if (!value_editable(pin)) {
+        return false;
     }
+    kit_prop_begin(s->kit, "default", "Default");
+    value_control(s, pin, &edit);
+    kit_prop_end(s->kit);
+    if (!value_step(s, &edit)) {
+        return false;
+    }
+    graph_signature_set_default(member_editor(s)->asset, g, index, &edit.value);
+    return true;
 }
 
-/* One parameter or result: its name, its type and a remove button. Returns
-   true when an edit changed the signature. */
+/* One input or output: its name, type, container and a remove button, and
+   an input's default below. Returns true when an edit changed the pins. */
 static bool signature_row(studio *s, graph *g, bool result, int index)
 {
     kit *k = s->kit;
@@ -306,29 +369,41 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
     const pin_spec *pin = result ? &owner->input_pins[index]
                                  : &owner->output_pins[index];
     unsigned flags = locked(s) ? KIT_READONLY : 0;
+    bool exec = pin->kind == PIN_EXEC;
     char key[32], name[128];
     snprintf(key, sizeof key, "p%llu", (unsigned long long)pin->id);
     snprintf(name, sizeof name, "%s", pin->name ? pin->name : "");
-    kit_push(k, key, NULL, "param-row");
+    kit_push(k, key, NULL, "param");
+    kit_push(k, "pin", NULL, "param-row");
     bool renamed = kit_text_field(k, "name", name, sizeof name, NULL, flags) &&
-                   name[0];
+                   name[0] && strcmp(name, pin->name);
     type_button(s, pin, g->graph_id, pin->id);
+    int container = pin->container;
+    unsigned fixed = locked(s) || exec ? KIT_DISABLED : 0;
+    bool contained = kit_choice(k, "container", &container, CONTAINERS, 4, fixed);
     kit_button_desc remove = { .icon = KIT_ICON_TRASH,
                                .tip = "Remove",
                                .flags = locked(s) ? KIT_DISABLED : 0 };
     bool removed = kit_button(k, "remove", &remove);
     kit_pop(k);
-    if (renamed && strcmp(name, pin->name)) {
-        char *before = ed_snapshot(e);
-        signature_edit(s, before, function_signature_rename(e->asset, g, result, index, name) == 0);
-        return true;
+    bool defaulted = !result && default_row(s, g, index);
+    kit_pop(k);
+    if (!renamed && !contained && !removed) {
+        return defaulted;
     }
-    if (removed) {
-        char *before = ed_snapshot(e);
-        sm_record(e, before, function_signature_remove(e->asset, g, result, index) == 0);
-        return true;
+    pin_spec type = { .kind = PIN_DATA,
+                      .type = pin->type,
+                      .type_name = pin->type_name,
+                      .container = (pin_container)container };
+    char *before = ed_snapshot(e);
+    int status = renamed ? graph_signature_rename(e->asset, g, result, index, name)
+               : contained
+                   ? graph_signature_retype(e->asset, g, result, index, &type)
+                   : graph_signature_remove(e->asset, g, result, index);
+    if (!sm_record(e, before, status == 0) && renamed) {
+        sm_refused(s, "A pin has that name");
     }
-    return false;
+    return true;
 }
 
 static bool pin_named(const node *n, bool result, const char *name)
@@ -343,7 +418,7 @@ static bool pin_named(const node *n, bool result, const char *name)
     return false;
 }
 
-/* A new parameter is a Float, named past the names in use. */
+/* A new input or output is a Float, named past the names in use. */
 static void add_signature_pin(studio *s, graph *g, bool result)
 {
     editor *e = member_editor(s);
@@ -354,9 +429,9 @@ static void add_signature_pin(studio *s, graph *g, bool result)
     for (int i = 2; pin_named(owner, result, name); i++) {
         snprintf(name, sizeof name, "%s %d", base, i);
     }
-    pin_spec pin = { .name = name, .type = PIN_F32, .type_name = "float" };
+    pin_spec pin = { .name = name, .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
     char *before = ed_snapshot(e);
-    sm_record(e, before, function_signature_add(e->asset, g, result, &pin) == 0);
+    sm_record(e, before, graph_signature_add(e->asset, g, result, &pin) == 0);
 }
 
 static void signature_panel(studio *s, graph *g, bool result)
@@ -370,7 +445,7 @@ static void signature_panel(studio *s, graph *g, bool result)
             const pin_spec *pin = result ? &owner->input_pins[p]
                                          : &owner->output_pins[p];
             /* An edit rebuilds the pins; the next frame shows them. */
-            if (function_signature_declared(pin) && signature_row(s, g, result, p)) {
+            if (graph_signature_declared(g, pin) && signature_row(s, g, result, p)) {
                 break;
             }
         }
@@ -392,7 +467,7 @@ static void graph_properties(studio *s, graph *g)
     kit *k = s->kit;
     editor *e = member_editor(s);
     bool function = g->kind == GRAPH_FUNCTION;
-    bool pure = function && function_signature_pure(g);
+    bool pure = function && graph_signature_pure(g);
     identity(
         k,
         function ? KIT_ICON_FUNCTION : KIT_ICON_EXPRESSION,
@@ -413,10 +488,12 @@ static void graph_properties(studio *s, graph *g)
         }
         kit_prop_end(k);
         if (function) {
+            /* Shader and field functions compute values only. */
+            bool fixed = locked(s) || behavior_domain_pure(e->asset->domain);
             kit_prop_begin(k, "pure", "Pure");
-            if (kit_checkbox(k, "v", &pure, NULL, locked(s) ? KIT_DISABLED : 0)) {
+            if (kit_checkbox(k, "v", &pure, NULL, fixed ? KIT_DISABLED : 0)) {
                 char *before = ed_snapshot(e);
-                if (!sm_record(e, before, function_signature_set_pure(e->asset, g, pure) == 0)) {
+                if (!sm_record(e, before, graph_signature_set_pure(e->asset, g, pure) == 0)) {
                     sm_refused(s, "The function runs nodes in order");
                 }
             }
@@ -424,10 +501,8 @@ static void graph_properties(studio *s, graph *g)
         }
     }
     kit_panel_end(k);
-    if (function) {
-        signature_panel(s, g, false);
-        signature_panel(s, g, true);
-    }
+    signature_panel(s, g, false);
+    signature_panel(s, g, true);
 }
 
 /* ---------- Named values ---------- */
@@ -499,10 +574,14 @@ void studio_member_properties(studio *s)
 
 /* ---------- Type search ---------- */
 
-/* Basic types, then registered structures and enums. */
-static type_choice *type_choices()
+/* Exec for a macro's pins, basic types, then registered structures and
+   enums. */
+static type_choice *type_choices(bool exec)
 {
     type_choice *choices = NULL;
+    if (exec) {
+        apush(choices, EXEC);
+    }
     for (int i = 0; i < TYPE_COUNT; i++) {
         apush(choices, TYPES[i]);
     }
@@ -517,11 +596,31 @@ static type_choice *type_choices()
     return choices;
 }
 
-static const char *type_group(const type_choice *choice, int index)
+/* `basic` counts the choices listed as types. */
+static kit_command_item type_item(const type_choice *choice, int index, int basic)
 {
-    return index < TYPE_COUNT         ? "Types"
-         : choice->type == PIN_STRUCT ? "Structures"
-                                      : "Enums";
+    const char *group = index < basic              ? "Types"
+                      : choice->type == PIN_STRUCT ? "Structures"
+                                                   : "Enums";
+    uint32_t icon = choice->type == PIN_FLOW   ? KIT_ICON_PLAY
+                  : choice->type == PIN_STRUCT ? KIT_ICON_COMPONENT
+                  : choice->type == PIN_ENUM   ? KIT_ICON_FIELD
+                                               : KIT_ICON_VARIABLE;
+    return (kit_command_item){ .label = choice->label, .group = group, .icon = icon };
+}
+
+/* The picked pin of a function or macro, and its side. */
+static const pin_spec *picked_pin(const studio_members *m, graph *g, bool *result, int *index)
+{
+    for (int side = 0; g && side < 2; side++) {
+        int output = 0;
+        const pin_spec *pin = graph_pin_by_id(signature_node(g, side), m->pick.pin_id, &output, index);
+        if (pin) {
+            *result = side;
+            return pin;
+        }
+    }
+    return NULL;
 }
 
 static void apply_type(studio *s, const type_choice *choice)
@@ -543,22 +642,14 @@ static void apply_type(studio *s, const type_choice *choice)
         return;
     }
     graph *g = behavior_asset_find_graph(e->asset, m->pick.id);
-    bool ok = false;
-    for (int result = 0; g && g->kind == GRAPH_FUNCTION && result < 2; result++) {
-        node *owner = signature_node(g, result);
-        int output = 0, index = -1;
-        const pin_spec *pin = owner
-                                ? graph_pin_by_id(owner, m->pick.pin_id, &output, &index)
-                                : NULL;
-        if (pin) {
-            pin_spec type = { .type = choice->type,
-                              .type_name = choice->type_name,
-                              .container = pin->container };
-            ok = function_signature_retype(e->asset, g, result, index, &type) == 0;
-            break;
-        }
-    }
-    sm_record(e, before, ok);
+    bool result = false;
+    int index = -1;
+    const pin_spec *pin = picked_pin(m, g, &result, &index);
+    pin_spec type = { .kind = choice->type == PIN_FLOW ? PIN_EXEC : PIN_DATA,
+                      .type = choice->type,
+                      .type_name = choice->type_name,
+                      .container = pin ? pin->container : PIN_CONTAINER_SINGLE };
+    sm_record(e, before, pin && graph_signature_retype(e->asset, g, result, index, &type) == 0);
 }
 
 bool studio_member_palette(studio *s)
@@ -571,17 +662,14 @@ bool studio_member_palette(studio *s)
         m->pick.open = false;
         return false;
     }
-    type_choice *choices = type_choices();
+    graph *g = m->pick.pin_id
+                 ? behavior_asset_find_graph(member_editor(s)->asset, m->pick.id)
+                 : NULL;
+    bool exec = g && g->kind == GRAPH_MACRO;
+    type_choice *choices = type_choices(exec);
     kit_command_item *items = NULL;
     for (int i = 0; i < acount(choices); i++) {
-        apush(
-            items,
-            ((kit_command_item){ .label = choices[i].label,
-                                 .group = type_group(&choices[i], i),
-                                 .icon = choices[i].type == PIN_STRUCT ? KIT_ICON_COMPONENT
-                                       : choices[i].type == PIN_ENUM ? KIT_ICON_FIELD
-                                                                     : KIT_ICON_VARIABLE })
-        );
+        apush(items, type_item(&choices[i], i, TYPE_COUNT + exec));
     }
     int chosen = kit_command(s->kit, items, acount(items));
     if (chosen >= 0) {

@@ -37,7 +37,7 @@ int editor_command_apply(editor *e, editor_command command)
                                ? behavior_asset_add_function(
                                      e->asset,
                                      command.data.create_graph.name,
-                                     0
+                                     behavior_domain_pure(e->asset->domain)
                                  )
                            : command.data.create_graph.graph_kind == GRAPH_MACRO
                                ? behavior_asset_add_macro(

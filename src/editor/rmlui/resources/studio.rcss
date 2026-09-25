@@ -221,4 +221,5 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .type-pick .type-button { flex: 1 1 0dp; justify-content: flex-start; overflow: hidden; }
 .param-row { display: flex; align-items: center; gap: 4dp; margin-top: var(--gap); }
 .param-row .field { flex: 1 1 0dp; }
-.param-row .type-pick { flex: 0 0 120dp; }
+.param-row .type-pick { flex: 0 0 104dp; }
+.param-row .select { flex: 0 0 78dp; }

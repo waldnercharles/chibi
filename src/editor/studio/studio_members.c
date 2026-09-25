@@ -469,8 +469,9 @@ pin_spec sm_variable_pin(const behavior_variable *v)
 void sm_swatch(studio *s, const char *key, const pin_spec *pin)
 {
     uint32_t color = sg_pin_color(s, pin);
-    kit_dot_desc dot = { pin->container == PIN_CONTAINER_SINGLE ? KIT_DOT_CIRCLE
-                                                                : KIT_DOT_SQUARE,
+    kit_dot_desc dot = { pin->kind == PIN_EXEC ? KIT_DOT_ARROW
+                         : pin->container == PIN_CONTAINER_SINGLE ? KIT_DOT_CIRCLE
+                                                                  : KIT_DOT_SQUARE,
                          color,
                          color,
                          0 };
@@ -616,7 +617,7 @@ static void graph_row(studio *s, const member_row *row, int area)
         .icon = icon,
         .depth = row->depth,
         .twisty = -1,
-        .meta = g->kind == GRAPH_FUNCTION && function_signature_pure(g) ? "pure" : NULL,
+        .meta = g->kind == GRAPH_FUNCTION && graph_signature_pure(g) ? "pure" : NULL,
         .flags = (selected ? KIT_ON : 0) | (g == e->active_graph ? KIT_ACTIVE : 0)
     };
     unsigned events = kit_row_begin(k, "row", &d);

@@ -18,10 +18,10 @@ the earlier library catalog from the Codex RmlUi branch.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls, popups and menus in `kit.cpp` | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.cpp` and `kit_number.cpp`; popups, menus and tooltips in `kit_popup.cpp` | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in `kit.rcss` | Done |
-| [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` | Done; pages and group jumps open |
-| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
+| [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.cpp`) | Done; pages and group jumps open |
+| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.cpp`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
 | [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout`, springs in `kit_motion.cpp` | Done |
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | `kit_number_flow` (`kit_text.cpp`) | Done |
 | [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | `kit_morph`, `kit_button_desc.morph` | Done; place-value numbers open |
@@ -208,7 +208,7 @@ control's contract.
 ### clsx and cva
 
 - `KIT_CX(k, "area", { "fill", fill })` joins classes whose condition holds, in order, without de-duplication.
-- Variants are enums mapped to classes in one table in `kit.cpp`. An icon without a label derives the square button, a compound variant. `cls` is only for layout hooks.
+- Variants are enums mapped to classes in one table in `kit_controls.cpp`. An icon without a label derives the square button, a compound variant. `cls` is only for layout hooks.
 - State never goes in classes: it goes in `data-*` attributes.
 
 ## Common mismatches to catch

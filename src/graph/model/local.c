@@ -48,6 +48,22 @@ bool graph_edge_is_local(const graph *g, const edge *e)
            local->source_pin_id == e->from_pin_id;
 }
 
+int graph_rename_local(graph *g, uint64_t id, const char *name)
+{
+    graph_local *local = (graph_local *)graph_local_by_id(g, id);
+    if (!local || !name || !name[0]) {
+        return -1;
+    }
+    for (int i = 0; i < acount(g->locals); i++) {
+        if (g->locals[i].id != id && !strcmp(g->locals[i].name, name)) {
+            return -1;
+        }
+    }
+    local->name = graph_own_str(g, name, strlen(name));
+    g->topology_revision++;
+    return 0;
+}
+
 uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
 {
     if (g->flow_pause_count || !source || graph_node_by_id(g, source->id) != source ||

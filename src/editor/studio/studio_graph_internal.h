@@ -115,6 +115,8 @@ bool sg_is_unused(const studio_graph *g, uint64_t id);
 void sg_find_unused(studio *s);
 void sg_collapse_to_function(studio *s);
 void sg_convert_to_expression(studio *s);
+void sg_optimize(studio *s);
+void sg_collapse_math(studio *s);
 
 /* Input (studio_graph_input.c). */
 void sg_replay(studio *s);

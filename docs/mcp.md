@@ -224,6 +224,7 @@ serialized pin IDs.
 Graph batches also support `select_graph`, `rename_graph`, `remove_graph`,
 `remove_variable`, `set_pin`, `remove_pin`, `split_pin`, `recombine_pin`,
 `expose_fields`, `hide_fields`, `bind_input`, `clear_binding`, and `create_local`.
+`create_local` on an output that already has a local renames that local.
 Select the owning graph before referring to one of its nodes. Graph selectors
 accept IDs, names, or aliases created in the same request. Function calls can
 resolve `reference_name` without a numeric graph ID.

@@ -297,6 +297,39 @@ void sg_convert_to_expression(studio *s)
     afree(selection);
 }
 
+/* Folds reads into bindings and names values used three or more times. */
+void sg_optimize(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    if (ed_optimize_graph(e) < 0) {
+        return;
+    }
+    studio_report(s, e->optimize_summary);
+}
+
+/* Each tree of three or more math nodes becomes one expression. */
+void sg_collapse_math(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    ed_snapshot_before(e);
+    behavior_expression_error error;
+    int created = behavior_expression_collapse_math(e->asset, e->active_graph, 3, &error);
+    if (created < 0) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Can't convert",
+                               .description = error.message }
+        );
+        return;
+    }
+    char message[64];
+    snprintf(message, sizeof message, "%d expressions", created);
+    studio_report(s, message);
+    e->arrange_pending = created > 0;
+}
+
 /* ---------- Add node ---------- */
 
 /* How well a search result can take the dragged wire: 3 an exact socket type,

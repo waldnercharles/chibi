@@ -1619,9 +1619,14 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
     } else if (!strcmp(operation, "clear_binding")) {
         result = graph_set_pin_binding(ctx->graph, n, output, index, NULL);
     } else if (!strcmp(operation, "create_local")) {
+        /* Naming an output that already has a local renames that local. */
         const char *name = NULL;
+        const graph_local *local = output ? graph_output_local(ctx->graph, n, index)
+                                          : NULL;
         if (output && string_value(yyjson_obj_get(op, "name"), &name)) {
-            result = graph_create_local(ctx->graph, n, index, name) ? 0 : -1;
+            result = local ? graph_rename_local(ctx->graph, local->id, name)
+                   : graph_create_local(ctx->graph, n, index, name) ? 0
+                                                                    : -1;
         }
     } else if (!strcmp(operation, "set_pin")) {
         result = 0;

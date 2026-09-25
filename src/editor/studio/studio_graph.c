@@ -580,6 +580,20 @@ void studio_behavior_header(studio *s, int area)
             &(kit_number_flow_desc){ .suffix = "%" }
         );
     }
+    bool readonly = sg_graph_readonly(s) || gr->math_expression;
+    kit_button_desc more = { .icon = KIT_ICON_MORE, .tip = "Graph" };
+    if (kit_button(k, "more", &more)) {
+        kit_popup_open(k, "graph-actions");
+    }
+    if (kit_popup_begin(k, "graph-actions", "menu")) {
+        if (menu_item(k, "optimize", "Optimize", KIT_ICON_EXPRESSION, NULL, readonly)) {
+            sg_optimize(s);
+        }
+        if (menu_item(k, "collapse", "Math to Expressions", KIT_ICON_EXPRESSION, NULL, readonly)) {
+            sg_collapse_math(s);
+        }
+        kit_popup_end(k);
+    }
     kit_button_desc tidy = { .icon = KIT_ICON_LAYOUT,
                              .tip = "Arrange",
                              .shortcut = studio_chord(s, "Shift+L"),

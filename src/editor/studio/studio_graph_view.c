@@ -28,6 +28,11 @@ void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy)
     g->camera.active = false;
 }
 
+bool sg_far(const studio *s)
+{
+    return s->graph.zoom * cf_app_get_pixel_scale() < FAR_PIXELS;
+}
+
 static void camera_to(studio *s, float zoom, float x, float y, bool animate)
 {
     studio_graph *g = &s->graph;

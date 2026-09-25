@@ -365,7 +365,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
     s->cursor_shown = -1;
-    s->hover_area = s->focus_area = -1;
+    s->hover_area = s->focus_area = s->maximized = -1;
     s->graph.area = -1;
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();

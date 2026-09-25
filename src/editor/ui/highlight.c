@@ -212,7 +212,18 @@ size_t highlight_markup(highlight_language language, const char *text, char *out
             int written = snprintf(open, sizeof open, "<span class=\"%s\">", cls);
             used = append(out, size, used, open, (size_t)written);
         }
-        used = append_escaped(out, size, used, text + runs[r].start, runs[r].length);
+        /* RmlUi drops text that is only spaces between two elements, so
+           a gap between highlighted tokens keeps its width as &nbsp;. */
+        bool gap = !cls && runs[r].length > 0;
+        for (int i = 0; gap && i < runs[r].length; i++) {
+            gap = text[runs[r].start + i] == ' ';
+        }
+        for (int i = 0; gap && i < runs[r].length; i++) {
+            used = append(out, size, used, "&nbsp;", 6);
+        }
+        if (!gap) {
+            used = append_escaped(out, size, used, text + runs[r].start, runs[r].length);
+        }
         if (cls) {
             used = append(out, size, used, "</span>", 7);
         }

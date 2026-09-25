@@ -13,6 +13,8 @@ void studio_free(studio *s);
 /* Process input, emit the UI, draw the viewport and queue the composited frame.
  * Call after the scene frame; the host presents with cf_app_draw_onto_screen. */
 void studio_frame(studio *s, double delta_seconds);
+/* Fills the workspace with the graph canvas without changing saved preferences. */
+void studio_maximize_graph(studio *s);
 /* Test and inspection access to element rectangles by kit path. */
 bool studio_item_rect(const studio *s, const char *path, float rect[4]);
 

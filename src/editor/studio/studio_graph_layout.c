@@ -321,7 +321,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
    where rows hide, at the least zoom that shows them. */
 float sg_text_width(const studio *s, const char *text, float size, int weight)
 {
-    float ratio = fmaxf(s->graph.zoom, FAR_ZOOM) * cf_app_get_pixel_scale();
+    float ratio = fmaxf(s->graph.zoom * cf_app_get_pixel_scale(), FAR_PIXELS);
     return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight, ratio)
                         : strlen(text) * size * 0.55f;
 }
@@ -418,18 +418,21 @@ int sg_code_lines(const studio *s, const char *code, float width, int starts[COD
     int count = 1, start = 0, fits = -1; /* fits: the end of the text that fits */
     starts[0] = 0;
     for (int i = 0; count < CODE_LINES;) {
-        while (code[i] && code[i] != ' ') {
+        /* Lines break at spaces, and after operators and commas so that
+           unspaced source wraps too. */
+        while (code[i] && !strchr(" ,+-*/%^&|<>=", code[i])) {
             i++;
         }
+        int end = code[i] && code[i] != ' ' ? i + 1 : i;
         char line[512];
-        snprintf(line, sizeof line, "%.*s", i - start, code + start);
+        snprintf(line, sizeof line, "%.*s", end - start, code + start);
         if (fits > start && sg_text_width(s, line, CODE_SIZE, 400) > width) {
-            start = fits + 1;
+            start = fits + (code[fits] == ' ');
             starts[count++] = start;
             fits = -1;
             continue;
         }
-        fits = i;
+        fits = end;
         if (!code[i]) {
             break;
         }

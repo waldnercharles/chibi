@@ -228,6 +228,7 @@ struct studio
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
     int focus_area;
+    int maximized; /* the area filling the workspace (Blender's Ctrl Space), or -1 */
     studio_prefs prefs;
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
@@ -294,6 +295,8 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
 void studio_emit(studio *s);
 void studio_report(studio *s, const char *message);
 void studio_shortcuts(studio *s);
+/* Fills the workspace with one area, or restores the layout; -1 is no area. */
+void studio_toggle_maximized(studio *s, int area);
 bool studio_key_pressed(const studio *s, SDL_Keycode key);
 const char *studio_scene_title(const app_scene_authoring *scene, char *out, size_t size);
 

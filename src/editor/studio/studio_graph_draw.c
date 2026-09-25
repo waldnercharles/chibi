@@ -352,7 +352,10 @@ static void emit_code(studio *s, node *n, const node_layout *l)
     int count = sg_code_lines(s, code, sg_code_room(l), starts);
     kit_push(k, "code", NULL, "gcode");
     for (int i = 0; i < count; i++) {
-        int end = i + 1 < count ? starts[i + 1] - 1 : length;
+        int end = i + 1 < count ? starts[i + 1] : length;
+        while (end > starts[i] && code[end - 1] == ' ') {
+            end--;
+        }
         char key[8], line[512], markup[2048];
         snprintf(key, sizeof key, "l%d", i);
         snprintf(line, sizeof line, "%.*s", end - starts[i], code + starts[i]);
@@ -625,7 +628,7 @@ static void emit_conversions(studio *s)
     studio_graph *g = &s->graph;
     kit *k = g->kit;
     graph *gr = sg_active_graph(s);
-    if (g->zoom < FAR_ZOOM) {
+    if (sg_far(s)) {
         return;
     }
     for (int i = 0; i < acount(gr->edges); i++) {

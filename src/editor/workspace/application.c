@@ -47,6 +47,7 @@ typedef struct
     int frames;
     int frame;
     const char *screenshot_path;
+    bool show_graph; /* --open with --screenshot: the graph canvas fills the window */
     int capture_error;
     int headless;
     bool imgui; /* --imgui: the ImGui workspace in place of Studio */
@@ -164,6 +165,33 @@ static int app_frame(app_loop *loop)
     return finished;
 }
 
+/* --open names a behavior, event, library, material, shape or field asset;
+   --graph selects one of its graphs by name. */
+static int open_graph(
+    app_scene_authoring *authoring,
+    editor *graph_editor,
+    const char *asset,
+    const char *graph_name,
+    char *error,
+    size_t error_size
+)
+{
+    if (app_scene_authoring_open_behavior(authoring, asset) != 0) {
+        snprintf(error, error_size, "--open: no graph asset named %s", asset);
+        return -1;
+    }
+    editor_set_graph_visible(graph_editor, 1);
+    if (!graph_name) {
+        return 0;
+    }
+    const graph *target = behavior_asset_find_graph_by_name(editor_behavior_asset(graph_editor), graph_name);
+    if (!target || editor_open_graph(graph_editor, target->graph_id) != 0) {
+        snprintf(error, error_size, "--graph: %s has no graph named %s", asset, graph_name);
+        return -1;
+    }
+    return 0;
+}
+
 static void *application_create(const chibi_host *host, const char *checkpoint, char *error, size_t error_size)
 {
     snprintf(error, error_size, "Could not initialize application");
@@ -177,6 +205,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     const char *scene_path = NULL;
     const char *project_path = NULL;
     const char *screenshot_path = NULL;
+    const char *open = NULL;
+    const char *graph_name = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[++i]);
@@ -205,6 +235,13 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
                 return NULL;
             }
             project_path = argv[++i];
+        } else if (strcmp(argv[i], "--open") == 0 || strcmp(argv[i], "--graph") == 0) {
+            if (i + 1 == argc || argv[i + 1][0] == '-') {
+                snprintf(error, error_size, "%s requires a name", argv[i]);
+                return NULL;
+            }
+            *(argv[i][2] == 'o' ? &open : &graph_name) = argv[i + 1];
+            i++;
         } else if (strcmp(argv[i], "--fixed-dt") == 0) {
             if (i + 1 == argc) {
                 snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
@@ -315,11 +352,20 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     chibi_project_free(&project);
     /* Put the shipped movement graph on screen on first launch. The graph is
      * still reachable through Files after switching documents. */
-    if (!play && authoring &&
-        game_live_find_definition(live, "TwinStickInputBehavior")) {
+    if (!play && !open && game_live_find_definition(live, "TwinStickInputBehavior")) {
         (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
         editor_set_graph_visible(graph_editor, 1);
         editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    }
+    if (open &&
+        open_graph(authoring, graph_editor, open, graph_name, error, error_size) != 0) {
+        app_scene_authoring_free(authoring);
+        engine_free(runtime);
+        game_live_world_free(live);
+        editor_free(graph_editor);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        return NULL;
     }
     /* Captures start from a known dock tree for consistent framing. */
     if (screenshot_path && !play && imgui) {
@@ -346,6 +392,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         .authoring = authoring,
         .frames = frames,
         .screenshot_path = screenshot_path,
+        .show_graph = open && screenshot_path,
         .capture_error = 0,
         .headless = headless,
         .imgui = imgui,
@@ -452,6 +499,9 @@ static void application_activate(void *state)
     app_input_initialize();
     if (studio_ui) {
         loop->studio = studio_new(loop->authoring, loop->viewport);
+        if (loop->show_graph) {
+            studio_maximize_graph(loop->studio);
+        }
     }
 }
 

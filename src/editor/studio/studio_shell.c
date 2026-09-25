@@ -403,6 +403,12 @@ static void menus(studio *s)
             }
         }
         kit_menu_separator(k, "s2");
+        kit_menu_item_desc maximize = { .label = "Maximize Area",
+                                        .shortcut = "Ctrl+Space",
+                                        .checked = s->maximized >= 0 };
+        if (kit_menu_item(k, "maximize", &maximize)) {
+            studio_toggle_maximized(s, s->focus_area);
+        }
         if (item(k, "reset_layout", "Reset Layout", KIT_ICON_LAYOUT, NULL, false)) {
             studio_prefs layout = studio_prefs_default();
             s->prefs.side_width = layout.side_width;
@@ -683,6 +689,22 @@ void studio_toggle_drawer(studio *s, studio_editor editor)
     s->prefs.drawer_open = !showing;
 }
 
+void studio_toggle_maximized(studio *s, int area)
+{
+    s->maximized = s->maximized >= 0 ? -1 : area;
+}
+
+void studio_maximize_graph(studio *s)
+{
+    int area = STUDIO_AREA_TOP;
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        area = s->prefs.editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+    }
+    s->prefs.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->applied.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->maximized = area;
+}
+
 static void editor_type_menu(studio *s, int area)
 {
     kit *k = s->kit;
@@ -770,9 +792,22 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
 
 static void workspace(studio *s)
 {
+    static const char *const AREA_KEYS[STUDIO_AREA_COUNT] = { "top",
+                                                              "bottom",
+                                                              "outliner",
+                                                              "properties",
+                                                              "drawer" };
     kit *k = s->kit;
     kit_push(k, "workspace", "main", "workspace");
     kit_push(k, "main", NULL, "column main");
+    if (s->maximized >= 0) {
+        memset(s->areas, 0, sizeof s->areas);
+        area(s, s->maximized, AREA_KEYS[s->maximized], 0, true);
+        kit_pop(k);
+        s->main_rect = kit_item_rect(k);
+        kit_pop(k);
+        return;
+    }
     float column_height = s->main_rect.h > 0 ? s->main_rect.h : s->in.height - 60;
     /* The drawer eases open in 200 ms and closed in 100 ms, and follows its
        splitter directly while dragged. */
@@ -1180,6 +1215,8 @@ void studio_shortcuts(studio *s)
             studio_history(s, shift);
         } else if (mod && key == SDLK_Y) {
             studio_history(s, true);
+        } else if ((s->keys[i].mod & SDL_KMOD_CTRL) && key == SDLK_SPACE) {
+            studio_toggle_maximized(s, s->hover_area);
         } else if (!mod && key == SDLK_SPACE && editor != STUDIO_EDITOR_BEHAVIOR) {
             studio_runtime(s, APP_RUNTIME_PLAY);
         } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {

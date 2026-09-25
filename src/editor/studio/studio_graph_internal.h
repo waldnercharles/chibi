@@ -12,7 +12,9 @@ enum
 
 static const float ROW = 22; /* graph.rcss row pitch */
 static const float SOCKET_PAD = 10, PART_GAP = 6, EDGE = 1;
-static const float FAR_ZOOM = 0.5f; /* below: titles only */
+/* Below this many device pixels per graph unit only titles show: 12 dp pin
+   labels would draw under 7 px. Zoom alone would hide legible text on HiDPI. */
+static const float FAR_PIXELS = 0.6f;
 
 typedef enum
 {
@@ -90,6 +92,8 @@ void sg_socket_at(const studio *s, node *n, int kind, int pin, float *x, float *
 /* Camera and arrangement (studio_graph_view.c). */
 void sg_to_world(const studio_graph *g, float wx, float wy, float *x, float *y);
 void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy);
+/* Zoomed out past FAR_PIXELS: nodes show titles only. */
+bool sg_far(const studio *s);
 void sg_camera_step(studio *s);
 void sg_frame_nodes(studio *s, bool selection, bool animate);
 bool sg_follow_graph(studio *s);

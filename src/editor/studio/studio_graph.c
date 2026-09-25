@@ -352,7 +352,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     g->in.dp_ratio = g->zoom * scale;
     g->in.width = canvas_w(g);
     g->in.height = canvas_h(g);
-    kit_set_body_class(g->kit, "far", g->zoom < FAR_ZOOM);
+    kit_set_body_class(g->kit, "far", sg_far(s));
     kit_set_body_class(g->kit, "comfortable", s->prefs.comfortable);
     kit_set_body_class(g->kit, "light", s->light);
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);

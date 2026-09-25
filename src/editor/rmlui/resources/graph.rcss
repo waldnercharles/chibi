@@ -109,7 +109,7 @@ body.graph-canvas.light {
     display: block; margin: 0dp 8dp 4dp; padding: 4dp 6dp; border-radius: 4dp;
     background-color: var(--chip); font-size: 11dp; line-height: 16dp;
 }
-.gcode-line { display: block; height: 16dp; white-space: nowrap; overflow: hidden; }
+.gcode-line { display: block; height: 16dp; white-space: pre; overflow: hidden; }
 
 /* Compact nodes (Unreal): an operator's symbol sits between its inputs and its
    centered output; a one-output read is a pill with its socket on the title. */

@@ -171,6 +171,7 @@ static bool operation_readback(app_scene_authoring *scene, yyjson_val *expected)
 static bool run_case(yyjson_val *item)
 {
     command_fixture f = command_fixture_new();
+    command_fixture_drawers(&f);
     const char *goal = command_string(item, "goal");
     const char *id = command_string(item, "id");
     yyjson_val *native = yyjson_obj_get(item, "native_expected");

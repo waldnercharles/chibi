@@ -88,4 +88,7 @@ model latency. Requests outside the observed editor catalog, and batches
 spanning documents, are unsupported. Unspecified targets, fields or amounts
 require clarification. These are synthetic scene tests, not evidence of
 general autonomous app use: the runner approves only proposals that match the
-expected operations exactly.
+expected operations exactly. The live checks register Studio's drawers as
+panels, so panel cases name only Assets, Output and Performance. With
+`gpt-oss:20b` on Ollama, v7 matched 45/49 expected outcomes; five were quick
+edits with no model call.

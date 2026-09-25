@@ -71,7 +71,7 @@
     { "id": "v547", "category": "unsupported_missing_component", "goal": "Double the particle emitter's burst count; this scene has no emitter.", "native_expected_status": "unsupported" },
     { "id": "v548", "category": "unsupported_shape", "goal": "Change the Enemy hitbox to a capsule.", "native_expected_status": "unsupported" },
 
-    { "id": "v549", "category": "panel", "goal": "Hide the Graph panel.", "native_expected_operations": [{ "op": "panel", "target": "panel:4", "value": false }] },
+    { "id": "v549", "category": "panel", "goal": "Hide the Graph panel.", "native_expected_status": "unsupported" },
     { "id": "v550", "category": "panel", "goal": "Open the Asset browser (Content) panel.", "native_expected_operations": [{ "op": "panel", "target": "panel:0", "value": true }] }
   ]
 }

@@ -10,6 +10,33 @@
 #include <string.h>
 #include <yyjson.h>
 
+static bool drawer_visible(void *user, int panel)
+{
+    return ((command_fixture *)user)->drawers[panel];
+}
+
+static void show_drawer(void *user, int panel, bool visible)
+{
+    ((command_fixture *)user)->drawers[panel] = visible;
+}
+
+static void history(void *, bool) {}
+
+static void frame(void *) {}
+
+void command_fixture_drawers(command_fixture *f)
+{
+    static const char *const panels[] = { "Assets", "Output", "Performance" };
+    editor_command_hooks hooks = { .user = f,
+                                   .panels = panels,
+                                   .panel_count = 3,
+                                   .panel_visible = drawer_visible,
+                                   .show_panel = show_drawer,
+                                   .history = history,
+                                   .frame = frame };
+    editor_commands_set_hooks(f->scene, &hooks);
+}
+
 command_fixture command_fixture_new()
 {
     command_fixture f = { 0 };

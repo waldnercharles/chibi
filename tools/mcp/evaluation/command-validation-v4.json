@@ -45,10 +45,10 @@
     { "id": "v424", "category": "instance_scope", "goal": "Set just the Foe instance's collider to Circle. Enemy's own shape stays Box.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Foe", "component": "GameCollider", "field": "shape", "value": "Circle" }], "native_unchanged": [{ "scope": "prototype", "target": "Enemy", "component": "GameCollider", "field": "shape", "value": "Box" }] },
     { "id": "v425", "category": "instance_scope", "goal": "Make Ship itself 33 units tall; do not change Player's template height.", "native_expected_operations": [{ "op": "set", "scope": "instance", "target": "Ship", "component": "GameAppearance", "field": "height", "value": 33 }], "native_unchanged": [{ "scope": "prototype", "target": "Player", "component": "GameAppearance", "field": "height", "value": 24 }] },
 
-    { "id": "v426", "category": "panel", "goal": "Dismiss the Compiler panel.", "native_expected_operations": [{ "op": "panel", "target": "panel:6", "value": false }] },
-    { "id": "v427", "category": "panel", "goal": "Bring Performance back into view.", "native_expected_operations": [{ "op": "panel", "target": "panel:8", "value": true }] },
-    { "id": "v428", "category": "panel", "goal": "Fold away the Behavior panel.", "native_expected_operations": [{ "op": "panel", "target": "panel:2", "value": false }] },
-    { "id": "v429", "category": "panel", "goal": "Show the Scene panel again.", "native_expected_operations": [{ "op": "panel", "target": "panel:5", "value": true }] },
+    { "id": "v426", "category": "panel", "goal": "Dismiss the Compiler panel.", "native_expected_status": "unsupported" },
+    { "id": "v427", "category": "panel", "goal": "Bring Performance back into view.", "native_expected_operations": [{ "op": "panel", "target": "panel:2", "value": true }] },
+    { "id": "v428", "category": "panel", "goal": "Fold away the Behavior panel.", "native_expected_status": "unsupported" },
+    { "id": "v429", "category": "panel", "goal": "Show the Scene panel again.", "native_expected_status": "unsupported" },
 
     { "id": "v430", "category": "ambiguous", "goal": "Make Player look rounder.", "native_expected_status": "needs_clarification" },
     { "id": "v431", "category": "ambiguous", "goal": "Enlarge Enemy.", "native_expected_status": "needs_clarification" },

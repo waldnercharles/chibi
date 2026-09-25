@@ -1,6 +1,7 @@
-/* Output: the behavior log, compiler problems and the operation history
- * (Blender's Info editor), as virtualized, highlighted rows. Logs follow new
- * output while scrolled to the bottom. */
+/* Output: the behavior log, compiler problems, the playing scene's runtime
+ * errors (Unreal's message log) and the operation history (Blender's Info
+ * editor), as virtualized, highlighted rows. Logs follow new output while
+ * scrolled to the bottom; problems and errors open their node. */
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/highlight.h"
 #include "graph/compiler/compile.h"
@@ -14,7 +15,9 @@ enum
 {
     OUTPUT_LOG,
     OUTPUT_PROBLEMS,
+    OUTPUT_RUNTIME,
     OUTPUT_INFO,
+    OUTPUT_VIEWS,
 };
 
 #define OUTPUT_LINE 1536
@@ -68,30 +71,37 @@ void studio_output_header(studio *s, int area)
     kit *k = s->kit;
     const compile_report *report = problems(s);
     int count = report ? report->error_count + report->warning_count : 0;
-    char problems_label[32];
+    int errors = acount(s->runtime_errors);
+    char problems_label[32], runtime_label[32];
     snprintf(problems_label, sizeof problems_label, count ? "Problems %d" : "Problems", count);
-    const char *views[] = { "Log", problems_label, "Info" };
+    snprintf(runtime_label, sizeof runtime_label, errors ? "Runtime %d" : "Runtime", errors);
+    const char *views[OUTPUT_VIEWS] = { "Log", problems_label, runtime_label, "Info" };
     kit_push(k, "views", NULL, "output-views");
-    kit_choice(k, "view", &s->output_view, views, 3, 0);
+    kit_choice(k, "view", &s->output_view, views, OUTPUT_VIEWS, 0);
     kit_pop(k);
     kit_leaf(k, "spacer", NULL, "spacer");
     kit_push(k, "filter", NULL, "output-filter");
     kit_search(k, "search", s->output_filter, sizeof s->output_filter, "Filter");
     kit_pop(k);
-    bool clearable = s->output_view == OUTPUT_LOG
-                       ? s->scene->graph_editor &&
-                             editor_log_count(s->scene->graph_editor) > 0
-                   : s->output_view == OUTPUT_INFO ? acount(s->records) > 0
-                                                   : false;
+    bool clearable = false;
+    switch (s->output_view) {
+        case OUTPUT_LOG:
+            clearable = s->scene->graph_editor &&
+                        editor_log_count(s->scene->graph_editor) > 0;
+            break;
+        case OUTPUT_RUNTIME: clearable = errors > 0; break;
+        case OUTPUT_INFO: clearable = acount(s->records) > 0; break;
+    }
     kit_button_desc clear = { .icon = KIT_ICON_TRASH,
                               .tip = "Clear",
                               .flags = clearable ? 0 : KIT_DISABLED };
-    if (kit_button(k, "clear", &clear)) {
-        if (s->output_view == OUTPUT_LOG) {
-            editor_clear_log(s->scene->graph_editor);
-        } else {
-            asetlen(s->records, 0);
-        }
+    if (!kit_button(k, "clear", &clear)) {
+        return;
+    }
+    switch (s->output_view) {
+        case OUTPUT_LOG: editor_clear_log(s->scene->graph_editor); break;
+        case OUTPUT_RUNTIME: asetlen(s->runtime_errors, 0); break;
+        case OUTPUT_INFO: asetlen(s->records, 0); break;
     }
 }
 
@@ -172,11 +182,25 @@ static void log_view(studio *s, float row)
     afree(shown);
 }
 
+/* Opens a row for something at a node: an icon, where, then the message. The
+   caller may add to the row, then pops it. */
+static void located_row_begin(kit *k, const char *key, kit_toast_type kind, const char *place, const char *message)
+{
+    char markup[OUTPUT_LINE * 2];
+    kit_push(k, key, NULL, "output-row located");
+    kit_attr(k, "data-kind", kind_name(kind));
+    kit_icon(k, "icon", "kind", kind_icon(kind));
+    kit_label(k, "at", "output-at", place);
+    highlight_markup(HIGHLIGHT_LOG, message, markup, sizeof markup);
+    kit_markup(k, "text", "output-line", markup);
+}
+
 static void problems_view(studio *s, float row)
 {
     kit *k = s->kit;
     const compile_report *report = problems(s);
     int total = report ? acount(report->items) : 0;
+    const char *behavior = s->scene->graph_document_id;
     int *shown = NULL;
     for (int i = 0; i < total; i++) {
         if (contains(report->items[i].message, s->output_filter)) {
@@ -188,31 +212,74 @@ static void problems_view(studio *s, float row)
     kit_list_begin(k, "problems", "output-list", &list, &first, &last);
     for (int r = first; r <= last && r < acount(shown); r++) {
         const compile_diagnostic *d = &report->items[shown[r]];
-        char key[24], markup[OUTPUT_LINE * 2];
+        studio_node_ref at = { .graph_id = d->graph_id, .node_id = d->node_id };
+        snprintf(at.asset, sizeof at.asset, "%s", behavior ? behavior : "");
+        char key[24], place[256];
         snprintf(key, sizeof key, "p%d", shown[r]);
-        kit_push(k, key, NULL, "output-row");
-        kit_attr(
+        studio_node_place(s, &at, place, sizeof place);
+        located_row_begin(
             k,
-            "data-kind",
-            d->severity == CMPL_ERROR     ? "error"
-            : d->severity == CMPL_WARNING ? "warning"
-                                          : "info"
+            key,
+            d->severity == CMPL_ERROR     ? KIT_TOAST_ERROR
+            : d->severity == CMPL_WARNING ? KIT_TOAST_WARNING
+                                          : KIT_TOAST_INFO,
+            place,
+            d->message
         );
-        kit_icon(
-            k,
-            "icon",
-            "kind",
-            d->severity == CMPL_ERROR     ? KIT_ICON_ERROR
-            : d->severity == CMPL_WARNING ? KIT_ICON_WARNING
-                                          : KIT_ICON_INFO
-        );
-        row_markup(markup, sizeof markup, cmpl_rule_name(d->rule), NULL, d->message);
-        kit_markup(k, "text", "output-line", markup);
         kit_pop(k);
+        if (kit_item_clicked(k) && behavior) {
+            studio_reveal(s, &at);
+        }
     }
     kit_list_end(k);
     if (!acount(shown)) {
         empty(k, total ? "No matches" : "No problems");
+    }
+    afree(shown);
+}
+
+/* Runs that failed while the scene played, one row per node and message. */
+static void runtime_view(studio *s, float row)
+{
+    kit *k = s->kit;
+    int total = acount(s->runtime_errors);
+    int *shown = NULL;
+    for (int i = 0; i < total; i++) {
+        const studio_runtime_error *error = &s->runtime_errors[i];
+        if (contains(error->message, s->output_filter) ||
+            contains(error->behavior, s->output_filter) ||
+            contains(error->node, s->output_filter)) {
+            apush(shown, i);
+        }
+    }
+    kit_list_desc list = { .count = acount(shown), .row_height = row, .reveal = -1 };
+    int first, last;
+    kit_list_begin(k, "runtime", "output-list", &list, &first, &last);
+    for (int r = first; r <= last && r < acount(shown); r++) {
+        const studio_runtime_error *error = &s->runtime_errors[shown[r]];
+        char key[24], place[256];
+        snprintf(key, sizeof key, "r%d", shown[r]);
+        snprintf(
+            place,
+            sizeof place,
+            error->node[0] ? "%s \xe2\x80\xba %s" : "%s",
+            error->behavior,
+            error->node
+        );
+        located_row_begin(k, key, KIT_TOAST_ERROR, place, error->message);
+        if (error->count > 1) {
+            char count[24];
+            snprintf(count, sizeof count, "\xc3\x97%d", error->count);
+            kit_label(k, "count", "badge output-count", count);
+        }
+        kit_pop(k);
+        if (kit_item_clicked(k)) {
+            studio_reveal(s, &error->at);
+        }
+    }
+    kit_list_end(k);
+    if (!acount(shown)) {
+        empty(k, total ? "No matches" : "No runtime errors");
     }
     afree(shown);
 }
@@ -258,6 +325,7 @@ void studio_output_body(studio *s, int area)
     float row = s->prefs.comfortable ? 24 : 20;
     switch (s->output_view) {
         case OUTPUT_PROBLEMS: problems_view(s, row); break;
+        case OUTPUT_RUNTIME: runtime_view(s, row); break;
         case OUTPUT_INFO: info_view(s, row); break;
         default: log_view(s, row); break;
     }

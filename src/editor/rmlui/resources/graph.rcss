@@ -49,6 +49,8 @@ body.graph-canvas.light {
     background-color: var(--node); border: 1dp var(--node-edge); border-radius: var(--r-lg);
     color: var(--fg); font-size: 12dp;
 }
+.gnode[data-error] { border-color: var(--danger); }
+.gnode[data-warning] { border-color: var(--warning); }
 .gnode[data-selected] { border-color: var(--selected-object); z-index: 2; }
 .gnode[data-active] { border-color: var(--active-object); }
 .gnode[data-dim] { opacity: 0.45; }
@@ -157,6 +159,23 @@ body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
 /* A wire's reroute point: a 14 dp hit area centered on the point. */
 .greroute { position: absolute; width: 14dp; height: 14dp; margin-left: -7dp; margin-top: -7dp; cursor: move; }
 .greroute kit-dot { position: absolute; left: 2dp; top: 2dp; width: 10dp; height: 10dp; }
+
+/* A problem sits on the node's top edge by its right corner, clear of the
+   title's socket (Blender's node warnings); a paused run's node takes a 3 dp
+   accent ring outside its border. */
+.gproblem {
+    position: absolute; top: -10dp; right: 14dp; width: 18dp; height: 18dp; border-radius: 9dp;
+    background-color: var(--node); text-align: center; z-index: 3;
+}
+.gproblem .icon { width: 18dp; font-size: 14dp; line-height: 18dp; color: var(--warning); }
+.gnode[data-error] .gproblem .icon { color: var(--danger); }
+.gpaused {
+    position: absolute; left: -5dp; top: -5dp; right: -5dp; bottom: -5dp;
+    border: 3dp var(--accent); border-radius: 10dp; pointer-events: none;
+    opacity: 1; transition: opacity 0.14s cubic-out;
+}
+.gpaused[data-starting-style] { opacity: 0; }
+.gnode[data-paused] { z-index: 3; }
 
 /* A watched pin's value floats outside the node beside its socket (Unreal). */
 .gwatch {

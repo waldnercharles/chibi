@@ -19,6 +19,12 @@ enum
     KIT_ICON_PAUSE = 0xf03e4,       /* nf-md-pause */
     KIT_ICON_STOP = 0xf04db,        /* nf-md-stop */
     KIT_ICON_STEP = 0xf04ad,        /* nf-md-skip_next */
+    KIT_ICON_CONTINUE = 0xeacf,     /* nf-cod-debug_continue */
+    KIT_ICON_STEP_OVER = 0xead6,    /* nf-cod-debug_step_over */
+    KIT_ICON_STEP_INTO = 0xead4,    /* nf-cod-debug_step_into */
+    KIT_ICON_STEP_OUT = 0xead5,     /* nf-cod-debug_step_out */
+    KIT_ICON_FRAME_CALL = 0xeb8b,   /* nf-cod-debug_stackframe */
+    KIT_ICON_FRAME_TOP = 0xeb89,    /* nf-cod-debug_stackframe_active */
     KIT_ICON_EYE = 0xea70,          /* nf-cod-eye */
     KIT_ICON_EYE_OFF = 0xeae7,      /* nf-cod-eye_closed */
     KIT_ICON_LOCK = 0xea75,         /* nf-cod-lock */

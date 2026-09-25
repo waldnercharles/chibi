@@ -431,6 +431,100 @@ static void emit_operator(studio *s, node *n, const node_layout *l)
     kit_pop(k);
 }
 
+/* ---------- Problems and the paused node ---------- */
+
+/* One problem per node, the worst: an error replaces warnings, and messages
+   of equal weight join. A folded source's problem shows on its consumer. */
+static void add_problem(studio_graph *g, graph *gr, uint64_t id, bool error, const char *text)
+{
+    node *n = id ? graph_node_by_id(gr, id) : NULL;
+    if (!n) {
+        return;
+    }
+    uint64_t owner = graph_inline_owner(gr, n)->id;
+    studio_node_problem *p = NULL;
+    for (int i = 0; i < acount(g->problems); i++) {
+        p = g->problems[i].node == owner ? &g->problems[i] : p;
+    }
+    if (!p) {
+        apush(g->problems, ((studio_node_problem){ .node = owner }));
+        p = &alast(g->problems);
+    } else if (p->error == error) {
+        size_t used = strlen(p->text);
+        if (!strstr(p->text, text)) {
+            snprintf(p->text + used, sizeof p->text - used, " \xc2\xb7 %s", text);
+        }
+        return;
+    } else if (p->error) {
+        return;
+    }
+    p->error = error;
+    snprintf(p->text, sizeof p->text, "%s", text);
+}
+
+/* The open behavior's compile diagnostics and, while the scene runs, the runs
+   that failed in this graph. */
+static void collect_problems(studio *s)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    asetlen(g->problems, 0);
+    for (int i = 0; i < acount(e->compile.items); i++) {
+        const compile_diagnostic *d = &e->compile.items[i];
+        if ((d->severity == CMPL_ERROR || d->severity == CMPL_WARNING) &&
+            behavior_asset_find_graph(e->asset, d->graph_id) == gr) {
+            add_problem(g, gr, d->node_id, d->severity == CMPL_ERROR, d->message);
+        }
+    }
+    if (!runtime_session(s->scene)) {
+        return;
+    }
+    for (int i = 0; i < acount(s->runtime_errors); i++) {
+        const studio_runtime_error *error = &s->runtime_errors[i];
+        if (!strcmp(error->at.asset, s->scene->graph_document_id) &&
+            behavior_asset_find_graph(e->asset, error->at.graph_id) == gr) {
+            add_problem(g, gr, error->at.node_id, true, error->message);
+        }
+    }
+}
+
+static const studio_node_problem *problem_of(const studio_graph *g, uint64_t id)
+{
+    for (int i = 0; i < acount(g->problems); i++) {
+        if (g->problems[i].node == id) {
+            return &g->problems[i];
+        }
+    }
+    return NULL;
+}
+
+static bool paused_at(const studio *s, const node *n)
+{
+    const studio_node_ref *at = &s->pause.at;
+    return s->pause.active && at->node_id == n->id &&
+           !strcmp(at->asset, s->scene->graph_document_id) &&
+           behavior_asset_find_graph(sg_graph_editor(s)->asset, at->graph_id) ==
+               sg_active_graph(s);
+}
+
+/* A problem badge on the node's corner, its message on hover (Blender's node
+   warnings), and a ring around the node a paused run stopped at. */
+static void emit_marks(studio *s, const studio_node_problem *problem, bool paused)
+{
+    kit *k = s->graph.kit;
+    if (problem) {
+        kit_push(k, "problem", NULL, "gproblem");
+        kit_tip(k, problem->text, NULL);
+        kit_icon(k, "i", NULL, problem->error ? KIT_ICON_ERROR : KIT_ICON_WARNING);
+        kit_pop(k);
+    }
+    if (paused) {
+        kit_leaf(k, "paused", NULL, "gpaused");
+        kit_presence(k);
+    }
+}
+
 static void emit_node(studio *s, node *n)
 {
     static const char *const FORMS[] = { "full", "operator", "getter" };
@@ -438,6 +532,8 @@ static void emit_node(studio *s, node *n)
     kit *k = g->kit;
     editor *e = sg_graph_editor(s);
     node_layout l = *sg_layout_of(s, n);
+    const studio_node_problem *problem = problem_of(g, n->id);
+    bool paused = paused_at(s, n);
     char key[32];
     snprintf(key, sizeof key, "n%llu", (unsigned long long)n->id);
     kit_push(k, key, NULL, "gnode");
@@ -449,8 +545,12 @@ static void emit_node(studio *s, node *n)
     kit_flag(k, "data-selected", ed_node_selected(e, n));
     kit_flag(k, "data-active", e->front_node == n && ed_node_selected(e, n) && acount(e->selected) > 1);
     kit_flag(k, "data-disabled", n->disabled != 0);
-    kit_flag(k, "data-dim", sg_is_unused(g, n->id));
+    /* A problem draws attention, so its node never recedes. */
+    kit_flag(k, "data-dim", sg_is_unused(g, n->id) && !problem);
     kit_flag(k, "data-breakpoint", n->breakpoint != 0);
+    kit_flag(k, "data-error", problem && problem->error);
+    kit_flag(k, "data-warning", problem && !problem->error);
+    kit_flag(k, "data-paused", paused);
     if (l.form == FORM_OPERATOR) {
         emit_operator(s, n, &l);
     } else {
@@ -460,6 +560,7 @@ static void emit_node(studio *s, node *n)
         (l.code_lines || sg_row_count(sg_active_graph(s), n, &l))) {
         emit_rows(s, n, &l);
     }
+    emit_marks(s, problem, paused);
     kit_pop(k);
 }
 
@@ -742,6 +843,7 @@ void sg_emit_canvas(studio *s)
     studio_graph *g = &s->graph;
     kit *k = g->kit;
     graph *gr = sg_active_graph(s);
+    collect_problems(s);
     kit_root(k, "back");
     emit_wires(s);
     kit_root(k, "world");

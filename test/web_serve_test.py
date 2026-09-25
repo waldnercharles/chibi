@@ -1,7 +1,11 @@
 """Local workspace saves must survive reload without escaping the project."""
 import importlib.util
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
 from pathlib import Path
+import socket
 import tempfile
+import threading
 import unittest
 
 spec = importlib.util.spec_from_file_location(
@@ -41,6 +45,62 @@ class WorkspaceSaves(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 self.save(path)
         self.assertFalse((self.project / 'outside.yaml').exists())
+
+
+class ModelProxy(unittest.TestCase):
+    def test_forwards_only_to_loopback_http(self):
+        for url in ('https://127.0.0.1:11435/api/chat', 'http://example.com/api/chat',
+                    'http://user:secret@127.0.0.1:11435/api/chat', 'file:///etc/passwd'):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                server.model_request({'url': url, 'body': '{}'})
+
+    def test_returns_the_model_response(self):
+        received = []
+
+        class Model(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(self.rfile.read(int(self.headers['Content-Length'])).decode())
+                body = b'{"message":{"content":"{}"}}'
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        model = HTTPServer(('127.0.0.1', 0), Model)
+        threading.Thread(target=model.handle_request, daemon=True).start()
+        url = f'http://127.0.0.1:{model.server_address[1]}/api/chat'
+        self.assertEqual(server.model_request({'url': url, 'body': '{"model":"m"}'}),
+                         '{"message":{"content":"{}"}}')
+        self.assertEqual(received, ['{"model":"m"}'])
+        model.server_close()
+
+    def test_unreachable_host_is_an_error_envelope(self):
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0))
+            port = probe.getsockname()[1]
+        reply = json.loads(server.model_request({'url': f'http://127.0.0.1:{port}/api/chat', 'body': '{}'}))
+        self.assertFalse(reply['ok'])
+        self.assertIn('model host', reply['error'])
+
+
+class EditorSessions(unittest.TestCase):
+    def test_forward_waits_for_the_page_reply(self):
+        sessions = server.Sessions()
+        key = sessions.register()['session']
+
+        def page():
+            message = sessions.poll(key, timeout=5)[0]
+            sessions.reply(key, message['id'], {'status': 'applied', 'packet': message['packet']})
+
+        threading.Thread(target=page, daemon=True).start()
+        result = sessions.forward(key, {'operation': 'inspect'}, timeout=5)
+        self.assertEqual(result, {'status': 'applied', 'packet': {'operation': 'inspect'}})
+        self.assertEqual(sessions.list(), [{'session': key, 'active': True}])
+        with self.assertRaises(ValueError):
+            sessions.forward('unknown', {})
 
 
 if __name__ == '__main__':

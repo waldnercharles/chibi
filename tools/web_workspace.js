@@ -17,6 +17,16 @@
         if (xhr.status < 200 || xhr.status >= 300) throw new Error(xhr.responseText || 'Local save failed');
         return xhr.responseText;
     };
+    const post = async (path, body, signal) => {
+        const response = await fetch('/__chibi/' + path, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Chibi-Token': token},
+            body: typeof body === 'string' ? body : JSON.stringify(body),
+            signal,
+        });
+        if (!response.ok) throw new Error(`Local server returned HTTP ${response.status}`);
+        return response.text();
+    };
     Module['chibiSaveAsset'] = (path, text) => {
         try {
             if (!path.startsWith(root)) throw new Error('Asset is outside the served project');
@@ -27,6 +37,43 @@
             return -1;
         }
     };
+
+    // Editor command model requests: the server forwards each {url, body}
+    // envelope to the loopback model host the page cannot reach itself.
+    let nextCommand = 0;
+    const commands = new Map();
+    Module['chibiCommandStart'] = (envelope) => {
+        const id = ++nextCommand;
+        const command = {controller: new AbortController()};
+        commands.set(id, command);
+        post('model', envelope, command.controller.signal)
+            .then(text => { command.result = text; })
+            .catch(error => { command.result = JSON.stringify({ok: false, error: error.message}); });
+        return id;
+    };
+    Module['chibiCommandPoll'] = id => commands.get(id)?.result;
+    Module['chibiCommandCancel'] = id => {
+        commands.get(id)?.controller.abort();
+        commands.delete(id);
+    };
+
+    // A live session lets external command clients reach this editor.
+    const inbox = [];
+    let session;
+    Module['chibiEditorNext'] = () => inbox.shift();
+    Module['chibiEditorTrace'] = record => post('trace', record).catch(() => {});
+    Module['chibiEditorReply'] = (id, result) => post('session/reply', {session, id, result}).catch(() => {});
+    const connect = async () => {
+        session = JSON.parse(await post('session/register', {})).session;
+        for (;;) {
+            try {
+                inbox.push(...JSON.parse(await post('session/poll', {session})));
+            } catch {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    };
+
     const initialize = Module['onRuntimeInitialized'];
     Module['onRuntimeInitialized'] = () => {
         try {
@@ -41,5 +88,6 @@
             throw error;
         }
         initialize?.();
+        connect().catch(() => {});
     };
 })();

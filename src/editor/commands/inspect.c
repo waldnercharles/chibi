@@ -25,9 +25,16 @@ static bool requested(yyjson_val *kinds, const char *kind)
     return false;
 }
 
+/* Case-insensitive substring match; an empty query matches everything. */
 static bool matches(const char *name, const char *query)
 {
-    return !*query || (name && strcasestr(name, query));
+    size_t length = strlen(query);
+    for (const char *at = name; *at; at++) {
+        if (!strncasecmp(at, query, length)) {
+            return true;
+        }
+    }
+    return !length;
 }
 
 static void pins(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *key, const pin_spec *specs, int count)

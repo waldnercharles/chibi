@@ -22,9 +22,17 @@ class Request {
     this.responseText = JSON.stringify(assets);
   }
 }
+const fetches = [];
+const fetch = async (path, options) => {
+  fetches.push({ path, options });
+  if (path === '/__chibi/model') return { ok: true, text: async () => '{"message":{"content":"{}"}}' };
+  return { ok: false, status: 404, text: async () => '' };
+};
 const source = readFileSync(new URL('../tools/web_workspace.js', import.meta.url), 'utf8')
   .replace('__CHIBI_SAVE_TOKEN__', '"test-token"');
-vm.runInNewContext(source, { Module, XMLHttpRequest: Request, URLSearchParams, location: { search: '' } });
+vm.runInNewContext(source, {
+  Module, XMLHttpRequest: Request, URLSearchParams, location: { search: '' }, fetch, AbortController, setTimeout,
+});
 Module.onRuntimeInitialized();
 assert.equal(Module.arguments.join(' '), '--project-root /workspace/');
 assert.equal(files.get('/workspace/project.json'), assets['project.json']);
@@ -36,6 +44,17 @@ const before = requests.length;
 assert.equal(Module.chibiSaveAsset('/content/scenes/Arena3D.yaml', '{}'), -1);
 assert.equal(requests.length, before);
 assert.equal(errors.length, 1);
+const envelope = JSON.stringify({ url: 'http://127.0.0.1:11435/api/chat', body: '{"model":"gpt-oss:20b"}' });
+const command = Module.chibiCommandStart(envelope);
+assert.equal(Module.chibiCommandPoll(command), undefined);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(Module.chibiCommandPoll(command), '{"message":{"content":"{}"}}');
+const forwarded = fetches.find(entry => entry.path === '/__chibi/model');
+assert.equal(forwarded.options.body, envelope);
+assert.equal(forwarded.options.headers['X-Chibi-Token'], 'test-token');
+Module.chibiCommandCancel(command);
+assert.equal(Module.chibiCommandPoll(command), undefined);
+assert.ok(fetches.some(entry => entry.path === '/__chibi/session/register'));
 const launchSource = readFileSync(new URL('../tools/web_launch.js', import.meta.url), 'utf8');
 for (const search of ['', '?scene=scenes/Sandbox.json&imgui']) {
   const location = { search };
@@ -54,4 +73,5 @@ for (const search of ['', '?scene=scenes/Sandbox.json&imgui']) {
   assert.equal(packaged.arguments[1], '3');
 }
 console.log('PASS: browser opens and saves the selected project without mixing packaged content');
+console.log('PASS: browser command model requests go through the token-guarded local server');
 console.log('PASS: local and packaged launches opt into the ImGui editor and preserve launch arguments');

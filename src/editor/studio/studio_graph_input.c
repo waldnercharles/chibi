@@ -196,6 +196,20 @@ static void press_reroute(studio *s, graph_hit hit)
     g->reroute_added = false;
 }
 
+/* The pins n would join wire `index` by, or false when it can't. */
+static bool insert_pins(const studio *s, node *n, int index, int *in, int *out)
+{
+    graph *gr = sg_active_graph(s);
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!sg_edge_ends(gr, &gr->edges[index], &from, &from_pin, &to, &to_pin)) {
+        return false;
+    }
+    *in = sg_body_target(gr, from, ED_PIN_OUTPUT, from_pin, n);
+    *out = sg_body_target(gr, to, ED_PIN_INPUT, to_pin, n);
+    return *in >= 0 && *out >= 0;
+}
+
 /* A lone unwired node dragged over a wire offers to join it (Blender,
    Node-RED); Alt keeps it out. */
 static int insert_target(const studio *s)
@@ -211,36 +225,8 @@ static int insert_target(const studio *s)
             return -1;
         }
     }
-    int wire = hit_wire(s);
-    node *from, *to;
-    int from_pin, to_pin;
-    if (wire < 0 ||
-        !sg_edge_ends(gr, &gr->edges[wire], &from, &from_pin, &to, &to_pin)) {
-        return -1;
-    }
-    bool fits = sg_body_target(gr, from, ED_PIN_OUTPUT, from_pin, n) >= 0 &&
-                sg_body_target(gr, to, ED_PIN_INPUT, to_pin, n) >= 0;
-    return fits ? wire : -1;
-}
-
-/* Replaces the wire with two through n, inside the move's pending snapshot. */
-static bool insert_on_wire(studio *s, node *n, int index)
-{
-    editor *e = sg_graph_editor(s);
-    graph *gr = sg_active_graph(s);
-    node *from, *to;
-    int from_pin, to_pin;
-    if (!sg_edge_ends(gr, &gr->edges[index], &from, &from_pin, &to, &to_pin)) {
-        return false;
-    }
-    int in = sg_body_target(gr, from, ED_PIN_OUTPUT, from_pin, n);
-    int out = sg_body_target(gr, to, ED_PIN_INPUT, to_pin, n);
-    graph_remove_edge(gr, from, from_pin, to, to_pin);
-    ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin, { 0, 0 }, 0 };
-    ed_pin_view b = { n, ED_PIN_INPUT, in, { 0, 0 }, 0 };
-    ed_pin_view c = { n, ED_PIN_OUTPUT, out, { 0, 0 }, 0 };
-    ed_pin_view d = { to, ED_PIN_INPUT, to_pin, { 0, 0 }, 0 };
-    return ed_connect(e, &a, &b) && ed_connect(e, &c, &d);
+    int wire = hit_wire(s), in, out;
+    return wire >= 0 && insert_pins(s, n, wire, &in, &out) ? wire : -1;
 }
 
 static void begin_link(studio *s, node *n, int kind, int pin)
@@ -522,15 +508,15 @@ static void release(studio *s, graph_hit hit)
                 moved |= n && (n->x != g->drag[i].x || n->y != g->drag[i].y);
             }
             node *lone = acount(g->drag) == 1 ? sg_node_by_id(s, g->drag[0].id) : NULL;
-            if (g->insert_edge >= 0 && lone &&
-                !insert_on_wire(s, lone, g->insert_edge)) {
-                /* Nothing half-inserted stays: the move is undone with it. */
-                ed_adopt_behavior_asset(e, e->pending_snapshot);
-                ed_cancel_snapshot(e);
+            int in, out;
+            bool offered = g->insert_edge >= 0 && lone;
+            bool inserted = offered &&
+                            insert_pins(s, lone, g->insert_edge, &in, &out) &&
+                            ed_insert_on_wire(e, g->insert_edge, lone, in, out);
+            if (offered && !inserted) {
                 sg_show_error(s, e->connect_error[0] ? e->connect_error : "Can't insert the node here");
-                break;
             }
-            if (moved) {
+            if (moved || inserted) {
                 ed_commit_snapshot(e);
             } else {
                 ed_cancel_snapshot(e);

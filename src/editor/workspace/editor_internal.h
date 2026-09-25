@@ -472,6 +472,7 @@ void ed_update_drag(editor *e, ImVec2 mouse);
 void ed_update_handle_drag(editor *e, ImVec2 mouse);
 int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind);
 int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b);
+bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out);
 bool ed_simplify_component_getter(
     editor *e,
     node *source,

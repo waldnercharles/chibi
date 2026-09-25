@@ -620,6 +620,49 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     return ok;
 }
 
+/* Replaces a wire with two through n: the wire's source into n's input `in`
+ * and n's output `out` into its target. Both connections are validated
+ * before the wire is removed; a refusal leaves the graph as it was. Returns
+ * whether n was inserted. */
+bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out)
+{
+    graph *g = e->active_graph;
+    const edge *ed = &g->edges[edge_index];
+    node *from = graph_node_by_id(g, ed->from_id),
+         *to = graph_node_by_id(g, ed->to_id);
+    int from_pin = -1, to_pin = -1, from_out = 0, to_out = 0;
+    bool resolved = from && to &&
+                    graph_pin_by_id(from, ed->from_pin_id, &from_out, &from_pin) &&
+                    graph_pin_by_id(to, ed->to_pin_id, &to_out, &to_pin);
+    assert(resolved && from_out && !to_out);
+    (void)resolved;
+    pin_kind kind = ed->kind == GRAPH_EDGE_EXEC ? PIN_EXEC : PIN_DATA;
+    ed_clear_connect_error(e);
+    if (!behavior_asset_mutable(e->asset) ||
+        !ed_connection_specs_valid(&from->output_pins[from_pin], &n->input_pins[in], kind) ||
+        !ed_connection_specs_valid(&n->output_pins[out], &to->input_pins[to_pin], kind)) {
+        return false;
+    }
+    char *before = ed_snapshot(e);
+    uint64_t id = n->id;
+    graph_remove_edge(g, from, from_pin, to, to_pin);
+    ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin, { 0, 0 }, 0 };
+    ed_pin_view b = { n, ED_PIN_INPUT, in, { 0, 0 }, 0 };
+    ed_pin_view c = { n, ED_PIN_OUTPUT, out, { 0, 0 }, 0 };
+    ed_pin_view d = { to, ED_PIN_INPUT, to_pin, { 0, 0 }, 0 };
+    bool inserted = ed_connect(e, &a, &b) && ed_connect(e, &c, &d);
+    if (!inserted) {
+        /* Only a check made while connecting gets here, such as an
+           expression refusing its new input's type. */
+        int restored = ed_adopt_behavior_asset(e, before);
+        assert(restored == 0);
+        (void)restored;
+        ed_select_node(e, graph_node_by_id(e->active_graph, id), false);
+    }
+    free(before);
+    return inserted;
+}
+
 static bool ed_expression_call_stale(const graph *caller, const node *call)
 {
     for (int i = 0; i < call->input_count; i++) {

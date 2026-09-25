@@ -107,6 +107,17 @@ enum
     KIT_ICON_PROJECTILE = 0xf0cda,  /* nf-md-bullet */
     KIT_ICON_HEALTH = 0xf02d5,      /* nf-md-heart_outline */
     KIT_ICON_SHAPE = 0xf0832,       /* nf-md-shape_outline */
+
+    KIT_ICON_ALIGN_TOP = 0xf11c7,    /* nf-md-align_vertical_top */
+    KIT_ICON_ALIGN_MIDDLE = 0xf11c6, /* nf-md-align_vertical_center */
+    KIT_ICON_ALIGN_BOTTOM = 0xf11c5, /* nf-md-align_vertical_bottom */
+    KIT_ICON_ALIGN_LEFT = 0xf11c2,   /* nf-md-align_horizontal_left */
+    KIT_ICON_ALIGN_CENTER = 0xf11c3, /* nf-md-align_horizontal_center */
+    KIT_ICON_ALIGN_RIGHT = 0xf11c4,  /* nf-md-align_horizontal_right */
+    KIT_ICON_DISTRIBUTE_X = 0xf11c9, /* nf-md-distribute_horizontal_center */
+    KIT_ICON_DISTRIBUTE_Y = 0xf11cc, /* nf-md-distribute_vertical_center */
+    KIT_ICON_UNFOLD = 0xeb73,        /* nf-cod-unfold */
+    KIT_ICON_REFRESH = 0xeb37,       /* nf-cod-refresh */
 };
 
 #endif

@@ -232,6 +232,7 @@ typedef struct
     uint64_t bubble_edit;  /* the node whose comment is being edited, or 0 */
     bool comment_focus;    /* focus the comment field on its first frame */
     uint64_t menu_comment;
+    uint64_t comment; /* the selected comment frame, shown while no node is */
     bool press_toggle;
     struct
     {
@@ -486,6 +487,8 @@ void studio_graph_history(studio *s, bool redo);
 bool studio_graph_active(const studio *s);
 /* The graph node Properties shows, or 0; and its panels. */
 uint64_t studio_graph_node(const studio *s);
+/* The comment frame selected on the canvas while no node is, or 0. */
+uint64_t studio_graph_comment(const studio *s);
 void studio_node_properties(studio *s);
 void studio_rewire_toast(studio *s);
 /* Members: the open behavior's graphs, variables and named values. */

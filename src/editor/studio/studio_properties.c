@@ -868,7 +868,8 @@ void studio_properties_body(studio *s, int area)
     /* The Node tab follows the graph selection, as Object follows the
    scene's: a newly selected node shows its details, a newly selected
    object its components. */
-    uint64_t node = studio_graph_node(s);
+    uint64_t node = studio_graph_node(s) ? studio_graph_node(s)
+                                         : studio_graph_comment(s);
     available[STUDIO_TAB_NODE] = node != 0;
     if (node && node != s->shown_node) {
         s->tab = STUDIO_TAB_NODE;

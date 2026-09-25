@@ -236,10 +236,16 @@ void control_drag(kit *k, node *n, const rml_event *e)
     color_drag(k, n, e->mouse_x, e->mouse_y);
 }
 
-static void field_key(node *n, const rml_event *e)
+static void field_key(kit *k, node *n, const rml_event *e)
 {
     widget *w = &n->w;
-    if (e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER) {
+    bool enter = e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER;
+    if (enter && w->area && (e->modifiers & RML_KM_SHIFT)) {
+        rml_context_process_text_input(k->context, "\n", 1);
+        rml_event_stop_propagation(e);
+        return;
+    }
+    if (enter) {
         if (n->kind == KIND_TEXT) {
             take_value(&w->draft, w->input_el);
             w->pending = true;
@@ -278,11 +284,11 @@ static void press_key(node *n, const rml_event *e)
     rml_event_stop_propagation(e);
 }
 
-void control_key(node *n, const rml_event *e)
+void control_key(kit *k, node *n, const rml_event *e)
 {
     switch (n->kind) {
         case KIND_TEXT:
-        case KIND_SEARCH: field_key(n, e); return;
+        case KIND_SEARCH: field_key(k, n, e); return;
         case KIND_CHECK:
         case KIND_BUTTON: press_key(n, e); return;
         default: return;
@@ -536,7 +542,9 @@ static node *emit_input(kit *k, const char *key, node_kind kind, const char *cls
             rml_element *addon = raw(n->el, "span", "part addon", NULL);
             raw_icon(addon, "sm", KIT_ICON_SEARCH);
         }
-        w->input_el = text_input(n->el, "part value");
+        w->area = !strcmp(cls, "field text area");
+        w->input_el = w->area ? raw(n->el, "textarea", "part value", NULL)
+                              : text_input(n->el, "part value");
     }
     if (!str_eq(w->placeholder, placeholder)) {
         str_set(&w->placeholder, placeholder);
@@ -545,9 +553,8 @@ static node *emit_input(kit *k, const char *key, node_kind kind, const char *cls
     return n;
 }
 
-bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags)
+static bool edit_text(node *n, char *buffer, size_t size, unsigned flags)
 {
-    node *n = emit_input(k, key, KIND_TEXT, "field text", placeholder);
     widget *w = &n->w;
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     if (flags & KIT_READONLY) {
@@ -568,6 +575,31 @@ bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const ch
         str_set(&w->applied, buffer);
         str_set(&w->draft, buffer);
         rml_element_set_value(w->input_el, buffer);
+    }
+    return committed;
+}
+
+bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags)
+{
+    return edit_text(emit_input(k, key, KIND_TEXT, "field text", placeholder), buffer, size, flags);
+}
+
+bool kit_text_area(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags)
+{
+    enum
+    {
+        MAX_ROWS = 8,
+    };
+    node *n = emit_input(k, key, KIND_TEXT, "field text area", placeholder);
+    bool committed = edit_text(n, buffer, size, flags);
+    int rows = 1;
+    for (const char *c = n->w.draft ? n->w.draft : ""; *c && rows < MAX_ROWS; c++) {
+        rows += *c == '\n';
+    }
+    if (int_attribute(n->w.input_el, "rows") != rows) {
+        char text[8];
+        snprintf(text, sizeof text, "%d", rows);
+        rml_element_set_attribute(n->w.input_el, "rows", text);
     }
     return committed;
 }

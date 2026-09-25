@@ -177,7 +177,7 @@ void sg_follow_graph(studio *s)
         g->gesture == STUDIO_GRAPH_RESIZE) {
         ed_cancel_snapshot(sg_graph_editor(s));
     }
-    g->title_edit = g->bubble_edit = 0;
+    g->title_edit = g->bubble_edit = g->comment = 0;
     g->gesture = STUDIO_GRAPH_IDLE;
     g->camera.active = false;
     studio_graph_view *view = view_for(g, id);

@@ -229,6 +229,12 @@ scrollbarcorner { background-color: transparent; }
 .field.search .addon { padding-left: 6dp; }
 .field.search .addon .icon { color: var(--fg-3); }
 .field.search input.value { padding-left: 5dp; }
+.field.area { display: block; height: auto; }
+.field.area textarea.value {
+    display: block; width: 100%; height: auto; padding: 2dp 7dp; line-height: 16dp; cursor: text;
+    font-family: Inter; color: var(--fg); text-align: left; white-space: pre-wrap; overflow-y: auto;
+}
+.field.area textarea.value selection { background-color: var(--accent); color: var(--on-accent); }
 
 /* Joined vector: components share one control. */
 .joined { display: flex; flex: 1 1 0dp; gap: 1dp; }

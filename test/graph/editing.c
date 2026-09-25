@@ -1,8 +1,9 @@
 /* Canvas editing rules shared by Studio and automation: variadic pins, pin
-   links and defaults, promotion, and node alignment. */
+   links and defaults, promotion, node alignment and linked selection. */
 #include "editor/graph/search.h"
 #include "editor/ui/labels.h"
 #include "graph/authoring/align.h"
+#include "graph/authoring/linked.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/nodes/state_nodes.h"
 #include "test/suite_internal.h"
@@ -272,8 +273,73 @@ static void alignment()
     test_check(at(&pair[0], 0, 0) && at(&pair[1], 30, 5), "two boxes have nothing to distribute");
 }
 
+static void wire(graph *g, node *from, node *to, int to_pin)
+{
+    int connected = graph_connect(g, from, 0, to, to_pin);
+    assert(connected == 0);
+    (void)connected;
+}
+
+static node *expanded(graph *g, const char *type)
+{
+    node *n = add(g, type);
+    assert(graph_set_node_presentation(g, n, NODE_PRESENTATION_EXPANDED) == 0);
+    return n;
+}
+
+/* True when `linked` holds exactly the `count` nodes of `expected`. */
+static bool reaches(const graph *g, node *from, bool upstream, bool all, node *const *expected, int count)
+{
+    node **linked = NULL;
+    graph_linked_nodes(g, &from, 1, upstream, all, &linked);
+    bool same = acount(linked) == count;
+    for (int i = 0; same && i < count; i++) {
+        bool found = false;
+        for (int j = 0; j < acount(linked); j++) {
+            found |= linked[j] == expected[i];
+        }
+        same = found;
+    }
+    afree(linked);
+    return same;
+}
+
+/* Blender's Select Linked From and To take one step along the wires; Unreal's
+   Select All Input and Output Nodes follow them to the end. */
+static void linked()
+{
+    graph g = { 0 };
+    graph_init(&g);
+    node *a = expanded(&g, "Add"), *b = expanded(&g, "Add"), *c = expanded(&g, "Add");
+    node *d = expanded(&g, "Add"), *e = expanded(&g, "Add");
+    wire(&g, a, b, 0);
+    wire(&g, b, c, 0);
+    wire(&g, e, c, 1);
+    wire(&g, c, d, 0);
+    node *literal = add(&g, "Real");
+    wire(&g, literal, b, 1);
+    test_check(graph_node_is_inline(&g, literal), "linked: the literal folds into its consumer");
+    test_check(reaches(&g, c, true, false, (node *[]){ b, e }, 2), "linked: one step upstream reaches the direct sources");
+    test_check(reaches(&g, c, true, true, (node *[]){ a, b, e }, 3), "linked: all input nodes follow sources to the end");
+    test_check(reaches(&g, b, true, false, (node *[]){ a }, 1), "linked: folded sources are drawn inside their consumer");
+    test_check(reaches(&g, a, false, true, (node *[]){ b, c, d }, 3), "linked: all output nodes follow consumers to the end");
+    test_check(reaches(&g, d, false, true, NULL, 0), "linked: a node without consumers reaches nothing downstream");
+    node *first = add(&g, "Print String"), *second = add(&g, "Print String");
+    int looped = graph_connect_exec(&g, first, 0, second, 0, 0) |
+                 graph_connect_exec(&g, second, 0, first, 0, 0);
+    assert(looped == 0);
+    (void)looped;
+    test_check(reaches(&g, first, false, true, (node *[]){ second }, 1), "linked: execution wires count and loops end");
+    node **grown = NULL;
+    graph_linked_nodes(&g, (node *[]){ b, c }, 2, true, false, &grown);
+    test_check(acount(grown) == 2 && grown[0] != c && grown[1] != c, "linked: the selection itself is never added");
+    afree(grown);
+    graph_free(&g);
+}
+
 void run_graph_editing_checks()
 {
+    linked();
     sequence_runs();
     switch_runs();
     wildcard_runs();

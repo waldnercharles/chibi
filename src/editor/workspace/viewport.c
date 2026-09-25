@@ -49,6 +49,7 @@ struct engine_viewport
     render_audio *audio;
     render_ui *ui;
     game_ui *ui_model;
+    bool ui_capture; /* the documents took the pointer last frame */
     engine_viewport_render_fn render;
     void *render_user;
 };
@@ -158,7 +159,7 @@ void engine_viewport_set_widgets(
 bool engine_viewport_widgets_capture(const engine_viewport *viewport)
 {
     if (viewport->host) {
-        return false;
+        return viewport->ui_capture;
     }
     ImVec2 mouse = ImGui_GetIO()->MousePos;
     return viewport->widget_world &&
@@ -428,12 +429,44 @@ static void draw_viewport_canvas(engine_viewport *viewport)
             viewport->ui,
             viewport->widget_world,
             viewport->ui_model,
+            viewport->widget_entities,
             viewport->width,
             viewport->height,
             CF_DELTA_TIME
         );
         render_ui_composite(viewport->ui, viewport->canvas);
     }
+}
+
+/* Replays the host pointer into the game documents in canvas pixels. */
+static void host_ui_input(engine_viewport *viewport, bool playing)
+{
+    const engine_viewport_host_input *in = &viewport->host_input;
+    viewport->ui_capture = false;
+    if (!viewport->ui || !playing || in->width <= 0 || in->height <= 0) {
+        return;
+    }
+    float x = in->x * (float)viewport->width / in->width;
+    float y = in->y * (float)viewport->height / in->height;
+    unsigned captured = render_ui_input(
+        viewport->ui,
+        &(rml_input){ .type = in->hovered ? RML_INPUT_POINTER_MOVE : RML_INPUT_POINTER_LEAVE,
+                      .x = x,
+                      .y = y }
+    );
+    if (in->pressed[0]) {
+        captured |= render_ui_input(
+            viewport->ui,
+            &(rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y }
+        );
+    }
+    if (in->released[0]) {
+        captured |= render_ui_input(
+            viewport->ui,
+            &(rml_input){ .type = RML_INPUT_POINTER_UP, .x = x, .y = y }
+        );
+    }
+    viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
 }
 
 static engine_viewport_action draw_control(
@@ -692,6 +725,7 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
         draw_viewport_canvas(viewport);
         viewport->image_min = (ImVec2){ 0, 0 };
         viewport->image_size = (ImVec2){ in->width, in->height };
+        host_ui_input(viewport, controls && controls->playing);
         viewport_io io = host_io(viewport);
         bool navigating = navigate_viewport(viewport, &io, controls && controls->playing);
         capture_viewport_pointer(viewport, &io, navigating);

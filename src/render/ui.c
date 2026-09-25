@@ -34,22 +34,48 @@ typedef struct ui_view
     bool seen;
 } ui_view;
 
+/* An activation waiting for the next update to reach the world. */
+typedef struct ui_event
+{
+    uint64_t entity;
+    char *name;
+    char *element;
+    bool has_value;
+    float value;
+} ui_event;
+
 struct render_ui
 {
     rml_backend *backend;
+    rml_listener *listener;
     char *content_root;
     ui_view *views;
+    ui_event *pending;
     double time;
     int width, height;
+    float scale;
     char error[256];
 };
+
+static void on_event(void *user, const rml_event *event);
 
 render_ui *render_ui_new(const char *content_root)
 {
     render_ui *ui = xcalloc(1, sizeof *ui);
     ui->content_root = xstrdup(content_root);
     ui->backend = rml_backend_create(1, 1, 1);
+    ui->listener = rml_listener_create(on_event, ui);
+    ui->scale = 1;
     return ui;
+}
+
+static void clear_pending(render_ui *ui)
+{
+    for (int i = 0; i < acount(ui->pending); i++) {
+        free(ui->pending[i].name);
+        free(ui->pending[i].element);
+    }
+    asetlen(ui->pending, 0);
 }
 
 static void close_view(ui_view *view)
@@ -71,7 +97,10 @@ void render_ui_free(render_ui *ui)
         close_view(&ui->views[i]);
     }
     afree(ui->views);
+    clear_pending(ui);
+    afree(ui->pending);
     rml_backend_destroy(ui->backend);
+    rml_listener_destroy(ui->listener);
     free(ui->content_root);
     free(ui);
 }
@@ -117,9 +146,81 @@ static void sync_document(render_ui *ui, ui_view *view)
     view->doc = rml_context_load_document_from_memory(context, rml, path);
     free(rml);
     view->applied = 0;
-    if (view->doc) {
-        rml_document_show(view->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    if (!view->doc) {
+        return;
     }
+    rml_document_show(view->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    rml_element_add_event_listener(view->doc, RML_EVENT_CLICK, ui->listener, false);
+    rml_element_add_event_listener(view->doc, RML_EVENT_CHANGE, ui->listener, false);
+    rml_element_add_event_listener(view->doc, RML_EVENT_SUBMIT, ui->listener, false);
+}
+
+/* The element from `element` up that names an event in data-event. */
+static rml_element *event_source(rml_element *element, char *name, size_t size)
+{
+    for (; element; element = rml_element_parent(element)) {
+        if (rml_element_attribute(element, "data-event", name, size) > 0) {
+            return element;
+        }
+    }
+    return NULL;
+}
+
+/* A click activates buttons and other elements; inputs report changes, which
+ * carry their value into the model before the event is sent. */
+static void on_event(void *user, const rml_event *event)
+{
+    render_ui *ui = user;
+    char name[128];
+    rml_element *source = event_source(event->target, name, sizeof name);
+    rml_element *doc = source ? rml_element_owner_document(source) : NULL;
+    ui_view *view = NULL;
+    for (int i = 0; doc && i < acount(ui->views); i++) {
+        view = ui->views[i].doc == doc ? &ui->views[i] : view;
+    }
+    bool input = source && strcmp(rml_element_tag_name(source), "input") == 0;
+    if (!view || (event->id == RML_EVENT_CLICK && input) ||
+        (event->id == RML_EVENT_CHANGE && !input)) {
+        return;
+    }
+    ui_event pending = { .entity = view->entity,
+                         .name = xstrdup(name),
+                         .element = xstrdup(rml_element_id(source)) };
+    char value[64];
+    if (event->id == RML_EVENT_CHANGE &&
+        rml_element_value(source, value, sizeof value) > 0) {
+        char *end;
+        pending.value = strtof(value, &end);
+        pending.has_value = end != value;
+    }
+    apush(ui->pending, pending);
+}
+
+unsigned render_ui_input(render_ui *ui, const rml_input *input)
+{
+    rml_input scaled = *input;
+    scaled.x /= ui->scale;
+    scaled.y /= ui->scale;
+    return rml_backend_process_input(ui->backend, &scaled);
+}
+
+static void send_pending(render_ui *ui, game_ui *model, game_entities *entities)
+{
+    for (int i = 0; i < acount(ui->pending); i++) {
+        ui_event *e = &ui->pending[i];
+        if (model && e->has_value) {
+            game_ui_set_value(model, e->entity, e->element, e->value);
+        }
+        if (entities) {
+            game_entities_request_event(
+                entities,
+                ecs_entity_from_u64(e->entity),
+                e->name,
+                (flow_inputs){ 0 }
+            );
+        }
+    }
+    clear_pending(ui);
 }
 
 static void show_view(render_ui *ui, uint64_t entity, const GameUi *component)
@@ -211,14 +312,24 @@ static void apply_model(render_ui *ui, game_ui *model)
     }
 }
 
-void render_ui_update(render_ui *ui, ecs_world *world, game_ui *model, int width, int height, double dt)
+void render_ui_update(
+    render_ui *ui,
+    ecs_world *world,
+    game_ui *model,
+    game_entities *entities,
+    int width,
+    int height,
+    double dt
+)
 {
     assert(ui && world);
     ui->time += dt;
+    send_pending(ui, model, entities);
     if (width != ui->width || height != ui->height) {
         ui->width = width;
         ui->height = height;
-        rml_backend_resize_pixels(ui->backend, width, height, (float)height / UI_REFERENCE_HEIGHT);
+        ui->scale = (float)height / UI_REFERENCE_HEIGHT;
+        rml_backend_resize_pixels(ui->backend, width, height, ui->scale);
     }
     for (int i = 0; i < acount(ui->views); i++) {
         ui->views[i].seen = false;

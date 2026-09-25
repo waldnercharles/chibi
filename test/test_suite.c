@@ -52,6 +52,7 @@ void test_component_presentation();
 void test_file_watch();
 void test_ui_document();
 void test_game_ui();
+void test_game_ui_presenter();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
@@ -171,6 +172,7 @@ TEST_CASE(all_checks)
     test_file_watch();
     test_ui_document();
     test_game_ui();
+    test_game_ui_presenter();
     test_editor_checkpoint();
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
     test_check(test_rmlui_menu(), "RmlUi menu commands, focus, layout, and lifecycle");

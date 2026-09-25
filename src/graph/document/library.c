@@ -77,7 +77,11 @@ const char *behavior_asset_validate_library(const behavior_asset *asset)
         }
         for (int i = 0; i < acount(graph->nodes); i++) {
             const node *n = graph->nodes[i];
-            if (!behavior_library_node_allowed(asset->domain, n->desc) ||
+            /* A component node is available when the node it lowers to is.
+             * Get, Set and Has also need an entity, since the field setters a
+             * Set lowers to would accept Self. */
+            const node_desc *target = component_node_target(graph, n);
+            if (!behavior_library_node_allowed(asset->domain, target ? target : n->desc) ||
                 component_node_self(graph, n)) {
                 return "This operation is unavailable in a function library.";
             }

@@ -165,16 +165,8 @@ typedef struct
     char text[160]; /* what matched */
 } studio_find_hit;
 
-/* A graph Back and Forward return to (studio_graph_nav.c). */
-typedef struct
-{
-    int kind; /* app_editor_document_kind */
-    char document[128];
-    char path[512]; /* a System's file */
-    uint64_t graph_id;
-    int caller_count; /* the calls entered to reach it, for the breadcrumb */
-    editor_caller_location callers[EDITOR_LOCATION_CALLER_LIMIT];
-} studio_visit;
+/* A graph Back and Forward return to (studio_graph_internal.h). */
+typedef struct studio_visit studio_visit;
 
 /* A Find References result in Output (studio_find.c). */
 typedef struct
@@ -454,9 +446,6 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
 void studio_emit(studio *s);
 void studio_report(studio *s, const char *message);
 void studio_shortcuts(studio *s);
-/* Fills the workspace with one area, or restores the layout; -1 is no area. */
-void studio_toggle_maximized(studio *s, int area);
-bool studio_key_pressed(const studio *s, SDL_Keycode key);
 const char *studio_scene_title(const app_scene_authoring *scene, char *out, size_t size);
 
 /* Scene edits are allowed: the scene can move and shows no runtime snapshot. */
@@ -477,8 +466,6 @@ void studio_behavior_body(studio *s, int area);
 /* After the Studio document is emitted: drive and render the graph canvas. */
 void studio_graph_frame(studio *s, double delta_seconds);
 void studio_graph_free(studio *s);
-/* Canvas menus live in the Studio document; emitted with the Behavior area. */
-void studio_graph_menus(studio *s);
 bool studio_graph_wants_keyboard(const studio *s);
 bool studio_graph_accepts_text(const studio *s);
 const char *studio_graph_cursor(const studio *s);
@@ -570,9 +557,6 @@ void studio_debug_call_stack(studio *s);
 
 /* Commands shared by menus, shortcuts and the command palette. */
 void studio_toggle_drawer(studio *s, studio_editor editor);
-void studio_save(studio *s);
-void studio_history(studio *s, bool redo);
-void studio_runtime(studio *s, app_runtime_command command);
 void studio_frame_selection(studio *s);
 void studio_duplicate(studio *s);
 void studio_delete(studio *s);

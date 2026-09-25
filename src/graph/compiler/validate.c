@@ -114,7 +114,6 @@ static int pack_shape(const registry_pack *pack)
     return pack && pack->name && array_shape(pack->nodes, pack->node_count) &&
            array_shape(pack->types, pack->type_count) &&
            array_shape(pack->services, pack->service_count) &&
-           array_shape(pack->operators, pack->operator_count) &&
            array_shape(pack->enums, pack->enum_count);
 }
 
@@ -177,27 +176,6 @@ static int service_identity_unique(
     return 1;
 }
 
-static int operator_identity_unique(
-    const registry_pack *const packs[],
-    int pack_index,
-    int item_index,
-    const operator_signature *signature
-)
-{
-    for (int i = 0; i <= pack_index; i++) {
-        const registry_pack *pack = packs[i];
-        int limit = i == pack_index ? item_index : pack->operator_count;
-        for (int j = 0; j < limit; j++) {
-            const operator_signature *prior = &pack->operators[j];
-            if (strcmp(prior->name, signature->name) == 0 &&
-                prior->left == signature->left && prior->right == signature->right) {
-                return 0;
-            }
-        }
-    }
-    return 1;
-}
-
 static int enum_identity_unique(
     const registry_pack *const packs[],
     int pack_index,
@@ -217,7 +195,9 @@ static int enum_identity_unique(
     return 1;
 }
 
-int registry_validate_packs(const registry_pack *const packs[], int pack_count)
+/* A pack is valid when every descriptor is valid and all identities are
+ * unique in the supplied, explicit pack order. */
+static int registry_validate_packs(const registry_pack *const packs[], int pack_count)
 {
     if (pack_count < 0 || (pack_count > 0 && !packs)) {
         return 0;
@@ -248,13 +228,6 @@ int registry_validate_packs(const registry_pack *const packs[], int pack_count)
             const service_desc *service = pack->services[j];
             if (!service || !service->name || !service->name[0] || !service->stable_id ||
                 !service_identity_unique(packs, i, j, service)) {
-                return 0;
-            }
-        }
-        for (int j = 0; j < pack->operator_count; j++) {
-            const operator_signature *signature = &pack->operators[j];
-            if (!signature->name || !signature->name[0] ||
-                !operator_identity_unique(packs, i, j, signature)) {
                 return 0;
             }
         }

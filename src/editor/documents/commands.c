@@ -1,17 +1,10 @@
 #include "editor/graph/eval_view.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
-#include "support/asset_text.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
-
-#undef IMGUI_STB_NAMESPACE
-#include <imgui/dcimgui_internal.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -142,18 +135,8 @@ int editor_command_apply(editor *e, editor_command command)
             }
             char *snapshot = ed_snapshot(e);
             int pending = e->edit_pending;
-            ed_pin_view output = {
-                from,
-                ED_PIN_OUTPUT,
-                command.data.connect.from_pin,
-                { 0.0f, 0.0f },
-            };
-            ed_pin_view input = {
-                to,
-                ED_PIN_INPUT,
-                command.data.connect.to_pin,
-                { 0.0f, 0.0f },
-            };
+            ed_pin_view output = { from, ED_PIN_OUTPUT, command.data.connect.from_pin };
+            ed_pin_view input = { to, ED_PIN_INPUT, command.data.connect.to_pin };
             int result = ed_connect(e, &output, &input) ? 0 : -1;
             if (result == 0) {
                 e->edit_pending = 1;
@@ -181,12 +164,6 @@ int editor_command_apply(editor *e, editor_command command)
         case EDITOR_COMMAND_COMPILE:
             ed_compile(e);
             return compile_report_blocked(&e->compile) ? -1 : 0;
-        case EDITOR_COMMAND_SAVE:
-            return command.data.file.path ? editor_save(e, command.data.file.path)
-                                          : -1;
-        case EDITOR_COMMAND_LOAD:
-            return command.data.file.path ? editor_load(e, command.data.file.path)
-                                          : -1;
     }
     return -1;
 }
@@ -200,18 +177,10 @@ void editor_query_state(const editor *e, editor_query *out)
     }
     out->active_graph = e->active_graph;
     out->graph_count = acount(e->asset->graphs);
-    out->graph_visible = e->graph_visible &&
-                         e->ui_context != EDITOR_UI_CONTEXT_SCENE &&
-                         editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
     out->compile = &e->compile;
     out->inspection_instance = e->inspection_instance;
     out->inspection_blocked = ed_inspection_blocked(e);
     out->preview_error = eval_view_error(e->ev);
-    out->can_go_back = ed_can_go_back(e);
-    out->zoom = e->zoom;
-    out->pan_x = e->pan.x;
-    out->pan_y = e->pan.y;
-    out->camera_moving = e->camera_moving;
     if (e->edit_revision_initialized && !e->edit_pending &&
         e->edit_revision_asset == e->asset && e->edit_revision_snapshot) {
         out->dirty = !e->saved_snapshot ||
@@ -263,9 +232,6 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
         return -1;
     }
     ed_record_math_edit(e, before);
-    if (e->fit_mode) {
-        ed_zoom_fit(e, true);
-    }
     return 0;
 }
 
@@ -327,77 +293,33 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
     return n;
 }
 
-int editor_save(editor *e, const char *path)
+int editor_delete_graph(editor *e, uint64_t graph_id)
 {
-    if (!e || !path) {
-        return -1;
-    }
-    char *json = behavior_asset_save_json(e->asset);
-    char error[128];
-    char *text = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
-    FILE *f = text ? fopen(path, "wb") : NULL;
-    int ok = f && fputs(text, f) >= 0;
-    if (f && fclose(f) != 0) {
-        ok = 0;
-    }
-    free(text);
-    if (!ok) {
-        free(json);
-        return -1;
-    }
-    free(e->saved_snapshot);
-    e->saved_snapshot = json;
-    e->edit_revision_initialized = 0;
-    return 0;
-}
-
-static int ed_read_file(const char *path, char **out)
-{
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        return -1;
-    }
-    if (fseek(f, 0, SEEK_END) || ftell(f) < 0) {
-        fclose(f);
-        return -1;
-    }
-    long size = ftell(f);
-    if (fseek(f, 0, SEEK_SET)) {
-        fclose(f);
-        return -1;
-    }
-    char *buf = (char *)malloc((size_t)size + 1);
-    if (!buf) {
-        fclose(f);
-        return -1;
-    }
-    size_t read = fread(buf, 1, (size_t)size, f);
-    fclose(f);
-    buf[read] = '\0';
-    *out = buf;
-    return 0;
-}
-
-int editor_load(editor *e, const char *path)
-{
-    if (!e || !path) {
-        return -1;
-    }
-    char *json = NULL;
-    if (ed_read_file(path, &json)) {
+    graph *target = behavior_asset_find_graph(e->asset, graph_id);
+    if (!target || target == e->asset->graph || !behavior_asset_mutable(e->asset)) {
         return -1;
     }
     ed_snapshot_before(e);
-    int result = ed_adopt_behavior_asset_with_identity(e, json, 0);
-    if (result == 0) {
-        aclear(e->graph_callers);
-        aclear(e->graph_views);
-        ed_load_graph_view(e);
-        e->arrange_pending = true;
-        free(e->saved_snapshot);
-        e->saved_snapshot = behavior_asset_save_json(e->asset);
-        e->edit_revision_initialized = 0;
+    if (target == e->active_graph &&
+        editor_open_graph(e, e->asset->graph->graph_id) != 0) {
+        return -1;
     }
-    free(json);
-    return result;
+    if (target->math_expression) {
+        ed_reset_node_interaction(e);
+        for (int i = 0; i < acount(e->asset->graphs); i++) {
+            graph *g = e->asset->graphs[i];
+            for (int j = acount(g->nodes) - 1; j >= 0; j--) {
+                node *n = g->nodes[j];
+                if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction ||
+                     n->desc == &NODE_BehaviorExpression) &&
+                    !n->reference_asset && n->reference_id == graph_id) {
+                    int removed = graph_remove_node_tree(g, n);
+                    assert(removed == 0);
+                    (void)removed;
+                    j = acount(g->nodes);
+                }
+            }
+        }
+    }
+    return behavior_asset_delete_graph(e->asset, graph_id);
 }

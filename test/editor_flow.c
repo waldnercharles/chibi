@@ -5,7 +5,6 @@
 #include "support/array.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
 #include <stdio.h>
 
 static int finish(node *, struct flow_context *)
@@ -31,7 +30,6 @@ static editor_edge_activity activity(editor *editor, const edge *edge)
 
 void test_editor_flow()
 {
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     behavior_asset *asset = behavior_asset_new("Flow activity");
     graph *g = asset->graph;
     node *event = graph_add_node(g, &NODE_Event);
@@ -60,15 +58,14 @@ void test_editor_flow()
     editor_set_inspection_instance(editor, instance);
     editor_set_inspection_run(editor, run);
     editor_tick(editor, 10);
-    editor_set_execution_pulse(editor, 10);
 
     editor_edge_activity result = activity(editor, taken);
-    assert(result.traversed && result.timestamp == 10 && result.bubble_opacity > 0);
+    assert(result.traversed && result.timestamp == 10 && result.opacity > 0);
     result = activity(editor, untaken);
-    assert(!result.traversed && result.opacity == 0 && result.bubble_opacity == 0);
+    assert(!result.traversed && result.opacity == 0);
     result = activity(editor, data);
     assert(result.traversed && result.timestamp == 10);
-    assert(result.opacity == 0 && result.bubble_opacity == 0);
+    assert(result.opacity == 0);
     pin_value value;
     assert(flow_run_watch_output(run, condition, 0, &value) == 0);
     assert(value.type == PIN_BOOL && value.b);
@@ -90,30 +87,27 @@ void test_editor_flow()
     editor_set_inspection_trace(editor, retained, 2);
     editor_tick(editor, 12);
     result = activity(editor, taken);
-    assert(result.timestamp == 12 && result.bubble_opacity > 0);
+    assert(result.timestamp == 12 && result.opacity > 0);
     retained[0].traversal.timestamp = 9;
     assert(activity(editor, taken).timestamp == 10);
 
     editor_set_inspection_run(editor, NULL);
     assert(activity(editor, taken).timestamp == 9);
-    assert(activity(editor, untaken).bubble_opacity == 0);
+    assert(activity(editor, untaken).opacity == 0);
     editor_set_inspection_instance(editor, NULL);
-    editor_set_execution_pulse(editor, 12);
-    assert(activity(editor, untaken).bubble_opacity > 0);
-    assert(activity(editor, data).bubble_opacity == 0);
+    assert(activity(editor, data).opacity == 0);
 
     editor_set_inspection_blocked(editor, true);
     editor_query query;
     editor_query_state(editor, &query);
     assert(query.inspection_blocked);
-    assert(activity(editor, taken).bubble_opacity == 0);
-    assert(activity(editor, untaken).bubble_opacity == 0);
-    assert(activity(editor, data).bubble_opacity == 0);
+    assert(activity(editor, taken).opacity == 0);
+    assert(activity(editor, untaken).opacity == 0);
+    assert(activity(editor, data).opacity == 0);
     assert(flow_run_watch_output(run, condition, 0, &value) == 0 && value.b);
     editor_set_inspection_blocked(editor, false);
 
     behavior_instance_destroy(instance);
     editor_free(editor);
-    ImGui_DestroyContext(context);
     puts("editor flow PASS: exec-only activity, untaken branches, data values and newest trace");
 }

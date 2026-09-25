@@ -52,11 +52,6 @@ const behavior_asset *game_system_document_behavior_asset(const game_system_docu
     return document ? document->behavior_asset : NULL;
 }
 
-behavior_asset *game_system_document_behavior_asset_mutable(game_system_document *document)
-{
-    return document ? document->behavior_asset : NULL;
-}
-
 int game_system_document_replace_behavior_asset(game_system_document *document, behavior_asset *definition)
 {
     if (!document || !definition) {
@@ -166,7 +161,7 @@ game_system_document *game_system_document_load(
     return document;
 }
 
-char *game_system_document_save_behavior_asset(
+static char *game_system_document_save_behavior_asset(
     const behavior_asset *definition,
     const ecs_query_expr *query,
     game_query_component_resolver resolve,

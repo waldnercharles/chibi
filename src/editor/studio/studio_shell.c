@@ -106,7 +106,7 @@ static void toast(studio *s, kit_toast_type type, const char *title, const char 
     );
 }
 
-void studio_save(studio *s)
+static void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
     if (!studio_editable(s) || runtime_session(scene)) {
@@ -203,7 +203,7 @@ static void document_history(studio *s, bool redo)
     }
 }
 
-void studio_history(studio *s, bool redo)
+static void studio_history(studio *s, bool redo)
 {
     if (!studio_editable(s) || !can_replay(s, redo)) {
         return;
@@ -216,7 +216,7 @@ void studio_history(studio *s, bool redo)
     document_history(s, redo);
 }
 
-void studio_runtime(studio *s, app_runtime_command command)
+static void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
     if (command == APP_RUNTIME_PLAY && studio_debug(s, STUDIO_RESUME)) {
@@ -345,6 +345,20 @@ static void add_menu_items(studio *s)
             studio_add_object(s, prototype->name);
         }
     }
+}
+
+void studio_toggle_drawer(studio *s, studio_editor editor)
+{
+    bool showing = s->prefs.drawer_open &&
+                   s->prefs.editors[STUDIO_AREA_DRAWER] == editor;
+    s->prefs.editors[STUDIO_AREA_DRAWER] = editor;
+    s->prefs.drawer_open = !showing;
+}
+
+/* Fills the workspace with one area, or restores the layout; -1 is no area. */
+static void studio_toggle_maximized(studio *s, int area)
+{
+    s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
 static void menus(studio *s)
@@ -707,19 +721,6 @@ static bool drawer_editor(studio_editor editor)
 {
     return editor == STUDIO_EDITOR_OUTPUT || editor == STUDIO_EDITOR_ASSETS ||
            editor == STUDIO_EDITOR_PERFORMANCE;
-}
-
-void studio_toggle_drawer(studio *s, studio_editor editor)
-{
-    bool showing = s->prefs.drawer_open &&
-                   s->prefs.editors[STUDIO_AREA_DRAWER] == editor;
-    s->prefs.editors[STUDIO_AREA_DRAWER] = editor;
-    s->prefs.drawer_open = !showing;
-}
-
-void studio_toggle_maximized(studio *s, int area)
-{
-    s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
 void studio_maximize_graph(studio *s)

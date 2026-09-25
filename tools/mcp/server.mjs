@@ -818,14 +818,14 @@ function buildToolDefinitions() {
     {
       name: "describeRegistry",
       operation: "describe_registry",
-      description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
+      description: "Describe reflected graph nodes, pins, types, services, and components.",
       inputSchema: {
         type: "object",
         properties: {
           sections: {
             type: "array",
-            maxItems: 5,
-            items: { type: "string", enum: ["nodes", "types", "services", "operators", "components"] },
+            maxItems: 4,
+            items: { type: "string", enum: ["nodes", "types", "services", "components"] },
             description: "Sections to return; defaults to all but nodes, which searchNodes covers.",
           },
         },

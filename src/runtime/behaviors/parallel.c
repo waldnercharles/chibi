@@ -91,15 +91,6 @@ static bool compatible(const behavior_update_row *rows, behavior_update_span spa
     return work * (uint64_t)(span.end - span.begin) / (unsigned)span.period >=
            PARALLEL_MIN_WORK;
 }
-void game_behavior_parallel_prepare(
-    game_behavior_parallel *p,
-    const behavior_update_row *rows,
-    const behavior_update_span *spans,
-    uint32_t slots
-)
-{
-    game_behavior_parallel_prepare_incremental(p, rows, spans, slots, 0);
-}
 
 void game_behavior_parallel_prepare_incremental(
     game_behavior_parallel *p,

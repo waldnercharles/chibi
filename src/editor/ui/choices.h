@@ -27,9 +27,6 @@ typedef const editor_choices
  * remain unchanged until the user selects an item. */
 int editor_choices_count(const editor_choices *choices);
 editor_choice editor_choice_at(const editor_choices *choices, int index);
-void editor_choices_format(int value, const editor_choices *choices, char *buf, size_t cap);
-bool editor_choices_draw(const char *id, int *value, const editor_choices *choices);
-bool editor_choices_draw_name(const char *id, const char **value, const editor_choices *choices);
 const editor_choices *editor_choices_for_enum(const char *type_name);
 
 #endif

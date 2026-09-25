@@ -203,7 +203,7 @@ bool render_image_reload(const char *key, char *message, size_t size)
     return false;
 }
 
-bool render_image_load(const char *key, char *message, size_t size)
+static bool render_image_load(const char *key, char *message, size_t size)
 {
     int index = find_source(key);
     if (index < 0) {

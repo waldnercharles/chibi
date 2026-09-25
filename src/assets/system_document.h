@@ -19,20 +19,12 @@ game_system_document *game_system_document_load(
 game_system_document *game_system_document_new(const char *name);
 void game_system_document_free(game_system_document *document);
 const behavior_asset *game_system_document_behavior_asset(const game_system_document *document);
-behavior_asset *game_system_document_behavior_asset_mutable(game_system_document *document);
 int game_system_document_replace_behavior_asset(game_system_document *document, behavior_asset *definition);
 const ecs_query_expr *game_system_document_query(const game_system_document *document);
 int game_system_document_set_query(game_system_document *document, const ecs_query_expr *expression);
 unsigned game_system_document_revision(const game_system_document *document);
 char *game_system_document_save(
     const game_system_document *document,
-    game_query_component_resolver resolve,
-    game_query_component_name_resolver name,
-    void *user
-);
-char *game_system_document_save_behavior_asset(
-    const behavior_asset *definition,
-    const ecs_query_expr *query,
     game_query_component_resolver resolve,
     game_query_component_name_resolver name,
     void *user

@@ -345,7 +345,7 @@ static void reads()
         behavior_asset_free(a);
     }
 }
-static void migration()
+static void layout_guard()
 {
     ecs_world *world = ecs_world_new();
     uint64_t hash = GAME_COMPONENT_GameHealth.id * UINT64_C(11400714819323198485);
@@ -392,15 +392,21 @@ static void migration()
                                             .size = sizeof(changed_health),
                                             .fields = fields,
                                             .field_count = 3 };
-    for (int schema = 0; schema < 3; schema++) {
-        ecs_component_desc c = GAME_COMPONENT_GameHealth;
+    for (int schema = 0; schema < 2; schema++) {
+        ecs_world *target = world;
+        ecs_entity target_owner = owner;
         if (schema == 1) {
+            ecs_component_desc c = GAME_COMPONENT_GameHealth;
             c.type = &changed_type;
             c.element_size = changed_type.size;
-            /* A stale externally supplied hash cannot authorize an old allocation. */
+            /* A stale descriptor hash cannot hide the changed layout. */
             c.layout_hash = GAME_COMPONENT_GameHealth.layout_hash;
+            target = ecs_world_new();
+            assert(!ecs_world_register_component(target, &c, NULL));
+            target_owner = ecs_world_create_entity(target);
+            assert(!ecs_world_record_add(target, target_owner, c.id, NULL, 0));
+            assert(!ecs_world_apply_commands(target));
         }
-        assert(!ecs_world_migrate_component(world, &c, NULL));
         for (int mode = 0; mode < 2; mode++) {
             arena storage = { 0 };
             pin_value results[2] = { 0 };
@@ -408,8 +414,8 @@ static void migration()
             behavior_function_context ctx = {
                 .results = results,
                 .budget = 100,
-                .world = (const struct ecs_execution_view *)world,
-                .owner = ecs_entity_to_u64(owner)
+                .world = (const struct ecs_execution_view *)target,
+                .owner = ecs_entity_to_u64(target_owner)
             };
             int result = behavior_function_run(f, &ctx, mode != 0);
             assert((result != 0) == (schema == 1));
@@ -418,6 +424,9 @@ static void migration()
                 assert(strstr(ctx.error_message, "layout changed"));
             }
             arena_free(&storage);
+        }
+        if (target != world) {
+            ecs_world_free(target);
         }
     }
     behavior_asset_free(a);
@@ -497,7 +506,7 @@ void test_compiled_components()
 {
     reads();
     authoring_bindings();
-    migration();
+    layout_guard();
     writes();
     for (int portable = 0; portable < 2; portable++) {
         behavior_backend previous = behavior_debug_backend(

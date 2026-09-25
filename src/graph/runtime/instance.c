@@ -457,7 +457,6 @@ static behavior_instance *instance_create(behavior_instance *bi, behavior_asset 
     bi->clock = &bi->local_clock;
     bi->backend = behavior_default_backend();
     behavior_program_publish(asset);
-    bi->next_delegate_id = 1;
     bi->alive = 1;
     bi->trace_enabled = 1;
     compile_report_init(&bi->compile);
@@ -495,79 +494,6 @@ behavior_instance *behavior_instance_create_in_bank(
         return NULL;
     }
     return instance_create(behavior_instance_bank_alloc(bank, acount(asset->variables)), asset, owner);
-}
-
-static node *instance_event_by_id(behavior_instance *bi, uint64_t event_id)
-{
-    if (!bi || !bi->alive) {
-        return NULL;
-    }
-    for (int i = 0; i < acount(bi->asset->graph->nodes); i++) {
-        node *n = bi->asset->graph->nodes[i];
-        if (n->id == event_id && n->desc->flow_kind == NODE_FLOW_EVENT) {
-            return n;
-        }
-    }
-    return NULL;
-}
-
-static behavior_delegate_binding *find_delegate(behavior_instance *source, uint64_t id, int *index)
-{
-    if (!source) {
-        return NULL;
-    }
-    for (int i = 0; i < acount(source->delegates); i++) {
-        if (source->delegates[i].id == id) {
-            if (index) {
-                *index = i;
-            }
-            return &source->delegates[i];
-        }
-    }
-    return NULL;
-}
-
-static void remove_incoming_ref(behavior_instance *target, behavior_instance *source, uint64_t id)
-{
-    if (!target) {
-        return;
-    }
-    for (int i = 0; i < acount(target->delegate_incoming); i++) {
-        if (target->delegate_incoming[i].source == source &&
-            target->delegate_incoming[i].binding_id == id) {
-            adel(target->delegate_incoming, i);
-            return;
-        }
-    }
-}
-
-static int delegate_signature_matches(const behavior_delegate_binding *binding, const node *event)
-{
-    int count = 0;
-    for (int i = 0; i < event->output_count; i++) {
-        if (event->output_pins[i].kind == PIN_DATA) {
-            count++;
-        }
-    }
-    if (count != acount(binding->pin_ids)) {
-        return 0;
-    }
-    int at = 0;
-    for (int i = 0; i < event->output_count; i++) {
-        const pin_spec *p = &event->output_pins[i];
-        if (p->kind != PIN_DATA) {
-            continue;
-        }
-        if (binding->pin_ids[at] != p->id || binding->types[at] != p->type ||
-            strcmp(
-                binding->type_names[at] ? binding->type_names[at] : "",
-                p->type_name ? p->type_name : ""
-            ) != 0) {
-            return 0;
-        }
-        at++;
-    }
-    return 1;
 }
 
 void behavior_instance_clear_failure(behavior_instance *bi)
@@ -753,22 +679,6 @@ const behavior_instance_trace_entry *behavior_instance_trace(const behavior_inst
     return bi->trace_view;
 }
 
-static void instance_detach_bindings(behavior_instance *bi)
-{
-    /* EVT-14: detach weak incoming and outgoing bindings before releasing the
-     * target instance. No callback can observe this instance afterward. */
-    while (acount(bi->delegate_incoming)) {
-        behavior_delegate_ref ref = bi->delegate_incoming[acount(bi->delegate_incoming) - 1];
-        adel(bi->delegate_incoming, acount(bi->delegate_incoming) - 1);
-        behavior_instance_unbind_event(ref.source, ref.binding_id);
-    }
-    for (int i = 0; i < acount(bi->delegates); i++) {
-        remove_incoming_ref(bi->delegates[i].target, bi, bi->delegates[i].id);
-    }
-    afree(bi->delegates);
-    afree(bi->delegate_incoming);
-}
-
 int behavior_instance_pool_release(behavior_instance *bi)
 {
     if (!bi) {
@@ -780,7 +690,6 @@ int behavior_instance_pool_release(behavior_instance *bi)
     bi->alive = 0;
     bi->local_clock = *bi->clock;
     bi->clock = &bi->local_clock;
-    instance_detach_bindings(bi);
     while (acount(bi->activations)) {
         flow_run_free(bi->activations[0]);
     }
@@ -825,7 +734,6 @@ behavior_instance *behavior_instance_pool_reuse(
     bi->now_user = now_user;
     bi->breakpoints_override = 0;
     bi->breakpoints_enabled = 0;
-    bi->next_delegate_id = 1;
     behavior_program_publish(asset);
     instance_init_values(bi);
     instance_set_owner(bi, owner);
@@ -909,8 +817,7 @@ instance_update_status behavior_instance_can_update(const behavior_instance *bi,
 {
     assert(bi && bi->alive && next);
     if (!same_type_name(bi->asset->owner_type_name, next->owner_type_name) ||
-        acount(bi->asset->variables) != acount(next->variables) ||
-        acount(bi->delegates) || acount(bi->delegate_incoming)) {
+        acount(bi->asset->variables) != acount(next->variables)) {
         return INSTANCE_UPDATE_RESTART;
     }
     for (int i = 0; i < acount(next->variables); i++) {
@@ -1037,94 +944,6 @@ void behavior_instance_destroy(behavior_instance *bi)
     behavior_instance_bank_release(bi);
 }
 
-uint64_t behavior_instance_bind_event(behavior_instance *source, behavior_instance *target, uint64_t event_id)
-{
-    if (!source || !target || !source->alive || !target->alive || source == target) {
-        return 0;
-    }
-    node *event = instance_event_by_id(target, event_id);
-    if (!event) {
-        return 0;
-    }
-    for (int i = 0; i < acount(source->delegates); i++) {
-        if (source->delegates[i].target == target &&
-            source->delegates[i].event_id == event_id) {
-            return source->delegates[i].id;
-        }
-    }
-    behavior_delegate_binding binding = { .id = source->next_delegate_id++,
-                                          .target = target,
-                                          .event_id = event_id };
-    for (int i = 0; i < event->output_count; i++) {
-        const pin_spec *p = &event->output_pins[i];
-        if (p->kind != PIN_DATA) {
-            continue;
-        }
-        apush(binding.pin_ids, p->id);
-        apush(binding.types, p->type);
-        apush(binding.type_names, p->type_name);
-    }
-    apush(source->delegates, binding);
-    apush(target->delegate_incoming, (behavior_delegate_ref){ source, binding.id });
-    return binding.id;
-}
-
-int behavior_instance_unbind_event(behavior_instance *source, uint64_t binding_id)
-{
-    int index = -1;
-    behavior_delegate_binding *binding = find_delegate(source, binding_id, &index);
-    if (!binding) {
-        return -1;
-    }
-    remove_incoming_ref(binding->target, source, binding_id);
-    afree(binding->pin_ids);
-    afree(binding->types);
-    afree(binding->type_names);
-    adel(source->delegates, index);
-    return 0;
-}
-
-flow_run *behavior_instance_dispatch_delegate(
-    behavior_instance *source,
-    uint64_t binding_id,
-    flow_inputs inputs,
-    flow_error *error
-)
-{
-    set_error(error, FLOW_OK, NULL, NULL);
-    behavior_delegate_binding *binding = find_delegate(source, binding_id, NULL);
-    if (!binding || !binding->target || !binding->target->alive) {
-        set_error(error, FLOW_ERR_INVALID_GRAPH, NULL, "delegate target is unavailable");
-        return NULL;
-    }
-    node *event = instance_event_by_id(binding->target, binding->event_id);
-    if (!event || !delegate_signature_matches(binding, event)) {
-        set_error(error, FLOW_ERR_INVALID_GRAPH, event, "delegate event signature changed");
-        return NULL;
-    }
-    int expected = acount(binding->pin_ids);
-    if (inputs.count != expected || (expected && !inputs.values)) {
-        set_error(error, FLOW_ERR_ARGUMENT, event, "delegate parameter count mismatch");
-        return NULL;
-    }
-    int at = 0;
-    for (int i = 0; i < event->output_count; i++) {
-        const pin_spec *p = &event->output_pins[i];
-        if (p->kind != PIN_DATA) {
-            continue;
-        }
-        pin_spec supplied = { .type = inputs.values[at].type,
-                              .type_name = inputs.values[at].type_name,
-                              .container = inputs.values[at].container };
-        if (!pin_compatible(&supplied, p)) {
-            set_error(error, FLOW_ERR_INVALID_GRAPH, event, "delegate parameter type mismatch");
-            return NULL;
-        }
-        at++;
-    }
-    return behavior_instance_dispatch(binding->target, event->reference_name, inputs, error);
-}
-
 int behavior_instance_bind_service(behavior_instance *bi, const char *type_name, void *value)
 {
     if (!bi || !bi->alive || !type_name || !type_name[0]) {
@@ -1161,35 +980,6 @@ void *behavior_instance_service(const behavior_instance *bi, const char *type_na
     return NULL;
 }
 
-int behavior_instance_broadcast_event(
-    behavior_instance *source,
-    uint64_t event_id,
-    flow_inputs inputs,
-    flow_error *error
-)
-{
-    if (!source || !source->alive) {
-        return -1;
-    }
-    uint64_t *snapshot = NULL;
-    for (int i = 0; i < acount(source->delegates); i++) {
-        if (source->delegates[i].event_id == event_id) {
-            apush(snapshot, source->delegates[i].id);
-        }
-    }
-    int dispatched = 0;
-    for (int i = 0; i < acount(snapshot); i++) {
-        if (!find_delegate(source, snapshot[i], NULL)) {
-            continue;
-        }
-        if (behavior_instance_dispatch_delegate(source, snapshot[i], inputs, error)) {
-            dispatched++;
-        }
-    }
-    afree(snapshot);
-    return dispatched;
-}
-
 flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inputs inputs, flow_error *error)
 {
     if (!bi || !entry) {
@@ -1209,8 +999,6 @@ flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inp
         .sink_user = bi->sink_user,
         .event_name = entry->reference_name,
         .instance = bi,
-        .parallel_for = bi->parallel_for,
-        .parallel_user = bi->parallel_user,
         .breakpoints_override = bi->breakpoints_override,
         .breakpoints_enabled = bi->breakpoints_enabled,
     };
@@ -1386,19 +1174,6 @@ pin_value behavior_instance_owner(const behavior_instance *bi)
     return bi ? bi->owner : (pin_value){ .type = PIN_FLOW };
 }
 
-void behavior_instance_set_parallel_for(
-    behavior_instance *bi,
-    flow_parallel_for_fn parallel_for,
-    void *parallel_user
-)
-{
-    if (!bi) {
-        return;
-    }
-    bi->parallel_for = parallel_for;
-    bi->parallel_user = parallel_user;
-}
-
 void behavior_instance_set_delta_seconds(behavior_instance *bi, double delta_seconds)
 {
     if (bi) {
@@ -1414,15 +1189,6 @@ void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enable
     }
     bi->breakpoints_override = 1;
     bi->breakpoints_enabled = enabled != 0;
-}
-
-int behavior_instance_breakpoints_enabled(const behavior_instance *bi)
-{
-    if (!bi || !bi->asset || !bi->asset->graph) {
-        return 0;
-    }
-    return bi->breakpoints_override ? bi->breakpoints_enabled
-                                    : bi->asset->graph->breakpoints_enabled != 0;
 }
 
 pin_value *behavior_instance_scratch(behavior_instance *bi, uint64_t node_id)

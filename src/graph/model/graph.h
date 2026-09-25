@@ -125,7 +125,6 @@ int graph_connect_data_conversion(
 );
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin);
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order);
-int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint64_t to_node, uint64_t to_pin);
 int graph_connect_exec_ids(
     graph *g,
     uint64_t from_node,
@@ -177,15 +176,6 @@ node *graph_inline_owner(const graph *g, node *n);
 int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
-int graph_exec_input_source_at(
-    const graph *g,
-    const node *n,
-    int pin,
-    int ordinal,
-    node **src,
-    int *src_pin,
-    int *order
-);
 int graph_exec_input_count(const graph *g, const node *n, int pin);
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
 /* Counts all edges, including invalid fan-out; first is borrowed until mutation. */

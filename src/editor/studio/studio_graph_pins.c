@@ -319,8 +319,7 @@ static bool recombinable(const node *n, int kind, int p)
                field_parent(n, p) >= 0;
     }
     bool field = component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
-                 component_node_split(n) &&
-                 p > component_node_setting(COMPONENT_NODE_SET) + 1;
+                 component_node_split(n) && p > component_node_setting(n) + 1;
     return field || n->input_pins[p].split_parent;
 }
 

@@ -395,16 +395,6 @@ static material_mask *split(material_mask *mask, int min_cells, int *dust, bool 
     return pieces;
 }
 
-material_mask *material_mask_split(material_mask *mask, int min_cells, int *dust)
-{
-    return split(mask, min_cells, dust, false);
-}
-
-material_mask *material_mask_split_anchored(material_mask *mask, int min_cells, int *dust)
-{
-    return split(mask, min_cells, dust, true);
-}
-
 material_mask *material_mask_extract_fragments(material_mask *mask, int minimum, bool anchored, int *dust)
 {
     return split(mask, minimum, dust, anchored);

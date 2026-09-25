@@ -1,4 +1,4 @@
-#include "editor/panels/scene_properties.h"
+#include "editor/documents/component_properties.h"
 #include "editor/ui/choices.h"
 #include "test/suite_internal.h"
 
@@ -76,13 +76,6 @@ void run_runtime_catalog_checks()
             "common language node families are registered"
         );
         test_check(
-            operator_register(
-                &(operator_signature){ "SelfCheckAdd", PIN_I64, PIN_I64, PIN_I64, 0 }
-            ) == 0 &&
-                operator_resolve("SelfCheckAdd", PIN_I32, PIN_I32) != NULL,
-            "operator signatures resolve through the widening ladder"
-        );
-        test_check(
             registry_node_by_name("FlipFlop") && registry_node_by_name("Gate") &&
                 registry_node_by_name("MultiGate"),
             "stateful alternating and gate families are registered"
@@ -109,14 +102,15 @@ void run_runtime_catalog_checks()
                 !strcmp(binding->fields[0].type_name, "GameControl"),
             "enum component fields retain their nominal type"
         );
-        char enum_label[64];
         const editor_choices *enum_choices = editor_choices_for_enum("GameControl");
-        if (enum_choices) {
-            editor_choices_format(GAME_CONTROL_PAD_A, enum_choices, enum_label, sizeof enum_label);
-        } else {
-            enum_label[0] = '\0';
+        const char *enum_label = NULL;
+        for (int i = 0; enum_choices && i < editor_choices_count(enum_choices); i++) {
+            editor_choice choice = editor_choice_at(enum_choices, i);
+            if (choice.value == GAME_CONTROL_PAD_A) {
+                enum_label = choice.label;
+            }
         }
-        test_check(enum_choices && !strcmp(enum_label, "Pad A"), "the editor exposes reflected enums through the choice catalog");
+        test_check(enum_label && !strcmp(enum_label, "Pad A"), "the editor exposes reflected enums through the choice catalog");
         const editor_choices *property = NULL;
         if (binding) {
             property = property_choices(binding, &binding->fields[0]);
@@ -221,9 +215,6 @@ void run_runtime_catalog_checks()
         test_check(break_sink->breakpoint_enabled != 0, "breakpoint state is available to node rendering");
         test_check(g_break.breakpoints_enabled == 0, "breakpoint list has a global toggle");
         test_check(registry_node_by_name("Reroute Data") != NULL, "direct node spawning has a catalog target");
-        test_check(editor_preview_allowed(FLOW_COMPLETED) == 0, "flow heat settles after execution");
-        test_check(editor_preview_allowed(FLOW_IDLE) == 1, "node activation highlights are idle-safe");
-        test_check(editor_preview_allowed(FLOW_RUNNING) == 0, "data flashes are tied to a live run");
         double sample_30 = 0.0;
         double sample_60 = 0.0;
         double sample_144 = 0.0;
@@ -240,10 +231,6 @@ void run_runtime_catalog_checks()
             fabs(flow_visual_heat(sample_30) - flow_visual_heat(sample_60)) < 0.001 &&
                 fabs(flow_visual_heat(sample_60) - flow_visual_heat(sample_144)) < 0.001,
             "flow animation is time-constant across 30, 60, and 144 FPS"
-        );
-        test_check(
-            flow_visual_settled(3.0) && flow_visual_marker(0.5, 64.0) >= 0.0,
-            "stopped flow settles and markers remain bounded"
         );
         graph_free(&g_break);
         test_check(

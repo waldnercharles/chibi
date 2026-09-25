@@ -381,13 +381,11 @@ extern "C"
     int rml_element_child_count(const rml_element *element);
     rml_element *rml_element_child(const rml_element *element, int index);
     rml_element *rml_element_first_child(const rml_element *element);
-    bool rml_element_contains(const rml_element *element, rml_element *other);
     rml_context *rml_element_context(const rml_element *element);
     rml_element *rml_element_by_id(rml_element *element, const char *id);
     rml_element *rml_element_query_selector(rml_element *element, const char *selector);
 
-    /* Valid while the element keeps its id and tag. */
-    const char *rml_element_id(const rml_element *element);
+    /* Valid while the element keeps its tag. */
     const char *rml_element_tag_name(const rml_element *element);
 
     void rml_element_set_attribute(rml_element *element, const char *name, const char *value);
@@ -425,8 +423,6 @@ extern "C"
     float rml_element_scroll_top(rml_element *element);
     void rml_element_set_scroll_top(rml_element *element, float scroll_top);
     float rml_element_client_height(rml_element *element);
-    float rml_element_offset_width(rml_element *element);
-    float rml_element_offset_height(rml_element *element);
     rml_vec2 rml_element_absolute_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_relative_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_box_size(rml_element *element, rml_box_area area);

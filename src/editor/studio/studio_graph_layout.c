@@ -3,6 +3,7 @@
 #include "editor/ui/labels.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/fmt_nodes.h"
 #include "graph/shader/shader_graph.h"
@@ -20,7 +21,7 @@ static const float HEAD = 24, PAD = 4;
    graph.rcss metrics, so a node's box and sockets are known before it is laid
    out: arrange, framing and hit tests never wait a frame.
 
-   A full node's rows follow the ImGui editor and Blender: execution pins pair
+   A full node's rows follow Blender: execution pins pair
    up first, then every data output, then every data input, so inputs always
    sit below outputs. Unlabeled execution pins may sit in the title instead
    (Unity Visual Scripting). Operators draw as a symbol between their inputs
@@ -137,7 +138,7 @@ static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 2
 value_kind sg_value_kind_of(const studio *s, node *n, int output, int p)
 {
     const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
-    int width = ed_vector_width(spec);
+    int width = pin_vector_width(spec);
     const editor_choices *choices = ed_pin_choices(sg_graph_editor(s), n, output, p);
     if (spec->container != PIN_CONTAINER_SINGLE) {
         return VALUE_NONE;
@@ -288,7 +289,6 @@ static uint32_t folded_chip(const studio *s, node *n, int p, char *out, size_t s
 
 void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 {
-    editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool input = kind == ED_PIN_INPUT;
     const pin_spec *spec = input ? &n->input_pins[p] : &n->output_pins[p];
@@ -348,7 +348,7 @@ static float value_width(const studio *s, const pin_parts *parts)
     switch (parts->value) {
         case VALUE_CHOICE: return 96;
         case VALUE_BOOL: return 16;
-        case VALUE_VECTOR: return 58.0f * (float)ed_vector_width(parts->spec);
+        case VALUE_VECTOR: return 58.0f * (float)pin_vector_width(parts->spec);
         case VALUE_TEXT: return 96;
         case VALUE_NUMBER: return 64;
         case VALUE_CHIP:
@@ -392,7 +392,7 @@ static node_form form_of(const studio *s, node *n)
     if (!inputs) {
         return FORM_GETTER;
     }
-    return ed_node_appearance(n->desc).symbol ? FORM_OPERATOR : FORM_FULL;
+    return ed_node_symbol(n->desc) ? FORM_OPERATOR : FORM_FULL;
 }
 
 /* The first execution pin on a side moves into the title when unlabeled. */
@@ -504,12 +504,12 @@ static node_layout measure_node(const studio *s, node *n)
                       .add_pin = -1 };
     char title[256];
     sg_node_title(s, n, l.form, title, sizeof title);
-    ed_node_presentation look = ed_node_appearance(n->desc);
+    const char *symbol = ed_node_symbol(n->desc);
     if (l.form == FORM_OPERATOR) {
-        return measure_operator(s, n, l, look.symbol);
+        return measure_operator(s, n, l, symbol);
     }
     float width = sg_text_width(s, title, 12, 600) + 2 * HEAD_PAD +
-                  (look.symbol || sg_node_icon(s, n) ? 20 : 0);
+                  (symbol || sg_node_icon(s, n) ? 20 : 0);
     if (l.form == FORM_GETTER) {
         for (int p = 0; p < n->output_count; p++) {
             l.head_out = ed_pin_visible(gr, n, ED_PIN_OUTPUT, p) ? p : l.head_out;

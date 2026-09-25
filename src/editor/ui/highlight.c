@@ -10,11 +10,6 @@ static const char *const CLASSES[HIGHLIGHT_COUNT] = {
     "tok-path", "tok-punct",  "tok-muted",  "tok-error",   "tok-warning",
 };
 
-const char *highlight_class(highlight_token token)
-{
-    return CLASSES[token];
-}
-
 static bool word_char(char c)
 {
     return isalnum((unsigned char)c) || c == '_';

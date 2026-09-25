@@ -55,13 +55,6 @@ typedef enum
 
 typedef void (*ecs_destroy_observer)(ecs_world *world, ecs_entity entity, void *user);
 
-typedef struct
-{
-    int changed;
-    int preserved_fields;
-    int zeroed_fields;
-} ecs_migration_report;
-
 /* Query expressions are deliberately independent of the graph/editor layer.
  * A term matches component presence; groups provide the boolean vocabulary
  * used by authored system queries. */
@@ -101,7 +94,7 @@ struct ecs_query
 
 /* Entity storage grows automatically. Component rows remain contiguous, but a
  * structural change can relocate columns. Reacquire pointers after applying
- * commands or changing component schemas; queries keep storage stable. */
+ * commands or registering components; queries keep storage stable. */
 ecs_world *ecs_world_new(void);
 void ecs_world_free(ecs_world *world);
 /* Optional bulk reservation; normal creation needs no capacity setting. */
@@ -110,11 +103,6 @@ uint32_t ecs_world_entity_capacity(const ecs_world *world);
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id);
 int ecs_world_component_count(const ecs_world *world);
 const ecs_component_desc *ecs_world_component_at(const ecs_world *world, int index);
-int ecs_world_migrate_component(
-    ecs_world *world,
-    const ecs_component_desc *replacement,
-    ecs_migration_report *report
-);
 const ecs_component_desc *ecs_world_component(const ecs_world *world, ecs_component_id id);
 
 /* Handles are reserved when a create command is recorded and become alive only

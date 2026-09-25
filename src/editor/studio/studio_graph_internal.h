@@ -38,6 +38,17 @@ struct studio_node_layout
 };
 typedef struct studio_node_layout node_layout;
 
+/* A graph Back and Forward return to (studio_graph_nav.c). */
+struct studio_visit
+{
+    int kind; /* app_editor_document_kind */
+    char document[128];
+    char path[512]; /* a System's file */
+    uint64_t graph_id;
+    int caller_count; /* the calls entered to reach it, for the breadcrumb */
+    ed_graph_caller callers[ED_CALLER_LIMIT];
+};
+
 typedef enum
 {
     VALUE_NONE,

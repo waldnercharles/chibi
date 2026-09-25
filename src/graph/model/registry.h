@@ -2,7 +2,6 @@
 #define CHIBI_REGISTRY_H
 
 #include "graph/model/node.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/service.h"
 
 typedef struct registry_pack
@@ -14,8 +13,6 @@ typedef struct registry_pack
     int type_count;
     const service_desc *const *services;
     int service_count;
-    const operator_signature *operators;
-    int operator_count;
     const enum_desc *const *enums;
     int enum_count;
 } registry_pack;
@@ -24,28 +21,11 @@ typedef struct registry_pack
 extern const registry_pack *const REGISTRY_PACKS[];
 extern const int REGISTRY_PACK_COUNT;
 
-/* A pack is valid when every descriptor is valid and all identities are
- * unique in the supplied, explicit pack order. */
-int registry_validate_packs(const registry_pack *const packs[], int pack_count);
 void registry_validate(void);
 
 /* Core's hand-authored descriptor packs. */
-extern node_desc *const EXTRA_NODES[];
-extern const int EXTRA_NODE_COUNT;
-extern node_desc *const FLOW_NODES[];
-extern const int FLOW_NODE_COUNT;
-extern node_desc *const ARRAY_NODES[];
-extern const int ARRAY_NODE_COUNT;
 extern node_desc *const STATE_NODES[];
 extern const int STATE_NODE_COUNT;
-extern node_desc *const SWITCH_NODES[];
-extern const int SWITCH_NODE_COUNT;
-extern node_desc *const REROUTE_NODES[];
-extern const int REROUTE_NODE_COUNT;
-extern node_desc *const SET_MAP_NODES[];
-extern const int SET_MAP_NODE_COUNT;
-extern node_desc *const STRUCT_NODES[];
-extern const int STRUCT_NODE_COUNT;
 
 extern const registry_pack CORE_EXTRA_PACK;
 extern const registry_pack CORE_FLOW_PACK;
@@ -77,10 +57,6 @@ const type_desc *registry_type_by_name(const char *name);
 
 int registry_service_count(void);
 const service_desc *registry_service(int index);
-const service_desc *registry_service_by_name(const char *name);
-
-int registry_operator_count(void);
-const operator_signature *registry_operator(int index);
 
 int registry_enum_count(void);
 const enum_desc *registry_enum(int index);

@@ -19,7 +19,6 @@
 #include <assert.h>
 #include <cute_defines.h>
 #define CF_MATH_H
-#include <imgui/dcimgui.h>
 #undef CF_MATH_H
 #include <math.h>
 #include <stdio.h>
@@ -1264,8 +1263,6 @@ static void component_struct_input_expression()
 
 static void expression_title()
 {
-    ImGuiContext *previous = ImGui_GetCurrentContext();
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     editor *e = editor_new(behavior_asset_new("Expression title"));
     behavior_expression_error error;
     node *call = editor_add_behavior_expression(e, "a + b", 0, 0, &error);
@@ -1293,14 +1290,10 @@ static void expression_title()
     assert(editor_set_behavior_expression(e, call, "a - b", &error) == 0);
     assert(!strcmp(generated->name, "a - b"));
     editor_free(e);
-    ImGui_DestroyContext(context);
-    ImGui_SetCurrentContext(previous);
 }
 
 static void editor_rewire()
 {
-    ImGuiContext *previous = ImGui_GetCurrentContext();
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     editor *e = editor_new(behavior_asset_new("Expression rewire"));
     behavior_expression_error error;
     node *call = editor_add_behavior_expression(e, "speed * 2", 0, 0, &error);
@@ -1334,14 +1327,10 @@ static void editor_rewire()
     call = graph_node_by_id(editor_behavior_asset(e)->graph, id);
     assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "speed * 2"));
     editor_free(e);
-    ImGui_DestroyContext(context);
-    ImGui_SetCurrentContext(previous);
 }
 
 static void editor_history()
 {
-    ImGuiContext *previous = ImGui_GetCurrentContext();
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     editor *e = editor_new(behavior_asset_new("Expression history"));
     behavior_expression_error error;
     node *call = editor_add_behavior_expression(e, "a + b", 12, 34, &error);
@@ -1359,7 +1348,6 @@ static void editor_history()
     assert(call && !strcmp(behavior_expression_source(editor_behavior_asset(e), call), "a * b"));
     assert(editor_open_graph_call(e, call->id) == 0);
     assert(editor_active_graph(e)->math_expression);
-    assert(editor_has_inspection_selection(e));
     assert(!editor_spawn(e, registry_node_by_name("Real"), 0, 0));
     assert(!editor_add_behavior_expression(e, "x + y", 0, 0, &error));
     assert(
@@ -1387,14 +1375,10 @@ static void editor_history()
     }
     assert(acount(editor_behavior_asset(e)->graphs) == 1);
     editor_free(e);
-    ImGui_DestroyContext(context);
-    ImGui_SetCurrentContext(previous);
 }
 
 static void editor_delete_expression()
 {
-    ImGuiContext *previous = ImGui_GetCurrentContext();
-    ImGuiContext *context = ImGui_CreateContext(NULL);
     behavior_asset *asset = behavior_asset_new("Delete expression");
     node *call = behavior_expression_add(asset, asset->graph, "negate(a)", NULL);
     assert(call);
@@ -1436,8 +1420,6 @@ static void editor_delete_expression()
     assert(!graph_node_by_id(current->graph, call_id));
     assert(!graph_node_by_id(behavior_asset_find_graph(current, other_id), second_id));
     editor_free(e);
-    ImGui_DestroyContext(context);
-    ImGui_SetCurrentContext(previous);
 }
 
 static node *movement_field_node(graph *g, const char *name, bool output)

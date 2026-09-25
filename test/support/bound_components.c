@@ -149,31 +149,15 @@ static void storage_changes(behavior_backend backend)
     assert(!ecs_world_record_add(test.world, owner, component->id, &record, sizeof record));
     assert(!ecs_world_apply_commands(test.world));
 
-    type_field *fields = NULL;
-    for (int i = 0; i < WHOLE_RECORD_TYPE.field_count; i++) {
-        apush(fields, WHOLE_RECORD_TYPE.fields[i]);
-    }
-    fields[2].name = "renamed_weight";
-    type_desc changed = WHOLE_RECORD_TYPE;
-    changed.fields = fields;
-    ecs_component_desc replacement = *component;
-    replacement.type = &changed;
-    replacement.layout_hash = 0;
-    assert(!ecs_world_migrate_component(test.world, &replacement, NULL));
-    assert(!behavior_instance_set_variable(bi, enabled, &off));
-    step(&test, NULL);
-    assert(!behavior_instance_set_variable(bi, enabled, &on));
-    step(&test, "compiled component layout changed");
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_update_free_code(test.code);
     behavior_update_free_bindings(test.bindings);
     behavior_instance_destroy(bi);
     behavior_asset_free(asset);
     ecs_world_free(test.world);
-    afree(fields);
     printf(
         "PASS: %s bound columns, untaken branches, late registration, "
-        "relocation, presence and layout diagnostics\n",
+        "relocation and presence diagnostics\n",
         behavior_backend_name(backend)
     );
 }

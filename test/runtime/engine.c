@@ -600,7 +600,7 @@ static void action_checks()
         "losing local input ownership sends one zero movement release before "
         "physics"
     );
-    assert(engine_route_escape(f.runtime) == 0);
+    assert(engine_set_focus(f.runtime, ENGINE_FOCUS_NONE) == 0);
     assert(engine_dispatch_input(f.runtime, "Dash", 1, 1, NULL) == FLOW_ERR_STATE);
     clock_free(&f);
 }
@@ -1007,10 +1007,6 @@ void run_parallel_checks(void)
     game_behavior_set_parallel_for(behaviors, host_parallel, NULL);
     game_behavior_pump(behaviors, 1.0);
     test_check(g_parallel_calls == 1, "host parallel dispatch reaches reflected behavior effects");
-    game_behavior_set_breakpoints_enabled(behaviors, 1);
-    g_parallel_calls = 0;
-    game_behavior_pump(behaviors, 2.0);
-    test_check(g_parallel_calls == 0, "enabling a breakpoint forces single-threaded behavior execution");
     game_live_world_free(live);
     ecs_world_free(ecs);
 
@@ -1033,38 +1029,4 @@ void run_parallel_checks(void)
     compile_report_free(&unsafe_report);
     behavior_asset_free(safe);
     behavior_asset_free(unsafe);
-}
-
-void run_scene_checks(void)
-{
-    game_scene *one = game_scene_new(64, 16, UINT64_C(0x12345678));
-    game_scene *many = game_scene_new(64, 16, UINT64_C(0x12345678));
-    game_scene_set_parallel_for(many, reverse_parallel_for, NULL);
-    int deterministic = one && many;
-    for (int frame = 0; deterministic && frame < 600; frame++) {
-        deterministic &= game_scene_frame(one, (double)frame / 60.0) == ECS_OK;
-        deterministic &= game_scene_frame(many, (double)frame / 60.0) == ECS_OK;
-        deterministic &= game_scene_hash(one) == game_scene_hash(many);
-    }
-    test_check(deterministic, "a seeded 600-frame scene has identical per-frame hashes at one and many workers");
-    game_scene_free(one);
-    game_scene_free(many);
-
-#ifndef CHIBI_SKIP_PERFORMANCE_TESTS
-    game_scene *budget = game_scene_new(2000, 500, UINT64_C(0xdecafbad));
-    double total_behavior_ms = 0.0;
-    int budget_ok = budget != NULL;
-    for (int frame = 0; budget_ok && frame < 20; frame++) {
-        budget_ok &= game_scene_frame(budget, (double)frame / 60.0) == ECS_OK;
-        total_behavior_ms += game_scene_behavior_ms(budget);
-    }
-    double average_behavior_ms = total_behavior_ms / 20.0;
-    test_check(
-        budget_ok && game_scene_entity_count(budget) == 2000 &&
-            game_scene_behavior_count(budget) == 500 && average_behavior_ms < 2.0,
-        "2000 live entities with 500 per-frame behaviors stay under 2 "
-        "ms average behavior time"
-    );
-    game_scene_free(budget);
-#endif
 }

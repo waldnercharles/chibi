@@ -73,6 +73,11 @@ static spring spring_solve(spring s, spring_params p, double dt)
 
 /* Exact solution of m x'' + c x' + k x = 0 over dt, so frame rate never
  * changes the path. */
+static bool spring_resting(spring s)
+{
+    return fabs(s.x) < 0.05 && fabs(s.v) < 0.5;
+}
+
 void spring_step(spring *s, spring_params p, double dt)
 {
     if (dt <= 0) {
@@ -82,11 +87,6 @@ void spring_step(spring *s, spring_params p, double dt)
     if (spring_resting(*s)) {
         *s = (spring){ 0 };
     }
-}
-
-bool spring_resting(spring s)
-{
-    return fabs(s.x) < 0.05 && fabs(s.v) < 0.5;
 }
 
 /* ---------- Presence ---------- */

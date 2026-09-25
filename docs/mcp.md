@@ -136,7 +136,7 @@ saving them. Tool results include complete `structuredContent` and
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
-- `describeRegistry`: inspect reflected types, services, operators, and components; request `sections: ["nodes"]` for every node and pin.
+- `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
 
 ## Check adapter distribution
@@ -258,15 +258,19 @@ component. Event output bindings are scoped to the event activation; Tick's
 These operations use the same graph model as editor bindings and projections.
 
 Read and write components with `Get Component`, `Set Component` and
-`Has Component`. Choose the component with the `Component` input, by name or
-stable key, for example
+`Has Component`, attach and detach them with `Add Component` and
+`Remove Component`, and build or split structs with `Make Struct` and
+`Break Struct` (`inputs: {"Type": "GameTransform"}`). Choose the component with
+the `Component` input, by name or stable key, for example
 `{"op":"add_node","type":"Set Component","inputs":{"Component":"GameHealth","current":5}}`.
-`Entity` defaults to Self; connect it to address another entity. Set writes its
+`add_node` applies a `Component` or `Type` input before the pins it creates, so
+their order in `inputs` doesn't matter. `Entity` defaults to Self; connect it to address another entity. Set writes its
 `Value`, or only the field inputs it shows: naming a settable field in `inputs` or
 `connect` shows it, and `split_pin`/`recombine_pin` switch between every field and
 `Value`. Get exposes fields with `expose_fields`. These nodes lower to the
-generated `Get_<Component>`/`Set_<Component>_<field>` descriptors when the asset
-runs; see [component nodes](component-nodes.md).
+generated `Get_<Component>`, `Set_<Component>_<field>`, `Add_<Component>` and
+`Make_<Type>` descriptors when the asset runs; see
+[component nodes](component-nodes.md).
 
 `add_node` honors `event_name`. Tick, Input, and Contact Begin events acquire
 their host payload pins automatically. Declare custom payloads as variables in

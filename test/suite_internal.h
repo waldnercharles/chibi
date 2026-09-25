@@ -5,7 +5,6 @@
 #include "assets/scene_document.h"
 #include "ecs/ecs.h"
 #include "editor/graph/flow_visual.h"
-#include "editor/graph/preview_gate.h"
 #include "editor/workspace/editor.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
@@ -16,7 +15,6 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/fmt_nodes.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"
@@ -28,12 +26,10 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
-#include "runtime/scenes/scene.h"
 #include "support/arena.h"
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
 
-#include <imgui/dcimgui.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,12 +123,8 @@ extern void test_component_conversion();
 extern void test_field_outputs();
 extern void test_function_wait();
 extern void test_function_fields();
-extern void test_flags();
 extern void test_particles();
 extern void test_labels();
-extern bool test_ui_keyboard();
-extern bool test_ui_scroll_smoothing();
-extern bool test_gameplay_keyboard();
 extern void test_math_expression();
 extern void test_behavior_math();
 extern void test_appearance();
@@ -140,7 +132,7 @@ extern void test_retained_components();
 extern void test_editor_flow();
 extern void test_component_fields();
 extern void test_component_nodes();
-extern void test_scene_navigation();
+extern void test_editor_documents();
 extern void test_scene_debug();
 extern void test_appearance_geometry();
 extern void test_orientation();
@@ -208,8 +200,6 @@ void run_prototype_live_checks();
 void run_live_checks(void);
 void run_engine_checks(void);
 void run_parallel_checks(void);
-void run_ecs_migration_checks(void);
-void run_scene_checks(void);
 void run_graph_model_checks();
 void run_graph_document_checks();
 void run_graph_comment_checks();

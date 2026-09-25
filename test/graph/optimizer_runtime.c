@@ -295,29 +295,10 @@ static void system_locals()
     ecs_world_free(world);
 }
 
-static void output_promotion()
-{
-    behavior_asset *asset = behavior_asset_new("Output promotion");
-    node *source = add(asset->graph, "Add");
-    behavior_variable *value = behavior_asset_promote_pin_to_variable(asset, source, 1, 0, "Result");
-    assert(value);
-    node *set = asset->graph->nodes[1];
-    node *driver = NULL;
-    int pin = -1;
-    test_check(
-        set->desc == &NODE_SetVariable &&
-            graph_input_source(asset->graph, set, 1, &driver, &pin) &&
-            driver == source && pin == 0,
-        "explicit output promotion connects the output to a Set Variable input"
-    );
-    behavior_asset_free(asset);
-}
-
 void test_optimizer_runtime()
 {
     activation_differential();
     extraction();
     shader_locals();
     system_locals();
-    output_promotion();
 }

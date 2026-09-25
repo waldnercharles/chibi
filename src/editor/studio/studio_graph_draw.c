@@ -3,9 +3,11 @@
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
 #include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -44,18 +46,40 @@ static const canvas_palette *palette(const studio *s)
     return s->light ? &LIGHT : &DARK;
 }
 
+/* Data wires and sockets take their pin type's color. */
+static const float PIN_COLORS[][3] = {
+    [PIN_FLOW] = { 1.0f, 1.0f, 1.0f },
+    [PIN_BOOL] = { 0.95f, 0.43f, 0.48f },
+    [PIN_I8] = { 0.34f, 0.76f, 0.65f },
+    [PIN_U8] = { 0.34f, 0.76f, 0.65f },
+    [PIN_I16] = { 0.013575f, 0.770f, 0.429609f },
+    [PIN_U16] = { 0.013575f, 0.770f, 0.429609f },
+    [PIN_I32] = { 0.013575f, 0.770f, 0.429609f },
+    [PIN_U32] = { 0.013575f, 0.770f, 0.429609f },
+    [PIN_I64] = { 0.413575f, 0.770f, 0.429609f },
+    [PIN_U64] = { 0.413575f, 0.770f, 0.429609f },
+    [PIN_F32] = { 0.65f, 0.85f, 0.39f },
+    [PIN_F64] = { 0.65f, 0.85f, 0.39f },
+    [PIN_NAME] = { 0.73f, 0.57f, 0.90f },
+    [PIN_HANDLE] = { 0.36f, 0.77f, 0.85f },
+    [PIN_STR] = { 0.91f, 0.48f, 0.73f },
+    [PIN_STRUCT] = { 0.40f, 0.58f, 0.92f },
+    [PIN_ENUM] = { 0.34f, 0.76f, 0.65f },
+};
+
 /* A pin's color as 0xRRGGBBAA. */
 static uint32_t pin_color(const studio *s, const pin_spec *spec, float alpha)
 {
     const canvas_palette *p = palette(s);
+    uint32_t a = (uint32_t)lroundf(fminf(alpha, 1) * 255);
     if (spec->kind == PIN_EXEC) {
-        return (p->exec & ~255u) | (uint32_t)lroundf(fminf(alpha, 1) * 255);
+        return (p->exec & ~255u) | a;
     }
-    ImVec4 c = ed_spec_color(spec);
-    return ((uint32_t)lroundf(c.x * p->shade * 255) << 24) |
-           ((uint32_t)lroundf(c.y * p->shade * 255) << 16) |
-           ((uint32_t)lroundf(c.z * p->shade * 255) << 8) |
-           (uint32_t)lroundf(fminf(c.w * alpha, 1) * 255);
+    assert(spec->type >= PIN_FLOW && spec->type <= PIN_ENUM);
+    const float *c = PIN_COLORS[spec->type];
+    return ((uint32_t)lroundf(c[0] * p->shade * 255) << 24) |
+           ((uint32_t)lroundf(c[1] * p->shade * 255) << 16) |
+           ((uint32_t)lroundf(c[2] * p->shade * 255) << 8) | a;
 }
 
 uint32_t sg_pin_color(const studio *s, const pin_spec *spec)
@@ -104,7 +128,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
     bool changed = false, streaming = false, committed = false;
     unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
     const editor_choices *choices = ed_pin_choices(e, n, output, p);
-    int width = ed_vector_width(spec);
+    int width = pin_vector_width(spec);
     double number = 0;
     float vector[4] = { 0 };
     char text[256];
@@ -337,10 +361,10 @@ static void emit_head(studio *s, node *n, const node_layout *l)
     if (l->head_in >= 0) {
         emit_pin(s, n, ED_PIN_INPUT, l->head_in, "hpin in", 0);
     }
-    ed_node_presentation look = ed_node_appearance(n->desc);
+    const char *symbol = ed_node_symbol(n->desc);
     uint32_t icon = sg_node_icon(s, n);
-    if (look.symbol) {
-        kit_label(k, "sym", "symbol", look.symbol);
+    if (symbol) {
+        kit_label(k, "sym", "symbol", symbol);
     } else if (icon) {
         kit_icon(k, "i", NULL, icon);
     }
@@ -436,7 +460,7 @@ static void emit_operator(studio *s, node *n, const node_layout *l)
             emit_dp(k, "width", l->column);
         }
     }
-    kit_label(k, "sym", "gsymbol", ed_node_appearance(n->desc).symbol);
+    kit_label(k, "sym", "gsymbol", ed_node_symbol(n->desc));
     emit_dp(k, "left", l->column + PART_GAP);
     emit_dp(k, "right", SOCKET_PAD);
     emit_dp(k, "line-height", body);

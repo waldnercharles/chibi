@@ -692,7 +692,7 @@ node_desc NODE_ArrayResize = { .name = "Resize",
                                .category = "Array",
                                .keywords = "array resize" };
 
-node_desc *const ARRAY_NODES[] = {
+static node_desc *const ARRAY_NODES[] = {
     &NODE_MakeArray,      &NODE_ArrayGet,         &NODE_ArraySetElem,
     &NODE_ArrayAdd,       &NODE_ArrayAddUnique,   &NODE_ArrayAppend,
     &NODE_ArrayClear,     &NODE_ArrayContains,    &NODE_ArrayFind,
@@ -701,7 +701,6 @@ node_desc *const ARRAY_NODES[] = {
     &NODE_ArrayIsEmpty,   &NODE_ArrayIsNotEmpty,  &NODE_ArrayIsValidIndex,
     &NODE_ArrayReverse,   &NODE_ArraySwap,        &NODE_ArrayInsert,
 };
-const int ARRAY_NODE_COUNT = sizeof ARRAY_NODES / sizeof ARRAY_NODES[0];
 
 const registry_pack CORE_ARRAY_PACK = {
     .name = "core.array",

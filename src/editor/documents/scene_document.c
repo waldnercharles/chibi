@@ -1,7 +1,6 @@
 #include "assets/scene_document.h"
 
 #include "assets/behavior_loader.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "runtime/generated.h"
@@ -143,57 +142,6 @@ char *read_scene_file(const char *path)
     fclose(file);
     json[read] = '\0';
     return json;
-}
-
-int app_scene_authoring_load_prototype(app_scene_authoring *scene, const char *path)
-{
-    if (!scene || !path) {
-        return -1;
-    }
-    char *json = read_scene_file(path);
-    if (!json) {
-        return -1;
-    }
-    int result = app_scene_authoring_register_prototype(scene, json, path);
-    free(json);
-    return result;
-}
-
-static int load_content_behavior(app_scene_authoring *scene, const char *path)
-{
-    char *json = read_scene_file(path);
-    if (!json) {
-        return 0;
-    }
-    behavior_asset *working = behavior_asset_load_json(json);
-    free(json);
-    if (!working || !working->name ||
-        game_live_find_definition(scene->live, working->name)) {
-        behavior_asset_free(working);
-        return 0;
-    }
-    game_live_definition *definition = game_live_definition_new(working->name, working);
-    if (!definition) {
-        behavior_asset_free(working);
-        return 0;
-    }
-    if (game_live_definition_set_path(definition, path) != 0) {
-        game_live_definition_free(definition);
-        return 0;
-    }
-    if (game_live_add_definition(scene->live, definition) != 0) {
-        game_live_definition_free(definition);
-        return 0;
-    }
-    if (game_prototype_preview_register_behavior(
-            scene->prototype_preview,
-            working->name,
-            working
-        ) != 0) {
-        game_live_remove_definition(scene->live, working->name);
-        return 0;
-    }
-    return 1;
 }
 
 static int load_content_prototype(app_scene_authoring *scene, const char *path)
@@ -381,7 +329,6 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
     game_behavior_set_deferred(scene->live->behaviors, true);
     scene->runtime_playing = false;
     scene->runtime_step = false;
-    editor_ui_set_scene_play_expanded(false);
     app_scene_authoring_stop_prototype_preview(scene);
     invalidate_runtime_snapshot(scene);
     game_entities_reset(scene->live->entities);
@@ -465,11 +412,6 @@ int app_scene_authoring_load(app_scene_authoring *scene, const char *path)
 const char *app_scene_authoring_message(const app_scene_authoring *scene)
 {
     return scene ? scene->message : NULL;
-}
-
-const char *app_scene_authoring_selected_content(const app_scene_authoring *scene)
-{
-    return scene ? scene->content_selected_path : NULL;
 }
 
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene)

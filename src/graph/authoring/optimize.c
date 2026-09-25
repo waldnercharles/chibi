@@ -236,8 +236,9 @@ static int collect_folds(graph *g, node *source, bool preserve_debug, fold **fol
         }
         /* Keep a structured getter edge intact until Break cleanup can convert
          * its scalar fields to nested component bindings. */
-        if (graph_optimize_component_getter(g, source) &&
-            f.target->desc->pure_kind == NODE_PURE_BREAK &&
+        const node_desc *made = component_node_struct(f.target);
+        if (graph_optimize_component_getter(g, source) && made &&
+            made->pure_kind == NODE_PURE_BREAK &&
             source->output_pins[f.source_pin].type == PIN_STRUCT) {
             return GRAPH_OPTIMIZE_SEMANTICS;
         }
@@ -413,13 +414,13 @@ static void skip(graph_optimize_report *report, const node *n, uint64_t pin, int
 void graph_local_name(const graph *g, const node *n, int pin, char *name, size_t size)
 {
     const char *source = n->output_pins[pin].name;
-    const ecs_component_desc *component = component_node_kind_of(n->desc)
-                                            ? component_node_component(n)
-                                            : NULL;
+    const char *verb = NULL, *addressed = NULL;
+    bool component = component_node_kind_of(n->desc) &&
+                     component_node_access(n, &verb, &addressed);
     /* An expression's reference name is its whole source; a name that long
        reads worse than a plain Value the author renames. */
     if (!source || !strcmp(source, "Value") || !strcmp(source, "Result")) {
-        source = component                           ? component->name
+        source = component                           ? addressed
                : n->desc == &NODE_BehaviorExpression ? "Value"
                : n->reference_name                   ? n->reference_name
                : graph_node_name_literal(g, n) ? graph_node_name_literal(g, n)

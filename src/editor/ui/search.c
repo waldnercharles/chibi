@@ -145,10 +145,3 @@ int editor_search_score(const char *query, const char *name, const char *seconda
     bool exact = name && equal(name, query, length) && !name[length];
     return score / words + (exact ? 1000 : 0);
 }
-
-int editor_search_compare(const void *a, const void *b)
-{
-    const editor_search_result *left = a, *right = b;
-    int score = right->score - left->score;
-    return score ? score : left->index - right->index;
-}

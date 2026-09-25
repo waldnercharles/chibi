@@ -143,7 +143,7 @@ extern "C"
         (int)(sizeof((const kit_class[]){ __VA_ARGS__ }) / sizeof(kit_class))  \
     )
 
-    /* Variants (cva): each maps to classes in one table in kit.cpp. */
+    /* Variants (cva): each maps to classes in one table in kit_controls.c. */
     typedef enum
     {
         KIT_GHOST, /* default: transparent until hovered */

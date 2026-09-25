@@ -1,7 +1,7 @@
 # Editor UI references
 
 The editor UI is RmlUi driven from C through the Studio kit (`src/editor/ui/kit.h`,
-`src/editor/rmlui/kit*.cpp`). None of the libraries below can be linked into it: they
+`src/editor/rmlui/kit*.c`). None of the libraries below can be linked into it: they
 are React/DOM code. Each one solves a problem the editor has too, so the kit carries
 a native version that follows the library's contract: its states, timings,
 thresholds and keyboard model. Before building a UI mechanism inside a panel, find
@@ -18,18 +18,18 @@ the earlier library catalog from the Codex RmlUi branch.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.cpp` and `kit_number.cpp`; popups, menus and tooltips in `kit_popup.cpp` | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` and `kit_number.c`; popups, menus and tooltips in `kit_popup.c` | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in `kit.rcss` | Done |
-| [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.cpp`) | Done; pages and group jumps open |
-| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.cpp`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
-| [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout`, springs in `kit_motion.cpp` | Done |
-| [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | `kit_number_flow` (`kit_text.cpp`) | Done |
+| [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.c`) | Done; pages and group jumps open |
+| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
+| [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout`, springs in `kit_motion.c` | Done |
+| [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | `kit_number_flow` (`kit_text.c`) | Done |
 | [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | `kit_morph`, `kit_button_desc.morph` | Done; place-value numbers open |
-| [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.cpp`) | Done; Alt+T focus open |
-| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list` (`kit_list.cpp`), fixed row height | Done; measured heights open |
-| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.cpp`) | Done; keyboard sensor and auto-scroll open |
+| [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
+| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list` (`kit_list.c`), fixed row height | Done; measured heights open |
+| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.c`) | Done; keyboard sensor and auto-scroll open |
 | [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, JSON, expressions |
-| [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.cpp`, element `kit-chart`) | Done |
+| [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
 | [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs` | Done |
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
@@ -208,7 +208,7 @@ control's contract.
 ### clsx and cva
 
 - `KIT_CX(k, "area", { "fill", fill })` joins classes whose condition holds, in order, without de-duplication.
-- Variants are enums mapped to classes in one table in `kit_controls.cpp`. An icon without a label derives the square button, a compound variant. `cls` is only for layout hooks.
+- Variants are enums mapped to classes in one table in `kit_controls.c`. An icon without a label derives the square button, a compound variant. `cls` is only for layout hooks.
 - State never goes in classes: it goes in `data-*` attributes.
 
 ## Common mismatches to catch

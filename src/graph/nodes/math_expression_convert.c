@@ -2,7 +2,6 @@
 #include "graph/model/registry.h"
 #include "graph/model/type.h"
 #include "graph/nodes/behavior_expression.h"
-#include "graph/nodes/field_nodes.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -233,7 +232,7 @@ static bool spellable(const node *n);
 
 /* NULL for a computed value, which takes a placeholder letter. */
 static char *input_label(
-    const behavior_asset *asset,
+    const expression_build *build,
     const node *source,
     int source_pin,
     const pin_spec *target,
@@ -256,8 +255,9 @@ static char *input_label(
                          : computed                    ? NULL
                          : source->reference_name && source->reference_name[0]
                              ? source->reference_name
-                         : field_parameter_name(source) ? field_parameter_name(source)
-                                                        : builtin;
+                         : graph_node_name_literal(build->graph, source)
+                             ? graph_node_name_literal(build->graph, source)
+                             : builtin;
         if (generic_name(name)) {
             return NULL;
         }
@@ -279,8 +279,10 @@ static char *input_label(
     } else if (binding && binding->kind == PIN_BINDING_EVENT_OUTPUT) {
         snprintf(label, sizeof label, "event_value");
     } else if (binding && binding->kind == PIN_BINDING_VARIABLE) {
-        const behavior_variable
-            *variable = behavior_asset_find_variable_by_id(asset, binding->variable_id);
+        const behavior_variable *variable = behavior_asset_find_variable_by_id(
+            build->asset,
+            binding->variable_id
+        );
         snprintf(label, sizeof label, "%s", variable ? variable->name : "variable");
     } else {
         snprintf(label, sizeof label, "%s", target->name ? target->name : "input");
@@ -328,7 +330,7 @@ static int add_input(
         fail(build, "Local bindings cannot cross a Behavior Expression boundary.");
         return -1;
     }
-    char *base = input_label(build->asset, source, source_pin, pin, binding);
+    char *base = input_label(build, source, source_pin, pin, binding);
     /* Placeholders run a, b, c, skipping the constant e. */
     for (char letter = 'a'; !base && letter <= 'z'; letter++) {
         char candidate[2] = { letter, 0 };

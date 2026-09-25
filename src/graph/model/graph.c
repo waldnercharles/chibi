@@ -2115,3 +2115,19 @@ char *graph_own_str(graph *g, const char *s, size_t len)
     apush(g->strings, copy);
     return copy;
 }
+
+const char *graph_node_name_literal(const graph *g, const node *n)
+{
+    for (int i = 0; i < n->input_count; i++) {
+        const pin_spec *p = &n->input_pins[i];
+        node *source = NULL;
+        int pin = -1;
+        if (p->name && !strcmp(p->name, "Name") &&
+            (p->type == PIN_STR || p->type == PIN_NAME) &&
+            p->default_value.str && p->default_value.str[0] && !p->binding &&
+            !graph_input_source(g, n, i, &source, &pin)) {
+            return p->default_value.str;
+        }
+    }
+    return NULL;
+}

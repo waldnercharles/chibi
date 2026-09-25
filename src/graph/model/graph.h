@@ -190,6 +190,9 @@ int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node
 
 node *graph_node_by_id(const graph *g, uint64_t id);
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index);
+/* The literal a node names what it reads by, such as a Field Parameter's or
+   Get Global Variable's Name input (Radius, Score); NULL when it has none. */
+const char *graph_node_name_literal(const graph *g, const node *n);
 void graph_reindex(graph *g); /* rebuild id_table from g->nodes */
 uint64_t graph_alloc_id(graph *g);
 /* Copies the value and owns its strings, arrays and registered struct data. */

@@ -2781,6 +2781,13 @@ static void inspect_add_validation(
     inspect_add_effects(doc, validation, report);
 }
 
+static behavior_asset *link_project_libraries(
+    const char *root,
+    const behavior_asset *asset,
+    char *error,
+    size_t error_size
+);
+
 static int handle_inspect_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -2871,7 +2878,11 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     }
     compile_report report;
     compile_report_init(&report);
-    behavior_asset_compile(asset, &report);
+    /* Calls into libraries resolve as they will at runtime. */
+    char link_error[256] = { 0 };
+    behavior_asset *linked = link_project_libraries(root, asset, link_error, sizeof link_error);
+    behavior_asset_compile(linked ? linked : asset, &report);
+    behavior_asset_free(linked);
     inspect_add_variables(
         result->doc,
         value,

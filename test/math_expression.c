@@ -1065,6 +1065,36 @@ static void branch_expression_flow()
     behavior_asset_free(asset);
 }
 
+static node *make_v2(graph *g, float x, float y)
+{
+    node *vector = graph_add_node(g, registry_node_by_name("Make_CF_V2"));
+    assert(vector);
+    assert(graph_set_pin_default(g, vector, 0, 0, &(pin_value){ .type = PIN_F32, .f = x }) == 0);
+    assert(graph_set_pin_default(g, vector, 0, 1, &(pin_value){ .type = PIN_F32, .f = y }) == 0);
+    return vector;
+}
+
+/* A scalar may lead a vector product: 180 * ball / 2. */
+static void scalar_leading_vector_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Scalar leading vector");
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, "velocity + 180 * ball / 2", &error);
+    assert(call);
+    assert(
+        graph_connect_data(asset->graph, make_v2(asset->graph, 1, 2), 0, call, named_pin(call, false, "velocity")) ==
+        0
+    );
+    assert(
+        graph_connect_data(asset->graph, make_v2(asset->graph, 3, 4), 0, call, named_pin(call, false, "ball")) ==
+        0
+    );
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    CF_V2 value = evaluate_vector(asset, call);
+    assert(value.x == 271 && value.y == 362);
+    behavior_asset_free(asset);
+}
+
 static void vector_expression()
 {
     behavior_asset *asset = behavior_asset_new("Vector expression");
@@ -1729,6 +1759,7 @@ void test_math_expression()
     indexed_assignment_expression();
     branch_expression_flow();
     vector_expression();
+    scalar_leading_vector_expression();
     field_expression();
     mixed_struct_expression();
     component_struct_input_expression();

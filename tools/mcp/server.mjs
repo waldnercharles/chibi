@@ -1154,6 +1154,7 @@ function toolSummary(name, response) {
     "folded_inputs",
     "removed_nodes",
     "created_aliases",
+    "created_expressions",
     "changed_edges",
     "world_hash",
     "live_entities",
@@ -1170,10 +1171,14 @@ function toolSummary(name, response) {
       summary[key] = result[key];
     }
   }
-  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped"]) {
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals"]) {
     if (Array.isArray(result[key])) {
       summary[`${key}_count`] = result[key].length;
     }
+  }
+  // Inputs a source edit left without their wire or binding.
+  if (Array.isArray(result.unfed_inputs)) {
+    summary.unfed_inputs = result.unfed_inputs;
   }
   if (Array.isArray(response.next_steps) && response.next_steps.length) {
     summary.next_steps = response.next_steps;

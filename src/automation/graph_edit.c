@@ -859,6 +859,15 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
     return 0;
 }
 
+static bool fed_input(const graph *g, const node *n, int pin)
+{
+    node *source = NULL;
+    int source_pin = -1;
+    return n->input_pins[pin].kind == PIN_DATA &&
+           (n->input_pins[pin].binding ||
+            graph_input_source(g, n, pin, &source, &source_pin));
+}
+
 static int operation_set_expression(edit_context *ctx, yyjson_val *op)
 {
     node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
@@ -868,12 +877,43 @@ static int operation_set_expression(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "set_expression requires a Behavior Expression node and source text");
         return -1;
     }
-    behavior_expression_error error = { 0 };
-    if (behavior_expression_set(ctx->asset, n, source, &error) != 0) {
-        set_error(ctx, "%s", error.message[0] ? error.message : "could not set Behavior Expression source");
-        return -1;
+    char **held = NULL; /* inputs a wire or binding feeds */
+    for (int i = 0; i < n->input_count; i++) {
+        if (fed_input(ctx->graph, n, i)) {
+            apush(held, xstrdup(n->input_pins[i].name));
+        }
     }
-    return 0;
+    behavior_expression_error error = { 0 };
+    int result = behavior_expression_set(ctx->asset, n, source, &error);
+    if (result != 0) {
+        set_error(ctx, "%s", error.message[0] ? error.message : "could not set Behavior Expression source");
+    }
+    /* A source edit that leaves fewer inputs fed says which lost their feed. */
+    int fed = 0;
+    for (int i = 0; !result && i < n->input_count; i++) {
+        fed += fed_input(ctx->graph, n, i);
+    }
+    for (int i = 0; !result && fed < acount(held) && i < acount(held); i++) {
+        bool kept = false;
+        for (int p = 0; p < n->input_count; p++) {
+            kept |= !strcmp(n->input_pins[p].name, held[i]);
+        }
+        if (!kept) {
+            yyjson_mut_val *dropped = yyjson_mut_obj_get(ctx->result, "unfed_inputs");
+            dropped = dropped
+                        ? dropped
+                        : yyjson_mut_obj_add_arr(ctx->doc, ctx->result, "unfed_inputs");
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(ctx->doc, dropped);
+            yyjson_mut_obj_add_int(ctx->doc, entry, "operation", ctx->operation);
+            yyjson_mut_obj_add_uint(ctx->doc, entry, "node", n->id);
+            yyjson_mut_obj_add_strcpy(ctx->doc, entry, "input", held[i]);
+        }
+    }
+    for (int i = 0; i < acount(held); i++) {
+        free(held[i]);
+    }
+    afree(held);
+    return result;
 }
 
 static int operation_remove_node(edit_context *ctx, yyjson_val *op)

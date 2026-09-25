@@ -2,6 +2,7 @@
 
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/state_nodes.h"
@@ -279,6 +280,9 @@ static void shift_graph(graph *g, uint64_t offset, bool local_calls)
                 pins[p].id = shifted(pins[p].id, offset);
                 pins[p].split_parent = shifted(pins[p].split_parent, offset);
                 pins[p].field_source = shifted(pins[p].field_source, offset);
+                if (pins[p].binding && pins[p].binding->kind == PIN_BINDING_LOCAL) {
+                    pins[p].binding->local_id = shifted(pins[p].binding->local_id, offset);
+                }
             }
         }
     }
@@ -291,6 +295,12 @@ static void shift_graph(graph *g, uint64_t offset, bool local_calls)
     }
     for (int i = 0; i < acount(g->comment_boxes); i++) {
         g->comment_boxes[i].id += offset;
+    }
+    /* A library function's named values move with its nodes. */
+    for (int i = 0; i < acount(g->locals); i++) {
+        g->locals[i].id = shifted(g->locals[i].id, offset);
+        g->locals[i].source_id = shifted(g->locals[i].source_id, offset);
+        g->locals[i].source_pin_id = shifted(g->locals[i].source_pin_id, offset);
     }
     graph_reindex(g);
 }

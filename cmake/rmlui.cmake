@@ -32,6 +32,7 @@ endfunction()
 chibi_rmlui_dependencies()
 
 add_library(chibi_rmlui STATIC
+    src/editor/rmlui/rml.cpp
     src/editor/rmlui/backend.cpp
     src/editor/rmlui/kit.cpp
     src/editor/rmlui/kit_chart.cpp

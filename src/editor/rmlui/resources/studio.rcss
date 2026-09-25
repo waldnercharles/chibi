@@ -171,3 +171,18 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .perf-key span { display: block; line-height: 16dp; color: var(--fg-2); font-size: 11dp; }
 .perf-dot { width: 8dp; height: 8dp; border-radius: 4dp; }
 .perf-idle { flex: 1 1 0dp; display: block; line-height: 40dp; text-align: center; color: var(--fg-3); }
+
+/* Members (Unreal's My Blueprint). */
+.members-filter { flex: 1 1 0dp; display: flex; max-width: 240dp; }
+.members-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; padding: 3dp 4dp 8dp; }
+.members-list .tree-row { tab-index: none; }
+.members-list .tree-row[data-section] .name { font-weight: 600; }
+.member-row { display: block; }
+.member-swatch { width: 9dp; height: 9dp; flex: 0 0 auto; margin: 0dp 5dp 0dp 3dp; }
+.member-rename .field { height: 20dp; margin-right: 4dp; }
+.type-pick { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; }
+.type-pick .member-swatch { margin: 0dp 4dp; }
+.type-pick .type-button { flex: 1 1 0dp; justify-content: flex-start; overflow: hidden; }
+.param-row { display: flex; align-items: center; gap: 4dp; margin-top: var(--gap); }
+.param-row .field { flex: 1 1 0dp; }
+.param-row .type-pick { flex: 0 0 120dp; }

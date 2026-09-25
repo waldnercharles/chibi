@@ -125,6 +125,8 @@ void sg_shortcuts(studio *s);
 void sg_cancel_gesture(studio *s);
 
 /* Rendering (studio_graph_draw.c). */
+/* A pin's socket color as 0xRRGGBBAA. */
+uint32_t sg_pin_color(const studio *s, const pin_spec *spec);
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p);
 void sg_emit_canvas(studio *s);
 

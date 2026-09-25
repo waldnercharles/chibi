@@ -22,6 +22,7 @@ typedef enum
     STUDIO_EDITOR_OUTPUT,
     STUDIO_EDITOR_ASSETS,
     STUDIO_EDITOR_PERFORMANCE,
+    STUDIO_EDITOR_MEMBERS,
     STUDIO_EDITOR_COUNT,
 } studio_editor;
 
@@ -43,7 +44,8 @@ typedef enum
     STUDIO_TAB_MATERIAL,
     STUDIO_TAB_GAMEPLAY,
     STUDIO_TAB_BEHAVIORS,
-    STUDIO_TAB_NODE, /* the graph node selected in the Behavior area */
+    STUDIO_TAB_NODE,   /* the graph node selected in the Behavior area */
+    STUDIO_TAB_MEMBER, /* the member selected in Members */
     STUDIO_TAB_COUNT,
 } studio_tab;
 _Static_assert(
@@ -220,6 +222,35 @@ typedef struct
     char expression_error[192];
 } studio_graph;
 
+typedef enum
+{
+    STUDIO_MEMBER_NONE,
+    STUDIO_MEMBER_GRAPH,
+    STUDIO_MEMBER_VARIABLE,
+    STUDIO_MEMBER_LOCAL, /* a named value of the open graph */
+} studio_member_kind;
+
+/* The Members editor (studio_members.c): the open behavior's graphs,
+   variables and named values, after Unreal's My Blueprint. */
+typedef struct
+{
+    studio_member_kind kind; /* the selected member */
+    uint64_t id;             /* its graph, variable or local ID */
+    uint64_t shown_node;     /* graph node selection last seen */
+    studio_member_kind rename_kind;
+    uint64_t rename_id;
+    bool rename_focus;
+    char filter[128];
+    unsigned collapsed; /* bit per section */
+    bool value_editing; /* a default value gesture has an open undo step */
+    struct
+    {
+        bool open;       /* the type search is choosing for this target */
+        uint64_t id;     /* the variable, or the function whose pin it is */
+        uint64_t pin_id; /* the Entry or Return pin, or 0 for the variable */
+    } pick;
+} studio_members;
+
 /* The open project's editor/Components.yaml, re-read when it changes. */
 typedef struct
 {
@@ -272,6 +303,8 @@ struct studio
     bool text_input;
     kit_surface_input surface;
     studio_graph graph;
+    studio_members members;
+    uint64_t shown_member; /* member the Properties tabs last followed */
     studio_presentation presentation;
     struct
     {
@@ -342,6 +375,19 @@ bool studio_graph_active(const studio *s);
 /* The graph node Properties shows, or 0; and its panels. */
 uint64_t studio_graph_node(const studio *s);
 void studio_node_properties(studio *s);
+/* Members: the open behavior's graphs, variables and named values. */
+void studio_members_header(studio *s, int area);
+void studio_members_body(studio *s, int area);
+/* Keys over the Members area; true when one was taken. */
+bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
+/* A member dropped on the graph canvas: a variable's Get, or Set with Alt, or
+   a call. Call after the canvas surface. */
+void studio_members_drop(studio *s);
+/* The selected member as a key that changes with the selection, or 0. */
+uint64_t studio_member_shown(studio *s);
+void studio_member_properties(studio *s);
+/* The type search: items for the command surface while it picks a type. */
+bool studio_member_palette(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
 const char *studio_asset_kind_name(int kind);

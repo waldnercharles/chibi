@@ -10,13 +10,13 @@
 #include <sys/stat.h>
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
-    "Scene",  "Behavior", "Outliner",   "Properties",
-    "Output", "Assets",   "Performance"
+    "Scene",  "Behavior", "Outliner",    "Properties",
+    "Output", "Assets",   "Performance", "Members"
 };
 static const uint32_t EDITOR_ICONS[STUDIO_EDITOR_COUNT] = {
-    KIT_ICON_VIEWPORT,    KIT_ICON_GRAPH,  KIT_ICON_OUTLINER,
-    KIT_ICON_PROPERTIES,  KIT_ICON_OUTPUT, KIT_ICON_ASSETS,
-    KIT_ICON_PERFORMANCE,
+    KIT_ICON_VIEWPORT,    KIT_ICON_GRAPH,    KIT_ICON_OUTLINER,
+    KIT_ICON_PROPERTIES,  KIT_ICON_OUTPUT,   KIT_ICON_ASSETS,
+    KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE,
 };
 
 static void dp(char *out, size_t size, float value)
@@ -78,11 +78,17 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 /* ---------- Commands ---------- */
 
 /* The graph canvas owns history and saving while it has focus (Blender: the
-   area under the pointer or last clicked). */
+   area under the pointer or last clicked), and so do the editors of its
+   members and nodes. */
 static bool graph_focused(const studio *s)
 {
-    return studio_graph_active(s) && s->graph.area >= 0 &&
-           s->focus_area == s->graph.area;
+    if (!studio_graph_active(s) || s->focus_area < 0) {
+        return false;
+    }
+    studio_editor editor = s->prefs.editors[s->focus_area];
+    return s->focus_area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
+           (editor == STUDIO_EDITOR_PROPERTIES &&
+            (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
 }
 
 static void toast(studio *s, kit_toast_type type, const char *title, const char *description)
@@ -768,6 +774,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_PERFORMANCE:
             studio_performance_header(s, index);
             break;
+        case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
         default: break;
     }
     if (index == STUDIO_AREA_DRAWER) {
@@ -790,6 +797,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_PERFORMANCE:
             studio_performance_body(s, index);
             break;
+        case STUDIO_EDITOR_MEMBERS: studio_members_body(s, index); break;
         default: break;
     }
     kit_pop(k);
@@ -905,6 +913,12 @@ static void statusbar(studio *s)
             hint(k, "frame", "F", 0, "Frame");
             hint(k, "delete", "X", 0, "Delete");
             break;
+        case STUDIO_EDITOR_MEMBERS:
+            hint(k, "drag", NULL, KIT_ICON_MOUSE, "Drag to graph");
+            hint(k, "set", studio_chord(s, "Alt"), 0, "Set");
+            hint(k, "rename", "F2", 0, "Rename");
+            hint(k, "delete", "X", 0, "Delete");
+            break;
         default:
             hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
             hint(k, "search", studio_chord(s, "Mod+K"), 0, "Search");
@@ -994,7 +1008,8 @@ enum
 
 static void palette(studio *s)
 {
-    if (studio_graph_palette(s) || !kit_command_is_open(s->kit)) {
+    if (studio_graph_palette(s) || studio_member_palette(s) ||
+        !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1239,6 +1254,11 @@ void studio_shortcuts(studio *s)
             studio_toggle_maximized(s, s->hover_area);
         } else if (!mod && key == SDLK_SPACE && editor != STUDIO_EDITOR_BEHAVIOR) {
             studio_runtime(s, APP_RUNTIME_PLAY);
+        } else if (
+            editor == STUDIO_EDITOR_MEMBERS &&
+            studio_members_key(s, key, s->keys[i].mod)
+        ) {
+            continue;
         } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {
             studio_frame_selection(s);
         } else if (!mod && shift && key == SDLK_D && editor != STUDIO_EDITOR_PROPERTIES && editor != STUDIO_EDITOR_BEHAVIOR) {

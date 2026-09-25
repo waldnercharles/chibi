@@ -633,5 +633,6 @@ void studio_behavior_body(studio *s, int area)
     }
     g->area = area;
     kit_surface(k, "graph", "graph-surface", "graph", &g->surface);
+    studio_members_drop(s);
     studio_graph_menus(s);
 }

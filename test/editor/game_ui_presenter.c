@@ -151,6 +151,31 @@ void test_game_ui_presenter()
     );
     unlink(tags);
 
+    char host[96], button[96];
+    snprintf(host, sizeof host, "%s/Host.yaml", folder);
+    snprintf(button, sizeof button, "%s/Button.yaml", folder);
+    write_file(host, "rml: <use ui=\"Button\" id=\"go\">Go</use>\n");
+    write_file(
+        button,
+        "rml: <div class=\"button\" data-event=\"Go\"><slot/></div>\n"
+        "rcss: '.button { display: block; height: 60dp; }'\n"
+    );
+    *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Host" };
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    before = game_entities_pending_events(live->entities);
+    click(ui, 40, 20);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    bool used = !render_ui_error(ui)[0] &&
+                game_entities_pending_events(live->entities) == before + 1;
+    write_file(button, "rml: <div class=\"button\"><slot/></div>\n");
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.1);
+    before = game_entities_pending_events(live->entities);
+    click(ui, 40, 20);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    test_check(used && game_entities_pending_events(live->entities) == before, "a widget's events reach its host's entity, and editing it reloads the host");
+    unlink(host);
+    unlink(button);
+
     render_ui_free(ui);
     game_live_world_free(live);
     ecs_world_free(world);

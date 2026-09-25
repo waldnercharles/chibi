@@ -1,9 +1,12 @@
 #include "assets/ui_document.h"
 
+#include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_file.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,6 +75,288 @@ bool ui_document_read(const char *text, ui_document *out, char *error, size_t er
     ui_document_free(out);
     *out = next;
     return true;
+}
+
+/* ---------- Widgets ---------- */
+
+/* How deeply widgets may nest inside one another. */
+#define UI_USE_DEPTH 8
+
+/* One <use> element in markup. */
+typedef struct use_tag
+{
+    const char *open, *close; /* its first character and one past its end */
+    const char *attrs, *attrs_end; /* the open tag's attributes */
+    const char *ui;                /* the ui attribute within them */
+    const char *inner, *inner_end; /* its children, empty when self-closing */
+    char name[128];
+} use_tag;
+
+typedef enum
+{
+    USE_NONE,
+    USE_FOUND,
+    USE_BROKEN,
+} use_scan;
+
+typedef struct expansion
+{
+    const char *ui_root;
+    char **names;         /* every widget looked up */
+    ui_document *widgets; /* parallel to names; empty until read */
+    const char *stack[UI_USE_DEPTH];
+    int depth;
+    char *error;
+    size_t error_size;
+} expansion;
+
+static void put(char **out, const char *text, size_t length)
+{
+    int start = acount(*out);
+    asetlen(*out, start + (int)length);
+    memcpy(*out + start, text, length);
+}
+
+static const char *find_use_open(const char *p)
+{
+    for (; (p = strstr(p, "<use")); p += 4) {
+        if (isspace((unsigned char)p[4]) || p[4] == '/' || p[4] == '>') {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+/* One past the '>' closing the tag at `p`, skipping quoted values; NULL when
+ * unterminated. */
+static const char *tag_end(const char *p)
+{
+    char quote = 0;
+    for (; *p; p++) {
+        if (quote) {
+            quote = *p == quote ? 0 : quote;
+            continue;
+        }
+        if (*p == '"' || *p == '\'') {
+            quote = *p;
+            continue;
+        }
+        if (*p == '>') {
+            return p + 1;
+        }
+    }
+    return NULL;
+}
+
+/* The </use> that closes an element whose children start at `p`. */
+static const char *matching_close(const char *p)
+{
+    for (int depth = 1;;) {
+        const char *open = find_use_open(p);
+        const char *close = strstr(p, "</use>");
+        if (!close) {
+            return NULL;
+        }
+        if (open && open < close) {
+            const char *end = tag_end(open);
+            if (!end) {
+                return NULL;
+            }
+            depth += end[-2] != '/';
+            p = end;
+            continue;
+        }
+        if (--depth == 0) {
+            return close;
+        }
+        p = close + 6;
+    }
+}
+
+static bool read_use_name(use_tag *tag)
+{
+    for (const char *p = tag->attrs; p + 4 < tag->attrs_end; p++) {
+        if (!isspace((unsigned char)p[0]) || strncmp(p + 1, "ui=", 3) != 0) {
+            continue;
+        }
+        char quote = p[4];
+        const char *name = p + 5;
+        const char *end = quote == '"' || quote == '\'' ? strchr(name, quote) : NULL;
+        size_t length = end ? (size_t)(end - name) : 0;
+        if (!length || length >= sizeof tag->name || memchr(name, '/', length)) {
+            return false;
+        }
+        memcpy(tag->name, name, length);
+        tag->name[length] = '\0';
+        tag->ui = p + 1;
+        return true;
+    }
+    return false;
+}
+
+static use_scan next_use(const char *text, use_tag *tag)
+{
+    const char *open = find_use_open(text);
+    if (!open) {
+        return USE_NONE;
+    }
+    const char *end = tag_end(open);
+    if (!end) {
+        return USE_BROKEN;
+    }
+    bool empty = end[-2] == '/';
+    *tag = (use_tag){ .open = open,
+                      .close = end,
+                      .attrs = open + 4,
+                      .attrs_end = end - (empty ? 2 : 1),
+                      .inner = end,
+                      .inner_end = end };
+    if (!empty) {
+        tag->inner_end = matching_close(end);
+        if (!tag->inner_end) {
+            return USE_BROKEN;
+        }
+        tag->close = tag->inner_end + 6;
+    }
+    return read_use_name(tag) ? USE_FOUND : USE_BROKEN;
+}
+
+/* The widget asset, read once per expansion; NULL with the error set. */
+static const ui_document *widget_named(expansion *x, const char *name)
+{
+    for (int i = 0; i < acount(x->names); i++) {
+        if (!strcmp(x->names[i], name)) {
+            return &x->widgets[i];
+        }
+    }
+    apush(x->names, xstrdup(name));
+    apush(x->widgets, (ui_document){ 0 });
+    char path[1024];
+    snprintf(path, sizeof path, "%s/%s.yaml", x->ui_root, name);
+    char *text = text_file_read(path);
+    char why[160] = "is missing";
+    bool read = text && ui_document_read(text, &alast(x->widgets), why, sizeof why);
+    free(text);
+    if (!read) {
+        fail(x->error, x->error_size, "widget %s %s", name, why);
+        return NULL;
+    }
+    return &alast(x->widgets);
+}
+
+static bool expand(expansion *x, const char *rml, char **out);
+
+/* Writes the widget's markup, with `inner` in its slot. */
+static void put_filled(char **out, const char *body, const char *inner)
+{
+    const char *slot = strstr(body, "<slot/>");
+    size_t slot_length = 7;
+    if (!slot) {
+        slot = strstr(body, "<slot />");
+        slot_length = 8;
+    }
+    if (!slot) {
+        put(out, body, strlen(body));
+        return;
+    }
+    put(out, body, (size_t)(slot - body));
+    put(out, inner, strlen(inner));
+    put(out, slot + slot_length, strlen(slot + slot_length));
+}
+
+static bool expand_use(expansion *x, const use_tag *tag, char **out)
+{
+    for (int i = 0; i < x->depth; i++) {
+        if (!strcmp(x->stack[i], tag->name)) {
+            return fail(x->error, x->error_size, "widget %s uses itself", tag->name);
+        }
+    }
+    if (x->depth == UI_USE_DEPTH) {
+        return fail(x->error, x->error_size, "widgets nest deeper than %d", UI_USE_DEPTH);
+    }
+    const ui_document *widget = widget_named(x, tag->name);
+    if (!widget) {
+        return false;
+    }
+    const char *widget_rml = widget->rml; /* the array may move while expanding */
+    size_t inner_length = (size_t)(tag->inner_end - tag->inner);
+    char *children = xmalloc(inner_length + 1);
+    memcpy(children, tag->inner, inner_length);
+    children[inner_length] = '\0';
+    char *inner = NULL, *body = NULL;
+    bool ok = expand(x, children, &inner);
+    x->stack[x->depth++] = tag->name;
+    ok = ok && expand(x, widget_rml, &body);
+    x->depth--;
+    if (ok) {
+        put(out, "<div", 4);
+        put(out, tag->attrs, (size_t)(tag->ui - tag->attrs));
+        put(out, "data-", 5);
+        put(out, tag->ui, (size_t)(tag->attrs_end - tag->ui));
+        put(out, ">", 1);
+        put_filled(out, body, inner);
+        put(out, "</div>", 6);
+    }
+    free(children);
+    afree(inner);
+    afree(body);
+    return ok;
+}
+
+/* Appends the expanded markup to `out`, NUL-terminated. */
+static bool expand(expansion *x, const char *rml, char **out)
+{
+    use_tag tag;
+    use_scan scan;
+    const char *p = rml;
+    while ((scan = next_use(p, &tag)) == USE_FOUND) {
+        put(out, p, (size_t)(tag.open - p));
+        if (!expand_use(x, &tag, out)) {
+            return false;
+        }
+        p = tag.close;
+    }
+    if (scan == USE_BROKEN) {
+        return fail(x->error, x->error_size, "each <use> needs ui=\"Name\" and an end");
+    }
+    put(out, p, strlen(p) + 1);
+    return true;
+}
+
+bool ui_document_expand(ui_document *document, const char *ui_root, char ***uses, char *error, size_t error_size)
+{
+    expansion x = { .ui_root = ui_root, .error = error, .error_size = error_size };
+    char *rml = NULL;
+    bool ok = expand(&x, document->rml, &rml);
+    if (ok) {
+        char *rcss = NULL;
+        for (int i = 0; i < acount(x.widgets); i++) {
+            if (x.widgets[i].rcss[0]) {
+                put(&rcss, x.widgets[i].rcss, strlen(x.widgets[i].rcss));
+                put(&rcss, "\n", 1);
+            }
+        }
+        put(&rcss, document->rcss, strlen(document->rcss) + 1);
+        ui_document_free(document);
+        *document = (ui_document){ .rml = xstrdup(rml), .rcss = xstrdup(rcss) };
+        afree(rcss);
+    }
+    afree(rml);
+    for (int i = 0; i < acount(x.names); i++) {
+        apush(*uses, x.names[i]);
+        ui_document_free(&x.widgets[i]);
+    }
+    afree(x.names);
+    afree(x.widgets);
+    return ok;
+}
+
+void ui_document_use_names(const char *rml, char ***names)
+{
+    use_tag tag;
+    for (const char *p = rml; next_use(p, &tag) == USE_FOUND; p = tag.inner) {
+        apush(*names, xstrdup(tag.name));
+    }
 }
 
 char *ui_document_compose(const ui_document *document, const char *base)

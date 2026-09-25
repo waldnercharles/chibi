@@ -30,9 +30,10 @@ typedef struct ui_view
     uint64_t entity;
     char *name;
     file_watch watch;
-    ui_document source; /* the last valid asset */
-    rml_element *doc;
-    uint64_t applied; /* the model revision already applied */
+    char **uses;             /* the widgets its asset uses */
+    file_watch *use_watches; /* parallel to uses */
+    rml_element *doc;        /* from the last valid asset */
+    uint64_t applied;        /* the model revision already applied */
     bool seen;
 } ui_view;
 
@@ -89,7 +90,11 @@ static void close_view(ui_view *view)
         rml_document_close(view->doc);
     }
     free(view->name);
-    ui_document_free(&view->source);
+    for (int i = 0; i < acount(view->uses); i++) {
+        free(view->uses[i]);
+    }
+    afree(view->uses);
+    afree(view->use_watches);
     *view = (ui_view){ 0 };
 }
 
@@ -126,20 +131,62 @@ static ui_view *find_view(render_ui *ui, uint64_t entity)
     return NULL;
 }
 
-/* Reads the view's asset when it changed and reloads its document from the
- * last valid version. */
+static void asset_path(const render_ui *ui, const char *name, char *path, size_t size)
+{
+    snprintf(path, size, "%s/ui/%s.yaml", ui->content_root, name);
+}
+
+/* Whether the view's asset or a widget it uses changed; polls every watch. */
+static bool view_changed(render_ui *ui, ui_view *view, const char *path)
+{
+    bool changed = file_watch_changed(&view->watch, path, ui->time);
+    for (int i = 0; i < acount(view->uses); i++) {
+        char use[1024];
+        asset_path(ui, view->uses[i], use, sizeof use);
+        changed |= file_watch_changed(&view->use_watches[i], use, ui->time);
+    }
+    return changed;
+}
+
+/* Replaces the watched widgets with `uses`, taking ownership. */
+static void watch_uses(render_ui *ui, ui_view *view, char **uses)
+{
+    for (int i = 0; i < acount(view->uses); i++) {
+        free(view->uses[i]);
+    }
+    afree(view->uses);
+    view->uses = uses;
+    asetlen(view->use_watches, acount(uses));
+    for (int i = 0; i < acount(uses); i++) {
+        char use[1024];
+        asset_path(ui, uses[i], use, sizeof use);
+        view->use_watches[i] = (file_watch){ 0 };
+        file_watch_changed(&view->use_watches[i], use, ui->time);
+    }
+}
+
+/* Reads the view's asset and its widgets when one changed and reloads its
+ * document; an invalid edit keeps the last valid document. */
 static void sync_document(render_ui *ui, ui_view *view)
 {
     char path[1024];
-    snprintf(path, sizeof path, "%s/ui/%s.yaml", ui->content_root, view->name);
-    if (!file_watch_changed(&view->watch, path, ui->time)) {
+    asset_path(ui, view->name, path, sizeof path);
+    if (!view_changed(ui, view, path)) {
         return;
     }
     char *text = text_file_read(path);
     char error[200] = "is missing";
-    bool read = text && ui_document_read(text, &view->source, error, sizeof error);
+    ui_document source = { 0 };
+    bool read = text && ui_document_read(text, &source, error, sizeof error);
     free(text);
+    if (read) {
+        char root[1024], **uses = NULL;
+        snprintf(root, sizeof root, "%s/ui", ui->content_root);
+        read = ui_document_expand(&source, root, &uses, error, sizeof error);
+        watch_uses(ui, view, uses);
+    }
     if (!read) {
+        ui_document_free(&source);
         snprintf(ui->error, sizeof ui->error, "ui/%s.yaml %s", view->name, error);
         return;
     }
@@ -147,7 +194,8 @@ static void sync_document(render_ui *ui, ui_view *view)
     if (view->doc) {
         rml_document_close(view->doc);
     }
-    char *rml = ui_document_compose(&view->source, BASE_RCSS);
+    char *rml = ui_document_compose(&source, BASE_RCSS);
+    ui_document_free(&source);
     rml_context *context = rml_backend_context(ui->backend);
     view->doc = rml_context_load_document_from_memory(context, rml, path);
     free(rml);

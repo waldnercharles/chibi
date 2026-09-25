@@ -497,6 +497,13 @@ events: name each button's `data-event`, and read an input's value with
 `Get UI Value`. Behavior graphs own rules, text and history. While the pointer
 is over an interactive element, it does not reach gameplay.
 
+A ui asset reuses another as a widget with `<use ui="Meter" id="hull"/>`: a
+div with the use element's attributes (`ui` becomes `data-ui`) around the
+widget's markup, whose `<slot/>` holds the use element's children. Widget
+RCSS comes before the host's, so the host can restyle it; its `data-event`s
+reach the host's entity, and `#hull .fill` selects inside one instance.
+Editing a widget reloads every document that uses it.
+
 The player shows `content/ui/PauseMenu.yaml` while paused. Its body has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
 events control the session.

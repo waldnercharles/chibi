@@ -249,8 +249,8 @@ void run_content_catalog_checks()
     );
     valid &= folder_matches(arena2d_root, "shapes", NULL, 0);
     valid &= folder_matches(arena2d_root, "textures", NULL, 0);
-    static const char *const arena2d_ui[] = { "PauseMenu.yaml" };
-    valid &= folder_matches(arena2d_root, "ui", arena2d_ui, 1);
+    static const char *const arena2d_ui[] = { "MenuButton.yaml", "PauseMenu.yaml" };
+    valid &= folder_matches(arena2d_root, "ui", arena2d_ui, 2);
     test_check(valid, "Arena2D project catalog is isolated from Arena3D assets");
 
     char error[256] = { 0 };

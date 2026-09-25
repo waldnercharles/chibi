@@ -1209,6 +1209,16 @@ static void catalog_scan_references(catalog_asset *asset, yyjson_val *value)
                 (!strcmp(field, "GameUi") || !strcmp(field, "GAME.GameUi"))) {
                 catalog_reference_add(asset, "ui", request_string(child, "document"));
             }
+            if (yyjson_is_str(child) && !strcmp(field, "rml") &&
+                !strcmp(asset->asset.family->kind, "ui")) {
+                char **names = NULL;
+                ui_document_use_names(yyjson_get_str(child), &names);
+                for (int i = 0; i < acount(names); i++) {
+                    catalog_reference_add(asset, "ui", names[i]);
+                    free(names[i]);
+                }
+                afree(names);
+            }
             if (yyjson_is_str(child)) {
                 const char *kind = NULL;
                 if (!strcmp(field, "reference_asset") ||

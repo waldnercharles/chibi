@@ -1700,7 +1700,7 @@ static void ui_draw_menu(void)
         .reduced_motion = ui_reduce_motion,
         .mac_shortcuts = ImGui_GetIO()->ConfigMacOSXBehaviors,
     };
-    for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
+    for (int i = 0; i < RML_INPUT_MENU_PANE_COUNT; i++) {
         state.panes[i] = editor_ui_pane_visible(panes[i].pane);
     }
     editor_rml_toolbar_state toolbar = {
@@ -1731,7 +1731,7 @@ static void ui_draw_menu(void)
                 editor_ui_run_command(commands[i].command);
             }
         }
-        for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
+        for (int i = 0; i < RML_INPUT_MENU_PANE_COUNT; i++) {
             if (strcmp(action, panes[i].id) == 0) {
                 editor_ui_set_pane_visible(
                     panes[i].pane,

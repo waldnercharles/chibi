@@ -282,7 +282,7 @@ static bool ensure_canvas(studio *s)
         return true;
     }
     float scale = cf_app_get_pixel_scale();
-    g->backend = editor_rml_backend_create(
+    g->backend = rml_backend_create(
         (int)fmaxf(g->surface.rect.w, 1),
         (int)fmaxf(g->surface.rect.h, 1),
         scale
@@ -290,7 +290,7 @@ static bool ensure_canvas(studio *s)
     if (!g->backend) {
         return false;
     }
-    g->kit = kit_create(editor_rml_backend_context(g->backend), "graph.rml");
+    g->kit = kit_create(rml_backend_context(g->backend), "graph.rml");
     g->in.mouse_x = g->in.mouse_y = -1e9f;
     if (g->zoom <= 0) {
         g->zoom = 1;
@@ -322,7 +322,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     e->arrange_pending |= forms != g->forms;
     g->forms = forms;
     float scale = cf_app_get_pixel_scale();
-    editor_rml_backend_resize_pixels(
+    rml_backend_resize_pixels(
         g->backend,
         (int)lroundf(r.w * scale),
         (int)lroundf(r.h * scale),
@@ -342,7 +342,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
         sg_frame_nodes(s, false, false);
         g->framed = true;
     }
-    editor_rml_backend_resize_pixels(
+    rml_backend_resize_pixels(
         g->backend,
         (int)lroundf(r.w * scale),
         (int)lroundf(r.h * scale),
@@ -361,16 +361,16 @@ void studio_graph_frame(studio *s, double delta_seconds)
     kit_begin(g->kit, &g->in);
     sg_emit_canvas(s);
     kit_end(g->kit);
-    editor_rml_backend_update(g->backend, delta_seconds);
-    editor_rml_backend_render(g->backend);
-    editor_rml_backend_set_texture(s->backend, "graph", editor_rml_backend_texture(g->backend));
+    rml_backend_update(g->backend, delta_seconds);
+    rml_backend_render(g->backend);
+    rml_backend_set_texture(s->backend, "graph", rml_backend_texture(g->backend));
 }
 
 void studio_graph_free(studio *s)
 {
     studio_graph *g = &s->graph;
     kit_destroy(g->kit);
-    editor_rml_backend_destroy(g->backend);
+    rml_backend_destroy(g->backend);
     arrange_routes_free(&g->routes);
     afree(g->edge_route);
     afree(g->wire_edges);
@@ -405,7 +405,7 @@ const char *studio_graph_cursor(const studio *s)
     if (g->gesture == STUDIO_GRAPH_LINK || g->hover_pin >= 0) {
         return "crosshair";
     }
-    return editor_rml_backend_cursor(g->backend);
+    return rml_backend_cursor(g->backend);
 }
 
 bool studio_graph_can_replay(studio *s, bool redo)

@@ -1,13 +1,13 @@
 /* The RmlUi backend: a context per backend, drawn by Cute through the render
  * interface below into a premultiplied canvas, then resolved to a
  * straight-alpha canvas the host samples or presents. */
-#include "editor/rmlui/backend.h"
+#include "ui/rml_backend.h"
 
-#include "editor/rmlui/rml.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/rml.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -111,7 +111,7 @@ typedef struct external_texture
     CF_Texture texture;
 } external_texture;
 
-struct editor_rml_backend
+struct rml_backend
 {
     rml_renderer *renderer;
     rml_context *context;
@@ -144,7 +144,7 @@ struct editor_rml_backend
  * which follows the backend that has advanced furthest, and each backend
  * collects the cursor its own context asks for while it is being driven. */
 static double elapsed_seconds;
-static editor_rml_backend *driven;
+static rml_backend *driven;
 static int backend_count;
 
 /* ---------- System interface ---------- */
@@ -253,7 +253,7 @@ static CF_RenderState replace_state()
     return state;
 }
 
-static void create_canvas_resources(editor_rml_backend *backend)
+static void create_canvas_resources(rml_backend *backend)
 {
     int w = backend->physical_width, h = backend->physical_height;
     backend->premultiplied_canvas = create_canvas(w, h, "RmlUi premultiplied");
@@ -278,7 +278,7 @@ static void create_canvas_resources(editor_rml_backend *backend)
 
 /* Layout can load textures before the first render, as a headless run does,
  * so texture loading creates these too. */
-static void ensure_gpu(editor_rml_backend *backend)
+static void ensure_gpu(rml_backend *backend)
 {
     if (backend->gpu_ready) {
         int width = 0, height = 0;
@@ -300,7 +300,7 @@ static void ensure_gpu(editor_rml_backend *backend)
     create_canvas_resources(backend);
 }
 
-static void destroy_gpu(editor_rml_backend *backend)
+static void destroy_gpu(rml_backend *backend)
 {
     if (!backend->gpu_ready) {
         return;
@@ -326,7 +326,7 @@ static void destroy_gpu(editor_rml_backend *backend)
 
 static uintptr_t compile_geometry(void *user, rml_mesh mesh)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     assert(mesh.vertex_count <= INT32_MAX && mesh.index_count <= INT32_MAX);
     const CF_VertexAttribute attributes[3] = {
         { "in_position", CF_VERTEX_FORMAT_FLOAT2, (int)offsetof(rml_vertex, position), false },
@@ -349,7 +349,7 @@ static uintptr_t compile_geometry(void *user, rml_mesh mesh)
 
 static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation, uintptr_t texture)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     const CF_Mesh *mesh = cf_map_get_ptr(backend->geometries, geometry);
     assert(mesh);
     CF_Texture gpu_texture = backend->white_texture;
@@ -375,7 +375,7 @@ static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation
 
 static void release_geometry(void *user, uintptr_t geometry)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     const CF_Mesh *mesh = cf_map_get_ptr(backend->geometries, geometry);
     if (!mesh) {
         return;
@@ -384,14 +384,14 @@ static void release_geometry(void *user, uintptr_t geometry)
     cf_map_del(backend->geometries, geometry);
 }
 
-static uintptr_t hold_texture(editor_rml_backend *backend, held_texture held)
+static uintptr_t hold_texture(rml_backend *backend, held_texture held)
 {
     uintptr_t handle = (uintptr_t)backend->next_texture++;
     cf_map_set(backend->textures, handle, held);
     return handle;
 }
 
-static int external_index(editor_rml_backend *backend, const char *name)
+static int external_index(rml_backend *backend, const char *name)
 {
     for (int i = 0; i < acount(backend->externals); i++) {
         if (strcmp(backend->externals[i].name, name) == 0) {
@@ -428,7 +428,7 @@ static bool load_image(const char *source, CF_Image *image)
 
 static uintptr_t load_texture(void *user, const char *source, int *width, int *height)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     ensure_gpu(backend);
     if (strncmp(source, "kit:", 4) == 0) {
         *width = *height = 1;
@@ -449,7 +449,7 @@ static uintptr_t load_texture(void *user, const char *source, int *width, int *h
 
 static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, int height)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     ensure_gpu(backend);
     held_texture held = { texture_from_pixels(width, height, pixels), -1 };
     return hold_texture(backend, held);
@@ -457,7 +457,7 @@ static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, 
 
 static void release_texture(void *user, uintptr_t texture)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     const held_texture *held = cf_map_get_ptr(backend->textures, texture);
     if (!held) {
         return;
@@ -470,7 +470,7 @@ static void release_texture(void *user, uintptr_t texture)
 
 static void enable_scissor_region(void *user, bool enable)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     if (enable == backend->scissor_enabled) {
         return;
     }
@@ -484,7 +484,7 @@ static void enable_scissor_region(void *user, bool enable)
 
 static void set_scissor_region(void *user, rml_rect region)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     backend->scissor = (CF_Rect){ region.x, region.y, region.width, region.height };
     if (!backend->scissor_enabled) {
         return;
@@ -495,7 +495,7 @@ static void set_scissor_region(void *user, rml_rect region)
 
 static void set_transform(void *user, const float *transform)
 {
-    editor_rml_backend *backend = user;
+    rml_backend *backend = user;
     backend->transform = cf_m4_identity();
     if (!transform) {
         return;
@@ -517,7 +517,7 @@ static const rml_render_interface render_interface = {
 
 /* ---------- Backend ---------- */
 
-static void apply_dimensions(editor_rml_backend *backend)
+static void apply_dimensions(rml_backend *backend)
 {
     if (!backend->context) {
         return;
@@ -530,7 +530,7 @@ static void apply_dimensions(editor_rml_backend *backend)
     rml_context_set_dp_ratio(backend->context, backend->scale);
 }
 
-static void set_dimensions(editor_rml_backend *backend)
+static void set_dimensions(rml_backend *backend)
 {
     backend->logical_width = math_max(backend->logical_width, 1);
     backend->logical_height = math_max(backend->logical_height, 1);
@@ -581,7 +581,7 @@ static bool initialize_rml()
     return true;
 }
 
-static void free_backend(editor_rml_backend *backend)
+static void free_backend(rml_backend *backend)
 {
     destroy_gpu(backend);
     for (int i = 0; i < acount(backend->externals); i++) {
@@ -594,10 +594,10 @@ static void free_backend(editor_rml_backend *backend)
     free(backend);
 }
 
-editor_rml_backend *editor_rml_backend_create(int logical_width, int logical_height, float framebuffer_scale)
+rml_backend *rml_backend_create(int logical_width, int logical_height, float framebuffer_scale)
 {
     static int context_serial;
-    editor_rml_backend *backend = xcalloc(1, sizeof *backend);
+    rml_backend *backend = xcalloc(1, sizeof *backend);
     backend->renderer = rml_renderer_create(&render_interface, backend);
     snprintf(backend->cursor, sizeof backend->cursor, "arrow");
     backend->transform = cf_m4_identity();
@@ -633,7 +633,7 @@ editor_rml_backend *editor_rml_backend_create(int logical_width, int logical_hei
     return backend;
 }
 
-void editor_rml_backend_destroy(editor_rml_backend *backend)
+void rml_backend_destroy(rml_backend *backend)
 {
     if (!backend) {
         return;
@@ -650,7 +650,7 @@ void editor_rml_backend_destroy(editor_rml_backend *backend)
     free_backend(backend);
 }
 
-void editor_rml_backend_resize(editor_rml_backend *backend, int logical_width, int logical_height, float framebuffer_scale)
+void rml_backend_resize(rml_backend *backend, int logical_width, int logical_height, float framebuffer_scale)
 {
     assert(backend);
     backend->logical_width = logical_width;
@@ -659,12 +659,7 @@ void editor_rml_backend_resize(editor_rml_backend *backend, int logical_width, i
     set_dimensions(backend);
 }
 
-void editor_rml_backend_resize_pixels(
-    editor_rml_backend *backend,
-    int physical_width,
-    int physical_height,
-    float dp_ratio
-)
+void rml_backend_resize_pixels(rml_backend *backend, int physical_width, int physical_height, float dp_ratio)
 {
     assert(backend);
     backend->scale = math_max(dp_ratio, 0.01f);
@@ -681,7 +676,7 @@ void editor_rml_backend_resize_pixels(
     apply_dimensions(backend);
 }
 
-void editor_rml_backend_update(editor_rml_backend *backend, double delta_seconds)
+void rml_backend_update(rml_backend *backend, double delta_seconds)
 {
     assert(backend && backend->context);
     backend->elapsed += delta_seconds > 0.0 ? delta_seconds : 0.0;
@@ -693,7 +688,7 @@ void editor_rml_backend_update(editor_rml_backend *backend, double delta_seconds
     driven = NULL;
 }
 
-static void push_target_view(const editor_rml_backend *backend, CF_Rect viewport)
+static void push_target_view(const rml_backend *backend, CF_Rect viewport)
 {
     cf_draw_push_viewport(viewport);
     cf_draw3d_push_view(cf_m4_identity());
@@ -712,7 +707,7 @@ static void pop_target_view()
     cf_draw_pop_viewport();
 }
 
-void editor_rml_backend_render(editor_rml_backend *backend)
+void rml_backend_render(rml_backend *backend)
 {
     assert(backend && backend->context);
     ensure_gpu(backend);
@@ -746,7 +741,7 @@ void editor_rml_backend_render(editor_rml_backend *backend)
     pop_target_view();
 }
 
-uint64_t editor_rml_backend_texture(const editor_rml_backend *backend)
+uint64_t rml_backend_texture(const rml_backend *backend)
 {
     assert(backend);
     if (!backend->gpu_ready) {
@@ -755,7 +750,7 @@ uint64_t editor_rml_backend_texture(const editor_rml_backend *backend)
     return cf_canvas_get_target(backend->straight_canvas).id;
 }
 
-void *editor_rml_backend_context(editor_rml_backend *backend)
+void *rml_backend_context(rml_backend *backend)
 {
     assert(backend);
     return backend->context;
@@ -764,13 +759,13 @@ void *editor_rml_backend_context(editor_rml_backend *backend)
 static unsigned rml_modifiers(unsigned modifiers)
 {
     static const unsigned pairs[][2] = {
-        { EDITOR_RML_MOD_CONTROL, RML_KM_CTRL },
-        { EDITOR_RML_MOD_SHIFT, RML_KM_SHIFT },
-        { EDITOR_RML_MOD_ALT, RML_KM_ALT },
-        { EDITOR_RML_MOD_META, RML_KM_META },
-        { EDITOR_RML_MOD_CAPS_LOCK, RML_KM_CAPSLOCK },
-        { EDITOR_RML_MOD_NUM_LOCK, RML_KM_NUMLOCK },
-        { EDITOR_RML_MOD_SCROLL_LOCK, RML_KM_SCROLLLOCK },
+        { RML_INPUT_MOD_CONTROL, RML_KM_CTRL },
+        { RML_INPUT_MOD_SHIFT, RML_KM_SHIFT },
+        { RML_INPUT_MOD_ALT, RML_KM_ALT },
+        { RML_INPUT_MOD_META, RML_KM_META },
+        { RML_INPUT_MOD_CAPS_LOCK, RML_KM_CAPSLOCK },
+        { RML_INPUT_MOD_NUM_LOCK, RML_KM_NUMLOCK },
+        { RML_INPUT_MOD_SCROLL_LOCK, RML_KM_SCROLLLOCK },
     };
     unsigned result = 0;
     for (size_t i = 0; i < sizeof pairs / sizeof *pairs; i++) {
@@ -782,32 +777,32 @@ static unsigned rml_modifiers(unsigned modifiers)
 }
 
 /* True when RmlUi consumed the input. */
-static bool consumed(editor_rml_backend *backend, const editor_rml_input *input)
+static bool consumed(rml_backend *backend, const rml_input *input)
 {
     rml_context *context = backend->context;
     unsigned modifiers = rml_modifiers(input->modifiers);
     int x = (int)lroundf(input->x * backend->scale);
     int y = (int)lroundf(input->y * backend->scale);
     switch (input->type) {
-        case EDITOR_RML_POINTER_MOVE:
+        case RML_INPUT_POINTER_MOVE:
             return !rml_context_process_mouse_move(context, x, y, modifiers);
-        case EDITOR_RML_POINTER_LEAVE:
+        case RML_INPUT_POINTER_LEAVE:
             return !rml_context_process_mouse_leave(context);
-        case EDITOR_RML_POINTER_DOWN:
+        case RML_INPUT_POINTER_DOWN:
             return !rml_context_process_mouse_button_down(context, input->button, modifiers);
-        case EDITOR_RML_POINTER_UP:
+        case RML_INPUT_POINTER_UP:
             return !rml_context_process_mouse_button_up(context, input->button, modifiers);
-        case EDITOR_RML_POINTER_WHEEL:
+        case RML_INPUT_POINTER_WHEEL:
             return !rml_context_process_mouse_wheel(
                 context,
                 (rml_vec2){ input->wheel_x, input->wheel_y },
                 modifiers
             );
-        case EDITOR_RML_KEY_PRESS:
+        case RML_INPUT_KEY_PRESS:
             return !rml_context_process_key_down(context, (rml_key)input->key, modifiers);
-        case EDITOR_RML_KEY_RELEASE:
+        case RML_INPUT_KEY_RELEASE:
             return !rml_context_process_key_up(context, (rml_key)input->key, modifiers);
-        case EDITOR_RML_TEXT_INPUT:
+        case RML_INPUT_TEXT_INPUT:
             return !rml_context_process_text_input(
                 context,
                 input->text ? input->text : "",
@@ -817,41 +812,41 @@ static bool consumed(editor_rml_backend *backend, const editor_rml_input *input)
     return false;
 }
 
-static unsigned capture_of(editor_rml_input_type type)
+static unsigned capture_of(rml_input_type type)
 {
     switch (type) {
-        case EDITOR_RML_KEY_PRESS:
-        case EDITOR_RML_KEY_RELEASE: return EDITOR_RML_CAPTURE_KEYBOARD;
-        case EDITOR_RML_TEXT_INPUT:
-            return EDITOR_RML_CAPTURE_KEYBOARD | EDITOR_RML_CAPTURE_TEXT;
-        default: return EDITOR_RML_CAPTURE_POINTER;
+        case RML_INPUT_KEY_PRESS:
+        case RML_INPUT_KEY_RELEASE: return RML_INPUT_CAPTURE_KEYBOARD;
+        case RML_INPUT_TEXT_INPUT:
+            return RML_INPUT_CAPTURE_KEYBOARD | RML_INPUT_CAPTURE_TEXT;
+        default: return RML_INPUT_CAPTURE_POINTER;
     }
 }
 
-unsigned editor_rml_backend_process_input(editor_rml_backend *backend, const editor_rml_input *input)
+unsigned rml_backend_process_input(rml_backend *backend, const rml_input *input)
 {
     assert(backend && backend->context && input);
     driven = backend;
     unsigned capture = consumed(backend, input) ? capture_of(input->type) : 0;
     driven = NULL;
     if (rml_context_is_mouse_interacting(backend->context)) {
-        capture |= EDITOR_RML_CAPTURE_POINTER;
+        capture |= RML_INPUT_CAPTURE_POINTER;
     }
     return capture;
 }
 
-void editor_rml_backend_set_texture(editor_rml_backend *backend, const char *name, uint64_t texture)
+void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t texture)
 {
     assert(backend && name);
     backend->externals[external_index(backend, name)].texture = (CF_Texture){ texture };
 }
 
-const char *editor_rml_backend_cursor(const editor_rml_backend *backend)
+const char *rml_backend_cursor(const rml_backend *backend)
 {
     return backend->cursor;
 }
 
-void editor_rml_backend_present(editor_rml_backend *backend)
+void rml_backend_present(rml_backend *backend)
 {
     assert(backend);
     if (!backend->gpu_ready) {

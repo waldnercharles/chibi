@@ -11,7 +11,7 @@ RmlUi is the chosen UI foundation. LichtFeld Studio and
 [Blender](references/blender/README.md) are references for compact desktop
 controls, consistent styling and a prominent viewport. Application
 models, authoring commands and Undo/Redo remain in C. RML owns structure and RCSS
-owns presentation; a pass-through C binding (`src/editor/rmlui/rml.h`) contains the RmlUi API, and the renderer integration and kit are C.
+owns presentation; a pass-through C binding (`src/ui/rml.h`) contains the RmlUi API, and the renderer integration and kit are C.
 This supersedes the earlier decision to retain ImGui for all editor UI.
 
 The first conversion replaces File, Edit and View, including their keyboard

@@ -328,7 +328,7 @@ static void finish_box(studio *s)
 /* Scrolling zooms at the pointer, from a wheel or a trackpad alike (Blender,
    Unreal); panning is a middle, right or Space drag. A notch is about 15%, and
    one event never more than doubles or halves the zoom. */
-static void wheel(studio_graph *g, const editor_rml_input *ev)
+static void wheel(studio_graph *g, const rml_input *ev)
 {
     float factor = fminf(fmaxf(powf(2, -ev->wheel_y * 0.2f), 0.5f), 2.0f);
     sg_zoom_at(g, g->zoom * factor, ev->x, ev->y);
@@ -607,8 +607,8 @@ void sg_replay(studio *s)
     bool blocked = kit_command_is_open(s->kit) ||
                    (kit_wants_pointer(s->kit) && !g->surface.hovered);
     for (int i = 0; i < acount(g->events); i++) {
-        editor_rml_input ev = g->events[i];
-        bool pointer = ev.type <= EDITOR_RML_POINTER_WHEEL;
+        rml_input ev = g->events[i];
+        bool pointer = ev.type <= RML_INPUT_POINTER_WHEEL;
         if (pointer) {
             float cx = (ev.x - g->surface.rect.x) / g->zoom;
             float cy = (ev.y - g->surface.rect.y) / g->zoom;
@@ -616,14 +616,14 @@ void sg_replay(studio *s)
                           ev.x < g->surface.rect.x + g->surface.rect.w &&
                           ev.y < g->surface.rect.y + g->surface.rect.h;
             bool take = g->captured || (inside && !blocked && g->surface.hovered);
-            if (ev.type == EDITOR_RML_POINTER_DOWN && !take) {
+            if (ev.type == RML_INPUT_POINTER_DOWN && !take) {
                 kit_blur(g->kit);
                 continue;
             }
             if (!take) {
-                if (ev.type == EDITOR_RML_POINTER_MOVE && in->mouse_x > -1e8f) {
-                    editor_rml_input leave = { .type = EDITOR_RML_POINTER_LEAVE };
-                    editor_rml_backend_process_input(g->backend, &leave);
+                if (ev.type == RML_INPUT_POINTER_MOVE && in->mouse_x > -1e8f) {
+                    rml_input leave = { .type = RML_INPUT_POINTER_LEAVE };
+                    rml_backend_process_input(g->backend, &leave);
                     in->mouse_x = in->mouse_y = -1e9f;
                 }
                 continue;
@@ -632,16 +632,15 @@ void sg_replay(studio *s)
             in->mouse_y = cy;
             ev.x = cx;
             ev.y = cy;
-            in->modifiers = ((ev.modifiers & EDITOR_RML_MOD_CONTROL) ? KIT_MOD_CTRL
-                                                                     : 0u) |
-                            ((ev.modifiers & EDITOR_RML_MOD_SHIFT) ? KIT_MOD_SHIFT : 0u) |
-                            ((ev.modifiers & EDITOR_RML_MOD_ALT) ? KIT_MOD_ALT : 0u) |
-                            ((ev.modifiers & EDITOR_RML_MOD_META) ? KIT_MOD_META : 0u);
-            if (ev.type == EDITOR_RML_POINTER_WHEEL) {
+            in->modifiers = ((ev.modifiers & RML_INPUT_MOD_CONTROL) ? KIT_MOD_CTRL : 0u) |
+                            ((ev.modifiers & RML_INPUT_MOD_SHIFT) ? KIT_MOD_SHIFT : 0u) |
+                            ((ev.modifiers & RML_INPUT_MOD_ALT) ? KIT_MOD_ALT : 0u) |
+                            ((ev.modifiers & RML_INPUT_MOD_META) ? KIT_MOD_META : 0u);
+            if (ev.type == RML_INPUT_POINTER_WHEEL) {
                 wheel(g, &g->events[i]);
                 continue;
             }
-            if (ev.type == EDITOR_RML_POINTER_DOWN && ev.button >= 0 && ev.button < 3) {
+            if (ev.type == RML_INPUT_POINTER_DOWN && ev.button >= 0 && ev.button < 3) {
                 in->down[ev.button] = in->pressed[ev.button] = true;
                 g->captured = true;
                 s->focus_area = g->area;
@@ -663,7 +662,7 @@ void sg_replay(studio *s)
                 g->press_y = g->events[i].y;
                 sg_to_world(g, g->press_x, g->press_y, &g->press_wx, &g->press_wy);
             }
-            if (ev.type == EDITOR_RML_POINTER_UP && ev.button >= 0 && ev.button < 3) {
+            if (ev.type == RML_INPUT_POINTER_UP && ev.button >= 0 && ev.button < 3) {
                 in->down[ev.button] = false;
                 in->released[ev.button] = true;
                 g->captured = in->down[0] || in->down[1] || in->down[2];
@@ -671,7 +670,7 @@ void sg_replay(studio *s)
         } else if (!kit_wants_keyboard(g->kit)) {
             continue;
         }
-        editor_rml_backend_process_input(g->backend, &ev);
+        rml_backend_process_input(g->backend, &ev);
     }
     asetlen(g->events, 0);
 }

@@ -1,5 +1,5 @@
 /* The RmlUi C binding (rml.h): type conversions and forwarding only. */
-#include "editor/rmlui/rml.h"
+#include "ui/rml.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>

@@ -2,9 +2,9 @@
  * actions, driven by mouse and keyboard through the RmlUi binding. */
 #include "editor/rmlui/menu.h"
 
-#include "editor/rmlui/rml.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/rml.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -21,7 +21,7 @@ static const char *const menu_names[MENU_COUNT] = { "file", "edit", "view" };
 static const char *const trigger_ids[MENU_COUNT] = { "file.menu", "edit.menu", "view.menu" };
 static const char *const wrapper_ids[MENU_COUNT] = { "file-wrap", "edit-wrap", "view-wrap" };
 static const char *const popup_ids[MENU_COUNT] = { "file.popup", "edit.popup", "view.popup" };
-static const char *const pane_action_ids[EDITOR_RML_MENU_PANE_COUNT] = {
+static const char *const pane_action_ids[RML_INPUT_MENU_PANE_COUNT] = {
     "view.inspector",        "view.node_canvas", "view.scene",
     "view.compiler_results", "view.output_log",  "view.performance",
 };
@@ -429,7 +429,7 @@ static void apply_state(editor_rml_menu *menu)
     );
 
     set_check_state(rml_element_by_id(document, "view.navigator"), state->navigator_visible);
-    for (int index = 0; index < EDITOR_RML_MENU_PANE_COUNT; index++) {
+    for (int index = 0; index < RML_INPUT_MENU_PANE_COUNT; index++) {
         set_check_state(
             rml_element_by_id(document, pane_action_ids[index]),
             state->panes[index]

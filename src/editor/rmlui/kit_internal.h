@@ -25,11 +25,11 @@
 #ifndef CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
 #define CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
 
-#include "editor/rmlui/rml.h"
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/file_watch.h"
+#include "ui/rml.h"
 
 #include <stdbool.h>
 #include <stddef.h>

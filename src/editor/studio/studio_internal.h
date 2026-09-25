@@ -2,13 +2,13 @@
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
 #include "editor/documents/component_presentation.h"
-#include "editor/rmlui/backend.h"
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
 #include "editor/ui/kit_icons.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
 #include "support/file_watch.h"
+#include "ui/rml_backend.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -131,10 +131,10 @@ typedef struct
  * top-left. */
 typedef struct
 {
-    editor_rml_backend *backend;
+    rml_backend *backend;
     kit *kit;
     kit_frame_input in;
-    editor_rml_input *events; /* window events replayed into the canvas */
+    rml_input *events; /* window events replayed into the canvas */
     kit_surface_input surface;
     int area;
     bool focused;
@@ -221,7 +221,7 @@ struct studio
 {
     app_scene_authoring *scene;
     engine_viewport *viewport;
-    editor_rml_backend *backend;
+    rml_backend *backend;
     kit *kit;
     kit_frame_input in;
     studio_area areas[STUDIO_AREA_COUNT];

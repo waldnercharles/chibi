@@ -1,9 +1,9 @@
 #include "editor/ui/retained_menu.h"
 
-#include "editor/rmlui/backend.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "ui/rml_backend.h"
 
 #include <assert.h>
 #include <float.h>
@@ -22,7 +22,7 @@ typedef struct
     editor_rml_menu_rect rect;
 } menu_surface;
 
-static editor_rml_backend *backend;
+static rml_backend *backend;
 static editor_rml_menu *menu;
 static editor_rml_toolbar *toolbar;
 static editor_rml_toolbar_state toolbar_state;
@@ -59,13 +59,13 @@ static void queue_action(void *, const char *id)
 static unsigned modifiers()
 {
     ImGuiIO *io = ImGui_GetIO();
-    return (io->KeyCtrl ? EDITOR_RML_MOD_CONTROL : 0) |
-           (io->KeyShift ? EDITOR_RML_MOD_SHIFT : 0) |
-           (io->KeyAlt ? EDITOR_RML_MOD_ALT : 0) |
-           (io->KeySuper ? EDITOR_RML_MOD_META : 0);
+    return (io->KeyCtrl ? RML_INPUT_MOD_CONTROL : 0) |
+           (io->KeyShift ? RML_INPUT_MOD_SHIFT : 0) |
+           (io->KeyAlt ? RML_INPUT_MOD_ALT : 0) |
+           (io->KeySuper ? RML_INPUT_MOD_META : 0);
 }
 
-static void key_input(ImGuiKey native, editor_rml_key key, bool allow)
+static void key_input(ImGuiKey native, rml_input_key key, bool allow)
 {
     if (!allow) {
         return;
@@ -87,12 +87,12 @@ static void key_input(ImGuiKey native, editor_rml_key key, bool allow)
         ImGui_ClearActiveID();
         editor_rml_toolbar_focus(toolbar);
     }
-    editor_rml_input input = {
-        .type = down ? EDITOR_RML_KEY_PRESS : EDITOR_RML_KEY_RELEASE,
+    rml_input input = {
+        .type = down ? RML_INPUT_KEY_PRESS : RML_INPUT_KEY_RELEASE,
         .key = key,
         .modifiers = modifiers(),
     };
-    editor_rml_backend_process_input(backend, &input);
+    rml_backend_process_input(backend, &input);
     if (keyboard_captured || captures_keyboard()) {
         ImGui_SetKeyOwner(native, MENU_POPUP_ID, ImGuiInputFlags_LockThisFrame);
     }
@@ -128,16 +128,16 @@ static void menu_input()
         keyboard_captured = false;
         return;
     }
-    editor_rml_input input = {
-        .type = EDITOR_RML_POINTER_MOVE,
+    rml_input input = {
+        .type = RML_INPUT_POINTER_MOVE,
         .x = io->MousePos.x - origin.x,
         .y = io->MousePos.y - origin.y,
         .modifiers = modifiers(),
     };
     if (io->MousePos.x <= -FLT_MAX / 2) {
-        input.type = EDITOR_RML_POINTER_LEAVE;
+        input.type = RML_INPUT_POINTER_LEAVE;
     }
-    editor_rml_backend_process_input(backend, &input);
+    rml_backend_process_input(backend, &input);
     bool outside_click = false;
     if (io->MouseClicked[0] || io->MouseClicked[1]) {
         editor_rml_menu_rect rect;
@@ -161,39 +161,39 @@ static void menu_input()
     for (int button = 0; button < 3; button++) {
         input.button = button;
         if (io->MouseClicked[button]) {
-            input.type = EDITOR_RML_POINTER_DOWN;
-            editor_rml_backend_process_input(backend, &input);
+            input.type = RML_INPUT_POINTER_DOWN;
+            rml_backend_process_input(backend, &input);
         }
         if (io->MouseReleased[button]) {
-            input.type = EDITOR_RML_POINTER_UP;
-            editor_rml_backend_process_input(backend, &input);
+            input.type = RML_INPUT_POINTER_UP;
+            rml_backend_process_input(backend, &input);
         }
     }
     if (io->MouseWheel || io->MouseWheelH) {
-        input.type = EDITOR_RML_POINTER_WHEEL;
+        input.type = RML_INPUT_POINTER_WHEEL;
         input.wheel_x = -io->MouseWheelH;
         input.wheel_y = -io->MouseWheel;
-        editor_rml_backend_process_input(backend, &input);
+        rml_backend_process_input(backend, &input);
     }
     static const struct
     {
         ImGuiKey native;
-        editor_rml_key key;
+        rml_input_key key;
     } keys[] = {
-        { ImGuiKey_F10, EDITOR_RML_KEY_F10 },
-        { ImGuiKey_F6, EDITOR_RML_KEY_F6 },
-        { ImGuiKey_LeftAlt, EDITOR_RML_KEY_LEFT_ALT },
-        { ImGuiKey_RightAlt, EDITOR_RML_KEY_RIGHT_ALT },
-        { ImGuiKey_Tab, EDITOR_RML_KEY_TAB },
-        { ImGuiKey_Enter, EDITOR_RML_KEY_ENTER },
-        { ImGuiKey_Space, EDITOR_RML_KEY_SPACE },
-        { ImGuiKey_Escape, EDITOR_RML_KEY_ESCAPE },
-        { ImGuiKey_LeftArrow, EDITOR_RML_KEY_LEFT },
-        { ImGuiKey_RightArrow, EDITOR_RML_KEY_RIGHT },
-        { ImGuiKey_UpArrow, EDITOR_RML_KEY_UP },
-        { ImGuiKey_DownArrow, EDITOR_RML_KEY_DOWN },
-        { ImGuiKey_Home, EDITOR_RML_KEY_HOME },
-        { ImGuiKey_End, EDITOR_RML_KEY_END },
+        { ImGuiKey_F10, RML_INPUT_KEY_F10 },
+        { ImGuiKey_F6, RML_INPUT_KEY_F6 },
+        { ImGuiKey_LeftAlt, RML_INPUT_KEY_LEFT_ALT },
+        { ImGuiKey_RightAlt, RML_INPUT_KEY_RIGHT_ALT },
+        { ImGuiKey_Tab, RML_INPUT_KEY_TAB },
+        { ImGuiKey_Enter, RML_INPUT_KEY_ENTER },
+        { ImGuiKey_Space, RML_INPUT_KEY_SPACE },
+        { ImGuiKey_Escape, RML_INPUT_KEY_ESCAPE },
+        { ImGuiKey_LeftArrow, RML_INPUT_KEY_LEFT },
+        { ImGuiKey_RightArrow, RML_INPUT_KEY_RIGHT },
+        { ImGuiKey_UpArrow, RML_INPUT_KEY_UP },
+        { ImGuiKey_DownArrow, RML_INPUT_KEY_DOWN },
+        { ImGuiKey_Home, RML_INPUT_KEY_HOME },
+        { ImGuiKey_End, RML_INPUT_KEY_END },
     };
     for (int i = 0; i < (int)(sizeof keys / sizeof *keys); i++) {
         bool active = keyboard_captured || captures_keyboard();
@@ -205,7 +205,7 @@ static void menu_input()
         key_input(keys[i].native, keys[i].key, entry || active);
     }
     for (int i = 0; i < 26; i++) {
-        key_input(ImGuiKey_A + i, EDITOR_RML_KEY_A + i, keyboard_captured || captures_keyboard());
+        key_input(ImGuiKey_A + i, RML_INPUT_KEY_A + i, keyboard_captured || captures_keyboard());
     }
     bool active = captures_keyboard();
     restore_focus = keyboard_captured && !active && !outside_click;
@@ -280,23 +280,23 @@ void editor_menu_frame(const editor_rml_menu_state *state)
                     ? io->DisplayFramebufferScale.x
                     : 1;
     if (!backend) {
-        backend = editor_rml_backend_create(width, height, scale);
+        backend = rml_backend_create(width, height, scale);
         assert(backend);
-        menu = editor_rml_menu_create(editor_rml_backend_context(backend), queue_action, NULL);
+        menu = editor_rml_menu_create(rml_backend_context(backend), queue_action, NULL);
         assert(menu);
-        toolbar = editor_rml_toolbar_create(editor_rml_backend_context(backend), queue_action, NULL);
+        toolbar = editor_rml_toolbar_create(rml_backend_context(backend), queue_action, NULL);
         assert(toolbar);
     }
-    editor_rml_backend_resize(backend, width, height, scale);
+    rml_backend_resize(backend, width, height, scale);
     editor_rml_menu_set_state(menu, state);
     editor_rml_toolbar_set_state(toolbar, &toolbar_state);
     if (!toolbar_visible) {
         editor_rml_toolbar_hide(toolbar);
         toolbar_surface = (menu_surface){ 0 };
     }
-    editor_rml_backend_update(backend, io->DeltaTime);
+    rml_backend_update(backend, io->DeltaTime);
     menu_input();
-    editor_rml_backend_update(backend, 0);
+    rml_backend_update(backend, 0);
     menu_windows();
 }
 
@@ -315,7 +315,7 @@ float editor_menu_toolbar_draw(float x, float y, float height)
         .rect = { x - origin.x, y - origin.y, width, height },
     };
     editor_rml_toolbar_set_bounds(toolbar, toolbar_surface.rect);
-    editor_rml_backend_update(backend, 0);
+    rml_backend_update(backend, 0);
     return width;
 }
 
@@ -399,8 +399,8 @@ void editor_menu_render()
     if (!backend) {
         return;
     }
-    editor_rml_backend_render(backend);
-    CF_Texture target = { .id = editor_rml_backend_texture(backend) };
+    rml_backend_render(backend);
+    CF_Texture target = { .id = rml_backend_texture(backend) };
     ImTextureRef texture = { ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(target) };
     compose_outside_popup(bar, texture);
     compose(popup, texture);
@@ -414,7 +414,7 @@ void editor_menu_shutdown()
     }
     editor_rml_toolbar_destroy(toolbar);
     editor_rml_menu_destroy(menu);
-    editor_rml_backend_destroy(backend);
+    rml_backend_destroy(backend);
     menu = NULL;
     backend = NULL;
     toolbar = NULL;

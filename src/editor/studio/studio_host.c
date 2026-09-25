@@ -14,46 +14,46 @@
 #include <string.h>
 
 /* SDL keys forwarded to RmlUi; values are RmlUi 6.3 key identifiers. */
-static editor_rml_key rml_key(SDL_Keycode key)
+static rml_input_key rml_key(SDL_Keycode key)
 {
     if (key >= SDLK_A && key <= SDLK_Z) {
-        return (editor_rml_key)(EDITOR_RML_KEY_A + (int)(key - SDLK_A));
+        return (rml_input_key)(RML_INPUT_KEY_A + (int)(key - SDLK_A));
     }
     if (key >= SDLK_0 && key <= SDLK_9) {
-        return (editor_rml_key)(EDITOR_RML_KEY_0 + (int)(key - SDLK_0));
+        return (rml_input_key)(RML_INPUT_KEY_0 + (int)(key - SDLK_0));
     }
     if (key >= SDLK_F1 && key <= SDLK_F12) {
-        return (editor_rml_key)(EDITOR_RML_KEY_F1 + (int)(key - SDLK_F1));
+        return (rml_input_key)(RML_INPUT_KEY_F1 + (int)(key - SDLK_F1));
     }
     switch (key) {
-        case SDLK_RETURN: return EDITOR_RML_KEY_ENTER;
-        case SDLK_KP_ENTER: return EDITOR_RML_KEY_NUMPAD_ENTER;
-        case SDLK_ESCAPE: return EDITOR_RML_KEY_ESCAPE;
-        case SDLK_BACKSPACE: return EDITOR_RML_KEY_BACKSPACE;
-        case SDLK_TAB: return EDITOR_RML_KEY_TAB;
-        case SDLK_SPACE: return EDITOR_RML_KEY_SPACE;
-        case SDLK_LEFT: return EDITOR_RML_KEY_LEFT;
-        case SDLK_RIGHT: return EDITOR_RML_KEY_RIGHT;
-        case SDLK_UP: return EDITOR_RML_KEY_UP;
-        case SDLK_DOWN: return EDITOR_RML_KEY_DOWN;
-        case SDLK_HOME: return EDITOR_RML_KEY_HOME;
-        case SDLK_END: return EDITOR_RML_KEY_END;
-        case SDLK_PAGEUP: return EDITOR_RML_KEY_PAGE_UP;
-        case SDLK_PAGEDOWN: return EDITOR_RML_KEY_PAGE_DOWN;
-        case SDLK_DELETE: return EDITOR_RML_KEY_DELETE;
-        case SDLK_MINUS: return EDITOR_RML_KEY_OEM_MINUS;
-        case SDLK_PERIOD: return EDITOR_RML_KEY_OEM_PERIOD;
-        case SDLK_EQUALS: return EDITOR_RML_KEY_OEM_PLUS;
-        case SDLK_KP_MINUS: return EDITOR_RML_KEY_SUBTRACT;
-        case SDLK_LSHIFT: return EDITOR_RML_KEY_LEFT_SHIFT;
-        case SDLK_RSHIFT: return EDITOR_RML_KEY_RIGHT_SHIFT;
-        case SDLK_LCTRL: return EDITOR_RML_KEY_LEFT_CONTROL;
-        case SDLK_RCTRL: return EDITOR_RML_KEY_RIGHT_CONTROL;
-        case SDLK_LALT: return EDITOR_RML_KEY_LEFT_ALT;
-        case SDLK_RALT: return EDITOR_RML_KEY_RIGHT_ALT;
-        case SDLK_LGUI: return EDITOR_RML_KEY_LEFT_META;
-        case SDLK_RGUI: return EDITOR_RML_KEY_RIGHT_META;
-        default: return EDITOR_RML_KEY_UNKNOWN;
+        case SDLK_RETURN: return RML_INPUT_KEY_ENTER;
+        case SDLK_KP_ENTER: return RML_INPUT_KEY_NUMPAD_ENTER;
+        case SDLK_ESCAPE: return RML_INPUT_KEY_ESCAPE;
+        case SDLK_BACKSPACE: return RML_INPUT_KEY_BACKSPACE;
+        case SDLK_TAB: return RML_INPUT_KEY_TAB;
+        case SDLK_SPACE: return RML_INPUT_KEY_SPACE;
+        case SDLK_LEFT: return RML_INPUT_KEY_LEFT;
+        case SDLK_RIGHT: return RML_INPUT_KEY_RIGHT;
+        case SDLK_UP: return RML_INPUT_KEY_UP;
+        case SDLK_DOWN: return RML_INPUT_KEY_DOWN;
+        case SDLK_HOME: return RML_INPUT_KEY_HOME;
+        case SDLK_END: return RML_INPUT_KEY_END;
+        case SDLK_PAGEUP: return RML_INPUT_KEY_PAGE_UP;
+        case SDLK_PAGEDOWN: return RML_INPUT_KEY_PAGE_DOWN;
+        case SDLK_DELETE: return RML_INPUT_KEY_DELETE;
+        case SDLK_MINUS: return RML_INPUT_KEY_OEM_MINUS;
+        case SDLK_PERIOD: return RML_INPUT_KEY_OEM_PERIOD;
+        case SDLK_EQUALS: return RML_INPUT_KEY_OEM_PLUS;
+        case SDLK_KP_MINUS: return RML_INPUT_KEY_SUBTRACT;
+        case SDLK_LSHIFT: return RML_INPUT_KEY_LEFT_SHIFT;
+        case SDLK_RSHIFT: return RML_INPUT_KEY_RIGHT_SHIFT;
+        case SDLK_LCTRL: return RML_INPUT_KEY_LEFT_CONTROL;
+        case SDLK_RCTRL: return RML_INPUT_KEY_RIGHT_CONTROL;
+        case SDLK_LALT: return RML_INPUT_KEY_LEFT_ALT;
+        case SDLK_RALT: return RML_INPUT_KEY_RIGHT_ALT;
+        case SDLK_LGUI: return RML_INPUT_KEY_LEFT_META;
+        case SDLK_RGUI: return RML_INPUT_KEY_RIGHT_META;
+        default: return RML_INPUT_KEY_UNKNOWN;
     }
 }
 
@@ -73,10 +73,10 @@ static unsigned rml_key_modifiers(const studio *s, SDL_Keymod mod)
 
 static unsigned rml_modifiers(SDL_Keymod mod)
 {
-    return ((mod & SDL_KMOD_CTRL) ? EDITOR_RML_MOD_CONTROL : 0u) |
-           ((mod & SDL_KMOD_SHIFT) ? EDITOR_RML_MOD_SHIFT : 0u) |
-           ((mod & SDL_KMOD_ALT) ? EDITOR_RML_MOD_ALT : 0u) |
-           ((mod & SDL_KMOD_GUI) ? EDITOR_RML_MOD_META : 0u);
+    return ((mod & SDL_KMOD_CTRL) ? RML_INPUT_MOD_CONTROL : 0u) |
+           ((mod & SDL_KMOD_SHIFT) ? RML_INPUT_MOD_SHIFT : 0u) |
+           ((mod & SDL_KMOD_ALT) ? RML_INPUT_MOD_ALT : 0u) |
+           ((mod & SDL_KMOD_GUI) ? RML_INPUT_MOD_META : 0u);
 }
 
 /* SDL mouse buttons are 1 left, 2 middle, 3 right; the kit uses 0 left, 1 right, 2 middle. */
@@ -129,14 +129,14 @@ static void forward_input(studio *s)
     asetlen(s->keys, 0);
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
-        editor_rml_input input = { .x = in->mouse_x,
-                                   .y = in->mouse_y,
-                                   .modifiers = rml_modifiers(s->mods) };
+        rml_input input = { .x = in->mouse_x,
+                            .y = in->mouse_y,
+                            .modifiers = rml_modifiers(s->mods) };
         switch (e->type) {
             case SDL_EVENT_MOUSE_MOTION:
                 in->mouse_x = input.x = e->motion.x;
                 in->mouse_y = input.y = e->motion.y;
-                input.type = EDITOR_RML_POINTER_MOVE;
+                input.type = RML_INPUT_POINTER_MOVE;
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP: {
@@ -146,15 +146,15 @@ static void forward_input(studio *s)
                 }
                 in->mouse_x = input.x = e->button.x;
                 in->mouse_y = input.y = e->button.y;
-                editor_rml_input move = input;
-                move.type = EDITOR_RML_POINTER_MOVE;
-                editor_rml_backend_process_input(s->backend, &move);
+                rml_input move = input;
+                move.type = RML_INPUT_POINTER_MOVE;
+                rml_backend_process_input(s->backend, &move);
                 apush(s->graph.events, move);
                 bool down = e->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
                 in->down[b] = down;
                 in->pressed[b] |= down;
                 in->released[b] |= !down;
-                input.type = down ? EDITOR_RML_POINTER_DOWN : EDITOR_RML_POINTER_UP;
+                input.type = down ? RML_INPUT_POINTER_DOWN : RML_INPUT_POINTER_UP;
                 input.button = b;
                 break;
             }
@@ -164,36 +164,36 @@ static void forward_input(studio *s)
                 in->mouse_x = input.x = e->wheel.mouse_x;
                 in->mouse_y = input.y = e->wheel.mouse_y;
                 in->wheel += e->wheel.y;
-                input.type = EDITOR_RML_POINTER_WHEEL;
+                input.type = RML_INPUT_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;
                 input.wheel_y = -e->wheel.y;
                 break;
             case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-                input.type = EDITOR_RML_POINTER_LEAVE;
+                input.type = RML_INPUT_POINTER_LEAVE;
                 break;
             case SDL_EVENT_KEY_DOWN:
             case SDL_EVENT_KEY_UP:
-                input.type = e->type == SDL_EVENT_KEY_DOWN ? EDITOR_RML_KEY_PRESS
-                                                           : EDITOR_RML_KEY_RELEASE;
+                input.type = e->type == SDL_EVENT_KEY_DOWN ? RML_INPUT_KEY_PRESS
+                                                           : RML_INPUT_KEY_RELEASE;
                 input.key = rml_key(e->key.key);
                 s->mods = e->key.mod;
                 input.modifiers = rml_key_modifiers(s, e->key.mod);
                 if (e->type == SDL_EVENT_KEY_DOWN) {
                     apush(s->keys, ((studio_key){ e->key.key, e->key.mod }));
                 }
-                if (input.key == EDITOR_RML_KEY_UNKNOWN) {
+                if (input.key == RML_INPUT_KEY_UNKNOWN) {
                     continue;
                 }
                 break;
             case SDL_EVENT_TEXT_INPUT:
-                input.type = EDITOR_RML_TEXT_INPUT;
+                input.type = RML_INPUT_TEXT_INPUT;
                 input.modifiers = rml_key_modifiers(s, s->mods);
                 input.text = e->text.text;
                 input.text_size = strlen(e->text.text);
                 break;
             default: continue;
         }
-        editor_rml_backend_process_input(s->backend, &input);
+        rml_backend_process_input(s->backend, &input);
         apush(s->graph.events, input);
     }
     asetlen(s->events, 0);
@@ -229,7 +229,7 @@ static void sync_cursor(studio *s)
     const char *graph = studio_graph_cursor(s);
     const char *name = kit_dragging(s->kit, NULL) ? "move"
                      : graph ? graph
-                             : editor_rml_backend_cursor(s->backend);
+                             : rml_backend_cursor(s->backend);
     SDL_SystemCursor wanted = SDL_SYSTEM_CURSOR_DEFAULT;
     for (size_t i = 0; name && i < sizeof names / sizeof *names; i++) {
         if (strcmp(names[i].name, name) == 0) {
@@ -307,7 +307,7 @@ static void draw_viewport(studio *s)
     }
     engine_viewport_set_host_input(s->viewport, &input);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
-    editor_rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
+    rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
 }
 
 /* Preferences apply by comparison with the last applied copy, like a zustand
@@ -353,9 +353,9 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     studio *s = xcalloc(1, sizeof *s);
     s->scene = scene;
     s->viewport = viewport;
-    s->backend = editor_rml_backend_create(cf_app_get_width(), cf_app_get_height(), cf_app_get_pixel_scale());
+    s->backend = rml_backend_create(cf_app_get_width(), cf_app_get_height(), cf_app_get_pixel_scale());
     assert(s->backend);
-    s->kit = kit_create(editor_rml_backend_context(s->backend), "studio.rml");
+    s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
     s->prefs = studio_prefs_load();
     s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
@@ -400,7 +400,7 @@ void studio_free(studio *s)
     studio_graph_free(s);
     component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
-    editor_rml_backend_destroy(s->backend);
+    rml_backend_destroy(s->backend);
     free(s);
 }
 
@@ -408,7 +408,7 @@ void studio_frame(studio *s, double delta_seconds)
 {
     int width = cf_app_get_width(), height = cf_app_get_height();
     float scale = cf_app_get_pixel_scale();
-    editor_rml_backend_resize(s->backend, width, height, scale);
+    rml_backend_resize(s->backend, width, height, scale);
     s->time += delta_seconds;
     s->in.time = s->time;
     s->in.dp_ratio = scale;
@@ -430,9 +430,9 @@ void studio_frame(studio *s, double delta_seconds)
     studio_graph_frame(s, delta_seconds);
     sync_text_input(s);
     sync_cursor(s);
-    editor_rml_backend_update(s->backend, delta_seconds);
-    editor_rml_backend_render(s->backend);
-    editor_rml_backend_present(s->backend);
+    rml_backend_update(s->backend, delta_seconds);
+    rml_backend_render(s->backend);
+    rml_backend_present(s->backend);
 }
 
 bool studio_item_rect(const studio *s, const char *path, float rect[4])

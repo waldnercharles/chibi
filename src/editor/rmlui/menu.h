@@ -13,13 +13,13 @@ extern "C"
 
     typedef enum editor_rml_menu_pane
     {
-        EDITOR_RML_MENU_PANE_INSPECTOR,
-        EDITOR_RML_MENU_PANE_NODE_CANVAS,
-        EDITOR_RML_MENU_PANE_SCENE,
-        EDITOR_RML_MENU_PANE_COMPILER_RESULTS,
-        EDITOR_RML_MENU_PANE_OUTPUT_LOG,
-        EDITOR_RML_MENU_PANE_PERFORMANCE,
-        EDITOR_RML_MENU_PANE_COUNT,
+        RML_INPUT_MENU_PANE_INSPECTOR,
+        RML_INPUT_MENU_PANE_NODE_CANVAS,
+        RML_INPUT_MENU_PANE_SCENE,
+        RML_INPUT_MENU_PANE_COMPILER_RESULTS,
+        RML_INPUT_MENU_PANE_OUTPUT_LOG,
+        RML_INPUT_MENU_PANE_PERFORMANCE,
+        RML_INPUT_MENU_PANE_COUNT,
     } editor_rml_menu_pane;
 
     typedef struct editor_rml_menu_state
@@ -29,7 +29,7 @@ extern "C"
         bool can_undo;
         bool can_redo;
         bool navigator_visible;
-        bool panes[EDITOR_RML_MENU_PANE_COUNT];
+        bool panes[RML_INPUT_MENU_PANE_COUNT];
         bool reduced_motion;
         bool mac_shortcuts;
     } editor_rml_menu_state;

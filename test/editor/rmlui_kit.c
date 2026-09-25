@@ -1,8 +1,8 @@
 /* Studio kit contracts without a GPU: reconciliation, number fields, menus, command. */
-#include "editor/rmlui/backend.h"
-#include "editor/rmlui/rml.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
+#include "ui/rml.h"
+#include "ui/rml_backend.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -10,7 +10,7 @@
 
 typedef struct
 {
-    editor_rml_backend *backend;
+    rml_backend *backend;
     kit *k;
     kit_frame_input in;
     int clicks;
@@ -124,7 +124,7 @@ static void frame(kit_fixture *f)
     kit_begin(f->k, &f->in);
     emit(f);
     kit_end(f->k);
-    editor_rml_backend_update(f->backend, 1.0 / 60.0);
+    rml_backend_update(f->backend, 1.0 / 60.0);
     f->in.time += 1.0 / 60.0;
     for (int b = 0; b < 3; b++) {
         f->in.pressed[b] = f->in.released[b] = false;
@@ -138,12 +138,12 @@ static void settle(kit_fixture *f)
     }
 }
 
-static void pointer(kit_fixture *f, editor_rml_input_type type, float x, float y)
+static void pointer(kit_fixture *f, rml_input_type type, float x, float y)
 {
     f->in.mouse_x = x;
     f->in.mouse_y = y;
-    editor_rml_input input = { .type = type, .x = x, .y = y };
-    editor_rml_backend_process_input(f->backend, &input);
+    rml_input input = { .type = type, .x = x, .y = y };
+    rml_backend_process_input(f->backend, &input);
 }
 
 static bool center(kit_fixture *f, const char *path, float *x, float *y)
@@ -163,33 +163,33 @@ static bool click(kit_fixture *f, const char *path)
     if (!center(f, path, &x, &y)) {
         return false;
     }
-    pointer(f, EDITOR_RML_POINTER_MOVE, x, y);
-    pointer(f, EDITOR_RML_POINTER_DOWN, x, y);
-    pointer(f, EDITOR_RML_POINTER_UP, x, y);
+    pointer(f, RML_INPUT_POINTER_MOVE, x, y);
+    pointer(f, RML_INPUT_POINTER_DOWN, x, y);
+    pointer(f, RML_INPUT_POINTER_UP, x, y);
     frame(f);
     return true;
 }
 
-static void key(kit_fixture *f, editor_rml_key k, unsigned modifiers)
+static void key(kit_fixture *f, rml_input_key k, unsigned modifiers)
 {
-    editor_rml_input down = { .type = EDITOR_RML_KEY_PRESS, .key = k, .modifiers = modifiers };
-    editor_rml_backend_process_input(f->backend, &down);
-    editor_rml_input up = { .type = EDITOR_RML_KEY_RELEASE, .key = k, .modifiers = modifiers };
-    editor_rml_backend_process_input(f->backend, &up);
+    rml_input down = { .type = RML_INPUT_KEY_PRESS, .key = k, .modifiers = modifiers };
+    rml_backend_process_input(f->backend, &down);
+    rml_input up = { .type = RML_INPUT_KEY_RELEASE, .key = k, .modifiers = modifiers };
+    rml_backend_process_input(f->backend, &up);
 }
 
 static void type(kit_fixture *f, const char *text)
 {
-    editor_rml_input input = { .type = EDITOR_RML_TEXT_INPUT,
-                               .text = text,
-                               .text_size = strlen(text) };
-    editor_rml_backend_process_input(f->backend, &input);
+    rml_input input = { .type = RML_INPUT_TEXT_INPUT,
+                        .text = text,
+                        .text_size = strlen(text) };
+    rml_backend_process_input(f->backend, &input);
 }
 
 /* The first palette row's label as RML with its tags removed. */
 static void first_row_text(kit_fixture *f, char *text, size_t size)
 {
-    rml_element *input = rml_context_focus_element(editor_rml_backend_context(f->backend));
+    rml_element *input = rml_context_focus_element(rml_backend_context(f->backend));
     rml_element *label = input
                            ? rml_element_query_selector(rml_element_owner_document(input), ".cmd-item .label")
                            : NULL;
@@ -226,8 +226,8 @@ bool test_rmlui_kit()
                       .flow = 9,
                       .morph = "Play",
                       .reveal = -1 };
-    f.backend = editor_rml_backend_create(1024, 640, 1);
-    f.k = kit_create(editor_rml_backend_context(f.backend), "studio.rml");
+    f.backend = rml_backend_create(1024, 640, 1);
+    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 1024, .height = 640 };
     settle(&f);
     bool ok = true;
@@ -257,14 +257,14 @@ bool test_rmlui_kit()
     /* Scrub: press, move beyond the threshold, release. One commit, no text edit. */
     float x, y;
     ok &= check(center(&f, "app/fields/first/@control/value", &x, &y), "number field is laid out");
-    pointer(&f, EDITOR_RML_POINTER_MOVE, x, y);
-    pointer(&f, EDITOR_RML_POINTER_DOWN, x, y);
+    pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
+    pointer(&f, RML_INPUT_POINTER_DOWN, x, y);
     frame(&f);
     for (int step = 1; step <= 5; step++) {
-        pointer(&f, EDITOR_RML_POINTER_MOVE, x + step * 8.0f, y);
+        pointer(&f, RML_INPUT_POINTER_MOVE, x + step * 8.0f, y);
         frame(&f);
     }
-    pointer(&f, EDITOR_RML_POINTER_UP, x + 40, y);
+    pointer(&f, RML_INPUT_POINTER_UP, x + 40, y);
     frame(&f);
     frame(&f);
     ok &= check(f.value > 10 && f.changes > 0, "scrub changes the value");
@@ -276,9 +276,9 @@ bool test_rmlui_kit()
     f.commits = 0;
     ok &= check(click(&f, "app/fields/first/@control/value"), "number field click");
     ok &= check(kit_wants_text(f.k, NULL), "click enters text editing");
-    key(&f, EDITOR_RML_KEY_END, 0);
+    key(&f, RML_INPUT_KEY_END, 0);
     type(&f, "*2");
-    key(&f, EDITOR_RML_KEY_ENTER, 0);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
     frame(&f);
     ok &= check(fabs(f.value - before * 2) < 0.01, "expression doubles the value");
@@ -289,35 +289,35 @@ bool test_rmlui_kit()
     before = f.value;
     ok &= check(click(&f, "app/fields/first/@control/value"), "second edit");
     type(&f, "99");
-    key(&f, EDITOR_RML_KEY_ESCAPE, 0);
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
     ok &= check(f.value == before, "Escape restores the value");
 
     /* Invalid input keeps editing and does not change the model. */
     ok &= check(click(&f, "app/fields/first/@control/value"), "third edit");
-    key(&f, EDITOR_RML_KEY_BACKSPACE, 0);
+    key(&f, RML_INPUT_KEY_BACKSPACE, 0);
     type(&f, "abc");
-    key(&f, EDITOR_RML_KEY_ENTER, 0);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
     ok &= check(kit_wants_text(f.k, NULL) && f.value == before, "invalid input stays in editing");
-    key(&f, EDITOR_RML_KEY_ESCAPE, 0);
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
 
     /* Keyboard steps: Up +1, Shift+Up +10. */
     before = f.value;
-    key(&f, EDITOR_RML_KEY_UP, 0);
+    key(&f, RML_INPUT_KEY_UP, 0);
     frame(&f);
-    key(&f, EDITOR_RML_KEY_UP, EDITOR_RML_MOD_SHIFT);
+    key(&f, RML_INPUT_KEY_UP, RML_INPUT_MOD_SHIFT);
     frame(&f);
     ok &= check(fabs(f.value - (before + 11)) < 1e-6, "arrow steps with Shift for coarse");
 
     /* Right press reports a context click without editing. */
     ok &= check(center(&f, "app/fields/first/@control/value", &x, &y), "field for context");
-    pointer(&f, EDITOR_RML_POINTER_MOVE, x, y);
-    editor_rml_input right = { .type = EDITOR_RML_POINTER_DOWN, .x = x, .y = y, .button = 1 };
-    editor_rml_backend_process_input(f.backend, &right);
-    right.type = EDITOR_RML_POINTER_UP;
-    editor_rml_backend_process_input(f.backend, &right);
+    pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
+    rml_input right = { .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y, .button = 1 };
+    rml_backend_process_input(f.backend, &right);
+    right.type = RML_INPUT_POINTER_UP;
+    rml_backend_process_input(f.backend, &right);
     frame(&f);
     ok &= check(f.context == 1 && !kit_wants_text(f.k, NULL), "right press is a context click");
 
@@ -335,7 +335,7 @@ bool test_rmlui_kit()
     ok &= check(kit_command_is_open(f.k), "command opens");
     type(&f, "fs");
     frame(&f);
-    key(&f, EDITOR_RML_KEY_ENTER, 0);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
     ok &= check(f.chosen == 2, "command-score ranks Frame Selected for \"fs\"");
     ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
@@ -348,14 +348,14 @@ bool test_rmlui_kit()
     type(&f, "frame sel");
     frame(&f);
     first_row_text(&f, matched_space, sizeof matched_space);
-    key(&f, EDITOR_RML_KEY_ESCAPE, 0);
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
     f.open_command = true;
     settle(&f);
     type(&f, "es");
     frame(&f);
     first_row_text(&f, gap_space, sizeof gap_space);
-    key(&f, EDITOR_RML_KEY_ESCAPE, 0);
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
     ok &= check(strcmp(matched_space, "Frame Selected") == 0, "highlighting keeps a matched space");
     ok &= check(strcmp(gap_space, "Frame Selected") == 0, "highlighting keeps a space between matches");
@@ -389,17 +389,17 @@ bool test_rmlui_kit()
             center(&f, "app/dnd/target", &tx, &ty),
         "drag parts are laid out"
     );
-    pointer(&f, EDITOR_RML_POINTER_MOVE, sx, sy);
-    pointer(&f, EDITOR_RML_POINTER_DOWN, sx, sy);
+    pointer(&f, RML_INPUT_POINTER_MOVE, sx, sy);
+    pointer(&f, RML_INPUT_POINTER_DOWN, sx, sy);
     f.in.down[0] = true;
     frame(&f);
-    pointer(&f, EDITOR_RML_POINTER_MOVE, sx + 3, sy);
+    pointer(&f, RML_INPUT_POINTER_MOVE, sx + 3, sy);
     frame(&f);
     ok &= check(!kit_dragging(f.k, "thing"), "no drag under 5 dp");
-    pointer(&f, EDITOR_RML_POINTER_MOVE, tx, ty);
+    pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
     frame(&f);
     ok &= check(kit_dragging(f.k, "thing"), "drag starts past 5 dp");
-    pointer(&f, EDITOR_RML_POINTER_UP, tx, ty);
+    pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
     f.in.down[0] = false;
     frame(&f);
     ok &= check(strcmp(f.dropped, "apple") == 0 && !kit_dragging(f.k, NULL), "drop lands on the target");
@@ -434,7 +434,7 @@ bool test_rmlui_kit()
     ok &= check(click(&f, "layer/@toaster/t1/action"), "toast action is laid out");
     frame(&f);
     ok &= check(kit_toast_action(f.k, undo) && !kit_toast_action(f.k, undo), "toast action reports once");
-    pointer(&f, EDITOR_RML_POINTER_MOVE, 10, 10);
+    pointer(&f, RML_INPUT_POINTER_MOVE, 10, 10);
     kit_toast(f.k, 0, &(kit_toast_desc){ .title = "Saved" });
     for (int i = 0; i < 60; i++) {
         frame(&f);
@@ -458,9 +458,8 @@ bool test_rmlui_kit()
 
     /* A second context, like the zoomed graph canvas, comes and goes while the
        first keeps working. */
-    editor_rml_backend *second = editor_rml_backend_create(200, 100, 2);
-    kit *canvas = second ? kit_create(editor_rml_backend_context(second), "graph.rml")
-                         : NULL;
+    rml_backend *second = rml_backend_create(200, 100, 2);
+    kit *canvas = second ? kit_create(rml_backend_context(second), "graph.rml") : NULL;
     ok &= check(canvas != NULL, "a second context loads its document");
     if (canvas) {
         kit_frame_input in = { .dp_ratio = 2, .width = 200, .height = 100 };
@@ -468,15 +467,15 @@ bool test_rmlui_kit()
         kit_root(canvas, "world");
         kit_label(canvas, "node", NULL, "Node");
         kit_end(canvas);
-        editor_rml_backend_update(second, 1.0 / 60);
+        rml_backend_update(second, 1.0 / 60);
         kit_rect node;
         ok &= check(kit_find(canvas, "world/node", &node) && node.w > 0, "second context lays out");
         kit_destroy(canvas);
     }
-    editor_rml_backend_destroy(second);
+    rml_backend_destroy(second);
     ok &= check(click(&f, "app/bar/button"), "first context works after the second closes");
 
     kit_destroy(f.k);
-    editor_rml_backend_destroy(f.backend);
+    rml_backend_destroy(f.backend);
     return ok;
 }

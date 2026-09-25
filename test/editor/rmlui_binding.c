@@ -1,6 +1,6 @@
 /* RmlUi binding calls that load documents from text and reload their styles. */
-#include "editor/rmlui/backend.h"
-#include "editor/rmlui/rml.h"
+#include "ui/rml.h"
+#include "ui/rml_backend.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -74,9 +74,9 @@ static bool reloads_style_sheet(rml_context *context)
 
 bool test_rmlui_binding()
 {
-    editor_rml_backend *backend = editor_rml_backend_create(320, 240, 1);
-    rml_context *context = editor_rml_backend_context(backend);
+    rml_backend *backend = rml_backend_create(320, 240, 1);
+    rml_context *context = rml_backend_context(backend);
     bool ok = loads_from_memory(context) && reloads_style_sheet(context);
-    editor_rml_backend_destroy(backend);
+    rml_backend_destroy(backend);
     return ok;
 }

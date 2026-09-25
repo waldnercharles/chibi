@@ -1,5 +1,5 @@
-#ifndef CHIBI_EDITOR_RMLUI_RML_H
-#define CHIBI_EDITOR_RMLUI_RML_H
+#ifndef CHIBI_UI_RML_H
+#define CHIBI_UI_RML_H
 
 /* A C binding for RmlUi 6.3. It is pure pass-through: rml.cpp only converts
  * types and forwards calls to RmlUi. Keep editor logic, state machines and

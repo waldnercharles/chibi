@@ -2,9 +2,9 @@
  * list, driven by mouse and keyboard through the RmlUi binding. */
 #include "editor/rmlui/toolbar.h"
 
-#include "editor/rmlui/rml.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/rml.h"
 
 #include <assert.h>
 #include <stdio.h>

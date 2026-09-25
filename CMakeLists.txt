@@ -262,9 +262,15 @@ endfunction()
 set(GEN_NERD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_nerd_symbols_font.c)
 set(GEN_UI_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_font.c)
 set(GEN_UI_BOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_bold_font.c)
+set(GEN_UI_MEDIUM_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_medium_font.c)
+set(GEN_UI_SEMIBOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_semibold_font.c)
+set(GEN_UI_NUMERIC_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_numeric_font.c)
 chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf" "${GEN_NERD_FONT}" editor_nerd_symbols_font)
 chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf" "${GEN_UI_FONT}" editor_ui_font)
 chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf" "${GEN_UI_BOLD_FONT}" editor_ui_bold_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Medium.ttf" "${GEN_UI_MEDIUM_FONT}" editor_ui_medium_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-SemiBold.ttf" "${GEN_UI_SEMIBOLD_FONT}" editor_ui_semibold_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Numeric.ttf" "${GEN_UI_NUMERIC_FONT}" editor_ui_numeric_font)
 
 function(chibi_registry output)
     set(OUTPUT "${output}")
@@ -416,7 +422,7 @@ add_library(automation STATIC src/automation/controller.c src/automation/field_p
     src/automation/graph_optimize.c
     src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(automation PUBLIC runtime_support core authoring_graph)
+target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/gpu_timing.c
@@ -438,12 +444,12 @@ target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(engine)
 
-# --- editor canvas (graph model + native dcimgui widget) ---
+# --- editor UI (RmlUi shell and existing ImGui panes) ---
 
-add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
-add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
+include(cmake/rmlui.cmake)
+add_library(editor STATIC ${EDITOR_SOURCES})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph)
+target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
@@ -588,6 +594,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
@@ -600,6 +607,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
 endif()

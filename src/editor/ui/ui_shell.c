@@ -1,5 +1,6 @@
 #include "editor/ui/ui_shell.h"
 
+#include "editor/ui/retained_menu.h"
 #include "editor/workspace/editor.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -74,6 +75,8 @@ static bool ui_navigation_back;
 static bool ui_navigation_forward;
 static int ui_navigation_request;
 static bool ui_document_bar_visible;
+static bool ui_design_preview;
+static bool ui_document_list_requested;
 static ImVec2 ui_document_bar_pos;
 static ImVec2 ui_document_bar_size;
 static const float UI_DOCUMENT_BAR_HEIGHT = 40.0f;
@@ -97,7 +100,6 @@ static bool ui_runtime_playing;
 static bool ui_runtime_session;
 static bool ui_can_undo;
 static bool ui_can_redo;
-static bool ui_inline_edge_nodes = true;
 
 static float ui_framebuffer_scale_x(void);
 static float ui_framebuffer_scale_y(void);
@@ -131,7 +133,6 @@ static void ui_settings_clear(ImGuiContext *, ImGuiSettingsHandler *)
     ui_focus_mode = false;
     ui_load_focus = false;
     ui_reduce_motion = false;
-    ui_inline_edge_nodes = true;
     ui_scene_central_graph = 0;
     ui_scene_central_scene = 0;
     ui_set_default_visibility();
@@ -178,10 +179,6 @@ static void ui_settings_read(ImGuiContext *, ImGuiSettingsHandler *, void *, con
         ui_reduce_motion = value;
         return;
     }
-    if (strcmp(key, "InlineEdgeNodes") == 0) {
-        ui_inline_edge_nodes = value;
-        return;
-    }
     for (int pane = 0; pane < EDITOR_UI_PANE_COUNT; pane++) {
         if (strcmp(key, UI_PANE_KEYS[pane]) == 0) {
             ui_pane_visibility[pane] = value;
@@ -197,13 +194,7 @@ static void ui_settings_apply(ImGuiContext *, ImGuiSettingsHandler *)
 
 static void ui_settings_write(ImGuiContext *, ImGuiSettingsHandler *, ImGuiTextBuffer *out)
 {
-    ImGuiTextBuffer_appendf(
-        out,
-        "[Chibi][Workspace]\nFocus=%d\nReduceMotion=%d\nInlineEdgeNodes=%d\n",
-        ui_focus_mode,
-        ui_reduce_motion,
-        ui_inline_edge_nodes
-    );
+    ImGuiTextBuffer_appendf(out, "[Chibi][Workspace]\nFocus=%d\nReduceMotion=%d\n", ui_focus_mode, ui_reduce_motion);
     ImGuiTextBuffer_appendf(out, "NavigatorOutline=%d\n", ui_navigator_outline);
     ImGuiTextBuffer_appendf(
         out,
@@ -225,6 +216,7 @@ static void ui_settings_write(ImGuiContext *, ImGuiSettingsHandler *, ImGuiTextB
 
 void editor_ui_initialize(bool persist)
 {
+    editor_menu_shutdown();
     editor_initialize_fonts();
     ImGui_GetIO()->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     if (!persist) {
@@ -268,20 +260,6 @@ void editor_ui_set_reduced_motion(bool enabled)
     if (ui_context) {
         ImGui_GetStyle()->ScrollSmooth = enabled ? 1.0f : UI_SCROLL_SMOOTHNESS;
     }
-    ui_settings_changed();
-}
-
-bool editor_ui_inline_edge_nodes()
-{
-    return ui_inline_edge_nodes;
-}
-
-void editor_ui_set_inline_edge_nodes(bool enabled)
-{
-    if (ui_inline_edge_nodes == enabled) {
-        return;
-    }
-    ui_inline_edge_nodes = enabled;
     ui_settings_changed();
 }
 
@@ -575,6 +553,13 @@ bool editor_ui_document_bar_visible()
     return ui_document_bar_visible;
 }
 
+bool editor_ui_take_document_list_request()
+{
+    bool requested = ui_document_list_requested;
+    ui_document_list_requested = false;
+    return requested;
+}
+
 bool editor_ui_begin_document_bar()
 {
     assert(ui_document_bar_visible);
@@ -592,22 +577,35 @@ bool editor_ui_begin_document_bar()
     if (!visible) {
         return false;
     }
-    if (editor_ui_icon_button("workspace.back", EDITOR_ICON_FA_ARROW_LEFT, ui_navigation_back)) {
-        editor_ui_request_navigation(-1);
+    ImVec2 cursor = ImGui_GetCursorScreenPos();
+    float height = 26.0f;
+    float y = ui_document_bar_pos.y + (ui_document_bar_size.y - height) * 0.5f;
+    float width = editor_menu_toolbar_draw(cursor.x, y, height);
+    ImGui_Dummy((ImVec2){ width, height });
+    ImGui_SameLineEx(0, 8.0f);
+    if (!ui_design_preview && !editor_ui_captures_keyboard() &&
+        ImGui_IsWindowHovered(0)) {
+        static const struct
+        {
+            const char *id;
+            const char *label;
+        } hints[] = {
+            { "workspace.back", "Go back" },
+            { "workspace.forward", "Go forward" },
+            { "content.quick_open", "Open an asset (Cmd+P / Ctrl+P)" },
+            { "workspace.documents.list", "Open documents" },
+        };
+        ImVec2 mouse = ImGui_GetIO()->MousePos;
+        for (int i = 0; i < (int)(sizeof hints / sizeof *hints); i++) {
+            editor_ui_rect rect;
+            if (editor_ui_item_rect(hints[i].id, &rect) && mouse.x >= rect.x &&
+                mouse.x < rect.x + rect.width && mouse.y >= rect.y &&
+                mouse.y < rect.y + rect.height) {
+                ImGui_SetTooltip("%s", hints[i].label);
+                break;
+            }
+        }
     }
-    editor_ui_track_item("workspace.back");
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui_SetTooltip("Go back");
-    }
-    ImGui_SameLine();
-    if (editor_ui_icon_button("workspace.forward", EDITOR_ICON_FA_ARROW_RIGHT, ui_navigation_forward)) {
-        editor_ui_request_navigation(1);
-    }
-    editor_ui_track_item("workspace.forward");
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui_SetTooltip("Go forward");
-    }
-    ImGui_SameLine();
     return true;
 }
 
@@ -669,7 +667,9 @@ void editor_ui_show_graph_and_scene(void)
 
 int editor_ui_run_command(editor_ui_command command)
 {
-    return ui_command_handler ? ui_command_handler(command, ui_command_user) : -1;
+    return ui_command_handler && !ui_design_preview
+             ? ui_command_handler(command, ui_command_user)
+             : -1;
 }
 
 void editor_ui_set_runtime_state(bool playing, bool session)
@@ -1469,6 +1469,11 @@ bool editor_ui_item_center(const char *id, float *x, float *y)
 
 bool editor_ui_item_rect(const char *id, editor_ui_rect *out)
 {
+    editor_rml_menu_rect rect;
+    if (editor_menu_item_rect(id, &rect)) {
+        *out = (editor_ui_rect){ rect.x, rect.y, rect.width, rect.height };
+        return true;
+    }
     ImGuiID hash = cImHashStr(id);
     for (int i = 0; i < acount(ui_item_hits); i++) {
         if (ui_item_hits[i].id == hash) {
@@ -1640,15 +1645,6 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
 
-static void ui_pane_menu_item(const char *label, const char *id, editor_ui_pane pane)
-{
-    bool visible = editor_ui_pane_visible(pane);
-    if (ImGui_MenuItemEx(label, NULL, visible, true)) {
-        editor_ui_set_pane_visible(pane, !visible);
-    }
-    editor_ui_track_item(id);
-}
-
 void editor_ui_set_history_available(bool undo, bool redo)
 {
     ui_can_undo = undo;
@@ -1667,77 +1663,95 @@ void editor_ui_set_runtime_status(const char *label)
     (void)label;
 }
 
-static void ui_document_action(const char *label, const char *shortcut, const char *id, editor_ui_command command)
-{
-    bool enabled = ui_command_handler != NULL;
-    if (command == EDITOR_UI_COMMAND_UNDO) {
-        enabled &= ui_can_undo;
-    }
-    if (command == EDITOR_UI_COMMAND_REDO) {
-        enabled &= ui_can_redo;
-    }
-    if (ImGui_MenuItemEx(label, shortcut, false, enabled)) {
-        editor_ui_run_command(command);
-    }
-    editor_ui_track_item(id);
-}
-
 static void ui_draw_menu(void)
 {
-    if (!ImGui_BeginMainMenuBar()) {
-        return;
+    static const struct
+    {
+        const char *id;
+        editor_ui_command command;
+    } commands[] = {
+        { "file.save", EDITOR_UI_COMMAND_SAVE },
+        { "file.save_as", EDITOR_UI_COMMAND_SAVE_AS },
+        { "file.save_all", EDITOR_UI_COMMAND_SAVE_ALL },
+        { "file.reload", EDITOR_UI_COMMAND_RELOAD },
+        { "edit.undo", EDITOR_UI_COMMAND_UNDO },
+        { "edit.redo", EDITOR_UI_COMMAND_REDO },
+        { "workspace.quick_open", EDITOR_UI_COMMAND_QUICK_OPEN },
+        { "content.quick_open", EDITOR_UI_COMMAND_QUICK_OPEN },
+    };
+    static const struct
+    {
+        const char *id;
+        editor_ui_pane pane;
+    } panes[] = {
+        { "view.inspector", EDITOR_UI_PANE_INSPECTOR },
+        { "view.node_canvas", EDITOR_UI_PANE_NODE_CANVAS },
+        { "view.scene", EDITOR_UI_PANE_SCENE },
+        { "view.compiler_results", EDITOR_UI_PANE_COMPILER_RESULTS },
+        { "view.output_log", EDITOR_UI_PANE_OUTPUT_LOG },
+        { "view.performance", EDITOR_UI_PANE_PERFORMANCE },
+    };
+    editor_rml_menu_state state = {
+        .commands_available = ui_command_handler != NULL && !ui_design_preview,
+        .design_preview = ui_design_preview,
+        .can_undo = ui_can_undo,
+        .can_redo = ui_can_redo,
+        .navigator_visible = ui_navigator_visible(),
+        .reduced_motion = ui_reduce_motion,
+        .mac_shortcuts = ImGui_GetIO()->ConfigMacOSXBehaviors,
+    };
+    for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
+        state.panes[i] = editor_ui_pane_visible(panes[i].pane);
     }
-    ui_menu_bottom = ImGui_GetWindowPos().y + ImGui_GetWindowSize().y;
-    ImGui_TextColoredUnformatted(UI_ACCENT, "Chibi");
-    bool open = ImGui_BeginMenu("File");
-    editor_ui_track_item("file.menu");
-    if (open) {
-        ui_document_action("Save", "Ctrl+S", "file.save", EDITOR_UI_COMMAND_SAVE);
-        ui_document_action("Save As", NULL, "file.save_as", EDITOR_UI_COMMAND_SAVE_AS);
-        ui_document_action("Save All", NULL, "file.save_all", EDITOR_UI_COMMAND_SAVE_ALL);
-        ui_document_action("Reload", NULL, "file.reload", EDITOR_UI_COMMAND_RELOAD);
-        ImGui_EndMenu();
-    }
-    bool edit = ImGui_BeginMenu("Edit");
-    editor_ui_track_item("edit.menu");
-    if (edit) {
-        ui_document_action("Undo", "Ctrl+Z", "edit.undo", EDITOR_UI_COMMAND_UNDO);
-        ui_document_action("Redo", "Ctrl+Shift+Z", "edit.redo", EDITOR_UI_COMMAND_REDO);
-        ImGui_EndMenu();
-    }
-    bool view = ImGui_BeginMenu("View");
-    editor_ui_track_item("view.menu");
-    if (view) {
-        if (ImGui_MenuItemEx("Reset Workspace", NULL, false, true)) {
+    editor_rml_toolbar_state toolbar = {
+        .back = ui_navigation_back && !ui_design_preview,
+        .forward = ui_navigation_forward && !ui_design_preview,
+        .commands_available = ui_command_handler != NULL && !ui_design_preview,
+        .reduced_motion = ui_reduce_motion,
+    };
+    editor_menu_toolbar_state(&toolbar, ui_document_bar_visible);
+    editor_menu_frame(&state);
+    ui_menu_bottom = ImGui_GetMainViewport()->Pos.y + editor_menu_height();
+    const char *action;
+    while ((action = editor_menu_take_action())) {
+        if (ui_design_preview && strcmp(action, "view.reduced_motion") != 0) {
+            continue;
+        }
+        if (strcmp(action, "workspace.back") == 0) {
+            editor_ui_request_navigation(-1);
+        }
+        if (strcmp(action, "workspace.forward") == 0) {
+            editor_ui_request_navigation(1);
+        }
+        if (strcmp(action, "workspace.documents.list") == 0) {
+            ui_document_list_requested = true;
+        }
+        for (int i = 0; i < (int)(sizeof commands / sizeof *commands); i++) {
+            if (strcmp(action, commands[i].id) == 0) {
+                editor_ui_run_command(commands[i].command);
+            }
+        }
+        for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
+            if (strcmp(action, panes[i].id) == 0) {
+                editor_ui_set_pane_visible(
+                    panes[i].pane,
+                    !editor_ui_pane_visible(panes[i].pane)
+                );
+            }
+        }
+        if (strcmp(action, "view.graph_and_scene") == 0) {
             editor_ui_show_graph_and_scene();
         }
-        editor_ui_track_item("view.graph_and_scene");
-        ImGui_Separator();
-        if (ImGui_MenuItemEx("Navigator", NULL, ui_navigator_visible(), true)) {
+        if (strcmp(action, "view.navigator") == 0) {
             ui_set_navigator_visible(!ui_navigator_visible());
         }
-        editor_ui_track_item("view.navigator");
-        ui_pane_menu_item("Inspector", "view.inspector", EDITOR_UI_PANE_INSPECTOR);
-        ui_pane_menu_item("Node Canvas", "view.node_canvas", EDITOR_UI_PANE_NODE_CANVAS);
-        ui_pane_menu_item("Scene", "view.scene", EDITOR_UI_PANE_SCENE);
-        ImGui_Separator();
-        ui_pane_menu_item("Compiler Results", "view.compiler_results", EDITOR_UI_PANE_COMPILER_RESULTS);
-        ui_pane_menu_item("Output Log", "view.output_log", EDITOR_UI_PANE_OUTPUT_LOG);
-        ui_pane_menu_item("Performance", "view.performance", EDITOR_UI_PANE_PERFORMANCE);
-        ImGui_Separator();
-        bool inline_edge_nodes = editor_ui_inline_edge_nodes();
-        if (ImGui_MenuItemEx("Inline nodes on edge drop", NULL, inline_edge_nodes, true)) {
-            editor_ui_set_inline_edge_nodes(!inline_edge_nodes);
+        if (strcmp(action, "view.reduced_motion") == 0) {
+            editor_ui_set_reduced_motion(!ui_reduce_motion);
         }
-        editor_ui_track_item("view.inline_edge_nodes");
-        ImGui_Separator();
-        if (ImGui_MenuItemEx("Reset Layout", NULL, false, true)) {
+        if (strcmp(action, "view.reset_layout") == 0) {
             editor_ui_reset_layout();
         }
-        editor_ui_track_item("view.reset_layout");
-        ImGui_EndMenu();
     }
-    ImGui_EndMainMenuBar();
 }
 
 void editor_ui_reset_layout(void)
@@ -2022,6 +2036,11 @@ static void ui_prepare_sidebars()
     ImGui_PopStyleVarEx(2);
 }
 
+void editor_ui_set_design_preview(bool enabled)
+{
+    ui_design_preview = enabled;
+}
+
 void editor_ui_prepare(void)
 {
     afree(ui_item_hits);
@@ -2033,6 +2052,7 @@ void editor_ui_prepare(void)
         return;
     }
     if (context != ui_context) {
+        editor_menu_shutdown();
         ImGui_GetIO()->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ui_apply_theme();
         ui_context = context;
@@ -2043,8 +2063,7 @@ void editor_ui_prepare(void)
     ui_draw_menu();
     ImGuiIO *io = ImGui_GetIO();
     ui_workspace = ui_layout_viewport();
-    /* Framebuffer targets reset WorkPos before BeginMainMenuBar reserves space
-     * for the next frame. Keep this frame's anchored panes below the menu. */
+    /* RmlUi publishes the bar's measured height before dock layout. */
     if (ui_workspace.WorkPos.y < ui_menu_bottom) {
         float inset = ui_menu_bottom - ui_workspace.WorkPos.y;
         ui_workspace.WorkPos.y += inset;
@@ -2056,6 +2075,19 @@ void editor_ui_prepare(void)
                                          UI_DOCUMENT_BAR_HEIGHT };
         ui_workspace.WorkPos.y += UI_DOCUMENT_BAR_HEIGHT;
         ui_workspace.WorkSize.y = fmaxf(1.0f, ui_workspace.WorkSize.y - UI_DOCUMENT_BAR_HEIGHT);
+    }
+    if (ui_design_preview) {
+        ImVec2 end = {
+            ui_workspace.WorkPos.x + ui_workspace.WorkSize.x,
+            ui_workspace.WorkPos.y + ui_workspace.WorkSize.y,
+        };
+        ImDrawList_AddRectFilled(
+            ImGui_GetBackgroundDrawList(),
+            ui_workspace.WorkPos,
+            end,
+            ImGui_ColorConvertFloat4ToU32(UI_DOCK_EMPTY)
+        );
+        return;
     }
     ui_prepare_sidebars();
     ImGuiViewport layout = ui_workspace;
@@ -2094,6 +2126,10 @@ bool editor_ui_restore_checkpoint(const char *ini)
 
 void editor_ui_deactivate()
 {
+    editor_menu_shutdown();
+    ui_design_preview = false;
+    ui_document_list_requested = false;
+    ui_context = NULL;
     ImGui_ClearActiveID();
     ImGui_ClosePopupsOverWindow(NULL, false);
     ImGui_RemoveSettingsHandler("Chibi");
@@ -2102,4 +2138,14 @@ void editor_ui_deactivate()
     ui_graph_debug_header = NULL;
     ui_graph_debug_user = NULL;
     afree(ui_item_hits);
+}
+
+void editor_ui_render()
+{
+    editor_menu_render();
+}
+
+bool editor_ui_captures_keyboard()
+{
+    return editor_menu_captures_keyboard();
 }

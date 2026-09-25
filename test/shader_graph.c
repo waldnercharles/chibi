@@ -510,14 +510,14 @@ static void vector_inline_sources()
     scalar(g, constant, true, 0, .375f);
     const node_desc *conversion = conversion_for_pins(&constant->output_pins[0], &root->input_pins[0]);
     assert(conversion && graph_connect_data_conversion(g, constant, 0, root, 0, conversion) == 0);
-    assert(graph_set_node_inline(g, constant, true) == 0);
+    assert(graph_set_node_presentation(g, constant, NODE_PRESENTATION_INLINE) == 0);
     for (int mixed = 0; mixed < 2; mixed++) {
         if (mixed) {
             node *vector = add(g, "Shader Vector3");
             scalar(g, vector, false, 1, .5f);
             scalar(g, vector, false, 2, .75f);
             assert(graph_connect_data(g, vector, 0, root, 0) == 0);
-            assert(graph_set_node_inline(g, vector, true) == 0);
+            assert(graph_set_node_presentation(g, vector, NODE_PRESENTATION_INLINE) == 0);
             assert(graph_connect_data(g, constant, 0, vector, 0) == 0);
             assert(graph_node_is_inline(g, constant));
         }

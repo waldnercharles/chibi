@@ -164,9 +164,9 @@ const operationProperties = {
     type: "boolean",
     description: "Disable the node while preserving it in the graph.",
   },
-  inline_source: {
-    type: "boolean",
-    description: "Allow a function node to inline its source graph.",
+  presentation: {
+    enum: ["auto", "inline", "expanded"],
+    description: "Draw a pure source inside its consumer's input, or as its own node.",
   },
   event_name: {
     type: "string",

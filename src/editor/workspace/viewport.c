@@ -41,10 +41,101 @@ struct engine_viewport
     int stable_resize_frames;
     int focused;
     uint32_t recreate_count;
+    bool host;
+    engine_viewport_host_input host_input;
+    CF_V2 host_delta, press_origin;
+    float press_distance_sq;
     render_audio *audio;
     engine_viewport_render_fn render;
     void *render_user;
 };
+
+/* One frame of pointer input in logical window pixels, from ImGui or a retained host. */
+typedef struct
+{
+    CF_V2 mouse, delta, min, size;
+    bool hovered, popup, escape, focused, text_input, alt;
+    bool down[3], clicked[3], released[3];
+    float wheel, wheel_h;
+    float drag_sq, drag_threshold;
+} viewport_io;
+
+static viewport_io imgui_io(ImVec2 min, ImVec2 size)
+{
+    ImGuiIO *io = ImGui_GetIO();
+    viewport_io v = {
+        .mouse = { io->MousePos.x, io->MousePos.y },
+        .delta = { io->MouseDelta.x, io->MouseDelta.y },
+        .min = { min.x, min.y },
+        .size = { size.x, size.y },
+        .hovered = ImGui_IsItemHovered(0),
+        .popup = ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup),
+        .escape = ImGui_IsKeyPressed(ImGuiKey_Escape),
+        .focused = ImGui_IsWindowFocused(ImGuiFocusedFlags_ChildWindows),
+        .text_input = io->WantTextInput,
+        .alt = io->KeyAlt,
+        .wheel = io->MouseWheel,
+        .wheel_h = io->MouseWheelH,
+        .drag_sq = io->MouseDragMaxDistanceSqr[0],
+        .drag_threshold = io->MouseDragThreshold,
+    };
+    for (int b = 0; b < 3; b++) {
+        v.down[b] = io->MouseDown[b];
+        v.clicked[b] = io->MouseClicked[b];
+        v.released[b] = io->MouseReleased[b];
+    }
+    return v;
+}
+
+static viewport_io host_io(engine_viewport *viewport)
+{
+    const engine_viewport_host_input *in = &viewport->host_input;
+    viewport_io v = {
+        .mouse = { in->x, in->y },
+        .delta = viewport->host_delta,
+        .size = { in->width, in->height },
+        .hovered = in->hovered && !in->blocked,
+        .popup = in->blocked,
+        .escape = in->escape,
+        .focused = in->focused,
+        .alt = in->alt,
+        .wheel = in->wheel,
+        .drag_sq = viewport->press_distance_sq,
+        .drag_threshold = 3,
+    };
+    for (int b = 0; b < 3; b++) {
+        v.down[b] = in->down[b];
+        v.clicked[b] = in->pressed[b];
+        v.released[b] = in->released[b];
+    }
+    return v;
+}
+
+void engine_viewport_set_host_input(engine_viewport *viewport, const engine_viewport_host_input *input)
+{
+    viewport->host = input != NULL;
+    if (!input) {
+        return;
+    }
+    if (input->pressed[0]) {
+        viewport->press_origin = (CF_V2){ input->x, input->y };
+        viewport->press_distance_sq = 0;
+    } else if (input->down[0]) {
+        float dx = input->x - viewport->press_origin.x,
+              dy = input->y - viewport->press_origin.y;
+        viewport->press_distance_sq = fmaxf(viewport->press_distance_sq, dx * dx + dy * dy);
+    }
+    viewport->host_delta = (CF_V2){ input->x - viewport->host_input.x,
+                                    input->y - viewport->host_input.y };
+    viewport->host_input = *input;
+}
+
+uint64_t engine_viewport_texture(const engine_viewport *viewport)
+{
+    return viewport && viewport->canvas.id
+             ? cf_canvas_get_target(viewport->canvas).id
+             : 0;
+}
 
 void engine_viewport_set_widgets(
     engine_viewport *viewport,
@@ -63,6 +154,9 @@ void engine_viewport_set_widgets(
 
 bool engine_viewport_widgets_capture(const engine_viewport *viewport)
 {
+    if (viewport->host) {
+        return false;
+    }
     ImVec2 mouse = ImGui_GetIO()->MousePos;
     return viewport->widget_world &&
            (viewport->widget_focus ||
@@ -158,7 +252,9 @@ int engine_viewport_focused(const engine_viewport *viewport)
 
 void engine_viewport_release_focus(void)
 {
-    ImGui_SetWindowFocusStr(NULL);
+    if (ImGui_GetCurrentContext()) {
+        ImGui_SetWindowFocusStr(NULL);
+    }
 }
 
 void engine_viewport_reset_camera(engine_viewport *viewport)
@@ -280,7 +376,9 @@ static bool pointer_world(const engine_viewport *viewport, CF_V2 ndc, CF_V2 *wor
 
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y)
 {
-    ImVec2 mouse = ImGui_GetIO()->MousePos;
+    ImVec2 mouse = viewport->host
+                     ? (ImVec2){ viewport->host_input.x, viewport->host_input.y }
+                     : ImGui_GetIO()->MousePos;
     ImVec2 size = viewport->image_size, min = viewport->image_min;
     if (size.x <= 0 || size.y <= 0 || mouse.x < min.x || mouse.y < min.y ||
         mouse.x >= min.x + size.x || mouse.y >= min.y + size.y) {
@@ -400,41 +498,36 @@ static engine_viewport_action draw_controls(
     return action;
 }
 
-static bool navigate_viewport(engine_viewport *viewport, ImVec2 size, bool playing)
+static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, bool playing)
 {
-    ImGuiIO *io = ImGui_GetIO();
-    if (playing && !io->KeyAlt) {
+    CF_V2 size = io->size;
+    if (playing && !io->alt) {
         viewport->panning = false;
         return false;
     }
-    bool hover = ImGui_IsItemHovered(0);
-    if (!io->MouseDown[2]) {
+    bool hover = io->hovered;
+    if (!io->down[2]) {
         viewport->panning = false;
     }
-    if (ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup)) {
+    if (io->popup) {
         viewport->panning = false;
         return false;
     }
-    bool pan_started = hover && io->MouseClicked[2];
+    bool pan_started = hover && io->clicked[2];
     if (pan_started) {
         viewport->panning = true;
     }
-    bool zoom = hover && io->MouseWheel != 0.0f;
+    bool zoom = hover && io->wheel != 0.0f;
     if (!viewport->panning && !zoom) {
         return false;
     }
     engine_viewport_camera before;
     engine_viewport_get_camera(viewport, &before);
     if (zoom) {
-        ImVec2 min = ImGui_GetItemRectMin();
-        /* ImGui's item rect includes its image border; projection coordinates
-         * start inside that border, at the first texture pixel. */
-        float border = ImGui_GetStyle()->ImageBorderSize;
-        min.x += border;
-        min.y += border;
-        float x = (io->MousePos.x - min.x) / size.x - 0.5f;
-        float y = 0.5f - (io->MousePos.y - min.y) / size.y;
-        float scale = powf(1.1f, -io->MouseWheel);
+        CF_V2 min = io->min;
+        float x = (io->mouse.x - min.x) / size.x - 0.5f;
+        float y = 0.5f - (io->mouse.y - min.y) / size.y;
+        float scale = powf(1.1f, -io->wheel);
         scale = fmaxf(1.0f / before.span_width, fminf(100000.0f / before.span_width, scale));
         CF_V2 anchor;
         bool anchored = pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &anchor);
@@ -452,7 +545,7 @@ static bool navigate_viewport(engine_viewport *viewport, ImVec2 size, bool playi
         if (pointer_world(viewport, (CF_V2){ 0, 0 }, &origin) &&
             pointer_world(
                 viewport,
-                (CF_V2){ 2 * io->MouseDelta.x / size.x, -2 * io->MouseDelta.y / size.y },
+                (CF_V2){ 2 * io->delta.x / size.x, -2 * io->delta.y / size.y },
                 &delta
             )) {
             viewport->center_x -= delta.x - origin.x;
@@ -473,22 +566,21 @@ static void cancel_viewport_pointer(engine_viewport *viewport)
     viewport->pointer_active = false;
 }
 
-static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, bool blocked)
+static void capture_viewport_pointer(engine_viewport *viewport, const viewport_io *io, bool blocked)
 {
-    ImGuiIO *io = ImGui_GetIO();
-    bool popup = ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup);
-    if (blocked || popup || io->MouseWheelH != 0 ||
-        ImGui_IsKeyPressed(ImGuiKey_Escape) || size.x <= 0 || size.y <= 0) {
+    CF_V2 size = io->size;
+    if (blocked || io->popup || io->wheel_h != 0 || io->escape || size.x <= 0 ||
+        size.y <= 0) {
         cancel_viewport_pointer(viewport);
         return;
     }
-    ImVec2 min = viewport->image_min;
+    CF_V2 min = io->min;
     engine_viewport_camera camera;
     engine_viewport_get_camera(viewport, &camera);
     engine_viewport_pointer *pointer = &viewport->pointer;
     pointer->world_per_pixel = camera.span_width / size.x;
-    pointer->ndc_x = 2 * (io->MousePos.x - min.x) / size.x - 1;
-    pointer->ndc_y = 1 - 2 * (io->MousePos.y - min.y) / size.y;
+    pointer->ndc_x = 2 * (io->mouse.x - min.x) / size.x - 1;
+    pointer->ndc_y = 1 - 2 * (io->mouse.y - min.y) / size.y;
     CF_V2 world;
     if (!pointer_world(viewport, (CF_V2){ pointer->ndc_x, pointer->ndc_y }, &world)) {
         cancel_viewport_pointer(viewport);
@@ -496,13 +588,19 @@ static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, boo
     }
     pointer->world_x = world.x;
     pointer->world_y = world.y;
-    pointer->hovered = ImGui_IsItemHovered(0) && io->MousePos.x >= min.x &&
-                       io->MousePos.y >= min.y && io->MousePos.x < min.x + size.x &&
-                       io->MousePos.y < min.y + size.y;
-    pointer->delete_pressed = ImGui_IsWindowFocused(ImGuiFocusedFlags_ChildWindows) &&
-                              !io->WantTextInput &&
+    pointer->hovered = io->hovered && io->mouse.x >= min.x &&
+                       io->mouse.y >= min.y && io->mouse.x < min.x + size.x &&
+                       io->mouse.y < min.y + size.y;
+    pointer->delete_pressed = io->focused && !io->text_input &&
                               app_input_pressed(APP_INPUT_DELETE);
-    if (ImGui_BeginDragDropTarget()) {
+    if (viewport->host) {
+        snprintf(
+            pointer->dropped_prototype,
+            sizeof pointer->dropped_prototype,
+            "%s",
+            viewport->host_input.dropped_prototype
+        );
+    } else if (ImGui_BeginDragDropTarget()) {
         const ImGuiPayload *payload = ImGui_AcceptDragDropPayload("CHIBI_PROTOTYPE", 0);
         if (payload && payload->DataSize > 0 &&
             payload->DataSize <= (int)sizeof pointer->dropped_prototype) {
@@ -511,17 +609,16 @@ static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, boo
         }
         ImGui_EndDragDropTarget();
     }
-    pointer->pressed = pointer->hovered && io->MouseClicked[0];
+    pointer->pressed = pointer->hovered && io->clicked[0];
     if (pointer->pressed) {
         viewport->pointer_active = true;
     }
     if (!viewport->pointer_active) {
         return;
     }
-    pointer->down = io->MouseDown[0];
-    pointer->released = io->MouseReleased[0];
-    pointer->dragging = io->MouseDragMaxDistanceSqr[0] >=
-                        io->MouseDragThreshold * io->MouseDragThreshold;
+    pointer->down = io->down[0];
+    pointer->released = io->released[0];
+    pointer->dragging = io->drag_sq >= io->drag_threshold * io->drag_threshold;
     if (pointer->released) {
         viewport->pointer_active = false;
     } else if (!pointer->down) {
@@ -556,6 +653,34 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
     }
     viewport->pointer = (engine_viewport_pointer){ 0 };
     viewport->image_size = (ImVec2){ 0 };
+    if (viewport->host) {
+        const engine_viewport_host_input *in = &viewport->host_input;
+        int width = (int)in->width, height = (int)in->height;
+        viewport->focused = in->focused && !(controls && controls->editing);
+        if (width <= 0 || height <= 0) {
+            cancel_viewport_pointer(viewport);
+            return ENGINE_VIEWPORT_NONE;
+        }
+        engine_viewport_request_resize(viewport, width, height);
+        if (viewport->stable_resize_frames >= 2 &&
+            engine_viewport_commit_resize(viewport) != 0) {
+            return ENGINE_VIEWPORT_ERROR;
+        }
+        draw_viewport_canvas(viewport);
+        viewport->image_min = (ImVec2){ 0, 0 };
+        viewport->image_size = (ImVec2){ in->width, in->height };
+        viewport_io io = host_io(viewport);
+        bool navigating = navigate_viewport(viewport, &io, controls && controls->playing);
+        capture_viewport_pointer(viewport, &io, navigating);
+        if (viewport->widget_world && controls && controls->session) {
+            render_audio_update(
+                viewport->audio,
+                engine_audio(viewport->widget_runtime),
+                controls->playing
+            );
+        }
+        return ENGINE_VIEWPORT_NONE;
+    }
     if (!editor_ui_pane_visible(EDITOR_UI_PANE_SCENE)) {
         cancel_viewport_pointer(viewport);
         viewport->focused = 0;
@@ -607,8 +732,10 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
     viewport->image_min.x += border;
     viewport->image_min.y += border;
     viewport->image_size = size;
-    bool navigating = navigate_viewport(viewport, size, controls && controls->playing);
-    capture_viewport_pointer(viewport, size, controls_blocked || navigating);
+    viewport_io io = imgui_io(viewport->image_min, size);
+    io.min = (CF_V2){ viewport->image_min.x, viewport->image_min.y };
+    bool navigating = navigate_viewport(viewport, &io, controls && controls->playing);
+    capture_viewport_pointer(viewport, &io, controls_blocked || navigating);
     bool show_controls = controls && (scene_hovered || scene_focused) &&
                          size.x >= 110 && size.y >= 100;
     float controls_alpha = editor_ui_controls_opacity("scene.controls.opacity", show_controls);

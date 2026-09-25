@@ -17,7 +17,16 @@
 char *scene_authoring_scene_json(app_scene_authoring *scene)
 {
     finish_transform_edit(scene, false);
-    game_scene_document *document = game_scene_document_new("Scene");
+    /* The document is named after its file, so saving never renames it. */
+    char name[256] = "Scene";
+    if (scene->scene_path && scene->scene_path[0]) {
+        snprintf(name, sizeof name, "%s", content_basename(scene->scene_path));
+        char *extension = strrchr(name, '.');
+        if (extension && extension != name) {
+            *extension = '\0';
+        }
+    }
+    game_scene_document *document = game_scene_document_new(name);
     if (!document) {
         return NULL;
     }

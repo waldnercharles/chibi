@@ -1,0 +1,481 @@
+#ifndef CHIBI_EDITOR_RMLUI_RML_H
+#define CHIBI_EDITOR_RMLUI_RML_H
+
+/* A C binding for RmlUi 6.3. It is pure pass-through: rml.cpp only converts
+ * types and forwards calls to RmlUi. Keep editor logic, state machines and
+ * policy out of it; they belong in C on top of it.
+ *
+ * Handles are the RmlUi objects themselves, and a document is an rml_element.
+ * Enum values match RmlUi's, which rml.cpp checks. A string RmlUi returns by
+ * value is copied as snprintf does: the call returns its full length and
+ * writes at most size - 1 bytes and a NUL. */
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    typedef struct rml_context rml_context;
+    typedef struct rml_element rml_element;
+    typedef struct rml_listener rml_listener;
+    typedef struct rml_renderer rml_renderer;
+    typedef struct rml_instancer rml_instancer;
+    typedef struct rml_render_manager rml_render_manager;
+    typedef struct rml_geometry rml_geometry;
+    typedef struct rml_string rml_string;
+
+    typedef struct rml_vec2
+    {
+        float x;
+        float y;
+    } rml_vec2;
+
+    typedef struct rml_rect
+    {
+        int x;
+        int y;
+        int width;
+        int height;
+    } rml_rect;
+
+    typedef struct rml_color
+    {
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+        uint8_t a;
+    } rml_color;
+
+    /* Rml::Vertex; the color is premultiplied. */
+    typedef struct rml_vertex
+    {
+        rml_vec2 position;
+        rml_color color;
+        rml_vec2 tex_coord;
+    } rml_vertex;
+
+    typedef struct rml_mesh
+    {
+        const rml_vertex *vertices;
+        size_t vertex_count;
+        const int *indices;
+        size_t index_count;
+    } rml_mesh;
+
+    typedef struct rml_transition
+    {
+        float duration;
+        float delay;
+    } rml_transition;
+
+    /* Input::KeyIdentifier, the keys the editor names. */
+    typedef enum rml_key
+    {
+        RML_KEY_UNKNOWN = 0,
+        RML_KEY_SPACE = 1,
+        RML_KEY_0 = 2,
+        RML_KEY_1 = 3,
+        RML_KEY_2 = 4,
+        RML_KEY_3 = 5,
+        RML_KEY_4 = 6,
+        RML_KEY_5 = 7,
+        RML_KEY_6 = 8,
+        RML_KEY_7 = 9,
+        RML_KEY_8 = 10,
+        RML_KEY_9 = 11,
+        RML_KEY_A = 12,
+        RML_KEY_B = 13,
+        RML_KEY_C = 14,
+        RML_KEY_D = 15,
+        RML_KEY_E = 16,
+        RML_KEY_F = 17,
+        RML_KEY_G = 18,
+        RML_KEY_H = 19,
+        RML_KEY_I = 20,
+        RML_KEY_J = 21,
+        RML_KEY_K = 22,
+        RML_KEY_L = 23,
+        RML_KEY_M = 24,
+        RML_KEY_N = 25,
+        RML_KEY_O = 26,
+        RML_KEY_P = 27,
+        RML_KEY_Q = 28,
+        RML_KEY_R = 29,
+        RML_KEY_S = 30,
+        RML_KEY_T = 31,
+        RML_KEY_U = 32,
+        RML_KEY_V = 33,
+        RML_KEY_W = 34,
+        RML_KEY_X = 35,
+        RML_KEY_Y = 36,
+        RML_KEY_Z = 37,
+        RML_KEY_OEM_PLUS = 39,
+        RML_KEY_OEM_MINUS = 41,
+        RML_KEY_OEM_PERIOD = 42,
+        RML_KEY_NUMPADENTER = 61,
+        RML_KEY_SUBTRACT = 65,
+        RML_KEY_BACK = 69,
+        RML_KEY_TAB = 70,
+        RML_KEY_RETURN = 72,
+        RML_KEY_ESCAPE = 81,
+        RML_KEY_PRIOR = 86,
+        RML_KEY_NEXT = 87,
+        RML_KEY_END = 88,
+        RML_KEY_HOME = 89,
+        RML_KEY_LEFT = 90,
+        RML_KEY_UP = 91,
+        RML_KEY_RIGHT = 92,
+        RML_KEY_DOWN = 93,
+        RML_KEY_INSERT = 98,
+        RML_KEY_DELETE = 99,
+        RML_KEY_F1 = 107,
+        RML_KEY_F2 = 108,
+        RML_KEY_F3 = 109,
+        RML_KEY_F4 = 110,
+        RML_KEY_F5 = 111,
+        RML_KEY_F6 = 112,
+        RML_KEY_F7 = 113,
+        RML_KEY_F8 = 114,
+        RML_KEY_F9 = 115,
+        RML_KEY_F10 = 116,
+        RML_KEY_F11 = 117,
+        RML_KEY_F12 = 118,
+        RML_KEY_LSHIFT = 138,
+        RML_KEY_RSHIFT = 139,
+        RML_KEY_LCONTROL = 140,
+        RML_KEY_RCONTROL = 141,
+        RML_KEY_LMENU = 142,
+        RML_KEY_RMENU = 143,
+        RML_KEY_LMETA = 175,
+        RML_KEY_RMETA = 176,
+    } rml_key;
+
+    /* Input::KeyModifier bits. */
+    typedef enum rml_key_modifier
+    {
+        RML_KM_CTRL = 1 << 0,
+        RML_KM_SHIFT = 1 << 1,
+        RML_KM_ALT = 1 << 2,
+        RML_KM_META = 1 << 3,
+        RML_KM_CAPSLOCK = 1 << 4,
+        RML_KM_NUMLOCK = 1 << 5,
+        RML_KM_SCROLLLOCK = 1 << 6,
+    } rml_key_modifier;
+
+    typedef enum rml_event_id
+    {
+        RML_EVENT_INVALID,
+        RML_EVENT_MOUSEDOWN,
+        RML_EVENT_MOUSESCROLL,
+        RML_EVENT_MOUSEOVER,
+        RML_EVENT_MOUSEOUT,
+        RML_EVENT_FOCUS,
+        RML_EVENT_BLUR,
+        RML_EVENT_KEYDOWN,
+        RML_EVENT_KEYUP,
+        RML_EVENT_TEXTINPUT,
+        RML_EVENT_MOUSEUP,
+        RML_EVENT_CLICK,
+        RML_EVENT_DBLCLICK,
+        RML_EVENT_LOAD,
+        RML_EVENT_UNLOAD,
+        RML_EVENT_SHOW,
+        RML_EVENT_HIDE,
+        RML_EVENT_MOUSEMOVE,
+        RML_EVENT_DRAGMOVE,
+        RML_EVENT_DRAG,
+        RML_EVENT_DRAGSTART,
+        RML_EVENT_DRAGOVER,
+        RML_EVENT_DRAGDROP,
+        RML_EVENT_DRAGOUT,
+        RML_EVENT_DRAGEND,
+        RML_EVENT_HANDLEDRAG,
+        RML_EVENT_RESIZE,
+        RML_EVENT_SCROLL,
+        RML_EVENT_ANIMATIONEND,
+        RML_EVENT_TRANSITIONEND,
+        RML_EVENT_CHANGE,
+        RML_EVENT_SUBMIT,
+        RML_EVENT_TABCHANGE,
+    } rml_event_id;
+
+    typedef enum rml_box_area
+    {
+        RML_BOX_MARGIN,
+        RML_BOX_BORDER,
+        RML_BOX_PADDING,
+        RML_BOX_CONTENT,
+        RML_BOX_AUTO,
+    } rml_box_area;
+
+    typedef enum rml_scroll_alignment
+    {
+        RML_SCROLL_START,
+        RML_SCROLL_CENTER,
+        RML_SCROLL_END,
+        RML_SCROLL_NEAREST,
+        RML_SCROLL_ADAPTIVE,
+    } rml_scroll_alignment;
+
+    typedef enum rml_modal_flag
+    {
+        RML_MODAL_NONE,
+        RML_MODAL_MODAL,
+        RML_MODAL_KEEP,
+    } rml_modal_flag;
+
+    typedef enum rml_focus_flag
+    {
+        RML_FOCUS_NONE,
+        RML_FOCUS_DOCUMENT,
+        RML_FOCUS_KEEP,
+        RML_FOCUS_AUTO,
+    } rml_focus_flag;
+
+    typedef enum rml_scroll_flag
+    {
+        RML_SCROLL_FLAG_NONE,
+        RML_SCROLL_FLAG_AUTO,
+    } rml_scroll_flag;
+
+    typedef enum rml_font_style
+    {
+        RML_FONT_NORMAL,
+        RML_FONT_ITALIC,
+    } rml_font_style;
+
+    typedef enum rml_log_type
+    {
+        RML_LOG_ALWAYS,
+        RML_LOG_ERROR,
+        RML_LOG_ASSERT,
+        RML_LOG_WARNING,
+        RML_LOG_INFO,
+        RML_LOG_DEBUG,
+    } rml_log_type;
+
+    /* ---------- Interfaces the application implements ---------- */
+
+    /* SystemInterface. Set before rml_initialize; it must outlive
+     * rml_shutdown. */
+    typedef struct rml_system_interface
+    {
+        double (*elapsed_time)();
+        void (*set_mouse_cursor)(const char *name);
+        void (*set_clipboard_text)(const char *text);
+        void (*get_clipboard_text)(rml_string *text);
+        bool (*log_message)(rml_log_type type, const char *message);
+    } rml_system_interface;
+
+    /* RenderInterface. Handles are the application's; zero means none. The
+     * transform is 16 floats in column-major order, or NULL for identity. */
+    typedef struct rml_render_interface
+    {
+        uintptr_t (*compile_geometry)(void *user, rml_mesh mesh);
+        void (*render_geometry)(void *user, uintptr_t geometry, rml_vec2 translation, uintptr_t texture);
+        void (*release_geometry)(void *user, uintptr_t geometry);
+        uintptr_t (*load_texture)(void *user, const char *source, int *width, int *height);
+        uintptr_t (*generate_texture)(void *user, const uint8_t *pixels, int width, int height);
+        void (*release_texture)(void *user, uintptr_t texture);
+        void (*enable_scissor_region)(void *user, bool enable);
+        void (*set_scissor_region)(void *user, rml_rect region);
+        void (*set_transform)(void *user, const float *transform);
+    } rml_render_interface;
+
+    /* A custom element's Element overrides. render is required; resize and
+     * release may be NULL. release runs when the element is destroyed. */
+    typedef struct rml_element_hooks
+    {
+        void (*render)(rml_element *element, void *user);
+        void (*resize)(rml_element *element, void *user);
+        void (*release)(void *user);
+    } rml_element_hooks;
+
+    /* Event and the parameters the editor reads. Valid during the callback. */
+    typedef struct rml_event
+    {
+        rml_event_id id;
+        rml_element *target;
+        rml_element *current;
+        rml_element *drag_element;
+        float mouse_x;
+        float mouse_y;
+        int button;
+        rml_key key;
+        unsigned modifiers; /* rml_key_modifier bits */
+        void *native;       /* the Rml::Event */
+    } rml_event;
+
+    typedef void (*rml_event_fn)(void *user, const rml_event *event);
+
+    /* ---------- Core ---------- */
+
+    void rml_set_system_interface(const rml_system_interface *system);
+    bool rml_initialize();
+    void rml_shutdown();
+    /* The data must outlive the face. */
+    bool rml_load_font_face(
+        const uint8_t *data,
+        size_t size,
+        const char *family,
+        rml_font_style style,
+        int weight,
+        bool fallback
+    );
+    void rml_string_set(rml_string *string, const char *text);
+
+    /* The renderer must outlive its contexts and rml_release_render_managers. */
+    rml_renderer *rml_renderer_create(const rml_render_interface *render, void *user);
+    void rml_renderer_destroy(rml_renderer *renderer);
+    void rml_release_render_managers();
+
+    /* ---------- Contexts ---------- */
+
+    rml_context *rml_create_context(const char *name, int width, int height, rml_renderer *renderer);
+    bool rml_remove_context(const char *name);
+    void rml_context_set_dimensions(rml_context *context, int width, int height);
+    void rml_context_set_dp_ratio(rml_context *context, float dp_ratio);
+    float rml_context_dp_ratio(const rml_context *context);
+    bool rml_context_update(rml_context *context);
+    bool rml_context_render(rml_context *context);
+    rml_element *rml_context_load_document(rml_context *context, const char *path);
+    rml_element *rml_context_hover_element(rml_context *context);
+    rml_element *rml_context_focus_element(rml_context *context);
+    void rml_context_activate_theme(rml_context *context, const char *name, bool active);
+    bool rml_context_is_mouse_interacting(const rml_context *context);
+
+    /* Input. Each returns true when RmlUi did not consume it. */
+    bool rml_context_process_mouse_move(rml_context *context, int x, int y, unsigned modifiers);
+    bool rml_context_process_mouse_leave(rml_context *context);
+    bool rml_context_process_mouse_button_down(rml_context *context, int button, unsigned modifiers);
+    bool rml_context_process_mouse_button_up(rml_context *context, int button, unsigned modifiers);
+    bool rml_context_process_mouse_wheel(rml_context *context, rml_vec2 delta, unsigned modifiers);
+    bool rml_context_process_key_down(rml_context *context, rml_key key, unsigned modifiers);
+    bool rml_context_process_key_up(rml_context *context, rml_key key, unsigned modifiers);
+    bool rml_context_process_text_input(rml_context *context, const char *text, size_t size);
+
+    /* ---------- Documents ---------- */
+
+    void rml_document_show(
+        rml_element *document,
+        rml_modal_flag modal,
+        rml_focus_flag focus,
+        rml_scroll_flag scroll
+    );
+    void rml_document_close(rml_element *document);
+    void rml_document_update(rml_element *document);
+
+    /* ---------- Elements ---------- */
+
+    /* Creates an element with the owner document and inserts it before
+     * `before`, or appends it when `before` is NULL. */
+    rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before);
+    /* Removes `child` from its parent and inserts it into `parent`. */
+    void rml_element_move_child(rml_element *parent, rml_element *child, rml_element *before);
+    /* Removes and destroys the child. */
+    void rml_element_remove_child(rml_element *parent, rml_element *child);
+    rml_element *rml_element_parent(const rml_element *element);
+    int rml_element_child_count(const rml_element *element);
+    rml_element *rml_element_child(const rml_element *element, int index);
+    rml_element *rml_element_first_child(const rml_element *element);
+    bool rml_element_contains(const rml_element *element, rml_element *other);
+    rml_context *rml_element_context(const rml_element *element);
+    rml_element *rml_element_by_id(rml_element *element, const char *id);
+    rml_element *rml_element_query_selector(rml_element *element, const char *selector);
+
+    /* Valid while the element keeps its id and tag. */
+    const char *rml_element_id(const rml_element *element);
+    const char *rml_element_tag_name(const rml_element *element);
+
+    void rml_element_set_attribute(rml_element *element, const char *name, const char *value);
+    void rml_element_remove_attribute(rml_element *element, const char *name);
+    bool rml_element_has_attribute(const rml_element *element, const char *name);
+    size_t rml_element_attribute(const rml_element *element, const char *name, char *buffer, size_t size);
+    void rml_element_set_class(rml_element *element, const char *name, bool on);
+    bool rml_element_is_class_set(const rml_element *element, const char *name);
+    void rml_element_set_class_names(rml_element *element, const char *names);
+    bool rml_element_is_pseudo_class_set(const rml_element *element, const char *name);
+
+    bool rml_element_set_property(rml_element *element, const char *name, const char *value);
+    void rml_element_remove_property(rml_element *element, const char *name);
+    rml_color rml_element_color(const rml_element *element);
+    rml_color rml_element_border_top_color(const rml_element *element);
+    /* The computed transitions, `transition: none` having none. */
+    int rml_element_transitions(const rml_element *element, rml_transition *transitions, int max);
+
+    void rml_element_set_inner_rml(rml_element *element, const char *rml);
+    size_t rml_element_inner_rml(const rml_element *element, char *buffer, size_t size);
+
+    /* Form controls. Select and the selection range need an <input>. */
+    size_t rml_element_value(const rml_element *element, char *buffer, size_t size);
+    void rml_element_set_value(rml_element *element, const char *value);
+    void rml_element_select(rml_element *element);
+    void rml_element_set_selection_range(rml_element *element, int start, int end);
+
+    bool rml_element_focus(rml_element *element, bool focus_visible);
+    void rml_element_blur(rml_element *element);
+    void rml_element_scroll_into_view(
+        rml_element *element,
+        rml_scroll_alignment vertical,
+        rml_scroll_alignment horizontal
+    );
+    float rml_element_scroll_top(rml_element *element);
+    void rml_element_set_scroll_top(rml_element *element, float scroll_top);
+    float rml_element_client_height(rml_element *element);
+    float rml_element_offset_width(rml_element *element);
+    float rml_element_offset_height(rml_element *element);
+    rml_vec2 rml_element_absolute_offset(rml_element *element, rml_box_area area);
+    rml_vec2 rml_element_relative_offset(rml_element *element, rml_box_area area);
+    rml_vec2 rml_element_box_size(rml_element *element, rml_box_area area);
+    bool rml_element_is_visible(const rml_element *element, bool include_ancestors);
+
+    /* ---------- Events ---------- */
+
+    rml_listener *rml_listener_create(rml_event_fn fn, void *user);
+    void rml_listener_destroy(rml_listener *listener);
+    void rml_element_add_event_listener(
+        rml_element *element,
+        rml_event_id id,
+        rml_listener *listener,
+        bool capture
+    );
+    void rml_element_remove_event_listener(
+        rml_element *element,
+        rml_event_id id,
+        rml_listener *listener,
+        bool capture
+    );
+    void rml_event_stop_propagation(const rml_event *event);
+
+    /* ---------- Custom elements and geometry ---------- */
+
+    /* An ElementInstancer for elements with these hooks. It must outlive the
+     * elements it creates; hooks must outlive the instancer. */
+    rml_instancer *rml_instancer_create(const rml_element_hooks *hooks);
+    void rml_instancer_destroy(rml_instancer *instancer);
+    void rml_register_element_instancer(const char *tag, rml_instancer *instancer);
+    /* A custom element's user data, passed to its hooks. */
+    void rml_element_set_user(rml_element *element, void *user);
+    void *rml_element_user(const rml_element *element);
+
+    /* NULL when the element is in no context. */
+    rml_render_manager *rml_element_render_manager(const rml_element *element);
+    rml_geometry *rml_geometry_create(rml_render_manager *manager, rml_mesh mesh);
+    void rml_geometry_render(const rml_geometry *geometry, rml_vec2 translation);
+    void rml_geometry_destroy(rml_geometry *geometry);
+
+    /* ---------- Fonts ---------- */
+
+    /* Zero when no face matches. */
+    uintptr_t rml_font_face(const char *family, rml_font_style style, int weight, int size);
+    /* Width in pixels, shaped with no language. */
+    int rml_font_string_width(uintptr_t face, const char *text);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

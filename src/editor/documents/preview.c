@@ -510,6 +510,28 @@ void editor_set_execution_pulse(editor *e, double monotonic_time)
     e->execution_pulse_active = 1;
 }
 
+int editor_log_count(const editor *e)
+{
+    return e->log_count;
+}
+
+editor_log_line editor_log_at(const editor *e, int index, char *origin, size_t origin_size)
+{
+    assert(index >= 0 && index < e->log_count);
+    const ed_log_entry *entry = &e->log[index];
+    snprintf(origin, origin_size, "%s", "Unknown");
+    if (entry->origin && entry->origin->desc) {
+        editor_node_label(entry->origin->desc, origin, origin_size);
+    }
+    return (editor_log_line){ entry->timestamp, entry->step, entry->message };
+}
+
+void editor_clear_log(editor *e)
+{
+    e->log_count = 0;
+    ed_rebuild_log_text(e);
+}
+
 void ed_rebuild_log_text(editor *e)
 {
     if (!e->log_count) {
@@ -624,6 +646,7 @@ void editor_reveal_node(editor *e, node *n)
     if (!e || !n) {
         return;
     }
+    n = graph_inline_owner(e->active_graph, n);
     ed_select_node(e, n, 0);
     e->reveal_target = n;
     editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);

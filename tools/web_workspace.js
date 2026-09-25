@@ -7,6 +7,7 @@
     Module['arguments'] = ['--project-root', root];
     if (scene) Module['arguments'].push('--scene', scene);
     if (query.get('play') === '1') Module['arguments'].push('--play');
+    if (query.has('imgui')) Module['arguments'].push('--imgui');
     const request = (method, path, body) => {
         const xhr = new XMLHttpRequest();
         xhr.open(method, path, false);

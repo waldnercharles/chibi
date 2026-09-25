@@ -88,7 +88,7 @@ void ed_handle_input(editor *e)
         if (mouse_released) {
             ed_pin_view *target = ed_hit_pin(e, mouse);
             if (target && target->n != e->link_pin.n &&
-                ed_connect_with_inline(e, &e->link_pin, target, editor_ui_inline_edge_nodes())) {
+                ed_connect(e, &e->link_pin, target)) {
                 ed_clear_connect_error(e);
                 ed_commit_snapshot(e);
                 e->linking = 0;
@@ -329,7 +329,7 @@ void ed_handle_shortcuts(editor *e)
     if (!ImGui_IsWindowFocused(0)) {
         return;
     }
-    if (ImGui_GetIO()->WantTextInput) {
+    if (editor_ui_captures_keyboard() || ImGui_GetIO()->WantTextInput) {
         return;
     }
     bool modifier = app_input_down(APP_INPUT_COMMAND) ||

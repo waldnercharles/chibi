@@ -9,14 +9,10 @@ graphs:
   nodes:
   - id: 2
     type: Shader Time
-    x: 0.0
-    "y": 0.0
     outputs:
       Value: {id: 1}
   - id: 4
     type: Shader Parameter
-    x: 0.0
-    "y": 145.0
     reference_id: 1
     reference_name: Scroll Speed
     outputs:
@@ -29,8 +25,6 @@ graphs:
         default: {x: 0.05999999865889549, "y": -0.029999999329447746}
   - id: 8
     type: Shader Multiply
-    x: 245.0
-    "y": 40.0
     inputs:
       A: {id: 5, flags: 0, group: 0}
       B:
@@ -48,8 +42,6 @@ graphs:
         default: {x: 0.0, "y": 0.0}
   - id: 10
     type: Shader Parameter
-    x: 245.0
-    "y": 280.0
     reference_id: 2
     reference_name: Tiling
     outputs:
@@ -129,8 +121,6 @@ graphs:
       Alpha: 1.0
   - id: 35
     type: Shader Parameter
-    x: 1315.0
-    "y": 340.0
     reference_name: Intensity
     outputs:
       Value: {id: 34, flags: 0, group: 0, default: 1.600000023841858}

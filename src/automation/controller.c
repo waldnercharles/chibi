@@ -10,6 +10,7 @@
 #include "automation/prototype_edit.h"
 #include "automation/scene_edit.h"
 #include "ecs/ecs.h"
+#include "editor/documents/component_presentation.h"
 #include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
@@ -47,6 +48,7 @@ typedef enum
     ASSET_SYSTEM,
     ASSET_PROTOTYPE,
     ASSET_SCENE,
+    ASSET_EDITOR,
 } asset_loader;
 
 typedef struct
@@ -67,6 +69,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "system", "systems", ASSET_SYSTEM },
     { "prototype", "prototypes", ASSET_PROTOTYPE },
     { "scene", "scenes", ASSET_SCENE },
+    { "editor", "editor", ASSET_EDITOR },
 };
 
 typedef struct
@@ -1322,6 +1325,19 @@ static int load_behavior_family_assets(
     size_t error_size
 );
 
+/* Editor assets hold Studio's component presentation. */
+static bool read_editor_asset(const char *json, char *error, size_t error_size)
+{
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    component_presentation presentation;
+    bool ok = component_presentation_read(json, &registry, &presentation, error, error_size);
+    component_presentation_free(&presentation);
+    return ok;
+}
+
 static void catalog_validate_asset(const char *root, catalog_asset *asset, const char *json)
 {
     const asset_family *family = asset->asset.family;
@@ -1415,6 +1431,12 @@ static void catalog_validate_asset(const char *root, catalog_asset *asset, const
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         } else {
             game_prototype_free(prototype);
+        }
+    } else if (family->loader == ASSET_EDITOR) {
+        char error[256] = { 0 };
+        if (!read_editor_asset(json, error, sizeof error)) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         }
     } else {
         char error[256] = { 0 };
@@ -2527,7 +2549,7 @@ static void inspect_add_sorted_array(
                 }
             } else {
                 const char *const layout_keys[] = {
-                    "x", "y", "placed", "inline_source", "show_advanced",
+                    "x", "y", "placed", "presentation", "show_advanced",
                 };
                 for (int layout = 0;
                      layout < (int)(sizeof layout_keys / sizeof *layout_keys);
@@ -3493,6 +3515,9 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
             game_scene_document_free(scene);
             return text;
         }
+        case ASSET_EDITOR:
+            /* Validated as written; the shared YAML writer canonicalizes it. */
+            return read_editor_asset(json, error, error_size) ? xstrdup(json) : NULL;
     }
     return NULL;
 }
@@ -3711,6 +3736,12 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 acount(prototype->components)
             );
             game_prototype_free(prototype);
+        }
+    } else if (ref.family->loader == ASSET_EDITOR) {
+        char load_error[256] = { 0 };
+        if (!read_editor_asset(json, load_error, sizeof load_error)) {
+            errors = 1;
+            add_load_diagnostic(result->doc, diagnostics, load_error);
         }
     } else {
         char load_error[256] = { 0 };

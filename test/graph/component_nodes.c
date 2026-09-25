@@ -650,10 +650,55 @@ static void struct_authoring()
     puts("component node structs: Make and Break reshape by type; Add and Remove keep their wires");
 }
 
+/* Lowering gives a multi-field Set's outputs to its last setter, a node of its
+ * own; a watch on the authored Value output still reads the written value. */
+static void lowered_watches()
+{
+    fixture f = fixture_new();
+    node *transform = component(&f, &NODE_SetComponent, "GameTransform");
+    assert(component_node_show_field(f.g, transform, "x", true) == 0);
+    assert(component_node_show_field(f.g, transform, "y", true) == 0);
+    set_default(&f, transform, 3, (pin_value){ .type = PIN_F32, .f = 7 });
+    set_default(&f, transform, 4, (pin_value){ .type = PIN_F32, .f = 8 });
+    exec(&f, f.event, 0, transform);
+    assert(graph_set_pin_watch(f.g, transform, 1, 1, 1) == 0);
+    char error[256] = "";
+    behavior_asset *linked = behavior_asset_link_libraries(f.asset, NULL, 0, error, sizeof error);
+    assert(linked);
+    ecs_world *world = ecs_world_new();
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
+    ecs_entity owner = ecs_world_create_entity(world);
+    assert(GAME_GameTransform_add(world, owner, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    pin_value handle = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(owner) };
+    behavior_instance *instance = behavior_instance_create(linked, &handle, NULL, NULL);
+    assert(instance && behavior_instance_bind_service(instance, "ecs.world", world) == 0);
+    flow_error run_error;
+    flow_run *activation = behavior_instance_dispatch(
+        instance,
+        "Run",
+        (flow_inputs){ .values = &handle, .count = 1 },
+        &run_error
+    );
+    assert(activation && flow_run_status(activation) == FLOW_COMPLETED);
+    pin_value value;
+    assert(flow_run_watch_output(activation, transform, 1, &value) == 0);
+    const GameTransform *written = value.ptr;
+    assert(value.type == PIN_STRUCT && written && written->x == 7 && written->y == 8);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(linked);
+    behavior_asset_free(f.asset);
+    ecs_world_free(world);
+    puts("component node watches: a multi-field Set's outputs read through the authored node");
+}
+
 void test_component_nodes()
 {
     project_equivalence();
     runtime_equivalence();
+    lowered_watches();
     optimizer_folds();
     authoring();
     struct_authoring();

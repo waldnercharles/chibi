@@ -231,6 +231,7 @@ bool scene_tabs_path_in_use(
 );
 int scene_tabs_activate(app_scene_authoring *scene, int index);
 int scene_tabs_discard(app_scene_authoring *scene, int index);
+bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab);
 const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
 void scene_tabs_draw(app_scene_authoring *scene);
 int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload);
@@ -325,6 +326,7 @@ int replay_scene_edit(app_scene_authoring *scene, bool redo);
 const ecs_component_desc *resolve_system_component(const char *name, void *);
 int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, const game_prototype *prototype);
 int save_active_document(app_scene_authoring *scene);
+int save_behavior_document(app_scene_authoring *scene);
 int save_all_documents(app_scene_authoring *scene);
 int save_as_active_document(app_scene_authoring *scene);
 int create_scene_asset(app_scene_authoring *scene, const char *name);

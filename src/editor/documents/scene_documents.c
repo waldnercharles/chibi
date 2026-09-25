@@ -813,6 +813,48 @@ int save_as_active_document(app_scene_authoring *scene)
     return result;
 }
 
+/* Saves the behavior open in the graph editor, whichever document is active. */
+int save_behavior_document(app_scene_authoring *scene)
+{
+    if (!scene->definition) {
+        return -1;
+    }
+    if (!game_live_definition_path(scene->definition) &&
+        !behavior_path(scene, scene->definition->name)) {
+        if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+            return save_as_active_document(scene);
+        }
+        snprintf(scene->message, sizeof scene->message, "Behavior requires Save As.");
+        return -1;
+    }
+    int synced = sync_behavior_working(scene);
+    int saved = synced == 0 ? save_behavior_definition(scene, scene->definition, NULL)
+                            : -1;
+    int applied = saved == 0 ? game_live_preview(
+                                   scene->live,
+                                   scene->definition,
+                                   scene->preview_message,
+                                   sizeof scene->preview_message
+                               )
+                             : -1;
+    if (saved == 0 && applied != 0) {
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Saved %s; apply blocked, previous runtime remains active.",
+            scene->definition->name
+        );
+    } else if (saved == 0) {
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Saved %s.",
+            scene->definition->name
+        );
+    }
+    return saved;
+}
+
 int save_active_document(app_scene_authoring *scene)
 {
     if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
@@ -834,40 +876,7 @@ int save_active_document(app_scene_authoring *scene)
         );
     }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
-        if (!scene->definition) {
-            return -1;
-        }
-        if (!game_live_definition_path(scene->definition) &&
-            !behavior_path(scene, scene->definition->name)) {
-            return save_as_active_document(scene);
-        }
-        int synced = sync_behavior_working(scene);
-        int saved = synced == 0
-                      ? save_behavior_definition(scene, scene->definition, NULL)
-                      : -1;
-        int applied = saved == 0 ? game_live_preview(
-                                       scene->live,
-                                       scene->definition,
-                                       scene->preview_message,
-                                       sizeof scene->preview_message
-                                   )
-                                 : -1;
-        if (saved == 0 && applied != 0) {
-            snprintf(
-                scene->message,
-                sizeof scene->message,
-                "Saved %s; apply blocked, previous runtime remains active.",
-                scene->definition->name
-            );
-        } else if (saved == 0) {
-            snprintf(
-                scene->message,
-                sizeof scene->message,
-                "Saved %s.",
-                scene->definition->name
-            );
-        }
-        return saved;
+        return save_behavior_document(scene);
     }
     if (!scene->scene_path) {
         snprintf(scene->message, sizeof scene->message, "Scene requires Save As.");

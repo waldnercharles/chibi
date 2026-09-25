@@ -5,6 +5,72 @@ The September 6 usability review and proposed next refactor are in
 That review includes current screenshots, validation results, and an ImGui/Clay
 assessment. Its recommendations are not yet implemented.
 
+## RmlUi conversion, September 23, 2026
+
+RmlUi is the chosen UI foundation. LichtFeld Studio and
+[Blender](references/blender/README.md) are references for compact desktop
+controls, consistent styling and a prominent viewport. Application
+models, authoring commands and Undo/Redo remain in C. RML owns structure and RCSS
+owns presentation; a pass-through C binding (`src/editor/rmlui/rml.h`) contains the RmlUi API, and the renderer integration and kit are C.
+This supersedes the earlier decision to retain ImGui for all editor UI.
+
+The first conversion replaces File, Edit and View, including their keyboard
+navigation and command state, and adds Quick Open to File. It uses the
+same C commands and stable UI inspection IDs as the existing editor. Docking,
+documents, graph editing, inspectors and their specialized controls still use
+ImGui during the conversion.
+
+The document bar's Back, Forward, Quick Open and Open Documents buttons now use
+the same RmlUi context. Their commands remain in the C workspace. F6 enters the
+toolbar; arrows, Home and End move between enabled buttons, Enter or Space
+activates, and Escape or Tab returns focus to the editor. The existing document
+tabs and document-list popup still use ImGui. The list opens from its retained
+button's current bounds, including when invoked by keyboard.
+
+The editor opens as Studio, the full-window RmlUi editor. Use `--imgui` on
+desktop or `?imgui` in the browser for the ImGui workspace, which still has the
+panels Studio hasn't converted. Its
+direction, component kit and migration progress are in
+[the Studio design](prototypes/studio/DESIGN.md). Studio has Blender-style
+areas, a command palette, the Outliner, Properties and the scene viewport. It
+edits the same C authoring model with one undo step per gesture. The behavior
+graph, Assets and Output are not converted yet. Launch without the flag to use
+the ImGui editor.
+
+Menu labels share a centered 18dp line box. Popups align with their triggers,
+and checkable and ordinary View items share one text column. Pointer presses
+give immediate color feedback; keyboard navigation suppresses hover highlights
+and transitions.
+
+`src/editor/rmlui` owns the RmlUi context, FreeType font rendering, Cute geometry
+backend, menu and toolbar controllers and resources.
+`src/editor/ui/retained_menu.c` adapts the current host input and composes the
+resulting transparent texture into native menu and toolbar windows. ImGui
+supplies those window containers so the converted controls obey existing popup
+focus and modal stacking. Popup regions are excluded from the other surfaces to
+avoid drawing their translucent pixels twice. RmlUi owns layout, hit testing,
+buttons and styling. Its geometry renderer does not depend on ImGui.
+
+Sizes at the C boundary are logical pixels. The RmlUi context and render canvas
+use framebuffer pixels, and RCSS uses `dp` for display scaling. Application
+deactivation destroys retained documents, context and GPU resources before unloading
+the application library. Plain game presentation does not create this UI.
+
+Resources live in `src/editor/rmlui/resources` and currently load at startup from
+the source checkout. Restart the editor after editing RML or RCSS. CMake pins
+RmlUi 6.3 and FreeType 2.14.3; no system installation is required. Subsequent panels
+should consume C state and emit C commands rather than expose engine objects to
+markup. Text entry and IME, custom graph elements, accessibility integration and
+docking need their own working conversions before ImGui can be removed.
+
+`build/test_suite --rmlui-menu` exercises command dispatch, keyboard focus,
+disabled items, design preview, pane state, menu alignment, toolbar navigation, scaling and
+context teardown without a GPU. The `--rmlui-menu-render` smoke test covers GPU
+composition, display scaling, resize and preserving queued scene geometry.
+`make test-render` includes that smoke test. Set `CHIBI_RMLUI_CAPTURE_DIR` to an
+existing directory to save menu and toolbar states, including opening and
+dismissed popups.
+
 ## Current goal, September 9, 2026
 
 The [arena roadmap](arena-roadmap.md) now prioritizes one beautiful playable
@@ -406,6 +472,13 @@ and splittable: an event graph and the scene must be usable side by side. Openin
 or focusing a document must not destroy the user's arrangement.
 
 ## Design references
+
+The [Blender screenshot references](references/blender/README.md) record the
+user's desired level of polish: compact aligned controls, restrained chrome,
+clear pane boundaries and inline node editing. Adapt the useful patterns to
+Chibi while keeping primary actions discoverable and secondary controls
+contextual. The supplied images retain their visible version labels; additional
+sourced Blender screenshots must show version 5.2.
 
 Loaded the user-supplied
 [apple-design skill](https://raw.githubusercontent.com/emilkowalski/skills/refs/heads/main/skills/apple-design/SKILL.md)
@@ -1293,10 +1366,8 @@ and keywords. Node search retains compatible-pin filtering and authored aliases.
 Quick Open keeps keyboard navigation in the result list and selects the best
 result after query changes.
 
-View includes `Inline nodes on edge drop`. When enabled, compatible component
-getters selected from an edge are folded into the destination binding; when
-disabled, the getter remains an ordinary graph node. Dedicated inline source
-controls keep their existing inline behavior.
+Compatible component getters dropped on or selected from an edge fold into the
+destination binding.
 
 Behavior event graphs also expose their typed event outputs in the same input
 binding picker. Choosing an event output stores the event and pin identity on
@@ -1390,10 +1461,30 @@ Assigning a scalar to a whole vector evaluates that scalar once and broadcasts i
 to every component. Shader lowering uses the same broadcast behavior. Inline
 scalar constants remain editable on the node.
 
-An eligible pure source with one data consumer can also be marked inline from its
-node context menu. The action uses the same presentation flag as inline source
-selection and remains unavailable for shared sources, sources with input
-connections, executable nodes, or otherwise invalid source nodes.
+Pure sources are drawn inside their consumer's input by default. A node folds
+when it is pure and enabled; is not a flow node such as a pure function's
+Function Entry, a function call, reroute, or local source; has no setting pins
+besides a component node's chosen Component; has exactly one outgoing wire, a
+data wire into a non-setting input; and each input is wired from a folded node
+or holds a value (a literal, binding, local, or implied Self).
+`graph_node_is_inline` decides this for the canvas, arrangement, extraction,
+copying, and saving. Trees of up to three nodes fold into one chip written in
+Behavior Expression grammar with the typographic operators node titles use,
+such as `elapsed ≥ Self.GameWeapon.cooldown`. Literal nodes read as their
+value, named sources such as shader parameters as their name, and other nodes
+as calls, such as `multiply(time, Glow)`. Nodes with breakpoints or watches, and
+generated expression graphs, keep their boxes.
+Folded nodes remain ordinary nodes and wires, so evaluation, compilation, and
+debugging are unchanged. They have no box, wires, or saved position, and
+arrangement skips them.
+
+Each node stores a presentation: `auto` (the default, omitted from files),
+`inline` (fold whenever legal, including larger trees), or `expanded` (always
+draw the box). **Expand source** sets `expanded` and places the node left of its
+consumer, below any box it would overlap. The node context menu's
+**Inline** folds an eligible node and stores `inline` only when `auto` would keep
+its box. Deleting a node deletes the sources drawn inside it. A wire dropped on
+an input replaces its folded source, as it would a literal.
 
 Node rows use four pixels of extra spacing. Only literal outputs are editable;
 runtime-written outputs do not reserve empty control rows. Entity, aggregate,
@@ -1415,17 +1506,74 @@ instead of as one curve across the columns, so they no longer cut through
 nodes. `arrange_route` recomputes the lanes from node positions alone: it
 re-runs the layered layout with every node pinned in place, so it finds the
 lanes Arrange reserved and still gives hand-placed nodes reasonable lanes.
-Routes are never saved. The canvas rebuilds them when positions, sizes, or
-wires change. Authored reroutes and custom handles take precedence, and wires
-that run backward keep their looping curve.
+Routes are never saved. The canvas rebuilds them when positions, sizes, wires,
+or the wire style change. Authored reroutes and custom handles take
+precedence.
 
-`test_suite --arrange-bench [repeats] [filter]`, run from the repository root,
-arranges and routes every graph under `content/` and `projects/*/content/`. It
-prints layout and routing time, crossings, wire-node hits, overlaps, waypoint
-count, length, cost, and a hash of the placed positions per graph.
-`--graph-arrange` runs the focused scoring, routing, and determinism checks.
+Studio's Graph Wires preference picks one of four styles, shared by Arrange,
+routing, drawing, and scoring through `arrange_route_style`; the ImGui canvas
+draws curved wires:
+
+- Curved: cubics through the lanes. Backward wires loop around their nodes on
+  round corners.
+- Orthogonal: level and vertical runs with rounded corners. Every vertical run
+  gets a track in the gap between two columns (channel routing): tracks are
+  ordered for the fewest crossings, runs that overlap vertically never share
+  one, and a staircase of wires that no order can separate doglegs. Arrange
+  widens a gap to fit its tracks.
+- Straight: line segments between the waypoints, leaving and entering pins
+  level.
+- Subway: the orthogonal tracks with 45 degree diagonals for corners.
+
+`arrange_path` turns a wire's waypoints into cubic pieces in canvas units, so
+every renderer draws, hit-tests, and bounds wires the same way and the score
+measures what is drawn. Studio's `kit_wires` element reaches it through
+`kit_wire_shape` once each wire's ends resolve after layout; changing the style
+arranges automatic nodes again, since gaps depend on it. Wires from one output share a trunk: they share lanes
+through the columns they all skip, turn on one track in each gap, and curved
+and straight fan-outs leave the pin along one short level run. Crossings count
+where drawn wires cross, so a trunk crossed once counts once, and the score's
+ink length counts shared runs once.
+
+Turns are scored too: every change of height costs two, and the score keeps
+the turns on execution wires apart. Editors mark execution wires, and a node
+lining up with its neighbours counts each as three data wires, which
+straightens execution chains without bending data curves into more crossings;
+heavier weights did. When two inputs still pull a node equally it follows the
+one on its higher pin, and a straightening pass then moves each run of lanes to one height
+wherever its column has room, so a long wire changes height once instead of at
+every column. A pin drawn a few units off the height its route planned slides
+the vertical run beside it rather than jogging, and a subway drop barely longer
+than two diagonals becomes one.
+
+A backward (cycle) wire leaves its output rightward, passes its own node on
+the side it heads for, runs left through the lanes its columns reserve,
+passes its target the same way, and enters from the left, so it never
+crosses the nodes between its ends. `graph_layout`, which MCP edits use,
+measures pin rows in the order Studio draws them: execution pins, then data
+outputs, then data inputs, counting only drawn pins.
+
+Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
+other host events such as input and contact, custom events, End, then
+everything else (`graph_layout_band`). Event chains that share nodes form one
+band. `arrange_long_links` reports links whose ends are three or more columns
+apart, or whose path crosses at least a given number of wires, so an editor can
+offer to name the value as a local; it changes nothing.
+
+`test_suite --arrange-bench [repeats] [filter] [style]`, run from the
+repository root, arranges and routes every graph under `content/` and
+`projects/*/content/` in every style, or in the one named. It prints layout and
+routing time, crossings, wire-node hits, node and wire overlaps, waypoint
+count, length, ink, turns, cost, and a hash of the placed positions per graph and
+style, then totals per style. `--graph-arrange` runs the focused scoring,
+routing, and determinism checks, and scores the arena2d behaviors against a
+ceiling per style.
+
 Across the 201 content graphs, arranged from zeroed seeds as `graph_layout`
-does, Arrange previously produced 4672 crossings and 774 wire-node hits; it now
-produces 3382 crossings and none. A Release build lays out and routes all of
-them in 12 ms, previously about 1.05 s for layout alone. The largest graph
-(BasaltCave, 425 nodes) takes 7 ms, previously 211 ms.
+does, Arrange once produced 4672 crossings and 774 wire-node hits. Counted as
+drawn, lanes without trunks produce 3340 crossings and none; shared trunks
+bring curved wires to about 2190 crossings and cut ink by about a third,
+orthogonal wires cross about 1900 times and subway wires about 1730, and
+straightening cut turns from 8944 to 7826. A Release build lays out and routes all of them in about
+6 ms curved and 8 ms orthogonal; the largest graph (BasaltCave, 425 nodes)
+takes about 3 ms.

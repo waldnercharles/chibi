@@ -308,6 +308,7 @@ static bool inline_self(graph *g, node *source, bool preserve_debug, graph_optim
 {
     if (source->desc != &NODE_Self || source->input_count ||
         source->output_count != 1 || !binding_domain(g) || source->disabled ||
+        source->presentation == NODE_PRESENTATION_EXPANDED ||
         graph_node_is_inline(g, source) || (preserve_debug && debug_state(source))) {
         return false;
     }
@@ -329,7 +330,7 @@ static bool inline_self(graph *g, node *source, bool preserve_debug, graph_optim
         if (e->kind != GRAPH_EDGE_DATA || e->from_pin_id != from->id ||
             e->reroute_count || e->custom_handles || !input || output ||
             input->kind != PIN_DATA || input->type == PIN_FLOW ||
-            ((input->flags | from->flags) & PIN_FLAG_SETTING) || f.target->inline_source ||
+            ((input->flags | from->flags) & PIN_FLAG_SETTING) ||
             f.target->disabled || (preserve_debug && debug_state(f.target)) ||
             (e->conversion ? !conversion_matches_pins(from, input, e->conversion)
                            : !pin_types_compatible(from, input))) {
@@ -348,6 +349,7 @@ static bool inline_self(graph *g, node *source, bool preserve_debug, graph_optim
         assert(result == 0);
         (void)result;
     }
+    node **selves = NULL;
     for (int i = 0; i < acount(uses); i++) {
         const fold *use = &uses[i];
         node *self = source;
@@ -373,12 +375,16 @@ static bool inline_self(graph *g, node *source, bool preserve_debug, graph_optim
             (void)typed;
             (void)connected;
         }
-        int inlined = graph_set_node_inline(g, self, true);
-        assert(inlined == 0);
-        (void)inlined;
+        apush(selves, self);
         report->folded_inputs++;
         report->changed_edges++;
     }
+    for (int i = 0; i < acount(selves); i++) {
+        int inlined = graph_inline_node(g, selves[i]);
+        assert(inlined == 0);
+        (void)inlined;
+    }
+    afree(selves);
     afree(uses);
     return true;
 }

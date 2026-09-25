@@ -231,7 +231,9 @@ void test_automation_graph_edit(void)
         "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"first\","
         "\"type\":\"Integer\"},{\"op\":\"add_node\",\"ref\":\"second\","
         "\"type\":\"Integer\"},{\"op\":\"connect\",\"from\":\"first\","
-        "\"from_pin\":\"Value\",\"to\":\"second\",\"to_pin\":\"Value\"}]}",
+        "\"from_pin\":\"Value\",\"to\":\"second\",\"to_pin\":\"Value\"},"
+        "{\"op\":\"set_node\",\"node\":\"first\",\"presentation\":\"expanded\"}"
+        "]}",
         &edited,
         &response
     );

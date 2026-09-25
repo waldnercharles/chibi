@@ -215,22 +215,25 @@ void ed_redo(editor *e)
     free(target);
 }
 
+bool editor_can_undo(const editor *e)
+{
+    return e && acount(e->undo) > 0;
+}
+
+bool editor_can_redo(const editor *e)
+{
+    return e && acount(e->redo) > 0;
+}
+
 void ed_delete_selected(editor *e)
 {
     if (acount(e->selected) == 0 && acount(e->selected_links) == 0) {
         return;
     }
-    uint64_t *selected_ids = NULL;
+    /* Before any removal, which can fold a shared source into a survivor. */
+    uint64_t *ids = NULL;
     for (int i = 0; i < acount(e->selected); i++) {
-        node *n = e->selected[i];
-        apush(selected_ids, n->id);
-        for (int pin = 0; pin < n->input_count; pin++) {
-            node *source = NULL;
-            int source_pin = -1;
-            if (graph_inline_source(e->active_graph, n, pin, &source, &source_pin)) {
-                apush(selected_ids, source->id);
-            }
-        }
+        graph_inline_tree(e->active_graph, e->selected[i], &ids);
     }
     ed_snapshot_before(e);
     for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
@@ -250,8 +253,8 @@ void ed_delete_selected(editor *e)
         }
     }
 
-    for (int i = acount(selected_ids) - 1; i >= 0; i--) {
-        node *target = graph_node_by_id(e->active_graph, selected_ids[i]);
+    for (int i = acount(ids) - 1; i >= 0; i--) {
+        node *target = graph_node_by_id(e->active_graph, ids[i]);
         if (target) {
             int removed = graph_remove_node(e->active_graph, target);
             assert(removed == 0);
@@ -259,7 +262,7 @@ void ed_delete_selected(editor *e)
         }
     }
     ed_reset_node_interaction(e);
-    afree(selected_ids);
+    afree(ids);
 }
 
 void ed_copy_selected(editor *e)
@@ -436,12 +439,22 @@ int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin
     return conversion_for_pins(output, input) != NULL;
 }
 
-int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
+/* Drops the inline tree a new wire replaces, as it would a literal. */
+static void ed_drop_replaced_source(editor *e, const ed_pin_view *output, const ed_pin_view *input, uint64_t replaced)
 {
-    return ed_connect_with_inline(e, a, b, true);
+    node *source = NULL;
+    int source_pin = -1;
+    node *old = graph_node_by_id(e->active_graph, replaced);
+    if (old &&
+        graph_input_source(e->active_graph, input->n, input->index, &source, &source_pin) &&
+        source == output->n && old != output->n) {
+        int removed = graph_remove_node_tree(e->active_graph, old);
+        assert(removed == 0);
+        (void)removed;
+    }
 }
 
-int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b, bool inline_source)
+int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
     ed_clear_connect_error(e);
     const ed_pin_view *output = a->kind == ED_PIN_OUTPUT ? a : b;
@@ -451,6 +464,11 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
     }
     const pin_spec *out_spec = &output->n->output_pins[output->index];
     const pin_spec *in_spec = &input->n->input_pins[input->index];
+    node *replaced = NULL;
+    int replaced_pin = -1;
+    uint64_t replaced_id = ed_inline_source_for(e, input->n, input->index, &replaced, &replaced_pin)
+                             ? replaced->id
+                             : 0;
     const char *out_name = ed_pin_type_name(out_spec);
     const char *in_name = ed_pin_type_name(in_spec);
     if (!ed_connection_specs_valid(out_spec, in_spec, out_spec->kind)) {
@@ -476,7 +494,8 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
                             input->index,
                             conv
                         ) == 0;
-        if (connected && inline_source) {
+        if (connected) {
+            ed_drop_replaced_source(e, output, input, replaced_id);
             (void)ed_simplify_component_getter(
                 e,
                 output->n,
@@ -586,7 +605,8 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
                 return 0;
             }
         }
-        if (inline_source && !reference_input) {
+        ed_drop_replaced_source(e, output, input, replaced_id);
+        if (!reference_input) {
             (void)ed_simplify_component_getter(
                 e,
                 output->n,
@@ -599,6 +619,49 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
     }
     free(reference_before);
     return ok;
+}
+
+/* Replaces a wire with two through n: the wire's source into n's input `in`
+ * and n's output `out` into its target. Both connections are validated
+ * before the wire is removed; a refusal leaves the graph as it was. Returns
+ * whether n was inserted. */
+bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out)
+{
+    graph *g = e->active_graph;
+    const edge *ed = &g->edges[edge_index];
+    node *from = graph_node_by_id(g, ed->from_id),
+         *to = graph_node_by_id(g, ed->to_id);
+    int from_pin = -1, to_pin = -1, from_out = 0, to_out = 0;
+    bool resolved = from && to &&
+                    graph_pin_by_id(from, ed->from_pin_id, &from_out, &from_pin) &&
+                    graph_pin_by_id(to, ed->to_pin_id, &to_out, &to_pin);
+    assert(resolved && from_out && !to_out);
+    (void)resolved;
+    pin_kind kind = ed->kind == GRAPH_EDGE_EXEC ? PIN_EXEC : PIN_DATA;
+    ed_clear_connect_error(e);
+    if (!behavior_asset_mutable(e->asset) ||
+        !ed_connection_specs_valid(&from->output_pins[from_pin], &n->input_pins[in], kind) ||
+        !ed_connection_specs_valid(&n->output_pins[out], &to->input_pins[to_pin], kind)) {
+        return false;
+    }
+    char *before = ed_snapshot(e);
+    uint64_t id = n->id;
+    graph_remove_edge(g, from, from_pin, to, to_pin);
+    ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin, { 0, 0 }, 0 };
+    ed_pin_view b = { n, ED_PIN_INPUT, in, { 0, 0 }, 0 };
+    ed_pin_view c = { n, ED_PIN_OUTPUT, out, { 0, 0 }, 0 };
+    ed_pin_view d = { to, ED_PIN_INPUT, to_pin, { 0, 0 }, 0 };
+    bool inserted = ed_connect(e, &a, &b) && ed_connect(e, &c, &d);
+    if (!inserted) {
+        /* Only a check made while connecting gets here, such as an
+           expression refusing its new input's type. */
+        int restored = ed_adopt_behavior_asset(e, before);
+        assert(restored == 0);
+        (void)restored;
+        ed_select_node(e, graph_node_by_id(e->active_graph, id), false);
+    }
+    free(before);
+    return inserted;
 }
 
 static bool ed_expression_call_stale(const graph *caller, const node *call)

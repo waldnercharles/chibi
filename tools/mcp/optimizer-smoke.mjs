@@ -54,7 +54,10 @@ try {
       assert(setter, "Optimize must retain the Age assignment");
       // Edges name pins as <node>.<pin>; the setter's data output must stay unwired.
       assert(!graph.edges.some(e => e.from === `${setter.id}.Value`));
-      assert(graph.nodes.some(n => n.type === "Self" && n.inline_source));
+      // Each use owns one Self, which the editor draws inside that input.
+      const selves = graph.nodes.filter(n => n.type === "Self");
+      assert(selves.length && selves.every(self =>
+        graph.edges.filter(e => e.from.startsWith(`${self.id}.`)).length === 1));
       const pins = node => Array.isArray(node.inputs) ? node.inputs : Object.values(node.inputs || {});
       assert(graph.nodes.flatMap(pins).filter(p =>
         p?.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);

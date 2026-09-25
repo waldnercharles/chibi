@@ -110,17 +110,14 @@ graphs:
       Exec: {id: 870}
   - id: 916
     type: Self
-    inline_source: true
     outputs:
       Self: {type_name: ecs.entity}
   - id: 918
     type: Self
-    inline_source: true
     outputs:
       Self: {type_name: ecs.entity}
   - id: 922
     type: Get_GameTransform
-    inline_source: true
     outputs:
       Value: {flags: 0}
   edges:

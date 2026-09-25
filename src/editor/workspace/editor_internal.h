@@ -301,7 +301,7 @@ struct editor
 
 /* Flow pacing. */
 #define ED_FLOW_DOT_SPACING 64.0f
-#define ED_FLOW_CURVE_SAMPLES 32
+#define ED_PIECE_SAMPLES 16
 
 /* Flow timing. */
 #define ED_FLOW_ATTACK_HOLD 0.3
@@ -387,25 +387,17 @@ ed_node_view *ed_hit_node(editor *e, ImVec2 p);
 ImVec4 ed_lerp4(ImVec4 a, ImVec4 b, float t);
 ImVec2 ed_bezier(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float t);
 float ed_distance(ImVec2 a, ImVec2 b);
-float ed_curve_length(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3);
-ImVec2 ed_curve_at_distance(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float distance, float length);
 float ed_flow_heat(double age, float *thickness, ImVec4 *color, ImVec4 base, int exec);
 int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec2 *p2, ImVec2 *p3);
 int ed_pin_row(const editor *e, const node *n, int kind, int index);
 void ed_route_wires(editor *e);
-int ed_route_count(const editor *e, const edge *ed);
+/* Clears `pieces` and fills it with the wire as drawn, in screen space.
+ * Returns the piece count, 0 for a wire that is not drawn. */
+int ed_link_pieces(const editor *e, const edge *ed, arrange_piece **pieces);
+ImVec2 ed_im(arrange_point p);
+ImVec2 ed_piece_at(const arrange_piece *piece, float t);
+int ed_piece_samples(const arrange_piece *piece);
 int ed_hit_handle(const editor *e, ImVec2 mouse, int *edge_index, int *side);
-void ed_route_segment(
-    const editor *e,
-    const edge *ed,
-    int segment,
-    ImVec2 start,
-    ImVec2 end,
-    ImVec2 *p0,
-    ImVec2 *p1,
-    ImVec2 *p2,
-    ImVec2 *p3
-);
 int ed_hit_link_segment(const editor *e, ImVec2 p, ed_link_ref *out, int *route_segment);
 int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out);
 void ed_update_hover(editor *e, ImVec2 mouse);
@@ -427,6 +419,7 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index);
 bool ed_binding_scope_available(const editor *e);
 bool ed_source_scope_available(const editor *e);
 const char *ed_binding_label(const editor *e, const pin_binding *binding, char *buf, size_t cap);
+const struct ecs_component_desc *ed_component_by_key(const char *key);
 bool ed_inline_source_for(const editor *e, const node *target, int index, node **source, int *source_pin);
 int ed_expand_inline_source(editor *e, node *target, int index);
 int ed_clear_input_source(editor *e, node *target, int index);
@@ -479,7 +472,7 @@ void ed_update_drag(editor *e, ImVec2 mouse);
 void ed_update_handle_drag(editor *e, ImVec2 mouse);
 int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind);
 int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b);
-int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b, bool inline_source);
+bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out);
 bool ed_simplify_component_getter(
     editor *e,
     node *source,
@@ -493,9 +486,20 @@ void ed_arrange_in_transaction(editor *e);
 void ed_refresh_stale_behavior_expressions(editor *e);
 void ed_open_context_menu(editor *e, ImVec2 mouse);
 void ed_request_extraction(editor *e);
+/* Replaces the selection with a call to a new function named e->extract_name;
+   returns why it could not, or NULL. */
+const char *ed_extract_selection(editor *e);
+/* Replaces a pure numeric selection with one Behavior Expression call. */
+node *ed_convert_behavior_expression_selection(
+    editor *e,
+    node *const *selection,
+    int count,
+    behavior_expression_error *error
+);
 void ed_draw_extract_popup(editor *e);
 void ed_handle_popups(editor *e);
 const flow_run *ed_display_run(const editor *e);
+void ed_refresh_values(editor *e);
 void ed_compile(editor *e);
 void ed_draw_debug_menu(editor *e);
 void ed_rebuild_log_text(editor *e);

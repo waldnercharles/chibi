@@ -24,8 +24,6 @@ graphs:
       Value: {flags: 0, group: 0, default: 0.23999999463558197}
   - id: 657
     type: Shader Parameter
-    x: 520.0
-    "y": 0.0
     reference_id: 2
     reference_name: Active Size
     outputs:
@@ -40,24 +38,18 @@ graphs:
       Value: {flags: 0, group: 0, default: 0.009999999776482582}
   - id: 661
     type: Shader Parameter
-    x: 1040.0
-    "y": 0.0
     reference_id: 4
     reference_name: Idle Glow
     outputs:
       Value: {flags: 0, group: 0, default: 0.02199999988079071}
   - id: 663
     type: Shader Parameter
-    x: 1300.0
-    "y": 0.0
     reference_id: 5
     reference_name: Reaction Gain
     outputs:
       Value: {flags: 0, group: 0, default: 0.4000000059604645}
   - id: 665
     type: Shader Parameter
-    x: 1560.0
-    "y": 0.0
     reference_id: 6
     reference_name: Beat Amount
     outputs:
@@ -115,7 +107,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
     outputs:
       Strength: {type: float, type_name: null}
-  - {id: 679, type: Shader Beat Pulse, x: 1040.0, "y": 240.0}
+  - {id: 679, type: Shader Beat Pulse}
   - id: 681
     type: Shader Mix
     x: 1300.0
@@ -128,8 +120,6 @@ graphs:
       Value: {flags: 0, group: 0}
   - id: 686
     type: Shader Multiply
-    x: 1560.0
-    "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
       B: {flags: 0, group: 0}
@@ -217,8 +207,6 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 718
     type: Shader Multiply
-    x: 1560.0
-    "y": 480.0
     inputs:
       A:
         type: struct

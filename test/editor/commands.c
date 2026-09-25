@@ -30,6 +30,9 @@ static pin_spec g_editor_int_inputs[] = {
     { "Value", PIN_I32, "int", PIN_DATA },
     { "Condition", PIN_BOOL, "bool", PIN_DATA },
 };
+static pin_spec g_editor_name_inputs[] = {
+    { "Name", PIN_NAME, "name", PIN_DATA },
+};
 static pin_spec g_editor_single_value_inputs[] = {
     { "Integer", PIN_I32, "int", PIN_DATA },
     { "UInt", PIN_U32, "uint", PIN_DATA },
@@ -57,6 +60,20 @@ static node_desc g_editor_double_sink_desc = {
 static node_desc g_editor_float_desc = {
     .name = "editor_float_source",
     .output_count = 1,
+    .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_float_relay_desc = {
+    .name = "editor_float_relay",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = g_editor_float_inputs,
+    .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_name_relay_desc = {
+    .name = "editor_name_relay",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = g_editor_name_inputs,
     .outputs = g_editor_float_outputs,
 };
 static node_desc g_editor_vector_desc = {
@@ -233,6 +250,36 @@ static void check_linked_preview()
     behavior_asset_free(library);
 }
 
+/* A node dropped on a wire joins it in one step, and one that can't take
+   the wire's value leaves the wire as it was. */
+static void check_insert_on_wire()
+{
+    behavior_asset *asset = behavior_asset_new("Insert on wire");
+    editor *e = editor_new(asset);
+    graph *g = asset->graph;
+    node *source = graph_add_node(g, &g_editor_float_desc);
+    node *sink = graph_add_node(g, &g_editor_float_sink_desc);
+    node *relay = graph_add_node(g, &g_editor_float_relay_desc);
+    node *named = graph_add_node(g, &g_editor_name_relay_desc);
+    assert(e && graph_connect_data(g, source, 0, sink, 0) == 0);
+    node *into_sink = NULL, *into_relay = NULL;
+    int pin = -1;
+    bool refused = !ed_insert_on_wire(e, 0, named, 0, 0);
+    test_check(
+        refused && acount(g->edges) == 1 &&
+            graph_input_source(g, sink, 0, &into_sink, &pin) && into_sink == source,
+        "a node that can't take a wire's value leaves the wire unchanged"
+    );
+    bool inserted = ed_insert_on_wire(e, 0, relay, 0, 0);
+    test_check(
+        inserted && acount(g->edges) == 2 &&
+            graph_input_source(g, relay, 0, &into_relay, &pin) && into_relay == source &&
+            graph_input_source(g, sink, 0, &into_sink, &pin) && into_sink == relay,
+        "inserting a node on a wire routes the wire through it"
+    );
+    editor_free(e);
+}
+
 static void check_inline_node_layout()
 {
     behavior_asset *asset = behavior_asset_new("Inline node layout");
@@ -253,18 +300,20 @@ static void check_inline_node_layout()
     bool scalar_compact = false;
     if (e && source && target) {
         assert(graph_connect_data(asset->graph, source, 0, target, 0) == 0);
-        assert(graph_set_node_inline(asset->graph, source, true) == 0);
+        assert(graph_set_node_presentation(asset->graph, source, NODE_PRESENTATION_INLINE) == 0);
         vector_compact = ed_pin_rows(e, asset->graph, target, ED_PIN_INPUT, 0) == 1;
     }
     if (e && constructor && constructor_target) {
         assert(graph_connect_data(asset->graph, constructor, 0, constructor_target, 0) == 0);
-        assert(graph_set_node_inline(asset->graph, constructor, true) == 0);
+        assert(graph_set_node_presentation(asset->graph, constructor, NODE_PRESENTATION_INLINE) == 0);
         constructor_rows = ed_pin_rows(e, asset->graph, constructor_target, ED_PIN_INPUT, 0) >
                            1;
     }
     if (e && scalar_source && scalar_target) {
         assert(graph_connect_data(asset->graph, scalar_source, 0, scalar_target, 0) == 0);
-        assert(graph_set_node_inline(asset->graph, scalar_source, true) == 0);
+        assert(
+            graph_set_node_presentation(asset->graph, scalar_source, NODE_PRESENTATION_INLINE) == 0
+        );
         scalar_compact = ed_pin_rows(e, asset->graph, scalar_target, ED_PIN_INPUT, 0) == 1;
     }
     test_check(vector_compact, "vector-valued inline sources share the target label row");
@@ -275,6 +324,46 @@ static void check_inline_node_layout()
     } else {
         behavior_asset_free(asset);
     }
+}
+
+/* Wires shared into two new Adds; the first also folds its own Real. */
+static node *add_shared_consumers(graph *g, node *shared, node **second)
+{
+    node *folded = graph_add_node(g, registry_node_by_name("Real"));
+    node *first = graph_add_node(g, registry_node_by_name("Add"));
+    *second = graph_add_node(g, registry_node_by_name("Add"));
+    assert(graph_connect_data(g, shared, 0, first, 0) == 0);
+    assert(graph_connect_data(g, shared, 0, *second, 0) == 0);
+    assert(graph_connect_data(g, folded, 0, first, 1) == 0);
+    return first;
+}
+
+static void check_delete_shared_source()
+{
+    behavior_asset *asset = behavior_asset_new("Delete shared source");
+    graph *g = asset->graph;
+    node *shared = graph_add_node(g, registry_node_by_name("Real"));
+    editor *e = editor_new(asset);
+    node *second = NULL;
+    node *first = add_shared_consumers(g, shared, &second);
+    ed_select_node(e, first, false);
+    ed_select_node(e, second, true);
+    ed_delete_selected(e);
+    test_check(acount(g->nodes) == 1 && g->nodes[0] == shared, "deleting consumers keeps the source they shared");
+
+    first = add_shared_consumers(g, shared, &second);
+    ed_link_ref link = { shared->id,
+                         shared->output_pins[0].id,
+                         second->id,
+                         second->input_pins[0].id };
+    ed_select_node(e, first, false);
+    ed_add_selected_link(e, &link);
+    ed_delete_selected(e);
+    test_check(
+        acount(g->nodes) == 2 && g->nodes[0] == shared && g->nodes[1] == second,
+        "deleting a consumer and a wire keeps the source they shared"
+    );
+    editor_free(e);
 }
 
 static void check_value_layout()
@@ -762,75 +851,30 @@ static void check_typed_wire_search()
     }
     test_check(connected, "selecting Get Dash from a numeric input binds a compatible field output");
 
-    bool retained = false;
-    bool inline_edge_nodes = editor_ui_inline_edge_nodes();
-    editor_ui_set_inline_edge_nodes(false);
-    bool direct_retained = false;
-    behavior_asset *direct_asset = behavior_asset_new("Direct typed wire drag");
+    behavior_asset *direct_asset = behavior_asset_new("Direct wire replaces inline source");
     editor *direct_editor = editor_new(direct_asset);
-    node *direct_source = direct_asset ? graph_add_node(direct_asset->graph, dash)
-                                       : NULL;
-    node *direct_target = direct_asset
-                            ? graph_add_node(direct_asset->graph, &g_editor_float_sink_desc)
-                            : NULL;
-    uint64_t direct_source_id = direct_source ? direct_source->id : 0;
-    if (direct_editor && direct_source && direct_target &&
-        ed_expose_spawned_output_fields(direct_editor, direct_source) == 0) {
-        int speed_pin = -1;
-        for (int p = 0; p < direct_source->output_count; p++) {
-            if (direct_source->output_pins[p].name &&
-                !strcmp(direct_source->output_pins[p].name, "speed")) {
-                speed_pin = p;
-                break;
-            }
-        }
-        direct_retained = speed_pin >= 0 && direct_asset->graph->dataflow == false &&
-                          direct_pin_drag(
-                              direct_editor,
-                              (ed_pin_view){ direct_source,
-                                             ED_PIN_OUTPUT,
-                                             speed_pin,
-                                             { 80, 100 } },
-                              (ed_pin_view){ direct_target, ED_PIN_INPUT, 0, { 180, 100 } }
-                          );
-        node *linked_source = NULL;
-        int linked_pin = -1;
-        direct_retained = direct_retained &&
-                          graph_input_source(direct_asset->graph, direct_target, 0, &linked_source, &linked_pin) &&
-                          linked_source && linked_source->id == direct_source_id &&
-                          !graph_node_is_inline(direct_asset->graph, linked_source) &&
-                          linked_pin == speed_pin;
-    }
-    test_check(direct_retained, "direct pin drag keeps the selected source node");
+    graph *direct = direct_asset->graph;
+    node *old_source = graph_add_node(direct, registry_node_by_name("Real"));
+    node *new_source = graph_add_node(direct, registry_node_by_name("Real"));
+    node *direct_target = graph_add_node(direct, &g_editor_float_sink_desc);
+    assert(direct_editor && old_source && new_source && direct_target);
+    assert(graph_connect(direct, old_source, 0, direct_target, 0) == 0);
+    uint64_t old_source_id = old_source->id;
+    bool replaced = graph_node_is_inline(direct, old_source) &&
+                    direct_pin_drag(
+                        direct_editor,
+                        (ed_pin_view){ new_source, ED_PIN_OUTPUT, 0, { 80, 100 } },
+                        (ed_pin_view){ direct_target, ED_PIN_INPUT, 0, { 180, 100 } }
+                    );
+    node *linked_source = NULL;
+    int linked_pin = -1;
+    test_check(
+        replaced && !graph_node_by_id(direct, old_source_id) &&
+            graph_inline_source(direct, direct_target, 0, &linked_source, &linked_pin) &&
+            linked_source == new_source,
+        "a wire dropped on an input replaces its inline source"
+    );
     editor_free(direct_editor);
-    behavior_asset *retained_asset = behavior_asset_new("Retained typed wire search");
-    editor *retained_editor = editor_new(retained_asset);
-    node *retained_target = retained_asset
-                              ? graph_add_node(retained_asset->graph, &g_editor_float_sink_desc)
-                              : NULL;
-    if (retained_editor && retained_target && dash) {
-        retained_asset->graph->dataflow = false;
-        retained_editor->spawn_link_pending = true;
-        retained_editor->spawn_link_pin = (ed_pin_view){ retained_target,
-                                                         ED_PIN_INPUT,
-                                                         0,
-                                                         { 0, 0 } };
-        search_popup_insert(retained_editor, "Get Dash");
-        node *source = NULL;
-        int source_pin = -1;
-        retained = graph_input_source(retained_asset->graph, retained_target, 0, &source, &source_pin) &&
-                   source &&
-                   component_node_getter(retained_asset->graph, source) == dash &&
-                   source->desc == &NODE_GetComponent &&
-                   !graph_node_is_inline(retained_asset->graph, source) &&
-                   source_pin >= 0 && source_pin < source->output_count &&
-                   source->output_pins[source_pin].type == PIN_F32 &&
-                   source->output_pins[source_pin].name &&
-                   !strcmp(source->output_pins[source_pin].name, "speed");
-    }
-    test_check(retained, "edge-drop setting keeps the selected source node");
-    editor_free(retained_editor);
-    editor_ui_set_inline_edge_nodes(inline_edge_nodes);
 
     behavior_asset *system_asset = behavior_asset_new("System typed wire search");
     editor *system_editor = editor_new(system_asset);
@@ -1060,6 +1104,7 @@ void run_editor_command_checks(void)
     check_typed_wire_search();
     check_binding_target_stability();
     check_event_payload_repair();
+    check_insert_on_wire();
     char save_path[512];
     if (make_editor_save_path(save_path, sizeof save_path) != 0) {
         test_check(0, "a temporary path can be generated for editor persistence");
@@ -1285,6 +1330,7 @@ void run_editor_command_checks(void)
     remove(save_path);
     editor_free(e);
     check_inline_node_layout();
+    check_delete_shared_source();
     check_value_layout();
     check_context_layout();
     check_bound_scalar_layout();

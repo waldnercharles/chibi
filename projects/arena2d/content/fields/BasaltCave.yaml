@@ -14,7 +14,7 @@ graphs:
   nodes:
   - {id: 5, type: Field Output, x: 21390.0, "y": 683.0}
   - {id: 8, type: Field X, x: 0.0, "y": 6000.75}
-  - {id: 10, type: Field Y, x: 0.0, "y": 10483.0}
+  - {id: 10, type: Field Y}
   - id: 12
     type: Field Parameter
     x: 15566.0
@@ -22,8 +22,6 @@ graphs:
     inputs: {Name: Radius}
   - id: 15
     type: Field Parameter
-    x: 18910.0
-    "y": 0.0
     inputs: {Name: Roughness}
   - id: 18
     type: Field Parameter
@@ -32,8 +30,6 @@ graphs:
     inputs: {Name: ChamberSpacing}
   - id: 21
     type: Field Parameter
-    x: 0.0
-    "y": 10690.0
     inputs: {Name: OriginX}
   - {id: 24, type: Field Add, x: 310.0, "y": 10682.0}
   - {id: 28, type: Field Negate, x: 310.0, "y": 10515.0}
@@ -1125,8 +1121,6 @@ graphs:
   - {id: 1579, type: Field Min, x: 19530.0, "y": 552.0}
   - id: 1583
     type: Field Multiply
-    x: 19220.0
-    "y": 168.0
     inputs: {B: 0.4000000059604645}
   - id: 1587
     type: Field Divide

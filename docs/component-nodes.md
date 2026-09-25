@@ -46,7 +46,7 @@ Field setters are chained in field order:
 - Each field input keeps its pin ID on the setter that writes it.
 - An Entity wire fans out to every Target.
 
-A Set with one field is exactly the old field setter. With several fields, the setters after the first have new node IDs. Breakpoints and incoming wires map to the first setter, and output watches belong to the last, so the debugger doesn't show a multi-field Set's output watches.
+A Set with one field is exactly the old field setter. With several fields, the setters after the first have new node IDs. Breakpoints and incoming wires map to the first setter, and outputs belong to the last. Watches find a pin by its ID when its node moved, so a multi-field Set's output watches still show.
 
 Lowering runs where authored assets become runnable:
 - At the end of `behavior_asset_link_libraries`. Game loads, scene apply and preview, MCP previews and the editor's compile command all go through it.

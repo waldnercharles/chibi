@@ -99,6 +99,9 @@ domain:
 - Prototype or prefab work: use `describeComponents` when field details are
   unclear, then use `buildPrototype`.
 - Scene or level composition: use `buildScene`.
+- Studio's component tabs, prototype icons, and number ranges and units:
+  edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
+  call `validateAsset`.
 
 Call `validateAsset` after every published change. Use `previewShader`,
 `previewScene`, `runScenario`, `captureRuntimeSnapshot`, or

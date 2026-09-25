@@ -36,4 +36,22 @@ const before = requests.length;
 assert.equal(Module.chibiSaveAsset('/content/scenes/Arena3D.yaml', '{}'), -1);
 assert.equal(requests.length, before);
 assert.equal(errors.length, 1);
+const launchSource = readFileSync(new URL('../tools/web_launch.js', import.meta.url), 'utf8');
+for (const search of ['', '?scene=scenes/Sandbox.json&imgui']) {
+  const location = { search };
+  const local = {};
+  vm.runInNewContext(source, { Module: local, URLSearchParams, location });
+  vm.runInNewContext(launchSource, { Module: local, URLSearchParams, window: { location } });
+  assert.equal(local.arguments.includes('--imgui'), search !== '');
+  assert.equal(local.arguments[0], '--project-root');
+  assert.equal(local.arguments[1], '/workspace/');
+  if (search) assert.equal(local.arguments[local.arguments.indexOf('--scene') + 1], 'scenes/Sandbox.json');
+
+  const packaged = { arguments: ['--frames', '3'] };
+  vm.runInNewContext(launchSource, { Module: packaged, URLSearchParams, window: { location } });
+  assert.equal(packaged.arguments.includes('--imgui'), search !== '');
+  assert.equal(packaged.arguments[0], '--frames');
+  assert.equal(packaged.arguments[1], '3');
+}
 console.log('PASS: browser opens and saves the selected project without mixing packaged content');
+console.log('PASS: local and packaged launches opt into the ImGui editor and preserve launch arguments');

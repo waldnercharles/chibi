@@ -48,9 +48,13 @@ void test_dash();
 void test_encounter();
 void test_system_arithmetic();
 void test_asset_index();
+void test_component_presentation();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
+bool test_rmlui_menu();
+bool test_rmlui_kit();
+int rmlui_render_run(const char *program);
 
 static int fails;
 
@@ -78,6 +82,7 @@ TEST_CASE(all_checks)
     run_graph_model_checks();
     run_graph_document_checks();
     run_graph_arrange_checks();
+    run_graph_inline_checks();
     run_runtime_execution_checks();
     test_compiled_behaviors();
     test_encounter_backend_parity();
@@ -158,8 +163,11 @@ TEST_CASE(all_checks)
     run_ecs_migration_checks();
     run_scene_checks();
     run_editor_command_checks();
+    test_component_presentation();
     test_editor_checkpoint();
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
+    test_check(test_rmlui_menu(), "RmlUi menu commands, focus, layout, and lifecycle");
+    test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_ui_scroll_smoothing(), "smooth scrolling is refresh-rate independent");
     test_check(test_gameplay_keyboard(), "gameplay keyboard navigation and text editing capture");
 
@@ -185,8 +193,17 @@ int main(int argc, char **argv)
         run_graph_arrange_checks();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--graph-inline")) {
+        registry_validate();
+        run_graph_inline_checks();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {
-        return bench_graph_arrange(argc > 2 ? atoi(argv[2]) : 1, argc > 3 ? argv[3] : NULL);
+        return bench_graph_arrange(
+            argc > 2 ? atoi(argv[2]) : 1,
+            argc > 3 && *argv[3] ? argv[3] : NULL,
+            argc > 4 ? argv[4] : NULL
+        );
     }
     if (argc > 1 && !strcmp(argv[1], "--component-nodes")) {
         registry_validate();
@@ -713,6 +730,15 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--ui-keyboard") == 0) {
         return test_ui_keyboard() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-menu") == 0) {
+        return test_rmlui_menu() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
+        return test_rmlui_kit() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-menu-render") == 0) {
+        return rmlui_render_run(program_name);
     }
     if (argc > 1 && strcmp(argv[1], "--ui-scroll") == 0) {
         return test_ui_scroll_smoothing() ? 0 : 1;

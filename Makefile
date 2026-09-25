@@ -37,7 +37,7 @@ help:
 		'make help           Show this target summary' \
 		'make build          Build the sanitizer-enabled Debug profile' \
 		'make build-debug    Build the plain Debug profile' \
-		'make run            Run the optimized editor' \
+		'make run            Run the optimized editor on PROJECT=projects/<name> [SCENE=scenes/<file>]' \
 		'make debug          Run the plain Debug editor' \
 		'make debug-san      Run Debug with ASan+UBSan; use SANITIZERS=thread for TSan' \
 		'make play           Run the optimized Arena2D game' \
@@ -55,7 +55,7 @@ help:
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build the browser application' \
-		'make web-serve      Serve the browser application locally' \
+		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
 		'make format         Rewrite project C sources with clang-format' \
 		'make check-format   Check project C source formatting' \
 		'make clean          Remove the default build directories'
@@ -85,24 +85,28 @@ mcp: mcp-controller
 mcp-setup:
 	node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
+# PROJECT picks the project a run or web-serve opens; SCENE, when set, opens a
+# scene other than the project's start scene.
 PROJECT ?= projects/arena2d
-SCENE ?= scenes/Sandbox.yaml
+SCENE ?=
+SCENE_ARG = $(if $(SCENE),--scene "$(SCENE)")
+WEB_PORT ?= 8099
 
 run:
 	$(MAKE) build-release BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 debug:
 	$(MAKE) build-debug BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 debug-san:
 	$(MAKE) build BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 play:
 	$(MAKE) build-release BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 # User-facing release builds use the compiler's full Release optimization.
 build-release:
@@ -116,7 +120,7 @@ build-tracy:
 	cmake --build "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl --parallel $(JOBS)
 
 run-tracy: build-tracy
-	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 build-tracy-mcp:
 	sh tools/configure_native.sh "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
@@ -140,7 +144,7 @@ web:
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
 
 web-serve: web
-	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project . --port 8099
+	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
 
 format:
 	sh tools/clang-format.sh
@@ -192,4 +196,4 @@ dev:
 	sh tools/configure_native.sh "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)

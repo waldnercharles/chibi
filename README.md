@@ -44,7 +44,10 @@ Neon Swarm is the default project for native launches, editor profiles, MCP,
 and `make web-serve`. Its manifest selects `scenes/Sandbox.yaml`.
 Use `make debug PROJECT=.` for the Arena3D reference, or
 `make debug PROJECT=. SCENE=scenes/OrbitPinball.yaml` for pinball.
-Add `ARGS=--play` to launch into Play.
+Add `ARGS=--play` to launch into Play. `PROJECT` works the same for
+`make web-serve`, and `SCENE` is optional everywhere: without it a project
+opens at its manifest's start scene. In the browser, add
+`?scene=scenes/<file>.yaml` to the editor URL to open another scene.
 
 Run `make help` for the complete target list and the purpose of each target.
 

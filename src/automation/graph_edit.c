@@ -1072,6 +1072,16 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             }
             return -1;
         }
+        /* A named output is read by name, like the consumers it already has. */
+        const graph_local *local = disconnect
+                                     ? NULL
+                                     : graph_output_local(ctx->graph, from, from_index);
+        pin_binding binding = { .kind = PIN_BINDING_LOCAL,
+                                .local_id = local ? local->id : 0 };
+        if (local && graph_set_pin_binding(ctx->graph, to, 0, to_index, &binding)) {
+            set_error(ctx, "could not read named value '%s'", local->name);
+            return -1;
+        }
         if (refresh_expression_connection(ctx, from, to) != 0) {
             return -1;
         }

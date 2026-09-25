@@ -12,8 +12,6 @@ typedef struct
     size_t offset;
     size_t size; /* byte size of the field (needed to copy PIN_STRUCT fields) */
     const char *type_name; /* C spelling, or a nominal handle type such as "ecs.entity". */
-    double min, max;  /* editor range; equal means unbounded */
-    const char *unit; /* optional display unit */
 } type_field;
 
 typedef struct

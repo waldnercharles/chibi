@@ -1,10 +1,13 @@
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/asset_index.h"
 #include "support/array.h"
+#include "support/text_file.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
     "Scene",  "Behavior", "Outliner",   "Properties",
@@ -41,44 +44,35 @@ const char *studio_scene_title(const app_scene_authoring *scene, char *out, size
     return out;
 }
 
-/* A prototype's icon follows from what it is made of, never from its name: the
-   first icon in this order that one of its components names with NODE_ICON
-   decides. */
+/* Kit icons by component_icon. */
+static const uint32_t PROTOTYPE_ICONS[COMPONENT_ICON_COUNT] = {
+    KIT_ICON_CAMERA,     KIT_ICON_SYSTEM,  KIT_ICON_LIGHT,   KIT_ICON_EMITTER,
+    KIT_ICON_WATER,      KIT_ICON_TERRAIN, KIT_ICON_GAMEPAD, KIT_ICON_KEYBOARD,
+    KIT_ICON_PROJECTILE, KIT_ICON_HEALTH,  KIT_ICON_DIAMOND, KIT_ICON_SHAPE,
+};
+
+/* A prototype's icon follows from what it is made of, never from its name: of
+   the icons its components name in editor/Components.yaml, the first in
+   component_icon order decides. */
 uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 {
-    static const struct
-    {
-        const char *name;
-        uint32_t icon;
-    } icons[] = {
-        { "camera", KIT_ICON_CAMERA },
-        { "system", KIT_ICON_SYSTEM },
-        { "light", KIT_ICON_LIGHT },
-        { "emitter", KIT_ICON_EMITTER },
-        { "water", KIT_ICON_WATER },
-        { "terrain", KIT_ICON_TERRAIN },
-        { "gamepad", KIT_ICON_GAMEPAD },
-        { "keyboard", KIT_ICON_KEYBOARD },
-        { "projectile", KIT_ICON_PROJECTILE },
-        { "health", KIT_ICON_HEALTH },
-        { "diamond", KIT_ICON_DIAMOND },
-        { "shape", KIT_ICON_SHAPE },
-    };
     scene_prototype_asset *asset = prototype ? find_prototype(s->scene, prototype)
                                              : NULL;
     if (!asset || !asset->prototype) {
         return KIT_ICON_PROTOTYPE;
     }
     const game_prototype *p = asset->prototype;
-    for (size_t i = 0; i < sizeof icons / sizeof *icons; i++) {
-        for (int c = 0; c < acount(p->components); c++) {
-            const char *icon = p->components[c].desc->icon;
-            if (icon && strcmp(icon, icons[i].name) == 0) {
-                return icons[i].icon;
-            }
+    component_icon first = COMPONENT_ICON_COUNT;
+    for (int c = 0; c < acount(p->components); c++) {
+        component_icon icon = component_presentation_icon(
+            &s->presentation.hints,
+            p->components[c].desc
+        );
+        if (icon != COMPONENT_ICON_NONE && icon < first) {
+            first = icon;
         }
     }
-    return KIT_ICON_PROTOTYPE;
+    return first < COMPONENT_ICON_COUNT ? PROTOTYPE_ICONS[first] : KIT_ICON_PROTOTYPE;
 }
 
 /* ---------- Commands ---------- */
@@ -1100,8 +1094,44 @@ static void track_pointer(studio *s)
     }
 }
 
+/* editor/Components.yaml applies without a restart: its path and modification
+   are checked once a second. Components present generically while it is
+   missing or invalid. */
+static void sync_presentation(studio *s)
+{
+    studio_presentation *p = &s->presentation;
+    if (s->time < p->due) {
+        return;
+    }
+    p->due = s->time + 1;
+    char path[sizeof p->path];
+    snprintf(path, sizeof path, "%s/" COMPONENT_PRESENTATION_PATH, s->scene->content_root);
+    struct stat info;
+    bool exists = stat(path, &info) == 0;
+    long long modified = exists ? (long long)info.st_mtime : 0;
+    long long size = exists ? (long long)info.st_size : -1;
+    if (strcmp(path, p->path) == 0 && modified == p->modified && size == p->size) {
+        return;
+    }
+    snprintf(p->path, sizeof p->path, "%s", path);
+    p->modified = modified;
+    p->size = size;
+    component_presentation_free(&p->hints);
+    if (!exists) {
+        return;
+    }
+    char *text = text_file_read(path);
+    char error[256] = "could not be read";
+    if (!text ||
+        !component_presentation_read(text, &s->scene->registry, &p->hints, error, sizeof error)) {
+        toast(s, KIT_TOAST_ERROR, COMPONENT_PRESENTATION_PATH, error);
+    }
+    free(text);
+}
+
 void studio_emit(studio *s)
 {
+    sync_presentation(s);
     track_pointer(s);
     kit_root(s->kit, "app");
     topbar(s);

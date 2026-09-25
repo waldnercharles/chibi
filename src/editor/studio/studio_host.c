@@ -398,6 +398,7 @@ void studio_free(studio *s)
     engine_viewport_set_host_input(s->viewport, NULL);
     editor_set_retained_keyboard(false);
     studio_graph_free(s);
+    component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
     editor_rml_backend_destroy(s->backend);
     free(s);

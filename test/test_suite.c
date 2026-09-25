@@ -48,6 +48,7 @@ void test_dash();
 void test_encounter();
 void test_system_arithmetic();
 void test_asset_index();
+void test_component_presentation();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
@@ -162,6 +163,7 @@ TEST_CASE(all_checks)
     run_ecs_migration_checks();
     run_scene_checks();
     run_editor_command_checks();
+    test_component_presentation();
     test_editor_checkpoint();
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
     test_check(test_rmlui_menu(), "RmlUi menu commands, focus, layout, and lifecycle");

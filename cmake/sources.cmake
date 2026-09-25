@@ -135,6 +135,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/commands.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/component_presentation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/mutations.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/navigation.c

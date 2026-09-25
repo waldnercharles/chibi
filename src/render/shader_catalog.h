@@ -59,6 +59,9 @@ bool render_shader_contains(
     float time
 );
 void render_shader_clear_world(ecs_world *world);
+/* Every material parameter behaviors set on this world's entities, hashed, so
+   a scenario's state includes what Set Material Parameter wrote. */
+uint64_t render_shader_overrides_hash(const ecs_world *world);
 void render_shader_catalog_clear();
 extern const registry_pack SHADER_BINDING_PACK;
 #endif

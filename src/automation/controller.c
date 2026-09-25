@@ -20,6 +20,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
+#include "render/shader_catalog.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "runtime/systems/system.h"
@@ -4104,6 +4105,10 @@ static uint64_t scenario_state_hash(scenario_context *context)
             (size_t)fog.columns * (size_t)fog.rows * 4
         );
     }
+    uint64_t parameters = render_shader_overrides_hash(
+        game_prototype_preview_world(context->preview)
+    );
+    hash = scenario_hash_bytes(hash, &parameters, sizeof parameters);
     uint64_t sounds = game_audio_hash(engine_audio(runtime));
     if (game_materials_enabled(engine_materials(runtime))) {
         game_material_state materials = game_materials_inspect(engine_materials(runtime));

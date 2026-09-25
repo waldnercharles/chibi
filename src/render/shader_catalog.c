@@ -774,6 +774,32 @@ void render_shader_clear_world(ecs_world *world)
         }
     }
 }
+uint64_t render_shader_overrides_hash(const ecs_world *world)
+{
+    uint64_t hash = 14695981039346656037ull;
+    while (atomic_flag_test_and_set_explicit(&override_lock, memory_order_acquire)) {
+    }
+    for (int i = 0; i < acount(overrides); i++) {
+        const shader_override *o = &overrides[i];
+        if (o->world != world) {
+            continue;
+        }
+        const unsigned char *parts[] = { (const unsigned char *)&o->entity,
+                                         (const unsigned char *)o->name,
+                                         (const unsigned char *)o->value };
+        size_t sizes[] = { sizeof o->entity,
+                           strlen(o->name),
+                           (size_t)o->width * sizeof *o->value };
+        for (int p = 0; p < 3; p++) {
+            for (size_t b = 0; b < sizes[p]; b++) {
+                hash = (hash ^ parts[p][b]) * 1099511628211ull;
+            }
+        }
+    }
+    atomic_flag_clear_explicit(&override_lock, memory_order_release);
+    return hash;
+}
+
 void render_shader_catalog_clear()
 {
     render_shader_parameter_cache_free(serial_parameters);

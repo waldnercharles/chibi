@@ -118,7 +118,7 @@ saving them. Tool results include complete `structuredContent` and
 - `previewShader`: compile and render a material or shape graph.
 - `previewScene`: render a prototype or scene with its authored presentation.
 - `searchAssets`: find catalog entries by kind, name, path, or description.
-- `searchNodes`: find reflected nodes and typed pins for graph authoring.
+- `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
@@ -190,6 +190,29 @@ an edit. Submit graph changes through `buildGraph`. The server
 assigns IDs, initializes typed pins, validates the resulting asset, and
 automatically arranges the affected graphs. The edit API has no node coordinates
 or layout controls.
+
+`searchNodes` without a query or filter lists the domain's node types by
+category. For behaviors it adds the host and project events and the component
+and struct names that Component and Type settings take. It costs about 1,300
+tokens, so read it once instead of guessing names.
+
+A query ranks entries whose name, keywords, pins or expression function start
+with every word:
+- Nodes, with the expression that writes them: `clamp` returns
+  `{"type": "Clamp", "expression": "clamp(Value, Min, Max)", ...}`.
+- Configured component nodes: `set health current` returns
+  `{"type": "Set Component", "inputs": {"Component": "GameHealth"}, "field":
+  "current", "in": ["Exec: exec", "Entity: ecs.entity = Self", "current: int"],
+  ...}`. Pass `type` and `inputs` to `add_node`, and name the `field` in
+  `inputs` or `connect`.
+- Events: `on hit` returns `{"type": "Event", "event_name": "Contact Begin",
+  "out": ["Then: exec", "Other: ecs.entity", "Point: CF_V2"]}`, and a project
+  event also returns its `Send Event` with `reference_name`.
+
+Pins read `name: type`. Behavior search offers component nodes instead of the
+generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
+`domain: "system"` for System graphs, which use the generated nodes directly and
+only the nodes that need no service beyond the ECS world.
 
 Graph metadata can be authored in the same request with `description`,
 `owner_type`, and `graph_description`. The response echoes the selected graph
@@ -311,8 +334,7 @@ that consumes the library to see its effect.
 Requests are bounded: node search returns at most 50 entries, edit batches
 contain at most 128 operations, scene edits contain at most 128 operations and
 64 behavior attachments per entity. Shader previews are at most 512 by
-512; scene previews accept 64–1024 pixels per side. `searchNodes` can filter by pin type, container, pin kind, and purity;
-its text query also searches pin names and type names.
+512; scene previews accept 64–1024 pixels per side. `searchNodes` can filter by pin type, container, pin kind, and purity.
 Preview time is explicit and deterministic. Pass `parameters` as an object
 keyed by `Shader Parameter` names to try scalar values or exact-width vector
 arrays without editing the asset. Unknown names, nonfinite values, and wrong

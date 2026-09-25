@@ -6,14 +6,31 @@
 #include <assert.h>
 #include <string.h>
 
-static const char *const GRAPH_HOST_EVENT_NAMES[] = {
-    "Begin", "End", "Tick", "Fire", "Dash", "Input", "Contact Begin",
+static const pin_spec TICK_PAYLOAD[] = {
+    { .name = "DeltaSeconds", .type = PIN_F32, .type_name = "float" },
+};
+static const pin_spec INPUT_PAYLOAD[] = {
+    { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+static const pin_spec CONTACT_PAYLOAD[] = {
+    { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+
+const graph_host_event_desc GRAPH_HOST_EVENTS[GRAPH_HOST_EVENT_COUNT] = {
+    [GRAPH_HOST_EVENT_BEGIN] = { "Begin", "start spawn create init ready" },
+    [GRAPH_HOST_EVENT_END] = { "End", "stop finish despawn" },
+    [GRAPH_HOST_EVENT_TICK] = { "Tick", "update frame every loop delta time", TICK_PAYLOAD, 1 },
+    [GRAPH_HOST_EVENT_FIRE] = { "Fire", "shoot attack weapon" },
+    [GRAPH_HOST_EVENT_DASH] = { "Dash", "dodge boost" },
+    [GRAPH_HOST_EVENT_INPUT] = { "Input", "move direction stick controls player", INPUT_PAYLOAD, 1 },
+    [GRAPH_HOST_EVENT_CONTACT_BEGIN] = { "Contact Begin", "hit collide collision touch overlap enter", CONTACT_PAYLOAD, 2 },
 };
 
 const char *graph_host_event_name(graph_host_event event)
 {
     assert(event >= 0 && event < GRAPH_HOST_EVENT_COUNT);
-    return GRAPH_HOST_EVENT_NAMES[event];
+    return GRAPH_HOST_EVENTS[event].name;
 }
 
 bool graph_host_event_is(const char *name, graph_host_event event)
@@ -29,6 +46,24 @@ bool graph_event_host_name(const char *name)
         }
     }
     return false;
+}
+
+int graph_host_event_apply(graph *g, node *n)
+{
+    assert(n->desc == &NODE_Event);
+    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
+        const graph_host_event_desc *event = &GRAPH_HOST_EVENTS[i];
+        if (!graph_host_event_is(n->reference_name, i)) {
+            continue;
+        }
+        /* Then precedes the payload. */
+        for (int p = n->output_count - 1; p < event->payload_count; p++) {
+            if (graph_add_pin(g, n, 1, &event->payload[p]) < 0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
 }
 
 static bool receiver(const node *n)

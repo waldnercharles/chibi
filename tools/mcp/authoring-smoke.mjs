@@ -306,10 +306,12 @@ try {
   const profile = structured(first.get(24));
   const sceneRun = structured(first.get(25));
   const sceneSnapshot = structured(first.get(26));
-  const surfaceNode = surfaceSearch.result?.nodes?.find((node) => node.name === "Shader Surface Output");
-  const shapeNode = shapeSearch.result?.nodes?.find((node) => node.name === "Shader Shape Output");
-  const baseColorPin = surfaceNode?.inputs?.find((pin) => pin.name === "Base Color")?.name;
-  const distancePin = shapeNode?.inputs?.find((pin) => pin.name === "Distance")?.name;
+  const surfaceNode = surfaceSearch.result?.nodes?.find((node) => node.type === "Shader Surface Output");
+  const shapeNode = shapeSearch.result?.nodes?.find((node) => node.type === "Shader Shape Output");
+  // Search lists pins as "name: type".
+  const inputName = (node, name) => node?.in?.map((pin) => pin.slice(0, pin.indexOf(": "))).find((pin) => pin === name);
+  const baseColorPin = inputName(surfaceNode, "Base Color");
+  const distancePin = inputName(shapeNode, "Distance");
   const operationProperties = graphTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
@@ -334,8 +336,8 @@ try {
   assert(operationProperties.op?.enum?.includes("set_ramp") && operationProperties.op?.enum?.includes("set_bounds") && operationProperties.op?.enum?.includes("add_pin"), "shader authoring operations are missing from the MCP operation schema");
   assert(operationProperties.reference_asset && operationProperties.pure && operationProperties.side && operationProperties.stops?.maxItems === 16, "native graph edit fields are missing from the MCP operation schema");
   assert(search.ok === true && search.result?.count > 0 && search.result.count <= 3, `bounded shader search failed: ${JSON.stringify(search)}`);
-  assert(typedSearch.ok === true && typedSearch.result?.nodes?.some((node) => node.name === "Shader Surface Output"), `typed pin search failed: ${JSON.stringify(typedSearch)}`);
-  assert(search.result.nodes.every((node) => Array.isArray(node.inputs) && Array.isArray(node.outputs)), "bounded shader search omitted default pins");
+  assert(typedSearch.ok === true && typedSearch.result?.nodes?.some((node) => node.type === "Shader Surface Output"), `typed pin search failed: ${JSON.stringify(typedSearch)}`);
+  assert(search.result.nodes.every((node) => Array.isArray(node.in) || Array.isArray(node.out)), "bounded shader search omitted default pins");
   assert(baseColorPin === "Base Color" && distancePin === "Distance", "named shader output pins were not discoverable");
   assert(Array.isArray(registry.result?.nodes) && registry.result.nodes.length > 0, "registry is empty");
   assert(behaviorCreate.ok === true && typeof behaviorCreate.result?.after_hash === "string", `behavior create failed: ${JSON.stringify(behaviorCreate)}`);

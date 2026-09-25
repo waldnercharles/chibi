@@ -31,13 +31,11 @@ static int ed_event_param_count(const node *n)
 
 /* Appends only the declared parameters this event is still missing, so no
  * existing pin is retyped or removed and no edge is invalidated under EVT-5. */
-int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature)
+int ed_event_add_declared_params(editor *e, node *n, const graph_host_event_desc *signature)
 {
     int added = 0;
-    for (int i = ed_event_param_count(n); i < signature->param_count; i++) {
-        const editor_event_param *parameter = &signature->params[i];
-        pin_spec pin = { parameter->name, parameter->type, parameter->type_name, PIN_DATA };
-        added += graph_add_pin(e->active_graph, n, 1, &pin) >= 0;
+    for (int i = ed_event_param_count(n); i < signature->payload_count; i++) {
+        added += graph_add_pin(e->active_graph, n, 1, &signature->payload[i]) >= 0;
     }
     return added;
 }
@@ -48,14 +46,14 @@ int ed_name_spawned_event(editor *e, node *n)
         return 0;
     }
     for (int i = 0; i < e->event_catalog_count; i++) {
-        const editor_event_signature *signature = &e->event_catalog[i];
+        const graph_host_event_desc *signature = &e->event_catalog[i];
         if (ed_event_name_used(e, signature->name)) {
             continue;
         }
         if (graph_set_node_reference(e->active_graph, n, 0, signature->name) != 0) {
             return -1;
         }
-        return ed_event_add_declared_params(e, n, signature) == signature->param_count
+        return ed_event_add_declared_params(e, n, signature) == signature->payload_count
                  ? 0
                  : -1;
     }
@@ -176,7 +174,7 @@ int editor_host_captures_keyboard(void)
     return retained_keyboard;
 }
 
-void editor_set_event_catalog(editor *e, const editor_event_signature *events, int count)
+void editor_set_event_catalog(editor *e, const graph_host_event_desc *events, int count)
 {
     if (!e) {
         return;

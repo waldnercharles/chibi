@@ -5,7 +5,6 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio.h"
 #include "editor/workspace/editor.h"
-#include "editor/workspace/event_catalog.h"
 #include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
@@ -264,11 +263,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     if (!play && game_live_find_definition(live, "TwinStickInputBehavior")) {
         (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
     }
-    editor_set_event_catalog(
-        graph_editor,
-        APP_EVENT_CATALOG,
-        (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
-    );
+    editor_set_event_catalog(graph_editor, GRAPH_HOST_EVENTS, GRAPH_HOST_EVENT_COUNT);
     editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
     engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);

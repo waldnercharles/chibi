@@ -1,5 +1,5 @@
 name: ArenaHitPulse
 components:
   GAME.GameSurfaceInfluence: {color: 4289615359, linger: 0.15, radius: 42.0, strength: 0.8}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
 behaviors: [SurfacePulseBehavior]

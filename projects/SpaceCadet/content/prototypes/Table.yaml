@@ -7,4 +7,4 @@ components:
     height: 678.0
     layer: -30
     width: 466.0
-  game.GameTransform: {}
+  GAME.GameTransform: {}

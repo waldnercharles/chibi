@@ -18,6 +18,6 @@ components:
     scene: 16773375
   GAME.GameOrientation: {}
   GAME.GameProjectile: {damage: 10, lifetime: 2.0, speed: 420.0}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {x: 420.0}
 behaviors: [ProjectileBehavior, ProjectileHitBehavior]

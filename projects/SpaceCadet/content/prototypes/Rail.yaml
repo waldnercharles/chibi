@@ -18,4 +18,4 @@ components:
     shape: Box
     width: 10.0
   GAME.GameOrientation: {}
-  game.GameTransform: {}
+  GAME.GameTransform: {}

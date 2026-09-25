@@ -117,7 +117,7 @@ graphs:
       Move:
         type: struct
         type_name: CF_V2
-        binding: {kind: component_field, component: game.GameInput, field: move}
+        binding: {kind: component_field, component: GAME.GameInput, field: move}
       Aim:
         type: struct
         type_name: CF_V2

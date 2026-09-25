@@ -4,4 +4,4 @@ components:
   GAME.GameCollider: {category: 8, height: 3.0, mask: 7, shape: Box, width: 640.0}
   GAME.GameGeometry3D: {depth: 1.4, height: 1.5, width: 635.0}
   GAME.GameShader: {material: ArenaRim, parameters: '{}', shape: ""}
-  game.GameTransform: {x: 320.0}
+  GAME.GameTransform: {x: 320.0}

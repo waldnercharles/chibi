@@ -16,7 +16,7 @@ graphs:
     type: Find Nearest Entity
     inputs:
       Position:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       Radius: 600.0
       Categories: 1
   - {id: 13, type: Branch}
@@ -24,7 +24,7 @@ graphs:
     type: Direction To
     inputs:
       Origin:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
   - id: 44
     type: Behavior Expression
     reference_id: 22
@@ -33,7 +33,7 @@ graphs:
       direction: {}
       speed:
         type: double
-        binding: {kind: component_field, component: game.GameMovement, field: speed}
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
       velocity:
         id: 521
         type: struct

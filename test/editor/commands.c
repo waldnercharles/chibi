@@ -468,7 +468,7 @@ static void check_component_struct_layout()
     bool value_control_aligned = false;
     if (e && target) {
         pin_binding binding = { .kind = PIN_BINDING_COMPONENT,
-                                .component_key = "game.GameTransform" };
+                                .component_key = "GAME.GameTransform" };
         assert(graph_set_pin_binding(asset->graph, target, 0, 2, &binding) == 0);
         value_single_row = ed_pin_rows(e, asset->graph, target, ED_PIN_INPUT, 2) == 1;
 
@@ -1051,7 +1051,7 @@ static void check_component_search()
     node *health = spawn_first(e, "has health", "Has Health");
     test_check(
         health && health->desc == &NODE_HasComponent &&
-            !strcmp(component_node_key(health), "game.GameHealth"),
+            !strcmp(component_node_key(health), "GAME.GameHealth"),
         "Has Health spawns Has Component for Health"
     );
     node *transform = spawn_first(e, "get transform", "Get Transform");

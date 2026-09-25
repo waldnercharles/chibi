@@ -9,7 +9,7 @@ components:
     scene: 591155711
   GAME.GameShader: {material: Basalt, parameters: "", shape: ""}
   GAME.GameSubstance: {blast_multiplier: 1.0, hardness: 1.0}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialBreakProfile:
     blast_speed: 70.0
     chip_speed: 35.0

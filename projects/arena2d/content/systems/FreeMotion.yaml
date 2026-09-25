@@ -37,7 +37,7 @@ graphs:
 query:
   op: all
   terms:
-  - {op: has, component: game.GameTransform}
+  - {op: has, component: GAME.GameTransform}
   - {op: has, component: GAME.GameVelocity}
   - {op: has, component: GAME.GameAppearance}
   - op: not

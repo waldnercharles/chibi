@@ -29,5 +29,5 @@ components:
     speed: {x: 55.0, "y": 85.0}
     spread: 0.65
     velocity_inherit: 1.0
-  game.GameTransform: {}
+  GAME.GameTransform: {}
 behaviors: [MovementEmitter]

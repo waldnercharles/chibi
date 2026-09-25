@@ -7,7 +7,7 @@ components:
     emission_multiplier: 1.0
     scene: 1269808639
   GAME.GameSubstance: {blast_multiplier: 1.0, hardness: 1.0, retain_chips: true}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialBreakProfile:
     chip_speed: 8.0
     dust_lifetime_max: 0.4

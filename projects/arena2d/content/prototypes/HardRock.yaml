@@ -11,7 +11,7 @@ components:
     scene: 1262571775
   GAME.GameOrientation: {radians: 0.12}
   GAME.GameSubstance: {blast_multiplier: 0.6, hardness: 4.0}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialBreakProfile:
     blast_speed: 70.0
     chip_speed: 35.0

@@ -21,7 +21,7 @@ components:
   GAME.GameOrientation: {}
   GAME.GameReflection: {offset: -28.0, roughness: 0.12, strength: 0.8}
   GAME.GameSubstance: {blast_multiplier: 4.0, hardness: 2.0, retain_chips: true}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialBreakProfile:
     blast_speed: 70.0
     chip_speed: 35.0

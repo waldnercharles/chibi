@@ -878,7 +878,7 @@ graphs:
         default: []
       Conditions:
         default:
-        - {component: game.GameHealth, field: current, test: '>', value: 0.0}
+        - {component: GAME.GameHealth, field: current, test: '>', value: 0.0}
         - {component: GAME.GameEncounterMember, field: role, test: ==, value: 1.0}
   - id: 3354
     type: Count Matching Entities
@@ -887,7 +887,7 @@ graphs:
         default: []
       Conditions:
         default:
-        - {component: game.GameHealth, field: "", test: missing, value: 0.0}
+        - {component: GAME.GameHealth, field: "", test: missing, value: 0.0}
         - {component: GAME.GameSpawnRequest, field: "", test: has, value: 0.0}
         - {component: GAME.GameEncounterMember, field: role, test: ==, value: 1.0}
   - id: 3358
@@ -897,7 +897,7 @@ graphs:
         default: []
       Conditions:
         default:
-        - {component: game.GameHealth, field: current, test: '>', value: 0.0}
+        - {component: GAME.GameHealth, field: current, test: '>', value: 0.0}
         - {component: GAME.GameEncounterMember, field: role, test: ==, value: 0.0}
   - id: 3362
     type: Count Matching Entities
@@ -906,7 +906,7 @@ graphs:
         default: []
       Conditions:
         default:
-        - {component: game.GameHealth, field: current, test: <=, value: 0.0}
+        - {component: GAME.GameHealth, field: current, test: <=, value: 0.0}
   - {id: 3366, type: Add}
   - {id: 3370, type: Integer Greater}
   - {id: 3374, type: Integer Greater}

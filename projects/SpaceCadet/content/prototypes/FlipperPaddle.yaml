@@ -18,8 +18,8 @@ components:
     restitution: 0.9
     shape: Box
     width: 76.0
-  game.GameInput: {}
+  GAME.GameInput: {}
   GAME.GameOrientation: {radians: 0.45}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [Flipper]

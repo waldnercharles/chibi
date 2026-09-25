@@ -4,4 +4,4 @@ components:
   GAME.GameMeshParts:
     parts: '[{"primitive":0,"size":[461.88021535170066,6,352],"position":[0,0,0]},{"primitive":4,"size":[101.61364737737415,6,352],"position":[281.74693136453743,0,0]},{"primitive":4,"size":[101.61364737737415,6,352],"position":[-281.74693136453743,0,0],"rotation":[0,3.141592653589793,0]}]'
   GAME.GameShader: {material: ArenaFloor, parameters: '{}', shape: ""}
-  game.GameTransform: {x: 323.31616, "y": -176.0}
+  GAME.GameTransform: {x: 323.31616, "y": -176.0}

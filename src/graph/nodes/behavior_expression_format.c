@@ -59,7 +59,7 @@ static void put_identifier(text *t, const char *name)
     put(t, out);
 }
 
-/* Component keys are namespaced, as in `game.GameMovement`. */
+/* Component keys are namespaced, as in `GAME.GameMovement`. */
 static const char *component_name(const char *key)
 {
     const char *dot = key ? strrchr(key, '.') : NULL;

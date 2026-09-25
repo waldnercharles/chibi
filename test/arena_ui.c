@@ -960,7 +960,7 @@ static void component_selector(arena_fixture *f)
     uint64_t id = query->id;
     char original[128];
     snprintf(original, sizeof original, "%s", component_selection(f, id));
-    assert(strcmp(original, "game.GameTransform"));
+    assert(strcmp(original, "GAME.GameTransform"));
     editor_reveal_node(f->graph, query);
     for (int i = 0; i < 20; i++) {
         frame(f);
@@ -970,14 +970,14 @@ static void component_selector(arena_fixture *f)
     click_item(f, control);
     /* ImGui sizes a new popup before its contents become visible. */
     frame(f);
-    click_item(f, "choice.game.GameTransform");
-    assert(!strcmp(component_selection(f, id), "game.GameTransform"));
+    click_item(f, "choice.GAME.GameTransform");
+    assert(!strcmp(component_selection(f, id), "GAME.GameTransform"));
     editor_undo(f->graph);
     frame(f);
     assert(!strcmp(component_selection(f, id), original));
     editor_redo(f->graph);
     frame(f);
-    assert(!strcmp(component_selection(f, id), "game.GameTransform"));
+    assert(!strcmp(component_selection(f, id), "GAME.GameTransform"));
 
     char path[] = "/tmp/arena-ui-component-XXXXXX";
     int descriptor = mkstemp(path);
@@ -988,7 +988,7 @@ static void component_selector(arena_fixture *f)
     assert(editor_load(f->graph, path) == 0);
     assert(editor_open_graph(f->graph, graph_id) == 0);
     frame(f);
-    assert(!strcmp(component_selection(f, id), "game.GameTransform"));
+    assert(!strcmp(component_selection(f, id), "GAME.GameTransform"));
     assert(unlink(path) == 0);
 }
 

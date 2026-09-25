@@ -14,7 +14,7 @@ components:
   GAME.GameBody: {continuous: true, type: Dynamic}
   GAME.GameCollider: {category: 1, friction: 0.08, mask: 30, radius: 7.5, restitution: 0.7}
   GAME.GameGlobalBinding: {name: Ball}
-  game.GameInput: {}
-  game.GameTransform: {x: 196.0, "y": 260.0}
+  GAME.GameInput: {}
+  GAME.GameTransform: {x: 196.0, "y": 260.0}
   GAME.GameVelocity: {}
 behaviors: [BallMotion, GameState, Nudge, Plunger, Scoring]

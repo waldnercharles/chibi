@@ -22,7 +22,7 @@ graphs:
       health:
         id: 18
         type: int
-        binding: {kind: component_field, component: game.GameHealth, field: current}
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
       amount: {}
     outputs:
       Then: {id: 22, kind: exec}
@@ -37,7 +37,7 @@ graphs:
         id: 107
         type: double
         flags: 0
-        binding: {kind: component_field, component: game.GameHealth, field: current}
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       "True": {id: 110, kind: exec}
       "False": {kind: exec}
@@ -59,7 +59,7 @@ graphs:
         type: struct
         type_name: GameTransform
         kind: data
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Then: {id: 145}
       Entity: {id: 148, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}
@@ -75,7 +75,7 @@ graphs:
         type: struct
         type_name: GameTransform
         kind: data
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Then: {id: 151}
       Entity: {id: 154, declaration_id: 263, type: handle, type_name: ecs.entity, kind: data}

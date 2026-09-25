@@ -6,5 +6,5 @@ components:
     emission_intensity: 0.1
     emission_multiplier: 1.0
     scene: 2463819519
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {x: 12.0}

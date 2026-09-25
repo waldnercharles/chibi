@@ -6,6 +6,6 @@ components:
   GAME.GameShader: {material: ArenaSpawnMarker, parameters: '{}', shape: ""}
   GAME.GameSpawnRequest: {delay: 1.0, prototype: ArenaEnemy}
   GAME.GameSurfaceInfluence: {color: 4282543359, inner_radius: 11.0, radius: 14.0, strength: 0.4}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVisualTransform: {scale: 1.0}
 behaviors: [SpawnTelegraphBehavior]

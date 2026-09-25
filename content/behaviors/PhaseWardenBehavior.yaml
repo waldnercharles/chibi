@@ -13,7 +13,7 @@ graphs:
     type: Find Nearest Entity
     inputs:
       Position:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       Radius: 2000.0
       Categories: 1
   - {id: 16, type: Branch}
@@ -36,7 +36,7 @@ graphs:
     type: Direction To
     inputs:
       Origin:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Direction.x: {id: 82}
       Direction.y: {}

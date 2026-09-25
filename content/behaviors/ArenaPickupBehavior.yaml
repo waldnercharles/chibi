@@ -416,7 +416,7 @@ graphs:
   - id: 1338
     type: Set Component
     inputs:
-      Component: game.GameTransform
+      Component: GAME.GameTransform
       x: {id: 1345}
       "y": {id: 1421}
     outputs:

@@ -242,7 +242,7 @@ static behavior_asset *component_form()
     assert(component_node_show_field(f.g, transform, "y", true) == 0);
     assert(component_node_show_field(f.g, transform, "x", true) == 0);
     assert(transform->input_count == 5 && !strcmp(transform->input_pins[3].name, "x"));
-    node *health = component(&f, &NODE_SetComponent, "game.GameHealth");
+    node *health = component(&f, &NODE_SetComponent, "GAME.GameHealth");
     node *has = component(&f, &NODE_HasComponent, "GameInput");
     node *branch = graph_add_node(f.g, &NODE_Branch);
     node *yes = component(&f, &NODE_SetComponent, "GameHealth");
@@ -500,7 +500,7 @@ static void authoring()
     );
     assert(named);
     node *written = named->graph->nodes[0];
-    assert(!strcmp(component_node_key(written), "game.GameHealth"));
+    assert(!strcmp(component_node_key(written), "GAME.GameHealth"));
     assert(
         component_node_split(written) && written->input_count == 4 &&
         written->input_pins[3].default_value.i == 4

@@ -1,6 +1,6 @@
 name: BloomCircuitGuide
 components:
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameWidget:
     anchor: {x: 0.5}
     drop_group: ""

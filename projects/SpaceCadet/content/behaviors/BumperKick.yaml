@@ -25,7 +25,7 @@ graphs:
   - id: 11
     type: Get Component
     inputs:
-      Component: {id: 1342, default: game.GameTransform}
+      Component: {id: 1342, default: GAME.GameTransform}
       Entity: {id: 12}
   - id: 14
     type: Get Component
@@ -47,7 +47,7 @@ graphs:
       bumper:
         type: struct
         type_name: GameTransform
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Result: {type: struct, type_name: GameVelocity}
   - id: 1508

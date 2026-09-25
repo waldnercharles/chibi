@@ -31,7 +31,7 @@ components:
   GAME.GameProjectile: {damage: 10, lifetime: 1.6, speed: 480.0}
   GAME.GameShader: {material: ArenaProjectile, parameters: '{}', shape: ""}
   GAME.GameSurfaceInfluence: {color: 1659240447, linger: 0.22, radius: 17.0, strength: 0.35}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {x: 480.0}
   GAME.GameVisualMotion: {reaction_duration: 0.32, rest_elevation: 12.0, speed: 6.2831855}
   GAME.GameVisualTransform: {scale: 1.0}

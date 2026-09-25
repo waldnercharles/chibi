@@ -243,8 +243,8 @@ try {
           op: "add_entity",
           name: "Warden",
           prototype: prototypeName,
-          components: { "game.GameTransform": { x: 24, y: -12 } },
-          retained_components: { "game.GameTransform": { x: 28, y: -16 } },
+          components: { "GAME.GameTransform": { x: 24, y: -12 } },
+          retained_components: { "GAME.GameTransform": { x: 28, y: -16 } },
           behaviors: [behaviorName],
         },
       ],
@@ -259,8 +259,8 @@ try {
           op: "add_entity",
           name: "Warden",
           prototype: prototypeName,
-          components: { "game.GameTransform": { x: 24, y: -12 } },
-          retained_components: { "game.GameTransform": { x: 28, y: -16 } },
+          components: { "GAME.GameTransform": { x: 24, y: -12 } },
+          retained_components: { "GAME.GameTransform": { x: 28, y: -16 } },
           behaviors: [behaviorName],
         },
       ],
@@ -329,7 +329,7 @@ try {
   assert(editPrototypeTool?.annotations?.readOnlyHint === false && editPrototypeTool?.annotations?.destructiveHint === true, "buildPrototype mutation annotations are missing");
   assert(prototypeOperationProperties.op?.enum?.includes("add_component") && prototypeOperationProperties.op?.enum?.includes("set_field") && prototypeOperationProperties.fields && prototypeOperationProperties.value, "prototype authoring operations are missing from the MCP operation schema");
   const movementDescription = componentDescription.result?.components?.[0];
-  assert(movementDescription?.key === "game.GameMovement" && movementDescription.fields?.some((field) => field.name === "speed" && field.type === "float") && movementDescription.defaults?.speed === 0, "compact component schema omitted reflected field defaults");
+  assert(movementDescription?.key === "GAME.GameMovement" && movementDescription.fields?.some((field) => field.name === "speed" && field.type === "float") && movementDescription.defaults?.speed === 0, "compact component schema omitted reflected field defaults");
   assert(graphTool?.annotations?.readOnlyHint === false && graphTool?.annotations?.destructiveHint === true, "graph mutation annotations are missing");
   assert(operationProperties.op?.enum?.includes("set_ramp") && operationProperties.op?.enum?.includes("set_bounds") && operationProperties.op?.enum?.includes("add_pin"), "shader authoring operations are missing from the MCP operation schema");
   assert(operationProperties.reference_asset && operationProperties.pure && operationProperties.side && operationProperties.stops?.maxItems === 16, "native graph edit fields are missing from the MCP operation schema");
@@ -353,10 +353,10 @@ try {
   assert(materialRead.result.document.description === "A smoke test material" && materialRead.result.document.graphs?.[0]?.description === "A deterministic authoring fixture", "graph metadata was not persisted");
   assert(shapeRead.result.document.bounds_x === 20 && shapeRead.result.document.bounds_y === 20, "shape bounds edit was not persisted");
   assert(shaderLibraryRead.ok === true && shaderLibraryRead.result?.document?.domain === "shader-library", "shader library readback failed");
-  assert(prototypeRead.ok === true && prototypeRead.result?.document?.components?.["game.GameMovement"]?.speed === 55 && prototypeRead.result.document.behaviors?.includes(behaviorName), "prototype component and behavior edits were not persisted");
+  assert(prototypeRead.ok === true && prototypeRead.result?.document?.components?.["GAME.GameMovement"]?.speed === 55 && prototypeRead.result.document.behaviors?.includes(behaviorName), "prototype component and behavior edits were not persisted");
   assert(sceneDryRun.ok === true && sceneDryRun.result?.dry_run === true && sceneDryRun.result?.published === false, `scene dry run failed: ${JSON.stringify(sceneDryRun)}`);
   assert(sceneCreate.ok === true && sceneCreate.result?.published === true && sceneCreate.result?.after_hash === sceneDryRun.result?.after_hash, `scene create failed or dry-run hash was unstable: ${JSON.stringify(sceneCreate)}`);
-  assert(sceneRead.ok === true && sceneRead.result?.document?.presentation === "3d" && sceneRead.result.document.entities?.[0]?.name === "Warden" && sceneRead.result.document.entities[0].components?.["game.GameTransform"]?.x === 24, `scene readback failed: ${JSON.stringify(sceneRead)}`);
+  assert(sceneRead.ok === true && sceneRead.result?.document?.presentation === "3d" && sceneRead.result.document.entities?.[0]?.name === "Warden" && sceneRead.result.document.entities[0].components?.["GAME.GameTransform"]?.x === 24, `scene readback failed: ${JSON.stringify(sceneRead)}`);
   assert(executionStatus.ok === true && executionStatus.result?.execution?.backend === "interpreter" && executionStatus.result.execution.fully_jit === false, `execution status failed: ${JSON.stringify(executionStatus)}`);
   assert(optimize.ok === true && optimize.result?.dry_run === true && optimize.result?.changed === false, `graph optimization dry run failed: ${JSON.stringify(optimize)}`);
   assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers", `scenario profiling failed: ${JSON.stringify(profile)}`);

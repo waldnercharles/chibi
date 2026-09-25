@@ -27,7 +27,7 @@ graphs:
     type: Find Nearest Entity
     inputs:
       Position:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       Radius: 2000.0
       Categories: 2
   - {id: 21, type: Branch}
@@ -35,7 +35,7 @@ graphs:
     type: Direction To
     inputs:
       Origin:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
   - {id: 30, type: Set_GameAim_direction}
   - id: 48
     type: Behavior Expression
@@ -138,7 +138,7 @@ graphs:
       position:
         type: struct
         type_name: CF_V2
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       offset: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: CF_V2}

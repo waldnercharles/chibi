@@ -36,8 +36,8 @@ components:
   GAME.GameFragmentGlow: {tab: Material}
   GAME.GameFuel: {tab: Gameplay}
   GAME.GameHRC2D: {tab: Material, icon: light}
-  game.GameHealth: {tab: Gameplay, icon: health}
-  game.GameInput: {tab: Gameplay, icon: gamepad}
+  GAME.GameHealth: {tab: Gameplay, icon: health}
+  GAME.GameInput: {tab: Gameplay, icon: gamepad}
   GAME.GameMaterial:
     tab: Material
     fields:
@@ -50,7 +50,7 @@ components:
   GAME.GameMaterialCavity:
     fields:
       radius: {unit: u}
-  game.GameMovement:
+  GAME.GameMovement:
     tab: Gameplay
     fields:
       speed: {unit: u/s}

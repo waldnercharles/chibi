@@ -93,7 +93,7 @@ graphs:
         binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
       position:
         type: double
-        binding: {kind: component_field, component: game.GameTransform, field: x}
+        binding: {kind: component_field, component: GAME.GameTransform, field: x}
     outputs:
       Result: {id: 246, type: double}
   - id: 376
@@ -120,7 +120,7 @@ graphs:
         binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
       position:
         type: double
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        binding: {kind: component_field, component: GAME.GameTransform, field: "y"}
     outputs:
       Result: {id: 379, type: double}
   - id: 498
@@ -130,7 +130,7 @@ graphs:
     inputs:
       Value:
         type: float
-        binding: {kind: component_field, component: game.GameTransform, field: x}
+        binding: {kind: component_field, component: GAME.GameTransform, field: x}
     outputs:
       Value: {type: float}
   - id: 504
@@ -140,7 +140,7 @@ graphs:
     inputs:
       Value:
         type: float
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        binding: {kind: component_field, component: GAME.GameTransform, field: "y"}
     outputs:
       Value: {type: float}
   - id: 765

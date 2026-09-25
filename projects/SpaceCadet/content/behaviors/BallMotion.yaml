@@ -52,7 +52,7 @@ graphs:
         id: 198
         type: double
         flags: 0
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        binding: {kind: component_field, component: GAME.GameTransform, field: "y"}
     outputs:
       "True": {id: 201, kind: exec}
       "False": {kind: exec}

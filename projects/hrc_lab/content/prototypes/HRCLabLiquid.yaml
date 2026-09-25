@@ -10,4 +10,4 @@ components:
     spacing: 4.0
     visibility: 0.012
     width: 100.0
-  game.GameTransform: {}
+  GAME.GameTransform: {}

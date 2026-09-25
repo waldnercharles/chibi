@@ -1,8 +1,8 @@
 # file line id key current_name fingerprint aliases
-components.h 11 1376052968821171689 game.GameTransform GameTransform 12509057193377376126 -
-components.h 265 4594947644670299697 game.GameHealth GameHealth 12925661080887578070 -
-components.h 272 992505279072269918 game.GameMovement GameMovement 11124396295353598960 -
-components.h 278 194520663397847877 game.GameInput GameInput 12127342636814476452 -
+components.h 11 1376052968821171689 GAME.GameTransform GameTransform 12509057193377376126 -
+components.h 265 4594947644670299697 GAME.GameHealth GameHealth 12925661080887578070 -
+components.h 272 992505279072269918 GAME.GameMovement GameMovement 11124396295353598960 -
+components.h 278 194520663397847877 GAME.GameInput GameInput 12127342636814476452 -
 authored_data_types.h 8 13851233449581075996 GAME.GamePlayerData GamePlayerData 9848221335497568270 -
 authored_data_types.h 15 2286623500389258159 GAME.GameEnemyData GameEnemyData 16066308666996547841 -
 authored_data_types.h 22 5436105433392993464 GAME.GameWaveData GameWaveData 4666188745489317700 -

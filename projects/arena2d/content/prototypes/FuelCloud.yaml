@@ -9,4 +9,4 @@ components:
     visibility: 0.065
     width: 120.0
   GAME.GameFuel: {amount: 1.0}
-  game.GameTransform: {}
+  GAME.GameTransform: {}

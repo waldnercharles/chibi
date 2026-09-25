@@ -21,11 +21,11 @@ graphs:
       Current:
         type: int
         kind: data
-        binding: {kind: component_field, component: game.GameHealth, field: current}
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
       Maximum:
         type: int
         kind: data
-        binding: {kind: component_field, component: game.GameHealth, field: maximum}
+        binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
       Amount: {type: int, kind: data}
       Source: {type: handle, type_name: ecs.entity, kind: data}
   - id: 1142
@@ -63,7 +63,7 @@ graphs:
         id: 1245
         type: double
         flags: 0
-        binding: {kind: component_field, component: game.GameHealth, field: current}
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       "True": {id: 1248, kind: exec}
       "False": {kind: exec}

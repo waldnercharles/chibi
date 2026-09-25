@@ -26,7 +26,7 @@ graphs:
         id: 50
         type: struct
         type_name: GameTransform
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       target: {}
       rate: {type: double, default: 6.0}
       dt:

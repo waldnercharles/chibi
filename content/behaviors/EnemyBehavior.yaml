@@ -16,7 +16,7 @@ graphs:
     type: Find Nearest Entity
     inputs:
       Position:
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       Radius: 2000.0
       Categories: 1
   - {id: 16, type: Branch}
@@ -29,11 +29,11 @@ graphs:
       Position:
         type: struct
         type_name: CF_V2
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       Target: {type: struct, type_name: CF_V2}
       Speed:
         type: float
-        binding: {kind: component_field, component: game.GameMovement, field: speed}
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
       Delta Seconds:
         type: float
         binding: {kind: delta_time}

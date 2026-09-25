@@ -76,7 +76,7 @@ graphs:
         type: struct
         type_name: GameTransform
         kind: data
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
   - id: 82
     type: Destroy Entity
     inputs:

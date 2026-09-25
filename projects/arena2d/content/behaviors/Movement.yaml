@@ -33,7 +33,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
         type: double
-        binding: {kind: component_field, component: game.GameMovement, field: speed}
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
       Then: {id: 143, kind: exec}
       Result: {id: 141, type: struct, type_name: CF_V2}
@@ -78,7 +78,7 @@ graphs:
         id: 830
         type: struct
         type_name: CF_V2
-        binding: {kind: component_field, component: game.GameInput, field: move}
+        binding: {kind: component_field, component: GAME.GameInput, field: move}
     outputs:
       "True": {id: 833, kind: exec}
       "False": {kind: exec}
@@ -97,10 +97,10 @@ graphs:
       move:
         type: struct
         type_name: CF_V2
-        binding: {kind: component_field, component: game.GameInput, field: move}
+        binding: {kind: component_field, component: GAME.GameInput, field: move}
       speed:
         type: double
-        binding: {kind: component_field, component: game.GameMovement, field: speed}
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
       Then: {id: 871, kind: exec}
       Result: {id: 869, type: struct, type_name: CF_V2}

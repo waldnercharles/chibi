@@ -23,7 +23,7 @@ graphs:
         type: struct
         type_name: GameTransform
         kind: data
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
   - id: 502
     type: Call Function
     reference_id: 102
@@ -34,7 +34,7 @@ graphs:
         type: struct
         type_name: GameTransform
         kind: data
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
       Appearance:
         type: struct
         type_name: GameGeometry3D
@@ -371,7 +371,7 @@ graphs:
   - id: 982
     type: Set Component
     inputs:
-      Component: game.GameTransform
+      Component: GAME.GameTransform
       x: {id: 989}
       "y": {}
     outputs:

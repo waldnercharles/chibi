@@ -17,7 +17,7 @@ components:
     trace_levels: 3
     upscale_mode: 1
     upscale_threshold: 0.1
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialDestructionWorld: {fragment_limit: 96}
   GAME.MaterialFluidWorld:
     buffer: 192.0

@@ -26,7 +26,7 @@ graphs:
       speed:
         type: struct
         type_name: GameMovement
-        binding: {kind: component, component: game.GameMovement}
+        binding: {kind: component, component: GAME.GameMovement}
     outputs:
       Velocity: {id: 108, type: struct, type_name: GameVelocity}
   - {id: 356, type: Event, reference_name: Tick}

@@ -34,7 +34,7 @@ graphs:
       health:
         id: 272
         type: int
-        binding: {kind: component_field, component: game.GameHealth, field: current}
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
       damage: {}
     outputs:
       Then: {id: 276, kind: exec}
@@ -49,7 +49,7 @@ graphs:
         id: 360
         type: double
         flags: 0
-        binding: {kind: component_field, component: game.GameHealth, field: current}
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       "True": {id: 363, kind: exec}
       "False": {kind: exec}

@@ -1,6 +1,6 @@
 name: OrbitControls
 components:
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameWidget:
     anchor: {x: 0.5, "y": 1.0}
     center_text: true

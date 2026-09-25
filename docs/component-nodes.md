@@ -72,12 +72,12 @@ The Component setting implies each Value pin's type, so documents write only the
 - id: 10
   type: Set Component
   inputs:
-    Component: game.GameTransform
+    Component: GAME.GameTransform
     x: {id: 18}
 - id: 19
   type: Set Component
   inputs:
-    Component: game.GameHealth
+    Component: GAME.GameHealth
     Value:
       default: {current: 5, maximum: 9}
 ```

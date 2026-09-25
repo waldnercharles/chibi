@@ -218,7 +218,7 @@ static char *identifier(const char *source)
     return result;
 }
 
-/* game.GameTransform reads as transform: the key's namespace and the Game
+/* GAME.GameTransform reads as transform: the key's namespace and the Game
    prefix carry nothing in a name the author will read. */
 static void component_label(char *out, size_t size, const char *key)
 {

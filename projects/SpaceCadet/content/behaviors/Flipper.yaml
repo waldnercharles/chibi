@@ -29,7 +29,7 @@ graphs:
       Value:
         type: struct
         type_name: CF_V2
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Value: {type: struct, type_name: CF_V2}
   - id: 22
@@ -113,7 +113,7 @@ graphs:
       position:
         type: struct
         type_name: GameTransform
-        binding: {kind: component, component: game.GameTransform}
+        binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Then: {id: 2015, kind: exec}
       Result: {id: 2013, type: struct, type_name: GameVelocity}

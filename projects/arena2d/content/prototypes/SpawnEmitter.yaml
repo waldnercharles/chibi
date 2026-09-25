@@ -22,6 +22,6 @@ components:
     spread: 6.2831855
     velocity_inherit: 1.0
   GAME.GameProjectile: {lifetime: 1.5}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [ProjectileLifecycle]

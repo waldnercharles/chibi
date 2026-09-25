@@ -462,7 +462,7 @@ try {
   if (inspectedSystem.status !== 0 || inspectedSystem.response.ok !== true ||
       inspectedSystem.response.result?.name !== "MovementSystem" ||
       inspectedSystem.response.result?.query?.op !== "has" ||
-      inspectedSystem.response.result?.query?.component !== "game.GameTransform" ||
+      inspectedSystem.response.result?.query?.component !== "GAME.GameTransform" ||
       !Array.isArray(inspectedSystem.response.result?.validation?.diagnostics) ||
       validatedSystem.response.ok !== true ||
       validatedSystem.response.result?.valid !== true) {

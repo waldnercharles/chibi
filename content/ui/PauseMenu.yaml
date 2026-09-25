@@ -8,14 +8,14 @@ rml: |
     <div class="button" data-event="Quit">Quit<span class="key">Q</span></div>
   </div>
 rcss: |
-  body { background-color: #0004087d; }
+  body { background-color: #0004087d; pointer-events: auto; }
   #panel {
     position: absolute; left: 50%; top: 50%; width: 312dp; height: 193dp;
     margin-left: -180dp; margin-top: -120.5dp; padding: 24dp;
     background-color: #050e15f5; border: 1dp #416f7eb9; border-radius: 8dp;
   }
   .title { display: none; height: 35dp; margin-bottom: 2dp; line-height: 35dp; font-size: 27dp; color: #ccf8fb; }
-  .paused #paused, .cleared #cleared, .defeated #defeated { display: block; }
+  body.paused #paused, body.cleared #cleared, body.defeated #defeated { display: block; }
   #defeated { color: #ff8c96; }
   .button {
     display: block; height: 40dp; margin-top: 12dp; padding: 0 12dp; line-height: 40dp;
@@ -24,5 +24,5 @@ rcss: |
   .button:hover { background-color: #205363; }
   .button:active { background-color: #2d6a79; }
   .key { float: right; color: #7fa6b3; }
-  .cleared #resume, .defeated #resume { display: none; }
-  .cleared #panel, .defeated #panel { height: 141dp; margin-top: -94.5dp; }
+  body.cleared #resume, body.defeated #resume { display: none; }
+  body.cleared #panel, body.defeated #panel { height: 141dp; margin-top: -94.5dp; }

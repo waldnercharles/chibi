@@ -644,6 +644,18 @@ void rml_document_reload_style_sheet(rml_element *d)
     document(d)->ReloadStyleSheet();
 }
 
+void rml_document_set_style_sheet(rml_element *d, const char *rcss)
+{
+    document(d)->SetStyleSheetContainer(Rml::Factory::InstanceStyleSheetString(rcss));
+}
+
+void rml_document_add_style_sheet(rml_element *d, const char *rcss)
+{
+    Rml::SharedPtr<Rml::StyleSheetContainer> added = Rml::Factory::InstanceStyleSheetString(rcss);
+    const Rml::StyleSheetContainer *current = document(d)->GetStyleSheetContainer();
+    document(d)->SetStyleSheetContainer(current ? current->CombineStyleSheetContainer(*added) : added);
+}
+
 /* ---------- Elements ---------- */
 
 rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before)

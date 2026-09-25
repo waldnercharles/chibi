@@ -51,6 +51,7 @@ void test_file_watch();
 void test_ui_document();
 void test_game_ui();
 void test_game_ui_presenter();
+void test_kit_host();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
@@ -168,6 +169,7 @@ TEST_CASE(all_checks)
     test_ui_document();
     test_game_ui();
     test_game_ui_presenter();
+    test_kit_host();
     test_editor_checkpoint();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_rmlui_binding(), "RmlUi documents load from text and reload their style sheets");

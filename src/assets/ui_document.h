@@ -18,11 +18,23 @@ bool ui_document_read(const char *text, ui_document *out, char *error, size_t er
 /* Replaces each <use ui="Name" .../> in the markup with the widget asset
  * `ui_root`/Name.yaml: a div with the use element's attributes, `ui` renamed
  * data-ui, around the widget's markup. The use element's children fill the
- * widget's <slot/>. Each widget's RCSS precedes the document's, once. Appends
- * every widget name it looks up to `uses` (support/array.h), even on failure.
- * Returns false with a message in `error`, leaving `document` unchanged, when
- * a widget is missing, invalid, or uses itself. */
-bool ui_document_expand(ui_document *document, const char *ui_root, char ***uses, char *error, size_t error_size);
+ * widget's <slot/>. The RCSS becomes each widget's, then the document's, each
+ * scoped to its data-ui name (ui_document_scope), the document's to `name`.
+ * Appends every widget name it looks up to `uses` (support/array.h), even on
+ * failure. Returns false with a message in `error`, leaving `document`
+ * unchanged, when a widget is missing, invalid, or uses itself. */
+bool ui_document_expand(
+    ui_document *document,
+    const char *name,
+    const char *ui_root,
+    char ***uses,
+    char *error,
+    size_t error_size
+);
+/* Owned RCSS whose rules only match inside elements with data-ui="name":
+ * `body` in a selector names that element, and other selectors match within
+ * it. @media blocks are scoped too; other at-rules are kept as written. */
+char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);
 /* Owned RML document text: `base` then the asset's RCSS in the head, and its

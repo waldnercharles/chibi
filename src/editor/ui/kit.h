@@ -311,6 +311,14 @@ extern "C"
     } kit_surface_input;
     void kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input);
 
+    /* A host element whose children the kit leaves alone, for content mounted
+     * from a ui asset (render/ui.h). It lasts while its key is emitted. */
+    typedef struct rml_element rml_element;
+    rml_element *kit_host(kit *k, const char *key, const char *cls);
+    /* Adds `rcss` after the kit's stylesheets under `key`, replacing what the key
+     * held; NULL removes it. Hosted content installs its scoped RCSS here. */
+    void kit_style_sheet(kit *k, const char *key, const char *rcss);
+
     /* Toasts (Sonner): a bottom-right stack, three visible, four seconds each, paused
      * while hovered, dismissed by a drag to the right. Passing the id of a live toast
      * updates it in place (a loading toast becoming success); 0 creates one. */

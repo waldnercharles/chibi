@@ -100,7 +100,7 @@ static void free_names(char **names)
 static bool expand_text(const char *root, const char *rml, char *out, size_t size, char ***uses)
 {
     ui_document d = { .rml = strdup(rml), .rcss = strdup("#host {}") };
-    bool ok = ui_document_expand(&d, root, uses, out, size);
+    bool ok = ui_document_expand(&d, "Host", root, uses, out, size);
     if (ok) {
         snprintf(out, size, "%s|%s", d.rml, d.rcss);
     }
@@ -124,7 +124,8 @@ static void expanded_widgets()
                 text,
                 "<div data-ui=\"Meter\" id=\"hull\" class=\"wide\"><div "
                 "class=\"fill\"/></div>"
-                "|.fill { height: 4dp; }\n#host {}"
+                "|[data-ui=\"Meter\"] .fill { height: 4dp; "
+                "}\n[data-ui=\"Host\"] #host {}\n"
             ) &&
             acount(uses) == 1 && !strcmp(uses[0], "Meter"),
         "a used widget becomes a div with its markup, and its RCSS precedes "
@@ -146,7 +147,8 @@ static void expanded_widgets()
                   "class=\"fill\"/>Hull</div>"
                   "</span></div><div data-ui=\"Meter\"><div "
                   "class=\"fill\"/></div>"
-                  "|.fill { height: 4dp; }\n#host {}"
+                  "|[data-ui=\"Meter\"] .fill { height: 4dp; "
+                  "}\n[data-ui=\"Host\"] #host {}\n"
               ),
         "children fill a widget's slot, widgets nest, and each widget's RCSS "
         "appears once"
@@ -183,10 +185,49 @@ static void expanded_widgets()
     rmdir(root);
 }
 
+static void scoped_styles()
+{
+    static const struct
+    {
+        const char *rcss, *scoped, *check;
+    } cases[] = {
+        { "#a, .b > p { color: red; }",
+          "[data-ui=\"Hud\"] #a, [data-ui=\"Hud\"] .b > p { color: red; }",
+          "each selector in a list matches inside the scoped element" },
+        { "body { color: red; } body.paused #title {}",
+          "[data-ui=\"Hud\"] { color: red; } [data-ui=\"Hud\"].paused #title "
+          "{}",
+          "body names the scoped element itself" },
+        { "bodyguard {}",
+          "[data-ui=\"Hud\"] bodyguard {}",
+          "only a whole body name is the scoped element" },
+        { "p:not(.a, .b) {}",
+          "[data-ui=\"Hud\"] p:not(.a, .b) {}",
+          "commas inside parentheses stay in one selector" },
+        { "@media (min-width: 10dp) { p { x: 1; } }",
+          "@media (min-width: 10dp) { [data-ui=\"Hud\"] p { x: 1; } }",
+          "rules in a media block are scoped" },
+        { "@keyframes pulse { from { x: 0; } to { x: 1; } } p {}",
+          "@keyframes pulse { from { x: 0; } to { x: 1; } } [data-ui=\"Hud\"] "
+          "p {}",
+          "other at-rules are kept as written" },
+        { "/* note */ p {}", "/* note */ [data-ui=\"Hud\"] p {}", "comments are kept" },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        char *scoped = ui_document_scope(cases[i].rcss, "Hud");
+        test_check(!strcmp(scoped, cases[i].scoped), cases[i].check);
+        if (strcmp(scoped, cases[i].scoped) != 0) {
+            printf("  got: %s\n", scoped);
+        }
+        free(scoped);
+    }
+}
+
 void test_ui_document()
 {
     composed_document();
     rejected_documents();
     last_valid_document();
     expanded_widgets();
+    scoped_styles();
 }

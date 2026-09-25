@@ -375,6 +375,10 @@ extern "C"
     void rml_document_update(rml_element *document);
     /* Re-reads the document's source for its style sheets; elements stay. */
     void rml_document_reload_style_sheet(rml_element *document);
+    /* Replaces the document's style sheets with `rcss`. */
+    void rml_document_set_style_sheet(rml_element *document, const char *rcss);
+    /* Adds `rcss` after the document's style sheets. */
+    void rml_document_add_style_sheet(rml_element *document, const char *rcss);
 
     /* ---------- Elements ---------- */
 

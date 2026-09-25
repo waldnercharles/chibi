@@ -183,7 +183,8 @@ static bool read_use_name(use_tag *tag)
         const char *name = p + 5;
         const char *end = quote == '"' || quote == '\'' ? strchr(name, quote) : NULL;
         size_t length = end ? (size_t)(end - name) : 0;
-        if (!length || length >= sizeof tag->name || memchr(name, '/', length)) {
+        if (!length || length >= sizeof tag->name ||
+            memchr(name, '/', length) || memchr(name, '"', length)) {
             return false;
         }
         memcpy(tag->name, name, length);
@@ -323,7 +324,160 @@ static bool expand(expansion *x, const char *rml, char **out)
     return true;
 }
 
-bool ui_document_expand(ui_document *document, const char *ui_root, char ***uses, char *error, size_t error_size)
+/* ---------- Scoping ---------- */
+
+/* Copies the comment or whitespace at `p`; returns past it, or `p`. */
+static const char *skip_space(const char *p, char **out)
+{
+    for (;;) {
+        if (isspace((unsigned char)*p)) {
+            put(out, p++, 1);
+            continue;
+        }
+        if (p[0] == '/' && p[1] == '*') {
+            const char *end = strstr(p + 2, "*/");
+            end = end ? end + 2 : p + strlen(p);
+            put(out, p, (size_t)(end - p));
+            p = end;
+            continue;
+        }
+        return p;
+    }
+}
+
+/* One past the '}' that closes the block whose '{' is at `p`. */
+static const char *block_end(const char *p)
+{
+    int depth = 0;
+    for (; *p; p++) {
+        depth += *p == '{';
+        depth -= *p == '}';
+        if (!depth) {
+            return p + 1;
+        }
+    }
+    return p;
+}
+
+static bool name_char(char c)
+{
+    return isalnum((unsigned char)c) || c == '-' || c == '_';
+}
+
+/* Writes one selector matching inside the scope: `body` names the scoped
+ * element itself. */
+static void put_selector(char **out, const char *scope, const char *s, size_t length)
+{
+    while (length && isspace((unsigned char)*s)) {
+        s++;
+        length--;
+    }
+    while (length && isspace((unsigned char)s[length - 1])) {
+        length--;
+    }
+    put(out, scope, strlen(scope));
+    if (length >= 4 && !strncmp(s, "body", 4) && (length == 4 || !name_char(s[4]))) {
+        put(out, s + 4, length - 4);
+        return;
+    }
+    put(out, " ", 1);
+    put(out, s, length);
+}
+
+/* Writes the selector list [p, end) with each selector scoped. */
+static void put_selectors(char **out, const char *scope, const char *p, const char *end)
+{
+    int parens = 0;
+    const char *start = p;
+    for (; p < end; p++) {
+        parens += (*p == '(') - (*p == ')');
+        if (*p == ',' && !parens) {
+            put_selector(out, scope, start, (size_t)(p - start));
+            put(out, ", ", 2);
+            start = p + 1;
+        }
+    }
+    put_selector(out, scope, start, (size_t)(end - start));
+}
+
+/* Scopes the rules from `p` until a '}' at this level or the end; returns
+ * where it stopped. @media blocks are scoped too; other at-rules are kept. */
+static const char *scope_rules(const char *p, const char *scope, char **out)
+{
+    for (;;) {
+        p = skip_space(p, out);
+        if (!*p || *p == '}') {
+            return p;
+        }
+        const char *open = strchr(p, '{');
+        const char *stop = strchr(p, ';');
+        if (*p == '@' && stop && (!open || stop < open)) {
+            put(out, p, (size_t)(stop + 1 - p));
+            p = stop + 1;
+            continue;
+        }
+        if (!open) {
+            put(out, p, strlen(p));
+            return p + strlen(p);
+        }
+        if (*p == '@' && strncmp(p, "@media", 6) != 0) {
+            const char *end = block_end(open);
+            put(out, p, (size_t)(end - p));
+            p = end;
+            continue;
+        }
+        if (*p == '@') {
+            put(out, p, (size_t)(open + 1 - p));
+            p = scope_rules(open + 1, scope, out);
+            if (*p == '}') {
+                put(out, "}", 1);
+                p++;
+            }
+            continue;
+        }
+        put_selectors(out, scope, p, open);
+        put(out, " ", 1);
+        const char *end = block_end(open);
+        put(out, open, (size_t)(end - open));
+        p = end;
+    }
+}
+
+char *ui_document_scope(const char *rcss, const char *name)
+{
+    char scope[160];
+    snprintf(scope, sizeof scope, "[data-ui=\"%s\"]", name);
+    char *out = NULL;
+    const char *p = rcss;
+    while (*(p = scope_rules(p, scope, &out)) == '}') {
+        p++; /* a stray close brace ends nothing */
+    }
+    put(&out, "", 1);
+    char *text = xstrdup(out);
+    afree(out);
+    return text;
+}
+
+/* Appends `rcss` scoped to `name`, with a line break, when there is any. */
+static void put_scoped(char **out, const char *rcss, const char *name)
+{
+    if (!rcss[0]) {
+        return;
+    }
+    char *scoped = ui_document_scope(rcss, name);
+    put(out, scoped, strlen(scoped));
+    put(out, "\n", 1);
+    free(scoped);
+}
+
+bool ui_document_expand(
+    ui_document *document,
+    const char *name,
+    const char *ui_root,
+    char ***uses,
+    char *error,
+    size_t error_size
+)
 {
     expansion x = { .ui_root = ui_root, .error = error, .error_size = error_size };
     char *rml = NULL;
@@ -331,12 +485,10 @@ bool ui_document_expand(ui_document *document, const char *ui_root, char ***uses
     if (ok) {
         char *rcss = NULL;
         for (int i = 0; i < acount(x.widgets); i++) {
-            if (x.widgets[i].rcss[0]) {
-                put(&rcss, x.widgets[i].rcss, strlen(x.widgets[i].rcss));
-                put(&rcss, "\n", 1);
-            }
+            put_scoped(&rcss, x.widgets[i].rcss, x.names[i]);
         }
-        put(&rcss, document->rcss, strlen(document->rcss) + 1);
+        put_scoped(&rcss, document->rcss, name);
+        put(&rcss, "", 1);
         ui_document_free(document);
         *document = (ui_document){ .rml = xstrdup(rml), .rcss = xstrdup(rcss) };
         afree(rcss);

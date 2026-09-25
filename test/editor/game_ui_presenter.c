@@ -87,8 +87,9 @@ void test_game_ui_presenter()
     write_file(
         overlay,
         "rml: <div id=\"go\" data-event=\"Resume\">Go</div>\n"
-        "rcss: '#go { display: block; width: 200dp; height: 60dp; } .done #go "
-        "{ display: none; }'\n"
+        "rcss: 'body { pointer-events: auto; } #go { display: block; width: "
+        "200dp; height: "
+        "60dp; } body.done #go { display: none; }'\n"
     );
     before = game_entities_pending_events(live->entities);
     render_ui_set_overlay(ui, "Pause", "paused");

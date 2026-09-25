@@ -508,7 +508,14 @@ RCSS comes before the host's, so the host can restyle it; its `data-event`s
 reach the host's entity, and `#hull .fill` selects inside one instance.
 Editing a widget reloads every document that uses it.
 
-The player shows `content/ui/PauseMenu.yaml` while paused. Its body has the
+Each asset's RCSS applies only inside it: rules are scoped to the element
+showing the asset (`data-ui="<name>"`), and `body` in a selector names that
+element, so `body.paused #title` styles a state class set on it. Game UI lets
+the pointer through to the game except over `data-event` elements and inputs;
+set `pointer-events: auto` where a document should block it, such as a menu's
+backdrop.
+
+The player shows `content/ui/PauseMenu.yaml` while paused. Its `body` has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
 events control the session.
 

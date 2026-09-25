@@ -867,9 +867,31 @@ static void sync_styles(kit *k)
     for (int i = 0; i < acount(k->styles); i++) {
         changed |= file_watch_changed(&k->styles[i], k->styles[i].path, k->in.time);
     }
-    if (changed) {
-        rml_document_reload_style_sheet(k->doc);
+    if (!changed && !k->restyle) {
+        return;
     }
+    rml_document_reload_style_sheet(k->doc);
+    for (int i = 0; i < acount(k->extra_styles); i++) {
+        rml_document_add_style_sheet(k->doc, k->extra_styles[i].value);
+    }
+    k->restyle = false;
+}
+
+void kit_style_sheet(kit *k, const char *key, const char *rcss)
+{
+    pair *p = pair_find(k->extra_styles, key);
+    if (!rcss && p) {
+        free(p->name);
+        free(p->value);
+        adel(k->extra_styles, p - k->extra_styles);
+        k->restyle = true;
+        return;
+    }
+    if (!rcss || (p && str_eq(p->value, rcss))) {
+        return;
+    }
+    pair_put(&k->extra_styles, key, rcss);
+    k->restyle = true;
 }
 
 /* ---------- API ---------- */
@@ -953,6 +975,7 @@ static void kit_free(kit *k)
     afree(k->layout_nodes);
     afree(k->text_motion);
     afree(k->styles);
+    pairs_free(k->extra_styles);
     free(k);
 }
 
@@ -1060,6 +1083,11 @@ void kit_pop(kit *k)
 void kit_leaf(kit *k, const char *key, const char *tag, const char *cls)
 {
     emit(k, key, KIND_BOX, tag, cls);
+}
+
+rml_element *kit_host(kit *k, const char *key, const char *cls)
+{
+    return emit(k, key, KIND_BOX, "div", cls)->el;
 }
 
 void kit_label(kit *k, const char *key, const char *cls, const char *text)

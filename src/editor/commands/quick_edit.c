@@ -259,6 +259,47 @@ static bool has_choice(yyjson_val *field)
     return yyjson_is_arr(yyjson_obj_get(field, "choices"));
 }
 
+/* A field named <qualifier>_color, such as border_color or emission_color,
+ * whose qualifier the request names. */
+static bool qualified_color(yyjson_val *field, const char *request)
+{
+    const char *name = json_string(field, "name");
+    const char *suffix = strstr(name, "_color");
+    if (!suffix || suffix[6]) {
+        return false;
+    }
+    char qualifier[64];
+    snprintf(qualifier, sizeof qualifier, "%.*s", (int)(suffix - name), name);
+    return has_phrase(request, qualifier);
+}
+
+static bool any_qualified_color(yyjson_val *fields, const char *request)
+{
+    size_t i, count;
+    yyjson_val *field;
+    yyjson_arr_foreach(fields, i, count, field)
+    {
+        if (qualified_color(field, request)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A plain color request means the appearance color; a qualified one, such as
+ * "border color", means that field. */
+static bool color_field(yyjson_val *field, const char *request, bool qualified)
+{
+    if (!equal_fold(json_string(field, "type"), "color")) {
+        return false;
+    }
+    if (qualified) {
+        return qualified_color(field, request);
+    }
+    return equal_fold(json_string(field, "name"), "color") ||
+           has_phrase(json_string(field, "label"), "appearance color");
+}
+
 static yyjson_val *field_for_request(
     yyjson_val *fields,
     const char *request,
@@ -267,10 +308,7 @@ static yyjson_val *field_for_request(
     bool visual_width
 )
 {
-    bool border = has_phrase(request, "border"), glow = has_phrase(request, "glow");
-    if (border && glow) {
-        return NULL;
-    }
+    bool qualified = color && any_qualified_color(fields, request);
     yyjson_val *found = NULL;
     size_t i, count;
     yyjson_val *field;
@@ -278,12 +316,7 @@ static yyjson_val *field_for_request(
     {
         const char *name = json_string(field, "name");
         const char *label = json_string(field, "label");
-        bool matches = color
-                         ? equal_fold(json_string(field, "type"), "color") &&
-                               (border ? has_phrase(name, "border")
-                                : glow ? has_phrase(name, "glow")
-                                       : equal_fold(name, "color") ||
-                                             has_phrase(label, "appearance color"))
+        bool matches = color ? color_field(field, request, qualified)
                      : collider_shape ? field_is(field, "shape", "choice") &&
                                             component_has(field, "GameCollider") &&
                                             has_choice(field)

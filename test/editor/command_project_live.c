@@ -259,10 +259,9 @@ int test_editor_command_project_live(const char *provider, const char *project_p
     reply = settled(f.scene, submit_dry_run(f.scene, "Change the player's emission color to blue"));
     result_doc = yyjson_read(reply, strlen(reply), 0);
     result = yyjson_doc_get_root(result_doc);
-    bool emission_proposal = exact_proposal(result, target, "GAME.GameMaterial.emission_color", 0x0000ffff) &&
-                             yyjson_get_int(yyjson_obj_get(result, "model_calls")) == 1;
+    bool emission_proposal = exact_proposal(result, target, "GAME.GameMaterial.emission_color", 0x0000ffff);
     passed &= emission_proposal;
-    test_check(emission_proposal, "model proposes the Player prototype emission color edit");
+    test_check(emission_proposal, "a qualified color request proposes the Player emission color edit");
 
     char result_status[32];
     snprintf(result_status, sizeof result_status, "%s", command_string(result, "status"));

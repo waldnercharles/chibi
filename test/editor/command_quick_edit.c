@@ -18,6 +18,10 @@ static const char *const catalog_json =
     "\"label\":\"Appearance Color\",\"component\":\"GameAppearance\","
     "\"component_key\":\"GAME.GameAppearance\",\"type\":\"color\","
     "\"integer\":false,\"value\":4294967295},"
+    "{\"id\":\"GAME.GameMaterial.emission_color\",\"name\":\"emission_color\","
+    "\"label\":\"Material Emission Color\",\"component\":\"GameMaterial\","
+    "\"component_key\":\"GAME.GameMaterial\",\"type\":\"color\","
+    "\"integer\":false,\"value\":4294967295},"
     "{\"id\":\"GAME.GameAppearance.width\",\"name\":\"width\","
     "\"label\":\"Appearance Width\",\"component\":\"GameAppearance\","
     "\"component_key\":\"GAME.GameAppearance\",\"type\":\"number\","
@@ -143,6 +147,13 @@ void test_editor_command_quick_edit()
         0x12345678,
         "quick edit keeps an explicitly scoped instance and preserves exact "
         "RGBA"
+    );
+    expect_value(
+        "Change Ship's emission color to blue",
+        "prototype:player",
+        "GAME.GameMaterial.emission_color",
+        0x0000ffff,
+        "quick edit follows a named color qualifier to its field"
     );
     expect_value(
         "Change Ship copy's color to blue",

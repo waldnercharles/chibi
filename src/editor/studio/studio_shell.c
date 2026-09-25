@@ -185,6 +185,18 @@ static bool active_dirty(studio *s)
     return tab ? scene_tabs_dirty(scene, tab) : scene->scene_dirty;
 }
 
+/* The active scene or prototype document's history. */
+static void document_history(studio *s, bool redo)
+{
+    finish_transform_edit(s->scene, false);
+    int result = s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE
+                   ? (redo ? prototype_redo(s->scene) : prototype_undo(s->scene))
+                   : replay_scene_edit(s->scene, redo);
+    if (result == 0) {
+        studio_report(s, redo ? "Redo" : "Undo");
+    }
+}
+
 void studio_history(studio *s, bool redo)
 {
     if (!studio_editable(s) || !can_replay(s, redo)) {
@@ -195,13 +207,7 @@ void studio_history(studio *s, bool redo)
         studio_report(s, redo ? "Redo" : "Undo");
         return;
     }
-    finish_transform_edit(s->scene, false);
-    int result = s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE
-                   ? (redo ? prototype_redo(s->scene) : prototype_undo(s->scene))
-                   : replay_scene_edit(s->scene, redo);
-    if (result == 0) {
-        studio_report(s, redo ? "Redo" : "Undo");
-    }
+    document_history(s, redo);
 }
 
 void studio_runtime(studio *s, app_runtime_command command)
@@ -274,8 +280,9 @@ static void undo_toast(studio *s)
                    scene_history_group_id(s->scene->history, false) == s->undo_toast_group;
     if (kit_toast_action(s->kit, s->undo_toast)) {
         s->undo_toast = 0;
-        if (current) {
-            studio_history(s, false);
+        /* The deletion, even when a graph under the toast has focus. */
+        if (current && studio_editable(s)) {
+            document_history(s, false);
         }
         return;
     }

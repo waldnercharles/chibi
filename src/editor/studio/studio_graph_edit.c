@@ -64,7 +64,7 @@ void sg_frame_selection(studio *s)
     );
 }
 
-static void show_error(studio *s, const char *message)
+void sg_show_error(studio *s, const char *message)
 {
     kit_toast(
         s->kit,
@@ -91,7 +91,7 @@ bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_k
     } else {
         ed_cancel_snapshot(e);
         if (e->connect_error[0]) {
-            show_error(s, e->connect_error);
+            sg_show_error(s, e->connect_error);
         }
     }
     return connected;

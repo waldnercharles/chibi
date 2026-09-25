@@ -141,9 +141,9 @@ body.far .gnode-head .title { font-size: 16dp; }
 }
 body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
 
-/* Centered on the wire's middle by the negative margins. */
+/* Centered on the wire's middle by a negative margin (emit_conversions). */
 .gconversion {
-    position: absolute; display: block; height: 16dp; margin-top: -8dp; margin-left: -40dp; width: 80dp;
+    position: absolute; display: block; height: 16dp; margin-top: -8dp;
     border-radius: 8dp; background-color: var(--conversion); border: 1dp var(--line-strong);
     color: var(--fg-2); font-size: 10dp; line-height: 14dp; text-align: center; white-space: nowrap; overflow: hidden;
 }
@@ -153,3 +153,16 @@ body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
     position: absolute; padding: 2dp 8dp; border-radius: var(--r); background-color: var(--notice);
     color: var(--notice-fg); font-size: 11dp; line-height: 16dp; white-space: nowrap;
 }
+
+/* A wire's reroute point: a 14 dp hit area centered on the point. */
+.greroute { position: absolute; width: 14dp; height: 14dp; margin-left: -7dp; margin-top: -7dp; cursor: move; }
+.greroute kit-dot { position: absolute; left: 2dp; top: 2dp; width: 10dp; height: 10dp; }
+
+/* A watched pin's value floats outside the node beside its socket (Unreal). */
+.gwatch {
+    position: absolute; top: -9dp; height: 16dp; padding: 0dp 6dp; border-radius: 8dp;
+    background-color: var(--accent); color: var(--on-accent); font-size: 10dp; line-height: 16dp;
+    font-family: InterNumeric; white-space: nowrap; pointer-events: none;
+}
+.in > .gwatch { right: 100%; margin-right: 10dp; }
+.out > .gwatch { left: 100%; margin-left: 10dp; }

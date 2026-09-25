@@ -110,12 +110,13 @@ typedef struct
 typedef enum
 {
     STUDIO_GRAPH_IDLE,
-    STUDIO_GRAPH_PRESS, /* on a node, below the drag threshold */
-    STUDIO_GRAPH_MOVE,  /* dragging the selected nodes */
-    STUDIO_GRAPH_BOX,   /* marquee selection */
-    STUDIO_GRAPH_PAN,   /* middle, Space or right drag */
-    STUDIO_GRAPH_LINK,  /* dragging a wire from a socket */
-    STUDIO_GRAPH_RIGHT, /* right press, below the pan threshold */
+    STUDIO_GRAPH_PRESS,   /* on a node, below the drag threshold */
+    STUDIO_GRAPH_MOVE,    /* dragging the selected nodes */
+    STUDIO_GRAPH_BOX,     /* marquee selection */
+    STUDIO_GRAPH_PAN,     /* middle, Space or right drag */
+    STUDIO_GRAPH_LINK,    /* dragging a wire from a socket */
+    STUDIO_GRAPH_RIGHT,   /* right press, below the pan threshold */
+    STUDIO_GRAPH_REROUTE, /* dragging a wire's reroute point */
 } studio_graph_gesture;
 
 typedef struct
@@ -183,7 +184,17 @@ typedef struct
     int *edge_route; /* per edge: its link in routes, or -1 */
     int *wire_edges; /* per drawn wire: its edge index */
     struct studio_node_layout *layouts; /* nodes measured this frame */
-    int forms;                          /* node settings the layouts follow */
+    int reroute_edge, reroute_point;    /* the reroute being dragged */
+    float reroute_x, reroute_y;         /* where it was before the drag */
+    bool reroute_added;                 /* the drag began by adding it */
+    int hover_reroute; /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
+    int insert_edge;   /* the wire a dragged node would join, or -1 */
+    bool renaming;     /* the name of rename_graph is being edited */
+    uint64_t rename_graph;
+    int rename_area; /* the area whose header holds the name field */
+    bool rename_focus;
+    char rename[128];
+    int forms;          /* node settings the layouts follow */
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;
     bool double_click; /* the press this frame completes a double click */

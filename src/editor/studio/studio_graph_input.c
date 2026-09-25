@@ -19,18 +19,26 @@ typedef struct
     uint64_t node;
     int kind; /* -1 on the node body */
     int pin;
-    uint64_t comment; /* a comment frame's title */
+    uint64_t comment;                /* a comment frame's title */
+    int reroute_edge, reroute_point; /* a wire's reroute point, or -1 */
 } graph_hit;
+
+static const graph_hit NO_HIT = { 0, -1, -1, 0, -1, -1 };
 
 static graph_hit parse_hit(const char *path)
 {
-    graph_hit hit = { 0, -1, -1, 0 };
+    graph_hit hit = NO_HIT;
     unsigned long long id;
     int used = 0;
     if (path && sscanf(path, "world/stage/c%llu/t", &id) == 1) {
         hit.comment = id;
         return hit;
     }
+    if (path &&
+        sscanf(path, "world/stage/r%d_%d", &hit.reroute_edge, &hit.reroute_point) == 2) {
+        return hit;
+    }
+    hit.reroute_edge = hit.reroute_point = -1;
     if (!path || sscanf(path, "world/stage/n%llu%n", &id, &used) != 1) {
         return hit;
     }
@@ -62,6 +70,13 @@ static float drag_distance(const studio_graph *g)
     );
 }
 
+static float segment_distance(float px, float py, float ax, float ay, float bx, float by)
+{
+    float dx = bx - ax, dy = by - ay;
+    float t = fmaxf(0, fminf(1, ((px - ax) * dx + (py - ay) * dy) / fmaxf(dx * dx + dy * dy, 1e-6f)));
+    return hypotf(px - ax - dx * t, py - ay - dy * t);
+}
+
 /* The wire under the pointer, from the curves drawn last frame. */
 static int hit_wire(const studio *s)
 {
@@ -74,12 +89,14 @@ static int hit_wire(const studio *s)
         int count = kit_wire_points(g->kit, "back/wires", w, points, CURVE_POINTS);
         count = count < CURVE_POINTS ? count : CURVE_POINTS;
         for (int i = 1; i < count; i++) {
-            float ax = points[i * 2 - 2], ay = points[i * 2 - 1];
-            float bx = points[i * 2], by = points[i * 2 + 1];
-            float dx = bx - ax, dy = by - ay, px = g->in.mouse_x - ax,
-                  py = g->in.mouse_y - ay;
-            float t = fmaxf(0, fminf(1, (px * dx + py * dy) / fmaxf(dx * dx + dy * dy, 1e-6f)));
-            float d = hypotf(px - dx * t, py - dy * t);
+            float d = segment_distance(
+                g->in.mouse_x,
+                g->in.mouse_y,
+                points[i * 2 - 2],
+                points[i * 2 - 1],
+                points[i * 2],
+                points[i * 2 + 1]
+            );
             if (d < best) {
                 best = d;
                 found = g->wire_edges[w];
@@ -87,6 +104,129 @@ static int hit_wire(const studio *s)
         }
     }
     return found < acount(gr->edges) ? found : -1;
+}
+
+/* The wire's segment nearest the pointer, counting its reroutes in order. */
+static int reroute_segment(const studio *s, const edge *ed)
+{
+    const studio_graph *g = &s->graph;
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!ed->reroute_count ||
+        !sg_edge_ends(sg_active_graph(s), ed, &from, &from_pin, &to, &to_pin)) {
+        return 0;
+    }
+    float x[GRAPH_EDGE_MAX_REROUTES + 2], y[GRAPH_EDGE_MAX_REROUTES + 2];
+    int last = ed->reroute_count + 1;
+    sg_socket_at(s, from, ED_PIN_OUTPUT, from_pin, &x[0], &y[0]);
+    for (int r = 0; r < ed->reroute_count; r++) {
+        x[r + 1] = ed->reroutes[r].x;
+        y[r + 1] = ed->reroutes[r].y;
+    }
+    sg_socket_at(s, to, ED_PIN_INPUT, to_pin, &x[last], &y[last]);
+    int best = 0;
+    float nearest = INFINITY;
+    for (int i = 0; i < last; i++) {
+        float d = segment_distance(g->world_x, g->world_y, x[i], y[i], x[i + 1], y[i + 1]);
+        best = d < nearest ? i : best;
+        nearest = fminf(nearest, d);
+    }
+    return best;
+}
+
+static void remove_reroute(edge *ed, int point)
+{
+    ed->reroute_count--;
+    memmove(
+        &ed->reroutes[point],
+        &ed->reroutes[point + 1],
+        (size_t)(ed->reroute_count - point) * sizeof *ed->reroutes
+    );
+}
+
+/* Double-clicking a wire adds a reroute where it was clicked and drags it
+   (Unreal). A wire on arranged lanes takes it as its only point. */
+static bool add_reroute(studio *s, int index)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    edge *ed = &sg_active_graph(s)->edges[index];
+    if (ed->reroute_count >= GRAPH_EDGE_MAX_REROUTES) {
+        return false;
+    }
+    int at = reroute_segment(s, ed);
+    e->pending_snapshot = ed_snapshot(e);
+    memmove(
+        &ed->reroutes[at + 1],
+        &ed->reroutes[at],
+        (size_t)(ed->reroute_count - at) * sizeof *ed->reroutes
+    );
+    ed->reroutes[at].x = g->reroute_x = g->press_wx;
+    ed->reroutes[at].y = g->reroute_y = g->press_wy;
+    ed->reroute_count++;
+    g->gesture = STUDIO_GRAPH_REROUTE;
+    g->reroute_edge = index;
+    g->reroute_point = at;
+    g->reroute_added = true;
+    return true;
+}
+
+/* A reroute point drags; Alt+click removes it (Unreal). */
+static void press_reroute(studio *s, graph_hit hit)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    if (sg_graph_readonly(s) || hit.reroute_edge >= acount(gr->edges) ||
+        hit.reroute_point >= gr->edges[hit.reroute_edge].reroute_count) {
+        return;
+    }
+    edge *ed = &gr->edges[hit.reroute_edge];
+    if (g->in.modifiers & KIT_MOD_ALT) {
+        ed_snapshot_before(e);
+        remove_reroute(ed, hit.reroute_point);
+        return;
+    }
+    e->pending_snapshot = ed_snapshot(e);
+    g->gesture = STUDIO_GRAPH_REROUTE;
+    g->reroute_edge = hit.reroute_edge;
+    g->reroute_point = hit.reroute_point;
+    g->reroute_x = ed->reroutes[hit.reroute_point].x;
+    g->reroute_y = ed->reroutes[hit.reroute_point].y;
+    g->reroute_added = false;
+}
+
+/* The pins n would join wire `index` by, or false when it can't. */
+static bool insert_pins(const studio *s, node *n, int index, int *in, int *out)
+{
+    graph *gr = sg_active_graph(s);
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!sg_edge_ends(gr, &gr->edges[index], &from, &from_pin, &to, &to_pin)) {
+        return false;
+    }
+    *in = sg_body_target(gr, from, ED_PIN_OUTPUT, from_pin, n);
+    *out = sg_body_target(gr, to, ED_PIN_INPUT, to_pin, n);
+    return *in >= 0 && *out >= 0;
+}
+
+/* A lone unwired node dragged over a wire offers to join it (Blender,
+   Node-RED); Alt keeps it out, and so does a frame carrying its contents. */
+static int insert_target(const studio *s)
+{
+    const studio_graph *g = &s->graph;
+    graph *gr = sg_active_graph(s);
+    node *n = acount(g->drag) == 1 ? sg_node_by_id(s, g->drag[0].id) : NULL;
+    if (!n || g->press_comment || (g->in.modifiers & KIT_MOD_ALT)) {
+        return -1;
+    }
+    for (int i = 0; i < acount(gr->edges); i++) {
+        if (gr->edges[i].from_id == n->id || gr->edges[i].to_id == n->id) {
+            return -1;
+        }
+    }
+    int wire = hit_wire(s), in, out;
+    return wire >= 0 && insert_pins(s, n, wire, &in, &out) ? wire : -1;
 }
 
 static void begin_link(studio *s, node *n, int kind, int pin)
@@ -213,6 +353,10 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     g->press_comment = 0;
+    if (hit.reroute_edge >= 0) {
+        press_reroute(s, hit);
+        return;
+    }
     graph_comment_box *box = sg_comment_by_id(s, hit.comment);
     if (box) {
         /* Dragging a frame's title carries what it frames; Shift moves the
@@ -250,6 +394,9 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     if (g->hover_edge >= 0 && g->hover_edge < acount(gr->edges)) {
+        if (g->double_click && !sg_graph_readonly(s) && add_reroute(s, g->hover_edge)) {
+            return;
+        }
         ed_link_ref link;
         sg_link_ref_of(&gr->edges[g->hover_edge], &link);
         if ((mods & KIT_MOD_ALT) && !sg_graph_readonly(s)) {
@@ -301,6 +448,7 @@ static void drag(studio *s)
             /* fallthrough */
         case STUDIO_GRAPH_MOVE: {
             float dx = g->world_x - g->press_wx, dy = g->world_y - g->press_wy;
+            g->insert_edge = insert_target(s);
             graph_comment_box *box = sg_comment_by_id(s, g->press_comment);
             if (box) {
                 box->x = g->comment_x + dx;
@@ -326,6 +474,16 @@ static void drag(studio *s)
                 g->gesture = STUDIO_GRAPH_PAN;
             }
             break;
+        case STUDIO_GRAPH_REROUTE: {
+            /* A drag moves the point by the pointer's travel; a click leaves it. */
+            if (drag_distance(g) < THRESHOLD) {
+                break;
+            }
+            edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
+            ed->reroutes[g->reroute_point].x = g->reroute_x + g->world_x - g->press_wx;
+            ed->reroutes[g->reroute_point].y = g->reroute_y + g->world_y - g->press_wy;
+            break;
+        }
         default: break;
     }
 }
@@ -353,6 +511,27 @@ static void release(studio *s, graph_hit hit)
                 node *n = sg_node_by_id(s, g->drag[i].id);
                 moved |= n && (n->x != g->drag[i].x || n->y != g->drag[i].y);
             }
+            node *lone = acount(g->drag) == 1 ? sg_node_by_id(s, g->drag[0].id) : NULL;
+            int in, out;
+            bool offered = g->insert_edge >= 0 && lone;
+            bool inserted = offered &&
+                            insert_pins(s, lone, g->insert_edge, &in, &out) &&
+                            ed_insert_on_wire(e, g->insert_edge, lone, in, out);
+            if (offered && !inserted) {
+                sg_show_error(s, e->connect_error[0] ? e->connect_error : "Can't insert the node here");
+            }
+            if (moved || inserted) {
+                ed_commit_snapshot(e);
+            } else {
+                ed_cancel_snapshot(e);
+            }
+            break;
+        }
+        case STUDIO_GRAPH_REROUTE: {
+            const edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
+            bool moved = g->reroute_added ||
+                         ed->reroutes[g->reroute_point].x != g->reroute_x ||
+                         ed->reroutes[g->reroute_point].y != g->reroute_y;
             if (moved) {
                 ed_commit_snapshot(e);
             } else {
@@ -407,6 +586,16 @@ void sg_cancel_gesture(studio *s)
                 n->x = g->drag[i].x;
                 n->y = g->drag[i].y;
             }
+        }
+        ed_cancel_snapshot(e);
+    }
+    if (g->gesture == STUDIO_GRAPH_REROUTE) {
+        edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
+        if (g->reroute_added) {
+            remove_reroute(ed, g->reroute_point);
+        } else {
+            ed->reroutes[g->reroute_point].x = g->reroute_x;
+            ed->reroutes[g->reroute_point].y = g->reroute_y;
         }
         ed_cancel_snapshot(e);
     }
@@ -520,7 +709,10 @@ static void snap_link(studio *s, graph_hit *hit)
             float d = hypotf(x - g->world_x, y - g->world_y);
             if (d < best) {
                 best = d;
-                *hit = (graph_hit){ n->id, want, p, 0 };
+                *hit = NO_HIT;
+                hit->node = n->id;
+                hit->kind = want;
+                hit->pin = p;
             }
         }
     }
@@ -570,14 +762,16 @@ void sg_pointer(studio *s)
         &g->world_y
     );
     bool inside = g->in.mouse_x > -1e8f;
-    graph_hit hit = inside ? parse_hit(kit_hovered_path(g->kit))
-                           : (graph_hit){ 0, -1, -1, 0 };
+    graph_hit hit = inside ? parse_hit(kit_hovered_path(g->kit)) : NO_HIT;
     bool on_control = inside && kit_pointer_on_control(g->kit);
     node *hovered = sg_node_by_id(s, hit.node);
     g->hover_node = hovered ? hovered->id : 0;
     g->hover_kind = hovered && !on_control ? hit.kind : -1;
     g->hover_pin = hovered && !on_control ? hit.pin : -1;
-    g->hover_edge = inside && !hovered && g->gesture == STUDIO_GRAPH_IDLE
+    g->hover_reroute = hit.reroute_edge >= 0
+                         ? hit.reroute_edge * GRAPH_EDGE_MAX_REROUTES + hit.reroute_point
+                         : -1;
+    g->hover_edge = inside && !hovered && hit.reroute_edge < 0 && g->gesture == STUDIO_GRAPH_IDLE
                       ? hit_wire(s)
                       : -1;
     if (g->press_button >= 0 && g->gesture == STUDIO_GRAPH_IDLE) {
@@ -632,9 +826,15 @@ void sg_shortcuts(studio *s)
         if (s->keys[i].repeat) {
             continue; /* a held key acts once */
         }
-        if (key == SDLK_ESCAPE && g->gesture != STUDIO_GRAPH_IDLE) {
-            sg_cancel_gesture(s);
-        } else if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
+        /* A gesture holds an undo snapshot and edge indices, so edits wait
+           for it to end; Escape cancels it. */
+        if (g->gesture != STUDIO_GRAPH_IDLE) {
+            if (key == SDLK_ESCAPE) {
+                sg_cancel_gesture(s);
+            }
+            continue;
+        }
+        if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
         } else if (!mod && !shift && key == SDLK_F) {
             sg_frame_nodes(s, acount(e->selected) > 0, true);

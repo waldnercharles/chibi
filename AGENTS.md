@@ -55,4 +55,4 @@ Common mismatches to catch:
 - Class strings built with ternaries: use `KIT_CX` (clsx) and `kit_variant`/`kit_size` (cva); state goes in `data-*` attributes.
 - Instant show and hide, or motion interpolated by hand: use `kit_presence` and `kit_layout` (Motion).
 
-Verify UI changes in the web build (`make web`, then `?design-preview=1`).
+Verify UI changes in the web build (`make web`).

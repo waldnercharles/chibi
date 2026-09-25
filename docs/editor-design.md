@@ -27,8 +27,9 @@ activates, and Escape or Tab returns focus to the editor. The existing document
 tabs and document-list popup still use ImGui. The list opens from its retained
 button's current bounds, including when invoked by keyboard.
 
-Use `--design-preview` on desktop or `?design-preview=1` in the browser to run
-Studio, the full-window RmlUi editor, in place of the ImGui workspace. Its
+The editor opens as Studio, the full-window RmlUi editor. Use `--imgui` on
+desktop or `?imgui` in the browser for the ImGui workspace, which still has the
+panels Studio hasn't converted. Its
 direction, component kit and migration progress are in
 [the Studio design](prototypes/studio/DESIGN.md). Studio has Blender-style
 areas, a command palette, the Outliner, Properties and the scene viewport. It

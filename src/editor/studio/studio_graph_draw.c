@@ -287,6 +287,20 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
             kit_style(k, "width", width);
         }
     }
+    /* Watched pins, and the pin under the pointer, show their last value
+       beside the socket unless an editor already shows it (Unreal). */
+    editor *e = sg_graph_editor(s);
+    bool edited = parts.value != VALUE_NONE && parts.value != VALUE_CHIP;
+    /* Previews can't read bindings, so a bound input shows only a run's value. */
+    bool bound = input && parts.value == VALUE_CHIP && !parts.inline_source;
+    if (parts.spec->kind == PIN_DATA && !edited && (!bound || ed_display_run(e)) &&
+        ((parts.spec->flags & PIN_FLAG_WATCH) || hovered)) {
+        const char *value = input ? eval_view_input(e->ev, sg_active_graph(s), n, p)
+                                  : eval_view_output(e->ev, n, p);
+        if (value && value[0]) {
+            kit_label(k, "w", "gwatch", value);
+        }
+    }
     if (input && parts.value == VALUE_CHIP) {
         kit_push(k, "c", NULL, parts.inline_source ? "chip source" : "chip");
         if (parts.chip_icon) {
@@ -502,6 +516,10 @@ static void emit_wires(studio *s)
         if (ed_link_selected(e, &ref)) {
             wire.color = 0xffa53aff;
         }
+        if (g->gesture == STUDIO_GRAPH_MOVE && g->insert_edge == i) {
+            wire.color = palette(s)->hot;
+            wire.width += 1;
+        }
         /* Authored reroutes win; otherwise the lanes arrange routes through. */
         int first = acount(via) / 2, count = 0;
         if (ed->reroute_count) {
@@ -628,7 +646,7 @@ static void emit_conversions(studio *s)
             mx = ed->reroutes[ed->reroute_count / 2].x;
             my = ed->reroutes[ed->reroute_count / 2].y;
         }
-        char key[32], text[96], value[32];
+        char key[32], text[96];
         const node_desc *c = ed->conversion;
         if (c->conversion_from && c->conversion_to) {
             snprintf(text, sizeof text, "%s \xe2\x86\x92 %s", c->conversion_from, c->conversion_to);
@@ -637,10 +655,46 @@ static void emit_conversions(studio *s)
         }
         snprintf(key, sizeof key, "x%d", i);
         kit_label(k, key, "gconversion", text);
-        snprintf(value, sizeof value, "%.1fdp", mx);
-        kit_style(k, "left", value);
-        snprintf(value, sizeof value, "%.1fdp", my);
-        kit_style(k, "top", value);
+        float width = ceilf(sg_text_width(s, text, 10, 400)) + 14;
+        emit_dp(k, "left", mx);
+        emit_dp(k, "top", my);
+        emit_dp(k, "width", width);
+        emit_dp(k, "margin-left", -width / 2);
+    }
+}
+
+/* A wire's reroute points, drawn as dots in its color (Blender). */
+static void emit_reroutes(studio *s)
+{
+    studio_graph *g = &s->graph;
+    kit *k = g->kit;
+    graph *gr = sg_active_graph(s);
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *ed = &gr->edges[i];
+        node *from, *to;
+        int from_pin, to_pin;
+        if (!ed->reroute_count ||
+            !sg_edge_ends(gr, ed, &from, &from_pin, &to, &to_pin) ||
+            !sg_node_visible(gr, from) || !sg_node_visible(gr, to)) {
+            continue;
+        }
+        uint32_t color = pin_color(s, &from->output_pins[from_pin], 1);
+        for (int r = 0; r < ed->reroute_count; r++) {
+            char key[32];
+            snprintf(key, sizeof key, "r%d_%d", i, r);
+            bool hot = g->hover_reroute == i * GRAPH_EDGE_MAX_REROUTES + r ||
+                       (g->gesture == STUDIO_GRAPH_REROUTE &&
+                        g->reroute_edge == i && g->reroute_point == r);
+            kit_push(k, key, NULL, "greroute");
+            emit_dp(k, "left", ed->reroutes[r].x);
+            emit_dp(k, "top", ed->reroutes[r].y);
+            kit_dot_desc dot = { KIT_DOT_CIRCLE,
+                                 color,
+                                 hot ? palette(s)->hot : palette(s)->edge,
+                                 hot ? 2.0f : 1.0f };
+            kit_dot(k, "d", NULL, &dot);
+            kit_pop(k);
+        }
     }
 }
 
@@ -687,6 +741,7 @@ void sg_emit_canvas(studio *s)
         emit_comment(s, &gr->comment_boxes[i]);
     }
     emit_conversions(s);
+    emit_reroutes(s);
     for (int i = 0; i < acount(gr->nodes); i++) {
         if (sg_node_visible(gr, gr->nodes[i])) {
             emit_node(s, gr->nodes[i]);

@@ -65,6 +65,16 @@ void sg_link_ref_of(const edge *ed, ed_link_ref *out)
     *out = (ed_link_ref){ ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
 }
 
+bool sg_edge_ends(const graph *gr, const edge *ed, node **from, int *from_pin, node **to, int *to_pin)
+{
+    int from_out = 0, to_out = 0;
+    *from = graph_node_by_id(gr, ed->from_id);
+    *to = graph_node_by_id(gr, ed->to_id);
+    return *from && *to &&
+           graph_pin_by_id(*from, ed->from_pin_id, &from_out, from_pin) && from_out &&
+           graph_pin_by_id(*to, ed->to_pin_id, &to_out, to_pin) && !to_out;
+}
+
 /* ---------- Menus ---------- */
 
 static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
@@ -75,6 +85,21 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon,
                              .checked = -1,
                              .disabled = disabled };
     return kit_menu_item(k, key, &d);
+}
+
+/* 1 when any data pin is watched, 0 when none is, -1 without data pins. */
+static int node_watched(const node *n)
+{
+    int watched = -1;
+    for (int p = 0; p < n->input_count + n->output_count; p++) {
+        const pin_spec *spec = p < n->input_count
+                                 ? &n->input_pins[p]
+                                 : &n->output_pins[p - n->input_count];
+        if (spec->kind == PIN_DATA) {
+            watched = watched > 0 || (spec->flags & PIN_FLAG_WATCH) ? 1 : 0;
+        }
+    }
+    return watched;
 }
 
 static bool folded_inputs(const graph *gr, node *n)
@@ -182,6 +207,22 @@ static void node_menu(studio *s, node *n)
         graph_set_breakpoint(gr, n, !n->breakpoint);
         return;
     }
+    int watch = node_watched(n);
+    if (watch >= 0 &&
+        menu_item(k, "watch", watch ? "Stop Watching" : "Watch Values", KIT_ICON_TARGET, NULL, readonly)) {
+        ed_snapshot_before(e);
+        for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
+            int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
+            for (int p = 0; p < count; p++) {
+                const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[p]
+                                                            : &n->output_pins[p];
+                if (spec->kind == PIN_DATA) {
+                    graph_set_pin_watch(gr, n, kind == ED_PIN_OUTPUT, p, !watch);
+                }
+            }
+        }
+        return;
+    }
     if (ed_source_scope_available(e) && graph_node_can_inline(gr, n) &&
         menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
         ed_snapshot_before(e);
@@ -219,6 +260,12 @@ void studio_graph_menus(studio *s)
             graph_remove_comment_box(gr, g->menu_comment);
         }
     } else if (g->menu_edge >= 0 && g->menu_edge < acount(gr->edges)) {
+        edge *ed = &gr->edges[g->menu_edge];
+        if (ed->reroute_count &&
+            menu_item(k, "reroutes", "Clear Reroutes", KIT_ICON_RESET, NULL, readonly)) {
+            ed_snapshot_before(e);
+            ed->reroute_count = 0;
+        }
         if (menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, studio_chord(s, "Alt+Click"), readonly)) {
             ed_link_ref link;
             sg_link_ref_of(&gr->edges[g->menu_edge], &link);
@@ -320,6 +367,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     kit_set_body_class(g->kit, "light", s->light);
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
     sg_find_unused(s);
+    ed_refresh_values(e);
     kit_begin(g->kit, &g->in);
     sg_emit_canvas(s);
     kit_end(g->kit);
@@ -408,6 +456,29 @@ static void create_graph(editor *e, graph_kind kind, const char *base)
     }
 }
 
+/* The graph's name as a field, in the picker's place (Blender's F2): Enter
+   or leaving the field renames, Escape keeps the name. */
+static void rename_field(studio *s, graph *gr)
+{
+    studio_graph *g = &s->graph;
+    kit *k = s->kit;
+    editor *e = sg_graph_editor(s);
+    bool committed = kit_text_field(k, "rename", g->rename, sizeof g->rename, NULL, 0);
+    if (committed && g->rename[0] && (!gr->name || strcmp(gr->name, g->rename))) {
+        editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
+                                  .data.rename_graph = { gr->graph_id, g->rename } };
+        if (editor_command_apply(e, rename) != 0) {
+            kit_toast(k, 0, &(kit_toast_desc){ .type = KIT_TOAST_ERROR, .title = "A graph has that name" });
+        }
+    }
+    if (g->rename_focus) {
+        kit_focus(k);
+        g->rename_focus = false;
+    } else if (!kit_item_active(k)) {
+        g->renaming = false;
+    }
+}
+
 void studio_behavior_header(studio *s, int area)
 {
     kit *k = s->kit;
@@ -433,12 +504,17 @@ void studio_behavior_header(studio *s, int area)
         s->scene->graph_document_id,
         gr->name && gr->name[0] ? gr->name : "Event Graph"
     );
-    kit_button_desc pick = { .label = label,
-                             .icon = KIT_ICON_GRAPH,
-                             .cls = "graph-pick",
-                             .tip = "Graphs in this behavior" };
-    if (kit_button(k, "pick", &pick)) {
-        kit_popup_open(k, key);
+    studio_graph *g = &s->graph;
+    if (g->renaming && g->rename_graph == gr->graph_id && g->rename_area == area) {
+        rename_field(s, gr);
+    } else {
+        kit_button_desc pick = { .label = label,
+                                 .icon = KIT_ICON_GRAPH,
+                                 .cls = "graph-pick",
+                                 .tip = "Graphs in this behavior" };
+        if (kit_button(k, "pick", &pick)) {
+            kit_popup_open(k, key);
+        }
     }
     if (kit_popup_begin(k, key, "menu")) {
         kit_menu_group(k, "group", "Graphs");
@@ -470,6 +546,22 @@ void studio_behavior_header(studio *s, int area)
         }
         if (menu_item(k, "macro", "New Macro", KIT_ICON_ADD, NULL, locked)) {
             create_graph(e, GRAPH_MACRO, "New Macro");
+        }
+        /* Functions and macros are named; the event graph is the behavior. */
+        if (gr->kind == GRAPH_FUNCTION || gr->kind == GRAPH_MACRO) {
+            kit_menu_separator(k, "s1");
+            if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, NULL, locked)) {
+                g->renaming = true;
+                g->rename_graph = gr->graph_id;
+                g->rename_area = area;
+                g->rename_focus = true;
+                snprintf(g->rename, sizeof g->rename, "%s", gr->name ? gr->name : "");
+            }
+            const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro"
+                                                         : "Delete Function";
+            if (menu_item(k, "delete", remove, KIT_ICON_TRASH, NULL, locked)) {
+                editor_delete_graph(e, gr->graph_id);
+            }
         }
         kit_popup_end(k);
     }

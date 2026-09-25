@@ -319,7 +319,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 
 /* Measured as the canvas draws it at this zoom, so text never clips; far out,
    where rows hide, at the least zoom that shows them. */
-static float text_width(const studio *s, const char *text, float size, int weight)
+float sg_text_width(const studio *s, const char *text, float size, int weight)
 {
     float ratio = fmaxf(s->graph.zoom, FAR_ZOOM) * cf_app_get_pixel_scale();
     return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight, ratio)
@@ -336,7 +336,7 @@ static float value_width(const studio *s, const pin_parts *parts)
         case VALUE_TEXT: return 96;
         case VALUE_NUMBER: return 64;
         case VALUE_CHIP:
-            return fminf(text_width(s, parts->chip, 11, 400) + 12 + (parts->chip_icon ? 16 : 0), 150);
+            return fminf(sg_text_width(s, parts->chip, 11, 400) + 12 + (parts->chip_icon ? 16 : 0), 200);
         default: return 0;
     }
 }
@@ -423,7 +423,7 @@ int sg_code_lines(const studio *s, const char *code, float width, int starts[COD
         }
         char line[512];
         snprintf(line, sizeof line, "%.*s", i - start, code + start);
-        if (fits > start && text_width(s, line, CODE_SIZE, 400) > width) {
+        if (fits > start && sg_text_width(s, line, CODE_SIZE, 400) > width) {
             start = fits + 1;
             starts[count++] = start;
             fits = -1;
@@ -459,9 +459,11 @@ static node_layout measure_operator(const studio *s, node *n, node_layout l, con
         inputs++;
     }
     l.column = SOCKET_PAD + values;
-    l.w = ceilf(
-        fmaxf(2 * EDGE + l.column + 2 * PART_GAP + text_width(s, symbol, SYMBOL_SIZE, 700) + SOCKET_PAD, OPERATOR_MIN)
-    );
+    l.w = ceilf(fmaxf(
+        2 * EDGE + l.column + 2 * PART_GAP +
+            sg_text_width(s, symbol, SYMBOL_SIZE, 700) + SOCKET_PAD,
+        OPERATOR_MIN
+    ));
     l.top = EDGE + OPERATOR_PAD;
     l.h = 2 * (EDGE + OPERATOR_PAD) + (float)(inputs > 1 ? inputs : 1) * ROW;
     return l;
@@ -477,7 +479,7 @@ static node_layout measure_node(const studio *s, node *n)
     if (l.form == FORM_OPERATOR) {
         return measure_operator(s, n, l, look.symbol);
     }
-    float width = text_width(s, title, 12, 600) + 2 * HEAD_PAD +
+    float width = sg_text_width(s, title, 12, 600) + 2 * HEAD_PAD +
                   (look.symbol || sg_node_icon(s, n) ? 20 : 0);
     if (l.form == FORM_GETTER) {
         for (int p = 0; p < n->output_count; p++) {
@@ -500,7 +502,8 @@ static node_layout measure_node(const studio *s, node *n)
             }
             pin_parts parts;
             sg_pin_parts_of(s, n, kind, p, &parts);
-            float label = parts.show_label ? text_width(s, parts.label, 12, 400) : 0;
+            float label = parts.show_label ? sg_text_width(s, parts.label, 12, 400)
+                                           : 0;
             float value = value_width(s, &parts);
             if (sg_pin_exec(n, kind, p)) {
                 float *side = kind == ED_PIN_INPUT ? &exec_in : &exec_out;
@@ -523,7 +526,7 @@ static node_layout measure_node(const studio *s, node *n)
     }
     const char *code = behavior_expression_source(sg_graph_editor(s)->asset, n);
     if (code) {
-        width = fmaxf(width, text_width(s, code, CODE_SIZE, 400) + CODE_INSET);
+        width = fmaxf(width, sg_text_width(s, code, CODE_SIZE, 400) + CODE_INSET);
     }
     l.w = ceilf(fminf(fmaxf(2 * EDGE + width, NODE_MIN), NODE_MAX));
     if (code) {

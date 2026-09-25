@@ -30,6 +30,9 @@ static pin_spec g_editor_int_inputs[] = {
     { "Value", PIN_I32, "int", PIN_DATA },
     { "Condition", PIN_BOOL, "bool", PIN_DATA },
 };
+static pin_spec g_editor_name_inputs[] = {
+    { "Name", PIN_NAME, "name", PIN_DATA },
+};
 static pin_spec g_editor_single_value_inputs[] = {
     { "Integer", PIN_I32, "int", PIN_DATA },
     { "UInt", PIN_U32, "uint", PIN_DATA },
@@ -57,6 +60,20 @@ static node_desc g_editor_double_sink_desc = {
 static node_desc g_editor_float_desc = {
     .name = "editor_float_source",
     .output_count = 1,
+    .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_float_relay_desc = {
+    .name = "editor_float_relay",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = g_editor_float_inputs,
+    .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_name_relay_desc = {
+    .name = "editor_name_relay",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = g_editor_name_inputs,
     .outputs = g_editor_float_outputs,
 };
 static node_desc g_editor_vector_desc = {
@@ -231,6 +248,36 @@ static void check_linked_preview()
     eval_view_free(view);
     behavior_asset_free(asset);
     behavior_asset_free(library);
+}
+
+/* A node dropped on a wire joins it in one step, and one that can't take
+   the wire's value leaves the wire as it was. */
+static void check_insert_on_wire()
+{
+    behavior_asset *asset = behavior_asset_new("Insert on wire");
+    editor *e = editor_new(asset);
+    graph *g = asset->graph;
+    node *source = graph_add_node(g, &g_editor_float_desc);
+    node *sink = graph_add_node(g, &g_editor_float_sink_desc);
+    node *relay = graph_add_node(g, &g_editor_float_relay_desc);
+    node *named = graph_add_node(g, &g_editor_name_relay_desc);
+    assert(e && graph_connect_data(g, source, 0, sink, 0) == 0);
+    node *into_sink = NULL, *into_relay = NULL;
+    int pin = -1;
+    bool refused = !ed_insert_on_wire(e, 0, named, 0, 0);
+    test_check(
+        refused && acount(g->edges) == 1 &&
+            graph_input_source(g, sink, 0, &into_sink, &pin) && into_sink == source,
+        "a node that can't take a wire's value leaves the wire unchanged"
+    );
+    bool inserted = ed_insert_on_wire(e, 0, relay, 0, 0);
+    test_check(
+        inserted && acount(g->edges) == 2 &&
+            graph_input_source(g, relay, 0, &into_relay, &pin) && into_relay == source &&
+            graph_input_source(g, sink, 0, &into_sink, &pin) && into_sink == relay,
+        "inserting a node on a wire routes the wire through it"
+    );
+    editor_free(e);
 }
 
 static void check_inline_node_layout()
@@ -1036,6 +1083,7 @@ void run_editor_command_checks(void)
     check_typed_wire_search();
     check_binding_target_stability();
     check_event_payload_repair();
+    check_insert_on_wire();
     char save_path[512];
     if (make_editor_save_path(save_path, sizeof save_path) != 0) {
         test_check(0, "a temporary path can be generated for editor persistence");

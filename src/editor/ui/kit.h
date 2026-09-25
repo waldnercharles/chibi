@@ -455,6 +455,8 @@ extern "C"
      * as drawn at `ratio` pixels per dp: text renders at whole pixel sizes with
      * hinting, so small sizes run wider than a scaled measurement. */
     float kit_text_width(const kit *k, const char *text, float size, int weight, float ratio);
+    /* Focuses the item emitted last, selecting a field's text (Base UI autoFocus). */
+    void kit_focus(kit *k);
     /* Drops keyboard focus, as a press elsewhere in the window does. */
     void kit_blur(kit *k);
     /* The path of the innermost emitted item under the pointer, or NULL. */

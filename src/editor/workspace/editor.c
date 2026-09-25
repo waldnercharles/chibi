@@ -275,6 +275,20 @@ void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, in
     }
 }
 
+/* The values pins show: the inspected run's watches, or a preview
+   evaluation while previews are allowed. */
+void ed_refresh_values(editor *e)
+{
+    flow_state preview_state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
+    eval_view_set_instance(e->ev, ed_display_instance(e));
+    eval_view_set_catalog(e->ev, e->asset_catalog, acount(e->asset_catalog));
+    if (ed_inspection_blocked(e) ||
+        (!e->inspection_run && editor_preview_allowed(preview_state))) {
+        eval_view_refresh(e->ev, e->active_graph);
+    }
+    eval_view_set_run(e->ev, ed_display_run(e));
+}
+
 void editor_draw(editor *e)
 {
     if (e && !e->icon_font) {
@@ -302,16 +316,7 @@ void editor_draw(editor *e)
         return;
     }
     ImGuiIO *io = ImGui_GetIO();
-    flow_state preview_state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
-    const behavior_instance *display_instance = ed_display_instance(e);
-    const flow_run *display_run = ed_display_run(e);
-    eval_view_set_instance(e->ev, display_instance);
-    eval_view_set_catalog(e->ev, e->asset_catalog, acount(e->asset_catalog));
-    if (ed_inspection_blocked(e) ||
-        (!e->inspection_run && editor_preview_allowed(preview_state))) {
-        eval_view_refresh(e->ev, e->active_graph);
-    }
-    eval_view_set_run(e->ev, display_run);
+    ed_refresh_values(e);
     if (editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS)) {
         ImGui_SetNextWindowSize((ImVec2){ 960.0f, 640.0f }, ImGuiCond_FirstUseEver);
         if (editor_ui_take_focus(EDITOR_UI_FOCUS_NODE_CANVAS)) {

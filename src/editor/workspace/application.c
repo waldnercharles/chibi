@@ -49,7 +49,7 @@ typedef struct
     const char *screenshot_path;
     int capture_error;
     int headless;
-    bool design_preview;
+    bool imgui; /* --imgui: the ImGui workspace in place of Studio */
     double monotonic_time;
     double fixed_dt;
     const chibi_host *host;
@@ -77,7 +77,7 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Application frame");
-    bool full_editor = !loop->game && !loop->design_preview;
+    bool full_editor = !loop->game && loop->imgui;
     if (full_editor) {
         editor_frame_begin(&loop->profile);
     }
@@ -99,7 +99,7 @@ static int app_frame(app_loop *loop)
         CHIBI_TRACE_ZONE_BEGIN(game_zone, "Game presentation");
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
         CHIBI_TRACE_ZONE_END(game_zone);
-    } else if (loop->design_preview) {
+    } else if (!loop->imgui) {
         editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
         if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
@@ -172,7 +172,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     int frames = 0;
     int headless = 0;
     bool play = false;
-    bool design_preview = false;
+    bool imgui = false;
     double fixed_dt = 0;
     const char *scene_path = NULL;
     const char *project_path = NULL;
@@ -191,8 +191,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             headless = 1;
         } else if (strcmp(argv[i], "--play") == 0) {
             play = true;
-        } else if (strcmp(argv[i], "--design-preview") == 0) {
-            design_preview = true;
+        } else if (strcmp(argv[i], "--imgui") == 0) {
+            imgui = true;
         } else if (strcmp(argv[i], "--scene") == 0) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
                 snprintf(error, error_size, "--scene requires an authored scene path");
@@ -322,7 +322,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     }
     /* Captures start from a known dock tree for consistent framing. */
-    if (screenshot_path && !play && !design_preview) {
+    if (screenshot_path && !play && imgui) {
         editor_ui_reset_layout();
     }
     editor_set_event_catalog(
@@ -348,7 +348,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         .screenshot_path = screenshot_path,
         .capture_error = 0,
         .headless = headless,
-        .design_preview = design_preview,
+        .imgui = imgui,
         .fixed_dt = fixed_dt,
     };
     if (play) {
@@ -427,11 +427,12 @@ static char *application_checkpoint(void *state)
 static void application_activate(void *state)
 {
     app_loop *loop = state;
+    bool studio_ui = !loop->game && !loop->imgui;
     editor_ui_initialize(
-        !loop->game && !loop->headless && !loop->screenshot_path && !loop->design_preview
+        !loop->game && !loop->headless && !loop->screenshot_path && loop->imgui
     );
-    editor_ui_set_design_preview(loop->design_preview);
-    if (loop->design_preview) {
+    editor_ui_set_design_preview(studio_ui);
+    if (studio_ui) {
         editor_ui_set_document_bar_visible(true);
     }
     if (loop->workspace) {
@@ -449,7 +450,7 @@ static void application_activate(void *state)
     }
 #endif
     app_input_initialize();
-    if (loop->design_preview && !loop->game) {
+    if (studio_ui) {
         loop->studio = studio_new(loop->authoring, loop->viewport);
     }
 }

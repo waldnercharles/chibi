@@ -65,6 +65,7 @@ bool sg_node_visible(const graph *g, const node *n);
 node *sg_node_by_id(const studio *s, uint64_t id);
 graph_comment_box *sg_comment_by_id(const studio *s, uint64_t id);
 void sg_link_ref_of(const edge *ed, ed_link_ref *out);
+bool sg_edge_ends(const graph *gr, const edge *ed, node **from, int *from_pin, node **to, int *to_pin);
 
 /* Node layout and measurement (studio_graph_layout.c). */
 bool sg_pin_exec(const node *n, int kind, int pin);
@@ -80,6 +81,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out);
 const char *sg_node_title(const studio *s, node *n, node_form form, char *buf, size_t size);
 int sg_code_lines(const studio *s, const char *code, float width, int starts[CODE_LINES]);
 float sg_code_room(const node_layout *l);
+float sg_text_width(const studio *s, const char *text, float size, int weight);
 const node_layout *sg_layout_of(const studio *s, node *n);
 float sg_pin_y(const studio *s, node *n, int kind, int pin);
 bool sg_node_box(const studio *s, node *n, float box[4]);
@@ -100,6 +102,7 @@ void sg_frame_selection(studio *s);
 bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin);
 bool sg_pins_compatible(const node *a, int a_kind, int a_pin, const node *b, int b_kind, int b_pin);
 int sg_body_target(const graph *gr, const node *from, int kind, int pin, const node *to);
+void sg_show_error(studio *s, const char *message);
 void sg_select_only(editor *e, node *n);
 void sg_delete_selection(studio *s);
 void sg_copy_selection(studio *s);

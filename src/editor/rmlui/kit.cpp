@@ -837,6 +837,16 @@ extern "C" float kit_text_width(const kit *, const char *text, float size, int w
     return (float)fonts->GetStringWidth(face, Rml::StringView(string), shaping) / ratio;
 }
 
+extern "C" void kit_focus(kit *k)
+{
+    assert(k->last);
+    Rml::Element *el = k->last->w.input_el ? k->last->w.input_el : k->last->el;
+    el->Focus(true);
+    if (auto *input = dynamic_cast<Rml::ElementFormControlInput *>(el)) {
+        input->Select();
+    }
+}
+
 extern "C" void kit_blur(kit *k)
 {
     if (Rml::Element *focus = k->context->GetFocusElement(); focus && focus != k->doc) {

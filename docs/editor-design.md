@@ -1480,8 +1480,7 @@ draw the box). **Expand source** sets `expanded` and places the node left of its
 consumer, below any box it would overlap. The node context menu's
 **Inline** folds an eligible node and stores `inline` only when `auto` would keep
 its box. Deleting a node deletes the sources drawn inside it. A wire dropped on
-an input replaces its folded source, as it would a literal. Older files load
-`inline_source: true` as `inline`.
+an input replaces its folded source, as it would a literal.
 
 Node rows use four pixels of extra spacing. Only literal outputs are editable;
 runtime-written outputs do not reserve empty control rows. Entity, aggregate,

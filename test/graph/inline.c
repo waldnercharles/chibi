@@ -231,27 +231,12 @@ static void serialization()
     );
     behavior_asset_free(copy);
 
-    char *legacy = yaml_replace(yaml, "presentation: inline", "inline_source: true");
-    char *legacy_false = yaml_replace(legacy, "presentation: expanded", "inline_source: false");
-    copy = behavior_asset_load_json(legacy_false);
-    node *inline_node = copy ? graph_node_by_id(copy->graph, ids[2]) : NULL;
-    node *auto_node = copy ? graph_node_by_id(copy->graph, ids[1]) : NULL;
-    test_check(
-        inline_node && inline_node->presentation == NODE_PRESENTATION_INLINE &&
-            auto_node && auto_node->presentation == NODE_PRESENTATION_AUTO &&
-            graph_node_by_id(copy->graph, ids[0])->presentation == NODE_PRESENTATION_AUTO,
-        "legacy inline_source loads as inline and its absence as auto"
-    );
-    behavior_asset_free(copy);
-
     char *invalid = yaml_replace(yaml, "presentation: inline", "presentation: sideways");
     test_check(
         !behavior_asset_load_json(invalid) && strstr(graph_last_error(), "presentation"),
         "unknown presentations are rejected"
     );
     free(invalid);
-    free(legacy_false);
-    free(legacy);
     free(yaml);
     free(json);
     behavior_asset_free(asset);

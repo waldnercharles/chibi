@@ -60,7 +60,7 @@ The optimizer treats each component node like the node it lowers to:
 - A Break Struct over such a read becomes nested field bindings, like `Break_<C>`.
 - An unused Get or Has Component stays, as a generated reader does.
 
-A library accepts a component node when it accepts the node it lowers to, so Get, Set and Has need an explicit entity there.
+A library accepts a component node when it accepts the node it lowers to. Get, Set and Has also need an explicit entity there.
 
 ## Existing assets: rendered, not migrated
 

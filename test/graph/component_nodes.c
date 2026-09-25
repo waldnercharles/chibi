@@ -583,6 +583,14 @@ static void authoring()
     int parameter = graph_add_pin(function, entry, 1, &entity);
     assert(graph_connect_data(function, entry, parameter, read, 1) == 0);
     assert(!behavior_asset_validate_library(library));
+    /* A field Set lowers to a setter libraries accept, but Self is still the
+     * owner's. */
+    node *write = graph_add_node(function, &NODE_SetComponent);
+    assert(graph_set_pin_default(function, write, 0, 1, &health) == 0);
+    assert(component_node_show_field(function, write, "current", true) == 0);
+    assert(behavior_asset_validate_library(library));
+    assert(graph_connect_data(function, entry, parameter, write, 2) == 0);
+    assert(!behavior_asset_validate_library(library));
     behavior_asset_free(library);
     puts("component node authoring: retargeting, splitting, unfinished nodes, bindings and libraries");
 }

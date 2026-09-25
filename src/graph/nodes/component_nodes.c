@@ -1011,9 +1011,6 @@ static pin_spec setting_pin(graph *g, const pin_spec *template, const char *key)
 static bool raise_direct(graph *g, node *n, component_node_kind kind)
 {
     const node_desc *d = n->desc;
-    if (n->input_count != d->input_count || n->output_count < d->output_count) {
-        return false;
-    }
     const node_desc *desc = COMPONENT_NODES[kind - 1];
     const char *key = structural(kind)
                         ? d->type->name
@@ -1043,7 +1040,7 @@ bool component_node_raise(graph *g, node *n)
     const node_desc *d = n->desc;
     component_node_kind family = component_generated_kind(d);
     /* Documents key a component node's inputs by their template names. */
-    if (!family || g->dataflow ||
+    if (!family || g->dataflow || n->output_count < d->output_count ||
         !same_pins(n->input_pins, n->input_count, d->inputs, d->input_count)) {
         return false;
     }
@@ -1052,10 +1049,6 @@ bool component_node_raise(graph *g, node *n)
     }
     const ecs_component_desc *component = d->component;
     node_component_kind kind = d->component_kind;
-    if (g->dataflow || kind == NODE_COMPONENT_NONE ||
-        n->input_count != d->input_count || n->output_count < d->output_count) {
-        return false;
-    }
     bool given = kind == NODE_COMPONENT_GET_ENTITY ||
                  kind == NODE_COMPONENT_HAS_ENTITY ||
                  kind == NODE_COMPONENT_SET_ENTITY ||

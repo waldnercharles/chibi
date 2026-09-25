@@ -63,11 +63,11 @@ void run_graph_find_checks()
         "find: pin names match before the source"
     );
     pin_binding health = { .kind = PIN_BINDING_COMPONENT_FIELD,
-                           .component_key = "game.GameHealth",
+                           .component_key = "GAME.GameHealth",
                            .field_name = "current" };
     test_check(
         expression && graph_set_pin_binding(g, expression, 0, 0, &health) == 0 &&
-            finds(asset, expression, "Expression", "gamehealth.cur", GRAPH_FIND_BINDING, "speed: game.GameHealth.current"),
+            finds(asset, expression, "Expression", "gamehealth.cur", GRAPH_FIND_BINDING, "speed: GAME.GameHealth.current"),
         "find: bound components and fields match under their pin"
     );
     test_check(!graph_find_node(asset, g, add, "Add", "", &match), "find: an empty query matches nothing");

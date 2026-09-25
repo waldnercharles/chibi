@@ -3,7 +3,9 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
+#include "editor/commands/command.h"
 #include "editor/studio/studio.h"
+#include "editor/ui/control.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
@@ -105,6 +107,8 @@ static int app_frame(app_loop *loop)
         if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
             fprintf(stderr, "runtime frame failed\n");
         }
+        editor_commands_frame(loop->authoring);
+        editor_control_frame(loop->authoring);
         studio_frame(loop->studio, loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME);
     } else {
         CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor input and documents");
@@ -452,12 +456,14 @@ static void application_activate(void *state)
     app_input_initialize();
     if (studio_ui) {
         loop->studio = studio_new(loop->authoring, loop->viewport);
+        editor_control_open();
     }
 }
 
 static void application_deactivate(void *state)
 {
     app_loop *loop = state;
+    editor_control_close();
     studio_free(loop->studio);
     loop->studio = NULL;
     app_input_shutdown();

@@ -1,5 +1,6 @@
 #ifndef CHIBI_SCENE_INTERNAL_H
 #define CHIBI_SCENE_INTERNAL_H
+#include "assets/scene_document.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/ui/color.h"
@@ -336,7 +337,12 @@ int sync_behavior_working(app_scene_authoring *scene);
 void sync_editor_inspection(app_scene_authoring *scene);
 const char *system_component_name(ecs_component_id id, void *);
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
+/* Whether a scene document entity would load: its prototype, behaviors and
+ * components. Sets the scene message on failure. */
+int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity);
+/* Asset JSON is written as YAML asset text; write_file_atomic writes text as is. */
 int write_text_file_atomic(const char *path, const char *text);
+int write_file_atomic(const char *path, const char *text);
 const char *scene_behavior_source_snapshot(
     const app_scene_authoring *scene,
     const char *name,

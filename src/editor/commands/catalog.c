@@ -277,9 +277,13 @@ static char *entity_id(const char *scene_id, ecs_entity entity)
 
 static void add_capabilities(app_scene_authoring *scene, yyjson_mut_doc *doc, yyjson_mut_val *root)
 {
-    static const char *const verbs[] = { "open",    "select",    "set",
-                                         "assert",  "duplicate", "connect",
-                                         "runtime", "save" };
+    static const char *const verbs[] = {
+        "open",         "select",         "set",
+        "assert",       "duplicate",      "connect",
+        "runtime",      "save",           "edit_graph",
+        "create_asset", "create_project", "set_start_scene",
+        "input",        "capture",
+    };
     static const char *const ui_verbs[] = { "panel", "frame", "undo", "redo" };
     yyjson_mut_val *capabilities = yyjson_mut_obj_add_arr(doc, root, "capabilities");
     for (size_t i = 0; i < sizeof verbs / sizeof verbs[0]; i++) {

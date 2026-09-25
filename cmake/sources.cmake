@@ -196,11 +196,14 @@ set(EDITOR_SOURCES
 
 set(EDITOR_COMMAND_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/catalog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/creation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/inspect.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/quick_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/command_transport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/control.c
 )
 
 set(APP_SOURCES

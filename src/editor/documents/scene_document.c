@@ -292,7 +292,7 @@ static int validate_scene_behaviors(app_scene_authoring *scene, char **names)
     return 0;
 }
 
-static int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity)
+int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity)
 {
     scene_retained_component *retained = NULL;
     bool valid = scene_retention_load(entity->retained_json, &retained) == 0 &&

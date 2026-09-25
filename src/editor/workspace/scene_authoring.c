@@ -72,26 +72,14 @@ EM_JS(int, web_save_asset, (const char *path, const char *text), {
 })
 #endif
 
-int write_text_file_atomic(const char *path, const char *json)
+int write_file_atomic(const char *path, const char *text)
 {
-    char error[128];
-    char *text = asset_text_to_disk(json, error, sizeof error);
-    if (!text) {
-        return -1;
-    }
-#ifdef __EMSCRIPTEN__
-    if (web_save_asset(path, text)) {
-        free(text);
-        return -1;
-    }
-#endif
     size_t size = strlen(path) + 5;
     char *temporary = (char *)xmalloc(size);
     snprintf(temporary, size, "%s.tmp", path);
     FILE *file = fopen(temporary, "wb");
     if (!file) {
         free(temporary);
-        free(text);
         return -1;
     }
     int result = fputs(text, file) < 0;
@@ -105,6 +93,23 @@ int write_text_file_atomic(const char *path, const char *json)
         remove(temporary);
     }
     free(temporary);
+    return result;
+}
+
+int write_text_file_atomic(const char *path, const char *json)
+{
+    char error[128];
+    char *text = asset_text_to_disk(json, error, sizeof error);
+    if (!text) {
+        return -1;
+    }
+#ifdef __EMSCRIPTEN__
+    if (web_save_asset(path, text)) {
+        free(text);
+        return -1;
+    }
+#endif
+    int result = write_file_atomic(path, text);
     free(text);
     return result;
 }

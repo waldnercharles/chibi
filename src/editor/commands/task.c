@@ -2,6 +2,7 @@
 #include "editor/commands/model.h"
 #include "editor/ui/command_transport.h"
 #include "editor/workspace/editor_internal.h"
+#include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL.h>
@@ -37,6 +38,7 @@ struct editor_command_runtime
     uint64_t incarnation; /* distinguishes editor sessions in revisions */
     editor_command_hooks hooks;
     bool hooked;
+    int control_frames[GAME_CONTROL_COUNT]; /* input samples each control stays held */
 };
 
 static struct editor_command_runtime *runtime(app_scene_authoring *scene)
@@ -63,6 +65,66 @@ void editor_commands_set_hooks(app_scene_authoring *scene, const editor_command_
     struct editor_command_runtime *state = runtime(scene);
     state->hooked = hooks != NULL;
     state->hooks = hooks ? *hooks : (editor_command_hooks){ 0 };
+}
+
+uint64_t editor_commands_controls(app_scene_authoring *scene)
+{
+    struct editor_command_runtime *state = runtime(scene);
+    if (!scene->runtime_playing) {
+        memset(state->control_frames, 0, sizeof state->control_frames);
+        return 0;
+    }
+    uint64_t controls = 0;
+    for (int i = 1; i < GAME_CONTROL_COUNT; i++) {
+        if (state->control_frames[i] > 0) {
+            controls |= UINT64_C(1) << i;
+            state->control_frames[i]--;
+        }
+    }
+    return controls;
+}
+
+/* The controls enabled scene bindings map to the action. */
+static uint64_t action_controls(app_scene_authoring *scene, const char *action)
+{
+    uint64_t controls = 0;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        const GameActionBinding *binding = GAME_GameActionBinding_get_const(
+            scene->world,
+            scene->actors[i].entity
+        );
+        if (binding && !binding->disabled && binding->action &&
+            !strcmp(binding->action, action) && binding->source > GAME_CONTROL_NONE &&
+            binding->source < GAME_CONTROL_COUNT) {
+            controls |= UINT64_C(1) << binding->source;
+        }
+    }
+    return controls;
+}
+
+int command_input(app_scene_authoring *scene, yyjson_val *operation, bool dry, char *error, int size)
+{
+    const char *action = command_string(operation, "action");
+    yyjson_val *pressed = yyjson_obj_get(operation, "pressed");
+    yyjson_val *duration = yyjson_obj_get(operation, "frames");
+    int frames = duration ? (int)yyjson_get_int(duration) : 1;
+    if (!scene->runtime_playing || scene->active_runtime_target != APP_RUNTIME_SCENE ||
+        !*action || !yyjson_is_bool(pressed) || frames < 1 || frames > 600 ||
+        (duration && !yyjson_is_int(duration))) {
+        snprintf(error, size, "Input requires a playing scene, action, pressed boolean and optional frames (1-600)");
+        return -1;
+    }
+    uint64_t controls = action_controls(scene, action);
+    if (!controls) {
+        snprintf(error, size, "No enabled scene action binding for %s", action);
+        return -1;
+    }
+    for (int i = 1; !dry && i < GAME_CONTROL_COUNT; i++) {
+        if (controls & (UINT64_C(1) << i)) {
+            runtime(scene)->control_frames[i] = yyjson_get_bool(pressed) ? frames : 0;
+        }
+    }
+    return 0;
 }
 
 static char *response(const char *status, const char *message)
@@ -106,7 +168,7 @@ static void describe(command_task *task, yyjson_mut_doc *doc, yyjson_val *propos
             sizeof line,
             "%s %s%s%s%s%s",
             command_string(op, "op"),
-            command_string(object, "name"),
+            object ? command_string(object, "name") : command_string(op, "name"),
             field ? " · " : "",
             command_string(field, "label"),
             literal ? " → " : "",
@@ -252,7 +314,8 @@ static void execute(app_scene_authoring *scene, command_task *task)
         check_readback &= !strcmp(command_string(yyjson_arr_get(ops, i), "op"), "set");
     }
     bool content = !strcmp(first, "set") || !strcmp(first, "assert") ||
-                   !strcmp(first, "duplicate") || !strcmp(first, "connect");
+                   !strcmp(first, "duplicate") || !strcmp(first, "connect") ||
+                   !strcmp(first, "edit_graph");
     yyjson_mut_obj_add_bool(doc, root, "undoable", applied && !task->dry && content && changed);
     char *after = editor_commands_catalog(scene);
     yyjson_doc *after_doc = yyjson_read(after, strlen(after), 0);
@@ -480,14 +543,17 @@ static command_task *find_task(struct editor_command_runtime *state, const char 
     return NULL;
 }
 
-/* The kind of object a content command edited: node, prototype or entity. */
+/* The document a content command edited: node (the open graph), prototype
+ * or entity (the scene). */
 static const char *edited_kind(command_task *task, yyjson_val *result)
 {
     yyjson_doc *catalog = yyjson_read(task->catalog, strlen(task->catalog), 0);
     yyjson_val *objects = yyjson_obj_get(yyjson_doc_get_root(catalog), "objects");
     yyjson_val *first = yyjson_arr_get(yyjson_obj_get(result, "operations"), 0);
     const char *kind = command_string(command_find(objects, command_string(first, "target")), "kind");
-    const char *known = !strcmp(kind, "node")      ? "node"
+    bool graph = !strcmp(kind, "node") ||
+                 !strcmp(command_string(first, "op"), "edit_graph");
+    const char *known = graph                      ? "node"
                       : !strcmp(kind, "prototype") ? "prototype"
                                                    : "entity";
     yyjson_doc_free(catalog);
@@ -705,8 +771,11 @@ char *editor_commands_api(app_scene_authoring *scene, const char *request)
     const char *operation = command_string(root, "operation");
     command_task *task = find_task(runtime(scene), command_string(root, "task_id"));
     char *result = NULL;
+    const char *query = command_string(root, "query");
     if (!strcmp(operation, "inspect")) {
-        result = editor_commands_catalog(scene);
+        result = command_inspect(scene, query, yyjson_obj_get(root, "kinds"));
+    } else if (!strcmp(operation, "resolve_objects")) {
+        result = command_resolve_objects(scene, query, yyjson_obj_get(root, "kinds"));
     } else if (!strcmp(operation, "status")) {
         result = task ? xstrdup(task->result) : response("failed", "Unknown task");
     } else if (!strcmp(operation, "cancel")) {

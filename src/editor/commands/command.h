@@ -22,6 +22,8 @@ typedef struct
 char *editor_commands_catalog(app_scene_authoring *scene);
 char *editor_commands_api(app_scene_authoring *scene, const char *request);
 void editor_commands_frame(app_scene_authoring *scene);
+/* Controls held by input commands, one sample per call while the scene plays. */
+uint64_t editor_commands_controls(app_scene_authoring *scene);
 void editor_commands_free(app_scene_authoring *scene);
 /* NULL hooks unregister them. */
 void editor_commands_set_hooks(app_scene_authoring *scene, const editor_command_hooks *hooks);

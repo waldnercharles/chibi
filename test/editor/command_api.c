@@ -200,11 +200,65 @@ static void panel_hooks(app_scene_authoring *scene)
     editor_commands_set_hooks(scene, NULL);
 }
 
+static void inspection(app_scene_authoring *scene)
+{
+    reply types = api(scene, "{\"operation\":\"inspect\",\"kinds\":[\"components\"],\"query\":\"Collider\"}");
+    yyjson_val *component = yyjson_arr_get(yyjson_obj_get(types.root, "component_types"), 0);
+    test_check(
+        component && strstr(command_string(component, "name"), "Collider") &&
+            !yyjson_obj_get(types.root, "node_types"),
+        "command inspection lists requested reflected types"
+    );
+    reply_free(&types);
+    reply found = api(scene, "{\"operation\":\"resolve_objects\",\"query\":\"make the ship blue\",\"kinds\":[\"entity\"]}");
+    yyjson_val *objects = yyjson_obj_get(found.root, "objects");
+    test_check(
+        !strcmp(status(&found), "resolved") && yyjson_arr_size(objects) == 1 &&
+            !strcmp(command_string(yyjson_arr_get(objects, 0), "name"), "Ship"),
+        "resolve_objects finds observed objects named in a request"
+    );
+    reply_free(&found);
+}
+
+static char *create_request(app_scene_authoring *scene, const char *definition)
+{
+    reply catalog = api(scene, "{\"operation\":\"inspect\"}");
+    char *request = xmalloc(1024);
+    snprintf(
+        request,
+        1024,
+        "{\"operation\":\"submit\",\"dry_run\":true,\"revision\":\"%s\","
+        "\"operations\":["
+        "{\"op\":\"create_asset\",\"kind\":\"prototype\",\"name\":\"Marker\","
+        "\"definition\":%s}]}",
+        command_string(catalog.root, "revision"),
+        definition
+    );
+    reply_free(&catalog);
+    return request;
+}
+
+static void creation(app_scene_authoring *scene)
+{
+    char *request = create_request(scene, "{\"components\":{\"GameCollider\":{\"shape\":\"Circle\"}}}");
+    reply valid = api(scene, request);
+    free(request);
+    test_check(!strcmp(status(&valid), "ready"), "create_asset validates a new prototype in a dry run");
+    reply_free(&valid);
+    request = create_request(scene, "{\"components\":{\"GameCollider\":{\"shape\":\"Hexagon\"}}}");
+    reply invalid = api(scene, request);
+    free(request);
+    test_check(!strcmp(status(&invalid), "failed"), "create_asset rejects an invalid prototype");
+    reply_free(&invalid);
+}
+
 void test_editor_command_api()
 {
     command_fixture f = command_fixture_new();
     typed_edit_and_undo(f.scene);
     quick_edit(f.scene);
     panel_hooks(f.scene);
+    inspection(f.scene);
+    creation(f.scene);
     command_fixture_free(&f);
 }

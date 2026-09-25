@@ -568,6 +568,42 @@ static const char *apply(app_scene_authoring *scene, yyjson_val *catalog, comman
     return NULL;
 }
 
+/* Whether the editor still matches the observed catalog. Playback, input and
+ * captures tolerate simulation ticks, but never a different editor session or
+ * active document. Other operations require the complete observation. */
+static bool observed(yyjson_val *catalog, yyjson_val *current, yyjson_val *ops)
+{
+    const char *op = command_string(yyjson_arr_get(ops, 0), "op");
+    bool live = yyjson_arr_size(ops) == 1 &&
+                (!strcmp(op, "runtime") || !strcmp(op, "input") ||
+                 !strcmp(op, "capture"));
+    if (!live) {
+        return !strcmp(command_string(catalog, "revision"), command_string(current, "revision"));
+    }
+    return yyjson_get_uint(yyjson_obj_get(catalog, "incarnation")) ==
+               yyjson_get_uint(yyjson_obj_get(current, "incarnation")) &&
+           !strcmp(command_string(catalog, "document"), command_string(current, "document"));
+}
+
+static int apply_edits(
+    app_scene_authoring *scene,
+    yyjson_val *catalog,
+    yyjson_val *ops,
+    bool dry,
+    char *error,
+    int size
+)
+{
+    command_edit *edits = NULL;
+    const char *message = prepare(scene, catalog, ops, &edits);
+    if (!message) {
+        message = apply(scene, catalog, edits, dry);
+    }
+    snprintf(error, size, "%s", message ? message : "Applied");
+    afree(edits);
+    return message ? -1 : 0;
+}
+
 int editor_commands_apply(
     app_scene_authoring *scene,
     const char *catalog_json,
@@ -582,38 +618,25 @@ int editor_commands_apply(
     yyjson_doc *fresh_doc = yyjson_read(fresh, strlen(fresh), 0);
     yyjson_val *catalog = yyjson_doc_get_root(catalog_doc),
                *proposal = yyjson_doc_get_root(proposal_doc);
-    const char *message = NULL;
-    command_edit *edits = NULL;
-    yyjson_val *current = yyjson_doc_get_root(fresh_doc);
     yyjson_val *ops = yyjson_obj_get(proposal, "operations");
-    bool playback = yyjson_arr_size(ops) == 1 &&
-                    !strcmp(command_string(yyjson_arr_get(ops, 0), "op"), "runtime");
-    bool revision_matches = !strcmp(
-        command_string(catalog, "revision"),
-        command_string(current, "revision")
-    );
-    /* Playback controls tolerate simulation ticks, but never a different editor
-     * session or active document. Content edits require the complete observation. */
-    if (playback) {
-        revision_matches = yyjson_get_uint(yyjson_obj_get(catalog, "incarnation")) ==
-                               yyjson_get_uint(yyjson_obj_get(current, "incarnation")) &&
-                           !strcmp(command_string(catalog, "document"), command_string(current, "document"));
-    }
+    yyjson_val *first = yyjson_arr_get(ops, 0);
+    bool dry = yyjson_get_bool(yyjson_obj_get(proposal, "dry_run"));
+    int result = -1;
     if (!catalog_doc || !proposal_doc) {
-        message = "Invalid command JSON";
-    } else if (!revision_matches || strcmp(command_string(catalog, "revision"), command_string(proposal, "revision"))) {
-        message = "Editor changed. Run the command again.";
+        snprintf(error, size, "Invalid command JSON");
+    } else if (
+        !observed(catalog, yyjson_doc_get_root(fresh_doc), ops) ||
+        strcmp(command_string(catalog, "revision"), command_string(proposal, "revision"))
+    ) {
+        snprintf(error, size, "Editor changed. Run the command again.");
+    } else if (yyjson_arr_size(ops) == 1 && command_authoring_operation(command_string(first, "op"))) {
+        result = command_authoring_apply(scene, catalog, first, dry, error, size);
     } else {
-        message = prepare(scene, catalog, ops, &edits);
+        result = apply_edits(scene, catalog, ops, dry, error, size);
     }
-    if (!message) {
-        message = apply(scene, catalog, edits, yyjson_get_bool(yyjson_obj_get(proposal, "dry_run")));
-    }
-    snprintf(error, size, "%s", message ? message : "Applied");
-    afree(edits);
     yyjson_doc_free(catalog_doc);
     yyjson_doc_free(proposal_doc);
     yyjson_doc_free(fresh_doc);
     free(fresh);
-    return message ? -1 : 0;
+    return result;
 }

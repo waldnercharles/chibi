@@ -14,4 +14,18 @@ void command_hash(const char *json, char out[17]);
 const editor_command_hooks *command_hooks(app_scene_authoring *scene);
 uint64_t command_incarnation(app_scene_authoring *scene);
 
+/* Authoring operations run alone in a transaction (creation.c). */
+bool command_authoring_operation(const char *op);
+int command_authoring_apply(
+    app_scene_authoring *scene,
+    yyjson_val *catalog,
+    yyjson_val *operation,
+    bool dry,
+    char *error,
+    int size
+);
+int command_input(app_scene_authoring *scene, yyjson_val *operation, bool dry, char *error, int size);
+char *command_inspect(app_scene_authoring *scene, const char *query, yyjson_val *kinds);
+char *command_resolve_objects(app_scene_authoring *scene, const char *query, yyjson_val *kinds);
+
 #endif

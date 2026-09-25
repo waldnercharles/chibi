@@ -1,16 +1,14 @@
 version: 3
 name: ArenaPlayer
 domain: material
-id_counter: 113
-description: Cyan player surface. Mapping and a color ramp mark the forward local X end; Fresnel lifts the edge.
+id_counter: 637
+description: Cyan player surface. A color ramp along local X marks the forward end; Fresnel lifts the edge.
 graphs:
 - kind: event
   name: ""
   nodes:
   - id: 29
     type: Shader Surface Output
-    x: 2430.0
-    "y": 70.0
     inputs:
       Base Color:
         default: {x: 1.0, "y": 1.0, z: 1.0}
@@ -24,29 +22,8 @@ graphs:
     outputs:
       Position:
         default: {x: 0.0, "y": 0.0}
-  - id: 39
-    type: Shader Mapping
-    inputs:
-      Position:
-        default: {x: 0.0, "y": 0.0}
-      Offset:
-        default: {x: 0.5, "y": 0.5}
-      Scale:
-        default: {x: 0.035714287, "y": 0.05}
-    outputs:
-      Value:
-        default: {x: 0.0, "y": 0.0}
-  - id: 45
-    type: Shader Gradient
-    x: 500.0
-    "y": 0.0
-    inputs:
-      Position:
-        default: {x: 0.0, "y": 0.0}
   - id: 51
     type: Shader Color Ramp
-    x: 780.0
-    "y": 0.0
     inputs:
       Stops:
         default:
@@ -65,8 +42,6 @@ graphs:
       Alpha: 1.0
   - id: 57
     type: Shader Fresnel
-    x: 0.0
-    "y": 410.0
     inputs: {Power: 3.0}
   - id: 63
     type: Shader Parameter
@@ -74,49 +49,12 @@ graphs:
     reference_name: Edge Glow
     outputs:
       Value: {flags: 0, group: 0, default: 2.8}
-  - id: 65
-    type: Shader Multiply
-    x: 500.0
-    "y": 410.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
   - id: 69
     type: Shader Parameter
     reference_id: 5
     reference_name: Body Glow
     outputs:
       Value: {flags: 0, group: 0, default: 0.65}
-  - id: 71
-    type: Shader Add
-    x: 780.0
-    "y": 410.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 75
-    type: Shader Multiply
-    x: 1100.0
-    "y": 250.0
-    inputs:
-      A:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 79
     type: Shader Parameter
     reference_id: 3
@@ -131,159 +69,64 @@ graphs:
       Value: {flags: 0, group: 0, default: 0.18}
   - id: 84
     type: Shader Parameter
-    x: 1430.0
-    "y": 420.0
     reference_name: Hit Flash
     outputs:
       Value: {id: 83, type_name: float, flags: 0, group: 0}
-  - id: 87
-    type: Shader Saturate
-    x: 1650.0
-    "y": 420.0
-    inputs:
-      Value: {id: 85, type_name: float, flags: 0, group: 0}
-    outputs:
-      Value: {type_name: float, flags: 0, group: 0}
-  - id: 92
-    type: Shader Mix
-    x: 1910.0
-    "y": 0.0
-    inputs:
-      A:
-        id: 88
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.75, "y": 0.95, z: 1.0}
-      Alpha: {type_name: float, flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 96
-    type: Shader Multiply
-    x: 1650.0
-    "y": 650.0
-    inputs:
-      A:
-        id: 93
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.75, "y": 0.95, z: 1.0}
-      B: {type_name: float, flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 100
-    type: Shader Add
-    x: 1910.0
-    "y": 240.0
-    inputs:
-      A:
-        id: 97
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 102
     type: Shader Parameter
     reference_id: 1
     reference_name: Dash Glow
     outputs:
       Value: {id: 101, type_name: float, flags: 0, group: 0}
-  - id: 106
-    type: Shader Multiply
+  - id: 132
+    type: Behavior Expression
+    reference_id: 113
+    reference_name: position.x / 28 + 0.5
     inputs:
-      A:
-        id: 103
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.06, "y": 0.65, z: 1.0}
-      B: {type_name: float, flags: 0, group: 0}
+      position: {type: struct, type_name: ShaderVec2}
     outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 110
-    type: Shader Add
-    x: 2150.0
-    "y": 240.0
+      Result: {type: float}
+  - id: 179
+    type: Call Pure Function
+    reference_id: 399
+    reference_name: Hit Flash
+    reference_asset: ShaderMath
     inputs:
-      A:
-        id: 107
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Color: {declaration_id: 404, type: struct, type_name: ShaderVec3}
+      Flash: {declaration_id: 405, type: float}
     outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Base Color: {declaration_id: 406, type: struct, type_name: ShaderVec3}
+      Glow: {declaration_id: 407, type: struct, type_name: ShaderVec3}
+  - id: 231
+    type: Behavior Expression
+    reference_id: 184
+    reference_name: body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow
+    inputs:
+      body_color: {type: struct, type_name: ShaderVec3}
+      fresnel: {type: float}
+      edge_glow: {type: float}
+      body_glow: {type: float}
+      flash_glow: {type: struct, type_name: ShaderVec3}
+      dash_glow: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
   edges:
-  - {from: 37.Position, to: 39.Position}
-  - {from: 39.Value, to: 45.Position}
-  - {from: 45.Value, to: 51.Factor}
-  - {from: 51.Color, to: 75.A}
-  - {from: 51.Color, to: 92.A}
-  - {from: 57.Value, to: 65.A}
-  - {from: 63.Value, to: 65.B}
-  - {from: 65.Value, to: 71.A}
-  - {from: 69.Value, to: 71.B}
-  - {from: 71.Value, to: 75.B}
-  - {from: 75.Value, to: 100.A}
+  - {from: 37.Position, to: 132.position}
+  - {from: 51.Color, to: 179.Color}
+  - {from: 51.Color, to: 231.body_color}
+  - {from: 57.Value, to: 231.fresnel}
+  - {from: 63.Value, to: 231.edge_glow}
+  - {from: 69.Value, to: 231.body_glow}
   - {from: 79.Value, to: 29.Roughness}
   - {from: 81.Value, to: 29.Metallic}
-  - {from: 84.Value, to: 87.Value}
-  - {from: 84.Value, to: 96.B}
-  - {from: 87.Value, to: 92.Alpha}
-  - {from: 92.Value, to: 29.Base Color}
-  - {from: 96.Value, to: 100.B}
-  - {from: 100.Value, to: 110.A}
-  - {from: 102.Value, to: 106.B}
-  - {from: 106.Value, to: 110.B}
-  - {from: 110.Value, to: 29.Emission}
+  - {from: 84.Value, to: 179.Flash}
+  - {from: 102.Value, to: 231.dash_glow}
+  - {from: 132.Result, to: 51.Factor}
+  - {from: 179.Base Color, to: 29.Base Color}
+  - {from: 179.Glow, to: 231.flash_glow}
+  - {from: 231.Result, to: 29.Emission}
+- {id: 113, kind: function, math_expression: position.x / 28 + 0.5, entry_id: 616}
+- id: 184
+  kind: function
+  math_expression: body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow
+  entry_id: 569

@@ -1,7 +1,7 @@
 version: 3
 name: ArenaFloor
 domain: material
-id_counter: 751
+id_counter: 2690
 description: Permanent triangular cell outlines surround small breathing inner triangles. Cell boundaries brighten locally around activity; the floor faces remain dark.
 graphs:
 - kind: event
@@ -9,15 +9,11 @@ graphs:
   nodes:
   - id: 653
     type: Shader Parameter
-    x: 0.0
-    "y": 0.0
     reference_name: Tile Size
     outputs:
       Value: {flags: 0, group: 0, default: 16.0}
   - id: 655
     type: Shader Parameter
-    x: 260.0
-    "y": 0.0
     reference_id: 1
     reference_name: Idle Size
     outputs:
@@ -30,8 +26,6 @@ graphs:
       Value: {flags: 0, group: 0, default: 0.84}
   - id: 659
     type: Shader Parameter
-    x: 780.0
-    "y": 0.0
     reference_id: 3
     reference_name: Line Width
     outputs:
@@ -56,16 +50,12 @@ graphs:
       Value: {flags: 0, group: 0, default: 0.045}
   - id: 667
     type: Shader WorldPosition
-    x: 0.0
-    "y": 240.0
     outputs:
       Value:
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 669
     type: Call Pure Function
-    x: 260.0
-    "y": 240.0
     reference_id: 274
     reference_name: Triangle Center
     inputs:
@@ -73,8 +63,12 @@ graphs:
         type: struct
         type_name: ShaderVec3
         flags: 64
+        binding: {kind: local, local_id: 2689}
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {type: float, type_name: null, default: 20.0}
+      Tile Size:
+        type: float
+        binding: {kind: local, local_id: 2687}
+        default: 20.0
     outputs:
       Center:
         type: struct
@@ -83,8 +77,6 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 673
     type: Shader Surface Influence
-    x: 520.0
-    "y": 240.0
     inputs:
       Position:
         flags: 64
@@ -95,8 +87,6 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 676
     type: Call Pure Function
-    x: 780.0
-    "y": 240.0
     reference_id: 624
     reference_name: Activity Strength
     inputs:
@@ -106,38 +96,10 @@ graphs:
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
     outputs:
-      Strength: {type: float, type_name: null}
+      Strength: {type: float}
   - {id: 679, type: Shader Beat Pulse}
-  - id: 681
-    type: Shader Mix
-    x: 1300.0
-    "y": 240.0
-    inputs:
-    - {id: 682, flags: 0, group: 0}
-    - {id: 683, flags: 0, group: 0}
-    - {id: 684, name: Factor, flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 686
-    type: Shader Multiply
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 690
-    type: Shader Add
-    x: 0.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
   - id: 694
     type: Call Pure Function
-    x: 260.0
-    "y": 480.0
     reference_id: 501
     reference_name: Triangle Border
     inputs:
@@ -145,16 +107,21 @@ graphs:
         type: struct
         type_name: ShaderVec3
         flags: 64
+        binding: {kind: local, local_id: 2689}
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {type: float, type_name: null, default: 16.0}
-      Scale: {type: float, type_name: null, default: 0.25}
-      Width: {type: float, type_name: null, default: 0.012}
+      Tile Size:
+        type: float
+        binding: {kind: local, local_id: 2687}
+        default: 16.0
+      Scale: {type: float, default: 0.25}
+      Width:
+        type: float
+        binding: {kind: local, local_id: 2688}
+        default: 0.012
     outputs:
-      Mask: {type: float, type_name: null}
+      Mask: {type: float}
   - id: 700
     type: Call Pure Function
-    x: 520.0
-    "y": 480.0
     reference_id: 501
     reference_name: Triangle Border
     inputs:
@@ -162,113 +129,21 @@ graphs:
         type: struct
         type_name: ShaderVec3
         flags: 64
+        binding: {kind: local, local_id: 2689}
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {type: float, type_name: null, default: 16.0}
-      Scale: {type: float, type_name: null, default: 0.25}
-      Width: {type: float, type_name: null, default: 0.012}
+      Tile Size:
+        type: float
+        binding: {kind: local, local_id: 2687}
+        default: 16.0
+      Scale: {type: float, default: 0.25}
+      Width:
+        type: float
+        binding: {kind: local, local_id: 2688}
+        default: 0.012
     outputs:
-      Mask: {type: float, type_name: null}
-  - id: 706
-    type: Shader Multiply
-    x: 780.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.24}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 710
-    type: Shader Max
-    x: 1040.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 714
-    type: Shader Multiply
-    x: 1300.0
-    "y": 480.0
-    inputs:
-      A:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 718
-    type: Shader Multiply
-    inputs:
-      A:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.42, "y": 0.55, z: 0.64}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 722
-    type: Shader Add
-    x: 0.0
-    "y": 720.0
-    inputs:
-      A:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 726
-    type: Shader Multiply
-    x: 260.0
-    "y": 720.0
-    inputs:
-      A:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Mask: {type: float}
   - id: 730
     type: Shader Surface Output
-    x: 520.0
-    "y": 720.0
     inputs:
       Base Color:
         default: {x: 0.0015, "y": 0.002, z: 0.003}
@@ -282,8 +157,6 @@ graphs:
       Height: {id: 750}
   - id: 739
     type: Call Pure Function
-    x: 1820.0
-    "y": 800.0
     reference_id: 501
     reference_name: Triangle Border
     inputs:
@@ -291,57 +164,85 @@ graphs:
         type: struct
         type_name: ShaderVec3
         flags: 64
+        binding: {kind: local, local_id: 2689}
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Tile Size: {type: float, type_name: null, default: 16.0}
-      Scale: {type: float, type_name: null, default: 1.0}
-      Width: {type: float, type_name: null, default: 0.012}
+      Tile Size:
+        type: float
+        binding: {kind: local, local_id: 2687}
+        default: 16.0
+      Scale: {type: float, default: 1.0}
+      Width:
+        type: float
+        binding: {kind: local, local_id: 2688}
+        default: 0.012
     outputs:
-      Mask: {type: float, type_name: null}
-  - id: 745
-    type: Shader Max
-    x: 2080.0
-    "y": 800.0
+      Mask: {type: float}
+  - id: 2244
+    type: Behavior Expression
+    reference_id: 2220
+    reference_name: mix(idle_size, active_size, activity) + beat * beat_amount
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      idle_size: {type: float}
+      active_size: {type: float}
+      activity: {type: float}
+      beat: {type: float}
+      beat_amount: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
+      Result: {type: float}
+  - id: 2394
+    type: Behavior Expression
+    reference_id: 2371
+    reference_name: max(max(breathing, resting * 0.24), outline)
+    inputs:
+      breathing: {type: float}
+      resting: {type: float}
+      outline: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 2436
+    type: Behavior Expression
+    reference_id: 2399
+    reference_name: (influence * reaction_gain + vec3(0.42, 0.55, 0.64) * idle_glow) * line_mask
+    inputs:
+      influence: {type: struct, type_name: ShaderVec3}
+      reaction_gain: {type: float}
+      idle_glow: {type: float}
+      line_mask: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
   edges:
   - {from: 653.Value, to: 669.Tile Size}
   - {from: 653.Value, to: 694.Tile Size}
   - {from: 653.Value, to: 700.Tile Size}
   - {from: 653.Value, to: 739.Tile Size}
-  - {from: 655.Value, to: 681.A}
   - {from: 655.Value, to: 700.Scale}
-  - {from: 657.Value, to: 681.B}
+  - {from: 655.Value, to: 2244.idle_size}
+  - {from: 657.Value, to: 2244.active_size}
   - {from: 659.Value, to: 694.Width}
   - {from: 659.Value, to: 700.Width}
   - {from: 659.Value, to: 739.Width}
-  - {from: 661.Value, to: 718.B}
-  - {from: 663.Value, to: 714.B}
-  - {from: 665.Value, to: 686.B}
+  - {from: 661.Value, to: 2436.idle_glow}
+  - {from: 663.Value, to: 2436.reaction_gain}
+  - {from: 665.Value, to: 2244.beat_amount}
   - {from: 667.Value, to: 669.Position}
   - {from: 667.Value, to: 694.Position}
   - {from: 667.Value, to: 700.Position}
   - {from: 667.Value, to: 739.Position}
   - {from: 669.Center, to: 673.Position}
   - {from: 673.Color, to: 676.Color}
-  - {from: 673.Color, to: 714.A}
-  - {from: 676.Strength, to: 681.Factor}
-  - {from: 679.Value, to: 686.A}
-  - {from: 681.Value, to: 690.A}
-  - {from: 686.Value, to: 690.B}
-  - {from: 690.Value, to: 694.Scale}
-  - {from: 694.Mask, to: 710.A}
-  - {from: 700.Mask, to: 706.A}
-  - {from: 706.Value, to: 710.B}
-  - {from: 710.Value, to: 745.A}
-  - {from: 714.Value, to: 722.A}
-  - {from: 718.Value, to: 722.B}
-  - {from: 722.Value, to: 726.A}
-  - {from: 726.Value, to: 730.Emission}
-  - {from: 739.Mask, to: 745.B}
-  - {from: 745.Value, to: 726.B}
+  - {from: 673.Color, to: 2436.influence}
+  - {from: 676.Strength, to: 2244.activity}
+  - {from: 679.Value, to: 2244.beat}
+  - {from: 694.Mask, to: 2394.breathing}
+  - {from: 700.Mask, to: 2394.resting}
+  - {from: 739.Mask, to: 2394.outline}
+  - {from: 2244.Result, to: 694.Scale}
+  - {from: 2394.Result, to: 2436.line_mask}
+  - {from: 2436.Result, to: 730.Emission}
+  locals:
+  - {id: 2687, name: TileSize, from: 653.Value}
+  - {id: 2688, name: LineWidth, from: 659.Value}
+  - {id: 2689, name: WorldPosition, from: 667.Value}
 - id: 501
   kind: function
   name: Triangle Border
@@ -351,8 +252,6 @@ graphs:
   nodes:
   - id: 502
     type: Function Entry
-    x: 0.0
-    "y": 0.0
     outputs:
     - id: 503
       name: Position
@@ -361,334 +260,79 @@ graphs:
       kind: data
       flags: 64
       default: {x: 0.0, "y": 0.0, z: 0.0}
-    - id: 504
-      name: Tile Size
-      type: float
-      type_name: null
-      kind: data
-      default: 16.0
-    - {id: 505, name: Scale, type: float, type_name: null, kind: data, default: 0.25}
-    - id: 506
-      name: Width
-      type: float
-      type_name: null
-      kind: data
-      default: 0.012
+    - {id: 504, name: Tile Size, type: float, kind: data, default: 16.0}
+    - {id: 505, name: Scale, type: float, kind: data, default: 0.25}
+    - {id: 506, name: Width, type: float, kind: data, default: 0.012}
   - id: 507
     type: Return
-    x: 260.0
-    "y": 0.0
     inputs:
-    - {id: 508, name: Mask, type: float, type_name: null, kind: data}
-  - id: 509
-    type: Shader X
-    x: 520.0
-    "y": 0.0
+    - {id: 508, name: Mask, type: float, kind: data}
+  - id: 1636
+    type: Call Pure Function
+    reference_id: 751
+    reference_name: Triangle Cell
     inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 512
-    type: Shader Z
-    x: 780.0
-    "y": 0.0
-    inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 515
-    type: Shader Max
-    x: 1040.0
-    "y": 0.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.01}
+      Position: {type: struct, type_name: ShaderVec3}
+      Tile Size: {type: float, default: 16.0}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 519
-    type: Shader Divide
-    x: 1300.0
-    "y": 0.0
+      Cell: {type: struct, type_name: ShaderVec2}
+      Offset: {type: struct, type_name: ShaderVec2}
+      Upper: {type: float}
+  - id: 1661
+    type: Behavior Expression
+    reference_id: 1642
+    reference_name: mix(offset, 1 - offset, upper)
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      offset: {type: struct, type_name: ShaderVec2}
+      upper: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 523
-    type: Shader Divide
-    x: 1560.0
-    "y": 0.0
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 1728
+    type: Behavior Expression
+    reference_id: 1703
+    reference_name: min(min(barycentric.x, barycentric.y), 1 - (barycentric.x + barycentric.y))
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      barycentric: {type: struct, type_name: ShaderVec2}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 527
-    type: Shader Multiply
-    x: 0.0
-    "y": 240.0
+      Result: {type: float}
+  - id: 1852
+    type: Behavior Expression
+    reference_id: 1824
+    reference_name: (1 - clamp(scale, 0.01, 1)) / 3
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8660254}
+      scale: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 531
-    type: Shader Multiply
-    x: 260.0
-    "y": 240.0
+      Result: {type: float}
+  - id: 1896
+    type: Behavior Expression
+    reference_id: 1883
+    reference_name: max(width, 0.002)
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.5}
+      width: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 535
-    type: Shader Subtract
-    x: 520.0
-    "y": 240.0
+      Result: {type: float}
+  - id: 1945
+    type: Behavior Expression
+    reference_id: 1912
+    reference_name: 1 - smoothstep(line_width, line_width + 0.006, abs(edge_distance - inset))
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      line_width: {type: float}
+      edge_distance: {type: float}
+      inset: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 539
-    type: Shader Fract
-    x: 780.0
-    "y": 240.0
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 542
-    type: Shader Fract
-    x: 1040.0
-    "y": 240.0
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 545
-    type: Shader Add
-    x: 1300.0
-    "y": 240.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 549
-    type: Shader Step
-    x: 1560.0
-    "y": 240.0
-    inputs:
-      Value: {flags: 0, group: 0}
-      Edge: 1.0
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 553
-    type: Shader Subtract
-    x: 0.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0, default: 1.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 557
-    type: Shader Mix
-    x: 260.0
-    "y": 480.0
-    inputs:
-    - {id: 558, flags: 0, group: 0}
-    - {id: 559, flags: 0, group: 0}
-    - {id: 560, name: Factor, flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 562
-    type: Shader Subtract
-    x: 520.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0, default: 1.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 566
-    type: Shader Mix
-    x: 780.0
-    "y": 480.0
-    inputs:
-    - {id: 567, flags: 0, group: 0}
-    - {id: 568, flags: 0, group: 0}
-    - {id: 569, name: Factor, flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 571
-    type: Shader Add
-    x: 1040.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 575
-    type: Shader Subtract
-    x: 1300.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0, default: 1.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 579
-    type: Shader Min
-    x: 1560.0
-    "y": 480.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 583
-    type: Shader Min
-    x: 0.0
-    "y": 720.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 587
-    type: Shader Clamp
-    x: 260.0
-    "y": 720.0
-    inputs:
-      Value: {flags: 0, group: 0}
-      Min: 0.01
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 592
-    type: Shader Subtract
-    x: 520.0
-    "y": 720.0
-    inputs:
-      A: {flags: 0, group: 0, default: 1.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 596
-    type: Shader Divide
-    x: 780.0
-    "y": 720.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 3.0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 600
-    type: Shader Subtract
-    x: 1040.0
-    "y": 720.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 604
-    type: Shader Abs
-    x: 1300.0
-    "y": 720.0
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 607
-    type: Shader Max
-    x: 1560.0
-    "y": 720.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.002}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 611
-    type: Shader Add
-    x: 0.0
-    "y": 960.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.006}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 615
-    type: Shader Smoothstep
-    x: 260.0
-    "y": 960.0
-    inputs:
-      Value: {flags: 0, group: 0}
-      Max: 0.0
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 620
-    type: Shader Subtract
-    x: 520.0
-    "y": 960.0
-    inputs:
-      A: {flags: 0, group: 0, default: 1.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
+      Result: {type: float}
   edges:
-  - {from: 502.Position, to: 509.Value}
-  - {from: 502.Position, to: 512.Value}
-  - {from: 502.Tile Size, to: 515.A}
-  - {from: 502.Scale, to: 587.Value}
-  - {from: 502.Width, to: 607.A}
-  - {from: 509.Value, to: 523.A}
-  - {from: 512.Value, to: 519.A}
-  - {from: 515.Value, to: 519.B}
-  - {from: 515.Value, to: 523.B}
-  - {from: 519.Value, to: 531.A}
-  - {from: 519.Value, to: 542.Value}
-  - {from: 523.Value, to: 527.A}
-  - {from: 527.Value, to: 535.A}
-  - {from: 531.Value, to: 535.B}
-  - {from: 535.Value, to: 539.Value}
-  - {from: 539.Value, to: 545.A}
-  - {from: 539.Value, to: 553.B}
-  - {from: 539.Value, to: 557.A}
-  - {from: 542.Value, to: 545.B}
-  - {from: 542.Value, to: 562.B}
-  - {from: 542.Value, to: 566.A}
-  - {from: 545.Value, to: 549.Value}
-  - {from: 549.Value, to: 557.Factor}
-  - {from: 549.Value, to: 566.Factor}
-  - {from: 553.Value, to: 557.B}
-  - {from: 557.Value, to: 571.A}
-  - {from: 557.Value, to: 579.A}
-  - {from: 562.Value, to: 566.B}
-  - {from: 566.Value, to: 571.B}
-  - {from: 566.Value, to: 579.B}
-  - {from: 571.Value, to: 575.B}
-  - {from: 575.Value, to: 583.B}
-  - {from: 579.Value, to: 583.A}
-  - {from: 583.Value, to: 600.A}
-  - {from: 587.Value, to: 592.B}
-  - {from: 592.Value, to: 596.A}
-  - {from: 596.Value, to: 600.B}
-  - {from: 600.Value, to: 604.Value}
-  - {from: 604.Value, to: 615.Value}
-  - {from: 607.Value, to: 611.A}
-  - {from: 607.Value, to: 615.Min}
-  - {from: 611.Value, to: 615.Max}
-  - {from: 615.Value, to: 620.B}
-  - {from: 620.Value, to: 507.Mask}
+  - {from: 502.Position, to: 1636.Position}
+  - {from: 502.Tile Size, to: 1636.Tile Size}
+  - {from: 502.Scale, to: 1852.scale}
+  - {from: 502.Width, to: 1896.width}
+  - {from: 1636.Offset, to: 1661.offset}
+  - {from: 1636.Upper, to: 1661.upper}
+  - {from: 1661.Result, to: 1728.barycentric}
+  - {from: 1728.Result, to: 1945.edge_distance}
+  - {from: 1852.Result, to: 1945.inset}
+  - {from: 1896.Result, to: 1945.line_width}
+  - {from: 1945.Result, to: 507.Mask}
 - id: 624
   kind: function
   name: Activity Strength
@@ -698,8 +342,6 @@ graphs:
   nodes:
   - id: 625
     type: Function Entry
-    x: 0.0
-    "y": 0.0
     outputs:
     - id: 626
       name: Color
@@ -710,89 +352,19 @@ graphs:
       default: {x: 0.0, "y": 0.0, z: 0.0}
   - id: 627
     type: Return
-    x: 260.0
-    "y": 0.0
     inputs:
-    - {id: 628, name: Strength, type: float, type_name: null, kind: data}
-  - id: 629
-    type: Shader X
-    x: 520.0
-    "y": 0.0
+    - {id: 628, name: Strength, type: float, kind: data}
+  - id: 2151
+    type: Behavior Expression
+    reference_id: 2127
+    reference_name: saturate(max(max(color.x, color.y), color.z) * 2.5)
     inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 632
-    type: Shader Y
-    x: 780.0
-    "y": 0.0
-    inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 635
-    type: Shader Max
-    x: 1040.0
-    "y": 0.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      color: {type: struct, type_name: ShaderVec3}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 639
-    type: Shader Z
-    x: 1300.0
-    "y": 0.0
-    inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 64
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 642
-    type: Shader Max
-    x: 1560.0
-    "y": 0.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 646
-    type: Shader Multiply
-    x: 0.0
-    "y": 240.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 2.5}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 650
-    type: Shader Saturate
-    x: 260.0
-    "y": 240.0
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
+      Result: {type: float}
   edges:
-  - {from: 625.Color, to: 629.Value}
-  - {from: 625.Color, to: 632.Value}
-  - {from: 625.Color, to: 639.Value}
-  - {from: 629.Value, to: 635.A}
-  - {from: 632.Value, to: 635.B}
-  - {from: 635.Value, to: 642.A}
-  - {from: 639.Value, to: 642.B}
-  - {from: 642.Value, to: 646.A}
-  - {from: 646.Value, to: 650.Value}
-  - {from: 650.Value, to: 627.Strength}
+  - {from: 625.Color, to: 2151.color}
+  - {from: 2151.Result, to: 627.Strength}
 - id: 274
   kind: function
   name: Triangle Center
@@ -802,8 +374,6 @@ graphs:
   nodes:
   - id: 275
     type: Function Entry
-    x: 0.0
-    "y": 0.0
     outputs:
     - id: 276
       name: Position
@@ -811,16 +381,9 @@ graphs:
       type_name: ShaderVec3
       kind: data
       default: {x: 0.0, "y": 0.0, z: 0.0}
-    - id: 277
-      name: Tile Size
-      type: float
-      type_name: null
-      kind: data
-      default: 20.0
+    - {id: 277, name: Tile Size, type: float, kind: data, default: 20.0}
   - id: 278
     type: Return
-    x: 230.0
-    "y": 0.0
     inputs:
     - id: 279
       name: Center
@@ -828,270 +391,181 @@ graphs:
       type_name: ShaderVec3
       kind: data
       default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 280
-    type: Shader X
-    x: 460.0
-    "y": 0.0
+  - id: 1245
+    type: Call Pure Function
+    reference_id: 751
+    reference_name: Triangle Cell
     inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 283
-    type: Shader Y
-    x: 690.0
-    "y": 0.0
-    inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 286
-    type: Shader Z
-    x: 920.0
-    "y": 0.0
-    inputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 289
-    type: Shader Max
-    x: 1150.0
-    "y": 0.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.01}
+      Position: {type: struct, type_name: ShaderVec3}
+      Tile Size: {type: float, default: 16.0}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 293
-    type: Shader Divide
-    x: 1380.0
-    "y": 0.0
+      Cell: {type: struct, type_name: ShaderVec2}
+      Offset: {type: struct, type_name: ShaderVec2}
+      Upper: {type: float}
+  - id: 1275
+    type: Behavior Expression
+    reference_id: 1251
+    reference_name: cell + (1 + upper) / 3
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 1.0}
+      cell: {type: struct, type_name: ShaderVec2}
+      upper: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 297
-    type: Shader Divide
-    x: 0.0
-    "y": 220.0
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 1340
+    type: Behavior Expression
+    reference_id: 1327
+    reference_name: max(tile_size, 0.01)
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 1.0}
+      tile_size: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 301
-    type: Shader Multiply
-    x: 230.0
-    "y": 220.0
+      Result: {type: float}
+  - id: 1394
+    type: Behavior Expression
+    reference_id: 1356
+    reference_name: vec3((centroid.x + centroid.y * 0.5) / 0.8660254 * size, position.y, centroid.y * size)
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8660254}
+      centroid: {type: struct, type_name: ShaderVec2}
+      size: {type: float}
+      position: {type: struct, type_name: ShaderVec3}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 305
-    type: Shader Multiply
-    x: 460.0
-    "y": 220.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.5}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 309
-    type: Shader Subtract
-    x: 690.0
-    "y": 220.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 313
-    type: Shader Fract
-    x: 920.0
-    "y": 220.0
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 316
-    type: Shader Fract
-    x: 1150.0
-    "y": 220.0
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 319
-    type: Shader Subtract
-    x: 1380.0
-    "y": 220.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 323
-    type: Shader Subtract
-    x: 0.0
-    "y": 440.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 327
-    type: Shader Add
-    x: 230.0
-    "y": 440.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 331
-    type: Shader Step
-    x: 460.0
-    "y": 440.0
-    inputs:
-      Value: {flags: 0, group: 0}
-      Edge: 1.0
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 335
-    type: Shader Multiply
-    x: 690.0
-    "y": 440.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.33333334}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 339
-    type: Shader Add
-    x: 920.0
-    "y": 440.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.33333334}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 343
-    type: Shader Add
-    x: 1150.0
-    "y": 440.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 347
-    type: Shader Add
-    x: 1380.0
-    "y": 440.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 351
-    type: Shader Multiply
-    x: 0.0
-    "y": 660.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.5}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 355
-    type: Shader Add
-    x: 230.0
-    "y": 660.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 359
-    type: Shader Divide
-    x: 460.0
-    "y": 660.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8660254}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 363
-    type: Shader Multiply
-    x: 690.0
-    "y": 660.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 367
-    type: Shader Multiply
-    x: 920.0
-    "y": 660.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 371
-    type: Shader Vector3
-    x: 1150.0
-    "y": 660.0
-    outputs:
-      Value:
-        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Result: {type: struct, type_name: ShaderVec3}
   edges:
-  - {from: 275.Position, to: 280.Value}
-  - {from: 275.Position, to: 283.Value}
-  - {from: 275.Position, to: 286.Value}
-  - {from: 275.Tile Size, to: 289.A}
-  - {from: 280.Value, to: 293.A}
-  - {from: 283.Value, to: 371.Y}
-  - {from: 286.Value, to: 297.A}
-  - {from: 289.Value, to: 293.B}
-  - {from: 289.Value, to: 297.B}
-  - {from: 289.Value, to: 363.B}
-  - {from: 289.Value, to: 367.B}
-  - {from: 293.Value, to: 301.A}
-  - {from: 297.Value, to: 305.A}
-  - {from: 297.Value, to: 316.Value}
-  - {from: 297.Value, to: 323.A}
-  - {from: 301.Value, to: 309.A}
-  - {from: 305.Value, to: 309.B}
-  - {from: 309.Value, to: 313.Value}
-  - {from: 309.Value, to: 319.A}
-  - {from: 313.Value, to: 319.B}
-  - {from: 313.Value, to: 327.A}
-  - {from: 316.Value, to: 323.B}
-  - {from: 316.Value, to: 327.B}
-  - {from: 319.Value, to: 343.A}
-  - {from: 323.Value, to: 347.A}
-  - {from: 327.Value, to: 331.Value}
-  - {from: 331.Value, to: 335.A}
-  - {from: 335.Value, to: 339.A}
-  - {from: 339.Value, to: 343.B}
-  - {from: 339.Value, to: 347.B}
-  - {from: 343.Value, to: 355.A}
-  - {from: 347.Value, to: 351.A}
-  - {from: 347.Value, to: 367.A}
-  - {from: 351.Value, to: 355.B}
-  - {from: 355.Value, to: 359.A}
-  - {from: 359.Value, to: 363.A}
-  - {from: 363.Value, to: 371.X}
-  - {from: 367.Value, to: 371.Z}
-  - {from: 371.Value, to: 278.Center}
+  - {from: 275.Position, to: 1245.Position}
+  - {from: 275.Position, to: 1394.position}
+  - {from: 275.Tile Size, to: 1245.Tile Size}
+  - {from: 275.Tile Size, to: 1340.tile_size}
+  - {from: 1245.Cell, to: 1275.cell}
+  - {from: 1245.Upper, to: 1275.upper}
+  - {from: 1275.Result, to: 1394.centroid}
+  - {from: 1340.Result, to: 1394.size}
+  - {from: 1394.Result, to: 278.Center}
+- id: 751
+  kind: function
+  name: Triangle Cell
+  entry_id: 752
+  return_id: 754
+  call_depth_limit: 64
+  nodes:
+  - id: 752
+    type: Function Entry
+    outputs:
+    - {id: 756, name: Position, type: struct, type_name: ShaderVec3, kind: data}
+    - {id: 757, name: Tile Size, type: float, kind: data, default: 16.0}
+  - id: 754
+    type: Return
+    inputs:
+    - {id: 758, name: Cell, type: struct, type_name: ShaderVec2, kind: data}
+    - {id: 759, name: Offset, type: struct, type_name: ShaderVec2, kind: data}
+    - {id: 760, name: Upper, type: float, kind: data}
+  - id: 779
+    type: Behavior Expression
+    reference_id: 761
+    reference_name: position.xz / max(tile_size, 0.01)
+    inputs:
+      position: {type: struct, type_name: ShaderVec3}
+      tile_size: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 866
+    type: Behavior Expression
+    reference_id: 839
+    reference_name: vec2(grid.x * 0.8660254 - grid.y * 0.5, grid.y)
+    inputs:
+      grid: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 979
+    type: Behavior Expression
+    reference_id: 969
+    reference_name: fract(lattice)
+    inputs:
+      lattice: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 1055
+    type: Behavior Expression
+    reference_id: 1038
+    reference_name: step(1, offset.x + offset.y)
+    inputs:
+      offset: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 1126
+    type: Behavior Expression
+    reference_id: 1114
+    reference_name: lattice - offset
+    inputs:
+      lattice: {type: struct, type_name: ShaderVec2}
+      offset: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  edges:
+  - {from: 752.Position, to: 779.position}
+  - {from: 752.Tile Size, to: 779.tile_size}
+  - {from: 779.Result, to: 866.grid}
+  - {from: 866.Result, to: 979.lattice}
+  - {from: 866.Result, to: 1126.lattice}
+  - {from: 979.Result, to: 754.Offset}
+  - {from: 979.Result, to: 1055.offset}
+  - {from: 979.Result, to: 1126.offset}
+  - {from: 1055.Result, to: 754.Upper}
+  - {from: 1126.Result, to: 754.Cell}
+- id: 761
+  kind: function
+  math_expression: position.xz / max(tile_size, 0.01)
+  entry_id: 870
+- id: 839
+  kind: function
+  math_expression: vec2(grid.x * 0.8660254 - grid.y * 0.5, grid.y)
+  entry_id: 1131
+- {id: 969, kind: function, math_expression: fract(lattice), entry_id: 1213}
+- id: 1038
+  kind: function
+  math_expression: step(1, offset.x + offset.y)
+  entry_id: 1223
+- {id: 1114, kind: function, math_expression: lattice - offset, entry_id: 1201}
+- id: 1251
+  kind: function
+  math_expression: cell + (1 + upper) / 3
+  entry_id: 1400
+- id: 1327
+  kind: function
+  math_expression: max(tile_size, 0.01)
+  entry_id: 1424
+- id: 1356
+  kind: function
+  math_expression: vec3((centroid.x + centroid.y * 0.5) / 0.8660254 * size, position.y, centroid.y * size)
+  entry_id: 1587
+- id: 1642
+  kind: function
+  math_expression: mix(offset, 1 - offset, upper)
+  entry_id: 1732
+- id: 1703
+  kind: function
+  math_expression: min(min(barycentric.x, barycentric.y), 1 - (barycentric.x + barycentric.y))
+  entry_id: 1964
+- id: 1824
+  kind: function
+  math_expression: (1 - clamp(scale, 0.01, 1)) / 3
+  entry_id: 2001
+- {id: 1883, kind: function, math_expression: 'max(width, 0.002)', entry_id: 1951}
+- id: 1912
+  kind: function
+  math_expression: 1 - smoothstep(line_width, line_width + 0.006, abs(edge_distance - inset))
+  entry_id: 2095
+- id: 2127
+  kind: function
+  math_expression: saturate(max(max(color.x, color.y), color.z) * 2.5)
+  entry_id: 2188
+- id: 2220
+  kind: function
+  math_expression: mix(idle_size, active_size, activity) + beat * beat_amount
+  entry_id: 2348
+- id: 2371
+  kind: function
+  math_expression: max(max(breathing, resting * 0.24), outline)
+  entry_id: 2554
+- id: 2399
+  kind: function
+  math_expression: (influence * reaction_gain + vec3(0.42, 0.55, 0.64) * idle_glow) * line_mask
+  entry_id: 2651

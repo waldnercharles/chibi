@@ -187,8 +187,7 @@ static const char *macro_boundary(const graph *g, node *const *selection, int co
     for (int i = 0; i < count; i++) {
         const node *n = selection[i];
         if (node_behavior_for(n) == NODE_BEHAVIOR_ENTRY || n->desc == &NODE_Return) {
-            return "Keep events, Function Entry and Return outside the "
-                   "selection.";
+            return "Leave events, Function Entry and Return out.";
         }
     }
     for (int i = 0; i < acount(g->edges); i++) {

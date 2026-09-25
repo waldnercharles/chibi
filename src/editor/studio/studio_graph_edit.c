@@ -527,6 +527,18 @@ static void refused(studio *s, const char *title, const char *error)
     kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_WARNING, .title = title, .description = error });
 }
 
+static const char *extract(editor *e, graph_kind kind, const char *name, behavior_asset **result, uint64_t *call)
+{
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
+        return "Systems have no functions or macros.";
+    }
+    graph *gr = e->active_graph;
+    int count = acount(e->selected);
+    return kind == GRAPH_MACRO
+             ? behavior_asset_extract_macro(e->asset, gr, e->selected, count, name, result, call)
+             : behavior_asset_extract_function(e->asset, gr, e->selected, count, name, result, call);
+}
+
 /* The selection becomes a call to a new function (Ctrl+G) or macro whose
    interface is the wires crossing its edge (Blender, Unreal). */
 void sg_collapse(studio *s, graph_kind kind)
@@ -540,27 +552,7 @@ void sg_collapse(studio *s, graph_kind kind)
     }
     behavior_asset *result = NULL;
     uint64_t call = 0;
-    int count = acount(e->selected);
-    const char *error = e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
-                          ? "Systems have no functions or macros."
-                      : kind == GRAPH_MACRO ? behavior_asset_extract_macro(
-                                                  e->asset,
-                                                  e->active_graph,
-                                                  e->selected,
-                                                  count,
-                                                  name,
-                                                  &result,
-                                                  &call
-                                              )
-                                            : behavior_asset_extract_function(
-                                                  e->asset,
-                                                  e->active_graph,
-                                                  e->selected,
-                                                  count,
-                                                  name,
-                                                  &result,
-                                                  &call
-                                              );
+    const char *error = extract(e, kind, name, &result, &call);
     if (error) {
         refused(s, "Can't collapse", error);
         return;

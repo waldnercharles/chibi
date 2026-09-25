@@ -231,11 +231,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
         g->area = -1;
         return;
     }
-    /* Opening arranges automatic nodes; an undo that swaps the asset in place
-       must not, or it would add history of its own. */
-    if (!sg_follow_graph(s)) {
-        e->arrange_pending = false;
-    }
+    sg_follow_graph(s);
     /* Node settings change node sizes, so automatic nodes arrange again. */
     int forms = s->prefs.short_bindings | s->prefs.title_flow << 1 |
                 s->prefs.compact_nodes << 2;

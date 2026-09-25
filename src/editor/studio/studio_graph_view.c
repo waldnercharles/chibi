@@ -128,14 +128,13 @@ static uint64_t graph_key(const studio *s)
     return (h ^ gr->graph_id) * 1099511628211ull | 1;
 }
 
-/* Each graph keeps its own camera; one seen for the first time is framed.
-   Returns true when a different graph came into view. */
-bool sg_follow_graph(studio *s)
+/* Each graph keeps its own camera; one seen for the first time is framed. */
+void sg_follow_graph(studio *s)
 {
     studio_graph *g = &s->graph;
     uint64_t id = graph_key(s);
     if (id == g->graph_id) {
-        return false;
+        return;
     }
     studio_graph_view *old = view_for(g, g->graph_id);
     if (g->graph_id && !old) {
@@ -159,7 +158,6 @@ bool sg_follow_graph(studio *s)
         g->x = -40;
         g->y = -40;
     }
-    return true;
 }
 
 /* ---------- Arrange ---------- */

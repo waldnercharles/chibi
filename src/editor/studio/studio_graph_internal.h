@@ -113,6 +113,7 @@ void sg_convert_to_expression(studio *s);
 void sg_replay(studio *s);
 void sg_pointer(studio *s);
 void sg_shortcuts(studio *s);
+void sg_cancel_gesture(studio *s);
 
 /* Rendering (studio_graph_draw.c). */
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p);

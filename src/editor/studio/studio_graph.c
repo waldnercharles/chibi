@@ -333,7 +333,7 @@ bool studio_graph_can_replay(studio *s, bool redo)
 void studio_graph_history(studio *s, bool redo)
 {
     editor *e = sg_graph_editor(s);
-    s->graph.gesture = STUDIO_GRAPH_IDLE;
+    sg_cancel_gesture(s);
     if (redo) {
         editor_redo(e);
     } else {

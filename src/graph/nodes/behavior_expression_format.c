@@ -59,7 +59,7 @@ static void put_identifier(text *t, const char *name)
     put(t, out);
 }
 
-/* Component keys are namespaced, as in `game.GameMovement`. */
+/* Component keys are namespaced, as in `GAME.GameMovement`. */
 static const char *component_name(const char *key)
 {
     const char *dot = key ? strrchr(key, '.') : NULL;
@@ -79,7 +79,7 @@ static void put_read(text *t, const graph *g, const pin_binding *read)
 }
 
 /* Typographic operators, as node titles draw them. */
-static const char *display_symbol(const char *symbol)
+const char *behavior_expression_symbol(const char *symbol)
 {
     static const char *const symbols[][2] = {
         { "*", "×" },  { "/", "÷" },  { "-", "−" },  { "<=", "≤" },
@@ -172,6 +172,17 @@ static int binding_of(const node *n)
 
 static void put_node(text *t, const graph *g, const node *n, int output);
 
+/* Literals read as their value. Shader and field nodes leave pure_kind at its
+   zero default, so only their Constant nodes are literals; a built-in such as
+   Shader UV reads as its name. */
+static bool literal_node(const node_desc *desc)
+{
+    return desc->display_class == NODE_DISPLAY_LITERAL ||
+           (desc->pure_kind == NODE_PURE_CONST && desc->flow_kind != NODE_FLOW_NONE) ||
+           !strcmp(desc->name, "Shader Constant") ||
+           !strcmp(desc->name, "Field Constant");
+}
+
 /* Writes the source wired into an input, calling its edge conversion by name
  * so a conversion such as truncation stays visible. */
 static int put_source(text *t, const graph *g, const node *n, int pin, const node *source, int source_pin)
@@ -234,9 +245,11 @@ static void put_arguments(text *t, const graph *g, const node *n)
 {
     put(t, "(");
     bool first = true;
+    bool spelled = behavior_expression_arity(n->desc) == n->input_count;
     /* A component node's setting names the call rather than an argument. */
     int setting = component_node_kind_of(n->desc) ? component_node_setting(n) : -1;
-    for (int p = 0; p < n->input_count; p++) {
+    for (int a = 0; a < n->input_count; a++) {
+        int p = spelled ? behavior_expression_argument_input(n->desc, a) : a;
         if ((n->input_pins[p].flags & PIN_FLAG_SERVICE) || p == setting) {
             continue;
         }
@@ -304,7 +317,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     const node_desc *desc = n->desc;
     int binding = binding_of(n);
     if (binding == BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
-        put(t, display_symbol(behavior_expression_spelling(desc, &binding)));
+        put(t, behavior_expression_symbol(behavior_expression_spelling(desc, &binding)));
         put_input(t, g, n, 0, binding);
         return;
     }
@@ -313,7 +326,7 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         bool right = !strcmp(spelling, "^");
         put_input(t, g, n, 0, binding + right);
         put(t, " ");
-        put(t, display_symbol(spelling));
+        put(t, behavior_expression_symbol(spelling));
         put(t, " ");
         put_input(t, g, n, 1, binding + !right);
         return;
@@ -339,16 +352,22 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_read(t, g, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME });
         return;
     }
-    /* Named sources such as shader parameters read as their name. */
+    if (literal_node(desc)) {
+        if (n->input_count == 1) {
+            put_input(t, g, n, 0, 0);
+        } else {
+            put_value(t, &n->output_pins[output], &n->output_pins[output].default_value);
+        }
+        return;
+    }
+    /* Named sources such as shader and field parameters read as their name. */
     if (!n->input_count && n->reference_name && n->reference_name[0]) {
         put(t, n->reference_name);
         return;
     }
-    /* Shader and field nodes also leave pure_kind at its default, so only a
-     * literal node's value is its text. */
-    if (desc->display_class == NODE_DISPLAY_LITERAL) {
-        assert(n->input_count == 1);
-        put_input(t, g, n, 0, 0);
+    const char *named = n->input_count == 1 ? graph_node_name_literal(g, n) : NULL;
+    if (named) {
+        put(t, named);
         return;
     }
     /* Make and Break Struct read like the Make_<T> and Break_<T> they lower to. */
@@ -366,7 +385,12 @@ static void put_node(text *t, const graph *g, const node *n, int output)
     if (function) {
         put(t, function);
     } else {
-        put_identifier(t, !strncmp(desc->name, "Shader ", 7) ? desc->name + 7 : desc->name);
+        put_identifier(
+            t,
+            !strncmp(desc->name, "Shader ", 7)  ? desc->name + 7
+            : !strncmp(desc->name, "Field ", 6) ? desc->name + 6
+                                                : desc->name
+        );
     }
     if (n->input_count || function) {
         put_arguments(t, g, n);

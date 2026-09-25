@@ -12,4 +12,4 @@ components:
     width: 23.0
   GAME.GameBody: {}
   GAME.GameCollider: {category: 16, mask: 1, radius: 11.0, sensor: true}
-  game.GameTransform: {}
+  GAME.GameTransform: {}

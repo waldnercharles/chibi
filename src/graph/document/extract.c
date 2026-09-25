@@ -1,13 +1,17 @@
 #include "graph/document/extract.h"
 
 #include "graph/document/serialize.h"
+#include "graph/model/registry.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const float TUNNEL_GAP = 260; /* graph units beside the copied nodes */
 
 static bool selected(node *const *selection, int count, uint64_t id)
 {
@@ -176,11 +180,32 @@ static const char *execution_boundary(const graph *g, node *const *selection, in
     return NULL;
 }
 
-static const char *can_extract_function_selection(
+/* A macro takes any execution wires: each inside pin a wire enters or leaves
+   by becomes one of its tunnel pins (Unreal's Collapse to Macro). */
+static const char *macro_boundary(const graph *g, node *const *selection, int count)
+{
+    for (int i = 0; i < count; i++) {
+        const node *n = selection[i];
+        if (node_behavior_for(n) == NODE_BEHAVIOR_ENTRY || n->desc == &NODE_Return) {
+            return "Leave events, Function Entry and Return out.";
+        }
+    }
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind == GRAPH_EDGE_EXEC && !selected(selection, count, e->from_id) &&
+            selected(selection, count, e->to_id)) {
+            return NULL;
+        }
+    }
+    return "Connect an execution wire into the selection first.";
+}
+
+static const char *can_extract_selection(
     const behavior_asset *asset,
     const graph *source,
     node *const *selection,
-    int count
+    int count,
+    graph_kind kind
 )
 {
     if (!asset || !source || source->owner != asset ||
@@ -191,6 +216,9 @@ static const char *can_extract_function_selection(
         return "Select calculations or a connected execution chain to extract.";
     }
     bool exec = executable(selection, count);
+    if (kind == GRAPH_MACRO && !exec) {
+        return "Select nodes with execution wires to collapse to a macro.";
+    }
     for (int i = 0; i < count; i++) {
         const node *n = selection[i];
         if (!n || graph_node_by_id(source, n->id) != n) {
@@ -213,7 +241,7 @@ static const char *can_extract_function_selection(
                    "function calls outside the selection.";
         }
         if (has_split(n)) {
-            return "Recombine split pins before extracting a function.";
+            return "Recombine split pins first.";
         }
     }
     bool output = false;
@@ -224,7 +252,9 @@ static const char *can_extract_function_selection(
                   !selected(selection, count, e->to_id);
     }
     if (exec) {
-        const char *error = execution_boundary(source, selection, count);
+        const char *error = kind == GRAPH_MACRO
+                              ? macro_boundary(source, selection, count)
+                              : execution_boundary(source, selection, count);
         if (error) {
             return error;
         }
@@ -239,6 +269,26 @@ static const char *can_extract_function_selection(
     return NULL;
 }
 
+static const char *can_extract(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count,
+    graph_kind kind
+)
+{
+    if (!asset || !source || source->owner != asset ||
+        behavior_asset_find_graph(asset, source->graph_id) != source ||
+        count <= 0 || !selection) {
+        return can_extract_selection(asset, source, selection, count, kind);
+    }
+    int expanded_count = count;
+    node **expanded = expand_inline_selection(source, selection, count, &expanded_count);
+    const char *error = can_extract_selection(asset, source, expanded, expanded_count, kind);
+    free(expanded);
+    return error;
+}
+
 const char *behavior_asset_can_extract_function(
     const behavior_asset *asset,
     const graph *source,
@@ -246,16 +296,17 @@ const char *behavior_asset_can_extract_function(
     int count
 )
 {
-    if (!asset || !source || source->owner != asset ||
-        behavior_asset_find_graph(asset, source->graph_id) != source ||
-        count <= 0 || !selection) {
-        return can_extract_function_selection(asset, source, selection, count);
-    }
-    int expanded_count = count;
-    node **expanded = expand_inline_selection(source, selection, count, &expanded_count);
-    const char *error = can_extract_function_selection(asset, source, expanded, expanded_count);
-    free(expanded);
-    return error;
+    return can_extract(asset, source, selection, count, GRAPH_FUNCTION);
+}
+
+const char *behavior_asset_can_extract_macro(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count
+)
+{
+    return can_extract(asset, source, selection, count, GRAPH_MACRO);
 }
 
 typedef struct boundary_port
@@ -323,14 +374,19 @@ static bool same_optional_binding(
     return same_binding(left, right, expected_left, expected_right);
 }
 
-static int port_index(boundary_port *ports, const edge *e)
+static int port_of(const boundary_port *ports, uint64_t node_id, uint64_t pin_id)
 {
     for (int i = 0; i < acount(ports); i++) {
-        if (ports[i].node_id == e->from_id && ports[i].pin_id == e->from_pin_id) {
+        if (ports[i].node_id == node_id && ports[i].pin_id == pin_id) {
             return i;
         }
     }
     return -1;
+}
+
+static int port_index(const boundary_port *ports, const edge *e)
+{
+    return port_of(ports, e->from_id, e->from_pin_id);
 }
 
 static bool generic_label(const char *name)
@@ -378,6 +434,34 @@ static int add_port(graph *g, node *boundary, int output, const pin_spec *source
     return graph_add_pin(g, boundary, output, &pin);
 }
 
+/* The tunnel pin for execution crossing the boundary at an inside pin; the
+   first on each side is the pin Function Entry or Return starts with. Macro
+   tunnels take the inside pin's name (Unreal). */
+static void exec_tunnel(
+    graph *made,
+    node *tunnel,
+    bool entry,
+    boundary_port **ports,
+    uint64_t node_id,
+    const pin_spec *inside,
+    bool named
+)
+{
+    if (port_of(*ports, node_id, inside->id) >= 0) {
+        return;
+    }
+    int index = 0;
+    if (acount(*ports)) {
+        index = add_port(made, tunnel, entry, inside, inside->name);
+        assert(index >= 0);
+    } else if (named) {
+        int renamed = graph_set_pin_name(made, tunnel, entry, 0, inside->name);
+        assert(renamed == 0);
+        (void)renamed;
+    }
+    apush(*ports, ((boundary_port){ node_id, inside->id, index }));
+}
+
 static int compare_node_ids(const void *a, const void *b)
 {
     uint64_t x = (*(node *const *)a)->id, y = (*(node *const *)b)->id;
@@ -404,11 +488,12 @@ static int pin_index(const node *n, uint64_t id)
     return index;
 }
 
-static const char *build_function(
+static const char *build_graph(
     behavior_asset *asset,
     graph *source,
     node **ordered,
     int count,
+    graph_kind kind,
     const char *name,
     uint64_t *call_id
 )
@@ -418,10 +503,12 @@ static const char *build_function(
         return "Could not copy the selected calculations.";
     }
     bool exec = executable(ordered, count);
-    graph *function = behavior_asset_add_function(asset, name, !exec);
+    graph *function = kind == GRAPH_MACRO
+                        ? behavior_asset_add_macro(asset, name)
+                        : behavior_asset_add_function(asset, name, !exec);
     if (!function) {
         free(json);
-        return "Could not create the function.";
+        return "Could not create the graph.";
     }
     int appended = graph_append_json(function, json, 0, 0);
     free(json);
@@ -430,24 +517,40 @@ static const char *build_function(
     }
     node *entry = graph_node_by_id(function, function->entry_id);
     node *result = graph_node_by_id(function, function->return_id);
-    boundary_port *inputs = NULL, *outputs = NULL;
+    boundary_port *inputs = NULL, *outputs = NULL, *entries = NULL, *exits = NULL;
     binding_port *bindings = NULL;
-    edge *boundary = NULL;
-    edge exec_in = { 0 }, exec_out = { 0 };
+    edge *boundary = NULL, *crossings = NULL;
     node *call = NULL;
     const char *error = NULL;
     for (int i = 0; i < acount(source->edges); i++) {
         edge e = source->edges[i];
+        bool to = selected(ordered, count, e.to_id);
+        if (e.kind != GRAPH_EDGE_EXEC || selected(ordered, count, e.from_id) == to) {
+            continue;
+        }
+        apush(crossings, e);
+        node *inside = graph_node_by_id(source, to ? e.to_id : e.from_id);
+        const pin_spec *pin = graph_pin_by_id(inside, to ? e.to_pin_id : e.from_pin_id, NULL, NULL);
+        exec_tunnel(
+            function,
+            to ? entry : result,
+            to,
+            to ? &entries : &exits,
+            inside->id,
+            pin,
+            kind == GRAPH_MACRO
+        );
+    }
+    /* A macro whose execution ends inside it has no exit. */
+    if (kind == GRAPH_MACRO && !acount(exits)) {
+        int removed = graph_remove_pin(function, result, 0, 0);
+        assert(removed == 0);
+        (void)removed;
+    }
+    for (int i = 0; i < acount(source->edges); i++) {
+        edge e = source->edges[i];
         bool from = selected(ordered, count, e.from_id),
              to = selected(ordered, count, e.to_id);
-        if (e.kind == GRAPH_EDGE_EXEC && from != to) {
-            if (to) {
-                exec_in = e;
-            }
-            if (from) {
-                exec_out = e;
-            }
-        }
         if (e.kind != GRAPH_EDGE_DATA || from == to) {
             continue;
         }
@@ -547,15 +650,17 @@ static const char *build_function(
         }
     }
     if (!error) {
-        call = behavior_asset_add_function_call_node_to_graph(asset, source, function);
-        error = call ? NULL : "Could not create the function call.";
+        call = kind == GRAPH_MACRO
+                 ? behavior_asset_add_macro_call_node_to_graph(asset, source, function)
+                 : behavior_asset_add_function_call_node_to_graph(asset, source, function);
+        error = call ? NULL : "Could not create the call.";
     }
     for (int i = 0; !error && i < acount(inputs); i++) {
         boundary_port p = inputs[i];
         node *producer = graph_node_by_id(source, p.node_id);
         if (graph_connect_data(source, producer, pin_index(producer, p.pin_id), call, p.index) !=
             0) {
-            error = "Could not preserve a function input.";
+            error = "Could not preserve an input.";
         }
         if (!error && !exec) {
             for (int b = 0; b < acount(boundary); b++) {
@@ -600,7 +705,7 @@ static const char *build_function(
         node *copy = copied_node(function, ordered, count, p.node_id);
         if (graph_connect_data(function, copy, pin_index(original, p.pin_id), result, p.index) !=
             0) {
-            error = "Could not preserve a function result.";
+            error = "Could not preserve a result.";
         }
     }
     /* Remove original boundary wires before connecting the replacement call. */
@@ -642,57 +747,73 @@ static const char *build_function(
             }
         }
         if (rc != 0) {
-            error = "Could not preserve a connection across the function "
-                    "boundary.";
+            error = "Could not preserve a connection across the boundary.";
         }
     }
-    if (!error && exec) {
-        node *before = graph_node_by_id(source, exec_in.from_id);
-        node *after = graph_node_by_id(source, exec_out.to_id);
-        node *first = copied_node(function, ordered, count, exec_in.to_id);
-        node *last = copied_node(function, ordered, count, exec_out.from_id);
-        node *original_first = graph_node_by_id(source, exec_in.to_id);
-        node *original_last = graph_node_by_id(source, exec_out.from_id);
-        if (graph_connect_exec(
-                source,
-                before,
-                pin_index(before, exec_in.from_pin_id),
-                call,
-                0,
-                exec_in.exec_order
-            ) ||
-            graph_connect_exec(
-                source,
-                call,
-                0,
-                after,
-                pin_index(after, exec_out.to_pin_id),
-                exec_out.exec_order
-            ) ||
-            graph_connect_exec(
-                function,
-                entry,
-                0,
-                first,
-                pin_index(original_first, exec_in.to_pin_id),
-                0
-            ) ||
-            graph_connect_exec(function, last, pin_index(original_last, exec_out.from_pin_id), result, 0, 0)) {
-            error = "Could not preserve execution across the function "
-                    "boundary.";
+    for (int i = 0; !error && i < acount(crossings); i++) {
+        const edge *e = &crossings[i];
+        bool into = selected(ordered, count, e->to_id);
+        node *outside = graph_node_by_id(source, into ? e->from_id : e->to_id);
+        int pin = pin_index(outside, into ? e->from_pin_id : e->to_pin_id);
+        int rc = into
+                   ? graph_connect_exec(
+                         source,
+                         outside,
+                         pin,
+                         call,
+                         entries[port_of(entries, e->to_id, e->to_pin_id)].index,
+                         e->exec_order
+                     )
+                   : graph_connect_exec(
+                         source,
+                         call,
+                         exits[port_of(exits, e->from_id, e->from_pin_id)].index,
+                         outside,
+                         pin,
+                         e->exec_order
+                     );
+        if (rc != 0) {
+            error = "Could not preserve execution across the boundary.";
+        }
+    }
+    for (int side = 0; !error && side < 2; side++) {
+        const boundary_port *ports = side ? exits : entries;
+        for (int i = 0; !error && i < acount(ports); i++) {
+            node *copy = copied_node(function, ordered, count, ports[i].node_id);
+            int pin = pin_index(
+                graph_node_by_id(source, ports[i].node_id),
+                ports[i].pin_id
+            );
+            int rc = side
+                       ? graph_connect_exec(
+                             function,
+                             copy,
+                             pin,
+                             result,
+                             ports[i].index,
+                             0
+                         )
+                       : graph_connect_exec(function, entry, ports[i].index, copy, pin, 0);
+            if (rc != 0) {
+                error = "Could not preserve execution across the boundary.";
+            }
         }
     }
     if (!error) {
-        float x = 0, y = 0;
+        /* The call takes the selection's center; Function Entry and Return
+           sit clear of the copied nodes on either side. */
+        float x = 0, y = 0, left = INFINITY, right = -INFINITY;
         for (int i = 0; i < count; i++) {
             x += ordered[i]->x;
             y += ordered[i]->y;
+            left = fminf(left, ordered[i]->x);
+            right = fmaxf(right, ordered[i]->x);
         }
         call->x = x / count;
         call->y = y / count;
-        entry->x = call->x - 260;
+        entry->x = left - TUNNEL_GAP;
         entry->y = call->y;
-        result->x = call->x + 260;
+        result->x = right + TUNNEL_GAP;
         result->y = call->y;
         uint64_t *ordered_ids = xmalloc((size_t)count * sizeof *ordered_ids);
         for (int i = 0; i < count; i++) {
@@ -711,16 +832,20 @@ static const char *build_function(
     }
     afree(inputs);
     afree(outputs);
+    afree(entries);
+    afree(exits);
     afree(bindings);
     afree(boundary);
+    afree(crossings);
     return error;
 }
 
-const char *behavior_asset_extract_function(
+static const char *extract(
     const behavior_asset *asset,
     const graph *source,
     node *const *selection,
     int count,
+    graph_kind kind,
     const char *name,
     behavior_asset **out_asset,
     uint64_t *out_call_id
@@ -734,11 +859,12 @@ const char *behavior_asset_extract_function(
     if (asset && source && source->owner == asset && count > 0 && selection) {
         expanded = expand_inline_selection(source, selection, count, &expanded_count);
     }
-    const char *error = can_extract_function_selection(
+    const char *error = can_extract_selection(
         asset,
         source,
         expanded ? expanded : selection,
-        expanded ? expanded_count : count
+        expanded ? expanded_count : count,
+        kind
     );
     if (error) {
         free(expanded);
@@ -747,18 +873,18 @@ const char *behavior_asset_extract_function(
     bool visible = false;
     if (!name) {
         free(expanded);
-        return "Enter a function name.";
+        return "Enter a name.";
     }
     for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
         if (iscntrl(*c)) {
             free(expanded);
-            return "Use a function name without control characters.";
+            return "Use a name without control characters.";
         }
         visible |= !isspace(*c);
     }
     if (!visible) {
         free(expanded);
-        return "Enter a function name.";
+        return "Enter a name.";
     }
     if (behavior_asset_find_graph_by_name(asset, name)) {
         free(expanded);
@@ -781,7 +907,7 @@ const char *behavior_asset_extract_function(
     free(expanded);
     expanded = NULL;
     qsort(ordered, (size_t)selected_count, sizeof *ordered, compare_node_ids);
-    error = build_function(copy, caller, ordered, selected_count, name, out_call_id);
+    error = build_graph(copy, caller, ordered, selected_count, kind, name, out_call_id);
     free(ordered);
     if (error) {
         behavior_asset_free(copy);
@@ -790,4 +916,30 @@ const char *behavior_asset_extract_function(
     }
     *out_asset = copy;
     return NULL;
+}
+
+const char *behavior_asset_extract_function(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count,
+    const char *name,
+    behavior_asset **out_asset,
+    uint64_t *out_call_id
+)
+{
+    return extract(asset, source, selection, count, GRAPH_FUNCTION, name, out_asset, out_call_id);
+}
+
+const char *behavior_asset_extract_macro(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count,
+    const char *name,
+    behavior_asset **out_asset,
+    uint64_t *out_call_id
+)
+{
+    return extract(asset, source, selection, count, GRAPH_MACRO, name, out_asset, out_call_id);
 }

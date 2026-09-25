@@ -188,8 +188,15 @@ extern "C"
     bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsigned flags);
     /* Up to three options render as a toggle group, more as a select. */
     bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
+    /* Base UI ToggleGroup: one pressed segment among any count, for switching
+     * views where every choice should stay visible. */
+    bool kit_toggle_group(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
     /* Commits on Enter or blur; Escape restores. Returns true on commit. */
     bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
+    /* A text field over several lines (shadcn Textarea): Shift+Enter starts a
+     * line and the field grows with its lines up to a scrolling height;
+     * otherwise it behaves as kit_text_field. */
+    bool kit_text_area(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
     /* Filters live; returns true whenever the text changes. Escape clears. */
     bool kit_search(kit *k, const char *key, char *buffer, size_t size, const char *placeholder);
     /* RGBA as 0xRRGGBBAA. Live while the picker is open; commits on close. */
@@ -259,6 +266,7 @@ extern "C"
         int checked; /* -1 not checkable */
         bool disabled;
         bool current; /* the active choice among items that keep their icons */
+        uint32_t swatch; /* 0xRRGGBBAA: a color dot in the icon's place; 0 none */
     } kit_menu_item_desc;
     bool kit_menu_item(kit *k, const char *key, const kit_menu_item_desc *desc);
     void kit_menu_separator(kit *k, const char *key);

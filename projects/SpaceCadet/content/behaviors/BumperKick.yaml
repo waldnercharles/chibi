@@ -1,6 +1,6 @@
 version: 3
 name: BumperKick
-id_counter: 1347
+id_counter: 1786
 owner_type: ecs.entity
 variables:
 - {id: 1, name: pulse, type: float}
@@ -19,178 +19,92 @@ graphs:
     reference_id: 1
     reference_name: pulse
     inputs:
-      Value: {type: float, type_name: null, default: 1.0}
+      Value: {type: float, default: 1.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 11
     type: Get Component
     inputs:
-      Component: {id: 1342, default: game.GameTransform}
+      Component: {id: 1342, default: GAME.GameTransform}
       Entity: {id: 12}
   - id: 14
     type: Get Component
     inputs:
       Component: {id: 1343, default: GAME.GameVelocity}
       Entity: {id: 15}
-  - {id: 17, type: Break_GameTransform}
-  - {id: 21, type: Break_GameVelocity}
-  - id: 91
-    type: Behavior Expression
-    reference_id: 25
-    reference_name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
-    inputs:
-      v: {flags: 2, group: 1}
-      x: {flags: 2, group: 2}
-      sx:
-        type: double
-        flags: 2
-        group: 3
-        binding: {kind: component_field, component: game.GameTransform, field: x}
-      "y": {flags: 2, group: 4}
-      sy:
-        type: double
-        flags: 2
-        group: 5
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
-    outputs:
-      Result: {flags: 2, group: 6}
-  - id: 428
-    type: Set Component
-    inputs:
-      Component: {id: 1344, default: GAME.GameVelocity}
-      Entity: {id: 431}
-      x: {id: 430}
-    outputs:
-      Then: {id: 432}
-  - id: 566
-    type: Behavior Expression
-    reference_id: 500
-    reference_name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
-    inputs:
-      v: {flags: 2, group: 1}
-      "y": {flags: 2, group: 2}
-      sy:
-        type: double
-        flags: 2
-        group: 3
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
-      x: {flags: 2, group: 4}
-      sx:
-        type: double
-        flags: 2
-        group: 5
-        binding: {kind: component_field, component: game.GameTransform, field: x}
-    outputs:
-      Result: {flags: 2, group: 6}
-  - id: 903
-    type: Set Component
-    inputs:
-      Component: {id: 1345, default: GAME.GameVelocity}
-      Entity: {id: 906}
-      "y": {id: 905}
-    outputs:
-      Then: {id: 907}
   - id: 975
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 1004
+  - id: 1386
     type: Behavior Expression
-    reference_id: 978
-    reference_name: max(pulse - dt*4,0)
+    reference_id: 1347
+    reference_name: velocity + (ball - bumper) * 180 / max(distance(ball, bumper), 1)
     inputs:
+      velocity: {type: struct, type_name: GameVelocity}
+      ball: {type: struct, type_name: GameTransform}
+      bumper:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameVelocity}
+  - id: 1508
+    type: Set Component
+    inputs: {Component: GAME.GameVelocity}
+  - id: 1580
+    type: Behavior Expression
+    reference_id: 1554
+    reference_name: pulse = max(pulse - dt * 4, 0)
+    inputs:
+      Exec: {id: 1584, kind: exec}
       pulse:
-        type: double
-        flags: 2
-        group: 1
+        id: 1581
+        type: float
         binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
       dt:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: delta_time}
     outputs:
-      Result: {type: double, flags: 2, group: 3}
-  - id: 1060
-    type: Set Variable
-    reference_id: 1
-    reference_name: pulse
-    inputs:
-      Value: {type: float, type_name: null}
-    outputs:
-      Value: {type: float, type_name: null}
-  - id: 1112
+      Then: {id: 1585, kind: exec}
+      Result: {id: 1583, type: float}
+  - id: 1670
     type: Behavior Expression
-    reference_id: 1091
-    reference_name: 5+14*pulse
+    reference_id: 1648
+    reference_name: glow = 5 + 14 * pulse
     inputs:
+      Exec: {id: 1674, kind: exec}
+      glow:
+        id: 1671
+        type: float
+        binding: {kind: component_field, component: GAME.GameAppearance, field: glow_radius}
       pulse:
         type: double
-        flags: 2
-        group: 1
         binding: {kind: variable, variable_id: 1, source_asset: BumperKick}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
-  - id: 1136
-    type: Set Component
-    inputs:
-      Component: {id: 1346, default: GAME.GameAppearance}
-      Entity: {id: 1139}
-      glow_radius: {id: 1138}
-    outputs:
-      Then: {id: 1140}
+      Then: {id: 1675, kind: exec}
+      Result: {id: 1673, type: float}
   edges:
   - {from: 2.Then, to: 6.Exec}
   - {from: 2.Other, to: 11.Entity}
   - {from: 2.Other, to: 14.Entity}
-  - {from: 2.Other, to: 428.Entity}
-  - {from: 2.Other, to: 903.Entity}
-  - {from: 6.Then, to: 428.Exec}
-  - {from: 11.Value, to: 17.GameTransform, conversion: game_transform_to_cf}
-  - {from: 14.Value, to: 21.GameVelocity, conversion: game_transform_to_cf}
-  - {from: 17.x, to: 91.x}
-  - {from: 17.x, to: 566.x}
-  - {from: 17.y, to: 91.y}
-  - {from: 17.y, to: 566.y}
-  - {from: 21.x, to: 91.v}
-  - {from: 21.y, to: 566.v}
-  - {from: 91.Result, to: 428.x}
-  - {from: 428.Then, to: 903.Exec}
-  - {from: 566.Result, to: 903.y}
-  - {from: 975.Then, to: 1060.Exec}
-  - {from: 1004.Result, to: 1060.Value}
-  - {from: 1060.Then, to: 1136.Exec}
-  - {from: 1112.Result, to: 1136.glow_radius}
-- id: 25
+  - {from: 2.Other, to: 1508.Entity}
+  - {from: 6.Then, to: 1508.Exec}
+  - {from: 11.Value, to: 1386.ball}
+  - {from: 14.Value, to: 1386.velocity}
+  - {from: 975.Then, to: 1580.Exec}
+  - {from: 1386.Result, to: 1508.Value}
+  - {from: 1580.Then, to: 1670.Exec}
+- id: 1347
   kind: function
-  name: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
-  math_expression: v + 180 * (x-sx) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
-  expression_mode: 1
-  entry_id: 1164
-  return_id: 1166
-  call_depth_limit: 64
-- id: 500
+  math_expression: velocity + (ball - bumper) * 180 / max(distance(ball, bumper), 1)
+  entry_id: 1516
+- id: 1554
   kind: function
-  name: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
-  math_expression: v + 180 * (y-sy) / max(sqrt((x-sx)^2 + (y-sy)^2), 1)
-  expression_mode: 1
-  entry_id: 1230
-  return_id: 1232
-  call_depth_limit: 64
-- id: 978
+  math_expression: pulse = max(pulse - dt * 4, 0)
+  entry_id: 1618
+- id: 1648
   kind: function
-  name: max(pulse - dt*4,0)
-  math_expression: max(pulse - dt*4,0)
-  expression_mode: 1
-  entry_id: 1296
-  return_id: 1298
-  call_depth_limit: 64
-- id: 1091
-  kind: function
-  name: 5+14*pulse
-  math_expression: 5+14*pulse
-  expression_mode: 1
-  entry_id: 1322
-  return_id: 1324
-  call_depth_limit: 64
+  math_expression: glow = 5 + 14 * pulse
+  entry_id: 1732

@@ -275,20 +275,47 @@ static behavior_asset_record *find_asset(game_behavior_world *world, const char 
     return NULL;
 }
 
+static void add_log(game_behavior_world *world, game_behavior_log_info entry)
+{
+    if (acount(world->logs) == GAME_BEHAVIOR_LOG_MAX) {
+        adel(world->logs, 0);
+    }
+    apush(world->logs, entry);
+}
+
+/* A failed run stops its event where it failed; the log says where and why,
+   as Unreal's message log reports a runtime error. */
+static void log_failure(
+    game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name,
+    const flow_error *error
+)
+{
+    game_behavior_log_info entry = { .entity = entity,
+                                     .asset_name = asset_name,
+                                     .origin = error ? error->node : NULL,
+                                     .failure = true };
+    snprintf(
+        entry.message,
+        sizeof entry.message,
+        "%s",
+        error && error->message ? error->message : "run failed"
+    );
+    add_log(world, entry);
+}
+
 static void behavior_sink(const node *origin, const char *message, void *user)
 {
     behavior_sink_context *context = (behavior_sink_context *)user;
     game_behavior_world *world = context->world;
-    if (acount(world->logs) == GAME_BEHAVIOR_LOG_MAX) {
-        adel(world->logs, 0);
-    }
     game_behavior_log_info entry = {
         .entity = context->entity,
         .asset_name = context->asset_name,
         .origin = origin,
     };
     snprintf(entry.message, sizeof entry.message, "%s", message ? message : "");
-    apush(world->logs, entry);
+    add_log(world, entry);
     if (world->sink) {
         world->sink(origin, message, world->sink_user);
     }
@@ -466,14 +493,20 @@ static void release_instance(behavior_asset_record *asset, behavior_instance *in
     behavior_instance_destroy(instance);
 }
 
-static void reap_instance(behavior_instance *instance)
+/* Releases finished runs. A run that failed after it waited, or after the
+   debugger resumed it, is logged here as dispatch logs one that fails at once. */
+static void reap_instance(game_behavior_world *world, const behavior_attachment *attachment)
 {
+    behavior_instance *instance = attachment->instance;
     for (int i = 0; i < acount(instance->activations);) {
         flow_run *run = instance->activations[i];
         flow_state state = flow_run_status(run);
         if (state != FLOW_COMPLETED && state != FLOW_FAILED) {
             i++;
             continue;
+        }
+        if (state == FLOW_FAILED) {
+            log_failure(world, attachment->entity, attachment->asset->name, flow_run_error(run));
         }
         behavior_instance_release_activation(instance, run);
     }
@@ -655,6 +688,7 @@ static int begin_instance(game_behavior_world *world, behavior_attachment *attac
     if (!failed) {
         return 0;
     }
+    log_failure(world, attachment->entity, attachment->asset->name, begin ? flow_run_error(begin) : &error);
     for (int i = 0; i < acount(world->attachments); i++) {
         if (world->attachments[i].sequence == sequence) {
             world->attachments[i].begin_state = -1;
@@ -1214,6 +1248,9 @@ static int dispatch_attachment(
         }
         return local.code;
     }
+    if (flow_run_status(run) == FLOW_FAILED) {
+        log_failure(world, attachment->entity, attachment->asset->name, flow_run_error(run));
+    }
     if (!debug_hold && (flow_run_status(run) == FLOW_COMPLETED ||
                         flow_run_status(run) == FLOW_FAILED)) {
         behavior_instance_release_activation(instance, run);
@@ -1497,6 +1534,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         if (result < 0) {
             game_entities_query_scope(world->entities, NULL);
             flow_run *failed = behavior_update_failure(stopped, result);
+            log_failure(world, attachment->entity, attachment->asset->name, flow_run_error(failed));
             behavior_instance_release_activation(stopped->instance, failed);
         } else if (ecs_entity_is_alive(world->ecs, attachment->entity)) {
             /* A changed binding is repaired at the next schedule boundary. The
@@ -1642,7 +1680,7 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         }
         behavior_attachment *attachment = &world->attachments[world->pumped[i]];
         if (!attachment->debug_hold) {
-            reap_instance(attachment->instance);
+            reap_instance(world, attachment);
         }
     }
     return result;
@@ -1658,18 +1696,48 @@ void game_behavior_set_time(game_behavior_world *world, double simulation_time)
     world->clock.current_time = simulation_time;
 }
 
-bool game_behavior_paused(const game_behavior_world *world)
+static game_behavior_attachment_info info_of(behavior_attachment *attachment)
+{
+    return (game_behavior_attachment_info){
+        .entity = attachment->entity,
+        .asset_name = attachment->asset->name,
+        .definition = attachment->asset->definition,
+        .instance = attachment->instance,
+        .sequence = attachment->sequence,
+        .debug_hold = attachment->debug_hold,
+    };
+}
+
+/* The first activation paused at a breakpoint or step, and its attachment. */
+static flow_run *first_paused(const game_behavior_world *world, int *attachment)
 {
     for (int i = behavior_pending_next(&world->pending, 0); i >= 0;
          i = behavior_pending_next(&world->pending, i + 1)) {
         const behavior_instance *instance = world->attachments[i].instance;
         for (int j = 0; j < acount(instance->activations); j++) {
             if (flow_run_status(instance->activations[j]) == FLOW_PAUSED) {
-                return true;
+                *attachment = i;
+                return instance->activations[j];
             }
         }
     }
-    return false;
+    return NULL;
+}
+
+bool game_behavior_paused(const game_behavior_world *world)
+{
+    int attachment;
+    return first_paused(world, &attachment) != NULL;
+}
+
+flow_run *game_behavior_paused_run(game_behavior_world *world, game_behavior_attachment_info *out)
+{
+    int attachment;
+    flow_run *run = first_paused(world, &attachment);
+    if (run) {
+        *out = info_of(&world->attachments[attachment]);
+    }
+    return run;
 }
 
 void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds)
@@ -1765,14 +1833,7 @@ int game_behavior_attachment_info_at(
         if (index-- != 0) {
             continue;
         }
-        *out = (game_behavior_attachment_info){
-            .entity = attachment->entity,
-            .asset_name = attachment->asset->name,
-            .definition = attachment->asset->definition,
-            .instance = attachment->instance,
-            .sequence = attachment->sequence,
-            .debug_hold = attachment->debug_hold,
-        };
+        *out = info_of(attachment);
         return 0;
     }
     return -1;

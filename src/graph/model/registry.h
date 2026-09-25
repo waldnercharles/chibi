@@ -58,6 +58,8 @@ const type_desc *registry_type_by_name(const char *name);
 int registry_service_count(void);
 const service_desc *registry_service(int index);
 
+int registry_enum_count(void);
+const enum_desc *registry_enum(int index);
 const enum_desc *registry_enum_by_name(const char *name);
 /* Documents spell reflected enum values by label; NULL when unknown. */
 const char *registry_enum_label(const char *enum_name, int value);

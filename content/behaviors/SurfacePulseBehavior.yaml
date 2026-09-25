@@ -1,6 +1,6 @@
 version: 3
 name: SurfacePulseBehavior
-id_counter: 77
+id_counter: 295
 description: Capture the authored surface influence strength on Begin, fade it over Duration, then destroy the pulse. Color, radius and lingering floor response belong to the prototype.
 owner_type: ecs.entity
 variables:
@@ -9,7 +9,7 @@ variables:
   type: float
   type_name: float
   category: Surface
-  default: 0.2800000011920929
+  default: 0.28
 - {id: 2, name: Remaining, type: float, type_name: float, category: State}
 - {id: 3, name: Peak Strength, type: float, type_name: float, category: State}
 graphs:
@@ -21,30 +21,24 @@ graphs:
     reference_name: Begin
     outputs:
       Then: {id: 4}
-  - id: 7
-    type: Get_GameSurfaceInfluence
-    outputs:
-      Value: {id: 6, flags: 0}
-      Value.strength: {id: 8}
   - id: 13
     type: Set Variable
     reference_id: 3
     inputs:
       Exec: {id: 9}
-      Value: {type: float}
+      Value:
+        type: float
+        binding: {kind: component_field, component: GAME.GameSurfaceInfluence, field: strength}
     outputs:
       Value: {type: float}
-  - id: 15
-    type: Get Variable
-    reference_id: 1
-    outputs:
-      Value: {id: 14, type: float, flags: 0}
   - id: 20
     type: Set Variable
     reference_id: 2
     inputs:
       Exec: {id: 16}
-      Value: {type: float}
+      Value:
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: SurfacePulseBehavior}
     outputs:
       Value: {type: float}
   - id: 22
@@ -52,22 +46,6 @@ graphs:
     reference_name: Tick
     outputs:
       Then: {id: 21}
-  - id: 24
-    type: Get Variable
-    reference_id: 2
-    outputs:
-      Value: {id: 23, type: float, flags: 0}
-  - id: 26
-    type: Delta Time
-    outputs:
-      Seconds: {id: 25}
-  - id: 30
-    type: Subtract
-    inputs:
-      A: {id: 27, flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Result: {flags: 0, group: 0}
   - id: 35
     type: Set Variable
     reference_id: 2
@@ -76,14 +54,6 @@ graphs:
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 39
-    type: Greater
-    inputs:
-      A: {id: 36}
-  - id: 44
-    type: Branch
-    inputs:
-      Exec: {id: 40}
   - id: 46
     type: Self
     outputs:
@@ -92,68 +62,79 @@ graphs:
     type: Destroy Entity
     inputs:
       Exec: {id: 47}
-  - id: 52
-    type: Get Variable
-    reference_id: 1
-    outputs:
-      Value: {id: 51, type: float, flags: 0}
-  - id: 56
-    type: Max
-    inputs:
-      A: {id: 53, flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
-    outputs:
-      Result: {flags: 0, group: 0}
-  - id: 60
-    type: Divide
-    inputs:
-      A: {id: 57, flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Result: {flags: 0, group: 0}
-  - id: 64
-    type: Multiply
-    inputs:
-      A: {id: 61, flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Result: {flags: 0, group: 0}
-  - id: 66
-    type: Get Variable
-    reference_id: 3
-    outputs:
-      Value: {id: 65, type: float, flags: 0}
-  - id: 70
-    type: Multiply
-    inputs:
-      A: {id: 67, flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Result: {flags: 0, group: 0}
   - id: 76
     type: Set_GameSurfaceInfluence_strength
     inputs:
       Exec: {id: 71}
+  - id: 96
+    type: Behavior Expression
+    reference_id: 77
+    reference_name: Remaining / max(Duration, 0.001)
+    inputs:
+      Remaining: {type: float}
+      Duration:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: SurfacePulseBehavior}
+    outputs:
+      Result: {type: float}
+  - id: 154
+    type: Behavior Expression
+    reference_id: 138
+    reference_name: fade * fade * PeakStrength
+    inputs:
+      fade: {type: float}
+      PeakStrength:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: SurfacePulseBehavior}
+    outputs:
+      Result: {type: float}
+  - id: 221
+    type: Behavior Expression
+    reference_id: 209
+    reference_name: Remaining - dt
+    inputs:
+      Remaining:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: SurfacePulseBehavior}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: double}
+  - id: 275
+    type: Behavior Expression
+    reference_id: 261
+    reference_name: Remaining > 0
+    inputs:
+      Exec: {id: 278, kind: exec}
+      Remaining:
+        id: 276
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: SurfacePulseBehavior}
+    outputs:
+      "True": {id: 279, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 277, type: bool}
   edges:
   - {from: 5.Then, to: 13.Exec}
-  - {from: 7.Value.strength, to: 13.Value}
   - {from: 13.Then, to: 20.Exec}
-  - {from: 15.Value, to: 20.Value}
   - {from: 22.Then, to: 35.Exec}
-  - {from: 24.Value, to: 30.A}
-  - {from: 26.Seconds, to: 30.B}
-  - {from: 30.Result, to: 35.Value}
-  - {from: 35.Then, to: 44.Exec}
-  - {from: 35.Value, to: 39.A}
-  - {from: 35.Value, to: 60.A}
-  - {from: 39.Result, to: 44.Condition}
-  - {from: 44.True, to: 76.Exec}
-  - {from: 44.False, to: 50.Exec}
+  - {from: 35.Then, to: 275.Exec}
+  - {from: 35.Value, to: 96.Remaining}
   - {from: 46.Entity, to: 50.Entity}
-  - {from: 52.Value, to: 56.A}
-  - {from: 56.Result, to: 60.B}
-  - {from: 60.Result, to: 64.A}
-  - {from: 60.Result, to: 64.B}
-  - {from: 64.Result, to: 70.A}
-  - {from: 66.Value, to: 70.B}
-  - {from: 70.Result, to: 76.Value}
+  - {from: 96.Result, to: 154.fade}
+  - {from: 154.Result, to: 76.Value}
+  - {from: 221.Result, to: 35.Value}
+  - {from: 275.True, to: 76.Exec}
+  - {from: 275.False, to: 50.Exec}
+- id: 77
+  kind: function
+  math_expression: Remaining / max(Duration, 0.001)
+  entry_id: 159
+- id: 138
+  kind: function
+  math_expression: fade * fade * PeakStrength
+  entry_id: 194
+- {id: 209, kind: function, math_expression: Remaining - dt, entry_id: 250}
+- {id: 261, kind: function, math_expression: Remaining > 0, entry_id: 282}

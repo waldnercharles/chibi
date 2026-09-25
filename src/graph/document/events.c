@@ -73,8 +73,11 @@ static bool receiver(const node *n)
 
 static bool field_matches(const pin_spec *pin, const behavior_variable *field)
 {
+    /* A number's type names it; only named types compare their names. */
+    bool named = pin->type == PIN_STRUCT || pin->type == PIN_ENUM ||
+                 pin->type == PIN_HANDLE;
     return pin->type == field->type && pin->container == field->container &&
-           ((!pin->type_name && !field->type_name) ||
+           (!named || (!pin->type_name && !field->type_name) ||
             (pin->type_name && field->type_name &&
              !strcmp(pin->type_name, field->type_name)));
 }

@@ -1,6 +1,7 @@
 #include "editor/graph/search.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
+#include "graph/document/library.h"
 #include "graph/nodes/component_nodes.h"
 #include "test/suite_internal.h"
 
@@ -105,6 +106,38 @@ static void check_linked_preview()
     );
     eval_view_free(view);
     behavior_asset_free(asset);
+    behavior_asset_free(library);
+}
+
+/* A behavior compiles with copies of the libraries it calls. A problem in one
+   names the library's graph and node, so Problems can open it there. */
+static void check_library_problem_source()
+{
+    behavior_asset *library = behavior_asset_new("ProblemMath");
+    library->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    graph *value = behavior_asset_add_function(library, "Value", 1);
+    node *muted = graph_add_node(value, registry_node_by_name("Real"));
+    assert(muted);
+    graph_set_node_disabled(value, muted, true);
+    behavior_asset *asset = behavior_asset_new("Library problems");
+    assert(behavior_asset_add_function_call_node(asset, value));
+    editor *e = editor_new(asset);
+    const behavior_asset *catalog[] = { library };
+    editor_set_asset_catalog(e, catalog, 1);
+    assert(editor_command_apply(e, (editor_command){ .kind = EDITOR_COMMAND_COMPILE }) == 0);
+    graph_node_source source = { 0 };
+    for (int i = 0; i < acount(e->compile.items); i++) {
+        const compile_diagnostic *d = &e->compile.items[i];
+        if (d->rule == CMPL_RULE_DISABLED) {
+            source = graph_node_authored(behavior_asset_find_graph(e->compiled, d->graph_id), d->node_id);
+        }
+    }
+    test_check(
+        source.asset && !strcmp(source.asset, "ProblemMath") &&
+            source.graph_id == value->graph_id && source.node_id == muted->id,
+        "a problem in a called library names the library's graph and node"
+    );
+    editor_free(e);
     behavior_asset_free(library);
 }
 
@@ -584,7 +617,7 @@ static void check_component_search()
     node *health = spawn_first(e, "has health", "Has Health");
     test_check(
         health && health->desc == &NODE_HasComponent &&
-            !strcmp(component_node_key(health), "game.GameHealth"),
+            !strcmp(component_node_key(health), "GAME.GameHealth"),
         "Has Health spawns Has Component for Health"
     );
     node *transform = spawn_first(e, "get transform", "Get Transform");
@@ -598,7 +631,7 @@ static void check_component_search()
     test_check(
         add && add->desc == &NODE_AddComponent && remove &&
             remove->desc == &NODE_RemoveComponent &&
-            !strcmp(component_node_key(remove), "game.GameHealth") &&
+            !strcmp(component_node_key(remove), "GAME.GameHealth") &&
             add->output_count == 2 && add->output_pins[1].type == PIN_BOOL,
         "Add and Remove Health spawn structural component nodes"
     );
@@ -628,6 +661,7 @@ static void check_component_search()
 void run_editor_command_checks(void)
 {
     check_linked_preview();
+    check_library_problem_source();
     check_search_catalog();
     check_component_search();
     check_library_search_snapshot();

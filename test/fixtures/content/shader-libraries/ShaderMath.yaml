@@ -15,20 +15,22 @@ graphs:
   - id: 57
     type: Function Entry
     outputs:
-    - {id: 61, name: Time, type: float, type_name: null, kind: data}
-    - {id: 62, name: Speed, type: float, type_name: null, kind: data}
+    - {id: 61, name: Time, type: float, kind: data}
+    - {id: 62, name: Speed, type: float, kind: data}
   - id: 59
     type: Return
     inputs:
-    - {id: 63, name: Brightness, type: float, type_name: null, kind: data}
+    - {id: 63, name: Brightness, type: float, kind: data}
   - {id: 64, type: Shader Multiply}
   - {id: 68, type: Shader Sin}
   - id: 71
     type: Shader Add
-    inputs: {B: 1.0}
+    inputs:
+      B: {type_name: float, default: 1.0}
   - id: 75
     type: Shader Multiply
-    inputs: {B: 0.5}
+    inputs:
+      B: {type_name: float, default: 0.5}
   edges:
   - {from: 57.Time, to: 64.A}
   - {from: 57.Speed, to: 64.B}
@@ -52,17 +54,12 @@ graphs:
       type_name: ShaderVec2
       kind: data
       default: {x: 0.0, "y": 0.0}
-    - id: 105
-      name: Radius
-      type: float
-      type_name: null
-      kind: data
-      default: 35.0
-    - {id: 106, name: Width, type: float, type_name: null, kind: data, default: 3.0}
+    - {id: 105, name: Radius, type: float, kind: data, default: 35.0}
+    - {id: 106, name: Width, type: float, kind: data, default: 3.0}
   - id: 107
     type: Return
     inputs:
-    - {id: 108, name: Mask, type: float, type_name: null, kind: data}
+    - {id: 108, name: Mask, type: float, kind: data}
   - id: 110
     type: Shader Circle
     inputs:
@@ -78,7 +75,7 @@ graphs:
     type: Shader Max
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+      B: {flags: 0, group: 0, default: 0.001}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 121

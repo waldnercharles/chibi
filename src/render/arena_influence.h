@@ -17,6 +17,8 @@ void render_influences_collect(
     const struct engine *runtime,
     float time
 );
+/* One source at the origin, replacing any collected history. */
+void render_influences_preview(render_influences *influences, const float color[3], float radius);
 void render_influences_bind(render_influences *influences);
 /* shader_sample_context resolver: ignores world Y, combines by channel maximum. */
 void render_influences_sample(void *influences, const float position[3], float color[3]);

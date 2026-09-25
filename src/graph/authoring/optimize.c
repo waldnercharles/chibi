@@ -411,16 +411,23 @@ static void skip(graph_optimize_report *report, const node *n, uint64_t pin, int
     apush(report->skipped, ((graph_optimize_skip){ n->id, pin, (graph_optimize_skip_reason)reason }));
 }
 
-static void local_name(const graph *g, const node *n, int pin, char *name, size_t size)
+void graph_local_name(const graph *g, const node *n, int pin, char *name, size_t size)
 {
     const char *source = n->output_pins[pin].name;
     const char *verb = NULL, *addressed = NULL;
     bool component = component_node_kind_of(n->desc) &&
                      component_node_access(n, &verb, &addressed);
+    /* An expression's reference name is its whole source; a name that long
+       reads worse than a plain Value the author renames. */
     if (!source || !strcmp(source, "Value") || !strcmp(source, "Result")) {
-        source = component         ? addressed
-               : n->reference_name ? n->reference_name
-                                   : n->desc->name;
+        source = component                           ? addressed
+               : n->desc == &NODE_BehaviorExpression ? "Value"
+               : n->reference_name                   ? n->reference_name
+               : graph_node_name_literal(g, n) ? graph_node_name_literal(g, n)
+                                               : n->desc->name;
+    }
+    if (!strncmp(source, "Shader ", 7) || !strncmp(source, "Field ", 6)) {
+        source = strchr(source, ' ') + 1;
     }
     if (!strcmp(n->desc->name, "Spawn Prototype")) {
         source = "SpawnedEntity";
@@ -509,7 +516,7 @@ static void alias_outputs(graph *g, node *source, const graph_optimize_options *
             continue;
         }
         char name[128];
-        local_name(g, source, p, name, sizeof name);
+        graph_local_name(g, source, p, name, sizeof name);
         uint64_t local_id = graph_create_local(g, source, p, name);
         assert(local_id);
         (void)local_id;

@@ -1,7 +1,7 @@
 name: Panel
 components:
   GAME.GameWidget:
-    anchor: {x: 0.8100000023841858, "y": 0.5}
+    anchor: {x: 0.81, "y": 0.5}
     background: 269820671
     color: 1551077631
     drop_group: ""

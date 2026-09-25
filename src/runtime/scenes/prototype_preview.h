@@ -79,6 +79,7 @@ int game_prototype_preview_input(
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview);
 game_particles *game_prototype_preview_particles(game_prototype_preview *preview);
 game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview);
+game_live_world *game_prototype_preview_live(game_prototype_preview *preview);
 game_entities *game_prototype_preview_entities(game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview);
 int game_prototype_preview_entity_count(const game_prototype_preview *preview);

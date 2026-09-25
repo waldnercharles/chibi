@@ -20,6 +20,8 @@ body.graph-canvas {
     --conversion: #1d1d20e6;
     --selected-object: #e0701c;
     --active-object: #ffa53a;
+    --bubble: #e6e2cbf2;
+    --bubble-fg: #1f1f22;
 }
 /* Light canvases keep full-color titles in lighter tints (Blender's light theme). */
 body.graph-canvas.light {
@@ -36,6 +38,7 @@ body.graph-canvas.light {
     --chip: #ececef;
     --chip-fg: #6d4fb0;
     --conversion: #ffffffe6;
+    --bubble: #fff6ccf2;
 }
 
 #back, #front { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; }
@@ -49,6 +52,8 @@ body.graph-canvas.light {
     background-color: var(--node); border: 1dp var(--node-edge); border-radius: var(--r-lg);
     color: var(--fg); font-size: 12dp;
 }
+.gnode[data-error] { border-color: var(--danger); }
+.gnode[data-warning] { border-color: var(--warning); }
 .gnode[data-selected] { border-color: var(--selected-object); z-index: 2; }
 .gnode[data-active] { border-color: var(--active-object); }
 .gnode[data-dim] { opacity: 0.45; }
@@ -102,6 +107,8 @@ body.graph-canvas.light {
 .grow .chip .icon { flex: 0 0 auto; width: 12dp; font-size: 11dp; line-height: 18dp; color: var(--fg-3); }
 .chip-text { display: block; flex: 1 1 auto; min-width: 0dp; white-space: nowrap; overflow: hidden; }
 .grow .chip.source { color: var(--tok-name); }
+/* A variadic node's last row adds a pin on its side (Unreal's Add pin). */
+.gadd .btn { color: var(--fg-3); }
 
 /* An expression's source, lines wrapped by measure_node: 16 dp lines, 12 dp of
    padding and margin below, 28 dp across. */
@@ -109,7 +116,7 @@ body.graph-canvas.light {
     display: block; margin: 0dp 8dp 4dp; padding: 4dp 6dp; border-radius: 4dp;
     background-color: var(--chip); font-size: 11dp; line-height: 16dp;
 }
-.gcode-line { display: block; height: 16dp; white-space: nowrap; overflow: hidden; }
+.gcode-line { display: block; height: 16dp; white-space: pre; overflow: hidden; }
 
 /* Compact nodes (Unreal): an operator's symbol sits between its inputs and its
    centered output; a one-output read is a pill with its socket on the title. */
@@ -131,15 +138,45 @@ body.graph-canvas.light {
 .socket kit-dot { position: absolute; left: 3dp; top: 3dp; width: 10dp; height: 10dp; }
 
 /* Level of detail: far out, pins and values give way to titles. */
-body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented, body.far .gcode { visibility: hidden; }
+body.far .gpin-label, body.far .grow .field, body.far .grow .chip, body.far .grow .check, body.far .grow .segmented, body.far .gcode, body.far .gadd { visibility: hidden; }
 body.far .gnode-head .title { font-size: 16dp; }
 
-.gcomment { position: absolute; border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f; }
+/* Comment frames (studio_graph_comment.c): a tint layer keyed by the frame's
+   color, the title, and grips on the edges and corners that resize it. */
+.gcomment { position: absolute; }
+.gcomment[data-selected] { margin: -2dp 0dp 0dp -2dp; border: 2dp var(--selected-object); border-radius: var(--r-lg); }
+.gcomment-tint {
+    position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp;
+    border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f;
+}
 .gcomment-title {
-    display: block; height: 28dp; padding: 0dp 10dp; line-height: 28dp; font-size: 14dp; font-weight: 600;
+    position: relative; display: block; height: 28dp; padding: 0dp 10dp; line-height: 28dp; font-size: 14dp; font-weight: 600;
     color: var(--fg); white-space: nowrap; overflow: hidden; cursor: move;
 }
+.gcomment-edit { position: relative; display: block; padding: 3dp 4dp; }
+.gcomment-edit .field { font-size: 14dp; font-weight: 600; }
 body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
+.grip { position: absolute; }
+.grip.n, .grip.s { left: 8dp; right: 8dp; height: 8dp; cursor: ns-resize; }
+.grip.w, .grip.e { top: 8dp; bottom: 8dp; width: 8dp; cursor: ew-resize; }
+.grip.n { top: -4dp; }
+.grip.s { bottom: -4dp; }
+.grip.w { left: -4dp; }
+.grip.e { right: -4dp; }
+.grip.nw, .grip.ne, .grip.sw, .grip.se { width: 12dp; height: 12dp; }
+.grip.nw { left: -4dp; top: -4dp; cursor: nwse-resize; }
+.grip.se { right: -4dp; bottom: -4dp; cursor: nwse-resize; }
+.grip.ne { right: -4dp; top: -4dp; cursor: nesw-resize; }
+.grip.sw { left: -4dp; bottom: -4dp; cursor: nesw-resize; }
+
+/* A node's comment floats above it (Unreal's comment bubble). */
+.gbubble {
+    position: absolute; left: 0dp; bottom: 100%; margin-bottom: 6dp;
+    padding: 3dp 8dp; border-radius: 6dp; background-color: var(--bubble); border: 1dp var(--node-edge);
+    color: var(--bubble-fg); font-size: 12dp; line-height: 16dp;
+}
+.gbubble-text { display: block; white-space: pre-wrap; }
+body.far .gbubble { visibility: hidden; }
 
 /* Centered on the wire's middle by a negative margin (emit_conversions). */
 .gconversion {
@@ -157,6 +194,23 @@ body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
 /* A wire's reroute point: a 14 dp hit area centered on the point. */
 .greroute { position: absolute; width: 14dp; height: 14dp; margin-left: -7dp; margin-top: -7dp; cursor: move; }
 .greroute kit-dot { position: absolute; left: 2dp; top: 2dp; width: 10dp; height: 10dp; }
+
+/* A problem sits on the node's top edge by its right corner, clear of the
+   title's socket (Blender's node warnings); a paused run's node takes a 3 dp
+   accent ring outside its border. */
+.gproblem {
+    position: absolute; top: -10dp; right: 14dp; width: 18dp; height: 18dp; border-radius: 9dp;
+    background-color: var(--node); text-align: center; z-index: 3;
+}
+.gproblem .icon { width: 18dp; font-size: 14dp; line-height: 18dp; color: var(--warning); }
+.gnode[data-error] .gproblem .icon { color: var(--danger); }
+.gpaused {
+    position: absolute; left: -5dp; top: -5dp; right: -5dp; bottom: -5dp;
+    border: 3dp var(--accent); border-radius: 10dp; pointer-events: none;
+    opacity: 1; transition: opacity 0.14s cubic-out;
+}
+.gpaused[data-starting-style] { opacity: 0; }
+.gnode[data-paused] { z-index: 3; }
 
 /* A watched pin's value floats outside the node beside its socket (Unreal). */
 .gwatch {

@@ -1,6 +1,6 @@
 name: OrbitGuide
 components:
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameWidget:
     anchor: {x: 0.5}
     center_text: true

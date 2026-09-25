@@ -116,6 +116,7 @@ struct app_scene_authoring
     scene_debug debug;
     app_runtime_target debug_target;
     uint64_t debug_sessions[2];
+    bool debug_pinned; /* the debug target stays put while the selection moves */
     app_debug_status debug_status;
     bool runtime_snapshot_valid;
     bool runtime_playing;

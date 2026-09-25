@@ -1,4 +1,4 @@
 name: HRCLabCamera
 components:
   GAME.GameCamera: {height: 540.0, width: 960.0}
-  game.GameTransform: {}
+  GAME.GameTransform: {}

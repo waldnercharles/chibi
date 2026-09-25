@@ -191,6 +191,16 @@ int ed_optimize_graph(editor *e)
     }
     graph_optimize_report report = { 0 };
     int result = graph_optimize(e->active_graph, NULL, &report);
+    snprintf(
+        e->optimize_summary,
+        sizeof e->optimize_summary,
+        "%d inputs folded, %d nodes removed, %d locals created. %d candidates "
+        "skipped.",
+        report.folded_inputs,
+        report.removed_nodes,
+        report.created_aliases,
+        acount(report.skipped)
+    );
     if (result > 0) {
         for (int i = 0; i < acount(original); i++) {
             if (!graph_node_by_id(e->active_graph, original[i].id)) {

@@ -28,6 +28,11 @@ void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy)
     g->camera.active = false;
 }
 
+bool sg_far(const studio *s)
+{
+    return s->graph.zoom * cf_app_get_pixel_scale() < FAR_PIXELS;
+}
+
 static void camera_to(studio *s, float zoom, float x, float y, bool animate)
 {
     studio_graph *g = &s->graph;
@@ -104,6 +109,26 @@ void sg_frame_nodes(studio *s, bool selection, bool animate)
     camera_to(s, zoom, lo[0] + bw / 2 - w / 2 / zoom, lo[1] + bh / 2 - h / 2 / zoom, animate);
 }
 
+/* A node near the edges, where overlays sit, is not in view (VS Code's reveal
+   in center if outside the viewport). */
+void sg_show_node(studio *s, node *n, bool frame)
+{
+    static const float INSET = 0.2f;
+    studio_graph *g = &s->graph;
+    if (frame) {
+        sg_frame_nodes(s, true, true);
+        return;
+    }
+    float box[4], w = g->surface.rect.w / g->zoom, h = g->surface.rect.h / g->zoom;
+    sg_node_box(s, n, box);
+    if (box[0] >= g->x + w * INSET && box[1] >= g->y + h * INSET &&
+        box[0] + box[2] <= g->x + w * (1 - INSET) &&
+        box[1] + box[3] <= g->y + h * (1 - INSET)) {
+        return;
+    }
+    camera_to(s, g->zoom, box[0] + box[2] / 2 - w / 2, box[1] + box[3] / 2 - h / 2, true);
+}
+
 static studio_graph_view *view_for(studio_graph *g, uint64_t graph_id)
 {
     for (int i = 0; i < acount(g->views); i++) {
@@ -148,9 +173,11 @@ void sg_follow_graph(studio *s)
     g->graph_id = id;
     /* What the gesture held belongs to the graph that left, so nothing moves
        back; only its pending snapshot goes. */
-    if (g->gesture == STUDIO_GRAPH_MOVE || g->gesture == STUDIO_GRAPH_REROUTE) {
+    if (g->gesture == STUDIO_GRAPH_MOVE || g->gesture == STUDIO_GRAPH_REROUTE ||
+        g->gesture == STUDIO_GRAPH_RESIZE) {
         ed_cancel_snapshot(sg_graph_editor(s));
     }
+    g->title_edit = g->bubble_edit = g->comment = 0;
     g->gesture = STUDIO_GRAPH_IDLE;
     g->camera.active = false;
     studio_graph_view *view = view_for(g, id);

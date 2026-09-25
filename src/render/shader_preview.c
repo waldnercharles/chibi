@@ -21,6 +21,7 @@ struct render_shader_preview
     render_arena_camera camera;
     render_programs *programs;
     render_material_entity entity;
+    render_arena_activity activity;
     float center_x, center_y;
     float span_width, span_height;
     int width, height;
@@ -53,7 +54,8 @@ static bool prepare_material_preview(render_shader_preview *preview, int width, 
     }
     CF_V3 corners[8];
     for (int i = 0; i < 8; i++) {
-        corners[i] = (CF_V3){ i & 1 ? 50 : -50, i & 2 ? 50 : -50, i & 4 ? 50 : -50 };
+        float r = RENDER_ARENA_PREVIEW_RADIUS;
+        corners[i] = (CF_V3){ i & 1 ? r : -r, i & 2 ? r : -r, i & 4 ? r : -r };
     }
     CF_Aabb bounds = render_arena_fit(corners, 8, (float)width / height);
     preview->center_x = (bounds.min.x + bounds.max.x) * .5f;
@@ -138,6 +140,7 @@ render_shader_preview *render_shader_preview_new(
     preview->width = width;
     preview->height = height;
     preview->material = asset->domain == BEHAVIOR_DOMAIN_MATERIAL;
+    preview->activity = options->activity;
     bool prepared = preview->material
                       ? prepare_material_preview(preview, width, height, error)
                       : prepare_shape_preview(preview, error);
@@ -145,7 +148,7 @@ render_shader_preview *render_shader_preview_new(
         render_shader_preview_free(preview);
         return NULL;
     }
-    if (options && options->has_camera) {
+    if (options->has_camera) {
         preview->center_x = options->center_x;
         preview->center_y = options->center_y;
         preview->span_width = options->span_width;
@@ -175,7 +178,14 @@ bool render_shader_preview_draw(render_shader_preview *preview, float time, cons
         return false;
     }
     if (preview->material) {
-        if (!render_arena_preview(preview->arena, preview->asset, &preview->camera, parameters_json, time)) {
+        if (!render_arena_preview(
+                preview->arena,
+                preview->asset,
+                &preview->camera,
+                parameters_json,
+                time,
+                &preview->activity
+            )) {
             set_preview_error(preview, render_arena_error(preview->arena));
             return false;
         }

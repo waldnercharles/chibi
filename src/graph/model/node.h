@@ -186,7 +186,10 @@ typedef enum
     NODE_JIT_V2_MOVE,
     NODE_JIT_V2_NORMALIZE,
     NODE_JIT_V2_DIRECTION,
-    NODE_JIT_ATAN2_F32,
+    NODE_JIT_V2_FROM_ANGLE,
+    NODE_JIT_V2_LENGTH,
+    NODE_JIT_V2_DOT,
+    NODE_JIT_V2_DISTANCE,
     NODE_JIT_RANDOM_VECTOR,
     NODE_JIT_UNWRAP,
     /* Explicit promise: copy a fixed-layout struct and retag its nominal type. */
@@ -309,6 +312,10 @@ struct node
     unsigned breakpoint;
     unsigned breakpoint_enabled;
     bool show_advanced;
+    /* Unreal's comment bubble: graph-owned, NULL without a comment. A hidden
+     * comment shows only while the node is hovered. */
+    char *comment;
+    bool comment_hidden;
 };
 
 static inline const pin_spec *node_input_pin(const node *n, int index)

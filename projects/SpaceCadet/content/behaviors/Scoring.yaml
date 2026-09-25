@@ -1,6 +1,6 @@
 version: 3
 name: Scoring
-id_counter: 515
+id_counter: 603
 owner_type: ecs.entity
 variables:
 - {id: 1, name: award, type: float}
@@ -15,7 +15,6 @@ graphs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {type: struct, type_name: CF_V2, kind: data}
   - {id: 6, type: GetEntity_GameCollider}
-  - {id: 9, type: Break_GameCollider}
   - {id: 30, type: Branch}
   - {id: 35, type: Branch}
   - id: 40
@@ -23,48 +22,50 @@ graphs:
     reference_id: 1
     reference_name: award
     inputs:
-      Value: {type: float, type_name: null, default: 1000.0}
+      Value: {type: float, default: 1000.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 45
     type: Set Variable
     reference_id: 1
     reference_name: award
     inputs:
-      Value: {type: float, type_name: null, default: 5000.0}
+      Value: {type: float, default: 5000.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 50
     type: Get Global Variable
     inputs: {Name: Score}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 53
     type: Get Global Variable
     inputs: {Name: Rank}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 73
     type: Behavior Expression
     reference_id: 56
     reference_name: score + award * rank
     inputs:
-      score: {type: float, type_name: null, flags: 2, group: 1}
+      score:
+        type: float
+        binding: {kind: local, local_id: 601}
       award:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: variable, variable_id: 1, source_asset: Scoring}
-      rank: {type: float, type_name: null, flags: 2, group: 3}
+      rank:
+        type: float
+        binding: {kind: local, local_id: 600}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 4}
+      Result: {type: float}
   - id: 129
     type: Set Global Variable
     inputs:
       Name: Score
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 152
     type: Get Global Variable
     inputs: {Name: Hits}
@@ -75,9 +76,11 @@ graphs:
     reference_id: 155
     reference_name: hits + 1
     inputs:
-      hits: {type: double, flags: 2, group: 1}
+      hits:
+        type: double
+        binding: {kind: local, local_id: 602}
     outputs:
-      Result: {type: double, flags: 2, group: 2}
+      Result: {type: double}
   - id: 186
     type: Set Global Variable
     inputs:
@@ -87,79 +90,87 @@ graphs:
       Value: {type: double}
   - id: 206
     type: Play Sound
-    inputs:
-      Frequency: 900.0
-      End Frequency: 1450.0
-      Duration: 0.07999999821186066
-      Volume: 0.2800000011920929
+    inputs: {Frequency: 900.0, End Frequency: 1450.0, Duration: 0.08, Volume: 0.28}
   - id: 229
     type: Behavior Expression
     reference_id: 215
     reference_name: hits >= 8
     inputs:
       Exec: {id: 232, kind: exec}
-      hits: {id: 230, type: double, group: 1}
+      hits:
+        id: 230
+        type: double
+        flags: 0
+        binding: {kind: local, local_id: 602}
     outputs:
       "True": {id: 233, kind: exec}
       "False": {kind: exec}
-      Result: {id: 231, type: bool, flags: 2, group: 2}
+      Result: {id: 231, type: bool}
   - id: 268
     type: Behavior Expression
     reference_id: 249
     reference_name: score + 25000 * rank
     inputs:
-      score: {type: float, type_name: null, flags: 2, group: 1}
-      rank: {type: float, type_name: null, flags: 2, group: 2}
+      score:
+        type: float
+        binding: {kind: local, local_id: 601}
+      rank:
+        type: float
+        binding: {kind: local, local_id: 600}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 3}
+      Result: {type: float}
   - id: 310
     type: Set Global Variable
     inputs:
       Name: Score
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 356
     type: Behavior Expression
     reference_id: 335
-    reference_name: min(rank+1,9)
+    reference_name: min(rank + 1, 9)
     inputs:
-      rank: {type: float, type_name: null, flags: 2, group: 1}
+      rank:
+        type: float
+        binding: {kind: local, local_id: 600}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
+      Result: {type: float}
   - id: 380
     type: Set Global Variable
     inputs:
       Name: Rank
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 407
     type: Set Global Variable
     inputs:
       Name: Hits
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 413
     type: Play Sound
-    inputs:
-      Frequency: 500.0
-      End Frequency: 2200.0
-      Duration: 0.5
-      Volume: 0.4000000059604645
+    inputs: {Frequency: 500.0, End Frequency: 2200.0, Duration: 0.5, Volume: 0.4}
   - id: 422
     type: Has Any Flags
     inputs: {Flags: 4}
   - id: 426
     type: Has Any Flags
     inputs: {Flags: 16}
+  - id: 522
+    type: Behavior Expression
+    reference_id: 515
+    reference_name: collider.category
+    inputs:
+      collider: {type: struct, type_name: GameCollider}
+    outputs:
+      Result: {type: uint, type_name: unsigned int}
   edges:
   - {from: 2.Then, to: 30.Exec}
   - {from: 2.Other, to: 6.Entity}
-  - {from: 6.Value, to: 9.GameCollider}
-  - {from: 9.category, to: 422.Value}
-  - {from: 9.category, to: 426.Value}
+  - {from: 6.Value, to: 522.collider}
   - {from: 30.True, to: 40.Exec}
   - {from: 30.False, to: 35.Exec}
   - {from: 35.True, to: 45.Exec}
@@ -185,43 +196,15 @@ graphs:
   - {from: 407.Then, to: 413.Exec}
   - {from: 422.Result, to: 30.Condition}
   - {from: 426.Result, to: 35.Condition}
-- id: 56
-  kind: function
-  name: score + award * rank
-  math_expression: score + award * rank
-  expression_mode: 1
-  entry_id: 431
-  return_id: 433
-  call_depth_limit: 64
-- id: 155
-  kind: function
-  name: hits + 1
-  math_expression: hits + 1
-  expression_mode: 1
-  entry_id: 448
-  return_id: 450
-  call_depth_limit: 64
-- id: 215
-  kind: function
-  name: hits >= 8
-  math_expression: hits >= 8
-  expression_mode: 3
-  entry_id: 462
-  return_id: 464
-  call_depth_limit: 64
-- id: 249
-  kind: function
-  name: score + 25000 * rank
-  math_expression: score + 25000 * rank
-  expression_mode: 1
-  entry_id: 476
-  return_id: 478
-  call_depth_limit: 64
-- id: 335
-  kind: function
-  name: min(rank+1,9)
-  math_expression: min(rank+1,9)
-  expression_mode: 1
-  entry_id: 495
-  return_id: 497
-  call_depth_limit: 64
+  - {from: 522.Result, to: 422.Value}
+  - {from: 522.Result, to: 426.Value}
+  locals:
+  - {id: 600, name: rank, from: 53.Value}
+  - {id: 601, name: score, from: 50.Value}
+  - {id: 602, name: hits, from: 152.Value}
+- {id: 56, kind: function, math_expression: score + award * rank, entry_id: 431}
+- {id: 155, kind: function, math_expression: hits + 1, entry_id: 448}
+- {id: 215, kind: function, math_expression: hits >= 8, entry_id: 462}
+- {id: 249, kind: function, math_expression: score + 25000 * rank, entry_id: 476}
+- {id: 335, kind: function, math_expression: 'min(rank + 1, 9)', entry_id: 580}
+- {id: 515, kind: function, math_expression: collider.category, entry_id: 562}

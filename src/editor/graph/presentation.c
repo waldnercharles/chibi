@@ -1,8 +1,7 @@
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
-#include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
-#include "graph/nodes/math_nodes.h"
 #include "support/array.h"
 
 #include <stdio.h>
@@ -16,56 +15,28 @@ bool ed_is_graph_call(const node *n)
 
 const char *ed_node_symbol(const node_desc *desc)
 {
-    static const struct
-    {
-        const char *name;
-        const char *symbol;
-    } shader_symbols[] = {
-        { "Shader Add", "+" },
-        { "Shader Subtract", "−" },
-        { "Shader Multiply", "×" },
-        { "Shader Divide", "÷" },
-    };
-    for (int i = 0; i < (int)(sizeof shader_symbols / sizeof *shader_symbols); i++) {
-        if (!strcmp(desc->name, shader_symbols[i].name)) {
-            return shader_symbols[i].symbol;
-        }
-    }
+    /* Arithmetic and comparisons draw as their expression operator in every
+       graph kind; reflected vector math marks itself through jit_kind. */
+    const char *symbol = NULL;
     switch (desc->jit_kind) {
-        case NODE_JIT_ADD: return "+";
-        case NODE_JIT_SUB: return "−";
-        case NODE_JIT_MUL: return "×";
-        case NODE_JIT_DIV: return "÷";
+        case NODE_JIT_ADD: symbol = "+"; break;
+        case NODE_JIT_SUB: symbol = "−"; break;
+        case NODE_JIT_MUL: symbol = "×"; break;
+        case NODE_JIT_DIV: symbol = "÷"; break;
         default: break;
     }
-    if (desc == &NODE_Less || desc == &NODE_Integer_Less) {
-        return "<";
+    int binding = 0;
+    const char *spelling = behavior_expression_spelling(desc, &binding);
+    if (spelling && binding >= 3 && binding != BEHAVIOR_EXPRESSION_PREFIX_BINDING) {
+        symbol = behavior_expression_symbol(spelling);
     }
-    if (desc == &NODE_Less_Or_Equal || desc == &NODE_Integer_Less_Or_Equal) {
-        return "≤";
+    static const char *const TRIG[][2] = { { "sin", "SIN" },
+                                           { "cos", "COS" },
+                                           { "tan", "TAN" } };
+    for (int i = 0; spelling && !binding && i < 3; i++) {
+        symbol = !strcmp(spelling, TRIG[i][0]) ? TRIG[i][1] : symbol;
     }
-    if (desc == &NODE_Greater || desc == &NODE_Integer_Greater) {
-        return ">";
-    }
-    if (desc == &NODE_Greater_Or_Equal || desc == &NODE_Integer_Greater_Or_Equal) {
-        return "≥";
-    }
-    if (desc == &NODE_Equal || desc == &NODE_Integer_Equal) {
-        return "=";
-    }
-    if (desc == &NODE_Not_Equal || desc == &NODE_Integer_Not_Equal) {
-        return "≠";
-    }
-    if (desc == &NODE_Sine) {
-        return "SIN";
-    }
-    if (desc == &NODE_Cosine) {
-        return "COS";
-    }
-    if (desc == &NODE_Tangent) {
-        return "TAN";
-    }
-    return NULL;
+    return symbol;
 }
 
 /* Component nodes and the generated nodes they lower to read the same:
@@ -132,6 +103,12 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
     if (n->reference_name && n->reference_name[0] &&
         n->desc->flow_kind == NODE_FLOW_EVENT) {
         snprintf(buf, cap, "On %s", n->reference_name);
+        return buf;
+    }
+    /* A macro's tunnels read as Inputs and Outputs, as in Unreal. */
+    const graph *g = e->active_graph;
+    if (g && g->kind == GRAPH_MACRO && (n->id == g->entry_id || n->id == g->return_id)) {
+        snprintf(buf, cap, "%s", n->id == g->entry_id ? "Inputs" : "Outputs");
         return buf;
     }
     char label[256];

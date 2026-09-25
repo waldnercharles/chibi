@@ -7,6 +7,16 @@
 #include <math.h>
 #include <string.h>
 
+/* Fract and Sign, shared by their nodes and every backend. */
+static inline double behavior_fract(double x)
+{
+    return x - floor(x);
+}
+static inline double behavior_sign(double x)
+{
+    return (x > 0) - (x < 0);
+}
+
 static inline int behavior_string_equal(const char *a, const char *b)
 {
     return a == b || strcmp(a ? a : "", b ? b : "") == 0;

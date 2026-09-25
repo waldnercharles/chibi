@@ -173,6 +173,16 @@ static int call(builder *b, node *n, int after)
     b->frame = parent;
     return next;
 }
+static bool call_results(const node *call)
+{
+    for (int i = 0; i < call->output_count; i++) {
+        if (call->output_pins[i].kind == PIN_DATA && !call->output_pins[i].field_source) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool return_values(builder *b, node *n)
 {
     behavior_function_frame frame = b->function->frames[b->frame];
@@ -248,6 +258,12 @@ static bool block(builder *b, int index)
     aclear(b->outputs);
     aclear(b->inputs);
     aclear(b->traced);
+    /* A call without results may end anywhere, as a void function does: the
+       path's end returns like its Return. */
+    node *ret = !n ? graph_node_by_id(b->graph, b->graph->return_id) : NULL;
+    if (ret && frame.source.call && !call_results(frame.source.call)) {
+        return return_values(b, ret);
+    }
     if (!n) {
         behavior_lower_emit(b, (behavior_function_instruction){ .op = BF_LEAVE, .target = b->frame });
         b->frame = frame.source.parent;

@@ -48,6 +48,22 @@ bool graph_edge_is_local(const graph *g, const edge *e)
            local->source_pin_id == e->from_pin_id;
 }
 
+int graph_rename_local(graph *g, uint64_t id, const char *name)
+{
+    graph_local *local = (graph_local *)graph_local_by_id(g, id);
+    if (!local || !name || !name[0]) {
+        return -1;
+    }
+    for (int i = 0; i < acount(g->locals); i++) {
+        if (g->locals[i].id != id && !strcmp(g->locals[i].name, name)) {
+            return -1;
+        }
+    }
+    local->name = graph_own_str(g, name, strlen(name));
+    g->topology_revision++;
+    return 0;
+}
+
 uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
 {
     if (g->flow_pause_count || !source || graph_node_by_id(g, source->id) != source ||
@@ -106,6 +122,22 @@ uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
     return local.id;
 }
 
+int graph_use_local(graph *g, uint64_t id, node *n, int pin)
+{
+    const graph_local *local = graph_local_by_id(g, id);
+    node *source = local ? graph_node_by_id(g, local->source_id) : NULL;
+    int output = 0, index = -1;
+    if (!source || source == n ||
+        !graph_pin_by_id(source, local->source_pin_id, &output, &index) || !output) {
+        return -1;
+    }
+    pin_binding binding = { .kind = PIN_BINDING_LOCAL, .local_id = id };
+    return graph_connect_data(g, source, index, n, pin) ||
+                   graph_set_pin_binding(g, n, 0, pin, &binding)
+             ? -1
+             : 0;
+}
+
 int graph_expand_local(graph *g, uint64_t id)
 {
     if (g->flow_pause_count || !graph_local_by_id(g, id)) {
@@ -135,7 +167,8 @@ int graph_expand_local(graph *g, uint64_t id)
 void graph_prune_locals(graph *g)
 {
     for (int i = acount(g->locals) - 1; i >= 0; i--) {
-        bool used = false;
+        /* A local still loading has no source yet, and its uses follow. */
+        bool used = !g->locals[i].source_id;
         for (int n = 0; n < acount(g->nodes) && !used; n++) {
             for (int p = 0; p < g->nodes[n]->input_count; p++) {
                 const pin_binding *b = g->nodes[n]->input_pins[p].binding;

@@ -2,6 +2,7 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
+#include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
@@ -79,6 +80,11 @@ static uint32_t pin_color(const studio *s, const pin_spec *spec, float alpha)
     return ((uint32_t)lroundf(c[0] * p->shade * 255) << 24) |
            ((uint32_t)lroundf(c[1] * p->shade * 255) << 16) |
            ((uint32_t)lroundf(c[2] * p->shade * 255) << 8) | a;
+}
+
+uint32_t sg_pin_color(const studio *s, const pin_spec *spec)
+{
+    return pin_color(s, spec, 1);
 }
 
 /* ---------- Emission ---------- */
@@ -304,7 +310,9 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
     if (!input && parts.value != VALUE_NONE) {
         emit_value(s, n, 1, p);
     }
-    if (parts.show_label && l.form == FORM_FULL && !sg_in_head(&l, kind, p)) {
+    if (input && g->pin_edit && g->pin_edit == parts.spec->id) {
+        sg_emit_pin_edit(s, n, p);
+    } else if (parts.show_label && l.form == FORM_FULL && !sg_in_head(&l, kind, p)) {
         kit_label(k, "l", "gpin-label", parts.label);
         if (input && label_width > 0 && !sg_pin_exec(n, kind, p)) {
             snprintf(width, sizeof width, "%.0fdp", label_width);
@@ -376,7 +384,10 @@ static void emit_code(studio *s, node *n, const node_layout *l)
     int count = sg_code_lines(s, code, sg_code_room(l), starts);
     kit_push(k, "code", NULL, "gcode");
     for (int i = 0; i < count; i++) {
-        int end = i + 1 < count ? starts[i + 1] - 1 : length;
+        int end = i + 1 < count ? starts[i + 1] : length;
+        while (end > starts[i] && code[end - 1] == ' ') {
+            end--;
+        }
         char key[8], line[512], markup[2048];
         snprintf(key, sizeof key, "l%d", i);
         snprintf(line, sizeof line, "%.*s", end - starts[i], code + starts[i]);
@@ -421,6 +432,17 @@ static void emit_rows(studio *s, node *n, const node_layout *l)
             emit_pin(s, n, ED_PIN_INPUT, p, "grow in", l->label);
         }
     }
+    if (l->add_pin >= 0) {
+        kit_push(k, "add", NULL, l->add_pin == ED_PIN_OUTPUT ? "grow gadd out" : "grow gadd in");
+        kit_button_desc add = { .label = "Add Pin",
+                                .icon = KIT_ICON_ADD,
+                                .size = KIT_SM,
+                                .flags = sg_graph_readonly(s) ? KIT_DISABLED : 0 };
+        if (kit_button(k, "b", &add)) {
+            sg_add_run_pin(s, n);
+        }
+        kit_pop(k);
+    }
     kit_pop(k);
 }
 
@@ -451,6 +473,100 @@ static void emit_operator(studio *s, node *n, const node_layout *l)
     kit_pop(k);
 }
 
+/* ---------- Problems and the paused node ---------- */
+
+/* One problem per node, the worst: an error replaces warnings, and messages
+   of equal weight join. A folded source's problem shows on its consumer. */
+static void add_problem(studio_graph *g, graph *gr, uint64_t id, bool error, const char *text)
+{
+    node *n = id ? graph_node_by_id(gr, id) : NULL;
+    if (!n) {
+        return;
+    }
+    uint64_t owner = graph_inline_owner(gr, n)->id;
+    studio_node_problem *p = NULL;
+    for (int i = 0; i < acount(g->problems); i++) {
+        p = g->problems[i].node == owner ? &g->problems[i] : p;
+    }
+    if (!p) {
+        apush(g->problems, ((studio_node_problem){ .node = owner }));
+        p = &alast(g->problems);
+    } else if (p->error == error) {
+        size_t used = strlen(p->text);
+        if (!strstr(p->text, text)) {
+            snprintf(p->text + used, sizeof p->text - used, " \xc2\xb7 %s", text);
+        }
+        return;
+    } else if (p->error) {
+        return;
+    }
+    p->error = error;
+    snprintf(p->text, sizeof p->text, "%s", text);
+}
+
+/* The open behavior's compile diagnostics and, while the scene runs, the runs
+   that failed in this graph. */
+static void collect_problems(studio *s)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    asetlen(g->problems, 0);
+    for (int i = 0; i < acount(e->compile.items); i++) {
+        const compile_diagnostic *d = &e->compile.items[i];
+        if ((d->severity == CMPL_ERROR || d->severity == CMPL_WARNING) &&
+            behavior_asset_find_graph(e->asset, d->graph_id) == gr) {
+            add_problem(g, gr, d->node_id, d->severity == CMPL_ERROR, d->message);
+        }
+    }
+    if (!runtime_session(s->scene)) {
+        return;
+    }
+    for (int i = 0; i < acount(s->runtime_errors); i++) {
+        const studio_runtime_error *error = &s->runtime_errors[i];
+        if (!strcmp(error->at.asset, s->scene->graph_document_id) &&
+            behavior_asset_find_graph(e->asset, error->at.graph_id) == gr) {
+            add_problem(g, gr, error->at.node_id, true, error->message);
+        }
+    }
+}
+
+static const studio_node_problem *problem_of(const studio_graph *g, uint64_t id)
+{
+    for (int i = 0; i < acount(g->problems); i++) {
+        if (g->problems[i].node == id) {
+            return &g->problems[i];
+        }
+    }
+    return NULL;
+}
+
+static bool paused_at(const studio *s, const node *n)
+{
+    const studio_node_ref *at = &s->pause.at;
+    return s->pause.active && at->node_id == n->id &&
+           !strcmp(at->asset, s->scene->graph_document_id) &&
+           behavior_asset_find_graph(sg_graph_editor(s)->asset, at->graph_id) ==
+               sg_active_graph(s);
+}
+
+/* A problem badge on the node's corner, its message on hover (Blender's node
+   warnings), and a ring around the node a paused run stopped at. */
+static void emit_marks(studio *s, const studio_node_problem *problem, bool paused)
+{
+    kit *k = s->graph.kit;
+    if (problem) {
+        kit_push(k, "problem", NULL, "gproblem");
+        kit_tip(k, problem->text, NULL);
+        kit_icon(k, "i", NULL, problem->error ? KIT_ICON_ERROR : KIT_ICON_WARNING);
+        kit_pop(k);
+    }
+    if (paused) {
+        kit_leaf(k, "paused", NULL, "gpaused");
+        kit_presence(k);
+    }
+}
+
 static void emit_node(studio *s, node *n)
 {
     static const char *const FORMS[] = { "full", "operator", "getter" };
@@ -458,6 +574,8 @@ static void emit_node(studio *s, node *n)
     kit *k = g->kit;
     editor *e = sg_graph_editor(s);
     node_layout l = *sg_layout_of(s, n);
+    const studio_node_problem *problem = problem_of(g, n->id);
+    bool paused = paused_at(s, n);
     char key[32];
     snprintf(key, sizeof key, "n%llu", (unsigned long long)n->id);
     kit_push(k, key, NULL, "gnode");
@@ -469,8 +587,13 @@ static void emit_node(studio *s, node *n)
     kit_flag(k, "data-selected", ed_node_selected(e, n));
     kit_flag(k, "data-active", e->front_node == n && ed_node_selected(e, n) && acount(e->selected) > 1);
     kit_flag(k, "data-disabled", n->disabled != 0);
-    kit_flag(k, "data-dim", sg_is_unused(g, n->id));
+    /* A problem draws attention, so its node never recedes. */
+    kit_flag(k, "data-dim", sg_is_unused(g, n->id) && !problem);
     kit_flag(k, "data-breakpoint", n->breakpoint != 0);
+    kit_flag(k, "data-error", problem && problem->error);
+    kit_flag(k, "data-warning", problem && !problem->error);
+    kit_flag(k, "data-paused", paused);
+    sg_emit_bubble(s, n);
     if (l.form == FORM_OPERATOR) {
         emit_operator(s, n, &l);
     } else {
@@ -480,6 +603,7 @@ static void emit_node(studio *s, node *n)
         (l.code_lines || sg_row_count(sg_active_graph(s), n, &l))) {
         emit_rows(s, n, &l);
     }
+    emit_marks(s, problem, paused);
     kit_pop(k);
 }
 
@@ -505,9 +629,11 @@ static void emit_wires(studio *s)
         node *from = graph_node_by_id(gr, ed->from_id),
              *to = graph_node_by_id(gr, ed->to_id);
         int fo = 0, to_out = 0, fp = -1, tp = -1;
+        /* A use of a named value reads the name instead of a wire. */
         if (!sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
             !graph_pin_by_id(from, ed->from_pin_id, &fo, &fp) || !fo ||
-            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out) {
+            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out ||
+            graph_edge_is_local(gr, ed)) {
             continue;
         }
         apush(g->wire_edges, i);
@@ -649,7 +775,7 @@ static void emit_conversions(studio *s)
     studio_graph *g = &s->graph;
     kit *k = g->kit;
     graph *gr = sg_active_graph(s);
-    if (g->zoom < FAR_ZOOM) {
+    if (sg_far(s)) {
         return;
     }
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -657,18 +783,26 @@ static void emit_conversions(studio *s)
         node *from = graph_node_by_id(gr, ed->from_id),
              *to = graph_node_by_id(gr, ed->to_id);
         int fo = 0, to_out = 0, fp = -1, tp = -1;
+        /* A named value's use draws no wire to label. */
         if (!ed->conversion || !sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
             !graph_pin_by_id(from, ed->from_pin_id, &fo, &fp) || !fo ||
-            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out) {
+            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out ||
+            graph_edge_is_local(gr, ed)) {
             continue;
         }
         float ax, ay, bx, by;
         sg_socket_at(s, from, ED_PIN_OUTPUT, fp, &ax, &ay);
         sg_socket_at(s, to, ED_PIN_INPUT, tp, &bx, &by);
+        /* On the wire as drawn: its authored reroutes, else its lane route. */
         float mx = (ax + bx) / 2, my = (ay + by) / 2;
+        int link = g->edge_route && i < acount(g->edge_route) ? g->edge_route[i] : -1;
         if (ed->reroute_count) {
             mx = ed->reroutes[ed->reroute_count / 2].x;
             my = ed->reroutes[ed->reroute_count / 2].y;
+        } else if (link >= 0 && g->routes.start[link + 1] > g->routes.start[link]) {
+            int middle = (g->routes.start[link] + g->routes.start[link + 1]) / 2;
+            mx = g->routes.points[middle].x;
+            my = g->routes.points[middle].y;
         }
         char key[32], text[96];
         const node_desc *c = ed->conversion;
@@ -722,36 +856,12 @@ static void emit_reroutes(studio *s)
     }
 }
 
-/* Comment frames sit behind nodes; their titles stay readable when zoomed
-   out (Unreal). The frame's color tints its fill and edge. */
-static void emit_comment(studio *s, const graph_comment_box *box)
-{
-    kit *k = s->graph.kit;
-    char key[32], value[48];
-    snprintf(key, sizeof key, "c%llu", (unsigned long long)box->id);
-    kit_push(k, key, NULL, "gcomment");
-    snprintf(value, sizeof value, "%.1fdp", box->x);
-    kit_style(k, "left", value);
-    snprintf(value, sizeof value, "%.1fdp", box->y);
-    kit_style(k, "top", value);
-    snprintf(value, sizeof value, "%.1fdp", box->width);
-    kit_style(k, "width", value);
-    snprintf(value, sizeof value, "%.1fdp", box->height);
-    kit_style(k, "height", value);
-    uint32_t c = box->color ? box->color : 0x8a8a96ffu;
-    snprintf(value, sizeof value, "#%02x%02x%02x1f", c >> 24, (c >> 16) & 255, (c >> 8) & 255);
-    kit_style(k, "background-color", value);
-    snprintf(value, sizeof value, "#%02x%02x%02x66", c >> 24, (c >> 16) & 255, (c >> 8) & 255);
-    kit_style(k, "border-color", value);
-    kit_label(k, "t", "gcomment-title", box->title && box->title[0] ? box->title : "Comment");
-    kit_pop(k);
-}
-
 void sg_emit_canvas(studio *s)
 {
     studio_graph *g = &s->graph;
     kit *k = g->kit;
     graph *gr = sg_active_graph(s);
+    collect_problems(s);
     kit_root(k, "back");
     emit_wires(s);
     kit_root(k, "world");
@@ -762,7 +872,7 @@ void sg_emit_canvas(studio *s)
     snprintf(value, sizeof value, "%.2fdp", -g->y);
     kit_style(k, "top", value);
     for (int i = 0; i < acount(gr->comment_boxes); i++) {
-        emit_comment(s, &gr->comment_boxes[i]);
+        sg_emit_comment(s, &gr->comment_boxes[i]);
     }
     emit_conversions(s);
     emit_reroutes(s);

@@ -56,7 +56,13 @@ int open_behavior_asset(app_scene_authoring *scene, const char *asset_name)
     }
     set_behavior_component_context(scene, asset_name);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
-    snprintf(scene->message, sizeof scene->message, "Editing behavior asset %s.", asset_name);
+    snprintf(
+        scene->message,
+        sizeof scene->message,
+        "Editing %s asset %s.",
+        behavior_domain_name(scene->definition->working->domain),
+        asset_name
+    );
     return 0;
 }
 

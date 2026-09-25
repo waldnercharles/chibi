@@ -106,6 +106,27 @@ endif()
 # WebGL has no base-vertex draw support; 32-bit indices keep large ImGui draw lists drawable.
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
+# Cute bundles yyjson 0.7 under the names of third_party/yyjson (0.12). A
+# static link can then pair 0.12 headers with 0.7 functions, which ignore
+# per-value flags such as shortest float output. Cute keeps its copy under
+# its own prefix.
+set(CUTE_YYJSON_SYMBOLS
+    unsafe_yyjson_equals unsafe_yyjson_mut_equals unsafe_yyjson_mut_ptr_getx
+    unsafe_yyjson_mut_ptr_putx unsafe_yyjson_mut_ptr_removex
+    unsafe_yyjson_mut_ptr_replacex unsafe_yyjson_ptr_getx unsafe_yyjson_str_pool_grow
+    unsafe_yyjson_val_pool_grow yyjson_alc_pool_init yyjson_doc_mut_copy
+    yyjson_merge_patch yyjson_mut_doc_free yyjson_mut_doc_imut_copy
+    yyjson_mut_doc_mut_copy yyjson_mut_doc_new yyjson_mut_doc_set_str_pool_size
+    yyjson_mut_doc_set_val_pool_size yyjson_mut_merge_patch yyjson_mut_patch
+    yyjson_mut_val_imut_copy yyjson_mut_val_mut_copy yyjson_mut_val_write_file
+    yyjson_mut_val_write_fp yyjson_mut_val_write_opts yyjson_mut_write_file
+    yyjson_mut_write_fp yyjson_mut_write_opts yyjson_patch yyjson_read_file
+    yyjson_read_fp yyjson_read_number yyjson_read_opts yyjson_val_mut_copy
+    yyjson_val_write_file yyjson_val_write_fp yyjson_val_write_opts yyjson_version
+    yyjson_write_file yyjson_write_fp yyjson_write_opts)
+foreach(symbol IN LISTS CUTE_YYJSON_SYMBOLS)
+    target_compile_definitions(cute PRIVATE ${symbol}=cf_${symbol})
+endforeach()
 # --- SLJIT backend ----------------------------------------------------------
 option(CHIBI_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

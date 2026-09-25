@@ -14,18 +14,18 @@ components:
   GAME.GameCollider: {category: 1, mask: 10, radius: 10.0}
   GAME.GameDrive: {acceleration: 800.0}
   GAME.GameGlobalBinding: {name: Player}
-  game.GameHealth: {current: 20, maximum: 20}
-  game.GameInput: {}
+  GAME.GameHealth: {current: 20, maximum: 20}
+  GAME.GameInput: {}
   GAME.GameMaterial:
     absorption: 1.0
     albedo: 437918234
     emission_color: 2823094271
-    emission_intensity: 0.10000000149011612
+    emission_intensity: 0.1
     emission_multiplier: 1.0
     scene: 4294967295
-  game.GameMovement: {speed: 120.0}
+  GAME.GameMovement: {speed: 120.0}
   GAME.GameOrientation: {}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {}
   GAME.GameWeapon: {cooldown: 0.125, damage: 1}
 behaviors: [MaterialImpactHealth, Movement, PlayerEffects, Weapon]

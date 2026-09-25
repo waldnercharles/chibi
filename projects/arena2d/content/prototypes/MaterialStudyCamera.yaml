@@ -1,4 +1,4 @@
 name: MaterialStudyCamera
 components:
   GAME.GameCamera: {height: 540.0, width: 640.0}
-  game.GameTransform: {}
+  GAME.GameTransform: {}

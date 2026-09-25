@@ -1,6 +1,6 @@
 version: 3
 name: PlayerContactBehavior
-id_counter: 131
+id_counter: 314
 description: Enemy body contact deals 10 damage at most once per half second. Only new contacts can hit; continuing overlap never repeats.
 owner_type: ecs.entity
 variables:
@@ -14,29 +14,6 @@ graphs:
     reference_name: Tick
     outputs:
       Then: {id: 4}
-  - id: 7
-    type: Get Variable
-    reference_id: 1
-    outputs:
-      Value: {id: 6, type: float, flags: 0}
-  - id: 9
-    type: Delta Time
-    outputs:
-      Seconds: {id: 8}
-  - id: 13
-    type: Subtract
-    inputs:
-      A: {id: 10, group: 0}
-      B: {group: 0}
-    outputs:
-      Result: {group: 0}
-  - id: 17
-    type: Max
-    inputs:
-      A: {id: 14, group: 0}
-      B: {group: 0}
-    outputs:
-      Result: {group: 0}
   - id: 22
     type: Set Variable
     reference_id: 1
@@ -52,19 +29,6 @@ graphs:
       Then: {id: 23}
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {id: 129, type: struct, type_name: CF_V2, kind: data}
-  - id: 27
-    type: Get Variable
-    reference_id: 1
-    outputs:
-      Value: {id: 26, type: float, flags: 0}
-  - id: 31
-    type: Greater Or Equal
-    inputs:
-      A: {id: 28}
-  - id: 36
-    type: Branch
-    inputs:
-      Exec: {id: 32}
   - id: 40
     type: Call Function
     reference_id: 2
@@ -74,30 +38,59 @@ graphs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
   - {id: 110, type: Has_GameDash}
   - {id: 112, type: Branch}
-  - id: 117
-    type: Get_GameDash
+  - id: 151
+    type: Behavior Expression
+    reference_id: 132
+    reference_name: max(Remaining - dt, 0)
+    inputs:
+      Remaining:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: PlayerContactBehavior}
+      dt:
+        type: double
+        binding: {kind: delta_time}
     outputs:
-      Value: {flags: 0}
-      Value.remaining: {}
-  - {id: 120, type: Less}
-  - {id: 124, type: Branch}
+      Result: {type: double}
+  - id: 226
+    type: Behavior Expression
+    reference_id: 212
+    reference_name: DashRemaining > 0
+    inputs:
+      Exec: {id: 229, kind: exec}
+      DashRemaining:
+        id: 227
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameDash, field: remaining}
+    outputs:
+      "True": {id: 230, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 228, type: bool}
+  - id: 260
+    type: Behavior Expression
+    reference_id: 246
+    reference_name: Remaining <= 0
+    inputs:
+      Exec: {id: 263, kind: exec}
+      Remaining:
+        id: 261
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: PlayerContactBehavior}
+    outputs:
+      "True": {id: 264, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 262, type: bool}
   edges:
   - {from: 5.Then, to: 22.Exec}
-  - {from: 7.Value, to: 13.A}
-  - {from: 9.Seconds, to: 13.B}
-  - {from: 13.Result, to: 17.A}
-  - {from: 17.Result, to: 22.Value}
   - {from: 25.Then, to: 112.Exec}
   - {from: 25.Other, to: 40.Other}
-  - {from: 27.Value, to: 31.B}
-  - {from: 31.Result, to: 36.Condition}
-  - {from: 36.True, to: 40.Exec}
   - {from: 110.Value, to: 112.Condition}
-  - {from: 112.True, to: 124.Exec}
-  - {from: 112.False, to: 36.Exec}
-  - {from: 117.Value.remaining, to: 120.B}
-  - {from: 120.Result, to: 124.Condition}
-  - {from: 124.False, to: 36.Exec}
+  - {from: 112.True, to: 226.Exec}
+  - {from: 112.False, to: 260.Exec}
+  - {from: 151.Result, to: 22.Value}
+  - {from: 226.False, to: 260.Exec}
+  - {from: 260.True, to: 40.Exec}
 - id: 2
   kind: function
   name: Check Enemy Contact
@@ -117,7 +110,9 @@ graphs:
   - id: 48
     type: HasEntity_GameCollider
     inputs:
-      Entity: {id: 46}
+      Entity:
+        id: 46
+        binding: {kind: local, local_id: 131}
   - id: 53
     type: Branch
     inputs:
@@ -125,7 +120,9 @@ graphs:
   - id: 57
     type: GetEntity_GameCollider
     inputs:
-      Entity: {id: 56}
+      Entity:
+        id: 56
+        binding: {kind: local, local_id: 131}
     outputs:
       Value: {id: 54}
       Value.category: {}
@@ -141,7 +138,9 @@ graphs:
   - id: 69
     type: HasEntity_GameHealth
     inputs:
-      Entity: {id: 67}
+      Entity:
+        id: 67
+        binding: {kind: local, local_id: 131}
   - id: 74
     type: Branch
     inputs:
@@ -149,26 +148,34 @@ graphs:
   - id: 78
     type: GetEntity_GameHealth
     inputs:
-      Entity: {id: 77}
+      Entity:
+        id: 77
+        binding: {kind: local, local_id: 131}
     outputs:
       Value: {id: 75}
       Value.current: {}
-  - id: 82
-    type: Integer Greater Or Equal
-    inputs:
-      A: {id: 79}
-      B: 1
-  - id: 87
-    type: Branch
-    inputs:
-      Exec: {id: 83}
   - id: 91
     type: Call Function
     reference_id: 3
     reference_name: Apply Contact Damage
     inputs:
       Exec: {id: 88}
-      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Other:
+        type: handle
+        type_name: ecs.entity
+        kind: data
+        binding: {kind: local, local_id: 131}
+  - id: 294
+    type: Behavior Expression
+    reference_id: 280
+    reference_name: Health >= 1
+    inputs:
+      Exec: {id: 297, kind: exec}
+      Health: {id: 295, type: double, flags: 0}
+    outputs:
+      "True": {id: 298, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 296, type: bool}
   edges:
   - {from: 43.Then, to: 53.Exec}
   - {from: 43.Other, to: 48.Entity}
@@ -184,13 +191,14 @@ graphs:
   - {from: 66.True, to: 74.Exec}
   - {from: 66.False, to: 45.Exec}
   - {from: 69.Value, to: 74.Condition}
-  - {from: 74.True, to: 87.Exec}
+  - {from: 74.True, to: 294.Exec}
   - {from: 74.False, to: 45.Exec}
-  - {from: 78.Value.current, to: 82.A}
-  - {from: 82.Result, to: 87.Condition}
-  - {from: 87.True, to: 91.Exec}
-  - {from: 87.False, to: 45.Exec}
+  - {from: 78.Value.current, to: 294.Health, conversion: To Real}
   - {from: 91.Then, to: 45.Exec}
+  - {from: 294.True, to: 91.Exec}
+  - {from: 294.False, to: 45.Exec}
+  locals:
+  - {id: 131, name: Other, from: 43.Other}
 - id: 3
   kind: function
   name: Apply Contact Damage
@@ -232,3 +240,10 @@ graphs:
   - {from: 99.Then, to: 107.Exec}
   - {from: 101.Self, to: 107.Entity}
   - {from: 107.Then, to: 109.Exec}
+- id: 132
+  kind: function
+  math_expression: max(Remaining - dt, 0)
+  entry_id: 194
+- {id: 212, kind: function, math_expression: DashRemaining > 0, entry_id: 233}
+- {id: 246, kind: function, math_expression: Remaining <= 0, entry_id: 267}
+- {id: 280, kind: function, math_expression: Health >= 1, entry_id: 301}

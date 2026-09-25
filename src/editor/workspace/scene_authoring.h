@@ -47,6 +47,16 @@ typedef enum
     APP_DEBUG_STALE,
 } app_debug_status;
 
+/* Pins the debug target to the entity's asset instance, so the graph reads it
+ * while the selection moves; unpinning returns it to the selection. */
+int app_scene_authoring_set_debug_target(
+    app_scene_authoring *scene,
+    app_runtime_target target,
+    ecs_entity entity,
+    const char *asset_name
+);
+void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned);
+
 typedef enum
 {
     APP_EDITOR_DOCUMENT_SCENE,

@@ -29,6 +29,7 @@ static inline behavior_asset *link_test_libraries(behavior_asset *asset)
     const char *paths[] = { "content/libraries/DirectionMath.yaml",
                             "content/libraries/MovementActions.yaml",
                             "content/libraries/WeaponActions.yaml",
+                            "content/shader-libraries/ShaderMath.yaml",
                             "content/events/Damage.yaml",
                             "content/events/Damaged.yaml",
                             "content/events/Died.yaml",

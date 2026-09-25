@@ -43,13 +43,13 @@ void test_automation_scene_edit(void)
         "{\"op\":\"set_presentation\",\"presentation\":\"3d\"},"
         "{\"op\":\"add_entity\",\"name\":\"Warden\","
         "\"prototype\":\"PhaseWarden\","
-        "\"components\":{\"game.GameTransform\":{\"x\":3,\"y\":4}},"
-        "\"retained_components\":{\"game.GameTransform\":{\"x\":5,\"y\":6}},"
+        "\"components\":{\"GAME.GameTransform\":{\"x\":3,\"y\":4}},"
+        "\"retained_components\":{\"GAME.GameTransform\":{\"x\":5,\"y\":6}},"
         "\"behaviors\":[\"PhaseWardenBehavior\"]},"
         "{\"op\":\"add_behavior\",\"entity\":\"Warden\","
         "\"behavior\":\"CombatFeedback\"},"
         "{\"op\":\"set_entity_components\",\"entity\":\"Warden\","
-        "\"components\":{\"game.GameTransform\":{\"x\":9,\"y\":10}}},"
+        "\"components\":{\"GAME.GameTransform\":{\"x\":9,\"y\":10}}},"
         "{\"op\":\"set_entity_behaviors\",\"entity\":\"Warden\","
         "\"behaviors\":[\"CombatFeedback\"]}]} ",
         &edited,

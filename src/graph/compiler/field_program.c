@@ -23,6 +23,11 @@ struct field_program
     parameter *parameters;
     int output;
 };
+struct call_result
+{
+    const node *call;
+    int output, slot;
+};
 typedef struct compiler
 {
     const behavior_asset *asset;
@@ -32,6 +37,7 @@ typedef struct compiler
     const graph *graph;
     field_program *program;
     int *slots, *state;
+    struct call_result *calls; /* one slot per call output compiled */
     int depth;
     char *error;
     size_t size;
@@ -56,6 +62,13 @@ static bool scalar(pin_value v, float *out)
     return v.container == PIN_CONTAINER_SINGLE && isfinite(*out);
 }
 
+/* A binding other than a local: a local names a wire the graph still holds,
+   so it reads exactly like that wire. */
+static bool state_binding(const pin_spec *pin)
+{
+    return pin->binding && pin->binding->kind != PIN_BINDING_LOCAL;
+}
+
 static int instruction(compiler *c, field_ir ir, int inputs)
 {
     if (acount(c->program->code) >= FIELD_INSTRUCTION_MAX) {
@@ -63,6 +76,7 @@ static int instruction(compiler *c, field_ir ir, int inputs)
         return -1;
     }
     ir.spatial = ir.op == FIELD_X ? 1 : ir.op == FIELD_Y ? 2 : 0;
+    ir.count = inputs;
     for (int i = 0; i < inputs; i++) {
         ir.spatial |= c->program->code[ir.inputs[i]].spatial;
     }
@@ -71,13 +85,33 @@ static int instruction(compiler *c, field_ir ir, int inputs)
     return slot;
 }
 
+static int compile_node(compiler *c, node *n, int output);
+
+/* The value a function returns at one of its outputs. */
+static int compile_return(compiler *c, node *ret, int input)
+{
+    node *from = NULL;
+    int pin = -1;
+    if (graph_input_source(c->graph, ret, input, &from, &pin)) {
+        return compile_node(c, from, pin);
+    }
+    float value;
+    if (!scalar(ret->input_pins[input].default_value, &value)) {
+        fail(c->error, c->size, "Field inputs require finite scalar values");
+        return -1;
+    }
+    return instruction(c, (field_ir){ .op = FIELD_CONSTANT, .value = value }, 0);
+}
+
 static int compile_node(compiler *c, node *n, int output)
 {
     if (n->desc == &NODE_FunctionEntry && !n->disabled && c->arguments &&
         output >= 0 && output < c->argument_count) {
         return c->arguments[output];
     }
-    if (output != 0) {
+    /* A function call may return several values; every other node one. */
+    bool call = n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression;
+    if (output != 0 && !call) {
         fail(c->error, c->size, "Field nodes return one scalar");
         return -1;
     }
@@ -91,8 +125,13 @@ static int compile_node(compiler *c, node *n, int output)
     if (index < 0) {
         return -1;
     }
-    if (c->state[index] == 2) {
+    if (c->state[index] == 2 && !call) {
         return c->slots[index];
+    }
+    for (int i = 0; call && i < acount(c->calls); i++) {
+        if (c->calls[i].call == n && c->calls[i].output == output) {
+            return c->calls[i].slot;
+        }
     }
     if (c->state[index] == 1) {
         fail(c->error, c->size, "Recursive field dependency");
@@ -104,7 +143,6 @@ static int compile_node(compiler *c, node *n, int output)
     }
     c->state[index] = 1;
     int op = field_node_opcode(n->desc);
-    bool call = n->desc == &NODE_CallPureFunction;
     if (n->desc == &NODE_Return && c->caller) {
         op = FIELD_OUTPUT;
     }
@@ -113,8 +151,10 @@ static int compile_node(compiler *c, node *n, int output)
         return -1;
     }
     field_ir ir = { .op = call ? FIELD_OUTPUT : op };
-    if (n->input_count > 7) {
-        fail(c->error, c->size, "Field functions accept at most seven scalar arguments");
+    int arguments[FIELD_CALL_ARGUMENT_MAX];
+    int *inputs = call ? arguments : ir.inputs;
+    if (n->input_count > (call ? FIELD_CALL_ARGUMENT_MAX : FIELD_INPUT_MAX)) {
+        fail(c->error, c->size, call ? "Field functions accept at most 32 scalar arguments" : "Field nodes accept at most seven inputs");
         return -1;
     }
     if (op == FIELD_PARAMETER) {
@@ -141,12 +181,12 @@ static int compile_node(compiler *c, node *n, int output)
         for (int i = 0; i < n->input_count; i++) {
             node *from = NULL;
             int pin = -1;
-            if (n->input_pins[i].binding) {
+            if (state_binding(&n->input_pins[i])) {
                 fail(c->error, c->size, "Field inputs cannot read ECS, event, or mutable state bindings");
                 return -1;
             }
             if (graph_input_source(c->graph, n, i, &from, &pin)) {
-                if ((ir.inputs[i] = compile_node(c, from, pin)) < 0) {
+                if ((inputs[i] = compile_node(c, from, pin)) < 0) {
                     return -1;
                 }
             } else {
@@ -155,8 +195,8 @@ static int compile_node(compiler *c, node *n, int output)
                     fail(c->error, c->size, "Field inputs require finite scalar values");
                     return -1;
                 }
-                ir.inputs[i] = instruction(c, (field_ir){ .op = FIELD_CONSTANT, .value = value }, 0);
-                if (ir.inputs[i] < 0) {
+                inputs[i] = instruction(c, (field_ir){ .op = FIELD_CONSTANT, .value = value }, 0);
+                if (inputs[i] < 0) {
                     return -1;
                 }
             }
@@ -164,8 +204,8 @@ static int compile_node(compiler *c, node *n, int output)
     }
     if (call) {
         graph *target = behavior_asset_find_graph(c->asset, n->reference_id);
-        if (!target || target->kind != GRAPH_FUNCTION || n->output_count != 1) {
-            fail(c->error, c->size, "Field call requires a resolved pure function returning one scalar");
+        if (!target || target->kind != GRAPH_FUNCTION || output >= n->output_count) {
+            fail(c->error, c->size, "Field call requires a resolved pure function");
             return -1;
         }
         for (const compiler *parent = c; parent; parent = parent->caller) {
@@ -177,7 +217,7 @@ static int compile_node(compiler *c, node *n, int output)
         node *entry = graph_node_by_id(target, target->entry_id),
              *ret = graph_node_by_id(target, target->return_id);
         if (!entry || !ret || entry->output_count != n->input_count ||
-            ret->input_count != 1) {
+            ret->input_count != n->output_count) {
             fail(c->error, c->size, "Field function signature mismatch");
             return -1;
         }
@@ -187,13 +227,13 @@ static int compile_node(compiler *c, node *n, int output)
                            .graph = target,
                            .program = c->program,
                            .depth = c->depth,
-                           .arguments = ir.inputs,
+                           .arguments = arguments,
                            .argument_count = n->input_count,
                            .slots = xcalloc((size_t)count, sizeof(int)),
                            .state = xcalloc((size_t)count, sizeof(int)),
                            .error = c->error,
                            .size = c->size };
-        int result = compile_node(&child, ret, 0);
+        int result = compile_return(&child, ret, output);
         for (int i = 0; i < count && result >= 0; i++) {
             if (target->nodes[i] != entry &&
                 compile_node(&child, target->nodes[i], 0) < 0) {
@@ -202,11 +242,12 @@ static int compile_node(compiler *c, node *n, int output)
         }
         free(child.slots);
         free(child.state);
+        afree(child.calls);
         if (result < 0) {
             return -1;
         }
-        c->slots[index] = result;
-        c->state[index] = 2;
+        apush(c->calls, ((struct call_result){ n, output, result }));
+        c->state[index] = 0;
         c->depth--;
         return result;
     }
@@ -218,6 +259,74 @@ static int compile_node(compiler *c, node *n, int output)
     c->state[index] = 2;
     c->depth--;
     return c->slots[index];
+}
+
+static bool same_instruction(const field_ir *a, const field_ir *b)
+{
+    bool same = a->op == b->op && a->count == b->count &&
+                a->parameter == b->parameter &&
+                !memcmp(&a->value, &b->value, sizeof a->value);
+    for (int k = 0; same && k < a->count; k++) {
+        same = a->inputs[k] == b->inputs[k];
+    }
+    return same;
+}
+
+/* Copies read through to their source, repeated instructions merge, and
+   instructions nothing reads drop out: a function's Return, a Constant node,
+   a stage two calls both compute, and nodes the output never reads cost
+   nothing extra per cell. */
+static void prune(field_program *p)
+{
+    int count = acount(p->code);
+    int *index = xmalloc((size_t)count * sizeof *index);
+    int *same = xmalloc((size_t)count * sizeof *same);
+    bool *live = xcalloc((size_t)count, sizeof *live);
+    for (int i = 0; i < count; i++) {
+        field_ir *ir = &p->code[i];
+        for (int k = 0; k < ir->count; k++) {
+            int from = ir->inputs[k];
+            while (p->code[from].op == FIELD_OUTPUT) {
+                from = p->code[from].inputs[0];
+            }
+            ir->inputs[k] = same[from];
+        }
+        same[i] = i;
+        for (int j = 0; j < i && ir->op != FIELD_OUTPUT; j++) {
+            if (same[j] == j && same_instruction(&p->code[j], ir)) {
+                same[i] = j;
+                break;
+            }
+        }
+    }
+    int output = p->output;
+    while (p->code[output].op == FIELD_OUTPUT) {
+        output = p->code[output].inputs[0];
+    }
+    output = same[output];
+    live[output] = true;
+    for (int i = count - 1; i >= 0; i--) {
+        for (int k = 0; live[i] && k < p->code[i].count; k++) {
+            live[p->code[i].inputs[k]] = true;
+        }
+    }
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (!live[i]) {
+            continue;
+        }
+        field_ir ir = p->code[i];
+        for (int k = 0; k < FIELD_INPUT_MAX; k++) {
+            ir.inputs[k] = k < ir.count ? index[ir.inputs[k]] : 0;
+        }
+        index[i] = kept;
+        p->code[kept++] = ir;
+    }
+    asetlen(p->code, kept);
+    p->output = index[output];
+    free(index);
+    free(same);
+    free(live);
 }
 
 field_program *field_program_compile(const behavior_asset *asset, char *error, size_t size)
@@ -240,7 +349,8 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
             const node *n = graph->nodes[i];
             bool signature = n->desc == &NODE_FunctionEntry ||
                              n->desc == &NODE_Return ||
-                             n->desc == &NODE_CallPureFunction;
+                             n->desc == &NODE_CallPureFunction ||
+                             n->desc == &NODE_BehaviorExpression;
             if (n->disabled || (field_node_opcode(n->desc) < 0 && !signature) ||
                 (g && field_node_opcode(n->desc) == FIELD_OUTPUT) ||
                 (!g && (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return))) {
@@ -254,7 +364,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
                     for (int p = 0; p < count; p++) {
                         if (pins[p].kind != PIN_DATA || pins[p].type != PIN_F32 ||
                             pins[p].container != PIN_CONTAINER_SINGLE ||
-                            pins[p].binding) {
+                            state_binding(&pins[p])) {
                             fail(error, size, "Field functions require pure scalar pins");
                             return NULL;
                         }
@@ -308,6 +418,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
     }
     free(c.slots);
     free(c.state);
+    afree(c.calls);
     if (!valid || outputs != 1) {
         if (size && !error[0]) {
             fail(error, size, "Field requires exactly one Field Output");
@@ -315,6 +426,7 @@ field_program *field_program_compile(const behavior_asset *asset, char *error, s
         field_program_free(p);
         return NULL;
     }
+    prune(p);
     return p;
 }
 

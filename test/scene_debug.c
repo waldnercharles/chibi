@@ -4,6 +4,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -37,6 +38,44 @@ static void linked_pin_metadata()
     assert(!scene_debug_matches(working, applied));
     behavior_asset_free(working);
     behavior_asset_free(applied);
+}
+
+/* The runtime runs a linked snapshot: library functions imported, and a Set
+ * writing two fields lowered into two setters. The unedited graph opened from
+ * that definition runs it; an edit does not. */
+static void linked_runtime()
+{
+    ecs_world *world = ecs_world_new();
+    game_live_world *live = game_live_world_new(world);
+    behavior_asset *library = behavior_asset_new("DebugLibrary");
+    library->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    graph *value = behavior_asset_add_function(library, "Value", true);
+    game_live_definition *imported = game_live_definition_new("DebugLibrary", library);
+    assert(value && imported && game_live_add_definition(live, imported) == 0);
+    behavior_asset *working = behavior_asset_new("DebugLinked");
+    assert(behavior_asset_set_owner_type(working, "ecs.entity") == 0);
+    graph *g = working->graph;
+    node *begin = graph_add_node(g, &NODE_Event);
+    node *set = graph_add_node(g, &NODE_SetComponent);
+    int setting = component_node_setting(set);
+    pin_value transform = { .type = PIN_NAME, .str = "GameTransform" };
+    assert(begin && set && graph_set_event_name(g, begin, "Begin") == 0);
+    assert(graph_set_pin_default(g, set, 0, setting, &transform) == 0);
+    assert(component_node_split_value(g, set, true) == 0);
+    assert(graph_connect_exec(g, begin, 0, set, 0, 0) == 0);
+    assert(behavior_asset_add_function_call_node(working, value));
+    game_live_definition *definition = game_live_definition_new("DebugLinked", working);
+    assert(definition && game_live_add_definition(live, definition) == 0);
+    behavior_asset *open = debug_copy(definition->working);
+    assert(!scene_debug_matches(open, definition->applied));
+    assert(scene_debug_runs(live, open, definition->applied));
+    node *edited = graph_node_by_id(open->graph, set->id);
+    pin_value x = { .type = PIN_F32, .f = 3 };
+    assert(graph_set_pin_default(open->graph, edited, 0, edited->input_count - 2, &x) == 0);
+    assert(!scene_debug_runs(live, open, definition->applied));
+    behavior_asset_free(open);
+    game_live_world_free(live);
+    ecs_world_free(world);
 }
 
 static void compatibility_cache()
@@ -167,6 +206,7 @@ static void compatibility_cache()
 void test_scene_debug()
 {
     linked_pin_metadata();
+    linked_runtime();
     compatibility_cache();
     ecs_world *world = ecs_world_new();
     game_behavior_world *behaviors = game_behavior_world_new(world);

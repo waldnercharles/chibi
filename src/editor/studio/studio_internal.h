@@ -6,6 +6,7 @@
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
 #include "editor/ui/kit_icons.h"
+#include "editor/workspace/asset_index.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
 
@@ -22,6 +23,7 @@ typedef enum
     STUDIO_EDITOR_OUTPUT,
     STUDIO_EDITOR_ASSETS,
     STUDIO_EDITOR_PERFORMANCE,
+    STUDIO_EDITOR_MEMBERS,
     STUDIO_EDITOR_COUNT,
 } studio_editor;
 
@@ -43,7 +45,8 @@ typedef enum
     STUDIO_TAB_MATERIAL,
     STUDIO_TAB_GAMEPLAY,
     STUDIO_TAB_BEHAVIORS,
-    STUDIO_TAB_NODE, /* the graph node selected in the Behavior area */
+    STUDIO_TAB_NODE,   /* the graph node selected in the Behavior area */
+    STUDIO_TAB_MEMBER, /* the member selected in Members */
     STUDIO_TAB_COUNT,
 } studio_tab;
 _Static_assert(
@@ -100,6 +103,32 @@ typedef struct
     char text[256];
 } studio_record_entry;
 
+/* A node where it was authored: the behavior or library holding it, its graph
+ * and its id (0 for the graph alone). */
+typedef struct
+{
+    char asset[128];
+    uint64_t graph_id, node_id;
+} studio_node_ref;
+
+/* Runs of the playing scene that failed at one node with one message. */
+typedef struct
+{
+    char behavior[128];
+    studio_node_ref at;
+    char node[96];
+    char message[256];
+    int count;
+} studio_runtime_error;
+
+/* A compile diagnostic or runtime failure drawn on a node of the open graph. */
+typedef struct
+{
+    uint64_t node;
+    bool error; /* else a warning */
+    char text[256];
+} studio_node_problem;
+
 typedef struct
 {
     SDL_Keycode key;
@@ -117,6 +146,7 @@ typedef enum
     STUDIO_GRAPH_LINK,    /* dragging a wire from a socket */
     STUDIO_GRAPH_RIGHT,   /* right press, below the pan threshold */
     STUDIO_GRAPH_REROUTE, /* dragging a wire's reroute point */
+    STUDIO_GRAPH_RESIZE,  /* dragging a comment frame's edge or corner */
 } studio_graph_gesture;
 
 typedef struct
@@ -124,6 +154,35 @@ typedef struct
     uint64_t graph_id;
     float zoom, x, y;
 } studio_graph_view;
+
+/* A Find in graph result (studio_graph_find.c). */
+typedef struct
+{
+    uint64_t graph_id; /* the graph's saved ID */
+    uint64_t node_id; /* the node drawn for the match: an inline match's owner */
+    uint32_t icon;
+    char title[96];
+    char text[160]; /* what matched */
+} studio_find_hit;
+
+/* A graph Back and Forward return to (studio_graph_internal.h). */
+typedef struct studio_visit studio_visit;
+
+/* A Find References result in Output (studio_find.c). */
+typedef struct
+{
+    int kind; /* asset_index_kind of the referencing asset */
+    char asset[128];
+    uint64_t graph_id, node_id; /* 0 for an asset-level reference */
+    char place[160];            /* graph or object */
+    bool object;                /* place names a scene object */
+    const char *use;            /* Call, Read, Handles... */
+} studio_reference;
+
+enum
+{
+    STUDIO_VALUE_NAMES = 8, /* outputs per node the Outputs panel can name */
+};
 
 /* The behavior graph canvas (studio_graph*.c): its own RmlUi context whose dp
  * ratio is the zoom, so text stays crisp and clipping works at every scale. The
@@ -158,9 +217,16 @@ typedef struct
     int press_button;         /* -1 when no press arrived this frame */
     float world_x, world_y;   /* pointer in graph units */
     uint64_t press_node;
-    uint64_t press_comment; /* a comment frame grabbed by its title */
-    float comment_x, comment_y;
+    uint64_t press_comment; /* a comment frame grabbed by its title or an edge */
+    float comment_x, comment_y, comment_w, comment_h; /* its bounds at the press */
+    unsigned resize_edges; /* the SG_EDGE_* a resize moves */
+    uint64_t title_edit;   /* the frame whose title is being edited, or 0 */
+    uint64_t bubble_edit;  /* the node whose comment is being edited, or 0 */
+    bool comment_focus;    /* focus the comment field on its first frame */
+    uint64_t pin_edit;     /* the expression input being renamed, or 0 */
+    bool pin_focus;        /* focus its field on the first frame */
     uint64_t menu_comment;
+    uint64_t comment; /* the selected comment frame, shown while no node is */
     bool press_toggle;
     struct
     {
@@ -187,9 +253,12 @@ typedef struct
     int reroute_edge, reroute_point;    /* the reroute being dragged */
     float reroute_x, reroute_y;         /* where it was before the drag */
     bool reroute_added;                 /* the drag began by adding it */
-    int hover_reroute; /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
-    int insert_edge;   /* the wire a dragged node would join, or -1 */
-    bool renaming;     /* the name of rename_graph is being edited */
+    int hover_reroute;   /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
+    int insert_edge;     /* the wire a dragged node would join, or -1 */
+    uint64_t names_node; /* node whose output names the Outputs panel edits */
+    unsigned long long names_revision;
+    char names[STUDIO_VALUE_NAMES][64];
+    bool renaming; /* the name of rename_graph is being edited */
     uint64_t rename_graph;
     int rename_area; /* the area whose header holds the name field */
     bool rename_focus;
@@ -210,7 +279,68 @@ typedef struct
     char expression[512];
     char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
+    struct
+    {
+        int toast;   /* offers Keep Wire or Undo after a source edit */
+        int history; /* the graph's undo depth when offered */
+        uint64_t node;
+        char from[128]; /* the renamed input, or empty for Undo */
+        char to[128];
+        char source[512];
+    } rewire;
+    studio_node_problem *problems; /* this frame's, by node */
+    uint64_t reveal;   /* node to show once the canvas is laid out */
+    bool reveal_frame; /* frame it, rather than pan it into view */
+    struct
+    {
+        bool open;
+        bool focus;  /* focus the field on the next frame */
+        bool typing; /* the field had focus last frame */
+        char query[128];
+        char seen[128]; /* the query the results follow */
+        int current;    /* the result shown in the graph, or -1 */
+        studio_find_hit *hits;
+    } find;
+    studio_visit *visits; /* graphs visited, for Back and Forward */
+    int visit;            /* the current one */
+    uint64_t menu_pin;    /* the menu's pin on menu_node, or 0 */
+    bool box_subtract;    /* a Ctrl marquee removes what it touches */
+    bool frame_pending;   /* F frames on release unless it placed a node */
 } studio_graph;
+
+typedef enum
+{
+    STUDIO_MEMBER_NONE,
+    STUDIO_MEMBER_GRAPH,
+    STUDIO_MEMBER_VARIABLE,
+    STUDIO_MEMBER_LOCAL, /* a named value of the open graph */
+} studio_member_kind;
+
+/* The Members editor (studio_members.c): the open behavior's graphs,
+   variables and named values, after Unreal's My Blueprint. */
+typedef struct
+{
+    studio_member_kind kind; /* the selected member */
+    uint64_t id;             /* its graph, variable or local ID */
+    uint64_t shown_node;     /* graph node selection last seen */
+    studio_member_kind rename_kind;
+    uint64_t rename_id;
+    bool rename_focus;
+    char filter[128];
+    unsigned collapsed; /* bit per section */
+    bool value_editing; /* a default value gesture has an open undo step */
+    struct
+    {
+        int toast;        /* offers Undo while the delete is the latest edit */
+        const char *step; /* the delete's undo step in the graph editor */
+    } undo;
+    struct
+    {
+        bool open;       /* the type search is choosing for this target */
+        uint64_t id;     /* the variable, or the function whose pin it is */
+        uint64_t pin_id; /* the Entry or Return pin, or 0 for the variable */
+    } pick;
+} studio_members;
 
 /* The open project's editor/Components.yaml, re-read when it changes. */
 typedef struct
@@ -231,6 +361,7 @@ struct studio
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
     int focus_area;
+    int maximized; /* the area filling the workspace (Blender's Ctrl Space), or -1 */
     studio_prefs prefs;
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
@@ -247,15 +378,30 @@ struct studio
     uint64_t shown_node; /* graph node the Properties tabs last followed */
     int shown_actor;     /* scene selection the Properties tabs last followed */
     studio_record_entry *records;
+    studio_runtime_error *runtime_errors;
+    bool session;          /* the scene or a preview ran last frame */
+    uint64_t compiled_key; /* the revision the open behavior's problems describe */
+    struct
+    {
+        bool active;        /* a run is paused at a breakpoint or step */
+        studio_node_ref at; /* its current node */
+        const void *run, *node; /* the run and node last shown; never dereferenced */
+        unsigned long steps;
+        bool holding; /* the pause chose the debug target */
+        bool pinned;  /* the debug target's pin before that */
+    } pause;
     studio_perf_sample *perf;
     double perf_readout_time;
     char perf_readout[96];
     int assets_kind;           /* asset_index_kind, or -1 for all */
     unsigned assets_collapsed; /* bit per asset_index_kind */
     char assets_filter[128];
+    int assets_menu;             /* the asset under the row menu */
     char dropped_prototype[256]; /* placed by the viewport this frame */
     int output_view;
     char output_filter[128];
+    char references_title[160]; /* what Output's Find view lists references to */
+    studio_reference *references;
     char outliner_filter[128];
     bool outliner_collapsed;
     bool outliner_reveal; /* scroll the selection into view on the next frame */
@@ -263,6 +409,8 @@ struct studio
     bool text_input;
     kit_surface_input surface;
     studio_graph graph;
+    studio_members members;
+    uint64_t shown_member; /* member the Properties tabs last followed */
     studio_presentation presentation;
     struct
     {
@@ -274,7 +422,8 @@ struct studio
     SDL_Event *events; /* queued by the SDL event watch, replayed in order */
     studio_key *keys;  /* keys pressed this frame */
     SDL_Keymod mods;   /* modifier state as of the last replayed key event */
-    int undo_toast;    /* toast offering Undo for undo_toast_group */
+    int nav_button; /* mouse button 4 (-1, Back) or 5 (1, Forward) this frame */
+    int undo_toast; /* toast offering Undo for undo_toast_group */
     uint64_t undo_toast_group;
     char status[256];
     char seen_message[256]; /* last authoring message reported */
@@ -327,19 +476,87 @@ void studio_graph_history(studio *s, bool redo);
 bool studio_graph_active(const studio *s);
 /* The graph node Properties shows, or 0; and its panels. */
 uint64_t studio_graph_node(const studio *s);
+/* The comment frame selected on the canvas while no node is, or 0. */
+uint64_t studio_graph_comment(const studio *s);
 void studio_node_properties(studio *s);
+void studio_rewire_toast(studio *s);
+/* Members: the open behavior's graphs, variables and named values. */
+void studio_members_header(studio *s, int area);
+void studio_members_body(studio *s, int area);
+/* Keys over the Members area; true when one was taken. */
+bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
+/* A member dropped on the graph canvas: a variable's Get, or Set with Alt, or
+   a call. Call after the canvas surface. */
+void studio_members_drop(studio *s);
+/* Runs the Undo a member delete's toast offers; call every frame. */
+void studio_members_toast(studio *s);
+/* The selected member as a key that changes with the selection, or 0. */
+uint64_t studio_member_shown(studio *s);
+void studio_member_properties(studio *s);
+/* The type search: items for the command surface while it picks a type. */
+bool studio_member_palette(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
 const char *studio_asset_kind_name(int kind);
 uint32_t studio_asset_kind_icon(int kind);
+const char *studio_asset_kind_label(int kind); /* plural: "Behaviors" */
 void studio_performance_sample(studio *s, double delta_seconds);
 void studio_performance_header(studio *s, int area);
 void studio_performance_body(studio *s, int area);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
+/* Shows Output's Find view, opening the drawer when no area shows Output. */
+void studio_output_find(studio *s);
+
+/* Find References (studio_find.c): lists what references an asset, or a
+   function, variable, event or prototype, in Output's Find view; rows open
+   their asset and reveal the node. Functions and variables belong to the open
+   graph document. */
+void studio_find_document_references(studio *s);
+void studio_find_asset_references(studio *s, int asset);
+void studio_find_graph_references(studio *s, const graph *gr);
+void studio_find_variable_references(studio *s, uint64_t variable_id);
+/* Calls, variable nodes, events and spawns reference something. */
+bool studio_node_referable(const node *n);
+void studio_find_node_references(studio *s, const node *n);
+void studio_find_view(studio *s, float row);
+void studio_find_clear(studio *s);
+/* Opens a graph of the open document and frames one of its nodes. */
+void studio_reveal_node(studio *s, uint64_t graph_id, uint64_t node_id);
 void studio_record(studio *s, kit_toast_type kind, const char *text);
 
+/* Debugging (studio_debug.c). */
+typedef enum
+{
+    STUDIO_RESUME,
+    STUDIO_STEP_OVER,
+    STUDIO_STEP_INTO,
+    STUDIO_STEP_OUT,
+} studio_debug_command;
+/* Before the frame is emitted: runtime errors, problems and the paused run. */
+void studio_debug_frame(studio *s);
+/* Opens the node's behavior and graph in a Behavior area, then selects and
+   frames the node. */
+void studio_reveal(studio *s, const studio_node_ref *at);
+/* "Graph › Node" for a node of the open behavior; the graph alone without one. */
+void studio_node_place(const studio *s, const studio_node_ref *at, char *out, size_t size);
+/* Where the open behavior's compile problem was authored: in a library it
+   calls, or in the behavior itself. */
+studio_node_ref studio_problem_at(const studio *s, const compile_diagnostic *d);
+/* Continues the paused run; false while none is paused. */
+bool studio_debug(studio *s, studio_debug_command command);
+/* F5, F10, F11 and Shift F11 act while a run is paused, even over a focused
+   game, and repeat to walk a run. True when the key continued the run. */
+bool studio_debug_key(studio *s, SDL_Keycode key, bool shift);
+/* Step Over, Into and Out in the transport while a run is paused. */
+void studio_debug_steps(studio *s);
+/* Resume and the steps as menu items, enabled while a run is paused. */
+void studio_debug_menu(studio *s);
+/* The paused run's call stack over the Behavior area. */
+void studio_debug_call_stack(studio *s);
+
 /* Commands shared by menus, shortcuts and the command palette. */
+void studio_toggle_drawer(studio *s, studio_editor editor);
 void studio_frame_selection(studio *s);
 void studio_duplicate(studio *s);
 void studio_delete(studio *s);

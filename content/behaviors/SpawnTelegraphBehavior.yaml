@@ -1,6 +1,6 @@
 version: 3
 name: SpawnTelegraphBehavior
-id_counter: 110
+id_counter: 303
 description: Display an authored arrival marker for the requested delay, then create exactly one configured prototype at the marked position and retire the marker.
 owner_type: ecs.entity
 variables:
@@ -15,12 +15,6 @@ graphs:
     reference_name: Begin
     outputs:
       Then: {id: 3}
-  - id: 6
-    type: Get_GameSpawnRequest
-    outputs:
-      Value: {id: 5, flags: 0}
-      Value.delay: {id: 7}
-      Value.prototype: {}
   - id: 13
     type: Set Variable
     reference_id: 1
@@ -32,7 +26,12 @@ graphs:
   - id: 17
     type: Max
     inputs:
-      A: {id: 14, type: double, flags: 0, group: 0}
+      A:
+        id: 14
+        type: double
+        flags: 0
+        group: 0
+        binding: {kind: component_field, component: GAME.GameSpawnRequest, field: delay}
       B: {type: double, flags: 0, group: 0, default: 0.05}
     outputs:
       Result: {type: double, flags: 0, group: 0}
@@ -41,24 +40,12 @@ graphs:
     reference_name: Tick
     outputs:
       Then: {id: 36}
-  - id: 39
-    type: Get Variable
-    reference_id: 2
-    outputs:
-      Value: {id: 38, type: bool, flags: 0}
   - id: 44
     type: Branch
     inputs:
       Exec: {id: 40}
-  - id: 46
-    type: Delta Time
-    outputs:
-      Seconds: {id: 45}
-  - id: 48
-    type: Get Variable
-    reference_id: 1
-    outputs:
-      Value: {id: 47, type: float, flags: 0}
+      Condition:
+        binding: {kind: variable, variable_id: 2, source_asset: SpawnTelegraphBehavior}
   - id: 53
     type: Set Variable
     reference_id: 1
@@ -67,21 +54,6 @@ graphs:
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 57
-    type: Subtract
-    inputs:
-      A: {id: 54, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 61
-    type: Less Or Equal
-    inputs:
-      A: {id: 58}
-  - id: 66
-    type: Branch
-    inputs:
-      Exec: {id: 62}
   - id: 71
     type: Set Variable
     reference_id: 2
@@ -90,18 +62,21 @@ graphs:
       Value: {type: bool, default: true}
     outputs:
       Value: {type: bool}
-  - id: 73
-    type: Get_GameTransform
-    outputs:
-      Value: {id: 72, flags: 0}
   - id: 78
     type: Call Function
     reference_id: 18
     reference_name: Arrive At Marker
     inputs:
       Exec: {id: 74}
-      Prototype: {type: name, kind: data}
-      Position: {type: struct, type_name: GameTransform, kind: data}
+      Prototype:
+        type: name
+        kind: data
+        binding: {kind: component_field, component: GAME.GameSpawnRequest, field: prototype}
+      Position:
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: GAME.GameTransform}
   - id: 82
     type: Destroy Entity
     inputs:
@@ -110,69 +85,70 @@ graphs:
     type: Self
     outputs:
     - {id: 83, name: Entity, type_name: ecs.entity}
-  - id: 88
-    type: Multiply
-    inputs:
-      A: {id: 85, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0, default: 10.0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 91
-    type: Sine
-    inputs:
-      Value: {id: 89}
-  - id: 95
-    type: Multiply
-    inputs:
-      A: {id: 92, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 99
-    type: Multiply
-    inputs:
-      A: {id: 96, type: double, flags: 0, group: 0, default: 0.2}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 103
-    type: Add
-    inputs:
-      A: {id: 100, type: double, flags: 0, group: 0, default: 0.8}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
   - id: 109
     type: Set_GameVisualTransform_scale
     inputs:
       Exec: {id: 104}
+  - id: 122
+    type: Behavior Expression
+    reference_id: 110
+    reference_name: Remaining - dt
+    inputs:
+      Remaining:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: SpawnTelegraphBehavior}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: double}
+  - id: 176
+    type: Behavior Expression
+    reference_id: 162
+    reference_name: Remaining <= 0
+    inputs:
+      Exec: {id: 179, kind: exec}
+      Remaining:
+        id: 177
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: SpawnTelegraphBehavior}
+    outputs:
+      "True": {id: 180, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 178, type: bool}
+  - id: 213
+    type: Behavior Expression
+    reference_id: 196
+    reference_name: sin(Remaining * 10)
+    inputs:
+      Remaining:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: SpawnTelegraphBehavior}
+    outputs:
+      Result: {type: double}
+  - id: 258
+    type: Behavior Expression
+    reference_id: 233
+    reference_name: 0.8 + 0.2 * (wave * wave)
+    inputs:
+      wave: {type: double}
+    outputs:
+      Result: {type: double}
   edges:
   - {from: 4.Then, to: 13.Exec}
-  - {from: 6.Value.delay, to: 17.A}
-  - {from: 6.Value.prototype, to: 78.Prototype, conversion: To Name}
   - {from: 17.Result, to: 13.Value}
   - {from: 37.Then, to: 44.Exec}
-  - {from: 39.Value, to: 44.Condition}
   - {from: 44.False, to: 53.Exec}
-  - {from: 46.Seconds, to: 57.B}
-  - {from: 48.Value, to: 57.A}
-  - {from: 53.Then, to: 66.Exec}
-  - {from: 53.Value, to: 61.A}
-  - {from: 53.Value, to: 88.A}
-  - {from: 57.Result, to: 53.Value}
-  - {from: 61.Result, to: 66.Condition}
-  - {from: 66.True, to: 71.Exec}
-  - {from: 66.False, to: 109.Exec}
+  - {from: 53.Then, to: 176.Exec}
   - {from: 71.Then, to: 78.Exec}
-  - {from: 73.Value, to: 78.Position}
   - {from: 78.Then, to: 82.Exec}
   - {from: 84.Entity, to: 82.Entity}
-  - {from: 88.Result, to: 91.Value}
-  - {from: 91.Result, to: 95.A}
-  - {from: 91.Result, to: 95.B}
-  - {from: 95.Result, to: 99.B}
-  - {from: 99.Result, to: 103.B}
-  - {from: 103.Result, to: 109.Value}
+  - {from: 122.Result, to: 53.Value}
+  - {from: 176.True, to: 71.Exec}
+  - {from: 176.False, to: 109.Exec}
+  - {from: 213.Result, to: 258.wave}
+  - {from: 258.Result, to: 109.Value}
 - id: 18
   kind: function
   name: Arrive At Marker
@@ -206,3 +182,10 @@ graphs:
   - {from: 29.Then, to: 35.Exec}
   - {from: 29.Entity, to: 35.Entity}
   - {from: 35.Then, to: 24.Exec}
+- {id: 110, kind: function, math_expression: Remaining - dt, entry_id: 151}
+- {id: 162, kind: function, math_expression: Remaining <= 0, entry_id: 183}
+- {id: 196, kind: function, math_expression: sin(Remaining * 10), entry_id: 262}
+- id: 233
+  kind: function
+  math_expression: 0.8 + 0.2 * (wave * wave)
+  entry_id: 279

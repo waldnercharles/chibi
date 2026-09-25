@@ -19,14 +19,14 @@ components:
     filter: 2246639615
     scene: 373974464
   GAME.GameOrientation: {}
-  GAME.GameReflection: {offset: -28.0, roughness: 0.11999999731779099, strength: 0.800000011920929}
+  GAME.GameReflection: {offset: -28.0, roughness: 0.12, strength: 0.8}
   GAME.GameSubstance: {blast_multiplier: 4.0, hardness: 2.0, retain_chips: true}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialBreakProfile:
     blast_speed: 70.0
     chip_speed: 35.0
-    dust_lifetime_max: 0.30000001192092896
-    dust_lifetime_min: 0.15000000596046448
+    dust_lifetime_max: 0.3
+    dust_lifetime_min: 0.15
     dust_limit: 8
     dust_size_max: 0.5
     dust_size_min: 0.25

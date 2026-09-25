@@ -110,6 +110,7 @@ typedef struct widget
     bool pressing;
     bool suppress_click;
     bool focused;
+    bool area; /* a text field over several lines */
     double value;
     double start;
     double pending_value;
@@ -485,7 +486,7 @@ void number_blur(kit *k, node *n, rml_element *target);
 void control_press(kit *k, node *n, const rml_event *e);
 void control_click(kit *k, node *n, rml_element *target);
 void control_drag(kit *k, node *n, const rml_event *e);
-void control_key(node *n, const rml_event *e);
+void control_key(kit *k, node *n, const rml_event *e);
 void control_change(node *n, rml_element *target);
 void control_focus(node *n, rml_element *target);
 void control_blur(node *n, rml_element *target);

@@ -95,9 +95,11 @@ struct editor
     int edit_revision_initialized;
     int edit_pending;
     compile_report compile;
+    behavior_asset *compiled; /* the linked snapshot compile describes; NULL when unlinked */
     double monotonic_time;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
+    char optimize_summary[192]; /* what the last Optimize changed */
     bool arrange_pending;
 
     node **selected;
@@ -187,6 +189,9 @@ node *ed_convert_behavior_expression_selection(
 void ed_clear_selection(editor *e);
 void ed_reset_node_interaction(editor *e);
 int ed_switch_graph(editor *e, graph *graph);
+/* Restores the calls entered to reach the open graph, oldest first. A caller
+ * whose call no longer leads on drops out with those before it. */
+void ed_restore_callers(editor *e, const ed_graph_caller *callers, int count);
 int ed_link_selected(const editor *e, const ed_link_ref *link);
 void ed_add_selected_link(editor *e, const ed_link_ref *link);
 int ed_node_selected(const editor *e, const node *n);

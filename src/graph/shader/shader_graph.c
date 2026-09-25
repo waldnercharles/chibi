@@ -67,7 +67,10 @@ static const char *const names[] = { "Constant",
                                      "Image Texture Alpha",
                                      "Surface Influence",
                                      "Beat Phase",
-                                     "Beat Pulse" };
+                                     "Beat Pulse",
+                                     "Floor",
+                                     "Sqrt",
+                                     "Sign" };
 _Static_assert(sizeof names / sizeof *names == SHADER_OP_COUNT, "shader operation names");
 const char *shader_op_name(shader_op op)
 {
@@ -92,7 +95,8 @@ int shader_op_inputs(shader_op op)
     if ((op >= SHADER_ABS && op <= SHADER_LENGTH) ||
         (op >= SHADER_X && op <= SHADER_W) || op == SHADER_NORMALIZE ||
         op == SHADER_SATURATE || op == SHADER_IMAGE_TEXTURE ||
-        op == SHADER_IMAGE_TEXTURE_ALPHA || op == SHADER_SURFACE_INFLUENCE) {
+        op == SHADER_IMAGE_TEXTURE_ALPHA || op == SHADER_SURFACE_INFLUENCE ||
+        op >= SHADER_FLOOR) {
         return 1;
     }
     if (op == SHADER_MIX || op == SHADER_SELECT || op == SHADER_SMOOTH_UNION ||
@@ -418,6 +422,12 @@ bool shader_graph_eval_outputs(
                 case SHADER_SIN: v[i][j] = sinf(a[j]); break;
                 case SHADER_COS: v[i][j] = cosf(a[j]); break;
                 case SHADER_FRACT: v[i][j] = a[j] - floorf(a[j]); break;
+                case SHADER_FLOOR: v[i][j] = floorf(a[j]); break;
+                /* Total math: a negative square root reads as 0, as on the GPU. */
+                case SHADER_SQRT: v[i][j] = sqrtf(fmaxf(a[j], 0)); break;
+                case SHADER_SIGN:
+                    v[i][j] = (float)((a[j] > 0) - (a[j] < 0));
+                    break;
                 case SHADER_MIX: v[i][j] = a[j] + (b[j] - a[j]) * c[j]; break;
                 case SHADER_SELECT: v[i][j] = c[0] != 0 ? b[j] : a[j]; break;
                 case SHADER_CLAMP:
@@ -705,6 +715,9 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
             case SHADER_MAX:
             case SHADER_INTERSECTION: append(&s, "max(%s,%s)", a, b); break;
             case SHADER_DIFFERENCE: append(&s, "max(%s,-%s)", a, b); break;
+            case SHADER_FLOOR: append(&s, "floor(%s)", a); break;
+            case SHADER_SQRT: append(&s, "sqrt(max(%s,0.0))", a); break;
+            case SHADER_SIGN: append(&s, "sign(%s)", a); break;
             case SHADER_ABS:
             case SHADER_SIN:
             case SHADER_COS:

@@ -4,6 +4,7 @@
 /* Shared by the graph canvas modules (studio_graph*.c). */
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/align.h"
 
 enum
 {
@@ -12,7 +13,9 @@ enum
 
 static const float ROW = 22; /* graph.rcss row pitch */
 static const float SOCKET_PAD = 10, PART_GAP = 6, EDGE = 1;
-static const float FAR_ZOOM = 0.5f; /* below: titles only */
+/* Below this many device pixels per graph unit only titles show: 12 dp pin
+   labels would draw under 7 px. Zoom alone would hide legible text on HiDPI. */
+static const float FAR_PIXELS = 0.6f;
 
 typedef enum
 {
@@ -31,8 +34,20 @@ struct studio_node_layout
     float column;          /* an operator's input column */
     int head_in, head_out; /* pins drawn in the title, or -1 */
     int code_lines;        /* an expression's source lines */
+    int add_pin;           /* a last row adds a pin to this side, or -1 */
 };
 typedef struct studio_node_layout node_layout;
+
+/* A graph Back and Forward return to (studio_graph_nav.c). */
+struct studio_visit
+{
+    int kind; /* app_editor_document_kind */
+    char document[128];
+    char path[512]; /* a System's file */
+    uint64_t graph_id;
+    int caller_count; /* the calls entered to reach it, for the breadcrumb */
+    ed_graph_caller callers[ED_CALLER_LIMIT];
+};
 
 typedef enum
 {
@@ -90,8 +105,12 @@ void sg_socket_at(const studio *s, node *n, int kind, int pin, float *x, float *
 /* Camera and arrangement (studio_graph_view.c). */
 void sg_to_world(const studio_graph *g, float wx, float wy, float *x, float *y);
 void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy);
+/* Zoomed out past FAR_PIXELS: nodes show titles only. */
+bool sg_far(const studio *s);
 void sg_camera_step(studio *s);
 void sg_frame_nodes(studio *s, bool selection, bool animate);
+/* Frames the selection holding n, or pans n into view unless it is in view. */
+void sg_show_node(studio *s, node *n, bool frame);
 void sg_follow_graph(studio *s);
 void sg_update_routes(studio *s);
 void sg_arrange(studio *s, bool automatic_only);
@@ -109,8 +128,38 @@ void sg_copy_selection(studio *s);
 void sg_paste(studio *s);
 bool sg_is_unused(const studio_graph *g, uint64_t id);
 void sg_find_unused(studio *s);
-void sg_collapse_to_function(studio *s);
+/* Collapse to Function (Ctrl+G) or to Macro, and Expand Node, each one undo
+   step; a refusal shows its reason. */
+void sg_collapse(studio *s, graph_kind kind);
+void sg_expand_node(studio *s, node *call);
+/* Whether the selection holds a library call to refresh. */
+bool sg_refreshable(const studio *s);
+void sg_refresh_nodes(studio *s);
 void sg_convert_to_expression(studio *s);
+void sg_optimize(studio *s);
+void sg_collapse_math(studio *s);
+/* Selection layout, each one undo step. Straightening moves each selected
+   node level with the wire that drives it, left to right (Unreal's Q). */
+void sg_align(studio *s, align_edge edge);
+void sg_distribute(studio *s, bool vertical);
+void sg_straighten(studio *s);
+/* Moves the wire's target level with its source. */
+void sg_straighten_wire(studio *s, int edge);
+/* Adds the nodes wired to the selection's inputs or outputs: one step, or
+   with `all` every node reached. */
+void sg_select_linked(studio *s, bool upstream, bool all);
+/* Places a catalog node by name, as the add-node search would. */
+bool sg_spawn_node(studio *s, const char *name, float x, float y);
+
+/* Pins (studio_graph_pins.c). */
+int sg_pin_links(const graph *gr, const node *n, int kind, int pin);
+/* Alt+click: every wire at the pin, as one undo step. */
+void sg_break_links(studio *s, node *n, int kind, int pin);
+void sg_add_run_pin(studio *s, node *n);
+void sg_pin_menu(studio *s, node *n, int kind, int pin);
+bool sg_pin_renameable(const studio *s, const node *n, int kind, int p);
+void sg_rename_pin(studio *s, const node *n, int p);
+void sg_emit_pin_edit(studio *s, node *n, int p);
 
 /* Input (studio_graph_input.c). */
 void sg_replay(studio *s);
@@ -118,7 +167,43 @@ void sg_pointer(studio *s);
 void sg_shortcuts(studio *s);
 void sg_cancel_gesture(studio *s);
 
+/* Comment frames and node comments (studio_graph_comment.c). */
+enum
+{
+    SG_EDGE_LEFT = 1,
+    SG_EDGE_TOP = 2,
+    SG_EDGE_RIGHT = 4,
+    SG_EDGE_BOTTOM = 8,
+};
+void sg_emit_comment(studio *s, graph_comment_box *box);
+void sg_comment_menu(studio *s, graph_comment_box *box);
+void sg_edit_title(studio *s, uint64_t comment);
+void sg_begin_resize(studio *s, graph_comment_box *box, unsigned edges);
+void sg_resize(studio *s);
+void sg_end_resize(studio *s, bool cancel);
+const char *sg_resize_cursor(unsigned edges);
+void sg_emit_bubble(studio *s, node *n);
+void sg_edit_bubble(studio *s, uint64_t node_id);
+bool sg_node_comment_items(studio *s, node *n);
+void sg_comment_properties(studio *s, node *n);
+/* The Node tab for a selected frame: its title and color. */
+void sg_frame_properties(studio *s, graph_comment_box *box);
+/* The Node tab's heading: an icon, a name and what it is. */
+void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage);
+
+/* Find in graph (studio_graph_find.c). */
+void sg_find_open(studio *s);
+void sg_find_panel(studio *s);
+
+/* Navigation (studio_graph_nav.c). */
+/* Back, Forward and the crumbs up to the open graph's own, which the caller
+   emits before closing the crumbs with kit_pop. */
+void sg_nav_header(studio *s);
+void sg_nav_keys(studio *s);
+
 /* Rendering (studio_graph_draw.c). */
+/* A pin's socket color as 0xRRGGBBAA. */
+uint32_t sg_pin_color(const studio *s, const pin_spec *spec);
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p);
 void sg_emit_canvas(studio *s);
 

@@ -7,14 +7,14 @@ components:
     emission_multiplier: 1.0
     scene: 1269808639
   GAME.GameSubstance: {blast_multiplier: 1.0, hardness: 1.0, retain_chips: true}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.MaterialBreakProfile:
     chip_speed: 8.0
-    dust_lifetime_max: 0.4000000059604645
-    dust_lifetime_min: 0.20000000298023224
+    dust_lifetime_max: 0.4
+    dust_lifetime_min: 0.2
     dust_limit: 4
-    dust_size_max: 0.6000000238418579
-    dust_size_min: 0.30000001192092896
+    dust_size_max: 0.6
+    dust_size_min: 0.3
     dust_speed_max: 6.0
     dust_speed_min: 3.0
     fragment_speed: 10.0

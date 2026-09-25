@@ -191,7 +191,22 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
         assert(!graph_connect_exec(g, range, 0, set, 0, 0));
         assert(!graph_connect_exec(g, range, 2, g->nodes[1], 0, 0));
     } else if (!components) {
+        /* A function with a result must reach Return to produce it. */
         assert(!graph_remove_edge(g, g->nodes[3], 0, g->nodes[1], 0));
+        pin_spec result = { .name = "Total",
+                            .type = PIN_F64,
+                            .type_name = "double",
+                            .kind = PIN_DATA };
+        node *ret = g->nodes[1];
+        assert(graph_add_pin(g, ret, 0, &result) >= 0);
+        result.declaration_id = ret->input_pins[ret->input_count - 1].id;
+        node *call = NULL;
+        for (int i = 0; i < acount(asset->graph->nodes); i++) {
+            call = asset->graph->nodes[i]->desc == &NODE_CallFunction
+                     ? asset->graph->nodes[i]
+                     : call;
+        }
+        assert(call && graph_add_pin(asset->graph, call, 1, &result) >= 0);
     }
     node *entry = tick_entry(asset);
     assert(behavior_function_batchable(

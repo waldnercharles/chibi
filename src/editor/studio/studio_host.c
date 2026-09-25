@@ -127,6 +127,7 @@ static void forward_input(studio *s)
     }
     in->wheel = 0;
     asetlen(s->keys, 0);
+    s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
         editor_rml_input input = { .x = in->mouse_x,
@@ -141,6 +142,11 @@ static void forward_input(studio *s)
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP: {
                 int b = kit_button_index(e->button.button);
+                bool down = e->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+                if (down && (e->button.button == SDL_BUTTON_X1 ||
+                             e->button.button == SDL_BUTTON_X2)) {
+                    s->nav_button = e->button.button == SDL_BUTTON_X1 ? -1 : 1;
+                }
                 if (b < 0) {
                     continue;
                 }
@@ -150,7 +156,6 @@ static void forward_input(studio *s)
                 move.type = EDITOR_RML_POINTER_MOVE;
                 editor_rml_backend_process_input(s->backend, &move);
                 apush(s->graph.events, move);
-                bool down = e->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
                 in->down[b] = down;
                 in->pressed[b] |= down;
                 in->released[b] |= !down;
@@ -219,6 +224,8 @@ static void sync_cursor(studio *s)
         { "ew-resize", SDL_SYSTEM_CURSOR_EW_RESIZE },
         { "col-resize", SDL_SYSTEM_CURSOR_EW_RESIZE },
         { "ns-resize", SDL_SYSTEM_CURSOR_NS_RESIZE },
+        { "nwse-resize", SDL_SYSTEM_CURSOR_NWSE_RESIZE },
+        { "nesw-resize", SDL_SYSTEM_CURSOR_NESW_RESIZE },
         { "row-resize", SDL_SYSTEM_CURSOR_NS_RESIZE },
         { "crosshair", SDL_SYSTEM_CURSOR_CROSSHAIR },
         { "pointer", SDL_SYSTEM_CURSOR_POINTER },
@@ -365,7 +372,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
     s->cursor_shown = -1;
-    s->hover_area = s->focus_area = -1;
+    s->hover_area = s->focus_area = s->maximized = -1;
     s->graph.area = -1;
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
@@ -393,6 +400,7 @@ void studio_free(studio *s)
     }
     afree(s->events);
     afree(s->records);
+    afree(s->runtime_errors);
     afree(s->perf);
     afree(s->keys);
     engine_viewport_set_host_input(s->viewport, NULL);
@@ -417,6 +425,7 @@ void studio_frame(studio *s, double delta_seconds)
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
+    studio_debug_frame(s);
     kit_begin(s->kit, &s->in);
     studio_emit(s);
     kit_end(s->kit);

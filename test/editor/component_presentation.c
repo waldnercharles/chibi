@@ -41,7 +41,7 @@ static void valid_document()
         "      friction: {range: [0, 1]}\n"
         "      radius: {unit: u}\n"
         "  GameHealth: {tab: Gameplay, icon: health}\n"
-        "  game.GameInput: {icon: gamepad}\n"
+        "  GAME.GameInput: {icon: gamepad}\n"
         "  GAME.GameWeapon:\n"
         "    fields:\n"
         "      damage: {range: [1, 9], unit: hp}\n",

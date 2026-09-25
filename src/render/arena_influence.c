@@ -190,6 +190,14 @@ void render_influences_collect(
     influences->count = count;
 }
 
+void render_influences_preview(render_influences *influences, const float color[3], float radius)
+{
+    render_influences_reset(influences);
+    influences->positions[0] = (CF_V4){ 0, 0, radius, 0 };
+    influences->colors[0] = (CF_V4){ color[0], color[1], color[2], 0 };
+    influences->count = 1;
+}
+
 void render_influences_bind(render_influences *influences)
 {
     CF_V4 count = { (float)influences->count };

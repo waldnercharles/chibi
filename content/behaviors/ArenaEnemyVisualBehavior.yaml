@@ -9,7 +9,7 @@ variables:
   type: float
   type_name: float
   category: Motion
-  default: 1.600000023841858
+  default: 1.6
 graphs:
 - kind: event
   name: ""
@@ -23,7 +23,7 @@ graphs:
     type: Random Range Vector
     inputs:
       Max:
-        default: {x: 6.2831854820251465, "y": 6.2831854820251465, z: 6.2831854820251465}
+        default: {x: 6.2831855, "y": 6.2831855, z: 6.2831855}
   - {id: 8, type: Set_GameVisualMotion_rotation}
   - id: 14
     type: Random Range Vector
@@ -57,7 +57,7 @@ graphs:
     reference_id: 96
     reference_name: Bump
     inputs:
-      Strength: {type: float, kind: data, default: 1.600000023841858}
+      Strength: {type: float, kind: data, default: 1.6}
   edges:
   - {from: 2.Then, to: 8.Exec}
   - {from: 4.Result, to: 8.Value}
@@ -82,7 +82,7 @@ graphs:
     inputs: {Min: -1.0}
   - id: 105
     type: Make_CF_V3
-    inputs: {x: 0.36000001430511475, z: 0.5}
+    inputs: {x: 0.36, z: 0.5}
     outputs:
     - {id: 109, name: Result}
   - {id: 110, type: Multiply}
@@ -92,7 +92,7 @@ graphs:
       A: 1.0
       B:
         binding: {kind: variable, variable_id: 1, source_asset: ArenaEnemyVisualBehavior}
-        default: 1.600000023841858
+        default: 1.6
   - {id: 120, type: Trigger Visual Reaction}
   - {id: 128, type: Return}
   edges:

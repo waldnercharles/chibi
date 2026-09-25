@@ -1,5 +1,6 @@
 #include "runtime/behaviors/entities.h"
 
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/particle_nodes.h"
 #include "graph/nodes/vector_nodes.h"
@@ -318,8 +319,11 @@ const char *game_entities_global_name_at(const game_entities *entities, int inde
 
 static bool global_value_type_matches(const pin_value *left, const pin_value *right)
 {
+    /* A number's type names it; only named types compare their names. */
+    bool named = left->type == PIN_STRUCT || left->type == PIN_ENUM ||
+                 left->type == PIN_HANDLE;
     return left->type == right->type && left->container == right->container &&
-           ((!left->type_name && !right->type_name) ||
+           (!named || (!left->type_name && !right->type_name) ||
             (left->type_name && right->type_name &&
              !strcmp(left->type_name, right->type_name)));
 }
@@ -443,9 +447,22 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
         return -1;
     }
     global_value *stored = find_global_value(entities, name);
-    if (stored && !global_value_type_matches(&stored->value, value)) {
+    /* Float and double are one Real: a global keeps the width it was first
+       written with. */
+    pin_value coerced = *value;
+    if (stored) {
+        pin_coerce(
+            &coerced,
+            &(pin_spec){ .type = stored->value.type,
+                         .type_name = stored->value.type_name,
+                         .container = stored->value.container,
+                         .kind = PIN_DATA }
+        );
+    }
+    if (stored && !global_value_type_matches(&stored->value, &coerced)) {
         return -1;
     }
+    value = &coerced;
     if (!stored) {
         apush(entities->global_values, ((global_value){ .name = xstrdup(name) }));
         stored = &alast(entities->global_values);
@@ -1467,12 +1484,15 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &SET_GLOBAL_VARIABLE_NODE,
                                            &HAS_ENTITIES_NODE,
                                            &NODE_Normalize_Vector_2,
+                                           &NODE_Vector_Length,
+                                           &NODE_Vector_Dot,
+                                           &NODE_Vector_Distance,
                                            &FIND_ENTITIES_NODE,
                                            &NODE_Count_Matching_Entities,
                                            &GAME_NODE_GetContactEntities,
                                            &GAME_NODE_Raycast,
                                            &NODE_Direction_To,
-                                           &NODE_Atan2,
+                                           &NODE_Direction_From_Angle,
                                            &NODE_Random_Range_Vector,
                                            &NODE_Set_Visual_Reaction,
                                            &NODE_Emit_Particles,

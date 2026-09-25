@@ -1,5 +1,6 @@
 #include "graph/nodes/math_nodes.h"
 
+#include "graph/compiler/behavior_scalar.h"
 #include "graph/runtime/random.h"
 
 #include <assert.h>
@@ -9,8 +10,14 @@
 static const node_access pure = { .flags = NODE_EFFECT_PURE };
 static const node_access random_access = { .flags = NODE_EFFECT_HOST_SINK };
 static pin_spec unary[] = { { .name = "Value", .type = PIN_F64, .type_name = "double" } };
-static pin_spec binary[] = { { .name = "A", .type = PIN_F64, .type_name = "double" },
-                             { .name = "B", .type = PIN_F64, .type_name = "double" } };
+static pin_spec power_inputs[] = {
+    { .name = "Base", .type = PIN_F64, .type_name = "double" },
+    { .name = "Exponent", .type = PIN_F64, .type_name = "double" }
+};
+static pin_spec atan2_inputs[] = {
+    { .name = "Y", .type = PIN_F64, .type_name = "double" },
+    { .name = "X", .type = PIN_F64, .type_name = "double" }
+};
 static pin_spec result[] = { { .name = "Result", .type = PIN_F64, .type_name = "double" } };
 
 #define UNARY(NAME, LABEL, FN)                                                 \
@@ -42,16 +49,18 @@ UNARY(Logarithm10, "Logarithm 10", log10)
 UNARY(Floor, "Floor", floor)
 UNARY(Ceiling, "Ceiling", ceil)
 UNARY(Round, "Round", round)
+UNARY(Fract, "Fract", behavior_fract)
+UNARY(Sign, "Sign", behavior_sign)
 #undef UNARY
 
-#define BINARY(NAME, LABEL, FN)                                                       \
+#define BINARY(NAME, LABEL, FN, INPUTS, KEYWORDS)                                     \
     static pin_value NAME##_value(const pin_value *inputs, int count, arena *)        \
     {                                                                                 \
         assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64); \
         return (pin_value){ .type = PIN_F64, .d = FN(inputs[0].d, inputs[1].d) };     \
     }                                                                                 \
     node_desc NODE_##NAME = { .name = LABEL,                                          \
-                              .inputs = binary,                                       \
+                              .inputs = INPUTS,                                       \
                               .input_count = 2,                                       \
                               .outputs = result,                                      \
                               .output_count = 1,                                      \
@@ -59,10 +68,62 @@ UNARY(Round, "Round", round)
                               .fn = NAME##_value,                                     \
                               .access = &pure,                                        \
                               .category = "Math/Functions",                           \
+                              .keywords = KEYWORDS,                                   \
                               .foldable = true };
-BINARY(Power, "Power", pow)
-BINARY(ArcTangent2, "Arc Tangent 2", atan2)
+BINARY(Power, "Power", pow, power_inputs, "exponent pow")
+BINARY(Atan2, "Atan2", atan2, atan2_inputs, "arc tangent angle direction radians")
 #undef BINARY
+
+/* step(edge, x): 0 below the edge, 1 from it on (GLSL). */
+static pin_spec step_inputs[] = {
+    { .name = "Value", .type = PIN_F64, .type_name = "double" },
+    { .name = "Edge", .type = PIN_F64, .type_name = "double" }
+};
+static pin_value step_value(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64);
+    return (pin_value){ .type = PIN_F64, .d = inputs[0].d < inputs[1].d ? 0 : 1 };
+}
+node_desc NODE_Step = { .name = "Step",
+                        .inputs = step_inputs,
+                        .input_count = 2,
+                        .outputs = result,
+                        .output_count = 1,
+                        .pure_kind = NODE_PURE_CALL,
+                        .fn = step_value,
+                        .access = &pure,
+                        .category = "Math/Functions",
+                        .keywords = "step edge threshold",
+                        .foldable = true };
+
+/* mix(a, b, alpha): a at 0, b at 1 (GLSL; Unreal's Lerp). */
+static pin_spec mix_inputs[] = {
+    { .name = "A", .type = PIN_F64, .type_name = "double" },
+    { .name = "B", .type = PIN_F64, .type_name = "double" },
+    { .name = "Alpha", .type = PIN_F64, .type_name = "double" }
+};
+static pin_value mix_value(const pin_value *inputs, int count, arena *)
+{
+    assert(
+        count == 3 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64 &&
+        inputs[2].type == PIN_F64
+    );
+    /* Separate steps, as every backend computes it, never a fused multiply-add. */
+    double span = inputs[1].d - inputs[0].d;
+    double offset = span * inputs[2].d;
+    return (pin_value){ .type = PIN_F64, .d = inputs[0].d + offset };
+}
+node_desc NODE_Mix = { .name = "Mix",
+                       .inputs = mix_inputs,
+                       .input_count = 3,
+                       .outputs = result,
+                       .output_count = 1,
+                       .pure_kind = NODE_PURE_CALL,
+                       .fn = mix_value,
+                       .access = &pure,
+                       .category = "Math/Functions",
+                       .keywords = "mix lerp interpolate blend",
+                       .foldable = true };
 
 static pin_value random_sample(const pin_value *, int count, arena *)
 {

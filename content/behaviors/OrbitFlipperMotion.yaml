@@ -1,6 +1,6 @@
 version: 3
 name: OrbitFlipperMotion
-id_counter: 764
+id_counter: 872
 owner_type: ecs.entity
 variables:
 - {id: 1, name: RestAngle, type: double, type_name: double, category: Default}
@@ -57,24 +57,18 @@ graphs:
       rest:
         id: 109
         type: double
-        flags: 2
-        group: 1
         binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
       stroke:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: variable, variable_id: 15, source_asset: OrbitFlipperMotion}
       angle:
         type: double
-        flags: 2
-        group: 3
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
-      dt: {type: float, flags: 2, group: 4}
+      dt:
+        type: float
+        binding: {kind: local, local_id: 764}
     outputs:
-      Result: {id: 55, type: double, flags: 2, group: 5}
-  - {id: 219, type: Set_GameVelocity_x}
-  - {id: 225, type: Set_GameVelocity_y}
+      Result: {id: 55, type: double}
   - id: 243
     type: Behavior Expression
     reference_id: 231
@@ -83,33 +77,25 @@ graphs:
       angle:
         id: 285
         type: double
-        flags: 2
-        group: 2
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
         type: double
-        flags: 2
-        group: 3
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
-      dt: {type: float, flags: 2, group: 4}
+      dt:
+        type: float
+        binding: {kind: local, local_id: 764}
       origin:
         id: 558
         type: double
-        flags: 2
-        group: 1
         binding: {kind: variable, variable_id: 497, source_asset: OrbitFlipperMotion}
       rest:
         type: double
-        flags: 2
-        group: 5
         binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
       position:
         type: double
-        flags: 2
-        group: 6
-        binding: {kind: component_field, component: game.GameTransform, field: x}
+        binding: {kind: component_field, component: GAME.GameTransform, field: x}
     outputs:
-      Result: {id: 246, type: double, flags: 2, group: 7}
+      Result: {id: 246, type: double}
   - id: 376
     type: Behavior Expression
     reference_id: 364
@@ -118,33 +104,25 @@ graphs:
       angle:
         id: 418
         type: double
-        flags: 2
-        group: 2
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       speed:
         type: double
-        flags: 2
-        group: 3
         binding: {kind: component_field, component: GAME.GameBody, field: angular_velocity}
-      dt: {type: float, flags: 2, group: 4}
+      dt:
+        type: float
+        binding: {kind: local, local_id: 764}
       origin:
         id: 610
         type: double
-        flags: 2
-        group: 1
         binding: {kind: variable, variable_id: 503, source_asset: OrbitFlipperMotion}
       rest:
         type: double
-        flags: 2
-        group: 5
         binding: {kind: variable, variable_id: 1, source_asset: OrbitFlipperMotion}
       position:
         type: double
-        flags: 2
-        group: 6
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        binding: {kind: component_field, component: GAME.GameTransform, field: "y"}
     outputs:
-      Result: {id: 379, type: double, flags: 2, group: 7}
+      Result: {id: 379, type: double}
   - id: 498
     type: Set Variable
     reference_id: 497
@@ -152,7 +130,7 @@ graphs:
     inputs:
       Value:
         type: float
-        binding: {kind: component_field, component: game.GameTransform, field: x}
+        binding: {kind: component_field, component: GAME.GameTransform, field: x}
     outputs:
       Value: {type: float}
   - id: 504
@@ -162,9 +140,17 @@ graphs:
     inputs:
       Value:
         type: float
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        binding: {kind: component_field, component: GAME.GameTransform, field: "y"}
     outputs:
       Value: {type: float}
+  - id: 765
+    type: Set Component
+    inputs:
+      Component: GAME.GameVelocity
+      x: {id: 772}
+      "y": {id: 822}
+    outputs:
+      Then: {id: 770}
   edges:
   - {from: 2.Then, to: 498.Exec}
   - {from: 13.Then, to: 2.Exec}
@@ -176,33 +162,25 @@ graphs:
   - {from: 26.DeltaSeconds, to: 376.dt}
   - {from: 29.True, to: 16.Exec}
   - {from: 29.False, to: 21.Exec}
-  - {from: 34.Then, to: 219.Exec}
+  - {from: 34.Then, to: 765.Exec}
   - {from: 52.Result, to: 34.Value}
-  - {from: 219.Then, to: 225.Exec}
-  - {from: 243.Result, to: 219.Value}
-  - {from: 376.Result, to: 225.Value}
+  - {from: 243.Result, to: 765.x}
+  - {from: 376.Result, to: 765.y}
   - {from: 498.Then, to: 504.Exec}
+  locals:
+  - {id: 764, name: DeltaSeconds, from: 26.DeltaSeconds}
 - id: 40
   kind: function
   name: Turn toward stroke
   math_expression: clamp((rest - stroke * cos(rest) / abs(cos(rest)) - angle) / dt, -16, 16)
-  expression_mode: 1
   entry_id: 614
-  return_id: 616
-  call_depth_limit: 64
 - id: 231
   kind: function
   name: Pivot velocity X
   math_expression: (origin + 40 * (cos(angle + speed * dt) - cos(rest)) - position) / dt
-  expression_mode: 1
-  entry_id: 667
-  return_id: 669
-  call_depth_limit: 64
+  entry_id: 774
 - id: 364
   kind: function
   name: Pivot velocity Y
   math_expression: (origin + 40 * (sin(angle + speed * dt) - sin(rest)) - position) / dt
-  expression_mode: 1
-  entry_id: 716
-  return_id: 718
-  call_depth_limit: 64
+  entry_id: 824

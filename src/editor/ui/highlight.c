@@ -234,12 +234,27 @@ size_t highlight_markup(highlight_language language, const char *text, char *out
             break;
         }
         const char *start = text + runs[r].start;
-        int fit = fitting(start, runs[r].length, size - 1 - used - tags);
+        /* RmlUi drops text that is only spaces between two elements, so a gap
+           between an expression's tokens keeps its width as &nbsp;. */
+        bool gap = language == HIGHLIGHT_EXPRESSION && !cls && runs[r].length > 0;
+        for (int i = 0; gap && i < runs[r].length; i++) {
+            gap = start[i] == ' ';
+        }
+        size_t room = size - 1 - used - tags;
+        int fit = gap ? (int)(room / 6 < (size_t)runs[r].length
+                                  ? room / 6
+                                  : (size_t)runs[r].length)
+                      : fitting(start, runs[r].length, room);
         if (fit == 0) {
             break;
         }
         used = append(out, used, open, strlen(open));
-        used = append_escaped(out, used, start, fit);
+        for (int i = 0; gap && i < fit; i++) {
+            used = append(out, used, "&nbsp;", 6);
+        }
+        if (!gap) {
+            used = append_escaped(out, used, start, fit);
+        }
         used = append(out, used, close, strlen(close));
         if (fit < runs[r].length) {
             break;

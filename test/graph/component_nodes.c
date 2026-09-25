@@ -54,12 +54,13 @@ static char *document(const behavior_asset *asset)
     return text;
 }
 
+/* Authored graphs only: an expression's body is generated from its source. */
 static int raise_all(behavior_asset *asset)
 {
     int raised = 0;
     for (int i = 0; i < acount(asset->graphs); i++) {
         graph *g = asset->graphs[i];
-        for (int j = 0; j < acount(g->nodes); j++) {
+        for (int j = 0; !g->math_expression && j < acount(g->nodes); j++) {
             raised += component_node_raise(g, g->nodes[j]);
         }
     }
@@ -115,6 +116,8 @@ static void project_equivalence()
             assert(behavior_asset_has_component_nodes(loaded) == (count > 0 || authored_nodes));
             assert(compile_errors(loaded) == compile_errors(original));
             char error[256] = "";
+            /* Raising takes fresh IDs; lower both from the same counter. */
+            original->graph->id_counter = loaded->graph->id_counter;
             if (behavior_asset_lower_component_nodes(original, error, sizeof error) ||
                 behavior_asset_lower_component_nodes(loaded, error, sizeof error)) {
                 fprintf(stderr, "%s: %s\n", paths.gl_pathv[i], error);
@@ -255,7 +258,7 @@ static behavior_asset *component_form()
     assert(transform->input_count == 5 && !strcmp(transform->input_pins[3].name, "x"));
     node *made = component(&f, &NODE_MakeStruct, "GameHealth");
     assert(made->input_count == 3 && !strcmp(made->output_pins[0].type_name, "GameHealth"));
-    node *health = component(&f, &NODE_SetComponent, "game.GameHealth");
+    node *health = component(&f, &NODE_SetComponent, "GAME.GameHealth");
     node *has = component(&f, &NODE_HasComponent, "GameInput");
     node *branch = graph_add_node(f.g, &NODE_Branch);
     node *yes = component(&f, &NODE_SetComponent, "GameHealth");
@@ -438,7 +441,7 @@ static void optimizer_folds()
     const pin_binding *nested = last->input_pins[3].binding;
     assert(nested && nested->kind == PIN_BINDING_COMPONENT_FIELD);
     assert(
-        !strcmp(nested->component_key, "game.GameHealth") &&
+        !strcmp(nested->component_key, "GAME.GameHealth") &&
         !strcmp(nested->field_name, "current")
     );
     const pin_binding *binding = transform->input_pins[3].binding;
@@ -559,7 +562,7 @@ static void authoring()
     );
     assert(named);
     node *written = named->graph->nodes[0];
-    assert(!strcmp(component_node_key(written), "game.GameHealth"));
+    assert(!strcmp(component_node_key(written), "GAME.GameHealth"));
     assert(
         component_node_split(written) && written->input_count == 4 &&
         written->input_pins[3].default_value.i == 4

@@ -172,6 +172,9 @@ static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_r
     }
     if (flags && yyjson_is_uint(flags)) {
         p->flags = (unsigned)yyjson_get_uint(flags);
+    } else if (n->desc == &NODE_BehaviorExpression && p->kind == PIN_EXEC) {
+        /* An expression call's template is a wildcard data pin. */
+        p->flags &= ~PIN_FLAG_WILDCARD;
     }
     yyjson_val *group = yyjson_obj_get(v, "group");
     if (group && yyjson_is_int(group)) {
@@ -548,6 +551,25 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
     return 0;
 }
 
+/* Documents omit an empty comment, and a hidden flag only a comment has. */
+static int load_node_comment(graph *g, node *n, yyjson_val *v)
+{
+    yyjson_val *comment = yyjson_obj_get(v, "comment");
+    yyjson_val *hidden = yyjson_obj_get(v, "comment_hidden");
+    if ((comment && !yyjson_is_str(comment)) || (hidden && !yyjson_is_bool(hidden))) {
+        serialize_error_set(
+            "node %llu has an invalid comment",
+            (unsigned long long)n->id
+        );
+        return -1;
+    }
+    if (yyjson_get_len(comment)) {
+        n->comment = graph_own_str(g, yyjson_get_str(comment), yyjson_get_len(comment));
+        n->comment_hidden = yyjson_get_bool(hidden);
+    }
+    return 0;
+}
+
 /* Documents omit `auto`, which new nodes already hold. */
 static int load_node_presentation(node *n, yyjson_val *v)
 {
@@ -665,7 +687,7 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
         yyjson_val *disabled = yyjson_obj_get(v, "disabled");
         n->disabled = disabled && yyjson_is_bool(disabled) &&
                       yyjson_get_bool(disabled);
-        if (load_node_presentation(n, v)) {
+        if (load_node_presentation(n, v) || load_node_comment(g, n, v)) {
             return -1;
         }
         yyjson_val *breakpoint = yyjson_obj_get(v, "breakpoint");
@@ -1137,6 +1159,10 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
     yyjson_val *nodes = yyjson_obj_get(obj, "nodes");
     yyjson_val *edges = yyjson_obj_get(obj, "edges");
     graph_kind kind;
+    /* An expression's name defaults to its source. */
+    if (!name_json) {
+        name_json = yyjson_obj_get(obj, "math_expression");
+    }
     if (!yyjson_is_str(kind_json) ||
         graph_kind_from_name(yyjson_get_str(kind_json), &kind) ||
         !yyjson_is_str(name_json) ||

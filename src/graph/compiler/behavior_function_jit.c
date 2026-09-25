@@ -555,18 +555,10 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                 MATH_BINARY(HYPOT, Length, hypot)
                 MATH_BINARY(RANDOM_RANGE, RandomRange, behavior_random_range)
 #undef MATH_BINARY
-            case BF_ATAN2_F32:
             case BF_MOD_F32:
                 load(c, f, registers, i->left, SLJIT_FR0);
                 load(c, f, registers, i->right, SLJIT_FR1);
-                sljit_emit_icall(
-                    c,
-                    SLJIT_CALL,
-                    SLJIT_ARGS2(F32, F32, F32),
-                    SLJIT_IMM,
-                    i->op == BF_ATAN2_F32 ? SLJIT_FUNC_ADDR(atan2f)
-                                          : SLJIT_FUNC_ADDR(fmodf)
-                );
+                sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(F32, F32, F32), SLJIT_IMM, SLJIT_FUNC_ADDR(fmodf));
                 sljit_emit_fop1(c, SLJIT_MOV_F32, destination, offset, SLJIT_FR0, 0);
                 break;
             case BF_POINT: {

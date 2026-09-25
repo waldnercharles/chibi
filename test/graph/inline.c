@@ -494,16 +494,16 @@ static void domain_formatting()
         assert(graph_set_pin_default(&g, vector, false, axis, &value) == 0);
     }
     test_check(
-        formats(&g, binary(&g, "Shader Multiply", add(&g, "Shader Time"), glow), "multiply(time, Glow)") &&
+        formats(&g, binary(&g, "Shader Multiply", add(&g, "Shader Time"), glow), "time \xc3\x97 Glow") &&
             formats(&g, vector, "vec3(1, 2, 3)"),
-        "shader operations and vectors format as calls"
+        "shader operations and vectors format in the expression language"
     );
     node *origin = add(&g, "Field Parameter");
     pin_value name = { .type = PIN_STR, .str = "OriginX" };
     assert(graph_set_pin_default(&g, origin, false, 0, &name) == 0);
     test_check(
-        formats(&g, binary(&g, "Field Add", add(&g, "Field X"), origin), "field_add(field_x, field_parameter(\"OriginX\"))"),
-        "field operations format as calls"
+        formats(&g, binary(&g, "Field Add", add(&g, "Field X"), origin), "x + OriginX"),
+        "field operations format in the expression language"
     );
     graph_free(&g);
 }

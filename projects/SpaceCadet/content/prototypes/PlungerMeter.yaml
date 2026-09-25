@@ -2,7 +2,7 @@ name: PlungerMeter
 components:
   GAME.GameWidget:
     accent: 4290067967
-    anchor: {x: 0.8100000023841858, "y": 0.7300000190734863}
+    anchor: {x: 0.81, "y": 0.73}
     background: 674580735
     color: 4293043711
     drop_group: ""

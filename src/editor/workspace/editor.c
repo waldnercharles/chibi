@@ -143,6 +143,7 @@ void editor_free(editor *e)
     free(e->saved_snapshot);
     ed_destroy_preview(e);
     compile_report_free(&e->compile);
+    behavior_asset_free(e->compiled);
     behavior_asset_free(e->asset);
     afree(e->graph_callers);
     afree(e->selected);

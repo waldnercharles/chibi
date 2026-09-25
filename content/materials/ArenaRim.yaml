@@ -1,7 +1,7 @@
 version: 3
 name: ArenaRim
 domain: material
-id_counter: 38
+id_counter: 217
 description: A metallic cyan boundary with a slow, restrained pulse in its emission.
 graphs:
 - kind: event
@@ -9,22 +9,18 @@ graphs:
   nodes:
   - id: 1
     type: Shader Surface Output
-    x: 1190.0
-    "y": 50.0
     inputs:
       Base Color:
         default: {x: 1.0, "y": 1.0, z: 1.0}
       Emission:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Roughness: 0.30000001192092896
-      Metallic: 0.550000011920929
+      Roughness: 0.3
+      Metallic: 0.55
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 37}
   - id: 9
     type: Shader Parameter
-    x: 0.0
-    "y": 0.0
     reference_name: Base Color
     outputs:
       Value:
@@ -32,86 +28,49 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 0.012000000104308128, "y": 0.14000000059604645, z: 0.23999999463558197}
+        default: {x: 0.012, "y": 0.14, z: 0.24}
   - {id: 11, type: Shader Time}
   - id: 13
     type: Shader Parameter
     reference_id: 1
     reference_name: Pulse Speed
     outputs:
-      Value: {flags: 0, group: 0, default: 0.44999998807907104}
+      Value: {flags: 0, group: 0, default: 0.45}
   - id: 15
     type: Call Pure Function
-    x: 290.0
-    "y": 250.0
     reference_id: 56
     reference_name: Pulse
     reference_asset: ShaderMath
     inputs:
-      Time: {declaration_id: 61, type: float, type_name: null}
-      Speed: {declaration_id: 62, type: float, type_name: null}
+      Time: {declaration_id: 61, type: float}
+      Speed: {declaration_id: 62, type: float}
     outputs:
-      Brightness: {declaration_id: 63, type: float, type_name: null}
-  - id: 19
-    type: Shader Multiply
-    x: 550.0
-    "y": 250.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.11999999731779099}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 23
-    type: Shader Add
-    x: 800.0
-    "y": 250.0
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8799999952316284}
-    outputs:
-      Value: {flags: 0, group: 0}
+      Brightness: {declaration_id: 63, type: float}
   - id: 27
     type: Shader Parameter
     reference_id: 2
     reference_name: Glow
     outputs:
-      Value: {flags: 0, group: 0, default: 1.2000000476837158}
-  - id: 29
-    type: Shader Multiply
-    x: 800.0
-    "y": 500.0
+      Value: {flags: 0, group: 0, default: 1.2}
+  - id: 67
+    type: Behavior Expression
+    reference_id: 38
+    reference_name: base_color * ((pulse * 0.12 + 0.88) * glow)
     inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
+      base_color: {type: struct, type_name: ShaderVec3}
+      pulse: {type: float}
+      glow: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 33
-    type: Shader Multiply
-    x: 1050.0
-    "y": 500.0
-    inputs:
-      A:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value:
-        type: struct
-        type_name: ShaderVec3
-        flags: 0
-        group: 0
-        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Result: {type: struct, type_name: ShaderVec3}
   edges:
   - {from: 9.Value, to: 1.Base Color}
-  - {from: 9.Value, to: 33.A}
+  - {from: 9.Value, to: 67.base_color}
   - {from: 11.Value, to: 15.Time}
   - {from: 13.Value, to: 15.Speed}
-  - {from: 15.Brightness, to: 19.A}
-  - {from: 19.Value, to: 23.A}
-  - {from: 23.Value, to: 29.A}
-  - {from: 27.Value, to: 29.B}
-  - {from: 29.Value, to: 33.B}
-  - {from: 33.Value, to: 1.Emission}
+  - {from: 15.Brightness, to: 67.pulse}
+  - {from: 27.Value, to: 67.glow}
+  - {from: 67.Result, to: 1.Emission}
+- id: 38
+  kind: function
+  math_expression: base_color * ((pulse * 0.12 + 0.88) * glow)
+  entry_id: 189

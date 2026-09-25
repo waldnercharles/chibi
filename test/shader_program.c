@@ -204,7 +204,7 @@ static void arena_frame(
 )
 {
     cf_app_update(NULL);
-    assert(render_arena_preview(arena, asset, camera, NULL, 0));
+    assert(render_arena_preview(arena, asset, camera, NULL, 0, &(render_arena_activity){ 0 }));
     cf_render_to(render_arena_post_target(post), true);
     assert(render_arena_post_process(post));
     cf_app_draw_onto_screen(false);

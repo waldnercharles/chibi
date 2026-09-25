@@ -67,6 +67,16 @@ accepts `graph_name` or `graph_id`, and allows `fanout_threshold` from 2 through
 nodes and 4096 edges. Apply publishes the proposal atomically after the hash check;
 no-op apply preserves the original bytes. MCP editing is outside editor Undo.
 
+`math_expressions: true` first replaces each tree of three or more math nodes with
+one expression (`behavior_expression_collapse_math`), then optimizes, so a value
+used three or more times becomes a local. A tree grows through nodes whose only
+use is a plain wire into more math, breadth first, up to about a line of formula;
+a deeper operand becomes its own expression. Computed inputs get placeholder
+letters (`a`, `b`, ...) for the author to rename; named sources keep their names.
+Output is bit-identical: Basalt drops from 298 to 90 nodes and CaveField from 51
+to 16. The report adds `created_expressions`. Studio's graph menu (⋯) offers
+Optimize and Math to Expressions.
+
 The report includes `folded_inputs`, `removed_nodes`, `created_aliases`,
 `changed_edges`, and `skipped` entries with node/pin IDs and stable reasons.
 

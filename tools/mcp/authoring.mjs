@@ -56,6 +56,7 @@ const operationProperties = {
       "set_input",
       "set_output",
       "set_node",
+      "set_comment",
       "set_expression",
       "connect",
       "disconnect",
@@ -158,7 +159,7 @@ const operationProperties = {
   side: {
     type: "string",
     enum: ["input", "output"],
-    description: "Pin side for pin operations; defaults to input except add_pin, which requires it.",
+    description: "Pin side for pin operations; defaults to output for create_local, expose_fields and hide_fields, and to input otherwise; add_pin requires it.",
   },
   disabled: {
     type: "boolean",
@@ -167,6 +168,14 @@ const operationProperties = {
   presentation: {
     enum: ["auto", "inline", "expanded"],
     description: "Draw a pure source inside its consumer's input, or as its own node.",
+  },
+  comment: {
+    type: "string",
+    description: "Node comment for set_comment, shown in a bubble above the node; an empty string removes it.",
+  },
+  hidden: {
+    type: "boolean",
+    description: "For set_comment: show the comment only while the node is hovered.",
   },
   event_name: {
     type: "string",
@@ -547,6 +556,10 @@ const optimizeGraphDefinition = {
       type: "boolean",
       description: "Allow safe high-fanout values to become local aliases; defaults to true.",
     },
+    math_expressions: {
+      type: "boolean",
+      description: "First replace each tree of three or more math nodes with one expression; computed inputs get placeholder letters to rename. Defaults to false.",
+    },
   }),
   outputSchema: { type: "object", additionalProperties: true },
 };
@@ -609,6 +622,25 @@ const previewShaderDefinition = {
       minimum: -3600,
       maximum: 3600,
       description: "Shader time uniform in seconds; defaults to zero.",
+    },
+    beat_phase: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Material Beat Phase; defaults to zero.",
+    },
+    beat_pulse: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Material Beat Pulse; defaults to zero.",
+    },
+    influence: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: { type: "number", minimum: 0, maximum: 64 },
+      description: "Material Surface Influence as linear RGB at the preview center, fading out at radius 50; defaults to none.",
     },
     parameters: {
       type: "object",

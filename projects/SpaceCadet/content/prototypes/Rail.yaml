@@ -11,11 +11,11 @@ components:
   GAME.GameBody: {}
   GAME.GameCollider:
     category: 8
-    friction: 0.07999999821186066
+    friction: 0.08
     height: 100.0
     mask: 1
-    restitution: 0.7200000286102295
+    restitution: 0.72
     shape: Box
     width: 10.0
   GAME.GameOrientation: {}
-  game.GameTransform: {}
+  GAME.GameTransform: {}

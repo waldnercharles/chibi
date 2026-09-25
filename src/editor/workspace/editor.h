@@ -138,8 +138,10 @@ int editor_delete_graph(editor *e, uint64_t graph_id);
 /* Drill into an authored call; Back restores the caller view and selects the call. */
 int editor_open_graph_call(editor *e, uint64_t node_id);
 int editor_graph_back(editor *e);
-/* Callers that Back can return to. */
+/* Callers that Back can return to, oldest first. */
 int editor_graph_history_count(const editor *e);
+/* Returns to the caller at index, dropping the calls entered after it. */
+int editor_graph_ancestor(editor *e, int index);
 void editor_set_value_formatter(editor *e, editor_value_formatter formatter, void *user);
 void editor_set_choices_resolver(editor *e, editor_choices_resolver resolver, void *user);
 const graph *editor_active_graph(const editor *e);
@@ -198,6 +200,23 @@ node *editor_add_behavior_expression(
     behavior_expression_error *error
 );
 int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error);
+/* Renames an expression input in its source, keeping its wire or binding. */
+int editor_rename_behavior_expression_input(
+    editor *e,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
+/* Sets source as a rename of from to to, so from's wire or binding moves to to. */
+int editor_rewire_behavior_expression(
+    editor *e,
+    node *call,
+    const char *source,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
 
 /* Borrow a runtime instance for read-only graph inspection. The caller owns
  * the instance and must clear or replace it before the instance is detached or

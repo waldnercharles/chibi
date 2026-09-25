@@ -199,7 +199,8 @@ int behavior_lower_component_read(builder *b, node *n)
               : "component Get requires an entity and ecs.world"
     );
     int slot = entity(b, w, owner);
-    if (!self) {
+    /* Has answers false for a destroyed entity, like Unreal's Is Valid. */
+    if (!self && !has) {
         require(b, slot, n, 0, false, "component access requires a live entity");
     }
     int row = component(b, n, 0, w, slot, n->desc->component, has, false, false, false);

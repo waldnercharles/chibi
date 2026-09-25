@@ -23,4 +23,24 @@ const char *behavior_asset_extract_function(
     uint64_t *out_call_id
 );
 
+/* Collapse to Macro: execution nodes with any number of execution wires in
+ * and out, each inside pin they cross at becoming a tunnel pin of the macro
+ * (Unreal). Latent nodes such as Delay may be included. Data crosses as it
+ * does for functions. The same ownership rules as extraction apply. */
+const char *behavior_asset_can_extract_macro(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count
+);
+const char *behavior_asset_extract_macro(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count,
+    const char *name,
+    behavior_asset **out_asset,
+    uint64_t *out_call_id
+);
+
 #endif

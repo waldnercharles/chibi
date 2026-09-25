@@ -13,12 +13,21 @@ enum
     KIT_ICON_DOWN = 0xeab4,         /* nf-cod-chevron_down */
     KIT_ICON_RIGHT = 0xeab6,        /* nf-cod-chevron_right */
     KIT_ICON_LEFT = 0xeab5,         /* nf-cod-chevron_left */
+    KIT_ICON_UP = 0xeab7,           /* nf-cod-chevron_up */
+    KIT_ICON_BACK = 0xea9b,         /* nf-cod-arrow_left */
+    KIT_ICON_FORWARD = 0xea9c,      /* nf-cod-arrow_right */
     KIT_ICON_MORE = 0xea7c,         /* nf-cod-ellipsis */
     KIT_ICON_GRIP = 0xeb04,         /* nf-cod-gripper */
     KIT_ICON_PLAY = 0xf040a,        /* nf-md-play */
     KIT_ICON_PAUSE = 0xf03e4,       /* nf-md-pause */
     KIT_ICON_STOP = 0xf04db,        /* nf-md-stop */
     KIT_ICON_STEP = 0xf04ad,        /* nf-md-skip_next */
+    KIT_ICON_CONTINUE = 0xeacf,     /* nf-cod-debug_continue */
+    KIT_ICON_STEP_OVER = 0xead6,    /* nf-cod-debug_step_over */
+    KIT_ICON_STEP_INTO = 0xead4,    /* nf-cod-debug_step_into */
+    KIT_ICON_STEP_OUT = 0xead5,     /* nf-cod-debug_step_out */
+    KIT_ICON_FRAME_CALL = 0xeb8b,   /* nf-cod-debug_stackframe */
+    KIT_ICON_FRAME_TOP = 0xeb89,    /* nf-cod-debug_stackframe_active */
     KIT_ICON_EYE = 0xea70,          /* nf-cod-eye */
     KIT_ICON_EYE_OFF = 0xeae7,      /* nf-cod-eye_closed */
     KIT_ICON_LOCK = 0xea75,         /* nf-cod-lock */
@@ -80,6 +89,9 @@ enum
     KIT_ICON_LIGHT = 0xf0336,       /* nf-md-lightbulb_outline */
     KIT_ICON_DIAMOND = 0xf0b8b,     /* nf-md-diamond_outline */
     KIT_ICON_CIRCLE = 0xf0766,      /* nf-md-circle_outline */
+    KIT_ICON_DOT = 0xf0765,         /* nf-md-circle */
+    KIT_ICON_COMMENT = 0xea6b,      /* nf-cod-comment */
+    KIT_ICON_REFERENCES = 0xeb36,   /* nf-cod-references */
     KIT_ICON_SYSTEM = 0xeba2,       /* nf-cod-server_process */
     KIT_ICON_TERMINAL = 0xea85,     /* nf-cod-terminal */
     KIT_ICON_LAYOUT = 0xebeb,       /* nf-cod-layout */
@@ -95,6 +107,17 @@ enum
     KIT_ICON_PROJECTILE = 0xf0cda,  /* nf-md-bullet */
     KIT_ICON_HEALTH = 0xf02d5,      /* nf-md-heart_outline */
     KIT_ICON_SHAPE = 0xf0832,       /* nf-md-shape_outline */
+
+    KIT_ICON_ALIGN_TOP = 0xf11c7,    /* nf-md-align_vertical_top */
+    KIT_ICON_ALIGN_MIDDLE = 0xf11c6, /* nf-md-align_vertical_center */
+    KIT_ICON_ALIGN_BOTTOM = 0xf11c5, /* nf-md-align_vertical_bottom */
+    KIT_ICON_ALIGN_LEFT = 0xf11c2,   /* nf-md-align_horizontal_left */
+    KIT_ICON_ALIGN_CENTER = 0xf11c3, /* nf-md-align_horizontal_center */
+    KIT_ICON_ALIGN_RIGHT = 0xf11c4,  /* nf-md-align_horizontal_right */
+    KIT_ICON_DISTRIBUTE_X = 0xf11c9, /* nf-md-distribute_horizontal_center */
+    KIT_ICON_DISTRIBUTE_Y = 0xf11cc, /* nf-md-distribute_vertical_center */
+    KIT_ICON_UNFOLD = 0xeb73,        /* nf-cod-unfold */
+    KIT_ICON_REFRESH = 0xeb37,       /* nf-cod-refresh */
 };
 
 #endif

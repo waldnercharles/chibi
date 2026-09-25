@@ -566,6 +566,18 @@ static float row_width(kit *k, bool sub, const char *label, const char *shortcut
            trail_width(k, sub, shortcut);
 }
 
+/* A swatch tints the lead glyph; none restores the theme's icon color. */
+static void set_swatch(rml_element *lead, uint32_t rgba)
+{
+    if (!rgba) {
+        rml_element_remove_property(lead, "color");
+        return;
+    }
+    char color[16];
+    snprintf(color, sizeof color, "#%08x", rgba);
+    rml_element_set_property(lead, "color", color);
+}
+
 static node *menu_row(kit *k, const char *key, node_kind kind, const kit_menu_item_desc *d)
 {
     bool sub = kind == KIND_SUBMENU;
@@ -576,12 +588,18 @@ static node *menu_row(kit *k, const char *key, node_kind kind, const kit_menu_it
         w->label_el = raw(n->el, "span", "label", NULL);
         w->kbd_el = raw(n->el, "span", "kbd", NULL);
     }
-    uint32_t lead = d->checked >= 0 ? (d->checked ? KIT_ICON_CHECK : 0) : d->icon;
+    uint32_t lead = d->checked >= 0 ? (d->checked ? KIT_ICON_CHECK : 0)
+                  : d->swatch       ? KIT_ICON_DOT
+                                    : d->icon;
     if (w->icon != lead) {
         w->icon = lead;
         char text[5];
         utf8(text, lead);
         rml_element_set_inner_rml(w->icon_el, text);
+    }
+    if (w->color != d->swatch) {
+        w->color = d->swatch;
+        set_swatch(w->icon_el, d->swatch);
     }
     if (str_set(&w->label, d->label)) {
         set_inner_text(w->label_el, w->label);

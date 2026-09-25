@@ -20,13 +20,13 @@ EM_JS(void, web_import_project, (), { Module['chibiImportProject'](); })
 #endif
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
-    "Scene",  "Behavior", "Outliner",   "Properties",
-    "Output", "Assets",   "Performance"
+    "Scene",  "Behavior", "Outliner",    "Properties",
+    "Output", "Assets",   "Performance", "Members"
 };
 static const uint32_t EDITOR_ICONS[STUDIO_EDITOR_COUNT] = {
-    KIT_ICON_VIEWPORT,    KIT_ICON_GRAPH,  KIT_ICON_OUTLINER,
-    KIT_ICON_PROPERTIES,  KIT_ICON_OUTPUT, KIT_ICON_ASSETS,
-    KIT_ICON_PERFORMANCE,
+    KIT_ICON_VIEWPORT,    KIT_ICON_GRAPH,    KIT_ICON_OUTLINER,
+    KIT_ICON_PROPERTIES,  KIT_ICON_OUTPUT,   KIT_ICON_ASSETS,
+    KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE,
 };
 
 static void dp(char *out, size_t size, float value)
@@ -88,11 +88,17 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 /* ---------- Commands ---------- */
 
 /* The graph canvas owns history and saving while it has focus (Blender: the
-   area under the pointer or last clicked). */
+   area under the pointer or last clicked), and so do the editors of its
+   members and nodes. */
 static bool graph_focused(const studio *s)
 {
-    return studio_graph_active(s) && s->graph.area >= 0 &&
-           s->focus_area == s->graph.area;
+    if (!studio_graph_active(s) || s->focus_area < 0) {
+        return false;
+    }
+    studio_editor editor = s->prefs.editors[s->focus_area];
+    return s->focus_area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
+           (editor == STUDIO_EDITOR_PROPERTIES &&
+            (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
 }
 
 static void toast(studio *s, kit_toast_type type, const char *title, const char *description)
@@ -235,6 +241,10 @@ static void studio_history(studio *s, bool redo)
 
 static void studio_runtime(studio *s, app_runtime_command command)
 {
+    /* Play resumes a run paused at a breakpoint (Unreal). */
+    if (command == APP_RUNTIME_PLAY && studio_debug(s, STUDIO_RESUME)) {
+        return;
+    }
     finish_transform_edit(s->scene, false);
     app_runtime_state state = app_scene_authoring_runtime_state(s->scene);
     if (command == APP_RUNTIME_PLAY && state.playing) {
@@ -360,12 +370,18 @@ static void add_menu_items(studio *s)
     }
 }
 
-static void studio_toggle_drawer(studio *s, studio_editor editor)
+void studio_toggle_drawer(studio *s, studio_editor editor)
 {
     bool showing = s->prefs.drawer_open &&
                    s->prefs.editors[STUDIO_AREA_DRAWER] == editor;
     s->prefs.editors[STUDIO_AREA_DRAWER] = editor;
     s->prefs.drawer_open = !showing;
+}
+
+/* Fills the workspace with one area, or restores the layout; -1 is no area. */
+static void studio_toggle_maximized(studio *s, int area)
+{
+    s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
 #ifdef __EMSCRIPTEN__
@@ -467,6 +483,12 @@ static void menus(studio *s)
             }
         }
         kit_menu_separator(k, "s2");
+        kit_menu_item_desc maximize = { .label = "Maximize Area",
+                                        .shortcut = "Ctrl+Space",
+                                        .checked = s->maximized >= 0 };
+        if (kit_menu_item(k, "maximize", &maximize)) {
+            studio_toggle_maximized(s, s->focus_area);
+        }
         if (item(k, "reset_layout", "Reset Layout", KIT_ICON_LAYOUT, NULL, false)) {
             studio_prefs layout = studio_prefs_default();
             s->prefs.side_width = layout.side_width;
@@ -508,9 +530,11 @@ static void menus(studio *s)
         if (item(k, "stop", "Stop", KIT_ICON_STOP, NULL, !runtime_session(scene))) {
             studio_runtime(s, APP_RUNTIME_STOP);
         }
-        if (item(k, "step", "Step", KIT_ICON_STEP, NULL, false)) {
+        if (item(k, "step", "Step", KIT_ICON_STEP, NULL, s->pause.active)) {
             studio_runtime(s, APP_RUNTIME_STEP);
         }
+        kit_menu_separator(k, "s1");
+        studio_debug_menu(s);
         kit_popup_end(k);
     }
     kit_pop(k);
@@ -626,11 +650,18 @@ static void transport(studio *s)
     kit_push(k, "transport", NULL, "transport");
     runtime_target(s, runtime, session);
     kit_push(k, "group", NULL, "group");
+    /* A run paused at a breakpoint trades Pause for Resume and the frame step
+       for the debugger's steps (Unreal). */
+    bool paused = s->pause.active;
     kit_button_desc play = {
-        .icon = runtime.playing ? KIT_ICON_PAUSE : KIT_ICON_PLAY,
-        .tip = runtime.playing ? "Pause" : "Play",
-        .shortcut = "Space",
-        .flags = runtime.playing ? KIT_ON : 0,
+        .icon = paused          ? KIT_ICON_CONTINUE
+              : runtime.playing ? KIT_ICON_PAUSE
+                                : KIT_ICON_PLAY,
+        .tip = paused          ? "Resume"
+             : runtime.playing ? "Pause"
+                               : "Play",
+        .shortcut = paused ? "F5" : "Space",
+        .flags = runtime.playing && !paused ? KIT_ON : 0,
     };
     if (kit_button(k, "play", &play)) {
         studio_runtime(s, APP_RUNTIME_PLAY);
@@ -642,7 +673,9 @@ static void transport(studio *s)
         studio_runtime(s, APP_RUNTIME_STOP);
     }
     kit_button_desc step = { .icon = KIT_ICON_STEP, .tip = "Step" };
-    if (kit_button(k, "step", &step)) {
+    if (paused) {
+        studio_debug_steps(s);
+    } else if (kit_button(k, "step", &step)) {
         studio_runtime(s, APP_RUNTIME_STEP);
     }
     kit_pop(k);
@@ -739,6 +772,17 @@ static bool drawer_editor(studio_editor editor)
            editor == STUDIO_EDITOR_PERFORMANCE;
 }
 
+void studio_maximize_graph(studio *s)
+{
+    int area = STUDIO_AREA_TOP;
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        area = s->prefs.editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+    }
+    s->prefs.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->applied.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->maximized = area;
+}
+
 static void editor_type_menu(studio *s, int area)
 {
     kit *k = s->kit;
@@ -795,6 +839,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_PERFORMANCE:
             studio_performance_header(s, index);
             break;
+        case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
         default: break;
     }
     if (index == STUDIO_AREA_DRAWER) {
@@ -817,6 +862,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_PERFORMANCE:
             studio_performance_body(s, index);
             break;
+        case STUDIO_EDITOR_MEMBERS: studio_members_body(s, index); break;
         default: break;
     }
     kit_pop(k);
@@ -826,9 +872,22 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
 
 static void workspace(studio *s)
 {
+    static const char *const AREA_KEYS[STUDIO_AREA_COUNT] = { "top",
+                                                              "bottom",
+                                                              "outliner",
+                                                              "properties",
+                                                              "drawer" };
     kit *k = s->kit;
     kit_push(k, "workspace", "main", "workspace");
     kit_push(k, "main", NULL, "column main");
+    if (s->maximized >= 0) {
+        memset(s->areas, 0, sizeof s->areas);
+        area(s, s->maximized, AREA_KEYS[s->maximized], 0, true);
+        kit_pop(k);
+        s->main_rect = kit_item_rect(k);
+        kit_pop(k);
+        return;
+    }
     float column_height = s->main_rect.h > 0 ? s->main_rect.h : s->in.height - 60;
     /* The drawer eases open in 200 ms and closed in 100 ms, and follows its
        splitter directly while dragged. */
@@ -919,6 +978,21 @@ static void statusbar(studio *s)
             hint(k, "frame", "F", 0, "Frame");
             hint(k, "delete", "X", 0, "Delete");
             break;
+        case STUDIO_EDITOR_MEMBERS:
+            hint(k, "drag", NULL, KIT_ICON_MOUSE, "Drag to graph");
+            hint(k, "set", studio_chord(s, "Alt"), 0, "Set");
+            hint(k, "rename", "F2", 0, "Rename");
+            hint(k, "delete", "X", 0, "Delete");
+            break;
+        case STUDIO_EDITOR_BEHAVIOR:
+            if (s->graph.gesture == STUDIO_GRAPH_MOVE) {
+                hint(k, "snap", studio_chord(s, "Ctrl"), 0, "Snap");
+                break;
+            }
+            hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
+            hint(k, "add", studio_chord(s, "Shift+A"), 0, "Add");
+            hint(k, "straighten", "Q", 0, "Straighten");
+            break;
         default:
             hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
             hint(k, "search", studio_chord(s, "Mod+K"), 0, "Search");
@@ -1008,7 +1082,8 @@ enum
 
 static void palette(studio *s)
 {
-    if (studio_graph_palette(s) || !kit_command_is_open(s->kit)) {
+    if (studio_graph_palette(s) || studio_member_palette(s) ||
+        !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1199,6 +1274,8 @@ void studio_emit(studio *s)
     statusbar(s);
     palette(s);
     undo_toast(s);
+    studio_rewire_toast(s);
+    studio_members_toast(s);
 }
 
 /* Up and Down walk the Outliner's visible rows (Blender). */
@@ -1236,6 +1313,9 @@ void studio_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if (studio_debug_key(s, key, shift)) {
+            continue;
+        }
         if ((gameplay && !mod) || (s->keys[i].repeat && !repeats(key, mod))) {
             continue;
         }
@@ -1249,8 +1329,15 @@ void studio_shortcuts(studio *s)
             studio_history(s, shift);
         } else if (mod && key == SDLK_Y) {
             studio_history(s, true);
+        } else if ((s->keys[i].mod & SDL_KMOD_CTRL) && key == SDLK_SPACE) {
+            studio_toggle_maximized(s, s->hover_area);
         } else if (!mod && key == SDLK_SPACE && editor != STUDIO_EDITOR_BEHAVIOR) {
             studio_runtime(s, APP_RUNTIME_PLAY);
+        } else if (
+            editor == STUDIO_EDITOR_MEMBERS &&
+            studio_members_key(s, key, s->keys[i].mod)
+        ) {
+            continue;
         } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {
             studio_frame_selection(s);
         } else if (!mod && shift && key == SDLK_D && editor != STUDIO_EDITOR_PROPERTIES && editor != STUDIO_EDITOR_BEHAVIOR) {

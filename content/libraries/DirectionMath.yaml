@@ -1,7 +1,7 @@
 version: 3
 name: DirectionMath
 domain: library
-id_counter: 100
+id_counter: 104
 description: Shared direction calculations.
 graphs:
 - {kind: event, name: Events}
@@ -21,19 +21,13 @@ graphs:
     type: Return
     inputs:
     - {id: 6, name: Orientation, type: struct, type_name: GameOrientation, kind: data}
-  - id: 75
-    type: Atan2
-    inputs:
-      "Y": {id: 72, type_name: float}
-      X: {type_name: float}
-    outputs:
-    - {id: 74, name: Result, type_name: float}
   - id: 78
     type: Make_GameOrientation
     inputs:
       radians: {id: 76}
+  - {id: 100, type: Atan2}
   edges:
-  - {from: 2.X, to: 75.X}
-  - {from: 2.Y, to: 75.Y}
-  - {from: 75.Result, to: 78.radians}
+  - {from: 2.X, to: 100.X}
+  - {from: 2.Y, to: 100.Y}
   - {from: 78.GameOrientation, to: 3.Orientation}
+  - {from: 100.Result, to: 78.radians}

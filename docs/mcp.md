@@ -102,6 +102,9 @@ domain:
 - Studio's component tabs, prototype icons, and number ranges and units:
   edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
   call `validateAsset`.
+- Game UI documents: edit `content/ui/<Name>.yaml` (kind `ui`) with `rml`
+  body markup and optional `rcss` styles, run `--format`, then call
+  `validateAsset`.
 
 Call `validateAsset` after every published change. Use `previewShader`,
 `previewScene`, `runScenario`, `captureRuntimeSnapshot`, or

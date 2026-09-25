@@ -3,6 +3,7 @@
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
+#include "assets/ui_document.h"
 #include "automation/asset_write.h"
 #include "automation/field_preview.h"
 #include "automation/graph_edit.h"
@@ -49,6 +50,7 @@ typedef enum
     ASSET_PROTOTYPE,
     ASSET_SCENE,
     ASSET_EDITOR,
+    ASSET_UI,
 } asset_loader;
 
 typedef struct
@@ -70,6 +72,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "prototype", "prototypes", ASSET_PROTOTYPE },
     { "scene", "scenes", ASSET_SCENE },
     { "editor", "editor", ASSET_EDITOR },
+    { "ui", "ui", ASSET_UI },
 };
 
 typedef struct
@@ -1338,6 +1341,15 @@ static bool read_editor_asset(const char *json, char *error, size_t error_size)
     return ok;
 }
 
+/* UI assets hold RML markup and RCSS that GameUi components show. */
+static bool read_ui_asset(const char *json, char *error, size_t error_size)
+{
+    ui_document document = { 0 };
+    bool ok = ui_document_read(json, &document, error, error_size);
+    ui_document_free(&document);
+    return ok;
+}
+
 static void catalog_validate_asset(const char *root, catalog_asset *asset, const char *json)
 {
     const asset_family *family = asset->asset.family;
@@ -1432,9 +1444,12 @@ static void catalog_validate_asset(const char *root, catalog_asset *asset, const
         } else {
             game_prototype_free(prototype);
         }
-    } else if (family->loader == ASSET_EDITOR) {
+    } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_UI) {
         char error[256] = { 0 };
-        if (!read_editor_asset(json, error, sizeof error)) {
+        bool ok = family->loader == ASSET_EDITOR
+                    ? read_editor_asset(json, error, sizeof error)
+                    : read_ui_asset(json, error, sizeof error);
+        if (!ok) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         }
@@ -3518,6 +3533,8 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
         case ASSET_EDITOR:
             /* Validated as written; the shared YAML writer canonicalizes it. */
             return read_editor_asset(json, error, error_size) ? xstrdup(json) : NULL;
+        case ASSET_UI:
+            return read_ui_asset(json, error, error_size) ? xstrdup(json) : NULL;
     }
     return NULL;
 }
@@ -3737,9 +3754,12 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             );
             game_prototype_free(prototype);
         }
-    } else if (ref.family->loader == ASSET_EDITOR) {
+    } else if (ref.family->loader == ASSET_EDITOR || ref.family->loader == ASSET_UI) {
         char load_error[256] = { 0 };
-        if (!read_editor_asset(json, load_error, sizeof load_error)) {
+        bool ok = ref.family->loader == ASSET_EDITOR
+                    ? read_editor_asset(json, load_error, sizeof load_error)
+                    : read_ui_asset(json, load_error, sizeof load_error);
+        if (!ok) {
             errors = 1;
             add_load_diagnostic(result->doc, diagnostics, load_error);
         }

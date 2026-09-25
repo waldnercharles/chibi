@@ -249,6 +249,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/particle_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/vector_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/appearance_geometry.c

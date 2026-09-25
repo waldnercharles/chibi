@@ -1,6 +1,7 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
+#include "editor/commands/command.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/panels/scene_properties.h"
@@ -1092,7 +1093,7 @@ static void draw_debug_header(void *user)
     }
 }
 
-app_scene_authoring *app_scene_authoring_new_with_content_root(
+static app_scene_authoring *new_with_content_root(
     ecs_world *world,
     game_live_world *live,
     game_live_definition *definition,
@@ -1101,7 +1102,8 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     app_scene_prototype_resolve_fn resolve_prototype,
     void *resolve_user,
     engine *runtime,
-    const char *content_root
+    const char *content_root,
+    bool headless
 )
 {
     if (!world || !live || !definition || !editor_working || !runtime ||
@@ -1112,8 +1114,11 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->debug_sessions[APP_RUNTIME_PREVIEW] = 1;
     scene->debug_sessions[APP_RUNTIME_SCENE] = 1;
     editor_ui_set_graph_debug_header(draw_debug_header, scene);
-    scene->shapes = app_sdf_shapes_init();
-    scene->renderer = app_scene_renderer_new();
+    /* Without a window the scene authors and runs but never renders. */
+    if (!headless) {
+        scene->shapes = app_sdf_shapes_init();
+        scene->renderer = app_scene_renderer_new();
+    }
     scene->history = scene_history_new();
     scene->world = world;
     scene->live = live;
@@ -1177,16 +1182,66 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->scene_dirty = false;
     snprintf(scene->message, sizeof scene->message, "No scene entities yet.");
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "No Selection");
-    if (cf_app_is_running() && !render_image_mount_content(
-                                   scene->content_root,
-                                   scene->message,
-                                   sizeof scene->message
-                               )) {
+    if (!headless && cf_app_is_running() &&
+        !render_image_mount_content(
+            scene->content_root,
+            scene->message,
+            sizeof scene->message
+        )) {
         fprintf(stderr, "%s\n", scene->message);
         app_scene_authoring_free(scene);
         return NULL;
     }
     return scene;
+}
+
+app_scene_authoring *app_scene_authoring_new_with_content_root(
+    ecs_world *world,
+    game_live_world *live,
+    game_live_definition *definition,
+    const behavior_asset *editor_working,
+    editor *graph_editor,
+    app_scene_prototype_resolve_fn resolve_prototype,
+    void *resolve_user,
+    engine *runtime,
+    const char *content_root
+)
+{
+    return new_with_content_root(
+        world,
+        live,
+        definition,
+        editor_working,
+        graph_editor,
+        resolve_prototype,
+        resolve_user,
+        runtime,
+        content_root,
+        false
+    );
+}
+
+app_scene_authoring *app_scene_authoring_new_headless(
+    ecs_world *world,
+    game_live_world *live,
+    game_live_definition *definition,
+    editor *graph_editor,
+    engine *runtime,
+    const char *content_root
+)
+{
+    return new_with_content_root(
+        world,
+        live,
+        definition,
+        editor_behavior_asset(graph_editor),
+        graph_editor,
+        NULL,
+        NULL,
+        runtime,
+        content_root,
+        true
+    );
 }
 
 app_scene_authoring *app_scene_authoring_new(
@@ -1552,6 +1607,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     editor_ui_set_graph_debug_header(NULL, NULL);
+    editor_commands_free(scene);
     scene_debug_clear(&scene->debug);
     editor_set_inspection_blocked(scene->graph_editor, false);
     app_scene_renderer_free(scene->renderer);

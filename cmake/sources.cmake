@@ -194,7 +194,17 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/frame_profile.c
 )
 
+set(EDITOR_COMMAND_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/catalog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/model.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/quick_edit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/task.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/command_transport.c
+)
+
 set(APP_SOURCES
+    ${EDITOR_COMMAND_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/behavior_loader.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/project.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_document.c

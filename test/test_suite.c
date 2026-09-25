@@ -52,6 +52,11 @@ void test_component_presentation();
 void test_file_watch();
 void test_input_bindings();
 void test_graph_optimizer();
+void test_editor_command_model();
+void test_editor_command_quick_edit();
+void test_editor_command_api();
+int test_editor_command_live(const char *model, const char *path);
+int test_editor_command_project_live(const char *model, const char *project);
 int scene_documents_run(const char *program);
 bool test_rmlui_menu();
 bool test_rmlui_kit();
@@ -165,6 +170,9 @@ TEST_CASE(all_checks)
     run_ecs_migration_checks();
     run_scene_checks();
     run_editor_command_checks();
+    test_editor_command_model();
+    test_editor_command_quick_edit();
+    test_editor_command_api();
     test_component_presentation();
     test_file_watch();
     test_editor_checkpoint();
@@ -213,6 +221,24 @@ int main(int argc, char **argv)
         registry_validate();
         test_component_nodes();
         return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--command-model")) {
+        registry_validate();
+        test_editor_command_model();
+        test_editor_command_api();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--command-quick-edit")) {
+        test_editor_command_quick_edit();
+        return fails ? 1 : 0;
+    }
+    if (argc == 4 && !strcmp(argv[1], "--command-live")) {
+        registry_validate();
+        return test_editor_command_live(argv[2], argv[3]);
+    }
+    if (argc == 4 && !strcmp(argv[1], "--command-project-live")) {
+        registry_validate();
+        return test_editor_command_project_live(argv[2], argv[3]);
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();

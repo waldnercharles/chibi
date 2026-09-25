@@ -100,6 +100,15 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     engine *runtime,
     const char *content_root
 );
+/* Authoring without a window, as in editor command checks: nothing renders. */
+app_scene_authoring *app_scene_authoring_new_headless(
+    ecs_world *world,
+    game_live_world *live,
+    game_live_definition *definition,
+    editor *graph_editor,
+    engine *runtime,
+    const char *content_root
+);
 void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const behavior_asset *editor_working);
 int app_scene_authoring_apply_pending(app_scene_authoring *scene);
 int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char *path);

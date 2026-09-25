@@ -653,6 +653,7 @@ add_executable(test_suite
     src/render/shader_fragment.c
     src/assets/behavior_loader.c
     src/assets/project.c
+    ${EDITOR_COMMAND_SOURCES}
     src/editor/workspace/scene_authoring.c
     src/editor/workspace/asset_index.c
     src/editor/panels/asset_browser.c

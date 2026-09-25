@@ -704,10 +704,11 @@ void arrange_route(
         const arrange_link *l = &g->links[i];
         int from = column[l->from];
         int to = column[l->to];
-        if (l->custom_handles) {
+        /* A wire within one column has no lane: the lane pass skipped it. */
+        if (l->custom_handles || from == to) {
             continue;
         }
-        if (from >= to) {
+        if (from > to) {
             ar_emit_backward(routes, g, pos, &c, &lanes, i, column, left, right);
             continue;
         }

@@ -18,12 +18,12 @@ ABI version and six lifecycle operations. Replacement runs between frames:
 6. Activate the candidate, then unload the old library.
 
 Candidate preparation must not replace process-global callbacks. Activation
-rebinds ImGui settings and input bindings; deactivation removes registrations.
-Fonts belong to the resident ImGui atlas. GPU and JIT resources belong to the
+rebinds input bindings; deactivation removes registrations. Game UI fonts belong
+to the resident ImGui atlas. GPU and JIT resources belong to the
 application and are released before its code is unloaded. The retained RmlUi
 context, documents, FreeType state and Cute render resources also belong to the
-application. They are created on the first active editor frame and destroyed on
-deactivation; inactive candidate creation does not initialize RmlUi. Checkpoints
+application. Editor activation creates them and deactivation destroys them;
+inactive candidate creation does not initialize RmlUi. Checkpoints
 contain stable document data and identities, never native pointers or generated code.
 The host supplies the allocator for exported checkpoint bytes.
 
@@ -74,8 +74,8 @@ the same filename.
 
 Normal close, Ctrl-C and SIGTERM cancel any active build, save the workspace and
 exit normally. Restart imports `.chibi/workspace.json`. Window size and
-position use the adjacent `.window` file. Unsaved documents, Undo/Redo, navigation,
-selection, graph views and docking survive. Play restarts from authored state with
+position use the adjacent `.window` file. Unsaved documents, Undo/Redo, graph
+navigation and selection survive. Play restarts from authored state with
 its prior running or paused intent; live simulation memory and active pointer
 gestures are recreated. A checkpoint is separate from saving source documents.
 

@@ -167,6 +167,32 @@ static void removal()
     graph_free(&g);
 }
 
+/* Double(X) = X * 2: a pure function's entry has no Exec pin. */
+static void signature()
+{
+    behavior_asset *asset = behavior_asset_new("Signature");
+    graph *function = behavior_asset_add_function(asset, "Double", 1);
+    node *entry = graph_node_by_id(function, function->entry_id);
+    node *ret = graph_node_by_id(function, function->return_id);
+    pin_spec value = { .name = "X", .type = PIN_F64, .type_name = "double", .kind = PIN_DATA };
+    assert(graph_add_pin(function, entry, 1, &value) == 0);
+    assert(graph_add_pin(function, ret, 0, &value) == 0);
+    node *doubled = binary(function, "Multiply", entry, real(function, 2));
+    wire(function, doubled, 0, ret, 0);
+    test_check(
+        !graph_node_can_inline(function, entry) &&
+            !graph_node_is_inline(function, doubled),
+        "a function entry and the nodes it feeds keep their boxes"
+    );
+    test_check(
+        graph_remove_node_tree(function, doubled) == 0 &&
+            graph_node_by_id(function, function->entry_id) == entry &&
+            acount(function->nodes) == 2,
+        "removing a node tree keeps the function entry it reads"
+    );
+    behavior_asset_free(asset);
+}
+
 static behavior_asset *presentation_asset(node **modes)
 {
     behavior_asset *asset = behavior_asset_new("Presentation");
@@ -362,11 +388,26 @@ static void formatting()
     assert(graph_set_pin_type(g, self, 1, 0, PIN_HANDLE, "ecs.entity") == 0);
     node *self_has = add(g, "Has Component");
     assert(component_node_retarget(g, self_has, GAME_COMPONENT_GameMovement.key) == 0);
-    wire(g, self, 0, self_has, component_node_setting(COMPONENT_NODE_HAS) + 1);
+    wire(g, self, 0, self_has, component_node_setting(self_has) + 1);
     test_check(
         graph_node_is_inline(g, self) && formats(g, self_has, "has(Self.GameMovement)"),
         "a wired Self formats as Self"
     );
+    /* Make Struct reads like the generated Make it lowers to. */
+    const char *structs[] = { "GameHealth", "GameTransform" };
+    for (int i = 0; i < 2; i++) {
+        char generated_name[64], generated_text[128], authored_text[128];
+        snprintf(generated_name, sizeof generated_name, "Make_%s", structs[i]);
+        node *generated = add(g, generated_name);
+        node *authored = add(g, "Make Struct");
+        assert(component_node_retarget(g, authored, structs[i]) == 0);
+        node *first = add(g, "Reroute Data"), *second = add(g, "Reroute Data");
+        wire(g, generated, 0, first, 0);
+        wire(g, authored, 0, second, 0);
+        behavior_expression_format(g, first, 0, generated_text, sizeof generated_text, NULL);
+        behavior_expression_format(g, second, 0, authored_text, sizeof authored_text, NULL);
+        test_check(!strcmp(generated_text, authored_text), "Make Struct formats like its generated Make");
+    }
     node *getter = add(g, "Get_GameMovement");
     assert(graph_expose_output_fields(g, getter, 0) == 0);
     int field = -1;
@@ -430,11 +471,50 @@ static void formatting()
     behavior_asset_free(asset);
 }
 
+static node *named(graph *g, const char *type, const char *name)
+{
+    node *n = add(g, type);
+    assert(graph_set_node_reference(g, n, 0, name) == 0);
+    return n;
+}
+
+/* Shader and field nodes leave pure_kind at its default, as constants do. */
+static void domain_formatting()
+{
+    graph g = { 0 };
+    graph_init(&g);
+    node *gain = named(&g, "Shader Parameter", "Reaction Gain");
+    pin_value value = { .type = PIN_F32, .f = 0.84f };
+    assert(graph_set_pin_default(&g, gain, true, 0, &value) == 0);
+    test_check(formats(&g, gain, "Reaction Gain"), "shader parameters format as their name");
+    node *glow = named(&g, "Shader Parameter", "Glow");
+    node *vector = add(&g, "Shader Vector3");
+    for (int axis = 0; axis < 3; axis++) {
+        value.f = (float)axis + 1;
+        assert(graph_set_pin_default(&g, vector, false, axis, &value) == 0);
+    }
+    test_check(
+        formats(&g, binary(&g, "Shader Multiply", add(&g, "Shader Time"), glow), "multiply(time, Glow)") &&
+            formats(&g, vector, "vec3(1, 2, 3)"),
+        "shader operations and vectors format as calls"
+    );
+    node *origin = add(&g, "Field Parameter");
+    pin_value name = { .type = PIN_STR, .str = "OriginX" };
+    assert(graph_set_pin_default(&g, origin, false, 0, &name) == 0);
+    test_check(
+        formats(&g, binary(&g, "Field Add", add(&g, "Field X"), origin), "field_add(field_x, field_parameter(\"OriginX\"))"),
+        "field operations format as calls"
+    );
+    graph_free(&g);
+}
+
 void run_graph_inline_checks()
 {
     eligibility();
     removal();
+    signature();
     serialization();
     arrangement();
     formatting();
+    domain_formatting();
 }

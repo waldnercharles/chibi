@@ -105,6 +105,7 @@ typedef struct
 {
     SDL_Keycode key;
     SDL_Keymod mod; /* at press time: a quick chord is released before the frame runs */
+    bool repeat; /* an auto-repeat of a held key */
 } studio_key;
 
 typedef enum
@@ -191,6 +192,7 @@ typedef struct
     int insert_edge;   /* the wire a dragged node would join, or -1 */
     bool renaming;     /* the name of rename_graph is being edited */
     uint64_t rename_graph;
+    int rename_area; /* the area whose header holds the name field */
     bool rename_focus;
     char rename[128];
     int forms;          /* node settings the layouts follow */
@@ -207,6 +209,7 @@ typedef struct
     uint64_t *unused; /* nodes no event reaches or whose values nothing reads */
     uint64_t expression_node; /* the expression being edited in Properties */
     char expression[512];
+    char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
 } studio_graph;
 

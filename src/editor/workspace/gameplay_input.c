@@ -35,13 +35,9 @@ void app_gameplay_sample(app_scene_authoring *scene, bool accepts_input, const C
 
 void app_gameplay_input(app_scene_authoring *scene, engine *runtime, engine_viewport *viewport)
 {
-    bool focused = engine_viewport_focused(viewport);
-    if (focused && app_input_pressed(APP_INPUT_ESCAPE)) {
-        engine_viewport_release_focus();
-        focused = false;
-    }
-    bool accepts_input = focused && !editor_host_captures_keyboard() &&
-                         !engine_viewport_widgets_capture(viewport);
+    bool focused = engine_viewport_focused(viewport) &&
+                   !app_input_pressed(APP_INPUT_ESCAPE);
+    bool accepts_input = focused && !editor_host_captures_keyboard();
     if (!accepts_input) {
         app_gameplay_sample(scene, false, NULL);
     }

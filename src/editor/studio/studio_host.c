@@ -179,7 +179,7 @@ static void forward_input(studio *s)
                 s->mods = e->key.mod;
                 input.modifiers = rml_key_modifiers(s, e->key.mod);
                 if (e->type == SDL_EVENT_KEY_DOWN) {
-                    apush(s->keys, ((studio_key){ e->key.key, e->key.mod }));
+                    apush(s->keys, ((studio_key){ e->key.key, e->key.mod, e->key.repeat }));
                 }
                 if (input.key == RML_INPUT_KEY_UNKNOWN) {
                     continue;

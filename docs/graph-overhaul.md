@@ -84,12 +84,10 @@ Box2D and Erin Catto's [Box3D](https://github.com/erincatto/box3d) remain future
 ## Verification
 
 `make test` passes with ASan/UBSan, including runtime, authoring, reload, and
-headless application checks. `build/test_suite --shader-ui` exercises native
-material/shape replacement, serialization every frame, and GPU previews at
-2056 x 1286. `make dev` runs the RelWithDebInfo reload host locally.
+headless application checks. `make dev` runs the RelWithDebInfo reload host locally.
 
 Browser verification opened ShaderDemo, framed its two materials and custom SDF,
 edited Radius from 24 to 16, and restored 24 with one Undo. PulseRing opens and
 previews correctly at fullscreen size. This found and fixed GLES include lookup,
 uniform binding, reflected-value initialization, and 16-bit ImGui index overflow.
-The editor now uses 32-bit ImGui indices consistently across desktop and web.
+ImGui uses 32-bit indices consistently across desktop and web.

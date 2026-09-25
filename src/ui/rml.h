@@ -389,7 +389,6 @@ extern "C"
     int rml_element_child_count(const rml_element *element);
     rml_element *rml_element_child(const rml_element *element, int index);
     rml_element *rml_element_first_child(const rml_element *element);
-    bool rml_element_contains(const rml_element *element, rml_element *other);
     rml_context *rml_element_context(const rml_element *element);
     rml_element *rml_element_owner_document(const rml_element *element);
     rml_element *rml_element_by_id(rml_element *element, const char *id);
@@ -441,8 +440,6 @@ extern "C"
     float rml_element_scroll_top(rml_element *element);
     void rml_element_set_scroll_top(rml_element *element, float scroll_top);
     float rml_element_client_height(rml_element *element);
-    float rml_element_offset_width(rml_element *element);
-    float rml_element_offset_height(rml_element *element);
     rml_vec2 rml_element_absolute_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_relative_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_box_size(rml_element *element, rml_box_area area);

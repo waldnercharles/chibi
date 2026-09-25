@@ -69,7 +69,6 @@ static void compatibility_cache()
         .graph_editor = e,
         .graph_document_kind = APP_EDITOR_DOCUMENT_BEHAVIOR,
         .graph_document_id = "DebugCache",
-        .debug_pinned = true,
         .debug_target = APP_RUNTIME_SCENE,
         .debug_sessions = { [APP_RUNTIME_SCENE] = 7 },
     };

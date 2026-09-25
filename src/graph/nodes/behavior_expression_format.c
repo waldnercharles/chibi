@@ -234,8 +234,10 @@ static void put_arguments(text *t, const graph *g, const node *n)
 {
     put(t, "(");
     bool first = true;
+    /* A component node's setting names the call rather than an argument. */
+    int setting = component_node_kind_of(n->desc) ? component_node_setting(n) : -1;
     for (int p = 0; p < n->input_count; p++) {
-        if (n->input_pins[p].flags & PIN_FLAG_SERVICE) {
+        if ((n->input_pins[p].flags & PIN_FLAG_SERVICE) || p == setting) {
             continue;
         }
         put(t, first ? "" : ", ");
@@ -316,7 +318,6 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_input(t, g, n, 1, binding + !right);
         return;
     }
-    /* Before literals: component nodes leave pure_kind at its default. */
     if (put_component(t, g, n, output)) {
         return;
     }
@@ -338,24 +339,28 @@ static void put_node(text *t, const graph *g, const node *n, int output)
         put_read(t, g, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME });
         return;
     }
-    if (desc->pure_kind == NODE_PURE_CONST ||
-        desc->display_class == NODE_DISPLAY_LITERAL) {
-        if (n->input_count == 1) {
-            put_input(t, g, n, 0, 0);
-        } else {
-            put_value(t, &n->output_pins[output], &n->output_pins[output].default_value);
-        }
-        return;
-    }
     /* Named sources such as shader parameters read as their name. */
     if (!n->input_count && n->reference_name && n->reference_name[0]) {
         put(t, n->reference_name);
         return;
     }
+    /* Shader and field nodes also leave pure_kind at its default, so only a
+     * literal node's value is its text. */
+    if (desc->display_class == NODE_DISPLAY_LITERAL) {
+        assert(n->input_count == 1);
+        put_input(t, g, n, 0, 0);
+        return;
+    }
+    /* Make and Break Struct read like the Make_<T> and Break_<T> they lower to. */
+    const node_desc *made = component_node_struct(n);
+    desc = made ? made : desc;
     const char *function = behavior_expression_spelling(desc, &binding);
     char vector[8];
-    if (graph_node_is_vector_constructor(n)) {
-        snprintf(vector, sizeof vector, "vec%d", n->input_count);
+    bool vector_struct = made && made->pure_kind == NODE_PURE_MAKE &&
+                         graph_vector_constructor(&made->outputs[0]) &&
+                         pin_vector_width(&made->outputs[0]) == made->input_count;
+    if (graph_node_is_vector_constructor(n) || vector_struct) {
+        snprintf(vector, sizeof vector, "vec%d", desc->input_count);
         function = vector;
     }
     if (function) {

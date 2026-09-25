@@ -161,8 +161,8 @@ static bool add_reroute(studio *s, int index)
         &ed->reroutes[at],
         (size_t)(ed->reroute_count - at) * sizeof *ed->reroutes
     );
-    ed->reroutes[at].x = g->world_x;
-    ed->reroutes[at].y = g->world_y;
+    ed->reroutes[at].x = g->reroute_x = g->press_wx;
+    ed->reroutes[at].y = g->reroute_y = g->press_wy;
     ed->reroute_count++;
     g->gesture = STUDIO_GRAPH_REROUTE;
     g->reroute_edge = index;
@@ -211,13 +211,13 @@ static bool insert_pins(const studio *s, node *n, int index, int *in, int *out)
 }
 
 /* A lone unwired node dragged over a wire offers to join it (Blender,
-   Node-RED); Alt keeps it out. */
+   Node-RED); Alt keeps it out, and so does a frame carrying its contents. */
 static int insert_target(const studio *s)
 {
     const studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
     node *n = acount(g->drag) == 1 ? sg_node_by_id(s, g->drag[0].id) : NULL;
-    if (!n || (g->in.modifiers & KIT_MOD_ALT)) {
+    if (!n || g->press_comment || (g->in.modifiers & KIT_MOD_ALT)) {
         return -1;
     }
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -289,7 +289,7 @@ static void end_link(studio *s, graph_hit hit)
         /* Dropped on empty canvas: search for a node that fits, spawned here
            and wired (Blender, Unreal). */
         e->spawn_link_pending = 1;
-        e->spawn_link_pin = (ed_pin_view){ from, g->link_kind, g->link_pin, { 0, 0 }, 0 };
+        e->spawn_link_pin = (ed_pin_view){ from, g->link_kind, g->link_pin };
         e->pending_snapshot = ed_snapshot(e);
         g->spawn_pending = true;
         g->spawn_x = g->world_x;
@@ -475,9 +475,13 @@ static void drag(studio *s)
             }
             break;
         case STUDIO_GRAPH_REROUTE: {
+            /* A drag moves the point by the pointer's travel; a click leaves it. */
+            if (drag_distance(g) < THRESHOLD) {
+                break;
+            }
             edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
-            ed->reroutes[g->reroute_point].x = g->world_x;
-            ed->reroutes[g->reroute_point].y = g->world_y;
+            ed->reroutes[g->reroute_point].x = g->reroute_x + g->world_x - g->press_wx;
+            ed->reroutes[g->reroute_point].y = g->reroute_y + g->world_y - g->press_wy;
             break;
         }
         default: break;
@@ -565,11 +569,17 @@ static void release(studio *s, graph_hit hit)
     g->gesture = STUDIO_GRAPH_IDLE;
 }
 
-static void cancel_gesture(studio *s)
+/* A cancelled move puts the frame and nodes back and records nothing. */
+void sg_cancel_gesture(studio *s)
 {
     studio_graph *g = &s->graph;
     editor *e = sg_graph_editor(s);
     if (g->gesture == STUDIO_GRAPH_MOVE) {
+        graph_comment_box *box = sg_comment_by_id(s, g->press_comment);
+        if (box) {
+            box->x = g->comment_x;
+            box->y = g->comment_y;
+        }
         for (int i = 0; i < acount(g->drag); i++) {
             node *n = sg_node_by_id(s, g->drag[i].id);
             if (n) {
@@ -812,9 +822,18 @@ void sg_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
-        if (key == SDLK_ESCAPE && g->gesture != STUDIO_GRAPH_IDLE) {
-            cancel_gesture(s);
-        } else if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
+        if (s->keys[i].repeat) {
+            continue; /* a held key acts once */
+        }
+        /* A gesture holds an undo snapshot and edge indices, so edits wait
+           for it to end; Escape cancels it. */
+        if (g->gesture != STUDIO_GRAPH_IDLE) {
+            if (key == SDLK_ESCAPE) {
+                sg_cancel_gesture(s);
+            }
+            continue;
+        }
+        if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
         } else if (!mod && !shift && key == SDLK_F) {
             sg_frame_nodes(s, acount(e->selected) > 0, true);
@@ -850,7 +869,7 @@ void sg_shortcuts(studio *s)
             }
         } else if (!mod && !shift && key == SDLK_C && !sg_graph_readonly(s)) {
             sg_frame_selection(s);
-        } else if (!mod && shift && key == SDLK_L) {
+        } else if (!mod && shift && key == SDLK_L && !sg_graph_readonly(s)) {
             sg_arrange(s, false);
         } else if (key == SDLK_F9 && !sg_graph_readonly(s)) {
             /* Breakpoints on the selected nodes that run (Unreal). */

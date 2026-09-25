@@ -57,23 +57,6 @@ typedef struct
     uint64_t pin_id;
 } asset_index_reference;
 
-/* Binding provenance stays graph-local: variables, component fields and
- * evaluation context have no authored asset target to invent. */
-typedef struct
-{
-    int source;
-    pin_binding_kind kind;
-    uint64_t variable_id;
-    const char *variable_name;
-    const char *source_asset;
-    const char *component;
-    const char *field;
-    uint64_t graph_id;
-    uint64_t node_id;
-    uint64_t pin_id;
-    bool dormant;
-} asset_index_binding_usage;
-
 asset_index *asset_index_new();
 void asset_index_free(asset_index *index);
 void asset_index_clear(asset_index *index);
@@ -91,15 +74,12 @@ int asset_index_find(const asset_index *index, asset_index_kind kind, const char
 int asset_index_find_name(const asset_index *index, asset_index_kind kind, const char *name);
 int asset_index_ensure_name(asset_index *index, asset_index_kind kind, const char *name);
 int asset_index_add_reference(asset_index *index, asset_index_reference reference);
-int asset_index_binding_usage_count(const asset_index *index);
-const asset_index_binding_usage *asset_index_binding_usage_at(const asset_index *index, int position);
 
 int asset_index_asset_count(const asset_index *index);
 const asset_index_asset *asset_index_asset_at(const asset_index *index, int position);
 bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind);
 int asset_index_reference_count(const asset_index *index);
 const asset_index_reference *asset_index_reference_at(const asset_index *index, int position);
-int asset_index_score(const asset_index_asset *asset, const char *query);
 
 /* Rebuild the index from authored scene, prototype, graph and tab state. */
 struct app_scene_authoring;

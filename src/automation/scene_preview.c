@@ -152,15 +152,15 @@ static bool render_scene(
         }
         engine_viewport_set_render_callback(scene.viewport, draw_scene, &scene);
         engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
-        engine_viewport_set_widgets(
+        char content_root[1024];
+        snprintf(content_root, sizeof content_root, "%s/content", root);
+        engine_viewport_set_ui(
             scene.viewport,
             game_prototype_preview_world(scene.preview),
             game_prototype_preview_entities(scene.preview),
-            preview_runtime
+            engine_ui(preview_runtime),
+            content_root
         );
-        char content_root[1024];
-        snprintf(content_root, sizeof content_root, "%s/content", root);
-        engine_viewport_set_ui(scene.viewport, engine_ui(preview_runtime), content_root);
     }
     /* Captures settle ImGui for two frames. Performance runs first warm the
      * renderer with simulation frozen, then measure GPU-complete frame work.

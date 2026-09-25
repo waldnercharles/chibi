@@ -471,6 +471,31 @@ static void arrange_band_checks()
     test_check(pos[0].x == pos[2].x && pos[2].x == pos[4].x, "arrange starts every band at the left edge");
 }
 
+/* Bands arrange apart, so where their widths differ one band's neighbouring
+ * ranks can share a column spanned by another's wider box. */
+static void arrange_band_width_checks()
+{
+    arrange_box boxes[8];
+    arrange_link links[6];
+    for (int i = 0; i < 8; i++) {
+        boxes[i] = (arrange_box){ i < 4 ? 180 : 260, 84, i < 4 ? 0 : 1 };
+    }
+    for (int i = 0; i < 6; i++) {
+        int from = i < 3 ? i : i + 1;
+        links[i] = (arrange_link){ .from = from,
+                                   .to = from + 1,
+                                   .from_y = PIN_Y(0),
+                                   .to_y = PIN_Y(0),
+                                   .flow = true };
+    }
+    arrange_graph g = { boxes, 8, links, 6 };
+    for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
+        arrange_point pos[8] = { 0 };
+        arrange_layout(&g, style, pos);
+        test_check(arrange_measure(&g, pos, style).flow_bends == 0, "arrange keeps bands of different widths level");
+    }
+}
+
 static void arrange_layout_checks()
 {
     /* Fan-out, a long edge, a cycle, a self-loop, and a second component. */
@@ -670,6 +695,7 @@ void run_graph_arrange_checks()
     arrange_long_link_checks();
     arrange_band_checks();
     arrange_flow_checks();
+    arrange_band_width_checks();
     arrange_layout_checks();
     arrange_content_checks();
 }

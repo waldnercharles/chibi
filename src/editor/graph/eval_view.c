@@ -115,7 +115,9 @@ static bool requires_linking(const behavior_asset *asset)
     return false;
 }
 
-graph *eval_view_graph(eval_view *v, graph *g)
+/* The graph previews run: g, or its linked and lowered copy when the asset
+ * references libraries or holds component nodes. NULL when linking fails. */
+static graph *eval_view_graph(eval_view *v, graph *g)
 {
     if (!g->owner) {
         return g;

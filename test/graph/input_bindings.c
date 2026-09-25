@@ -1014,8 +1014,8 @@ static void converted_component_field_binding()
     node *getter = graph_add_node(auto_asset->graph, registry_node_by_name("Get_GameHealth"));
     assert(getter && graph_expose_output_fields(auto_asset->graph, getter, 0) == 0);
     node *converted = graph_add_node(auto_asset->graph, registry_node_by_name("Sine"));
-    ed_pin_view output = { getter, ED_PIN_OUTPUT, 1, { 0.0f, 0.0f } };
-    ed_pin_view input = { converted, ED_PIN_INPUT, 0, { 0.0f, 0.0f } };
+    ed_pin_view output = { getter, ED_PIN_OUTPUT, 1 };
+    ed_pin_view input = { converted, ED_PIN_INPUT, 0 };
     bool connected = getter && converted && ed_connect(&e, &output, &input);
     const pin_binding *binding = connected
                                    ? graph_pin_binding(auto_asset->graph, converted, 0, 0)
@@ -1328,8 +1328,6 @@ static void component_getter_optimization()
     if (getter) {
         ed_add_selected(&e, getter);
         e.front_node = getter;
-        e.fields_node = getter->id;
-        e.link_pin.n = getter;
         e.spawn_link_pin.n = getter;
     }
     bool connected = getter && target &&
@@ -1348,8 +1346,7 @@ static void component_getter_optimization()
             graph_input_source(asset->graph, target, 1, &remaining_source, &remaining_pin) ==
                 0 &&
             !remaining_source && remaining_pin == -1 &&
-            acount(e.selected) == 0 && !e.front_node && e.fields_node == 0 &&
-            !e.link_pin.n && !e.spawn_link_pin.n,
+            acount(e.selected) == 0 && !e.front_node && !e.spawn_link_pin.n,
         "component getter optimization replaces a single consumer with a Self "
         "binding"
     );
@@ -1370,8 +1367,8 @@ static void component_getter_auto_simplification()
     node *target = asset
                      ? graph_add_node(asset->graph, registry_node_by_name("Set_GameMovement"))
                      : NULL;
-    ed_pin_view output = { getter, ED_PIN_OUTPUT, 0, { 0.0f, 0.0f } };
-    ed_pin_view input = { target, ED_PIN_INPUT, 1, { 0.0f, 0.0f } };
+    ed_pin_view output = { getter, ED_PIN_OUTPUT, 0 };
+    ed_pin_view input = { target, ED_PIN_INPUT, 1 };
     bool connected = getter && target && ed_connect(&e, &output, &input);
     const pin_binding *binding = connected
                                    ? graph_pin_binding(asset->graph, target, 0, 1)
@@ -1841,8 +1838,8 @@ static void numeric_output_to_text()
     node *number = graph_add_node(asset->graph, registry_node_by_name("To Integer"));
     node *text = graph_add_node(asset->graph, registry_node_by_name("To String"));
     assert(graph_connect_data(asset->graph, add, 0, number, 0) == 0);
-    ed_pin_view output = { add, ED_PIN_OUTPUT, 0, { 0 } };
-    ed_pin_view input = { text, ED_PIN_INPUT, 0, { 0 } };
+    ed_pin_view output = { add, ED_PIN_OUTPUT, 0 };
+    ed_pin_view input = { text, ED_PIN_INPUT, 0 };
     test_check(
         ed_connect(&e, &output, &input) && add->output_pins[0].type == PIN_F64 &&
             add->input_pins[0].type == PIN_F64 &&

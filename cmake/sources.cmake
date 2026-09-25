@@ -143,36 +143,17 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/mutations.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/navigation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/preview.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/camera.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/eval_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/fonts.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/pins.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/presentation.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/preview_gate.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/render.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/selection.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/toast.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/details.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_details.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/field_details.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_controls.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_inline.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_image.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/outline.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/transport.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/input_bindings.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/values.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/input_bindings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/choices.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/color.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/flags.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/retained_menu.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
@@ -190,7 +171,6 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/frame_profile.c
 )
 
 set(APP_SOURCES
@@ -201,26 +181,18 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_history.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_prototypes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_retention.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/prototype_inspector.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/asset_browser.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/asset_document.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_inspector.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_navigator.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/component_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/game_presentation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/gameplay_input.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/prototype_still.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_actors.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_authoring.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_checkpoint.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_navigation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_tabs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_viewport.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_workspace.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/scene_renderer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_fragment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/screenshot.c

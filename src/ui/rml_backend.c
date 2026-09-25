@@ -838,7 +838,9 @@ unsigned rml_backend_process_input(rml_backend *backend, const rml_input *input)
 void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t texture)
 {
     assert(backend && name);
-    backend->externals[external_index(backend, name)].texture = (CF_Texture){ texture };
+    /* The lookup may grow externals, so it runs before the array is read. */
+    int i = external_index(backend, name);
+    backend->externals[i].texture = (CF_Texture){ texture };
 }
 
 const char *rml_backend_cursor(const rml_backend *backend)

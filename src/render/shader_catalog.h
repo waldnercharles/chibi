@@ -9,8 +9,6 @@
 bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
 int render_shader_load(const char *content_root);
 int render_shader_find(const char *name);
-const char *render_shader_name(int index);
-int render_shader_count();
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
 void render_shader_parameter_default(int index, int slot, float value[4]);

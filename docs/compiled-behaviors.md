@@ -286,8 +286,7 @@ cover logical frames, stored outputs and guarded optimization.
 
 [Tick profiling and frame reuse](research/tick-profiling.md) documents the new
 execution/setup measurements, bounded call-frame storage, stress results and
-remaining compiler work. The focused rendered check is
-`test_suite --behavior-profile-ui`.
+remaining compiler work.
 
 [Pure-function body measurements](research/whole-pure-functions.md) cover independent
 publication, direct execution inside general compiled events, expanded coverage

@@ -1,6 +1,6 @@
 /* Studio Properties editor: context tabs, reflected component fields,
    behaviors and scene physics. */
-#include "editor/panels/scene_properties.h"
+#include "editor/documents/component_properties.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/labels.h"
 #include "graph/model/pin_fmt.h"
@@ -138,7 +138,6 @@ static void write_field(
                                                        .before = before,
                                                        .after = before };
             scene->property_dirty = scene->scene_dirty;
-            scene->property_seen = true;
             pending = true;
         }
         if (ecs_component_write_field(scene->world, actor->entity, component, field, value) ==
@@ -256,19 +255,21 @@ static bool value_control(
         case PIN_ENUM: {
             const editor_choices *choices = property_choices(desc->type, field);
             int *slot = value->type == PIN_ENUM ? &value->e : &value->i;
-            if (choices && choices->count > 0 && choices->count <= 32) {
+            int count = choices ? editor_choices_count(choices) : 0;
+            if (count > 0 && count <= 32) {
                 const char *labels[32];
                 int current = -1;
-                for (int i = 0; i < choices->count; i++) {
-                    labels[i] = choices->items[i].label;
-                    if (choices->items[i].value == *slot) {
+                for (int i = 0; i < count; i++) {
+                    editor_choice choice = editor_choice_at(choices, i);
+                    labels[i] = choice.label;
+                    if (choice.value == *slot) {
                         current = i;
                     }
                 }
                 int selected = current;
-                if (kit_choice(k, "value", &selected, labels, choices->count, flags) &&
+                if (kit_choice(k, "value", &selected, labels, count, flags) &&
                     selected >= 0) {
-                    *slot = choices->items[selected].value;
+                    *slot = editor_choice_at(choices, selected).value;
                     changed = true;
                 }
                 break;

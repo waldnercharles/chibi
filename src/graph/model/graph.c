@@ -592,14 +592,14 @@ int graph_remove_node(graph *g, node *n)
     return 0;
 }
 
-static void inline_tree_ids(const graph *g, const node *n, uint64_t **ids)
+void graph_inline_tree(const graph *g, const node *n, uint64_t **ids)
 {
     apush(*ids, n->id);
     for (int pin = 0; pin < n->input_count; pin++) {
         node *source = NULL;
         int source_pin = -1;
         if (graph_inline_source(g, n, pin, &source, &source_pin)) {
-            inline_tree_ids(g, source, ids);
+            graph_inline_tree(g, source, ids);
         }
     }
 }
@@ -610,7 +610,7 @@ int graph_remove_node_tree(graph *g, node *n)
         return -1;
     }
     uint64_t *ids = NULL;
-    inline_tree_ids(g, n, &ids);
+    graph_inline_tree(g, n, &ids);
     for (int i = 0; i < acount(ids); i++) {
         int removed = graph_remove_node(g, graph_node_by_id(g, ids[i]));
         assert(removed == 0);
@@ -785,12 +785,12 @@ const node_desc *graph_vector_constructor(const pin_spec *pin)
     return NULL;
 }
 
-/* A component node's Component setting names what it reads, which its chip
- * shows, so it does not keep the node expanded once chosen. */
+/* A component node's Component or Type setting names what it reads, which its
+ * chip shows, so it does not keep the node expanded once chosen. */
 static bool component_setting(const node *n, int pin)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
-    return kind && pin == component_node_setting(kind) && component_node_key(n)[0];
+    return kind && pin == component_node_setting(n) && component_node_key(n)[0];
 }
 
 static bool inline_input(const graph *g, const node *n, int pin)
@@ -815,7 +815,10 @@ static bool inline_input(const graph *g, const node *n, int pin)
  * whatever its presentation. */
 static const edge *inline_edge(const graph *g, const node *n)
 {
-    if (n->disabled || node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
+    /* A flow node such as a pure function's Function Entry has no exec pins
+     * but anchors its graph. */
+    if (n->disabled || n->desc->flow_kind != NODE_FLOW_NONE ||
+        node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
         n->desc->pure_kind == NODE_PURE_FUNCTION ||
         n->desc->pure_kind == NODE_PURE_COPY) {
         return NULL;
@@ -1238,7 +1241,7 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
         return -1;
     }
     component_node_kind component = component_node_kind_of(n->desc);
-    if (!output && component && index == component_node_setting(component)) {
+    if (!output && component && index == component_node_setting(n)) {
         if (value->type != PIN_NAME || component_node_retarget(g, n, value->str)) {
             return -1;
         }
@@ -1915,7 +1918,7 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
     component_node_kind component = component_node_kind_of(n->desc);
     if (component) {
         /* Set's field inputs, and Value, follow Exec, Component and Entity. */
-        int first = component_node_setting(component) + 2;
+        int first = component_node_setting(n) + 2;
         return !output && component_node_split(n) && index >= first &&
                        index < n->input_count &&
                        !component_node_split_value(g, n, false)

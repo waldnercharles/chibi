@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* The last request's error. */
+static char edit_error[256];
+
 static int edit_request(
     const char *source,
     const char *kind,
@@ -27,7 +30,7 @@ static int edit_request(
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *result = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, result);
-    char error[256] = { 0 };
+    edit_error[0] = '\0';
     int status = automation_graph_edit(
         source,
         kind,
@@ -38,8 +41,8 @@ static int edit_request(
         doc,
         result,
         edited,
-        error,
-        sizeof error
+        edit_error,
+        sizeof edit_error
     );
     yyjson_doc_free(request_doc);
     if (response_doc) {
@@ -114,6 +117,54 @@ void test_automation_graph_edit(void)
                        yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "nodes");
     test_check(behavior_ok, "MCP graph edits add typed behavior nodes and return refs");
     yyjson_mut_doc_free(response);
+    free(edited);
+
+    /* A setting shapes the other pins, so it may follow them in inputs. */
+    edited = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"type\":\"Make Struct\","
+        "\"inputs\":{\"current\":5,\"maximum\":9,\"Type\":\"GameHealth\"}},"
+        "{\"op\":\"add_node\",\"type\":\"Set Component\","
+        "\"inputs\":{\"current\":4,\"Component\":\"GameHealth\"}}]}",
+        &edited,
+        NULL
+    );
+    behavior_asset *settings = edited ? behavior_asset_load_json(edited) : NULL;
+    node *made = settings ? find_node_type(settings->graph, "Make Struct") : NULL;
+    node *set = settings ? find_node_type(settings->graph, "Set Component") : NULL;
+    int maximum = made ? find_pin(made, "maximum", false) : -1;
+    int current = set ? find_pin(set, "current", false) : -1;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && maximum >= 0 &&
+            made->input_pins[maximum].default_value.i == 9 && current >= 0 &&
+            set->input_pins[current].default_value.i == 4,
+        "MCP add_node applies a setting before the pins it shapes"
+    );
+    behavior_asset_free(settings);
+    free(edited);
+
+    edited = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"type\":\"Make Struct\","
+        "\"inputs\":{\"Type\":\"GameHealth\",\"curent\":5}}]}",
+        &edited,
+        NULL
+    );
+    test_check(
+        status != CHIBI_AUTOMATION_OK &&
+            strstr(edit_error, "unknown input pin 'curent'; inputs: current, maximum, Type"),
+        "MCP names a node's pins when a pin name is unknown"
+    );
     free(edited);
 
     edited = NULL;

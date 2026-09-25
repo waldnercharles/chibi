@@ -1,5 +1,4 @@
 #include "assets/scene_document.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/checkpoint.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
@@ -12,16 +11,6 @@ static void owned_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *
 {
     checkpoint_text(doc, object, key, text);
     free(text);
-}
-
-static char *behavior_source_json(const char *path)
-{
-    char *json = read_scene_file(path);
-    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
-    char *source = asset ? behavior_asset_save_json(asset) : NULL;
-    behavior_asset_free(asset);
-    free(json);
-    return source;
 }
 
 static const ecs_component_desc *resolve_component(const char *name, void *)
@@ -65,7 +54,6 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
         yyjson_mut_obj_add_bool(doc, item, "dirty", tab->scene_dirty);
         yyjson_mut_obj_add_int(doc, item, "selected", tab->selected);
         yyjson_mut_obj_add_int(doc, item, "selected_prototype", tab->selected_prototype);
-        yyjson_mut_obj_add_int(doc, item, "selected_attachment", tab->selected_attachment);
         checkpoint_text(doc, item, "selected_prototype_name", tab->selected_prototype_name);
         yyjson_mut_val *entities = yyjson_mut_obj_add_arr(doc, item, "entities");
         for (int j = 0; j < tab->scene_entity_count; j++) {
@@ -145,7 +133,6 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
             .scene_dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty")),
             .selected = yyjson_get_int(yyjson_obj_get(item, "selected")),
             .selected_prototype = yyjson_get_int(yyjson_obj_get(item, "selected_prototype")),
-            .selected_attachment = yyjson_get_int(yyjson_obj_get(item, "selected_attachment")),
             .selected_prototype_name = checkpoint_copy_text(item, "selected_prototype_name"),
             .system_json = checkpoint_copy_text(item, "system"),
             .system_saved = checkpoint_copy_text(item, "system_saved"),
@@ -181,8 +168,6 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
     scene_tabs_free(scene);
     scene->tabs = candidate;
     scene->active_tab = active;
-    scene->close_tab = -1;
-    editor_ui_set_document_bar_visible(true);
     free(scene->current_scene_tab_key);
     scene->current_scene_tab_key = NULL;
     const char *scene_tab_key = yyjson_get_str(yyjson_obj_get(root, "scene_tab_key"));
@@ -249,13 +234,7 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
             ? selected_prototype(scene)->prototype->name
             : NULL
     );
-    yyjson_mut_obj_add_int(doc, root, "selected_attachment", scene->selected_attachment);
     yyjson_mut_obj_add_int(doc, root, "next_scene_key", scene->next_scene_key);
-    checkpoint_text(doc, root, "selected_content", scene->content_selected_path);
-    checkpoint_text(doc, root, "scene_search", scene->scene_search);
-    checkpoint_text(doc, root, "asset_search", scene->asset_search);
-    yyjson_mut_obj_add_bool(doc, root, "navigator_scene", scene->navigator_scene);
-    yyjson_mut_obj_add_bool(doc, root, "content_catalog", scene->content_catalog);
     yyjson_mut_obj_add_int(doc, root, "runtime_target", scene->active_runtime_target);
     yyjson_mut_obj_add_bool(
         doc,
@@ -274,7 +253,6 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
     yyjson_mut_obj_add_bool(doc, root, "preview_loop", scene->preview_loop);
     yyjson_mut_obj_add_bool(doc, root, "preview_follow", scene->preview_follow);
     owned_text(doc, root, "history", scene_history_checkpoint(scene->history));
-    owned_text(doc, root, "navigation", scene_navigation_checkpoint(scene->navigation));
     yyjson_mut_val *actors = yyjson_mut_obj_add_arr(doc, root, "actors");
     for (int i = 0; i < acount(scene->actors); i++) {
         yyjson_mut_val *actor = yyjson_mut_arr_add_obj(doc, actors);
@@ -326,25 +304,6 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
         checkpoint_text(doc, item, "path", definition->path);
         owned_text(doc, item, "working", behavior_asset_save_json(definition->working));
         owned_text(doc, item, "applied", behavior_asset_save_json(definition->applied));
-        const char *source = scene_behavior_source_snapshot(
-            scene,
-            definition->name,
-            definition->path
-        );
-        char *current_source = NULL;
-        if (!source && definition->path) {
-            current_source = behavior_source_json(definition->path);
-            if (current_source) {
-                scene_behavior_source_set(scene, definition->name, definition->path, current_source);
-                source = scene_behavior_source_snapshot(
-                    scene,
-                    definition->name,
-                    definition->path
-                );
-            }
-        }
-        checkpoint_text(doc, item, "source", source);
-        free(current_source);
         yyjson_mut_obj_add_bool(doc, item, "dirty", definition->dirty);
         yyjson_mut_obj_add_bool(doc, item, "unsaved", definition->unsaved);
     }
@@ -366,8 +325,6 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
 static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
 {
     scene->definition = NULL;
-    scene_behavior_sources_clear(scene);
-    scene_external_behavior_changes_clear(scene);
     while (game_live_definition_count(scene->live)) {
         game_live_definition *definition = game_live_definition_at(scene->live, 0);
         if (game_live_remove_definition(scene->live, definition->name) != 0) {
@@ -433,19 +390,6 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
             definition->path = checkpoint_copy_text(item, "path");
             definition->dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty"));
             definition->unsaved = yyjson_get_bool(yyjson_obj_get(item, "unsaved"));
-            if (definition->path) {
-                const char *source = yyjson_get_str(yyjson_obj_get(item, "source"));
-                /* Checkpoints written before source snapshots used the applied
-                 * asset as their only authored baseline. Keep that fallback so
-                 * an existing stale workspace is detected on its next launch. */
-                source = source ? source : applied_json;
-                scene_behavior_source_set(scene, name, definition->path, source);
-                char *current_source = behavior_source_json(definition->path);
-                if (!current_source || strcmp(current_source, source) != 0) {
-                    scene_external_behavior_change_add(scene, name);
-                }
-                free(current_source);
-            }
         }
     }
     return true;
@@ -648,13 +592,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
             after,
             acount(before)
         ) ||
-        !scene_navigation_restore_checkpoint(
-            scene->navigation,
-            yyjson_get_str(yyjson_obj_get(root, "navigation")),
-            before,
-            after,
-            acount(before)
-        ) ||
         !checkpoint_read_camera(yyjson_obj_get(root, "camera"), &scene->camera.view)) {
         goto done;
     }
@@ -667,7 +604,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->selected_prototype = selected_prototype_name
                                   ? prototype_index(scene, selected_prototype_name)
                                   : yyjson_get_int(yyjson_obj_get(root, "selected_prototype"));
-    scene->selected_attachment = yyjson_get_int(yyjson_obj_get(root, "selected_attachment"));
     if (scene->selected < -1 || scene->selected >= acount(scene->actors) ||
         scene->selected_prototype < -1 ||
         scene->selected_prototype >= acount(scene->prototypes)) {
@@ -675,15 +611,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     }
     free(scene->content_root);
     scene->content_root = xstrdup(content);
-    free(scene->content_selected_path);
-    scene->content_selected_path = checkpoint_copy_text(root, "selected_content");
-    const char *scene_search = yyjson_get_str(yyjson_obj_get(root, "scene_search"));
-    const char *asset_search = yyjson_get_str(yyjson_obj_get(root, "asset_search"));
-    if (!scene_search || !asset_search) {
-        goto done;
-    }
-    snprintf(scene->scene_search, sizeof scene->scene_search, "%s", scene_search);
-    snprintf(scene->asset_search, sizeof scene->asset_search, "%s", asset_search);
     const char *definition_name = yyjson_get_str(yyjson_obj_get(root, "definition"));
     scene->definition = definition_name
                           ? game_live_find_definition(scene->live, definition_name)
@@ -692,8 +619,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->graph_document_id = checkpoint_copy_text(root, "graph_document");
     scene->graph_document_kind = yyjson_get_int(yyjson_obj_get(root, "graph_kind"));
     scene_authoring_select_document(scene, kind, document);
-    scene->navigator_scene = yyjson_get_bool(yyjson_obj_get(root, "navigator_scene"));
-    scene->content_catalog = yyjson_get_bool(yyjson_obj_get(root, "content_catalog"));
     scene->editor_state_seen = false;
     scene->behavior_apply_pending = false;
     app_scene_authoring_refresh_content(scene);

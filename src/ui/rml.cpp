@@ -685,11 +685,6 @@ rml_element *rml_element_first_child(const rml_element *e)
     return wrap(element(e)->GetFirstChild());
 }
 
-bool rml_element_contains(const rml_element *e, rml_element *other)
-{
-    return element(e)->Contains(element(other));
-}
-
 rml_context *rml_element_context(const rml_element *e)
 {
     return wrap(element(e)->GetContext());
@@ -865,16 +860,6 @@ void rml_element_set_scroll_top(rml_element *e, float scroll_top)
 float rml_element_client_height(rml_element *e)
 {
     return element(e)->GetClientHeight();
-}
-
-float rml_element_offset_width(rml_element *e)
-{
-    return element(e)->GetOffsetWidth();
-}
-
-float rml_element_offset_height(rml_element *e)
-{
-    return element(e)->GetOffsetHeight();
 }
 
 rml_vec2 rml_element_absolute_offset(rml_element *e, rml_box_area area)

@@ -66,14 +66,6 @@ int render_shader_find(const char *name)
     }
     return 0;
 }
-const char *render_shader_name(int index)
-{
-    return index > 0 && index <= acount(assets) ? assets[index - 1].name : NULL;
-}
-int render_shader_count()
-{
-    return acount(assets);
-}
 const char *render_shader_parameter_name(int index, int slot)
 {
     return index > 0 && index <= acount(assets) && slot >= 0 && slot < 32

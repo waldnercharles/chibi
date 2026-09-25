@@ -5,51 +5,31 @@ The September 6 usability review and proposed next refactor are in
 That review includes current screenshots, validation results, and an ImGui/Clay
 assessment. Its recommendations are not yet implemented.
 
-## RmlUi conversion, September 23, 2026
+## RmlUi Studio, September 25, 2026
 
-RmlUi is the chosen UI foundation. LichtFeld Studio and
+RmlUi is the editor's UI foundation. LichtFeld Studio and
 [Blender](references/blender/README.md) are references for compact desktop
 controls, consistent styling and a prominent viewport. Application
 models, authoring commands and Undo/Redo remain in C. RML owns structure and RCSS
 owns presentation; a pass-through C binding (`src/ui/rml.h`) contains the RmlUi API, and the renderer integration and kit are C.
-This supersedes the earlier decision to retain ImGui for all editor UI.
 
-The first conversion replaces File, Edit and View, including their keyboard
-navigation and command state, and adds Quick Open to File. It uses the
-same C commands and stable UI inspection IDs as the existing editor. Docking,
-documents, graph editing, inspectors and their specialized controls still use
-ImGui during the conversion.
-
-The document bar's Back, Forward, Quick Open and Open Documents buttons now use
-the same RmlUi context. Their commands remain in the C workspace. F6 enters the
-toolbar; arrows, Home and End move between enabled buttons, Enter or Space
-activates, and Escape or Tab returns focus to the editor. The existing document
-tabs and document-list popup still use ImGui. The list opens from its retained
-button's current bounds, including when invoked by keyboard.
-
-The editor opens as Studio, the full-window RmlUi editor. Use `--imgui` on
-desktop or `?imgui` in the browser for the ImGui workspace, which still has the
-panels Studio hasn't converted. Its
-direction, component kit and migration progress are in
+Studio (`src/editor/studio`), the full-window RmlUi editor, is the only editor.
+The ImGui editor, with its docking workspace, panels, graph canvas and retained
+menu windows, was removed on September 25, 2026. Later sections that describe
+ImGui panes, docking or the ImGui graph canvas record that editor's history.
+Studio's direction, component kit and progress are in
 [the Studio design](prototypes/studio/DESIGN.md). Studio has Blender-style
-areas, a command palette, the Outliner, Properties and the scene viewport. It
-edits the same C authoring model with one undo step per gesture. The behavior
-graph, Assets and Output are not converted yet. Launch without the flag to use
-the ImGui editor.
+areas, a command palette, the Outliner, Properties, the scene viewport, the
+behavior graph, Assets and Output. It edits the C authoring model with one undo
+step per gesture.
 
-Menu labels share a centered 18dp line box. Popups align with their triggers,
-and checkable and ordinary View items share one text column. Pointer presses
-give immediate color feedback; keyboard navigation suppresses hover highlights
-and transitions.
+ImGui remains only as the `--play` window host, showing the game image and
+supplying input. In-game UI, including the pause and outcome menu, is GameUi
+documents drawn over the game image (`src/render/ui.c`).
 
-`src/editor/rmlui` owns the RmlUi context, FreeType font rendering, Cute geometry
-backend, menu and toolbar controllers and resources.
-`src/editor/ui/retained_menu.c` adapts the current host input and composes the
-resulting transparent texture into native menu and toolbar windows. ImGui
-supplies those window containers so the converted controls obey existing popup
-focus and modal stacking. Popup regions are excluded from the other surfaces to
-avoid drawing their translucent pixels twice. RmlUi owns layout, hit testing,
-buttons and styling. Its geometry renderer does not depend on ImGui.
+`src/ui` owns the RmlUi binding, FreeType font rendering and the Cute geometry
+backend, shared by the editor and game UI; `src/editor/rmlui` owns the kit and
+its resources. The geometry renderer does not depend on ImGui.
 
 Sizes at the C boundary are logical pixels. The RmlUi context and render canvas
 use framebuffer pixels, and RCSS uses `dp` for display scaling. Application
@@ -57,19 +37,15 @@ deactivation destroys retained documents, context and GPU resources before unloa
 the application library. Plain game presentation does not create this UI.
 
 Resources live in `src/editor/rmlui/resources` and currently load at startup from
-the source checkout. Restart the editor after editing RML or RCSS. CMake pins
-RmlUi 6.3 and FreeType 2.14.3; no system installation is required. Subsequent panels
-should consume C state and emit C commands rather than expose engine objects to
-markup. Text entry and IME, custom graph elements, accessibility integration and
-docking need their own working conversions before ImGui can be removed.
+the source checkout. RCSS edits apply within a second; restart the editor after editing RML. CMake pins
+RmlUi 6.3 and FreeType 2.14.3; no system installation is required. Panels
+consume C state and emit C commands rather than expose engine objects to
+markup.
 
-`build/test_suite --rmlui-menu` exercises command dispatch, keyboard focus,
-disabled items, design preview, pane state, menu alignment, toolbar navigation, scaling and
-context teardown without a GPU. The `--rmlui-menu-render` smoke test covers GPU
-composition, display scaling, resize and preserving queued scene geometry.
-`make test-render` includes that smoke test. Set `CHIBI_RMLUI_CAPTURE_DIR` to an
-existing directory to save menu and toolbar states, including opening and
-dismissed popups.
+`build/test_suite --rmlui-kit` exercises kit reconciliation, number fields,
+menus and commands without a GPU. The `--rmlui-render` smoke test renders the
+retained UI while preserving queued scene geometry. `make test-render` includes
+that smoke test.
 
 ## Current goal, September 9, 2026
 
@@ -1462,15 +1438,18 @@ to every component. Shader lowering uses the same broadcast behavior. Inline
 scalar constants remain editable on the node.
 
 Pure sources are drawn inside their consumer's input by default. A node folds
-when it is pure and enabled; is not a function call, reroute, or local source;
-has no setting pins besides a component node's chosen Component; has exactly
-one outgoing wire, a data wire into a non-setting input; and each input is
-wired from a folded node or holds a value (a literal, binding, local, or
-implied Self). `graph_node_is_inline` decides this for the canvas,
-arrangement, extraction, copying, and saving. Trees of up to three nodes fold
-into one chip written in Behavior Expression grammar with the typographic
-operators node titles use, such as `elapsed ≥ Self.GameWeapon.cooldown`. Nodes
-with breakpoints or watches, and generated expression graphs, keep their boxes.
+when it is pure and enabled; is not a flow node such as a pure function's
+Function Entry, a function call, reroute, or local source; has no setting pins
+besides a component node's chosen Component; has exactly one outgoing wire, a
+data wire into a non-setting input; and each input is wired from a folded node
+or holds a value (a literal, binding, local, or implied Self).
+`graph_node_is_inline` decides this for the canvas, arrangement, extraction,
+copying, and saving. Trees of up to three nodes fold into one chip written in
+Behavior Expression grammar with the typographic operators node titles use,
+such as `elapsed ≥ Self.GameWeapon.cooldown`. Literal nodes read as their
+value, named sources such as shader parameters as their name, and other nodes
+as calls, such as `multiply(time, Glow)`. Nodes with breakpoints or watches, and
+generated expression graphs, keep their boxes.
 Folded nodes remain ordinary nodes and wires, so evaluation, compilation, and
 debugging are unchanged. They have no box, wires, or saved position, and
 arrangement skips them.

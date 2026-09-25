@@ -249,6 +249,15 @@ bool test_rmlui_kit()
             strstr(markup, "tok-number\">42<"),
         "log tokens"
     );
+    /* Markup cut to fit never splits a tag or entity. */
+    highlight_markup(HIGHLIGHT_LOG, "x < 1234567", markup, 30);
+    ok &= check(strcmp(markup, "x ") == 0, "markup stops before a run whose tags do not fit");
+    highlight_markup(HIGHLIGHT_LOG, "x < 1234567", markup, 74);
+    const char *partial = "x <span class=\"tok-punct\">&lt;</span> "
+                          "<span class=\"tok-number\">123</span>";
+    ok &= check(strcmp(markup, partial) == 0, "markup keeps the characters of a run that fit");
+    highlight_markup(HIGHLIGHT_LOG, "<<", markup, 36);
+    ok &= check(strcmp(markup, "<span class=\"tok-punct\">&lt;</span>") == 0, "markup never cuts an entity");
 
     ok &= check(click(&f, "app/bar/button") && f.clicks == 1, "button click reports once");
     frame(&f);

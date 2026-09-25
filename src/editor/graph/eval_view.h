@@ -21,17 +21,14 @@ void eval_view_set_formatter(eval_view *v, editor_value_formatter formatter, voi
 eval_view *eval_view_new(void);
 void eval_view_free(eval_view *v);
 
-/* Re-evaluates every output pin for preview. The editor MUST skip this while
- * editor_preview_allowed() is false. */
+/* Re-evaluates every output pin for preview. The editor MUST skip this while a
+ * run owns pin storage. */
 void eval_view_refresh(eval_view *v, graph *g);
 /* Borrow the project catalog; linked preview generations are owned by the view. */
 void eval_view_set_catalog(eval_view *v, const behavior_asset *const *assets, int count);
 void eval_view_set_run(eval_view *v, const flow_run *run);
 void eval_view_set_instance(eval_view *v, const behavior_instance *bi);
 const char *eval_view_error(const eval_view *v);
-/* The graph previews run: g, or its linked and lowered copy when the asset
- * references libraries or holds component nodes. NULL when linking fails. */
-graph *eval_view_graph(eval_view *v, graph *g);
 
 /* Formatted value for a DATA output pin, or "" for EXEC/bad pins. */
 const char *eval_view_output(const eval_view *v, const node *n, int pin);

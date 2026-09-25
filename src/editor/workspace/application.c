@@ -4,10 +4,8 @@
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
-#include "editor/workspace/frame_profile.h"
 #include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
@@ -23,7 +21,6 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 
-#include <imgui/dcimgui.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,7 +33,6 @@
 typedef struct
 {
     editor *graph_editor;
-    editor_frame_profile profile;
     engine *runtime;
     ecs_world *world;
     game_live_world *live;
@@ -49,16 +45,13 @@ typedef struct
     const char *screenshot_path;
     int capture_error;
     int headless;
-    bool imgui; /* --imgui: the ImGui workspace in place of Studio */
     double monotonic_time;
     double fixed_dt;
     const chibi_host *host;
-    char *workspace;
 } app_loop;
 
 static void app_cleanup(app_loop *loop)
 {
-    editor_frame_profile_free(&loop->profile);
     app_game_presentation_free(loop->game);
     app_scene_authoring_free(loop->authoring);
     engine_free(loop->runtime);
@@ -67,7 +60,6 @@ static void app_cleanup(app_loop *loop)
     render_shader_catalog_clear();
     ecs_world_free(loop->world);
     engine_viewport_free(loop->viewport);
-    free(loop->workspace);
     loop->host->release(loop);
 }
 
@@ -77,76 +69,33 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Application frame");
-    bool full_editor = !loop->game && loop->imgui;
-    if (full_editor) {
-        editor_frame_begin(&loop->profile);
-    }
     CHIBI_TRACE_ZONE_BEGIN(window_zone, "Window update");
     cf_app_update(NULL);
     CHIBI_TRACE_ZONE_END(window_zone);
     CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input");
     app_input_frame();
     CHIBI_TRACE_ZONE_END(input_zone);
-    if (loop->headless || loop->game) {
-        editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
-    }
-    loop->monotonic_time += loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME;
-    if (full_editor) {
-        editor_frame_mark(&loop->profile, EDITOR_FRAME_INPUT);
-    }
+    double dt = loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME;
+    loop->monotonic_time += dt;
     int status = 0;
     if (loop->game) {
         CHIBI_TRACE_ZONE_BEGIN(game_zone, "Game presentation");
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
         CHIBI_TRACE_ZONE_END(game_zone);
-    } else if (!loop->imgui) {
-        editor_tick(loop->graph_editor, loop->monotonic_time);
-        app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
-        if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
-            fprintf(stderr, "runtime frame failed\n");
-        }
-        studio_frame(loop->studio, loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME);
     } else {
-        CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor input and documents");
+        CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor");
         editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
-        editor_frame_mark(&loop->profile, EDITOR_FRAME_DOCUMENTS);
-        CHIBI_TRACE_ZONE_END(editor_zone);
-        CHIBI_TRACE_ZONE_BEGIN(simulation_zone, "Simulation");
-        app_scene_authoring_set_behavior_profiling(
-            loop->authoring,
-            editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE) && !loop->profile.frozen
-        );
         if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
             fprintf(stderr, "runtime frame failed\n");
         }
-        editor_frame_mark(&loop->profile, EDITOR_FRAME_SIMULATION);
-        CHIBI_TRACE_ZONE_END(simulation_zone);
-        CHIBI_TRACE_ZONE_BEGIN(scene_zone, "Scene submission");
-        editor_prepare_docking();
-        app_scene_authoring_draw_viewport(loop->authoring, loop->viewport);
-        editor_frame_mark(&loop->profile, EDITOR_FRAME_SCENE);
-        CHIBI_TRACE_ZONE_END(scene_zone);
-        CHIBI_TRACE_ZONE_BEGIN(ui_zone, "Editor UI");
-        app_scene_authoring_draw(loop->authoring);
-        editor_draw(loop->graph_editor);
-        editor_frame_profile_draw(&loop->profile);
-        editor_ui_render();
-        editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
-        CHIBI_TRACE_ZONE_END(ui_zone);
+        studio_frame(loop->studio, dt);
+        CHIBI_TRACE_ZONE_END(editor_zone);
     }
     CHIBI_TRACE_ZONE_BEGIN(present_zone, "Present / GPU wait");
     cf_app_draw_onto_screen(true);
     CHIBI_TRACE_ZONE_END(present_zone);
     CHIBI_TRACE_FRAME_MARK("Application frame");
-    if (full_editor) {
-        editor_frame_mark(&loop->profile, EDITOR_FRAME_PRESENT);
-        editor_frame_end(
-            &loop->profile,
-            app_scene_authoring_runtime_timing(loop->authoring),
-            app_scene_authoring_behavior_profile(loop->authoring)
-        );
-    }
     if (status) {
         CHIBI_TRACE_ZONE_END(frame_zone);
         return status;
@@ -172,7 +121,6 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     int frames = 0;
     int headless = 0;
     bool play = false;
-    bool imgui = false;
     double fixed_dt = 0;
     const char *scene_path = NULL;
     const char *project_path = NULL;
@@ -191,8 +139,6 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             headless = 1;
         } else if (strcmp(argv[i], "--play") == 0) {
             play = true;
-        } else if (strcmp(argv[i], "--imgui") == 0) {
-            imgui = true;
         } else if (strcmp(argv[i], "--scene") == 0) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
                 snprintf(error, error_size, "--scene requires an authored scene path");
@@ -315,15 +261,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     chibi_project_free(&project);
     /* Put the shipped movement graph on screen on first launch. The graph is
      * still reachable through Files after switching documents. */
-    if (!play && authoring &&
-        game_live_find_definition(live, "TwinStickInputBehavior")) {
+    if (!play && game_live_find_definition(live, "TwinStickInputBehavior")) {
         (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
-        editor_set_graph_visible(graph_editor, 1);
-        editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
-    }
-    /* Captures start from a known dock tree for consistent framing. */
-    if (screenshot_path && !play && imgui) {
-        editor_ui_reset_layout();
     }
     editor_set_event_catalog(
         graph_editor,
@@ -332,7 +271,6 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     );
     editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
-    editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
     engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);
 
     app_loop *loop = host->allocate(sizeof *loop);
@@ -348,7 +286,6 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         .screenshot_path = screenshot_path,
         .capture_error = 0,
         .headless = headless,
-        .imgui = imgui,
         .fixed_dt = fixed_dt,
     };
     if (play) {
@@ -367,15 +304,11 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
     const char *scene_json = yyjson_get_str(yyjson_obj_get(root, "scene"));
     const char *graph_json = yyjson_get_str(yyjson_obj_get(root, "graph"));
-    const char *ui_json = yyjson_get_str(yyjson_obj_get(root, "workspace"));
-    bool valid = yyjson_get_int(yyjson_obj_get(root, "version")) == 1 && scene_json &&
-                 graph_json && ui_json && strstr(ui_json, "[Chibi][Workspace]");
+    bool valid = yyjson_get_int(yyjson_obj_get(root, "version")) == 1 &&
+                 scene_json && graph_json &&
+                 app_scene_authoring_restore_checkpoint(authoring, scene_json) == 0 &&
+                 editor_restore_checkpoint(graph_editor, graph_json);
     if (valid) {
-        valid = app_scene_authoring_restore_checkpoint(authoring, scene_json) == 0 &&
-                editor_restore_checkpoint(graph_editor, graph_json);
-    }
-    if (valid) {
-        loop->workspace = strdup(ui_json);
         app_scene_authoring_set_editor_working(authoring, editor_behavior_asset(graph_editor));
     }
     yyjson_doc_free(doc);
@@ -399,16 +332,14 @@ static char *application_checkpoint(void *state)
     }
     char *scene = app_scene_authoring_checkpoint(loop->authoring);
     char *graph = editor_checkpoint(loop->graph_editor);
-    char *workspace = editor_ui_checkpoint();
     char *json = NULL;
-    if (scene && graph && workspace) {
+    if (scene && graph) {
         yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
         yyjson_mut_val *root = yyjson_mut_obj(doc);
         yyjson_mut_doc_set_root(doc, root);
         yyjson_mut_obj_add_int(doc, root, "version", 1);
         yyjson_mut_obj_add_str(doc, root, "scene", scene);
         yyjson_mut_obj_add_str(doc, root, "graph", graph);
-        yyjson_mut_obj_add_str(doc, root, "workspace", workspace);
         char *encoded = yyjson_mut_write(doc, 0, NULL);
         if (encoded) {
             size_t size = strlen(encoded) + 1;
@@ -420,37 +351,19 @@ static char *application_checkpoint(void *state)
     }
     free(scene);
     free(graph);
-    free(workspace);
     return json;
 }
 
 static void application_activate(void *state)
 {
     app_loop *loop = state;
-    bool studio_ui = !loop->game && !loop->imgui;
-    editor_ui_initialize(
-        !loop->game && !loop->headless && !loop->screenshot_path && loop->imgui
-    );
-    editor_ui_set_design_preview(studio_ui);
-    if (studio_ui) {
-        editor_ui_set_document_bar_visible(true);
-    }
-    if (loop->workspace) {
-        editor_ui_restore_checkpoint(loop->workspace);
-        free(loop->workspace);
-        loop->workspace = NULL;
-    }
-    editor_ui_set_framebuffer_target(loop->screenshot_path != NULL || loop->game != NULL);
-    if (loop->headless || loop->game) {
-        editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
-    }
 #ifndef __EMSCRIPTEN__
-    if (loop->screenshot_path || loop->game) {
+    if (loop->game) {
         cf_app_set_imgui_render_target(cf_app_get_canvas());
     }
 #endif
     app_input_initialize();
-    if (studio_ui) {
+    if (!loop->game) {
         loop->studio = studio_new(loop->authoring, loop->viewport);
     }
 }
@@ -461,7 +374,6 @@ static void application_deactivate(void *state)
     studio_free(loop->studio);
     loop->studio = NULL;
     app_input_shutdown();
-    editor_ui_deactivate();
 }
 
 static int application_frame(void *state)

@@ -1,15 +1,10 @@
 #include "editor/graph/eval_view.h"
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
 #include "support/asset_text.h"
 
 #include <assert.h>
-#include <imgui/dcimgui.h>
-
-#undef IMGUI_STB_NAMESPACE
-#include <imgui/dcimgui_internal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,18 +137,8 @@ int editor_command_apply(editor *e, editor_command command)
             }
             char *snapshot = ed_snapshot(e);
             int pending = e->edit_pending;
-            ed_pin_view output = {
-                from,
-                ED_PIN_OUTPUT,
-                command.data.connect.from_pin,
-                { 0.0f, 0.0f },
-            };
-            ed_pin_view input = {
-                to,
-                ED_PIN_INPUT,
-                command.data.connect.to_pin,
-                { 0.0f, 0.0f },
-            };
+            ed_pin_view output = { from, ED_PIN_OUTPUT, command.data.connect.from_pin };
+            ed_pin_view input = { to, ED_PIN_INPUT, command.data.connect.to_pin };
             int result = ed_connect(e, &output, &input) ? 0 : -1;
             if (result == 0) {
                 e->edit_pending = 1;
@@ -200,18 +185,10 @@ void editor_query_state(const editor *e, editor_query *out)
     }
     out->active_graph = e->active_graph;
     out->graph_count = acount(e->asset->graphs);
-    out->graph_visible = e->graph_visible &&
-                         e->ui_context != EDITOR_UI_CONTEXT_SCENE &&
-                         editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
     out->compile = &e->compile;
     out->inspection_instance = e->inspection_instance;
     out->inspection_blocked = ed_inspection_blocked(e);
     out->preview_error = eval_view_error(e->ev);
-    out->can_go_back = ed_can_go_back(e);
-    out->zoom = e->zoom;
-    out->pan_x = e->pan.x;
-    out->pan_y = e->pan.y;
-    out->camera_moving = e->camera_moving;
     if (e->edit_revision_initialized && !e->edit_pending &&
         e->edit_revision_asset == e->asset && e->edit_revision_snapshot) {
         out->dirty = !e->saved_snapshot ||
@@ -263,9 +240,6 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
         return -1;
     }
     ed_record_math_edit(e, before);
-    if (e->fit_mode) {
-        ed_zoom_fit(e, true);
-    }
     return 0;
 }
 
@@ -354,8 +328,6 @@ int editor_load(editor *e, const char *path)
     int result = ed_adopt_behavior_asset_with_identity(e, json, 0);
     if (result == 0) {
         aclear(e->graph_callers);
-        aclear(e->graph_views);
-        ed_load_graph_view(e);
         e->arrange_pending = true;
         free(e->saved_snapshot);
         e->saved_snapshot = behavior_asset_save_json(e->asset);
@@ -363,4 +335,35 @@ int editor_load(editor *e, const char *path)
     }
     free(json);
     return result;
+}
+
+int editor_delete_graph(editor *e, uint64_t graph_id)
+{
+    graph *target = behavior_asset_find_graph(e->asset, graph_id);
+    if (!target || target == e->asset->graph || !behavior_asset_mutable(e->asset)) {
+        return -1;
+    }
+    ed_snapshot_before(e);
+    if (target == e->active_graph &&
+        editor_open_graph(e, e->asset->graph->graph_id) != 0) {
+        return -1;
+    }
+    if (target->math_expression) {
+        ed_reset_node_interaction(e);
+        for (int i = 0; i < acount(e->asset->graphs); i++) {
+            graph *g = e->asset->graphs[i];
+            for (int j = acount(g->nodes) - 1; j >= 0; j--) {
+                node *n = g->nodes[j];
+                if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction ||
+                     n->desc == &NODE_BehaviorExpression) &&
+                    !n->reference_asset && n->reference_id == graph_id) {
+                    int removed = graph_remove_node_tree(g, n);
+                    assert(removed == 0);
+                    (void)removed;
+                    j = acount(g->nodes);
+                }
+            }
+        }
+    }
+    return behavior_asset_delete_graph(e->asset, graph_id);
 }

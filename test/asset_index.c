@@ -57,14 +57,7 @@ void test_asset_index()
     int resolved = asset_index_add_asset(index, ASSET_INDEX_EVENT, "Damaged", "content/events/Damaged.yaml", 0);
     assert(resolved == event);
     assert(!asset_index_asset_at(index, event)->unresolved);
-    assert(asset_index_score(asset_index_asset_at(index, event), "dam") >= 0);
 
-    const asset_index_asset *player = asset_index_asset_at(index, prototype);
-    assert(asset_index_score(player, "player arena") >= 0);
-    assert(asset_index_score(player, "prototypes player") >= 0);
-    assert(asset_index_score(player, "AP") >= 0);
-    assert(asset_index_score(player, "playre") >= 0);
-    assert(asset_index_score(player, "player missing") < 0);
     assert(editor_search_score("  ", "Player", NULL) == 0);
     assert(
         editor_search_score(" \tplayer  ", "Player", NULL) ==

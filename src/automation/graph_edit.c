@@ -508,7 +508,22 @@ static int pin_index(edit_context *ctx, node *n, yyjson_val *selector, int outpu
         return pin_index(ctx, n, selector, output, pin);
     }
     if (found < 0) {
-        set_error(ctx, "unknown %s pin '%s'", output ? "output" : "input", name);
+        /* Naming the pins lets the caller correct the name in one retry. */
+        char names[160] = "";
+        size_t used = 0;
+        for (int i = 0; i < count && used < sizeof names; i++) {
+            if (pins[i].name) {
+                used += (size_t)snprintf(
+                    names + used,
+                    sizeof names - used,
+                    "%s%s",
+                    used ? ", " : "",
+                    pins[i].name
+                );
+            }
+        }
+        const char *side = output ? "output" : "input";
+        set_error(ctx, "unknown %s pin '%s'; %ss: %s", side, name, side, names);
         return -1;
     }
     *pin = &pins[found];
@@ -726,6 +741,17 @@ static int set_output(edit_context *ctx, node *n, yyjson_val *op)
     return graph_set_pin_default(ctx->graph, n, 1, index, &value);
 }
 
+static bool names_setting(const node *n, const char *name)
+{
+    for (int i = 0; i < n->input_count; i++) {
+        const pin_spec *pin = &n->input_pins[i];
+        if ((pin->flags & PIN_FLAG_SETTING) && pin->name && !strcmp(pin->name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int add_node_inputs(edit_context *ctx, node *n, yyjson_val *inputs)
 {
     if (!inputs) {
@@ -735,12 +761,18 @@ static int add_node_inputs(edit_context *ctx, node *n, yyjson_val *inputs)
         set_error(ctx, "add_node.inputs must be an object keyed by pin name");
         return -1;
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(inputs);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        yyjson_val *value = yyjson_obj_iter_get_val(key);
-        if (set_input(ctx, n, key, value, NULL)) {
-            return -1;
+    /* Settings shape the other pins, so they apply first in any order. */
+    for (int pass = 0; pass < 2; pass++) {
+        yyjson_obj_iter iterator = yyjson_obj_iter_with(inputs);
+        yyjson_val *key;
+        while ((key = yyjson_obj_iter_next(&iterator))) {
+            if (names_setting(n, yyjson_get_str(key)) != (pass == 0)) {
+                continue;
+            }
+            yyjson_val *value = yyjson_obj_iter_get_val(key);
+            if (set_input(ctx, n, key, value, NULL)) {
+                return -1;
+            }
         }
     }
     return 0;

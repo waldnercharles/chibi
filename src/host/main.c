@@ -8,6 +8,7 @@
 #include "render/shader_dir.h"
 #include "state_file.h"
 
+#include <imgui/dcimgui.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -224,7 +225,7 @@ int main(int argc, char **argv)
         puts(
             "chibi [--headless] [--frames N] [--fps N] [--screenshot "
             "PATH]\n"
-            "             [--play] [--imgui] [--project-root "
+            "             [--play] [--project-root "
             "PATH|--project PATH] "
             "[--scene PATH] "
             "[--fixed-dt SECONDS]\n"
@@ -331,6 +332,8 @@ int main(int argc, char **argv)
         cf_shader_directory("/chibi-render");
     }
     cf_app_init_imgui();
+    /* ImGui draws only game UI, which keeps no window settings. */
+    ImGui_GetIO()->IniFilename = NULL;
     const char *fps = option(argc, argv, "--fps");
     if (fps && atoi(fps) > 0) {
         cf_set_target_framerate(atoi(fps));

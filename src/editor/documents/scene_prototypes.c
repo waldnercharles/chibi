@@ -1,4 +1,3 @@
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 
@@ -519,28 +518,6 @@ int app_scene_authoring_add_prototype_component(
     return refresh_prototype_instances(scene, asset);
 }
 
-int app_scene_authoring_remove_prototype_component(
-    app_scene_authoring *scene,
-    const char *prototype_name,
-    const char *component_name
-)
-{
-    if (!scene || !prototype_name || !component_name) {
-        return -1;
-    }
-    scene_prototype_asset *asset = find_prototype(scene, prototype_name);
-    if (!asset) {
-        return -1;
-    }
-    prototype_history_before(scene, asset->prototype);
-    if (game_prototype_detach_component(asset->prototype, component_name) != 0) {
-        return -1;
-    }
-    asset->dirty = 1;
-    asset_index_invalidate(scene);
-    return refresh_prototype_instances(scene, asset);
-}
-
 static int restore_prototype(
     app_scene_authoring *scene,
     scene_prototype_asset *asset,
@@ -586,7 +563,7 @@ int prototype_redo(app_scene_authoring *scene)
     return asset ? restore_prototype(scene, asset, &asset->redo, &asset->undo) : -1;
 }
 
-int append_prototype_asset(app_scene_authoring *scene, game_prototype *prototype, const char *path)
+static int append_prototype_asset(app_scene_authoring *scene, game_prototype *prototype, const char *path)
 {
     if (!scene || !prototype || !prototype->name ||
         find_prototype(scene, prototype->name)) {

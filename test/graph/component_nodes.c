@@ -169,9 +169,8 @@ static node *add(fixture *f, const char *type)
 static node *component(fixture *f, const node_desc *desc, const char *name)
 {
     node *n = graph_add_node(f->g, desc);
-    int setting = component_node_setting(component_node_kind_of(desc));
     pin_value key = { .type = PIN_NAME, .str = name };
-    assert(graph_set_pin_default(f->g, n, 0, setting, &key) == 0);
+    assert(graph_set_pin_default(f->g, n, 0, component_node_setting(n), &key) == 0);
     return n;
 }
 
@@ -197,24 +196,37 @@ static pin_value health_default()
     return (pin_value){ .type = PIN_STRUCT, .type_name = "GameHealth", .ptr = &health_value };
 }
 
+static node *rebuild_event(fixture *f)
+{
+    node *event = graph_add_node(f->g, &NODE_Event);
+    assert(graph_set_event_name(f->g, event, "Rebuild") == 0);
+    return event;
+}
+
 /* Copies Velocity into Transform, writes Other's Health, then records whether
- * Other has Input, using the generated descriptors. */
+ * Other has Input, using the generated descriptors. Rebuild adds Input to the
+ * owner and removes its Velocity. */
 static behavior_asset *generated_form()
 {
     fixture f = fixture_new();
     node *velocity = add(&f, "Get_GameVelocity");
     assert(graph_expose_output_fields(f.g, velocity, 0) == 0);
+    node *split = add(&f, "Break_GameVelocity");
     node *x = add(&f, "Set_GameTransform_x");
     node *y = add(&f, "Set_GameTransform_y");
+    node *made = add(&f, "Make_GameHealth");
     node *health = add(&f, "SetEntity_GameHealth");
     node *has = add(&f, "HasEntity_GameInput");
     node *branch = graph_add_node(f.g, &NODE_Branch);
     node *yes = add(&f, "Set_GameHealth_current");
     node *no = add(&f, "Set_GameHealth_current");
     data(&f, velocity, 1, x, 1);
-    data(&f, velocity, 2, y, 1);
+    data(&f, velocity, 0, split, 0);
+    data(&f, split, 1, y, 1);
     data(&f, f.event, 1, health, 1);
-    set_default(&f, health, 2, health_default());
+    set_default(&f, made, 0, (pin_value){ .type = PIN_I32, .i = health_value.current });
+    set_default(&f, made, 1, (pin_value){ .type = PIN_I32, .i = health_value.maximum });
+    data(&f, made, 0, health, 2);
     data(&f, f.event, 1, has, 0);
     data(&f, has, 0, branch, 1);
     set_default(&f, yes, 1, (pin_value){ .type = PIN_I32, .i = 1 });
@@ -225,6 +237,11 @@ static behavior_asset *generated_form()
     exec(&f, health, 0, branch);
     exec(&f, branch, 0, yes);
     exec(&f, branch, 1, no);
+    node *rebuild = rebuild_event(&f);
+    node *input = add(&f, "Add_GameInput");
+    node *removal = add(&f, "Remove_GameVelocity");
+    exec(&f, rebuild, 0, input);
+    exec(&f, input, 0, removal);
     return f.asset;
 }
 
@@ -235,10 +252,14 @@ static behavior_asset *component_form()
     node *velocity = component(&f, &NODE_GetComponent, "GameVelocity");
     assert(!strcmp(velocity->output_pins[0].type_name, "GameVelocity"));
     assert(graph_expose_output_fields(f.g, velocity, 0) == 0);
+    node *split = component(&f, &NODE_BreakStruct, "GameVelocity");
+    assert(split->input_count == 2 && split->output_count == 2);
     node *transform = component(&f, &NODE_SetComponent, "GameTransform");
     assert(component_node_show_field(f.g, transform, "y", true) == 0);
     assert(component_node_show_field(f.g, transform, "x", true) == 0);
     assert(transform->input_count == 5 && !strcmp(transform->input_pins[3].name, "x"));
+    node *made = component(&f, &NODE_MakeStruct, "GameHealth");
+    assert(made->input_count == 3 && !strcmp(made->output_pins[0].type_name, "GameHealth"));
     node *health = component(&f, &NODE_SetComponent, "game.GameHealth");
     node *has = component(&f, &NODE_HasComponent, "GameInput");
     node *branch = graph_add_node(f.g, &NODE_Branch);
@@ -247,9 +268,12 @@ static behavior_asset *component_form()
     assert(component_node_show_field(f.g, yes, "current", true) == 0);
     assert(component_node_show_field(f.g, no, "current", true) == 0);
     data(&f, velocity, 1, transform, 3);
-    data(&f, velocity, 2, transform, 4);
+    data(&f, velocity, 0, split, 0);
+    data(&f, split, 1, transform, 4);
     data(&f, f.event, 1, health, 2);
-    set_default(&f, health, 3, health_default());
+    set_default(&f, made, 0, (pin_value){ .type = PIN_I32, .i = health_value.current });
+    set_default(&f, made, 1, (pin_value){ .type = PIN_I32, .i = health_value.maximum });
+    data(&f, made, 0, health, 3);
     data(&f, f.event, 1, has, 1);
     data(&f, has, 0, branch, 1);
     set_default(&f, yes, 3, (pin_value){ .type = PIN_I32, .i = 1 });
@@ -259,6 +283,11 @@ static behavior_asset *component_form()
     exec(&f, health, 0, branch);
     exec(&f, branch, 0, yes);
     exec(&f, branch, 1, no);
+    node *rebuild = rebuild_event(&f);
+    node *input = component(&f, &NODE_AddComponent, "GameInput");
+    node *removal = component(&f, &NODE_RemoveComponent, "GameVelocity");
+    exec(&f, rebuild, 0, input);
+    exec(&f, input, 0, removal);
     return f.asset;
 }
 
@@ -266,6 +295,7 @@ typedef struct
 {
     GameTransform transform;
     GameHealth owner, other, third;
+    bool input, velocity;
 } outcome;
 
 static void run(ecs_world *world, behavior_instance *instance, ecs_entity other)
@@ -320,27 +350,47 @@ static outcome execute(const behavior_asset *authored)
     run(world, instance, third);
     result.owner = *GAME_GameHealth_get_const(world, owner);
     result.third = *GAME_GameHealth_get_const(world, third);
+    flow_error error_state;
+    flow_run *rebuilt = behavior_instance_dispatch(instance, "Rebuild", (flow_inputs){ 0 }, &error_state);
+    assert(rebuilt && flow_run_status(rebuilt) == FLOW_COMPLETED);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    result.input = GAME_GameInput_has(world, owner);
+    result.velocity = GAME_GameVelocity_has(world, owner);
     behavior_instance_destroy(instance);
     behavior_asset_free(linked);
     ecs_world_free(world);
     return result;
 }
 
+static bool same_health(GameHealth a, GameHealth b)
+{
+    return a.current == b.current && a.maximum == b.maximum;
+}
+
+static bool same_outcome(outcome a, outcome b)
+{
+    return a.transform.x == b.transform.x && a.transform.y == b.transform.y &&
+           same_health(a.owner, b.owner) && same_health(a.other, b.other) &&
+           same_health(a.third, b.third) && a.input == b.input &&
+           a.velocity == b.velocity;
+}
+
 static void runtime_equivalence()
 {
     behavior_asset *generated = generated_form();
     behavior_asset *raised = generated_form();
-    assert(raise_all(raised) == 7);
+    assert(raise_all(raised) == 11);
     behavior_asset *authored = component_form();
     behavior_asset *loaded = reload(authored);
     outcome expected = execute(generated);
     assert(expected.transform.x == 3 && expected.transform.y == 4);
     assert(expected.other.current == 5 && expected.other.maximum == 9);
     assert(expected.owner.current == 2 && expected.third.current == 5);
+    assert(expected.input && !expected.velocity);
     const behavior_asset *forms[] = { raised, authored, loaded };
     for (size_t i = 0; i < sizeof forms / sizeof *forms; i++) {
         outcome actual = execute(forms[i]);
-        assert(!memcmp(&actual, &expected, sizeof actual));
+        assert(same_outcome(actual, expected));
     }
     char error[256] = "";
     behavior_asset *lowered = behavior_asset_link_libraries(authored, NULL, 0, error, sizeof error);
@@ -372,13 +422,29 @@ static void optimizer_folds()
     data(&f, other, 2, transform, 4);
     data(&f, f.event, 1, other, 1);
     exec(&f, f.event, 0, transform);
+    node *last = component(&f, &NODE_SetComponent, "GameExperience");
+    assert(component_node_show_field(f.g, last, "current", true) == 0);
+    exec(&f, transform, 0, last);
+    /* Break Struct over a Self read becomes a nested field binding. */
+    node *health = component(&f, &NODE_GetComponent, "GameHealth");
+    node *split = component(&f, &NODE_BreakStruct, "GameHealth");
+    data(&f, health, 0, split, 0);
+    data(&f, split, 0, last, 3);
+    node *unused = component(&f, &NODE_HasComponent, "GameAim");
+    uint64_t last_id = last->id, unused_id = unused->id, split_id = split->id;
     uint64_t folded = velocity->id;
     graph_optimize_options options = graph_optimize_defaults();
     graph_optimize_report report = { 0 };
     assert(graph_optimize(f.g, &options, &report) > 0);
     assert(
-        report.removed_nodes == 1 && !graph_node_by_id(f.g, folded) &&
-        graph_node_by_id(f.g, other->id) == other
+        report.removed_nodes == 3 && !graph_node_by_id(f.g, folded) &&
+        !graph_node_by_id(f.g, split_id) && graph_node_by_id(f.g, other->id) == other
+    );
+    const pin_binding *nested = last->input_pins[3].binding;
+    assert(nested && nested->kind == PIN_BINDING_COMPONENT_FIELD);
+    assert(
+        !strcmp(nested->component_key, "game.GameHealth") &&
+        !strcmp(nested->field_name, "current")
     );
     const pin_binding *binding = transform->input_pins[3].binding;
     assert(binding && binding->kind == PIN_BINDING_COMPONENT_FIELD);
@@ -387,9 +453,10 @@ static void optimizer_folds()
         !strcmp(binding->field_name, "x")
     );
     assert(!transform->input_pins[4].binding);
+    assert(graph_node_by_id(f.g, last_id) && graph_node_by_id(f.g, unused_id));
     graph_optimize_report_free(&report);
     behavior_asset_free(f.asset);
-    puts("component node optimizer: Self reads fold into bindings; explicit entities stay");
+    puts("component node optimizer: Self reads and Break Struct fold into bindings; explicit entities and unused reads stay");
 }
 
 /* Choosing, splitting and saving component nodes, including unfinished ones. */
@@ -480,7 +547,7 @@ static void authoring()
         "name: \"\"\n  nodes:\n"
         "  - {id: 1, type: Get Component, inputs: {Component: GameNothing}}\n"
     ));
-    assert(strstr(graph_last_error(), "unknown component"));
+    assert(strstr(graph_last_error(), "unknown Component"));
     assert(!behavior_asset_load_json(
         "version: 3\nname: Unknown field\nid_counter: 10\ngraphs:\n- kind: "
         "event\n  name: \"\"\n  nodes:\n"
@@ -516,8 +583,79 @@ static void authoring()
     int parameter = graph_add_pin(function, entry, 1, &entity);
     assert(graph_connect_data(function, entry, parameter, read, 1) == 0);
     assert(!behavior_asset_validate_library(library));
+    /* A field Set lowers to a setter libraries accept, but Self is still the
+     * owner's. */
+    node *write = graph_add_node(function, &NODE_SetComponent);
+    assert(graph_set_pin_default(function, write, 0, 1, &health) == 0);
+    assert(component_node_show_field(function, write, "current", true) == 0);
+    assert(behavior_asset_validate_library(library));
+    assert(graph_connect_data(function, entry, parameter, write, 2) == 0);
+    assert(!behavior_asset_validate_library(library));
     behavior_asset_free(library);
     puts("component node authoring: retargeting, splitting, unfinished nodes, bindings and libraries");
+}
+
+/* Choosing a type reshapes Make and Break Struct; retargeting Add or Remove
+ * keeps its wires, since every component gives them the same pins. */
+static void struct_authoring()
+{
+    fixture f = fixture_new();
+    node *made = graph_add_node(f.g, &NODE_MakeStruct);
+    char error[256] = "";
+    assert(!behavior_asset_link_libraries(f.asset, NULL, 0, error, sizeof error));
+    assert(!strcmp(error, "Choose a type for Make Struct"));
+    node *split = component(&f, &NODE_BreakStruct, "CF_V2");
+    assert(split->output_count == 2 && component_node_setting(split) == 1);
+    made = graph_node_by_id(f.g, made->id);
+    pin_value health = { .type = PIN_NAME, .str = "GameHealth" };
+    assert(graph_set_pin_default(f.g, made, 0, 0, &health) == 0);
+    assert(made->input_count == 3 && !strcmp(made->input_pins[1].name, "maximum"));
+    assert(!strcmp(component_node_key(made), "GameHealth"));
+    pin_value transform = { .type = PIN_NAME, .str = "GameTransform" };
+    assert(graph_set_pin_default(f.g, made, 0, component_node_setting(made), &transform) == 0);
+    assert(made->input_count == 3 && !strcmp(made->input_pins[0].name, "x"));
+    assert(!strcmp(made->output_pins[0].type_name, "GameTransform"));
+    pin_value unknown = { .type = PIN_NAME, .str = "GameNothing" };
+    assert(graph_set_pin_default(f.g, made, 0, 2, &unknown) == -1);
+    node *add = component(&f, &NODE_AddComponent, "GameInput");
+    exec(&f, f.event, 0, add);
+    pin_value aim = { .type = PIN_NAME, .str = "GameAim" };
+    assert(graph_set_pin_default(f.g, add, 0, 1, &aim) == 0);
+    assert(graph_exec_input_count(f.g, add, 0) == 1);
+    assert(!strcmp(component_node_key(add), "GAME.GameAim"));
+    node *removal = component(&f, &NODE_RemoveComponent, "GameAim");
+    exec(&f, add, 0, removal);
+    behavior_asset *loaded = reload(f.asset);
+    char *saved = disk_text(f.asset), *resaved = disk_text(loaded);
+    assert(!strcmp(saved, resaved));
+    free(saved);
+    free(resaved);
+    uint64_t ids[] = { made->id, split->id, add->id, removal->id };
+    const char *lowered[] = { "Make_GameTransform", "Break_CF_V2", "Add_GameAim", "Remove_GameAim" };
+    assert(behavior_asset_lower_component_nodes(loaded, error, sizeof error) == 0);
+    for (int i = 0; i < 4; i++) {
+        assert(
+            graph_node_by_id(loaded->graph, ids[i])->desc ==
+            registry_node_by_name(lowered[i])
+        );
+    }
+    behavior_asset_free(loaded);
+    behavior_asset_free(f.asset);
+
+    behavior_asset *named = behavior_asset_load_json(
+        "version: 3\nname: Named\nid_counter: 10\ngraphs:\n- kind: event\n  "
+        "name: \"\"\n  nodes:\n"
+        "  - {id: 1, type: Break Struct, inputs: {Type: CF_V2}}\n"
+    );
+    assert(named && named->graph->nodes[0]->output_count == 2);
+    behavior_asset_free(named);
+    assert(!behavior_asset_load_json(
+        "version: 3\nname: Unknown\nid_counter: 10\ngraphs:\n- kind: event\n  "
+        "name: \"\"\n  nodes:\n"
+        "  - {id: 1, type: Make Struct, inputs: {Type: GameNothing}}\n"
+    ));
+    assert(strstr(graph_last_error(), "unknown Type"));
+    puts("component node structs: Make and Break reshape by type; Add and Remove keep their wires");
 }
 
 /* Lowering gives a multi-field Set's outputs to its last setter, a node of its
@@ -571,4 +709,5 @@ void test_component_nodes()
     lowered_watches();
     optimizer_folds();
     authoring();
+    struct_authoring();
 }

@@ -3,9 +3,9 @@
 
 #include "editor/workspace/scene_authoring.h"
 
-/* The RmlUi Studio workspace: a full-window retained document that replaces the
- * ImGui shell. It reads and edits the scene authoring model directly and shows
- * the Scene render target inside its viewport area. */
+/* The RmlUi Studio workspace: a full-window retained document. It reads and
+ * edits the scene authoring model directly and shows the Scene render target
+ * inside its viewport area. */
 typedef struct studio studio;
 
 studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport);

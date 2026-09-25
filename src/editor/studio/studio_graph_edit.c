@@ -5,6 +5,7 @@
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -80,8 +81,8 @@ void sg_show_error(studio *s, const char *message)
 bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin)
 {
     editor *e = sg_graph_editor(s);
-    ed_pin_view from = { a, a_kind, a_pin, { 0, 0 }, 0 };
-    ed_pin_view to = { b, b_kind, b_pin, { 0, 0 }, 0 };
+    ed_pin_view from = { a, a_kind, a_pin };
+    ed_pin_view to = { b, b_kind, b_pin };
     ed_clear_connect_error(e);
     e->pending_snapshot = ed_snapshot(e);
     int connected = ed_connect(e, &from, &to);
@@ -209,7 +210,7 @@ void sg_find_unused(studio *s)
     graph *gr = sg_active_graph(s);
     asetlen(g->unused, 0);
     int count = acount(gr->nodes);
-    bool *used = calloc((size_t)(count ? count : 1), sizeof *used);
+    bool *used = xcalloc((size_t)(count ? count : 1), sizeof *used);
     bool roots = false;
     for (int i = 0; i < count; i++) {
         const node *n = gr->nodes[i];
@@ -414,6 +415,11 @@ bool studio_graph_palette(studio *s)
             if (linked) {
                 place_on_wire(s, n, &from);
             }
+        }
+        if (e->spawn_link_pending) {
+            /* Nothing took the wire: a comment, or a spawn the editor refused. */
+            ed_cancel_snapshot(e);
+            e->spawn_link_pending = 0;
         }
         g->spawn_pending = false;
     }

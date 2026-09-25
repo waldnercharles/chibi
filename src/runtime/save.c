@@ -51,6 +51,7 @@ struct game_save
     char *committed;
     char *path;
     char error[256];
+    uint64_t revision;
 };
 
 static bool fail(game_save *save, const char *message)
@@ -117,6 +118,10 @@ bool game_save_set(game_save *save, const char *key, const char *text)
     if (bytes > SAVE_BYTES_MAX) {
         return fail(save, "Save data exceeds one megabyte");
     }
+    save->error[0] = 0;
+    if (index >= 0 && !strcmp(save->entries[index].text, text)) {
+        return true;
+    }
     char *copy = xstrdup(text);
     if (index >= 0) {
         free(save->entries[index].text);
@@ -124,7 +129,7 @@ bool game_save_set(game_save *save, const char *key, const char *text)
     } else {
         apush(save->entries, ((save_entry){ xstrdup(key), copy }));
     }
-    save->error[0] = 0;
+    save->revision++;
     return true;
 }
 
@@ -135,9 +140,15 @@ bool game_save_remove(game_save *save, const char *key)
         free(save->entries[index].key);
         free(save->entries[index].text);
         adel(save->entries, index);
+        save->revision++;
     }
     save->error[0] = 0;
     return true;
+}
+
+uint64_t game_save_revision(const game_save *save)
+{
+    return save->revision;
 }
 
 static int compare_entries(const void *a, const void *b)
@@ -199,6 +210,7 @@ bool game_save_import(game_save *save, const char *json)
         free(save->committed);
         save->committed = serialize(save);
         save->error[0] = 0;
+        save->revision++;
     }
     game_save_free(candidate);
     return valid ||

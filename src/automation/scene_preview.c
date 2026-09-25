@@ -6,6 +6,7 @@
 #include "render/gpu_timing.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
+#include "render/ui.h"
 #include "runtime/camera.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "third_party/yyjson/yyjson.h"
@@ -154,13 +155,10 @@ static bool render_scene(
         engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
         char content_root[1024];
         snprintf(content_root, sizeof content_root, "%s/content", root);
-        engine_viewport_set_ui(
-            scene.viewport,
-            game_prototype_preview_world(scene.preview),
-            game_prototype_preview_entities(scene.preview),
-            engine_ui(preview_runtime),
-            content_root
-        );
+        ui_world ui = { .ecs = game_prototype_preview_world(scene.preview),
+                        .model = engine_ui(preview_runtime),
+                        .entities = game_prototype_preview_entities(scene.preview) };
+        engine_viewport_set_ui(scene.viewport, &ui, content_root);
     }
     /* Captures settle ImGui for two frames. Performance runs first warm the
      * renderer with simulation frozen, then measure GPU-complete frame work.

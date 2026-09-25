@@ -143,13 +143,11 @@ app_game_presentation *app_game_presentation_new(
     engine_viewport_request_resize(viewport, cf_app_get_canvas_width(), cf_app_get_canvas_height());
     fit_scene_view(viewport, scene->world, (ecs_entity){ 0 });
     engine_viewport_set_render_callback(viewport, render_game, game);
-    engine_viewport_set_ui(
-        viewport,
-        scene->world,
-        scene->live->entities,
-        engine_ui(scene->runtime),
-        scene->content_root
-    );
+    ui_world ui = { .ecs = scene->world,
+                    .model = engine_ui(scene->runtime),
+                    .entities = scene->live->entities,
+                    .settings = game_behavior_save(scene->live->behaviors) };
+    engine_viewport_set_ui(viewport, &ui, scene->content_root);
     return game;
 }
 

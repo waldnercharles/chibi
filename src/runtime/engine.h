@@ -13,6 +13,7 @@ typedef struct engine engine;
 typedef struct engine_viewport engine_viewport;
 typedef struct render_arena_camera render_arena_camera;
 typedef struct render_ui render_ui;
+typedef struct ui_world ui_world;
 
 typedef enum
 {
@@ -141,16 +142,9 @@ void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewpor
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
 /* The runtime whose audio plays while a session is shown. */
 void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtime);
-/* Shows the GameUi documents of `world` from content_root/ui over the scene,
- * applying `model` (NULL shows them as authored); their data-events reach
- * `entities`. */
-void engine_viewport_set_ui(
-    engine_viewport *viewport,
-    ecs_world *world,
-    game_entities *entities,
-    game_ui *model,
-    const char *content_root
-);
+/* Shows `world`'s GameUi documents from content_root/ui over the scene
+ * (render/ui.h). */
+void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root);
 /* The documents engine_viewport_set_ui created, for a host's overlay. */
 render_ui *engine_viewport_ui(const engine_viewport *viewport);
 /* Whether the documents took the pointer in the last draw. */

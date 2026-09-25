@@ -41,9 +41,7 @@ struct engine_viewport
     CF_V2 host_delta, press_origin;
     float press_distance_sq;
     render_audio *audio;
-    ecs_world *ui_world;
-    game_entities *ui_entities;
-    game_ui *ui_model;
+    ui_world ui_world; /* no documents while its ecs is NULL */
     render_ui *ui;
     bool ui_capture; /* the documents took the pointer last frame */
     engine_viewport_render_fn render;
@@ -115,17 +113,9 @@ void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtim
     viewport->runtime = runtime;
 }
 
-void engine_viewport_set_ui(
-    engine_viewport *viewport,
-    ecs_world *world,
-    game_entities *entities,
-    game_ui *model,
-    const char *content_root
-)
+void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root)
 {
-    viewport->ui_world = world;
-    viewport->ui_entities = entities;
-    viewport->ui_model = model;
+    viewport->ui_world = *world;
     if (!viewport->ui) {
         viewport->ui = render_ui_new(content_root);
     }
@@ -374,12 +364,10 @@ static void draw_viewport_canvas(engine_viewport *viewport)
     }
     cf_render_to(viewport->canvas, true);
     cf_draw_pop();
-    if (viewport->ui && viewport->ui_world) {
+    if (viewport->ui && viewport->ui_world.ecs) {
         render_ui_update(
             viewport->ui,
-            viewport->ui_world,
-            viewport->ui_model,
-            viewport->ui_entities,
+            &viewport->ui_world,
             viewport->width,
             viewport->height,
             CF_DELTA_TIME

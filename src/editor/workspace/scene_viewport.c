@@ -4,6 +4,7 @@
 #include "render/arena3d.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
+#include "render/ui.h"
 #include "runtime/camera.h"
 #include "runtime/generated.h"
 
@@ -401,14 +402,17 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         preview ? game_prototype_preview_runtime(scene->prototype_preview)
                 : scene->runtime
     );
-    engine_viewport_set_ui(
-        viewport,
-        preview ? game_prototype_preview_world(scene->prototype_preview) : scene->world,
-        preview ? game_prototype_preview_entities(scene->prototype_preview)
-                : scene->live->entities,
-        preview ? NULL : engine_ui(scene->runtime),
-        scene->content_root
-    );
+    ui_world ui = { .ecs = scene->world,
+                    .model = engine_ui(scene->runtime),
+                    .entities = scene->live->entities,
+                    .settings = game_behavior_save(scene->live->behaviors) };
+    if (preview) {
+        ui = (ui_world){
+            .ecs = game_prototype_preview_world(scene->prototype_preview),
+            .entities = game_prototype_preview_entities(scene->prototype_preview)
+        };
+    }
+    engine_viewport_set_ui(viewport, &ui, scene->content_root);
     bool perspective = scene->perspective;
     if (preview) {
         ecs_world *world = game_prototype_preview_world(scene->prototype_preview);

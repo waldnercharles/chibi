@@ -27,6 +27,9 @@ struct ui_mount
     bool installed; /* root holds the current markup */
     ui_activation *pending;
     uint64_t applied; /* the model revision already applied */
+    game_save *settings;
+    uint64_t settings_seen; /* the settings revision shown; UINT64_MAX when stale */
+    bool refreshing;        /* ignore the change events a refresh raises */
 };
 
 /* The events a mount's root reports. */
@@ -161,6 +164,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         rml_element_set_inner_rml(root, m->markup);
         m->installed = true;
         m->applied = 0;
+        m->settings_seen = UINT64_MAX;
     }
     return restyled;
 }
@@ -186,10 +190,101 @@ static rml_element *event_source(rml_element *element, char *name, size_t size)
     return NULL;
 }
 
+/* The element from `element` up, within the mount, bound with data-setting. */
+static rml_element *setting_source(const ui_mount *m, rml_element *element, char *key, size_t size)
+{
+    for (; element && element != m->root; element = rml_element_parent(element)) {
+        if (rml_element_attribute(element, "data-setting", key, size) > 0) {
+            return element;
+        }
+    }
+    return NULL;
+}
+
+static bool input_type(rml_element *element, const char *type)
+{
+    char own[32] = "";
+    rml_element_attribute(element, "type", own, sizeof own);
+    return !strcmp(own, type);
+}
+
+/* Stores a changed data-setting element's value under its key. */
+static void write_setting(ui_mount *m, rml_element *target)
+{
+    char key[128], value[256];
+    rml_element *element = setting_source(m, target, key, sizeof key);
+    if (!element) {
+        return;
+    }
+    if (input_type(element, "checkbox")) {
+        snprintf(value, sizeof value, "%s", rml_element_has_attribute(element, "checked") ? "true" : "false");
+    } else if (input_type(element, "radio")) {
+        if (!rml_element_has_attribute(element, "checked")) {
+            return;
+        }
+        rml_element_attribute(element, "value", value, sizeof value);
+    } else {
+        rml_element_value(element, value, sizeof value);
+    }
+    game_save_set(m->settings, key, value);
+}
+
+/* Shows each data-setting element's stored value; unset keys stay as authored. */
+static void refresh_settings(ui_mount *m)
+{
+    int count = rml_element_query_selector_all(m->root, "[data-setting]", NULL, 0);
+    rml_element **elements = count ? xmalloc((size_t)count * sizeof *elements) : NULL;
+    rml_element_query_selector_all(m->root, "[data-setting]", elements, count);
+    m->refreshing = true;
+    for (int i = 0; i < count; i++) {
+        char key[128], own[256];
+        rml_element_attribute(elements[i], "data-setting", key, sizeof key);
+        const char *value = game_save_get(m->settings, key);
+        if (!value) {
+            continue;
+        }
+        bool check = input_type(elements[i], "checkbox") && !strcmp(value, "true");
+        if (input_type(elements[i], "radio")) {
+            rml_element_attribute(elements[i], "value", own, sizeof own);
+            check = !strcmp(own, value);
+        }
+        if (!input_type(elements[i], "checkbox") && !input_type(elements[i], "radio")) {
+            rml_element_set_value(elements[i], value);
+            continue;
+        }
+        if (check) {
+            rml_element_set_attribute(elements[i], "checked", "");
+            continue;
+        }
+        rml_element_remove_attribute(elements[i], "checked");
+    }
+    m->refreshing = false;
+    free(elements);
+}
+
+void ui_mount_settings(ui_mount *m, game_save *settings)
+{
+    if (settings != m->settings) {
+        m->settings = settings;
+        m->settings_seen = UINT64_MAX;
+    }
+    if (!m->installed || !settings || m->settings_seen == game_save_revision(settings)) {
+        return;
+    }
+    refresh_settings(m);
+    m->settings_seen = game_save_revision(settings);
+}
+
 /* A click activates buttons and other elements; inputs report changes, which
- * carry their value. */
+ * carry their value and first update a bound setting. */
 void ui_mount_listen(ui_mount *m, const rml_event *event)
 {
+    if (m->refreshing) {
+        return;
+    }
+    if (event->id == RML_EVENT_CHANGE && m->settings) {
+        write_setting(m, event->target);
+    }
     ui_activation a = { 0 };
     rml_element *source = event_source(event->target, a.event, sizeof a.event);
     bool input = source && strcmp(rml_element_tag_name(source), "input") == 0;
@@ -453,8 +548,10 @@ unsigned render_ui_input(render_ui *ui, const rml_input *input)
 }
 
 /* Sends each view's activations to its entity, an input's value first. */
-static void send_activations(render_ui *ui, game_ui *model, game_entities *entities)
+static void send_activations(render_ui *ui, const ui_world *world)
 {
+    game_ui *model = world->model;
+    game_entities *entities = world->entities;
     for (int i = 0; i < acount(ui->views); i++) {
         ui_view *view = &ui->views[i];
         ui_activation a;
@@ -576,19 +673,12 @@ static void collect_error(render_ui *ui)
     }
 }
 
-void render_ui_update(
-    render_ui *ui,
-    ecs_world *world,
-    game_ui *model,
-    game_entities *entities,
-    int width,
-    int height,
-    double dt
-)
+void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, double dt)
 {
-    assert(ui && world);
+    assert(ui && w && w->ecs);
+    ecs_world *world = w->ecs;
     ui->time += dt;
-    send_activations(ui, model, entities);
+    send_activations(ui, w);
     if (width != ui->width || height != ui->height) {
         ui->width = width;
         ui->height = height;
@@ -610,15 +700,19 @@ void render_ui_update(
         }
         ecs_query_end(&query);
     }
-    close_unseen(ui, model);
+    close_unseen(ui, w->model);
     if (ui->restyle) {
         install_styles(ui);
         ui->restyle = false;
     }
     collect_error(ui);
-    for (int i = 0; model && i < acount(ui->views); i++) {
-        if (ui->views[i].mount) {
-            ui_mount_apply(ui->views[i].mount, model, ui->views[i].entity);
+    for (int i = 0; i < acount(ui->views); i++) {
+        ui_mount *m = ui->views[i].mount;
+        if (m && w->model) {
+            ui_mount_apply(m, w->model, ui->views[i].entity);
+        }
+        if (m) {
+            ui_mount_settings(m, w->settings);
         }
     }
     rml_backend_update(ui->backend, dt);

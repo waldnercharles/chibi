@@ -4,9 +4,21 @@
 #include "ecs/ecs.h"
 #include "platform/cute.h"
 #include "runtime/behaviors/entities.h"
+#include "runtime/save.h"
 #include "runtime/ui.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
+
+/* What shown documents read and act on. Only `ecs` is required: without
+ * `model` documents show as authored, without `entities` activations reach no
+ * one, and without `settings` data-setting elements stay as authored. */
+typedef struct ui_world
+{
+    ecs_world *ecs;
+    game_ui *model;
+    game_entities *entities;
+    game_save *settings;
+} ui_world;
 
 /* ---------- Mounts ---------- */
 
@@ -47,6 +59,10 @@ void ui_mount_listen(ui_mount *mount, const rml_event *event);
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
+/* Binds each data-setting element to that key in `settings`, both ways: a
+ * checkbox holds "true" or "false", a checked radio its value, and other
+ * inputs and selects their value. Refreshes the elements when a key changes. */
+void ui_mount_settings(ui_mount *mount, game_save *settings);
 
 /* ---------- Game host ---------- */
 
@@ -60,17 +76,9 @@ typedef struct render_ui render_ui;
 
 render_ui *render_ui_new(const char *content_root);
 void render_ui_free(render_ui *ui);
-/* `model` may be NULL to show documents as authored. An input's change first
- * stores its value in the model under `#id` for Get UI Value. */
-void render_ui_update(
-    render_ui *ui,
-    ecs_world *world,
-    game_ui *model,
-    game_entities *entities,
-    int width,
-    int height,
-    double dt
-);
+/* Shows `world`'s GameUi documents. An input's change first stores its value
+ * in the model under `#id` for Get UI Value. */
+void render_ui_update(render_ui *ui, const ui_world *world, int width, int height, double dt);
 /* Shows the host's ui asset `name` above the world's documents with `state`
  * as its root's class, or hides it when `state` is NULL. Its activations wait
  * for render_ui_take_overlay_event instead of reaching the world. */

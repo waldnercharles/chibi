@@ -134,16 +134,8 @@ bool appearance_color_field(const type_desc *type, const type_field *field)
         return field->offset == offsetof(GameParticleEmitter, color) ||
                field->offset == offsetof(GameParticleEmitter, end_color);
     }
-    if (type == GAME_COMPONENT_GameWidget.type) {
-        return field->offset == offsetof(GameWidget, color) ||
-               field->offset == offsetof(GameWidget, background) ||
-               field->offset == offsetof(GameWidget, accent);
-    }
     if (type == GAME_COMPONENT_GameFog.type) {
         return field->offset == offsetof(GameFog, color);
-    }
-    if (type == GAME_COMPONENT_GameMapMarker.type) {
-        return field->offset == offsetof(GameMapMarker, color);
     }
     if (type == GAME_COMPONENT_GameSensorContact.type) {
         return field->offset == offsetof(GameSensorContact, color);
@@ -326,22 +318,10 @@ bool property_mesh_parts(char *text, size_t size)
     return changed;
 }
 
-static const editor_choice WIDGET_TYPES[] = {
-    { GAME_WIDGET_LABEL, "Label" },   { GAME_WIDGET_PANEL, "Panel" },
-    { GAME_WIDGET_BUTTON, "Button" }, { GAME_WIDGET_PROGRESS, "Progress" },
-    { GAME_WIDGET_SLIDER, "Slider" }, { GAME_WIDGET_SLOT, "Slot" },
-    { GAME_WIDGET_MAP, "Map" },
-};
-static const editor_choices WIDGET_KINDS = { WIDGET_TYPES, 7 };
-
 const editor_choices *property_choices(const type_desc *type, const type_field *field)
 {
     if (!field || (field->type != PIN_I32 && field->type != PIN_ENUM)) {
         return NULL;
-    }
-    if (type == GAME_COMPONENT_GameWidget.type &&
-        field->offset == offsetof(GameWidget, kind)) {
-        return &WIDGET_KINDS;
     }
     if (type == GAME_COMPONENT_GameAppearance.type &&
         field->offset == offsetof(GameAppearance, shape)) {

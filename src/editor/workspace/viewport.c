@@ -4,7 +4,6 @@
 #include "render/arena3d.h"
 #include "render/audio.h"
 #include "render/ui.h"
-#include "render/widgets.h"
 #include "runtime/engine.h"
 #include "support/xalloc.h"
 
@@ -21,7 +20,6 @@ struct engine_viewport
     ecs_world *widget_world;
     game_entities *widget_entities;
     const engine *widget_runtime;
-    bool widget_focus;
     CF_Canvas canvas;
     int width;
     int height;
@@ -148,9 +146,6 @@ void engine_viewport_set_widgets(
     const engine *runtime
 )
 {
-    if (world != viewport->widget_world) {
-        viewport->widget_focus = false;
-    }
     viewport->widget_world = world;
     viewport->widget_entities = entities;
     viewport->widget_runtime = runtime;
@@ -158,18 +153,7 @@ void engine_viewport_set_widgets(
 
 bool engine_viewport_widgets_capture(const engine_viewport *viewport)
 {
-    if (viewport->host) {
-        return viewport->ui_capture;
-    }
-    ImVec2 mouse = ImGui_GetIO()->MousePos;
-    return viewport->widget_world &&
-           (viewport->widget_focus ||
-            game_widgets_capture(
-                viewport->widget_world,
-                (CF_V2){ viewport->image_min.x, viewport->image_min.y },
-                (CF_V2){ viewport->image_size.x, viewport->image_size.y },
-                (CF_V2){ mouse.x, mouse.y }
-            ));
+    return viewport->ui_capture;
 }
 
 static CF_Canvas viewport_canvas(int width, int height)
@@ -438,35 +422,63 @@ static void draw_viewport_canvas(engine_viewport *viewport)
     }
 }
 
-/* Replays the host pointer into the game documents in canvas pixels. */
-static void host_ui_input(engine_viewport *viewport, bool playing)
+/* Replays a pointer over the displayed image into the game documents in
+   canvas pixels. `x` and `y` are relative to the image, `size` its size. */
+static void ui_pointer(
+    engine_viewport *viewport,
+    CF_V2 at,
+    CF_V2 size,
+    bool hovered,
+    bool pressed,
+    bool released,
+    bool playing
+)
 {
-    const engine_viewport_host_input *in = &viewport->host_input;
     viewport->ui_capture = false;
-    if (!viewport->ui || !playing || in->width <= 0 || in->height <= 0) {
+    if (!viewport->ui || !playing || size.x <= 0 || size.y <= 0) {
         return;
     }
-    float x = in->x * (float)viewport->width / in->width;
-    float y = in->y * (float)viewport->height / in->height;
-    unsigned captured = render_ui_input(
-        viewport->ui,
-        &(rml_input){ .type = in->hovered ? RML_INPUT_POINTER_MOVE : RML_INPUT_POINTER_LEAVE,
-                      .x = x,
-                      .y = y }
-    );
-    if (in->pressed[0]) {
+    float x = at.x * (float)viewport->width / size.x;
+    float y = at.y * (float)viewport->height / size.y;
+    rml_input_type move = hovered ? RML_INPUT_POINTER_MOVE : RML_INPUT_POINTER_LEAVE;
+    unsigned captured = render_ui_input(viewport->ui, &(rml_input){ .type = move, .x = x, .y = y });
+    if (pressed) {
         captured |= render_ui_input(
             viewport->ui,
             &(rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y }
         );
     }
-    if (in->released[0]) {
+    if (released) {
         captured |= render_ui_input(
             viewport->ui,
             &(rml_input){ .type = RML_INPUT_POINTER_UP, .x = x, .y = y }
         );
     }
     viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
+}
+
+static void host_ui_input(engine_viewport *viewport, bool playing)
+{
+    const engine_viewport_host_input *in = &viewport->host_input;
+    ui_pointer(
+        viewport,
+        (CF_V2){ in->x, in->y },
+        (CF_V2){ in->width, in->height },
+        in->hovered,
+        in->pressed[0],
+        in->released[0],
+        playing
+    );
+}
+
+static void imgui_ui_input(engine_viewport *viewport, bool playing)
+{
+    ImGuiIO *io = ImGui_GetIO();
+    CF_V2 at = { io->MousePos.x - viewport->image_min.x,
+                 io->MousePos.y - viewport->image_min.y };
+    CF_V2 size = { viewport->image_size.x, viewport->image_size.y };
+    bool inside = at.x >= 0 && at.y >= 0 && at.x < size.x && at.y < size.y;
+    ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], playing);
 }
 
 static engine_viewport_action draw_control(
@@ -699,7 +711,14 @@ int engine_viewport_image(engine_viewport *viewport, float width, float height)
         ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(target),
     };
     ImGui_Image(texture, (ImVec2){ width, height });
+    viewport->image_min = ImGui_GetItemRectMin();
+    viewport->image_size = (ImVec2){ width, height };
     return 0;
+}
+
+void engine_viewport_ui_input(engine_viewport *viewport, bool playing)
+{
+    imgui_ui_input(viewport, playing);
 }
 
 engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const engine_viewport_controls *controls)
@@ -844,14 +863,7 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
             engine_audio(viewport->widget_runtime),
             controls->playing
         );
-        viewport->widget_focus = render_widgets(
-            viewport->widget_world,
-            viewport->widget_entities,
-            engine_visibility(viewport->widget_runtime),
-            (CF_V2){ viewport->image_min.x, viewport->image_min.y },
-            (CF_V2){ viewport->image_size.x, viewport->image_size.y },
-            controls->playing
-        );
+        imgui_ui_input(viewport, controls->playing);
         if (engine_viewport_widgets_capture(viewport)) {
             cancel_viewport_pointer(viewport);
         }

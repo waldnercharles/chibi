@@ -11,9 +11,19 @@ import { spawnSync } from "node:child_process";
 const root = resolve(process.argv[2] || ".");
 const project = mkdtempSync(join(tmpdir(), "chibi-design-mcp-"));
 const controller = process.env.CHIBI_CTL || join(root, "build/chibi_ctl");
-for (const family of ["behaviors", "events", "prototypes", "scenes"]) {
+for (const family of ["behaviors", "events", "prototypes", "scenes", "ui"]) {
   mkdirSync(join(project, "content", family), { recursive: true });
 }
+// UI documents are authored as files; their data-event names reach behaviors.
+writeFileSync(join(project, "content/ui/Bank.yaml"), [
+  "rml: '<div id=\"extract\" data-event=\"Extract\">Extract</div>'",
+  "rcss: '#extract { position: absolute; left: 50%; top: 50%; width: 180dp; height: 44dp; margin-left: -90dp; margin-top: -22dp; background-color: #3a4a66; line-height: 44dp; text-align: center; }'",
+  "",
+].join("\n"));
+writeFileSync(join(project, "content/ui/Slot.yaml"), [
+  "rml: '<div id=\"slot\" data-event=\"Fit\">Empty modifier slot</div>'",
+  "",
+].join("\n"));
 
 function request(name, args, expectError = false) {
   const run = spawnSync(process.execPath, [join(root, "tools/mcp/server.mjs")], {
@@ -36,7 +46,7 @@ function request(name, args, expectError = false) {
     writeFileSync(join(project, `preview-${args.name}.png`), png);
     const decoded = pngPixels(png);
     assert.equal(decoded.width, args.width); assert.equal(decoded.height, args.height);
-    if (args.name === "Dock") assert.ok(decoded.at(425, 265).slice(0, 3).some(value => value > 15), "dock button must be visible in the image center");
+    if (args.name === "Dock") assert.ok(decoded.at(480, 270).slice(0, 3).some(value => value > 15), "dock button must be visible in the image center");
     if (args.name === "VisibilityLab") {
       let cyan = 0, yellow = 0, red = 0;
       for (let y = 50; y < 400; y++) for (let x = 100; x < 700; x++) {
@@ -48,7 +58,6 @@ function request(name, args, expectError = false) {
       assert(cyan > 20 && yellow > 100, "the ship and wall must retain visible geometry");
       assert.equal(red, 0, "the enemy behind the wall must stay concealed");
       assert(decoded.at(615, 270).slice(0, 3).every(value => value < 40), "unseen world pixels must remain fogged");
-      assert(decoded.at(800, 450)[1] > 30, "explored map terrain must be in the captured UI");
     }
   }
   return response.result?.structuredContent?.result || response;
@@ -119,12 +128,8 @@ try {
     { op: "add_entity", name: "ship", prototype: "Ship", behaviors: ["Receiver"] },
     { op: "add_entity", name: "wall", prototype: "Wall" },
   ]);
-  create("event", "WidgetAction", [
-    { op: "add_variable", name: "Source", type: "handle", type_name: "ecs.entity" },
-    { op: "add_variable", name: "Value", type: "float", default: 0 },
-  ]);
   create("behavior", "Banking", [
-    { op: "add_node", type: "Event", event_name: "WidgetAction", ref: "click" },
+    { op: "add_node", type: "Event", event_name: "Extract", ref: "click" },
     { op: "add_node", type: "Set Saved Text", ref: "save", inputs: { Key: "test.blueprint", Text: "ricochet" } },
     { op: "add_node", type: "Commit Save", ref: "commit" },
     connect("click", "Then", "save", "Exec", "exec"),
@@ -142,55 +147,49 @@ try {
   ], { owner_type: "ecs.entity" });
   create("prototype", "Bank", [
     { op: "add_component", component: "GameHealth", fields: { current: 1, maximum: 100 } },
-    { op: "add_component", component: "GameWidget", fields: {
-      kind: 2, text: "Extract", event: "WidgetAction", size: { x: 180, y: 44 },
-      anchor: { x: 0.5, y: 0.5 }, pivot: { x: 0.5, y: 0.5 }, rounding: 8,
-    } },
+    { op: "add_component", component: "GameUi", fields: { document: "Bank" } },
     { op: "add_behavior", behavior: "Banking" },
   ]);
   create("scene", "Dock", [{ op: "add_entity", name: "bank", prototype: "Bank", behaviors: ["Banking"] }]);
+  // A UI activation fits a part: GameHealth records it, the label shows it.
   create("behavior", "RecipeSlot", [
-    { op: "add_node", type: "Event", event_name: "WidgetAction", ref: "drop" },
-    { op: "add_node", type: "Set_GameWidget_text", ref: "label", inputs: { Value: "Ricochet fitted" } },
-    connect("drop", "Then", "label", "Exec", "exec"),
-    { op: "add_node", type: "Set_GameWidget_value", ref: "part" },
+    { op: "add_node", type: "Event", event_name: "Fit", ref: "fit" },
+    { op: "add_node", type: "Set UI Text", ref: "label", inputs: { Element: "slot", Text: "Ricochet fitted" } },
+    connect("fit", "Then", "label", "Exec", "exec"),
+    { op: "add_node", type: "Get UI Value", ref: "chosen", inputs: { Element: "slot" } },
+    { op: "add_node", type: "Set_GameHealth_current", ref: "part" },
     connect("label", "Then", "part", "Exec", "exec"),
-    connect("drop", "Value", "part", "Value"),
+    connect("chosen", "Value", "part", "Value"),
     { op: "add_node", type: "Play Sound", ref: "sound", inputs: { Frequency: 600, "End Frequency": 900, Duration: 0.12, Volume: 0.3 } },
     connect("part", "Then", "sound", "Exec", "exec"),
     { op: "add_node", type: "Event", event_name: "Undo", ref: "undo" },
-    { op: "add_node", type: "Set_GameWidget_text", ref: "restored", inputs: { Value: "Empty modifier slot" } },
-    { op: "add_node", type: "Set_GameWidget_value", ref: "clear", inputs: { Value: 0 } },
+    { op: "add_node", type: "Set UI Text", ref: "restored", inputs: { Element: "slot", Text: "Empty modifier slot" } },
+    { op: "add_node", type: "Set_GameHealth_current", ref: "clear", inputs: { Value: 0 } },
     connect("undo", "Then", "restored", "Exec", "exec"),
     connect("restored", "Then", "clear", "Exec", "exec"),
   ], { owner_type: "ecs.entity" });
   create("prototype", "PartSlot", [
-    { op: "add_component", component: "GameWidget", fields: {
-      kind: 5, event: "WidgetAction", text: "Empty modifier slot", drop_group: "modifier", size: { x: 220, y: 50 },
-      offset: { x: 24, y: 24 }, rounding: 8,
-    } }, { op: "add_behavior", behavior: "RecipeSlot" },
+    { op: "add_component", component: "GameUi", fields: { document: "Slot" } },
+    { op: "add_component", component: "GameHealth", fields: { current: 0, maximum: 10 } },
+    { op: "add_behavior", behavior: "RecipeSlot" },
   ]);
   create("scene", "Refit", [
-    { op: "add_entity", name: "slot", prototype: "PartSlot" },
-    { op: "add_entity", name: "ricochet", prototype: "PartSlot", components: { GameWidget: {
-      kind: 5, event: "WidgetAction", drop_group: "modifier", draggable: true, value: 2, text: "Ricochet x2",
-      size: { x: 220, y: 50 }, offset: { x: 24, y: 100 }, rounding: 8,
-    } } },
+    { op: "add_entity", name: "slot", prototype: "PartSlot", behaviors: ["RecipeSlot"] },
+    { op: "add_entity", name: "wall", prototype: "Wall" },
   ]);
+  const fit = { target: "slot", element: "slot", event: "Fit", value: 2 };
   const fitted = request("captureRuntimeSnapshot", { kind: "scene", name: "Refit", frames: 2,
-    inputs: [{ ui: [{ target: "slot", action: "drop", source: "ricochet" }] }] });
-  assert.equal(field(fitted, "slot", "GameWidget", "text"), "Ricochet fitted");
-  assert.equal(field(fitted, "slot", "GameWidget", "value"), 2);
+    inputs: [{ ui: [fit] }] });
+  assert.equal(field(fitted, "slot", "GameHealth", "current"), 2);
   assert.equal(fitted.sound_cues, 1, "a successful refit produces its authored sound cue");
   const undone = request("captureRuntimeSnapshot", { kind: "scene", name: "Refit", frames: 72000,
-    input_timeline: [{ frame: 0, input: { ui: [{ target: "slot", action: "drop", source: "ricochet" }] } },
+    input_timeline: [{ frame: 0, input: { ui: [fit] } },
       { frame: 71999, input: { events: [{ target: "slot", name: "Undo" }] } }] });
-  assert.equal(field(undone, "slot", "GameWidget", "value"), 0, "a sparse 20-minute scenario can undo a refit");
-  assert.equal(field(undone, "slot", "GameWidget", "text"), "Empty modifier slot");
+  assert.equal(field(undone, "slot", "GameHealth", "current"), 0, "a sparse 20-minute scenario can undo a refit");
   request("runScenario", { kind: "scene", name: "Refit", frames: 3,
     input_timeline: [{ frame: 2, input: {} }, { frame: 1, input: {} }] }, true);
   request("captureRuntimeSnapshot", { kind: "scene", name: "Refit", frames: 1,
-    inputs: [{ ui: [{ target: "slot", action: "drop", source: "slot" }] }] }, true);
+    inputs: [{ ui: [{ ...fit, target: "wall" }] }] }, true);
   create("prototype", "FogSettings", [
     { op: "add_component", component: "GameTransform" },
     { op: "add_component", component: "GameCamera", fields: { width: 200, height: 120 } },
@@ -206,9 +205,6 @@ try {
     { op: "add_component", component: "GameActionBinding", fields: { source: 1, action: "Fire", firing: true } },
     { op: "add_component", component: "GameInput" }, { op: "add_component", component: "GameAim" },
   ]);
-  create("prototype", "Map", [{ op: "add_component", component: "GameWidget", fields: {
-    kind: 6, anchor: { x: 1, y: 1 }, pivot: { x: 1, y: 1 }, offset: { x: -16, y: -16 }, size: { x: 240, y: 144 },
-  } }, { op: "add_component", component: "GameMapMarker", fields: { position: { x: -70, y: -35 }, label: "Dock", always_visible: true, color: 0x8AF2DDFF } }]);
   const visibilityScene = [
     { op: "add_entity", name: "fog", prototype: "FogSettings" },
     { op: "add_entity", name: "observer", prototype: "Observer" },
@@ -222,7 +218,6 @@ try {
       GameMaterial: { scene: 0xFF2020FF }, GameRenderState: { visibility_culled: true }, GameAppearance: { width: 20, height: 20, color: 0xFF2020FF, shape: 1 },
       GameSensorContact: { position: { x: 30, y: 0 }, remaining: 2, color: 0xFFC66DFF },
     } },
-    { op: "add_entity", name: "map", prototype: "Map" },
   ];
   create("scene", "VisibilityLab", visibilityScene);
   create("scene", "VisibilityLab3D", [{ op: "set_presentation", presentation: "3d" }, ...visibilityScene]);
@@ -242,7 +237,7 @@ try {
     }
   }
   const banked = request("captureRuntimeSnapshot", { kind: "scene", name: "Dock", frames: 1,
-    inputs: [{ ui: [{ target: "bank", action: "activate" }] }] });
+    inputs: [{ ui: [{ target: "bank", element: "extract", event: "Extract" }] }] });
   assert.deepEqual(banked.saved_state, { "test.blueprint": "ricochet" });
   const nextRun = request("captureRuntimeSnapshot", { kind: "scene", name: "Dock", frames: 1, saved_state: banked.saved_state });
   assert.equal(field(nextRun, "bank", "GameHealth", "current"), 77, "a committed unlock survives a fresh run");
@@ -250,7 +245,7 @@ try {
     inputs: [{ events: [{ name: "Stage", target: "bank" }] }] });
   assert.deepEqual(unsecured.saved_state, {}, "uncommitted discoveries do not survive a run");
   const dockRecord = request("recordScenario", { kind: "scene", name: "Dock", frames: 2,
-    saved_state: banked.saved_state, inputs: [{ ui: [{ target: "bank", action: "activate" }] }] });
+    saved_state: banked.saved_state, inputs: [{ ui: [{ target: "bank", element: "extract", event: "Extract" }] }] });
   assert.equal(request("replayScenario", { recording_path: dockRecord.recording_path }).deterministic, true);
   const inputs = [{ movement: { x: 1, y: 0 }, aim: { x: 100, y: 20, point: true },
     events: [{ name: "Award", target: "ship", values: [{ type: "int", value: 42 }] }] }];

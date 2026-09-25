@@ -6,7 +6,6 @@
 #include "render/gpu_timing.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
-#include "render/widgets.h"
 #include "runtime/camera.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "third_party/yyjson/yyjson.h"
@@ -217,17 +216,7 @@ static bool render_scene(
         ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 0, 0 });
         ImGui_PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
         ImGui_Begin("Scene", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-        ImVec2 origin = ImGui_GetCursorScreenPos();
         engine_viewport_image(scene.viewport, width, height);
-        engine *runtime = game_prototype_preview_runtime(scene.preview);
-        render_widgets(
-            game_prototype_preview_world(scene.preview),
-            game_prototype_preview_entities(scene.preview),
-            engine_visibility(runtime),
-            (CF_V2){ origin.x, origin.y },
-            (CF_V2){ width, height },
-            true
-        );
         ImGui_End();
         ImGui_PopStyleVarEx(2);
         CHIBI_TRACE_ZONE_BEGIN(present_zone, "Preview present / GPU wait");

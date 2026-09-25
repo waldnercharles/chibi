@@ -5,7 +5,6 @@
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/audio.h"
-#include "render/widgets.h"
 #include "runtime/camera.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
@@ -22,7 +21,6 @@ struct app_game_presentation
     engine_viewport *viewport;
     bool interactive;
     bool render_failed;
-    bool widget_focus;
     render_audio *audio;
     /* Explicit presentation time; it advances while playing and freezes paused. */
     double showcase_time;
@@ -94,6 +92,13 @@ app_game_presentation *app_game_presentation_new(
     engine_viewport_request_resize(viewport, cf_app_get_canvas_width(), cf_app_get_canvas_height());
     fit_scene_view(viewport, scene->world, (ecs_entity){ 0 });
     engine_viewport_set_render_callback(viewport, render_game, game);
+    engine_viewport_set_widgets(
+        viewport,
+        scene->world,
+        scene->live->entities,
+        scene->runtime
+    );
+    engine_viewport_set_ui(viewport, engine_ui(scene->runtime), scene->content_root);
     return game;
 }
 
@@ -286,13 +291,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     engine_set_focus(game->scene->runtime, playing && focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
     CF_V2 target;
     bool mouse = mouse_target(game, &target);
-    ImVec2 pointer = ImGui_GetIO()->MousePos;
-    bool ui_capture = game->widget_focus || game_widgets_capture(
-                                                game->scene->world,
-                                                (CF_V2){ 0 },
-                                                (CF_V2){ size.x, size.y },
-                                                (CF_V2){ pointer.x, pointer.y }
-                                            );
+    bool ui_capture = engine_viewport_widgets_capture(game->viewport);
     app_gameplay_sample(game->scene, playing && focused && !ui_capture, mouse ? &target : NULL);
     if (engine_frame(game->scene->runtime, now) != FLOW_OK) {
         fprintf(stderr, "Game frame failed: %s\n", engine_error(game->scene->runtime));
@@ -330,14 +329,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
             engine_is_playing(game->scene->runtime)
         );
     }
-    game->widget_focus = render_widgets(
-        game->scene->world,
-        game->scene->live->entities,
-        engine_visibility(game->scene->runtime),
-        (CF_V2){ 0 },
-        (CF_V2){ size.x, size.y },
-        playing && focused
-    );
+    engine_viewport_ui_input(game->viewport, playing && focused);
     if (!playing) {
         ImDrawList_AddRectFilled(
             ImGui_GetWindowDrawList(),

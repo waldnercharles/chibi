@@ -1,7 +1,6 @@
 #include "runtime/behaviors/live.h"
 #include "runtime/camera.h"
 #include "runtime/generated.h"
-#include "runtime/widgets.h"
 
 #include <assert.h>
 #include <math.h>
@@ -190,21 +189,9 @@ void test_game_capabilities()
     game_visibility_reset(live->visibility);
     assert(!game_visibility_update(live->visibility, 0));
     assert(!game_visibility_at(live->visibility, (CF_V2){ 15, 5 }).explored);
-    GameWidget widget = { .kind = GAME_WIDGET_BUTTON,
-                          .anchor = { 0.5f, 1 },
-                          .pivot = { 0.5f, 1 },
-                          .size = { 200, 44 },
-                          .offset = { 0, -20 } };
-    game_widget_rect rect;
-    assert(game_widget_bounds(&widget, (CF_V2){ 20, 30 }, (CF_V2){ 1280, 720 }, &rect));
-    assert(rect.min.x == 560 && rect.min.y == 686 && rect.max.y == 730);
-    assert(game_widget_bounds(&widget, (CF_V2){ 0 }, (CF_V2){ 640, 360 }, &rect));
-    assert(rect.min.x == 270 && rect.max.y == 350);
-    widget.size.x = NAN;
-    assert(!game_widget_bounds(&widget, (CF_V2){ 0 }, (CF_V2){ 640, 360 }, &rect));
     visibility_benchmark(world, live, settings, player);
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(world);
-    puts("Game capability checks passed: committed saves, camera framing, occlusion, terrain memory, sensor expiry and widget layout");
+    puts("Game capability checks passed: committed saves, camera framing, occlusion, terrain memory and sensor expiry");
 }

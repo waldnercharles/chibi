@@ -134,7 +134,6 @@ set(ENGINE_SOURCES
 
 set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/audio.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/widgets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
@@ -263,7 +262,6 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/audio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/save.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/widgets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visibility.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_transform.c

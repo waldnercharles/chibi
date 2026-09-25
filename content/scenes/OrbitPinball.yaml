@@ -115,8 +115,6 @@ entities:
         GAME.GameBody: {continuous: false, type: 0}
       automatic: true
 - {name: ActionBinding_1, prototype: ActionBinding}
-- {name: OrbitGuide_1, prototype: OrbitGuide}
-- {name: OrbitControls_1, prototype: OrbitControls}
 - {name: OrbitRing_1, prototype: OrbitRing}
 - name: OrbitRing_2
   prototype: OrbitRing

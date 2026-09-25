@@ -1,6 +1,6 @@
 version: 3
 name: OrbitLaunch
-id_counter: 180
+id_counter: 209
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -23,14 +23,9 @@ graphs:
     outputs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {id: 160, type: struct, type_name: CF_V2, kind: data}
-  - {id: 16, type: Set_GameWidget_value}
   - id: 22
     type: Add
-    inputs:
-      A:
-        binding: {kind: component_field, component: GAME.GameWidget, field: value}
-      B: 100.0
-  - {id: 29, type: Set_GameWidget_text}
+    inputs: {B: 100.0}
   - id: 59
     type: Format Text
     inputs:
@@ -39,10 +34,6 @@ graphs:
       Arg1: {id: 63}
     outputs:
       Result: {id: 62}
-  - {id: 64, type: Set_GameWidget_value}
-  - id: 70
-    type: Set_GameWidget_text
-    inputs: {Value: "0"}
   - id: 76
     type: Event
     reference_name: Tick
@@ -63,19 +54,35 @@ graphs:
       dt: {type: float, flags: 2, group: 2}
     outputs:
       Result: {id: 100, type: double, flags: 2, group: 3}
+  - id: 180
+    type: Get UI Value
+    inputs: {Element: score}
+  - id: 185
+    type: Set UI Text
+    inputs: {Element: score}
+  - id: 191
+    type: Set UI Value
+    inputs: {Element: score}
+  - id: 197
+    type: Set UI Value
+    inputs: {Element: score}
+  - id: 203
+    type: Set UI Text
+    inputs: {Element: score, Text: "0"}
   edges:
   - {from: 1.Then, to: 3.Exec}
   - {from: 3.Then, to: 8.Exec}
-  - {from: 8.Then, to: 64.Exec}
-  - {from: 13.Then, to: 29.Exec}
-  - {from: 22.Result, to: 16.Value}
+  - {from: 8.Then, to: 197.Exec}
+  - {from: 13.Then, to: 185.Exec}
   - {from: 22.Result, to: 59.Arg0}
-  - {from: 29.Then, to: 16.Exec}
-  - {from: 59.Result, to: 29.Value}
-  - {from: 64.Then, to: 70.Exec}
+  - {from: 22.Result, to: 191.Value}
+  - {from: 59.Result, to: 185.Text}
   - {from: 76.Then, to: 79.Exec}
   - {from: 76.DeltaSeconds, to: 97.dt}
   - {from: 97.Result, to: 79.Value}
+  - {from: 180.Value, to: 22.A}
+  - {from: 185.Then, to: 191.Exec}
+  - {from: 197.Then, to: 203.Exec}
 - id: 85
   kind: function
   name: v + 350 * dt

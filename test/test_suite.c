@@ -43,7 +43,6 @@ void test_system_schedule();
 int bench_fields();
 int bench_system_schedule();
 void test_game_capabilities();
-void test_player_widgets();
 void test_dash();
 void test_encounter();
 void test_system_arithmetic();
@@ -118,7 +117,6 @@ TEST_CASE(all_checks)
     test_fields();
     test_system_schedule();
     test_game_capabilities();
-    test_player_widgets();
     test_dash();
     test_encounter();
     test_targeting();
@@ -765,7 +763,6 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {
         registry_validate();
         test_game_capabilities();
-        test_player_widgets();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--runtime-execution") == 0) {

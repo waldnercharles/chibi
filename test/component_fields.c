@@ -209,33 +209,26 @@ static void vector_field(ecs_world *world, ecs_entity owner)
     behavior_asset_free(f.asset);
 }
 
-static void widget_fields(ecs_world *world, ecs_entity owner)
+static void ui_fields(ecs_world *world, ecs_entity owner)
 {
-    field_fixture f = fixture(
-        "Set_GameWidget_kind",
-        (pin_value){ .type = PIN_I32, .i = GAME_WIDGET_LABEL },
-        false
-    );
-    node *get = graph_add_node(f.asset->graph, registry_node_by_name("Get_GameWidget"));
+    field_fixture f = fixture("Set_GameUi_order", (pin_value){ .type = PIN_I32, .i = 3 }, false);
+    node *get = graph_add_node(f.asset->graph, registry_node_by_name("Get_GameUi"));
     assert(graph_expose_output_fields(f.asset->graph, get, 0) == 0);
     compile_report report;
     compile_report_init(&report);
     assert(behavior_asset_compile(f.asset, &report) == 0);
     compile_report_free(&report);
-    GameWidget *widget = GAME_GameWidget_get(world, owner);
-    widget->kind = GAME_WIDGET_BUTTON;
-    widget->text = "Rally";
-    widget->center_text = true;
+    GameUi *ui = GAME_GameUi_get(world, owner);
+    ui->order = 9;
+    ui->document = "Rally";
+    ui->hidden = true;
     behavior_instance *runtime = instance(&f, world, owner);
     assert(flow_run_status(dispatch(runtime, NULL)) == FLOW_COMPLETED);
-    widget = GAME_GameWidget_get(world, owner);
-    assert(
-        widget->kind == GAME_WIDGET_LABEL && widget->center_text &&
-        !strcmp(widget->text, "Rally")
-    );
+    ui = GAME_GameUi_get(world, owner);
+    assert(ui->order == 3 && ui->hidden && !strcmp(ui->document, "Rally"));
     behavior_instance_destroy(runtime);
     behavior_asset_free(f.asset);
-    puts("widget fields PASS: expanded getter compiles; changing kind preserves text and alignment");
+    puts("ui fields PASS: expanded getter compiles; changing order preserves document and visibility");
 }
 
 void test_component_fields()
@@ -247,7 +240,7 @@ void test_component_fields()
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameWidget, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameUi, NULL) == ECS_OK);
     ecs_entity owner = ecs_world_create_entity(world);
     ecs_entity other = ecs_world_create_entity(world);
     assert(GAME_GameHealth_add(world, owner, 0) == ECS_OK);
@@ -255,7 +248,7 @@ void test_component_fields()
     assert(GAME_GameTransform_add(world, owner, 0) == ECS_OK);
     assert(GAME_GameInput_add(world, owner, 0) == ECS_OK);
     assert(GAME_GameCollider_add(world, owner, 0) == ECS_OK);
-    assert(GAME_GameWidget_add(world, owner, 0) == ECS_OK);
+    assert(GAME_GameUi_add(world, owner, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameHealth_get(world, owner) = (GameHealth){ 73, 200 };
     *GAME_GameHealth_get(world, other) = (GameHealth){ 40, 75 };
@@ -264,7 +257,7 @@ void test_component_fields()
     health(world, owner, other);
     vector_field(world, owner);
     handle_field(world, owner, other);
-    widget_fields(world, owner);
+    ui_fields(world, owner);
     ecs_world_free(world);
     puts("component fields PASS: Self, explicit and invalid targets, preserved members, structs and serialization");
 }

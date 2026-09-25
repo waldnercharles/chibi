@@ -24,7 +24,6 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "runtime/systems/system.h"
-#include "runtime/widgets.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -5397,19 +5396,17 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         }
         for (size_t i = 0; i < yyjson_arr_size(ui); i++) {
             yyjson_val *action = yyjson_arr_get(ui, i);
-            const char *kind = request_string(action, "action");
-            const char *target = request_string(action, "target");
-            const char *source = request_string(action, "source");
+            const char *fields[] = { request_string(action, "target"),
+                                     request_string(action, "element"),
+                                     request_string(action, "event") };
+            bool named = true;
+            for (size_t f = 0; f < sizeof fields / sizeof *fields; f++) {
+                named &= fields[f] && fields[f][0] && strlen(fields[f]) <= 512;
+            }
             double number = 0;
-            if (!target || !target[0] || strlen(target) > 512 || !kind ||
-                (strcmp(kind, "activate") && strcmp(kind, "change") &&
-                 strcmp(kind, "drop")) ||
-                (!strcmp(kind, "change") &&
-                 !yyjson_is_num(yyjson_obj_get(action, "value"))) ||
-                (!strcmp(kind, "drop") &&
-                 (!source || !source[0] || strlen(source) > 512)) ||
+            if (!named ||
                 !scenario_input_number(action, "value", &number, error, error_size)) {
-                snprintf(error, error_size, "ui requires a target and activate, change with value, or drop with source");
+                snprintf(error, error_size, "ui requires a target, element and event, and an optional numeric value");
                 return false;
             }
         }
@@ -5495,24 +5492,30 @@ static int apply_scenario_input(
         snprintf(error, error_size, "scenario aim input failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
+    /* A UI activation as the presenter delivers it: a value first, then the
+       element's data-event to its GameUi entity. */
     for (size_t i = 0; i < yyjson_arr_size(input->ui); i++) {
         yyjson_val *action = yyjson_arr_get(input->ui, i);
-        const char *kind = request_string(action, "action");
-        game_widget_action type = !strcmp(kind, "drop") ? GAME_WIDGET_DROP
-                                : !strcmp(kind, "change") ? GAME_WIDGET_CHANGE
-                                                          : GAME_WIDGET_ACTIVATE;
-        int applied = game_widget_interact(
-            game_prototype_preview_world(context->preview),
-            game_prototype_preview_entities(context->preview),
-            scenario_entity(context, request_string(action, "target")),
-            type,
-            scenario_entity(context, request_string(action, "source")),
-            (float)yyjson_get_num(yyjson_obj_get(action, "value"))
-        );
-        if (applied < 0) {
-            snprintf(error, error_size, "UI interaction is unavailable or incompatible");
+        ecs_entity target = scenario_entity(context, request_string(action, "target"));
+        yyjson_val *value = yyjson_obj_get(action, "value");
+        if (!GAME_GameUi_has(game_prototype_preview_world(context->preview), target)) {
+            snprintf(error, error_size, "UI target must be an entity with GameUi");
             return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
+        if (value) {
+            game_ui_set_value(
+                engine_ui(runtime),
+                ecs_entity_to_u64(target),
+                request_string(action, "element"),
+                (float)yyjson_get_num(value)
+            );
+        }
+        game_entities_request_event(
+            game_prototype_preview_entities(context->preview),
+            target,
+            request_string(action, "event"),
+            (flow_inputs){ 0 }
+        );
     }
     game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
     flow_error flow = { 0 };

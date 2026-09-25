@@ -107,7 +107,6 @@ void run_content_catalog_checks()
         "OrbitBall.yaml",        "OrbitBumper.yaml",
         "OrbitCabinet.yaml",     "OrbitFlipper.yaml",
         "OrbitRail.yaml",        "OrbitRing.yaml",
-        "OrbitGuide.yaml",       "OrbitControls.yaml",
         "RotatingGate.yaml",
     };
     static const char *const scenes[] = { "Arena3D.yaml",
@@ -129,6 +128,8 @@ void run_content_catalog_checks()
     static const char *const shapes[] = { "PhaseWardenShape.yaml" };
     valid &= folder_matches("content", "shapes", shapes, (int)(sizeof shapes / sizeof *shapes));
     valid &= folder_matches("content", "textures", NULL, 0);
+    static const char *const ui[] = { "BloomCircuit.yaml", "OrbitPinball.yaml" };
+    valid &= folder_matches("content", "ui", ui, (int)(sizeof ui / sizeof *ui));
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
     static const char *const arena2d_behaviors[] = {

@@ -1,6 +1,6 @@
 version: 3
 name: BloomCircuitGoal
-id_counter: 34
+id_counter: 40
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -24,13 +24,13 @@ graphs:
     type: Integer Greater Or Equal
     inputs: {B: 8}
   - {id: 23, type: Branch}
-  - id: 28
-    type: Set_GameWidget_text
-    inputs: {Value: CIRCUIT COMPLETE!  All 8 blooms collected.}
+  - id: 34
+    type: Set UI Text
+    inputs: {Element: goal, Text: CIRCUIT COMPLETE!  All 8 blooms collected.}
   edges:
   - {from: 1.Then, to: 23.Exec}
   - {from: 4.Entity, to: 13.Entity}
   - {from: 13.Value, to: 16.GameExperience}
   - {from: 16.current, to: 19.A}
   - {from: 19.Result, to: 23.Condition}
-  - {from: 23.True, to: 28.Exec}
+  - {from: 23.True, to: 34.Exec}

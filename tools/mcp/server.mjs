@@ -610,12 +610,12 @@ function buildToolDefinitions() {
       controls: { type: "array", maxItems: 41, items: { type: "integer", minimum: 1, maximum: 41 },
         description: "Held physical GameControl codes, interpreted by authored action bindings." },
       ui: { type: "array", maxItems: 32, items: { type: "object", properties: {
-        target: { type: "string" },
-        action: { type: "string", enum: ["activate", "change", "drop"] },
-        source: { type: "string" },
-        value: { type: "number" },
-      }, required: ["target", "action"], additionalProperties: false },
-        description: "Player UI interactions. Change requires value; drop requires a source widget name. Uses normal widget validation and behavior events." },
+        target: { type: "string", description: "Scene entity name with a GameUi." },
+        element: { type: "string", description: "Element id in its ui document." },
+        event: { type: "string", description: "The element's data-event name." },
+        value: { type: "number", description: "An input's new value, readable with Get UI Value." },
+      }, required: ["target", "element", "event"], additionalProperties: false },
+        description: "Player UI activations, delivered as the presenter does: an optional value, then the named event to the GameUi entity." },
       movement: normalizedVector,
       aim: normalizedAim,
       actions: {

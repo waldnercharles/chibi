@@ -696,53 +696,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 }
 GameActionBinding;
 
-enum
-{
-    GAME_WIDGET_LABEL,
-    GAME_WIDGET_PANEL,
-    GAME_WIDGET_BUTTON,
-    GAME_WIDGET_PROGRESS,
-    GAME_WIDGET_SLIDER,
-    GAME_WIDGET_SLOT,
-    GAME_WIDGET_MAP,
-};
-
-/* UI offsets and sizes are logical pixels at a 720-pixel viewport height.
- * Anchors and pivots are fractions. Behavior owns contents, layout and rules.
- * An interactive widget sends its named event (Source: entity, Value: float).
- * Matching nonempty drop groups permit transfers; behaviors decide validity. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameWidget)
-{
-    int kind;
-    const char *text;
-    const char *tooltip;
-    const char *event;
-    const char *drop_group;
-    CF_V2 anchor;
-    CF_V2 pivot;
-    CF_V2 offset;
-    CF_V2 size;
-    int order;
-    unsigned color;
-    unsigned background;
-    unsigned accent;
-    float font_size;
-    float rounding;
-    float value;
-    float minimum;
-    float maximum;
-    bool center_text;
-    bool hidden;
-    bool disabled;
-    bool draggable;
-    bool block_input;
-}
-GameWidget;
-
 /* Shows the ui asset content/ui/<document>.yaml over the game view, above
  * documents with a lower order. An element's data-event attribute names the
- * event its activation sends to this entity (Element: its id, Value: its
- * value); UI nodes set the document's text, classes and values. */
+ * event its activation sends to this entity; a changed input's value is read
+ * with Get UI Value. UI nodes set the document's text, classes and values. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameUi)
 {
     const char *document;
@@ -751,8 +708,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameUi)
 }
 GameUi;
 
-/* One optional finite visibility grid. The main view conceals unseen space;
- * map widgets display explored cells and remembered obstacle occupancy. */
+/* One optional finite visibility grid. The main view conceals unseen space. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFog)
 {
     CF_V2 origin;
@@ -884,18 +840,6 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .specular = 1 };
 }
 
-/* Stored map positions for landmarks and objectives. Hidden until explored,
- * unless always_visible; movement and discovery rules belong to behaviors. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameMapMarker)
-{
-    CF_V2 position;
-    const char *label;
-    unsigned color;
-    float radius;
-    bool always_visible;
-    bool disabled;
-}
-GameMapMarker;
 /* Count Matching Entities combines these conditions with AND. Presence tests
  * use "has" or "missing"; scalar fields use ==, !=, <, <=, > or >=. */
 typedef NODE_TYPE(EntityCondition)

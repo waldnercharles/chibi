@@ -3,34 +3,6 @@ name: Scene
 entities:
 - name: ArenaPlayer_1
   prototype: ArenaPlayer
-  retained_components:
-    GameWidget:
-      values:
-        GAME.GameWidget:
-          accent: 0
-          anchor: {x: 0.0, "y": 0.0}
-          background: 0
-          block_input: false
-          color: 0
-          disabled: false
-          draggable: false
-          drop_group: ""
-          event: ""
-          font_size: 0.0
-          hidden: false
-          kind: 0
-          maximum: 0.0
-          minimum: 0.0
-          offset: {x: 0.0, "y": 0.0}
-          order: 0
-          pivot: {x: 0.0, "y": 0.0}
-          rounding: 0.0
-          size: {x: 0.0, "y": 0.0}
-          text: ""
-          tooltip: ""
-          value: 0.0
-      defaults: {}
-      automatic: false
   behaviors:
   - ArenaImpactFeedback
   - ArenaShipMotionBehavior

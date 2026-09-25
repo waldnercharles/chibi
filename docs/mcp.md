@@ -440,10 +440,10 @@ Each input can contain:
 - `events: [{"name": "Award", "target": "ship", "values": [{"type": "int", "value": 42}]}]`,
   up to 32 events with up to 16 payload values. Types are bool, int, uint,
   float, double, name, string, or entity. Entity values resolve scene names.
-- `ui: [{"target": "slot", "action": "drop", "source": "part"}]`. Actions are
-  `activate`, `change` (requires `value`), and `drop` (requires `source`). They
-  use the same visibility, disabled-state, range, and drop-group validation as
-  rendered widgets, then send the widget's authored event.
+- `ui: [{"target": "hud", "element": "volume", "event": "Volume", "value": 0.5}]`,
+  a player activating an element of a `GameUi` document: the optional `value`
+  is stored for `Get UI Value`, then the element's `data-event` is sent to the
+  target entity, as the rendered document does.
 
 Aim goes through the engine's normal input path. An `Aim` event and the old
 object-shaped `actions` input are not part of this contract.
@@ -481,25 +481,20 @@ extraction policy.
 | --- | --- |
 | Camera | One enabled `GameCamera` plus `GameTransform`. Positive width/height set the logical span; offset follows the entity. Disable it to release the camera. |
 | Controls | `GameActionBinding` maps one physical source to an event name. Multiple entities can bind the same action; their held states combine. `firing` also sets GameAim.firing. Remove GameInput while fitting to suspend ship controls. |
-| Player UI | `GameWidget` supplies label, panel, button, progress, slider, fitting slot, or map. Text, colors, geometry and values are reflected and writable from behaviors. |
+| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change its elements by id; `Get UI Value` reads an input. An element's `data-event` sends that event to the entity when clicked or, for an input, changed. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
 | Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
 | Line of sight | `Raycast` returns Found, Entity, Point, Normal and Distance against circles and rotated boxes. Category filtering is independent of collision masks. New colliders and teleports are visible to the query. |
 | Fog | One enabled `GameFog` defines origin, 1–256 rows/columns, cell size, color and ambient drift. `drift: 0` removes fog animation. `GameVision` sources reveal nearby cells, blocked by `occluders`. |
 | Terrain memory | `GameVision.remember` adds explored terrain. Positive duration creates a shrinking temporary clearing; age starts at zero. `Visibility At` reads Visible/Explored/Obstacle. `GameRenderState.visibility_culled` opts an actor into current-sight culling; `hidden` always hides it. |
-| Sensor contacts | `GameSensorContact` stores an observed position, lifetime and color. Map widgets show those stored positions independently of explored terrain. No live enemy positions enter map memory automatically. |
+| Sensor contacts | `GameSensorContact` stores an observed position, lifetime and color, independently of explored terrain. |
 
-Widget kind codes are label=0, panel=1, button=2, progress=3, slider=4, slot=5,
-map=6. `anchor` and `pivot` are viewport fractions. `offset` and `size` use
-logical pixels at a viewport height of 720; `order` controls stacking. Colors
-are packed RGBA. An interactive widget sends its named event with
-`Source: ecs.entity` and `Value: float`. Create that event definition first.
-Matching nonempty `drop_group` values permit transfers from `draggable` widgets.
-Behavior graphs own compatibility checks, recipe changes, summary text and
-undo history. Buttons support keyboard activation; authors can supply move and
-undo buttons alongside dragging. Pointer and keyboard widget interactions
-capture gameplay input while active.
+RCSS `dp` units scale with the view height, 720 pixels being one pixel per
+`dp`; `GameUi.order` stacks documents. UI events carry no payload, like action
+events: name each button's `data-event`, and read an input's value with
+`Get UI Value`. Behavior graphs own rules, text and history. While the pointer
+is over an interactive element, it does not reach gameplay.
 
 Control codes: mouse left=1, mouse right=2, Space=3, Shift=4, Tab=5, Enter=6,
 A–Z=7–32, pad A/B/X/Y=33–36, shoulders=37/38, triggers=39/40, aim stick=41.
@@ -520,7 +515,7 @@ The web 2D renderer uses the authored ambient and emission gains directly; indir
 
 Use `previewScene` with a scene/prototype name, optional frames, inputs and
 saved state to inspect a running result. It uses the same 2D/3D renderer,
-authored camera and widgets, with pixel dimensions independent of display DPI.
+authored camera and UI documents, with pixel dimensions independent of display DPI.
 This tool needs GPU/display access. Returned images include the UI; structured
 JSON omits the base64 bytes. For visual fixtures, explicitly author material
 emission rather than relying on the emissive appearance fallback.
@@ -538,7 +533,7 @@ location. When launching `server.mjs` directly outside the repository, set
 including `design-smoke.mjs`, which builds independent fixtures entirely through
 MCP. `CHIBI_KEEP_DESIGN_FIXTURE=1` retains them; `CHIBI_MCP_GPU=1` also renders
 2D/3D fog, fitting and dock previews. `--game-capabilities` runs native save,
-visibility, sound and actual ImGui interaction checks. Set
+visibility and sound checks. Set
 `CHIBI_VISIBILITY_BENCH=1` for the moving-observer visibility benchmark.
 Custom build checks use that build's controller and render-controller binaries.
 
@@ -554,9 +549,3 @@ candidates. It defaults to a dry run. Apply uses `dry_run: false` and the curren
 threshold defaults to three. Locals preserve source evaluation and never add
 persistent behavior variables. See [graph optimizer](graph-optimizer.md) for
 representation, safety rules, and validation.
-
-`GameMapMarker` adds named landmarks and objectives to map widgets. Its stored
-`position` remains hidden until explored unless `always_visible` is set; behaviors
-control updates and `disabled`. Map widgets use their background, color and accent
-for unseen terrain, obstacles and current visibility. Sensor contacts remain
-separate and expire without updating terrain memory.

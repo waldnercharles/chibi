@@ -230,38 +230,38 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
 {
     const char
         *json = "{\"name\":\"GuideTest\",\"components\":{\"GameTransform\":{},"
-                "\"GameWidget\":{}},\"behaviors\":[]}";
+                "\"GameAim\":{},\"GameUi\":{}},\"behaviors\":[]}";
     assert(app_scene_authoring_register_prototype(scene, json, NULL) == 0);
     assert(app_scene_authoring_add_instance(scene, "GuideTest") == 0);
     ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
-    CF_V2 anchor = { 0.5f, 1.0f };
+    CF_V2 direction = { 0.5f, 1.0f };
     assert(
         app_scene_authoring_set_prototype_field(
             scene,
             "GuideTest",
-            "GameWidget",
-            "anchor",
-            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &anchor }
+            "GameAim",
+            "direction",
+            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &direction }
         ) == 0
     );
-    assert(GAME_GameWidget_get_const(world, entity)->anchor.x == 0.5f);
+    assert(GAME_GameAim_get_const(world, entity)->direction.x == 0.5f);
     assert(app_scene_authoring_open_prototype(scene, "GuideTest") == 0);
     assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
-    assert(GAME_GameWidget_get_const(world, entity)->anchor.x == 0);
+    assert(GAME_GameAim_get_const(world, entity)->direction.x == 0);
     assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
-    assert(GAME_GameWidget_get_const(world, entity)->anchor.y == 1);
-    char text[] = "Collect the blooms";
+    assert(GAME_GameAim_get_const(world, entity)->direction.y == 1);
+    char text[] = "Guide";
     assert(
         app_scene_authoring_set_prototype_field(
             scene,
             "GuideTest",
-            "GameWidget",
-            "text",
+            "GameUi",
+            "document",
             (pin_value){ .type = PIN_STR, .str = text }
         ) == 0
     );
     text[0] = 'X';
-    assert(!strcmp(GAME_GameWidget_get_const(world, entity)->text, "Collect the blooms"));
+    assert(!strcmp(GAME_GameUi_get_const(world, entity)->document, "Guide"));
     puts("prototype fields PASS: vector Undo/Redo and owned text reach instances");
 }
 

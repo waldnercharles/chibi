@@ -336,13 +336,6 @@ extern int GAME_GameActionBinding_has(const ecs_world *, ecs_entity);
 extern int GAME_GameActionBinding_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameActionBinding_remove(ecs_world *, ecs_entity, uint64_t);
 
-extern const ecs_component_desc GAME_COMPONENT_GameWidget;
-extern GameWidget *GAME_GameWidget_get(ecs_world *, ecs_entity);
-extern const GameWidget *GAME_GameWidget_get_const(const ecs_world *, ecs_entity);
-extern int GAME_GameWidget_has(const ecs_world *, ecs_entity);
-extern int GAME_GameWidget_add(ecs_world *, ecs_entity, uint64_t);
-extern int GAME_GameWidget_remove(ecs_world *, ecs_entity, uint64_t);
-
 extern const ecs_component_desc GAME_COMPONENT_GameUi;
 extern GameUi *GAME_GameUi_get(ecs_world *, ecs_entity);
 extern const GameUi *GAME_GameUi_get_const(const ecs_world *, ecs_entity);
@@ -386,12 +379,5 @@ extern const GameHRC2D *GAME_GameHRC2D_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameHRC2D_has(const ecs_world *, ecs_entity);
 extern int GAME_GameHRC2D_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameHRC2D_remove(ecs_world *, ecs_entity, uint64_t);
-
-extern const ecs_component_desc GAME_COMPONENT_GameMapMarker;
-extern GameMapMarker *GAME_GameMapMarker_get(ecs_world *, ecs_entity);
-extern const GameMapMarker *GAME_GameMapMarker_get_const(const ecs_world *, ecs_entity);
-extern int GAME_GameMapMarker_has(const ecs_world *, ecs_entity);
-extern int GAME_GameMapMarker_add(ecs_world *, ecs_entity, uint64_t);
-extern int GAME_GameMapMarker_remove(ecs_world *, ecs_entity, uint64_t);
 
 #endif

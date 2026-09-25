@@ -321,31 +321,13 @@ void studio_outliner_body(studio *s, int area)
 
 static const struct
 {
-    const char *component;
-    studio_tab tab;
-} CATEGORIES[] = {
-    { "GameBody", STUDIO_TAB_PHYSICS },
-    { "GameCollider", STUDIO_TAB_PHYSICS },
-    { "GameVelocity", STUDIO_TAB_PHYSICS },
-    { "GameDrive", STUDIO_TAB_PHYSICS },
-    { "GameFluidVolume", STUDIO_TAB_PHYSICS },
-    { "GameDestructible", STUDIO_TAB_PHYSICS },
-    { "MaterialBreakProfile", STUDIO_TAB_PHYSICS },
-    { "GameSubstance", STUDIO_TAB_PHYSICS },
-    { "GameMaterial", STUDIO_TAB_MATERIAL },
-    { "GameReflection", STUDIO_TAB_MATERIAL },
-    { "GameFragmentGlow", STUDIO_TAB_MATERIAL },
-    { "MaterialTerrain", STUDIO_TAB_MATERIAL },
-    { "GameHRC2D", STUDIO_TAB_MATERIAL },
-    { "GameStarfield2D", STUDIO_TAB_MATERIAL },
-    { "GameHealth", STUDIO_TAB_GAMEPLAY },
-    { "GameMovement", STUDIO_TAB_GAMEPLAY },
-    { "GameWeapon", STUDIO_TAB_GAMEPLAY },
-    { "GameAim", STUDIO_TAB_GAMEPLAY },
-    { "GameInput", STUDIO_TAB_GAMEPLAY },
-    { "GameActionBinding", STUDIO_TAB_GAMEPLAY },
-    { "GameFuel", STUDIO_TAB_GAMEPLAY },
-    { "GameCombustion", STUDIO_TAB_GAMEPLAY },
+    uint32_t icon;
+    const char *label;
+} TABS[STUDIO_TAB_COUNT] = {
+    { KIT_ICON_SETTINGS, "Scene" },    { KIT_ICON_PROTOTYPE, "Object" },
+    { KIT_ICON_PHYSICS, "Physics" },   { KIT_ICON_MATERIAL, "Material" },
+    { KIT_ICON_GAMEPLAY, "Gameplay" }, { KIT_ICON_GRAPH, "Behaviors" },
+    { KIT_ICON_HEXAGON, "Node" },
 };
 
 static const char *short_name(const char *name)
@@ -354,36 +336,16 @@ static const char *short_name(const char *name)
     return dot ? dot + 1 : name;
 }
 
+/* A component's reflected category names its tab; the rest belong to Object. */
 static studio_tab component_tab(const ecs_component_desc *desc)
 {
-    const char *name = short_name(desc->name);
-    for (size_t i = 0; i < sizeof CATEGORIES / sizeof *CATEGORIES; i++) {
-        if (strcmp(CATEGORIES[i].component, name) == 0) {
-            return CATEGORIES[i].tab;
+    for (int t = STUDIO_TAB_PHYSICS; desc->category && t <= STUDIO_TAB_GAMEPLAY; t++) {
+        if (strcmp(desc->category, TABS[t].label) == 0) {
+            return (studio_tab)t;
         }
     }
     return STUDIO_TAB_OBJECT;
 }
-
-static const struct
-{
-    const char *field;
-    double min, max;
-} BOUNDED[] = {
-    { "antialias", 0, 1 },  { "absorption", 0, 1 },
-    { "friction", 0, 1 },   { "restitution", 0, 1 },
-    { "edge_light", 0, 1 }, { "emission_intensity", 0, 4 },
-};
-
-static const struct
-{
-    const char *field;
-    const char *unit;
-} UNITS[] = {
-    { "speed", "u/s" },  { "acceleration", "u/s\xc2\xb2" },
-    { "cooldown", "s" }, { "lifetime", "s" },
-    { "radius", "u" },
-};
 
 void studio_properties_header(studio *s, int area)
 {
@@ -647,19 +609,15 @@ static bool value_control(
                 d.step = 1;
                 d.precision = 1;
             }
-            for (size_t i = 0; i < sizeof BOUNDED / sizeof *BOUNDED; i++) {
-                if (strcmp(BOUNDED[i].field, field->name) == 0) {
-                    d.min = BOUNDED[i].min;
-                    d.max = BOUNDED[i].max;
-                    d.slider = true;
-                    d.step = 0.01;
-                    d.precision = 3;
-                }
+            if (field->min != field->max) {
+                d.min = field->min;
+                d.max = field->max;
+                d.slider = true;
+                d.step = 0.01;
+                d.precision = 3;
             }
-            for (size_t i = 0; i < sizeof UNITS / sizeof *UNITS; i++) {
-                if (strcmp(UNITS[i].field, field->name) == 0) {
-                    d.unit = UNITS[i].unit;
-                }
+            if (field->unit) {
+                d.unit = field->unit;
             }
             changed = kit_number(k, "value", &v, &d);
             if (radians) {
@@ -1160,17 +1118,6 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
         kit_panel_end(k);
     }
 }
-
-static const struct
-{
-    uint32_t icon;
-    const char *label;
-} TABS[STUDIO_TAB_COUNT] = {
-    { KIT_ICON_SETTINGS, "Scene" },    { KIT_ICON_PROTOTYPE, "Object" },
-    { KIT_ICON_PHYSICS, "Physics" },   { KIT_ICON_MATERIAL, "Material" },
-    { KIT_ICON_GAMEPLAY, "Gameplay" }, { KIT_ICON_GRAPH, "Behaviors" },
-    { KIT_ICON_HEXAGON, "Node" },
-};
 
 void studio_properties_body(studio *s, int area)
 {

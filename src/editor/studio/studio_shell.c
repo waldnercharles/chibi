@@ -42,27 +42,27 @@ const char *studio_scene_title(const app_scene_authoring *scene, char *out, size
 }
 
 /* A prototype's icon follows from what it is made of, never from its name: the
-   first component in this order that it has decides. Shared components only, so
-   every project gets sensible icons without authoring them. */
+   first icon in this order that one of its components names with NODE_ICON
+   decides. */
 uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 {
     static const struct
     {
-        const char *component;
+        const char *name;
         uint32_t icon;
     } icons[] = {
-        { "GameCamera", KIT_ICON_CAMERA },
-        { "EngineSystem", KIT_ICON_SYSTEM },
-        { "GameHRC2D", KIT_ICON_LIGHT },
-        { "GameParticleEmitter", KIT_ICON_EMITTER },
-        { "GameFluidVolume", KIT_ICON_WATER },
-        { "MaterialTerrain", KIT_ICON_TERRAIN },
-        { "GameInput", KIT_ICON_GAMEPAD },
-        { "GameActionBinding", KIT_ICON_KEYBOARD },
-        { "GameProjectile", KIT_ICON_PROJECTILE },
-        { "GameHealth", KIT_ICON_HEALTH },
-        { "GameDestructible", KIT_ICON_DIAMOND },
-        { "GameAppearance", KIT_ICON_SHAPE },
+        { "camera", KIT_ICON_CAMERA },
+        { "system", KIT_ICON_SYSTEM },
+        { "light", KIT_ICON_LIGHT },
+        { "emitter", KIT_ICON_EMITTER },
+        { "water", KIT_ICON_WATER },
+        { "terrain", KIT_ICON_TERRAIN },
+        { "gamepad", KIT_ICON_GAMEPAD },
+        { "keyboard", KIT_ICON_KEYBOARD },
+        { "projectile", KIT_ICON_PROJECTILE },
+        { "health", KIT_ICON_HEALTH },
+        { "diamond", KIT_ICON_DIAMOND },
+        { "shape", KIT_ICON_SHAPE },
     };
     scene_prototype_asset *asset = prototype ? find_prototype(s->scene, prototype)
                                              : NULL;
@@ -72,9 +72,8 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
     const game_prototype *p = asset->prototype;
     for (size_t i = 0; i < sizeof icons / sizeof *icons; i++) {
         for (int c = 0; c < acount(p->components); c++) {
-            const char *name = p->components[c].desc->name;
-            const char *dot = strrchr(name, '.');
-            if (strcmp(dot ? dot + 1 : name, icons[i].component) == 0) {
+            const char *icon = p->components[c].desc->icon;
+            if (icon && strcmp(icon, icons[i].name) == 0) {
                 return icons[i].icon;
             }
         }

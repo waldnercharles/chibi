@@ -785,12 +785,12 @@ const node_desc *graph_vector_constructor(const pin_spec *pin)
     return NULL;
 }
 
-/* A component node's Component setting names what it reads, which its chip
- * shows, so it does not keep the node expanded once chosen. */
+/* A component node's Component or Type setting names what it reads, which its
+ * chip shows, so it does not keep the node expanded once chosen. */
 static bool component_setting(const node *n, int pin)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
-    return kind && pin == component_node_setting(kind) && component_node_key(n)[0];
+    return kind && pin == component_node_setting(n) && component_node_key(n)[0];
 }
 
 static bool inline_input(const graph *g, const node *n, int pin)
@@ -1241,7 +1241,7 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
         return -1;
     }
     component_node_kind component = component_node_kind_of(n->desc);
-    if (!output && component && index == component_node_setting(component)) {
+    if (!output && component && index == component_node_setting(n)) {
         if (value->type != PIN_NAME || component_node_retarget(g, n, value->str)) {
             return -1;
         }
@@ -1918,7 +1918,7 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
     component_node_kind component = component_node_kind_of(n->desc);
     if (component) {
         /* Set's field inputs, and Value, follow Exec, Component and Entity. */
-        int first = component_node_setting(component) + 2;
+        int first = component_node_setting(n) + 2;
         return !output && component_node_split(n) && index >= first &&
                        index < n->input_count &&
                        !component_node_split_value(g, n, false)

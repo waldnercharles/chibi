@@ -330,41 +330,45 @@ static void ed_add_search_match(
     }
 }
 
-static void ed_add_component_match(
+/* A component node configured by its setting, titled by its access and the
+ * component or struct it names. A shape is the generated node it becomes. */
+static void ed_add_preset(
     const editor *e,
     ed_search_match **matches,
-    const node_desc *desc,
-    const ecs_component_desc *component,
-    const char *field,
+    ed_search_match match,
+    const type_desc *type,
+    const node_desc *shape,
     const char *filter
 )
 {
-    ed_search_match match = { .desc = desc,
-                              .component = component->key,
-                              .field = field,
-                              .category = desc->category };
+    const node_desc *desc = match.desc;
     char label[128], verb[32];
-    editor_component_label(component->name, label, sizeof label);
+    editor_component_label(type->name, label, sizeof label);
     snprintf(verb, sizeof verb, "%.*s", (int)strcspn(desc->name, " "), desc->name);
     snprintf(match.name, sizeof match.name, "%s %s", verb, label);
+    match.category = desc->category;
+    if (shape) {
+        ed_add_search_match(e, matches, match, shape, filter);
+        return;
+    }
     pin_spec inputs[4], outputs[2];
     node_desc signature = *desc;
     memcpy(inputs, desc->inputs, (size_t)desc->input_count * sizeof *inputs);
     memcpy(outputs, desc->outputs, (size_t)desc->output_count * sizeof *outputs);
     for (int i = 0; i < desc->input_count; i++) {
-        inputs[i].type_name = inputs[i].type == PIN_STRUCT ? component->type->name
+        inputs[i].type_name = inputs[i].type == PIN_STRUCT ? type->name
                                                            : inputs[i].type_name;
     }
     for (int i = 0; i < desc->output_count; i++) {
-        outputs[i].type_name = outputs[i].type == PIN_STRUCT ? component->type->name
+        outputs[i].type_name = outputs[i].type == PIN_STRUCT ? type->name
                                                              : outputs[i].type_name;
     }
-    if (field) {
+    if (match.field) {
         char name[128];
-        editor_identifier_label(field, name, sizeof name);
+        editor_identifier_label(match.field, name, sizeof name);
         size_t used = strlen(match.name);
         snprintf(match.name + used, sizeof match.name - used, " %s", name);
-        const type_field *f = pin_type_field_path(component->type, field);
+        const type_field *f = pin_type_field_path(type, match.field);
         inputs[desc->input_count - 1] = (pin_spec){ .name = f->name,
                                                     .type = f->type,
                                                     .type_name = f->type_name };
@@ -374,24 +378,44 @@ static void ed_add_component_match(
     ed_add_search_match(e, matches, match, &signature, filter);
 }
 
-/* Get, Set and Has Component replace the generated per-component nodes. A
- * query offers each component's presets, and Set one per settable field. */
+/* Component nodes replace the generated per-component and per-struct nodes.
+ * A query offers every component's and struct's presets, and Set one per
+ * settable field. */
 static void ed_search_components(const editor *e, ed_search_match **matches, const char *filter)
 {
-    const node_desc *access[] = { &NODE_GetComponent, &NODE_SetComponent, &NODE_HasComponent };
+    const node_desc *access[] = { &NODE_GetComponent,
+                                  &NODE_SetComponent,
+                                  &NODE_HasComponent,
+                                  &NODE_AddComponent,
+                                  &NODE_RemoveComponent };
     for (int i = 0; filter && filter[0] && i < registry_node_count(); i++) {
-        const node_desc *getter = registry_node(i);
-        if (getter->component_kind != NODE_COMPONENT_GET_SELF) {
+        const node_desc *d = registry_node(i);
+        if (d->type &&
+            (d->pure_kind == NODE_PURE_MAKE || d->pure_kind == NODE_PURE_BREAK)) {
+            ed_search_match match = { .desc = d->pure_kind == NODE_PURE_MAKE
+                                                ? &NODE_MakeStruct
+                                                : &NODE_BreakStruct,
+                                      .setting = d->type->name };
+            ed_add_preset(e, matches, match, d->type, d, filter);
             continue;
         }
-        const ecs_component_desc *component = getter->component;
-        for (int a = 0; a < 3; a++) {
-            ed_add_component_match(e, matches, access[a], component, NULL, filter);
+        if (d->component_kind != NODE_COMPONENT_GET_SELF) {
+            continue;
+        }
+        const ecs_component_desc *component = d->component;
+        for (int a = 0; a < 5; a++) {
+            ed_search_match match = { .desc = access[a], .setting = component->key };
+            const node_desc *shape = component_node_shape(access[a], component->key);
+            if (a < 3 || shape) {
+                ed_add_preset(e, matches, match, component->type, shape, filter);
+            }
         }
         for (int f = 0; f < component->type->field_count; f++) {
-            const char *field = component->type->fields[f].name;
-            if (component_field_settable(component, field)) {
-                ed_add_component_match(e, matches, &NODE_SetComponent, component, field, filter);
+            ed_search_match match = { .desc = &NODE_SetComponent,
+                                      .setting = component->key,
+                                      .field = component->type->fields[f].name };
+            if (component_field_settable(component, match.field)) {
+                ed_add_preset(e, matches, match, component->type, NULL, filter);
             }
         }
     }
@@ -496,7 +520,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     ed_search_match *matches = NULL;
     for (int i = -1; i < registry_node_count(); i++) {
         const node_desc *desc = i < 0 ? &ed_math_desc : registry_node(i);
-        bool generated_access = desc->component_kind != NODE_COMPONENT_NONE &&
+        bool generated_access = component_generated_kind(desc) &&
                                 e->ui_context != EDITOR_UI_CONTEXT_SYSTEM;
         if (desc == &NODE_GetVariable || desc == &NODE_SetVariable || generated_access) {
             continue;
@@ -714,10 +738,9 @@ node *ed_spawn_match(editor *e, const ed_search_match *match)
         pin_value value = { .type = PIN_NAME, .str = match->prototype };
         graph_set_pin_default(g, n, 0, 1, &value);
     }
-    component_node_kind component = component_node_kind_of(match->desc);
-    if (match->component) {
-        pin_value key = { .type = PIN_NAME, .str = match->component };
-        int setting = component_node_setting(component);
+    if (match->setting) {
+        pin_value key = { .type = PIN_NAME, .str = match->setting };
+        int setting = component_node_setting(n);
         if (graph_set_pin_default(g, n, 0, setting, &key) ||
             (match->field && component_node_show_field(g, n, match->field, true))) {
             graph_remove_node(g, n);
@@ -739,7 +762,12 @@ static int ed_search_match_base_output_count(const ed_search_match *match)
     if (match->variable) {
         return 1;
     }
-    return match->desc ? match->desc->output_count : 0;
+    const node_desc *shape = match->desc
+                               ? component_node_shape(match->desc, match->setting)
+                               : NULL;
+    return shape       ? shape->output_count
+         : match->desc ? match->desc->output_count
+                       : 0;
 }
 
 static bool ed_search_match_base_output(
@@ -771,11 +799,16 @@ static bool ed_search_match_base_output(
                               .container = match->variable->container };
         return true;
     }
-    if (!match->desc || index >= match->desc->output_count || !match->desc->outputs) {
+    const node_desc *shape = match->desc
+                               ? component_node_shape(match->desc, match->setting)
+                               : NULL;
+    const node_desc *desc = shape ? shape : match->desc;
+    if (!desc || index >= desc->output_count || !desc->outputs) {
         return false;
     }
-    *output = match->desc->outputs[index];
-    const ecs_component_desc *component = component_by_key(match->component);
+    *output = desc->outputs[index];
+    const ecs_component_desc *component = shape ? NULL
+                                                : component_by_key(match->setting);
     if (component && output->type == PIN_STRUCT) {
         output->type_name = component->type->name;
     }

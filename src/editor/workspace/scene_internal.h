@@ -103,6 +103,7 @@ struct app_scene_authoring
     void *resolve_user;
     game_prototype_registry registry;
     editor_choices component_choices;
+    editor_choices type_choices;
     editor_choices image_choices; /* Labels and names borrow content paths. */
     editor_choices prototype_choices; /* Names are owned across prototype Undo/reload. */
     editor_choices global_choices; /* Names and labels are owned by this scene. */

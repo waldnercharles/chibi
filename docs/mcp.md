@@ -68,8 +68,10 @@ outputs); an `id` appears only where the sequence breaks. Edges, locals and
 event bindings name pins as `<node id>.<pin name>`, or
 `<node id>.<pin>.<field>` for an exposed struct field. Wildcard pins (math
 operators, reroutes, loops) omit the types their connections determine.
-Expression functions store their `math_expression` source; loading rebuilds
-their nodes. A call to a function in the same asset takes each pin's
+Expression functions store their `math_expression` source and `entry_id`;
+loading rebuilds their nodes, mode and return node, and names them after their
+source unless `name` says otherwise. An expression call's pins omit the groups
+and flags its function implies. A call to a function in the same asset takes each pin's
 `declaration_id` from the signature pin with its name. Enums are spelled by
 label. A node whose pin names repeat lists its pins with explicit IDs instead. `build/chibi_ctl --project-root <root> --format`
 rewrites every asset in canonical form, and `--check` lists assets that
@@ -321,7 +323,9 @@ preview framing. Use `sample_grid` to request up to a 16 by 16 CPU evaluation
 grid over `uv_min` and `uv_max`; each sample returns the UV coordinate and all
 shader output vectors, with local positions mapped from that UV rectangle.
 This separates graph behavior from production geometry or camera framing
-assumptions.
+assumptions. Materials read `beat_phase`, `beat_pulse`, and `influence` (linear
+RGB at the preview center, fading out at radius 50) in both the image and the
+samples, so scene-driven looks can be checked without a running scene.
 
 `optimizeGraph` uses the same optimizer as the editor's Graph Actions menu.
 Start with `dry_run: true`: it reports before and after node and edge counts,
@@ -329,7 +333,10 @@ folded inputs, removed nodes, local aliases, changed edges, and each skipped
 opportunity. Safe folds include component getters, variable reads, `DeltaTime`,
 `Self`, and constants when their source, consumer, conversion, fan-out, and
 debug state are unambiguous. The native controller validates the optimized
-clone before an apply request publishes it with `expected_hash`.
+clone before an apply request publishes it with `expected_hash`. With
+`math_expressions: true` it first turns math trees into expressions; the result
+lists each new expression's source under `expressions` and the graph's local
+names under `locals`, so a dry run shows the formulas to review before applying.
 
 The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 `2025-11-25`, keeps notifications response-free, and advertises the dynamic

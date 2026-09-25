@@ -272,6 +272,7 @@ static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 1800." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "object[]", false, "Per-frame movement, aim, action, and event input records." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values." },
 };
 static const contract_field CONTRACT_REPLAY_SCENARIO[] = {
@@ -358,6 +359,10 @@ static const contract_field CONTRACT_OPTIMIZE_GRAPH[] = {
     { "fanout_threshold", "integer", false, "Minimum compatible fanout for local alias creation; 2 through 64." },
     { "preserve_debug", "boolean", false, "Keep watched, disabled, and breakpoint graph state intact; defaults to true." },
     { "local_aliases", "boolean", false, "Create local aliases for safe high-fanout values; defaults to true." },
+    { "math_expressions",
+      "boolean",
+      false,
+      "First replace math node trees with expressions; defaults to false." },
 };
 static const contract_field CONTRACT_PREVIEW_FIELD[] = {
     { "project_root", "string", false, "Project directory." },
@@ -378,6 +383,9 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "width", "integer", false, "Preview width, default 256, maximum 512." },
     { "height", "integer", false, "Preview height, default 256, maximum 512." },
     { "time", "number", false, "Deterministic preview simulation time." },
+    { "beat_phase", "number", false, "Material Beat Phase, 0 to 1; default 0." },
+    { "beat_pulse", "number", false, "Material Beat Pulse, 0 to 1; default 0." },
+    { "influence", "array", false, "Material Surface Influence linear RGB at the preview center, fading out at radius 50; default none." },
     { "parameters", "object", false, "Shader Parameter overrides keyed by authored parameter name; scalar values or exact-width numeric arrays." },
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
     { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
@@ -2839,10 +2847,26 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         break;
     }
     if ((has_requested_id || requested_name) && selected < 0) {
+        char message[512];
+        int used = snprintf(message, sizeof message, "graph not found in this asset; its graphs:");
+        for (int i = 0; i < acount(asset->graphs) && used < (int)sizeof message; i++) {
+            const graph *g = asset->graphs[i];
+            if (g->math_expression) {
+                continue;
+            }
+            used += snprintf(
+                message + used,
+                sizeof message - (size_t)used,
+                "%s %llu \"%s\"",
+                i ? "," : "",
+                (unsigned long long)g->graph_id,
+                g->name ? g->name : ""
+            );
+        }
         yyjson_doc_free(source_document);
         behavior_asset_free(asset);
         free(json);
-        response_error(result, exit_code, CHIBI_AUTOMATION_NOT_FOUND, "graph not found");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, message);
         return -1;
     }
     compile_report report;
@@ -6673,24 +6697,20 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
         return -1;
     }
-    scenario_input *inputs = xcalloc(SCENARIO_MAX_FRAMES, sizeof *inputs);
-    yyjson_val *input_values = yyjson_obj_get(request, "inputs");
-    if (input_values &&
-        (!yyjson_is_arr(input_values) || yyjson_arr_size(input_values) > frames)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "inputs must be an array with no more entries than frames");
-        free(inputs);
+    /* A recording holds one input per frame; a timeline's samples land on
+       their frames. */
+    scenario_sequence sequence = { 0 };
+    int parsed = prepare_sequence(request, frames, &sequence, error, sizeof error);
+    if (parsed != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, parsed, error);
+        free_sequence(&sequence);
         return -1;
     }
-    if (input_values) {
-        size_t count = yyjson_arr_size(input_values);
-        for (size_t i = 0; i < count; i++) {
-            if (!parse_scenario_input(yyjson_arr_get(input_values, i), &inputs[i], error, sizeof error)) {
-                response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
-                free(inputs);
-                return -1;
-            }
-        }
+    scenario_input *inputs = xcalloc(SCENARIO_MAX_FRAMES, sizeof *inputs);
+    for (size_t i = 0; i < sequence.count; i++) {
+        inputs[sequence.at[i]] = sequence.inputs[i];
     }
+    free_sequence(&sequence);
 
     scenario_context context = { 0 };
     int status = kind && !strcmp(kind, "scene")

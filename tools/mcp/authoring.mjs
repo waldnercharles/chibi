@@ -614,6 +614,25 @@ const previewShaderDefinition = {
       maximum: 3600,
       description: "Shader time uniform in seconds; defaults to zero.",
     },
+    beat_phase: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Material Beat Phase; defaults to zero.",
+    },
+    beat_pulse: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Material Beat Pulse; defaults to zero.",
+    },
+    influence: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: { type: "number", minimum: 0, maximum: 64 },
+      description: "Material Surface Influence as linear RGB at the preview center, fading out at radius 50; defaults to none.",
+    },
     parameters: {
       type: "object",
       description: "Optional shader parameter overrides keyed by authored Shader Parameter name. Use a finite number or boolean for scalar parameters and an exact-width numeric array for vector parameters.",

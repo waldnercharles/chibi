@@ -18,6 +18,7 @@
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
@@ -502,6 +503,10 @@ static int pin_index(edit_context *ctx, node *n, yyjson_val *selector, int outpu
             found = i;
         }
     }
+    /* Documents print an exposed field as Value.current. */
+    if (found < 0 && strchr(name, '.')) {
+        found = serialize_pin_by_key(n, output, name);
+    }
     /* Naming a field Set Component can write shows that field input. */
     if (found < 0 && !output && component_node_kind_of(n->desc) == COMPONENT_NODE_SET &&
         component_node_show_field(ctx->graph, n, name, true) == 0) {
@@ -794,6 +799,24 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "could not initialize shader node '%s'", type);
         return -1;
     }
+    /* Another Return in a function returns the same values as the first. */
+    const node *first = desc == &NODE_Return
+                          ? graph_node_by_id(ctx->graph, ctx->graph->return_id)
+                          : NULL;
+    for (int i = 0; first && i < first->input_count; i++) {
+        const pin_spec *value = &first->input_pins[i];
+        pin_spec pin = { .name = value->name,
+                         .type = value->type,
+                         .type_name = value->type_name,
+                         .kind = value->kind,
+                         .container = value->container,
+                         .default_value = { .type = value->type,
+                                            .type_name = value->type_name } };
+        if (value->kind == PIN_DATA && graph_add_pin(ctx->graph, n, 0, &pin) < 0) {
+            set_error(ctx, "could not add Return pin '%s'", value->name);
+            return -1;
+        }
+    }
     yyjson_val *reference_id = yyjson_obj_get(op, "reference_id");
     yyjson_val *reference_name = yyjson_obj_get(op, "reference_name");
     yyjson_val *reference_asset_json = yyjson_obj_get(op, "reference_asset");
@@ -872,27 +895,27 @@ static int operation_remove_node(edit_context *ctx, yyjson_val *op)
     return 0;
 }
 
-static int refresh_expression_connection(edit_context *ctx, node *from, node *to)
+static int refresh_expression(edit_context *ctx, node *n)
 {
-    node *expression = (from->desc == &NODE_CallPureFunction ||
-                        from->desc == &NODE_BehaviorExpression)
-                         ? from
-                     : (to->desc == &NODE_CallPureFunction ||
-                        to->desc == &NODE_BehaviorExpression)
-                         ? to
-                         : NULL;
-    graph *generated = expression
-                         ? behavior_asset_find_graph(ctx->asset, expression->reference_id)
+    graph *generated = n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression
+                         ? behavior_asset_find_graph(ctx->asset, n->reference_id)
                          : NULL;
     if (!generated || !generated->math_expression) {
         return 0;
     }
     behavior_expression_error error = { 0 };
-    if (behavior_expression_refresh(ctx->asset, expression, &error) != 0) {
+    if (behavior_expression_refresh(ctx->asset, n, &error) != 0) {
         set_error(ctx, "%s", error.message[0] ? error.message : "could not refresh behavior expression");
         return -1;
     }
     return 0;
+}
+
+/* A wire into an expression changes its input's type, and one out of it can
+   resolve its result, so both ends regenerate. */
+static int refresh_expression_connection(edit_context *ctx, node *from, node *to)
+{
+    return refresh_expression(ctx, to) || refresh_expression(ctx, from) ? -1 : 0;
 }
 
 static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
@@ -1296,7 +1319,8 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "add_pin.type_name must be a string");
         return -1;
     }
-    pin_kind kind = PIN_EXEC;
+    /* A typed pin is data; only an untyped one defaults to execution. */
+    pin_kind kind = type_json || type_name_json ? PIN_DATA : PIN_EXEC;
     yyjson_val *kind_json = yyjson_obj_get(op, "kind");
     if (kind_json) {
         const char *kind_name = NULL;
@@ -1323,13 +1347,35 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "add_pin.container is invalid");
         return -1;
     }
+    bool output = !strcmp(side, "output");
+    int count = output ? n->output_count : n->input_count;
+    const pin_spec *last = count
+                             ? &(output ? n->output_pins : n->input_pins)[count - 1]
+                             : NULL;
     pin_spec template_pin = { .name = name,
                               .type = type,
                               .type_name = type_name,
                               .kind = kind,
                               .container = container,
                               .default_value = { .type = type, .type_name = type_name } };
-    int index = graph_add_pin(ctx->graph, n, !strcmp(side, "output"), &template_pin);
+    /* A pin after a wildcard group member, such as Select's options, joins
+       that group and takes its type. */
+    if (last && last->kind == kind && (last->flags & PIN_FLAG_WILDCARD) && last->group) {
+        template_pin.type = last->type;
+        template_pin.type_name = last->type_name;
+        template_pin.container = last->container;
+        template_pin.flags = last->flags;
+        template_pin.group = last->group;
+        template_pin.default_value = (pin_value){ .type = last->type,
+                                                  .type_name = last->type_name };
+    }
+    /* A switch's Default stays its last output, so a new pin is a case. */
+    bool before_default = last && kind == PIN_EXEC && output && last->name &&
+                          !strcmp(last->name, "Default");
+    int index = graph_add_pin(ctx->graph, n, output, &template_pin);
+    if (index >= 0 && before_default) {
+        index = graph_move_pin(ctx->graph, n, 1, index, index - 1);
+    }
     if (index < 0) {
         set_error(ctx, "could not add pin '%s'", name);
         return -1;
@@ -1340,8 +1386,7 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
         int read_error = container >= PIN_CONTAINER_ARRAY
                            ? serialize_read_array(type, type_name, default_json, &value, ctx->graph)
                            : serialize_read_value(type, type_name, default_json, &value, ctx->graph);
-        if (read_error ||
-            graph_set_pin_default(ctx->graph, n, !strcmp(side, "output"), index, &value)) {
+        if (read_error || graph_set_pin_default(ctx->graph, n, output, index, &value)) {
             set_error(ctx, "add_pin.default does not match pin '%s'", name);
             return -1;
         }
@@ -1712,6 +1757,14 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
                 set_error(ctx, "component binding requires the reflected stable component key");
                 return -1;
             }
+            /* A component's name resolves to its key; an unknown one would bind
+               and read nothing. */
+            const ecs_component_desc *component = component_by_key(binding.component_key);
+            if (!component || !component->key) {
+                set_error(ctx, "unknown component '%s'", binding.component_key);
+                return -1;
+            }
+            binding.component_key = component->key;
             yyjson_val *field = yyjson_obj_get(op, "field");
             if (field && !string_value(field, &binding.field_name)) {
                 set_error(ctx, "component field must be a string");
@@ -2257,13 +2310,19 @@ int automation_graph_edit(
     for (int i = 0; i < acount(ctx.layout_graphs); i++) {
         graph_layout(ctx.layout_graphs[i]);
     }
-    char *serialized = behavior_asset_save_json(ctx.asset);
-    if (!serialized) {
-        set_error(&ctx, "could not serialize edited asset");
+    /* Publish only what loads back, in the form --format writes. */
+    char *saved = behavior_asset_save_json(ctx.asset);
+    behavior_asset *reloaded = saved ? behavior_asset_load_json(saved) : NULL;
+    free(saved);
+    if (!reloaded) {
+        set_error(&ctx, "edited asset does not load back: %s", graph_last_error());
         add_failure(&ctx);
         free_edit_context(&ctx);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
+    char *serialized = behavior_asset_save_json(reloaded);
+    behavior_asset_free(reloaded);
+    assert(serialized);
     yyjson_mut_obj_add_uint(doc, result, "graph_id", ctx.graph->graph_id);
     yyjson_mut_obj_add_strcpy(
         doc,

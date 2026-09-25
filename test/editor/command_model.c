@@ -119,22 +119,35 @@ void test_editor_command_model()
                 strstr(body, "Appearance Color") && !strstr(body, "Other.yaml"),
             "native Ollama prompt focuses the named entity and its prototype"
         );
-        yyjson_val *target_enum = yyjson_obj_get(
+        yyjson_val *shapes = yyjson_obj_get(
             yyjson_obj_get(
                 yyjson_obj_get(yyjson_obj_get(yyjson_obj_get(native_body_root, "format"), "properties"), "operations"),
                 "items"
             ),
-            "properties"
+            "anyOf"
         );
-        target_enum = yyjson_obj_get(yyjson_obj_get(target_enum, "target"), "enum");
-        bool scout = false, ship = false, other = false;
-        for (size_t i = 0; i < yyjson_arr_size(target_enum); i++) {
-            const char *id = yyjson_get_str(yyjson_arr_get(target_enum, i));
-            scout |= id && !strcmp(id, "entity:1");
-            ship |= id && !strcmp(id, "/project/content/prototypes/Ship.yaml");
-            other |= id && !strcmp(id, "/project/content/prototypes/Other.yaml");
+        bool scout = false, ship = false, other = false, ship_fields = false;
+        size_t s, shape_count;
+        yyjson_val *shape;
+        yyjson_arr_foreach(shapes, s, shape_count, shape)
+        {
+            yyjson_val *properties = yyjson_obj_get(shape, "properties");
+            yyjson_val *targets = yyjson_obj_get(yyjson_obj_get(properties, "target"), "enum");
+            yyjson_val *fields = yyjson_obj_get(yyjson_obj_get(properties, "field"), "enum");
+            for (size_t i = 0; i < yyjson_arr_size(targets); i++) {
+                const char *id = yyjson_get_str(yyjson_arr_get(targets, i));
+                scout |= !strcmp(id, "entity:1");
+                ship |= !strcmp(id, "/project/content/prototypes/Ship.yaml");
+                other |= !strcmp(id, "/project/content/prototypes/Other.yaml");
+                ship_fields |= fields &&
+                               !strcmp(id, "/project/content/prototypes/Ship.yaml") &&
+                               yyjson_arr_size(targets) == 1 &&
+                               yyjson_arr_size(fields) == 1 &&
+                               yyjson_equals_str(yyjson_arr_get(fields, 0), "GAME.GameAppearance.color");
+            }
         }
         test_check(scout && ship && !other, "command schema limits targets to observed focused IDs");
+        test_check(ship_fields, "command schema limits each target to its observed fields");
         test_check(
             native_body_root &&
                 yyjson_get_str(yyjson_obj_get(native_body_root, "think")) &&

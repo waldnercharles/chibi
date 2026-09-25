@@ -13,8 +13,10 @@ A request takes one of two local decision paths:
    from the catalog, and makes no model call. Other requests continue to the
    model.
 2. GPT-OSS receives a focused catalog and returns a JSON proposal constrained
-   by a per-request schema. The C adapter normalizes literal colors and listed
-   choices, checks target and field IDs, and rejects unavailable operations.
+   by a per-request schema: targets are the observed object IDs, and each
+   target admits only its own observed field IDs. The C adapter normalizes
+   literal colors and listed choices, checks target and field IDs, and rejects
+   unavailable operations.
 
 Both paths use the same execution contract. A dry run checks every proposal
 against the original catalog revision. A loading toast shows the request while
@@ -97,5 +99,8 @@ require clarification. These are synthetic scene tests, not evidence of
 general autonomous app use: a case passes only when the applied operations
 match the expected ones exactly. The live checks register Studio's drawers as
 panels, so panel cases name only Assets, Output and Performance. With
-`gpt-oss:20b` on Ollama, v7 matched 45/49 expected outcomes; five were quick
-edits with no model call.
+`gpt-oss:20b` on Ollama, two v7 runs matched 43/49 and 45/49 expected
+outcomes; six cases decide without a model call. Constraining fields per
+target doubled the median schema (935 to 2046 bytes) without lowering
+accuracy; model-call latency stayed within run-to-run noise (median 2.8-3.0 s,
+p95 4.2-4.3 s, against 3.1 s and 4.7-4.8 s with targets alone).

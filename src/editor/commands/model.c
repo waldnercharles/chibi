@@ -162,68 +162,82 @@ static yyjson_mut_val *schema_targets(yyjson_mut_doc *doc, yyjson_val *catalog)
     return schema;
 }
 
-static yyjson_mut_val *schema_operation(
-    yyjson_mut_doc *doc,
-    bool allow_duplicate,
-    yyjson_val *catalog,
-    const char *request
-)
+static bool verb_allowed(const char *verb, bool allow_duplicate, const char *request)
+{
+    if (!strcmp(verb, "duplicate")) {
+        return allow_duplicate;
+    }
+    if (!strcmp(verb, "assert")) {
+        return text_has_phrase(request, "assert") ||
+               text_has_phrase(request, "check") ||
+               text_has_phrase(request, "verify");
+    }
+    if (!strcmp(verb, "select")) {
+        return text_has_phrase(request, "select") ||
+               text_has_phrase(request, "highlight") ||
+               text_has_phrase(request, "focus");
+    }
+    if (!strcmp(verb, "open")) {
+        return text_has_phrase(request, "open") || text_has_phrase(request, "show") ||
+               text_has_phrase(request, "navigate");
+    }
+    return true;
+}
+
+/* Operations that name a field of their target. */
+static bool field_verb(const char *verb)
+{
+    return !strcmp(verb, "set") || !strcmp(verb, "assert") || !strcmp(verb, "connect");
+}
+
+/* The allowed verbs that do (fields) or do not name a field. */
+static yyjson_mut_val *schema_verbs(yyjson_mut_doc *doc, bool allow_duplicate, const char *request, int fields)
 {
     static const char *const verbs[] = { "set",     "assert", "duplicate",
                                          "connect", "open",   "select",
                                          "frame",   "panel",  "runtime",
                                          "save",    "undo",   "redo" };
+    yyjson_mut_val *schema = schema_string(doc, NULL, 0);
+    yyjson_mut_val *allowed = yyjson_mut_obj_add_arr(doc, schema, "enum");
+    for (size_t i = 0; i < sizeof verbs / sizeof verbs[0]; i++) {
+        bool named = field_verb(verbs[i]);
+        if (verb_allowed(verbs[i], allow_duplicate, request) &&
+            (fields < 0 || named == (fields > 0))) {
+            yyjson_mut_arr_add_str(doc, allowed, verbs[i]);
+        }
+    }
+    return schema;
+}
+
+/* One operation shape; `field` is NULL when the shape names no field. */
+static yyjson_mut_val *schema_shape(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *verbs,
+    yyjson_mut_val *target,
+    yyjson_mut_val *field
+)
+{
     yyjson_mut_val *operation = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_str(doc, operation, "type", "object");
     yyjson_mut_obj_add_bool(doc, operation, "additionalProperties", false);
     yyjson_mut_val *required = yyjson_mut_obj_add_arr(doc, operation, "required");
-    const char *required_names[] = { "op" };
-    for (int i = 0; i < (int)(sizeof required_names / sizeof required_names[0]); i++) {
-        yyjson_mut_arr_add_str(doc, required, required_names[i]);
-    }
+    yyjson_mut_arr_add_str(doc, required, "op");
     yyjson_mut_val *properties = yyjson_mut_obj_add_obj(doc, operation, "properties");
-    yyjson_mut_val *verb_schema = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_str(doc, verb_schema, "type", "string");
-    yyjson_mut_val *allowed_verbs = yyjson_mut_obj_add_arr(doc, verb_schema, "enum");
-    for (size_t i = 0; i < sizeof verbs / sizeof verbs[0]; i++) {
-        const char *verb = verbs[i];
-        if (!strcmp(verb, "duplicate") && !allow_duplicate) {
-            continue;
-        }
-        if (!strcmp(verb, "assert") && !text_has_phrase(request, "assert") &&
-            !text_has_phrase(request, "check") &&
-            !text_has_phrase(request, "verify")) {
-            continue;
-        }
-        if (!strcmp(verb, "select") && !text_has_phrase(request, "select") &&
-            !text_has_phrase(request, "highlight") &&
-            !text_has_phrase(request, "focus")) {
-            continue;
-        }
-        if (!strcmp(verb, "open") && !text_has_phrase(request, "open") &&
-            !text_has_phrase(request, "show") &&
-            !text_has_phrase(request, "navigate")) {
-            continue;
-        }
-        yyjson_mut_arr_add_str(doc, allowed_verbs, verb);
+    yyjson_mut_obj_add_val(doc, properties, "op", verbs);
+    yyjson_mut_obj_add_val(doc, properties, "target", target);
+    if (field) {
+        yyjson_mut_arr_add_str(doc, required, "target");
+        yyjson_mut_arr_add_str(doc, required, "field");
+        yyjson_mut_obj_add_val(doc, properties, "field", field);
     }
-    yyjson_mut_obj_add_val(doc, properties, "op", verb_schema);
-    yyjson_mut_obj_add_val(
-        doc,
-        properties,
-        "target",
-        allow_duplicate || !catalog ? schema_string(doc, NULL, 0)
-                                    : schema_targets(doc, catalog)
-    );
-    const char *string_names[] = { "field", "destination", "pin", "result", "result_target" };
-    for (int i = 0; i < (int)(sizeof string_names / sizeof string_names[0]); i++) {
+    const char *string_names[] = { "destination", "pin", "result", "result_target" };
+    for (size_t i = 0; i < sizeof string_names / sizeof string_names[0]; i++) {
         yyjson_mut_obj_add_val(doc, properties, string_names[i], schema_string(doc, NULL, 0));
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, properties, "value");
     yyjson_mut_val *value_types = yyjson_mut_obj_add_arr(doc, value, "anyOf");
     const char *value_type_names[] = { "string", "boolean", "integer", "number", "null" };
-    for (int i = 0; i < (int)(sizeof value_type_names / sizeof value_type_names[0]);
-         i++) {
+    for (size_t i = 0; i < sizeof value_type_names / sizeof value_type_names[0]; i++) {
         yyjson_mut_val *type = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_str(doc, type, "type", value_type_names[i]);
         yyjson_mut_arr_append(value_types, type);
@@ -238,6 +252,66 @@ static yyjson_mut_val *schema_operation(
     yyjson_mut_val *alpha_null = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_str(doc, alpha_null, "type", "null");
     yyjson_mut_arr_append(alpha_types, alpha_null);
+    return operation;
+}
+
+/* The observed field IDs of an object, as an enum. */
+static yyjson_mut_val *schema_fields(yyjson_mut_doc *doc, yyjson_val *object)
+{
+    yyjson_mut_val *schema = schema_string(doc, NULL, 0);
+    yyjson_mut_val *values = yyjson_mut_obj_add_arr(doc, schema, "enum");
+    size_t i, count;
+    yyjson_val *field;
+    yyjson_arr_foreach(yyjson_obj_get(object, "fields"), i, count, field)
+    {
+        schema_add_unique(doc, values, yyjson_get_str(yyjson_obj_get(field, "id")));
+    }
+    return schema;
+}
+
+/* Each observed target admits only its own fields; operations without a field
+ * take any observed target. Duplicates name results the catalog does not
+ * list yet, so their requests keep free-form targets and fields. */
+static yyjson_mut_val *schema_operation(
+    yyjson_mut_doc *doc,
+    bool allow_duplicate,
+    yyjson_val *catalog,
+    const char *request
+)
+{
+    if (allow_duplicate || !catalog) {
+        return schema_shape(
+            doc,
+            schema_verbs(doc, allow_duplicate, request, -1),
+            schema_string(doc, NULL, 0),
+            schema_string(doc, NULL, 0)
+        );
+    }
+    yyjson_mut_val *operation = yyjson_mut_obj(doc);
+    yyjson_mut_val *shapes = yyjson_mut_obj_add_arr(doc, operation, "anyOf");
+    size_t i, count;
+    yyjson_val *object;
+    yyjson_arr_foreach(yyjson_obj_get(catalog, "objects"), i, count, object)
+    {
+        const char *id = yyjson_get_str(yyjson_obj_get(object, "id"));
+        if (!id || !yyjson_arr_size(yyjson_obj_get(object, "fields"))) {
+            continue;
+        }
+        const char *const target[] = { id };
+        yyjson_mut_arr_append(
+            shapes,
+            schema_shape(
+                doc,
+                schema_verbs(doc, false, request, 1),
+                schema_string(doc, target, 1),
+                schema_fields(doc, object)
+            )
+        );
+    }
+    yyjson_mut_arr_append(
+        shapes,
+        schema_shape(doc, schema_verbs(doc, false, request, 0), schema_targets(doc, catalog), NULL)
+    );
     return operation;
 }
 

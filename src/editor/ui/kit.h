@@ -197,6 +197,10 @@ extern "C"
     bool kit_toggle_group(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
     /* Commits on Enter or blur; Escape restores. Returns true on commit. */
     bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
+    /* A text field over several lines (shadcn Textarea): Shift+Enter starts a
+     * line and the field grows with its lines up to a scrolling height;
+     * otherwise it behaves as kit_text_field. */
+    bool kit_text_area(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
     /* Filters live; returns true whenever the text changes. Escape clears. */
     bool kit_search(kit *k, const char *key, char *buffer, size_t size, const char *placeholder);
     /* RGBA as 0xRRGGBBAA. Live while the picker is open; commits on close. */

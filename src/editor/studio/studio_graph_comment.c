@@ -8,6 +8,11 @@
 #include <stdio.h>
 #include <string.h>
 
+enum
+{
+    COMMENT_TEXT = 1024, /* bytes a node comment edits in */
+};
+
 static const float FRAME_MIN_W = 96, FRAME_MIN_H = 64;
 static const float BUBBLE_MAX = 280;                /* dp */
 static const uint32_t DEFAULT_SWATCH = 0x8a8a96ffu; /* graph.rcss .gcomment-tint */
@@ -53,13 +58,15 @@ static bool item(kit *k, const char *key, const char *label, uint32_t icon, bool
     return kit_menu_item(k, key, &d);
 }
 
-/* A title or comment edited in place: text holds the model's value and, on
-   Enter or when focus leaves, the committed one. Editing ends with focus. */
-static bool edit_field(studio *s, char *text, size_t size, const char *placeholder, uint64_t *editing)
+/* A title or, over several lines, a comment edited in place: text holds the
+   model's value and, on Enter or when focus leaves, the committed one.
+   Editing ends with focus. */
+static bool edit_field(studio *s, char *text, size_t size, bool lines, uint64_t *editing)
 {
     studio_graph *g = &s->graph;
     kit *k = g->kit;
-    bool committed = kit_text_field(k, "edit", text, size, placeholder, 0);
+    bool committed = lines ? kit_text_area(k, "edit", text, size, "Comment", 0)
+                           : kit_text_field(k, "edit", text, size, "Comment", 0);
     if (g->comment_focus) {
         kit_focus(k);
         g->comment_focus = false;
@@ -89,8 +96,8 @@ static void emit_title(studio *s, graph_comment_box *box)
     char text[256];
     snprintf(text, sizeof text, "%s", title);
     kit_push(g->kit, "e", NULL, "gcomment-edit");
-    if (edit_field(s, text, sizeof text, "Comment", &g->title_edit) &&
-        text[0] && strcmp(text, title)) {
+    if (edit_field(s, text, sizeof text, false, &g->title_edit) && text[0] &&
+        strcmp(text, title)) {
         ed_snapshot_before(sg_graph_editor(s));
         graph_set_comment_box(sg_active_graph(s), box, text, box->color);
     }
@@ -121,6 +128,7 @@ void sg_emit_comment(studio *s, graph_comment_box *box)
     char key[32];
     snprintf(key, sizeof key, "c%llu", (unsigned long long)box->id);
     kit_push(k, key, NULL, "gcomment");
+    kit_flag(k, "data-selected", studio_graph_comment(s) == box->id);
     emit_dp(k, "left", box->x);
     emit_dp(k, "top", box->y);
     emit_dp(k, "width", box->width);
@@ -167,6 +175,43 @@ void sg_comment_menu(studio *s, graph_comment_box *box)
         ed_snapshot_before(e);
         graph_remove_comment_box(gr, box->id);
     }
+}
+
+/* Unreal's comment Details: the title, and a color from the full picker as
+   well as the menu's palette. A color gesture is one undo step. */
+void sg_frame_properties(studio *s, graph_comment_box *box)
+{
+    kit *k = s->kit;
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
+    const char *title = box->title ? box->title : "";
+    sg_identity(k, KIT_ICON_COMMENT, title[0] ? title : "Comment", "Comment");
+    if (kit_panel_begin(k, "frame", "Comment", NULL, true)) {
+        char text[256];
+        snprintf(text, sizeof text, "%s", title);
+        kit_prop_begin(k, "title", "Title");
+        if (kit_text_field(k, "v", text, sizeof text, "Comment", flags) &&
+            strcmp(text, title)) {
+            ed_snapshot_before(e);
+            graph_set_comment_box(gr, box, text, box->color);
+        }
+        kit_prop_end(k);
+        uint32_t color = box->color ? box->color : DEFAULT_SWATCH;
+        kit_prop_begin(k, "color", "Color");
+        bool changed = kit_color(k, "v", &color, flags);
+        bool active = kit_item_active(k);
+        if (changed && !g->value_editing) {
+            ed_snapshot_before(e);
+        }
+        if (changed) {
+            graph_set_comment_box(gr, box, title, color);
+        }
+        g->value_editing = active && (changed || g->value_editing);
+        kit_prop_end(k);
+    }
+    kit_panel_end(k);
 }
 
 /* ---------- Resizing ---------- */
@@ -263,6 +308,20 @@ static void set_comment(studio *s, node *n, const char *text, bool hidden)
     graph_set_node_comment(sg_active_graph(s), n, text, hidden);
 }
 
+/* The widest line of a comment as the bubble draws it. */
+static float widest_line(const studio *s, const char *text)
+{
+    float widest = 0;
+    for (const char *at = text; at;) {
+        const char *end = strchr(at, '\n');
+        char line[COMMENT_TEXT];
+        snprintf(line, sizeof line, "%.*s", end ? (int)(end - at) : (int)strlen(at), at);
+        widest = fmaxf(widest, sg_text_width(s, line, 12, 400));
+        at = end ? end + 1 : NULL;
+    }
+    return widest;
+}
+
 /* A comment bubble above the node, or while hidden only above the hovered
    node (Unreal's unpinned comment). Titles-only zoom hides it. */
 void sg_emit_bubble(studio *s, node *n)
@@ -276,7 +335,7 @@ void sg_emit_bubble(studio *s, node *n)
     /* Sized from the text: an absolute box would shrink to the node's width. */
     float width = editing
                     ? BUBBLE_MAX
-                    : fminf(ceilf(sg_text_width(s, n->comment, 12, 400)) + 18, BUBBLE_MAX);
+                    : fminf(ceilf(widest_line(s, n->comment)) + 18, BUBBLE_MAX);
     kit_push(k, "cm", NULL, "gbubble");
     emit_dp(k, "width", width);
     if (!editing) {
@@ -284,9 +343,9 @@ void sg_emit_bubble(studio *s, node *n)
         kit_pop(k);
         return;
     }
-    char text[256];
+    char text[COMMENT_TEXT];
     snprintf(text, sizeof text, "%s", n->comment ? n->comment : "");
-    if (edit_field(s, text, sizeof text, "Comment", &g->bubble_edit)) {
+    if (edit_field(s, text, sizeof text, true, &g->bubble_edit)) {
         set_comment(s, n, text, n->comment_hidden);
     }
     kit_pop(k);
@@ -319,10 +378,10 @@ void sg_comment_properties(studio *s, node *n)
 {
     kit *k = s->kit;
     unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
-    char text[256];
+    char text[COMMENT_TEXT];
     snprintf(text, sizeof text, "%s", n->comment ? n->comment : "");
     kit_prop_begin(k, "comment", "Comment");
-    if (kit_text_field(k, "v", text, sizeof text, NULL, flags)) {
+    if (kit_text_area(k, "v", text, sizeof text, NULL, flags)) {
         set_comment(s, n, text, n->comment_hidden);
     }
     kit_prop_end(k);

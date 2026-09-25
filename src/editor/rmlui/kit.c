@@ -760,7 +760,7 @@ static void keydown(kit *k, const rml_event *e, node *n)
         number_key(k, n, e);
         return;
     }
-    control_key(n, e);
+    control_key(k, n, e);
 }
 
 static void blur(kit *k, const rml_event *e, node *n)
@@ -1156,7 +1156,8 @@ const char *kit_classes(kit *k, const char *base, const kit_class *list, int cou
 
 static bool is_input(const rml_element *el)
 {
-    return strcmp(rml_element_tag_name(el), "input") == 0;
+    const char *tag = rml_element_tag_name(el);
+    return !strcmp(tag, "input") || !strcmp(tag, "textarea");
 }
 
 bool kit_wants_keyboard(const kit *k)

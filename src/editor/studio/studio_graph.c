@@ -5,6 +5,7 @@
  * into it in graph units. Interaction follows docs/editor-graph-references.md;
  * edits go through the graph editor's mutation helpers and history. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/authoring/expand.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/document/extract.h"
 #include "graph/nodes/behavior_expression.h"
@@ -259,16 +260,45 @@ static void node_menu(studio *s, node *n)
         return;
     }
     kit_menu_separator(k, "s1");
-    const char *extract = behavior_asset_can_extract_function(e->asset, gr, e->selected, acount(e->selected));
+    int count = acount(e->selected);
+    bool locked = readonly || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM;
     if (menu_item(
             k,
             "collapse",
             "Collapse to Function",
             KIT_ICON_FUNCTION,
             studio_chord(s, "Mod+G"),
-            readonly || extract || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+            locked || behavior_asset_can_extract_function(e->asset, gr, e->selected, count)
         )) {
-        sg_collapse_to_function(s);
+        sg_collapse(s, GRAPH_FUNCTION);
+        return;
+    }
+    if (menu_item(
+            k,
+            "macro",
+            "Collapse to Macro",
+            KIT_ICON_EXPRESSION,
+            NULL,
+            locked || behavior_asset_can_extract_macro(e->asset, gr, e->selected, count)
+        )) {
+        sg_collapse(s, GRAPH_MACRO);
+        return;
+    }
+    if (ed_is_graph_call(n) && n->desc != &NODE_BehaviorExpression &&
+        menu_item(
+            k,
+            "expand-node",
+            "Expand Node",
+            KIT_ICON_UNFOLD,
+            NULL,
+            readonly || behavior_asset_can_expand_call(e->asset, gr, n)
+        )) {
+        sg_expand_node(s, n);
+        return;
+    }
+    if (sg_refreshable(s) &&
+        menu_item(k, "refresh", "Refresh Nodes", KIT_ICON_REFRESH, NULL, readonly)) {
+        sg_refresh_nodes(s);
         return;
     }
     const char *expression = behavior_expression_can_convert_selection(

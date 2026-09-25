@@ -2,7 +2,10 @@
 #include "editor/graph/search.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
+#include "graph/authoring/expand.h"
 #include "graph/authoring/linked.h"
+#include "graph/document/extract.h"
+#include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
@@ -149,10 +152,18 @@ void sg_select_only(editor *e, node *n)
 void sg_delete_selection(studio *s)
 {
     editor *e = sg_graph_editor(s);
-    if (sg_graph_readonly(s) || (!acount(e->selected) && !acount(e->selected_links))) {
+    uint64_t frame = studio_graph_comment(s);
+    if (sg_graph_readonly(s)) {
         return;
     }
-    ed_delete_selected(e);
+    if (frame && !acount(e->selected_links)) {
+        ed_snapshot_before(e);
+        graph_remove_comment_box(e->active_graph, frame);
+        return;
+    }
+    if (acount(e->selected) || acount(e->selected_links)) {
+        ed_delete_selected(e);
+    }
 }
 
 void sg_copy_selection(studio *s)
@@ -498,27 +509,133 @@ void sg_select_linked(studio *s, bool upstream, bool all)
 
 /* ---------- Refactoring ---------- */
 
-/* Ctrl+G: the selection becomes a call to a new function whose interface is
-   the wires crossing its edge (Blender, Unreal). */
-void sg_collapse_to_function(studio *s)
+/* Takes a refactored copy of the behavior as one undo step. */
+static void adopt(editor *e, behavior_asset *result)
+{
+    char *json = behavior_asset_save_json(result);
+    behavior_asset_free(result);
+    assert(json);
+    ed_snapshot_before(e);
+    int adopted = ed_adopt_behavior_asset(e, json);
+    free(json);
+    assert(adopted == 0);
+    (void)adopted;
+}
+
+static void refused(studio *s, const char *title, const char *error)
+{
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_WARNING, .title = title, .description = error });
+}
+
+/* The selection becomes a call to a new function (Ctrl+G) or macro whose
+   interface is the wires crossing its edge (Blender, Unreal). */
+void sg_collapse(studio *s, graph_kind kind)
 {
     editor *e = sg_graph_editor(s);
-    for (int i = 1;; i++) {
-        snprintf(e->extract_name, sizeof e->extract_name, i == 1 ? "New Function" : "New Function %d", i);
-        if (!behavior_asset_find_graph_by_name(e->asset, e->extract_name)) {
-            break;
+    const char *base = kind == GRAPH_MACRO ? "New Macro" : "New Function";
+    char name[128];
+    snprintf(name, sizeof name, "%s", base);
+    for (int i = 2; behavior_asset_find_graph_by_name(e->asset, name); i++) {
+        snprintf(name, sizeof name, "%s %d", base, i);
+    }
+    behavior_asset *result = NULL;
+    uint64_t call = 0;
+    int count = acount(e->selected);
+    const char *error = e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+                          ? "Systems have no functions or macros."
+                      : kind == GRAPH_MACRO ? behavior_asset_extract_macro(
+                                                  e->asset,
+                                                  e->active_graph,
+                                                  e->selected,
+                                                  count,
+                                                  name,
+                                                  &result,
+                                                  &call
+                                              )
+                                            : behavior_asset_extract_function(
+                                                  e->asset,
+                                                  e->active_graph,
+                                                  e->selected,
+                                                  count,
+                                                  name,
+                                                  &result,
+                                                  &call
+                                              );
+    if (error) {
+        refused(s, "Can't collapse", error);
+        return;
+    }
+    adopt(e, result);
+    sg_select_only(e, graph_node_by_id(e->active_graph, call));
+}
+
+/* The library function a call names, or NULL for any other node. */
+static const graph *library_function(const editor *e, const node *n)
+{
+    for (int i = 0; n->reference_asset && i < acount(e->asset_catalog); i++) {
+        const behavior_asset *library = e->asset_catalog[i];
+        const graph *target = !strcmp(library->name, n->reference_asset)
+                                ? behavior_asset_find_graph(library, n->reference_id)
+                                : NULL;
+        if (target) {
+            return target->kind == GRAPH_FUNCTION ? target : NULL;
         }
     }
-    const char *error = ed_extract_selection(e);
-    if (error) {
-        kit_toast(
-            s->kit,
-            0,
-            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
-                               .title = "Can't collapse",
-                               .description = error }
-        );
+    return NULL;
+}
+
+bool sg_refreshable(const studio *s)
+{
+    const editor *e = sg_graph_editor(s);
+    for (int i = 0; i < acount(e->selected); i++) {
+        if (library_function(e, e->selected[i])) {
+            return true;
+        }
     }
+    return false;
+}
+
+/* Unreal's Refresh Nodes: the selection's library calls take their
+   functions' current signatures, as one undo step. */
+void sg_refresh_nodes(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    unsigned long long before = graph_topology_revision(gr);
+    const char *error = NULL;
+    e->pending_snapshot = ed_snapshot(e);
+    for (int i = 0; i < acount(e->selected) && !error; i++) {
+        const graph *target = library_function(e, e->selected[i]);
+        error = target ? graph_library_refresh_call(gr, e->selected[i], target) : NULL;
+    }
+    if (graph_topology_revision(gr) != before) {
+        ed_commit_snapshot(e);
+    } else {
+        ed_cancel_snapshot(e);
+    }
+    if (error) {
+        refused(s, "Can't refresh", error);
+    }
+}
+
+/* Unreal's Expand Node: the call becomes the body it calls, selected. */
+void sg_expand_node(studio *s, node *call)
+{
+    editor *e = sg_graph_editor(s);
+    behavior_asset *result = NULL;
+    uint64_t *ids = NULL;
+    const char *error = behavior_asset_expand_call(e->asset, e->active_graph, call, &result, &ids);
+    if (error) {
+        refused(s, "Can't expand", error);
+        return;
+    }
+    adopt(e, result);
+    ed_clear_selection(e);
+    for (int i = 0; i < acount(ids); i++) {
+        ed_add_selected(e, graph_node_by_id(e->active_graph, ids[i]));
+    }
+    afree(ids);
+    e->arrange_pending = true;
 }
 
 void sg_convert_to_expression(studio *s)

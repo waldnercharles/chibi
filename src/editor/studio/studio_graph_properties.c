@@ -15,6 +15,29 @@ uint64_t studio_graph_node(const studio *s)
     return studio_graph_active(s) && acount(e->selected) > 0 ? e->selected[0]->id : 0;
 }
 
+uint64_t studio_graph_comment(const studio *s)
+{
+    const graph_comment_box *box = studio_graph_node(s)
+                                     ? NULL
+                                     : sg_comment_by_id(s, s->graph.comment);
+    return box ? box->id : 0;
+}
+
+void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage)
+{
+    kit_push(k, "identity", NULL, "identity");
+    kit_push(k, "glyph", NULL, "glyph");
+    kit_icon(k, "icon", NULL, icon);
+    kit_pop(k);
+    kit_push(k, "who", NULL, "who");
+    kit_label(k, "name", "title", name);
+    kit_push(k, "lineage", NULL, "lineage");
+    kit_label(k, "of", NULL, lineage);
+    kit_pop(k);
+    kit_pop(k);
+    kit_pop(k);
+}
+
 /* The Node tab: every pin, advanced ones included, with what feeds it; the
    canvas shows the common case, this shows everything (Unreal's Details). */
 static bool used(const graph *gr, const node *n, int p)
@@ -197,23 +220,23 @@ void studio_node_properties(studio *s)
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     node *n = sg_node_by_id(s, studio_graph_node(s));
+    graph_comment_box *box = sg_comment_by_id(s, studio_graph_comment(s));
+    if (box) {
+        sg_frame_properties(s, box);
+        return;
+    }
     if (!n) {
         kit_label(k, "empty", "prop-empty", "No node selected");
         return;
     }
     char title[256], label[160], text[256];
     bool readonly = sg_graph_readonly(s);
-    kit_push(k, "identity", NULL, "identity");
-    kit_push(k, "glyph", NULL, "glyph");
-    kit_icon(k, "icon", NULL, sg_node_icon(s, n) ? sg_node_icon(s, n) : KIT_ICON_HEXAGON);
-    kit_pop(k);
-    kit_push(k, "who", NULL, "who");
-    kit_label(k, "name", "title", ed_node_title(e, n, title, sizeof title));
-    kit_push(k, "lineage", NULL, "lineage");
-    kit_label(k, "of", NULL, n->desc->category ? n->desc->category : n->desc->name);
-    kit_pop(k);
-    kit_pop(k);
-    kit_pop(k);
+    sg_identity(
+        k,
+        sg_node_icon(s, n) ? sg_node_icon(s, n) : KIT_ICON_HEXAGON,
+        ed_node_title(e, n, title, sizeof title),
+        n->desc->category ? n->desc->category : n->desc->name
+    );
     const char *source = n->desc == &NODE_BehaviorExpression
                            ? behavior_expression_source(e->asset, n)
                            : NULL;

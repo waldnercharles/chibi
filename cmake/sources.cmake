@@ -6,6 +6,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_path.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_route.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_score.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/expand.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/layout.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/linked.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/pin_edit.c

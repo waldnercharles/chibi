@@ -144,6 +144,7 @@ body.far .gnode-head .title { font-size: 16dp; }
 /* Comment frames (studio_graph_comment.c): a tint layer keyed by the frame's
    color, the title, and grips on the edges and corners that resize it. */
 .gcomment { position: absolute; }
+.gcomment[data-selected] { margin: -2dp 0dp 0dp -2dp; border: 2dp var(--selected-object); border-radius: var(--r-lg); }
 .gcomment-tint {
     position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp;
     border: 1dp #8a8a9666; border-radius: var(--r-lg); background-color: #8a8a961f;
@@ -174,7 +175,7 @@ body.far .gcomment-title { font-size: 28dp; height: 44dp; line-height: 44dp; }
     padding: 3dp 8dp; border-radius: 6dp; background-color: var(--bubble); border: 1dp var(--node-edge);
     color: var(--bubble-fg); font-size: 12dp; line-height: 16dp;
 }
-.gbubble-text { display: block; }
+.gbubble-text { display: block; white-space: pre-wrap; }
 body.far .gbubble { visibility: hidden; }
 
 /* Centered on the wire's middle by a negative margin (emit_conversions). */

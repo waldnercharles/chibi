@@ -117,7 +117,13 @@ void sg_copy_selection(studio *s);
 void sg_paste(studio *s);
 bool sg_is_unused(const studio_graph *g, uint64_t id);
 void sg_find_unused(studio *s);
-void sg_collapse_to_function(studio *s);
+/* Collapse to Function (Ctrl+G) or to Macro, and Expand Node, each one undo
+   step; a refusal shows its reason. */
+void sg_collapse(studio *s, graph_kind kind);
+void sg_expand_node(studio *s, node *call);
+/* Whether the selection holds a library call to refresh. */
+bool sg_refreshable(const studio *s);
+void sg_refresh_nodes(studio *s);
 void sg_convert_to_expression(studio *s);
 void sg_optimize(studio *s);
 void sg_collapse_math(studio *s);
@@ -166,6 +172,10 @@ void sg_emit_bubble(studio *s, node *n);
 void sg_edit_bubble(studio *s, uint64_t node_id);
 bool sg_node_comment_items(studio *s, node *n);
 void sg_comment_properties(studio *s, node *n);
+/* The Node tab for a selected frame: its title and color. */
+void sg_frame_properties(studio *s, graph_comment_box *box);
+/* The Node tab's heading: an icon, a name and what it is. */
+void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage);
 
 /* Find in graph (studio_graph_find.c). */
 void sg_find_open(studio *s);

@@ -425,6 +425,7 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     g->press_comment = 0;
+    g->comment = 0;
     if (hit.reroute_edge >= 0) {
         press_reroute(s, hit);
         return;
@@ -434,8 +435,10 @@ static void press(studio *s, int button, graph_hit hit, bool on_control)
         return;
     }
     if (box) {
-        /* Dragging a frame's title carries what it frames; Shift moves the
-           frame alone (Unreal, Blender). */
+        /* A click selects the frame; dragging it carries what it frames, and
+           Shift moves the frame alone (Unreal, Blender). */
+        ed_clear_selection(e);
+        g->comment = box->id;
         g->press_comment = box->id;
         g->comment_x = box->x;
         g->comment_y = box->y;
@@ -689,6 +692,10 @@ static void release(studio *s, graph_hit hit)
             if (n || wire >= 0 || at.comment) {
                 if (n && !pin && !ed_node_selected(e, n)) {
                     sg_select_only(e, n);
+                }
+                if (at.comment) {
+                    ed_clear_selection(e);
+                    g->comment = at.comment;
                 }
                 g->menu_node = n ? n->id : 0;
                 g->menu_edge = wire;
@@ -1016,7 +1023,7 @@ void sg_shortcuts(studio *s)
         } else if (mod && key == SDLK_V) {
             sg_paste(s);
         } else if (mod && key == SDLK_G && !sg_graph_readonly(s) && acount(e->selected)) {
-            sg_collapse_to_function(s);
+            sg_collapse(s, GRAPH_FUNCTION);
         } else if ((shift && key == SDLK_A) || key == SDLK_TAB) {
             if (!sg_graph_readonly(s)) {
                 g->spawn_pending = true;

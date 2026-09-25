@@ -116,6 +116,8 @@ enum
     KIT_ICON_ALIGN_RIGHT = 0xf11c4,  /* nf-md-align_horizontal_right */
     KIT_ICON_DISTRIBUTE_X = 0xf11c9, /* nf-md-distribute_horizontal_center */
     KIT_ICON_DISTRIBUTE_Y = 0xf11cc, /* nf-md-distribute_vertical_center */
+    KIT_ICON_UNFOLD = 0xeb73,        /* nf-cod-unfold */
+    KIT_ICON_REFRESH = 0xeb37,       /* nf-cod-refresh */
 };
 
 #endif

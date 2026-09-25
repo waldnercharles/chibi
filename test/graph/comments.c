@@ -1,3 +1,4 @@
+#include "support/asset_text.h"
 #include "test/suite_internal.h"
 
 /* Node comments and comment frames: authored, round-tripped, and omitted from
@@ -42,6 +43,28 @@ static void check_node_comments()
         free(loaded);
     }
     graph_free(&g);
+
+    /* A comment keeps its lines through the asset file. */
+    behavior_asset *asset = behavior_asset_new("Lines");
+    node *noted = graph_add_node(asset->graph, registry_node_by_name("Add"));
+    graph_set_node_comment(asset->graph, noted, "First line\nSecond: line", false);
+    char *text = behavior_asset_save_json(asset), error[256];
+    char *yaml = text ? asset_text_to_disk(text, error, sizeof error) : NULL;
+    behavior_asset *reread = yaml ? behavior_asset_load_json(yaml) : NULL;
+    char *resaved = reread ? behavior_asset_save_json(reread) : NULL;
+    char *reyaml = resaved ? asset_text_to_disk(resaved, error, sizeof error) : NULL;
+    node *renoted = reread ? graph_node_by_id(reread->graph, noted->id) : NULL;
+    test_check(
+        renoted && !strcmp(renoted->comment, "First line\nSecond: line") &&
+            reyaml && !strcmp(yaml, reyaml),
+        "comments: comment lines round-trip through the asset file"
+    );
+    free(text);
+    free(yaml);
+    free(resaved);
+    free(reyaml);
+    behavior_asset_free(reread);
+    behavior_asset_free(asset);
 
     graph *bad = graph_load_json("{\"version\":1,\"id_counter\":3,\"nodes\":[{\"id\":1,\"type\":\"Real\",\"comment\":7}]}");
     test_check(!bad, "comments: a comment that is not a string is rejected");

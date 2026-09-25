@@ -1,6 +1,6 @@
 version: 3
 name: Movement
-id_counter: 956
+id_counter: 994
 description: Face aim; drive from movement input or boost along the ship heading.
 owner_type: ecs.entity
 graphs:
@@ -20,7 +20,7 @@ graphs:
   - id: 137
     type: Behavior Expression
     reference_id: 107
-    reference_name: target = vec2(cos(heading), sin(heading)) * speed * 2
+    reference_name: target = direction(heading) * speed * 2
     inputs:
       Exec: {id: 142, kind: exec}
       target:
@@ -114,8 +114,8 @@ graphs:
 - {id: 525, kind: function, math_expression: 'target = vec2(0, 0)', entry_id: 711}
 - id: 107
   kind: function
-  math_expression: target = vec2(cos(heading), sin(heading)) * speed * 2
-  entry_id: 606
+  math_expression: target = direction(heading) * speed * 2
+  entry_id: 957
 - id: 742
   kind: function
   math_expression: heading = atan2(aim.y, aim.x)

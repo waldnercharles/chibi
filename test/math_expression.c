@@ -6,6 +6,7 @@
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
@@ -1123,6 +1124,24 @@ static void scalar_leading_vector_expression()
     behavior_asset_free(asset);
 }
 
+static void direction_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Direction expression");
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, "direction(heading) * 2", &error);
+    assert(call);
+    assert(
+        graph_connect_data(asset->graph, literal(asset->graph, 0.5), 0, call, named_pin(call, false, "heading")) ==
+        0
+    );
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    CF_V2 value = evaluate_vector(asset, call);
+    assert(value.x == (float)cos(0.5) * 2 && value.y == (float)sin(0.5) * 2);
+    int binding = 0;
+    assert(!strcmp(behavior_expression_spelling(&NODE_Direction_From_Angle, &binding), "direction"));
+    behavior_asset_free(asset);
+}
+
 static void vector_expression()
 {
     behavior_asset *asset = behavior_asset_new("Vector expression");
@@ -1866,6 +1885,7 @@ void test_math_expression()
     branch_expression_flow();
     vector_expression();
     scalar_leading_vector_expression();
+    direction_expression();
     field_expression();
     mixed_struct_expression();
     component_struct_input_expression();

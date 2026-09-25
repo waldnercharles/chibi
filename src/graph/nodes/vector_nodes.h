@@ -8,6 +8,7 @@ extern node_desc NODE_Vector_Length;
 extern node_desc NODE_Vector_Dot;
 extern node_desc NODE_Vector_Distance;
 extern node_desc NODE_Direction_To;
+extern node_desc NODE_Direction_From_Angle;
 extern node_desc NODE_Random_Range_Vector;
 
 #endif

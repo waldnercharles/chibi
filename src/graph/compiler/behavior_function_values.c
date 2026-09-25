@@ -430,6 +430,34 @@ static int normalize_aggregate(builder *b, node *n, int slot)
     }
     return behavior_lower_aggregate_value(b, result);
 }
+/* (cos, sin) of the angle, computed in double as the node does. */
+static int from_angle(builder *b, node *n)
+{
+    int angle = behavior_lower_convert(b, behavior_lower_input(b, n, 0), PIN_F64);
+    if (angle < 0) {
+        return -1;
+    }
+    aggregate result = behavior_lower_shape("CF_V2");
+    result.present = behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_BOOL,
+                                         .value = { .type = PIN_BOOL, .b = true } }
+    );
+    const behavior_function_op ops[] = { BF_COS, BF_SIN };
+    for (int i = 0; i < 2; i++) {
+        int value = behavior_lower_value(
+            b,
+            (behavior_function_instruction){ .op = ops[i],
+                                             .type = PIN_F64,
+                                             .left = angle,
+                                             .right = angle,
+                                             .node_id = n->id }
+        );
+        result.fields[i].slot = behavior_lower_convert(b, value, PIN_F32);
+    }
+    return behavior_lower_aggregate_value(b, result);
+}
 int behavior_lower_variable(const builder *b, uint64_t id, pin_type type, pin_container container)
 {
     for (int i = 0; i < acount(b->asset->variables); i++) {
@@ -924,6 +952,9 @@ static int output_value(builder *b, node *n, int pin)
         if (source >= 0) {
             result = normalize_aggregate(b, n, source);
         }
+    }
+    if (n->desc->jit_kind == NODE_JIT_V2_FROM_ANGLE) {
+        result = from_angle(b, n);
     }
     if (n->desc->jit_kind == NODE_JIT_UNWRAP) {
         int source = behavior_lower_input(b, n, 0);

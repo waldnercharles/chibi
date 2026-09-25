@@ -328,5 +328,12 @@ void test_compiled_aggregates()
         }
         behavior_asset_free(a);
     }
+    pin_spec angle = { .name = "Angle", .type = PIN_F64, .type_name = "double" };
+    a = operation("Direction From Angle", &angle, 1, vectors[0]);
+    for (int x = 0; x < 12; x++) {
+        pin_value values[] = { { .type = PIN_F64, .type_name = "double", .d = cases[x] } };
+        parity(a, values);
+    }
+    behavior_asset_free(a);
     puts("PASS: aggregate ownership, nulls, projections, nested calls, mixed-width arithmetic and robust vector normalization match the oracle");
 }

@@ -1,6 +1,6 @@
 version: 3
 name: Flipper
-id_counter: 2604
+id_counter: 2666
 owner_type: ecs.entity
 variables:
 - {id: 1, name: restAngle, type: float}
@@ -86,7 +86,7 @@ graphs:
   - id: 2005
     type: Behavior Expression
     reference_id: 1926
-    reference_name: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
+    reference_name: velocity = (restPosition + 38 * (direction(angle + spin * dt) - direction(restAngle)) - position) / max(dt, 0.001)
     inputs:
       Exec: {id: 2014, kind: exec}
       velocity:
@@ -132,5 +132,5 @@ graphs:
   entry_id: 1856
 - id: 1926
   kind: function
-  math_expression: velocity = (restPosition + 38 * (vec2(cos(angle + spin * dt), sin(angle + spin * dt)) - vec2(cos(restAngle), sin(restAngle))) - position) / max(dt, 0.001)
-  entry_id: 2521
+  math_expression: velocity = (restPosition + 38 * (direction(angle + spin * dt) - direction(restAngle)) - position) / max(dt, 0.001)
+  entry_id: 2605

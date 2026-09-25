@@ -165,6 +165,34 @@ node_desc NODE_Direction_To = {
     .access = &pure,
 };
 
+static pin_value direction_from_angle(const pin_value *inputs, int count, arena *memory)
+{
+    assert(count == 1 && inputs[0].type == PIN_F64);
+    CF_V2 *result = arena_alloc(memory, sizeof *result);
+    *result = (CF_V2){ (float)cos(inputs[0].d), (float)sin(inputs[0].d) };
+    return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = result };
+}
+
+static pin_spec angle_inputs[] = {
+    { .name = "Angle", .type = PIN_F64, .type_name = "double" },
+};
+
+/* The unit vector at an angle in radians (Godot's Vector2.from_angle). */
+node_desc NODE_Direction_From_Angle = {
+    .name = "Direction From Angle",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = angle_inputs,
+    .outputs = direction_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = direction_from_angle,
+    .jit_kind = NODE_JIT_V2_FROM_ANGLE,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Math/Vector",
+    .keywords = "angle heading radians polar cos sin unit vector",
+    .access = &pure,
+};
+
 static CF_V3 random_range_vector_min = { 0, 0, 0 };
 static CF_V3 random_range_vector_max = { 1, 1, 1 };
 

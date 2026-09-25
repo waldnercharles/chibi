@@ -746,10 +746,14 @@ extern "C" void editor_rml_backend_render(editor_rml_backend *backend)
     cf_draw3d_transform(cf_m4_invert(cf_draw3d_peek_transform()));
     cf_draw3d_push_shader(backend->ui_shader);
     cf_draw3d_push_render_state(ui_state);
+    /* SDL_GPU keeps a pass's last scissor for the draws after it, so geometry
+       RmlUi leaves unclipped is drawn under a scissor of the whole target. */
+    cf_draw_push_scissor(viewport);
     backend->renderer.EnableScissorRegion(false);
     backend->context->Render();
     backend->renderer.EnableScissorRegion(false);
     cf_render_layers_to(backend->premultiplied_canvas, k_rml_draw_layer, k_rml_draw_layer, true);
+    cf_draw_pop_scissor();
     cf_draw3d_pop_render_state();
     cf_draw3d_pop_shader();
     cf_draw3d_pop();

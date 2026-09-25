@@ -12,10 +12,10 @@ graphs:
   - {id: 3, type: Shader UV}
   - id: 5
     type: Shader Circle
-    inputs: {Radius: 0.4399999976158142}
+    inputs: {Radius: 0.44}
   - id: 9
     type: Shader Circle
-    inputs: {Radius: 0.2800000011920929}
+    inputs: {Radius: 0.28}
   - {id: 13, type: Shader Difference}
   - id: 17
     type: Shader Mapping

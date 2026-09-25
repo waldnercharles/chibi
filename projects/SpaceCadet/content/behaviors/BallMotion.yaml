@@ -104,11 +104,7 @@ graphs:
         default: {x: 0.0, "y": 0.0}
   - id: 314
     type: Play Sound
-    inputs:
-      Frequency: 190.0
-      End Frequency: 55.0
-      Duration: 0.4000000059604645
-      Volume: 0.4000000059604645
+    inputs: {Frequency: 190.0, End Frequency: 55.0, Duration: 0.4, Volume: 0.4}
   edges:
   - {from: 1.Then, to: 21.Exec}
   - {from: 4.Value, to: 21.ready}

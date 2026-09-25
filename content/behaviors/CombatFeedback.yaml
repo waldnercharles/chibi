@@ -9,7 +9,7 @@ variables:
   type: float
   type_name: float
   category: Feedback
-  default: 0.14000000059604645
+  default: 0.14
 - id: 2
   name: Hit Strength
   type: float
@@ -21,7 +21,7 @@ variables:
   type: float
   type_name: float
   category: Feedback
-  default: 1.7999999523162842
+  default: 1.8
 - {id: 4, name: Hit Remaining, type: float, type_name: float, category: State}
 graphs:
 - kind: event
@@ -112,7 +112,7 @@ graphs:
     type: Max
     inputs:
       A: {id: 18, flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+      B: {flags: 0, group: 0, default: 0.001}
     outputs:
       Result: {flags: 0, group: 0}
   - id: 26
@@ -209,7 +209,7 @@ graphs:
     type: Max
     inputs:
       A: {id: 70, flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+      B: {flags: 0, group: 0, default: 0.001}
     outputs:
       Result: {flags: 0, group: 0}
   - id: 77
@@ -293,7 +293,7 @@ graphs:
     type: Max
     inputs:
       A: {id: 108, flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+      B: {flags: 0, group: 0, default: 0.001}
     outputs:
       Result: {flags: 0, group: 0}
   - id: 115

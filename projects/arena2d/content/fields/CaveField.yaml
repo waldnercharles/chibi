@@ -19,7 +19,7 @@ graphs:
     inputs: {Name: Roughness}
   - id: 13
     type: Field Multiply
-    inputs: {B: 0.550000011920929}
+    inputs: {B: 0.55}
   - id: 17
     type: Field Divide
     inputs: {B: 700.0}
@@ -35,7 +35,7 @@ graphs:
     inputs: {Seed Offset: 4.0}
   - id: 39
     type: Field Multiply
-    inputs: {A: 0.4000000059604645}
+    inputs: {A: 0.4}
   - id: 43
     type: Field Add
     inputs: {A: 1.0}
@@ -48,7 +48,7 @@ graphs:
   - {id: 62, type: Field Subtract}
   - id: 66
     type: Field Multiply
-    inputs: {B: 3.1415927410125732}
+    inputs: {B: 3.1415927}
   - {id: 70, type: Field Sin}
   - id: 73
     type: Field Hash
@@ -59,7 +59,7 @@ graphs:
   - {id: 83, type: Field Multiply}
   - id: 87
     type: Field Multiply
-    inputs: {B: 2.1500000953674316}
+    inputs: {B: 2.15}
   - {id: 91, type: Field Multiply}
   - {id: 95, type: Field Add}
   - {id: 99, type: Field Subtract}
@@ -69,7 +69,7 @@ graphs:
   - {id: 114, type: Field Abs}
   - id: 117
     type: Field Multiply
-    inputs: {B: 0.4300000071525574}
+    inputs: {B: 0.43}
   - {id: 121, type: Field Subtract}
   - id: 125
     type: Field Divide
@@ -80,7 +80,7 @@ graphs:
   - {id: 133, type: Field Noise}
   - id: 138
     type: Field Multiply
-    inputs: {A: 0.5699999928474426}
+    inputs: {A: 0.57}
   - id: 142
     type: Field Divide
     inputs: {B: 65.0}
@@ -92,7 +92,7 @@ graphs:
     inputs: {Seed Offset: 1.0}
   - id: 155
     type: Field Multiply
-    inputs: {A: 0.2800000011920929}
+    inputs: {A: 0.28}
   - {id: 159, type: Field Add}
   - id: 163
     type: Field Divide
@@ -105,7 +105,7 @@ graphs:
     inputs: {Seed Offset: 2.0}
   - id: 176
     type: Field Multiply
-    inputs: {A: 0.15000000596046448}
+    inputs: {A: 0.15}
   - {id: 180, type: Field Add}
   - {id: 184, type: Field Min}
   - {id: 188, type: Field Multiply}

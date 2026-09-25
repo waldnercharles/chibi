@@ -96,11 +96,7 @@ graphs:
       Value: {type: float, type_name: null}
   - id: 322
     type: Play Sound
-    inputs:
-      Frequency: 100.0
-      End Frequency: 720.0
-      Duration: 0.1599999964237213
-      Volume: 0.3499999940395355
+    inputs: {Frequency: 100.0, End Frequency: 720.0, Duration: 0.16, Volume: 0.35}
   edges:
   - {from: 1.Then, to: 36.Exec}
   - {from: 4.Value, to: 36.ready}

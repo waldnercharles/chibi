@@ -15,7 +15,7 @@ graphs:
     type: Find Nearest Entity
     inputs:
       Position:
-        default: {x: 0.0, "y": 2.509999990463257}
+        default: {x: 0.0, "y": 2.51}
       Radius: 10000.0
       Categories: 1
   - {id: 13, type: GetEntity_GameExperience}

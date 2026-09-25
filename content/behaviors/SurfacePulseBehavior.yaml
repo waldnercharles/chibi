@@ -9,7 +9,7 @@ variables:
   type: float
   type_name: float
   category: Surface
-  default: 0.2800000011920929
+  default: 0.28
 - {id: 2, name: Remaining, type: float, type_name: float, category: State}
 - {id: 3, name: Peak Strength, type: float, type_name: float, category: State}
 graphs:
@@ -101,7 +101,7 @@ graphs:
     type: Max
     inputs:
       A: {id: 53, flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+      B: {flags: 0, group: 0, default: 0.001}
     outputs:
       Result: {flags: 0, group: 0}
   - id: 60

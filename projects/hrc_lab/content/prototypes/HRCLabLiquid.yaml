@@ -1,13 +1,13 @@
 name: HRCLabLiquid
 components:
   GAME.GameFluidVolume:
-    absorption: 0.03500000014901161
+    absorption: 0.035
     color: 951492269
     height: 100.0
     kind: 1
-    mass: 0.004000000189989805
+    mass: 0.004
     refraction: 8.0
     spacing: 4.0
-    visibility: 0.012000000104308128
+    visibility: 0.012
     width: 100.0
   game.GameTransform: {}

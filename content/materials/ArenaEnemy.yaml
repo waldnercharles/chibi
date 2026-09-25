@@ -28,18 +28,18 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 0.6200000047683716, "y": 0.009999999776482582, z: 0.03500000014901161}
+        default: {x: 0.62, "y": 0.01, z: 0.035}
   - id: 39
     type: Shader Fresnel
     x: 0.0
     "y": 270.0
-    inputs: {Power: 3.0, Base: 0.11999999731779099}
+    inputs: {Power: 3.0, Base: 0.12}
   - id: 45
     type: Shader Parameter
     reference_id: 2
     reference_name: Edge Glow
     outputs:
-      Value: {flags: 0, group: 0, default: 2.5999999046325684}
+      Value: {flags: 0, group: 0, default: 2.6}
   - id: 47
     type: Shader Parameter
     reference_id: 1
@@ -50,7 +50,7 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 1.100000023841858, "y": 0.017999999225139618, z: 0.09000000357627869}
+        default: {x: 1.1, "y": 0.018, z: 0.09}
   - id: 49
     type: Shader Multiply
     x: 320.0
@@ -84,13 +84,13 @@ graphs:
     reference_id: 3
     reference_name: Roughness
     outputs:
-      Value: {flags: 0, group: 0, default: 0.6000000238418579}
+      Value: {flags: 0, group: 0, default: 0.6}
   - id: 59
     type: Shader Parameter
     reference_id: 4
     reference_name: Metallic
     outputs:
-      Value: {flags: 0, group: 0, default: 0.07999999821186066}
+      Value: {flags: 0, group: 0, default: 0.08}
   - id: 62
     type: Shader Parameter
     x: 1040.0
@@ -124,7 +124,7 @@ graphs:
         type_name: ShaderVec3
         flags: 0
         group: 0
-        default: {x: 0.75, "y": 0.949999988079071, z: 1.0}
+        default: {x: 0.75, "y": 0.95, z: 1.0}
       Alpha: {type_name: float, flags: 0, group: 0}
     outputs:
       Value:
@@ -144,7 +144,7 @@ graphs:
         type_name: ShaderVec3
         flags: 0
         group: 0
-        default: {x: 0.75, "y": 0.949999988079071, z: 1.0}
+        default: {x: 0.75, "y": 0.95, z: 1.0}
       B: {type_name: float, flags: 0, group: 0}
     outputs:
       Value:

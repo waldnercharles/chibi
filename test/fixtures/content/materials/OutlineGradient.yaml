@@ -16,7 +16,7 @@ graphs:
         default: {x: 1.0, "y": 1.0, z: 1.0}
       Emission:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Roughness: 0.6499999761581421
+      Roughness: 0.65
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Unlit: true
@@ -66,7 +66,7 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 0.05000000074505806, "y": 0.6000000238418579, z: 1.0}
+        default: {x: 0.05, "y": 0.6, z: 1.0}
   - id: 50
     type: Shader Parameter
     reference_id: 5
@@ -77,7 +77,7 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 1.0, "y": 0.10000000149011612, z: 0.44999998807907104}
+        default: {x: 1.0, "y": 0.1, z: 0.45}
   - id: 52
     type: Call Pure Function
     x: 340.0
@@ -137,7 +137,7 @@ graphs:
     "y": 830.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.30000001192092896}
+      B: {flags: 0, group: 0, default: 0.3}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 72

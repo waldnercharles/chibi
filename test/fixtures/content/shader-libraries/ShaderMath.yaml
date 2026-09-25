@@ -78,7 +78,7 @@ graphs:
     type: Shader Max
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
+      B: {flags: 0, group: 0, default: 0.001}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 121

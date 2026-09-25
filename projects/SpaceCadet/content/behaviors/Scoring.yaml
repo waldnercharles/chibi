@@ -87,11 +87,7 @@ graphs:
       Value: {type: double}
   - id: 206
     type: Play Sound
-    inputs:
-      Frequency: 900.0
-      End Frequency: 1450.0
-      Duration: 0.07999999821186066
-      Volume: 0.2800000011920929
+    inputs: {Frequency: 900.0, End Frequency: 1450.0, Duration: 0.08, Volume: 0.28}
   - id: 229
     type: Behavior Expression
     reference_id: 215
@@ -143,11 +139,7 @@ graphs:
       Value: {type: float, type_name: null}
   - id: 413
     type: Play Sound
-    inputs:
-      Frequency: 500.0
-      End Frequency: 2200.0
-      Duration: 0.5
-      Volume: 0.4000000059604645
+    inputs: {Frequency: 500.0, End Frequency: 2200.0, Duration: 0.5, Volume: 0.4}
   - id: 422
     type: Has Any Flags
     inputs: {Flags: 4}

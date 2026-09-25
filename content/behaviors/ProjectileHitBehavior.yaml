@@ -113,16 +113,16 @@ graphs:
       End Color: 4065531392
       Min Speed: 60.0
       Max Speed: 140.0
-      Min Lifetime: 0.09000000357627869
-      Max Lifetime: 0.2199999988079071
-      Min Size: 1.100000023841858
-      Max Size: 2.200000047683716
-      Spread: 6.2831854820251465
+      Min Lifetime: 0.09
+      Max Lifetime: 0.22
+      Min Size: 1.1
+      Max Size: 2.2
+      Spread: 6.2831855
       Min Drag: 3.0
       Max Drag: 5.0
-      Min Emission: 1.100000023841858
-      Max Emission: 1.7999999523162842
-      Size Exponent: 0.699999988079071
+      Min Emission: 1.1
+      Max Emission: 1.8
+      Size Exponent: 0.7
       Shape: {flags: 0, default: 4}
   - id: 80
     type: Emit Directed Particles
@@ -134,15 +134,15 @@ graphs:
       End Color: 4015135488
       Min Speed: 15.0
       Max Speed: 42.0
-      Min Lifetime: 0.10000000149011612
-      Max Lifetime: 0.18000000715255737
+      Min Lifetime: 0.1
+      Max Lifetime: 0.18
       Min Size: 2.5
-      Spread: 6.2831854820251465
+      Spread: 6.2831855
       Min Drag: 3.0
       Max Drag: 5.0
-      Min Emission: 1.2000000476837158
-      Max Emission: 1.7999999523162842
-      Size Exponent: 0.699999988079071
+      Min Emission: 1.2
+      Max Emission: 1.8
+      Size Exponent: 0.7
       Shape: {flags: 0}
   - id: 102
     type: Emit Directed Particles
@@ -153,16 +153,16 @@ graphs:
       End Color: 427153664
       Min Speed: 0.0
       Max Speed: 0.0
-      Min Lifetime: 0.18000000715255737
-      Max Lifetime: 0.18000000715255737
+      Min Lifetime: 0.18
+      Max Lifetime: 0.18
       Min Size: 10.0
       Max Size: 10.0
-      Spread: 6.2831854820251465
+      Spread: 6.2831855
       Min Drag: 3.0
       Max Drag: 5.0
-      Min Emission: 0.800000011920929
-      Max Emission: 0.800000011920929
-      Size Exponent: 0.699999988079071
+      Min Emission: 0.8
+      Max Emission: 0.8
+      Size Exponent: 0.7
       Shape: {flags: 0, default: 3}
   edges:
   - {from: 55.Then, to: 58.Exec}

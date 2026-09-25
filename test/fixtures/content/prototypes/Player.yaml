@@ -17,7 +17,7 @@ components:
     absorption: 1.0
     albedo: 437918234
     emission_color: 4294967295
-    emission_intensity: 0.10000000149011612
+    emission_intensity: 0.1
     emission_multiplier: 1.0
     scene: 4294967295
   game.GameMovement: {speed: 180.0}

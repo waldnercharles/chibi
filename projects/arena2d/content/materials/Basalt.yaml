@@ -30,62 +30,62 @@ graphs:
     type: Shader Multiply
     x: 620.0
     "y": 2380.5
-    inputs: {A: 0.0055555556900799274}
+    inputs: {A: 0.0055555557}
   - id: 26
     type: Shader Multiply
     x: 620.0
     "y": 2500.5
-    inputs: {A: 0.0023809524718672037}
+    inputs: {A: 0.0023809525}
   - {id: 30, type: Shader Add, x: 930.0, "y": 2285.0}
   - id: 34
     type: Shader Add
     x: 1240.0
     "y": 2333.0
-    inputs: {B: 1.2999999523162842}
+    inputs: {B: 1.3}
   - {id: 38, type: Shader Sin, x: 1550.0, "y": 2305.5}
   - id: 41
     type: Shader Multiply
     x: 1860.0
     "y": 2169.5
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - {id: 45, type: Shader Add, x: 2170.0, "y": 2049.5}
   - {id: 49, type: Shader Cos, x: 2447.0, "y": 2334.0}
   - id: 52
     type: Shader Multiply
     x: 2948.25
     "y": 2238.0
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - id: 56
     type: Shader Multiply
     x: 4030.0
     "y": 2224.0
-    inputs: {A: 0.0055555556900799274}
+    inputs: {A: 0.0055555557}
   - id: 60
     type: Shader Add
     x: 4373.0
     "y": 2256.0
-    inputs: {A: 0.03846153989434242}
+    inputs: {A: 0.03846154}
   - id: 64
     type: Shader Multiply
     x: 4030.0
     "y": 1714.0
-    inputs: {A: 0.0023809524718672037}
+    inputs: {A: 0.0023809525}
   - id: 68
     type: Shader Multiply
     x: 930.0
     "y": 2484.5
-    inputs: {A: 0.010526316240429878}
+    inputs: {A: 0.010526316}
   - id: 72
     type: Shader Multiply
     x: 930.0
     "y": 2604.5
-    inputs: {A: -0.0033333334140479565}
+    inputs: {A: -0.0033333334}
   - {id: 76, type: Shader Add, x: 1240.0, "y": 2467.5}
   - id: 80
     type: Shader Add
     x: 1550.0
     "y": 2499.5
-    inputs: {B: 0.4000000059604645}
+    inputs: {B: 0.4}
   - {id: 84, type: Shader Sin, x: 1860.0, "y": 2289.5}
   - id: 87
     type: Shader Multiply
@@ -103,24 +103,24 @@ graphs:
     type: Shader Multiply
     x: 4340.0
     "y": 2352.0
-    inputs: {A: 0.010526316240429878}
+    inputs: {A: 0.010526316}
   - {id: 106, type: Shader Add, x: 4650.0, "y": 2248.0}
   - id: 110
     type: Shader Multiply
     x: 4030.0
     "y": 1858.0
-    inputs: {A: -0.0033333334140479565}
+    inputs: {A: -0.0033333334}
   - {id: 114, type: Shader Add, x: 4340.0, "y": 1618.0}
   - id: 118
     type: Shader Multiply
     x: 620.0
     "y": 2140.5
-    inputs: {A: 0.0007692307699471712}
+    inputs: {A: 0.00076923077}
   - id: 122
     type: Shader Multiply
     x: 620.0
     "y": 2260.5
-    inputs: {A: 0.0004761904710903764}
+    inputs: {A: 0.00047619047}
   - {id: 126, type: Shader Add, x: 930.0, "y": 2012.5}
   - {id: 130, type: Shader Sin, x: 1240.0, "y": 2237.0}
   - id: 133
@@ -143,64 +143,64 @@ graphs:
     type: Shader Multiply
     x: 1240.0
     "y": 2627.5
-    inputs: {A: 0.0011111111380159855}
+    inputs: {A: 0.0011111111}
   - id: 152
     type: Shader Multiply
     x: 1240.0
     "y": 2795.5
-    inputs: {A: 0.003846153849735856}
+    inputs: {A: 0.0038461538}
   - {id: 156, type: Shader Add, x: 1550.0, "y": 2651.5}
   - id: 160
     type: Shader Add
     x: 1860.0
     "y": 2613.5
-    inputs: {B: 2.200000047683716}
+    inputs: {B: 2.2}
   - {id: 164, type: Shader Sin, x: 2170.0, "y": 2409.5}
   - {id: 167, type: Shader Cos, x: 3410.0, "y": 2611.0}
   - id: 170
     type: Shader Multiply
     x: 2170.0
     "y": 2289.5
-    inputs: {A: 4.599999904632568}
+    inputs: {A: 4.6}
   - {id: 174, type: Shader Multiply, x: 2480.0, "y": 2217.5}
   - {id: 178, type: Shader Add, x: 2790.0, "y": 2122.25}
   - id: 182
     type: Shader Multiply
     x: 3720.0
     "y": 2496.0
-    inputs: {A: 0.0007692307699471712}
+    inputs: {A: 0.00076923077}
   - {id: 186, type: Shader Multiply, x: 4030.0, "y": 2515.0}
   - id: 190
     type: Shader Multiply
     x: 3720.0
     "y": 2674.0
-    inputs: {B: 0.0011111111380159855}
+    inputs: {B: 0.0011111111}
   - {id: 194, type: Shader Multiply, x: 4030.0, "y": 2667.0}
   - {id: 198, type: Shader Add, x: 4340.0, "y": 2504.0}
   - id: 202
     type: Shader Multiply
     x: 4650.0
     "y": 2432.0
-    inputs: {A: 4.599999904632568}
+    inputs: {A: 4.6}
   - {id: 206, type: Shader Add, x: 4960.0, "y": 2285.0}
   - id: 210
     type: Shader Multiply
     x: 3410.0
     "y": 1610.0
-    inputs: {A: 0.0004761904710903764}
+    inputs: {A: 0.00047619047}
   - {id: 214, type: Shader Multiply, x: 3720.0, "y": 1626.0}
   - id: 218
     type: Shader Multiply
     x: 3410.0
     "y": 1796.0
-    inputs: {B: 0.003846153849735856}
+    inputs: {B: 0.0038461538}
   - {id: 222, type: Shader Multiply, x: 3720.0, "y": 1786.0}
   - {id: 226, type: Shader Add, x: 4030.0, "y": 1618.0}
   - id: 230
     type: Shader Multiply
     x: 4340.0
     "y": 1754.0
-    inputs: {A: 4.599999904632568}
+    inputs: {A: 4.6}
   - {id: 234, type: Shader Add, x: 4650.0, "y": 1562.0}
   - {id: 238, type: Shader Fract, x: 3100.0, "y": 2167.0}
   - {id: 241, type: Shader Subtract, x: 3410.0, "y": 2085.5}
@@ -225,12 +225,12 @@ graphs:
     type: Shader Multiply
     x: 3720.0
     "y": 2018.0
-    inputs: {B: 2.399963140487671}
+    inputs: {B: 2.3999631}
   - id: 269
     type: Shader Add
     x: 4030.0
     "y": 1978.0
-    inputs: {B: 0.30000001192092896}
+    inputs: {B: 0.3}
   - {id: 273, type: Shader Sin, x: 4340.0, "y": 1883.0}
   - id: 276
     type: Shader Multiply
@@ -256,12 +256,12 @@ graphs:
     type: Shader Multiply
     x: 4650.0
     "y": 1979.0
-    inputs: {B: 1.9371600151062012}
+    inputs: {B: 1.93716}
   - id: 296
     type: Shader Add
     x: 4960.0
     "y": 1947.0
-    inputs: {B: 1.100000023841858}
+    inputs: {B: 1.1}
   - {id: 300, type: Shader Sin, x: 5270.0, "y": 1970.0}
   - id: 303
     type: Shader Multiply
@@ -278,12 +278,12 @@ graphs:
     type: Shader Multiply
     x: 5270.0
     "y": 2066.0
-    inputs: {B: 3.30118989944458}
+    inputs: {B: 3.30119}
   - id: 319
     type: Shader Add
     x: 5580.0
     "y": 2099.0
-    inputs: {B: 2.200000047683716}
+    inputs: {B: 2.2}
   - {id: 323, type: Shader Sin, x: 5890.0, "y": 2123.0}
   - id: 326
     type: Shader Multiply
@@ -309,17 +309,17 @@ graphs:
     type: Shader Multiply
     x: 7440.0
     "y": 1755.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - id: 346
     type: Shader Multiply
     x: 5270.0
     "y": 2370.0
-    inputs: {B: 0.832610011100769}
+    inputs: {B: 0.83261}
   - id: 350
     type: Shader Add
     x: 5580.0
     "y": 2285.0
-    inputs: {B: 4.400000095367432}
+    inputs: {B: 4.4}
   - {id: 354, type: Shader Sin, x: 5890.0, "y": 2277.0}
   - id: 357
     type: Shader Multiply
@@ -353,12 +353,12 @@ graphs:
     type: Shader Multiply
     x: 6820.0
     "y": 1590.0
-    inputs: {A: 0.44999998807907104}
+    inputs: {A: 0.45}
   - id: 393
     type: Shader Multiply
     x: 5890.0
     "y": 1761.0
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - {id: 397, type: Shader Divide, x: 6200.0, "y": 1641.0}
   - id: 401
     type: Shader Multiply
@@ -388,12 +388,12 @@ graphs:
     type: Shader Multiply
     x: 9300.0
     "y": 2662.0
-    inputs: {A: 1.0471975803375244}
+    inputs: {A: 1.0471976}
   - id: 468
     type: Shader Subtract
     x: 9610.0
     "y": 2729.5
-    inputs: {A: 1.0471975803375244}
+    inputs: {A: 1.0471976}
   - {id: 472, type: Shader Min, x: 9920.0, "y": 2702.5}
   - {id: 476, type: Shader Cos, x: 10230.0, "y": 2638.5}
   - {id: 479, type: Shader Multiply, x: 10850.0, "y": 2587.0}
@@ -401,13 +401,13 @@ graphs:
     type: Shader Multiply
     x: 10540.0
     "y": 2672.0
-    inputs: {A: 1.2000000476837158}
+    inputs: {A: 1.2}
   - {id: 487, type: Shader Divide, x: 10850.0, "y": 2707.0}
   - id: 491
     type: Shader Subtract
     x: 12400.0
     "y": 1721.0
-    inputs: {B: 0.5235987901687622}
+    inputs: {B: 0.5235988}
   - {id: 495, type: Shader Cos, x: 10850.0, "y": 2319.0}
   - {id: 498, type: Shader Subtract, x: 11160.0, "y": 2287.0}
   - id: 502
@@ -420,7 +420,7 @@ graphs:
     type: Shader Add
     x: 10540.0
     "y": 2499.0
-    inputs: {B: 1.0471975803375244}
+    inputs: {B: 1.0471976}
   - {id: 515, type: Shader Cos, x: 10850.0, "y": 2491.0}
   - {id: 518, type: Shader Subtract, x: 11160.0, "y": 2491.0}
   - {id: 522, type: Shader Smoothstep, x: 11470.0, "y": 2519.0}
@@ -429,7 +429,7 @@ graphs:
     type: Shader Add
     x: 10850.0
     "y": 2859.0
-    inputs: {B: 2.094395160675049}
+    inputs: {B: 2.0943952}
   - {id: 535, type: Shader Cos, x: 11160.0, "y": 2773.0}
   - {id: 538, type: Shader Subtract, x: 11470.0, "y": 2663.0}
   - {id: 542, type: Shader Smoothstep, x: 11780.0, "y": 2381.0}
@@ -438,7 +438,7 @@ graphs:
     type: Shader Multiply
     x: 12400.0
     "y": 1841.0
-    inputs: {A: 1.0471975803375244}
+    inputs: {A: 1.0471976}
   - {id: 555, type: Shader Add, x: 12710.0, "y": 1705.0}
   - {id: 559, type: Shader Cos, x: 13020.0, "y": 1303.0}
   - {id: 562, type: Shader Sin, x: 14260.0, "y": 1434.0}
@@ -452,17 +452,17 @@ graphs:
     type: Shader Step
     x: 10850.0
     "y": 1100.0
-    inputs: {Edge: 0.6399999856948853}
+    inputs: {Edge: 0.64}
   - id: 578
     type: Shader Multiply
     x: 10540.0
     "y": 1188.0
-    inputs: {A: 1.399999976158142}
+    inputs: {A: 1.4}
   - id: 582
     type: Shader Add
     x: 10850.0
     "y": 1220.0
-    inputs: {A: 0.6000000238418579}
+    inputs: {A: 0.6}
   - {id: 586, type: Shader Multiply, x: 11160.0, "y": 1204.0}
   - id: 590
     type: Shader Add
@@ -479,24 +479,24 @@ graphs:
     type: Shader Step
     x: 10850.0
     "y": 1456.0
-    inputs: {Edge: 0.6399999856948853}
+    inputs: {Edge: 0.64}
   - id: 607
     type: Shader Multiply
     x: 10540.0
     "y": 1544.0
-    inputs: {A: 1.399999976158142}
+    inputs: {A: 1.4}
   - id: 611
     type: Shader Add
     x: 10850.0
     "y": 1576.0
-    inputs: {A: 0.6000000238418579}
+    inputs: {A: 0.6}
   - {id: 615, type: Shader Multiply, x: 11160.0, "y": 1456.0}
   - {id: 619, type: Shader Multiply, x: 11470.0, "y": 1307.0}
   - id: 623
     type: Shader Add
     x: 11470.0
     "y": 1427.0
-    inputs: {B: 0.009999999776482582}
+    inputs: {B: 0.01}
   - {id: 627, type: Shader Smoothstep, x: 11780.0, "y": 1307.0}
   - id: 632
     type: Shader Subtract
@@ -514,7 +514,7 @@ graphs:
     type: Shader Add
     x: 11470.0
     "y": 1757.0
-    inputs: {B: 0.009999999776482582}
+    inputs: {B: 0.01}
   - {id: 652, type: Shader Smoothstep, x: 11780.0, "y": 1573.0}
   - id: 657
     type: Shader Subtract
@@ -529,105 +529,105 @@ graphs:
     type: Shader Smoothstep
     x: 13020.0
     "y": 1721.0
-    inputs: {Min: 0.800000011920929}
+    inputs: {Min: 0.8}
   - {id: 682, type: Shader Vector3, x: 12090.0, "y": 2879.0}
   - id: 687
     type: Shader Noise
     x: 12400.0
     "y": 2723.0
-    inputs: {Scale: 0.07999999821186066}
+    inputs: {Scale: 0.08}
   - id: 691
     type: Shader Multiply
     x: 12710.0
     "y": 2557.0
-    inputs: {A: 0.699999988079071}
+    inputs: {A: 0.7}
   - id: 695
     type: Shader Noise
     x: 12400.0
     "y": 2843.0
-    inputs: {Scale: 0.44999998807907104}
+    inputs: {Scale: 0.45}
   - id: 699
     type: Shader Multiply
     x: 12710.0
     "y": 2677.0
-    inputs: {A: 0.30000001192092896}
+    inputs: {A: 0.3}
   - {id: 703, type: Shader Add, x: 13020.0, "y": 2403.0}
   - id: 707
     type: Shader Add
     x: 11780.0
     "y": 1827.0
-    inputs: {B: 0.800000011920929}
+    inputs: {B: 0.8}
   - {id: 711, type: Shader Vector3, x: 12090.0, "y": 1812.0}
   - id: 716
     type: Shader Noise
     x: 12400.0
     "y": 1601.0
-    inputs: {Scale: 0.07999999821186066}
+    inputs: {Scale: 0.08}
   - id: 720
     type: Shader Multiply
     x: 12710.0
     "y": 1585.0
-    inputs: {A: 0.699999988079071}
+    inputs: {A: 0.7}
   - id: 724
     type: Shader Noise
     x: 12400.0
     "y": 1961.0
-    inputs: {Scale: 0.44999998807907104}
+    inputs: {Scale: 0.45}
   - id: 728
     type: Shader Multiply
     x: 12710.0
     "y": 1825.0
-    inputs: {A: 0.30000001192092896}
+    inputs: {A: 0.3}
   - {id: 732, type: Shader Add, x: 13020.0, "y": 1601.0}
   - {id: 736, type: Shader Subtract, x: 13330.0, "y": 1646.0}
   - id: 740
     type: Shader Multiply
     x: 13640.0
     "y": 1510.0
-    inputs: {B: 0.44999998807907104}
+    inputs: {B: 0.45}
   - id: 744
     type: Shader Add
     x: 11780.0
     "y": 2793.0
-    inputs: {B: 0.800000011920929}
+    inputs: {B: 0.8}
   - {id: 748, type: Shader Vector3, x: 12090.0, "y": 2591.0}
   - id: 753
     type: Shader Noise
     x: 12400.0
     "y": 2451.0
-    inputs: {Scale: 0.07999999821186066}
+    inputs: {Scale: 0.08}
   - id: 757
     type: Shader Multiply
     x: 12710.0
     "y": 2317.0
-    inputs: {A: 0.699999988079071}
+    inputs: {A: 0.7}
   - id: 761
     type: Shader Noise
     x: 12400.0
     "y": 2571.0
-    inputs: {Scale: 0.44999998807907104}
+    inputs: {Scale: 0.45}
   - id: 765
     type: Shader Multiply
     x: 12710.0
     "y": 2437.0
-    inputs: {A: 0.30000001192092896}
+    inputs: {A: 0.3}
   - {id: 769, type: Shader Add, x: 13020.0, "y": 2283.0}
   - {id: 773, type: Shader Subtract, x: 13330.0, "y": 2242.0}
   - id: 777
     type: Shader Multiply
     x: 13640.0
     "y": 1952.0
-    inputs: {B: 0.44999998807907104}
+    inputs: {B: 0.45}
   - id: 781
     type: Shader Divide
     x: 11470.0
     "y": 2085.0
-    inputs: {B: 0.8999999761581421}
+    inputs: {B: 0.9}
   - id: 785
     type: Shader Divide
     x: 11470.0
     "y": 2399.0
-    inputs: {B: 0.8999999761581421}
+    inputs: {B: 0.9}
   - {id: 789, type: Shader Fract, x: 11780.0, "y": 1955.0}
   - {id: 792, type: Shader Subtract, x: 12090.0, "y": 2151.0}
   - {id: 796, type: Shader Fract, x: 11780.0, "y": 2069.0}
@@ -652,7 +652,7 @@ graphs:
     type: Shader Step
     x: 13020.0
     "y": 919.0
-    inputs: {Edge: 0.9750000238418579}
+    inputs: {Edge: 0.975}
   - {id: 824, type: Shader Multiply, x: 12400.0, "y": 976.0}
   - {id: 828, type: Shader Multiply, x: 12400.0, "y": 1096.0}
   - {id: 832, type: Shader Add, x: 12710.0, "y": 1047.0}
@@ -660,7 +660,7 @@ graphs:
     type: Shader Step
     x: 13020.0
     "y": 1039.0
-    inputs: {Value: 0.10000000149011612}
+    inputs: {Value: 0.1}
   - {id: 840, type: Shader Multiply, x: 13330.0, "y": 1068.0}
   - id: 844
     type: Shader Subtract
@@ -683,7 +683,7 @@ graphs:
     type: Shader Multiply
     x: 13640.0
     "y": 1630.0
-    inputs: {B: 0.6000000238418579}
+    inputs: {B: 0.6}
   - id: 869
     type: Shader Vector3
     x: 12710.0
@@ -699,7 +699,7 @@ graphs:
     type: Shader Multiply
     x: 13640.0
     "y": 2072.0
-    inputs: {B: 0.6000000238418579}
+    inputs: {B: 0.6}
   - id: 886
     type: Shader Multiply
     x: 12710.0
@@ -709,22 +709,22 @@ graphs:
     type: Shader Smoothstep
     x: 13020.0
     "y": 1415.0
-    inputs: {Min: 0.8600000143051147}
+    inputs: {Min: 0.86}
   - id: 895
     type: Shader Mix
     x: 13330.0
     "y": 1350.0
-    inputs: {B: -0.8500000238418579}
+    inputs: {B: -0.85}
   - id: 900
     type: Shader Smoothstep
     x: 13330.0
     "y": 1502.0
-    inputs: {Min: 0.8600000143051147}
+    inputs: {Min: 0.86}
   - id: 905
     type: Shader Mix
     x: 13640.0
     "y": 1366.0
-    inputs: {B: 0.8500000238418579}
+    inputs: {B: 0.85}
   - id: 910
     type: Shader Subtract
     x: 13020.0
@@ -734,13 +734,13 @@ graphs:
     type: Shader Multiply
     x: 13330.0
     "y": 1952.0
-    inputs: {B: 0.20000000298023224}
+    inputs: {B: 0.2}
   - {id: 918, type: Shader Step, x: 13020.0, "y": 2163.0}
   - id: 922
     type: Shader Mix
     x: 13330.0
     "y": 2072.0
-    inputs: {A: -0.699999988079071, B: 0.699999988079071}
+    inputs: {A: -0.7, B: 0.7}
   - {id: 927, type: Shader Mix, x: 13640.0, "y": 1808.0}
   - {id: 932, type: Shader Add, x: 13950.0, "y": 1309.0}
   - {id: 936, type: Shader Multiply, x: 13950.0, "y": 1429.0}
@@ -759,12 +759,12 @@ graphs:
     type: Shader Multiply
     x: 12710.0
     "y": 455.0
-    inputs: {A: 0.30000001192092896}
+    inputs: {A: 0.3}
   - id: 974
     type: Shader Add
     x: 13020.0
     "y": 415.0
-    inputs: {A: 0.8500000238418579}
+    inputs: {A: 0.85}
   - id: 978
     type: Shader Vector3
     x: 12090.0
@@ -775,23 +775,23 @@ graphs:
     type: Shader Multiply
     x: 12710.0
     "y": 575.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - id: 991
     type: Shader Add
     x: 13020.0
     "y": 535.0
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - {id: 995, type: Shader Multiply, x: 13330.0, "y": 468.0}
   - id: 999
     type: Shader Multiply
     x: 11470.0
     "y": 0.0
-    inputs: {B: 0.1599999964237213}
+    inputs: {B: 0.16}
   - id: 1003
     type: Shader Multiply
     x: 11470.0
     "y": 136.0
-    inputs: {B: 0.012000000104308128}
+    inputs: {B: 0.012}
   - id: 1007
     type: Shader Vector3
     x: 11780.0
@@ -802,12 +802,12 @@ graphs:
     type: Shader Multiply
     x: 11470.0
     "y": 256.0
-    inputs: {B: 0.019999999552965164}
+    inputs: {B: 0.02}
   - id: 1020
     type: Shader Multiply
     x: 11470.0
     "y": 384.0
-    inputs: {B: 0.004000000189989805}
+    inputs: {B: 0.004}
   - id: 1024
     type: Shader Vector3
     x: 11780.0
@@ -819,12 +819,12 @@ graphs:
     type: Shader Smoothstep
     x: 12710.0
     "y": 311.0
-    inputs: {Min: 0.25, Max: 0.550000011920929}
+    inputs: {Min: 0.25, Max: 0.55}
   - id: 1042
     type: Shader Multiply
     x: 13330.0
     "y": 588.0
-    inputs: {A: 0.699999988079071}
+    inputs: {A: 0.7}
   - id: 1046
     type: Shader Subtract
     x: 13640.0
@@ -834,7 +834,7 @@ graphs:
     type: Shader Multiply
     x: 13330.0
     "y": 708.0
-    inputs: {A: 0.44999998807907104}
+    inputs: {A: 0.45}
   - id: 1054
     type: Shader Subtract
     x: 13640.0
@@ -845,52 +845,52 @@ graphs:
     type: Shader Multiply
     x: 13020.0
     "y": 175.0
-    inputs: {A: 0.03700000047683716}
+    inputs: {A: 0.037}
   - id: 1066
     type: Shader Add
     x: 13330.0
     "y": 228.0
-    inputs: {A: 0.06800000369548798}
+    inputs: {A: 0.068}
   - {id: 1070, type: Shader Multiply, x: 13640.0, "y": 436.0}
   - id: 1074
     type: Shader Mix
     x: 13950.0
     "y": 516.0
-    inputs: {B: 0.11999999731779099}
+    inputs: {B: 0.12}
   - {id: 1079, type: Shader Multiply, x: 14260.0, "y": 747.0}
   - id: 1083
     type: Shader Multiply
     x: 13020.0
     "y": 295.0
-    inputs: {A: 0.007000000216066837}
+    inputs: {A: 0.007}
   - id: 1087
     type: Shader Add
     x: 13330.0
     "y": 348.0
-    inputs: {A: 0.0729999989271164}
+    inputs: {A: 0.073}
   - {id: 1091, type: Shader Multiply, x: 13640.0, "y": 580.0}
   - id: 1095
     type: Shader Mix
     x: 13950.0
     "y": 660.0
-    inputs: {B: 0.11999999731779099}
+    inputs: {B: 0.12}
   - {id: 1100, type: Shader Multiply, x: 14260.0, "y": 867.0}
   - id: 1104
     type: Shader Multiply
     x: 13020.0
     "y": 655.0
-    inputs: {A: -0.01600000075995922}
+    inputs: {A: -0.016}
   - id: 1108
     type: Shader Add
     x: 13330.0
     "y": 828.0
-    inputs: {A: 0.07999999821186066}
+    inputs: {A: 0.08}
   - {id: 1112, type: Shader Multiply, x: 13640.0, "y": 948.0}
   - id: 1116
     type: Shader Mix
     x: 13950.0
     "y": 924.0
-    inputs: {B: 0.11500000208616257}
+    inputs: {B: 0.115}
   - {id: 1121, type: Shader Multiply, x: 14260.0, "y": 987.0}
   - {id: 1125, type: Shader Vector3, x: 14570.0, "y": 962.0}
   - id: 1130
@@ -903,27 +903,27 @@ graphs:
     type: Shader Multiply
     x: 13640.0
     "y": 1068.0
-    inputs: {A: 0.11999999731779099}
+    inputs: {A: 0.12}
   - id: 1143
     type: Shader Add
     x: 13950.0
     "y": 1068.0
-    inputs: {A: 0.6800000071525574}
+    inputs: {A: 0.68}
   - id: 1147
     type: Shader Mix
     x: 14260.0
     "y": 1107.0
-    inputs: {B: 0.949999988079071}
+    inputs: {B: 0.95}
   - id: 1152
     type: Shader Mix
     x: 14570.0
     "y": 1138.0
-    inputs: {B: 0.10000000149011612}
+    inputs: {B: 0.1}
   - id: 1157
     type: Shader Multiply
     x: 13020.0
     "y": 2643.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 1161, type: Shader Multiply, x: 12710.0, "y": 2999.0}
   - id: 1165
     type: Shader Subtract
@@ -941,19 +941,19 @@ graphs:
     type: Shader Multiply
     x: 13640.0
     "y": 2320.0
-    inputs: {A: 1.7999999523162842}
+    inputs: {A: 1.8}
   - {id: 1185, type: Shader Subtract, x: 13950.0, "y": 1847.0}
   - id: 1189
     type: Shader Multiply
     x: 13950.0
     "y": 1967.0
-    inputs: {A: 0.3499999940395355}
+    inputs: {A: 0.35}
   - {id: 1193, type: Shader Add, x: 14260.0, "y": 1650.0}
   - id: 1197
     type: Shader Multiply
     x: 14260.0
     "y": 1770.0
-    inputs: {A: 0.15000000596046448}
+    inputs: {A: 0.15}
   - {id: 1201, type: Shader Add, x: 14570.0, "y": 1522.0}
   edges:
   - {from: 10.Value, to: 12.Value}

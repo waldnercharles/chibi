@@ -17,7 +17,7 @@ components:
     border_emission_color: 4291559679
     border_scene: 4291559679
     emission_color: 4291559679
-    emission_intensity: 0.009999999776482582
+    emission_intensity: 0.01
     emission_multiplier: 0.5
     scene: 336527615
   game.GameMovement: {speed: 90.0}

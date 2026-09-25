@@ -12,14 +12,14 @@ components:
   GAME.GameBody: {type: Kinematic}
   GAME.GameCollider:
     category: 2
-    friction: 0.11999999731779099
+    friction: 0.12
     height: 16.0
     mask: 1
-    restitution: 0.8999999761581421
+    restitution: 0.9
     shape: Box
     width: 76.0
   game.GameInput: {}
-  GAME.GameOrientation: {radians: 0.44999998807907104}
+  GAME.GameOrientation: {radians: 0.45}
   game.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [Flipper]

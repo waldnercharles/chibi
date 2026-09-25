@@ -15,7 +15,7 @@ variables:
   type: float
   type_name: float
   category: State
-  default: 3.799999952316284
+  default: 3.8
 - {id: 2003, name: Enemy Count, type: int, type_name: int, category: State}
 - {id: 2004, name: Player Alive, type: bool, type_name: bool, category: State}
 - {id: 2387, name: Pending Deaths, type: bool, type_name: bool, category: State}
@@ -292,11 +292,11 @@ graphs:
     type: Get Variable
     reference_id: 2001
     outputs:
-      Value: {type: float, flags: 0, default: 0.6499999761581421}
+      Value: {type: float, flags: 0, default: 0.65}
   - id: 2217
     type: Max
     inputs:
-      B: {group: 1, default: 0.009999999776482582}
+      B: {group: 1, default: 0.01}
   - id: 2221
     type: Get Variable
     reference_id: 2002

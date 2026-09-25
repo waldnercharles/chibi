@@ -123,7 +123,7 @@ graphs:
       Result: {group: 0}
   - id: 64
     type: Greater Or Equal
-    inputs: {B: 0.00009999999747378752}
+    inputs: {B: 0.0001}
   - {id: 68, type: Branch}
   - {id: 73, type: Normalize Vector 2}
   - {id: 76, type: Set_GameDash_direction}

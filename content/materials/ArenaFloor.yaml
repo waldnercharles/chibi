@@ -21,13 +21,13 @@ graphs:
     reference_id: 1
     reference_name: Idle Size
     outputs:
-      Value: {flags: 0, group: 0, default: 0.23999999463558197}
+      Value: {flags: 0, group: 0, default: 0.24}
   - id: 657
     type: Shader Parameter
     reference_id: 2
     reference_name: Active Size
     outputs:
-      Value: {flags: 0, group: 0, default: 0.8399999737739563}
+      Value: {flags: 0, group: 0, default: 0.84}
   - id: 659
     type: Shader Parameter
     x: 780.0
@@ -35,25 +35,25 @@ graphs:
     reference_id: 3
     reference_name: Line Width
     outputs:
-      Value: {flags: 0, group: 0, default: 0.009999999776482582}
+      Value: {flags: 0, group: 0, default: 0.01}
   - id: 661
     type: Shader Parameter
     reference_id: 4
     reference_name: Idle Glow
     outputs:
-      Value: {flags: 0, group: 0, default: 0.02199999988079071}
+      Value: {flags: 0, group: 0, default: 0.022}
   - id: 663
     type: Shader Parameter
     reference_id: 5
     reference_name: Reaction Gain
     outputs:
-      Value: {flags: 0, group: 0, default: 0.4000000059604645}
+      Value: {flags: 0, group: 0, default: 0.4}
   - id: 665
     type: Shader Parameter
     reference_id: 6
     reference_name: Beat Amount
     outputs:
-      Value: {flags: 0, group: 0, default: 0.04500000178813934}
+      Value: {flags: 0, group: 0, default: 0.045}
   - id: 667
     type: Shader WorldPosition
     x: 0.0
@@ -148,7 +148,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Tile Size: {type: float, type_name: null, default: 16.0}
       Scale: {type: float, type_name: null, default: 0.25}
-      Width: {type: float, type_name: null, default: 0.012000000104308128}
+      Width: {type: float, type_name: null, default: 0.012}
     outputs:
       Mask: {type: float, type_name: null}
   - id: 700
@@ -165,7 +165,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Tile Size: {type: float, type_name: null, default: 16.0}
       Scale: {type: float, type_name: null, default: 0.25}
-      Width: {type: float, type_name: null, default: 0.012000000104308128}
+      Width: {type: float, type_name: null, default: 0.012}
     outputs:
       Mask: {type: float, type_name: null}
   - id: 706
@@ -174,7 +174,7 @@ graphs:
     "y": 480.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.23999999463558197}
+      B: {flags: 0, group: 0, default: 0.24}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 710
@@ -213,7 +213,7 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 0.41999998688697815, "y": 0.550000011920929, z: 0.6399999856948853}
+        default: {x: 0.42, "y": 0.55, z: 0.64}
       B: {flags: 0, group: 0}
     outputs:
       Value:
@@ -271,7 +271,7 @@ graphs:
     "y": 720.0
     inputs:
       Base Color:
-        default: {x: 0.001500000013038516, "y": 0.0020000000949949026, z: 0.003000000026077032}
+        default: {x: 0.0015, "y": 0.002, z: 0.003}
       Emission:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Roughness: 1.0
@@ -294,7 +294,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Tile Size: {type: float, type_name: null, default: 16.0}
       Scale: {type: float, type_name: null, default: 1.0}
-      Width: {type: float, type_name: null, default: 0.012000000104308128}
+      Width: {type: float, type_name: null, default: 0.012}
     outputs:
       Mask: {type: float, type_name: null}
   - id: 745
@@ -373,7 +373,7 @@ graphs:
       type: float
       type_name: null
       kind: data
-      default: 0.012000000104308128
+      default: 0.012
   - id: 507
     type: Return
     x: 260.0
@@ -408,7 +408,7 @@ graphs:
     "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.009999999776482582}
+      B: {flags: 0, group: 0, default: 0.01}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 519
@@ -435,7 +435,7 @@ graphs:
     "y": 240.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8660253882408142}
+      B: {flags: 0, group: 0, default: 0.8660254}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 531
@@ -570,7 +570,7 @@ graphs:
     "y": 720.0
     inputs:
       Value: {flags: 0, group: 0}
-      Min: 0.009999999776482582
+      Min: 0.01
     outputs:
       Value: {flags: 0, group: 0}
   - id: 592
@@ -614,7 +614,7 @@ graphs:
     "y": 720.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0020000000949949026}
+      B: {flags: 0, group: 0, default: 0.002}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 611
@@ -623,7 +623,7 @@ graphs:
     "y": 960.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.006000000052154064}
+      B: {flags: 0, group: 0, default: 0.006}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 615
@@ -867,7 +867,7 @@ graphs:
     "y": 0.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.009999999776482582}
+      B: {flags: 0, group: 0, default: 0.01}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 293
@@ -894,7 +894,7 @@ graphs:
     "y": 220.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8660253882408142}
+      B: {flags: 0, group: 0, default: 0.8660254}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 305
@@ -973,7 +973,7 @@ graphs:
     "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.3333333432674408}
+      B: {flags: 0, group: 0, default: 0.33333334}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 339
@@ -982,7 +982,7 @@ graphs:
     "y": 440.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.3333333432674408}
+      B: {flags: 0, group: 0, default: 0.33333334}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 343
@@ -1027,7 +1027,7 @@ graphs:
     "y": 660.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8660253882408142}
+      B: {flags: 0, group: 0, default: 0.8660254}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 363

@@ -49,7 +49,7 @@ variables:
   type: float
   type_name: float
   category: Motion
-  default: 0.11999999731779099
+  default: 0.12
 - {id: 255, name: Resting Face, type: float, type_name: float, category: State}
 graphs:
 - kind: event

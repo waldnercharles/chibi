@@ -14,14 +14,14 @@ components:
     cell_size: 1.0
     min_fragment_cells: 3
     pierceable_fragments: true
-    release_fraction: 0.30000001192092896
-  GAME.GameFragmentGlow: {duration: 3.5, flicker: 0.3499999940395355}
+    release_fraction: 0.3
+  GAME.GameFragmentGlow: {duration: 3.5, flicker: 0.35}
   game.GameHealth: {current: 3, maximum: 3}
   GAME.GameMaterial:
     absorption: 1.0
     border_emission_color: 4279900927
     border_scene: 4279900927
-    emission_intensity: 0.6000000238418579
+    emission_intensity: 0.6
     emission_multiplier: 0.5
     scene: 335741951
   game.GameMovement: {speed: 75.0}
@@ -32,8 +32,8 @@ components:
   GAME.MaterialBreakProfile:
     blast_speed: 70.0
     chip_speed: 35.0
-    dust_lifetime_max: 0.30000001192092896
-    dust_lifetime_min: 0.15000000596046448
+    dust_lifetime_max: 0.3
+    dust_lifetime_min: 0.15
     dust_limit: 8
     dust_size_max: 0.5
     dust_size_min: 0.25

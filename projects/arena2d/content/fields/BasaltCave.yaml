@@ -42,62 +42,62 @@ graphs:
     type: Field Multiply
     x: 620.0
     "y": 10219.0
-    inputs: {A: 0.0055555556900799274}
+    inputs: {A: 0.0055555557}
   - id: 39
     type: Field Multiply
     x: 620.0
     "y": 10339.0
-    inputs: {A: 0.0023809524718672037}
+    inputs: {A: 0.0023809525}
   - {id: 43, type: Field Add, x: 930.0, "y": 10219.0}
   - id: 47
     type: Field Add
     x: 1240.0
     "y": 10187.0
-    inputs: {B: 1.2999999523162842}
+    inputs: {B: 1.3}
   - {id: 51, type: Field Sin, x: 1550.0, "y": 10270.5}
   - id: 54
     type: Field Multiply
     x: 1860.0
     "y": 10339.0
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - {id: 58, type: Field Add, x: 2170.0, "y": 10203.0}
   - {id: 62, type: Field Cos, x: 3720.0, "y": 9918.0}
   - id: 65
     type: Field Multiply
     x: 4030.0
     "y": 9894.0
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - id: 69
     type: Field Multiply
     x: 4340.0
     "y": 10204.0
-    inputs: {A: 0.0055555556900799274}
+    inputs: {A: 0.0055555557}
   - id: 73
     type: Field Add
     x: 4650.0
     "y": 10166.0
-    inputs: {A: 0.03846153989434242}
+    inputs: {A: 0.03846154}
   - id: 77
     type: Field Multiply
     x: 4340.0
     "y": 9512.0
-    inputs: {A: 0.0023809524718672037}
+    inputs: {A: 0.0023809525}
   - id: 81
     type: Field Multiply
     x: 930.0
     "y": 10550.0
-    inputs: {A: 0.010526316240429878}
+    inputs: {A: 0.010526316}
   - id: 85
     type: Field Multiply
     x: 930.0
     "y": 10670.0
-    inputs: {A: -0.0033333334140479565}
+    inputs: {A: -0.0033333334}
   - {id: 89, type: Field Add, x: 1240.0, "y": 10566.5}
   - id: 93
     type: Field Add
     x: 1550.0
     "y": 10550.5
-    inputs: {B: 0.4000000059604645}
+    inputs: {B: 0.4}
   - {id: 97, type: Field Sin, x: 1860.0, "y": 10459.0}
   - id: 100
     type: Field Multiply
@@ -115,24 +115,24 @@ graphs:
     type: Field Multiply
     x: 4650.0
     "y": 10286.0
-    inputs: {A: 0.010526316240429878}
+    inputs: {A: 0.010526316}
   - {id: 119, type: Field Add, x: 4960.0, "y": 10166.0}
   - id: 123
     type: Field Multiply
     x: 4340.0
     "y": 9664.0
-    inputs: {A: -0.0033333334140479565}
+    inputs: {A: -0.0033333334}
   - {id: 127, type: Field Add, x: 4650.0, "y": 9392.0}
   - id: 131
     type: Field Multiply
     x: 620.0
     "y": 10459.0
-    inputs: {A: 0.0007692307699471712}
+    inputs: {A: 0.00076923077}
   - id: 135
     type: Field Multiply
     x: 620.0
     "y": 10579.0
-    inputs: {A: 0.0004761904710903764}
+    inputs: {A: 0.00047619047}
   - {id: 139, type: Field Add, x: 930.0, "y": 10371.0}
   - {id: 143, type: Field Sin, x: 1240.0, "y": 10454.5}
   - id: 146
@@ -155,64 +155,64 @@ graphs:
     type: Field Multiply
     x: 1240.0
     "y": 10733.0
-    inputs: {A: 0.0011111111380159855}
+    inputs: {A: 0.0011111111}
   - id: 165
     type: Field Multiply
     x: 1240.0
     "y": 10853.0
-    inputs: {A: 0.003846153849735856}
+    inputs: {A: 0.0038461538}
   - {id: 169, type: Field Add, x: 1550.0, "y": 10749.0}
   - id: 173
     type: Field Add
     x: 1860.0
     "y": 10717.0
-    inputs: {B: 2.200000047683716}
+    inputs: {B: 2.2}
   - {id: 177, type: Field Sin, x: 2170.0, "y": 10643.0}
   - {id: 180, type: Field Cos, x: 3720.0, "y": 10543.0}
   - id: 183
     type: Field Multiply
     x: 2170.0
     "y": 10459.0
-    inputs: {A: 4.599999904632568}
+    inputs: {A: 4.6}
   - {id: 187, type: Field Multiply, x: 2480.0, "y": 10403.0}
   - {id: 191, type: Field Add, x: 2790.0, "y": 10235.0}
   - id: 195
     type: Field Multiply
     x: 4030.0
     "y": 10492.0
-    inputs: {A: 0.0007692307699471712}
+    inputs: {A: 0.00076923077}
   - {id: 199, type: Field Multiply, x: 4340.0, "y": 10401.0}
   - id: 203
     type: Field Multiply
     x: 4030.0
     "y": 10622.0
-    inputs: {B: 0.0011111111380159855}
+    inputs: {B: 0.0011111111}
   - {id: 207, type: Field Multiply, x: 4340.0, "y": 10521.0}
   - {id: 211, type: Field Add, x: 4650.0, "y": 10406.0}
   - id: 215
     type: Field Multiply
     x: 4960.0
     "y": 10286.0
-    inputs: {A: 4.599999904632568}
+    inputs: {A: 4.6}
   - {id: 219, type: Field Add, x: 5270.0, "y": 10259.0}
   - id: 223
     type: Field Multiply
     x: 3720.0
     "y": 8892.0
-    inputs: {A: 0.0004761904710903764}
+    inputs: {A: 0.00047619047}
   - {id: 227, type: Field Multiply, x: 4030.0, "y": 8923.0}
   - id: 231
     type: Field Multiply
     x: 3720.0
     "y": 9480.0
-    inputs: {B: 0.003846153849735856}
+    inputs: {B: 0.0038461538}
   - {id: 235, type: Field Multiply, x: 4030.0, "y": 9480.0}
   - {id: 239, type: Field Add, x: 4340.0, "y": 9392.0}
   - id: 243
     type: Field Multiply
     x: 4650.0
     "y": 9512.0
-    inputs: {A: 4.599999904632568}
+    inputs: {A: 4.6}
   - {id: 247, type: Field Add, x: 4960.0, "y": 9408.0}
   - {id: 251, type: Field Floor, x: 3100.0, "y": 10278.0}
   - {id: 254, type: Field Subtract, x: 3410.0, "y": 10187.0}
@@ -234,12 +234,12 @@ graphs:
     type: Field Multiply
     x: 4030.0
     "y": 10040.0
-    inputs: {B: 2.399963140487671}
+    inputs: {B: 2.3999631}
   - id: 285
     type: Field Add
     x: 4340.0
     "y": 9952.0
-    inputs: {B: 0.30000001192092896}
+    inputs: {B: 0.3}
   - {id: 289, type: Field Sin, x: 4650.0, "y": 9937.0}
   - id: 292
     type: Field Multiply
@@ -265,12 +265,12 @@ graphs:
     type: Field Multiply
     x: 4960.0
     "y": 9692.0
-    inputs: {B: 1.9371600151062012}
+    inputs: {B: 1.93716}
   - id: 312
     type: Field Add
     x: 5270.0
     "y": 9660.0
-    inputs: {B: 1.100000023841858}
+    inputs: {B: 1.1}
   - {id: 316, type: Field Sin, x: 5580.0, "y": 9628.0}
   - id: 319
     type: Field Multiply
@@ -287,12 +287,12 @@ graphs:
     type: Field Multiply
     x: 5580.0
     "y": 9984.0
-    inputs: {B: 3.30118989944458}
+    inputs: {B: 3.30119}
   - id: 335
     type: Field Add
     x: 5890.0
     "y": 9953.0
-    inputs: {B: 2.200000047683716}
+    inputs: {B: 2.2}
   - {id: 339, type: Field Sin, x: 6200.0, "y": 9949.0}
   - id: 342
     type: Field Multiply
@@ -318,17 +318,17 @@ graphs:
     type: Field Multiply
     x: 7750.0
     "y": 9583.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - id: 362
     type: Field Multiply
     x: 5580.0
     "y": 10288.0
-    inputs: {B: 0.832610011100769}
+    inputs: {B: 0.83261}
   - id: 366
     type: Field Add
     x: 5890.0
     "y": 10195.0
-    inputs: {B: 4.400000095367432}
+    inputs: {B: 4.4}
   - {id: 370, type: Field Sin, x: 6200.0, "y": 10159.0}
   - id: 373
     type: Field Multiply
@@ -362,12 +362,12 @@ graphs:
     type: Field Multiply
     x: 7130.0
     "y": 9506.0
-    inputs: {A: 0.44999998807907104}
+    inputs: {A: 0.45}
   - id: 409
     type: Field Multiply
     x: 6200.0
     "y": 9806.0
-    inputs: {A: 0.8999999761581421}
+    inputs: {A: 0.9}
   - {id: 413, type: Field Divide, x: 6510.0, "y": 9685.0}
   - id: 417
     type: Field Multiply
@@ -445,12 +445,12 @@ graphs:
     type: Field Add
     x: 11780.0
     "y": 5204.0
-    inputs: {B: 17.299999237060547}
+    inputs: {B: 17.3}
   - id: 548
     type: Field Subtract
     x: 11780.0
     "y": 5476.0
-    inputs: {B: 5.099999904632568}
+    inputs: {B: 5.1}
   - id: 552
     type: Field Noise
     x: 12090.0
@@ -466,12 +466,12 @@ graphs:
     type: Field Subtract
     x: 12090.0
     "y": 5399.0
-    inputs: {B: 8.899999618530273}
+    inputs: {B: 8.9}
   - id: 569
     type: Field Add
     x: 12090.0
     "y": 5519.0
-    inputs: {B: 3.700000047683716}
+    inputs: {B: 3.7}
   - id: 573
     type: Field Noise
     x: 12400.0
@@ -501,7 +501,7 @@ graphs:
     type: Field Multiply
     x: 14260.0
     "y": 7411.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 613, type: Field Add, x: 14570.0, "y": 7539.0}
   - {id: 617, type: Field Multiply, x: 14880.0, "y": 7443.0}
   - id: 621
@@ -518,7 +518,7 @@ graphs:
     type: Field Multiply
     x: 14880.0
     "y": 7747.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 634, type: Field Add, x: 15190.0, "y": 7541.0}
   - {id: 638, type: Field Multiply, x: 15500.0, "y": 7483.0}
   - id: 642
@@ -574,7 +574,7 @@ graphs:
     type: Field Multiply
     x: 14880.0
     "y": 7977.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - {id: 702, type: Field Add, x: 15190.0, "y": 7973.0}
   - {id: 706, type: Field Multiply, x: 15500.0, "y": 7918.0}
   - id: 710
@@ -626,7 +626,7 @@ graphs:
     type: Field Multiply
     x: 14570.0
     "y": 8743.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 753, type: Field Add, x: 14880.0, "y": 8687.0}
   - {id: 757, type: Field Multiply, x: 15190.0, "y": 8729.0}
   - id: 761
@@ -638,7 +638,7 @@ graphs:
     type: Field Multiply
     x: 15190.0
     "y": 8283.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 770, type: Field Add, x: 15500.0, "y": 8096.0}
   - {id: 774, type: Field Multiply, x: 15810.0, "y": 8092.0}
   - id: 778
@@ -661,7 +661,7 @@ graphs:
     type: Field Multiply
     x: 15500.0
     "y": 5949.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - {id: 799, type: Field Add, x: 15810.0, "y": 5890.0}
   - {id: 803, type: Field Multiply, x: 16120.0, "y": 5799.0}
   - id: 807
@@ -713,7 +713,7 @@ graphs:
     type: Field Multiply
     x: 15190.0
     "y": 6773.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 850, type: Field Add, x: 15500.0, "y": 6569.0}
   - {id: 854, type: Field Multiply, x: 15810.0, "y": 6478.0}
   - id: 858
@@ -725,7 +725,7 @@ graphs:
     type: Field Multiply
     x: 15810.0
     "y": 5712.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 867, type: Field Add, x: 16120.0, "y": 5621.0}
   - {id: 871, type: Field Multiply, x: 16430.0, "y": 5621.0}
   - id: 875
@@ -737,7 +737,7 @@ graphs:
     type: Field Multiply
     x: 16430.0
     "y": 3402.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - {id: 884, type: Field Add, x: 16740.0, "y": 3311.0}
   - {id: 888, type: Field Multiply, x: 17050.0, "y": 3309.0}
   - id: 892
@@ -785,7 +785,7 @@ graphs:
     type: Field Multiply
     x: 16740.0
     "y": 3075.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 935, type: Field Add, x: 17050.0, "y": 2984.0}
   - {id: 939, type: Field Multiply, x: 17360.0, "y": 2982.0}
   - id: 943
@@ -802,7 +802,7 @@ graphs:
     type: Field Multiply
     x: 16740.0
     "y": 3845.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 956, type: Field Add, x: 17050.0, "y": 3665.0}
   - {id: 960, type: Field Multiply, x: 17360.0, "y": 3478.0}
   - id: 964
@@ -819,7 +819,7 @@ graphs:
     type: Field Multiply
     x: 17050.0
     "y": 1788.0
-    inputs: {A: 0.20000000298023224}
+    inputs: {A: 0.2}
   - {id: 977, type: Field Add, x: 17360.0, "y": 1686.0}
   - {id: 981, type: Field Multiply, x: 17670.0, "y": 1595.0}
   - id: 985
@@ -867,7 +867,7 @@ graphs:
     type: Field Multiply
     x: 17360.0
     "y": 1450.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 1028, type: Field Add, x: 17670.0, "y": 1359.0}
   - {id: 1032, type: Field Multiply, x: 17980.0, "y": 1119.0}
   - id: 1036
@@ -884,7 +884,7 @@ graphs:
     type: Field Multiply
     x: 17360.0
     "y": 2220.0
-    inputs: {A: 0.2199999988079071}
+    inputs: {A: 0.22}
   - {id: 1049, type: Field Add, x: 17670.0, "y": 1951.0}
   - {id: 1053, type: Field Multiply, x: 17980.0, "y": 1615.0}
   - {id: 1057, type: Field Capsule, x: 16120.0, "y": 6945.0}
@@ -1013,7 +1013,7 @@ graphs:
     type: Field Multiply
     x: 17670.0
     "y": 763.0
-    inputs: {A: 0.550000011920929}
+    inputs: {A: 0.55}
   - id: 1345
     type: Field Divide
     x: 17360.0
@@ -1039,7 +1039,7 @@ graphs:
     type: Field Multiply
     x: 17980.0
     "y": 494.0
-    inputs: {A: 0.4000000059604645}
+    inputs: {A: 0.4}
   - id: 1371
     type: Field Add
     x: 18290.0
@@ -1068,13 +1068,13 @@ graphs:
     type: Field Multiply
     x: 17670.0
     "y": 1027.0
-    inputs: {B: 2.1500000953674316}
+    inputs: {B: 2.15}
   - {id: 1408, type: Field Subtract, x: 17050.0, "y": 1176.0}
   - id: 1412
     type: Field Multiply
     x: 17360.0
     "y": 1123.0
-    inputs: {B: 3.1415927410125732}
+    inputs: {B: 3.1415927}
   - {id: 1416, type: Field Sin, x: 17670.0, "y": 1147.0}
   - {id: 1419, type: Field Multiply, x: 17980.0, "y": 883.0}
   - {id: 1423, type: Field Add, x: 18290.0, "y": 792.0}
@@ -1087,7 +1087,7 @@ graphs:
     type: Field Multiply
     x: 18910.0
     "y": 672.0
-    inputs: {A: 0.4300000071525574}
+    inputs: {A: 0.43}
   - {id: 1449, type: Field Subtract, x: 19220.0, "y": 672.0}
   - {id: 1453, type: Field Subtract, x: 16740.0, "y": 6071.0}
   - {id: 1457, type: Field Select, x: 17050.0, "y": 5643.0}
@@ -1121,7 +1121,7 @@ graphs:
   - {id: 1579, type: Field Min, x: 19530.0, "y": 552.0}
   - id: 1583
     type: Field Multiply
-    inputs: {B: 0.4000000059604645}
+    inputs: {B: 0.4}
   - id: 1587
     type: Field Divide
     x: 18910.0
@@ -1155,7 +1155,7 @@ graphs:
     type: Field Divide
     x: 18600.0
     "y": 1648.0
-    inputs: {B: 2.700000047683716}
+    inputs: {B: 2.7}
   - id: 1629
     type: Field Noise
     x: 18910.0
@@ -1171,12 +1171,12 @@ graphs:
     type: Field Subtract
     x: 19220.0
     "y": 1349.0
-    inputs: {B: 0.7599999904632568}
+    inputs: {B: 0.76}
   - id: 1646
     type: Field Subtract
     x: 18910.0
     "y": 1638.0
-    inputs: {A: -0.800000011920929}
+    inputs: {A: -0.8}
   - id: 1650
     type: Field Select
     x: 19220.0
@@ -1197,7 +1197,7 @@ graphs:
     type: Field Subtract
     x: 19220.0
     "y": 1853.0
-    inputs: {B: 0.4000000059604645}
+    inputs: {B: 0.4}
   - id: 1673
     type: Field Hash
     x: 17980.0
@@ -1238,7 +1238,7 @@ graphs:
     type: Field Divide
     x: 18600.0
     "y": 1970.0
-    inputs: {B: 2.299999952316284}
+    inputs: {B: 2.3}
   - id: 1712
     type: Field Noise
     x: 18910.0

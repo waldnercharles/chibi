@@ -1,11 +1,11 @@
 name: Cloud
 components:
   GAME.GameFluidVolume:
-    absorption: 0.006000000052154064
+    absorption: 0.006
     color: 1670097312
     height: 280.0
-    mass: 0.00039999998989515007
+    mass: 0.0004
     spacing: 5.0
-    visibility: 0.012000000104308128
+    visibility: 0.012
     width: 500.0
   game.GameTransform: {}

@@ -16,8 +16,8 @@ graphs:
         default: {x: 1.0, "y": 1.0, z: 1.0}
       Emission:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Roughness: 0.30000001192092896
-      Metallic: 0.550000011920929
+      Roughness: 0.3
+      Metallic: 0.55
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 37}
@@ -32,14 +32,14 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 0.012000000104308128, "y": 0.14000000059604645, z: 0.23999999463558197}
+        default: {x: 0.012, "y": 0.14, z: 0.24}
   - {id: 11, type: Shader Time}
   - id: 13
     type: Shader Parameter
     reference_id: 1
     reference_name: Pulse Speed
     outputs:
-      Value: {flags: 0, group: 0, default: 0.44999998807907104}
+      Value: {flags: 0, group: 0, default: 0.45}
   - id: 15
     type: Call Pure Function
     x: 290.0
@@ -58,7 +58,7 @@ graphs:
     "y": 250.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.11999999731779099}
+      B: {flags: 0, group: 0, default: 0.12}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 23
@@ -67,7 +67,7 @@ graphs:
     "y": 250.0
     inputs:
       A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.8799999952316284}
+      B: {flags: 0, group: 0, default: 0.88}
     outputs:
       Value: {flags: 0, group: 0}
   - id: 27
@@ -75,7 +75,7 @@ graphs:
     reference_id: 2
     reference_name: Glow
     outputs:
-      Value: {flags: 0, group: 0, default: 1.2000000476837158}
+      Value: {flags: 0, group: 0, default: 1.2}
   - id: 29
     type: Shader Multiply
     x: 800.0

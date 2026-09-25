@@ -60,7 +60,7 @@ graphs:
     reference_id: 4
     reference_name: stroke
     inputs:
-      Value: {type: float, type_name: null, default: 0.9200000166893005}
+      Value: {type: float, type_name: null, default: 0.92}
     outputs:
       Value: {type: float, type_name: null}
   - id: 35

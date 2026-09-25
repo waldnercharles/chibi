@@ -334,7 +334,7 @@ graphs:
     type: Greater Or Equal
     inputs:
       A: {id: 257}
-      B: 0.6000000238418579
+      B: 0.6
   - id: 265
     type: Branch
     inputs:
@@ -612,7 +612,7 @@ graphs:
     type: Set_GameTrail_width
     inputs:
       Exec: {id: 210}
-      Value: 0.6499999761581421
+      Value: 0.65
   edges:
   - {from: 142.Then, to: 161.Exec}
   - {from: 142.Radius, to: 172.Radius}

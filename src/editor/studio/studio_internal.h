@@ -196,6 +196,7 @@ typedef struct
     uint64_t *unused; /* nodes no event reaches or whose values nothing reads */
     uint64_t expression_node; /* the expression being edited in Properties */
     char expression[512];
+    char expression_source[512]; /* the node's source when expression was read */
     char expression_error[192];
 } studio_graph;
 

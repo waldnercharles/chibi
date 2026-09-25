@@ -48,8 +48,8 @@ add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit_wires.cpp
     # kit_wires.cpp draws through it, so it links with the kit.
     src/editor/ui/kit_wire_shape.c
-    src/editor/rmlui/menu.cpp
-    src/editor/rmlui/toolbar.cpp
+    src/editor/rmlui/menu.c
+    src/editor/rmlui/toolbar.c
     # The editor's embedded faces; the ImGui panes read them through editor,
     # which links this library, so single-pass linkers resolve them too.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}

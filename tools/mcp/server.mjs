@@ -1083,6 +1083,7 @@ function toolResult(name, response) {
       ok: false,
       tool: name,
       error: guidedResponse.error,
+      ...errorDetails(guidedResponse.result),
       next_steps: guidedResponse.next_steps,
     }, "tool error");
   return {
@@ -1090,6 +1091,28 @@ function toolResult(name, response) {
     structuredContent: guidedResponse,
     isError: guidedResponse.ok !== true,
   };
+}
+
+/* Clients may show only the text, so a failure names what to fix. */
+function errorDetails(result) {
+  if (!isObject(result)) {
+    return {};
+  }
+  const details = {};
+  if (Number.isInteger(result.failed_operation)) {
+    details.failed_operation = result.failed_operation;
+  }
+  const diagnostics = result.diagnostics ?? result.validation?.diagnostics;
+  if (Array.isArray(diagnostics) && diagnostics.length) {
+    details.diagnostics = diagnostics.slice(0, 8).map((item) => ({
+      severity: item.severity,
+      graph: item.graph,
+      node: item.node,
+      rule: item.rule_name,
+      message: item.message,
+    }));
+  }
+  return details;
 }
 
 function toolSummary(name, response) {

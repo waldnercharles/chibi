@@ -3603,6 +3603,43 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     return 0;
 }
 
+/* A copy of asset linked to the project's libraries (and, for behaviors,
+   event declarations), so validation sees calls into them; NULL on error. */
+static behavior_asset *link_project_libraries(
+    const char *root,
+    const behavior_asset *asset,
+    char *error,
+    size_t error_size
+)
+{
+    behavior_asset **libraries = NULL;
+    const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                                 asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                                 asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
+                           ? "shader-library"
+                           : "library";
+    int loaded = load_behavior_family_assets(root, family_by_kind(family), &libraries, error, error_size);
+    behavior_asset **events = NULL;
+    if (loaded == CHIBI_AUTOMATION_OK && !strcmp(family, "library")) {
+        loaded = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
+        for (int i = 0; i < acount(events); i++) {
+            apush(libraries, events[i]);
+        }
+        afree(events);
+    }
+    behavior_asset *linked = loaded == CHIBI_AUTOMATION_OK
+                               ? behavior_asset_link_libraries(
+                                     asset,
+                                     (const behavior_asset *const *)libraries,
+                                     acount(libraries),
+                                     error,
+                                     error_size
+                                 )
+                               : NULL;
+    free_behavior_assets(libraries);
+    return linked;
+}
+
 static int handle_validate_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -3629,30 +3666,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         } else {
             compile_report report;
             compile_report_init(&report);
-            behavior_asset **libraries = NULL;
-            const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                                         asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
-                                         asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
-                                   ? "shader-library"
-                                   : "library";
-            int loaded = load_behavior_family_assets(root, family_by_kind(family), &libraries, error, sizeof error);
-            behavior_asset **events = NULL;
-            if (loaded == CHIBI_AUTOMATION_OK && !strcmp(family, "library")) {
-                loaded = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
-                for (int i = 0; i < acount(events); i++) {
-                    apush(libraries, events[i]);
-                }
-                afree(events);
-            }
-            behavior_asset *linked = loaded == CHIBI_AUTOMATION_OK
-                                       ? behavior_asset_link_libraries(
-                                             asset,
-                                             (const behavior_asset *const *)libraries,
-                                             acount(libraries),
-                                             error,
-                                             sizeof error
-                                         )
-                                       : NULL;
+            behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
                 errors = behavior_asset_compile(linked, &report);
             } else {
@@ -3660,7 +3674,6 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 add_load_diagnostic(result->doc, diagnostics, error);
             }
             behavior_asset_free(linked);
-            free_behavior_assets(libraries);
             warnings = report.warning_count;
             notes = report.note_count;
             for (int i = 0; i < acount(report.items); i++) {
@@ -8111,13 +8124,17 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
         } else {
             compile_report report;
             compile_report_init(&report);
-            behavior_asset_compile(asset, &report);
-            inspect_add_validation(result->doc, value, asset, &report);
-            if (report.error_count) {
+            behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
+            if (linked) {
+                behavior_asset_compile(linked, &report);
+                inspect_add_validation(result->doc, value, linked, &report);
+            }
+            if (!linked || report.error_count) {
                 snprintf(error, sizeof error, "optimized graph asset failed validation");
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             compile_report_free(&report);
+            behavior_asset_free(linked);
             behavior_asset_free(asset);
         }
     }

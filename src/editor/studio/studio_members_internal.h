@@ -3,7 +3,7 @@
 
 /* Shared by the Members editor and its Properties tab. */
 #include "editor/studio/studio_graph_internal.h"
-#include "graph/document/function_signature.h"
+#include "graph/document/graph_signature.h"
 #include "graph/model/local.h"
 
 /* The selected member of each kind, or NULL. */

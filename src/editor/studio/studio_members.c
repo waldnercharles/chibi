@@ -227,31 +227,99 @@ static void duplicate_variable(studio *s)
     }
 }
 
+static const char *graph_label(const graph *g)
+{
+    return g->name && g->name[0] ? g->name : "Event Graph";
+}
+
+/* The selected member's name, for its toast. */
+static const char *member_name(const studio *s)
+{
+    switch (s->members.kind) {
+        case STUDIO_MEMBER_GRAPH: return graph_label(sm_graph(s));
+        case STUDIO_MEMBER_VARIABLE: return sm_variable(s)->name;
+        case STUDIO_MEMBER_LOCAL: return sm_local(s)->name;
+        default: return "";
+    }
+}
+
+/* The graph editor's latest undo step, which a delete's toast undoes. */
+static const char *latest_step(const editor *e)
+{
+    return e && acount(e->undo) ? alast(e->undo) : NULL;
+}
+
+/* A toast offers Undo while the delete is still the latest edit, as scene
+   deletes do. */
+static void offer_undo(studio *s, const char *name)
+{
+    studio_members *m = &s->members;
+    char title[160];
+    snprintf(title, sizeof title, "Deleted %s", name);
+    kit_toast_dismiss(s->kit, m->undo.toast);
+    m->undo.toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .title = title, .action = "Undo", .duration = 6 }
+    );
+    m->undo.step = latest_step(sg_graph_editor(s));
+    studio_record(s, KIT_TOAST_DEFAULT, title);
+}
+
+void studio_members_toast(studio *s)
+{
+    studio_members *m = &s->members;
+    if (!m->undo.toast) {
+        return;
+    }
+    bool current = latest_step(sg_graph_editor(s)) == m->undo.step;
+    if (kit_toast_action(s->kit, m->undo.toast)) {
+        m->undo.toast = 0;
+        if (current && studio_graph_can_replay(s, false)) {
+            studio_graph_history(s, false);
+            studio_report(s, "Undo");
+        }
+        return;
+    }
+    if (!current) {
+        kit_toast_dismiss(s->kit, m->undo.toast);
+        m->undo.toast = 0;
+    }
+}
+
 /* Deleting a variable deletes its Get and Set nodes (Unreal); deleting a
    named value draws its wires again. */
 static void delete_member(studio *s)
 {
     editor *e = sg_graph_editor(s);
     studio_members *m = &s->members;
-    if (locked(s)) {
+    if (locked(s) || m->kind == STUDIO_MEMBER_NONE) {
         return;
     }
+    char name[128];
+    snprintf(name, sizeof name, "%s", member_name(s));
     char *before = NULL;
+    bool deleted = false;
     switch (m->kind) {
-        case STUDIO_MEMBER_GRAPH: editor_delete_graph(e, m->id); break;
+        case STUDIO_MEMBER_GRAPH:
+            deleted = editor_delete_graph(e, m->id) == 0;
+            break;
         case STUDIO_MEMBER_VARIABLE:
             before = ed_snapshot(e);
             behavior_asset_remove_variable_uses(e->asset, m->id);
-            sm_record(e, before, behavior_asset_delete_variable(e->asset, m->id) == 0);
+            deleted = sm_record(e, before, behavior_asset_delete_variable(e->asset, m->id) == 0);
             variables_moved(e);
             break;
         case STUDIO_MEMBER_LOCAL:
             before = ed_snapshot(e);
-            sm_record(e, before, graph_expand_local(sg_active_graph(s), m->id) == 0);
+            deleted = sm_record(e, before, graph_expand_local(sg_active_graph(s), m->id) == 0);
             break;
         default: return;
     }
     m->kind = STUDIO_MEMBER_NONE;
+    if (deleted) {
+        offer_undo(s, name);
+    }
 }
 
 static void rename_graph(studio *s, graph *g, const char *name)
@@ -335,11 +403,6 @@ static const char *section_label(const studio *s, section sec)
     bool parameters = sec == SECTION_VARIABLES &&
                       sg_graph_editor(s)->asset->domain != BEHAVIOR_DOMAIN_EVENT;
     return parameters ? "Parameters" : SECTION_LABELS[sec];
-}
-
-static const char *graph_label(const graph *g)
-{
-    return g->name && g->name[0] ? g->name : "Event Graph";
 }
 
 /* "Default" is Unreal's uncategorized category. */
@@ -469,8 +532,9 @@ pin_spec sm_variable_pin(const behavior_variable *v)
 void sm_swatch(studio *s, const char *key, const pin_spec *pin)
 {
     uint32_t color = sg_pin_color(s, pin);
-    kit_dot_desc dot = { pin->container == PIN_CONTAINER_SINGLE ? KIT_DOT_CIRCLE
-                                                                : KIT_DOT_SQUARE,
+    kit_dot_desc dot = { pin->kind == PIN_EXEC ? KIT_DOT_ARROW
+                         : pin->container == PIN_CONTAINER_SINGLE ? KIT_DOT_CIRCLE
+                                                                  : KIT_DOT_SQUARE,
                          color,
                          color,
                          0 };
@@ -616,7 +680,7 @@ static void graph_row(studio *s, const member_row *row, int area)
         .icon = icon,
         .depth = row->depth,
         .twisty = -1,
-        .meta = g->kind == GRAPH_FUNCTION && function_signature_pure(g) ? "pure" : NULL,
+        .meta = g->kind == GRAPH_FUNCTION && graph_signature_pure(g) ? "pure" : NULL,
         .flags = (selected ? KIT_ON : 0) | (g == e->active_graph ? KIT_ACTIVE : 0)
     };
     unsigned events = kit_row_begin(k, "row", &d);

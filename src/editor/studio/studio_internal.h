@@ -336,6 +336,11 @@ typedef struct
     bool value_editing; /* a default value gesture has an open undo step */
     struct
     {
+        int toast;        /* offers Undo while the delete is the latest edit */
+        const char *step; /* the delete's undo step in the graph editor */
+    } undo;
+    struct
+    {
         bool open;       /* the type search is choosing for this target */
         uint64_t id;     /* the variable, or the function whose pin it is */
         uint64_t pin_id; /* the Entry or Return pin, or 0 for the variable */
@@ -491,6 +496,8 @@ bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 /* A member dropped on the graph canvas: a variable's Get, or Set with Alt, or
    a call. Call after the canvas surface. */
 void studio_members_drop(studio *s);
+/* Runs the Undo a member delete's toast offers; call every frame. */
+void studio_members_toast(studio *s);
 /* The selected member as a key that changes with the selection, or 0. */
 uint64_t studio_member_shown(studio *s);
 void studio_member_properties(studio *s);

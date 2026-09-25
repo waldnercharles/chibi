@@ -125,7 +125,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
   - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
-  - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get or Set beside the pin; Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
+  - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get beside an input or a Set beside an output (the Set runs after the node when the node's only execution output is free, as Unreal wires it to Then, and otherwise sits below the node, unwired); Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
   - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
   - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
 
@@ -158,6 +158,9 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Ctrl+G collapses the selection to a function; the interface is generated from the wires crossing the selection boundary (Blender, Unreal).
   - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
   - These map to `editor_open_graph_call`, `editor_graph_back` and `editor_graph_ancestor`.
+  - The Member tab edits a function's or macro's inputs and outputs: name, type, container (Single, Array, Set or Map) and removal, and each data input's default. A macro's pins may also be Exec (Unreal's tunnels). Calls follow every edit (`graph/document/graph_signature.h`); a call pin still showing the old default takes the new one, and a value set on the call stays (Unreal).
+  - Functions of materials, shapes, shader libraries and fields are pure.
+  - A behavior has one event graph. Unreal's Add New Graph pages share one Ubergraph, but here only the default graph's events are dispatched, compiled for duplicates and batched, so extra event graphs would never run.
 - **History:** Back and Forward (Alt+Left and Alt+Right, or mouse buttons 4 and 5) move through the graphs visited, across behaviors (Unreal).
 
 ### Debugging

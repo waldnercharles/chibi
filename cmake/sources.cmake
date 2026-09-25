@@ -61,7 +61,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/validate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/extract.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/events.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/function_signature.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/graph_signature.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/library.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_effects.c

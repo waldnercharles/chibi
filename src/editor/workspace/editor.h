@@ -319,6 +319,14 @@ node *editor_add_behavior_expression(
     behavior_expression_error *error
 );
 int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error);
+/* Renames an expression input in its source, keeping its wire or binding. */
+int editor_rename_behavior_expression_input(
+    editor *e,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
 /* Sets source as a rename of from to to, so from's wire or binding moves to to. */
 int editor_rewire_behavior_expression(
     editor *e,

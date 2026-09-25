@@ -383,12 +383,69 @@ void sg_add_run_pin(studio *s, node *n)
     graph_add_run_pin(sg_active_graph(s), n);
 }
 
+/* ---------- Renaming expression inputs ---------- */
+
+/* An expression's input is named in its source; renaming rewrites the source
+   and keeps the wire (Unreal renames a Math Expression's pins only by
+   editing its text, which drops the wire). */
+bool sg_pin_renameable(const studio *s, const node *n, int kind, int p)
+{
+    return n->desc == &NODE_BehaviorExpression && kind == ED_PIN_INPUT &&
+           n->input_pins[p].kind == PIN_DATA && !sg_graph_readonly(s);
+}
+
+void sg_rename_pin(studio *s, const node *n, int p)
+{
+    s->graph.pin_edit = n->input_pins[p].id;
+    s->graph.pin_focus = true;
+}
+
+static void rename_input(studio *s, node *n, int p, const char *name)
+{
+    char from[128];
+    snprintf(from, sizeof from, "%s", n->input_pins[p].name);
+    if (!name[0] || !strcmp(from, name)) {
+        return;
+    }
+    behavior_expression_error error = { 0 };
+    if (editor_rename_behavior_expression_input(sg_graph_editor(s), n, from, name, &error) !=
+        0) {
+        warn(s, error.message[0] ? error.message : "Can't rename this input");
+    }
+}
+
+/* The field that replaces the pin's label while it is renamed; Enter or
+   leaving it commits. */
+void sg_emit_pin_edit(studio *s, node *n, int p)
+{
+    studio_graph *g = &s->graph;
+    kit *k = g->kit;
+    char name[128];
+    snprintf(name, sizeof name, "%s", n->input_pins[p].name);
+    bool committed = kit_text_field(k, "rename", name, sizeof name, NULL, 0);
+    if (g->pin_focus) {
+        kit_focus(k);
+        g->pin_focus = false;
+    } else if (!kit_item_active(k)) {
+        g->pin_edit = 0;
+    }
+    if (committed) {
+        g->pin_edit = 0;
+        rename_input(s, n, p, name);
+    }
+}
+
 void sg_pin_menu(studio *s, node *n, int kind, int p)
 {
     kit *k = s->kit;
     char label[128];
     ed_pin_label(n, pin_of(n, kind, p), label, sizeof label);
     kit_menu_group(k, "title", label);
+    if (sg_pin_renameable(s, n, kind, p) &&
+        menu_item(k, "rename", "Rename", KIT_ICON_EDIT, "F2", false)) {
+        sg_rename_pin(s, n, p);
+        return;
+    }
     if (link_items(s, n, kind, p)) {
         return;
     }

@@ -231,6 +231,8 @@ typedef struct
     uint64_t title_edit;   /* the frame whose title is being edited, or 0 */
     uint64_t bubble_edit;  /* the node whose comment is being edited, or 0 */
     bool comment_focus;    /* focus the comment field on its first frame */
+    uint64_t pin_edit;     /* the expression input being renamed, or 0 */
+    bool pin_focus;        /* focus its field on the first frame */
     uint64_t menu_comment;
     uint64_t comment; /* the selected comment frame, shown while no node is */
     bool press_toggle;

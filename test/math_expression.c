@@ -1322,6 +1322,14 @@ static void editor_rewire()
     lost = behavior_expression_fed_inputs(g, call);
     assert(acount(lost) == 1 && !strcmp(lost[0], "rate"));
     behavior_expression_free_names(lost);
+    assert(editor_rename_behavior_expression_input(e, call, "rate", "pace", &error) == 0);
+    assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "pace * 2"));
+    lost = behavior_expression_fed_inputs(g, call);
+    assert(acount(lost) == 1 && !strcmp(lost[0], "pace"));
+    behavior_expression_free_names(lost);
+    editor_undo(e);
+    call = graph_node_by_id(editor_behavior_asset(e)->graph, id);
+    assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "rate * 2"));
     editor_undo(e);
     call = graph_node_by_id(editor_behavior_asset(e)->graph, id);
     assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "speed * 2"));

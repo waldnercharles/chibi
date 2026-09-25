@@ -1,13 +1,15 @@
 # Behavior Expression
 
-Find **Behavior Expression** in Add-node search. Select its call and edit **Source**
-in Inspector, then press Enter. For example, `(1 + x) * sin(myVar) - 2.4 / rand()` infers
-inputs named `x` and `myVar`. Reusing an input name preserves its pin identity,
-default, and compatible wires. Renaming an input in place preserves that input's
-pin identity, wire, default, and binding, and updates every call to the expression.
-When several names change together, the editor pairs unmatched old and new names
-in pin order; make one rename at a time when an edit also adds or removes inputs.
-An invalid edit leaves the working graph unchanged.
+Find **Behavior Expression** in Add-node search. Select its call and edit its
+**Expression** in Properties, then press Enter. For example,
+`(1 + x) * sin(myVar) - 2.4 / rand()` infers inputs named `x` and `myVar`.
+Inputs match by name, as in Unreal's Math Expression: a name that stays keeps its
+pin, default, wires and binding; a name that disappears loses its wire; a new
+name starts unwired unless it matches a named value in the graph, which it then
+reads. To rename an input and keep its wire, choose **Rename** (F2) on its pin,
+which rewrites the source. When a source edit drops a wire, a toast offers
+**Keep Wire**, which applies the edit as that rename, or **Undo** when the edit
+dropped several. An invalid edit leaves the working graph unchanged.
 
 Expressions accept decimal numbers, identifiers, parentheses, unary `+`, `-`, and
 `!`, and `+`, `-`, `*`, `/`, `%`, `^`, and `**`. Comparisons use `==`, `!=`, `<`,
@@ -15,6 +17,10 @@ Expressions accept decimal numbers, identifiers, parentheses, unary `+`, `-`, an
 associate right to left. Multiplication and division bind before addition and
 subtraction.
 The constants `pi` and `e` are built in. Use parentheses to make grouping explicit.
+Arithmetic runs in double precision, so `/` divides as reals even for Integer
+inputs: `7 / 2` is `3.5`. Use `floor(a / b)` for integer division; `%` is the
+real remainder. A result stored in an Integer truncates toward zero. A **Divide**
+node with Integer pins divides as integers, truncating toward zero.
 
 | Functions | Arguments |
 | --- | --- |
@@ -27,6 +33,7 @@ The constants `pi` and `e` are built in. Use parentheses to make grouping explic
 | `length`, `normalize` | One `CF_V2` |
 | `dot`, `distance` | Two `CF_V2` |
 | `atan2` | `y, x` |
+| `direction` | One angle, the unit `CF_V2` `(cos, sin)`; or `from, to`, the unit `CF_V2` between two points |
 | `clamp` | `value, minimum, maximum` |
 | `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive |
 | `vec2` | `x, y`; constructs a `CF_V2` |

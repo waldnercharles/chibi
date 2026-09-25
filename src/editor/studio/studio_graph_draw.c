@@ -286,7 +286,9 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
     if (!input && parts.value != VALUE_NONE) {
         emit_value(s, n, 1, p);
     }
-    if (parts.show_label && l.form == FORM_FULL && !sg_in_head(&l, kind, p)) {
+    if (input && g->pin_edit && g->pin_edit == parts.spec->id) {
+        sg_emit_pin_edit(s, n, p);
+    } else if (parts.show_label && l.form == FORM_FULL && !sg_in_head(&l, kind, p)) {
         kit_label(k, "l", "gpin-label", parts.label);
         if (input && label_width > 0 && !sg_pin_exec(n, kind, p)) {
             snprintf(width, sizeof width, "%.0fdp", label_width);

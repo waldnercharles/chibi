@@ -146,6 +146,9 @@ int sg_pin_links(const graph *gr, const node *n, int kind, int pin);
 void sg_break_links(studio *s, node *n, int kind, int pin);
 void sg_add_run_pin(studio *s, node *n);
 void sg_pin_menu(studio *s, node *n, int kind, int pin);
+bool sg_pin_renameable(const studio *s, const node *n, int kind, int p);
+void sg_rename_pin(studio *s, const node *n, int p);
+void sg_emit_pin_edit(studio *s, node *n, int p);
 
 /* Input (studio_graph_input.c). */
 void sg_replay(studio *s);

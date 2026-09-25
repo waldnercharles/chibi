@@ -269,6 +269,23 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
     return 0;
 }
 
+int editor_rename_behavior_expression_input(
+    editor *e,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+)
+{
+    char *before = ed_snapshot(e);
+    if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0) {
+        free(before);
+        return -1;
+    }
+    ed_record_math_edit(e, before);
+    return 0;
+}
+
 int editor_rewire_behavior_expression(
     editor *e,
     node *call,

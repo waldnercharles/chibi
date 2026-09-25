@@ -254,7 +254,7 @@ static void explicit_self()
 
 static void arena_shard()
 {
-    char *json = text_file_read("content/behaviors/ArenaShardBehavior.yaml");
+    char *json = text_file_read("test/fixtures/content/behaviors/ArenaShardBehavior.yaml");
     behavior_asset *asset = behavior_asset_load_json(json);
     free(json);
     assert(asset);

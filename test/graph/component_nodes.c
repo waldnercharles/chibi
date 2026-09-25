@@ -54,12 +54,13 @@ static char *document(const behavior_asset *asset)
     return text;
 }
 
+/* Authored graphs only: an expression's body is generated from its source. */
 static int raise_all(behavior_asset *asset)
 {
     int raised = 0;
     for (int i = 0; i < acount(asset->graphs); i++) {
         graph *g = asset->graphs[i];
-        for (int j = 0; j < acount(g->nodes); j++) {
+        for (int j = 0; !g->math_expression && j < acount(g->nodes); j++) {
             raised += component_node_raise(g, g->nodes[j]);
         }
     }
@@ -115,6 +116,8 @@ static void project_equivalence()
             assert(behavior_asset_has_component_nodes(loaded) == (count > 0 || authored_nodes));
             assert(compile_errors(loaded) == compile_errors(original));
             char error[256] = "";
+            /* Raising takes fresh IDs; lower both from the same counter. */
+            original->graph->id_counter = loaded->graph->id_counter;
             if (behavior_asset_lower_component_nodes(original, error, sizeof error) ||
                 behavior_asset_lower_component_nodes(loaded, error, sizeof error)) {
                 fprintf(stderr, "%s: %s\n", paths.gl_pathv[i], error);

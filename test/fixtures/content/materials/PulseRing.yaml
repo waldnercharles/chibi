@@ -50,10 +50,10 @@ graphs:
         type: struct
         type_name: ShaderVec2
         default: {x: 0.0, "y": 0.0}
-      Radius: {declaration_id: 105, type: float, type_name: null, default: 35.0}
-      Width: {declaration_id: 106, type: float, type_name: null, default: 3.0}
+      Radius: {declaration_id: 105, type: float, default: 35.0}
+      Width: {declaration_id: 106, type: float, default: 3.0}
     outputs:
-      Mask: {declaration_id: 108, type: float, type_name: null}
+      Mask: {declaration_id: 108, type: float}
   - id: 20
     type: Shader Parameter
     x: 0.0
@@ -88,10 +88,10 @@ graphs:
     reference_name: Pulse
     reference_asset: ShaderMath
     inputs:
-      Time: {declaration_id: 61, type: float, type_name: null}
-      Speed: {declaration_id: 62, type: float, type_name: null}
+      Time: {declaration_id: 61, type: float}
+      Speed: {declaration_id: 62, type: float}
     outputs:
-      Brightness: {declaration_id: 63, type: float, type_name: null}
+      Brightness: {declaration_id: 63, type: float}
   - id: 32
     type: Shader Add
     x: 600.0

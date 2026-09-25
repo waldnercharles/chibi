@@ -27,8 +27,9 @@ try {
   mkdirSync(join(project, "content/behaviors"), { recursive: true });
   for (const name of ["WavePulseBehavior", "ArenaShardBehavior"]) {
     const file = `content/behaviors/${name}.yaml`;
+    const fixture = `test/fixtures/content/behaviors/${name}.yaml`;
     const readDocument = () => rpc("readAsset", { kind: "behavior", name }).result?.structuredContent?.result?.document;
-    copyFileSync(join(root, file), join(project, file));
+    copyFileSync(join(root, fixture), join(project, file));
     const before = readFileSync(join(project, file), "utf8");
     const beforeDocument = readDocument();
     const dry = rpc("optimizeGraph", { path: file }).result?.structuredContent;

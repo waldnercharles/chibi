@@ -66,7 +66,9 @@ static behavior_asset *load_linked_example(const char *path, const behavior_asse
 
 static void examples()
 {
-    behavior_asset *library = load_example("content/shader-libraries/ShaderMath.yaml");
+    behavior_asset *library = load_example(
+        "test/fixtures/content/shader-libraries/ShaderMath.yaml"
+    );
     assert(behavior_asset_validate_library(library) == NULL);
     behavior_asset *ring = load_linked_example("test/fixtures/content/materials/PulseRing.yaml", library);
     shader_graph ir;
@@ -173,7 +175,7 @@ static void live_shader_library()
     game_live_world *live = game_live_world_new(world);
     game_live_definition *library = game_live_definition_new(
         "ShaderMath",
-        load_example("content/shader-libraries/ShaderMath.yaml")
+        load_example("test/fixtures/content/shader-libraries/ShaderMath.yaml")
     );
     game_live_definition *ring = game_live_definition_new(
         "PulseRing",

@@ -1099,7 +1099,9 @@ static float feedback_parameter(encounter_host *h, int material, const char *nam
 static void combat_feedback_gates()
 {
     encounter_host h = create(false);
-    behavior_asset *material = read_asset("content/materials/ArenaPlayer.yaml");
+    behavior_asset *material = link_test_libraries(
+        read_asset("content/materials/ArenaPlayer.yaml")
+    );
     shader_error error;
     assert(render_shader_upsert(material, &error));
     int id = render_shader_find(material->name);

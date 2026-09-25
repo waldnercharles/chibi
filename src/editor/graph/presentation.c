@@ -243,6 +243,12 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
         snprintf(buf, cap, "On %s", n->reference_name);
         return buf;
     }
+    /* A macro's tunnels read as Inputs and Outputs, as in Unreal. */
+    const graph *g = e->active_graph;
+    if (g && g->kind == GRAPH_MACRO && (n->id == g->entry_id || n->id == g->return_id)) {
+        snprintf(buf, cap, "%s", n->id == g->entry_id ? "Inputs" : "Outputs");
+        return buf;
+    }
     char label[256];
     editor_node_label(n->desc, label, sizeof label);
     if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {

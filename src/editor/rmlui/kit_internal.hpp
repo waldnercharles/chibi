@@ -65,6 +65,15 @@ enum : unsigned
 
 struct Node;
 
+/* A splitter's arguments: the axis it drags along, 0 (x) or 1 (y); whether its
+ * value grows against the pointer; and the value's bounds. */
+struct SplitterDesc
+{
+    int axis = 0;
+    bool invert = false;
+    double min = 0, max = 0;
+};
+
 struct Widget
 {
     bool open = false;
@@ -86,6 +95,7 @@ struct Widget
     float press_x = 0;
     float press_y = 0;
     kit_number_desc desc{};
+    SplitterDesc split{};
     /* "\x01" forces the first frame to apply visibility for empty values. */
     std::string unit = "\x01", addon = "\x01", addon_cls, draft, applied, label = "\x01", meta = "\x01", badge = "\x01", placeholder;
     std::vector<std::string> labels;

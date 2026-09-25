@@ -1146,7 +1146,7 @@ void KitListener::drag(Rml::Event &e, Node *n, Rml::EventId id)
     }
     if (n->kind == Kind::Splitter) {
         Widget &w = n->w;
-        float along = n->w.desc.integer ? my : mx; /* desc.integer marks the y axis */
+        float along = w.split.axis == 1 ? my : mx;
         if (id == Rml::EventId::Dragstart) {
             w.press_x = along;
             w.start = w.value;
@@ -1158,8 +1158,8 @@ void KitListener::drag(Rml::Event &e, Node *n, Rml::EventId id)
             w.committed = true;
             return;
         }
-        double delta = (along - w.press_x) / dp(k) * (w.desc.slider ? -1 : 1);
-        w.value = std::clamp(w.start + delta, w.desc.min, w.desc.max);
+        double delta = (along - w.press_x) / dp(k) * (w.split.invert ? -1 : 1);
+        w.value = std::clamp(w.start + delta, w.split.min, w.split.max);
         w.pending = true;
         w.pending_value = w.value;
         return;
@@ -2618,10 +2618,7 @@ extern "C" bool kit_splitter(kit *k, const char *key, int axis, float *value, fl
 {
     Node *n = emit(k, key, Kind::Splitter, "div", axis ? "split-h" : "split-v");
     Widget &w = n->w;
-    w.desc.integer = axis == 1;
-    w.desc.slider = invert;
-    w.desc.min = minimum;
-    w.desc.max = maximum;
+    w.split = { axis, invert, minimum, maximum };
     set_flag(n, "data-dragging", w.scrubbing);
     if (w.pending) {
         w.pending = false;

@@ -3,6 +3,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/eval.h"
 #include "support/arena.h"
@@ -127,9 +128,11 @@ typedef struct replacement
 
 static bool transparent(graph *g, node *n, graph_optimize_report *report)
 {
-    bool projection = n->desc->pure_kind == NODE_PURE_BREAK;
-    if ((!projection && n->desc->pure_kind != NODE_PURE_COPY) ||
-        n->input_count != 1 || !editable(g, n)) {
+    /* A Break Struct node projects like the Break_<T> it lowers to. */
+    const node_desc *d = component_node_target(g, n);
+    bool projection = d && d->pure_kind == NODE_PURE_BREAK;
+    if (!d || (!projection && d->pure_kind != NODE_PURE_COPY) ||
+        n->input_count != 1 + (d != n->desc) || !editable(g, n)) {
         return false;
     }
     node *source = NULL;
@@ -151,7 +154,7 @@ static bool transparent(graph *g, node *n, graph_optimize_report *report)
         const type_field *field = graph_output_field(source, pin, &aggregate);
         type = field && aggregate == 0 ? registry_type_by_name(field->type_name) : NULL;
     }
-    if (projection && (!type || type != n->desc->type || incoming ||
+    if (projection && (!type || type != d->type || incoming ||
                        n->output_count != type->field_count)) {
         return false;
     }
@@ -271,11 +274,12 @@ static bool transparent(graph *g, node *n, graph_optimize_report *report)
     return true;
 }
 
-static bool side_effect_free(const node *n)
+/* A component node has the effects of the node it lowers to. */
+static bool side_effect_free(const graph *g, const node *n)
 {
-    const node_desc *d = n->desc;
-    if (d->access && (d->access->read_count || d->access->write_count ||
-                      (d->access->flags & ~NODE_EFFECT_PURE))) {
+    const node_desc *d = component_node_target(g, n);
+    if (!d || (d->access && (d->access->read_count || d->access->write_count ||
+                             (d->access->flags & ~NODE_EFFECT_PURE)))) {
         return false;
     }
     switch (d->pure_kind) {
@@ -312,7 +316,7 @@ static bool constant(graph *g, node *n, graph_optimize_report *report)
     const node_desc *d = n->desc;
     if (!d->foldable || d->pure_kind != NODE_PURE_CALL || d->read ||
         d->read_inputs || n->input_count != d->input_count || d->output_count != 1 ||
-        n->output_count != 1 || !side_effect_free(n) || !editable(g, n)) {
+        n->output_count != 1 || !side_effect_free(g, n) || !editable(g, n)) {
         return false;
     }
     for (int p = 0; p < n->input_count; p++) {
@@ -404,7 +408,7 @@ void graph_optimize_cleanup(graph *g, graph_optimize_report *report)
                 if (pass == 0) {
                     changed = transparent(g, n, report);
                 }
-                if (pass == 1 && editable(g, n) && side_effect_free(n) &&
+                if (pass == 1 && editable(g, n) && side_effect_free(g, n) &&
                     disconnected(g, n)) {
                     int edges = acount(g->edges);
                     int remove_node_result = graph_remove_node(g, n);

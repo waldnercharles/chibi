@@ -175,6 +175,14 @@ static void write_pin_fields(
     }
 }
 
+/* A component node's template follows its Component or Type setting. */
+static int keyed_template_count(const node *n, int output)
+{
+    return component_node_kind_of(n->desc) ? component_node_template_count(n, output)
+         : output ? n->desc->output_count
+                  : n->desc->input_count;
+}
+
 /* A listed side is positional with explicit IDs. It is used when pins do not
  * extend the node's template in order under unique names. */
 static void write_listed_pins(
@@ -192,7 +200,12 @@ static void write_listed_pins(
     for (int i = 0; i < count; i++) {
         yyjson_mut_val *pin = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_uint(doc, pin, "id", pins[i].id);
-        write_pin_fields(doc, pin, g, &pins[i], serialize_pin_template(n->desc, output, i));
+        /* Loading prepares a component node's template pins from its setting. */
+        pin_spec base = component_node_kind_of(n->desc) &&
+                                i < keyed_template_count(n, output)
+                          ? component_node_template(n, output, i)
+                          : *serialize_pin_template(n->desc, output, i);
+        write_pin_fields(doc, pin, g, &pins[i], &base);
         if (yyjson_mut_obj_size(pin) == 1) {
             yyjson_mut_arr_add_uint(doc, arr, pins[i].id);
         } else {
@@ -200,14 +213,6 @@ static void write_listed_pins(
         }
     }
     yyjson_mut_obj_add_val(doc, o, key, arr);
-}
-
-/* A component node's template follows its Component setting. */
-static int keyed_template_count(const node *n, int output)
-{
-    return component_node_kind_of(n->desc) ? component_node_template_count(n, output)
-         : output ? n->desc->output_count
-                  : n->desc->input_count;
 }
 
 /* The pin a keyed entry starts from: its template pin, the exposed field it

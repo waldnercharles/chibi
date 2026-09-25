@@ -116,11 +116,14 @@ static const editor_choices *resolve_pin_choices(const node *n, int output, int 
         return &scene->image_choices;
     }
     component_node_kind component = component_node_kind_of(n->desc);
-    if (!output &&
-        ((component && pin == component_node_setting(component)) ||
-         (pin == 0 &&
-          (n->desc == registry_node_by_name("Has Entities With Component") ||
-           n->desc == registry_node_by_name("Find Entities With Component"))))) {
+    if (!output && component && pin == component_node_setting(n)) {
+        return component == COMPONENT_NODE_MAKE || component == COMPONENT_NODE_BREAK
+                 ? &scene->type_choices
+                 : &scene->component_choices;
+    }
+    if (!output && pin == 0 &&
+        (n->desc == registry_node_by_name("Has Entities With Component") ||
+         n->desc == registry_node_by_name("Find Entities With Component"))) {
         return &scene->component_choices;
     }
     if (!output && pin == 1 && n->desc == registry_node_by_name("Spawn Prototype")) {
@@ -129,9 +132,10 @@ static const editor_choices *resolve_pin_choices(const node *n, int output, int 
     if (!output && pin == 0 && n->desc == registry_node_by_name("Get Global Variable")) {
         return scene->global_choices.count ? &scene->global_choices : NULL;
     }
-    const type_desc *type = n->desc->type;
-    return !output && type && n->desc->pure_kind == NODE_PURE_MAKE &&
-                   pin >= 0 && pin < type->field_count
+    const node_desc *made = component_node_struct(n);
+    const type_desc *type = made ? made->type : NULL;
+    return !output && type && made->pure_kind == NODE_PURE_MAKE && pin >= 0 &&
+                   pin < type->field_count
              ? property_choices(type, &type->fields[pin])
              : NULL;
 }
@@ -881,6 +885,20 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
             .name = component->key ? component->key : component->name,
         };
     }
+    editor_choice *type_choices = NULL;
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *make = registry_node(i);
+        if (make->pure_kind != NODE_PURE_MAKE || !make->type) {
+            continue;
+        }
+        char label[128];
+        editor_component_label(make->type->name, label, sizeof label);
+        apush(
+            type_choices,
+            ((editor_choice){ .label = xstrdup(label), .name = make->type->name })
+        );
+    }
+    scene->type_choices = (editor_choices){ type_choices, acount(type_choices) };
     scene->component_choices = (editor_choices){ component_choices,
                                                  scene->registry.component_count };
     editor_set_choices_resolver(graph_editor, resolve_pin_choices, scene);
@@ -1133,6 +1151,10 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         free((void *)scene->component_choices.items[i].label);
     }
     free((void *)scene->component_choices.items);
+    for (int i = 0; i < scene->type_choices.count; i++) {
+        free((void *)scene->type_choices.items[i].label);
+    }
+    afree(scene->type_choices.items);
     free_prototype_choices(scene);
     free_global_choices(scene);
     while (acount(scene->actors)) {

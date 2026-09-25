@@ -45,6 +45,7 @@ const launch = (search, fs, Module = { FS: fs }) => {
     Module, URLSearchParams, Blob, Response, DecompressionStream, TextEncoder, TextDecoder,
     window: { location: page.location },
     location: page.location,
+    history: { replaceState: (state, title, url) => { page.location.search = url; } },
     navigator: { storage: { persist: () => ++page.persisted } },
     document: {
       createElement: tag => {
@@ -189,11 +190,26 @@ await importFile(third, deflated([['readme.txt', 'hello']]), 'readme.zip');
 assert.deepEqual(third.errors, ['Could not import project: The archive has no project.json']);
 assert.equal(fs.nodes.size, before);
 
-// An explicit project must exist; the root sample copies under its own name.
-assert.throws(() => launch('?project=missing', fs).start(), /Project not found: missing/);
+// Once Chibi stops, the shell offers export of the open project and a new project.
+const labels = page => page.Module.recovery.map(([label]) => label).join(', ');
+assert.equal(labels(third), 'Export Project, New Project');
+third.Module.recovery[1][1]();
+assert.equal(third.location.search, '?new=');
+const missing = launch('?project=missing&project-root=projects/arena2d', fs);
+assert.throws(() => missing.start(), /Project not found: missing/);
+assert.equal(labels(missing), 'New Project');
+missing.Module.recovery[0][1]();
+assert.equal(missing.location.search, '?new=&project-root=projects%2Farena2d');
+const fresh = launch('?new=&project-root=projects/arena2d', fs);
+fresh.start();
+assert.equal(fresh.Module.arguments[1], '/workspace/neon-swarm-3/');
+assert.equal(fresh.location.search, '?project=neon-swarm-3');
+assert.equal(fs.file('/workspace/neon-swarm-3/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
+
+// The root sample copies under its own name.
 const root = makeFS({ '/project.json': JSON.stringify({ version: 1, name: 'Arena3D', content: 'content' }), '/content/scenes/Arena3D.yaml': 'name: Root\n' });
 const packaged = launch('', root);
 packaged.start();
 assert.equal(packaged.Module.arguments[1], '/workspace/arena3d/');
 assert.equal(root.file('/workspace/arena3d/content/scenes/Arena3D.yaml'), 'name: Root\n');
-console.log('PASS: browser projects persist, reopen, export and import without the server bridge');
+console.log('PASS: browser projects persist, reopen, export, import and recover without the server bridge');

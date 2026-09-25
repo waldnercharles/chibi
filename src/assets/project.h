@@ -3,6 +3,10 @@
 
 #include <stddef.h>
 
+/* The project.json version this build opens. Bump it when an asset contract
+   change stops projects saved by earlier builds from loading. */
+#define CHIBI_PROJECT_VERSION 1
+
 typedef struct
 {
     char *root;

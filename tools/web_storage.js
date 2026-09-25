@@ -49,16 +49,29 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         const content = readManifest(root).content;
         walk(root + content, (name, data) => visit(`${content}/${name}`, data));
     };
-    // Until samples open read-only, launching one opens the user's own copy of it.
-    const openSample = () => {
-        const bundled = `/${launch.get('project-root') || ''}/`.replace(/\/+/g, '/');
-        const id = slug(readManifest(bundled).name) || 'project';
-        if (found(id)) return id;
+    const bundled = `/${launch.get('project-root') || ''}/`.replace(/\/+/g, '/');
+    const copySample = id => {
         projectFiles(bundled, (name, data) => write(`${workspace}/${id}/${name}`, data));
         persist();
         return id;
     };
     const lastOpened = () => (exists(last) ? fs().readFile(last, {encoding: 'utf8'}) : '');
+    // ?project= opens a stored project and ?new copies the sample. Until samples open
+    // read-only, launching one opens the user's own copy of it.
+    const chooseProject = () => {
+        const requested = launch.get('project');
+        if (requested !== null && !found(requested)) throw new Error(`Project not found: ${requested}`);
+        if (requested) return requested;
+        if (launch.has('new')) {
+            const id = copySample(unique(readManifest(bundled).name));
+            history.replaceState(null, '', `?project=${id}`);
+            return id;
+        }
+        const previous = lastOpened();
+        if (!launch.has('project-root') && found(previous)) return previous;
+        const id = slug(readManifest(bundled).name) || 'project';
+        return found(id) ? id : copySample(id);
+    };
 
     const crcTable = Array.from({length: 256}, (_, n) => {
         for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1;
@@ -146,7 +159,7 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         persist();
         return 0;
     };
-    Module['chibiExportProject'] = () => {
+    const exportProject = () => {
         const files = [];
         projectFiles(`${workspace}/${project}/`, (name, data) => files.push([`${project}/${name}`, data]));
         const link = document.createElement('a');
@@ -156,6 +169,14 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         // Revoking right away can cancel the download in some browsers.
         setTimeout(() => URL.revokeObjectURL(link.href), 40000);
     };
+    const newProject = () => {
+        const search = new URLSearchParams({new: ''});
+        if (launch.has('project-root')) search.set('project-root', launch.get('project-root'));
+        location.search = `?${search}`;
+    };
+    // The shell offers these once Chibi stops, so a project that cannot load never traps the user.
+    Module['recovery'] = [['New Project', newProject]];
+    Module['chibiExportProject'] = exportProject;
     Module['chibiImportProject'] = () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -185,11 +206,10 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     });
     // Bundled samples are readable only once every run dependency has resolved.
     Module['onRuntimeInitialized'] = () => {
-        const requested = launch.get('project');
-        if (requested !== null && !found(requested)) throw new Error(`Project not found: ${requested}`);
         const previous = lastOpened();
-        project = requested || (!launch.has('project-root') && found(previous) ? previous : openSample());
+        project = chooseProject();
         args[1] = `${workspace}/${project}/`;
+        Module['recovery'].unshift(['Export Project', exportProject]);
         if (previous === project) return;
         fs().writeFile(last, project);
         persist();

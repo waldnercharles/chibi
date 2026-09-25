@@ -134,9 +134,24 @@ static int read_manifest(
         return -1;
     }
     yyjson_val *version = yyjson_obj_get(root, "version");
-    if (version && (!yyjson_is_int(version) || yyjson_get_int(version) != 1)) {
+    if (!yyjson_is_int(version)) {
         yyjson_doc_free(document);
-        set_errorf(error, error_size, "Unsupported project manifest version: %s", path);
+        set_errorf(error, error_size, "Project manifest needs an integer version: %s", path);
+        return -1;
+    }
+    int found = (int)yyjson_get_int(version);
+    if (found != CHIBI_PROJECT_VERSION) {
+        yyjson_doc_free(document);
+        snprintf(
+            error,
+            error_size,
+            "Project version %d needs %s build; this build opens version %d: "
+            "%s",
+            found,
+            found > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
+            CHIBI_PROJECT_VERSION,
+            path
+        );
         return -1;
     }
     yyjson_val *name_value = yyjson_obj_get(root, "name");

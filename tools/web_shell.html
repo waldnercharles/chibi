@@ -16,6 +16,10 @@
       overflow-wrap: anywhere; pointer-events: none;
     }
     #status[data-error] { border-color: #9d4b55; color: #ffd9dd; }
+    #status button {
+      margin-left: 12px; padding: 2px 10px; border: 1px solid #303746; border-radius: 6px;
+      background: #1b2330; color: inherit; font: inherit; cursor: pointer; pointer-events: auto;
+    }
   </style>
 </head>
 <body>
@@ -32,6 +36,16 @@
         status.textContent = String(message);
         status.hidden = false;
       };
+      // Once Chibi stops, offer the actions a workspace script provides, e.g. exporting its project.
+      const showStopped = message => {
+        showError(message);
+        for (const [label, run] of Module['recovery'] || []) {
+          const button = document.createElement('button');
+          button.textContent = label;
+          button.onclick = run;
+          status.append(button);
+        }
+      };
       canvas.addEventListener('contextmenu', event => event.preventDefault());
       canvas.addEventListener('pointerdown', () => canvas.focus());
       canvas.addEventListener('webglcontextlost', event => {
@@ -39,12 +53,13 @@
         showError('Graphics context lost. Reload this page to continue.');
       });
       window.addEventListener('error', event => {
-        showError(event.message || 'Could not load Chibi. Reload this page to retry.');
+        showStopped(event.message || 'Could not load Chibi. Reload this page to retry.');
       }, true);
-      window.addEventListener('unhandledrejection', event => showError(event.reason));
+      window.addEventListener('unhandledrejection', event => showStopped(event.reason));
       return {
         canvas,
         showError,
+        showStopped,
         print: (...args) => console.log(...args),
         printErr: (...args) => {
           lastError = args.join(' ');
@@ -57,9 +72,9 @@
           status.textContent = text;
           status.hidden = !text;
         },
-        onAbort: reason => showError(lastError || `Could not run Chibi: ${reason}`),
+        onAbort: reason => showStopped(lastError || `Could not run Chibi: ${reason}`),
         onExit: code => {
-          if (code) showError(lastError || `Chibi stopped with error ${code}.`);
+          if (code) showStopped(lastError || `Chibi stopped with error ${code}.`);
         }
       };
     })();

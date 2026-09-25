@@ -49,9 +49,11 @@ Add `ARGS=--play` to launch into Play.
 The static `make web` build keeps projects in the browser's IndexedDB and
 reopens the last one. Opening a sample the first time copies it into a project
 of your own; add `?project-root=projects/arena2d` to open Neon Swarm, or
-`?project=<name>` for one of your projects. File > Export Project downloads a
-zip, and Import Project opens a zip as a new project. `make web-serve` saves to
-the local project instead.
+`?project=<name>` for one of your projects, or `?new` for a fresh copy of the
+sample. File > Export Project downloads a zip, and Import Project opens a zip as
+a new project. A project that cannot open, such as one saved at another project
+version, offers Export Project and New Project. `make web-serve` saves to the
+local project instead.
 
 Run `make help` for the complete target list and the purpose of each target.
 

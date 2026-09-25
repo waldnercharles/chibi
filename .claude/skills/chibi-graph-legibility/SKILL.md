@@ -17,7 +17,8 @@ each ends on a checkable state.
    sentences and list what reads badly.
 2. **Record a baseline.** Before editing, capture evidence the change must
    preserve: shaders `previewShader` with `sample_grid` (8×8) and a fixed
-   `time`; fields `previewField` `field_hash`; behaviors `runScenario`
+   `time`, plus `beat_pulse` and `influence` for materials that read Beat or
+   Surface Influence; fields `previewField` `field_hash`; behaviors `runScenario`
    `world_hash` over enough frames and inputs to exercise every branch.
 3. **Mechanical pass.** `optimizeGraph` with `dry_run: true`,
    `math_expressions: true`. Review, then apply with the returned hash. It
@@ -28,7 +29,8 @@ each ends on a checkable state.
    expression inputs `a`, `b`, … and locals `Value`, `Value2`, `X2`. Rename an
    expression input with `set_expression`, the same source with that one name
    replaced; renames pair old and new names in pin order, so change one name
-   per operation (several operations may share a batch). Rename a local
+   per operation (several operations may share a batch). A rename keeps the
+   input's wire; to read a different value, `connect` the new source. Rename a local
    with `create_local` on its source output. Name by meaning in the asset's
    existing style (`crackMask`, `rim_glow`); single letters stay only as true
    math variables (`t`, `x`). Rewrite noisy literals as the author meant them:

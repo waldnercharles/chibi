@@ -82,6 +82,38 @@ void test_game_ui_presenter()
         "the last valid document keeps working after an invalid edit"
     );
 
+    char overlay[96], event[32];
+    snprintf(overlay, sizeof overlay, "%s/Pause.yaml", folder);
+    write_file(
+        overlay,
+        "rml: <div id=\"go\" data-event=\"Resume\">Go</div>\n"
+        "rcss: '#go { display: block; width: 200dp; height: 60dp; } .done #go "
+        "{ display: none; }'\n"
+    );
+    before = game_entities_pending_events(live->entities);
+    render_ui_set_overlay(ui, "Pause", "paused");
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    click(ui, 40, 20);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    bool taken = render_ui_take_overlay_event(ui, event, sizeof event) &&
+                 !strcmp(event, "Resume") &&
+                 !render_ui_take_overlay_event(ui, event, sizeof event);
+    test_check(taken && game_entities_pending_events(live->entities) == before, "an overlay activation waits for its host and covers the world's documents");
+    render_ui_set_overlay(ui, "Pause", "done");
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    click(ui, 40, 20);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    test_check(!render_ui_take_overlay_event(ui, event, sizeof event), "the overlay state is its body class");
+    render_ui_set_overlay(ui, "Pause", NULL);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    click(ui, 40, 20);
+    render_ui_update(ui, world, model, live->entities, 1280, 720, 1.0 / 60);
+    test_check(
+        game_entities_pending_events(live->entities) == before + 1,
+        "a hidden overlay lets clicks reach the world's documents"
+    );
+    unlink(overlay);
+
     ecs_world_destroy_entity(world, menu);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_ui_set_text(model, ecs_entity_to_u64(menu), "resume", "Go");

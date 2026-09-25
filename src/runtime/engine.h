@@ -12,6 +12,7 @@
 typedef struct engine engine;
 typedef struct engine_viewport engine_viewport;
 typedef struct render_arena_camera render_arena_camera;
+typedef struct render_ui render_ui;
 
 typedef enum
 {
@@ -164,9 +165,11 @@ bool engine_viewport_widgets_capture(const engine_viewport *viewport);
 /* Shows the widget world's GameUi documents from content_root/ui over the
  * scene, applying `model` (NULL shows them as authored). */
 void engine_viewport_set_ui(engine_viewport *viewport, game_ui *model, const char *content_root);
+/* The documents engine_viewport_set_ui created, for a host's overlay. */
+render_ui *engine_viewport_ui(const engine_viewport *viewport);
 /* Replays this frame's ImGui pointer over the last engine_viewport_image
- * into the documents while playing. */
-void engine_viewport_ui_input(engine_viewport *viewport, bool playing);
+ * into the documents when `active`. */
+void engine_viewport_ui_input(engine_viewport *viewport, bool active);
 
 /* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
  * way to hand focus back so Escape can release the viewport. */

@@ -28,6 +28,13 @@ void render_ui_update(
     int height,
     double dt
 );
+/* Shows the host's ui asset `name` above the world's documents with `state` as
+ * its body class, or hides it when `state` is NULL. Its data-event
+ * activations wait for render_ui_take_overlay_event instead of reaching the
+ * world. */
+void render_ui_set_overlay(render_ui *ui, const char *name, const char *state);
+/* Takes the overlay's last activated event name; false when there is none. */
+bool render_ui_take_overlay_event(render_ui *ui, char *name, size_t size);
 /* Pointer and key input in canvas pixels. Returns what the documents
  * consumed, as RML_INPUT_CAPTURE_* flags. */
 unsigned render_ui_input(render_ui *ui, const rml_input *input);

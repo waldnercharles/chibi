@@ -16,6 +16,8 @@
 
 /* The reference height at which one RCSS dp is one pixel. */
 #define UI_REFERENCE_HEIGHT 720.0f
+/* The overlay's z-index, above any authored GameUi order. */
+#define OVERLAY_ORDER "1000000"
 
 /* Every document starts from this: it fills the view with the editor's face. */
 static const char
@@ -51,6 +53,9 @@ struct render_ui
     char *content_root;
     ui_view *views;
     ui_event *pending;
+    ui_view overlay; /* the host's document; its entity is unused */
+    char overlay_state[32];
+    char overlay_event[128];
     double time;
     int width, height;
     float scale;
@@ -97,6 +102,7 @@ void render_ui_free(render_ui *ui)
         close_view(&ui->views[i]);
     }
     afree(ui->views);
+    close_view(&ui->overlay);
     clear_pending(ui);
     afree(ui->pending);
     rml_backend_destroy(ui->backend);
@@ -174,6 +180,10 @@ static void on_event(void *user, const rml_event *event)
     char name[128];
     rml_element *source = event_source(event->target, name, sizeof name);
     rml_element *doc = source ? rml_element_owner_document(source) : NULL;
+    if (doc && doc == ui->overlay.doc) {
+        snprintf(ui->overlay_event, sizeof ui->overlay_event, "%s", name);
+        return;
+    }
     ui_view *view = NULL;
     for (int i = 0; doc && i < acount(ui->views); i++) {
         view = ui->views[i].doc == doc ? &ui->views[i] : view;
@@ -194,6 +204,39 @@ static void on_event(void *user, const rml_event *event)
         pending.has_value = end != value;
     }
     apush(ui->pending, pending);
+}
+
+void render_ui_set_overlay(render_ui *ui, const char *name, const char *state)
+{
+    ui_view *view = &ui->overlay;
+    if (!view->name || strcmp(view->name, name) != 0) {
+        close_view(view);
+        view->name = xstrdup(name);
+    }
+    if (state) {
+        sync_document(ui, view);
+    }
+    if (!view->doc) {
+        return;
+    }
+    rml_element_set_property(view->doc, "z-index", OVERLAY_ORDER);
+    rml_element_set_property(view->doc, "display", state ? "block" : "none");
+    /* A reload clears `applied`, so the new document gets the state too. */
+    if (state && (!view->applied || strcmp(state, ui->overlay_state) != 0)) {
+        snprintf(ui->overlay_state, sizeof ui->overlay_state, "%s", state);
+        rml_element_set_class_names(view->doc, state);
+        view->applied = 1;
+    }
+}
+
+bool render_ui_take_overlay_event(render_ui *ui, char *name, size_t size)
+{
+    if (!ui->overlay_event[0]) {
+        return false;
+    }
+    snprintf(name, size, "%s", ui->overlay_event);
+    ui->overlay_event[0] = '\0';
+    return true;
 }
 
 unsigned render_ui_input(render_ui *ui, const rml_input *input)
@@ -366,7 +409,7 @@ void render_ui_update(
 
 void render_ui_composite(render_ui *ui, CF_Canvas target)
 {
-    if (!acount(ui->views) || ui->width <= 0 || ui->height <= 0) {
+    if ((!acount(ui->views) && !ui->overlay.doc) || ui->width <= 0 || ui->height <= 0) {
         return;
     }
     rml_backend_render(ui->backend);

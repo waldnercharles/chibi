@@ -205,6 +205,12 @@ void engine_viewport_set_ui(engine_viewport *viewport, game_ui *model, const cha
     }
 }
 
+render_ui *engine_viewport_ui(const engine_viewport *viewport)
+{
+    assert(viewport->ui);
+    return viewport->ui;
+}
+
 int engine_viewport_request_resize(engine_viewport *viewport, int width, int height)
 {
     if (!viewport || width <= 0 || height <= 0) {
@@ -431,11 +437,11 @@ static void ui_pointer(
     bool hovered,
     bool pressed,
     bool released,
-    bool playing
+    bool active
 )
 {
     viewport->ui_capture = false;
-    if (!viewport->ui || !playing || size.x <= 0 || size.y <= 0) {
+    if (!viewport->ui || !active || size.x <= 0 || size.y <= 0) {
         return;
     }
     float x = at.x * (float)viewport->width / size.x;
@@ -457,7 +463,7 @@ static void ui_pointer(
     viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
 }
 
-static void host_ui_input(engine_viewport *viewport, bool playing)
+static void host_ui_input(engine_viewport *viewport, bool active)
 {
     const engine_viewport_host_input *in = &viewport->host_input;
     ui_pointer(
@@ -467,18 +473,18 @@ static void host_ui_input(engine_viewport *viewport, bool playing)
         in->hovered,
         in->pressed[0],
         in->released[0],
-        playing
+        active
     );
 }
 
-static void imgui_ui_input(engine_viewport *viewport, bool playing)
+static void imgui_ui_input(engine_viewport *viewport, bool active)
 {
     ImGuiIO *io = ImGui_GetIO();
     CF_V2 at = { io->MousePos.x - viewport->image_min.x,
                  io->MousePos.y - viewport->image_min.y };
     CF_V2 size = { viewport->image_size.x, viewport->image_size.y };
     bool inside = at.x >= 0 && at.y >= 0 && at.x < size.x && at.y < size.y;
-    ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], playing);
+    ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], active);
 }
 
 static engine_viewport_action draw_control(
@@ -716,9 +722,9 @@ int engine_viewport_image(engine_viewport *viewport, float width, float height)
     return 0;
 }
 
-void engine_viewport_ui_input(engine_viewport *viewport, bool playing)
+void engine_viewport_ui_input(engine_viewport *viewport, bool active)
 {
-    imgui_ui_input(viewport, playing);
+    imgui_ui_input(viewport, active);
 }
 
 engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const engine_viewport_controls *controls)

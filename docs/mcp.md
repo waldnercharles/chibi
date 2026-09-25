@@ -496,6 +496,10 @@ events: name each button's `data-event`, and read an input's value with
 `Get UI Value`. Behavior graphs own rules, text and history. While the pointer
 is over an interactive element, it does not reach gameplay.
 
+The player shows `content/ui/PauseMenu.yaml` while paused. Its body has the
+class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
+events control the session.
+
 Control codes: mouse left=1, mouse right=2, Space=3, Shift=4, Tab=5, Enter=6,
 A–Z=7–32, pad A/B/X/Y=33–36, shoulders=37/38, triggers=39/40, aim stick=41.
 The editor shows named choices. Existing Arena controls are migrated to

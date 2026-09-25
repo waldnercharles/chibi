@@ -1,19 +1,19 @@
 #include "editor/workspace/game_presentation.h"
 
-#include "editor/ui/ui_shell.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/audio.h"
+#include "render/ui.h"
 #include "runtime/camera.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct app_game_presentation
 {
@@ -26,6 +26,7 @@ struct app_game_presentation
     double showcase_time;
     double showcase_last_time;
     bool showcase_time_started;
+    char ui_error[256]; /* the last UI asset error reported */
 };
 
 static render_arena_camera game_camera(const app_game_presentation *game)
@@ -167,69 +168,46 @@ static bool finished(int status)
     return status == GAME_ENCOUNTER_CLEARED || status == GAME_ENCOUNTER_DEFEATED;
 }
 
-static int pause_menu(app_game_presentation *game, int status)
+/* The pause menu's body class for this status. */
+static const char *menu_state(int status)
 {
-    bool outcome = finished(status);
-    bool cleared = status == GAME_ENCOUNTER_CLEARED;
-    ImVec2 size = ImGui_GetIO()->DisplaySize;
-    float width = fminf(360, size.x - 40);
-    ImGui_SetNextWindowPosEx(
-        (ImVec2){ size.x * 0.5f, size.y * 0.5f },
-        ImGuiCond_Always,
-        (ImVec2){ 0.5f, 0.5f }
-    );
-    ImGui_SetNextWindowSize((ImVec2){ width, 0 }, ImGuiCond_Always);
-    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 24, 24 });
-    ImGui_PushStyleVarImVec2(ImGuiStyleVar_ItemSpacing, (ImVec2){ 10, 12 });
-    ImGui_PushStyleVarImVec2(ImGuiStyleVar_FramePadding, (ImVec2){ 12, 10 });
-    ImGui_PushStyleVar(ImGuiStyleVar_WindowRounding, 8);
-    ImGui_PushStyleVar(ImGuiStyleVar_FrameRounding, 4);
-    ImGui_PushStyleColor(ImGuiCol_WindowBg, IM_COL32(5, 14, 21, 245));
-    ImGui_PushStyleColor(ImGuiCol_Border, IM_COL32(65, 111, 126, 185));
-    ImGui_PushStyleColor(ImGuiCol_Button, IM_COL32(23, 55, 68, 255));
-    ImGui_PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(32, 83, 99, 255));
-    ImGui_PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(45, 106, 121, 255));
-    ImGui_Begin(
-        "Game pause",
-        NULL,
-        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking
-    );
-    const char *title = outcome ? (cleared ? "Encounter cleared" : "Defeated") : "Paused";
-    ImVec2 pos = ImGui_GetCursorScreenPos();
-    ImDrawList_AddTextImFontPtr(
-        ImGui_GetWindowDrawList(),
-        ImGui_GetFont(),
-        27,
-        pos,
-        outcome && !cleared ? IM_COL32(255, 140, 150, 255)
-                            : IM_COL32(204, 248, 251, 255),
-        title
-    );
-    ImGui_Dummy((ImVec2){ width - 48, 35 });
-    editor_ui_track_item(
-        outcome ? (cleared ? "game.outcome.cleared" : "game.outcome.defeated") : "game.paused"
-    );
-    ImGui_Dummy((ImVec2){ 0, 2 });
-    int result = 0;
-    if (!outcome) {
-        if (ImGui_ButtonEx("Resume  [Enter]", (ImVec2){ -1, 0 })) {
-            result = command(game, APP_RUNTIME_PLAY);
-        }
-        editor_ui_track_item("game.resume");
+    if (status == GAME_ENCOUNTER_CLEARED) {
+        return "cleared";
     }
-    if (ImGui_ButtonEx(outcome ? "Restart  [Enter / R]" : "Restart  [R]", (ImVec2){ -1, 0 })) {
-        result = command(game, APP_RUNTIME_RESTART);
+    return status == GAME_ENCOUNTER_DEFEATED ? "defeated" : "paused";
+}
+
+/* Runs what the pause menu's last activation asks for: 1 quits. */
+static int menu_command(app_game_presentation *game, int status)
+{
+    char name[64];
+    if (!render_ui_take_overlay_event(engine_viewport_ui(game->viewport), name, sizeof name)) {
+        return 0;
     }
-    editor_ui_track_item("game.restart");
-    if (ImGui_ButtonEx("Quit  [Q]", (ImVec2){ -1, 0 })) {
-        result = 1;
+    if (!strcmp(name, "Resume")) {
+        return finished(status) ? 0 : command(game, APP_RUNTIME_PLAY);
     }
-    editor_ui_track_item("game.quit");
-    ImGui_End();
-    ImGui_PopStyleColorEx(5);
-    ImGui_PopStyleVarEx(5);
-    return result;
+    if (!strcmp(name, "Restart")) {
+        return command(game, APP_RUNTIME_RESTART);
+    }
+    if (!strcmp(name, "Quit")) {
+        return 1;
+    }
+    fprintf(stderr, "PauseMenu event %s is not Resume, Restart, or Quit\n", name);
+    return 0;
+}
+
+/* Prints a UI asset error once when it appears. */
+static void report_ui_error(app_game_presentation *game)
+{
+    const char *error = render_ui_error(engine_viewport_ui(game->viewport));
+    if (!strcmp(error, game->ui_error)) {
+        return;
+    }
+    snprintf(game->ui_error, sizeof game->ui_error, "%s", error);
+    if (error[0]) {
+        fprintf(stderr, "%s\n", error);
+    }
 }
 
 int app_game_presentation_frame(app_game_presentation *game, double now)
@@ -321,6 +299,11 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
             ImGuiWindowFlags_NoBringToFrontOnFocus
     );
+    render_ui_set_overlay(
+        engine_viewport_ui(game->viewport),
+        "PauseMenu",
+        playing ? NULL : menu_state(status)
+    );
     int drawn = engine_viewport_image(game->viewport, size.x, size.y);
     if (game->interactive) {
         render_audio_update(
@@ -329,15 +312,8 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
             engine_is_playing(game->scene->runtime)
         );
     }
-    engine_viewport_ui_input(game->viewport, playing && focused);
-    if (!playing) {
-        ImDrawList_AddRectFilled(
-            ImGui_GetWindowDrawList(),
-            (ImVec2){ 0 },
-            size,
-            IM_COL32(0, 4, 8, 125)
-        );
-    }
+    engine_viewport_ui_input(game->viewport, focused);
+    report_ui_error(game);
     ImGui_End();
     ImGui_PopStyleVarEx(3);
     if (drawn != 0) {
@@ -352,5 +328,5 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         );
         return -1;
     }
-    return playing ? 0 : pause_menu(game, status);
+    return menu_command(game, status);
 }

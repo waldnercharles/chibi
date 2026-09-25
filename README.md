@@ -46,10 +46,12 @@ Use `make debug PROJECT=.` for the Arena3D reference, or
 `make debug PROJECT=. SCENE=scenes/OrbitPinball.yaml` for pinball.
 Add `ARGS=--play` to launch into Play.
 
-The static `make web` build keeps project edits in the browser's IndexedDB,
-copied from the bundled project on the first visit; add
-`?project-root=projects/arena2d` to open Neon Swarm. Clear the site's data to
-start over from the bundle. `make web-serve` saves to the local project instead.
+The static `make web` build keeps projects in the browser's IndexedDB and
+reopens the last one. Opening a sample the first time copies it into a project
+of your own; add `?project-root=projects/arena2d` to open Neon Swarm, or
+`?project=<name>` for one of your projects. File > Export Project downloads a
+zip, and Import Project opens a zip as a new project. `make web-serve` saves to
+the local project instead.
 
 Run `make help` for the complete target list and the purpose of each target.
 

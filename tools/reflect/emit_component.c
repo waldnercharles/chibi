@@ -352,9 +352,12 @@ void emit_component_field_nodes(FILE *out, const struct_info *s)
             i
         );
         fprintf(out, "    .display_class = NODE_DISPLAY_FUNCTION, .category = \"Components/%s\",\n", name);
+        fprintf(out, "    .keywords = \"set field %s target self\",\n", field->name);
         fprintf(
             out,
-            "    .keywords = \"set field %s target self\",\n};\n\n",
+            "    .description = \"Writes %s's %s on Target, which defaults to "
+            "Self.\",\n};\n\n",
+            name,
             field->name
         );
     }
@@ -416,7 +419,14 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
-    fprintf(out, " .component_kind = NODE_COMPONENT_GET_ENTITY, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
+    fprintf(
+        out,
+        " .description = \"Reads %s from Entity.\", .component_kind = "
+        "NODE_COMPONENT_GET_ENTITY, .component = &%s_COMPONENT_%s };\n\n",
+        name,
+        g_prefix,
+        name
+    );
     fprintf(
         out,
         "node_desc %s_NODE_HasEntity_%s = { .name = \"HasEntity_%s\", "
@@ -436,7 +446,15 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
-    fprintf(out, " .component_kind = NODE_COMPONENT_HAS_ENTITY, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
+    fprintf(
+        out,
+        " .description = \"Whether Entity is alive and has %s.\", "
+        ".component_kind = NODE_COMPONENT_HAS_ENTITY, .component = "
+        "&%s_COMPONENT_%s };\n\n",
+        name,
+        g_prefix,
+        name
+    );
     fprintf(
         out,
         "node_desc %s_NODE_SetEntity_%s = { .name = \"SetEntity_%s\", "
@@ -458,7 +476,14 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
-    fprintf(out, " .component_kind = NODE_COMPONENT_SET_ENTITY, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
+    fprintf(
+        out,
+        " .description = \"Writes %s on Entity.\", .component_kind = "
+        "NODE_COMPONENT_SET_ENTITY, .component = &%s_COMPONENT_%s };\n\n",
+        name,
+        g_prefix,
+        name
+    );
 }
 
 void emit_component_nodes_desc(FILE *out, const struct_info *s)
@@ -541,7 +566,14 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         name,
         component_key(s)
     );
-    fprintf(out, " .component_kind = NODE_COMPONENT_GET_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
+    fprintf(
+        out,
+        " .description = \"Reads %s from Self.\", .component_kind = "
+        "NODE_COMPONENT_GET_SELF, .component = &%s_COMPONENT_%s };\n\n",
+        name,
+        g_prefix,
+        name
+    );
     fprintf(
         out,
         "static pin_spec %s_%s_set_inputs[] = { { \"Exec\", PIN_FLOW, NULL, "
@@ -586,7 +618,14 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
-    fprintf(out, " .component_kind = NODE_COMPONENT_SET_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
+    fprintf(
+        out,
+        " .description = \"Writes %s on Self.\", .component_kind = "
+        "NODE_COMPONENT_SET_SELF, .component = &%s_COMPONENT_%s };\n\n",
+        name,
+        g_prefix,
+        name
+    );
     fprintf(out, "static pin_spec %s_%s_has_outputs[] = { { \"Value\", PIN_BOOL, \"bool\" } };\n", g_prefix, name);
     fprintf(
         out,
@@ -604,13 +643,22 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
-    fprintf(out, " .component_kind = NODE_COMPONENT_HAS_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
+    fprintf(
+        out,
+        " .description = \"Whether Self has %s.\", .component_kind = "
+        "NODE_COMPONENT_HAS_SELF, .component = &%s_COMPONENT_%s };\n\n",
+        name,
+        g_prefix,
+        name
+    );
     fprintf(
         out,
         "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
         ".output_count = 2, .inputs = %s_%s_exec_inputs, .outputs = "
         "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_add_%s, .access = &%s_%s_structural_access };\n",
+        "__flow_%s_add_%s, .access = &%s_%s_structural_access, .description "
+        "= \"Adds %s with default values to Self; Value is whether it was "
+        "added.\" };\n",
         g_prefix,
         name,
         name,
@@ -621,6 +669,7 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name,
         g_prefix,
+        name,
         name
     );
     fprintf(
@@ -628,7 +677,9 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
         "1, .output_count = 2, .inputs = %s_%s_exec_inputs, .outputs = "
         "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_remove_%s, .access = &%s_%s_structural_access };\n\n",
+        "__flow_%s_remove_%s, .access = &%s_%s_structural_access, "
+        ".description = \"Removes %s from Self; Value is whether it was "
+        "there.\" };\n\n",
         g_prefix,
         name,
         name,
@@ -639,6 +690,7 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name,
         g_prefix,
+        name,
         name
     );
 }

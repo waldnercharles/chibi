@@ -1,3 +1,4 @@
+#include "editor/workspace/editor_internal.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
@@ -380,6 +381,30 @@ static void opening_behaviors_keeps_them_saved()
         assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[i]));
     }
     assert(!arranged->unsaved && !arranged->dirty);
+    fixture_free(&f);
+}
+
+/* The graph editor borrows each definition's working asset. Opening a
+   behavior copies the edited one it leaves into its definition, freeing the
+   working asset the frame's catalog held; the previews read next must not see
+   it. */
+static void opening_behaviors_refreshes_asset_catalog()
+{
+    checkpoint_fixture f = fixture_new();
+    game_live_definition *left = game_live_definition_new("CatalogLeft", behavior_asset_new("CatalogLeft"));
+    game_live_definition *right = game_live_definition_new("CatalogRight", behavior_asset_new("CatalogRight"));
+    assert(left && game_live_add_definition(f.live, left) == 0);
+    assert(right && game_live_add_definition(f.live, right) == 0);
+    assert(app_scene_authoring_open_behavior(f.scene, "CatalogLeft") == 0);
+    assert(editor_spawn(f.graph, registry_node_by_name("Integer"), 12, 34));
+    app_scene_authoring_update(f.scene, false);
+    assert(app_scene_authoring_open_behavior(f.scene, "CatalogRight") == 0);
+    assert(acount(left->working->graph->nodes) == 1);
+    assert(acount(f.graph->asset_catalog) == game_live_definition_count(f.live));
+    for (int i = 0; i < acount(f.graph->asset_catalog); i++) {
+        assert(f.graph->asset_catalog[i] == game_live_definition_at(f.live, i)->working);
+    }
+    ed_refresh_values(f.graph);
     fixture_free(&f);
 }
 
@@ -830,6 +855,7 @@ static int test_scene_checkpoint()
     scene_tabs_failed_restore_rolls_back();
     scene_tabs_discard_reverts_shared_assets();
     opening_behaviors_keeps_them_saved();
+    opening_behaviors_refreshes_asset_catalog();
     scene_tabs_close_underlying_scene_keeps_context();
     scene_tabs_reject_last_scene_close();
     scene_tabs_failed_behavior_discard_is_atomic();

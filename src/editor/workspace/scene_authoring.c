@@ -1028,6 +1028,7 @@ int sync_behavior_working(app_scene_authoring *scene)
         snprintf(scene->message, sizeof scene->message, "Could not synchronize behavior graph.");
         return -1;
     }
+    refresh_asset_catalog(scene);
     scene->behavior_apply_pending = false;
     return 0;
 }
@@ -1229,23 +1230,30 @@ static int open_library_source(void *user, const char *name, uint64_t graph_id)
     return editor_open_graph(scene->graph_editor, graph_id);
 }
 
+/* The graph editor borrows every definition's working asset, so whatever
+   replaces or removes one refreshes the catalog before the editor reads it. */
+void refresh_asset_catalog(app_scene_authoring *scene)
+{
+    const behavior_asset **assets = NULL;
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        apush(assets, game_live_definition_at(scene->live, i)->working);
+    }
+    editor_set_asset_catalog(scene->graph_editor, assets, acount(assets));
+    afree(assets);
+}
+
 static void refresh_catalogs(app_scene_authoring *scene)
 {
     editor_set_asset_opener(scene->graph_editor, open_library_source, scene);
     refresh_prototype_choices(scene);
     refresh_global_choices(scene);
-    const behavior_asset **assets = NULL;
-    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
-        apush(assets, game_live_definition_at(scene->live, i)->working);
-    }
     const char **prototypes = NULL;
     for (int i = 0; i < acount(scene->prototypes); i++) {
         apush(prototypes, scene->prototypes[i].prototype->name);
     }
     editor_set_prototype_catalog(scene->graph_editor, prototypes, acount(prototypes));
     afree(prototypes);
-    editor_set_asset_catalog(scene->graph_editor, assets, acount(assets));
-    afree(assets);
+    refresh_asset_catalog(scene);
     sync_editor_inspection(scene);
     if (scene->runtime_selected.slot &&
         !game_entities_owns(scene->live->entities, scene->runtime_selected)) {

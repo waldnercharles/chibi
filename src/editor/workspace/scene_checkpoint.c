@@ -325,11 +325,14 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
 static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
 {
     scene->definition = NULL;
-    while (game_live_definition_count(scene->live)) {
+    bool removed = true;
+    while (removed && game_live_definition_count(scene->live)) {
         game_live_definition *definition = game_live_definition_at(scene->live, 0);
-        if (game_live_remove_definition(scene->live, definition->name) != 0) {
-            return false;
-        }
+        removed = game_live_remove_definition(scene->live, definition->name) == 0;
+    }
+    refresh_asset_catalog(scene);
+    if (!removed) {
+        return false;
     }
     game_prototype_preview_free(scene->prototype_preview);
     scene->prototype_preview = game_prototype_preview_new(&scene->registry);

@@ -162,6 +162,8 @@ void editor_set_retained_keyboard(bool captured);
 void editor_set_event_catalog(editor *e, const graph_host_event_desc *events, int count);
 void editor_set_asset_opener(editor *e, int (*open)(void *, const char *, uint64_t), void *user);
 void editor_set_prototype_catalog(editor *e, const char *const *names, int count);
+/* `assets` stay borrowed until the next call, so a host that frees one sets
+ * the catalog again before the editor runs. */
 void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, int count);
 
 /* Advances the editor-owned preview instance with a host-supplied monotonic

@@ -22,11 +22,20 @@ typedef struct
     char *key;
 } asset_identity;
 
+/* The nodes the run an Event node starts reaches. */
+typedef struct
+{
+    int source;
+    uint64_t graph_id, event_id;
+    uint64_t *nodes;
+} event_run;
+
 struct reference_index
 {
     reference_asset *assets;
     asset_identity *identities; /* parallel to assets */
     reference *references;
+    event_run *runs;
 };
 
 /* Component fields whose text names an asset, and the role they give it. An
@@ -74,12 +83,17 @@ void reference_index_clear(reference_index *index)
         free((char *)r->symbol.name);
         free((char *)r->symbol.field);
         free((char *)r->graph);
+        free((char *)r->pin);
         free((char *)r->object);
         free((char *)r->component);
+    }
+    for (int i = 0; i < acount(index->runs); i++) {
+        afree(index->runs[i].nodes);
     }
     asetlen(index->assets, 0);
     asetlen(index->identities, 0);
     asetlen(index->references, 0);
+    asetlen(index->runs, 0);
 }
 
 void reference_index_free(reference_index *index)
@@ -91,6 +105,7 @@ void reference_index_free(reference_index *index)
     afree(index->assets);
     afree(index->identities);
     afree(index->references);
+    afree(index->runs);
     free(index);
 }
 
@@ -251,6 +266,7 @@ static void add(reference_index *index, reference r)
     r.symbol.name = copy(r.symbol.name);
     r.symbol.field = copy(r.symbol.field);
     r.graph = copy(r.graph);
+    r.pin = copy(r.pin);
     r.object = copy(r.object);
     r.component = copy(r.component);
     apush(index->references, r);
@@ -331,15 +347,20 @@ typedef struct
     const node *node; /* NULL outside nodes */
 } site;
 
-/* Where the site is: its node and graph, when it has them. */
+/* Where the site is: its node, pin and graph, when it has them. */
 static reference place_of(const site *s, uint64_t pin)
 {
     const graph *g = s->graph;
+    int output, at;
+    const pin_spec *spec = s->node && pin
+                             ? graph_pin_by_id(s->node, pin, &output, &at)
+                             : NULL;
     return (reference){ .source = s->source,
                         .graph_id = g ? g->graph_id : 0,
                         .node_id = s->node ? s->node->id : 0,
                         .pin_id = pin,
-                        .graph = g && g->name && g->name[0] ? g->name : NULL };
+                        .graph = g && g->name && g->name[0] ? g->name : NULL,
+                        .pin = spec && spec->name && spec->name[0] ? spec->name : NULL };
 }
 
 static void add_at(const site *s, reference_role role, reference_symbol symbol, uint64_t pin)
@@ -356,6 +377,13 @@ static reference_symbol own_symbol(const site *s, reference_symbol_kind kind, ui
     return (
         reference_symbol
     ){ .kind = kind, .asset = s->source, .graph_id = graph_id, .id = id };
+}
+
+/* One of them where it is declared, with its name. */
+static void add_definition(const site *s, reference_symbol symbol, const char *name, uint64_t pin)
+{
+    symbol.name = name && name[0] ? name : NULL;
+    add_at(s, REFERENCE_DEFINE, symbol, pin);
 }
 
 static const char *pin_text(const pin_spec *pin)
@@ -660,10 +688,10 @@ static void add_signature(site *s, uint64_t node_id, bool output)
     for (int i = 0; n && i < (output ? n->output_count : n->input_count); i++) {
         const pin_spec *pin = output ? &n->output_pins[i] : &n->input_pins[i];
         if (graph_signature_declared(s->graph, pin)) {
-            add_at(
+            add_definition(
                 s,
-                REFERENCE_DEFINE,
                 own_symbol(s, REFERENCE_SYMBOL_PARAMETER, s->graph->graph_id, pin->id),
+                pin->name,
                 pin->id
             );
         }
@@ -692,12 +720,49 @@ static void add_parameter_reads(site *s)
     }
 }
 
+static bool holds(const uint64_t *ids, uint64_t id)
+{
+    for (int i = 0; i < acount(ids); i++) {
+        if (ids[i] == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The node a wire leads to from `from` in a run: an exec wire's target, or a
+ * pure node feeding it data. 0 for neither. */
+static uint64_t run_step(const graph *g, const edge *e, uint64_t from)
+{
+    if (e->kind == GRAPH_EDGE_EXEC) {
+        return e->from_id == from ? e->to_id : 0;
+    }
+    const node *feed = e->to_id == from ? graph_node_by_id(g, e->from_id) : NULL;
+    return feed && node_behavior_for(feed) == NODE_BEHAVIOR_PURE ? feed->id : 0;
+}
+
+static void add_run(reference_index *index, int source, const graph *g, const node *event)
+{
+    event_run run = { source, g->graph_id, event->id, NULL };
+    apush(run.nodes, event->id);
+    for (int at = 0; at < acount(run.nodes); at++) {
+        uint64_t from = run.nodes[at];
+        for (int i = 0; i < acount(g->edges); i++) {
+            uint64_t next = run_step(g, &g->edges[i], from);
+            if (next && !holds(run.nodes, next)) {
+                apush(run.nodes, next);
+            }
+        }
+    }
+    apush(index->runs, run);
+}
+
 static void add_graph(reference_index *index, int source, const graph *g)
 {
     site s = { index, source, g, NULL };
     if (g->kind != GRAPH_EVENT) {
         s.node = graph_node_by_id(g, g->entry_id);
-        add_at(&s, REFERENCE_DEFINE, own_symbol(&s, REFERENCE_SYMBOL_GRAPH, 0, g->graph_id), 0);
+        add_definition(&s, own_symbol(&s, REFERENCE_SYMBOL_GRAPH, 0, g->graph_id), g->name, 0);
         add_signature(&s, g->entry_id, true);
         add_signature(&s, g->return_id, false);
         add_parameter_reads(&s);
@@ -705,10 +770,10 @@ static void add_graph(reference_index *index, int source, const graph *g)
     for (int i = 0; i < acount(g->locals); i++) {
         const graph_local *local = &g->locals[i];
         s.node = graph_node_by_id(g, local->source_id);
-        add_at(
+        add_definition(
             &s,
-            REFERENCE_DEFINE,
             own_symbol(&s, REFERENCE_SYMBOL_LOCAL, g->graph_id, local->id),
+            local->name,
             local->source_pin_id
         );
     }
@@ -717,6 +782,9 @@ static void add_graph(reference_index *index, int source, const graph *g)
         if (s.node && s.node->desc) {
             add_node(&s);
         }
+        if (s.node && s.node->desc && !strcmp(s.node->desc->name, "Event")) {
+            add_run(index, source, g, s.node);
+        }
     }
 }
 
@@ -724,10 +792,10 @@ void reference_index_add_graphs(reference_index *index, int source, const behavi
 {
     site s = { index, source, NULL, NULL };
     for (int i = 0; i < acount(asset->variables); i++) {
-        add_at(
+        add_definition(
             &s,
-            REFERENCE_DEFINE,
             own_symbol(&s, REFERENCE_SYMBOL_VARIABLE, 0, asset->variables[i].id),
+            asset->variables[i].name,
             0
         );
     }
@@ -966,4 +1034,17 @@ const reference *reference_index_definition(const reference_index *index, refere
         }
     }
     return NULL;
+}
+
+bool reference_index_reaches(const reference_index *index, const reference *handle, uint64_t node_id)
+{
+    assert(handle->role == REFERENCE_HANDLE);
+    for (int i = 0; i < acount(index->runs); i++) {
+        const event_run *run = &index->runs[i];
+        if (run->source == handle->source && run->graph_id == handle->graph_id &&
+            run->event_id == handle->node_id) {
+            return holds(run->nodes, node_id);
+        }
+    }
+    return false;
 }

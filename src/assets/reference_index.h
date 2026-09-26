@@ -49,7 +49,8 @@ typedef struct
  * - PARAMETER: asset, graph_id (its function), id (its Entry or Return pin).
  * - LOCAL: asset, graph_id, id.
  * - EVENT: name. Its asset is its event definition, or -1.
- * - COMPONENT: name, as GameHealth. FIELD adds field, a dot path. */
+ * - COMPONENT: name, as GameHealth. FIELD adds field, a dot path.
+ * A definition of a graph, variable, parameter or local also has its name. */
 typedef enum
 {
     REFERENCE_SYMBOL_ASSET,
@@ -99,6 +100,7 @@ typedef struct
     /* Its node and pin in source's graphs; zero outside graphs. */
     uint64_t graph_id, node_id, pin_id;
     const char *graph;     /* that graph's name; NULL when unnamed */
+    const char *pin;       /* that pin's name; NULL without a pin */
     const char *object;    /* the scene object holding it */
     const char *component; /* the component field holding it, as GameUi.document */
 } reference;
@@ -179,5 +181,9 @@ int reference_index_count_uses(const reference_index *index, reference_symbol sy
  * declared; NULL for assets, which are their own definition, and for host
  * events, components and fields. */
 const reference *reference_index_definition(const reference_index *index, reference_symbol symbol);
+/* Whether the run a handler starts reaches a node of its graph: along exec
+ * wires from its Event node, and through the pure nodes feeding what runs.
+ * handle is the Event node's HANDLE reference. */
+bool reference_index_reaches(const reference_index *index, const reference *handle, uint64_t node_id);
 
 #endif

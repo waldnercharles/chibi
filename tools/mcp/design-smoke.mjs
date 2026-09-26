@@ -173,6 +173,16 @@ try {
   const spawners = request("inspectAssetDependencies", { kind: "prototype", name: "Payload", direction: "incoming" });
   assert.ok(spawners.edges.some(edge => edge.from.kind === "behavior" && edge.from.name === "Spawner"),
     "a spawned prototype is a dependency of the graph that spawns it");
+  // A ui document's data-keys send Award; Receiver's handler runs on it.
+  const awards = request("callHierarchy", { event: "Award" });
+  assert.ok(awards.root.callers.some(item => item.kind === "place" && item.asset.kind === "ui" && item.asset.name === "Rack"),
+    "a ui document sending an event is its caller");
+  assert.ok(awards.root.callees.some(item => item.kind === "handler" && item.asset.name === "Receiver"),
+    "an event's handlers are its callees");
+  const awardUses = request("findReferences", { event: "Award", roles: ["send"] });
+  assert.ok(awardUses.definition.asset.kind === "event" && awardUses.uses.every(use => use.role === "send") &&
+    awardUses.uses.some(use => use.asset.name === "Rack") && awardUses.counts.handle >= 1,
+    "findReferences filters uses by role and counts every role");
   // A UI activation fits a part: GameHealth records it, the label shows it.
   create("behavior", "RecipeSlot", [
     { op: "add_node", type: "Event", event_name: "Fit", ref: "fit" },

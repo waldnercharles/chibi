@@ -19,6 +19,7 @@
 
 void test_automation_graph_edit();
 void test_automation_search();
+void test_automation_navigation();
 void test_automation_graph_optimize();
 void test_automation_prototype_edit();
 void test_automation_scene_edit();
@@ -80,6 +81,7 @@ TEST_CASE(all_checks)
     registry_validate();
     test_automation_graph_edit();
     test_automation_search();
+    test_automation_navigation();
     test_automation_graph_optimize();
     test_automation_prototype_edit();
     test_automation_scene_edit();
@@ -770,6 +772,7 @@ int main(int argc, char **argv)
         registry_validate();
         test_automation_graph_edit();
         test_automation_search();
+        test_automation_navigation();
         test_automation_graph_optimize();
         test_automation_prototype_edit();
         test_automation_scene_edit();

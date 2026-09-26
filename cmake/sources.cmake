@@ -239,6 +239,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/reference_index.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/call_hierarchy.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/particle_nodes.c

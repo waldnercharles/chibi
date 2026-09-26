@@ -260,6 +260,8 @@ node_desc NODE_DoOnce = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "stateful do once reset",
+    .description = "Fires Completed on the first Exec only until Reset; Start "
+                   "Closed blocks it until the first Reset.",
 };
 node_desc NODE_DoN = {
     .name = "DoN",
@@ -273,6 +275,8 @@ node_desc NODE_DoN = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "stateful do n counter reset",
+    .description = "Fires Exit on the first N Execs until Reset; Counter is "
+                   "how many times Exit fired before this Exec.",
 };
 node_desc NODE_FlipFlop = {
     .name = "FlipFlop",
@@ -286,6 +290,8 @@ node_desc NODE_FlipFlop = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "stateful alternating",
+    .description = "Fires A and B alternately on each Exec, starting with A; "
+                   "Is A reports which one fired.",
 };
 node_desc NODE_Gate = {
     .name = "Gate",
@@ -299,6 +305,8 @@ node_desc NODE_Gate = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "stateful gate open close toggle",
+    .description = "Passes Enter to Exit while open; Open, Close and Toggle "
+                   "change the state, which starts open unless Start Closed.",
 };
 node_desc NODE_MultiGate = {
     .name = "MultiGate",
@@ -312,6 +320,9 @@ node_desc NODE_MultiGate = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "stateful multigate sequence reset",
+    .description = "Fires one unused output per Exec, in order from Start "
+                   "Index or at random; Loop restarts once all fire, Reset "
+                   "clears.",
 };
 node_desc NODE_RetriggerableDelay = {
     .name = "Retriggerable Delay",
@@ -325,6 +336,8 @@ node_desc NODE_RetriggerableDelay = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "latent delay retrigger",
+    .description = "Waits Duration seconds, then fires Completed; triggering "
+                   "it again while waiting restarts the wait.",
 };
 
 node_desc *const STATE_NODES[] = {

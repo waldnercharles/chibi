@@ -166,17 +166,21 @@ static pin_spec INPUTS[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXE
                              FLOAT_PIN("Noise", 0) };
 static pin_spec OUTPUTS[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
 static const node_access ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
-static node_desc PLAY = { .name = "Play Sound",
-                          .category = "Audio",
-                          .keywords = "tone sound effect cue noise sweep",
-                          .input_count = 7,
-                          .inputs = INPUTS,
-                          .output_count = 1,
-                          .outputs = OUTPUTS,
-                          .flow_kind = NODE_FLOW_CUSTOM,
-                          .flow = play,
-                          .display_class = NODE_DISPLAY_FLOW,
-                          .access = &ACCESS };
+static node_desc PLAY = {
+    .name = "Play Sound",
+    .category = "Audio",
+    .keywords = "tone sound effect cue noise sweep",
+    .description = "Queues a synthesized tone sweeping from Frequency to End "
+                   "Frequency Hz over Duration seconds, mixed with Noise.",
+    .input_count = 7,
+    .inputs = INPUTS,
+    .output_count = 1,
+    .outputs = OUTPUTS,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = play,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &ACCESS
+};
 static node_desc *const NODES[] = { &PLAY };
 const registry_pack GAME_AUDIO_PACK = { .name = "game.audio",
                                         .nodes = NODES,

@@ -7622,6 +7622,24 @@ static void add_pin_texts(
     }
 }
 
+/* A match's sentence: its node's, a preset's, or an event's. */
+static bool match_description(const node_match *match, char *text, size_t size)
+{
+    if (match->preset) {
+        component_node_preset_describe(match->preset, text, size);
+        return true;
+    }
+    if (match->definition && match->desc != &NODE_Event) {
+        snprintf(text, size, "Sends %s to Entity.", match->definition->name);
+        return true;
+    }
+    const char *about = match->host       ? match->host->description
+                      : match->definition ? match->definition->description
+                                          : match->desc->description;
+    snprintf(text, size, "%s", about ? about : "");
+    return text[0];
+}
+
 /* What add_node needs: the type; a preset's setting, by component or type
  * name; an event's name; the expression that writes the node; and its pins. */
 static void add_node_match(
@@ -7654,6 +7672,10 @@ static void add_node_match(
         if (match->preset->field) {
             yyjson_mut_obj_add_str(doc, item, "field", match->preset->field);
         }
+    }
+    char description[256];
+    if (match_description(match, description, sizeof description)) {
+        yyjson_mut_obj_add_strcpy(doc, item, "description", description);
     }
     if (match->wire_input >= 0) {
         yyjson_mut_obj_add_strcpy(

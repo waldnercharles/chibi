@@ -46,6 +46,7 @@ static pin_spec source_pin = { .name = "Value", .type = PIN_STRUCT, .type_name =
 static pin_spec target_pin = { .name = "Value", .type = PIN_STRUCT, .type_name = "AliasTarget" };
 static node_desc conversions[] = {
     { .name = "To Alias",
+      .description = "Converts an AliasSource to the AliasTarget it aliases.",
       .pure_kind = NODE_PURE_CALL,
       .jit_kind = NODE_JIT_IDENTITY,
       .inputs = &source_pin,
@@ -56,6 +57,7 @@ static node_desc conversions[] = {
       .conversion_to = "AliasTarget",
       .fn = to_alias },
     { .name = "From Alias",
+      .description = "Converts an AliasTarget back to its AliasSource.",
       .pure_kind = NODE_PURE_CALL,
       .jit_kind = NODE_JIT_IDENTITY,
       .inputs = &target_pin,

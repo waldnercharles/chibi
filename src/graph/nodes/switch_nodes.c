@@ -81,6 +81,8 @@ node_desc NODE_SwitchInt = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "switch int cases default",
+    .description = "Fires the case output numbered Selection, counting from 0, "
+                   "or Default when out of range.",
 };
 node_desc NODE_SwitchString = {
     .name = "Switch on String",
@@ -93,6 +95,8 @@ node_desc NODE_SwitchString = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "switch string cases default",
+    .description = "Fires the case whose label exactly matches Selection, or "
+                   "Default when none does.",
 };
 node_desc NODE_SwitchName = {
     .name = "Switch on Name",
@@ -105,6 +109,8 @@ node_desc NODE_SwitchName = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "switch name cases default",
+    .description = "Fires the case whose label matches the Selection name, or "
+                   "Default when none does.",
 };
 node_desc NODE_SwitchEnum = {
     .name = "Switch on Enum",
@@ -117,6 +123,8 @@ node_desc NODE_SwitchEnum = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Flow Control",
     .keywords = "switch enum cases default",
+    .description = "Fires the case output at Selection's enum value, counting "
+                   "from 0, or Default when out of range.",
 };
 node_desc NODE_Select = {
     .name = "Select",
@@ -129,6 +137,8 @@ node_desc NODE_Select = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Utilities",
     .keywords = "select ternary option",
+    .description = "Returns the Option input chosen by zero-based Index; an "
+                   "out-of-range Index fails evaluation.",
 };
 
 static node_desc *const SWITCH_NODES[] = {

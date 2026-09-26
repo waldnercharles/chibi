@@ -393,7 +393,7 @@ static int generic_clamp_direct(void *output, const void *value, const void *low
     return 0;
 }
 
-#define GENERIC_UNARY_DESC(VAR, NAME, FN, KEYWORDS, JIT)                                                  \
+#define GENERIC_UNARY_DESC(VAR, NAME, FN, KEYWORDS, DESCRIPTION, JIT)                                     \
     static pin_spec VAR##_inputs[] = {                                                                    \
         { "Value", PIN_F32, "float", PIN_DATA, 0, PIN_CONTAINER_SINGLE, { 0 }, 0, PIN_FLAG_WILDCARD, 1 }  \
     };                                                                                                    \
@@ -411,7 +411,8 @@ static int generic_clamp_direct(void *output, const void *value, const void *low
                       .fn = FN,                                                                           \
                       .display_class = NODE_DISPLAY_PURE,                                                 \
                       .category = "Math",                                                                 \
-                      .keywords = KEYWORDS };
+                      .keywords = KEYWORDS,                                                               \
+                      .description = DESCRIPTION };
 
 static pin_spec NODE_Clamp_inputs[] = {
     { "Value", PIN_F32, "float", PIN_DATA, 0, PIN_CONTAINER_SINGLE, { 0 }, 0, PIN_FLAG_WILDCARD, 1 },
@@ -435,9 +436,11 @@ node_desc NODE_Clamp = { .name = "Clamp",
                          .direct_count = 4,
                          .display_class = NODE_DISPLAY_PURE,
                          .category = "Math",
-                         .keywords = "clamp bound constrain limit" };
+                         .keywords = "clamp bound constrain limit",
+                         .description = "Limits Value to the range from Min to "
+                                        "Max, per component for vectors." };
 
-#define GENERIC_BINARY_DESC(VAR, NAME, FN, KEYWORDS, JIT, FAST, DIRECT)                                    \
+#define GENERIC_BINARY_DESC(VAR, NAME, FN, KEYWORDS, DESCRIPTION, JIT, FAST, DIRECT)                       \
     static pin_spec VAR##_inputs[] = {                                                                     \
         { "A", PIN_F32, "float", PIN_DATA, 0, PIN_CONTAINER_SINGLE, { 0 }, 0, PIN_FLAG_WILDCARD, 1 },      \
         { "B", PIN_F32, "float", PIN_DATA, 0, PIN_CONTAINER_SINGLE, { 0 }, 0, PIN_FLAG_WILDCARD, 2 },      \
@@ -462,14 +465,27 @@ node_desc NODE_Clamp = { .name = "Clamp",
         .display_class = NODE_DISPLAY_PURE,                                                                \
         .category = "Math",                                                                                \
         .keywords = KEYWORDS,                                                                              \
+        .description = DESCRIPTION,                                                                        \
     };
 
-GENERIC_BINARY_DESC(NODE_Add, "Add", generic_add, "add plus vector", NODE_JIT_ADD, generic_add_fast, generic_add_direct)
+GENERIC_BINARY_DESC(
+    NODE_Add,
+    "Add",
+    generic_add,
+    "add plus vector",
+    "Sums A and B as reals, integers or vectors; a scalar applies to every "
+    "vector component.",
+    NODE_JIT_ADD,
+    generic_add_fast,
+    generic_add_direct
+)
 GENERIC_BINARY_DESC(
     NODE_Multiply,
     "Multiply",
     generic_multiply,
     "multiply mul times vector",
+    "Multiplies A by B as reals, integers or vectors; a scalar scales every "
+    "vector component.",
     NODE_JIT_MUL,
     generic_multiply_fast,
     generic_multiply_direct
@@ -479,26 +495,65 @@ GENERIC_BINARY_DESC(
     "Subtract",
     generic_subtract,
     "subtract minus vector",
+    "Takes B from A as reals, integers or vectors; a scalar applies to every "
+    "vector component.",
     NODE_JIT_SUB,
     generic_subtract_fast,
     generic_subtract_direct
 )
-GENERIC_BINARY_DESC(NODE_Divide, "Divide", generic_divide, "divide over vector", NODE_JIT_DIV, generic_divide_fast, generic_divide_direct)
-GENERIC_BINARY_DESC(NODE_Min, "Min", generic_min, "min minimum vector", NODE_JIT_MIN, generic_min_fast, generic_min_direct)
-GENERIC_BINARY_DESC(NODE_Max, "Max", generic_max, "max maximum vector", NODE_JIT_MAX, generic_max_fast, generic_max_direct)
+GENERIC_BINARY_DESC(
+    NODE_Divide,
+    "Divide",
+    generic_divide,
+    "divide over vector",
+    "Divides A by B as reals, integers or vectors; integers truncate toward "
+    "zero and fail when B is 0.",
+    NODE_JIT_DIV,
+    generic_divide_fast,
+    generic_divide_direct
+)
+GENERIC_BINARY_DESC(
+    NODE_Min,
+    "Min",
+    generic_min,
+    "min minimum vector",
+    "Returns the smaller of A and B, per component for vectors.",
+    NODE_JIT_MIN,
+    generic_min_fast,
+    generic_min_direct
+)
+GENERIC_BINARY_DESC(
+    NODE_Max,
+    "Max",
+    generic_max,
+    "max maximum vector",
+    "Returns the larger of A and B, per component for vectors.",
+    NODE_JIT_MAX,
+    generic_max_fast,
+    generic_max_direct
+)
 GENERIC_BINARY_DESC(
     NODE_Modulo,
     "Modulo",
     generic_modulo,
     "mod modulo remainder",
+    "Returns the remainder of A divided by B, taking the sign of A; fails when "
+    "an integer B is 0.",
     NODE_JIT_NONE,
     generic_modulo_fast,
     generic_modulo_direct
 )
-GENERIC_UNARY_DESC(NODE_Negate, "Negate", generic_negate, "negate negative minus", NODE_JIT_NEG)
-GENERIC_UNARY_DESC(NODE_Abs, "Abs", generic_abs, "abs absolute", NODE_JIT_ABS)
+GENERIC_UNARY_DESC(
+    NODE_Negate,
+    "Negate",
+    generic_negate,
+    "negate negative minus",
+    "Flips the sign of a real or integer Value.",
+    NODE_JIT_NEG
+)
+GENERIC_UNARY_DESC(NODE_Abs, "Abs", generic_abs, "abs absolute", "Returns the absolute value of a real or integer Value.", NODE_JIT_ABS)
 
-#define LITERAL_DESC(VAR, NAME, PTYPE, PNAME)                                  \
+#define LITERAL_DESC(VAR, NAME, PTYPE, PNAME, DESCRIPTION)                     \
     static pin_spec VAR##_inputs[] = {                                         \
         { "Value", PTYPE, PNAME, PIN_DATA },                                   \
     };                                                                         \
@@ -515,6 +570,7 @@ GENERIC_UNARY_DESC(NODE_Abs, "Abs", generic_abs, "abs absolute", NODE_JIT_ABS)
         .pure_kind = NODE_PURE_CALL,                                           \
         .fn = literal_identity,                                                \
         .display_class = NODE_DISPLAY_LITERAL,                                 \
+        .description = DESCRIPTION,                                            \
     };
 
 static pin_spec NODE_DeltaTime_outputs[] = {
@@ -529,15 +585,16 @@ node_desc NODE_DeltaTime = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Time",
     .keywords = "delta time seconds timestep",
+    .description = "Returns the current update's time step in seconds.",
 };
 
-LITERAL_DESC(NODE_Bool, "Bool", PIN_BOOL, "bool")
-LITERAL_DESC(NODE_Byte, "Byte", PIN_U8, "byte")
-LITERAL_DESC(NODE_Integer, "Integer", PIN_I32, "int")
-LITERAL_DESC(NODE_Integer64, "Integer64", PIN_I64, "int64")
-LITERAL_DESC(NODE_Real, "Real", PIN_F64, "double")
-LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name")
-LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *")
+LITERAL_DESC(NODE_Bool, "Bool", PIN_BOOL, "bool", "Returns Value as a constant true or false.")
+LITERAL_DESC(NODE_Byte, "Byte", PIN_U8, "byte", "Returns Value as a constant whole number from 0 to 255.")
+LITERAL_DESC(NODE_Integer, "Integer", PIN_I32, "int", "Returns Value as a constant 32-bit signed whole number.")
+LITERAL_DESC(NODE_Integer64, "Integer64", PIN_I64, "int64", "Returns Value as a constant 64-bit signed whole number.")
+LITERAL_DESC(NODE_Real, "Real", PIN_F64, "double", "Returns Value as a constant double-precision number.")
+LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name", "Returns Value as a constant name.")
+LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *", "Returns Value as a constant text string.")
 
 static node_desc *const EXTRA_NODES[] = {
 #define MATH_NODE_ENTRY(name) &NODE_##name,

@@ -77,6 +77,8 @@ node_desc NODE_Set_Visual_Reaction = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Visual/Motion",
     .keywords = "trigger visual reaction bump recoil hit lift rotation",
+    .description = "Pulses Target's visual rotation by Rotation and height by "
+                   "Lift over its reaction duration; Target defaults to Self.",
     .access = &visual_reaction_access,
 };
 

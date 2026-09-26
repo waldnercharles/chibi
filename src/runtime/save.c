@@ -349,19 +349,24 @@ static pin_spec WRITE_IN[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_E
                                { .name = "Key", .type = PIN_NAME },
                                { .name = "Text", .type = PIN_STR } };
 static pin_spec THEN[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
-static node_desc READ = { .name = "Read Saved Text",
-                          .category = "Storage",
-                          .keywords = "save profile unlock persistent load",
-                          .input_count = 2,
-                          .inputs = READ_IN,
-                          .output_count = 2,
-                          .outputs = READ_OUT,
-                          .pure_kind = NODE_PURE_READ,
-                          .read_inputs = read_text,
-                          .access = &READ_ACCESS };
-#define SAVE_NODE(label, count)                                                \
+static node_desc READ = {
+    .name = "Read Saved Text",
+    .category = "Storage",
+    .keywords = "save profile unlock persistent load",
+    .description = "Reads Key from save data, including uncommitted changes; "
+                   "when missing, Found is false and Text is Default.",
+    .input_count = 2,
+    .inputs = READ_IN,
+    .output_count = 2,
+    .outputs = READ_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = read_text,
+    .access = &READ_ACCESS
+};
+#define SAVE_NODE(label, count, text)                                          \
     { .name = label,                                                           \
       .category = "Storage",                                                   \
+      .description = text,                                                     \
       .input_count = count,                                                    \
       .inputs = WRITE_IN,                                                      \
       .output_count = 1,                                                       \
@@ -370,23 +375,27 @@ static node_desc READ = { .name = "Read Saved Text",
       .flow = write_text,                                                      \
       .display_class = NODE_DISPLAY_FLOW,                                      \
       .access = &WRITE_ACCESS }
-static node_desc SET = SAVE_NODE("Set Saved Text", 3);
-static node_desc REMOVE = SAVE_NODE("Remove Saved Text", 2);
+static node_desc SET = SAVE_NODE("Set Saved Text", 3, "Sets Key to Text in save data; the change persists only after Commit Save.");
+static node_desc REMOVE = SAVE_NODE("Remove Saved Text", 2, "Removes Key from save data; the removal persists only after Commit Save.");
 static pin_spec COMMIT_OUT[] = {
     { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
     { .name = "Failed", .type = PIN_FLOW, .kind = PIN_EXEC }
 };
-static node_desc COMMIT = { .name = "Commit Save",
-                            .category = "Storage",
-                            .input_count = 1,
-                            .inputs = WRITE_IN,
-                            .output_count = 2,
-                            .outputs = COMMIT_OUT,
-                            .flow_kind = NODE_FLOW_CUSTOM,
-                            .flow = write_text,
-                            .display_class = NODE_DISPLAY_FLOW,
-                            .access = &WRITE_ACCESS };
-static node_desc DISCARD = SAVE_NODE("Discard Save Changes", 1);
+static node_desc COMMIT = {
+    .name = "Commit Save",
+    .category = "Storage",
+    .description = "Writes save data to storage; if writing fails, runs Failed "
+                   "and keeps the previous save.",
+    .input_count = 1,
+    .inputs = WRITE_IN,
+    .output_count = 2,
+    .outputs = COMMIT_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = write_text,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &WRITE_ACCESS
+};
+static node_desc DISCARD = SAVE_NODE("Discard Save Changes", 1, "Reverts save data to the last commit, dropping uncommitted changes.");
 static node_desc *const NODES[] = { &READ, &SET, &REMOVE, &COMMIT, &DISCARD };
 const registry_pack GAME_SAVE_PACK = { .name = "game.save",
                                        .nodes = NODES,

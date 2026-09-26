@@ -1,4 +1,5 @@
 #include "automation/controller.h"
+#include "graph/model/registry.h"
 #include "suite_internal.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -160,9 +161,10 @@ static void wire_fits()
     char *real = search("\"wire_from\":\"int\",\"wire_to\":\"float\",\"limit\":1,\"include_pins\":false", &bytes);
     char *unknown = search("\"wire_from\":\"GameNothing\"", &bytes);
     test_check(
-        destroy && strstr(destroy, "\"type\":\"Destroy Entity\",\"category\":\"Entities\",\"wire_input\":\"Entity\"") &&
-            health && strstr(health, "\"wire_output\":\"GameHealth\"") &&
-            after && strstr(after, "\"type\":\"Delay\"") &&
+        destroy && strstr(destroy, "\"type\":\"Destroy Entity\"") &&
+            strstr(destroy, "\"wire_input\":\"Entity\"") && health &&
+            strstr(health, "\"wire_output\":\"GameHealth\"") && after &&
+            strstr(after, "\"type\":\"Delay\"") &&
             strstr(after, "\"wire_input\":\"Exec\"") && real &&
             strstr(real, "\"type\":\"To Real\"") && unknown &&
             strstr(unknown, "\"invalid_request\""),
@@ -173,6 +175,40 @@ static void wire_fits()
     free(after);
     free(real);
     free(unknown);
+}
+
+/* Every node the outline offers, in every domain, describes itself. */
+static void descriptions_complete()
+{
+    size_t bytes;
+    char *listed = search("\"include_pins\":false", &bytes);
+    char *system = search("\"domain\":\"system\"", &bytes);
+    int missing = 0;
+    const char *responses[] = { listed, system };
+    for (int r = 0; r < 2; r++) {
+        yyjson_doc *doc = yyjson_read(responses[r], strlen(responses[r]), 0);
+        yyjson_val *categories = yyjson_obj_get(
+            yyjson_obj_get(yyjson_doc_get_root(doc), "result"),
+            "categories"
+        );
+        size_t at, max, i, count;
+        yyjson_val *category, *names, *name;
+        yyjson_obj_foreach(categories, at, max, category, names)
+        {
+            yyjson_arr_foreach(names, i, count, name)
+            {
+                const node_desc *desc = registry_node_by_name(yyjson_get_str(name));
+                if (!desc->description || !desc->description[0]) {
+                    printf("  %s has no description\n", desc->name);
+                    missing++;
+                }
+            }
+        }
+        yyjson_doc_free(doc);
+    }
+    test_check(!missing, "every node searchNodes lists has a description");
+    free(listed);
+    free(system);
 }
 
 /* Responses stay small enough to read whole: the vocabulary outline, and a
@@ -199,5 +235,6 @@ void test_automation_search()
     behavior_vocabulary();
     expression_forms();
     wire_fits();
+    descriptions_complete();
     response_budgets();
 }

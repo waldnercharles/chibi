@@ -119,6 +119,8 @@ node_desc NODE_To_Byte = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
     .keywords = "convert cast truncate saturate byte uint8",
+    .description = "Truncates Value toward zero and clamps it to 0 to 255; NaN "
+                   "gives 0.",
 };
 node_desc NODE_To_Integer = {
     .name = "To Integer",
@@ -131,6 +133,8 @@ node_desc NODE_To_Integer = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
     .keywords = "convert cast truncate saturate integer int32",
+    .description = "Truncates Value toward zero and clamps it to the 32-bit "
+                   "range; NaN gives 0.",
 };
 
 static pin_spec to_string_inputs[] = {
@@ -150,6 +154,7 @@ node_desc NODE_To_String = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
     .keywords = "convert cast string text str",
+    .description = "Formats a bool, number or name Value as text.",
 };
 
 static pin_spec to_name_outputs[] = {
@@ -166,6 +171,7 @@ node_desc NODE_To_Name = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
     .keywords = "convert string name prototype asset",
+    .description = "Converts the text in Value to a name.",
 };
 
 static pin_spec to_real_inputs[] = {
@@ -185,6 +191,8 @@ node_desc NODE_To_Real = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
     .keywords = "convert cast real float double",
+    .description = "Converts a byte or integer Value to a real; very large "
+                   "64-bit values lose precision.",
 };
 
 static pin_spec to_i64_inputs[] = {
@@ -204,6 +212,8 @@ node_desc NODE_To_Integer64 = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
     .keywords = "convert cast integer int64 widen",
+    .description = "Widens a 32-bit integer, or truncates a real toward zero "
+                   "and clamps it to the 64-bit range.",
 };
 
 static pin_value vector_splat(const pin_value *input, arena *storage, const char *type, int width)
@@ -224,7 +234,7 @@ static pin_value vector_splat(const pin_value *input, arena *storage, const char
     return (pin_value){ .type = PIN_STRUCT, .type_name = type, .ptr = result };
 }
 
-#define VECTOR_SPLAT(vector_type, width)                                                    \
+#define VECTOR_SPLAT(vector_type, width, summary)                                           \
     static pin_value splat_##vector_type(const pin_value *input, int count, arena *storage) \
     {                                                                                       \
         assert(count == 1);                                                                 \
@@ -241,14 +251,15 @@ static pin_value vector_splat(const pin_value *input, arena *storage, const char
                                            .pure_kind = NODE_PURE_CALL,                     \
                                            .fn = splat_##vector_type,                       \
                                            .category = "Conversion",                        \
+                                           .description = summary,                          \
                                            .display_class = NODE_DISPLAY_PURE,              \
                                            .conversion_from = "double",                     \
                                            .conversion_to = #vector_type };
-VECTOR_SPLAT(CF_V2, 2)
-VECTOR_SPLAT(CF_V3, 3)
-VECTOR_SPLAT(ShaderVec2, 2)
-VECTOR_SPLAT(ShaderVec3, 3)
-VECTOR_SPLAT(ShaderVec4, 4)
+VECTOR_SPLAT(CF_V2, 2, "Builds a vector with x and y both set to Value, as floats.")
+VECTOR_SPLAT(CF_V3, 3, "Builds a vector with x, y and z all set to Value, as floats.")
+VECTOR_SPLAT(ShaderVec2, 2, "Builds a shader vector with x and y both set to Value.")
+VECTOR_SPLAT(ShaderVec3, 3, "Builds a shader vector with x, y and z all set to Value.")
+VECTOR_SPLAT(ShaderVec4, 4, "Builds a shader vector with x, y, z and w all set to Value.")
 #undef VECTOR_SPLAT
 
 static const node_desc *const vector_splats[] = {

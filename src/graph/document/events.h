@@ -10,7 +10,6 @@ extern const registry_pack CORE_EVENT_PACK;
 typedef enum
 {
     GRAPH_HOST_EVENT_BEGIN,
-    GRAPH_HOST_EVENT_END,
     GRAPH_HOST_EVENT_TICK,
     GRAPH_HOST_EVENT_FIRE,
     GRAPH_HOST_EVENT_DASH,
@@ -19,12 +18,13 @@ typedef enum
     GRAPH_HOST_EVENT_COUNT,
 } graph_host_event;
 
-/* An event the engine dispatches: its name, words for when it fires, and the
- * payload its Event node outputs after Then. */
+/* An event the engine dispatches: its name, words for and a sentence on when
+ * it fires, and the payload its Event node outputs after Then. */
 typedef struct
 {
     const char *name;
     const char *keywords;
+    const char *description;
     const pin_spec *payload;
     int payload_count;
 } graph_host_event_desc;

@@ -138,6 +138,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         s->name
     );
     fprintf(out, "    .pure_kind = NODE_PURE_CALL, .fn = __unwrap_%s_%s,\n", g_prefix, s->name);
+    fprintf(out, "    .description = \"Returns the %s a %s wraps.\",\n", field->name, s->name);
     fprintf(out, "    .jit_kind = NODE_JIT_UNWRAP,\n");
     fprintf(out, "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n", s->name, field_type_name(field));
     fputs("    .display_class = NODE_DISPLAY_PURE, .category = \"Conversion\",\n", out);

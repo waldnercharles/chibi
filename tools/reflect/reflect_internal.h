@@ -70,6 +70,7 @@ typedef struct
     char *display_name;
     char *category;
     char *keywords;
+    char *description;
     char *jit_kind;
     unsigned jit_flags;
     char *conversion_from;

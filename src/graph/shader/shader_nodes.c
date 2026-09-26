@@ -202,99 +202,121 @@ static pin_spec image_in[] = {
 };
 _Static_assert(sizeof image_in / sizeof *image_in == SHADER_IMAGE_INPUT_COUNT, "image pin schema");
 static pin_spec shape[] = { FLOAT_PIN("Distance") };
-#define NODE(symbol, label, count, pins, outs)                                 \
+#define NODE(symbol, label, count, pins, outs, text)                           \
     static node_desc symbol = { .name = "Shader " label,                       \
                                 .input_count = count,                          \
                                 .inputs = pins,                                \
                                 .output_count = 1,                             \
                                 .outputs = outs,                               \
                                 .category = "Shader",                          \
+                                .description = text,                           \
                                 .display_class = NODE_DISPLAY_PURE }
-NODE(constant, "Constant", 0, NULL, any_out);
-NODE(parameter, "Parameter", 0, NULL, any_out);
-NODE(position, "Position", 0, NULL, position_out);
-NODE(uv, "UV", 0, NULL, uv_out);
-NODE(world_position, "WorldPosition", 0, NULL, vector3_out);
-NODE(surface_influence, "Surface Influence", 1, influence_in, influence_out);
-NODE(object_position, "ObjectPosition", 0, NULL, vector3_out);
-NODE(normal, "Normal", 0, NULL, vector3_out);
-NODE(view_direction, "ViewDirection", 0, NULL, vector3_out);
-NODE(time_node, "Time", 0, NULL, scalar_out);
-NODE(beat_phase, "Beat Phase", 0, NULL, scalar_out);
-NODE(beat_pulse, "Beat Pulse", 0, NULL, scalar_out);
-NODE(add, "Add", 2, binary, any_out);
-NODE(subtract, "Subtract", 2, binary, any_out);
-NODE(multiply, "Multiply", 2, binary, any_out);
-NODE(divide, "Divide", 2, binary, any_out);
-NODE(minimum, "Min", 2, binary, any_out);
-NODE(maximum, "Max", 2, binary, any_out);
-NODE(absolute, "Abs", 1, unary, any_out);
-NODE(sine, "Sin", 1, unary, any_out);
-NODE(cosine, "Cos", 1, unary, any_out);
-NODE(fraction, "Fract", 1, unary, any_out);
-NODE(floor_node, "Floor", 1, unary, any_out);
-NODE(sqrt_node, "Sqrt", 1, unary, any_out);
-NODE(sign_node, "Sign", 1, unary, any_out);
-NODE(length_node, "Length", 1, unary, scalar_out);
-NODE(dot, "Dot", 2, binary, scalar_out);
-NODE(mix_node, "Mix", 3, ternary, any_out);
-NODE(select_node, "Select", 3, selection, any_out);
-NODE(circle_node, "Circle", 2, circle, scalar_out);
-NODE(box_node, "Box", 2, box, scalar_out);
-NODE(union_node, "Union", 2, sdf_pair, scalar_out);
-NODE(intersection, "Intersection", 2, sdf_pair, scalar_out);
-NODE(difference, "Difference", 2, sdf_pair, scalar_out);
-NODE(smooth_node, "SmoothUnion", 3, smooth, scalar_out);
-NODE(vector2, "Vector2", 2, vector2_in, vector2_out);
-NODE(vector3, "Vector3", 3, vector3_in, vector3_out);
-NODE(vector4, "Vector4", 4, vector4_in, vector4_out);
-NODE(normalize_node, "Normalize", 1, unary, any_out);
-NODE(clamp_node, "Clamp", 3, limits, any_out);
-NODE(saturate_node, "Saturate", 1, unary, any_out);
-NODE(step_node, "Step", 2, threshold, any_out);
-NODE(smoothstep_node, "Smoothstep", 3, limits, any_out);
-NODE(noise_node, "Noise", 2, noise_in, scalar_out);
-NODE(x_node, "X", 1, unary, scalar_out);
-NODE(y_node, "Y", 1, unary, scalar_out);
-NODE(z_node, "Z", 1, unary, scalar_out);
-NODE(w_node, "W", 1, unary, scalar_out);
-NODE(mapping_node, "Mapping", 4, mapping2, vector2_out);
-NODE(mapping3d_node, "Mapping3D", 4, mapping3, vector3_out);
-NODE(fresnel_node, "Fresnel", 4, fresnel_in, scalar_out);
-NODE(remap_node, "Remap", 4, remap_in, any_out);
-NODE(gradient_node, "Gradient", 4, gradient_in, scalar_out);
-NODE(fractal_node, "Fractal Noise", 4, fractal_in, scalar_out);
-static node_desc voronoi_node = { .name = "Shader Voronoi",
-                                  .input_count = 3,
-                                  .inputs = voronoi_in,
-                                  .output_count = 2,
-                                  .outputs = voronoi_out,
-                                  .category = "Shader",
-                                  .display_class = NODE_DISPLAY_PURE };
-static node_desc ramp_node = { .name = "Shader Color Ramp",
-                               .input_count = 3,
-                               .inputs = ramp_in,
-                               .output_count = 2,
-                               .outputs = color_alpha_out,
-                               .category = "Shader",
-                               .display_class = NODE_DISPLAY_PURE };
-static node_desc image_node = { .name = "Shader Image Texture",
-                                .input_count = SHADER_IMAGE_INPUT_COUNT,
-                                .inputs = image_in,
-                                .output_count = 2,
-                                .outputs = color_alpha_out,
-                                .category = "Shader",
-                                .display_class = NODE_DISPLAY_PURE };
-static node_desc surface_output = { .name = "Shader Surface Output",
-                                    .input_count = 8,
-                                    .inputs = surface,
-                                    .category = "Shader",
-                                    .display_class = NODE_DISPLAY_FUNCTION };
-static node_desc shape_output = { .name = "Shader Shape Output",
-                                  .input_count = 1,
-                                  .inputs = shape,
-                                  .category = "Shader",
-                                  .display_class = NODE_DISPLAY_FUNCTION };
+NODE(constant, "Constant", 0, NULL, any_out, "Returns a fixed authored value, as a scalar, vector or color.");
+NODE(parameter, "Parameter", 0, NULL, any_out, "Returns a named material input: its default, unless the entity's Shader or Set Material Parameter overrides it.");
+NODE(position, "Position", 0, NULL, position_out, "Returns the local 2D position in authored units, Y up; the local XZ plane on a 3D solid.");
+NODE(uv, "UV", 0, NULL, uv_out, "Returns normalized surface coordinates, 0 to 1 across the shape, with (0, 0) at the top-left.");
+NODE(world_position, "WorldPosition", 0, NULL, vector3_out, "Returns the world-space position; 2D shapes map onto the XZ plane at zero height.");
+NODE(surface_influence, "Surface Influence", 1, influence_in, influence_out, "Returns the color of scene Surface Influence activity at Position, which defaults to world position; black with none.");
+NODE(object_position, "ObjectPosition", 0, NULL, vector3_out, "Returns the position in the solid's authored units, before actor rotation and translation; 2D maps to XZ.");
+NODE(normal, "Normal", 0, NULL, vector3_out, "Returns the world-space surface normal; +Y for 2D shapes.");
+NODE(view_direction, "ViewDirection", 0, NULL, vector3_out, "Returns the unit direction from the surface toward the camera; +Y for 2D shapes.");
+NODE(time_node, "Time", 0, NULL, scalar_out, "Returns simulation time in seconds.");
+NODE(beat_phase, "Beat Phase", 0, NULL, scalar_out, "Returns progress through the current beat of the scene's rhythm clock, from 0 to 1.");
+NODE(beat_pulse, "Beat Pulse", 0, NULL, scalar_out, "Returns 1 on each beat of the scene's rhythm clock, easing to 0 over its pulse width.");
+NODE(add, "Add", 2, binary, any_out, "Adds A and B per component; a scalar applies to every component of a vector.");
+NODE(subtract, "Subtract", 2, binary, any_out, "Subtracts B from A per component; a scalar applies to every component of a vector.");
+NODE(multiply, "Multiply", 2, binary, any_out, "Multiplies A by B per component; a scalar scales every component of a vector.");
+NODE(divide, "Divide", 2, binary, any_out, "Divides A by B per component, returning 0 where B is 0.");
+NODE(minimum, "Min", 2, binary, any_out, "Returns the smaller of A and B per component.");
+NODE(maximum, "Max", 2, binary, any_out, "Returns the larger of A and B per component.");
+NODE(absolute, "Abs", 1, unary, any_out, "Returns the absolute value of each component.");
+NODE(sine, "Sin", 1, unary, any_out, "Returns the sine of each component, in radians.");
+NODE(cosine, "Cos", 1, unary, any_out, "Returns the cosine of each component, in radians.");
+NODE(fraction, "Fract", 1, unary, any_out, "Returns each component minus its floor, from 0 up to 1 even for negative values.");
+NODE(floor_node, "Floor", 1, unary, any_out, "Rounds each component down to the nearest whole number.");
+NODE(sqrt_node, "Sqrt", 1, unary, any_out, "Returns the square root of each component, treating negative values as 0.");
+NODE(sign_node, "Sign", 1, unary, any_out, "Returns -1, 0 or 1 per component for negative, zero or positive values.");
+NODE(length_node, "Length", 1, unary, scalar_out, "Returns the Euclidean length of Value; the absolute value of a scalar.");
+NODE(dot, "Dot", 2, binary, scalar_out, "Returns the dot product of A and B, which must have the same width.");
+NODE(mix_node, "Mix", 3, ternary, any_out, "Blends from A to B by Alpha per component without clamping; Alpha 0 gives A and 1 gives B.");
+NODE(select_node, "Select", 3, selection, any_out, "Returns True when Condition is nonzero, otherwise False.");
+NODE(circle_node, "Circle", 2, circle, scalar_out, "Returns the signed distance from Position to a circle of Radius at the origin; negative inside.");
+NODE(box_node, "Box", 2, box, scalar_out, "Returns the signed distance from Position to an origin-centered box of Half Size; negative inside.");
+NODE(union_node, "Union", 2, sdf_pair, scalar_out, "Combines signed distances A and B into their union by taking the smaller.");
+NODE(intersection, "Intersection", 2, sdf_pair, scalar_out, "Keeps the overlap of signed distances A and B by taking the larger.");
+NODE(difference, "Difference", 2, sdf_pair, scalar_out, "Cuts signed distance B out of A.");
+NODE(smooth_node, "SmoothUnion", 3, smooth, scalar_out, "Merges signed distances A and B with a rounded blend Smoothness wide; 0 gives a sharp union.");
+NODE(vector2, "Vector2", 2, vector2_in, vector2_out, "Builds a 2D vector from X and Y.");
+NODE(vector3, "Vector3", 3, vector3_in, vector3_out, "Builds a 3D vector or color from X, Y and Z.");
+NODE(vector4, "Vector4", 4, vector4_in, vector4_out, "Builds a 4D vector from X, Y, Z and W.");
+NODE(normalize_node, "Normalize", 1, unary, any_out, "Scales Value to unit length; a zero vector stays zero.");
+NODE(clamp_node, "Clamp", 3, limits, any_out, "Limits each component of Value to between Min and Max, taken in either order.");
+NODE(saturate_node, "Saturate", 1, unary, any_out, "Clamps each component of Value to the range 0 to 1.");
+NODE(step_node, "Step", 2, threshold, any_out, "Returns 1 per component where Value is at least Edge, otherwise 0.");
+NODE(smoothstep_node, "Smoothstep", 3, limits, any_out, "Eases each component of Value from 0 at Min to 1 at Max along an S-curve; equal bounds act as a step.");
+NODE(noise_node, "Noise", 2, noise_in, scalar_out, "Returns smooth value noise from 0 to 1 at Position times Scale, for 1D to 3D positions.");
+NODE(x_node, "X", 1, unary, scalar_out, "Returns the X component of Value.");
+NODE(y_node, "Y", 1, unary, scalar_out, "Returns the Y component of Value, which needs at least two components.");
+NODE(z_node, "Z", 1, unary, scalar_out, "Returns the Z component of Value, which needs at least three components.");
+NODE(w_node, "W", 1, unary, scalar_out, "Returns the W component of Value, which needs four components.");
+NODE(mapping_node, "Mapping", 4, mapping2, vector2_out, "Scales, rotates by Rotation degrees, then offsets a 2D Position, which defaults to UV.");
+NODE(mapping3d_node, "Mapping3D", 4, mapping3, vector3_out, "Scales, rotates by Rotation degrees about X, Y then Z, then offsets Position, which defaults to object position.");
+NODE(fresnel_node, "Fresnel", 4, fresnel_in, scalar_out, "Returns Base facing the view, rising to 1 edge-on with sharpness Power; Normal and View Direction default to the surface's.");
+NODE(remap_node, "Remap", 4, remap_in, any_out, "Maps Value from From Range to To Range per component, clamping to To Range when Clamp is on.");
+NODE(gradient_node, "Gradient", 4, gradient_in, scalar_out, "Returns an X, Y, Radial or Angular ramp of Position per Type, times Scale plus Offset; Position defaults to UV.");
+NODE(fractal_node, "Fractal Noise", 4, fractal_in, scalar_out, "Returns 0 to 1 fractal value noise at Position times Scale; Detail sets 1 to 8 octaves and Roughness their falloff.");
+static node_desc voronoi_node = {
+    .name = "Shader Voronoi",
+    .input_count = 3,
+    .inputs = voronoi_in,
+    .output_count = 2,
+    .outputs = voronoi_out,
+    .category = "Shader",
+    .description = "Returns Distance to the nearest cell feature and its "
+                   "random Cell Color at Position times Scale; Randomness "
+                   "jitters features.",
+    .display_class = NODE_DISPLAY_PURE
+};
+static node_desc ramp_node = {
+    .name = "Shader Color Ramp",
+    .input_count = 3,
+    .inputs = ramp_in,
+    .output_count = 2,
+    .outputs = color_alpha_out,
+    .category = "Shader",
+    .description = "Maps Factor through the Stops to Color and Alpha, using "
+                   "linear, constant or smoothstep Interpolation.",
+    .display_class = NODE_DISPLAY_PURE
+};
+static node_desc image_node = {
+    .name = "Shader Image Texture",
+    .input_count = SHADER_IMAGE_INPUT_COUNT,
+    .inputs = image_in,
+    .output_count = 2,
+    .outputs = color_alpha_out,
+    .category = "Shader",
+    .description = "Samples Image at UV, which defaults to surface UV, "
+                   "returning linear Color and Alpha; (0, 0) is the top-left.",
+    .display_class = NODE_DISPLAY_PURE
+};
+static node_desc surface_output = {
+    .name = "Shader Surface Output",
+    .input_count = 8,
+    .inputs = surface,
+    .category = "Shader",
+    .description = "Receives the material's final shading; a zero Normal keeps "
+                   "the geometry normal, and Height adds world-unit relief.",
+    .display_class = NODE_DISPLAY_FUNCTION
+};
+static node_desc shape_output = {
+    .name = "Shader Shape Output",
+    .input_count = 1,
+    .inputs = shape,
+    .category = "Shader",
+    .description = "Receives the shape's signed Distance to its outline: "
+                   "negative inside, zero on the edge, positive outside.",
+    .display_class = NODE_DISPLAY_FUNCTION
+};
 static node_desc *const nodes[] = { &constant,
                                     &parameter,
                                     &position,

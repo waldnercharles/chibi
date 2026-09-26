@@ -1234,6 +1234,8 @@ static node_desc GET_GLOBAL_VARIABLE_NODE = {
     .read_inputs = get_global_variable,
     .category = "Global",
     .keywords = "global shared variable binding reference entity value",
+    .description = "Reads the value set under Name, or the entity bound to it; "
+                   "dead or dying entities read as none.",
     .access = &GLOBAL_VARIABLE_READ_ACCESS,
 };
 static pin_spec SET_GLOBAL_VARIABLE_IN[] = {
@@ -1256,6 +1258,8 @@ static node_desc SET_GLOBAL_VARIABLE_NODE = {
     .display_class = NODE_DISPLAY_VARIABLE,
     .category = "Global",
     .keywords = "global shared variable binding reference entity value publish",
+    .description = "Stores Value under Name for all behaviors; later writes "
+                   "must keep the type of the first.",
     .access = &GLOBAL_VARIABLE_WRITE_ACCESS,
 };
 
@@ -1372,6 +1376,8 @@ static node_desc HAS_ENTITIES_NODE = {
     .read_inputs = has_entities_with_component,
     .category = "Entities",
     .keywords = "query has any exists find component present alive",
+    .description = "Whether any entity has Component, ignoring entities queued "
+                   "for destruction.",
     .access = &NEAREST_ACCESS,
 };
 static pin_spec FIND_ENTITIES_OUT[] = { { .name = "Entities",
@@ -1391,6 +1397,8 @@ static node_desc FIND_ENTITIES_NODE = {
     .work = NODE_WORK_WORLD_QUERY,
     .category = "Entities",
     .keywords = "query find component entities array snapshot",
+    .description = "Lists every entity that has Component, skipping entities "
+                   "being destroyed.",
     .access = &NEAREST_ACCESS,
 };
 static pin_spec NEAREST_IN[] = {
@@ -1418,6 +1426,8 @@ static node_desc NEAREST_NODE = {
     .category = "Entities",
     .keywords = "nearest closest find search entity enemy position radius "
                 "category target",
+    .description = "Finds the closest entity with a collider in Categories "
+                   "within Radius of Position, skipping Exclude.",
     .access = &NEAREST_PARALLEL_ACCESS,
 };
 
@@ -1433,31 +1443,39 @@ static pin_spec DESTROY_IN[] = {
     { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" }
 };
 static pin_spec DESTROY_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
-static node_desc SPAWN_NODE = { .name = "Spawn Prototype",
-                                .keywords = "instantiate create entity prefab",
-                                .input_count = 2,
-                                .output_count = 2,
-                                .inputs = SPAWN_IN,
-                                .outputs = SPAWN_OUT,
-                                .flow_kind = NODE_FLOW_CUSTOM,
-                                .flow = spawn_node,
-                                .command = &SPAWN_COMMAND,
-                                .latent = 1,
-                                .display_class = NODE_DISPLAY_FLOW,
-                                .category = "Entities",
-                                .access = &STRUCTURAL_ACCESS };
-static node_desc DESTROY_NODE = { .name = "Destroy Entity",
-                                  .keywords = "kill despawn remove delete",
-                                  .input_count = 2,
-                                  .output_count = 1,
-                                  .inputs = DESTROY_IN,
-                                  .outputs = DESTROY_OUT,
-                                  .flow_kind = NODE_FLOW_CUSTOM,
-                                  .flow = destroy_node,
-                                  .command = &DESTROY_COMMAND,
-                                  .display_class = NODE_DISPLAY_FLOW,
-                                  .category = "Entities",
-                                  .access = &STRUCTURAL_ACCESS };
+static node_desc SPAWN_NODE = {
+    .name = "Spawn Prototype",
+    .keywords = "instantiate create entity prefab",
+    .description = "Spawns Prototype at the end of the step and resumes at "
+                   "Then with Entity; its behaviors start when this flow ends.",
+    .input_count = 2,
+    .output_count = 2,
+    .inputs = SPAWN_IN,
+    .outputs = SPAWN_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = spawn_node,
+    .command = &SPAWN_COMMAND,
+    .latent = 1,
+    .display_class = NODE_DISPLAY_FLOW,
+    .category = "Entities",
+    .access = &STRUCTURAL_ACCESS
+};
+static node_desc DESTROY_NODE = {
+    .name = "Destroy Entity",
+    .keywords = "kill despawn remove delete",
+    .description = "Destroys Entity at the end of the step; queries skip it "
+                   "meanwhile and dead entities are ignored.",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = DESTROY_IN,
+    .outputs = DESTROY_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = destroy_node,
+    .command = &DESTROY_COMMAND,
+    .display_class = NODE_DISPLAY_FLOW,
+    .category = "Entities",
+    .access = &STRUCTURAL_ACCESS
+};
 static pin_spec DAMAGE_IN[] = {
     { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
     { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
@@ -1474,6 +1492,8 @@ static node_desc DAMAGE_NODE = {
     .display_class = NODE_DISPLAY_EVENT,
     .category = "Events",
     .keywords = "send entity custom event message",
+    .description = "Queues the chosen event and its payload for Entity after "
+                   "the current behaviors run; dropped if Entity is gone.",
     .access = &STRUCTURAL_ACCESS,
 };
 static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,

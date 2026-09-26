@@ -93,6 +93,9 @@ typedef struct
 /* Get, Set, Has, Add and Remove for each component, Set for each settable
  * field, and Make and Break for each struct. The caller frees the array. */
 component_node_preset *component_node_presets();
+/* A sentence on what the preset does, such as "Writes GameHealth's current on
+ * Entity, which defaults to Self." */
+void component_node_preset_describe(const component_node_preset *preset, char *buf, size_t size);
 /* Configures a new component node as its preset. */
 int component_node_configure(graph *g, node *n, const char *setting, const char *field);
 

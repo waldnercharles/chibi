@@ -7,6 +7,7 @@ build-release/
 build-debug/
 build-performance/
 build-web/
+build-web-asan/
 build-reflect/
 build-tracy/
 build-tracy-mcp/

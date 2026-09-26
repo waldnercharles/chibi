@@ -56,6 +56,8 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                  KIT_ICON_LAYOUT },
     [STUDIO_COMMAND_MOTION] = { "motion", "Reduce Motion", NULL, NULL, "animation settings", KIT_ICON_SETTINGS },
     [STUDIO_COMMAND_THEME] = { "theme", "Light Theme", NULL, NULL, "appearance color mode settings", KIT_ICON_SUN },
+    /* UI Inspector (studio_inspect.c) */
+    [STUDIO_COMMAND_INSPECT] = { "inspect-element", "Inspect Element", NULL, "Mod+Shift+C", "ui inspector devtools debugger pick styles rml rcss", KIT_ICON_SELECT },
 };
 
 studio_command_info studio_command_describe(studio *s, studio_command command)
@@ -108,6 +110,7 @@ int studio_command_checked(studio *s, studio_command command)
         case STUDIO_COMMAND_TOGGLE_PERFORMANCE:
             return drawer_showing(s, STUDIO_EDITOR_PERFORMANCE);
         case STUDIO_COMMAND_MAXIMIZE: return s->maximized >= 0;
+        case STUDIO_COMMAND_INSPECT: return studio_inspect_picking(s);
         default: return -1;
     }
 }
@@ -191,6 +194,7 @@ void studio_command_run(studio *s, studio_command command)
         case STUDIO_COMMAND_THEME:
             s->prefs.theme = s->light ? STUDIO_THEME_DARK : STUDIO_THEME_LIGHT;
             break;
+        case STUDIO_COMMAND_INSPECT: studio_inspect_toggle(s); break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }

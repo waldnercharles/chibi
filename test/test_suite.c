@@ -73,6 +73,8 @@ void test_studio_pinch();
 void test_ui_sources();
 /* UI documents (workstream D). */
 void test_ui_documents();
+/* UI Inspector */
+void test_ui_inspector();
 
 static int fails;
 
@@ -210,6 +212,8 @@ TEST_CASE(all_checks)
     test_ui_sources();
     /* UI documents (workstream D). */
     test_ui_documents();
+    /* UI Inspector */
+    test_ui_inspector();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -227,6 +231,11 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
         registry_validate();
         test_math_expression();
+        return fails ? 1 : 0;
+    }
+    /* UI Inspector */
+    if (argc == 2 && !strcmp(argv[1], "--ui-inspector")) {
+        test_ui_inspector();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--graph-arrange")) {

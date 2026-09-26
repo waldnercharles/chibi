@@ -35,6 +35,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
+| [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
 
 ## Contracts
 
@@ -213,6 +214,15 @@ control's contract.
 - `KIT_CX(k, "area", { "fill", fill })` joins classes whose condition holds, in order, without de-duplication.
 - Variants are enums mapped to classes in one table in `kit_controls.c`. An icon without a label derives the square button, a compound variant. `cls` is only for layout hooks.
 - State never goes in classes: it goes in `data-*` attributes.
+
+### Chrome DevTools and the UI Toolkit Debugger
+
+- Pick mode (⇧⌘C, Inspect Element, or the Inspector's Pick) highlights the element under the pointer; a click selects it and Escape ends it. Nothing else takes the pointer while picking.
+- The highlight fills the margin, border and padding bands and the content box in DevTools' colors: margin `#f6b26b`, border `#ffe599`, padding `#93c47d` and content `#6fa8dc`, about two thirds opaque. A label names the element and its size.
+- Picks look through a surface into the document it shows: the graph canvas's, and the game UI in the Scene through the view zoom's crop. Text and `pointer-events: none` content, such as a HUD's, are picked by their boxes.
+- The tree reveals a pick. An element's only text shows on its row, and text nodes show as their text. Hovering a row highlights its element.
+- Styles lists the declarations that win, inline first and then by rule, most specific first, with each rule's file and line (`ui_style_origin`). Inherited declarations follow under the ancestor that gives them. RmlUi keeps only winning declarations, so nothing is struck through as overridden.
+- Force state holds `:hover`, `:active`, `:focus` and `:checked` on the selection until it is cleared.
 
 ## Common mismatches to catch
 

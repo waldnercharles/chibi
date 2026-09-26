@@ -2,7 +2,8 @@
  * (render/ui.h): `world`, the saved keys of the world the Scene shows, and
  * `theme`, the custom properties of the stylesheets the open scene's root
  * document imports. A panel's edits apply back: a saved key to the save, and
- * a theme value to its file, which restyles everything the page styles. */
+ * a theme value to its file, which restyles everything the page styles.
+ * `inspector` is the UI Inspector's (see its section below). */
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/scenes/prototype_preview.h"
@@ -15,6 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root);
+static void sync_inspector(studio *s, ui_data *data);
+
 void studio_sources_add(yyjson_mut_doc *doc)
 {
     yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
@@ -22,6 +26,7 @@ void studio_sources_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_str(doc, world, "title", "");
     yyjson_mut_obj_add_arr(doc, world, "saved");
     yyjson_mut_obj_add_arr(doc, yyjson_mut_obj_add_obj(doc, root, "theme"), "sections");
+    add_inspector(doc, root);
 }
 
 static yyjson_mut_val *variable(ui_data *data, const char *name)
@@ -308,6 +313,7 @@ void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
     src->writes_seen = writes;
     sync_world(s, src, data, wrote);
     sync_theme(s, src, data, wrote);
+    sync_inspector(s, data);
 }
 
 void studio_sources_free(studio_sources *src)
@@ -315,4 +321,285 @@ void studio_sources_free(studio_sources *src)
     free_tokens(src);
     ui_page_free(&src->page);
     *src = (studio_sources){ 0 };
+}
+
+/* ---------- Inspector ---------- */
+
+/* `inspector` is what the Inspector panel shows (studio_inspect.c): its
+ * target and pick state, the Elements rows, and the selection's box,
+ * styles, computed values and attributes. Its strings point at the
+ * Inspector's own, which it keeps until its next read, so showing a model
+ * allocates nothing once each list has its items; the items a list sheds
+ * wait in `spare` until it grows again. The panel writes what it asks for:
+ * select, toggle, hover and rule (rows, -1 for none), action ("source" for
+ * Edit Source), target, and force (the pseudo classes forced). */
+
+static const char *const TARGET_NAMES[STUDIO_INSPECT_TARGET_COUNT] = { "studio",
+                                                                       "graph",
+                                                                       "game" };
+static const char *const PSEUDO_KEYS[] = { "hover", "active", "focus", "checked", NULL };
+static const char *const EDGE_KEYS[] = { "top", "right", "bottom", "left", NULL };
+static const char *const BOX_KEYS[] = { "margin", "border", "padding" };
+
+/* A list item's members: strings, then booleans, each list NULL-terminated. */
+typedef struct item_shape
+{
+    const char *const *texts;
+    const char *const *flags;
+} item_shape;
+
+static const char *const ROW_TEXTS[] = { "indent", "tag",  "id", "classes",
+                                         "widget", "text", NULL };
+static const char *const ROW_FLAGS[] = { "node",     "parent",  "open",
+                                         "selected", "hovered", "hidden",
+                                         NULL };
+static const char *const STYLE_TEXTS[] = { "selector", "origin", "name", "value", NULL };
+static const char *const STYLE_FLAGS[] = { "heading", "ancestor", "inherited", "linked", NULL };
+static const char *const PAIR_TEXTS[] = { "name", "value", NULL };
+static const char *const NO_FLAGS[] = { NULL };
+static const item_shape ROW = { ROW_TEXTS, ROW_FLAGS };
+static const item_shape STYLE = { STYLE_TEXTS, STYLE_FLAGS };
+static const item_shape PAIR = { PAIR_TEXTS, NO_FLAGS };
+
+static void add_texts(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *const *keys)
+{
+    for (; *keys; keys++) {
+        yyjson_mut_obj_add_str(doc, obj, *keys, "");
+    }
+}
+
+static void add_flags(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *const *keys)
+{
+    for (; *keys; keys++) {
+        yyjson_mut_obj_add_bool(doc, obj, *keys, false);
+    }
+}
+
+static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root)
+{
+    static const char *const TEXTS[] = { "target", "shortcut", "title",
+                                         "path",   "source",   "pseudo",
+                                         "size",   "action",   NULL };
+    static const char *const FLAGS[] = { "picking",  "wide",   "graph",
+                                         "game",     "more",   "selection",
+                                         "detached", "native", "editable",
+                                         NULL };
+    static const char *const REQUESTS[] = { "select", "toggle", "hover", "rule" };
+    static const char *const LISTS[] = { "rows", "styles", "computed", "attributes" };
+    static const char *const SPARES[] = { "rows", "styles", "pairs" };
+    yyjson_mut_val *in = yyjson_mut_obj_add_obj(doc, root, "inspector");
+    add_texts(doc, in, TEXTS);
+    add_flags(doc, in, FLAGS);
+    yyjson_mut_obj_add_str(doc, in, "tab", "styles"); /* the panel's own */
+    for (size_t i = 0; i < sizeof REQUESTS / sizeof *REQUESTS; i++) {
+        yyjson_mut_obj_add_int(doc, in, REQUESTS[i], -1);
+    }
+    add_flags(doc, yyjson_mut_obj_add_obj(doc, in, "force"), PSEUDO_KEYS);
+    yyjson_mut_val *box = yyjson_mut_obj_add_obj(doc, in, "box");
+    for (size_t b = 0; b < sizeof BOX_KEYS / sizeof *BOX_KEYS; b++) {
+        add_texts(doc, yyjson_mut_obj_add_obj(doc, box, BOX_KEYS[b]), EDGE_KEYS);
+    }
+    for (size_t i = 0; i < sizeof LISTS / sizeof *LISTS; i++) {
+        yyjson_mut_obj_add_arr(doc, in, LISTS[i]);
+    }
+    yyjson_mut_val *spare = yyjson_mut_obj_add_obj(doc, in, "spare");
+    for (size_t i = 0; i < sizeof SPARES / sizeof *SPARES; i++) {
+        yyjson_mut_obj_add_arr(doc, spare, SPARES[i]);
+    }
+}
+
+static yyjson_mut_val *member(yyjson_mut_val *obj, const char *key)
+{
+    return yyjson_mut_obj_get(obj, key);
+}
+
+static const char *text_at(yyjson_mut_val *obj, const char *key)
+{
+    const char *text = yyjson_mut_get_str(member(obj, key));
+    return text ? text : "";
+}
+
+static int number_at(yyjson_mut_val *obj, const char *key)
+{
+    yyjson_mut_val *v = member(obj, key);
+    return yyjson_mut_is_num(v) ? (int)yyjson_mut_get_num(v) : -1;
+}
+
+/* A request the panel writes once, taken and cleared. */
+static int take(yyjson_mut_val *in, const char *key)
+{
+    int value = number_at(in, key);
+    yyjson_mut_set_int(member(in, key), -1);
+    return value;
+}
+
+static int target_named(const char *name)
+{
+    for (int t = 0; t < STUDIO_INSPECT_TARGET_COUNT; t++) {
+        if (!strcmp(TARGET_NAMES[t], name)) {
+            return t;
+        }
+    }
+    return -1;
+}
+
+static studio_inspect_input inspector_input(yyjson_mut_val *in)
+{
+    studio_inspect_input input = {
+        .select = take(in, "select"),
+        .toggle = take(in, "toggle"),
+        .rule = take(in, "rule"),
+        .hover = number_at(in, "hover"),
+        .target = target_named(text_at(in, "target")),
+        .source = !strcmp(text_at(in, "action"), "source"),
+    };
+    yyjson_mut_set_str(member(in, "action"), "");
+    for (int p = 0; p < STUDIO_PSEUDO_COUNT; p++) {
+        input.force[p] = yyjson_mut_get_bool(member(member(in, "force"), PSEUDO_KEYS[p]));
+    }
+    return input;
+}
+
+/* Points string member `key` at `text`, without a copy. */
+static void point(yyjson_mut_val *obj, const char *key, const char *text)
+{
+    yyjson_mut_set_strn(member(obj, key), text, strlen(text));
+}
+
+static void flag(yyjson_mut_val *obj, const char *key, bool on)
+{
+    yyjson_mut_set_bool(member(obj, key), on);
+}
+
+static yyjson_mut_val *make_item(yyjson_mut_doc *doc, const item_shape *shape)
+{
+    yyjson_mut_val *item = yyjson_mut_obj(doc);
+    add_texts(doc, item, shape->texts);
+    add_flags(doc, item, shape->flags);
+    return item;
+}
+
+/* Gives `list` `count` items, shedding extra ones to `spare` and taking
+ * new ones from it before making any. */
+static void resize(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *list,
+    yyjson_mut_val *spare,
+    int count,
+    const item_shape *shape
+)
+{
+    while ((int)yyjson_mut_arr_size(list) > count) {
+        yyjson_mut_arr_append(spare, yyjson_mut_arr_remove_last(list));
+    }
+    while ((int)yyjson_mut_arr_size(list) < count) {
+        yyjson_mut_val *item = yyjson_mut_arr_size(spare)
+                                 ? yyjson_mut_arr_remove_last(spare)
+                                 : make_item(doc, shape);
+        yyjson_mut_arr_append(list, item);
+    }
+}
+
+static void show_item(
+    yyjson_mut_val *item,
+    const item_shape *shape,
+    const char *const *texts,
+    const bool *flags
+)
+{
+    for (int t = 0; shape->texts[t]; t++) {
+        point(item, shape->texts[t], texts[t]);
+    }
+    for (int f = 0; shape->flags[f]; f++) {
+        flag(item, shape->flags[f], flags[f]);
+    }
+}
+
+static void show_elements(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio_inspect_row *rows)
+{
+    yyjson_mut_val *list = member(in, "rows");
+    resize(doc, list, member(member(in, "spare"), "rows"), acount(rows), &ROW);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(list);
+    for (int i = 0; i < acount(rows); i++) {
+        const studio_inspect_row *r = &rows[i];
+        const char *texts[] = { r->indent,  r->tag,    r->id,
+                                r->classes, r->widget, r->text };
+        bool flags[] = { r->node,     r->parent,  r->open,
+                         r->selected, r->hovered, r->hidden };
+        show_item(yyjson_mut_arr_iter_next(&it), &ROW, texts, flags);
+    }
+}
+
+static void show_styles(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio_inspect_style *styles)
+{
+    yyjson_mut_val *list = member(in, "styles");
+    resize(doc, list, member(member(in, "spare"), "styles"), acount(styles), &STYLE);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(list);
+    for (int i = 0; i < acount(styles); i++) {
+        const studio_inspect_style *st = &styles[i];
+        const char *texts[] = { st->selector, st->origin, st->name, st->value };
+        bool flags[] = { st->heading, st->ancestor, st->inherited, st->linked };
+        show_item(yyjson_mut_arr_iter_next(&it), &STYLE, texts, flags);
+    }
+}
+
+static void show_pairs(yyjson_mut_doc *doc, yyjson_mut_val *in, const char *key, const studio_inspect_pair *pairs)
+{
+    yyjson_mut_val *list = member(in, key);
+    resize(doc, list, member(member(in, "spare"), "pairs"), acount(pairs), &PAIR);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(list);
+    for (int i = 0; i < acount(pairs); i++) {
+        const char *texts[] = { pairs[i].name, pairs[i].value };
+        show_item(yyjson_mut_arr_iter_next(&it), &PAIR, texts, NULL);
+    }
+}
+
+static void show_inspector(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio_inspect_model *m)
+{
+    point(in, "target", TARGET_NAMES[m->target]);
+    const char *texts[] = { m->shortcut, m->title,  m->path,
+                            m->source,   m->pseudo, m->size };
+    static const char *const TEXTS[] = { "shortcut", "title",  "path",
+                                         "source",   "pseudo", "size" };
+    for (size_t t = 0; t < sizeof TEXTS / sizeof *TEXTS; t++) {
+        point(in, TEXTS[t], texts[t]);
+    }
+    bool flags[] = { m->picking,
+                     m->wide,
+                     m->targets[STUDIO_INSPECT_GRAPH],
+                     m->targets[STUDIO_INSPECT_GAME],
+                     m->more,
+                     m->selection,
+                     m->detached,
+                     m->native,
+                     m->editable };
+    static const char *const FLAGS[] = { "picking",  "wide",   "graph",
+                                         "game",     "more",   "selection",
+                                         "detached", "native", "editable" };
+    for (size_t f = 0; f < sizeof FLAGS / sizeof *FLAGS; f++) {
+        flag(in, FLAGS[f], flags[f]);
+    }
+    for (int p = 0; p < STUDIO_PSEUDO_COUNT; p++) {
+        flag(member(in, "force"), PSEUDO_KEYS[p], m->force[p]);
+    }
+    for (size_t b = 0; b < sizeof BOX_KEYS / sizeof *BOX_KEYS; b++) {
+        for (int e = 0; EDGE_KEYS[e]; e++) {
+            point(member(member(in, "box"), BOX_KEYS[b]), EDGE_KEYS[e], m->box[b][e]);
+        }
+    }
+    show_elements(doc, in, m->rows);
+    show_styles(doc, in, m->styles);
+    show_pairs(doc, in, "computed", m->computed);
+    show_pairs(doc, in, "attributes", m->attributes);
+}
+
+static void sync_inspector(studio *s, ui_data *data)
+{
+    yyjson_mut_val *in = variable(data, "inspector");
+    studio_inspect_input input = inspector_input(in);
+    const studio_inspect_model *m = studio_inspect_sync(s, &input);
+    if (m && m->changed) {
+        show_inspector(data->doc, in, m);
+        rml_data_model_dirty(data->model, "inspector");
+    }
 }

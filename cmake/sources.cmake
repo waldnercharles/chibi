@@ -198,6 +198,8 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_sources.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c
+    # UI Inspector
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_inspect.c
 )
 
 set(APP_SOURCES

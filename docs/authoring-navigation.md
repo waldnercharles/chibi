@@ -41,6 +41,7 @@ Status on 2026-09-26, after rename and safe delete landed. Update a row when its
 | Outline | Members panel, with the events a behavior handles; each function, macro, variable, named value and event shows its use count (senders and handlers for events), which opens Find | Catalog members; `inspectGraph` with `include_uses` counts uses by role for the asset, its functions and macros, and a behavior's variables | — |
 | Resolved types | Node tab | `inspectGraph` lists each node's pins with their resolved types | — |
 | Find | ⌘F within one asset | `searchAssets` matches member names | Both: find nodes across the project |
+| Inspect UI | Inspect Element (⇧⌘C) picks any element Studio draws: its chrome and panels, a graph node, or a game's UI in the Scene. The Inspector lists the element tree, styles by rule with their files and lines (`ui_style_origin`), computed values and attributes; Edit Source opens the element's ui asset at its `data-src` line | — | MCP: the element tree and styles of a running scene's UI |
 
 ## Order
 

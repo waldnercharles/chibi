@@ -1,5 +1,6 @@
 #include "render/post_2d.h"
 
+#include "render/draw_textures.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -175,6 +176,7 @@ void render_post_2d_present(render_post_2d *post, CF_Canvas output, float exposu
     cf_draw_set_uniform_float("dither_phase", dither_phase);
     cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(post->target, output);
+    RENDER_DRAW_UNBIND_TEXTURES("current", "bloom_tex");
     cf_draw_pop_filter();
     cf_draw_pop_shader();
     cf_draw_pop_alpha_discard();

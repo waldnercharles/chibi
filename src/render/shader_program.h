@@ -22,6 +22,8 @@ void render_programs_bind3d(render_programs *programs, int program);
  * Unbind pops the shader and clears the program's images so they can be freed. */
 void render_programs_unbind3d(render_programs *programs, int program);
 void render_programs_bind2d(render_programs *programs, int program);
+/* Ends a bind2d draw: releases its images so shader_images can destroy them. */
+void render_programs_unbind2d(render_programs *programs, int program);
 CF_ComputeShader render_programs_bind_compute(render_programs *programs, int program, CF_Material material);
 char *render_shader_source(const char *name);
 

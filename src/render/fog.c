@@ -1,6 +1,7 @@
 #include "render/fog.h"
 
 #include "platform/cute.h"
+#include "render/draw_textures.h"
 #include "render/shader_program.h"
 #include "support/xalloc.h"
 
@@ -95,6 +96,7 @@ bool render_fog_draw(
     cf_draw_set_uniform_float("fog_time", time * settings.drift);
     cf_draw_set_uniform_color("fog_color", color);
     cf_draw_quad_fill((CF_Aabb){ { -1, -1 }, { 1, 1 } }, 0);
+    RENDER_DRAW_UNBIND_TEXTURES("visibility_mask");
     cf_draw_pop_shader();
     cf_draw_pop();
     return true;

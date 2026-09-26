@@ -3,6 +3,7 @@
 #include "render/radiance.h"
 
 #include "diagnostics/tracy.h"
+#include "render/draw_textures.h"
 #include "render/gpu_timing.h"
 #include "support/xalloc.h"
 
@@ -747,6 +748,7 @@ static void s_render_bounce(HRC *hrc, CF_Texture radiance_source)
     cf_draw_pop_alpha_discard();
     cf_draw_pop_render_state();
     cf_render_to(hrc->bounce_canvas, false);
+    RENDER_DRAW_UNBIND_TEXTURES("u_radiance", "u_albedo");
     cf_generate_mipmaps(cf_canvas_get_target(hrc->bounce_canvas));
 }
 
@@ -1316,6 +1318,20 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_pop_shader();
     cf_canvas_set_clear_color(output, cf_make_color_rgba_f(0, 0, 0, 1));
     cf_render_to(output, true);
+    RENDER_DRAW_UNBIND_TEXTURES(
+        "scene_tex",
+        "emission_tex",
+        "absorption_tex",
+        "albedo_tex",
+        "fluence_tex",
+        "luminance_tex",
+        "normal_tex",
+        "background_tex",
+        "visibility_tex",
+        "surface_tex",
+        "surface_dir_tex",
+        "relief_tex"
+    );
     cf_pop_gpu_label();
     render_gpu_timing_mark("Composite");
     hrc->frame_count = (hrc->frame_count + 1) & 63;

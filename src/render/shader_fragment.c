@@ -125,5 +125,5 @@ void render_shader_fragment_draw(
         { entity->pos[0] + entity->extent[0], entity->pos[1] + entity->extent[1] }
     };
     cf_draw_box_fill(bounds, 0);
-    cf_draw_pop_shader();
+    render_programs_unbind2d(programs, program);
 }

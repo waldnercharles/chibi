@@ -1,5 +1,6 @@
 #include "render/shader_program.h"
 
+#include "render/draw_textures.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
 #include "support/array.h"
@@ -271,6 +272,17 @@ void render_programs_bind2d(render_programs *programs, int index)
     if (entry->ramp_vec4_count) {
         cf_draw_set_uniform("sg_ramp_data", entry->ramp_data, CF_UNIFORM_TYPE_FLOAT4, RENDER_SHADER_RAMP_VEC4_MAX);
     }
+}
+
+void render_programs_unbind2d(render_programs *programs, int index)
+{
+    program *entry = &programs->entries[index - 1];
+    for (int i = 0; i < entry->set.count; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "sg_image_%d", i);
+        RENDER_DRAW_UNBIND_TEXTURES(name);
+    }
+    cf_draw_pop_shader();
 }
 
 CF_ComputeShader render_programs_bind_compute(render_programs *programs, int index, CF_Material material)

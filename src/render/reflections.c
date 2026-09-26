@@ -1,5 +1,6 @@
 #include "render/reflections.h"
 
+#include "render/draw_textures.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>
@@ -80,6 +81,7 @@ CF_Canvas render_reflections_draw(
     cf_canvas_set_clear_color(r->output, cf_make_color_rgba_f(0, 0, 0, 1));
     cf_push_gpu_label("Planar reflections");
     cf_render_to(r->output, true);
+    RENDER_DRAW_UNBIND_TEXTURES("u_scene");
     cf_pop_gpu_label();
     return r->output;
 }

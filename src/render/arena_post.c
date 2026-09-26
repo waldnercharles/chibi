@@ -1,5 +1,6 @@
 #include "render/arena_post.h"
 
+#include "render/draw_textures.h"
 #include "render/shader_program.h"
 #include "support/xalloc.h"
 
@@ -315,11 +316,7 @@ bool render_arena_post_process(render_arena_post *post)
     cf_draw_set_uniform_float("level_mix", lod - low);
     cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(source, post->pending_output.id ? post->pending_output : post->output);
-    /* Cute's shared draw material keeps named textures until they are rebound,
-     * and WebGL reads every bound texture on each draw. Unbind the bloom
-     * levels so resize and free can destroy them. */
-    cf_draw_set_texture("bloom_low", (CF_Texture){ 0 });
-    cf_draw_set_texture("bloom_high", (CF_Texture){ 0 });
+    RENDER_DRAW_UNBIND_TEXTURES("bloom_low", "bloom_high");
     cf_draw_pop_filter();
     cf_draw_pop_shader();
 

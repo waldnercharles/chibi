@@ -90,6 +90,8 @@ node_desc NODE_Emit_Particles = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Effects",
     .keywords = "particles burst sparks impact",
+    .description = "Bursts Count streaks from Position in random directions at "
+                   "up to Speed, each lasting Lifetime seconds.",
     .access = &ACCESS,
 };
 
@@ -254,5 +256,7 @@ node_desc NODE_Emit_Directed_Particles = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Effects",
     .keywords = "particles spray trail cone",
+    .description = "Sprays Count particles from Position along Direction "
+                   "within a Spread-radian cone, sampling each Min/Max range.",
     .access = &ACCESS,
 };

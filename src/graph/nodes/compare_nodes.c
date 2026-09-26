@@ -15,7 +15,7 @@ static pin_spec compare_outputs[] = {
 };
 static const node_access pure = { .flags = NODE_EFFECT_PURE };
 
-#define REAL_COMPARE(NAME, LABEL, OP, KEYWORDS)                                \
+#define REAL_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                   \
     static pin_value NAME##_value(const pin_value *inputs, int count, arena *) \
     {                                                                          \
         assert(count == 2);                                                    \
@@ -40,10 +40,11 @@ static const node_access pure = { .flags = NODE_EFFECT_PURE };
         .display_class = NODE_DISPLAY_PURE,                                    \
         .category = "Math/Comparison",                                         \
         .keywords = KEYWORDS,                                                  \
+        .description = DESCRIPTION,                                            \
         .access = &pure,                                                       \
     };
 
-#define INTEGER_COMPARE(NAME, LABEL, OP, KEYWORDS)                               \
+#define INTEGER_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                  \
     static pin_value NAME##_value(const pin_value *inputs, int count, arena *)   \
     {                                                                            \
         assert(count == 2);                                                      \
@@ -63,21 +64,40 @@ static const node_access pure = { .flags = NODE_EFFECT_PURE };
         .display_class = NODE_DISPLAY_PURE,                                      \
         .category = "Math/Comparison",                                           \
         .keywords = KEYWORDS,                                                    \
+        .description = DESCRIPTION,                                              \
         .access = &pure,                                                         \
     };
 
-REAL_COMPARE(Less, "Less", <, "compare less below <")
-INTEGER_COMPARE(Integer_Less, "Integer Less", <, "compare less below integer <")
-REAL_COMPARE(Less_Or_Equal, "Less Or Equal", <=, "compare less equal at most <= ≤")
-INTEGER_COMPARE(Integer_Less_Or_Equal, "Integer Less Or Equal", <=, "compare less equal at most integer <= ≤")
-REAL_COMPARE(Greater, "Greater", >, "compare greater above >")
-INTEGER_COMPARE(Integer_Greater, "Integer Greater", >, "compare greater above integer >")
-REAL_COMPARE(Greater_Or_Equal, "Greater Or Equal", >=, "compare greater equal at least >= ≥")
-INTEGER_COMPARE(Integer_Greater_Or_Equal, "Integer Greater Or Equal", >=, "compare greater equal at least integer >= ≥")
-REAL_COMPARE(Equal, "Equal", ==, "compare equal equality == =")
-INTEGER_COMPARE(Integer_Equal, "Integer Equal", ==, "compare equal equality integer == =")
-REAL_COMPARE(Not_Equal, "Not Equal", !=, "compare not equal inequality != ≠")
-INTEGER_COMPARE(Integer_Not_Equal, "Integer Not Equal", !=, "compare not equal inequality integer != ≠")
+REAL_COMPARE(Less, "Less", <, "compare less below <", "Whether A is less than B, compared as reals.")
+INTEGER_COMPARE(Integer_Less, "Integer Less", <, "compare less below integer <", "Whether A is less than B, compared as 32-bit integers.")
+REAL_COMPARE(Less_Or_Equal, "Less Or Equal", <=, "compare less equal at most <= ≤", "Whether A is less than or equal to B, compared as reals.")
+INTEGER_COMPARE(
+    Integer_Less_Or_Equal,
+    "Integer Less Or Equal",
+    <=,
+    "compare less equal at most integer <= ≤",
+    "Whether A is less than or equal to B, compared as 32-bit integers."
+)
+REAL_COMPARE(Greater, "Greater", >, "compare greater above >", "Whether A is greater than B, compared as reals.")
+INTEGER_COMPARE(Integer_Greater, "Integer Greater", >, "compare greater above integer >", "Whether A is greater than B, compared as 32-bit integers.")
+REAL_COMPARE(Greater_Or_Equal, "Greater Or Equal", >=, "compare greater equal at least >= ≥", "Whether A is greater than or equal to B, compared as reals.")
+INTEGER_COMPARE(
+    Integer_Greater_Or_Equal,
+    "Integer Greater Or Equal",
+    >=,
+    "compare greater equal at least integer >= ≥",
+    "Whether A is greater than or equal to B, compared as 32-bit integers."
+)
+REAL_COMPARE(Equal, "Equal", ==, "compare equal equality == =", "Whether A exactly equals B as reals, with no tolerance; NaN never matches.")
+INTEGER_COMPARE(Integer_Equal, "Integer Equal", ==, "compare equal equality integer == =", "Whether A equals B, compared as 32-bit integers.")
+REAL_COMPARE(Not_Equal, "Not Equal", !=, "compare not equal inequality != ≠", "Whether A differs from B as reals, compared exactly; NaN always differs.")
+INTEGER_COMPARE(
+    Integer_Not_Equal,
+    "Integer Not Equal",
+    !=,
+    "compare not equal inequality integer != ≠",
+    "Whether A differs from B, compared as 32-bit integers."
+)
 
 #undef REAL_COMPARE
 #undef INTEGER_COMPARE
@@ -106,6 +126,7 @@ node_desc NODE_Has_Any_Flags = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Logic/Flags",
     .keywords = "bits mask contains any category",
+    .description = "Whether Value and Flags share at least one set bit.",
     .access = &pure,
 };
 
@@ -145,6 +166,7 @@ node_desc NODE_And = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Logic",
     .keywords = "and &&",
+    .description = "Whether A and B are both true.",
     .access = &pure,
 };
 node_desc NODE_Or = {
@@ -158,6 +180,7 @@ node_desc NODE_Or = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Logic",
     .keywords = "or ||",
+    .description = "Whether A, B or both are true.",
     .access = &pure,
 };
 node_desc NODE_Not = {
@@ -171,5 +194,6 @@ node_desc NODE_Not = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Logic",
     .keywords = "not !",
+    .description = "Whether Value is false.",
     .access = &pure,
 };

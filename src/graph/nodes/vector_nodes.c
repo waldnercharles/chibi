@@ -44,6 +44,8 @@ node_desc NODE_Normalize_Vector_2 = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "normalize direction unit length vector",
+    .description = "Scales Value to length 1, or returns zero when its length "
+                   "is zero or not finite.",
     .access = &pure,
 };
 
@@ -98,6 +100,8 @@ node_desc NODE_Vector_Length = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "length magnitude size speed vector",
+    .description = "Returns the magnitude of Value, its distance from the "
+                   "origin.",
     .access = &pure,
 };
 
@@ -113,6 +117,8 @@ node_desc NODE_Vector_Dot = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "dot product projection facing vector",
+    .description = "Returns A.x * B.x + A.y * B.y, positive when A and B point "
+                   "the same way.",
     .access = &pure,
 };
 
@@ -128,6 +134,7 @@ node_desc NODE_Vector_Distance = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "distance between points range vector",
+    .description = "Returns the straight-line distance between points A and B.",
     .access = &pure,
 };
 
@@ -162,6 +169,8 @@ node_desc NODE_Direction_To = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "direction target origin normalize unit vector",
+    .description = "Returns the unit vector from Origin toward Target, or zero "
+                   "when they coincide.",
     .access = &pure,
 };
 
@@ -190,6 +199,8 @@ node_desc NODE_Direction_From_Angle = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "angle heading radians polar cos sin unit vector",
+    .description = "Returns the unit vector (cos Angle, sin Angle) for Angle "
+                   "in radians.",
     .access = &pure,
 };
 
@@ -260,5 +271,7 @@ node_desc NODE_Random_Range_Vector = {
     .fn = random_range_vector,
     .category = "Math/Random",
     .keywords = "rand random range vector min max sample",
+    .description = "Picks each component at random between Min and Max, which "
+                   "default to 0 and 1.",
     .access = &random_access,
 };

@@ -35,6 +35,8 @@ node_desc NODE_SetMembers = {
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Struct",
     .keywords = "struct set members split reference",
+    .description = "Writes the member inputs it shows into the struct Struct "
+                   "refers to.",
 };
 
 static node_desc *const STRUCT_NODES[] = { &NODE_SetMembers };

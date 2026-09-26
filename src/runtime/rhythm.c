@@ -67,5 +67,7 @@ node_desc NODE_Scene_Rhythm = {
     .lower = game_rhythm_lower,
     .category = "Time",
     .keywords = "beat tempo phase pulse rhythm music",
+    .description = "Reads the scene rhythm clock, 120 BPM without one; Phase "
+                   "runs 0 to 1 per beat and Pulse fades from 1.",
     .access = &access,
 };

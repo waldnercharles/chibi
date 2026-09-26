@@ -951,6 +951,8 @@ node_desc GAME_NODE_Raycast = {
     .category = "Physics",
     .keywords = "ray segment visibility line sight wall occlusion ricochet "
                 "normal",
+    .description = "Casts from Start to End and reports the first collider hit "
+                   "in Categories; sensors count only with Include Sensors.",
     .access = &RAY_ACCESS,
 };
 
@@ -1076,6 +1078,8 @@ node_desc GAME_NODE_GetContactEntities = {
     .read_inputs = contact_entities,
     .category = "Physics",
     .keywords = "contact overlap touching collider entities query categories",
+    .description = "Lists colliding entities in Categories touching Entity "
+                   "right now; empty if Entity is dead or being destroyed.",
     .access = &CONTACT_ACCESS,
 };
 

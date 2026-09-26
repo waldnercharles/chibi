@@ -821,17 +821,21 @@ static const node_access parameter_access = {
     .flags = NODE_EFFECT_PARALLEL | NODE_EFFECT_ENTITY_SCOPED | NODE_EFFECT_HOST_SINK,
     .target_input = 1
 };
-static node_desc parameter_node = { .name = "Set Material Parameter",
-                                    .category = "Rendering/Material",
-                                    .inputs = parameter_inputs,
-                                    .input_count = 4,
-                                    .outputs = parameter_outputs,
-                                    .output_count = 1,
-                                    .flow_kind = NODE_FLOW_CUSTOM,
-                                    .flow = set_parameter,
-                                    .host_call = &parameter_call,
-                                    .display_class = NODE_DISPLAY_FLOW,
-                                    .access = &parameter_access };
+static node_desc parameter_node = {
+    .name = "Set Material Parameter",
+    .category = "Rendering/Material",
+    .description = "Overrides the named Shader Parameter of Entity's material "
+                   "for that entity only; Value must match its type.",
+    .inputs = parameter_inputs,
+    .input_count = 4,
+    .outputs = parameter_outputs,
+    .output_count = 1,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = set_parameter,
+    .host_call = &parameter_call,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &parameter_access
+};
 static node_desc *binding_nodes[] = { &parameter_node };
 const registry_pack SHADER_BINDING_PACK = { .name = "shader binding",
                                             .nodes = binding_nodes,

@@ -267,6 +267,8 @@ typedef struct
      * Both are static display/search data; NULL means uncategorized. */
     const char *category;
     const char *keywords;
+    /* One sentence on what the node does, for hover text and search. */
+    const char *description;
     const char *conversion_from;
     const char *conversion_to;
     const node_access *access;

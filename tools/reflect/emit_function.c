@@ -703,6 +703,9 @@ void emit_exec_node(FILE *out, const fn_info *f)
     if (f->keywords) {
         fprintf(out, "    .keywords = \"%s\",\n", f->keywords);
     }
+    if (f->description) {
+        fprintf(out, "    .description = \"%s\",\n", f->description);
+    }
     fputs("    .display_class = NODE_DISPLAY_FUNCTION,\n};\n\n", out);
 }
 
@@ -758,6 +761,9 @@ void emit_fn_node(FILE *out, const fn_info *f)
     if (f->keywords) {
         fprintf(out, "    .keywords = \"%s\",\n", f->keywords);
     }
+    if (f->description) {
+        fprintf(out, "    .description = \"%s\",\n", f->description);
+    }
     fputs("};\n\n", out);
 }
 
@@ -810,6 +816,9 @@ void emit_read_node(FILE *out, const fn_info *f)
     }
     if (f->keywords) {
         fprintf(out, "    .keywords = \"%s\",\n", f->keywords);
+    }
+    if (f->description) {
+        fprintf(out, "    .description = \"%s\",\n", f->description);
     }
     if (fn_has_access(f)) {
         fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);

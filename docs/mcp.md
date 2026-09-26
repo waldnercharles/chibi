@@ -220,6 +220,9 @@ conversion, then a wildcard), and name the pin to connect as `wire_input` or
 `wire_output`: `{"query": "destroy", "wire_from": "ecs.entity"}` returns
 Destroy Entity with `"wire_input": "Entity"`.
 
+Every result carries a one-sentence `description` of what the node or event
+does, from the node's `description`, the host event table or the event asset.
+
 Pins read `name: type`. Behavior search offers component nodes instead of the
 generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
 `domain: "system"` for System graphs, which use the generated nodes directly and

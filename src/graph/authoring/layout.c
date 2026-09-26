@@ -47,7 +47,6 @@ enum
     LAYOUT_BAND_TICK,
     LAYOUT_BAND_HOST,
     LAYOUT_BAND_CUSTOM,
-    LAYOUT_BAND_END,
     LAYOUT_BAND_OTHER,
 };
 
@@ -62,9 +61,6 @@ int graph_layout_band(const node *n)
     }
     if (graph_host_event_is(name, GRAPH_HOST_EVENT_TICK)) {
         return LAYOUT_BAND_TICK;
-    }
-    if (graph_host_event_is(name, GRAPH_HOST_EVENT_END)) {
-        return LAYOUT_BAND_END;
     }
     return graph_event_host_name(name) ? LAYOUT_BAND_HOST : LAYOUT_BAND_CUSTOM;
 }

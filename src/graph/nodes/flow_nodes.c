@@ -432,11 +432,14 @@ node_desc NODE_Event = {
     .flow_kind = NODE_FLOW_EVENT,
     .flow = flow_event,
     .display_class = NODE_DISPLAY_EVENT,
+    .description = "Starts a flow at Then when its named event is dispatched, "
+                   "outputting the event's parameters.",
 };
 node_desc NODE_Branch = {
     .access = &control_access,
     .name = "Branch",
     .keywords = "if else condition true false",
+    .description = "Fires True when Condition is true, otherwise False.",
     .input_count = 2,
     .output_count = 2,
     .inputs = branch_inputs,
@@ -449,6 +452,8 @@ node_desc NODE_Sequence = {
     .access = &control_access,
     .name = "Sequence",
     .keywords = "then order steps",
+    .description = "Fires Then0, Then1 and any added outputs in order, "
+                   "finishing each chain before the next starts.",
     .input_count = 1,
     .output_count = 2,
     .inputs = sequence_inputs,
@@ -460,6 +465,9 @@ node_desc NODE_Sequence = {
 node_desc NODE_ForLoop = {
     .name = "ForLoop",
     .keywords = "repeat times count index",
+    .description = "Fires Body for each Index from FirstIndex through "
+                   "LastIndex, counting down if LastIndex is lower, then "
+                   "Completed.",
     .input_count = 3,
     .output_count = 3,
     .inputs = for_inputs,
@@ -479,10 +487,15 @@ node_desc NODE_ForLoopWithBreak = {
     .flow_kind = NODE_FLOW_FOR_LOOP,
     .flow = flow_for_loop_break,
     .display_class = NODE_DISPLAY_FLOW,
+    .description = "Fires Body for each Index from FirstIndex through "
+                   "LastIndex, then Completed; Break stops before the next "
+                   "pass.",
 };
 node_desc NODE_WhileLoop = {
     .name = "WhileLoop",
     .keywords = "repeat until condition",
+    .description = "Fires Body while Condition is true, checking it before "
+                   "each pass, then fires Completed.",
     .input_count = 2,
     .output_count = 2,
     .inputs = while_inputs,
@@ -494,6 +507,8 @@ node_desc NODE_WhileLoop = {
 node_desc NODE_ForEach = {
     .name = "ForEach",
     .keywords = "each iterate array items",
+    .description = "Fires Body for each Array Element with its zero-based "
+                   "Index, then Completed; iterates a copy of Array.",
     .input_count = 2,
     .output_count = 4,
     .inputs = foreach_inputs,
@@ -511,6 +526,8 @@ node_desc NODE_ForEachWithBreak = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_for_each,
     .display_class = NODE_DISPLAY_FLOW,
+    .description = "Fires Body for each Array Element and zero-based Index, "
+                   "then Completed; Break stops before the next pass.",
 };
 node_desc NODE_Break = {
     .name = "Break",
@@ -520,11 +537,15 @@ node_desc NODE_Break = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_break,
     .display_class = NODE_DISPLAY_FLOW,
+    .description = "Stops the innermost running loop before its next pass, "
+                   "which then fires Completed.",
 };
 /* Temporary proof node: this validates yielding and host-time resume. */
 node_desc NODE_Delay = {
     .name = "Delay",
     .keywords = "wait timer seconds after later",
+    .description = "Waits Duration seconds, then fires Completed; a Duration "
+                   "of zero or less continues at once.",
     .input_count = 2,
     .output_count = 1,
     .inputs = delay_inputs,
@@ -538,6 +559,7 @@ static const node_access print_access = { .flags = NODE_EFFECT_HOST_SINK };
 node_desc NODE_PrintString = {
     .name = "Print String",
     .keywords = "log debug message",
+    .description = "Writes InString to the behavior log, then fires Then.",
     .input_count = 2,
     .output_count = 1,
     .inputs = print_text_inputs,
@@ -555,6 +577,7 @@ node_desc NODE_GetVariable = {
     .outputs = get_variable_outputs,
     .pure_kind = NODE_PURE_GET,
     .display_class = NODE_DISPLAY_VARIABLE,
+    .description = "Returns the current value of a behavior variable.",
 };
 node_desc NODE_SetVariable = {
     .name = "Set Variable",
@@ -565,10 +588,13 @@ node_desc NODE_SetVariable = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_set_variable,
     .display_class = NODE_DISPLAY_VARIABLE,
+    .description = "Stores Value in a behavior variable, outputs the stored "
+                   "Value, then fires Then.",
 };
 node_desc NODE_Self = {
     .name = "Self",
     .keywords = "owner this entity",
+    .description = "Returns the entity that owns the running behavior.",
     .input_count = 0,
     .output_count = 1,
     .inputs = NULL,
@@ -585,6 +611,9 @@ node_desc NODE_FunctionEntry = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_function_entry,
     .display_class = NODE_DISPLAY_EVENT,
+    .description = "Starts a function or macro graph with the caller's "
+                   "arguments; a macro enters at the exec matching the call's "
+                   "input.",
 };
 node_desc NODE_Return = {
     .access = &control_access,
@@ -595,6 +624,8 @@ node_desc NODE_Return = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_function_return,
     .display_class = NODE_DISPLAY_EVENT,
+    .description = "Ends the function or macro graph, passing its inputs back "
+                   "as results; a macro leaves by the matching call output.",
 };
 node_desc NODE_CallFunction = {
     .access = &control_access,
@@ -606,6 +637,8 @@ node_desc NODE_CallFunction = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_call_function,
     .display_class = NODE_DISPLAY_FUNCTION,
+    .description = "Runs a function graph with these inputs as arguments, then "
+                   "fires Then with its results once it returns.",
 };
 node_desc NODE_CallPureFunction = {
     .access = &control_access,
@@ -614,6 +647,8 @@ node_desc NODE_CallPureFunction = {
     .output_count = 0,
     .pure_kind = NODE_PURE_FUNCTION,
     .display_class = NODE_DISPLAY_FUNCTION,
+    .description = "Evaluates a pure function graph whenever its outputs are "
+                   "read.",
 };
 node_desc NODE_BehaviorExpression = {
     .access = &control_access,
@@ -625,6 +660,8 @@ node_desc NODE_BehaviorExpression = {
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Math",
     .keywords = "behavior expression formula assignment condition branch",
+    .description = "Evaluates a formula as a value, an action run on Exec, or "
+                   "a branch that fires True or False from Result.",
 };
 node_desc NODE_CallMacro = {
     .access = &control_access,
@@ -636,6 +673,8 @@ node_desc NODE_CallMacro = {
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_call_macro,
     .display_class = NODE_DISPLAY_FUNCTION,
+    .description = "Runs a macro graph from the entry matching the triggered "
+                   "input and continues at the output its Return picks.",
 };
 
 static node_desc *const FLOW_NODES[] = {

@@ -33,6 +33,8 @@
 #define NODE_CATEGORY(NAME) __attribute__((annotate("node:category:" NAME)))
 #define NODE_KEYWORDS(KEYWORDS)                                                \
     __attribute__((annotate("node:keywords:" KEYWORDS)))
+#define NODE_DESCRIPTION(TEXT)                                                 \
+    __attribute__((annotate("node:description:" TEXT)))
 #define NODE_PIN_NAME(NAME) __attribute__((annotate("node:pin-name:" NAME)))
 #define NODE_SERVICE(T) __attribute__((annotate("node:service:" #T)))
 /* Nominal graph handle stored in a uint64_t component field. */

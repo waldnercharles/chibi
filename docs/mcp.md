@@ -585,6 +585,12 @@ RCSS comes before the host's, so the host can restyle it; its `data-event`s
 reach the host's entity, and `#hull .fill` selects inside one instance.
 Editing a widget reloads every document that uses it.
 
+A project's `content/ui/Theme.rcss` styles all of its UI: unscoped, before
+each asset's RCSS, so it holds tokens (`--fg`, `--accent`) and shared control
+classes that widgets use. The Studio project's theme is the editor's own, so
+its panels look the same in the editor, in the Scene and in a prototype
+preview. Prototype previews show a `GameUi` even while it is hidden.
+
 Each asset's RCSS applies only inside it: rules are scoped to the element
 showing the asset (`data-ui="<name>"`), and `body` in a selector names that
 element, so `body.paused #title` styles a state class set on it. Game UI lets

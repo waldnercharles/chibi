@@ -28,12 +28,12 @@ def projects(workspace):
 
 
 def workspace_files(workspace):
-    """Each project's manifest and content assets, by path relative to the workspace."""
+    """Each project's manifest, content assets and theme, by path relative to the workspace."""
     files = {}
     for project in projects(workspace):
         files[str((project / 'project.yaml').relative_to(workspace))] = project / 'project.yaml'
         content = content_directory(project)
-        for path in content.rglob('*.yaml'):
+        for path in [*content.rglob('*.yaml'), *content.rglob('*.rcss')]:
             if path.resolve().is_relative_to(content):
                 files[str(path.relative_to(workspace))] = path
     return files

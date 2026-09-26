@@ -8,6 +8,7 @@
 #include "editor/workspace/asset_index.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
+#include "render/ui.h"
 #include "runtime/save.h"
 #include "support/file_watch.h"
 #include "ui/rml_backend.h"
@@ -351,6 +352,9 @@ typedef struct
     file_watch watch;
 } studio_presentation;
 
+/* The editor's own UI project: its panels, widgets and theme. */
+#define STUDIO_PROJECT CHIBI_WORKSPACE_DIR "/projects/studio"
+
 /* The editor's authored UI world (studio_ui.c). */
 typedef struct studio_ui studio_ui;
 
@@ -380,7 +384,8 @@ struct studio
     int discard_project; /* the project that toast opens */
     rml_backend *backend;
     kit *kit;
-    studio_ui *ui; /* NULL when the Studio project could not load */
+    studio_ui *ui;  /* NULL when the Studio project could not load */
+    ui_theme theme; /* the Studio project's, which every Studio document uses */
     kit_frame_input in;
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;

@@ -329,9 +329,11 @@ struct kit
     rml_context *context;
     rml_element *doc;
     rml_listener *listener;
-    file_watch *styles; /* the resource stylesheets the document reloads */
+    file_watch *styles; /* the resource stylesheets; an edit restyles */
+    char *sheet;        /* the document's own stylesheet, beside its markup */
+    char *theme;        /* kit_theme's RCSS, before the document's own */
     pair *extra_styles; /* kit_style's RCSS, added after the stylesheets */
-    bool restyle;       /* the extra styles changed */
+    bool restyle;       /* the theme or the extra styles changed */
     node **roots;       /* owned: the layer, then kit_root elements */
     CF_MAP(node *) by_element; /* keyed by the element pointer */
     CF_MAP(node *) by_path;    /* keyed by str_hash(path) */

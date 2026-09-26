@@ -2,6 +2,8 @@
    graph styles. This document lives in its own context whose dp ratio is the
    zoom, so every length here is in graph units and scales with the view. */
 
+body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; overflow: hidden; }
+
 body.graph-canvas {
     background-color: var(--canvas);
     /* Node categories. */

@@ -1,4 +1,4 @@
-/* RmlUi binding calls that load documents from text and reload their styles. */
+/* RmlUi binding calls that load documents from text and replace their styles. */
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -6,15 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
-static void write_file(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(text, file);
-    fclose(file);
-}
 
 static bool red(rml_element *element)
 {
@@ -43,40 +34,29 @@ static bool loads_from_memory(rml_context *context)
     return ok;
 }
 
-static bool reloads_style_sheet(rml_context *context)
+/* A later sheet wins over an earlier one; an empty sheet changes nothing. */
+static bool replaces_style_sheet(rml_context *context)
 {
-    char root[] = "/tmp/chibi-rml-reload-XXXXXX";
-    assert(mkdtemp(root));
-    char rml[256], rcss[256];
-    snprintf(rml, sizeof rml, "%s/doc.rml", root);
-    snprintf(rcss, sizeof rcss, "%s/doc.rcss", root);
-    write_file(rcss, "#a { color: #ff0000; }\n");
-    write_file(
-        rml,
-        "<rml><head><link type=\"text/rcss\" href=\"doc.rcss\"/></head>"
-        "<body><div id=\"a\"/></body></rml>"
+    rml_element *doc = rml_context_load_document_from_memory(
+        context,
+        "<rml><head/><body><div id=\"a\"/></body></rml>",
+        "[memory]"
     );
-    rml_element *doc = rml_context_load_document(context, rml);
     assert(doc);
-    rml_context_update(context);
     rml_element *a = rml_element_by_id(doc, "a");
-    bool before = red(a);
-    write_file(rcss, "#a { color: #00ff00; }\n");
-    rml_document_reload_style_sheet(doc);
+    bool set = rml_document_set_style_sheet(doc, "#a { color: #ff0000; }\n#a { color: #00ff00; }\n");
+    bool empty = rml_document_set_style_sheet(doc, "");
     rml_context_update(context);
-    rml_color after = rml_element_color(a);
+    rml_color c = rml_element_color(a);
     rml_document_close(doc);
-    unlink(rcss);
-    unlink(rml);
-    rmdir(root);
-    return before && after.r == 0 && after.g == 255 && after.b == 0;
+    return set && !empty && c.r == 0 && c.g == 255 && c.b == 0;
 }
 
 bool test_rmlui_binding()
 {
     rml_backend *backend = rml_backend_create(320, 240, 1);
     rml_context *context = rml_backend_context(backend);
-    bool ok = loads_from_memory(context) && reloads_style_sheet(context);
+    bool ok = loads_from_memory(context) && replaces_style_sheet(context);
     rml_backend_destroy(backend);
     return ok;
 }

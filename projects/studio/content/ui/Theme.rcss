@@ -1,8 +1,10 @@
-/* Studio kit, ported from docs/prototypes/studio/kit.css. Differences from the web
-   source: dp units, seconds for durations, named tweens, body instead of :root,
-   borders without a style keyword, and no outline. RmlUi does not lay out text
-   placed directly in a flex container, so text-bearing parts are blocks with an
-   explicit line height. */
+/* Studio's theme: the tokens and control styles every Studio document and
+   Studio project UI shares, ported from docs/prototypes/studio/kit.css.
+   Differences from the web source: dp units, seconds for durations, named
+   tweens, body instead of :root, borders without a style keyword, and no
+   outline. RmlUi does not lay out text placed directly in a flex container, so
+   text-bearing parts are blocks with an explicit line height. Documents size
+   and paint their own body. */
 
 * { box-sizing: border-box; }
 div, section, header, nav, main, footer, p { display: block; }
@@ -87,16 +89,10 @@ body {
     --r: 4dp;
     --r-lg: 6dp;
 
-    width: 100%;
-    height: 100%;
-    margin: 0dp;
-    padding: 0dp;
     font-family: Inter;
     font-size: 12dp;
     line-height: 16dp;
     color: var(--fg);
-    background-color: var(--app);
-    overflow: hidden;
 }
 /* Light theme: the same roles on a zinc scale. The viewport keeps its dark canvas. */
 body.light {

@@ -445,6 +445,7 @@ static bool ensure_canvas(studio *s)
         return false;
     }
     g->kit = kit_create(rml_backend_context(g->backend), "graph.rml");
+    kit_theme(g->kit, s->theme.rcss);
     g->in.mouse_x = g->in.mouse_y = -1e9f;
     if (g->zoom <= 0) {
         g->zoom = 1;

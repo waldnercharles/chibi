@@ -1,5 +1,6 @@
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
+#include "test/suite_internal.h"
 #include "ui/rml_backend.h"
 
 #include <assert.h>
@@ -67,7 +68,7 @@ int rmlui_render_run(const char *program)
     int width = cf_app_get_width(), height = cf_app_get_height();
     rml_backend *backend = rml_backend_create(width, height, cf_app_get_pixel_scale());
     assert(backend);
-    kit *k = kit_create(rml_backend_context(backend), "studio.rml");
+    kit *k = test_kit_create(rml_backend_context(backend), "studio.rml");
     assert(k);
     kit_frame_input in = { .dp_ratio = cf_app_get_pixel_scale(),
                            .width = (float)width,

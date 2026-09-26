@@ -12,16 +12,17 @@ extern "C"
 
     /* Immediate-mode calls reconciled onto a retained RmlUi document.
      *
-     * Each frame the editor emits its UI with keyed calls. Elements are created on
-     * first use, updated when their properties change and removed when a frame no
-     * longer emits them. Interaction results recorded during input processing are
-     * returned by the next call with the same key, so widgets read like ImGui:
-     * `if (kit_button(...))`, `kit_number(...)` returns true on change, and
-     * kit_item_* queries describe the last emitted item.
+     * Each frame the editor emits its UI with keyed calls. Elements are created
+     * on first use, updated when their properties change and removed when a
+     * frame no longer emits them. Interaction results recorded during input
+     * processing are returned by the next call with the same key, so widgets
+     * read like ImGui: `if (kit_button(...))`, `kit_number(...)` returns true
+     * on change, and kit_item_* queries describe the last emitted item.
      *
      * Keys are unique among siblings. Paths join ancestor keys with '/' and name
-     * items for tests and inspection. Styling lives in kit.rcss; behavior follows
-     * the Base UI contracts in docs/prototypes/studio/kit.html. */
+     * items for tests and inspection. Styling lives in the Studio project's
+     * theme (projects/studio/content/ui/Theme.rcss); behavior follows the Base
+     * UI contracts in docs/prototypes/studio/kit.html. */
 
     typedef struct kit kit;
 
@@ -51,6 +52,9 @@ extern "C"
     /* Borrowed Rml::Context*; the document stays loaded until kit_destroy. */
     kit *kit_create(void *context, const char *document_path);
     void kit_destroy(kit *k);
+    /* RCSS that precedes the document's own stylesheet: the tokens and control
+       styles of a project's theme (its ui/Theme.rcss). */
+    void kit_theme(kit *k, const char *rcss);
 
     /* Host pointer state for the frame, in logical pixels. */
     typedef struct kit_frame_input

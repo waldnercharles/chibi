@@ -1,8 +1,6 @@
 <rml>
 <head>
     <title>Chibi Graph Canvas</title>
-    <link type="text/rcss" href="kit.rcss" />
-    <link type="text/rcss" href="graph.rcss" />
 </head>
 <body class="graph-canvas">
     <div id="back"></div>

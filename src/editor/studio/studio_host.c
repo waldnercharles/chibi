@@ -14,7 +14,7 @@
 #include <string.h>
 
 /* SDL keys forwarded to RmlUi; values are RmlUi 6.3 key identifiers. */
-static rml_input_key rml_key(SDL_Keycode key)
+static rml_input_key input_key(SDL_Keycode key)
 {
     if (key >= SDLK_A && key <= SDLK_Z) {
         return (rml_input_key)(RML_INPUT_KEY_A + (int)(key - SDLK_A));
@@ -180,7 +180,7 @@ static void forward_input(studio *s)
             case SDL_EVENT_KEY_UP:
                 input.type = e->type == SDL_EVENT_KEY_DOWN ? RML_INPUT_KEY_PRESS
                                                            : RML_INPUT_KEY_RELEASE;
-                input.key = rml_key(e->key.key);
+                input.key = input_key(e->key.key);
                 s->mods = e->key.mod;
                 input.modifiers = rml_key_modifiers(s, e->key.mod);
                 if (e->type == SDL_EVENT_KEY_DOWN) {
@@ -355,6 +355,19 @@ static void apply_prefs(studio *s, bool initial)
     }
 }
 
+/* The editor looks the way its own UI project's theme says; an edit to it
+ * restyles every Studio document. */
+static void sync_theme(studio *s)
+{
+    if (!ui_theme_sync(&s->theme, STUDIO_PROJECT "/content", s->time)) {
+        return;
+    }
+    kit_theme(s->kit, s->theme.rcss);
+    if (s->graph.kit) {
+        kit_theme(s->graph.kit, s->theme.rcss);
+    }
+}
+
 studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const char *project_root)
 {
     studio *s = xcalloc(1, sizeof *s);
@@ -365,9 +378,10 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     assert(s->backend);
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
+    sync_theme(s);
     s->prefs = studio_prefs_load();
     char error[256];
-    s->ui = studio_ui_new(CHIBI_WORKSPACE_DIR "/projects/studio", error, sizeof error);
+    s->ui = studio_ui_new(STUDIO_PROJECT, error, sizeof error);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);
     }
@@ -418,6 +432,7 @@ void studio_free(studio *s)
     component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
     studio_ui_free(s->ui);
+    ui_theme_free(&s->theme);
     rml_backend_destroy(s->backend);
     free(s);
 }
@@ -435,6 +450,7 @@ void studio_frame(studio *s, double delta_seconds)
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
+    sync_theme(s);
     studio_ui_frame(s);
     studio_debug_frame(s);
     kit_begin(s->kit, &s->in);

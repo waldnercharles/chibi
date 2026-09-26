@@ -23,6 +23,17 @@ typedef struct
     rml_element *host;
 } host_fixture;
 
+/* A kit styled with the Studio project's theme, as the editor styles its own. */
+kit *test_kit_create(void *context, const char *document)
+{
+    kit *k = kit_create(context, document);
+    ui_theme theme = { 0 };
+    assert(ui_theme_sync(&theme, "projects/studio/content", 0) && theme.rcss);
+    kit_theme(k, theme.rcss);
+    ui_theme_free(&theme);
+    return k;
+}
+
 static void on_event(void *user, const rml_event *event)
 {
     ui_mount_listen(user, event);
@@ -118,7 +129,7 @@ static void popup_navigation(const char *root)
     fclose(file);
     host_fixture f = { .host_key = "menu-host" };
     f.backend = rml_backend_create(640, 480, 1);
-    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
+    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
     f.mount = ui_mount_new(root, "Menu");
     f.listener = rml_listener_create(on_event, f.mount);
@@ -176,7 +187,7 @@ static void option_groups(const char *root)
     fclose(file);
     host_fixture f = { .host_key = "groups" };
     f.backend = rml_backend_create(640, 480, 1);
-    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
+    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
     f.mount = ui_mount_new(root, "Groups");
     f.listener = rml_listener_create(on_event, f.mount);
@@ -218,7 +229,7 @@ void test_kit_host()
 
     host_fixture f = { .host_key = "panel" };
     f.backend = rml_backend_create(640, 480, 1);
-    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
+    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
     f.mount = ui_mount_new(root, "Panel");
     f.listener = rml_listener_create(on_event, f.mount);

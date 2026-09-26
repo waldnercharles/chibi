@@ -1,6 +1,5 @@
 #include "assets/call_hierarchy.h"
 
-#include "graph/document/events.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -51,10 +50,9 @@ static call_item function_item(const reference_index *index, int asset, uint64_t
 
 static call_item event_item(const reference_index *index, const char *name)
 {
-    int asset = graph_event_host_name(name)
-                  ? -1
-                  : reference_index_find_name(index, REFERENCE_ASSET_EVENT, name);
-    return (call_item){ .kind = CALL_EVENT, .asset = asset, .name = name };
+    return (call_item){ .kind = CALL_EVENT,
+                        .asset = reference_index_event_asset(index, name),
+                        .name = name };
 }
 
 static call_item handler_item(const reference *handle)
@@ -186,9 +184,10 @@ static bool repeats(const call_item *items, int parent, const call_item *item)
     return false;
 }
 
-static void free_sites(call_item *items)
+/* Frees the sites of items from `first` on. */
+static void free_sites(call_item *items, int first)
 {
-    for (int i = 0; i < acount(items); i++) {
+    for (int i = first; i < acount(items); i++) {
         afree(items[i].sites);
     }
 }
@@ -213,23 +212,20 @@ call_item *call_hierarchy(const reference_index *index, reference_symbol root, b
         } else {
             callers(index, &items[at], &children);
         }
-        bool room = items[at].depth < depth &&
-                    acount(items) + acount(children) <= CALL_HIERARCHY_ITEMS;
-        if (!room) {
-            items[at].more = acount(children) > 0;
-            free_sites(children);
-            asetlen(children, 0);
-            continue;
-        }
+        /* Children past the depth or the item limit are left out. */
+        int room = items[at].depth < depth ? CALL_HIERARCHY_ITEMS - acount(items) : 0;
+        int kept = acount(children) < room ? acount(children) : room;
+        items[at].more = kept < acount(children);
         items[at].first = acount(items);
-        items[at].count = acount(children);
-        for (int i = 0; i < acount(children); i++) {
+        items[at].count = kept;
+        for (int i = 0; i < kept; i++) {
             call_item child = children[i];
             child.parent = at;
             child.depth = items[at].depth + 1;
             child.cycle = repeats(items, at, &child);
             apush(items, child);
         }
+        free_sites(children, kept);
         asetlen(children, 0);
     }
     afree(children);
@@ -238,6 +234,6 @@ call_item *call_hierarchy(const reference_index *index, reference_symbol root, b
 
 void call_hierarchy_free(call_item *items)
 {
-    free_sites(items);
+    free_sites(items, 0);
     afree(items);
 }

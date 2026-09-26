@@ -2,8 +2,10 @@
  * project: an event definition, a behavior that sends and handles it, calls
  * its functions and reads its variable through a local, and a ui document
  * that sends the event too. */
+#include "assets/call_hierarchy.h"
 #include "assets/project.h"
 #include "automation/controller.h"
+#include "automation/navigation.h"
 #include "suite_internal.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -328,11 +330,16 @@ static void hierarchy(project *p)
 }
 
 /* inspectGraph counts each function's calls and each variable's reads and
- * writes across the project. */
+ * writes across the project when asked to; counting reads every asset. */
 static void use_counts(project *p)
 {
     yyjson_val *r = result_of(
         ask(p, "inspect_graph", "\"kind\":\"behavior\",\"name\":\"Target\",\"include_pins\":false")
+    );
+    bool uncounted = !yyjson_obj_get(r, "uses") &&
+                     !yyjson_obj_get(item(yyjson_obj_get(r, "graphs"), "name", "Take"), "uses");
+    r = result_of(
+        ask(p, "inspect_graph", "\"kind\":\"behavior\",\"name\":\"Target\",\"include_pins\":false,\"include_uses\":true")
     );
     yyjson_val *take = yyjson_obj_get(item(yyjson_obj_get(r, "graphs"), "name", "Take"), "uses");
     yyjson_val *hp = yyjson_obj_get(item(yyjson_obj_get(r, "variables"), "name", "hp"), "uses");
@@ -340,14 +347,59 @@ static void use_counts(project *p)
                    yyjson_get_int(yyjson_obj_get(hp, "read")) == 1 &&
                    yyjson_get_int(yyjson_obj_get(hp, "write")) == 1;
     r = result_of(
-        ask(p, "inspect_graph", "\"kind\":\"event\",\"name\":\"Hit\",\"include_pins\":false")
+        ask(p, "inspect_graph", "\"kind\":\"event\",\"name\":\"Hit\",\"include_pins\":false,\"include_uses\":true")
     );
     yyjson_val *event = yyjson_obj_get(r, "uses");
     test_check(
-        members && yyjson_get_int(yyjson_obj_get(event, "send")) == 2 &&
+        uncounted && members && yyjson_get_int(yyjson_obj_get(event, "send")) == 2 &&
             yyjson_get_int(yyjson_obj_get(event, "handle")) == 1,
-        "inspectGraph counts uses of an asset's functions, variables and event"
+        "inspectGraph counts uses of an asset's functions, variables and event "
+        "with include_uses"
     );
+}
+
+/* A function more callers call than a tree holds lists as many as fit, and
+ * its root says more were left out. */
+static void wide_hierarchy()
+{
+    enum
+    {
+        CALLERS = CALL_HIERARCHY_ITEMS + 76,
+    };
+    behavior_asset *asset = behavior_asset_new("Wide");
+    graph *target = behavior_asset_add_function(asset, "Target", false);
+    for (int i = 0; i < CALLERS; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "Caller %d", i);
+        graph *caller = behavior_asset_add_function(asset, name, false);
+        assert(behavior_asset_add_function_call_node_to_graph(asset, caller, target));
+    }
+    reference_index *index = reference_index_new();
+    int wide = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Wide", "content/behaviors/Wide.yaml", NULL);
+    reference_index_add_graphs(index, wide, asset);
+    navigation_asset names[] = { { "behavior", "Wide", "content/behaviors/Wide.yaml" } };
+    assert(reference_index_asset_count(index) == 1);
+    navigation nav = { index, names };
+    const char
+        *request = "{\"asset\":{\"kind\":\"behavior\",\"name\":\"Wide\"},"
+                   "\"graph\":\"Target\",\"direction\":\"incoming\"}";
+    yyjson_doc *doc = yyjson_read(request, strlen(request), 0);
+    yyjson_mut_doc *out = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *result = yyjson_mut_obj(out);
+    char error[256];
+    int status = automation_call_hierarchy(&nav, yyjson_doc_get_root(doc), out, result, error, sizeof error);
+    yyjson_mut_val *root = yyjson_mut_obj_get(result, "root");
+    test_check(
+        status == CHIBI_AUTOMATION_OK &&
+            yyjson_mut_get_bool(yyjson_mut_obj_get(root, "more")) &&
+            yyjson_mut_arr_size(yyjson_mut_obj_get(root, "callers")) ==
+                CALL_HIERARCHY_ITEMS - 1,
+        "callHierarchy lists the callers that fit and marks the root with more"
+    );
+    yyjson_mut_doc_free(out);
+    yyjson_doc_free(doc);
+    reference_index_free(index);
+    behavior_asset_free(asset);
 }
 
 void test_automation_navigation()
@@ -358,4 +410,5 @@ void test_automation_navigation()
     hierarchy(&p);
     use_counts(&p);
     project_free(&p);
+    wide_hierarchy();
 }

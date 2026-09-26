@@ -249,13 +249,6 @@ static int select_component(yyjson_val *request, reference_symbol *out, char *er
     return CHIBI_AUTOMATION_OK;
 }
 
-static int event_asset(const navigation *nav, const char *name)
-{
-    return graph_event_host_name(name)
-             ? -1
-             : reference_index_find_name(nav->index, REFERENCE_ASSET_EVENT, name);
-}
-
 static int select_symbol(
     const navigation *nav,
     yyjson_val *request,
@@ -276,7 +269,7 @@ static int select_symbol(
     }
     if (event) {
         *out = (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT,
-                                   .asset = event_asset(nav, event),
+                                   .asset = reference_index_event_asset(nav->index, event),
                                    .name = event };
         return CHIBI_AUTOMATION_OK;
     }
@@ -621,6 +614,7 @@ int automation_call_hierarchy(
     yyjson_mut_obj_add_int(doc, result, "depth", depth);
     yyjson_mut_val *root = yyjson_mut_obj_add_obj(doc, result, "root");
     static const char *const CHILDREN[2] = { "callers", "callees" };
+    bool more = false;
     for (int callees = 0; callees < 2; callees++) {
         if (!directions[callees]) {
             continue;
@@ -633,7 +627,12 @@ int automation_call_hierarchy(
         for (int i = 0; i < items[0].count; i++) {
             add_item(nav, doc, yyjson_mut_arr_add_obj(doc, list), items, items[0].first + i, CHILDREN[callees]);
         }
+        more |= items[0].more;
         call_hierarchy_free(items);
+    }
+    /* The root's own list was cut at the item limit. */
+    if (more) {
+        yyjson_mut_obj_add_bool(doc, root, "more", true);
     }
     return CHIBI_AUTOMATION_OK;
 }

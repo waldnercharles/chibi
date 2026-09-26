@@ -251,6 +251,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "graph_name", "string", false, "Select one graph by its authored name." },
     { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
     { "include_pins", "boolean", false, "List each node's pins as \"name: type\" with resolved wildcard types; defaults to true." },
+    { "include_uses", "boolean", false, "Count project-wide uses by role of the asset, its functions and macros, and a behavior's variables; defaults to false." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -1555,8 +1556,9 @@ static void catalog_add_content(reference_index *index, const catalog_asset *ass
     }
 }
 
-/* Each asset's dependencies and dependents: the assets its references use. */
-static void catalog_link_references(catalog_asset *assets, const reference_index *index)
+/* The catalog asset at each reference index position, or -1 for an asset
+ * only named. The caller frees it. */
+static int *catalog_positions(const catalog_asset *assets, const reference_index *index)
 {
     int *catalog = xmalloc(((size_t)reference_index_asset_count(index) + 1) * sizeof *catalog);
     for (int i = 0; i < reference_index_asset_count(index); i++) {
@@ -1567,6 +1569,13 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
             catalog[assets[i].reference] = i;
         }
     }
+    return catalog;
+}
+
+/* Each asset's dependencies and dependents: the assets its references use. */
+static void catalog_link_references(catalog_asset *assets, const reference_index *index)
+{
+    int *catalog = catalog_positions(assets, index);
     for (int i = 0; i < reference_index_count(index); i++) {
         const reference *r = reference_index_at(index, i);
         int target = reference_dependency(r);
@@ -2618,26 +2627,24 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     return 0;
 }
 
-/* The catalog's names for the reference index's assets. */
+/* The catalog's names for the reference index's assets; an asset only named
+ * takes its kind's family and no path. */
 static navigation_asset *navigation_assets(const catalog_asset *assets, const reference_index *index)
 {
     int count = reference_index_asset_count(index);
+    int *catalog = catalog_positions(assets, index);
     navigation_asset *named = xcalloc((size_t)count + 1, sizeof *named);
     for (int i = 0; i < count; i++) {
         const reference_asset *asset = reference_index_asset_at(index, i);
-        named[i] = (navigation_asset){ family_by_reference(asset->kind)->kind,
-                                       asset->name,
-                                       NULL };
+        const catalog_asset *found = catalog[i] >= 0 ? &assets[catalog[i]] : NULL;
+        named[i] = found ? (navigation_asset){ found->asset.family->kind,
+                                               found->name,
+                                               found->asset.relative }
+                         : (navigation_asset){ family_by_reference(asset->kind)->kind,
+                                               asset->name,
+                                               NULL };
     }
-    for (int i = 0; i < acount(assets); i++) {
-        if (assets[i].reference >= 0) {
-            named[assets[i].reference] = (navigation_asset){
-                assets[i].asset.family->kind,
-                assets[i].name,
-                assets[i].asset.relative
-            };
-        }
-    }
+    free(catalog);
     return named;
 }
 
@@ -3057,6 +3064,11 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     bool include_pins = !pins_value || yyjson_get_bool(pins_value);
+    yyjson_val *uses_value = yyjson_obj_get(request, "include_uses");
+    if (uses_value && !yyjson_is_bool(uses_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_uses must be a boolean");
+        return -1;
+    }
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
@@ -3164,7 +3176,10 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         yyjson_mut_obj_add_int(result->doc, summary, "node_count", acount(source->nodes));
         yyjson_mut_obj_add_int(result->doc, summary, "edge_count", acount(source->edges));
     }
-    add_graph_use_counts(root, &ref, result->doc, value);
+    /* Counting reads the whole project, so it is asked for. */
+    if (uses_value && yyjson_get_bool(uses_value)) {
+        add_graph_use_counts(root, &ref, result->doc, value);
+    }
     if (selected >= 0) {
         yyjson_mut_obj_add_val(
             result->doc,

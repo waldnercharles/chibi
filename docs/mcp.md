@@ -128,7 +128,7 @@ saving them. Tool results include complete `structuredContent` and
 - `previewScene`: render a prototype or scene with its authored presentation.
 - `searchAssets`: find catalog entries by kind, name, path, or description.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
-- `inspectGraph`: inspect graph content, diagnostics, and the current content hash; the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role.
+- `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
@@ -203,8 +203,10 @@ field. Pass `graph_id` and the asset to `inspectGraph` to read around a node:
 - `graph`: the part of an event graph no handler runs.
 
 `sites` lists the node IDs of the calls or sends joining an item to its
-parent, `cycle` marks an item that repeats an ancestor (it is not expanded),
-and `more` one with children beyond the depth.
+parent, and `cycle` marks an item that repeats an ancestor (it is not
+expanded). `more` marks an item, the root included, with children left out:
+past the depth, or past the tree's limit of 1,024 items. Trace again from
+that item, or with a greater depth, to list them.
 
 ## Check adapter distribution
 

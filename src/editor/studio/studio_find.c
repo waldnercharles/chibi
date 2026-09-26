@@ -72,8 +72,7 @@ int studio_document_asset(const studio *s)
     return reference_index_find_name(index, kind, scene->graph_document_id);
 }
 
-/* The index position of the open graph document, fresh with its edits. */
-static int document_asset(studio *s)
+int studio_refresh_document_asset(studio *s)
 {
     app_scene_authoring_refresh_asset_index(s->scene);
     return studio_document_asset(s);
@@ -87,7 +86,7 @@ static reference_symbol asset_symbol(int asset)
 /* A target the index lacks lists no references rather than nothing at all. */
 void studio_find_document_references(studio *s)
 {
-    studio_find_references(s, s->scene->graph_document_id, asset_symbol(document_asset(s)));
+    studio_find_references(s, s->scene->graph_document_id, asset_symbol(studio_refresh_document_asset(s)));
 }
 
 void studio_find_asset_references(studio *s, int asset)
@@ -102,7 +101,7 @@ void studio_find_asset_references(studio *s, int asset)
 
 void studio_find_graph_references(studio *s, const graph *gr)
 {
-    int asset = document_asset(s);
+    int asset = studio_refresh_document_asset(s);
     studio_find_references(
         s,
         gr->name,
@@ -114,7 +113,7 @@ void studio_find_variable_references(studio *s, uint64_t variable_id)
 {
     const behavior_variable
         *v = behavior_asset_find_variable_by_id(sg_graph_editor(s)->asset, variable_id);
-    int asset = document_asset(s);
+    int asset = studio_refresh_document_asset(s);
     studio_find_references(
         s,
         v ? v->name : "Variable",
@@ -178,7 +177,7 @@ bool studio_node_traceable(const node *n)
    component it accesses. */
 reference_symbol studio_node_symbol(studio *s, const node *n, const char **title)
 {
-    int document = document_asset(s);
+    int document = studio_refresh_document_asset(s);
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
     *title = n->reference_name;
     reference_symbol symbol = asset_symbol(-1);

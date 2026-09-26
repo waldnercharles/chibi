@@ -35,7 +35,7 @@ typedef struct
     int depth;               /* 0 for the root */
     int first, count;        /* its children's positions */
     bool cycle;              /* repeats an ancestor, so it is not expanded */
-    bool more;               /* has children beyond the depth or item limit */
+    bool more; /* has children left out: past the depth or item limit */
     /* The calls, sends or handles joining it to its parent (support/array.h). */
     const reference **sites;
 } call_item;

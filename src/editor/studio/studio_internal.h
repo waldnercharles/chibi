@@ -190,18 +190,31 @@ typedef struct
     const char *use;            /* Call, Read, Handles... */
 } studio_reference;
 
-/* A row of Output's Calls view (studio_calls.c), copied from the call
-   hierarchy so it outlives the index it came from. */
+/* What Output's Calls view traces (studio_calls.c): a function by its asset
+   and graph, or an event by name. */
+typedef struct
+{
+    char title[160]; /* the function's or event's name; empty for none */
+    int kind;        /* REFERENCE_SYMBOL_GRAPH or REFERENCE_SYMBOL_EVENT */
+    int asset_kind;  /* a function's asset */
+    char asset[128];
+    uint64_t graph_id;
+} studio_call_root;
+
+/* A row of the Calls view, copied from the call hierarchy so it outlives the
+   index it came from. */
 typedef struct
 {
     char label[128];
     char meta[128]; /* the asset holding it */
     uint32_t icon;
     studio_reference at; /* the call, send or Event node joining it to its parent */
+    studio_call_root from; /* what a trace from it roots at, when it has more */
     int depth;
     bool open;   /* its children show */
     bool parent; /* has children */
     bool cycle;  /* repeats an ancestor */
+    bool more;   /* has children past the trace's depth or size */
 } studio_call;
 
 enum
@@ -462,11 +475,7 @@ struct studio
     studio_reference *references;
     struct
     {
-        char title[160]; /* the function or event traced; empty for none */
-        int root;        /* REFERENCE_SYMBOL_GRAPH or REFERENCE_SYMBOL_EVENT */
-        int asset_kind;  /* a function's asset */
-        char asset[128];
-        uint64_t graph_id;
+        studio_call_root root;
         int callees; /* 0 lists callers, 1 callees */
         studio_call *rows;
     } calls; /* Output's Calls view */
@@ -643,6 +652,8 @@ void studio_find_clear(studio *s);
 reference_symbol studio_node_symbol(studio *s, const node *n, const char **title);
 /* The open graph document's position in the index as last built, or -1. */
 int studio_document_asset(const studio *s);
+/* Its position once the index is refreshed with the document's edits. */
+int studio_refresh_document_asset(studio *s);
 studio_reference studio_reference_of(const reference_index *index, const reference *use);
 /* Opens a Find or Calls row's asset and reveals its node or object. */
 void studio_open_reference(studio *s, const studio_reference *row);

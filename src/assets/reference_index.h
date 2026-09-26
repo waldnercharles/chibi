@@ -129,6 +129,9 @@ int reference_index_find_asset(
     const char *key
 );
 int reference_index_find_name(const reference_index *index, reference_asset_kind kind, const char *name);
+/* The event definition an event name belongs to; -1 for host events and
+ * events without one. */
+int reference_index_event_asset(const reference_index *index, const char *name);
 int reference_index_asset_count(const reference_index *index);
 const reference_asset *reference_index_asset_at(const reference_index *index, int position);
 /* The kind of asset a graph asset of this domain is. */

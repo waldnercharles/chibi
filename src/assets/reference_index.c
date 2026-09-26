@@ -224,6 +224,13 @@ int reference_index_add_asset(
     return at;
 }
 
+int reference_index_event_asset(const reference_index *index, const char *name)
+{
+    return graph_event_host_name(name)
+             ? -1
+             : reference_index_find_name(index, REFERENCE_ASSET_EVENT, name);
+}
+
 /* The asset a name refers to, unresolved when none was added. */
 static int named_asset(reference_index *index, reference_asset_kind kind, const char *name)
 {
@@ -279,10 +286,9 @@ static reference_symbol asset_symbol(int asset)
 
 static reference_symbol event_symbol(const reference_index *index, const char *name)
 {
-    int asset = graph_event_host_name(name)
-                  ? -1
-                  : reference_index_find_name(index, REFERENCE_ASSET_EVENT, name);
-    return (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT, .asset = asset, .name = name };
+    return (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT,
+                               .asset = reference_index_event_asset(index, name),
+                               .name = name };
 }
 
 /* What NAMED_FIELDS[field] holds, value, names: an asset, or a sent event.

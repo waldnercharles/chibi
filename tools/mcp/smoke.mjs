@@ -75,7 +75,7 @@ const requests = [
   { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "getAssetCatalog", arguments: {} } },
   { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health" } } },
   { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
+  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_uses: true } } },
   { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
   { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
@@ -301,6 +301,7 @@ if (references.ok !== true || references.result?.definition?.asset?.path !== "co
     contactCaller?.callers?.[0]?.kind !== "handler" || contactCaller.callers[0].event !== "Contact Begin" ||
     !damageCallee?.callees?.some((item) => item.kind === "handler" && item.asset?.name === "HealthBehavior") ||
     !(applyDamage?.uses?.call >= 1) || !(healthGraph.result?.uses?.attach >= 1) ||
+    Object.hasOwn(libraryGraph.result || {}, "uses") ||
     responseById.get(62)?.result?.isError !== true ||
     toolPayload(responseById.get(62))?.error?.code !== "asset_not_found") {
   throw new Error("findReferences, callHierarchy and inspectGraph use counts failed");

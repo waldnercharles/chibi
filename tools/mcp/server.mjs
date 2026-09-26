@@ -452,6 +452,10 @@ function buildToolDefinitions() {
         type: "boolean",
         description: "List each node's pins as \"name: type\" with the types wildcards resolved to, as searchNodes writes them; defaults to true.",
       },
+      include_uses: {
+        type: "boolean",
+        description: "Add project-wide use counts by role to the asset, its functions and macros, and a behavior's variables. Reads every asset; defaults to false.",
+      },
     },
   };
   const scenarioArguments = {

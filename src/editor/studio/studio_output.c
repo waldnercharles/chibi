@@ -177,7 +177,7 @@ void studio_output_header(studio *s, int area)
         case OUTPUT_RUNTIME: clearable = errors > 0; break;
         case OUTPUT_INFO: clearable = acount(s->records) > 0; break;
         case OUTPUT_FIND: clearable = s->references_title[0] != '\0'; break;
-        case OUTPUT_CALLS: clearable = s->calls.title[0] != '\0'; break;
+        case OUTPUT_CALLS: clearable = s->calls.root.title[0] != '\0'; break;
     }
     kit_button_desc clear = { .icon = KIT_ICON_TRASH,
                               .tip = "Clear",

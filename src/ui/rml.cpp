@@ -1252,3 +1252,77 @@ bool rml_element_property_source(rml_element *e, const char *property, char *she
     *line = p->source->line_number;
     return true;
 }
+
+/* ---------- Inspection (the UI Inspector) ---------- */
+
+int rml_context_document_count(const rml_context *c)
+{
+    return context(c)->GetNumDocuments();
+}
+
+rml_element *rml_context_document(rml_context *c, int index)
+{
+    return wrap(context(c)->GetDocument(index));
+}
+
+rml_element *rml_context_element_at_point(rml_context *c, rml_vec2 point, const rml_element *ignore)
+{
+    return wrap(context(c)->GetElementAtPoint({ point.x, point.y }, element(ignore)));
+}
+
+void rml_element_attributes(const rml_element *e, rml_attribute_fn fn, void *user)
+{
+    for (const auto &[name, value] : element(e)->GetAttributes()) {
+        fn(user, name.c_str(), value.Get<Rml::String>().c_str());
+    }
+}
+
+size_t rml_element_class_names(const rml_element *e, char *buffer, size_t size)
+{
+    return copy(element(e)->GetClassNames(), buffer, size);
+}
+
+size_t rml_element_pseudo_classes(const rml_element *e, char *buffer, size_t size)
+{
+    Rml::String names;
+    for (const Rml::String &name : element(e)->GetActivePseudoClasses()) {
+        names += (names.empty() ? "" : " ") + name;
+    }
+    return copy(names, buffer, size);
+}
+
+void rml_element_set_pseudo_class(rml_element *e, const char *name, bool on)
+{
+    element(e)->SetPseudoClass(name, on);
+}
+
+void rml_element_local_properties(const rml_element *e, rml_element *inherited_by, rml_property_fn fn, void *user)
+{
+    for (auto it = element(e)->IterateLocalProperties(element(inherited_by)); !it.AtEnd(); ++it) {
+        const auto &[name, property] = *it;
+        const Rml::String value = property.ToString();
+        const Rml::PropertySource *source = property.source.get();
+        const rml_property_info info = {
+            name.c_str(),
+            value.c_str(),
+            source ? source->path.c_str() : "",
+            source ? source->line_number : 0,
+            source ? source->rule_name.c_str() : "",
+            property.specificity,
+        };
+        fn(user, &info);
+    }
+}
+
+size_t rml_element_property(rml_element *e, const char *name, char *buffer, size_t size)
+{
+    const Rml::Property *property = element(e)->GetProperty(name);
+    return copy(property ? property->ToString() : Rml::String(), buffer, size);
+}
+
+size_t rml_element_text(const rml_element *e, char *buffer, size_t size)
+{
+    auto *text = dynamic_cast<Rml::ElementText *>(element(e));
+    assert(text);
+    return copy(text->GetText(), buffer, size);
+}

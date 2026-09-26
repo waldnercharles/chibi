@@ -53,13 +53,20 @@ each ends on a checkable state.
   `sqrt(x * x + y * y)`. One Set Component with the fields it writes, not a
   Set per field.
 - **Names over wires.** A value read in several places far apart becomes a
-  local; state that must survive a frame becomes a variable. Locals are
-  graph-only names and cost nothing at runtime.
+  local (`create_local`); state that must survive a frame becomes a variable
+  (`promote_to_variable`). Locals are graph-only names and cost nothing at
+  runtime.
 - **Functions for repeated or nameable stages.** The same subgraph twice, or
   a stage with a name ("Crack Mask", "Formation Position"), becomes a
-  function (Collapse to Function / `add_graph`) with named ports.
+  function with named ports: `collapse_to_function` with its `nodes` and a
+  `name`, or `add_graph`.
 - **Switch, not branch chains.** Equality tests on one value choose with
   Switch on Int/Enum.
+- **Look nodes up.** `searchNodes` names the node for an intent ("wait",
+  "on hit", "set health current") with its pins, and its `expression` gives
+  the Behavior Expression spelling with arguments in order
+  (`smoothstep(Min, Max, Value)`). `wire_from`/`wire_to` with a pin's type
+  finds what connects to it.
 - **Language table.** Functions, their argument order and which graph kind
   has each: `docs/math-expressions.md`. Shader and field expressions are
   values only; `e` and `pi` are constants, never input names.

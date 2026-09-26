@@ -247,6 +247,17 @@ void render_programs_bind3d(render_programs *programs, int index)
     cf_draw3d_push_shader(entry->draw);
 }
 
+void render_programs_unbind3d(render_programs *programs, int index)
+{
+    program *entry = &programs->entries[index - 1];
+    for (int i = 0; i < entry->set.count; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "sg_image_%d", i);
+        cf_draw3d_set_texture(name, (CF_Texture){ 0 });
+    }
+    cf_draw3d_pop_shader();
+}
+
 void render_programs_bind2d(render_programs *programs, int index)
 {
     program *entry = &programs->entries[index - 1];

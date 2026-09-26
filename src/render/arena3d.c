@@ -578,7 +578,7 @@ static bool submit(render_arena *arena, const render_arena_camera *camera, float
         const arena_draw *draw = &arena->buffer.draws[i];
         if (program != draw->program) {
             if (program) {
-                cf_draw3d_pop_shader();
+                render_programs_unbind3d(arena->programs, program);
             }
             program = draw->program;
             render_programs_bind3d(arena->programs, program);
@@ -615,7 +615,9 @@ static bool submit(render_arena *arena, const render_arena_camera *camera, float
         cf_draw3d_pop_mesh_attributes();
     }
     cf_draw3d_pop_render_state();
-    cf_draw3d_pop_shader();
+    render_programs_unbind3d(arena->programs, program);
+    /* Later meshes would otherwise keep the parameters bound past their resize or free. */
+    cf_draw3d_set_texture("arena_parameters", (CF_Texture){ 0 });
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {

@@ -749,6 +749,8 @@ void rml_backend_render(rml_backend *backend)
     cf_draw3d_set_texture("u_texture", cf_canvas_get_target(backend->premultiplied_canvas));
     cf_draw3d_push_render_state(replace_state());
     cf_draw3d_mesh(backend->resolve_mesh);
+    /* Later meshes would otherwise keep the canvas bound past its resize or destroy. */
+    cf_draw3d_set_texture("u_texture", (CF_Texture){ 0 });
     cf_render_layers_to(backend->straight_canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, true);
     cf_draw_pop_layer();
     cf_draw3d_pop_render_state();

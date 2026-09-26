@@ -268,6 +268,7 @@ int save_behavior_document(app_scene_authoring *scene);
 void select_prototype(app_scene_authoring *scene, int index);
 void set_behavior_component_context(app_scene_authoring *scene, const char *asset_name);
 int sync_behavior_working(app_scene_authoring *scene);
+void refresh_asset_catalog(app_scene_authoring *scene);
 void sync_editor_inspection(app_scene_authoring *scene);
 const char *system_component_name(ecs_component_id id, void *);
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position);

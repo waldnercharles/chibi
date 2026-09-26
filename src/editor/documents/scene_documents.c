@@ -28,7 +28,11 @@ static int sync_open_behavior(app_scene_authoring *scene)
         scene->editor_working == scene->definition->working) {
         return 0;
     }
-    return game_live_sync_working(scene->definition, scene->editor_working);
+    if (game_live_sync_working(scene->definition, scene->editor_working) != 0) {
+        return -1;
+    }
+    refresh_asset_catalog(scene);
+    return 0;
 }
 
 static int open_behavior_graph(app_scene_authoring *scene, const char *asset_name)
@@ -253,6 +257,7 @@ int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name
     int applied = game_live_preview(scene->live, definition, apply_message, sizeof apply_message);
     definition->unsaved = false;
     scene->preview_retry = true;
+    refresh_asset_catalog(scene);
     behavior_asset_free(previous);
     scene_tabs_mark_document_saved(
         scene,

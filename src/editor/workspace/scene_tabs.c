@@ -747,6 +747,7 @@ static int discard_behavior(app_scene_authoring *scene, scene_document_tab *tab)
     }
     result = editor_reload_behavior_asset(scene->graph_editor, working, graph->graph_id, name);
     assert(result == 0);
+    refresh_asset_catalog(scene);
     behavior_asset_free(previous);
     scene->definition = definition;
     scene->editor_working = editor_behavior_asset(scene->graph_editor);

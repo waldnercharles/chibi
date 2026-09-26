@@ -14,6 +14,7 @@
 #include "automation/navigation.h"
 #include "automation/prototype_edit.h"
 #include "automation/scene_edit.h"
+#include "automation/ui_edit.h"
 #include "ecs/ecs.h"
 #include "editor/documents/component_presentation.h"
 #include "graph/authoring/describe.h"
@@ -430,6 +431,10 @@ static const contract_field CONTRACT_FIND_REFERENCES[] = {
     { "roles", "string[]", false, "Only uses in these roles: use, call, argument, read, write, send, handle, spawn, attach, bind." },
     { "offset", "integer", false, "Zero-based page offset." },
     { "limit", "integer", false, "Page size, default 50, maximum 200." },
+    /* UI language service (workstream B) */
+    { "ui_class", "string", false, "A class ui assets and stylesheets name, instead of an asset." },
+    { "token", "string", false, "A custom property, with its --, instead of an asset." },
+    { "save_key", "string", false, "A save key ui bindings read as save.<key>, instead of an asset." },
 };
 static const contract_field CONTRACT_CALL_HIERARCHY[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -469,6 +474,18 @@ static const contract_field CONTRACT_DELETE_SYMBOL[] = {
     { "dry_run", "boolean", false, "List every asset and change without publishing; defaults to true." },
     { "expected_hashes", "object", false, "The dry run's path-to-hash map; required to publish." },
     { "force", "boolean", false, "Delete while references remain, and list them as dangling." },
+};
+
+/* UI language service (workstream B) */
+static const contract_field CONTRACT_EDIT_UI[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "UI asset path below content, or use kind/name." },
+    { "kind", "string", false, "ui." },
+    { "name", "string", false, "UI asset name." },
+    { "create", "boolean", false, "Create a new asset from its operations; one must be set_rml." },
+    { "expected_hash", "string", false, "Required current asset hash when editing." },
+    { "dry_run", "boolean", false, "Validate and return the new text without writing." },
+    { "operations", "array", true, "Edits applied in order, at most 128: set_attribute, remove_attribute, add_class, remove_class, set_style, remove_style, insert_element, move_element, delete_element, set_rml and set_rcss." },
 };
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
@@ -770,6 +787,30 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         false,
         false,
         true,
+    },
+    /* UI language service (workstream B) */
+    {
+        "edit_ui",
+        "Edit a ui asset's markup and styles with text edits that keep its "
+        "formatting; validate before saving.",
+        CONTRACT_EDIT_UI,
+        CONTRACT_FIELD_COUNT(CONTRACT_EDIT_UI),
+        1,
+        false,
+        false,
+        true,
+    },
+    {
+        "inspect_ui",
+        "Inspect a ui asset's outline, props, events, slots, widgets, tokens "
+        "and "
+        "syntax errors.",
+        CONTRACT_ASSET_REFERENCE,
+        CONTRACT_FIELD_COUNT(CONTRACT_ASSET_REFERENCE),
+        1,
+        true,
+        true,
+        false,
     },
 };
 
@@ -1368,6 +1409,24 @@ static bool read_ui_asset(const char *json, char *error, size_t error_size)
     return ok;
 }
 
+/* UI language service (workstream B): validateAsset for a ui asset, its
+ * syntax, widgets, imports and RmlUi's warnings. Returns the error count. */
+static int validate_ui(
+    const char *root,
+    const asset_ref *ref,
+    const char *text,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
+{
+    char *name = asset_name_from_filename(ref->filename);
+    char content[1024];
+    snprintf(content, sizeof content, "%s/content", root);
+    int errors = automation_ui_validate(content, name, text, doc, diagnostics);
+    free(name);
+    return errors;
+}
+
 /* What graph assets link with: the libraries, shader libraries and event
    definitions, loaded once per catalog. `error` is why they did not load. */
 typedef struct
@@ -1545,9 +1604,29 @@ static void catalog_reference_add(
     apush(*references, reference);
 }
 
-/* Adds what an asset holds to the index. An asset its loader rejects holds
- * nothing; its diagnostics say why. */
-static void catalog_add_content(reference_index *index, const catalog_asset *asset, const char *text)
+/* The project's default page, the ui asset project.yaml's ui: names, owned;
+ * NULL for none. */
+static char *manifest_page(const char *root)
+{
+    char path[1024], error[128];
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    char *text = text_file_read(path);
+    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
+    free(text);
+    const char *ui = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), "ui"));
+    char *page = ui && ui[0] ? xstrdup(ui) : NULL;
+    yyjson_doc_free(manifest);
+    return page;
+}
+
+/* Adds what an asset holds to the index, with `page` the project's default
+ * page. An asset its loader rejects holds nothing; its diagnostics say why. */
+static void catalog_add_content(
+    reference_index *index,
+    const catalog_asset *asset,
+    const char *text,
+    const char *page
+)
 {
     char error[256];
     game_prototype_registry registry = {
@@ -1597,6 +1676,9 @@ static void catalog_add_content(reference_index *index, const catalog_asset *ass
                     .behavior_count = acount(entity->behaviors),
                 };
                 reference_index_add_object(index, asset->reference, &object);
+            }
+            if (scene) {
+                reference_index_add_page(index, asset->reference, scene->ui, page);
             }
             game_scene_document_free(scene);
             return;
@@ -1694,6 +1776,7 @@ static int catalog_index_references(
                            : reference_index_add_asset(index, kind, assets[i].name, path, NULL);
         free(path);
     }
+    char *page = manifest_page(root);
     for (int i = 0; i < acount(assets); i++) {
         if (assets[i].reference < 0) {
             continue;
@@ -1702,12 +1785,14 @@ static int catalog_index_references(
         char *text = read_file(path, NULL, NULL, error, error_size);
         free(path);
         if (!text) {
+            free(page);
             reference_index_free(index);
             return -1;
         }
-        catalog_add_content(index, &assets[i], text);
+        catalog_add_content(index, &assets[i], text, page);
         free(text);
     }
+    free(page);
     catalog_link_references(assets, index);
     *out = index;
     return 0;
@@ -2718,6 +2803,17 @@ static navigation_asset *navigation_assets(const catalog_asset *assets, const re
 /* find_references and call_hierarchy, over the catalog's references. */
 static int handle_navigation(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
+    /* UI language service (workstream B): classes, tokens and save keys. */
+    if (!strcmp(request_string(request, "operation"), "find_references") &&
+        automation_ui_references_requested(request)) {
+        char failure[256] = { 0 };
+        yyjson_mut_val *found = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+        int status = automation_ui_references(root, request, result->doc, found, failure, sizeof failure);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, failure);
+        }
+        return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+    }
     catalog_asset *assets = NULL;
     uint64_t revision = 0, content_hash = 0;
     char error[256] = { 0 };
@@ -4126,12 +4222,11 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             );
             game_prototype_free(prototype);
         }
-    } else if (ref.family->loader == ASSET_EDITOR || ref.family->loader == ASSET_UI) {
+    } else if (ref.family->loader == ASSET_UI) {
+        errors = validate_ui(root, &ref, json, result->doc, diagnostics);
+    } else if (ref.family->loader == ASSET_EDITOR) {
         char load_error[256] = { 0 };
-        bool ok = ref.family->loader == ASSET_EDITOR
-                    ? read_editor_asset(json, load_error, sizeof load_error)
-                    : read_ui_asset(json, load_error, sizeof load_error);
-        if (!ok) {
+        if (!read_editor_asset(json, load_error, sizeof load_error)) {
             errors = 1;
             add_load_diagnostic(result->doc, diagnostics, load_error);
         }
@@ -6174,18 +6269,7 @@ const char *chibi_preview_page(const chibi_preview_run *run)
 /* The scene's root ui document, else the default in the manifest at `root`. */
 static char *preview_page(const char *root, const game_scene_document *scene)
 {
-    if (scene && scene->ui) {
-        return xstrdup(scene->ui);
-    }
-    char path[1024], error[128];
-    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    char *text = text_file_read(path);
-    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
-    free(text);
-    const char *ui = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), "ui"));
-    char *page = ui && ui[0] ? xstrdup(ui) : NULL;
-    yyjson_doc_free(manifest);
-    return page;
+    return scene && scene->ui ? xstrdup(scene->ui) : manifest_page(root);
 }
 
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
@@ -9729,6 +9813,153 @@ static int handle_refactor(const char *root, yyjson_val *request, bool rename, r
     return 0;
 }
 
+/* ---------- UI language service (workstream B) ---------- */
+
+/* Loads a ui asset, or checks that a new one can be created; the loaded
+ * text is owned by the caller. */
+static int load_ui_source(
+    const char *root,
+    yyjson_val *request,
+    bool create,
+    asset_ref *ref,
+    char **source,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+)
+{
+    if (resolve_asset_ref(request, ref, error, error_size) ||
+        ref->family->loader != ASSET_UI) {
+        if (!error[0]) {
+            snprintf(error, error_size, "this operation takes a ui asset");
+        }
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (!create) {
+        return load_asset(root, request, ref, source, bytes, hash, error, error_size);
+    }
+    if (verify_asset_directory(root, ref->family, error, error_size) < 0) {
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    char *path = asset_full_path(root, ref);
+    struct stat info;
+    bool exists = !lstat(path, &info), unknown = !exists && errno != ENOENT;
+    free(path);
+    *source = xstrdup("");
+    if (exists) {
+        return set_error(error, error_size, "asset already exists"),
+               CHIBI_AUTOMATION_CONFLICT;
+    }
+    if (unknown) {
+        return set_error(error, error_size, "cannot inspect asset destination"),
+               CHIBI_AUTOMATION_IO_ERROR;
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* buildUi: the edits in order, the result validated as validateAsset does,
+ * then written in canonical form unless it is a dry run. */
+static int handle_edit_ui(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *create_value = yyjson_obj_get(request, "create");
+    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
+    const char *expected = request_string(request, "expected_hash");
+    bool create = create_value && yyjson_get_bool(create_value);
+    bool dry = dry_value && yyjson_get_bool(dry_value);
+    if ((create_value && !yyjson_is_bool(create_value)) ||
+        (dry_value && !yyjson_is_bool(dry_value)) ||
+        (!create && (!expected || strlen(expected) != 16))) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
+        return -1;
+    }
+    asset_ref ref = { 0 };
+    char error[256] = { 0 }, *source = NULL, *edited = NULL;
+    size_t bytes = 0;
+    uint64_t before = 0;
+    int status = load_ui_source(root, request, create, &ref, &source, &bytes, &before, error, sizeof error);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    char actual[17];
+    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
+    if (status == CHIBI_AUTOMATION_OK) {
+        add_asset_identity(result->doc, value, &ref, bytes, before);
+        yyjson_mut_obj_add_bool(result->doc, value, "published", false);
+    }
+    if (status == CHIBI_AUTOMATION_OK && !create && strcmp(expected, actual)) {
+        status = CHIBI_AUTOMATION_CONFLICT;
+        set_error(error, sizeof error, "asset changed; inspect its current hash and retry");
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = automation_ui_edit(source, request, result->doc, value, &edited, error, sizeof error);
+    }
+    if (status == CHIBI_AUTOMATION_OK && to_disk_text(&edited, error, sizeof error)) {
+        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+        if (validate_ui(root, &ref, edited, result->doc, diagnostics)) {
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            set_error(error, sizeof error, "the edited asset is invalid; see diagnostics");
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        size_t after_bytes = strlen(edited);
+        uint64_t after = automation_content_hash(edited, after_bytes);
+        bool changed = strcmp(source, edited) != 0;
+        yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
+        yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+        add_hash_named(result->doc, value, "after_hash", after);
+        yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
+        if (dry) {
+            yyjson_mut_obj_add_strcpy(result->doc, value, "text", edited);
+        }
+        if (!dry && changed) {
+            status = automation_asset_publish(
+                root,
+                ref.family->folder,
+                ref.filename,
+                edited,
+                expected,
+                create,
+                error,
+                sizeof error
+            );
+        }
+        if (status == CHIBI_AUTOMATION_OK && !dry) {
+            yyjson_mut_obj_remove_key(value, "published");
+            yyjson_mut_obj_add_bool(result->doc, value, "published", true);
+            yyjson_mut_obj_remove_key(value, "hash");
+            add_hash(result->doc, value, after);
+            yyjson_mut_obj_remove_key(value, "bytes");
+            yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
+        }
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+    }
+    free(edited);
+    free(source);
+    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
+static int handle_inspect_ui(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    asset_ref ref = { 0 };
+    char error[256] = { 0 }, *text = NULL;
+    size_t bytes = 0;
+    uint64_t hash = 0;
+    int status = load_ui_source(root, request, false, &ref, &text, &bytes, &hash, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, hash);
+    automation_ui_inspect(text, result->doc, value);
+    free(text);
+    return 0;
+}
+
 static int operation_requires_root(const char *operation)
 {
     return !strcmp(operation, "edit_graph") || !strcmp(operation, "edit_prototype") ||
@@ -9750,7 +9981,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "record_scenario") ||
            !strcmp(operation, "replay_scenario") ||
            !strcmp(operation, "rename_symbol") ||
-           !strcmp(operation, "delete_symbol");
+           !strcmp(operation, "delete_symbol") ||
+           !strcmp(operation, "edit_ui") || !strcmp(operation, "inspect_ui");
 }
 
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -9851,6 +10083,10 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_read_recording(root_value, &result, exit_code);
     } else if (!strcmp(operation, "rename_symbol") || !strcmp(operation, "delete_symbol")) {
         handle_refactor(root, root_value, !strcmp(operation, "rename_symbol"), &result, exit_code);
+    } else if (!strcmp(operation, "edit_ui")) {
+        handle_edit_ui(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "inspect_ui")) {
+        handle_inspect_ui(root, root_value, &result, exit_code);
     } else {
         handle_describe_registry(root_value, &result, exit_code);
     }

@@ -1253,6 +1253,24 @@ bool rml_element_property_source(rml_element *e, const char *property, char *she
     return true;
 }
 
+/* ---------- UI language service (workstream B) ---------- */
+
+const char *rml_property_name(uint8_t id)
+{
+    Rml::PropertyId property = (Rml::PropertyId)id;
+    return Rml::StyleSheetSpecification::GetProperty(property)
+             ? Rml::StyleSheetSpecification::GetPropertyName(property).c_str()
+             : nullptr;
+}
+
+const char *rml_shorthand_name(uint8_t id)
+{
+    Rml::ShorthandId shorthand = (Rml::ShorthandId)id;
+    return Rml::StyleSheetSpecification::GetShorthand(shorthand)
+             ? Rml::StyleSheetSpecification::GetShorthandName(shorthand).c_str()
+             : nullptr;
+}
+
 /* ---------- Inspection (the UI Inspector) ---------- */
 
 int rml_context_document_count(const rml_context *c)

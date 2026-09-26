@@ -1,0 +1,55 @@
+#ifndef CHIBI_RENDER_UI_CHECK_H
+#define CHIBI_RENDER_UI_CHECK_H
+
+#include <stdbool.h>
+#include <stddef.h>
+
+/* Validates a ui asset the way RmlUi reads it, as a GameUi or a scene's page
+ * shows it: in a scratch RmlUi context with the ui data model, collecting
+ * every warning RmlUi logs, not only the first. */
+
+typedef enum
+{
+    UI_CHECK_RML,     /* the asset's markup */
+    UI_CHECK_RCSS,    /* its RCSS, with the stylesheets it imports */
+    UI_CHECK_WIDGETS, /* the markup with its widgets expanded, when only
+                         that shows the warning */
+} ui_check_part;
+
+/* A warning at the line that wrote what it is about: a line of the checked
+ * asset's rml or rcss block (the part says which), or, with a `source`, of
+ * an imported stylesheet's file (RCSS) or a widget's rml block (WIDGETS). */
+typedef struct ui_check_message
+{
+    ui_check_part part;
+    char *source; /* NULL for the checked asset; a file path or widget name */
+    int line;     /* 1-based, or 0 when unknown */
+    char *text;   /* as RmlUi logged it, its document's line made this one */
+} ui_check_message;
+
+/* Checks ui asset `name` whose file text is `text`: its markup alone; its
+ * RCSS, whose warnings the RCSS's source map (support/rcss.h) places in its
+ * block or an import; and, when it uses widgets, the markup a GameUi shows,
+ * which reports only what the markup alone did not, at the data-src of the
+ * element concerned (ui_document_expand).
+ * Widgets and @imports resolve in `content_root`/ui through text_file_read,
+ * so unsaved text counts. Appends each warning to `messages`
+ * (support/array.h). Returns false with a message in `error` when the asset
+ * cannot be read or a widget cannot be expanded. Initializes RmlUi when no
+ * backend has. */
+bool ui_check(
+    const char *content_root,
+    const char *name,
+    const char *text,
+    ui_check_message **messages,
+    char *error,
+    size_t error_size
+);
+void ui_check_messages_free(ui_check_message *messages);
+
+/* Appends a copy of the name of each property and shorthand RCSS takes, as
+ * RmlUi registers them, to `names` (support/array.h); a ui_source_project's
+ * `properties`. RmlUi must be initialized. */
+void ui_check_property_names(char ***names);
+
+#endif

@@ -75,6 +75,10 @@ void test_ui_sources();
 void test_ui_documents();
 /* UI Inspector */
 void test_ui_inspector();
+/* UI language service (workstream B) */
+void test_ui_source();
+void test_ui_check();
+void test_ui_pages();
 
 static int fails;
 
@@ -214,6 +218,10 @@ TEST_CASE(all_checks)
     test_ui_documents();
     /* UI Inspector */
     test_ui_inspector();
+    /* UI language service (workstream B) */
+    test_ui_source();
+    test_ui_check();
+    test_ui_pages();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -268,6 +276,13 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
         registry_validate();
         run_graph_signature_checks();
+        return fails ? 1 : 0;
+    }
+    /* UI language service (workstream B) */
+    if (argc > 1 && !strcmp(argv[1], "--ui-source")) {
+        test_ui_source();
+        test_ui_check();
+        test_ui_pages();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--reference-index")) {

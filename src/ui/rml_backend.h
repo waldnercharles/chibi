@@ -167,6 +167,16 @@ extern "C"
      * it logged none; a caller brackets an operation with two calls. */
     const char *rml_backend_take_warning();
 
+    /* ---------- UI language service (workstream B) ---------- */
+
+    /* Keeps every warning and error RmlUi logs from now on, for a check that
+     * reports them all. */
+    void rml_backend_keep_warnings();
+    /* The warnings kept since rml_backend_keep_warnings, in order, as an owned
+     * support/array.h array of owned strings; NULL when there were none.
+     * Stops keeping them. */
+    char **rml_backend_take_warnings();
+
 #ifdef __cplusplus
 }
 #endif

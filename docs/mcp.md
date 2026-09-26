@@ -104,9 +104,10 @@ domain:
 - Studio's component tabs, prototype icons, and number ranges and units:
   edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
   call `validateAsset`.
-- Game UI documents: edit `content/ui/<Name>.yaml` (kind `ui`) with `rml`
-  body markup and optional `rcss` styles, run `--format`, then call
-  `validateAsset`.
+- Game UI documents (`content/ui/<Name>.yaml`, kind `ui`, with `rml` body
+  markup and optional `rcss` styles): read one with `inspectUi`, change it
+  with `buildUi`, then call `validateAsset`; see
+  [Author a UI document](#author-a-ui-document).
 
 Before changing or removing a function, variable, event, component field or
 shared asset, check what the edit affects with `findReferences`, and trace
@@ -123,6 +124,7 @@ saving them. Tool results include complete `structuredContent` and
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
+- `buildUi`: create or edit a ui asset's markup and styles as text edits that keep its formatting, validated with RmlUi before saving.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
 - `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
 - `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
@@ -131,8 +133,9 @@ saving them. Tool results include complete `structuredContent` and
 - `searchAssets`: find catalog entries by kind, name, path, or description.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
+- `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash.
 - `readAsset`: read one authored asset as parsed JSON.
-- `validateAsset`: run native asset loading and compiler diagnostics.
+- `validateAsset`: run native asset loading and compiler diagnostics; for a ui asset, its syntax errors and every warning RmlUi logs, with lines.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
 - `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
 - `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies. An asset depends on the behaviors it attaches, the prototypes it places or spawns, the libraries it calls, the event definitions whose events it sends or handles, and the materials, shapes, fields, systems and ui documents its component fields, pin defaults and `<use ui>` widgets name.
@@ -159,7 +162,9 @@ graph, node, pin and role. Both select a symbol by name:
 - An asset: `{"asset": {"kind": "prototype", "name": "Bullet"}}`. Its uses
   are the references that depend on it: attachments, spawns, calls into a
   library, sends and handles of an event definition's event, and the assets
-  component fields, pin defaults and `<use ui>` widgets name.
+  component fields, pin defaults and `<use ui>` widgets name. A scene binds
+  its page, the ui asset it shows its UI on: its own `ui:` (component `ui`),
+  or for a scene that names none, `project.yaml`'s (component `project ui`).
 - A function or macro: add `"graph": "Apply Damage"` or `"graph_id": 1001`
   to the asset.
 - A member of the asset: `"variable": "Health"`; `"parameter": "Amount"`
@@ -167,6 +172,11 @@ graph, node, pin and role. Both select a symbol by name:
   `graph_id` when several graphs have one by that name.
 - An event: `{"event": "Damaged"}`. Host events (`Tick`, `Contact Begin`), ui
   `data-event` names and action names count too.
+- What ui assets and stylesheets name: `{"ui_class": "card"}`,
+  `{"token": "--primary"}` or `{"save_key": "theme"}`. The result lists the
+  `definitions` (the selectors that style the class, the declarations of the
+  custom property) and the `uses`, each by `path`, `line` and `column`, across
+  `content/ui` and its stylesheets.
 - A component or one of its fields: `{"component": "GameHealth"}` or
   `{"component": "GameHealth", "field": "current"}`.
 
@@ -257,8 +267,9 @@ A rename rewrites event nodes, Send and Call Event, `data-event` and
 prototypes, component fields and struct defaults such as a `GameShader`
 value's material, mesh parts, `<use ui>` widgets, library calls'
 `reference_asset` and `reference_name`, the pins of calls in other assets that
-follow a library function's parameter, and the payload pins an event
-definition's variables name. The files are written together; each changed
+follow a library function's parameter, a scene's `ui:`, and the payload pins
+an event definition's variables name. Renaming the page `project.yaml` names
+is refused; point `ui:` there at another asset first. The files are written together; each changed
 asset is then validated, and if one that validated before no longer does,
 every file is restored and `invalid` lists its diagnostics.
 
@@ -266,6 +277,71 @@ every file is restored and `invalid` lists its diagnostics.
 `references`. With `force` it deletes anyway and lists them as `dangling`. A
 variable goes with its Get and Set nodes and bindings, as in Unreal, so its own
 uses never dangle. Deleting an asset or an event definition removes its file.
+
+## Author a UI document
+
+A ui asset is YAML with an `rml` block of body markup and an optional `rcss`
+block of styles (see [Player-facing capabilities](#player-facing-capabilities)
+for bindings, widgets and pages). tree-sitter parses the markup with the HTML
+grammar and the styles with the CSS grammar, so every result points at the
+file's own lines.
+
+`inspectUi` with `{"kind": "ui", "name": "PauseMenu"}` returns:
+
+- `elements`: each element in document order with its `index`, `tag`,
+  `attributes`, `line` and `parent` index; `rules`: each rule with its
+  `selector`, `line`, `parent` rule and `declarations`.
+- `props`: the names the bindings read that the document does not define,
+  which hosts pass with `data-alias-<name>`; `widgets`: each `<use ui>` with
+  the `props` it passes; `slots`; and `events`, as `searchNodes` lists them.
+- `tokens` (the custom properties it reads), `declared_tokens`, `classes`,
+  `styled_classes`, `save_keys`, `diagnostics` and the content `hash`.
+
+`buildUi` applies `operations` in order, each to the text the one before it
+left, and names an element by its `inspectUi` index or by a selector exactly
+one element matches: a tag, `#id` and `.class` parts, as `#resume` or
+`use.card`. Indexes after an insert, move or delete refer to the new text.
+
+| Operation | Fields |
+| --- | --- |
+| `set_attribute`, `remove_attribute` | `element`, `name`, and `value` to set |
+| `add_class`, `remove_class` | `element`, `class` |
+| `set_style`, `remove_style` | `element`, `property`, and `value` to set: one declaration of the `style` attribute |
+| `insert_element` | `markup`, and `target` with `position` `inside` (after its children, the default), `before` or `after`; without `target`, at the end of the markup |
+| `move_element` | `element`, `target`, `position` |
+| `delete_element` | `element` |
+| `set_rml`, `set_rcss` | `text`: the block's whole value |
+
+Edits keep the author's formatting: new lines take the indentation of the
+lines around them, and a self-closing element opened to hold a child gains a
+close tag. The result lists each operation's `changes` as file edits by line
+and column. Like the other build tools it needs `expected_hash` unless it
+`create`s the asset (whose operations must `set_rml`), and `dry_run: true`
+returns the new `text` without saving. The edited asset is written in
+canonical form and validated first, as `validateAsset` does; an invalid one
+is refused with its `diagnostics`:
+
+```json
+{"kind": "ui", "name": "PauseMenu", "expected_hash": "eade8b8fb50dc048",
+ "operations": [
+   {"op": "insert_element", "target": "#panel", "markup": "<div class=\"hint\">Esc to resume</div>"},
+   {"op": "set_style", "element": "#defeated", "property": "color", "value": "#ff8c96"}]}
+```
+
+`validateAsset` on a ui asset reports, as `rule_name`:
+
+- `SYNTAX`: what the grammars reject, as an element left open (RML closes
+  every element, as XML does) or a declaration missing its value, with its
+  file `line`, `column`, `block` and `block_line`.
+- `LOAD`: what the asset loader rejects, as an unknown key, a missing widget
+  or an unreadable `@import`.
+- `RMLUI`: every warning RmlUi logs loading the asset in a scratch document
+  with the ui data model, as a binding expression it cannot parse or an RCSS
+  property it rejects, at the line that wrote it. `block` is `rml` for the
+  markup and `rcss` for the styles, with the file `line`; a warning about an
+  imported stylesheet names it as `source`, with its `block_line` in that
+  file. `widgets` is what only the markup with its widgets expanded shows,
+  with the widget as `source` and its line in the widget's `rml` block.
 
 ## Check adapter distribution
 

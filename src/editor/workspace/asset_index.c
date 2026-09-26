@@ -189,6 +189,9 @@ static void add_scene_document(
         };
         reference_index_add_object(index, source, &object);
     }
+    if (document) {
+        reference_index_add_page(index, source, document->ui, scene->default_ui);
+    }
     game_scene_document_free(document);
 }
 
@@ -297,6 +300,9 @@ static void add_active_scene_references(reference_index *index, app_scene_author
     }
     for (int i = 0; source >= 0 && i < acount(scene->actors); i++) {
         add_actor_references(scene, index, source, &scene->actors[i]);
+    }
+    if (source >= 0) {
+        reference_index_add_page(index, source, scene->ui, scene->default_ui);
     }
 }
 

@@ -183,8 +183,11 @@ static void get_clipboard_text(rml_string *text)
 /* The first warning since rml_backend_take_warning; RmlUi logs globally. */
 static char first_warning[256], taken_warning[256];
 
+static void keep_warning(rml_log_type type, const char *message); /* workstream B */
+
 static bool log_message(rml_log_type type, const char *message)
 {
+    keep_warning(type, message);
     const char *prefix = type == RML_LOG_ERROR   ? "error"
                        : type == RML_LOG_WARNING ? "warning"
                                                  : "info";
@@ -918,4 +921,32 @@ void rml_backend_present(rml_backend *backend)
     cf_draw_projection(cf_ortho_2d(0, 0, w, h));
     cf_draw_canvas(backend->straight_canvas, cf_v2(0, 0), cf_v2(w, h));
     cf_draw_pop();
+}
+
+/* ---------- UI language service (workstream B) ---------- */
+
+/* Every warning since rml_backend_keep_warnings, while kept. */
+static char **kept_warnings;
+static bool keeping_warnings;
+
+static void keep_warning(rml_log_type type, const char *message)
+{
+    if (keeping_warnings && type != RML_LOG_INFO && type != RML_LOG_DEBUG) {
+        apush(kept_warnings, xstrdup(message));
+    }
+}
+
+void rml_backend_keep_warnings()
+{
+    assert(!keeping_warnings);
+    keeping_warnings = true;
+}
+
+char **rml_backend_take_warnings()
+{
+    assert(keeping_warnings);
+    char **warnings = kept_warnings;
+    kept_warnings = NULL;
+    keeping_warnings = false;
+    return warnings;
 }

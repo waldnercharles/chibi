@@ -897,3 +897,17 @@ endif()
 # UI documents (Studio UI authoring, workstream D): the test suite compiles the
 # scene tabs itself, and they hold UI buffers.
 target_sources(test_suite PRIVATE src/editor/documents/ui_buffer.c)
+
+# --- UI language service (workstream B) ---------------------------------------
+# ui_source parses ui assets with tree-sitter for Studio and the MCP; ui_check
+# validates one in a scratch RmlUi document; ui_edit applies buildUi batches.
+include(cmake/tree_sitter.cmake)
+add_library(ui_source STATIC
+    src/assets/ui_source.c src/assets/ui_source_complete.c src/assets/ui_source_edit.c)
+target_include_directories(ui_source PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(ui_source PUBLIC runtime_support core chibi_tree_sitter)
+target_link_libraries(editor PRIVATE ui_source)
+# ui_edit validates through ui_check, which lives with the RmlUi host.
+target_link_libraries(automation PUBLIC ui_source chibi_render)
+target_sources(automation PRIVATE src/automation/ui_edit.c)
+target_sources(chibi_render PRIVATE src/render/ui_check.c)

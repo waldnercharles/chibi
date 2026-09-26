@@ -14,21 +14,6 @@ const controller = process.env.CHIBI_CTL || join(root, "build/chibi_ctl");
 for (const family of ["behaviors", "events", "prototypes", "scenes", "ui"]) {
   mkdirSync(join(project, "content", family), { recursive: true });
 }
-// UI documents are authored as files; the events they emit reach behaviors.
-writeFileSync(join(project, "content/ui/Bank.yaml"), [
-  "rml: '<div id=\"extract\" data-event-click=\"emit(''Extract'')\">Extract</div>'",
-  "rcss: '#extract { position: absolute; left: 50%; top: 50%; width: 180dp; height: 44dp; margin-left: -90dp; margin-top: -22dp; background-color: #3a4a66; line-height: 44dp; text-align: center; }'",
-  "",
-].join("\n"));
-writeFileSync(join(project, "content/ui/Slot.yaml"), [
-  "rml: '<div id=\"slot\" data-event-click=\"emit(''Fit'')\">Empty modifier slot</div>'",
-  "",
-].join("\n"));
-// A widget host: it uses Slot and sends Award, an event definition.
-writeFileSync(join(project, "content/ui/Rack.yaml"), [
-  "rml: '<use ui=\"Slot\"/><div id=\"award\" data-keys=\"Enter:Award\">Award</div>'",
-  "",
-].join("\n"));
 
 function request(name, args, expectError = false) {
   const run = spawnSync(process.execPath, [join(root, "tools/mcp/server.mjs")], {
@@ -65,7 +50,68 @@ function request(name, args, expectError = false) {
       assert(decoded.at(615, 270).slice(0, 3).every(value => value < 40), "unseen world pixels must remain fogged");
     }
   }
+  lastResponse = response.result?.structuredContent;
   return response.result?.structuredContent?.result || response;
+}
+
+// The whole structured response of the last request, for its error code.
+let lastResponse;
+
+// UI documents are authored through buildUi; the events they emit reach behaviors.
+function createUi(name, rml, rcss) {
+  const operations = [{ op: "set_rml", text: rml }, ...(rcss ? [{ op: "set_rcss", text: rcss }] : [])];
+  const created = request("buildUi", { kind: "ui", name, create: true, operations });
+  assert.equal(created.published, true, `buildUi did not create ${name}`);
+}
+
+// A document edited through inspectUi and buildUi keeps its formatting; a
+// stale hash conflicts, and an edit RmlUi or the grammar rejects is refused
+// with its line.
+function uiDocuments() {
+  createUi("Panel", "<div id=\"panel\">\n  <span class=\"title\">Hull</span>\n</div>\n", ".title { color: var(--accent); }\n");
+  const panel = request("inspectUi", { kind: "ui", name: "Panel" });
+  assert.deepEqual(panel.elements.map(item => item.tag), ["div", "span"]);
+  assert.deepEqual(panel.tokens, ["--accent"]);
+  const rack = request("inspectUi", { kind: "ui", name: "Rack" });
+  assert.deepEqual(rack.widgets.map(item => item.name), ["Slot"]);
+  assert.deepEqual(rack.events.map(item => [item.name, item.key]), [["Award", "Enter"]]);
+  const operations = [
+    { op: "insert_element", target: "#panel", markup: "<use ui=\"Slot\" data-alias-label=\"save.hull\"/>" },
+    { op: "add_class", element: "span.title", class: "wide" },
+    { op: "set_style", element: 0, property: "width", value: "200dp" },
+  ];
+  const dry = request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, dry_run: true, operations });
+  assert.equal(dry.published, false);
+  assert.equal(dry.text, [
+    "rml: |",
+    "  <div id=\"panel\" style=\"width: 200dp;\">",
+    "    <span class=\"title wide\">Hull</span>",
+    "    <use ui=\"Slot\" data-alias-label=\"save.hull\"/>",
+    "  </div>",
+    "rcss: |",
+    "  .title { color: var(--accent); }",
+    "",
+  ].join("\n"));
+  const published = request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, operations });
+  assert.equal(published.published, true);
+  assert.equal(published.hash, dry.after_hash);
+  assert.equal(request("validateAsset", { kind: "ui", name: "Panel" }).valid, true);
+  const title = request("findReferences", { ui_class: "title" });
+  assert.deepEqual([title.definitions, title.uses].map(list => list.map(item => [item.path, item.line])),
+    [[["content/ui/Panel.yaml", 7]], [["content/ui/Panel.yaml", 3]]]);
+  assert.deepEqual(request("findReferences", { token: "--accent" }).uses.map(item => item.line), [7]);
+  assert.deepEqual(request("findReferences", { save_key: "hull" }).uses.map(item => item.line), [4]);
+  request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, operations: [{ op: "delete_element", element: 1 }] }, true);
+  assert.equal(lastResponse.error.code, "asset_conflict");
+  const broken = request("buildUi", { kind: "ui", name: "Panel", expected_hash: published.hash, operations: [
+    { op: "insert_element", target: "span.title", position: "after", markup: "<p data-if=\"hull +\">x</p>" },
+  ] }, true);
+  assert.equal(lastResponse.error.code, "validation_failed");
+  assert.ok(broken.diagnostics.some(item => item.rule_name === "RMLUI" && item.block === "rml" && item.line === 4),
+    "buildUi must refuse a binding RmlUi rejects, at its line");
+  writeFileSync(join(project, "content/ui/Unclosed.yaml"), "rml: |\n  <div>\n    <span>x</div>\n");
+  const unclosed = request("validateAsset", { kind: "ui", name: "Unclosed" }, true);
+  assert.deepEqual(unclosed.diagnostics.map(item => [item.rule_name, item.line]), [["SYNTAX", 3]]);
 }
 
 function create(kind, name, operations, extra = {}) {
@@ -85,6 +131,12 @@ function field(snapshot, entity, component, name) {
 }
 
 try {
+  createUi("Bank", "<div id=\"extract\" data-event-click=\"emit('Extract')\">Extract</div>",
+    "#extract { position: absolute; left: 50%; top: 50%; width: 180dp; height: 44dp; margin-left: -90dp; margin-top: -22dp; background-color: #3a4a66; line-height: 44dp; text-align: center; }");
+  createUi("Slot", "<div id=\"slot\" data-event-click=\"emit('Fit')\">Empty modifier slot</div>");
+  // A widget host: it uses Slot and sends Award, an event definition.
+  createUi("Rack", "<use ui=\"Slot\"/><div id=\"award\" data-keys=\"Enter:Award\">Award</div>");
+  uiDocuments();
   assert.equal(request("searchNodes", { query: "Raycast" }).nodes[0].type, "Raycast");
   const extract = request("searchNodes", { query: "extract", include_pins: false }).nodes[0];
   assert.equal(extract.event_name, "Extract");
@@ -364,7 +416,7 @@ try {
   assert.equal(field(salvaged, "hauler", "GameHealth", "maximum"), 250, "Has Component gates the second write");
   const hauler = salvaged.entities.find(item => item.name === "hauler");
   assert.ok(hauler.components.some(item => item.name === "GameDash"), "Add Component attaches Dash");
-  console.log("MCP design smoke passed: graph authoring, spawned dependencies, controls, refit/undo, saved progression, sound, visibility, component nodes, 20-minute timeline and replay");
+  console.log("MCP design smoke passed: ui documents, graph authoring, spawned dependencies, controls, refit/undo, saved progression, sound, visibility, component nodes, 20-minute timeline and replay");
 } finally {
   if (process.env.CHIBI_KEEP_DESIGN_FIXTURE === "1") {
     console.error(`Design fixture: ${project}`);

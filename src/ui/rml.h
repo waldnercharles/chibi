@@ -549,6 +549,14 @@ extern "C"
         int *line
     );
 
+    /* ---------- UI language service (workstream B) ---------- */
+
+    /* The name of the property, or shorthand, StyleSheetSpecification
+     * registers with `id`; NULL for an id it has not. Valid from
+     * rml_initialize until rml_shutdown. */
+    const char *rml_property_name(uint8_t id);
+    const char *rml_shorthand_name(uint8_t id);
+
     /* ---------- Inspection (the UI Inspector) ---------- */
 
     /* A property as an element's style holds it, and where it was declared:

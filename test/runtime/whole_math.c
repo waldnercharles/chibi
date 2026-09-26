@@ -165,10 +165,10 @@ static void calls_preserve_state()
 
 void test_compiled_math()
 {
-    const char *names[] = { "Sine",        "Cosine",        "Tangent",
-                            "Arc Sine",    "Arc Cosine",    "Arc Tangent",
-                            "Exponential", "Logarithm",     "Logarithm 10",
-                            "Power",       "Arc Tangent 2", "Clamp" };
+    const char *names[] = { "Sine",        "Cosine",     "Tangent",
+                            "Arc Sine",    "Arc Cosine", "Arc Tangent",
+                            "Exponential", "Logarithm",  "Logarithm 10",
+                            "Power",       "Atan2",      "Clamp" };
     for (int i = 0; i < 12; i++) {
         primitive(names[i], PIN_F64);
     }

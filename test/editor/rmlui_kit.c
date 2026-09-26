@@ -27,6 +27,9 @@ typedef struct
     const char *morph;
     int reveal, rows_emitted;
     char dropped[32];
+    char note[64];
+    int note_commits;
+    bool focus_note;
 } kit_fixture;
 
 static const kit_command_item COMMANDS[] = {
@@ -67,6 +70,13 @@ static void emit(kit_fixture *f)
     kit_prop_end(k);
     kit_prop_begin(k, "second", "Second");
     kit_number(k, "value", &f->second, &d);
+    kit_prop_end(k);
+    kit_prop_begin(k, "note", "Note");
+    f->note_commits += kit_text_area(k, "value", f->note, sizeof f->note, NULL, 0);
+    if (f->focus_note) {
+        kit_focus(k);
+        f->focus_note = false;
+    }
     kit_prop_end(k);
     kit_pop(k);
     kit_push(k, "list", NULL, NULL);
@@ -329,6 +339,29 @@ bool test_rmlui_kit()
     rml_backend_process_input(f.backend, &right);
     frame(&f);
     ok &= check(f.context == 1 && !kit_wants_text(f.k, NULL), "right press is a context click");
+
+    /* A text area: Shift+Enter starts a line, Enter commits both once. */
+    f.focus_note = true;
+    frame(&f);
+    ok &= check(kit_wants_text(f.k, NULL), "a text area takes focus");
+    type(&f, "a");
+    key(&f, RML_INPUT_KEY_ENTER, RML_INPUT_MOD_SHIFT);
+    type(&f, "b");
+    frame(&f);
+    ok &= check(f.note_commits == 0 && kit_wants_text(f.k, NULL), "Shift+Enter keeps editing");
+    kit_rect one, two;
+    ok &= check(kit_find(f.k, "app/fields/note/@control/value", &two), "text area is laid out");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    frame(&f);
+    ok &= check(strcmp(f.note, "a\nb") == 0 && f.note_commits == 1, "Enter commits the lines once");
+    ok &= check(!kit_wants_text(f.k, NULL), "Enter leaves the text area");
+    snprintf(f.note, sizeof f.note, "a");
+    settle(&f);
+    ok &= check(
+        kit_find(f.k, "app/fields/note/@control/value", &one) && two.h > one.h,
+        "the text area grows with its lines"
+    );
 
     /* Menubar: press opens, item activation reports once and closes. */
     ok &= check(click(&f, "app/bar/file"), "menu trigger");

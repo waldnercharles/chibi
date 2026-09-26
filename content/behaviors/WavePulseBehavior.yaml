@@ -1,6 +1,6 @@
 version: 3
 name: WavePulseBehavior
-id_counter: 78
+id_counter: 391
 description: An authored wave announcement expands a thin red band through floor cells and expires after 0.8 seconds.
 owner_type: ecs.entity
 variables:
@@ -14,46 +14,6 @@ graphs:
     reference_name: Tick
     outputs:
       Then: {id: 2}
-  - id: 5
-    type: Get Variable
-    reference_id: 1
-    outputs:
-      Value: {id: 4, type: float, flags: 0}
-  - id: 7
-    type: Delta Time
-    outputs:
-      Seconds: {id: 6}
-  - id: 12
-    type: Set Variable
-    reference_id: 1
-    inputs:
-      Exec: {id: 8}
-      Value: {type: float}
-    outputs:
-      Value: {type: float}
-  - id: 16
-    type: Add
-    inputs:
-      A: {id: 13, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 20
-    type: Divide
-    inputs:
-      A: {id: 17, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0, default: 0.8}
-    outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 24
-    type: Greater Or Equal
-    inputs:
-      A: {id: 21}
-      B: 1.0
-  - id: 29
-    type: Branch
-    inputs:
-      Exec: {id: 25}
   - id: 33
     type: Destroy Entity
     inputs:
@@ -62,80 +22,102 @@ graphs:
     type: Self
     outputs:
     - {id: 34, name: Entity, type_name: ecs.entity}
-  - id: 39
-    type: Multiply
+  - id: 91
+    type: Behavior Expression
+    reference_id: 79
+    reference_name: Age += dt
     inputs:
-      A: {id: 36, type: double, flags: 0, group: 0, default: 336.0}
-      B: {type: double, flags: 0, group: 0}
+      Exec: {id: 95, kind: exec}
+      Age:
+        id: 92
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: WavePulseBehavior}
+      dt:
+        type: double
+        binding: {kind: delta_time}
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 43
-    type: Add
+      Then: {id: 96, kind: exec}
+      Result: {id: 94, type: float}
+  - id: 145
+    type: Behavior Expression
+    reference_id: 131
+    reference_name: Age / 0.8
     inputs:
-      A: {id: 40, type: double, flags: 0, group: 0, default: 24.0}
-      B: {type: double, flags: 0, group: 0}
+      Age:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: WavePulseBehavior}
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 49
-    type: Set_GameSurfaceInfluence_radius
+      Result: {type: double}
+  - id: 176
+    type: Behavior Expression
+    reference_id: 162
+    reference_name: progress >= 1
     inputs:
-      Exec: {id: 44}
-  - id: 53
-    type: Subtract
-    inputs:
-      A: {id: 50, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0, default: 28.0}
+      Exec: {id: 179, kind: exec}
+      progress:
+        id: 177
+        type: double
+        flags: 0
+        binding: {kind: local, local_id: 390}
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 57
-    type: Max
+      "True": {id: 180, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 178, type: bool}
+  - id: 217
+    type: Behavior Expression
+    reference_id: 196
+    reference_name: 24 + 336 * progress
     inputs:
-      A: {id: 54, type: double, flags: 0, group: 0}
-      B: {type: double, flags: 0, group: 0}
+      progress:
+        type: double
+        binding: {kind: local, local_id: 390}
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 63
-    type: Set_GameSurfaceInfluence_inner_radius
+      Result: {type: double}
+  - id: 255
+    type: Behavior Expression
+    reference_id: 234
+    reference_name: max(0, radius - 28)
     inputs:
-      Exec: {id: 58}
-  - id: 67
-    type: Subtract
-    inputs:
-      A: {id: 64, type: double, flags: 0, group: 0, default: 1.0}
-      B: {type: double, flags: 0, group: 0}
+      radius: {type: double}
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 71
-    type: Multiply
+      Result: {type: double}
+  - id: 300
+    type: Behavior Expression
+    reference_id: 279
+    reference_name: 0.65 * (1 - progress)
     inputs:
-      A: {id: 68, type: double, flags: 0, group: 0, default: 0.65}
-      B: {type: double, flags: 0, group: 0}
+      progress:
+        type: double
+        binding: {kind: local, local_id: 390}
     outputs:
-      Result: {type: double, flags: 0, group: 0}
-  - id: 77
-    type: Set_GameSurfaceInfluence_strength
+      Result: {type: double}
+  - id: 317
+    type: Set Component
     inputs:
-      Exec: {id: 72}
+      Component: GAME.GameSurfaceInfluence
+      strength: {id: 368}
+      radius: {id: 324}
+      inner_radius: {id: 346}
+    outputs:
+      Then: {id: 322}
   edges:
-  - {from: 3.Then, to: 12.Exec}
-  - {from: 5.Value, to: 16.A}
-  - {from: 7.Seconds, to: 16.B}
-  - {from: 12.Then, to: 29.Exec}
-  - {from: 12.Value, to: 20.A}
-  - {from: 16.Result, to: 12.Value}
-  - {from: 20.Result, to: 24.A}
-  - {from: 20.Result, to: 39.B}
-  - {from: 20.Result, to: 67.B}
-  - {from: 24.Result, to: 29.Condition}
-  - {from: 29.True, to: 33.Exec}
-  - {from: 29.False, to: 49.Exec}
+  - {from: 3.Then, to: 91.Exec}
   - {from: 35.Entity, to: 33.Entity}
-  - {from: 39.Result, to: 43.B}
-  - {from: 43.Result, to: 49.Value}
-  - {from: 43.Result, to: 53.A}
-  - {from: 49.Then, to: 63.Exec}
-  - {from: 53.Result, to: 57.B}
-  - {from: 57.Result, to: 63.Value}
-  - {from: 63.Then, to: 77.Exec}
-  - {from: 67.Result, to: 71.B}
-  - {from: 71.Result, to: 77.Value}
+  - {from: 91.Then, to: 176.Exec}
+  - {from: 145.Result, to: 176.progress}
+  - {from: 145.Result, to: 217.progress}
+  - {from: 145.Result, to: 300.progress}
+  - {from: 176.True, to: 33.Exec}
+  - {from: 176.False, to: 317.Exec}
+  - {from: 217.Result, to: 255.radius}
+  - {from: 217.Result, to: 317.radius}
+  - {from: 255.Result, to: 317.inner_radius}
+  - {from: 300.Result, to: 317.strength}
+  locals:
+  - {id: 390, name: Progress, from: 145.Result}
+- {id: 79, kind: function, math_expression: Age += dt, entry_id: 115}
+- {id: 131, kind: function, math_expression: Age / 0.8, entry_id: 304}
+- {id: 162, kind: function, math_expression: progress >= 1, entry_id: 163}
+- {id: 196, kind: function, math_expression: 24 + 336 * progress, entry_id: 326}
+- {id: 234, kind: function, math_expression: 'max(0, radius - 28)', entry_id: 348}
+- {id: 279, kind: function, math_expression: 0.65 * (1 - progress), entry_id: 370}

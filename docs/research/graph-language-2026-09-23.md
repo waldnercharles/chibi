@@ -62,7 +62,8 @@ The inventory found these problems:
 
 - **One node vocabulary with per-backend lowering.**
   - Math, compare, select, noise and SDF nodes are defined once, each with behavior, GLSL and field lowerings. This is Blender's "one definition, many backends": `build_multi_function` plus `gpu_fn`.
-  - Shader and field graphs then offer the same nodes as behavior graphs, and Behavior Expressions work in all three. Today `sin()` in a shader expression fails to lower.
+  - Shader and field graphs then offer the same nodes as behavior graphs, and Behavior Expressions work in all three.
+  - Done at the expression layer (2026-09-25): one function table names each graph kind's node, so expressions share spelling, arity and argument order everywhere, and shader and field math converts to expressions. The three node sets remain.
 - **Structure types for data.**
   - Sockets are Single, Field or Dynamic, later also List and Grid. They have static shapes, and inference runs over a small lattice where Single wins over Field.
   - A field wired into a single-value input is refused at connect time with the reason.

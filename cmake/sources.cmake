@@ -1,11 +1,15 @@
 # Explicit compilation ownership, independent of conceptual folder boundaries.
 
 set(CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/align.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_path.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_route.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_score.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/expand.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/layout.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/linked.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/pin_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_program.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_jit.c
     src/graph/compiler/behavior_expression.c
@@ -59,6 +63,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/validate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/extract.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/events.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/graph_signature.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/library.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_effects.c
@@ -76,6 +81,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/local.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_set.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_cleanup.c
@@ -94,7 +100,6 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_expression_convert.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/nodes.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/operator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/reroute_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/set_map_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/state_nodes.c
@@ -119,6 +124,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/file_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
 )
 
@@ -135,7 +141,6 @@ set(ENGINE_SOURCES
 set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/audio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/commands.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/component_presentation.c
@@ -152,18 +157,25 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/input_bindings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/choices.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_debug.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_comment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_find.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_nav.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_layout.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_pins.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keys.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_members.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_member_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c
@@ -252,7 +264,6 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/gameplay.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/physics.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/prototype_preview.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/access.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/query.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/schedule.c

@@ -14,12 +14,12 @@ graphs:
   - id: 2
     type: Function Entry
     outputs:
-    - {id: 6, name: X, type: float, type_name: null, kind: data}
-    - {id: 7, name: "Y", type: float, type_name: null, kind: data}
+    - {id: 6, name: X, type: float, kind: data}
+    - {id: 7, name: "Y", type: float, kind: data}
   - id: 4
     type: Return
     inputs:
-    - {id: 8, name: Value, type: float, type_name: null, kind: data}
+    - {id: 8, name: Value, type: float, kind: data}
   - id: 9
     type: Field Add
     inputs: {B: 90.0}

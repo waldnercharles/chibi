@@ -46,7 +46,6 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
 /* Cancel requests and remove host-spawned entities, retaining prototype snapshots. */
 void game_entities_reset(game_entities *entities);
 int game_entities_register(game_entities *entities, const game_prototype *prototype);
-int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity);
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity);
 bool game_entities_is_retiring(const game_entities *entities, ecs_entity entity);
 /* Queue copied payloads. Containers and user_data are rejected. Delivery is

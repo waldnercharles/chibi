@@ -48,12 +48,10 @@ graphs:
       v:
         id: 120
         type: double
-        flags: 2
-        group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
-      dt: {type: float, flags: 2, group: 2}
+      dt: {type: float}
     outputs:
-      Result: {id: 100, type: double, flags: 2, group: 3}
+      Result: {id: 100, type: double}
   - id: 180
     type: Get UI Value
     inputs: {Element: '#score'}
@@ -83,11 +81,4 @@ graphs:
   - {from: 180.Value, to: 22.A}
   - {from: 185.Then, to: 191.Exec}
   - {from: 197.Then, to: 203.Exec}
-- id: 85
-  kind: function
-  name: v + 350 * dt
-  math_expression: v + 350 * dt
-  expression_mode: 1
-  entry_id: 162
-  return_id: 164
-  call_depth_limit: 64
+- {id: 85, kind: function, math_expression: v + 350 * dt, entry_id: 162}

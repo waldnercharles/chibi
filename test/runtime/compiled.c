@@ -440,7 +440,13 @@ static void assert_real(double actual, double expected)
 static void whole_function_arguments(behavior_backend backend)
 {
     behavior_asset *a = whole_arguments_fixture();
+    /* A function with a result must reach Return to produce it. */
     graph *empty = behavior_asset_add_function(a, "Missing return", 0);
+    pin_spec result = { .name = "Value",
+                        .type = PIN_F64,
+                        .type_name = "double",
+                        .kind = PIN_DATA };
+    assert(graph_add_pin(empty, graph_node_by_id(empty, empty->return_id), 0, &result) >= 0);
     node *missing = graph_add_node(a->graph, &NODE_Event);
     assert(graph_set_event_name(a->graph, missing, "Missing") == 0);
     node *call = behavior_asset_add_function_call_node(a, empty);

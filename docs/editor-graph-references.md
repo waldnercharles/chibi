@@ -63,7 +63,7 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Clicking empty canvas clears the selection.
 - **Dragging nodes:**
   - Dragging moves the whole selection, and selected nodes are raised.
-  - Snapping to the 20 world-unit grid is off by default; Ctrl inverts it while dragging.
+  - Snapping to a 16 world-unit grid, half a drawn cell, is off by default; holding Ctrl while dragging snaps.
   - Snapping aligns the nearest pin to the grid rather than the node corner, so wires stay straight (imgui-node-editor).
   - When several nodes move, the lead node is snapped and the rest move by the same offset (xyflow).
 - **Wires while dragging a node:**
@@ -71,10 +71,12 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Alt skips the insert. Neighbors don't shift aside yet.
 - **Keys:**
   - X or Delete deletes; Ctrl+Delete deletes and reconnects matching wires through (Node-RED, ComfyUI).
-  - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste.
+  - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste. Pasted nodes center on the pointer (Unreal).
   - M mutes (disables), H collapses, F2 renames.
   - Arrow keys walk along wires to the next node in that direction; Shift extends the selection upstream or downstream (n8n).
-  - Q straightens the selection (Unreal); L arranges it (Houdini).
+  - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. Shift+L arranges the selection (Houdini).
+  - L adds the nodes wired to the selection's inputs and Alt+L those wired to its outputs, one step at a time (Blender's Select Linked From and To; Blender's Shift+L is Arrange here). The node menu's Select submenu also follows the wires to the end (Unreal's Select All Input and Output Nodes). Nodes folded into their consumer are passed through.
+- **Alignment:** with two or more nodes selected, the node menu's Alignment submenu aligns their tops, middles, bottoms, lefts, centers or rights to the selection's bounds, and distributes three or more with equal gaps (Unreal, Figma). Each item shows its alignment icon. The graph menu offers the same for the selection.
 - **Undo:** each gesture is one undo step. The editor already snapshots per mutation; camera and selection changes never enter history.
 
 ### Node rows
@@ -124,6 +126,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
   - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
+  - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get beside an input or a Set beside an output (the Set runs after the node when the node's only execution output is free, as Unreal wires it to Then, and otherwise sits below the node, unwired); Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
   - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
   - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
 
@@ -139,14 +142,32 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Shift+A, Space or Tab opens the command surface at the pointer, and typing searches immediately (Blender, Houdini).
   - Categories stay browsable, and synonyms match (Shader Graph).
   - It reuses `kit_command` and the editor's existing search catalog.
+  - Holding a key and clicking empty canvas places a node there (Unreal): B Branch, S Sequence, D Delay, F For Each, N Do N, O Do Once, G Gate. F alone frames once released; M stays free to mute.
+- **Variadic nodes:** Sequence, MultiGate, the Int, String and Name switches, Select, Make Array, Make Set and Format Text grow a run of like pins. The node menu's Add Pin and a last Add Pin row add one (Unreal); Format Text keeps a spare argument instead of the row. The pin menu removes one while another remains. A switch's Default stays last, a new Select or Make Array pin joins its wildcard group with the resolved type, and generated names renumber.
+- **Struct pins:** Split Struct Pin shows a struct output's fields as outputs beside it, which any node can evaluate; Recombine hides the unwired ones. On Set Component, Value splits into the settable field inputs.
 - **Comments:**
   - C wraps the selection in a comment frame.
   - Dragging a frame carries its contents; Shift leaves them in place.
+  - Double-clicking a frame's title renames it in place (Unreal); its edges and corners resize it (Blender, Unreal), and its menu sets a color from a palette.
   - Titles stay readable when zoomed out (Unreal, imgui-node-editor).
+  - Clicking a frame selects it; the Node tab then edits its title and color, and Delete removes it (Unreal's comment Details). The model has no font size, so none is offered.
+  - A node can carry a comment, drawn as a bubble above it (Unreal's node comments). It is edited from the node menu, a double-click on the bubble or the Node tab. Comments span lines: Shift+Enter starts a line and Enter commits. A hidden comment shows only while the node is hovered, and titles-only zoom hides bubbles.
+- **Find:**
+  - Ctrl+F (⌘F) opens a field over the canvas that lists the behavior's nodes whose title, pin names, values, bindings, expression source or comment contain the query, graph by graph (Unreal's Find Results, Blender's Find Node).
+  - Up and Down step through the results in the graph; Enter or a click jumps to one, selecting and framing it.
+  - Find References (Shift+Alt+F, the node, graph and asset menus) lists every node across the project that calls, raises, handles, spawns, reads or writes a function, variable, event or asset, in Output's Find view; a row opens its asset and reveals the node (Unreal).
 - **Functions:**
   - Ctrl+G collapses the selection to a function; the interface is generated from the wires crossing the selection boundary (Blender, Unreal).
-  - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the path.
-  - These map to `editor_open_graph_call` and `editor_graph_back`.
+  - Collapse to Macro makes a macro instead. Every execution wire crossing the selection becomes a tunnel pin named after the pin it crosses at, so a Branch keeps its True and False exits and latent nodes such as Delay can move inside (Unreal).
+  - Expand Node puts the body of a call to one of the behavior's own functions or macros back in the call's place, wired as the call was; the called graph stays (Unreal). A function expands only when every execution output in its body is wired, since its call continues wherever the body ends.
+  - Refresh Nodes updates the selection's library calls to their functions' current signatures (Unreal). Local calls follow signature edits as they happen.
+  - Unreal's Collapse Nodes has no counterpart: every graph is a named function or macro of the behavior, and no graph belongs to a single node.
+  - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
+  - These map to `editor_open_graph_call`, `editor_graph_back` and `editor_graph_ancestor`.
+  - The Member tab edits a function's or macro's inputs and outputs: name, type, container (Single, Array, Set or Map) and removal, and each data input's default. A macro's pins may also be Exec (Unreal's tunnels). Calls follow every edit (`graph/document/graph_signature.h`); a call pin still showing the old default takes the new one, and a value set on the call stays (Unreal).
+  - Functions of materials, shapes, shader libraries and fields are pure.
+  - A behavior has one event graph. Unreal's Add New Graph pages share one Ubergraph, but here only the default graph's events are dispatched, compiled for duplicates and batched, so extra event graphs would never run.
+- **History:** Back and Forward (Alt+Left and Alt+Right, or mouse buttons 4 and 5) move through the graphs visited, across behaviors (Unreal).
 
 ### Debugging
 
@@ -155,6 +176,17 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - The running node gets a 3 dp accent outline, and errors a red one (ComfyUI, Unity).
   - Branches that didn't run draw dashed (Rivet).
 - **Breakpoints:** F9 toggles a breakpoint, drawn as a red octagon; outlined means disabled (Unreal).
+- **Stepping:**
+  - A run paused at a breakpoint pauses the scene, opens its node's graph, rings the node and makes its instance the debug target (Unreal).
+  - The transport trades Pause for Resume (F5) and the frame step for Step Over (F10), Step Into (F11) and Step Out (Shift F11), Visual Studio's keys, which Unreal follows. Space also resumes.
+  - Step Over runs a call as one node, Step Into stops at the call's first node, and Step Out finishes the call and stops in its caller.
+  - Each step pans the node into view unless it is well inside it (VS Code).
+  - The call stack floats over the canvas's corner, innermost call first; a row opens its node.
+- **Problems:**
+  - The open behavior compiles whenever it changes, so no Compile button is needed.
+  - A node with an error or warning gets a badge on its top edge whose tooltip gives the message (Blender's node warnings).
+  - While the scene plays, a node where runs failed gets an error badge.
+  - Output ▸ Problems lists diagnostics as "Graph › Node" and the message (Unreal's Compiler Results). Output ▸ Runtime lists failed runs as "Behavior › Node", one row per node and message with a count (Unreal's PIE message log). A row opens the node's graph, selects the node and frames it.
 - **Values:** Watch Values in the node menu watches its data pins. Watched pins show value bubbles beside their sockets, and hovering a pin shows its value the same way (Unreal, Blender). Values come from the inspected run, such as one paused at a breakpoint, or from the preview for pins it can evaluate; previews can't read bindings.
 - **Timings:** an optional per-node timing overlay (Blender).
 

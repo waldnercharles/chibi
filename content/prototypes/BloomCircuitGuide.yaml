@@ -1,5 +1,5 @@
 name: BloomCircuitGuide
 components:
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameUi: {document: BloomCircuit}
 behaviors: [BloomCircuitGoal]

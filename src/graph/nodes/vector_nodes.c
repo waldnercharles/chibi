@@ -44,6 +44,97 @@ node_desc NODE_Normalize_Vector_2 = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "normalize direction unit length vector",
+    .description = "Scales Value to length 1, or returns zero when its length "
+                   "is zero or not finite.",
+    .access = &pure,
+};
+
+static CF_V2 v2_input(const pin_value *value)
+{
+    assert(value->type == PIN_STRUCT && value->ptr);
+    return *(const CF_V2 *)value->ptr;
+}
+
+static pin_value vector_length(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 1);
+    CF_V2 v = v2_input(&inputs[0]);
+    return (pin_value){ .type = PIN_F64, .d = hypot((double)v.x, (double)v.y) };
+}
+
+static pin_value vector_dot(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2);
+    CF_V2 a = v2_input(&inputs[0]), b = v2_input(&inputs[1]);
+    /* Separate steps, as every backend computes it, never a fused multiply-add. */
+    double x = (double)a.x * b.x;
+    double y = (double)a.y * b.y;
+    return (pin_value){ .type = PIN_F64, .d = x + y };
+}
+
+static pin_value vector_distance(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2);
+    CF_V2 a = v2_input(&inputs[0]), b = v2_input(&inputs[1]);
+    return (pin_value){ .type = PIN_F64,
+                        .d = hypot((double)a.x - b.x, (double)a.y - b.y) };
+}
+
+static pin_spec pair_inputs[] = {
+    { .name = "A", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "B", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+static pin_spec scalar_outputs[] = {
+    { .name = "Result", .type = PIN_F64, .type_name = "double" }
+};
+
+node_desc NODE_Vector_Length = {
+    .name = "Vector Length",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = inputs,
+    .outputs = scalar_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = vector_length,
+    .jit_kind = NODE_JIT_V2_LENGTH,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Math/Vector",
+    .keywords = "length magnitude size speed vector",
+    .description = "Returns the magnitude of Value, its distance from the "
+                   "origin.",
+    .access = &pure,
+};
+
+node_desc NODE_Vector_Dot = {
+    .name = "Vector Dot",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = pair_inputs,
+    .outputs = scalar_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = vector_dot,
+    .jit_kind = NODE_JIT_V2_DOT,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Math/Vector",
+    .keywords = "dot product projection facing vector",
+    .description = "Returns A.x * B.x + A.y * B.y, positive when A and B point "
+                   "the same way.",
+    .access = &pure,
+};
+
+node_desc NODE_Vector_Distance = {
+    .name = "Vector Distance",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = pair_inputs,
+    .outputs = scalar_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = vector_distance,
+    .jit_kind = NODE_JIT_V2_DISTANCE,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Math/Vector",
+    .keywords = "distance between points range vector",
+    .description = "Returns the straight-line distance between points A and B.",
     .access = &pure,
 };
 
@@ -78,33 +169,38 @@ node_desc NODE_Direction_To = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "direction target origin normalize unit vector",
+    .description = "Returns the unit vector from Origin toward Target, or zero "
+                   "when they coincide.",
     .access = &pure,
 };
 
-static pin_value atan2_value(const pin_value *inputs, int count, arena *)
+static pin_value direction_from_angle(const pin_value *inputs, int count, arena *memory)
 {
-    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
-    return (pin_value){ .type = PIN_F32, .f = atan2f(inputs[0].f, inputs[1].f) };
+    assert(count == 1 && inputs[0].type == PIN_F64);
+    CF_V2 *result = arena_alloc(memory, sizeof *result);
+    *result = (CF_V2){ (float)cos(inputs[0].d), (float)sin(inputs[0].d) };
+    return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = result };
 }
 
 static pin_spec angle_inputs[] = {
-    { .name = "Y", .type = PIN_F32 },
-    { .name = "X", .type = PIN_F32 },
+    { .name = "Angle", .type = PIN_F64, .type_name = "double" },
 };
-static pin_spec angle_outputs[] = { { .name = "Radians", .type = PIN_F32 } };
 
-node_desc NODE_Atan2 = {
-    .name = "Atan2",
-    .input_count = 2,
+/* The unit vector at an angle in radians (Godot's Vector2.from_angle). */
+node_desc NODE_Direction_From_Angle = {
+    .name = "Direction From Angle",
+    .input_count = 1,
     .output_count = 1,
     .inputs = angle_inputs,
-    .outputs = angle_outputs,
+    .outputs = direction_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = atan2_value,
-    .jit_kind = NODE_JIT_ATAN2_F32,
+    .fn = direction_from_angle,
+    .jit_kind = NODE_JIT_V2_FROM_ANGLE,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
-    .keywords = "angle direction rotation radians",
+    .keywords = "angle heading radians polar cos sin unit vector",
+    .description = "Returns the unit vector (cos Angle, sin Angle) for Angle "
+                   "in radians.",
     .access = &pure,
 };
 
@@ -175,5 +271,7 @@ node_desc NODE_Random_Range_Vector = {
     .fn = random_range_vector,
     .category = "Math/Random",
     .keywords = "rand random range vector min max sample",
+    .description = "Picks each component at random between Min and Max, which "
+                   "default to 0 and 1.",
     .access = &random_access,
 };

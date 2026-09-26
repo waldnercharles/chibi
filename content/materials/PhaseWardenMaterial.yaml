@@ -15,17 +15,17 @@ graphs:
         default: {x: 1.0, "y": 1.0, z: 1.0}
       Emission:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Roughness: 0.2800000011920929
-      Metallic: 0.6200000047683716
+      Roughness: 0.28
+      Metallic: 0.62
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 38}
   - id: 9
     type: Shader Vector3
-    inputs: {X: 0.019999999552965164, "Y": 0.05000000074505806, Z: 0.18000000715255737}
+    inputs: {X: 0.02, "Y": 0.05, Z: 0.18}
   - id: 14
     type: Shader Vector3
-    inputs: {X: 0.05000000074505806, "Y": 0.6499999761581421, Z: 1.2000000476837158}
+    inputs: {X: 0.05, "Y": 0.65, Z: 1.2}
   edges:
   - {from: 9.Value, to: 1.Base Color}
   - {from: 14.Value, to: 1.Emission}

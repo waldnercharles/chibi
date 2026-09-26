@@ -95,12 +95,11 @@ struct editor
     int edit_revision_initialized;
     int edit_pending;
     compile_report compile;
+    behavior_asset *compiled; /* the linked snapshot compile describes; NULL when unlinked */
     double monotonic_time;
-    double execution_pulse_time;
-    uint64_t execution_pulse_graph_id;
-    int execution_pulse_active;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
+    char optimize_summary[192]; /* what the last Optimize changed */
     bool arrange_pending;
 
     node **selected;
@@ -113,7 +112,7 @@ struct editor
     char *clipboard;
     char extract_name[128];
     char connect_error[ED_LOG_MESSAGE];
-    const editor_event_signature *event_catalog;
+    const graph_host_event_desc *event_catalog;
     int event_catalog_count;
     int (*open_asset)(void *, const char *, uint64_t);
     void *open_asset_user;
@@ -128,7 +127,7 @@ struct editor
 
 /* Private collaboration between document, graph and runtime owners. */
 int ed_name_spawned_event(editor *e, node *n);
-int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature);
+int ed_event_add_declared_params(editor *e, node *n, const graph_host_event_desc *signature);
 void ed_free_string_stack(char ***stack);
 void ed_push_string(char ***stack, char *value);
 bool ed_is_graph_call(const node *n);
@@ -190,6 +189,9 @@ node *ed_convert_behavior_expression_selection(
 void ed_clear_selection(editor *e);
 void ed_reset_node_interaction(editor *e);
 int ed_switch_graph(editor *e, graph *graph);
+/* Restores the calls entered to reach the open graph, oldest first. A caller
+ * whose call no longer leads on drops out with those before it. */
+void ed_restore_callers(editor *e, const ed_graph_caller *callers, int count);
 int ed_link_selected(const editor *e, const ed_link_ref *link);
 void ed_add_selected_link(editor *e, const ed_link_ref *link);
 int ed_node_selected(const editor *e, const node *n);

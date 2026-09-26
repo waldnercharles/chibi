@@ -86,10 +86,8 @@ void run_ecs_growth_checks()
         ecs_world_reserve_entities(world, capacity + 1) == ECS_ERR_ITERATING &&
             !ecs_world_record_create(world, 0).slot &&
             ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) ==
-                ECS_ERR_ITERATING &&
-            ecs_world_migrate_component(world, &GAME_COMPONENT_GameHealth, NULL) ==
                 ECS_ERR_ITERATING,
-        "active queries reject growth and schema changes that would invalidate "
+        "active queries reject growth and registration that would invalidate "
         "their rows"
     );
     ecs_query_end(&query);

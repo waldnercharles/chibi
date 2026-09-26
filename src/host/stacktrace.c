@@ -21,10 +21,6 @@
 
 #ifdef _WIN32
 
-void print_stacktrace(int skip)
-{
-    (void)skip;
-}
 void stacktrace_init(char *program_name)
 {
     (void)program_name;
@@ -39,7 +35,6 @@ void stacktrace_assert_handler(bool expr, const char *message, const char *file,
 
 #elif defined(__EMSCRIPTEN__)
 
-void print_stacktrace(int) {}
 void stacktrace_init(char *) {}
 void stacktrace_assert_handler(bool expr, const char *message, const char *file, int line)
 {
@@ -96,7 +91,7 @@ static void resolve_and_print(void **frames, char **symbols, int count, int skip
     pclose(fp);
 }
 
-void print_stacktrace(int skip)
+static void print_stacktrace(int skip)
 {
     void *frames[MAX_FRAMES];
     int n = backtrace(frames, MAX_FRAMES);

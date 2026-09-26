@@ -1763,20 +1763,6 @@ void game_system_free(game_system *system)
     free(system);
 }
 
-int game_system_replace(game_system *system, behavior_asset *definition)
-{
-    if (!system || !definition) {
-        return -1;
-    }
-    program_free(system->program);
-    behavior_instance_destroy(system->instance);
-    behavior_asset_free(system->definition);
-    system->definition = definition;
-    system->program = NULL;
-    system->instance = NULL;
-    return rebuild(system);
-}
-
 int game_system_set_query(game_system *system, const ecs_query_expr *expression)
 {
     if (!system) {
@@ -1786,11 +1772,6 @@ int game_system_set_query(game_system *system, const ecs_query_expr *expression)
     ecs_query_expr_free(system->query_expression);
     system->query_expression = copy;
     return rebuild(system);
-}
-
-const ecs_query_expr *game_system_query_expression(const game_system *system)
-{
-    return system ? system->query_expression : NULL;
 }
 
 static int run_interpreted(game_system *system, ecs_entity entity, double now, double delta, flow_error *error)
@@ -2059,11 +2040,6 @@ int game_system_tick_mode(
     return result;
 }
 
-int game_system_tick(game_system *system, double monotonic_time, double delta_seconds, flow_error *error)
-{
-    return game_system_tick_mode(system, monotonic_time, delta_seconds, error, GAME_SYSTEM_EXEC_AUTO);
-}
-
 const behavior_asset *game_system_behavior_asset(const game_system *system)
 {
     return system ? system->definition : NULL;
@@ -2077,11 +2053,6 @@ const compile_report *game_system_compile(const game_system *system)
 int game_system_query_count(const game_system *system)
 {
     return system ? acount(system->query) : 0;
-}
-
-ecs_component_id game_system_query_at(const game_system *system, int index)
-{
-    return system->query[index];
 }
 
 int game_system_match_count(const game_system *system)
@@ -2120,11 +2091,6 @@ int game_system_uses_sljit_simd(const game_system *system)
 {
     return system && system->program && system->program->sljit &&
            graph_sljit_uses_simd(system->program->sljit);
-}
-
-const graph_ir *game_system_graph_ir(const game_system *system)
-{
-    return system && system->program ? &system->program->ir : NULL;
 }
 
 const graph_program *game_system_program(const game_system *system)

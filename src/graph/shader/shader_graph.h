@@ -67,6 +67,9 @@ typedef enum
     SHADER_SURFACE_INFLUENCE,
     SHADER_BEAT_PHASE,
     SHADER_BEAT_PULSE,
+    SHADER_FLOOR,
+    SHADER_SQRT,
+    SHADER_SIGN,
     SHADER_OP_COUNT
 } shader_op;
 enum

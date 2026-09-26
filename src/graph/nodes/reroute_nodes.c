@@ -1,5 +1,3 @@
-#include "graph/nodes/reroute_nodes.h"
-
 #include "graph/model/registry.h"
 #include "graph/runtime/flow.h"
 
@@ -40,6 +38,7 @@ node_desc NODE_RerouteData = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Utilities",
     .keywords = "reroute wire data",
+    .description = "Passes its value through unchanged, to route a data wire.",
 };
 node_desc NODE_RerouteExec = {
     .name = "Reroute Exec",
@@ -52,10 +51,10 @@ node_desc NODE_RerouteExec = {
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Utilities",
     .keywords = "reroute wire exec",
+    .description = "Continues at once, to route an execution wire.",
 };
 
-node_desc *const REROUTE_NODES[] = { &NODE_RerouteData, &NODE_RerouteExec };
-const int REROUTE_NODE_COUNT = sizeof REROUTE_NODES / sizeof REROUTE_NODES[0];
+static node_desc *const REROUTE_NODES[] = { &NODE_RerouteData, &NODE_RerouteExec };
 
 const registry_pack CORE_REROUTE_PACK = {
     .name = "core.reroute",

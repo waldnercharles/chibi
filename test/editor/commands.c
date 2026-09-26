@@ -1,7 +1,7 @@
 #include "editor/graph/search.h"
 #include "editor/workspace/editor_internal.h"
-#include "editor/workspace/event_catalog.h"
 #include "graph/document/events.h"
+#include "graph/document/library.h"
 #include "graph/nodes/component_nodes.h"
 #include "test/suite_internal.h"
 
@@ -47,31 +47,6 @@ static node_desc g_editor_int_desc = {
     .input_count = 2,
     .inputs = g_editor_int_inputs,
 };
-
-static int make_editor_save_path(char *path, size_t path_size)
-{
-#ifdef _WIN32
-    char directory[MAX_PATH];
-    DWORD directory_size = GetTempPathA(sizeof directory, directory);
-    if (!directory_size || directory_size >= sizeof directory ||
-        path_size < MAX_PATH || !GetTempFileNameA(directory, "cbp", 0, path)) {
-        return -1;
-    }
-    return 0;
-#else
-    static const char template[] = "chibi-editor-XXXXXX";
-    if (path_size < sizeof template) {
-        return -1;
-    }
-    memcpy(path, template, sizeof template);
-    int fd = mkstemp(path);
-    if (fd < 0) {
-        return -1;
-    }
-    close(fd);
-    return 0;
-#endif
-}
 
 /* Inserts the top search result, as choosing the first command result does. */
 static void search_insert(editor *e, const char *query)
@@ -131,6 +106,38 @@ static void check_linked_preview()
     );
     eval_view_free(view);
     behavior_asset_free(asset);
+    behavior_asset_free(library);
+}
+
+/* A behavior compiles with copies of the libraries it calls. A problem in one
+   names the library's graph and node, so Problems can open it there. */
+static void check_library_problem_source()
+{
+    behavior_asset *library = behavior_asset_new("ProblemMath");
+    library->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    graph *value = behavior_asset_add_function(library, "Value", 1);
+    node *muted = graph_add_node(value, registry_node_by_name("Real"));
+    assert(muted);
+    graph_set_node_disabled(value, muted, true);
+    behavior_asset *asset = behavior_asset_new("Library problems");
+    assert(behavior_asset_add_function_call_node(asset, value));
+    editor *e = editor_new(asset);
+    const behavior_asset *catalog[] = { library };
+    editor_set_asset_catalog(e, catalog, 1);
+    assert(editor_command_apply(e, (editor_command){ .kind = EDITOR_COMMAND_COMPILE }) == 0);
+    graph_node_source source = { 0 };
+    for (int i = 0; i < acount(e->compile.items); i++) {
+        const compile_diagnostic *d = &e->compile.items[i];
+        if (d->rule == CMPL_RULE_DISABLED) {
+            source = graph_node_authored(behavior_asset_find_graph(e->compiled, d->graph_id), d->node_id);
+        }
+    }
+    test_check(
+        source.asset && !strcmp(source.asset, "ProblemMath") &&
+            source.graph_id == value->graph_id && source.node_id == muted->id,
+        "a problem in a called library names the library's graph and node"
+    );
+    editor_free(e);
     behavior_asset_free(library);
 }
 
@@ -321,8 +328,10 @@ static void check_search_catalog()
     int edge_count = acount(asset->graph->edges);
     search_insert(e, "Repeat Step");
     test_check(acount(asset->graph->edges) == edge_count + 1, "pin-drag search finds macros and connects the compatible execution input");
-    const editor_event_param input_params[] = { { "Move", PIN_F64, NULL } };
-    const editor_event_signature host_events[] = { { "Input", input_params, 1 } };
+    const pin_spec input_params[] = { { .name = "Move", .type = PIN_F64 } };
+    const graph_host_event_desc host_events[] = {
+        { .name = "Input", .payload = input_params, .payload_count = 1 },
+    };
     editor_set_event_catalog(e, host_events, 1);
     int host_count = acount(asset->graph->nodes);
     search_insert(e, "On Input");
@@ -526,7 +535,7 @@ static void check_event_catalog_search()
 {
     behavior_asset *asset = behavior_asset_new("Event catalog search");
     editor *e = editor_new(asset);
-    editor_set_event_catalog(e, APP_EVENT_CATALOG, sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG);
+    editor_set_event_catalog(e, GRAPH_HOST_EVENTS, GRAPH_HOST_EVENT_COUNT);
     search_insert(e, "On Begin");
     node *begin = asset->graph->nodes[acount(asset->graph->nodes) - 1];
     test_check(begin->reference_name && !strcmp(begin->reference_name, "Begin"), "the application event catalog exposes behavior initialization through node search");
@@ -608,7 +617,7 @@ static void check_component_search()
     node *health = spawn_first(e, "has health", "Has Health");
     test_check(
         health && health->desc == &NODE_HasComponent &&
-            !strcmp(component_node_key(health), "game.GameHealth"),
+            !strcmp(component_node_key(health), "GAME.GameHealth"),
         "Has Health spawns Has Component for Health"
     );
     node *transform = spawn_first(e, "get transform", "Get Transform");
@@ -622,7 +631,7 @@ static void check_component_search()
     test_check(
         add && add->desc == &NODE_AddComponent && remove &&
             remove->desc == &NODE_RemoveComponent &&
-            !strcmp(component_node_key(remove), "game.GameHealth") &&
+            !strcmp(component_node_key(remove), "GAME.GameHealth") &&
             add->output_count == 2 && add->output_pins[1].type == PIN_BOOL,
         "Add and Remove Health spawn structural component nodes"
     );
@@ -652,17 +661,13 @@ static void check_component_search()
 void run_editor_command_checks(void)
 {
     check_linked_preview();
+    check_library_problem_source();
     check_search_catalog();
     check_component_search();
     check_library_search_snapshot();
     check_typed_wire_search();
     check_event_catalog_search();
     check_insert_on_wire();
-    char save_path[512];
-    if (make_editor_save_path(save_path, sizeof save_path) != 0) {
-        test_check(0, "a temporary path can be generated for editor persistence");
-        return;
-    }
     behavior_asset *asset = behavior_asset_new("Editor command test");
     node *source = graph_add_node(asset->graph, &g_editor_float_desc);
     node *sink = graph_add_node(asset->graph, &g_editor_int_desc);
@@ -671,7 +676,6 @@ void run_editor_command_checks(void)
     test_check(e != NULL, "editor command seam constructs a headless editor");
     if (!e) {
         behavior_asset_free(asset);
-        remove(save_path);
         return;
     }
 
@@ -815,35 +819,8 @@ void run_editor_command_checks(void)
         .data.rename_graph = { worker->graph_id, "Renamed" },
     };
     test_check(editor_command_apply(e, rename_graph) == 0, "the command seam renames a graph");
-    /* The local seam fixtures are not registry descriptors, so remove them
-     * before exercising the file round trip. */
-    graph_remove_node(asset->graph, source);
-    graph_remove_node(asset->graph, sink);
-    graph_remove_node(asset->graph, float_sink);
     editor_query_state(e, &state);
     test_check(state.dirty, "authored graph changes are observable as dirty");
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { save_path } }
-        ) == 0,
-        "the command seam saves the authored asset"
-    );
-    editor_query_state(e, &state);
-    test_check(!state.dirty, "saving establishes the clean dirty baseline");
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { save_path } }
-        ) == 0,
-        "the command seam reloads the saved asset"
-    );
-    editor_query_state(e, &state);
-    test_check(
-        state.graph_count == 2 && state.active_graph &&
-            strcmp(state.active_graph->name, "Renamed") == 0 && !state.dirty,
-        "reload preserves authored graphs and the clean dirty baseline"
-    );
     behavior_asset *other = behavior_asset_new("Other asset");
     test_check(
         other && editor_open_behavior_asset(e, other, other->graph->graph_id) == 0,
@@ -864,21 +841,6 @@ void run_editor_command_checks(void)
     editor_query_state(e, &state);
     test_check(state.dirty, "edits after opening a different asset are observable as dirty");
     behavior_asset_free(other);
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { NULL } }
-        ) == -1,
-        "a save command rejects a null path"
-    );
-    test_check(
-        editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { NULL } }
-        ) == -1,
-        "a load command rejects a null path"
-    );
-    remove(save_path);
     editor_free(e);
     check_delete_shared_source();
 }

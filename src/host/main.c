@@ -207,7 +207,7 @@ static bool frame()
 
 #ifdef __EMSCRIPTEN__
 EM_JS(void, web_startup_error, (const char *message), {
-    Module['showError'](UTF8ToString(message));
+    Module['showStopped'](UTF8ToString(message));
 })
 
 static void web_frame()
@@ -229,6 +229,7 @@ int main(int argc, char **argv)
             "PATH|--project PATH] "
             "[--scene PATH] "
             "[--fixed-dt SECONDS]\n"
+            "             [--open ASSET [--graph NAME]]\n"
             "             [--checkpoint PATH]\n"
             "Play: Escape pauses, Enter resumes, R restarts, Q quits while "
             "paused.\n"

@@ -3,7 +3,6 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/flow_internal.h"

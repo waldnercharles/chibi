@@ -595,11 +595,6 @@ static void draw_appearance(
     cf_draw_pop_color();
 }
 
-app_sdf_shapes app_scene_authoring_shapes(const app_scene_authoring *scene)
-{
-    return scene->shapes;
-}
-
 static CF_V2 canvas_point(const engine_viewport_camera *frame, CF_V2 ndc)
 {
     return (CF_V2){ frame->center_x + ndc.x * frame->span_width * 0.5f,
@@ -727,8 +722,6 @@ void app_scene_authoring_render(void *user)
             )) {
             continue;
         }
-        float x = transform->x;
-        float y = -transform->y;
         if (!material_drawn) {
             GameAppearance visible = *appearance;
             const GameMaterial *material = GAME_GameMaterial_get_const(world, entity);

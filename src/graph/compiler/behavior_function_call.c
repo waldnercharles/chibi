@@ -176,10 +176,14 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
 static int return_values(invocation_frame *frame, const behavior_function *parent_function)
 {
     behavior_function_context *context = &frame->context, *parent = context->parent;
-    if (!context->returned_node_id) {
-        return call_error(parent_function, parent, BEHAVIOR_FUNCTION_NO_RETURN, "function completed without Return");
-    }
     behavior_function_invocation call = frame->invocation;
+    /* A function without results may end anywhere, as a void function does;
+       one with results must reach Return to produce them. */
+    if (!context->returned_node_id) {
+        return call.result_count
+                 ? call_error(parent_function, parent, BEHAVIOR_FUNCTION_NO_RETURN, "function completed without Return")
+                 : FLOW_OK;
+    }
     for (int p = 0; p < call.result_count; p++) {
         if (pin_value_snapshot_to_arena(
                 parent->value_storage,

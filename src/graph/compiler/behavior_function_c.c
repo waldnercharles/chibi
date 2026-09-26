@@ -700,7 +700,6 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
         fprintf(out, "v%d=" #fn "(v%d,v%d);\n", i->output, i->left, i->right); \
         break;
                 BEHAVIOR_MATH_BINARY(MATH_BINARY)
-                MATH_BINARY(ATAN2_F32, Atan2, atan2f)
                 MATH_BINARY(MOD_F32, Modulo, fmodf)
                 MATH_BINARY(MOD_F64, Modulo, fmod)
                 MATH_BINARY(HYPOT, Length, hypot)

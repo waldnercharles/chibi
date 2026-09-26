@@ -446,7 +446,13 @@ static ar_key *ar_sorted_boxes(const arrange_graph *g, const arrange_point *pos,
 }
 
 /* Groups boxes whose horizontal extents overlap into columns, left to right. */
-void ar_columns(const arrange_graph *g, const arrange_point *pos, int *column, float **left, float **right)
+static void ar_columns(
+    const arrange_graph *g,
+    const arrange_point *pos,
+    int *column,
+    float **left,
+    float **right
+)
 {
     ar_key *order = ar_sorted_boxes(g, pos, true);
     for (int k = 0; k < g->box_count; k++) {

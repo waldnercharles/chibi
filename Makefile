@@ -131,9 +131,8 @@ tracy-mcp: build-tracy-mcp
 
 benchmark:
 	sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
-	cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation scene_benchmark system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
+	cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/scene_benchmark"
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/system_benchmark" $(ARGS)
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
@@ -155,6 +154,7 @@ check-format:
 test:
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
+	node test/web_storage_test.mjs
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite

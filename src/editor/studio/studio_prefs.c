@@ -53,8 +53,8 @@ static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
                                                          "straight",
                                                          "subway" };
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
-    "scene",  "behavior", "outliner",   "properties",
-    "output", "assets",   "performance"
+    "scene",  "behavior", "outliner",    "properties",
+    "output", "assets",   "performance", "members"
 };
 
 studio_prefs studio_prefs_default()

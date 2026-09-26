@@ -1,6 +1,6 @@
 version: 3
 name: HealthBehavior
-id_counter: 1192
+id_counter: 1441
 description: Applies accepted damage and reports actual health loss. Died handlers run before destruction; active dashes reject Damage.
 owner_type: ecs.entity
 graphs:
@@ -13,21 +13,19 @@ graphs:
     outputs:
       Amount: {declaration_id: 2, type: int, kind: data}
       Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
-  - id: 1019
-    type: Get_GameHealth
-    outputs:
-      Value: {flags: 0}
-      Value.current: {}
-      Value.maximum: {}
-  - {id: 1023, type: Integer Greater}
-  - {id: 1027, type: Branch}
   - id: 1032
     type: Call Function
     reference_id: 1001
     reference_name: Apply Damage
     inputs:
-      Current: {type: int, kind: data}
-      Maximum: {type: int, kind: data}
+      Current:
+        type: int
+        kind: data
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+      Maximum:
+        type: int
+        kind: data
+        binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
       Amount: {type: int, kind: data}
       Source: {type: handle, type_name: ecs.entity, kind: data}
   - id: 1142
@@ -35,8 +33,6 @@ graphs:
     reference_name: Died
     outputs:
       Source: {declaration_id: 3, type: handle, type_name: ecs.entity, kind: data}
-  - {id: 1145, type: Integer Less Or Equal}
-  - {id: 1149, type: Branch}
   - id: 1154
     type: Call Function
     reference_id: 1010
@@ -46,21 +42,42 @@ graphs:
     outputs:
       Self: {type_name: ecs.entity}
   - {id: 1159, type: Destroy Entity}
+  - id: 1210
+    type: Behavior Expression
+    reference_id: 1196
+    reference_name: Amount > 0
+    inputs:
+      Exec: {id: 1213, kind: exec}
+      Amount: {id: 1211, type: double, flags: 0}
+    outputs:
+      "True": {id: 1214, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1212, type: bool}
+  - id: 1244
+    type: Behavior Expression
+    reference_id: 1230
+    reference_name: Health <= 0
+    inputs:
+      Exec: {id: 1247, kind: exec}
+      Health:
+        id: 1245
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+    outputs:
+      "True": {id: 1248, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1246, type: bool}
   edges:
-  - {from: 1015.Then, to: 1027.Exec}
-  - {from: 1015.Amount, to: 1023.A}
+  - {from: 1015.Then, to: 1210.Exec}
   - {from: 1015.Amount, to: 1032.Amount}
+  - {from: 1015.Amount, to: 1210.Amount, conversion: To Real}
   - {from: 1015.Source, to: 1032.Source}
-  - {from: 1019.Value.current, to: 1032.Current}
-  - {from: 1019.Value.current, to: 1145.A}
-  - {from: 1019.Value.maximum, to: 1032.Maximum}
-  - {from: 1023.Result, to: 1027.Condition}
-  - {from: 1027.True, to: 1032.Exec}
-  - {from: 1142.Then, to: 1149.Exec}
-  - {from: 1145.Result, to: 1149.Condition}
-  - {from: 1149.True, to: 1154.Exec}
+  - {from: 1142.Then, to: 1244.Exec}
   - {from: 1154.Then, to: 1159.Exec}
   - {from: 1157.Self, to: 1159.Entity}
+  - {from: 1210.True, to: 1032.Exec}
+  - {from: 1244.True, to: 1154.Exec}
 - id: 1001
   kind: function
   name: Apply Damage
@@ -76,37 +93,39 @@ graphs:
     - {id: 1006, name: Amount, type: int, kind: data}
     - {id: 1007, name: Source, type: handle, type_name: ecs.entity, kind: data}
   - {id: 1008, type: Return}
-  - {id: 1039, type: Integer Greater}
-  - {id: 1043, type: Branch}
   - id: 1048
     type: Has_GameDash
     outputs:
     - {id: 1049, name: Has}
   - {id: 1050, type: Branch}
-  - id: 1055
-    type: Get_GameDash
-    outputs:
-      Value: {flags: 0}
-      Value.remaining: {}
-  - {id: 1058, type: Greater}
-  - {id: 1062, type: Branch}
   - id: 1067
     type: Behavior Expression
     reference_id: 63
     reference_name: Remaining Health
     inputs:
-      current: {type: double, group: 1}
-      amount: {type: double, group: 2}
-      maximum: {type: double, group: 3}
+      current:
+        type: double
+        flags: 0
+        binding: {kind: local, local_id: 1194}
+      amount: {type: double, flags: 0}
+      maximum: {type: double, flags: 0}
     outputs:
-      Result: {type: double, group: 4}
+      Result: {type: double, flags: 0}
   - id: 1072
     type: Subtract
     inputs:
-      B: {group: 1}
-  - {id: 1076, type: Integer Greater}
-  - {id: 1080, type: Branch}
-  - {id: 1085, type: Set_GameHealth_current}
+      A:
+        type: int
+        binding: {kind: local, local_id: 1194}
+      B:
+        type: int
+        group: 1
+        binding: {kind: local, local_id: 1195}
+  - id: 1085
+    type: Set_GameHealth_current
+    inputs:
+      Value:
+        binding: {kind: local, local_id: 1195}
   - id: 1091
     type: Self
     outputs:
@@ -117,48 +136,98 @@ graphs:
     inputs:
       Amount: {declaration_id: 2, type: int}
       Source: {declaration_id: 3}
-  - {id: 1099, type: Integer Less Or Equal}
-  - {id: 1103, type: Branch}
   - id: 1137
     type: Send Event
     reference_name: Died
     inputs:
       Source: {declaration_id: 3}
+  - id: 1192
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1278
+    type: Behavior Expression
+    reference_id: 1264
+    reference_name: Current > 0
+    inputs:
+      Exec: {id: 1281, kind: exec}
+      Current: {id: 1279, type: double, flags: 0}
+    outputs:
+      "True": {id: 1282, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1280, type: bool}
+  - id: 1312
+    type: Behavior Expression
+    reference_id: 1298
+    reference_name: DashRemaining > 0
+    inputs:
+      Exec: {id: 1315, kind: exec}
+      DashRemaining:
+        id: 1313
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameDash, field: remaining}
+    outputs:
+      "True": {id: 1316, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1314, type: bool}
+  - id: 1344
+    type: Behavior Expression
+    reference_id: 1332
+    reference_name: Current > RemainingHealth
+    inputs:
+      Exec: {id: 1348, kind: exec}
+      Current: {id: 1345, type: double, flags: 0}
+      RemainingHealth: {type: double, flags: 0}
+    outputs:
+      "True": {id: 1349, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1347, type: bool}
+  - id: 1406
+    type: Behavior Expression
+    reference_id: 1392
+    reference_name: RemainingHealth <= 0
+    inputs:
+      Exec: {id: 1409, kind: exec}
+      RemainingHealth: {id: 1407, type: double, flags: 0}
+    outputs:
+      "True": {id: 1410, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 1408, type: bool}
   edges:
-  - {from: 1002.Then, to: 1043.Exec}
-  - {from: 1002.Current, to: 1039.A}
+  - {from: 1002.Then, to: 1278.Exec}
   - {from: 1002.Current, to: 1067.current, conversion: To Real}
   - {from: 1002.Current, to: 1072.A}
+  - {from: 1002.Current, to: 1278.Current, conversion: To Real}
+  - {from: 1002.Current, to: 1344.Current, conversion: To Real}
   - {from: 1002.Maximum, to: 1067.maximum, conversion: To Real}
   - {from: 1002.Amount, to: 1067.amount, conversion: To Real}
   - {from: 1002.Source, to: 1093.Source}
   - {from: 1002.Source, to: 1137.Source}
-  - {from: 1039.Result, to: 1043.Condition}
-  - {from: 1043.True, to: 1050.Exec}
-  - {from: 1043.False, to: 1008.Exec}
   - {from: 1048.Has, to: 1050.Condition}
-  - {from: 1050.True, to: 1062.Exec}
-  - {from: 1050.False, to: 1080.Exec}
-  - {from: 1055.Value.remaining, to: 1058.A}
-  - {from: 1058.Result, to: 1062.Condition}
-  - {from: 1062.True, to: 1008.Exec}
-  - {from: 1062.False, to: 1080.Exec}
+  - {from: 1050.True, to: 1312.Exec}
+  - {from: 1050.False, to: 1344.Exec}
   - {from: 1067.Result, to: 1072.B, conversion: To Integer}
   - {from: 1067.Result, to: 1085.Value, conversion: To Integer}
-  - {from: 1067.Result, to: 1099.A, conversion: To Integer}
-  - {from: 1072.Result, to: 1076.A}
+  - {from: 1067.Result, to: 1344.RemainingHealth}
+  - {from: 1067.Result, to: 1406.RemainingHealth}
   - {from: 1072.Result, to: 1093.Amount}
-  - {from: 1076.Result, to: 1080.Condition}
-  - {from: 1080.True, to: 1085.Exec}
-  - {from: 1080.False, to: 1008.Exec}
   - {from: 1085.Then, to: 1093.Exec}
   - {from: 1091.Self, to: 1093.Entity}
-  - {from: 1091.Self, to: 1137.Entity}
-  - {from: 1093.Then, to: 1103.Exec}
-  - {from: 1099.Result, to: 1103.Condition}
-  - {from: 1103.True, to: 1137.Exec}
-  - {from: 1103.False, to: 1008.Exec}
+  - {from: 1093.Then, to: 1406.Exec}
   - {from: 1137.Then, to: 1008.Exec}
+  - {from: 1192.Self, to: 1137.Entity}
+  - {from: 1278.True, to: 1050.Exec}
+  - {from: 1278.False, to: 1008.Exec}
+  - {from: 1312.True, to: 1008.Exec}
+  - {from: 1312.False, to: 1344.Exec}
+  - {from: 1344.True, to: 1085.Exec}
+  - {from: 1344.False, to: 1008.Exec}
+  - {from: 1406.True, to: 1137.Exec}
+  - {from: 1406.False, to: 1008.Exec}
+  locals:
+  - {id: 1194, name: Current, from: 1002.Current}
+  - {id: 1195, name: Remaining Health, from: 1067.Result}
 - id: 1010
   kind: function
   name: Notify Encounter
@@ -205,7 +274,16 @@ graphs:
   kind: function
   name: Remaining Health
   math_expression: clamp(current - clamp(amount, 0, current), 0, maximum)
-  expression_mode: 1
-  entry_id: 1164
-  return_id: 1166
-  call_depth_limit: 64
+  entry_id: 1413
+- {id: 1196, kind: function, math_expression: Amount > 0, entry_id: 1217}
+- {id: 1230, kind: function, math_expression: Health <= 0, entry_id: 1251}
+- {id: 1264, kind: function, math_expression: Current > 0, entry_id: 1285}
+- {id: 1298, kind: function, math_expression: DashRemaining > 0, entry_id: 1319}
+- id: 1332
+  kind: function
+  math_expression: Current > RemainingHealth
+  entry_id: 1352
+- id: 1392
+  kind: function
+  math_expression: RemainingHealth <= 0
+  entry_id: 1393

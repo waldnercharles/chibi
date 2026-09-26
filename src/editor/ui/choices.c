@@ -22,22 +22,6 @@ editor_choice editor_choice_at(const editor_choices *choices, int index)
                             .name = value->name };
 }
 
-void editor_choices_format(int value, const editor_choices *choices, char *buf, size_t cap)
-{
-    if (!cap) {
-        return;
-    }
-    for (int i = 0; i < editor_choices_count(choices); i++) {
-        editor_choice choice = editor_choice_at(choices, i);
-        assert(choice.label && choice.label[0]);
-        if (choice.value == value) {
-            snprintf(buf, cap, "%s", choice.label);
-            return;
-        }
-    }
-    snprintf(buf, cap, "Unknown (%d)", value);
-}
-
 const editor_choices *editor_choices_for_enum(const char *type_name)
 {
     static editor_choices choices;

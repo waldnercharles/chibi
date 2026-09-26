@@ -30,7 +30,6 @@ void emit(FILE *out, const collect_ctx *ctx)
     fputs("#include \"graph/nodes/nodes.h\"\n", out);
     fputs("#include \"graph/runtime/flow.h\"\n", out);
     fputs("#include \"graph/runtime/service.h\"\n", out);
-    fputs("#include \"graph/nodes/operator.h\"\n", out);
     fputs("#include \"graph/model/registry.h\"\n", out);
     if (acount(ctx->structs)) {
         int has_component = 0;
@@ -191,26 +190,6 @@ void emit(FILE *out, const collect_ctx *ctx)
     fputs("};\n", out);
     fprintf(out, "const int %s_REGISTRY_SERVICE_COUNT = %d;\n\n", g_prefix, service_count);
 
-    int operator_count = 0;
-    for (int i = 0; i < acount(ctx->fns); i++) {
-        if (ctx->fns[i].operator_name) {
-            operator_count++;
-        }
-    }
-    fprintf(out, "const operator_signature %s_REGISTRY_OPERATORS[] = {\n", g_prefix);
-    for (int i = 0; i < acount(ctx->fns); i++) {
-        const fn_info *f = &ctx->fns[i];
-        if (!f->operator_name) {
-            continue;
-        }
-        const char *left = acount(f->ppin) > 0 ? f->ppin[0] : "PIN_FLOW";
-        const char *right = acount(f->ppin) > 1 ? f->ppin[1] : "PIN_FLOW";
-        const char *result = f->ret_pin ? f->ret_pin : "PIN_FLOW";
-        fprintf(out, "    { \"%s\", %s, %s, %s, 0 },\n", f->operator_name, left, right, result);
-    }
-    fputs("};\n", out);
-    fprintf(out, "const int %s_REGISTRY_OPERATOR_COUNT = %d;\n\n", g_prefix, operator_count);
-
     /* native prototypes, so wrappers can call the annotated functions */
     for (int i = 0; i < acount(ctx->fns); i++) {
         const fn_info *f = &ctx->fns[i];
@@ -338,8 +317,6 @@ void emit(FILE *out, const collect_ctx *ctx)
     fprintf(out, "    .type_count = %d,\n", acount(ctx->structs));
     fprintf(out, "    .services = %s_REGISTRY_SERVICES,\n", g_prefix);
     fprintf(out, "    .service_count = %d,\n", service_count);
-    fprintf(out, "    .operators = %s_REGISTRY_OPERATORS,\n", g_prefix);
-    fprintf(out, "    .operator_count = %d,\n", operator_count);
     fprintf(out, "    .enums = %s_REGISTRY_ENUMS,\n", g_prefix);
     fprintf(out, "    .enum_count = %d,\n", acount(ctx->enums));
     fputs("};\n", out);

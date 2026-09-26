@@ -277,16 +277,20 @@ static pin_spec OUTPUTS[] = {
     { .name = "Explored", .type = PIN_BOOL, .type_name = "bool" },
     { .name = "Obstacle", .type = PIN_BOOL, .type_name = "bool" }
 };
-static node_desc SAMPLE = { .name = "Visibility At",
-                            .category = "Visibility",
-                            .keywords = "fog sight explored terrain memory",
-                            .input_count = 1,
-                            .inputs = INPUTS,
-                            .output_count = 3,
-                            .outputs = OUTPUTS,
-                            .pure_kind = NODE_PURE_READ,
-                            .read_inputs = sample_node,
-                            .access = &ACCESS };
+static node_desc SAMPLE = {
+    .name = "Visibility At",
+    .category = "Visibility",
+    .keywords = "fog sight explored terrain memory",
+    .description = "Samples the fog-of-war cell at Position; Visible is always "
+                   "true without fog and false outside its grid.",
+    .input_count = 1,
+    .inputs = INPUTS,
+    .output_count = 3,
+    .outputs = OUTPUTS,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = sample_node,
+    .access = &ACCESS
+};
 static node_desc *const NODES[] = { &SAMPLE };
 const registry_pack GAME_VISIBILITY_PACK = { .name = "game.visibility",
                                              .nodes = NODES,

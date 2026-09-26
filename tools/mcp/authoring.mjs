@@ -56,6 +56,7 @@ const operationProperties = {
       "set_input",
       "set_output",
       "set_node",
+      "set_comment",
       "set_expression",
       "connect",
       "disconnect",
@@ -158,7 +159,7 @@ const operationProperties = {
   side: {
     type: "string",
     enum: ["input", "output"],
-    description: "Pin side for pin operations; defaults to input except add_pin, which requires it.",
+    description: "Pin side for pin operations; defaults to output for create_local, expose_fields and hide_fields, and to input otherwise; add_pin requires it.",
   },
   disabled: {
     type: "boolean",
@@ -167,6 +168,14 @@ const operationProperties = {
   presentation: {
     enum: ["auto", "inline", "expanded"],
     description: "Draw a pure source inside its consumer's input, or as its own node.",
+  },
+  comment: {
+    type: "string",
+    description: "Node comment for set_comment, shown in a bubble above the node; an empty string removes it.",
+  },
+  hidden: {
+    type: "boolean",
+    description: "For set_comment: show the comment only while the node is hovered.",
   },
   event_name: {
     type: "string",
@@ -231,20 +240,28 @@ const operationSchema = {
 const searchNodesDefinition = {
   name: "searchNodes",
   operation: "search_nodes",
-  description: "Find graph nodes by name, category, keyword, domain, or typed pin signature without loading the full registry.",
+  description: "Find graph nodes and events by words, domain, or typed pin signature. Without a query or filter, list the domain's node types by category, its events, and the settings they take.",
   inputSchema: object({
     query: {
       type: "string",
-      description: "Case-insensitive text matched against node names, categories, and keywords.",
+      description: "Words that must all start a word in a node's or event's name, keywords, pins, or expression function, such as \"set health current\", \"on hit\" or \"clamp\". Results rank by relevance.",
     },
     domain: {
       type: "string",
-      enum: ["behavior", "shader", "field"],
-      description: "Restrict results to behavior, shader, or field nodes.",
+      enum: ["behavior", "shader", "field", "system"],
+      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity.",
     },
     pin_type: {
       type: "string",
       description: "Require a matching pin type or struct type name, such as float or ShaderVec3.",
+    },
+    wire_from: {
+      type: "string",
+      description: "Type of an existing output to wire from, as searchNodes writes pins: exec, float, GameHealth, ecs.entity or array<int>. Keeps nodes with an input that takes it, ranked exact type, then conversion, then wildcard, and names that input as wire_input.",
+    },
+    wire_to: {
+      type: "string",
+      description: "Type of an existing input to wire into. Keeps nodes with an output that feeds it, ranked like wire_from, and names that output as wire_output.",
     },
     pin_container: {
       type: "string",
@@ -273,7 +290,7 @@ const searchNodesDefinition = {
     },
     include_pins: {
       type: "boolean",
-      description: "Include input and output pin descriptors; defaults to true.",
+      description: "Include input and output pins as \"name: type\"; defaults to true.",
     },
   }),
   outputSchema: { type: "object", additionalProperties: true },
@@ -547,6 +564,10 @@ const optimizeGraphDefinition = {
       type: "boolean",
       description: "Allow safe high-fanout values to become local aliases; defaults to true.",
     },
+    math_expressions: {
+      type: "boolean",
+      description: "First replace each tree of three or more math nodes with one expression; computed inputs get placeholder letters to rename. Defaults to false.",
+    },
   }),
   outputSchema: { type: "object", additionalProperties: true },
 };
@@ -609,6 +630,25 @@ const previewShaderDefinition = {
       minimum: -3600,
       maximum: 3600,
       description: "Shader time uniform in seconds; defaults to zero.",
+    },
+    beat_phase: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Material Beat Phase; defaults to zero.",
+    },
+    beat_pulse: {
+      type: "number",
+      minimum: 0,
+      maximum: 1,
+      description: "Material Beat Pulse; defaults to zero.",
+    },
+    influence: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: { type: "number", minimum: 0, maximum: 64 },
+      description: "Material Surface Influence as linear RGB at the preview center, fading out at radius 50; defaults to none.",
     },
     parameters: {
       type: "object",

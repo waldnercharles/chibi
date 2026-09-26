@@ -3,6 +3,7 @@
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/Elements/ElementFormControlTextArea.h>
 #include <RmlUi/Core/FontEngineInterface.h>
 #include <RmlUi/Core/Geometry.h>
 #include <RmlUi/Core/Mesh.h>
@@ -217,11 +218,17 @@ Rml::ElementFormControl *form_control(const rml_element *handle)
     return control;
 }
 
-Rml::ElementFormControlInput *input(rml_element *handle)
+/* An input or a textarea, which select text alike. */
+template<typename F>
+void text_control(rml_element *handle, F forward)
 {
+    if (auto *area = dynamic_cast<Rml::ElementFormControlTextArea *>(element(handle))) {
+        forward(area);
+        return;
+    }
     auto *input = dynamic_cast<Rml::ElementFormControlInput *>(element(handle));
     assert(input);
-    return input;
+    forward(input);
 }
 
 rml_vec2 vec2(Rml::Vector2f v)
@@ -845,12 +852,14 @@ void rml_element_set_value(rml_element *e, const char *value)
 
 void rml_element_select(rml_element *e)
 {
-    input(e)->Select();
+    text_control(e, [](auto *control) { control->Select(); });
 }
 
 void rml_element_set_selection_range(rml_element *e, int start, int end)
 {
-    input(e)->SetSelectionRange(start, end);
+    text_control(e, [=](auto *control) {
+        control->SetSelectionRange(start, end);
+    });
 }
 
 void rml_element_click(rml_element *e)

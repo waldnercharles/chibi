@@ -3,7 +3,6 @@
 #include "graph/runtime/instance.h"
 #include "platform/cute.h"
 #include "render/fluid_raster.h"
-#include "render/light_field_2d.h"
 #include "render/material_raster.h"
 #include "render/reflections.h"
 #include "render/scene_renderer.h"
@@ -385,28 +384,6 @@ static bool save_capture(const CF_Pixel *pixels)
     return ok;
 }
 
-static CF_Texture blank_hdr_texture(int width, int height)
-{
-    CF_TextureParams params = cf_texture_defaults(width, height);
-    params.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
-    params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT;
-    params.filter = CF_FILTER_LINEAR;
-    params.wrap_u = params.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
-    CF_Texture texture = cf_make_texture(params);
-    if (!texture.id) {
-        return texture;
-    }
-    size_t bytes = (size_t)width * (size_t)height * 8;
-    void *zeros = calloc(1, bytes);
-    if (!zeros) {
-        cf_destroy_texture(texture);
-        return (CF_Texture){ 0 };
-    }
-    cf_texture_update(texture, zeros, (int)bytes);
-    free(zeros);
-    return texture;
-}
-
 static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
 {
     CF_CanvasParams params = cf_canvas_defaults(0, 0);
@@ -426,182 +403,6 @@ static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
         cf_destroy_readback(readback);
     }
     cf_destroy_canvas(canvas);
-    return ok;
-}
-
-static render_view_2d light_view(int width, int height)
-{
-    return (render_view_2d){ .min_x = -width * 0.5f,
-                             .max_y = height * 0.5f,
-                             .width = width,
-                             .height = height,
-                             .crop_min_u = 0,
-                             .crop_min_v = 0,
-                             .crop_max_u = 1,
-                             .crop_max_v = 1 };
-}
-
-static bool light_field_checks()
-{
-    enum
-    {
-        width = 64,
-        height = 64,
-        pixel_count = width * height
-    };
-    render_light_field_2d *field = render_light_field_2d_new();
-    CF_Texture base = blank_hdr_texture(width, height);
-    uint16_t *pixels = calloc((size_t)pixel_count * 4, sizeof *pixels);
-    render_point_light_2d sources[128];
-    bool ok = field && base.id && pixels;
-    if (ok) {
-        ok = render_light_field_2d_resize(field, width, height);
-    }
-    for (int i = 0; i < 128; i++) {
-        sources[i] = (render_point_light_2d){ .position = { 0, 0 },
-                                              .intensity = 2,
-                                              .radius = 20,
-                                              .color = { 0.25f, 0.5f, 1, 1 } };
-    }
-    float one = 0;
-    float two = 0;
-    render_light_field_stats stats = { 0 };
-    bool additive_ok = false;
-    bool counts_ok = false;
-    bool clipping_ok = false;
-    bool padded_ok = false;
-    bool reset_ok = false;
-    if (ok) {
-        for (int count = 1; count <= 2; count++) {
-            render_light_field_2d_reset(field);
-            cf_app_update(NULL);
-            ok &= render_light_field_2d_draw(field, sources, count, light_view(width, height));
-            ok &= render_light_field_2d_composite(field, base);
-            cf_app_draw_onto_screen(false);
-            ok &= read_hdr_texture(render_light_field_2d_texture(field), pixels, pixel_count);
-            float value = half_value(pixels[4 * (32 * width + 32) + 2]);
-            if (count == 1) {
-                one = value;
-            } else {
-                two = value;
-            }
-        }
-        additive_ok = one > 0.5f && fabsf(two - one * 2) < 0.03f;
-        ok &= additive_ok;
-    }
-    if (ok) {
-        const int counts[] = { 64, 96, 128 };
-        counts_ok = true;
-        for (int i = 0; i < 3; i++) {
-            int count = counts[i];
-            render_light_field_2d_reset(field);
-            cf_app_update(NULL);
-            ok &= render_light_field_2d_draw(field, sources, count, light_view(width, height));
-            stats = render_light_field_2d_stats(field);
-            bool count_ok = stats.source_count == count &&
-                            stats.accepted_source_count == count &&
-                            stats.clipped_source_count == 0 &&
-                            stats.capacity >= count &&
-                            stats.max_tile_occupancy == count;
-            counts_ok &= count_ok;
-            ok &= count_ok;
-        }
-    }
-    if (ok) {
-        sources[0].position = (CF_V2){ 48, 0 };
-        render_light_field_2d_reset(field);
-        cf_app_update(NULL);
-        ok &= render_light_field_2d_draw(field, sources, 1, light_view(width, height));
-        stats = render_light_field_2d_stats(field);
-        clipping_ok = stats.source_count == 1 && stats.accepted_source_count == 1 &&
-                      stats.clipped_source_count == 1 &&
-                      render_light_field_2d_error(field)[0];
-        ok &= clipping_ok;
-    }
-    if (ok) {
-        enum
-        {
-            padded_width = 96,
-            padded_height = 96,
-            padded_pixels_count = 96 * 96
-        };
-        CF_Texture padded_base = blank_hdr_texture(padded_width, padded_height);
-        uint16_t *padded_pixels = calloc((size_t)padded_pixels_count * 4, sizeof *padded_pixels);
-        render_view_2d padded = { .min_x = -48,
-                                  .max_y = 48,
-                                  .width = 96,
-                                  .height = 96,
-                                  .crop_min_u = 1.0f / 6,
-                                  .crop_min_v = 1.0f / 6,
-                                  .crop_max_u = 5.0f / 6,
-                                  .crop_max_v = 5.0f / 6 };
-        sources[0] = (render_point_light_2d){ .position = { -40, 0 },
-                                              .intensity = 2,
-                                              .radius = 8,
-                                              .color = { 0.25f, 0.5f, 1, 1 } };
-        bool ready = padded_base.id && padded_pixels &&
-                     render_light_field_2d_resize(field, padded_width, padded_height);
-        if (ready) {
-            render_light_field_2d_reset(field);
-            cf_app_update(NULL);
-            ready = render_light_field_2d_draw(field, sources, 1, padded) &&
-                    render_light_field_2d_composite(field, padded_base);
-            cf_app_draw_onto_screen(false);
-        }
-        if (ready) {
-            stats = render_light_field_2d_stats(field);
-            ready = read_hdr_texture(render_light_field_2d_texture(field), padded_pixels, padded_pixels_count) &&
-                    half_value(padded_pixels[4 * (48 * padded_width + 8) + 2]) > 1.0f;
-            padded_ok = stats.source_count == 1 && stats.accepted_source_count == 1 &&
-                        stats.clipped_source_count == 0 && ready;
-        }
-        ok &= padded_ok;
-        if (padded_base.id) {
-            cf_destroy_texture(padded_base);
-        }
-        free(padded_pixels);
-    }
-    if (field) {
-        render_light_field_2d_reset(field);
-        stats = render_light_field_2d_stats(field);
-        reset_ok = stats.source_count == 0 && stats.accepted_source_count == 0 &&
-                   stats.clipped_source_count == 0 &&
-                   !render_light_field_2d_error(field)[0];
-        ok &= reset_ok;
-        ok &= render_light_field_2d_resize(field, 80, 64);
-        stats = render_light_field_2d_stats(field);
-        ok &= stats.tile_count == 5 * 4 && stats.capacity == 0;
-    }
-    if (!ok) {
-        fprintf(
-            stderr,
-            "light field details: field=%p base=%llu one=%g two=%g additive=%d "
-            "counts=%d clipping=%d reset=%d source=%d accepted=%d clipped=%d "
-            "occupancy=%d capacity=%d error=%s\n",
-            (void *)field,
-            (unsigned long long)base.id,
-            one,
-            two,
-            additive_ok,
-            counts_ok,
-            clipping_ok,
-            reset_ok,
-            stats.source_count,
-            stats.accepted_source_count,
-            stats.clipped_source_count,
-            stats.max_tile_occupancy,
-            stats.capacity,
-            render_light_field_2d_error(field)
-        );
-    }
-    if (field) {
-        render_light_field_2d_free(field);
-    }
-    if (base.id) {
-        cf_destroy_texture(base);
-    }
-    free(pixels);
-    printf("light field %s: additive emission, 64/96/128 sources, padded sources, diagnostics and resize\n", ok ? "PASS" : "FAIL");
     return ok;
 }
 
@@ -1718,8 +1519,6 @@ int test_radiance()
     ok &= split_transport(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);
     ok &= reflection_pixels();
-    bool light_ok = light_field_checks();
-    ok &= light_ok;
     ok &= test_radiance_intervals();
     if (canvas.id) {
         cf_destroy_canvas(canvas);

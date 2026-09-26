@@ -335,13 +335,14 @@ static pin_spec GET_OUT[] = {
 static const node_access WRITE = { .flags = NODE_EFFECT_HOST_SINK };
 static const node_access READ = { .flags = NODE_EFFECT_WORLD_READ };
 
-#define EFFECT_NODE(ident, label, words, pins, call)                              \
+#define EFFECT_NODE(ident, label, words, text, pins, call)                        \
     static const node_host_call ident##_CALL = { .service = "game.ui",            \
                                                  .invoke = call,                  \
                                                  .missing_service = MISSING_UI }; \
     static node_desc ident = { .name = label,                                     \
                                .category = "UI",                                  \
                                .keywords = words,                                 \
+                               .description = text,                               \
                                .input_count = sizeof pins / sizeof *pins,         \
                                .inputs = pins,                                    \
                                .output_count = 1,                                 \
@@ -352,13 +353,68 @@ static const node_access READ = { .flags = NODE_EFFECT_WORLD_READ };
                                .display_class = NODE_DISPLAY_FLOW,                \
                                .access = &WRITE }
 
-EFFECT_NODE(SET_TEXT, "Set UI Text", "label hud score caption", TEXT_IN, text_call);
-EFFECT_NODE(SET_CLASS, "Set UI Class", "style state highlight rcss", CLASS_IN, class_call);
-EFFECT_NODE(SET_VISIBLE, "Set UI Visible", "show hide display", VISIBLE_IN, visible_call);
-EFFECT_NODE(SET_VALUE, "Set UI Value", "progress slider meter bar", VALUE_IN, value_call);
-EFFECT_NODE(FOCUS, "Focus UI Element", "keyboard select input", FOCUS_IN, focus_call);
-EFFECT_NODE(CLICK, "Click UI Element", "press activate button choose", FOCUS_IN, click_call);
-EFFECT_NODE(MOVE_FOCUS, "Move UI Focus", "next previous navigate arrow keyboard", MOVE_FOCUS_IN, move_focus_call);
+EFFECT_NODE(
+    SET_TEXT,
+    "Set UI Text",
+    "label hud score caption",
+    "Sets the text of the entity's UI elements that match the Element "
+    "selector.",
+    TEXT_IN,
+    text_call
+);
+EFFECT_NODE(
+    SET_CLASS,
+    "Set UI Class",
+    "style state highlight rcss",
+    "Adds or removes a class on the entity's UI elements that match the "
+    "Element selector.",
+    CLASS_IN,
+    class_call
+);
+EFFECT_NODE(
+    SET_VISIBLE,
+    "Set UI Visible",
+    "show hide display",
+    "Shows or hides the entity's UI elements that match the Element selector.",
+    VISIBLE_IN,
+    visible_call
+);
+EFFECT_NODE(
+    SET_VALUE,
+    "Set UI Value",
+    "progress slider meter bar",
+    "Sets the value of the entity's sliders, meters and inputs that match the "
+    "Element selector.",
+    VALUE_IN,
+    value_call
+);
+EFFECT_NODE(
+    FOCUS,
+    "Focus UI Element",
+    "keyboard select input",
+    "Gives keyboard focus to the entity's first UI element that matches the "
+    "Element selector.",
+    FOCUS_IN,
+    focus_call
+);
+EFFECT_NODE(
+    CLICK,
+    "Click UI Element",
+    "press activate button choose",
+    "Clicks the entity's first UI element that matches the Element selector, "
+    "as a pointer would.",
+    FOCUS_IN,
+    click_call
+);
+EFFECT_NODE(
+    MOVE_FOCUS,
+    "Move UI Focus",
+    "next previous navigate arrow keyboard",
+    "Moves keyboard focus Step places through the entity's UI elements that "
+    "match the Element selector.",
+    MOVE_FOCUS_IN,
+    move_focus_call
+);
 
 static const node_host_call GET_CALL = {
     .service = "game.ui",
@@ -366,17 +422,22 @@ static const node_host_call GET_CALL = {
     .missing_service = "Get UI Value requires a game world",
     .reusable = true
 };
-static node_desc GET_VALUE = { .name = "Get UI Value",
-                               .category = "UI",
-                               .keywords = "slider input progress read",
-                               .input_count = 2,
-                               .inputs = GET_IN,
-                               .output_count = 2,
-                               .outputs = GET_OUT,
-                               .pure_kind = NODE_PURE_READ,
-                               .read_inputs = get_value,
-                               .host_call = &GET_CALL,
-                               .access = &READ };
+static node_desc GET_VALUE = {
+    .name = "Get UI Value",
+    .category = "UI",
+    .keywords = "slider input progress read",
+    .description = "Reads the value of the entity's UI element that matches "
+                   "the "
+                   "Element selector; Known is false until it has one.",
+    .input_count = 2,
+    .inputs = GET_IN,
+    .output_count = 2,
+    .outputs = GET_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = get_value,
+    .host_call = &GET_CALL,
+    .access = &READ
+};
 
 static node_desc *const NODES[] = { &SET_TEXT,   &SET_CLASS, &SET_VISIBLE,
                                     &SET_VALUE,  &FOCUS,     &CLICK,

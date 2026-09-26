@@ -34,8 +34,39 @@ behavior_asset *make_live_behavior_asset(void)
     return asset;
 }
 
+/* Opening a graph arranges its automatic nodes. Files omit their positions,
+   so the definition stays saved and applied; moving a placed node is an edit. */
+static void automatic_layout_checks()
+{
+    behavior_asset *source = make_live_behavior_asset();
+    uint64_t automatic = source->graph->nodes[0]->id,
+             placed = source->graph->nodes[1]->id;
+    source->graph->nodes[0]->placed = false;
+    game_live_definition *definition = game_live_definition_new("layout", source);
+    char *json = behavior_asset_save_json(definition->working);
+    behavior_asset *open = behavior_asset_load_json(json);
+    free(json);
+    graph_node_by_id(open->graph, automatic)->x += 240;
+    test_check(
+        game_live_sync_working(definition, open) == 0 && !definition->dirty &&
+            !definition->unsaved &&
+            graph_node_by_id(definition->working->graph, automatic)->x ==
+                graph_node_by_id(open->graph, automatic)->x,
+        "arranging automatic nodes leaves a definition saved and applied"
+    );
+    graph_node_by_id(open->graph, placed)->x += 40;
+    test_check(
+        game_live_sync_working(definition, open) == 0 && definition->dirty &&
+            definition->unsaved,
+        "moving a placed node is an unsaved edit"
+    );
+    behavior_asset_free(open);
+    game_live_definition_free(definition);
+}
+
 void run_live_preview_checks(void)
 {
+    automatic_layout_checks();
     ecs_world *ecs = ecs_world_new();
     ecs_entity first = ecs_world_create_entity(ecs);
     ecs_entity second = ecs_world_create_entity(ecs);

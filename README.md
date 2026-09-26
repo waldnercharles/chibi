@@ -50,9 +50,18 @@ opens at its manifest's start scene. In the browser, add
 `?scene=scenes/<file>.yaml` to the editor URL to open another scene.
 
 File > Open Project and the command palette switch between the repository's
-projects (`project.json` and `projects/*`) without relaunching. `make web-serve`
-mirrors all of them into the browser at `/`, so `?project-root=/projects/<name>`
-also opens one.
+projects (`project.yaml` and `projects/*`) without relaunching. `make web-serve`
+mirrors all of them into the browser, so `?project-root=projects/<name>` also
+opens one there.
+
+The static `make web` build keeps projects in the browser's IndexedDB and
+reopens the last one. Opening a sample the first time copies it into a project
+of your own; add `?project-root=projects/arena2d` to open Neon Swarm, or
+`?project=<name>` for one of your projects, or `?new` for a fresh copy of the
+sample. File > Export Project downloads a zip, and Import Project opens a zip as
+a new project. A project that cannot open, such as one saved at another project
+version, offers Export Project and New Project. `make web-serve` saves to the
+local project instead.
 
 Run `make help` for the complete target list and the purpose of each target.
 

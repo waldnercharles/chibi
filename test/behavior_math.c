@@ -392,7 +392,7 @@ void test_behavior_math()
     angle_helpers();
     easing_helpers();
     health_damage();
-    behavior_asset *projectile = load("content/behaviors/ProjectileBehavior.yaml");
+    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.yaml");
     behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.yaml");
     graph *direction = projectile->graphs[1];
     graph *emission = trail->graphs[1];

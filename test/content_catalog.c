@@ -1,11 +1,14 @@
 #include "assets/project.h"
 #include "suite_internal.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static bool folder_matches(
     const char *content_root,
@@ -54,8 +57,41 @@ static bool folder_matches(
     return valid;
 }
 
+/* The error from opening a temporary project whose manifest starts with the
+   given version field. The repository projects cover the current version. */
+static const char *version_error(const char *version, char *error, size_t error_size)
+{
+    char root[] = "/tmp/chibi-project-version-XXXXXX";
+    assert(mkdtemp(root));
+    char manifest[64];
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    FILE *file = fopen(manifest, "w");
+    assert(file);
+    fprintf(file, "%scontent: content\n", version);
+    fclose(file);
+    chibi_project project = { 0 };
+    error[0] = '\0';
+    chibi_project_open(&project, root, error, error_size);
+    chibi_project_free(&project);
+    unlink(manifest);
+    rmdir(root);
+    return error;
+}
+
+static void check_project_versions()
+{
+    char older[32], newer[32], error[256];
+    snprintf(older, sizeof older, "version: %d\n", CHIBI_PROJECT_VERSION - 1);
+    snprintf(newer, sizeof newer, "version: %d\n", CHIBI_PROJECT_VERSION + 1);
+    bool valid = strstr(version_error(older, error, sizeof error), "needs an older build") &&
+                 strstr(version_error(newer, error, sizeof error), "needs a newer build") &&
+                 strstr(version_error("", error, sizeof error), "needs an integer version");
+    test_check(valid, "project manifests open only at this build's project version");
+}
+
 void run_content_catalog_checks()
 {
+    check_project_versions();
     static const char *const behaviors[] = {
         "ArenaDropBehavior.yaml",
         "ArenaEnemyVisualBehavior.yaml",

@@ -6,7 +6,7 @@ const files = new Map([['/content/scenes/Arena3D.yaml', 'packaged reference']]);
 const requests = [];
 const errors = [];
 const assets = {
-  'projects/arena2d/project.json': JSON.stringify({ version: 1, name: 'Neon Swarm', content: 'content', start_scene: 'scenes/Sandbox.yaml' }),
+  'projects/arena2d/project.yaml': 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n',
   'projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
 };
 const Module = {
@@ -28,7 +28,7 @@ const source = readFileSync(new URL('../tools/web_workspace.js', import.meta.url
 vm.runInNewContext(source, { Module, XMLHttpRequest: Request, URLSearchParams, location: { search: '' } });
 Module.onRuntimeInitialized();
 assert.equal(Module.arguments.join(' '), '--project-root /projects/arena2d');
-assert.equal(files.get('/projects/arena2d/project.json'), assets['projects/arena2d/project.json']);
+assert.equal(files.get('/projects/arena2d/project.yaml'), assets['projects/arena2d/project.yaml']);
 assert.equal(files.get('/projects/arena2d/content/scenes/Sandbox.yaml'), assets['projects/arena2d/content/scenes/Sandbox.yaml']);
 assert.equal(files.get('/content/scenes/Arena3D.yaml'), 'packaged reference');
 const path = '/projects/arena2d/content/scenes/Sandbox.yaml';

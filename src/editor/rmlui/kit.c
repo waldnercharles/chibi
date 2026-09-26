@@ -456,7 +456,7 @@ void unmap(kit *k, node *n)
     }
 }
 
-void prune(kit *k, node *n)
+static void prune(kit *k, node *n)
 {
     while (acount(n->children) > n->cursor) {
         retire(k, apop(n->children));
@@ -765,7 +765,7 @@ static void keydown(kit *k, const rml_event *e, node *n)
         number_key(k, n, e);
         return;
     }
-    control_key(n, e);
+    control_key(k, n, e);
 }
 
 static void blur(kit *k, const rml_event *e, node *n)
@@ -1135,12 +1135,6 @@ void kit_markup(kit *k, const char *key, const char *cls, const char *rml)
     rml_element_set_inner_rml(n->el, n->text);
 }
 
-void kit_text(kit *k, const char *text)
-{
-    assert(k->last);
-    set_text(k->last, text);
-}
-
 void kit_attr(kit *k, const char *name, const char *value)
 {
     assert(k->last);
@@ -1170,24 +1164,9 @@ bool kit_item_clicked(kit *k)
     return k->last && (k->last->events & EV_CLICK);
 }
 
-bool kit_item_double_clicked(kit *k)
-{
-    return k->last && (k->last->events & EV_DOUBLE);
-}
-
 bool kit_item_context_clicked(kit *k)
 {
     return k->last && (k->last->events & EV_CONTEXT);
-}
-
-bool kit_item_pressed(kit *k)
-{
-    return k->last && (k->last->events & EV_PRESS);
-}
-
-bool kit_item_hovered(kit *k)
-{
-    return k->last && rml_element_is_pseudo_class_set(k->last->el, "hover");
 }
 
 bool kit_item_active(kit *k)
@@ -1211,11 +1190,6 @@ bool kit_item_committed(kit *k)
 kit_rect kit_item_rect(kit *k)
 {
     return k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
-}
-
-unsigned kit_modifiers(const kit *k)
-{
-    return k->in.modifiers;
 }
 
 const char *kit_string(kit *k, const char *text)
@@ -1242,7 +1216,8 @@ const char *kit_classes(kit *k, const char *base, const kit_class *list, int cou
 
 static bool is_input(const rml_element *el)
 {
-    return strcmp(rml_element_tag_name(el), "input") == 0;
+    const char *tag = rml_element_tag_name(el);
+    return !strcmp(tag, "input") || !strcmp(tag, "textarea");
 }
 
 bool kit_wants_keyboard(const kit *k)
@@ -1354,11 +1329,6 @@ bool kit_pointer_on_control(const kit *k)
         }
     }
     return false;
-}
-
-const char *kit_item_path(const kit *k)
-{
-    return k->last ? k->last->path : NULL;
 }
 
 bool kit_find(const kit *k, const char *path, kit_rect *out)

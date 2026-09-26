@@ -243,8 +243,8 @@ try {
           op: "add_entity",
           name: "Warden",
           prototype: prototypeName,
-          components: { "game.GameTransform": { x: 24, y: -12 } },
-          retained_components: { "game.GameTransform": { x: 28, y: -16 } },
+          components: { "GAME.GameTransform": { x: 24, y: -12 } },
+          retained_components: { "GAME.GameTransform": { x: 28, y: -16 } },
           behaviors: [behaviorName],
         },
       ],
@@ -259,8 +259,8 @@ try {
           op: "add_entity",
           name: "Warden",
           prototype: prototypeName,
-          components: { "game.GameTransform": { x: 24, y: -12 } },
-          retained_components: { "game.GameTransform": { x: 28, y: -16 } },
+          components: { "GAME.GameTransform": { x: 24, y: -12 } },
+          retained_components: { "GAME.GameTransform": { x: 28, y: -16 } },
           behaviors: [behaviorName],
         },
       ],
@@ -306,10 +306,12 @@ try {
   const profile = structured(first.get(24));
   const sceneRun = structured(first.get(25));
   const sceneSnapshot = structured(first.get(26));
-  const surfaceNode = surfaceSearch.result?.nodes?.find((node) => node.name === "Shader Surface Output");
-  const shapeNode = shapeSearch.result?.nodes?.find((node) => node.name === "Shader Shape Output");
-  const baseColorPin = surfaceNode?.inputs?.find((pin) => pin.name === "Base Color")?.name;
-  const distancePin = shapeNode?.inputs?.find((pin) => pin.name === "Distance")?.name;
+  const surfaceNode = surfaceSearch.result?.nodes?.find((node) => node.type === "Shader Surface Output");
+  const shapeNode = shapeSearch.result?.nodes?.find((node) => node.type === "Shader Shape Output");
+  // Search lists pins as "name: type".
+  const inputName = (node, name) => node?.in?.map((pin) => pin.slice(0, pin.indexOf(": "))).find((pin) => pin === name);
+  const baseColorPin = inputName(surfaceNode, "Base Color");
+  const distancePin = inputName(shapeNode, "Distance");
   const operationProperties = graphTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
@@ -329,13 +331,13 @@ try {
   assert(editPrototypeTool?.annotations?.readOnlyHint === false && editPrototypeTool?.annotations?.destructiveHint === true, "buildPrototype mutation annotations are missing");
   assert(prototypeOperationProperties.op?.enum?.includes("add_component") && prototypeOperationProperties.op?.enum?.includes("set_field") && prototypeOperationProperties.fields && prototypeOperationProperties.value, "prototype authoring operations are missing from the MCP operation schema");
   const movementDescription = componentDescription.result?.components?.[0];
-  assert(movementDescription?.key === "game.GameMovement" && movementDescription.fields?.some((field) => field.name === "speed" && field.type === "float") && movementDescription.defaults?.speed === 0, "compact component schema omitted reflected field defaults");
+  assert(movementDescription?.key === "GAME.GameMovement" && movementDescription.fields?.some((field) => field.name === "speed" && field.type === "float") && movementDescription.defaults?.speed === 0, "compact component schema omitted reflected field defaults");
   assert(graphTool?.annotations?.readOnlyHint === false && graphTool?.annotations?.destructiveHint === true, "graph mutation annotations are missing");
   assert(operationProperties.op?.enum?.includes("set_ramp") && operationProperties.op?.enum?.includes("set_bounds") && operationProperties.op?.enum?.includes("add_pin"), "shader authoring operations are missing from the MCP operation schema");
   assert(operationProperties.reference_asset && operationProperties.pure && operationProperties.side && operationProperties.stops?.maxItems === 16, "native graph edit fields are missing from the MCP operation schema");
   assert(search.ok === true && search.result?.count > 0 && search.result.count <= 3, `bounded shader search failed: ${JSON.stringify(search)}`);
-  assert(typedSearch.ok === true && typedSearch.result?.nodes?.some((node) => node.name === "Shader Surface Output"), `typed pin search failed: ${JSON.stringify(typedSearch)}`);
-  assert(search.result.nodes.every((node) => Array.isArray(node.inputs) && Array.isArray(node.outputs)), "bounded shader search omitted default pins");
+  assert(typedSearch.ok === true && typedSearch.result?.nodes?.some((node) => node.type === "Shader Surface Output"), `typed pin search failed: ${JSON.stringify(typedSearch)}`);
+  assert(search.result.nodes.every((node) => Array.isArray(node.in) || Array.isArray(node.out)), "bounded shader search omitted default pins");
   assert(baseColorPin === "Base Color" && distancePin === "Distance", "named shader output pins were not discoverable");
   assert(Array.isArray(registry.result?.nodes) && registry.result.nodes.length > 0, "registry is empty");
   assert(behaviorCreate.ok === true && typeof behaviorCreate.result?.after_hash === "string", `behavior create failed: ${JSON.stringify(behaviorCreate)}`);
@@ -353,10 +355,10 @@ try {
   assert(materialRead.result.document.description === "A smoke test material" && materialRead.result.document.graphs?.[0]?.description === "A deterministic authoring fixture", "graph metadata was not persisted");
   assert(shapeRead.result.document.bounds_x === 20 && shapeRead.result.document.bounds_y === 20, "shape bounds edit was not persisted");
   assert(shaderLibraryRead.ok === true && shaderLibraryRead.result?.document?.domain === "shader-library", "shader library readback failed");
-  assert(prototypeRead.ok === true && prototypeRead.result?.document?.components?.["game.GameMovement"]?.speed === 55 && prototypeRead.result.document.behaviors?.includes(behaviorName), "prototype component and behavior edits were not persisted");
+  assert(prototypeRead.ok === true && prototypeRead.result?.document?.components?.["GAME.GameMovement"]?.speed === 55 && prototypeRead.result.document.behaviors?.includes(behaviorName), "prototype component and behavior edits were not persisted");
   assert(sceneDryRun.ok === true && sceneDryRun.result?.dry_run === true && sceneDryRun.result?.published === false, `scene dry run failed: ${JSON.stringify(sceneDryRun)}`);
   assert(sceneCreate.ok === true && sceneCreate.result?.published === true && sceneCreate.result?.after_hash === sceneDryRun.result?.after_hash, `scene create failed or dry-run hash was unstable: ${JSON.stringify(sceneCreate)}`);
-  assert(sceneRead.ok === true && sceneRead.result?.document?.presentation === "3d" && sceneRead.result.document.entities?.[0]?.name === "Warden" && sceneRead.result.document.entities[0].components?.["game.GameTransform"]?.x === 24, `scene readback failed: ${JSON.stringify(sceneRead)}`);
+  assert(sceneRead.ok === true && sceneRead.result?.document?.presentation === "3d" && sceneRead.result.document.entities?.[0]?.name === "Warden" && sceneRead.result.document.entities[0].components?.["GAME.GameTransform"]?.x === 24, `scene readback failed: ${JSON.stringify(sceneRead)}`);
   assert(executionStatus.ok === true && executionStatus.result?.execution?.backend === "interpreter" && executionStatus.result.execution.fully_jit === false, `execution status failed: ${JSON.stringify(executionStatus)}`);
   assert(optimize.ok === true && optimize.result?.dry_run === true && optimize.result?.changed === false, `graph optimization dry run failed: ${JSON.stringify(optimize)}`);
   assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers", `scenario profiling failed: ${JSON.stringify(profile)}`);

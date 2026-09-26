@@ -3,6 +3,7 @@
 
 #include "editor/graph/eval_view.h"
 #include "editor/ui/choices.h"
+#include "graph/document/events.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/instance.h"
@@ -32,8 +33,6 @@ typedef enum
     EDITOR_COMMAND_CONNECT_DATA,
     EDITOR_COMMAND_CONNECT_EXEC,
     EDITOR_COMMAND_COMPILE,
-    EDITOR_COMMAND_SAVE,
-    EDITOR_COMMAND_LOAD,
 } editor_command_kind;
 
 typedef struct
@@ -75,10 +74,6 @@ typedef struct
             uint64_t to_node;
             int to_pin;
         } connect;
-        struct
-        {
-            const char *path;
-        } file;
     } data;
 } editor_command;
 
@@ -143,9 +138,9 @@ int editor_delete_graph(editor *e, uint64_t graph_id);
 /* Drill into an authored call; Back restores the caller view and selects the call. */
 int editor_open_graph_call(editor *e, uint64_t node_id);
 int editor_graph_back(editor *e);
-/* Caller history is ordered oldest first. Ancestors restore their call-site view. */
+/* Callers that Back can return to, oldest first. */
 int editor_graph_history_count(const editor *e);
-uint64_t editor_graph_history_id(const editor *e, int index);
+/* Returns to the caller at index, dropping the calls entered after it. */
 int editor_graph_ancestor(editor *e, int index);
 void editor_set_value_formatter(editor *e, editor_value_formatter formatter, void *user);
 void editor_set_choices_resolver(editor *e, editor_choices_resolver resolver, void *user);
@@ -163,22 +158,8 @@ void editor_set_retained_keyboard(bool captured);
 /* The fixed event signatures supplied by the host. Core keeps lifecycle names
  * out of its runtime vocabulary; the editor uses this catalog when it creates
  * event nodes and their pins. */
-typedef struct
-{
-    const char *name;
-    pin_type type;
-    const char *type_name;
-} editor_event_param;
-
-typedef struct
-{
-    const char *name;
-    const editor_event_param *params;
-    int param_count;
-} editor_event_signature;
-
 /* `events` is borrowed and must outlive the editor. */
-void editor_set_event_catalog(editor *e, const editor_event_signature *events, int count);
+void editor_set_event_catalog(editor *e, const graph_host_event_desc *events, int count);
 void editor_set_asset_opener(editor *e, int (*open)(void *, const char *, uint64_t), void *user);
 void editor_set_prototype_catalog(editor *e, const char *const *names, int count);
 void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, int count);
@@ -219,14 +200,23 @@ node *editor_add_behavior_expression(
     behavior_expression_error *error
 );
 int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error);
-
-/* Save the behavior_asset to `path` as JSON and update the editor's saved
- * baseline used by dirty queries. Returns 0 on success, -1 on error. */
-int editor_save(editor *e, const char *path);
-
-/* Replace the editor's behavior_asset with the JSON at `path`. Returns 0 on
- * success, -1 on error (the existing behavior_asset is left untouched). */
-int editor_load(editor *e, const char *path);
+/* Renames an expression input in its source, keeping its wire or binding. */
+int editor_rename_behavior_expression_input(
+    editor *e,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
+/* Sets source as a rename of from to to, so from's wire or binding moves to to. */
+int editor_rewire_behavior_expression(
+    editor *e,
+    node *call,
+    const char *source,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+);
 
 /* Borrow a runtime instance for read-only graph inspection. The caller owns
  * the instance and must clear or replace it before the instance is detached or
@@ -236,8 +226,6 @@ void editor_set_inspection_run(editor *e, const flow_run *run);
 void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count);
 /* Disable live overlays and standalone fallback while a debug target is unavailable or stale. */
 void editor_set_inspection_blocked(editor *e, bool blocked);
-/* Updates render-only activity for a host execution path without tracing nodes. */
-void editor_set_execution_pulse(editor *e, double monotonic_time);
 
 /* Preview instance (UI-54/55/57). The editor owns a runtime instance over a
  * cloned applied snapshot. Authoring mutations stay on the working Behavior

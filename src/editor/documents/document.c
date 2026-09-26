@@ -173,14 +173,13 @@ static ed_location capture_location(const editor *e)
     return location;
 }
 
-/* Keeps the innermost unbroken chain of calls that still leads to the graph. */
-static void restore_callers(editor *e, const ed_location *location)
+void ed_restore_callers(editor *e, const ed_graph_caller *callers, int count)
 {
-    assert(location->caller_count >= 0 && location->caller_count <= ED_CALLER_LIMIT);
-    int first = location->caller_count;
-    uint64_t target_id = location->graph_id;
-    for (int i = location->caller_count - 1; i >= 0; i--) {
-        const ed_graph_caller *caller = &location->callers[i];
+    assert(count >= 0 && count <= ED_CALLER_LIMIT);
+    int first = count;
+    uint64_t target_id = e->active_graph->graph_id;
+    for (int i = count - 1; i >= 0; i--) {
+        const ed_graph_caller *caller = &callers[i];
         graph *parent = behavior_asset_find_graph(e->asset, caller->graph_id);
         node *call = parent ? graph_node_by_id(parent, caller->node_id) : NULL;
         if (!ed_is_graph_call(call) || call->reference_id != target_id) {
@@ -190,8 +189,8 @@ static void restore_callers(editor *e, const ed_location *location)
         target_id = caller->graph_id;
     }
     aclear(e->graph_callers);
-    for (int i = first; i < location->caller_count; i++) {
-        apush(e->graph_callers, location->callers[i]);
+    for (int i = first; i < count; i++) {
+        apush(e->graph_callers, callers[i]);
     }
 }
 
@@ -209,7 +208,7 @@ static int restore_location(editor *e, const ed_location *location)
     if (editor_open_graph(e, location->graph_id) != 0) {
         return -1;
     }
-    restore_callers(e, location);
+    ed_restore_callers(e, location->callers, location->caller_count);
     ed_clear_selection(e);
     e->front_node = NULL;
     for (int i = 0; i < location->node_count; i++) {

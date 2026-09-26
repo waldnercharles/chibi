@@ -305,4 +305,6 @@ node_desc NODE_Format_Text = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Text",
     .keywords = "format string text printf substitute",
+    .description = "Replaces {} or {0} placeholders in Format with the "
+                   "arguments, fmt style; {0:.2f} adds a spec.",
 };

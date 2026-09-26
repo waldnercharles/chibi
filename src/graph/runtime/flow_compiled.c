@@ -349,7 +349,7 @@ void flow_compiled_start(flow_run *run, const behavior_function *function)
     run->whole_function_executed = true;
     aclear(run->frames);
     if (run->step_mode) {
-        flow_compiled_step(run);
+        flow_compiled_step(run, false);
     }
 }
 void flow_compiled_clear_frame(flow_compiled *c, int frame)
@@ -698,14 +698,15 @@ void flow_compiled_resume(flow_run *run)
     flow_compiled *c = run->compiled;
     memset(c->stepping, 0, (size_t)acount(c->frames) * sizeof *c->stepping);
 }
-void flow_compiled_step(flow_run *run)
+void flow_compiled_step(flow_run *run, bool out)
 {
     flow_compiled *c = run->compiled;
     flow_compiled_resume(run);
-    for (int frame = flow_compiled_active_frame(run); frame >= 0;
-         frame = c->frames[frame].parent) {
-        c->stepping[frame] = !frame || !run->step_over;
+    int active = flow_compiled_active_frame(run);
+    for (int frame = active; frame >= 0; frame = c->frames[frame].parent) {
+        c->stepping[frame] = true;
     }
+    c->stepping[active] = !out;
 }
 void flow_compiled_pause(flow_run *run)
 {

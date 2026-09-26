@@ -2,14 +2,9 @@ name: OrbitBall
 components:
   GAME.GameAppearance: {color: 3942121471, height: 18.0, shape: Circle, width: 18.0}
   GAME.GameBody: {continuous: true, type: Dynamic}
-  GAME.GameCollider:
-    category: 1
-    friction: 0.07999999821186066
-    mask: 8
-    radius: 9.0
-    restitution: 0.75
-  game.GameInput: {}
-  game.GameTransform: {x: 166.0, "y": -165.0}
+  GAME.GameCollider: {category: 1, friction: 0.08, mask: 8, radius: 9.0, restitution: 0.75}
+  GAME.GameInput: {}
+  GAME.GameTransform: {x: 166.0, "y": -165.0}
   GAME.GameUi: {document: OrbitPinball}
   GAME.GameVelocity: {}
 behaviors: [OrbitLaunch]

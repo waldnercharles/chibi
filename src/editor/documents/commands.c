@@ -2,11 +2,9 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
-#include "support/asset_text.h"
 
 #include <assert.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,7 +30,7 @@ int editor_command_apply(editor *e, editor_command command)
                                ? behavior_asset_add_function(
                                      e->asset,
                                      command.data.create_graph.name,
-                                     0
+                                     behavior_domain_pure(e->asset->domain)
                                  )
                            : command.data.create_graph.graph_kind == GRAPH_MACRO
                                ? behavior_asset_add_macro(
@@ -166,12 +164,6 @@ int editor_command_apply(editor *e, editor_command command)
         case EDITOR_COMMAND_COMPILE:
             ed_compile(e);
             return compile_report_blocked(&e->compile) ? -1 : 0;
-        case EDITOR_COMMAND_SAVE:
-            return command.data.file.path ? editor_save(e, command.data.file.path)
-                                          : -1;
-        case EDITOR_COMMAND_LOAD:
-            return command.data.file.path ? editor_load(e, command.data.file.path)
-                                          : -1;
     }
     return -1;
 }
@@ -243,6 +235,43 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
     return 0;
 }
 
+int editor_rename_behavior_expression_input(
+    editor *e,
+    node *call,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+)
+{
+    char *before = ed_snapshot(e);
+    if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0) {
+        free(before);
+        return -1;
+    }
+    ed_record_math_edit(e, before);
+    return 0;
+}
+
+int editor_rewire_behavior_expression(
+    editor *e,
+    node *call,
+    const char *source,
+    const char *from,
+    const char *to,
+    behavior_expression_error *error
+)
+{
+    char *before = ed_snapshot(e);
+    if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0 ||
+        behavior_expression_set(e->asset, call, source, error) != 0) {
+        ed_adopt_behavior_asset(e, before);
+        free(before);
+        return -1;
+    }
+    ed_record_math_edit(e, before);
+    return 0;
+}
+
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
 {
     if (e->active_graph->math_expression) {
@@ -262,79 +291,6 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
     n->x = x;
     n->y = y;
     return n;
-}
-
-int editor_save(editor *e, const char *path)
-{
-    if (!e || !path) {
-        return -1;
-    }
-    char *json = behavior_asset_save_json(e->asset);
-    char error[128];
-    char *text = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
-    FILE *f = text ? fopen(path, "wb") : NULL;
-    int ok = f && fputs(text, f) >= 0;
-    if (f && fclose(f) != 0) {
-        ok = 0;
-    }
-    free(text);
-    if (!ok) {
-        free(json);
-        return -1;
-    }
-    free(e->saved_snapshot);
-    e->saved_snapshot = json;
-    e->edit_revision_initialized = 0;
-    return 0;
-}
-
-static int ed_read_file(const char *path, char **out)
-{
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        return -1;
-    }
-    if (fseek(f, 0, SEEK_END) || ftell(f) < 0) {
-        fclose(f);
-        return -1;
-    }
-    long size = ftell(f);
-    if (fseek(f, 0, SEEK_SET)) {
-        fclose(f);
-        return -1;
-    }
-    char *buf = (char *)malloc((size_t)size + 1);
-    if (!buf) {
-        fclose(f);
-        return -1;
-    }
-    size_t read = fread(buf, 1, (size_t)size, f);
-    fclose(f);
-    buf[read] = '\0';
-    *out = buf;
-    return 0;
-}
-
-int editor_load(editor *e, const char *path)
-{
-    if (!e || !path) {
-        return -1;
-    }
-    char *json = NULL;
-    if (ed_read_file(path, &json)) {
-        return -1;
-    }
-    ed_snapshot_before(e);
-    int result = ed_adopt_behavior_asset_with_identity(e, json, 0);
-    if (result == 0) {
-        aclear(e->graph_callers);
-        e->arrange_pending = true;
-        free(e->saved_snapshot);
-        e->saved_snapshot = behavior_asset_save_json(e->asset);
-        e->edit_revision_initialized = 0;
-    }
-    free(json);
-    return result;
 }
 
 int editor_delete_graph(editor *e, uint64_t graph_id)

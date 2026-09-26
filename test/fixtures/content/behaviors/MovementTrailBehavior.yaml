@@ -132,9 +132,9 @@ graphs:
     reference_id: 128
     reference_name: Emission Budget
     inputs:
-      dt: {type: float, group: 1}
+      dt: {type: float, flags: 0}
     outputs:
-      Result: {type: float, group: 2}
+      Result: {type: float, flags: 0}
   edges:
   - {from: 14.Then, to: 68.Exec}
   - {from: 14.Direction, to: 82.Value}
@@ -160,10 +160,7 @@ graphs:
   kind: function
   name: Emission Budget
   math_expression: clamp(dt, 0, 0.10000000149011612) * 64
-  expression_mode: 1
   entry_id: 172
-  return_id: 174
-  call_depth_limit: 64
 - id: 158
   kind: function
   name: Is Stationary

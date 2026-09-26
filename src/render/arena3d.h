@@ -62,13 +62,21 @@ bool render_arena_draw(
     float time,
     const struct engine *runtime
 );
-/* A sphere of diameter 100 at the origin, using the same surface path. */
+#define RENDER_ARENA_PREVIEW_RADIUS 50.0f
+/* Scene inputs a lone preview surface would otherwise read as zero. */
+typedef struct
+{
+    float beat_phase, beat_pulse;
+    float influence[3]; /* Linear color at the origin, fading out at the preview radius. */
+} render_arena_activity;
+/* A sphere of RENDER_ARENA_PREVIEW_RADIUS at the origin, using the same surface path. */
 bool render_arena_preview(
     render_arena *arena,
     const behavior_asset *asset,
     const render_arena_camera *camera,
     const char *parameters_json,
-    float time
+    float time,
+    const render_arena_activity *activity
 );
 
 #endif

@@ -18,6 +18,7 @@
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_automation_search();
 void test_automation_graph_optimize();
 void test_automation_prototype_edit();
 void test_automation_scene_edit();
@@ -76,6 +77,7 @@ TEST_CASE(all_checks)
     stacktrace_init(program_name);
     registry_validate();
     test_automation_graph_edit();
+    test_automation_search();
     test_automation_graph_optimize();
     test_automation_prototype_edit();
     test_automation_scene_edit();
@@ -84,8 +86,12 @@ TEST_CASE(all_checks)
     test_asset_index();
     run_graph_model_checks();
     run_graph_document_checks();
+    run_graph_comment_checks();
+    run_graph_find_checks();
     run_graph_arrange_checks();
     run_graph_inline_checks();
+    run_graph_editing_checks();
+    run_graph_collapse_checks();
     run_runtime_execution_checks();
     test_compiled_behaviors();
     test_encounter_backend_parity();
@@ -93,6 +99,8 @@ TEST_CASE(all_checks)
     run_graph_compile_checks();
     run_graph_conversion_checks();
     run_graph_functions_checks();
+    run_graph_signature_checks();
+    test_debugging();
     run_runtime_arrays_checks();
     run_runtime_catalog_checks();
     run_support_format_checks();
@@ -161,8 +169,6 @@ TEST_CASE(all_checks)
     test_system_arithmetic();
     run_engine_checks();
     run_parallel_checks();
-    run_ecs_migration_checks();
-    run_scene_checks();
     run_editor_command_checks();
     test_component_presentation();
     test_file_watch();
@@ -196,6 +202,12 @@ int main(int argc, char **argv)
         run_graph_arrange_checks();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--graph-editing")) {
+        registry_validate();
+        run_graph_editing_checks();
+        run_graph_collapse_checks();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "--graph-inline")) {
         registry_validate();
         run_graph_inline_checks();
@@ -211,6 +223,16 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--component-nodes")) {
         registry_validate();
         test_component_nodes();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
+        registry_validate();
+        run_graph_signature_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--debugging")) {
+        registry_validate();
+        test_debugging();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
@@ -735,6 +757,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();
         test_automation_graph_edit();
+        test_automation_search();
         test_automation_graph_optimize();
         test_automation_prototype_edit();
         test_automation_scene_edit();

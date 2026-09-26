@@ -378,8 +378,7 @@ Scene and isolated prototype previews use the same live-definition owner and
 receive working graph revisions independently. Each target keeps its own state
 and last valid snapshot. Newly authored behaviors register automatically; launching
 a prototype synchronizes its definitions. Graph inspection follows the active
-runtime target, including an isolated preview that is paused. Delegate bindings,
-borrowed struct state, variable schema changes, and incompatible stateful nodes
+runtime target, including an isolated preview that is paused. Borrowed struct state, variable schema changes, and incompatible stateful nodes
 require restart. Busy updates currently recompile on retry; candidate caching is
 still needed for large graphs. Runtime tests cover atomic deferral, state retention,
 changed execution, invalid edits, recovery, and restart requirements. Native editor
@@ -1532,9 +1531,7 @@ outputs, then data inputs, counting only drawn pins.
 Arrange stacks unconnected parts of a graph as horizontal bands: Begin, Tick,
 other host events such as input and contact, custom events, End, then
 everything else (`graph_layout_band`). Event chains that share nodes form one
-band. `arrange_long_links` reports links whose ends are three or more columns
-apart, or whose path crosses at least a given number of wires, so an editor can
-offer to name the value as a local; it changes nothing.
+band.
 
 `test_suite --arrange-bench [repeats] [filter] [style]`, run from the
 repository root, arranges and routes every graph under `content/` and

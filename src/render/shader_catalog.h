@@ -7,11 +7,9 @@
 #include "runtime/components.h"
 
 bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
-int render_shader_load(const char *content_root);
 int render_shader_find(const char *name);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
-void render_shader_parameter_default(int index, int slot, float value[4]);
 bool render_shader_parameters_validate(int index, const char *json, shader_error *error);
 bool render_shader_is_shape(int index);
 bool render_shader_may_be_transparent(int index);
@@ -36,7 +34,6 @@ typedef struct
     int count;
 } render_shader_set;
 bool render_shader_set_add(render_shader_set *set, int asset, shader_error *error);
-bool render_shader_set_contains(const render_shader_set *set, int asset);
 int render_shader_ramp_vec4_count(const render_shader_set *set);
 void render_shader_ramp_payload(const render_shader_set *set, float (*payload)[4]);
 char *render_shader_glsl(const render_shader_set *set, int sampler_set, int first_binding);
@@ -57,6 +54,9 @@ bool render_shader_contains(
     float time
 );
 void render_shader_clear_world(ecs_world *world);
+/* Every material parameter behaviors set on this world's entities, hashed, so
+   a scenario's state includes what Set Material Parameter wrote. */
+uint64_t render_shader_overrides_hash(const ecs_world *world);
 void render_shader_catalog_clear();
 extern const registry_pack SHADER_BINDING_PACK;
 #endif

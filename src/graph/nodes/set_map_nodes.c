@@ -134,6 +134,7 @@ node_desc NODE_MakeSet = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Set",
     .keywords = "set make collection",
+    .description = "Builds a set from the Item inputs, dropping duplicates.",
 };
 node_desc NODE_SetAdd = {
     .work = NODE_WORK_SET_COPY,
@@ -149,6 +150,8 @@ node_desc NODE_SetAdd = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Set",
     .keywords = "set add unique",
+    .description = "Returns a copy of Set with Item added, unchanged if an "
+                   "equal item is already present.",
 };
 node_desc NODE_SetContains = {
     .work = NODE_WORK_SET,
@@ -165,6 +168,7 @@ node_desc NODE_SetContains = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Set",
     .keywords = "set contains equality",
+    .description = "Whether Set holds an item equal to Item.",
 };
 node_desc NODE_SetLength = {
     .name = "Set Length",
@@ -177,13 +181,13 @@ node_desc NODE_SetLength = {
     .display_class = NODE_DISPLAY_PURE,
     .category = "Set",
     .keywords = "set length",
+    .description = "Returns the number of items in Set.",
 };
 
-node_desc *const SET_MAP_NODES[] = { &NODE_MakeSet,
-                                     &NODE_SetAdd,
-                                     &NODE_SetContains,
-                                     &NODE_SetLength };
-const int SET_MAP_NODE_COUNT = sizeof SET_MAP_NODES / sizeof SET_MAP_NODES[0];
+static node_desc *const SET_MAP_NODES[] = { &NODE_MakeSet,
+                                            &NODE_SetAdd,
+                                            &NODE_SetContains,
+                                            &NODE_SetLength };
 
 const registry_pack CORE_SET_MAP_PACK = {
     .name = "core.set_map",

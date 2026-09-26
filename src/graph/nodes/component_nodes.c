@@ -60,6 +60,7 @@ node_desc NODE_GetComponent = {
     .outputs = get_outputs,
     .category = "Components",
     .keywords = "component read field entity self",
+    .description = "Reads a component from Entity, which defaults to Self.",
 };
 
 node_desc NODE_SetComponent = {
@@ -71,6 +72,8 @@ node_desc NODE_SetComponent = {
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Components",
     .keywords = "component write assign field entity self",
+    .description = "Writes a component, or only the fields it shows, on "
+                   "Entity, which defaults to Self.",
 };
 
 node_desc NODE_HasComponent = {
@@ -81,6 +84,7 @@ node_desc NODE_HasComponent = {
     .outputs = has_outputs,
     .category = "Components",
     .keywords = "component present exists check entity self",
+    .description = "Whether Entity, which defaults to Self, has a component.",
 };
 
 node_desc NODE_AddComponent = {
@@ -92,6 +96,8 @@ node_desc NODE_AddComponent = {
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Components",
     .keywords = "component add attach insert self",
+    .description = "Adds a component with default values to Self; Value is "
+                   "whether it was added.",
 };
 
 node_desc NODE_RemoveComponent = {
@@ -103,6 +109,8 @@ node_desc NODE_RemoveComponent = {
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Components",
     .keywords = "component remove detach delete self",
+    .description = "Removes a component from Self; Value is whether it was "
+                   "there.",
 };
 
 node_desc NODE_MakeStruct = {
@@ -113,6 +121,7 @@ node_desc NODE_MakeStruct = {
     .outputs = make_outputs,
     .category = "Struct",
     .keywords = "make struct construct build value fields",
+    .description = "Builds a struct value from its fields.",
 };
 
 node_desc NODE_BreakStruct = {
@@ -121,6 +130,7 @@ node_desc NODE_BreakStruct = {
     .inputs = break_inputs,
     .category = "Struct",
     .keywords = "break struct split fields members",
+    .description = "Splits a struct value into its fields.",
 };
 
 static node_desc *const COMPONENT_NODES[] = {
@@ -564,6 +574,109 @@ int component_node_prepare(graph *g, node *n, const char *key, bool split)
     type_values(g, n, component_by_key(canonical));
     store_key(g, n, canonical);
     return 0;
+}
+
+component_node_preset *component_node_presets()
+{
+    static const node_desc *const access[] = { &NODE_GetComponent,
+                                               &NODE_SetComponent,
+                                               &NODE_HasComponent,
+                                               &NODE_AddComponent,
+                                               &NODE_RemoveComponent };
+    component_node_preset *presets = NULL;
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *d = registry_node(i);
+        if (d->type &&
+            (d->pure_kind == NODE_PURE_MAKE || d->pure_kind == NODE_PURE_BREAK)) {
+            const node_desc *desc = d->pure_kind == NODE_PURE_MAKE
+                                      ? &NODE_MakeStruct
+                                      : &NODE_BreakStruct;
+            apush(
+                presets,
+                ((component_node_preset){ .desc = desc,
+                                          .setting = d->type->name,
+                                          .type = d->type })
+            );
+            continue;
+        }
+        if (d->component_kind != NODE_COMPONENT_GET_SELF) {
+            continue;
+        }
+        const ecs_component_desc *component = d->component;
+        for (size_t a = 0; a < sizeof access / sizeof *access; a++) {
+            component_node_kind made = component_node_kind_of(access[a]);
+            if (!direct(made) || direct_target(made, component->key)) {
+                apush(
+                    presets,
+                    ((component_node_preset){ .desc = access[a],
+                                              .setting = component->key,
+                                              .type = component->type })
+                );
+            }
+        }
+        for (int f = 0; f < component->type->field_count; f++) {
+            const char *field = component->type->fields[f].name;
+            if (component_field_settable(component, field)) {
+                apush(
+                    presets,
+                    ((component_node_preset){ .desc = &NODE_SetComponent,
+                                              .setting = component->key,
+                                              .field = field,
+                                              .type = component->type })
+                );
+            }
+        }
+    }
+    return presets;
+}
+
+void component_node_preset_describe(const component_node_preset *preset, char *buf, size_t size)
+{
+    const char *type = preset->type->name;
+    switch (component_node_kind_of(preset->desc)) {
+        case COMPONENT_NODE_GET:
+            snprintf(buf, size, "Reads %s from Entity, which defaults to Self.", type);
+            return;
+        case COMPONENT_NODE_SET:
+            if (preset->field) {
+                snprintf(
+                    buf,
+                    size,
+                    "Writes %s's %s on Entity, which defaults to Self.",
+                    type,
+                    preset->field
+                );
+                return;
+            }
+            snprintf(buf, size, "Writes %s on Entity, which defaults to Self.", type);
+            return;
+        case COMPONENT_NODE_HAS:
+            snprintf(buf, size, "Whether Entity, which defaults to Self, has %s.", type);
+            return;
+        case COMPONENT_NODE_ADD:
+            snprintf(buf, size, "Adds %s with default values to Self; Value is whether it was added.", type);
+            return;
+        case COMPONENT_NODE_REMOVE:
+            snprintf(buf, size, "Removes %s from Self; Value is whether it was there.", type);
+            return;
+        case COMPONENT_NODE_MAKE:
+            snprintf(buf, size, "Builds a %s from its fields.", type);
+            return;
+        case COMPONENT_NODE_BREAK:
+            snprintf(buf, size, "Splits a %s into its fields.", type);
+            return;
+        case COMPONENT_NODE_NONE: break;
+    }
+    assert(false);
+}
+
+int component_node_configure(graph *g, node *n, const char *setting, const char *field)
+{
+    pin_value key = { .type = PIN_NAME, .str = setting };
+    return graph_set_pin_default(g, n, 0, component_node_setting(n), &key) ||
+                   (field && component_node_show_field(g, n, field, true))
+             ? -1
+             : 0;
 }
 
 int component_node_template_count(const node *n, int output)

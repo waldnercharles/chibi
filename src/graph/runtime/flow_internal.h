@@ -96,8 +96,6 @@ struct flow_run
     flow_sink_fn sink;
     void *sink_user;
     char *event_name;
-    flow_parallel_for_fn parallel_for;
-    void *parallel_user;
     arena input_arena;
     arena scratch;
     flow_watch *watches;
@@ -139,7 +137,8 @@ int flow_compiled_execute(flow_run *run);
 void flow_compiled_stop(flow_run *run);
 void flow_compiled_free(flow_run *run);
 void flow_compiled_resume(flow_run *run);
-void flow_compiled_step(flow_run *run);
+/* Frames on the active chain step; with `out` the innermost runs to its return. */
+void flow_compiled_step(flow_run *run, bool out);
 void flow_compiled_pause(flow_run *run);
 const node *flow_compiled_current(const flow_run *run);
 double flow_compiled_wake_time(const flow_run *run);

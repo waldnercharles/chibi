@@ -80,7 +80,7 @@ function field(snapshot, entity, component, name) {
 }
 
 try {
-  assert.equal(request("searchNodes", { query: "Raycast" }).nodes[0].name, "Raycast");
+  assert.equal(request("searchNodes", { query: "Raycast" }).nodes[0].type, "Raycast");
   create("event", "Award", [{ op: "add_variable", name: "Amount", type: "int", default: 0 }]);
   create("behavior", "Receiver", [
     { op: "add_variable", name: "Reward", type: "int", default: 9, ref: "reward" },
@@ -302,7 +302,10 @@ try {
   // Component nodes: Break Struct splits a Get, Set writes only the field
   // inputs it names, Has reads another component and Add attaches one; each
   // lowers when the scene runs.
-  assert.equal(request("searchNodes", { query: "Set Component" }).nodes[0].name, "Set Component");
+  assert.equal(request("searchNodes", { query: "Set Component" }).nodes[0].type, "Set Component");
+  // A query names a configured node: the type and setting add_node takes.
+  const breakExperience = request("searchNodes", { query: "break experience" }).nodes[0];
+  assert.deepEqual([breakExperience.type, breakExperience.inputs], ["Break Struct", { Type: "GameExperience" }]);
   create("behavior", "Salvage", [
     { op: "add_node", type: "Event", event_name: "Begin", ref: "begin" },
     { op: "add_node", type: "Get Component", ref: "haul", inputs: { Component: "GameExperience" } },

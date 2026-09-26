@@ -5,7 +5,6 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio.h"
 #include "editor/workspace/editor.h"
-#include "editor/workspace/event_catalog.h"
 #include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
@@ -45,6 +44,7 @@ typedef struct
     int frames;
     int frame;
     const char *screenshot_path;
+    bool show_graph; /* --open with --screenshot: the graph canvas fills the window */
     int capture_error;
     int headless;
     double monotonic_time;
@@ -129,6 +129,32 @@ static int app_frame(app_loop *loop)
     }
     CHIBI_TRACE_ZONE_END(frame_zone);
     return finished;
+}
+
+/* --open names a behavior, event, library, material, shape or field asset;
+   --graph selects one of its graphs by name. */
+static int open_graph(
+    app_scene_authoring *authoring,
+    editor *graph_editor,
+    const char *asset,
+    const char *graph_name,
+    char *error,
+    size_t error_size
+)
+{
+    if (app_scene_authoring_open_behavior(authoring, asset) != 0) {
+        snprintf(error, error_size, "--open: no graph asset named %s", asset);
+        return -1;
+    }
+    if (!graph_name) {
+        return 0;
+    }
+    const graph *target = behavior_asset_find_graph_by_name(editor_behavior_asset(graph_editor), graph_name);
+    if (!target || editor_open_graph(graph_editor, target->graph_id) != 0) {
+        snprintf(error, error_size, "--graph: %s has no graph named %s", asset, graph_name);
+        return -1;
+    }
+    return 0;
 }
 
 /* Opens `project_path` at `scene_path` (NULL for its start scene) into the
@@ -234,16 +260,7 @@ static bool open_workspace(
     free(resolved_scene);
     char *root = xstrdup(project.root);
     chibi_project_free(&project);
-    /* Put the shipped movement graph on screen on first launch. The graph is
-     * still reachable through Files after switching documents. */
-    if (!play && game_live_find_definition(live, "TwinStickInputBehavior")) {
-        (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
-    }
-    editor_set_event_catalog(
-        graph_editor,
-        APP_EVENT_CATALOG,
-        (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
-    );
+    editor_set_event_catalog(graph_editor, GRAPH_HOST_EVENTS, GRAPH_HOST_EVENT_COUNT);
     editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
     engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);
@@ -292,6 +309,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     const char *scene_path = NULL;
     const char *project_path = NULL;
     const char *screenshot_path = NULL;
+    const char *open = NULL;
+    const char *graph_name = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[++i]);
@@ -314,10 +333,17 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             scene_path = argv[++i];
         } else if ((strcmp(argv[i], "--project") == 0 || strcmp(argv[i], "--project-root") == 0)) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
-                snprintf(error, error_size, "%s requires a project directory or project.json", argv[i]);
+                snprintf(error, error_size, "%s requires a project directory or project.yaml", argv[i]);
                 return NULL;
             }
             project_path = argv[++i];
+        } else if (strcmp(argv[i], "--open") == 0 || strcmp(argv[i], "--graph") == 0) {
+            if (i + 1 == argc || argv[i + 1][0] == '-') {
+                snprintf(error, error_size, "%s requires a name", argv[i]);
+                return NULL;
+            }
+            *(argv[i][2] == 'o' ? &open : &graph_name) = argv[i + 1];
+            i++;
         } else if (strcmp(argv[i], "--fixed-dt") == 0) {
             if (i + 1 == argc) {
                 snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
@@ -350,6 +376,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     *loop = (app_loop){ .host = host,
                         .frames = frames,
                         .screenshot_path = screenshot_path,
+                        .show_graph = open && screenshot_path,
                         .headless = headless,
                         .fixed_dt = fixed_dt };
     bool opened = open_workspace(loop, project_path, scene_path, play, error, error_size);
@@ -361,6 +388,17 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     app_scene_authoring *authoring = loop->authoring;
     editor *graph_editor = loop->graph_editor;
     engine_viewport *viewport = loop->viewport;
+    /* Put the shipped movement graph on screen on first launch. The graph is
+     * still reachable through Files after switching documents. */
+    if (!play && !open &&
+        game_live_find_definition(loop->live, "TwinStickInputBehavior")) {
+        (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
+    }
+    if (open &&
+        open_graph(authoring, graph_editor, open, graph_name, error, error_size) != 0) {
+        app_cleanup(loop);
+        return NULL;
+    }
     if (play) {
         loop->game = app_game_presentation_new(authoring, viewport, !headless);
         if (!loop->game) {
@@ -439,6 +477,9 @@ static void application_activate(void *state)
     app_input_initialize();
     if (!loop->game) {
         loop->studio = studio_new(loop->authoring, loop->viewport, loop->project_root);
+        if (loop->show_graph) {
+            studio_maximize_graph(loop->studio);
+        }
     }
 }
 

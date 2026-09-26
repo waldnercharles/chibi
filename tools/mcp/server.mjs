@@ -395,6 +395,10 @@ function buildToolDefinitions() {
         type: "boolean",
         description: "Include editor coordinates, inline hints, comment boxes, and wire routing. Omit for semantic graph data.",
       },
+      include_pins: {
+        type: "boolean",
+        description: "List each node's pins as \"name: type\" with the types wildcards resolved to, as searchNodes writes them; defaults to true.",
+      },
     },
   };
   const scenarioArguments = {
@@ -818,14 +822,14 @@ function buildToolDefinitions() {
     {
       name: "describeRegistry",
       operation: "describe_registry",
-      description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
+      description: "Describe reflected graph nodes, pins, types, services, and components.",
       inputSchema: {
         type: "object",
         properties: {
           sections: {
             type: "array",
-            maxItems: 5,
-            items: { type: "string", enum: ["nodes", "types", "services", "operators", "components"] },
+            maxItems: 4,
+            items: { type: "string", enum: ["nodes", "types", "services", "components"] },
             description: "Sections to return; defaults to all but nodes, which searchNodes covers.",
           },
         },
@@ -1040,7 +1044,7 @@ function responseNextSteps(name, response) {
     return ["Broaden the search query or call getAssetCatalog for project-wide context."];
   }
   if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
-    return ["Broaden the node query or remove a restrictive pin filter."];
+    return ["Use fewer or different words, remove a restrictive pin filter, or call searchNodes without a query to list the node types."];
   }
   if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
@@ -1083,6 +1087,7 @@ function toolResult(name, response) {
       ok: false,
       tool: name,
       error: guidedResponse.error,
+      ...errorDetails(guidedResponse.result),
       next_steps: guidedResponse.next_steps,
     }, "tool error");
   return {
@@ -1090,6 +1095,28 @@ function toolResult(name, response) {
     structuredContent: guidedResponse,
     isError: guidedResponse.ok !== true,
   };
+}
+
+/* Clients may show only the text, so a failure names what to fix. */
+function errorDetails(result) {
+  if (!isObject(result)) {
+    return {};
+  }
+  const details = {};
+  if (Number.isInteger(result.failed_operation)) {
+    details.failed_operation = result.failed_operation;
+  }
+  const diagnostics = result.diagnostics ?? result.validation?.diagnostics;
+  if (Array.isArray(diagnostics) && diagnostics.length) {
+    details.diagnostics = diagnostics.slice(0, 8).map((item) => ({
+      severity: item.severity,
+      graph: item.graph,
+      node: item.node,
+      rule: item.rule_name,
+      message: item.message,
+    }));
+  }
+  return details;
 }
 
 function toolSummary(name, response) {
@@ -1131,6 +1158,7 @@ function toolSummary(name, response) {
     "folded_inputs",
     "removed_nodes",
     "created_aliases",
+    "created_expressions",
     "changed_edges",
     "world_hash",
     "live_entities",
@@ -1147,10 +1175,14 @@ function toolSummary(name, response) {
       summary[key] = result[key];
     }
   }
-  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped"]) {
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals"]) {
     if (Array.isArray(result[key])) {
       summary[`${key}_count`] = result[key].length;
     }
+  }
+  // Inputs a source edit left without their wire or binding.
+  if (Array.isArray(result.unfed_inputs)) {
+    summary.unfed_inputs = result.unfed_inputs;
   }
   if (Array.isArray(response.next_steps) && response.next_steps.length) {
     summary.next_steps = response.next_steps;

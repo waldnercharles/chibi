@@ -121,22 +121,42 @@ static int read_manifest(
     size_t error_size
 )
 {
-    char *json = read_file(path, error, error_size);
-    if (!json) {
+    char *text = read_file(path, error, error_size);
+    if (!text) {
         return -1;
     }
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
-    free(json);
-    yyjson_val *root = document ? yyjson_doc_get_root(document) : NULL;
-    if (!root || !yyjson_is_obj(root)) {
+    char parse_error[128];
+    yyjson_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
+    free(text);
+    if (!document) {
+        snprintf(error, error_size, "Invalid project manifest %s: %s", path, parse_error);
+        return -1;
+    }
+    yyjson_val *root = yyjson_doc_get_root(document);
+    if (!yyjson_is_obj(root)) {
         yyjson_doc_free(document);
-        set_errorf(error, error_size, "Project manifest is not a JSON object: %s", path);
+        set_errorf(error, error_size, "Project manifest is not a YAML mapping: %s", path);
         return -1;
     }
     yyjson_val *version = yyjson_obj_get(root, "version");
-    if (version && (!yyjson_is_int(version) || yyjson_get_int(version) != 1)) {
+    if (!yyjson_is_int(version)) {
         yyjson_doc_free(document);
-        set_errorf(error, error_size, "Unsupported project manifest version: %s", path);
+        set_errorf(error, error_size, "Project manifest needs an integer version: %s", path);
+        return -1;
+    }
+    int found = (int)yyjson_get_int(version);
+    if (found != CHIBI_PROJECT_VERSION) {
+        yyjson_doc_free(document);
+        snprintf(
+            error,
+            error_size,
+            "Project version %d needs %s build; this build opens version %d: "
+            "%s",
+            found,
+            found > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
+            CHIBI_PROJECT_VERSION,
+            path
+        );
         return -1;
     }
     yyjson_val *name_value = yyjson_obj_get(root, "name");
@@ -205,7 +225,7 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     }
     chibi_project_free(project);
     const char *requested = path && path[0] ? path : ".";
-    if ((!path || !path[0]) && is_file("projects/arena2d/project.json")) {
+    if ((!path || !path[0]) && is_file("projects/arena2d/" CHIBI_PROJECT_MANIFEST)) {
         requested = "projects/arena2d";
     }
     char *input = absolute_path(requested);
@@ -219,8 +239,8 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     char *manifest = NULL;
     if (input_is_manifest) {
         const char *base = strrchr(input, '/');
-        if (!base || strcmp(base + 1, "project.json")) {
-            set_errorf(error, error_size, "Project file must be named project.json: %s", requested);
+        if (!base || strcmp(base + 1, CHIBI_PROJECT_MANIFEST)) {
+            set_errorf(error, error_size, "Project file must be named " CHIBI_PROJECT_MANIFEST ": %s", requested);
             free(input);
             return -1;
         }
@@ -228,7 +248,7 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
         manifest = input;
         input = NULL;
     } else if (is_directory(input)) {
-        char *candidate = join_path(input, "project.json");
+        char *candidate = join_path(input, CHIBI_PROJECT_MANIFEST);
         if (is_file(candidate)) {
             root = xstrdup(input);
             manifest = candidate;

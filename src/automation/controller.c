@@ -20,12 +20,17 @@
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/instance.h"
+#include "render/shader_catalog.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "runtime/systems/system.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_search.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -40,6 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef enum
@@ -214,7 +220,7 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
 };
 static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
-    { "sections", "string[]", false, "nodes, types, services, operators, or components; defaults to all but nodes." },
+    { "sections", "string[]", false, "nodes, types, services, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -237,6 +243,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "graph_id", "uint64", false, "Select one graph by its stable authored ID." },
     { "graph_name", "string", false, "Select one graph by its authored name." },
     { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
+    { "include_pins", "boolean", false, "List each node's pins as \"name: type\" with resolved wildcard types; defaults to true." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -274,6 +281,7 @@ static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 1800." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "object[]", false, "Per-frame movement, aim, action, and event input records." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values." },
 };
 static const contract_field CONTRACT_REPLAY_SCENARIO[] = {
@@ -286,9 +294,11 @@ static const contract_field CONTRACT_READ_RECORDING[] = {
 };
 
 static const contract_field CONTRACT_SEARCH_NODES[] = {
-    { "query", "string", false, "Match node name, category, keywords, or pin names and types." },
-    { "domain", "string", false, "Filter to behavior, shader, or field nodes." },
+    { "query", "string", false, "Words that must all start a word in a node's or event's name, keywords, pin names or expression function; omit it and the filters to list the domain's node types and events." },
+    { "domain", "string", false, "Filter to behavior, shader, field, or system nodes." },
     { "pin_type", "string", false, "Require a matching pin type or struct type name." },
+    { "wire_from", "string", false, "Type of an output to wire from (exec, float, GameHealth, array<int>); ranks nodes by the input that takes it." },
+    { "wire_to", "string", false, "Type of an input to wire into; ranks nodes by the output that feeds it." },
     { "pin_container", "string", false, "Require a matching pin container: single, array, set, or map." },
     { "pin_kind", "string", false, "Require a matching pin kind: data or exec." },
     { "pure", "boolean", false, "Require pure or impure node descriptors." },
@@ -360,6 +370,10 @@ static const contract_field CONTRACT_OPTIMIZE_GRAPH[] = {
     { "fanout_threshold", "integer", false, "Minimum compatible fanout for local alias creation; 2 through 64." },
     { "preserve_debug", "boolean", false, "Keep watched, disabled, and breakpoint graph state intact; defaults to true." },
     { "local_aliases", "boolean", false, "Create local aliases for safe high-fanout values; defaults to true." },
+    { "math_expressions",
+      "boolean",
+      false,
+      "First replace math node trees with expressions; defaults to false." },
 };
 static const contract_field CONTRACT_PREVIEW_FIELD[] = {
     { "project_root", "string", false, "Project directory." },
@@ -380,6 +394,9 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "width", "integer", false, "Preview width, default 256, maximum 512." },
     { "height", "integer", false, "Preview height, default 256, maximum 512." },
     { "time", "number", false, "Deterministic preview simulation time." },
+    { "beat_phase", "number", false, "Material Beat Phase, 0 to 1; default 0." },
+    { "beat_pulse", "number", false, "Material Beat Pulse, 0 to 1; default 0." },
+    { "influence", "array", false, "Material Surface Influence linear RGB at the preview center, fading out at radius 50; default none." },
     { "parameters", "object", false, "Shader Parameter overrides keyed by authored parameter name; scalar values or exact-width numeric arrays." },
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
     { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
@@ -388,7 +405,8 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
     { "search_nodes",
-      "Find a bounded page of nodes and their typed pins for authoring.",
+      "Find a ranked page of nodes, configured component nodes, and their pins "
+      "for authoring.",
       CONTRACT_SEARCH_NODES,
       CONTRACT_FIELD_COUNT(CONTRACT_SEARCH_NODES),
       1,
@@ -1932,7 +1950,6 @@ static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
     yyjson_mut_obj_add_int(doc, object, "nodes", registry_node_count());
     yyjson_mut_obj_add_int(doc, object, "types", registry_type_count());
     yyjson_mut_obj_add_int(doc, object, "services", registry_service_count());
-    yyjson_mut_obj_add_int(doc, object, "operators", registry_operator_count());
     yyjson_mut_obj_add_int(doc, object, "components", GAME_REGISTRY_COMPONENT_COUNT);
 }
 
@@ -2577,7 +2594,12 @@ static void inspect_add_sorted_array(
                 }
             } else {
                 const char *const layout_keys[] = {
-                    "x", "y", "placed", "presentation", "show_advanced",
+                    "x",
+                    "y",
+                    "placed",
+                    "presentation",
+                    "show_advanced",
+                    "comment_hidden",
                 };
                 for (int layout = 0;
                      layout < (int)(sizeof layout_keys / sizeof *layout_keys);
@@ -2693,12 +2715,37 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     yyjson_mut_obj_add_uint(doc, value, "topology_revision", effects->topology_revision);
 }
 
+static void add_pin_texts(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *item,
+    const char *key,
+    const pin_spec *pins,
+    int count,
+    bool settings
+);
+
+/* Each node's pins as they are, "name: type", with the types wildcards
+ * resolved to; the serialized nodes omit pins that match their template. */
+static void inspect_add_pins(yyjson_mut_doc *doc, yyjson_mut_val *nodes, const graph *source)
+{
+    size_t index, maximum;
+    yyjson_mut_val *item;
+    yyjson_mut_arr_foreach(nodes, index, maximum, item)
+    {
+        uint64_t id = yyjson_mut_get_uint(yyjson_mut_obj_get(item, "id"));
+        const node *n = graph_node_by_id(source, id);
+        add_pin_texts(doc, item, "in", n->input_pins, n->input_count, true);
+        add_pin_texts(doc, item, "out", n->output_pins, n->output_count, true);
+    }
+}
+
 static yyjson_mut_val *inspect_graph_value(
     yyjson_mut_doc *doc,
     const behavior_asset *asset,
     const graph *source,
     const compile_report *report,
-    bool include_layout
+    bool include_layout,
+    bool include_pins
 )
 {
     char *serialized = graph_save_json(source);
@@ -2748,6 +2795,9 @@ static yyjson_mut_val *inspect_graph_value(
         }
     }
     inspect_add_sorted_array(doc, object, "nodes", yyjson_obj_get(serialized_root, "nodes"), false, include_layout);
+    if (include_pins) {
+        inspect_add_pins(doc, yyjson_mut_obj_get(object, "nodes"), source);
+    }
     inspect_add_sorted_array(doc, object, "edges", yyjson_obj_get(serialized_root, "edges"), true, include_layout);
     inspect_add_calls(doc, object, asset, source, report);
     if (document) {
@@ -2801,6 +2851,13 @@ static void inspect_add_validation(
     inspect_add_effects(doc, validation, report);
 }
 
+static behavior_asset *link_project_libraries(
+    const char *root,
+    const behavior_asset *asset,
+    char *error,
+    size_t error_size
+);
+
 static int handle_inspect_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -2814,6 +2871,12 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     bool include_layout = layout_value && yyjson_get_bool(layout_value);
+    yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
+    if (pins_value && !yyjson_is_bool(pins_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_pins must be a boolean");
+        return -1;
+    }
+    bool include_pins = !pins_value || yyjson_get_bool(pins_value);
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
@@ -2867,15 +2930,35 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         break;
     }
     if ((has_requested_id || requested_name) && selected < 0) {
+        char message[512];
+        int used = snprintf(message, sizeof message, "graph not found in this asset; its graphs:");
+        for (int i = 0; i < acount(asset->graphs) && used < (int)sizeof message; i++) {
+            const graph *g = asset->graphs[i];
+            if (g->math_expression) {
+                continue;
+            }
+            used += snprintf(
+                message + used,
+                sizeof message - (size_t)used,
+                "%s %llu \"%s\"",
+                i ? "," : "",
+                (unsigned long long)g->graph_id,
+                g->name ? g->name : ""
+            );
+        }
         yyjson_doc_free(source_document);
         behavior_asset_free(asset);
         free(json);
-        response_error(result, exit_code, CHIBI_AUTOMATION_NOT_FOUND, "graph not found");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, message);
         return -1;
     }
     compile_report report;
     compile_report_init(&report);
-    behavior_asset_compile(asset, &report);
+    /* Calls into libraries resolve as they will at runtime. */
+    char link_error[256] = { 0 };
+    behavior_asset *linked = link_project_libraries(root, asset, link_error, sizeof link_error);
+    behavior_asset_compile(linked ? linked : asset, &report);
+    behavior_asset_free(linked);
     inspect_add_variables(
         result->doc,
         value,
@@ -2906,7 +2989,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
             result->doc,
             value,
             "graph",
-            inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout)
+            inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout, include_pins)
         );
     }
     inspect_add_validation(result->doc, value, asset, &report);
@@ -3633,6 +3716,43 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     return 0;
 }
 
+/* A copy of asset linked to the project's libraries (and, for behaviors,
+   event declarations), so validation sees calls into them; NULL on error. */
+static behavior_asset *link_project_libraries(
+    const char *root,
+    const behavior_asset *asset,
+    char *error,
+    size_t error_size
+)
+{
+    behavior_asset **libraries = NULL;
+    const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                                 asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                                 asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
+                           ? "shader-library"
+                           : "library";
+    int loaded = load_behavior_family_assets(root, family_by_kind(family), &libraries, error, error_size);
+    behavior_asset **events = NULL;
+    if (loaded == CHIBI_AUTOMATION_OK && !strcmp(family, "library")) {
+        loaded = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
+        for (int i = 0; i < acount(events); i++) {
+            apush(libraries, events[i]);
+        }
+        afree(events);
+    }
+    behavior_asset *linked = loaded == CHIBI_AUTOMATION_OK
+                               ? behavior_asset_link_libraries(
+                                     asset,
+                                     (const behavior_asset *const *)libraries,
+                                     acount(libraries),
+                                     error,
+                                     error_size
+                                 )
+                               : NULL;
+    free_behavior_assets(libraries);
+    return linked;
+}
+
 static int handle_validate_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -3659,30 +3779,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         } else {
             compile_report report;
             compile_report_init(&report);
-            behavior_asset **libraries = NULL;
-            const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                                         asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
-                                         asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
-                                   ? "shader-library"
-                                   : "library";
-            int loaded = load_behavior_family_assets(root, family_by_kind(family), &libraries, error, sizeof error);
-            behavior_asset **events = NULL;
-            if (loaded == CHIBI_AUTOMATION_OK && !strcmp(family, "library")) {
-                loaded = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
-                for (int i = 0; i < acount(events); i++) {
-                    apush(libraries, events[i]);
-                }
-                afree(events);
-            }
-            behavior_asset *linked = loaded == CHIBI_AUTOMATION_OK
-                                       ? behavior_asset_link_libraries(
-                                             asset,
-                                             (const behavior_asset *const *)libraries,
-                                             acount(libraries),
-                                             error,
-                                             sizeof error
-                                         )
-                                       : NULL;
+            behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
                 errors = behavior_asset_compile(linked, &report);
             } else {
@@ -3690,7 +3787,6 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 add_load_diagnostic(result->doc, diagnostics, error);
             }
             behavior_asset_free(linked);
-            free_behavior_assets(libraries);
             warnings = report.warning_count;
             notes = report.note_count;
             for (int i = 0; i < acount(report.items); i++) {
@@ -3869,6 +3965,30 @@ static int register_preview_assets(
         }
     }
     return 0;
+}
+
+/* What every scenario shares, as the game loads it: libraries and events,
+   then shader libraries and the materials and shapes behaviors write to. */
+static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
+{
+    static const char *const FAMILIES[] = { "library",
+                                            "event",
+                                            "shader-library",
+                                            "material",
+                                            "shape" };
+    int status = CHIBI_AUTOMATION_OK;
+    for (int f = 0; f < (int)(sizeof FAMILIES / sizeof *FAMILIES) &&
+                    status == CHIBI_AUTOMATION_OK;
+         f++) {
+        behavior_asset **assets = NULL;
+        status = load_behavior_family_assets(root, family_by_kind(FAMILIES[f]), &assets, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK &&
+            register_preview_assets(preview, assets, error, error_size) != 0) {
+            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        free_behavior_assets(assets);
+    }
+    return status;
 }
 
 static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)
@@ -4064,6 +4184,10 @@ static uint64_t scenario_state_hash(scenario_context *context)
             (size_t)fog.columns * (size_t)fog.rows * 4
         );
     }
+    uint64_t parameters = render_shader_overrides_hash(
+        game_prototype_preview_world(context->preview)
+    );
+    hash = scenario_hash_bytes(hash, &parameters, sizeof parameters);
     uint64_t sounds = game_audio_hash(engine_audio(runtime));
     if (game_materials_enabled(engine_materials(runtime))) {
         game_material_state materials = game_materials_inspect(engine_materials(runtime));
@@ -4368,22 +4492,7 @@ static int prepare_scenario(
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
 
-    behavior_asset **libraries = NULL;
-    behavior_asset **events = NULL;
-    int result = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
-    if (result == CHIBI_AUTOMATION_OK) {
-        result = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
-    }
-    if (result == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, libraries, error, error_size) != 0) {
-        result = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (result == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, events, error, error_size) != 0) {
-        result = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    free_behavior_assets(libraries);
-    free_behavior_assets(events);
+    int result = register_shared_assets(root, context->preview, error, error_size);
     if (result != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return result;
@@ -4465,6 +4574,11 @@ static int prepare_scene_scenario(
         scenario_context_free(context);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
+    if (!acount(context->scene->entities)) {
+        scenario_context_free(context);
+        set_error(error, error_size, "scene has no entities");
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     context->registry = (game_prototype_registry){
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
@@ -4475,22 +4589,7 @@ static int prepare_scene_scenario(
         set_error(error, error_size, "could not create scene preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    behavior_asset **libraries = NULL;
-    behavior_asset **events = NULL;
-    status = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
-    }
-    if (status == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, libraries, error, error_size) != 0) {
-        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (status == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(context->preview, events, error, error_size) != 0) {
-        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    free_behavior_assets(libraries);
-    free_behavior_assets(events);
+    status = register_shared_assets(root, context->preview, error, error_size);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;
@@ -4577,6 +4676,8 @@ static int prepare_scene_scenario(
     return status;
 }
 
+static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context);
+
 static int handle_scene_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *name = request_string(request, "name");
@@ -4641,8 +4742,61 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
     );
     add_scenario_timing(result->doc, value, frames, fixed_dt);
     add_saved_state(result->doc, value, &context);
+    add_behavior_failures(result->doc, value, &context);
     scenario_context_free(&context);
     return 0;
+}
+
+/* Runs that stopped on an error, grouped by node and message, so a scenario
+   that looks fine but aborts a Tick every frame says so. */
+static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
+{
+    enum
+    {
+        FAILURES_MAX = 16
+    };
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
+    yyjson_mut_val *failures = yyjson_mut_obj_add_arr(doc, value, "behavior_failures");
+    game_behavior_log_info seen[FAILURES_MAX];
+    int counts[FAILURES_MAX] = { 0 }, kinds = 0;
+    for (int i = 0; i < game_behavior_log_count(behaviors); i++) {
+        game_behavior_log_info info = { 0 };
+        if (game_behavior_log_info_at(behaviors, i, &info) != 0 || !info.failure) {
+            continue;
+        }
+        int k = 0;
+        while (k < kinds && (seen[k].origin != info.origin ||
+                             strcmp(seen[k].message, info.message))) {
+            k++;
+        }
+        if (k == FAILURES_MAX) {
+            continue;
+        }
+        if (k == kinds) {
+            seen[kinds++] = info;
+        }
+        counts[k]++;
+    }
+    for (int k = 0; k < kinds; k++) {
+        yyjson_mut_val *failure = yyjson_mut_arr_add_obj(doc, failures);
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            failure,
+            "behavior",
+            seen[k].asset_name ? seen[k].asset_name : ""
+        );
+        if (seen[k].origin) {
+            yyjson_mut_obj_add_uint(doc, failure, "node", seen[k].origin->id);
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                failure,
+                "node_type",
+                seen[k].origin->desc->name
+            );
+        }
+        yyjson_mut_obj_add_strcpy(doc, failure, "message", seen[k].message);
+        yyjson_mut_obj_add_int(doc, failure, "count", counts[k]);
+    }
 }
 
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -5870,8 +6024,36 @@ static bool safe_recording_path(const char *path)
     return safe;
 }
 
+/* Recordings serve the replays and reads that follow them; a day on, they
+   are removed instead of accumulating in /tmp. */
+static void prune_recordings()
+{
+    enum
+    {
+        RECORDING_LIFETIME = 24 * 60 * 60
+    };
+    const char *prefix = strrchr(SCENARIO_RECORDING_PATH_PREFIX, '/') + 1;
+    DIR *dir = opendir("/tmp");
+    struct dirent *entry;
+    while (dir && (entry = readdir(dir))) {
+        char path[PATH_MAX];
+        struct stat info;
+        if (strncmp(entry->d_name, prefix, strlen(prefix)) ||
+            snprintf(path, sizeof path, "/tmp/%s", entry->d_name) >= (int)sizeof path ||
+            lstat(path, &info) || !S_ISREG(info.st_mode) ||
+            time(NULL) - info.st_mtime < RECORDING_LIFETIME) {
+            continue;
+        }
+        unlink(path);
+    }
+    if (dir) {
+        closedir(dir);
+    }
+}
+
 static int create_recording_path(char *path, size_t path_size, char *error, size_t error_size)
 {
+    prune_recordings();
     char template[] = SCENARIO_RECORDING_PATH_PREFIX "XXXXXX";
     int fd = mkstemp(template);
     if (fd < 0) {
@@ -6460,6 +6642,9 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
         yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
+        if (info.failure) {
+            yyjson_mut_obj_add_bool(result->doc, log, "failure", true);
+        }
         emitted_logs++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
@@ -6628,6 +6813,9 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
         yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
+        if (info.failure) {
+            yyjson_mut_obj_add_bool(result->doc, log, "failure", true);
+        }
         if (info.origin) {
             yyjson_mut_val *origin = yyjson_mut_obj_add_obj(result->doc, log, "origin");
             yyjson_mut_obj_add_uint(result->doc, origin, "id", info.origin->id);
@@ -6697,24 +6885,20 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
         return -1;
     }
-    scenario_input *inputs = xcalloc(SCENARIO_MAX_FRAMES, sizeof *inputs);
-    yyjson_val *input_values = yyjson_obj_get(request, "inputs");
-    if (input_values &&
-        (!yyjson_is_arr(input_values) || yyjson_arr_size(input_values) > frames)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "inputs must be an array with no more entries than frames");
-        free(inputs);
+    /* A recording holds one input per frame; a timeline's samples land on
+       their frames. */
+    scenario_sequence sequence = { 0 };
+    int parsed = prepare_sequence(request, frames, &sequence, error, sizeof error);
+    if (parsed != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, parsed, error);
+        free_sequence(&sequence);
         return -1;
     }
-    if (input_values) {
-        size_t count = yyjson_arr_size(input_values);
-        for (size_t i = 0; i < count; i++) {
-            if (!parse_scenario_input(yyjson_arr_get(input_values, i), &inputs[i], error, sizeof error)) {
-                response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
-                free(inputs);
-                return -1;
-            }
-        }
+    scenario_input *inputs = xcalloc(SCENARIO_MAX_FRAMES, sizeof *inputs);
+    for (size_t i = 0; i < sequence.count; i++) {
+        inputs[sequence.at[i]] = sequence.inputs[i];
     }
+    free_sequence(&sequence);
 
     scenario_context context = { 0 };
     int status = kind && !strcmp(kind, "scene")
@@ -7099,7 +7283,10 @@ static int handle_describe_components(yyjson_val *request, response *result, int
 }
 
 static const char *const REGISTRY_SECTIONS[] = {
-    "nodes", "types", "services", "operators", "components",
+    "nodes",
+    "types",
+    "services",
+    "components",
 };
 
 /* Nodes dominate the registry; searchNodes serves focused node lookups. */
@@ -7149,7 +7336,7 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 {
     yyjson_val *sections = request ? yyjson_obj_get(request, "sections") : NULL;
     if (!valid_registry_sections(sections)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, operators, or components");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "sections must list nodes, types, services, or components");
         return -1;
     }
     yyjson_mut_doc *doc = result->doc;
@@ -7187,33 +7374,6 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
             yyjson_mut_obj_add_uint(doc, object, "stable_id", service->stable_id);
         }
     }
-    if (registry_section(sections, "operators")) {
-        yyjson_mut_val *operators = yyjson_mut_obj_add_arr(doc, value, "operators");
-        for (int i = 0; i < registry_operator_count(); i++) {
-            const operator_signature *signature = registry_operator(i);
-            yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, operators);
-            yyjson_mut_obj_add_strcpy(doc, object, "name", signature->name);
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "left",
-                pin_json_name(signature->left)
-            );
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "right",
-                pin_json_name(signature->right)
-            );
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                object,
-                "result",
-                pin_json_name(signature->result)
-            );
-            yyjson_mut_obj_add_int(doc, object, "priority", signature->priority);
-        }
-    }
     if (registry_section(sections, "components")) {
         yyjson_mut_val *components = yyjson_mut_obj_add_arr(doc, value, "components");
         for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -7232,137 +7392,703 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
     return 0;
 }
 
-static bool search_pin_matches(
-    const pin_spec *pin,
-    const char *pin_type,
-    const char *pin_container,
-    const char *pin_kind
-)
+/* Behavior graphs author component nodes, which lower to the generated nodes
+ * System graphs use directly; Systems bind only the ECS world. No domain
+ * offers every domain's authoring nodes. */
+static bool domain_offers(const char *domain, const node_desc *node)
 {
-    if (pin_type && strcmp(pin_json_name(pin->type), pin_type) &&
-        (!pin->type_name || strcmp(pin->type_name, pin_type))) {
+    bool shader = node->category && !strncmp(node->category, "Shader", 6);
+    bool field = node->category && !strcmp(node->category, "Procedural Field");
+    const char *own = shader ? "shader" : field ? "field" : "behavior";
+    bool system = domain && !strcmp(domain, "system");
+    if (domain && strcmp(system ? "behavior" : domain, own)) {
         return false;
     }
-    if (pin_container && strcmp(container_json_name(pin->container), pin_container)) {
+    const char *service = node->host_call ? node->host_call->service
+                        : node->command   ? node->command->service
+                                          : NULL;
+    return system ? !component_node_kind_of(node) &&
+                        (!service || !strcmp(service, "ecs.world"))
+                  : !component_generated_kind(node);
+}
+
+/* Component node presets and events belong to behavior graphs. */
+static bool behavior_vocabulary(const char *domain)
+{
+    return !domain || !strcmp(domain, "behavior");
+}
+
+typedef struct
+{
+    const char *pin_type;
+    const char *pin_container;
+    const char *pin_kind;
+    yyjson_val *pure;
+} pin_filter;
+
+static bool pin_matches(const pin_spec *pin, const pin_filter *filter)
+{
+    return (!filter->pin_type || !strcmp(pin_json_name(pin->type), filter->pin_type) ||
+            (pin->type_name && !strcmp(pin->type_name, filter->pin_type))) &&
+           (!filter->pin_container ||
+            !strcmp(container_json_name(pin->container), filter->pin_container)) &&
+           (!filter->pin_kind ||
+            !strcmp(pin->kind == PIN_EXEC ? "exec" : "data", filter->pin_kind));
+}
+
+/* A candidate's pins: a registry node's declared ones, or those a configured
+ * node has in a scratch graph. */
+typedef struct
+{
+    const pin_spec *inputs, *outputs;
+    int input_count, output_count;
+} pin_sides;
+
+static bool pins_match(const pin_sides *n, const pin_filter *filter)
+{
+    bool pure = true;
+    bool pin_filtered = filter->pin_type || filter->pin_container || filter->pin_kind;
+    bool matched = !pin_filtered;
+    for (int output = 0; output < 2; output++) {
+        const pin_spec *pins = output ? n->outputs : n->inputs;
+        int count = output ? n->output_count : n->input_count;
+        for (int i = 0; i < count; i++) {
+            pure &= pins[i].kind != PIN_EXEC;
+            matched |= pin_filtered && pin_matches(&pins[i], filter);
+        }
+    }
+    return matched && (!filter->pure || pure == yyjson_get_bool(filter->pure));
+}
+
+/* A search result: a registry node, a component node preset, or an event. An
+ * event is an Event node for a host event or an event definition, or a Send
+ * Event for a definition. */
+typedef struct
+{
+    const node_desc *desc;
+    const component_node_preset *preset;
+    const graph_host_event_desc *host;
+    const behavior_asset *definition;
+    int score;
+    int order;
+    /* With a wire to fit: how well (wire_fit) and through which pins. */
+    int fit;
+    int wire_input, wire_output;
+} node_match;
+
+static int node_match_compare(const void *a, const void *b)
+{
+    const node_match *left = a, *right = b;
+    int fit = right->fit - left->fit;
+    int score = right->score - left->score;
+    return fit ? fit : score ? score : left->order - right->order;
+}
+
+static const char *match_event(const node_match *match)
+{
+    return match->host       ? match->host->name
+         : match->definition ? match->definition->name
+                             : NULL;
+}
+
+/* The node add_node creates for a match, in a scratch graph. */
+static node *match_node(graph *g, const node_match *match)
+{
+    node *n = graph_add_node(g, match->desc);
+    assert(n);
+    const char *event = match_event(match);
+    int result = 0;
+    if (match->preset) {
+        result = component_node_configure(
+            g,
+            n,
+            match->preset->setting,
+            match->preset->field
+        );
+    } else if (event && n->desc == &NODE_Event) {
+        result = graph_set_event_name(g, n, event) ||
+                 (match->host ? graph_host_event_apply(g, n)
+                              : graph_event_apply(g, n, match->definition));
+    } else if (event) {
+        result = graph_set_node_reference(g, n, 0, event) ||
+                 graph_event_apply(g, n, match->definition);
+    }
+    assert(!result);
+    (void)result;
+    return n;
+}
+
+/* Appends " word" while it fits. */
+static void append_word(char *text, size_t size, int *used, const char *word)
+{
+    if (word && *used < (int)size) {
+        *used += snprintf(text + *used, size - (size_t)*used, " %s", word);
+    }
+}
+
+/* A preset reads as its access, its type and its field: "Set GameHealth
+ * current". Get, a whole-value Set, Make and Break also carry every field. */
+static int preset_score(const component_node_preset *preset, const char *query)
+{
+    char name[256], secondary[1024] = "";
+    snprintf(
+        name,
+        sizeof name,
+        "%.*s %s %s",
+        (int)strcspn(preset->desc->name, " "),
+        preset->desc->name,
+        preset->type->name,
+        preset->field ? preset->field : ""
+    );
+    int used = 0;
+    append_word(secondary, sizeof secondary, &used, preset->desc->category);
+    append_word(secondary, sizeof secondary, &used, preset->desc->keywords);
+    component_node_kind kind = component_node_kind_of(preset->desc);
+    bool fields = !preset->field && kind != COMPONENT_NODE_HAS &&
+                  kind != COMPONENT_NODE_ADD && kind != COMPONENT_NODE_REMOVE;
+    for (int i = 0; fields && i < preset->type->field_count; i++) {
+        append_word(secondary, sizeof secondary, &used, preset->type->fields[i].name);
+    }
+    const node_desc *shape = component_node_shape(preset->desc, preset->setting);
+    int binding = 0;
+    const char *spelling = shape ? behavior_expression_spelling(shape, &binding) : NULL;
+    append_word(secondary, sizeof secondary, &used, binding ? NULL : spelling);
+    return text_search_word_score(query, name, secondary);
+}
+
+/* An event reads as "On Contact Begin" or "Send Damage", with its keywords or
+ * description and payload names. */
+static int event_score(const node_match *match, const char *query)
+{
+    char name[256], secondary[1024] = "";
+    bool send = match->desc != &NODE_Event;
+    snprintf(name, sizeof name, "%s %s", send ? "Send" : "On", match_event(match));
+    int used = 0;
+    append_word(secondary, sizeof secondary, &used, send ? "Events send dispatch" : "Events when");
+    if (match->host) {
+        append_word(secondary, sizeof secondary, &used, match->host->keywords);
+        for (int i = 0; i < match->host->payload_count; i++) {
+            append_word(
+                secondary,
+                sizeof secondary,
+                &used,
+                match->host->payload[i].name
+            );
+        }
+        return text_search_word_score(query, name, secondary);
+    }
+    append_word(secondary, sizeof secondary, &used, match->definition->description);
+    for (int i = 0; i < acount(match->definition->variables); i++) {
+        append_word(
+            secondary,
+            sizeof secondary,
+            &used,
+            match->definition->variables[i].name
+        );
+    }
+    return text_search_word_score(query, name, secondary);
+}
+
+/* Pin names and a node's expression function rank like keywords, so a query
+ * can name what a node takes or how an expression writes it. */
+static int node_score(const node_desc *node, const char *query)
+{
+    char secondary[1024] = "";
+    int used = 0, binding = 0;
+    append_word(secondary, sizeof secondary, &used, node->category);
+    append_word(secondary, sizeof secondary, &used, node->keywords);
+    const char *spelling = behavior_expression_spelling(node, &binding);
+    append_word(secondary, sizeof secondary, &used, binding ? NULL : spelling);
+    for (int i = 0; i < node->input_count; i++) {
+        append_word(secondary, sizeof secondary, &used, node->inputs[i].name);
+    }
+    for (int i = 0; i < node->output_count; i++) {
+        append_word(secondary, sizeof secondary, &used, node->outputs[i].name);
+    }
+    return text_search_word_score(query, node->name, secondary);
+}
+
+static int match_score(const node_match *match, const char *query)
+{
+    return match->preset                    ? preset_score(match->preset, query)
+         : match->host || match->definition ? event_score(match, query)
+                                            : node_score(match->desc, query);
+}
+
+/* How Behavior Expression writes a node over its data inputs: "clamp(Value,
+ * Min, Max)", "A + B" or "-Value". A component node reads as the node it
+ * lowers to, so a Make CF_V2 is "vec2(x, y)". */
+static bool expression_form(const graph *g, const node *n, char *text, size_t size)
+{
+    const node_desc *desc = component_node_target(g, n);
+    int binding = 0;
+    const char *spelling = desc ? behavior_expression_spelling(desc, &binding) : NULL;
+    if (!spelling) {
         return false;
     }
-    if (pin_kind && strcmp(pin->kind == PIN_EXEC ? "exec" : "data", pin_kind)) {
+    const char *arguments[8];
+    int count = 0;
+    for (int i = 0; i < n->input_count && count < 8; i++) {
+        const pin_spec *pin = &n->input_pins[i];
+        if (pin->kind == PIN_DATA && !(pin->flags & PIN_FLAG_SETTING) && pin->name) {
+            arguments[count++] = pin->name;
+        }
+    }
+    if (binding == BEHAVIOR_EXPRESSION_PREFIX_BINDING && count == 1) {
+        snprintf(text, size, "%s%s", spelling, arguments[0]);
+        return true;
+    }
+    if (binding && count == 2) {
+        snprintf(text, size, "%s %s %s", arguments[0], spelling, arguments[1]);
+        return true;
+    }
+    if (binding) {
         return false;
+    }
+    int used = snprintf(text, size, "%s(", spelling);
+    for (int i = 0; i < count && used < (int)size; i++) {
+        used += snprintf(text + used, size - (size_t)used, "%s%s", i ? ", " : "", arguments[i]);
+    }
+    if (used < (int)size) {
+        snprintf(text + used, size - (size_t)used, ")");
     }
     return true;
 }
 
-static bool search_pin_contains(const pin_spec *pin, const char *query)
-{
-    return text_contains_casefold(pin->name, query) ||
-           text_contains_casefold(pin_json_name(pin->type), query) ||
-           text_contains_casefold(pin->type_name, query);
-}
-
-static bool search_node_matches(
-    const node_desc *node,
-    const char *query,
-    const char *pin_type,
-    const char *pin_container,
-    const char *pin_kind,
-    yyjson_val *pure_value
+/* "name: type", marking containers, wildcards, settings and Self defaults. */
+static void add_pin_texts(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *item,
+    const char *key,
+    const pin_spec *pins,
+    int count,
+    bool settings
 )
 {
-    if (pure_value && node_desc_is_pure(node) != yyjson_get_bool(pure_value)) {
-        return false;
+    yyjson_mut_val *list = yyjson_mut_arr(doc);
+    for (int i = 0; i < count; i++) {
+        const pin_spec *pin = &pins[i];
+        bool setting = pin->flags & PIN_FLAG_SETTING;
+        if (setting && !settings) {
+            continue;
+        }
+        /* A wildcard keeps its flag once a connection types it. */
+        bool unresolved = (pin->flags & PIN_FLAG_WILDCARD) && pin->type == PIN_FLOW;
+        const char *type = pin->kind == PIN_EXEC ? "exec"
+                         : unresolved            ? "any"
+                         : pin->type_name        ? pin->type_name
+                                                 : pin_json_name(pin->type);
+        const char *name = pin->name ? pin->name : "";
+        const char *mark = setting                              ? " (setting)"
+                         : (pin->flags & PIN_FLAG_DEFAULT_SELF) ? " = Self"
+                                                                : "";
+        char text[256];
+        if (pin->container == PIN_CONTAINER_SINGLE) {
+            snprintf(text, sizeof text, "%s: %s%s", name, type, mark);
+        } else {
+            const char *container = container_json_name(pin->container);
+            snprintf(text, sizeof text, "%s: %s<%s>%s", name, container, type, mark);
+        }
+        yyjson_mut_arr_add_strcpy(doc, list, text);
     }
-    bool pin_filter = pin_type || pin_container || pin_kind;
-    bool pin_match = !pin_filter;
-    bool query_pin_match = false;
-    for (int output = 0; output < 2; output++) {
-        const pin_spec *pins = output ? node->outputs : node->inputs;
-        int count = output ? node->output_count : node->input_count;
-        for (int i = 0; i < count; i++) {
-            const pin_spec *pin = &pins[i];
-            if (pin_filter &&
-                search_pin_matches(pin, pin_type, pin_container, pin_kind)) {
-                pin_match = true;
+    if (yyjson_mut_arr_size(list)) {
+        yyjson_mut_obj_add_val(doc, item, key, list);
+    }
+}
+
+/* A match's sentence: its node's, a preset's, or an event's. */
+static bool match_description(const node_match *match, char *text, size_t size)
+{
+    if (match->preset) {
+        component_node_preset_describe(match->preset, text, size);
+        return true;
+    }
+    if (match->definition && match->desc != &NODE_Event) {
+        snprintf(text, size, "Sends %s to Entity.", match->definition->name);
+        return true;
+    }
+    const char *about = match->host       ? match->host->description
+                      : match->definition ? match->definition->description
+                                          : match->desc->description;
+    snprintf(text, size, "%s", about ? about : "");
+    return text[0];
+}
+
+/* What add_node needs: the type; a preset's setting, by component or type
+ * name; an event's name; the expression that writes the node; and its pins. */
+static void add_node_match(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *nodes,
+    graph *g,
+    const node_match *match,
+    bool pins
+)
+{
+    yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, nodes);
+    const node_desc *desc = match->desc;
+    yyjson_mut_obj_add_str(doc, item, "type", desc->name);
+    node *n = match_node(g, match);
+    const char *event = match_event(match);
+    if (event) {
+        const char *key = desc == &NODE_Event ? "event_name" : "reference_name";
+        yyjson_mut_obj_add_strcpy(doc, item, key, event);
+    } else if (desc->category && desc->category[0]) {
+        yyjson_mut_obj_add_str(doc, item, "category", desc->category);
+    }
+    if (match->preset) {
+        const ecs_component_desc *component = component_by_key(match->preset->setting);
+        yyjson_mut_val *inputs = yyjson_mut_obj_add_obj(doc, item, "inputs");
+        yyjson_mut_obj_add(
+            inputs,
+            yyjson_mut_strcpy(doc, n->input_pins[component_node_setting(n)].name),
+            yyjson_mut_str(doc, component ? component->name : match->preset->setting)
+        );
+        if (match->preset->field) {
+            yyjson_mut_obj_add_str(doc, item, "field", match->preset->field);
+        }
+    }
+    char description[256];
+    if (match_description(match, description, sizeof description)) {
+        yyjson_mut_obj_add_strcpy(doc, item, "description", description);
+    }
+    if (match->wire_input >= 0) {
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            item,
+            "wire_input",
+            n->input_pins[match->wire_input].name
+        );
+    }
+    if (match->wire_output >= 0) {
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            item,
+            "wire_output",
+            n->output_pins[match->wire_output].name
+        );
+    }
+    char expression[256];
+    if (expression_form(g, n, expression, sizeof expression)) {
+        yyjson_mut_obj_add_strcpy(doc, item, "expression", expression);
+    }
+    if (pins) {
+        add_pin_texts(doc, item, "in", n->input_pins, n->input_count, !match->preset);
+        add_pin_texts(doc, item, "out", n->output_pins, n->output_count, true);
+    }
+    int removed = graph_remove_node(g, n);
+    assert(!removed);
+    (void)removed;
+}
+
+/* Without a query or filter, the domain's vocabulary: node types by category;
+ * for behaviors the events and the components and struct types that settings
+ * take. System graphs name generated nodes directly, so they get patterns. */
+static void add_node_outline(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value,
+    const char *domain,
+    behavior_asset *const *definitions
+)
+{
+    static const char *const generated[] = {
+        "Get_<Component>",
+        "GetEntity_<Component>",
+        "Has_<Component>",
+        "HasEntity_<Component>",
+        "Set_<Component>",
+        "SetEntity_<Component>",
+        "Set_<Component>_<field>",
+        "Add_<Component>",
+        "Remove_<Component>",
+        "Make_<Type>",
+        "Break_<Type>",
+    };
+    yyjson_mut_val *categories = yyjson_mut_obj_add_obj(doc, value, "categories");
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *node = registry_node(i);
+        if (!domain_offers(domain, node) || component_generated_kind(node)) {
+            continue;
+        }
+        const char *category = node->category && node->category[0] ? node->category
+                                                                   : "Basic";
+        yyjson_mut_val *names = yyjson_mut_obj_get(categories, category);
+        if (!names) {
+            names = yyjson_mut_obj_add_arr(doc, categories, category);
+        }
+        yyjson_mut_arr_add_str(doc, names, node->name);
+    }
+    bool system = domain && !strcmp(domain, "system");
+    if (!system && !behavior_vocabulary(domain)) {
+        return;
+    }
+    if (system) {
+        yyjson_mut_val *patterns = yyjson_mut_obj_add_arr(doc, value, "generated");
+        for (size_t i = 0; i < sizeof generated / sizeof *generated; i++) {
+            yyjson_mut_arr_add_str(doc, patterns, generated[i]);
+        }
+    } else {
+        yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, value, "events");
+        for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
+            yyjson_mut_arr_add_str(doc, events, GRAPH_HOST_EVENTS[i].name);
+        }
+        for (int i = 0; i < acount(definitions); i++) {
+            yyjson_mut_arr_add_strcpy(doc, events, definitions[i]->name);
+        }
+    }
+    yyjson_mut_val *names = yyjson_mut_obj_add_obj(doc, value, system ? "names" : "settings");
+    yyjson_mut_val *components = yyjson_mut_obj_add_arr(doc, names, "Component");
+    yyjson_mut_val *types = yyjson_mut_obj_add_arr(doc, names, "Type");
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *node = registry_node(i);
+        if (node->component_kind == NODE_COMPONENT_GET_SELF) {
+            yyjson_mut_arr_add_str(doc, components, node->component->name);
+        }
+        if (node->type && node->pure_kind == NODE_PURE_MAKE) {
+            yyjson_mut_arr_add_str(doc, types, node->type->name);
+        }
+    }
+}
+
+/* Registry nodes, then component node presets, host events and the project's
+ * event definitions as Event and Send Event. */
+static node_match *node_candidates(
+    const char *domain,
+    const component_node_preset *presets,
+    behavior_asset *const *definitions
+)
+{
+    node_match *matches = NULL;
+    for (int i = 0; i < registry_node_count(); i++) {
+        if (domain_offers(domain, registry_node(i))) {
+            apush(matches, ((node_match){ .desc = registry_node(i) }));
+        }
+    }
+    if (!behavior_vocabulary(domain)) {
+        return matches;
+    }
+    for (int i = 0; i < acount(presets); i++) {
+        apush(matches, ((node_match){ .desc = presets[i].desc, .preset = &presets[i] }));
+    }
+    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
+        apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GRAPH_HOST_EVENTS[i] }));
+    }
+    const node_desc *send = registry_node_by_name("Send Event");
+    for (int i = 0; i < acount(definitions); i++) {
+        apush(matches, ((node_match){ .desc = &NODE_Event, .definition = definitions[i] }));
+        apush(matches, ((node_match){ .desc = send, .definition = definitions[i] }));
+    }
+    return matches;
+}
+
+/* A pin type as searchNodes writes it: "exec", "any", "float", "GameHealth",
+ * "ecs.entity" or "array<int>". */
+static bool wire_pin(const char *text, pin_spec *out)
+{
+    *out = (pin_spec){ .type = PIN_FLOW };
+    char base[128];
+    const char *open = strchr(text, '<');
+    size_t length = strlen(text);
+    if (open) {
+        const char *containers[] = { "array", "set", "map" };
+        const pin_container kinds[] = { PIN_CONTAINER_ARRAY,
+                                        PIN_CONTAINER_SET,
+                                        PIN_CONTAINER_MAP };
+        size_t prefix = (size_t)(open - text);
+        bool known = false;
+        for (int i = 0; i < 3; i++) {
+            if (strlen(containers[i]) == prefix &&
+                !strncmp(text, containers[i], prefix)) {
+                out->container = kinds[i];
+                known = true;
             }
-            if (query && search_pin_contains(pin, query)) {
-                query_pin_match = true;
+        }
+        if (!known || text[length - 1] != '>' || length - prefix - 2 >= sizeof base) {
+            return false;
+        }
+        snprintf(base, sizeof base, "%.*s", (int)(length - prefix - 2), open + 1);
+    } else if (length >= sizeof base) {
+        return false;
+    } else {
+        snprintf(base, sizeof base, "%s", text);
+    }
+    if (!strcmp(base, "exec")) {
+        out->kind = PIN_EXEC;
+        return !open;
+    }
+    if (!strcmp(base, "any")) {
+        out->flags = PIN_FLAG_WILDCARD;
+        return true;
+    }
+    for (int i = PIN_BOOL; i < PIN_HANDLE; i++) {
+        if (!strcmp(base, pin_type_name((pin_type)i))) {
+            out->type = (pin_type)i;
+            return true;
+        }
+    }
+    /* A handle is named by the pins that carry it, such as ecs.entity. */
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *node = registry_node(i);
+        for (int p = 0; p < node->input_count; p++) {
+            if (node->inputs[p].type == PIN_HANDLE && node->inputs[p].type_name &&
+                !strcmp(node->inputs[p].type_name, base)) {
+                out->type = PIN_HANDLE;
+                out->type_name = node->inputs[p].type_name;
+                return true;
             }
         }
     }
-    if (!pin_match) {
-        return false;
-    }
-    return !query || !query[0] || text_contains_casefold(node->name, query) ||
-           text_contains_casefold(node->category, query) ||
-           text_contains_casefold(node->keywords, query) || query_pin_match;
+    const type_desc *type = registry_type_by_name(base);
+    const enum_desc *enumeration = registry_enum_by_name(base);
+    out->type = type ? PIN_STRUCT : PIN_ENUM;
+    out->type_name = type ? type->name : enumeration ? enumeration->name : NULL;
+    return out->type_name != NULL;
 }
 
-static int handle_search_nodes(yyjson_val *request, response *result, int *exit_code)
+/* The best pin on one side of `n` for a wire: into an input from `from`, or
+ * out of an output to `to`. Returns its fit and sets `pin`, or 0 and -1. */
+static int best_wire(const pin_sides *n, const pin_spec *from, const pin_spec *to, int *pin)
+{
+    const pin_spec *pins = from ? n->inputs : n->outputs;
+    int count = from ? n->input_count : n->output_count, best = 0;
+    *pin = -1;
+    for (int i = 0; i < count; i++) {
+        int fit = from ? wire_fit(from, &pins[i]) : wire_fit(&pins[i], to);
+        if (fit > best) {
+            best = fit;
+            *pin = i;
+        }
+    }
+    return best;
+}
+
+static int handle_search_nodes(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *query = request_string(request, "query");
     const char *domain = request_string(request, "domain");
-    const char *pin_type = request_string(request, "pin_type");
-    const char *pin_container = request_string(request, "pin_container");
-    const char *pin_kind = request_string(request, "pin_kind");
+    pin_filter filter = { .pin_type = request_string(request, "pin_type"),
+                          .pin_container = request_string(request, "pin_container"),
+                          .pin_kind = request_string(request, "pin_kind"),
+                          .pure = yyjson_obj_get(request, "pure") };
     yyjson_val *limit_value = yyjson_obj_get(request, "limit");
     yyjson_val *offset_value = yyjson_obj_get(request, "offset");
     yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
-    yyjson_val *pure_value = yyjson_obj_get(request, "pure");
+    const char *wire_from_text = request_string(request, "wire_from");
+    const char *wire_to_text = request_string(request, "wire_to");
+    pin_spec wire_from, wire_to;
+    if ((wire_from_text && !wire_pin(wire_from_text, &wire_from)) ||
+        (wire_to_text && !wire_pin(wire_to_text, &wire_to)) ||
+        (yyjson_obj_get(request, "wire_from") && !wire_from_text) ||
+        (yyjson_obj_get(request, "wire_to") && !wire_to_text)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "wire_from and wire_to take a pin type as searchNodes writes it, such as exec, float, GameHealth or array<int>");
+        return -1;
+    }
     if ((yyjson_obj_get(request, "query") && !query) ||
         (yyjson_obj_get(request, "domain") &&
          (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior") &&
-                      strcmp(domain, "field")))) ||
-        (yyjson_obj_get(request, "pin_type") && (!pin_type || strlen(pin_type) > 128)) ||
+                      strcmp(domain, "field") && strcmp(domain, "system")))) ||
+        (yyjson_obj_get(request, "pin_type") &&
+         (!filter.pin_type || strlen(filter.pin_type) > 128)) ||
         (yyjson_obj_get(request, "pin_container") &&
-         (!pin_container ||
-          (strcmp(pin_container, "single") && strcmp(pin_container, "array") &&
-           strcmp(pin_container, "set") && strcmp(pin_container, "map")))) ||
+         (!filter.pin_container || (strcmp(filter.pin_container, "single") &&
+                                    strcmp(filter.pin_container, "array") &&
+                                    strcmp(filter.pin_container, "set") &&
+                                    strcmp(filter.pin_container, "map")))) ||
         (yyjson_obj_get(request, "pin_kind") &&
-         (!pin_kind || (strcmp(pin_kind, "data") && strcmp(pin_kind, "exec")))) ||
+         (!filter.pin_kind ||
+          (strcmp(filter.pin_kind, "data") && strcmp(filter.pin_kind, "exec")))) ||
         (limit_value && (!yyjson_is_int(limit_value) || yyjson_get_sint(limit_value) < 1 ||
                          yyjson_get_sint(limit_value) > 50)) ||
         (offset_value &&
          (!yyjson_is_int(offset_value) || yyjson_get_sint(offset_value) < 0 ||
           yyjson_get_sint(offset_value) > 100000)) ||
         (pins_value && !yyjson_is_bool(pins_value)) ||
-        (pure_value && !yyjson_is_bool(pure_value)) ||
+        (filter.pure && !yyjson_is_bool(filter.pure)) ||
         (query && strlen(query) > 256)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page or include_pins");
         return -1;
     }
+    behavior_asset **definitions = NULL;
+    char error[256] = "";
+    int status = behavior_vocabulary(domain)
+                   ? load_behavior_family_assets(root, family_by_kind("event"), &definitions, error, sizeof error)
+                   : CHIBI_AUTOMATION_OK;
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    bool searched = query && query[0];
+    bool pin_filtered = filter.pin_type || filter.pin_container ||
+                        filter.pin_kind || filter.pure;
+    bool wired = wire_from_text || wire_to_text;
+    if (!searched && !pin_filtered && !wired) {
+        add_node_outline(result->doc, value, domain, definitions);
+        free_behavior_assets(definitions);
+        return 0;
+    }
     int limit = limit_value ? (int)yyjson_get_sint(limit_value) : 10;
     int offset = offset_value ? (int)yyjson_get_sint(offset_value) : 0;
     bool pins = !pins_value || yyjson_get_bool(pins_value);
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
-    int total = 0, returned = 0;
-    for (int i = 0; i < registry_node_count(); i++) {
-        const node_desc *node = registry_node(i);
-        bool shader = node->category && !strncmp(node->category, "Shader", 6);
-        bool field = node->category && !strcmp(node->category, "Procedural Field");
-        const char *node_domain = shader ? "shader"
-                                : field  ? "field"
-                                         : "behavior";
-        if ((domain && strcmp(domain, node_domain)) ||
-            !search_node_matches(node, query, pin_type, pin_container, pin_kind, pure_value)) {
+    /* Presets and events need words or a wire to rank; a pin filter alone
+     * lists nodes. */
+    bool listed = searched || wired;
+    component_node_preset *presets = listed ? component_node_presets() : NULL;
+    node_match *candidates = node_candidates(domain, presets, listed ? definitions : NULL);
+    behavior_asset *scratch = behavior_asset_new("Node search");
+    node_match *matches = NULL;
+    for (int i = 0; i < acount(candidates); i++) {
+        node_match match = candidates[i];
+        bool offered = listed || !(match.host || match.definition);
+        match.order = i;
+        match.score = offered ? match_score(&match, query) : -1;
+        match.wire_input = match.wire_output = -1;
+        if (match.score < 0) {
             continue;
         }
-        if (total++ < offset || returned == limit) {
-            continue;
+        if (pin_filtered || wired) {
+            bool configured = match.preset || match.host || match.definition;
+            node *n = configured ? match_node(scratch->graph, &match) : NULL;
+            pin_sides sides = n ? (pin_sides){ n->input_pins,
+                                               n->output_pins,
+                                               n->input_count,
+                                               n->output_count }
+                                : (pin_sides){ match.desc->inputs,
+                                               match.desc->outputs,
+                                               match.desc->input_count,
+                                               match.desc->output_count };
+            bool kept = pins_match(&sides, &filter);
+            int into = wire_from_text
+                         ? best_wire(&sides, &wire_from, NULL, &match.wire_input)
+                         : 3;
+            int out = wire_to_text
+                        ? best_wire(&sides, NULL, &wire_to, &match.wire_output)
+                        : 3;
+            match.fit = wired ? (into < out ? into : out) : 0;
+            int removed = n ? graph_remove_node(scratch->graph, n) : 0;
+            assert(!removed);
+            (void)removed;
+            if (!kept || (wired && !match.fit)) {
+                continue;
+            }
         }
-        returned++;
-        yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, nodes);
-        yyjson_mut_obj_add_strcpy(result->doc, item, "name", node->name);
-        yyjson_mut_obj_add_strcpy(result->doc, item, "category", node->category ? node->category : "");
-        yyjson_mut_obj_add_bool(result->doc, item, "pure", node_desc_is_pure(node));
-        if (pins) {
-            add_pins(result->doc, item, "inputs", node->inputs, node->input_count);
-            add_pins(result->doc, item, "outputs", node->outputs, node->output_count);
-        }
+        apush(matches, match);
     }
+    qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
+    int total = acount(matches);
+    for (int i = offset; i < total && i < offset + limit; i++) {
+        add_node_match(result->doc, nodes, scratch->graph, &matches[i], pins);
+    }
+    int count = total > offset ? (total - offset < limit ? total - offset : limit) : 0;
     yyjson_mut_obj_add_int(result->doc, value, "total", total);
     yyjson_mut_obj_add_int(result->doc, value, "offset", offset);
-    yyjson_mut_obj_add_int(result->doc, value, "count", returned);
-    yyjson_mut_obj_add_bool(result->doc, value, "has_more", offset + returned < total);
+    yyjson_mut_obj_add_int(result->doc, value, "count", count);
+    yyjson_mut_obj_add_bool(result->doc, value, "has_more", offset + count < total);
+    afree(matches);
+    afree(candidates);
+    afree(presets);
+    behavior_asset_free(scratch);
+    free_behavior_assets(definitions);
     return 0;
 }
 
@@ -8148,13 +8874,17 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
         } else {
             compile_report report;
             compile_report_init(&report);
-            behavior_asset_compile(asset, &report);
-            inspect_add_validation(result->doc, value, asset, &report);
-            if (report.error_count) {
+            behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
+            if (linked) {
+                behavior_asset_compile(linked, &report);
+                inspect_add_validation(result->doc, value, linked, &report);
+            }
+            if (!linked || report.error_count) {
                 snprintf(error, sizeof error, "optimized graph asset failed validation");
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             compile_report_free(&report);
+            behavior_asset_free(linked);
             behavior_asset_free(asset);
         }
     }
@@ -8213,7 +8943,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "preview_field") ||
-           !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
+           !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
+           !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "inspect_graph") ||
            !strcmp(operation, "inspect_system") ||
@@ -8280,7 +9011,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else if (!strcmp(operation, "profile_scenario")) {
         handle_profile_scenario(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "search_nodes")) {
-        handle_search_nodes(root_value, &result, exit_code);
+        handle_search_nodes(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "describe_components")) {
         handle_describe_components(root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_field")) {
@@ -8323,134 +9054,4 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     free(root);
     yyjson_doc_free(document);
     return response_finish(&result);
-}
-
-static const char *legacy_operation(const char *method)
-{
-    if (!method) {
-        return NULL;
-    }
-    if (!strcmp(method, "project.status")) {
-        return "status";
-    }
-    if (!strcmp(method, "assets.list")) {
-        return "list_assets";
-    }
-    if (!strcmp(method, "asset.read")) {
-        return "read_asset";
-    }
-    if (!strcmp(method, "asset.validate")) {
-        return "validate_asset";
-    }
-    return NULL;
-}
-
-static char *legacy_request(const yyjson_val *input, const char *operation, const char *root)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *object = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, object);
-    yyjson_mut_obj_add_uint(doc, object, "contract", CHIBI_AUTOMATION_CONTRACT);
-    yyjson_mut_obj_add_strcpy(doc, object, "operation", operation ? operation : "");
-    if (root && root[0]) {
-        yyjson_mut_obj_add_strcpy(doc, object, "project_root", root);
-    }
-    const yyjson_val *params = yyjson_obj_get(input, "params");
-    const char *path = params ? request_string((yyjson_val *)params, "path") : NULL;
-    if (path) {
-        yyjson_mut_obj_add_strcpy(doc, object, "path", path);
-    }
-    static const char *const page_fields[] = { "cursor", "limit", "summary" };
-    for (int i = 0; i < (int)(sizeof page_fields / sizeof *page_fields); i++) {
-        yyjson_val *value = params ? yyjson_obj_get(params, page_fields[i]) : NULL;
-        if (value) {
-            yyjson_mut_obj_add_val(doc, object, page_fields[i], yyjson_val_mut_copy(doc, value));
-        }
-    }
-    char *request = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    return request;
-}
-
-static void legacy_aliases(yyjson_mut_doc *doc, yyjson_mut_val *root, const char *method)
-{
-    yyjson_mut_val *result = yyjson_mut_obj_get(root, "result");
-    if (!result || !strcmp(method, "project.status")) {
-        if (result && !strcmp(method, "project.status")) {
-            yyjson_mut_val *project = yyjson_mut_obj_add_obj(doc, result, "project");
-            yyjson_mut_obj_add_strcpy(doc, project, "name", "chibi");
-            yyjson_mut_val *registry = yyjson_mut_obj_get(result, "registry");
-            yyjson_mut_val *nodes = registry ? yyjson_mut_obj_get(registry, "nodes")
-                                             : NULL;
-            yyjson_mut_obj_add_uint(
-                doc,
-                result,
-                "reflection_node_count",
-                nodes && yyjson_mut_is_int(nodes) ? yyjson_mut_get_uint(nodes) : 0
-            );
-        }
-        return;
-    }
-    if (!strcmp(method, "asset.read")) {
-        yyjson_mut_val *document = yyjson_mut_obj_get(result, "document");
-        if (document) {
-            yyjson_mut_obj_add_val(doc, result, "asset", yyjson_mut_val_mut_copy(doc, document));
-        }
-    }
-}
-
-static char *legacy_response(const char *response_json, const char *id, const char *method, int *status)
-{
-    yyjson_doc *document = yyjson_read(response_json, strlen(response_json), 0);
-    if (!document) {
-        return xstrdup("{\"version\":1,\"ok\":false,\"error\":{\"code\":\"execution_failed\"}}");
-    }
-    yyjson_mut_doc *mutable = yyjson_doc_mut_copy(document, NULL);
-    yyjson_doc_free(document);
-    if (!mutable) {
-        return xstrdup("{\"version\":1,\"ok\":false,\"error\":{\"code\":\"execution_failed\"}}");
-    }
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(mutable);
-    yyjson_mut_obj_add_uint(mutable, root, "version", CHIBI_AUTOMATION_CONTRACT);
-    yyjson_mut_obj_add_strcpy(mutable, root, "id", id ? id : "");
-    yyjson_mut_obj_add_strcpy(mutable, root, "method", method ? method : "");
-    legacy_aliases(mutable, root, method ? method : "");
-    yyjson_mut_val *error = yyjson_mut_obj_get(root, "error");
-    if (error && status && *status == CHIBI_AUTOMATION_INVALID_REQUEST) {
-        yyjson_mut_obj_remove_str(error, "code");
-        yyjson_mut_obj_add_strcpy(mutable, error, "code", "invalid_json");
-    }
-    char *result = yyjson_mut_write(mutable, 0, NULL);
-    yyjson_mut_doc_free(mutable);
-    return result ? result : xstrdup("{\"version\":1,\"ok\":false}");
-}
-
-char *chibi_ctl_handle(const chibi_ctl_context *context, const char *request, int *exit_code)
-{
-    const char *root = context && context->root ? context->root : ".";
-    yyjson_doc *document = request ? yyjson_read(request, strlen(request), 0) : NULL;
-    if (!document || !yyjson_is_obj(yyjson_doc_get_root(document))) {
-        if (document) {
-            yyjson_doc_free(document);
-        }
-        char *response = chibi_automation_handle(request, root, exit_code);
-        char *legacy = legacy_response(response, "", "", exit_code);
-        free(response);
-        return legacy;
-    }
-    yyjson_val *input = yyjson_doc_get_root(document);
-    const char *id = request_string(input, "id");
-    const char *method = request_string(input, "method");
-    const char *operation = legacy_operation(method);
-    char *canonical = legacy_request(input, operation, root);
-    yyjson_doc_free(document);
-    int automation_status = CHIBI_AUTOMATION_OK;
-    char *response = chibi_automation_handle(canonical, root, &automation_status);
-    free(canonical);
-    if (exit_code) {
-        *exit_code = automation_status;
-    }
-    char *legacy = legacy_response(response, id, method, &automation_status);
-    free(response);
-    return legacy;
 }

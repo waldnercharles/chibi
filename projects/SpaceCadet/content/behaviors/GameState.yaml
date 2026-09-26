@@ -12,44 +12,44 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: Score
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 11
     type: Set Global Variable
     inputs:
       Name: Lives
-      Value: {type: float, type_name: null, default: 3.0}
+      Value: {type: float, default: 3.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 17
     type: Set Global Variable
     inputs:
       Name: Hits
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 23
     type: Set Global Variable
     inputs:
       Name: Rank
-      Value: {type: float, type_name: null, default: 1.0}
+      Value: {type: float, default: 1.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 29
     type: Set Global Variable
     inputs:
       Name: Ready
-      Value: {type: float, type_name: null, default: 1.0}
+      Value: {type: float, default: 1.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 35
     type: Set Global Variable
     inputs:
       Name: Charge
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 41
     type: Set_GameTransform
     inputs:

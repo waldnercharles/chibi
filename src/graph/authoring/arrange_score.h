@@ -24,18 +24,4 @@ arrange_score arrange_measure(const arrange_graph *g, const arrange_point *pos, 
 /* The single scalar a placement is judged by. */
 float arrange_cost(arrange_score score);
 
-/* Links long enough to be worth naming as a local: those whose ends are at
- * least ARRANGE_LONG_COLUMNS columns apart, or whose drawn path crosses at
- * least `min_crossings` other wires. Appends link indexes in ascending order
- * to `links` (support/array.h). This only reports; the caller decides which
- * links carry values that can become locals. */
-#define ARRANGE_LONG_COLUMNS 3
-void arrange_long_links(
-    const arrange_graph *g,
-    const arrange_point *pos,
-    arrange_route_style style,
-    int min_crossings,
-    int **links
-);
-
 #endif

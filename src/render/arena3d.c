@@ -800,7 +800,8 @@ bool render_arena_preview(
     const behavior_asset *asset,
     const render_arena_camera *camera,
     const char *parameters_json,
-    float time
+    float time,
+    const render_arena_activity *activity
 )
 {
     arena->simulation_particles = 0;
@@ -809,8 +810,9 @@ bool render_arena_preview(
     aclear(arena->buffer.pixels);
     aclear(arena->buffer.draws);
     arena->light_count = 0;
-    arena->rhythm = (CF_V4){ 0 };
+    arena->rhythm = (CF_V4){ activity->beat_phase, activity->beat_pulse };
     render_arena_reset(arena);
+    render_influences_preview(arena->influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
     shader_error error = { 0 };
     if (!render_shader_upsert(asset, &error)) {
         snprintf(arena->binding_error, sizeof arena->binding_error, "%s", error.message);
@@ -824,9 +826,9 @@ bool render_arena_preview(
     game_material_coefficients color = { .scene = { 1, 1, 1, 1 } };
     arena_draw draw = { .frame = cf_m4_identity(),
                         .shape = { .primitive = GAME_PRIMITIVE_SPHERE,
-                                   .width = 100,
-                                   .height = 100,
-                                   .depth = 100 },
+                                   .width = RENDER_ARENA_PREVIEW_RADIUS * 2,
+                                   .height = RENDER_ARENA_PREVIEW_RADIUS * 2,
+                                   .depth = RENDER_ARENA_PREVIEW_RADIUS * 2 },
                         .material = material };
     append_draw(&arena->buffer, draw, &color, parameters, camera);
     return submit(arena, camera, time);

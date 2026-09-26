@@ -444,69 +444,91 @@ node_desc NODE_MakeArray = {
     .host_call = &(const node_host_call){ .value = array_make_call, .variadic = true },
     .access = &array_value_access,
     .category = "Array",
-    .keywords = "array make collection"
+    .keywords = "array make collection",
+    .description = "Builds an array from the Item inputs in pin order.",
 };
 
-node_desc NODE_ArrayGet = { .name = "Get",
-                            .input_count = 2,
-                            .output_count = 1,
-                            .inputs = array_element_inputs,
-                            .outputs = array_element_outputs,
-                            .pure_kind = NODE_PURE_CALL,
-                            .fn = array_get,
-                            .lower = behavior_lower_array_get,
-                            .category = "Array",
-                            .keywords = "array get index" };
+node_desc NODE_ArrayGet = {
+    .name = "Get",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = array_element_inputs,
+    .outputs = array_element_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_get,
+    .lower = behavior_lower_array_get,
+    .category = "Array",
+    .keywords = "array get index",
+    .description = "Returns the element at zero-based Index; an out-of-range "
+                   "Index fails evaluation."
+};
 
-node_desc NODE_ArrayLength = { .name = "Length",
-                               .input_count = 1,
-                               .output_count = 1,
-                               .inputs = array_only_inputs,
-                               .outputs = &int_output,
-                               .pure_kind = NODE_PURE_CALL,
-                               .fn = array_length,
-                               .category = "Array",
-                               .keywords = "array length" };
+node_desc NODE_ArrayLength = {
+    .name = "Length",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = array_only_inputs,
+    .outputs = &int_output,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_length,
+    .category = "Array",
+    .keywords = "array length",
+    .description = "Returns the number of elements in Array."
+};
 
-node_desc NODE_ArrayLastIndex = { .name = "Last Index",
-                                  .input_count = 1,
-                                  .output_count = 1,
-                                  .inputs = array_only_inputs,
-                                  .outputs = &int_output,
-                                  .pure_kind = NODE_PURE_CALL,
-                                  .fn = array_last_index,
-                                  .category = "Array",
-                                  .keywords = "array last index" };
+node_desc NODE_ArrayLastIndex = {
+    .name = "Last Index",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = array_only_inputs,
+    .outputs = &int_output,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_last_index,
+    .category = "Array",
+    .keywords = "array last index",
+    .description = "Returns the index of the final element, or -1 when Array "
+                   "is empty."
+};
 
-node_desc NODE_ArrayIsEmpty = { .name = "Is Empty",
-                                .input_count = 1,
-                                .output_count = 1,
-                                .inputs = array_only_inputs,
-                                .outputs = &bool_output,
-                                .pure_kind = NODE_PURE_CALL,
-                                .fn = array_empty,
-                                .category = "Array",
-                                .keywords = "array empty" };
+node_desc NODE_ArrayIsEmpty = {
+    .name = "Is Empty",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = array_only_inputs,
+    .outputs = &bool_output,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_empty,
+    .category = "Array",
+    .keywords = "array empty",
+    .description = "Whether Array has no elements."
+};
 
-node_desc NODE_ArrayIsNotEmpty = { .name = "Is Not Empty",
-                                   .input_count = 1,
-                                   .output_count = 1,
-                                   .inputs = array_only_inputs,
-                                   .outputs = &bool_output,
-                                   .pure_kind = NODE_PURE_CALL,
-                                   .fn = array_not_empty,
-                                   .category = "Array",
-                                   .keywords = "array nonempty" };
+node_desc NODE_ArrayIsNotEmpty = {
+    .name = "Is Not Empty",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = array_only_inputs,
+    .outputs = &bool_output,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_not_empty,
+    .category = "Array",
+    .keywords = "array nonempty",
+    .description = "Whether Array has at least one element."
+};
 
-node_desc NODE_ArrayIsValidIndex = { .name = "Is Valid Index",
-                                     .input_count = 2,
-                                     .output_count = 1,
-                                     .inputs = array_bool_index_inputs,
-                                     .outputs = &bool_output,
-                                     .pure_kind = NODE_PURE_CALL,
-                                     .fn = array_valid_index,
-                                     .category = "Array",
-                                     .keywords = "array index valid" };
+node_desc NODE_ArrayIsValidIndex = {
+    .name = "Is Valid Index",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = array_bool_index_inputs,
+    .outputs = &bool_output,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_valid_index,
+    .category = "Array",
+    .keywords = "array index valid",
+    .description = "Whether Index is at least 0 and less than the length of "
+                   "Array."
+};
 
 node_desc NODE_ArrayContains = {
     .work = NODE_WORK_LINEAR_SEARCH,
@@ -521,22 +543,27 @@ node_desc NODE_ArrayContains = {
     .access = &array_value_access,
     .lower = behavior_lower_array_search,
     .category = "Array",
-    .keywords = "array contains"
+    .keywords = "array contains",
+    .description = "Whether any element of Array equals Item.",
 };
 
-node_desc NODE_ArrayFind = { .name = "Find",
-                             .work = NODE_WORK_LINEAR_SEARCH,
-                             .input_count = 2,
-                             .output_count = 1,
-                             .inputs = array_bool_inputs,
-                             .outputs = &int_output,
-                             .pure_kind = NODE_PURE_CALL,
-                             .fn = array_find,
-                             .host_call = &(const node_host_call){ .value = array_find_call },
-                             .access = &array_value_access,
-                             .lower = behavior_lower_array_search,
-                             .category = "Array",
-                             .keywords = "array find" };
+node_desc NODE_ArrayFind = {
+    .name = "Find",
+    .work = NODE_WORK_LINEAR_SEARCH,
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = array_bool_inputs,
+    .outputs = &int_output,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_find,
+    .host_call = &(const node_host_call){ .value = array_find_call },
+    .access = &array_value_access,
+    .lower = behavior_lower_array_search,
+    .category = "Array",
+    .keywords = "array find",
+    .description = "Returns the zero-based index of the first element equal to "
+                   "Item, or -1 when none matches."
+};
 
 node_desc NODE_ArrayIdentical = {
     .name = "Identical",
@@ -549,20 +576,25 @@ node_desc NODE_ArrayIdentical = {
     .host_call = &(const node_host_call){ .value = array_identical_call },
     .access = &array_value_access,
     .category = "Array",
-    .keywords = "array identical equality"
+    .keywords = "array identical equality",
+    .description = "Whether both arrays have the same element type, length and "
+                   "equal elements in order.",
 };
 
-node_desc NODE_ArrayAdd = { .name = "Array Add",
-                            .input_count = 2,
-                            .output_count = 1,
-                            .inputs = array_array_item_inputs,
-                            .outputs = array_only_outputs,
-                            .pure_kind = NODE_PURE_CALL,
-                            .fn = array_add,
-                            .host_call = &(const node_host_call){ .value = array_add_call },
-                            .access = &array_value_access,
-                            .category = "Array",
-                            .keywords = "array add" };
+node_desc NODE_ArrayAdd = {
+    .name = "Array Add",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = array_array_item_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_add,
+    .host_call = &(const node_host_call){ .value = array_add_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array add",
+    .description = "Returns a copy of Array with Item added at the end."
+};
 
 node_desc NODE_ArrayAddUnique = {
     .name = "Add Unique",
@@ -575,20 +607,26 @@ node_desc NODE_ArrayAddUnique = {
     .host_call = &(const node_host_call){ .value = array_add_unique_call },
     .access = &array_value_access,
     .category = "Array",
-    .keywords = "array add unique"
+    .keywords = "array add unique",
+    .description = "Returns a copy of Array with Item added at the end unless "
+                   "an equal element exists.",
 };
 
-node_desc NODE_ArrayAppend = { .name = "Append",
-                               .input_count = 2,
-                               .output_count = 1,
-                               .inputs = array_two_inputs,
-                               .outputs = array_only_outputs,
-                               .pure_kind = NODE_PURE_CALL,
-                               .fn = array_append,
-                               .host_call = &(const node_host_call){ .value = array_append_call },
-                               .access = &array_value_access,
-                               .category = "Array",
-                               .keywords = "array append" };
+node_desc NODE_ArrayAppend = {
+    .name = "Append",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = array_two_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_append,
+    .host_call = &(const node_host_call){ .value = array_append_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array append",
+    .description = "Returns a new array with the second Array's elements after "
+                   "the first's."
+};
 
 node_desc NODE_ArraySetElem = {
     .name = "Set Array Elem",
@@ -601,20 +639,26 @@ node_desc NODE_ArraySetElem = {
     .host_call = &(const node_host_call){ .value = array_set_elem_call },
     .access = &array_value_access,
     .category = "Array",
-    .keywords = "array set element"
+    .keywords = "array set element",
+    .description = "Returns a copy of Array with Item at Index; an "
+                   "out-of-range Index leaves it unchanged.",
 };
 
-node_desc NODE_ArrayInsert = { .name = "Insert",
-                               .input_count = 3,
-                               .output_count = 1,
-                               .inputs = array_insert_inputs,
-                               .outputs = array_only_outputs,
-                               .pure_kind = NODE_PURE_CALL,
-                               .fn = array_insert,
-                               .host_call = &(const node_host_call){ .value = array_insert_call },
-                               .access = &array_value_access,
-                               .category = "Array",
-                               .keywords = "array insert" };
+node_desc NODE_ArrayInsert = {
+    .name = "Insert",
+    .input_count = 3,
+    .output_count = 1,
+    .inputs = array_insert_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_insert,
+    .host_call = &(const node_host_call){ .value = array_insert_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array insert",
+    .description = "Returns a copy of Array with Item inserted at Index, which "
+                   "is clamped to 0 through the length."
+};
 
 node_desc NODE_ArrayRemoveIndex = {
     .name = "Remove Index",
@@ -627,7 +671,9 @@ node_desc NODE_ArrayRemoveIndex = {
     .host_call = &(const node_host_call){ .value = array_remove_index_call },
     .access = &array_value_access,
     .category = "Array",
-    .keywords = "array remove index"
+    .keywords = "array remove index",
+    .description = "Returns a copy of Array without the element at Index; an "
+                   "out-of-range Index changes nothing.",
 };
 
 node_desc NODE_ArrayRemoveItem = {
@@ -641,58 +687,75 @@ node_desc NODE_ArrayRemoveItem = {
     .host_call = &(const node_host_call){ .value = array_remove_item_call },
     .access = &array_value_access,
     .category = "Array",
-    .keywords = "array remove item"
+    .keywords = "array remove item",
+    .description = "Returns a copy of Array without the first element equal to "
+                   "Item.",
 };
 
-node_desc NODE_ArrayClear = { .name = "Clear",
-                              .input_count = 1,
-                              .output_count = 1,
-                              .inputs = array_only_inputs,
-                              .outputs = array_only_outputs,
-                              .pure_kind = NODE_PURE_CALL,
-                              .fn = array_clear,
-                              .host_call = &(const node_host_call){ .value = array_clear_call },
-                              .access = &array_value_access,
-                              .category = "Array",
-                              .keywords = "array clear" };
+node_desc NODE_ArrayClear = {
+    .name = "Clear",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = array_only_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_clear,
+    .host_call = &(const node_host_call){ .value = array_clear_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array clear",
+    .description = "Returns an empty array with the same element type as Array."
+};
 
-node_desc NODE_ArrayReverse = { .name = "Reverse",
-                                .input_count = 1,
-                                .output_count = 1,
-                                .inputs = array_only_inputs,
-                                .outputs = array_only_outputs,
-                                .pure_kind = NODE_PURE_CALL,
-                                .fn = array_reverse,
-                                .host_call = &(const node_host_call){ .value = array_reverse_call },
-                                .access = &array_value_access,
-                                .category = "Array",
-                                .keywords = "array reverse" };
+node_desc NODE_ArrayReverse = {
+    .name = "Reverse",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = array_only_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_reverse,
+    .host_call = &(const node_host_call){ .value = array_reverse_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array reverse",
+    .description = "Returns a copy of Array with its elements in reverse order."
+};
 
-node_desc NODE_ArraySwap = { .name = "Swap",
-                             .input_count = 3,
-                             .output_count = 1,
-                             .inputs = array_swap_inputs,
-                             .outputs = array_only_outputs,
-                             .pure_kind = NODE_PURE_CALL,
-                             .fn = array_swap,
-                             .host_call = &(const node_host_call){ .value = array_swap_call },
-                             .access = &array_value_access,
-                             .category = "Array",
-                             .keywords = "array swap" };
+node_desc NODE_ArraySwap = {
+    .name = "Swap",
+    .input_count = 3,
+    .output_count = 1,
+    .inputs = array_swap_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_swap,
+    .host_call = &(const node_host_call){ .value = array_swap_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array swap",
+    .description = "Returns a copy of Array with the elements at the two Index "
+                   "inputs exchanged; out-of-range leaves it unchanged."
+};
 
-node_desc NODE_ArrayResize = { .name = "Resize",
-                               .input_count = 2,
-                               .output_count = 1,
-                               .inputs = array_resize_inputs,
-                               .outputs = array_only_outputs,
-                               .pure_kind = NODE_PURE_CALL,
-                               .fn = array_resize,
-                               .host_call = &(const node_host_call){ .value = array_resize_call },
-                               .access = &array_value_access,
-                               .category = "Array",
-                               .keywords = "array resize" };
+node_desc NODE_ArrayResize = {
+    .name = "Resize",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = array_resize_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_resize,
+    .host_call = &(const node_host_call){ .value = array_resize_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array resize",
+    .description = "Returns a copy of Array resized to Index elements, "
+                   "truncating or padding with zero values; below 0 gives "
+                   "empty."
+};
 
-node_desc *const ARRAY_NODES[] = {
+static node_desc *const ARRAY_NODES[] = {
     &NODE_MakeArray,      &NODE_ArrayGet,         &NODE_ArraySetElem,
     &NODE_ArrayAdd,       &NODE_ArrayAddUnique,   &NODE_ArrayAppend,
     &NODE_ArrayClear,     &NODE_ArrayContains,    &NODE_ArrayFind,
@@ -701,7 +764,6 @@ node_desc *const ARRAY_NODES[] = {
     &NODE_ArrayIsEmpty,   &NODE_ArrayIsNotEmpty,  &NODE_ArrayIsValidIndex,
     &NODE_ArrayReverse,   &NODE_ArraySwap,        &NODE_ArrayInsert,
 };
-const int ARRAY_NODE_COUNT = sizeof ARRAY_NODES / sizeof ARRAY_NODES[0];
 
 const registry_pack CORE_ARRAY_PACK = {
     .name = "core.array",

@@ -4,20 +4,22 @@
 #include "graph/model/annotate.h"
 #include "runtime/components.h"
 
-NODE_EXEC void game_component_probe(void) NODE_READS(GameHealth) NODE_ENTITY_SCOPED;
-NODE_FN NODE_JIT(
-    "v2-move"
+NODE_EXEC NODE_DESCRIPTION(
+    "Does nothing; declares a read of Self's GameHealth for access checks."
+) void game_component_probe(void) NODE_READS(GameHealth) NODE_ENTITY_SCOPED;
+NODE_FN NODE_JIT("v2-move") NODE_DESCRIPTION(
+    "Returns transform moved by x and y."
 ) GameTransform game_move_transform(GameTransform transform, float x, float y);
-NODE_FN NODE_JIT("identity") NODE_CONVERTS(GameTransform, CF_V2) CF_V2 game_transform_to_cf(
-    GameTransform transform
-);
-NODE_FN NODE_JIT(
-    "identity"
-) NODE_CONVERTS(CF_V2, GameTransform) GameTransform game_transform_from_cf(CF_V2 value);
+NODE_FN NODE_JIT("identity") NODE_CONVERTS(GameTransform, CF_V2) NODE_DESCRIPTION(
+    "Converts a GameTransform to its CF_V2 position."
+) CF_V2 game_transform_to_cf(GameTransform transform);
+NODE_FN NODE_JIT("identity") NODE_CONVERTS(CF_V2, GameTransform) NODE_DESCRIPTION(
+    "Converts a CF_V2 position to a GameTransform."
+) GameTransform game_transform_from_cf(CF_V2 value);
 
-NODE_READ NODE_NAME("Transform Visual Offset") NODE_CATEGORY(
-    "Math/Vector"
-) NODE_KEYWORDS("local world rotate scale spatial visual offset") const
+NODE_READ NODE_NAME("Transform Visual Offset") NODE_CATEGORY("Math/Vector") NODE_KEYWORDS(
+    "local world rotate scale spatial visual offset"
+) NODE_DESCRIPTION("Rotates and scales a local Offset and Elevation by Heading and Visual, like the drawn model.") const
     char *game_transform_visual_offset(
         NODE_PIN_NAME("Offset") CF_V2 offset,
         NODE_PIN_NAME("Elevation") float elevation,
@@ -27,9 +29,9 @@ NODE_READ NODE_NAME("Transform Visual Offset") NODE_CATEGORY(
         NODE_PIN_NAME("Elevation") NODE_OUT float *result_elevation
     );
 
-NODE_READ NODE_NAME("Primitive Part") NODE_CATEGORY(
-    "Visual/Geometry"
-) NODE_KEYWORDS("mesh piece frame breakup shatter local dimensions") const
+NODE_READ NODE_NAME("Primitive Part") NODE_CATEGORY("Visual/Geometry") NODE_KEYWORDS(
+    "mesh piece frame breakup shatter local dimensions"
+) NODE_DESCRIPTION("Returns part Index of a 3D primitive: its local Center, Elevation and size, and the part Count.") const
     char *game_visual_primitive_part(
         NODE_PIN_NAME("Appearance") GameGeometry3D shape,
         NODE_PIN_NAME("Index") int index,

@@ -22,7 +22,6 @@ typedef struct
 
 /* Enabling or disabling clears the accumulated passes. */
 void render_gpu_timing_enable(bool enabled);
-bool render_gpu_timing_enabled(void);
 /* Waits for the work already submitted; the next mark times from here. */
 void render_gpu_timing_start(void);
 /* name must be a string literal: passes are keyed by it. */

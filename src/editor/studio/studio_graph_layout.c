@@ -1,9 +1,12 @@
 /* Node sizes, rows and socket positions for the graph canvas. */
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/fmt_nodes.h"
+#include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "support/array.h"
 
@@ -286,7 +289,6 @@ static uint32_t folded_chip(const studio *s, node *n, int p, char *out, size_t s
 
 void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
 {
-    editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool input = kind == ED_PIN_INPUT;
     const pin_spec *spec = input ? &n->input_pins[p] : &n->output_pins[p];
@@ -299,6 +301,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
     } else {
         out->connected = graph_output_local(gr, n, p) != NULL;
     }
+    const graph_local *local = input ? NULL : graph_output_local(gr, n, p);
     /* Execution pins, and outputs, are wired when any edge touches them. */
     for (int i = 0; i < acount(gr->edges) && !out->connected; i++) {
         const edge *ed = &gr->edges[i];
@@ -306,7 +309,19 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
                                : ed->from_id == n->id && ed->from_pin_id == spec->id;
     }
     ed_pin_label(n, spec, out->label, sizeof out->label);
+    if (local) {
+        editor_identifier_label(local->name, out->label, sizeof out->label);
+    }
     out->show_label = !exec_label(spec, out->label);
+    /* An unwired shader input that samples its surface says what it reads
+       (Fresnel's Normal reads the Surface Normal), not a zero vector. */
+    const char *context = NULL;
+    if (input && !out->connected && !spec->binding && !spec->default_value.ptr &&
+        shader_node_input_context(n, p, &context) >= 0 && context) {
+        snprintf(out->chip, sizeof out->chip, "%s", context);
+        out->value = VALUE_CHIP;
+        return;
+    }
     if (out->inline_source) {
         out->chip_icon = folded_chip(s, n, p, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
@@ -322,7 +337,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
    where rows hide, at the least zoom that shows them. */
 float sg_text_width(const studio *s, const char *text, float size, int weight)
 {
-    float ratio = fmaxf(s->graph.zoom, FAR_ZOOM) * cf_app_get_pixel_scale();
+    float ratio = fmaxf(s->graph.zoom * cf_app_get_pixel_scale(), FAR_PIXELS);
     return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight, ratio)
                         : strlen(text) * size * 0.55f;
 }
@@ -370,7 +385,8 @@ static node_form form_of(const studio *s, node *n)
     }
     pin_parts parts;
     sg_pin_parts_of(s, n, ED_PIN_OUTPUT, output, &parts);
-    if (parts.value != VALUE_NONE) {
+    /* A named value shows its name, so its node keeps a labeled row. */
+    if (parts.value != VALUE_NONE || graph_output_local(sg_active_graph(s), n, output)) {
         return FORM_FULL;
     }
     if (!inputs) {
@@ -396,12 +412,17 @@ static int title_pin(const graph *gr, node *n, int kind)
     return -1;
 }
 
-/* Expressions show their source in the body, and pills drop the "Get" every
-   read would repeat. */
+/* Expressions show their source in the body, so the title carries a name the
+   author gave instead; pills drop the "Get" every read would repeat. */
 const char *sg_node_title(const studio *s, node *n, node_form form, char *buf, size_t size)
 {
-    if (is_expression(s, n)) {
-        snprintf(buf, size, "Expression");
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    const char *source = behavior_expression_source(asset, n);
+    if (source) {
+        const graph *generated = behavior_asset_find_graph(asset, n->reference_id);
+        const char *name = generated->name && generated->name[0] ? generated->name
+                                                                 : source;
+        snprintf(buf, size, "%s", strcmp(name, source) ? name : "Expression");
         return buf;
     }
     ed_node_title(sg_graph_editor(s), n, buf, size);
@@ -419,18 +440,21 @@ int sg_code_lines(const studio *s, const char *code, float width, int starts[COD
     int count = 1, start = 0, fits = -1; /* fits: the end of the text that fits */
     starts[0] = 0;
     for (int i = 0; count < CODE_LINES;) {
-        while (code[i] && code[i] != ' ') {
+        /* Lines break at spaces, and after operators and commas so that
+           unspaced source wraps too. */
+        while (code[i] && !strchr(" ,+-*/%^&|<>=", code[i])) {
             i++;
         }
+        int end = code[i] && code[i] != ' ' ? i + 1 : i;
         char line[512];
-        snprintf(line, sizeof line, "%.*s", i - start, code + start);
+        snprintf(line, sizeof line, "%.*s", end - start, code + start);
         if (fits > start && sg_text_width(s, line, CODE_SIZE, 400) > width) {
-            start = fits + 1;
+            start = fits + (code[fits] == ' ');
             starts[count++] = start;
             fits = -1;
             continue;
         }
-        fits = i;
+        fits = end;
         if (!code[i]) {
             break;
         }
@@ -473,7 +497,11 @@ static node_layout measure_operator(const studio *s, node *n, node_layout l, con
 static node_layout measure_node(const studio *s, node *n)
 {
     graph *gr = sg_active_graph(s);
-    node_layout l = { .id = n->id, .form = form_of(s, n), .head_in = -1, .head_out = -1 };
+    node_layout l = { .id = n->id,
+                      .form = form_of(s, n),
+                      .head_in = -1,
+                      .head_out = -1,
+                      .add_pin = -1 };
     char title[256];
     sg_node_title(s, n, l.form, title, sizeof title);
     const char *symbol = ed_node_symbol(n->desc);
@@ -536,7 +564,13 @@ static node_layout measure_node(const studio *s, node *n)
     }
     l.top = EDGE + HEAD + PAD +
             (l.code_lines ? CODE_PAD + (float)l.code_lines * CODE_LINE : 0);
-    int rows = sg_row_count(gr, n, &l);
+    /* Variadic nodes end with a row that adds a pin (Unreal); Format Text
+       keeps a spare argument itself. */
+    graph_pin_run run;
+    if (graph_pin_run_of(n, &run) && n->desc != &NODE_Format_Text) {
+        l.add_pin = run.output ? ED_PIN_OUTPUT : ED_PIN_INPUT;
+    }
+    int rows = sg_row_count(gr, n, &l) + (l.add_pin >= 0);
     l.h = rows || l.code_lines ? l.top + (float)rows * ROW + BOTTOM + EDGE
                                : 2 * EDGE + HEAD;
     return l;

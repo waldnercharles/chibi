@@ -9,4 +9,4 @@ components:
     shape: Stroked Chevron
     stroke_width: 1.0
     width: 20.0
-  game.GameTransform: {x: 320.0, "y": -180.0}
+  GAME.GameTransform: {x: 320.0, "y": -180.0}

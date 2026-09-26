@@ -14,7 +14,7 @@ graphs:
   nodes:
   - id: 67
     type: Max
-    inputs: {B: 0.009999999776482582}
+    inputs: {B: 0.01}
   - {id: 73, type: Greater Or Equal}
   - {id: 82, type: Subtract}
   - id: 150

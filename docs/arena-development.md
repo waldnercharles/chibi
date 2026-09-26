@@ -1,7 +1,7 @@
 # Working on the arena game
 
 Run `make play` to launch the Arena2D project in a standalone game window. A
-project is a directory containing `project.json` and its own `content` tree.
+project is a directory containing `project.yaml` and its own `content` tree.
 Use `make play PROJECT=. SCENE=scenes/Arena3D.yaml` to launch the Arena3D
 reference project, or pass `--project-root PATH` to `build/chibi` directly. Both
 routes use the same scene runtime, input and Surface renderer as editor Play.
@@ -56,7 +56,7 @@ Radiance Cascades section edits Work scale, Trace levels and Feedback. The
 Performance pane reports frame history and p95 timing. The prototype Inspector's
 `GameHRC2D` fields tune transport and composition. HRC transport
 uses a fixed work grid, so its dispatch cost does not grow with the number of
-entities. The 2D path feeds material emission directly into HRC and does not allocate or run a point-light field.
+entities. The 2D path feeds material emission directly into HRC.
 The GLES3 path shows an explicit unavailable diagnostic when desktop compute is
 not available.
 

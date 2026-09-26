@@ -76,13 +76,6 @@ void run_runtime_catalog_checks()
             "common language node families are registered"
         );
         test_check(
-            operator_register(
-                &(operator_signature){ "SelfCheckAdd", PIN_I64, PIN_I64, PIN_I64, 0 }
-            ) == 0 &&
-                operator_resolve("SelfCheckAdd", PIN_I32, PIN_I32) != NULL,
-            "operator signatures resolve through the widening ladder"
-        );
-        test_check(
             registry_node_by_name("FlipFlop") && registry_node_by_name("Gate") &&
                 registry_node_by_name("MultiGate"),
             "stateful alternating and gate families are registered"
@@ -109,14 +102,15 @@ void run_runtime_catalog_checks()
                 !strcmp(binding->fields[0].type_name, "GameControl"),
             "enum component fields retain their nominal type"
         );
-        char enum_label[64];
         const editor_choices *enum_choices = editor_choices_for_enum("GameControl");
-        if (enum_choices) {
-            editor_choices_format(GAME_CONTROL_PAD_A, enum_choices, enum_label, sizeof enum_label);
-        } else {
-            enum_label[0] = '\0';
+        const char *enum_label = NULL;
+        for (int i = 0; enum_choices && i < editor_choices_count(enum_choices); i++) {
+            editor_choice choice = editor_choice_at(enum_choices, i);
+            if (choice.value == GAME_CONTROL_PAD_A) {
+                enum_label = choice.label;
+            }
         }
-        test_check(enum_choices && !strcmp(enum_label, "Pad A"), "the editor exposes reflected enums through the choice catalog");
+        test_check(enum_label && !strcmp(enum_label, "Pad A"), "the editor exposes reflected enums through the choice catalog");
         const editor_choices *property = NULL;
         if (binding) {
             property = property_choices(binding, &binding->fields[0]);

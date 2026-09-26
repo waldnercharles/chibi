@@ -15,7 +15,7 @@
 
 static const uint32_t TAB_ICONS[STUDIO_TAB_COUNT] = {
     KIT_ICON_SETTINGS, KIT_ICON_PROTOTYPE, KIT_ICON_PHYSICS, KIT_ICON_MATERIAL,
-    KIT_ICON_GAMEPLAY, KIT_ICON_GRAPH,     KIT_ICON_HEXAGON,
+    KIT_ICON_GAMEPLAY, KIT_ICON_GRAPH,     KIT_ICON_HEXAGON, KIT_ICON_VARIABLE,
 };
 
 static const char *tab_label(studio_tab tab)
@@ -24,6 +24,7 @@ static const char *tab_label(studio_tab tab)
         case STUDIO_TAB_SCENE: return "Scene";
         case STUDIO_TAB_BEHAVIORS: return "Behaviors";
         case STUDIO_TAB_NODE: return "Node";
+        case STUDIO_TAB_MEMBER: return "Member";
         default: return COMPONENT_TAB_NAMES[tab - STUDIO_TAB_OBJECT];
     }
 }
@@ -866,13 +867,21 @@ void studio_properties_body(studio *s, int area)
     /* The Node tab follows the graph selection, as Object follows the
    scene's: a newly selected node shows its details, a newly selected
    object its components. */
-    uint64_t node = studio_graph_node(s);
+    uint64_t node = studio_graph_node(s) ? studio_graph_node(s)
+                                         : studio_graph_comment(s);
     available[STUDIO_TAB_NODE] = node != 0;
     if (node && node != s->shown_node) {
         s->tab = STUDIO_TAB_NODE;
     } else if (s->tab == STUDIO_TAB_NODE && scene->selected != s->shown_actor && actor) {
         s->tab = STUDIO_TAB_OBJECT;
     }
+    /* Member follows the Members selection the same way. */
+    uint64_t member = studio_member_shown(s);
+    available[STUDIO_TAB_MEMBER] = member != 0;
+    if (member && member != s->shown_member) {
+        s->tab = STUDIO_TAB_MEMBER;
+    }
+    s->shown_member = member;
     s->shown_node = node;
     s->shown_actor = scene->selected;
     if (!available[s->tab]) {
@@ -887,6 +896,10 @@ void studio_properties_body(studio *s, int area)
         if (t == STUDIO_TAB_BEHAVIORS ||
             (t == STUDIO_TAB_NODE && !available[STUDIO_TAB_BEHAVIORS])) {
             kit_leaf(k, t == STUDIO_TAB_NODE ? "sep2" : "sep", NULL, "tab-sep");
+        }
+        if (t == STUDIO_TAB_MEMBER && !available[STUDIO_TAB_BEHAVIORS] &&
+            !available[STUDIO_TAB_NODE]) {
+            kit_leaf(k, "sep3", NULL, "tab-sep");
         }
         char key[16];
         snprintf(key, sizeof key, "tab%d", t);
@@ -904,6 +917,8 @@ void studio_properties_body(studio *s, int area)
         scene_panels(s, locked);
     } else if (s->tab == STUDIO_TAB_NODE) {
         studio_node_properties(s);
+    } else if (s->tab == STUDIO_TAB_MEMBER) {
+        studio_member_properties(s);
     } else if (asset && asset->prototype) {
         prototype_properties(s, asset, locked);
     } else if (!actor) {

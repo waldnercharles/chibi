@@ -13,7 +13,7 @@ import yaml
 
 
 def content_directory(project):
-    manifest = json.loads((project / 'project.json').read_text())
+    manifest = yaml.safe_load((project / 'project.yaml').read_text())
     content = (project / manifest['content']).resolve()
     if not content.is_relative_to(project):
         raise ValueError('Project content must be inside the project directory')
@@ -22,14 +22,14 @@ def content_directory(project):
 
 def projects(workspace):
     """The workspace's own project and those in its projects directory, as Studio lists them."""
-    manifests = [workspace / 'project.json', *sorted(workspace.glob('projects/*/project.json'))]
+    manifests = [workspace / 'project.yaml', *sorted(workspace.glob('projects/*/project.yaml'))]
     return [manifest.parent for manifest in manifests if manifest.is_file()]
 
 
 def workspace_assets(workspace):
     assets = {}
     for project in projects(workspace):
-        assets[str((project / 'project.json').relative_to(workspace))] = (project / 'project.json').read_text()
+        assets[str((project / 'project.yaml').relative_to(workspace))] = (project / 'project.yaml').read_text()
         content = content_directory(project)
         for path in content.rglob('*.yaml'):
             if path.resolve().is_relative_to(content):
@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, default=Path('build-web'))
     parser.add_argument('--workspace', type=Path, default=Path(__file__).resolve().parents[1],
-                        help='directory whose project.json and projects/* the browser can open')
+                        help='directory whose project.yaml and projects/* the browser can open')
     parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
     args = parser.parse_args()

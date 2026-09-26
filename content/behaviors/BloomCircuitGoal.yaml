@@ -1,6 +1,6 @@
 version: 3
 name: BloomCircuitGoal
-id_counter: 40
+id_counter: 69
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -15,22 +15,30 @@ graphs:
     type: Find Nearest Entity
     inputs:
       Position:
-        default: {x: 0.0, "y": 2.509999990463257}
+        default: {x: 0.0, "y": 2.51}
       Radius: 10000.0
       Categories: 1
-  - {id: 13, type: GetEntity_GameExperience}
-  - {id: 16, type: Break_GameExperience}
-  - id: 19
-    type: Integer Greater Or Equal
-    inputs: {B: 8}
-  - {id: 23, type: Branch}
-  - id: 34
+  - id: 13
+    type: GetEntity_GameExperience
+    outputs:
+      Value.current: {id: 34}
+  - id: 28
     type: Set UI Text
     inputs: {Element: '#goal', Text: CIRCUIT COMPLETE!  All 8 blooms collected.}
+  - id: 49
+    type: Behavior Expression
+    reference_id: 35
+    reference_name: Collected >= 8
+    inputs:
+      Exec: {id: 52, kind: exec}
+      Collected: {id: 50, type: double, flags: 0}
+    outputs:
+      "True": {id: 53, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 51, type: bool}
   edges:
-  - {from: 1.Then, to: 23.Exec}
+  - {from: 1.Then, to: 49.Exec}
   - {from: 4.Entity, to: 13.Entity}
-  - {from: 13.Value, to: 16.GameExperience}
-  - {from: 16.current, to: 19.A}
-  - {from: 19.Result, to: 23.Condition}
-  - {from: 23.True, to: 34.Exec}
+  - {from: 13.Value.current, to: 49.Collected, conversion: To Real}
+  - {from: 49.True, to: 28.Exec}
+- {id: 35, kind: function, math_expression: Collected >= 8, entry_id: 56}

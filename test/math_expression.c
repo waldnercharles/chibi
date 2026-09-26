@@ -1,12 +1,16 @@
 #include "ecs/ecs.h"
 #include "editor/workspace/editor.h"
 #include "graph/compiler/compile.h"
+#include "graph/compiler/field_program.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
+#include "graph/shader/shader_graph.h"
 #include "runtime/components.h"
 #include "runtime/generated.h"
 #include "runtime/systems/system.h"
@@ -126,7 +130,7 @@ static void selection_conversion()
     assert(!graph_node_by_id(g, subtract_id));
     assert(!graph_node_by_id(g, multiply_id));
     assert(!graph_node_by_id(g, add_id));
-    assert(strstr(behavior_expression_source(asset, call), "game_GameTransform_x"));
+    assert(strstr(behavior_expression_source(asset, call), "transform_x"));
     assert(strstr(behavior_expression_source(asset, call), "0.5"));
     int bound = -1;
     int wired = -1;
@@ -209,7 +213,7 @@ static void terminal_selection_conversion()
     }
     assert(call);
     assert(!graph_node_by_id(g, subtract_id));
-    assert(!strcmp(behavior_expression_source(asset, call), "(A-2)"));
+    assert(!strcmp(behavior_expression_source(asset, call), "a - 2"));
     behavior_asset_free(asset);
 }
 
@@ -233,7 +237,7 @@ static void expression_input_rename()
     node *second = behavior_asset_add_function_call_node(asset, generated);
     assert(second);
     uint64_t second_a_id = second->input_pins[0].id;
-    assert(behavior_expression_set(asset, call, "target + b", &error) == 0);
+    assert(behavior_expression_rename_input(asset, call, "a", "target", &error) == 0);
     assert(!strcmp(behavior_expression_source(asset, call), "target + b"));
     assert(call->input_count == 2);
     assert(!strcmp(call->input_pins[0].name, "target") && call->input_pins[0].id == a_id);
@@ -542,6 +546,131 @@ static node *configured_variable_getter(graph *g, const behavior_variable *varia
     return getter;
 }
 
+/* A source edit matches inputs by name: a new name starts unfed unless a
+   named value carries it, and members and calls keep their spelling. */
+static void expression_source_names()
+{
+    behavior_asset *asset = behavior_asset_new("Expression source names");
+    graph *g = asset->graph;
+    behavior_expression_error error;
+    node *speed = literal(g, 4);
+    node *user = behavior_expression_add(asset, g, "speed * 2", &error);
+    assert(user && graph_connect_data(g, speed, 0, user, 0) == 0);
+    assert(graph_create_local(g, speed, 0, "speed"));
+    node *call = behavior_expression_add(asset, g, "a + b", &error);
+    assert(call && graph_connect_data(g, literal(g, 2), 0, call, 0) == 0);
+    assert(behavior_expression_set(asset, call, "c + b", &error) == 0);
+    node *source = NULL;
+    int pin = -1;
+    assert(!graph_input_source(g, call, named_pin(call, false, "c"), &source, &pin));
+    assert(behavior_expression_set(asset, call, "speed + sin(b)", &error) == 0);
+    int read = named_pin(call, false, "speed");
+    assert(read >= 0 && graph_input_source(g, call, read, &source, &pin) && source == speed);
+    assert(graph_input_local(g, call, read));
+    assert(behavior_expression_rename_input(asset, call, "b", "sin", &error) == 0);
+    assert(!strcmp(behavior_expression_source(asset, call), "speed + sin(sin)"));
+    behavior_asset_free(asset);
+}
+
+/* Integer values join double arithmetic: literals keep their value, and an
+   integer target takes the result back. */
+static void integer_operand_expressions()
+{
+    behavior_asset *asset = behavior_asset_new("Integer operands");
+    pin_container single = PIN_CONTAINER_SINGLE;
+    behavior_variable *index = behavior_asset_add_variable(
+        asset,
+        "Index",
+        PIN_I32,
+        "int",
+        single,
+        &(pin_value){ .type = PIN_I32, .i = 13 },
+        NULL
+    );
+    behavior_variable *count = behavior_asset_add_variable(
+        asset,
+        "count",
+        PIN_I32,
+        "int",
+        single,
+        &(pin_value){ .type = PIN_I32, .i = 4 },
+        NULL
+    );
+    behavior_variable *slot = behavior_asset_add_variable(
+        asset,
+        "slot",
+        PIN_F64,
+        "double",
+        single,
+        &(pin_value){ .type = PIN_F64 },
+        NULL
+    );
+    behavior_variable *after = behavior_asset_add_variable(
+        asset,
+        "after",
+        PIN_I32,
+        "int",
+        single,
+        &(pin_value){ .type = PIN_I32 },
+        NULL
+    );
+    assert(index && count && slot && after);
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(event && graph_set_event_name(g, event, "Run") == 0);
+    behavior_expression_error error;
+    node *place = behavior_expression_add(asset, g, "slot = Index % 8 + floor(Index / 8) * 10", &error);
+    node *next = behavior_expression_add(asset, g, "count += 1", &error);
+    assert(place && next);
+    assert(
+        graph_connect_data(g, configured_variable_getter(g, index), 0, place, named_pin(place, false, "Index")) ==
+        0
+    );
+    assert(
+        graph_connect_data(g, configured_variable_getter(g, slot), 0, place, named_pin(place, false, "slot")) ==
+        0
+    );
+    assert(
+        graph_connect_data(g, configured_variable_getter(g, count), 0, next, named_pin(next, false, "count")) ==
+        0
+    );
+    assert(behavior_expression_refresh(asset, place, &error) == 0);
+    assert(behavior_expression_refresh(asset, next, &error) == 0);
+    assert(graph_connect_exec(g, event, 0, place, named_pin(place, false, "Exec"), 0) == 0);
+    assert(
+        graph_connect_exec(g, place, named_pin(place, true, "Then"), next, named_pin(next, false, "Exec"), 0) ==
+        0
+    );
+    /* A double result stored into an int converts at the store. */
+    node *sum = behavior_expression_add(asset, g, "Index + 1", &error);
+    assert(sum);
+    assert(
+        graph_connect_data(g, configured_variable_getter(g, index), 0, sum, named_pin(sum, false, "Index")) == 0
+    );
+    assert(behavior_expression_refresh(asset, sum, &error) == 0);
+    node *store = graph_add_node(g, &NODE_SetVariable);
+    assert(store && graph_set_node_reference(g, store, after->id, after->name) == 0);
+    assert(graph_set_pin_type(g, store, 0, 1, PIN_I32, "int") == 0);
+    assert(graph_set_pin_type(g, store, 1, 1, PIN_I32, "int") == 0);
+    assert(graph_connect_data(g, sum, named_pin(sum, true, "Result"), store, 1) == 0);
+    assert(behavior_expression_refresh(asset, sum, &error) == 0);
+    assert(graph_connect_exec(g, next, named_pin(next, true, "Then"), store, 0, 0) == 0);
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    assert(instance);
+    flow_error flow;
+    flow_run *run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &flow);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    pin_value value;
+    assert(behavior_instance_get_variable(instance, slot->id, &value) == 0);
+    assert(value.d == 15);
+    assert(behavior_instance_get_variable(instance, after->id, &value) == 0);
+    assert(value.i == 14);
+    assert(behavior_instance_get_variable(instance, count->id, &value) == 0);
+    assert(value.i == 5);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+}
+
 static void reference_assignment_expressions()
 {
     behavior_asset *asset = behavior_asset_new("Reference assignment expression");
@@ -818,7 +947,8 @@ static void assignment_root_rename_preserves_binding()
         graph_set_pin_default(asset->graph, call, 0, amount_pin, &(pin_value){ .type = PIN_F64, .d = 2 }) == 0
     );
     assert(graph_connect_exec(asset->graph, event, 0, call, exec_pin, 0) == 0);
-    assert(behavior_expression_set(asset, call, "velocity += amount", &error) == 0);
+    assert(behavior_expression_rename_input(asset, call, "position", "velocity", &error) == 0);
+    assert(!strcmp(behavior_expression_source(asset, call), "velocity += amount"));
     int velocity_pin = named_pin(call, false, "velocity");
     amount_pin = named_pin(call, false, "amount");
     assert(velocity_pin >= 0 && amount_pin >= 0);
@@ -960,6 +1090,54 @@ static void branch_expression_flow()
     );
     assert(flow_run_watch_output(run, call, result, &value) == 0 && !value.b);
     behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+}
+
+static node *make_v2(graph *g, float x, float y)
+{
+    node *vector = graph_add_node(g, registry_node_by_name("Make_CF_V2"));
+    assert(vector);
+    assert(graph_set_pin_default(g, vector, 0, 0, &(pin_value){ .type = PIN_F32, .f = x }) == 0);
+    assert(graph_set_pin_default(g, vector, 0, 1, &(pin_value){ .type = PIN_F32, .f = y }) == 0);
+    return vector;
+}
+
+/* A scalar may lead a vector product: 180 * ball / 2. */
+static void scalar_leading_vector_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Scalar leading vector");
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, "velocity + 180 * ball / 2", &error);
+    assert(call);
+    assert(
+        graph_connect_data(asset->graph, make_v2(asset->graph, 1, 2), 0, call, named_pin(call, false, "velocity")) ==
+        0
+    );
+    assert(
+        graph_connect_data(asset->graph, make_v2(asset->graph, 3, 4), 0, call, named_pin(call, false, "ball")) ==
+        0
+    );
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    CF_V2 value = evaluate_vector(asset, call);
+    assert(value.x == 271 && value.y == 362);
+    behavior_asset_free(asset);
+}
+
+static void direction_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Direction expression");
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, "direction(heading) * 2", &error);
+    assert(call);
+    assert(
+        graph_connect_data(asset->graph, literal(asset->graph, 0.5), 0, call, named_pin(call, false, "heading")) ==
+        0
+    );
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    CF_V2 value = evaluate_vector(asset, call);
+    assert(value.x == (float)cos(0.5) * 2 && value.y == (float)sin(0.5) * 2);
+    int binding = 0;
+    assert(!strcmp(behavior_expression_spelling(&NODE_Direction_From_Angle, &binding), "direction"));
     behavior_asset_free(asset);
 }
 
@@ -1111,6 +1289,43 @@ static void expression_title()
     );
     assert(editor_set_behavior_expression(e, call, "a - b", &error) == 0);
     assert(!strcmp(generated->name, "a - b"));
+    editor_free(e);
+}
+
+static void editor_rewire()
+{
+    editor *e = editor_new(behavior_asset_new("Expression rewire"));
+    behavior_expression_error error;
+    node *call = editor_add_behavior_expression(e, "speed * 2", 0, 0, &error);
+    graph *g = editor_behavior_asset(e)->graph;
+    node *real = graph_add_node(g, registry_node_by_name("Real"));
+    assert(call && real && !graph_connect_data(g, real, 0, call, 0));
+    uint64_t id = call->id;
+    char **lost = behavior_expression_fed_inputs(g, call);
+    assert(editor_set_behavior_expression(e, call, "rate * 2", &error) == 0);
+    behavior_expression_keep_unfed(g, call, &lost);
+    assert(acount(lost) == 1 && !strcmp(lost[0], "speed"));
+    behavior_expression_free_names(lost);
+    editor_undo(e);
+    g = editor_behavior_asset(e)->graph;
+    call = graph_node_by_id(g, id);
+    assert(editor_rewire_behavior_expression(e, call, "rate * 2", "speed", "rate", &error) == 0);
+    g = editor_behavior_asset(e)->graph;
+    call = graph_node_by_id(g, id);
+    lost = behavior_expression_fed_inputs(g, call);
+    assert(acount(lost) == 1 && !strcmp(lost[0], "rate"));
+    behavior_expression_free_names(lost);
+    assert(editor_rename_behavior_expression_input(e, call, "rate", "pace", &error) == 0);
+    assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "pace * 2"));
+    lost = behavior_expression_fed_inputs(g, call);
+    assert(acount(lost) == 1 && !strcmp(lost[0], "pace"));
+    behavior_expression_free_names(lost);
+    editor_undo(e);
+    call = graph_node_by_id(editor_behavior_asset(e)->graph, id);
+    assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "rate * 2"));
+    editor_undo(e);
+    call = graph_node_by_id(editor_behavior_asset(e)->graph, id);
+    assert(!strcmp(behavior_expression_source(editor_behavior_asset(e), call), "speed * 2"));
     editor_free(e);
 }
 
@@ -1312,18 +1527,355 @@ static void test_system_expression()
     ecs_world_free(world);
 }
 
+static node *add_named(graph *g, const char *name)
+{
+    node *n = graph_add_node(g, registry_node_by_name(name));
+    assert(n && shader_graph_init_node(g, n));
+    return n;
+}
+
+/* Shader expressions lower to GLSL-backed nodes: vectors keep their width,
+   scalars broadcast, members swizzle and GLSL argument order holds. */
+static void shader_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Shader expression");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *color = add_named(g, "Shader Vector3");
+    node *uv = add_named(g, "Shader UV");
+    for (int i = 0; i < 3; i++) {
+        pin_value v = { .type = PIN_F32, .f = (float[]){ 1, .5f, .25f }[i] };
+        assert(graph_set_pin_default(g, color, 0, i, &v) == 0);
+    }
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, g, "mix(color.zyx, vec3(0, 0, 1), smoothstep(0, 1, uv.y)) * -(1 - step(0.5, uv.x))", &error);
+    assert(call);
+    assert(graph_connect_data(g, color, 0, call, 0) == 0);
+    assert(graph_connect_data(g, uv, 0, call, 1) == 0);
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    assert(graph_connect_data(g, call, 0, out, 0) == 0);
+    assert(
+        call->output_pins[0].type == PIN_STRUCT &&
+        !strcmp(call->output_pins[0].type_name, "ShaderVec3")
+    );
+    shader_graph ir;
+    shader_graph_init(&ir);
+    shader_error shader_error = { 0 };
+    assert(shader_graph_from_graph(g, &ir, &shader_error));
+    float result[SHADER_OUTPUT_MAX][4];
+    shader_sample_context sample = { .uv = { .25f, .5f } };
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &shader_error));
+    /* mix((.25, .5, 1), (0, 0, 1), .5) = (.125, .25, 1), negated. */
+    assert(fabsf(result[0][0] + .125f) < 1e-5f && fabsf(result[0][1] + .25f) < 1e-5f);
+    assert(fabsf(result[0][2] + 1) < 1e-5f);
+    sample.uv[0] = .75f;
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &shader_error));
+    assert(result[0][0] == 0 && result[0][2] == 0);
+    shader_graph_free(&ir);
+
+    char *json = behavior_asset_save_json(asset);
+    behavior_asset *loaded = behavior_asset_load_json(json);
+    free(json);
+    assert(loaded);
+    shader_graph_init(&ir);
+    assert(shader_graph_from_graph(loaded->graph, &ir, &shader_error));
+    shader_graph_free(&ir);
+    behavior_asset_free(loaded);
+
+    const char *rejected[] = { "color % 2", "color > 1",  "!color",
+                               "color = 1", "color * uv", "ceil(color)" };
+    for (size_t i = 0; i < sizeof rejected / sizeof rejected[0]; i++) {
+        assert(
+            behavior_expression_set(asset, call, rejected[i], &error) == -1 &&
+            error.message[0]
+        );
+    }
+    behavior_asset_free(asset);
+}
+
+static void sample_color(const graph *g, float uv_x, float out[4])
+{
+    shader_graph ir;
+    shader_graph_init(&ir);
+    shader_error error = { 0 };
+    if (!shader_graph_from_graph(g, &ir, &error)) {
+        printf("shader graph: %s\n", error.message);
+        assert(false);
+    }
+    float result[SHADER_OUTPUT_MAX][4];
+    shader_sample_context sample = { .uv = { uv_x, 0 } };
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
+    memcpy(out, result[2], sizeof result[2]);
+    shader_graph_free(&ir);
+}
+
+/* Shader math nodes convert to the same expression language, in GLSL
+   argument order, and keep what the material computes. */
+static void shader_selection_conversion()
+{
+    behavior_asset *asset = behavior_asset_new("Shader conversion");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    node *x = add_named(g, "Shader X");
+    node *multiply = add_named(g, "Shader Multiply");
+    node *smooth = add_named(g, "Shader Smoothstep");
+    assert(graph_connect_data(g, uv, 0, x, 0) == 0);
+    assert(graph_connect_data(g, x, 0, multiply, 0) == 0);
+    assert(
+        graph_set_pin_default(g, multiply, 0, 1, &(pin_value){ .type = PIN_F32, .f = 2 }) == 0
+    );
+    assert(graph_connect_data(g, multiply, 0, smooth, 0) == 0);
+    assert(
+        graph_set_pin_default(g, smooth, 0, 2, &(pin_value){ .type = PIN_F32, .f = 1.5f }) == 0
+    );
+    assert(graph_connect_data(g, smooth, 0, out, 2) == 0);
+    float before[4], after[4];
+    sample_color(g, .6f, before);
+    assert(before[0] > 0 && before[0] < 1);
+    node *selection[] = { multiply, smooth };
+    behavior_expression_error error;
+    node *call = behavior_expression_convert_selection(asset, g, selection, 2, &error);
+    if (!call) {
+        printf("shader conversion: %s\n", error.message);
+    }
+    assert(call);
+    const char *source = behavior_expression_source(asset, call);
+    if (strcmp(source, "smoothstep(0, 1.5, UV.x * 2)")) {
+        printf("shader conversion source: %s\n", source);
+    }
+    assert(!strcmp(source, "smoothstep(0, 1.5, UV.x * 2)"));
+    sample_color(g, .6f, after);
+    assert(!memcmp(before, after, sizeof before));
+    behavior_asset_free(asset);
+}
+
+/* floor, sqrt and sign reach shaders, with a negative square root read as 0. */
+static void shader_rounding_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Shader rounding");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, g, "vec3(floor(uv.x * 4), sqrt(uv.y) + sqrt(-uv.y), sign(uv.x - 0.5)) + vec3(fract(uv * 4), 0) * 0", &error);
+    assert(call);
+    assert(graph_connect_data(g, uv, 0, call, 0) == 0);
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    assert(graph_connect_data(g, call, 0, out, 0) == 0);
+    shader_graph ir;
+    shader_graph_init(&ir);
+    shader_error shader_error = { 0 };
+    assert(shader_graph_from_graph(g, &ir, &shader_error));
+    float result[SHADER_OUTPUT_MAX][4];
+    shader_sample_context sample = { .uv = { .6f, .25f } };
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &shader_error));
+    assert(result[0][0] == 2 && result[0][1] == .5f && result[0][2] == 1);
+    shader_graph_free(&ir);
+    behavior_asset_free(asset);
+}
+
+/* Collapsing turns each math tree into one expression; a value used twice
+   ends its tree and feeds each use, and the material computes the same. */
+static void shader_math_collapse()
+{
+    behavior_asset *asset = behavior_asset_new("Shader collapse");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    node *x = add_named(g, "Shader X");
+    node *scale = add_named(g, "Shader Multiply");
+    node *offset = add_named(g, "Shader Add");
+    node *shared = add_named(g, "Shader Sin");
+    node *left = add_named(g, "Shader Multiply");
+    node *right = add_named(g, "Shader Subtract");
+    node *sum = add_named(g, "Shader Add");
+    assert(graph_connect_data(g, uv, 0, x, 0) == 0);
+    assert(graph_connect_data(g, x, 0, scale, 0) == 0);
+    assert(graph_set_pin_default(g, scale, 0, 1, &(pin_value){ .type = PIN_F32, .f = 2 }) == 0);
+    assert(graph_connect_data(g, scale, 0, offset, 0) == 0);
+    assert(
+        graph_set_pin_default(g, offset, 0, 1, &(pin_value){ .type = PIN_F32, .f = .25f }) == 0
+    );
+    assert(graph_connect_data(g, offset, 0, shared, 0) == 0);
+    assert(graph_connect_data(g, shared, 0, left, 0) == 0);
+    assert(graph_set_pin_default(g, left, 0, 1, &(pin_value){ .type = PIN_F32, .f = .5f }) == 0);
+    assert(graph_connect_data(g, shared, 0, right, 1) == 0);
+    assert(graph_set_pin_default(g, right, 0, 0, &(pin_value){ .type = PIN_F32, .f = 1 }) == 0);
+    assert(graph_connect_data(g, left, 0, sum, 0) == 0);
+    assert(graph_connect_data(g, right, 0, sum, 1) == 0);
+    assert(graph_connect_data(g, sum, 0, out, 2) == 0);
+    float before[4], after[4];
+    sample_color(g, .3f, before);
+    behavior_expression_error error;
+    int created = behavior_expression_collapse_math(asset, g, 3, &error);
+    if (created != 2) {
+        printf("collapse: %d %s\n", created, error.message);
+    }
+    assert(created == 2);
+    sample_color(g, .3f, after);
+    assert(!memcmp(before, after, sizeof before));
+    bool shared_expression = false, sum_expression = false;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        const char *source = behavior_expression_source(asset, g->nodes[i]);
+        shared_expression |= source && !strcmp(source, "sin(UV.x * 2 + 0.25)");
+        sum_expression |= source && !strcmp(source, "a * 0.5 + (1 - a)");
+    }
+    assert(shared_expression && sum_expression);
+    behavior_asset_free(asset);
+}
+
+/* Two formulas with one source over the same inputs become one expression
+   that feeds both readers. */
+static void shader_repeated_formula_merge()
+{
+    behavior_asset *asset = behavior_asset_new("Repeated formula");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    for (int copy = 0; copy < 2; copy++) {
+        node *x = add_named(g, "Shader X"),
+             *scale = add_named(g, "Shader Multiply"),
+             *offset = add_named(g, "Shader Add"),
+             *wave = add_named(g, "Shader Sin");
+        assert(graph_connect_data(g, uv, 0, x, 0) == 0);
+        assert(graph_connect_data(g, x, 0, scale, 0) == 0);
+        assert(
+            graph_set_pin_default(g, scale, 0, 1, &(pin_value){ .type = PIN_F32, .f = 2 }) == 0
+        );
+        assert(graph_connect_data(g, scale, 0, offset, 0) == 0);
+        assert(
+            graph_set_pin_default(g, offset, 0, 1, &(pin_value){ .type = PIN_F32, .f = 1 }) == 0
+        );
+        assert(graph_connect_data(g, offset, 0, wave, 0) == 0);
+        assert(graph_connect_data(g, wave, 0, out, 2 + copy) == 0);
+    }
+    behavior_expression_error error;
+    assert(behavior_expression_collapse_math(asset, g, 3, &error) == 2);
+    int expressions = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        expressions += behavior_expression_source(asset, g->nodes[i]) != NULL;
+    }
+    node *first = NULL, *second = NULL;
+    int pin = -1;
+    assert(
+        expressions == 1 && graph_input_source(g, out, 2, &first, &pin) &&
+        graph_input_source(g, out, 3, &second, &pin) && first == second
+    );
+    behavior_asset_free(asset);
+}
+
+/* A component read feeding several operations reads in place in each one,
+   and the node goes away once nothing else reads it; a * -1 reads as -a. */
+static void shader_shared_component_collapse()
+{
+    behavior_asset *asset = behavior_asset_new("Shared component");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    node *x = add_named(g, "Shader X");
+    node *sum = add_named(g, "Shader Add");
+    assert(graph_connect_data(g, uv, 0, x, 0) == 0);
+    for (int i = 0; i < 2; i++) {
+        node *scale = add_named(g, "Shader Multiply");
+        node *wave = add_named(g, "Shader Sin");
+        assert(graph_connect_data(g, x, 0, scale, 0) == 0);
+        pin_value factor = { .type = PIN_F32, .f = i ? -1.0f : 2.0f };
+        assert(graph_set_pin_default(g, scale, 0, 1, &factor) == 0);
+        assert(graph_connect_data(g, scale, 0, wave, 0) == 0);
+        assert(graph_connect_data(g, wave, 0, sum, i) == 0);
+    }
+    assert(graph_connect_data(g, sum, 0, out, 2) == 0);
+    float before[4], after[4];
+    sample_color(g, .3f, before);
+    behavior_expression_error error;
+    assert(behavior_expression_collapse_math(asset, g, 3, &error) == 1);
+    sample_color(g, .3f, after);
+    assert(!memcmp(before, after, sizeof before));
+    const char *source = NULL;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        assert(strcmp(g->nodes[i]->desc->name, "Shader X"));
+        source = source ? source : behavior_expression_source(asset, g->nodes[i]);
+    }
+    assert(source && !strcmp(source, "sin(UV.x * 2) + sin(-UV.x)"));
+    behavior_asset_free(asset);
+}
+
+/* Field expressions lower to scalar field nodes, including calls with more
+   arguments than one field instruction holds. */
+static void field_domain_expression()
+{
+    behavior_asset *asset = behavior_asset_new("Field expression");
+    asset->domain = BEHAVIOR_DOMAIN_FIELD;
+    graph *g = asset->graph;
+    node *out = graph_add_node(g, registry_node_by_name("Field Output"));
+    node *x = graph_add_node(g, registry_node_by_name("Field X"));
+    node *y = graph_add_node(g, registry_node_by_name("Field Y"));
+    behavior_expression_error error;
+    node *call = behavior_expression_add(
+        asset,
+        g,
+        "clamp(-x * 2 + y / 4, a, b) + c + d + j + f + h + i - floor(1.5)",
+        &error
+    );
+    assert(call && call->input_count == 10);
+    assert(graph_connect_data(g, x, 0, call, 0) == 0);
+    assert(graph_connect_data(g, y, 0, call, 1) == 0);
+    for (int i = 2; i < call->input_count; i++) {
+        assert(call->input_pins[i].type == PIN_F32);
+        pin_value v = { .type = PIN_F32,
+                        .f = i == 2 ? -100.0f
+                           : i == 3 ? 100.0f
+                                    : 1.0f };
+        assert(graph_set_pin_default(g, call, 0, i, &v) == 0);
+    }
+    assert(graph_connect_data(g, call, 0, out, 0) == 0);
+    char message[256];
+    field_program *program = field_program_compile(asset, message, sizeof message);
+    if (!program) {
+        printf("field expression: %s\n", message);
+    }
+    assert(program);
+    float value;
+    assert(
+        field_program_sample(program, (field_context){ 0 }, 3, 8, &value, message, sizeof message)
+    );
+    /* -6 + 2 + six ones - 1 */
+    assert(fabsf(value - 1) < 1e-5f);
+    field_program_free(program);
+    assert(behavior_expression_set(asset, call, "x.y", &error) == -1);
+    assert(behavior_expression_set(asset, call, "vec2(x, y)", &error) == -1);
+    behavior_asset_free(asset);
+}
+
 void test_math_expression()
 {
+    shader_expression();
+    shader_selection_conversion();
+    shader_math_collapse();
+    shader_shared_component_collapse();
+    shader_repeated_formula_merge();
+    shader_rounding_expression();
+    field_domain_expression();
     test_system_expression();
     vector_constructor_expressions();
     boolean_expressions();
     boolean_symbol_and_member_assignment();
     assignment_expressions();
     reference_assignment_expressions();
+    integer_operand_expressions();
     assignment_root_rename_preserves_binding();
     indexed_assignment_expression();
     branch_expression_flow();
     vector_expression();
+    scalar_leading_vector_expression();
+    direction_expression();
     field_expression();
     mixed_struct_expression();
     component_struct_input_expression();
@@ -1331,6 +1883,7 @@ void test_math_expression()
     selected_struct_conversion();
     terminal_selection_conversion();
     expression_input_rename();
+    expression_source_names();
     expression_title();
     editor_delete_expression();
     expect("negate(3) + negate(-2)", -1);
@@ -1345,6 +1898,9 @@ void test_math_expression()
     expect("log(e) + log10(100) + floor(2.9) + ceil(2.1) + round(1.6)", 10);
     expect("cos(0) + tan(0) + asin(0) + acos(1) + atan(0) + atan2(0, 1)", 1);
     expect("pow(2, 3) / exp(0)", 8);
+    expect("mix(2, 4, 0.25) + step(1, 2) + fract(2.75) + sign(-3)", 3.25);
+    expect("normalize(vec2(0, 4)).y + (vec2(1, 2) * 3).y", 7);
+    expect("length(vec2(3, 4)) + dot(vec2(1, 2), vec2(3, 4)) + distance(vec2(1, 1), vec2(4, 5))", 21);
 
     behavior_asset *asset = behavior_asset_new("Expression edits");
     graph *g = asset->graph;
@@ -1415,5 +1971,6 @@ void test_math_expression()
     assert(later >= 0 && later < 2 && later != first + next);
     behavior_asset_free(asset);
     editor_history();
+    editor_rewire();
     puts("Behavior Expression PASS: precedence, functions, named pins, stable wires, atomic errors, serialization and random sampling");
 }

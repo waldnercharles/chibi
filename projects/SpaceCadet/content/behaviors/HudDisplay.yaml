@@ -16,12 +16,12 @@ graphs:
     type: Get Global Variable
     inputs: {Name: Score}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 7
     type: Format Text
     inputs:
       Format: '{:08.0f}'
-      Arg0: {type: float, type_name: null}
+      Arg0: {type: float}
   - id: 11
     type: Set UI Text
     inputs: {Element: '#score'}
@@ -42,12 +42,12 @@ graphs:
     type: Get Global Variable
     inputs: {Name: Rank}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 33
     type: Format Text
     inputs:
       Format: RANK   {:.0f}
-      Arg0: {type: float, type_name: null}
+      Arg0: {type: float}
   - id: 37
     type: Set UI Text
     inputs: {Element: '#rank'}
@@ -63,11 +63,11 @@ graphs:
     reference_name: lives <= 0
     inputs:
       Exec: {id: 69, kind: exec}
-      lives: {id: 67, type: double, group: 1}
+      lives: {id: 67, type: double}
     outputs:
       "True": {id: 70, kind: exec}
       "False": {kind: exec}
-      Result: {id: 68, type: bool, flags: 2, group: 2}
+      Result: {id: 68, type: bool}
   - id: 86
     type: Set UI Text
     inputs: {Element: '#mission', Text: GAME OVER}
@@ -75,14 +75,14 @@ graphs:
     type: Get Global Variable
     inputs: {Name: Hits}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 95
     type: Format Text
     inputs:
       Format: |-
         TARGET PRACTICE
         {:.0f} / 8 HITS
-      Arg0: {type: float, type_name: null}
+      Arg0: {type: float}
   - id: 99
     type: Set UI Text
     inputs: {Element: '#mission'}
@@ -104,11 +104,4 @@ graphs:
   - {from: 66.False, to: 99.Exec}
   - {from: 92.Value, to: 95.Arg0}
   - {from: 95.Result, to: 99.Text}
-- id: 52
-  kind: function
-  name: lives <= 0
-  math_expression: lives <= 0
-  expression_mode: 3
-  entry_id: 73
-  return_id: 75
-  call_depth_limit: 64
+- {id: 52, kind: function, math_expression: lives <= 0, entry_id: 73}

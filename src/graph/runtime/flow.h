@@ -65,8 +65,6 @@ extern "C"
         void *sink_user;   /* borrowed by the run */
         const char *event_name; /* copied by the run for runtime inspection */
         behavior_instance *instance; /* owning instance, or NULL for a standalone run */
-        flow_parallel_for_fn parallel_for; /* host-supplied, never owned */
-        void *parallel_user;
         unsigned call_depth; /* internal function-call depth, zero at an entry */
         int breakpoints_override; /* use instance or host setting instead of graph state */
         int breakpoints_enabled;
@@ -139,14 +137,17 @@ extern "C"
     behavior_backend flow_run_backend(const flow_run *run);
 
     int flow_run_resume(flow_run *run);
-    int flow_run_tick(flow_run *run);
     int flow_run_tick_at(flow_run *run, double monotonic_time);
 
     /* Request an external pause between activations, or enter persistent
-     * single-step mode. Step mode survives latent suspension until resume. */
+     * single-step mode. Step mode survives latent suspension until resume.
+     * Step runs one node of the innermost call and enters the calls it makes;
+     * Step Over runs such a call as one node; Step Out finishes the innermost
+     * call and pauses in its caller, or resumes outside any call. */
     int flow_run_pause(flow_run *run);
     int flow_run_step(flow_run *run);
     int flow_run_step_over(flow_run *run);
+    int flow_run_step_out(flow_run *run);
 
     /* Stop discards pending continuations and leaves the run idle. Reset also
      * clears graph-side evaluation state and releases run-owned storage. */
@@ -188,17 +189,6 @@ extern "C"
      * returned directly; struct pointers remain valid until run reset/free. */
     int flow_run_watch_input(const flow_run *run, const node *n, int pin, pin_value *out);
     int flow_run_watch_output(const flow_run *run, const node *n, int pin, pin_value *out);
-
-    /* Copy a recorded output into caller-owned storage. This is the safe path
-     * when a struct watch must outlive the flow_run and its scratch arena. */
-    int flow_run_watch_copy_output(
-        const flow_run *run,
-        const node *n,
-        int pin,
-        pin_value *out,
-        void *struct_storage,
-        size_t struct_storage_size
-    );
 
     /* Helpers available to hand-authored node_desc.flow callbacks. */
     struct flow_context;
@@ -245,8 +235,6 @@ extern "C"
     int flow_context_emit(struct flow_context *ctx, const char *message);
     flow_inputs flow_context_inputs(const struct flow_context *ctx);
     behavior_instance *flow_context_instance(const struct flow_context *ctx);
-    /* Retain a completed nested run until this activation is reset/freed. */
-    int flow_context_retain_run(struct flow_context *ctx, flow_run *child);
     int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs inputs);
     int flow_context_return(struct flow_context *ctx);
     int flow_context_entry_output(const struct flow_context *ctx);

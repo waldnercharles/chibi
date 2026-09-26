@@ -284,6 +284,16 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
             0,
             (pin_value){ .type = PIN_HANDLE,
                          .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(child) }
+        );
+        eval_context_reset_runtime(&ctx);
+        assert(graph_eval_output(&g, has, 0, &a, &result, &ctx) == 0 && !result.b);
+        input(
+            &g,
+            has,
+            0,
+            (pin_value){ .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
                          .u64 = ecs_entity_to_u64(owner) }
         );
         eval_context_reset_runtime(&ctx);
@@ -466,9 +476,13 @@ static void test_queued_events(bool pause)
         flow_run *run = instance->activations[0];
         assert(flow_run_status(run) == FLOW_PAUSED);
         assert(strcmp(flow_run_event_name(run), "Queued") == 0);
+        game_behavior_attachment_info paused;
+        assert(game_behavior_paused_run(live->behaviors, &paused) == run);
+        assert(paused.instance == instance && !strcmp(paused.asset_name, "events"));
         /* The queue has freed its request; activation inputs must own all metadata. */
         assert(flow_run_resume(run) == FLOW_OK);
         assert(observer.count == 1 && observer.sequence[0] == 0);
+        assert(!game_behavior_paused_run(live->behaviors, &paused));
         game_live_world_free(live);
         behavior_asset_free(asset);
         ecs_world_free(ecs);

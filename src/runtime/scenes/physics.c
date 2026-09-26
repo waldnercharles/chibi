@@ -285,11 +285,6 @@ game_physics_settings game_physics_configuration(const game_physics *physics)
     return physics->configuration;
 }
 
-int game_physics_worker_budget(const game_physics *physics)
-{
-    return physics->tasks.workers > 0 ? physics->tasks.workers : 1;
-}
-
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks)
 {
     assert(!acount(physics->bodies));
@@ -956,6 +951,8 @@ node_desc GAME_NODE_Raycast = {
     .category = "Physics",
     .keywords = "ray segment visibility line sight wall occlusion ricochet "
                 "normal",
+    .description = "Casts from Start to End and reports the first collider hit "
+                   "in Categories; sensors count only with Include Sensors.",
     .access = &RAY_ACCESS,
 };
 
@@ -1081,6 +1078,8 @@ node_desc GAME_NODE_GetContactEntities = {
     .read_inputs = contact_entities,
     .category = "Physics",
     .keywords = "contact overlap touching collider entities query categories",
+    .description = "Lists colliding entities in Categories touching Entity "
+                   "right now; empty if Entity is dead or being destroyed.",
     .access = &CONTACT_ACCESS,
 };
 

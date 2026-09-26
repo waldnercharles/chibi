@@ -310,39 +310,6 @@ int flow_run_watch_output(const flow_run *run, const node *n, int pin, pin_value
     return flow_run_watch_get(run, n, 1, pin, out);
 }
 
-int flow_run_watch_copy_output(
-    const flow_run *run,
-    const node *n,
-    int pin,
-    pin_value *out,
-    void *struct_storage,
-    size_t struct_storage_size
-)
-{
-    if (!run || !n || !out || pin < 0) {
-        return -1;
-    }
-    const flow_watch *w = watch_read(run, n, 1, pin);
-    if (!w && (run->compiled || run->compiled_owner)) {
-        const flow_run *owner = flow_compiled_watch_owner(run, n, true, pin);
-        if (owner) {
-            return flow_run_watch_copy_output(owner, n, pin, out, struct_storage, struct_storage_size);
-        }
-    }
-    if (!w) {
-        return -1;
-    }
-    *out = w->value;
-    if (out->type == PIN_STRUCT) {
-        if (!w->owned || !struct_storage || struct_storage_size < w->owned_size) {
-            return -1;
-        }
-        memcpy(struct_storage, w->owned, w->owned_size);
-        out->ptr = struct_storage;
-    }
-    return 0;
-}
-
 const pin_value *flow_watch_input_value(const flow_run *run, const node *n, int pin)
 {
     const pin_value *value = flow_watch_value(run, n, false, pin);

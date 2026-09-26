@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileHit
-id_counter: 111
+id_counter: 116
 description: Carve at the impact point, pierce enemy fragments, and deliver damage to blocking targets.
 owner_type: ecs.entity
 graphs:
@@ -9,16 +9,12 @@ graphs:
   nodes:
   - id: 1
     type: Event
-    x: 0.0
-    "y": 200.0
     reference_name: Contact Begin
     outputs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {type: struct, type_name: CF_V2, kind: data}
   - id: 5
     type: Self
-    x: 310.0
-    "y": 466.0
     outputs:
       Self: {type_name: ecs.entity}
   - id: 7
@@ -28,34 +24,36 @@ graphs:
         binding: {kind: component, component: GAME.GameVelocity}
   - id: 27
     type: Behavior Expression
-    x: 310.0
-    "y": 290.0
     reference_id: 10
     reference_name: point + direction * inset
     inputs:
-      point: {flags: 2, group: 1}
-      direction: {flags: 2, group: 2}
-      inset: {type: double, flags: 2, group: 3, default: 0.5}
+      point: {type: struct, type_name: CF_V2}
+      direction: {type: struct, type_name: CF_V2}
+      inset: {type: double, default: 0.5}
     outputs:
-      Result: {flags: 2, group: 4}
+      Result: {type: struct, type_name: CF_V2}
   - id: 66
     type: Damage Material
-    x: 620.0
-    "y": 0.0
     inputs:
+      Entity:
+        binding: {kind: local, local_id: 115}
       Radius: 4.0
       Energy: 1.0
       Source: {id: 110}
     outputs:
       Out: {id: 73}
-  - {id: 91, type: Is Pierceable Material Fragment, x: 620.0, "y": 240.0}
-  - {id: 94, type: Branch, x: 930.0, "y": 200.0}
+  - id: 91
+    type: Is Pierceable Material Fragment
+    inputs:
+      Entity:
+        binding: {kind: local, local_id: 115}
+  - {id: 94, type: Branch}
   - id: 99
     type: Send Event
-    x: 1240.0
-    "y": 311.0
     reference_name: Damage
     inputs:
+      Entity:
+        binding: {kind: local, local_id: 115}
       Amount:
         id: 103
         declaration_id: 2
@@ -64,7 +62,15 @@ graphs:
       Source: {declaration_id: 3}
     outputs:
       Then: {id: 102}
-  - {id: 105, type: Destroy Entity, x: 1550.0, "y": 374.0}
+  - {id: 105, type: Destroy Entity}
+  - id: 111
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 113
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
   edges:
   - {from: 1.Then, to: 66.In}
   - {from: 1.Other, to: 66.Entity}
@@ -72,19 +78,17 @@ graphs:
   - {from: 1.Other, to: 99.Entity}
   - {from: 1.Point, to: 27.point}
   - {from: 5.Self, to: 66.Source}
-  - {from: 5.Self, to: 99.Source}
-  - {from: 5.Self, to: 105.Entity}
   - {from: 7.Result, to: 27.direction}
   - {from: 27.Result, to: 66.Point}
   - {from: 66.Out, to: 94.Exec}
   - {from: 91.Fragment, to: 94.Condition}
   - {from: 94.False, to: 99.Exec}
   - {from: 99.Then, to: 105.Exec}
+  - {from: 111.Self, to: 99.Source}
+  - {from: 113.Self, to: 105.Entity}
+  locals:
+  - {id: 115, name: target, from: 1.Other}
 - id: 10
   kind: function
-  name: point + direction * inset
   math_expression: point + direction * inset
-  expression_mode: 1
   entry_id: 75
-  return_id: 77
-  call_depth_limit: 64

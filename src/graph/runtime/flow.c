@@ -18,7 +18,7 @@
 
 #define FLOW_TRAVERSAL_MAX 256
 
-#include "graph/runtime/flow_internal.h"
+#include "graph/runtime/flow_compiled_internal.h"
 
 static node *frame_node(const flow_run *run, const activation_frame *frame)
 {
@@ -322,13 +322,20 @@ static int flow_run_advance_child(flow_run *run)
         run->call_node = NULL;
         return FLOW_OK;
     }
-    if (!ret) {
+    /* A function without results may end anywhere, as a void function does;
+       one with results must reach Return to produce them. */
+    bool results = false;
+    for (int i = 0; i < call->output_count; i++) {
+        results |= call->output_pins[i].kind == PIN_DATA &&
+                   !call->output_pins[i].field_source;
+    }
+    if (!ret && results) {
         flow_fail(run, FLOW_ERR_INVALID_GRAPH, call, "function completed without Return");
         return FLOW_ERR_INVALID_GRAPH;
     }
     pin_value *outputs = runtime_node_outputs(flow_runtime_node(run, call));
     int at = 0;
-    for (int i = 0; i < ret->input_count; i++) {
+    for (int i = 0; ret && i < ret->input_count; i++) {
         if (ret->input_pins[i].kind != PIN_DATA) {
             continue;
         }
@@ -845,8 +852,6 @@ flow_run *flow_run_start_reuse(
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
     set_event_name(run, options ? options->event_name : NULL);
-    run->parallel_for = options ? options->parallel_for : NULL;
-    run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
@@ -1012,17 +1017,6 @@ int flow_run_resume(flow_run *run)
     return flow_run_continue(run, 1);
 }
 
-int flow_run_tick(flow_run *run)
-{
-    if (!run) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    if (run->now) {
-        run->current_time = run->now(run->now_user);
-    }
-    return flow_run_continue(run, 0);
-}
-
 int flow_run_tick_at(flow_run *run, double monotonic_time)
 {
     if (!run) {
@@ -1059,7 +1053,23 @@ int flow_run_pause(flow_run *run)
     return FLOW_ERR_STATE;
 }
 
-int flow_run_step(flow_run *run)
+typedef enum
+{
+    STEP_INTO,
+    STEP_OVER,
+    STEP_OUT,
+} step_kind;
+
+static bool inside_call(const flow_run *run)
+{
+    return run->active_child ||
+           (run->compiled && flow_compiled_active_frame(run) > 0);
+}
+
+/* Every run on the active call chain advances one activation. Over keeps the
+   calls the innermost run makes from stepping; Out lets the innermost run
+   finish, so its caller pauses once the call returns. */
+static int step(flow_run *run, step_kind kind)
 {
     if (!run) {
         return FLOW_ERR_ARGUMENT;
@@ -1070,33 +1080,49 @@ int flow_run_step(flow_run *run)
     if (run->state == FLOW_COMPLETED || run->state == FLOW_FAILED) {
         return run->error.code;
     }
+    if (kind == STEP_OUT && !inside_call(run)) {
+        return flow_run_resume(run);
+    }
     if (run->breakpoint_node && acount(run->frames) &&
         frame_node(run, &run->frames[acount(run->frames) - 1]) == run->breakpoint_node) {
         run->breakpoint_skipped = 1;
     }
     run->state = FLOW_RUNNING;
     run->pause_requested = 0;
-    run->step_mode = 1;
-    run->activation_budget = 1;
+    flow_run *leaf = run;
+    for (flow_run *r = run; r; r = r->active_child) {
+        r->step_mode = 1;
+        r->activation_budget = 1;
+        r->step_over = kind == STEP_OVER;
+        leaf = r;
+    }
+    if (kind == STEP_OUT) {
+        leaf->step_mode = 0;
+        leaf->activation_budget = 0;
+    }
     if (run->compiled) {
-        flow_compiled_step(run);
+        flow_compiled_step(run, kind == STEP_OUT);
     }
-    for (flow_run *child = run->active_child; child; child = child->active_child) {
-        child->step_mode = !run->step_over;
-        child->activation_budget = child->step_mode ? 1 : 0;
+    int result = flow_run_execute(run);
+    for (flow_run *r = run; r; r = r->active_child) {
+        r->step_over = 0;
     }
-    return flow_run_execute(run);
+    return result;
+}
+
+int flow_run_step(flow_run *run)
+{
+    return step(run, STEP_INTO);
 }
 
 int flow_run_step_over(flow_run *run)
 {
-    if (!run) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    run->step_over = 1;
-    int result = flow_run_step(run);
-    run->step_over = 0;
-    return result;
+    return step(run, STEP_OVER);
+}
+
+int flow_run_step_out(flow_run *run)
+{
+    return step(run, STEP_OUT);
 }
 
 int flow_run_stop(flow_run *run)
@@ -1902,8 +1928,6 @@ int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs input
         .call_depth = parent->call_depth + 1,
         .breakpoints_override = 1,
         .breakpoints_enabled = parent->breakpoints_enabled,
-        .parallel_for = parent->parallel_for,
-        .parallel_user = parent->parallel_user,
     };
     flow_error error = { 0 };
     flow_run *child = NULL;
@@ -1965,15 +1989,6 @@ int flow_context_return(struct flow_context *ctx)
     frame_arrays_free(ctx->run);
     aclear(ctx->run->frames);
     return FLOW_OK;
-}
-
-int flow_context_retain_run(struct flow_context *ctx, flow_run *child)
-{
-    if (!ctx || !ctx->run || !child || child == ctx->run) {
-        return -1;
-    }
-    apush(ctx->run->children, child);
-    return 0;
 }
 
 void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)

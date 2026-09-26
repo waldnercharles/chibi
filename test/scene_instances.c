@@ -17,87 +17,27 @@ static int history(app_scene_authoring *scene, bool redo)
     return replay_scene_edit(scene, redo);
 }
 
-static void first_attachment_redo_after_prototype_gain(app_scene_authoring *scene, ecs_world *world)
+static void prototype_component_gain(app_scene_authoring *scene, ecs_world *world)
 {
     assert(
         app_scene_authoring_register_prototype(
             scene,
-            "{\"version\":1,\"name\":\"FirstAttachment\",\"components\":{"
+            "{\"version\":1,\"name\":\"ComponentGain\",\"components\":{"
             "\"GameTransform\":{\"x\":0,\"y\":0}},\"behaviors\":[]}",
             NULL
         ) == 0
     );
-    assert(app_scene_authoring_add_instance(scene, "FirstAttachment") == 0);
+    assert(app_scene_authoring_add_instance(scene, "ComponentGain") == 0);
     ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
     assert(!GAME_GameHealth_has(world, entity));
-    assert(app_scene_authoring_set_instance_component(scene, "GameHealth", true) == 0);
-    const GameHealth *health = GAME_GameHealth_get_const(world, entity);
-    assert(health);
-    GameHealth original = *health;
-    assert(history(scene, false) == 0);
-    assert(!GAME_GameHealth_has(world, entity));
-    assert(app_scene_authoring_add_prototype_component(scene, "FirstAttachment", "GameHealth") == 0);
-    assert(
-        app_scene_authoring_set_prototype_field(
-            scene,
-            "FirstAttachment",
-            "GameHealth",
-            "current",
-            (pin_value){ .type = PIN_I32, .i = 100 }
-        ) == 0
-    );
-    assert(
-        app_scene_authoring_set_prototype_field(
-            scene,
-            "FirstAttachment",
-            "GameHealth",
-            "maximum",
-            (pin_value){ .type = PIN_I32, .i = 200 }
-        ) == 0
-    );
-    health = GAME_GameHealth_get_const(world, entity);
-    assert(health && health->current == 100 && health->maximum == 200);
-    assert(history(scene, true) == 0);
-    health = GAME_GameHealth_get_const(world, entity);
-    assert(
-        health && health->current == original.current &&
-        health->maximum == original.maximum
-    );
-    assert(history(scene, false) == 0);
-    health = GAME_GameHealth_get_const(world, entity);
-    assert(health && health->current == 100 && health->maximum == 200);
-    assert(history(scene, true) == 0);
-    health = GAME_GameHealth_get_const(world, entity);
-    assert(
-        health && health->current == original.current &&
-        health->maximum == original.maximum
-    );
-    assert(app_scene_authoring_set_instance_component(scene, "GameHealth", false) == 0);
-    assert(
-        app_scene_authoring_set_prototype_field(
-            scene,
-            "FirstAttachment",
-            "GameHealth",
-            "maximum",
-            (pin_value){ .type = PIN_I32, .i = 300 }
-        ) == 0
-    );
-    assert(!GAME_GameHealth_has(world, entity));
-    assert(app_scene_authoring_set_instance_component(scene, "GameHealth", true) == 0);
-    health = GAME_GameHealth_get_const(world, entity);
-    assert(
-        health && health->current == original.current &&
-        health->maximum == original.maximum
-    );
+    assert(app_scene_authoring_add_prototype_component(scene, "ComponentGain", "GameHealth") == 0);
+    assert(GAME_GameHealth_has(world, entity));
+    assert(app_scene_authoring_open_prototype(scene, "ComponentGain") == 0);
     assert(history(scene, false) == 0);
     assert(!GAME_GameHealth_has(world, entity));
     assert(history(scene, true) == 0);
-    health = GAME_GameHealth_get_const(world, entity);
-    assert(
-        health && health->current == original.current &&
-        health->maximum == original.maximum
-    );
-    puts("instance retention PASS: Undo first attachment inherits later prototype additions; Redo restores authored values and later manual detachment remains distinct");
+    assert(GAME_GameHealth_has(world, entity));
+    puts("prototype components PASS: an added prototype component reaches instances and follows Undo and Redo");
 }
 
 static ecs_entity spawn_registered_child(game_live_world *live, ecs_entity owner)
@@ -291,7 +231,7 @@ void test_scene_instances()
                         "\"GameTransform\":{\"x\":0,\"y\":0},\"GameHealth\":{"
                         "\"current\":73,\"maximum\":100}},\"behaviors\":[]}";
     assert(app_scene_authoring_register_prototype(scene, first, NULL) == 0);
-    first_attachment_redo_after_prototype_gain(scene, world);
+    prototype_component_gain(scene, world);
     prototype_spawn_refresh(scene, live, world);
     duplicate_instance_preserves_edits(scene, world);
     prototype_vectors_and_text(scene, world);

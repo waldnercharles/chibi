@@ -361,6 +361,28 @@ static void scene_tabs_discard_reverts_shared_assets()
     fixture_free(&f);
 }
 
+/* The canvas arranges an opened graph's automatic nodes. Opening another
+   behavior keeps both tabs saved. */
+static void opening_behaviors_keeps_them_saved()
+{
+    checkpoint_fixture f = fixture_new();
+    behavior_asset *asset = behavior_asset_new("ArrangedBehavior");
+    node *automatic = graph_add_node(asset->graph, registry_node_by_name("Integer"));
+    automatic->placed = false;
+    uint64_t id = automatic->id;
+    game_live_definition *arranged = game_live_definition_new("ArrangedBehavior", asset);
+    assert(arranged && game_live_add_definition(f.live, arranged) == 0);
+    assert(app_scene_authoring_open_behavior(f.scene, "ArrangedBehavior") == 0);
+    graph_node_by_id(editor_active_graph(f.graph), id)->x += 300;
+    assert(app_scene_authoring_open_behavior(f.scene, "ReloadBehavior") == 0);
+    assert(sync_behavior_working(f.scene) == 0);
+    for (int i = 0; i < acount(f.scene->tabs); i++) {
+        assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[i]));
+    }
+    assert(!arranged->unsaved && !arranged->dirty);
+    fixture_free(&f);
+}
+
 static void scene_tabs_close_underlying_scene_keeps_context()
 {
     checkpoint_fixture f = fixture_new();
@@ -514,35 +536,6 @@ static void scene_tabs_retain_system_state()
     assert(acount(editor_active_graph(f.graph)->nodes) == second_nodes);
     remove(first_path);
     remove(second_path);
-    fixture_free(&f);
-}
-
-static void scene_tabs_system_save_as_identity()
-{
-    checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-system-nav-a.yaml";
-    const char *other_path = "/tmp/chibi-39-system-nav-b.yaml";
-    const char *save_as_path = "/tmp/Scene.yaml";
-    write_system_fixture(first_path, "SystemA");
-    write_system_fixture(other_path, "SystemB");
-    remove(save_as_path);
-    assert(app_scene_authoring_set_content_root(f.scene, "/tmp") == 0);
-    assert(app_scene_authoring_open_system(f.scene, first_path) == 0);
-    int first = f.scene->active_tab;
-    char *identity = xstrdup(f.scene->tabs[first].key);
-    assert(app_scene_authoring_save_as(f.scene) == 0);
-    assert(!strcmp(f.scene->system_path, save_as_path));
-    assert(!strcmp(f.scene->tabs[f.scene->active_tab].key, identity));
-    assert(app_scene_authoring_open_system(f.scene, other_path) == 0);
-    int other = f.scene->active_tab;
-    assert(scene_tabs_activate(f.scene, first) == 0);
-    assert(!strcmp(f.scene->system_path, save_as_path));
-    assert(scene_tabs_activate(f.scene, other) == 0);
-    assert(!strcmp(f.scene->system_path, other_path));
-    free(identity);
-    remove(first_path);
-    remove(other_path);
-    remove(save_as_path);
     fixture_free(&f);
 }
 
@@ -836,11 +829,11 @@ static int test_scene_checkpoint()
     scene_tabs_save_as_keeps_identity();
     scene_tabs_failed_restore_rolls_back();
     scene_tabs_discard_reverts_shared_assets();
+    opening_behaviors_keeps_them_saved();
     scene_tabs_close_underlying_scene_keeps_context();
     scene_tabs_reject_last_scene_close();
     scene_tabs_failed_behavior_discard_is_atomic();
     scene_tabs_retain_system_state();
-    scene_tabs_system_save_as_identity();
     checkpoint_restores_next_scene_key();
     checkpoint_fixture fixture = fixture_new();
     assert(

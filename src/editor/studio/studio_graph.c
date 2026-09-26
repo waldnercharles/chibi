@@ -5,6 +5,8 @@
  * into it in graph units. Interaction follows docs/editor-graph-references.md;
  * edits go through the graph editor's mutation helpers and history. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/authoring/expand.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/document/extract.h"
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
@@ -135,6 +137,94 @@ static void expand_inputs(editor *e, node *n)
     e->arrange_pending = true;
 }
 
+/* Alignment for two or more selected nodes, and straightening (Unreal). */
+static bool selection_items(studio *s)
+{
+    static const struct
+    {
+        const char *key, *label;
+        uint32_t icon;
+        align_edge edge;
+    } ALIGN[] = {
+        { "top", "Align Top", KIT_ICON_ALIGN_TOP, ALIGN_TOP },
+        { "middle", "Align Middle", KIT_ICON_ALIGN_MIDDLE, ALIGN_MIDDLE },
+        { "bottom", "Align Bottom", KIT_ICON_ALIGN_BOTTOM, ALIGN_BOTTOM },
+        { "left", "Align Left", KIT_ICON_ALIGN_LEFT, ALIGN_LEFT },
+        { "center", "Align Center", KIT_ICON_ALIGN_CENTER, ALIGN_CENTER },
+        { "right", "Align Right", KIT_ICON_ALIGN_RIGHT, ALIGN_RIGHT },
+    };
+    kit *k = s->kit;
+    editor *e = sg_graph_editor(s);
+    bool readonly = sg_graph_readonly(s);
+    int count = acount(e->selected);
+    bool ran = false;
+    if (count > 1 && kit_submenu_begin(k, "align", "Alignment", KIT_ICON_LAYOUT)) {
+        for (int i = 0; i < (int)(sizeof ALIGN / sizeof *ALIGN) && !ran; i++) {
+            if (menu_item(k, ALIGN[i].key, ALIGN[i].label, ALIGN[i].icon, NULL, readonly)) {
+                sg_align(s, ALIGN[i].edge);
+                ran = true;
+            }
+        }
+        kit_menu_separator(k, "s0");
+        if (!ran && menu_item(
+                        k,
+                        "horizontal",
+                        "Distribute Horizontally",
+                        KIT_ICON_DISTRIBUTE_X,
+                        NULL,
+                        readonly || count < 3
+                    )) {
+            sg_distribute(s, false);
+            ran = true;
+        }
+        if (!ran &&
+            menu_item(k, "vertical", "Distribute Vertically", KIT_ICON_DISTRIBUTE_Y, NULL, readonly || count < 3)) {
+            sg_distribute(s, true);
+            ran = true;
+        }
+        kit_submenu_end(k);
+    }
+    if (!ran &&
+        menu_item(k, "straighten", "Straighten Connections", KIT_ICON_MOVE, "Q", readonly || !count)) {
+        sg_straighten(s);
+        ran = true;
+    }
+    return ran;
+}
+
+/* Grows the selection along its wires: one step (Blender's Select Linked From
+   and To) or to the end (Unreal's Select All Input and Output Nodes). */
+static bool select_items(studio *s)
+{
+    static const struct
+    {
+        const char *key, *label, *chord;
+        bool upstream, all;
+    } LINKED[] = {
+        { "inputs", "Input Nodes", "L", true, false },
+        { "outputs", "Output Nodes", "Alt+L", false, false },
+        { "all-inputs", "All Input Nodes", NULL, true, true },
+        { "all-outputs", "All Output Nodes", NULL, false, true },
+    };
+    kit *k = s->kit;
+    if (!kit_submenu_begin(k, "select", "Select", KIT_ICON_SELECT)) {
+        return false;
+    }
+    bool ran = false;
+    for (int i = 0; i < (int)(sizeof LINKED / sizeof *LINKED) && !ran; i++) {
+        if (i == 2) {
+            kit_menu_separator(k, "s0");
+        }
+        const char *chord = LINKED[i].chord ? studio_chord(s, LINKED[i].chord) : NULL;
+        if (menu_item(k, LINKED[i].key, LINKED[i].label, 0, chord, false)) {
+            sg_select_linked(s, LINKED[i].upstream, LINKED[i].all);
+            ran = true;
+        }
+    }
+    kit_submenu_end(k);
+    return ran;
+}
+
 /* An action may free the node, its graph or the whole asset, so the menu stops
    after one runs; the click closes it. */
 static void node_menu(studio *s, node *n)
@@ -150,6 +240,17 @@ static void node_menu(studio *s, node *n)
         editor_open_graph_call(e, n->id);
         return;
     }
+    if (studio_node_referable(n) &&
+        menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, studio_chord(s, "Shift+Alt+F"), false)) {
+        studio_find_node_references(s, n);
+        return;
+    }
+    graph_pin_run run;
+    if (graph_pin_run_of(n, &run) &&
+        menu_item(k, "addpin", "Add Pin", KIT_ICON_ADD, NULL, readonly)) {
+        sg_add_run_pin(s, n);
+        return;
+    }
     if (menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
         ed_duplicate_selected(e);
         return;
@@ -159,16 +260,45 @@ static void node_menu(studio *s, node *n)
         return;
     }
     kit_menu_separator(k, "s1");
-    const char *extract = behavior_asset_can_extract_function(e->asset, gr, e->selected, acount(e->selected));
+    int count = acount(e->selected);
+    bool locked = readonly || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM;
     if (menu_item(
             k,
             "collapse",
             "Collapse to Function",
             KIT_ICON_FUNCTION,
             studio_chord(s, "Mod+G"),
-            readonly || extract || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
+            locked || behavior_asset_can_extract_function(e->asset, gr, e->selected, count)
         )) {
-        sg_collapse_to_function(s);
+        sg_collapse(s, GRAPH_FUNCTION);
+        return;
+    }
+    if (menu_item(
+            k,
+            "macro",
+            "Collapse to Macro",
+            KIT_ICON_EXPRESSION,
+            NULL,
+            locked || behavior_asset_can_extract_macro(e->asset, gr, e->selected, count)
+        )) {
+        sg_collapse(s, GRAPH_MACRO);
+        return;
+    }
+    if (ed_is_graph_call(n) && n->desc != &NODE_BehaviorExpression &&
+        menu_item(
+            k,
+            "expand-node",
+            "Expand Node",
+            KIT_ICON_UNFOLD,
+            NULL,
+            readonly || behavior_asset_can_expand_call(e->asset, gr, n)
+        )) {
+        sg_expand_node(s, n);
+        return;
+    }
+    if (sg_refreshable(s) &&
+        menu_item(k, "refresh", "Refresh Nodes", KIT_ICON_REFRESH, NULL, readonly)) {
+        sg_refresh_nodes(s);
         return;
     }
     const char *expression = behavior_expression_can_convert_selection(
@@ -186,6 +316,10 @@ static void node_menu(studio *s, node *n)
             readonly || expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM
         )) {
         sg_convert_to_expression(s);
+        return;
+    }
+    kit_menu_separator(k, "s2");
+    if (select_items(s) || selection_items(s)) {
         return;
     }
     kit_menu_separator(k, "s0");
@@ -223,6 +357,9 @@ static void node_menu(studio *s, node *n)
         }
         return;
     }
+    if (sg_node_comment_items(s, n)) {
+        return;
+    }
     if (ed_source_scope_available(e) && graph_node_can_inline(gr, n) &&
         menu_item(k, "inline", "Inline", KIT_ICON_EXPRESSION, NULL, readonly)) {
         ed_snapshot_before(e);
@@ -237,7 +374,8 @@ static void node_menu(studio *s, node *n)
     }
 }
 
-void studio_graph_menus(studio *s)
+/* Canvas menus live in the Studio document; emitted with the Behavior area. */
+static void studio_graph_menus(studio *s)
 {
     studio_graph *g = &s->graph;
     kit *k = s->kit;
@@ -252,19 +390,21 @@ void studio_graph_menus(studio *s)
     graph *gr = sg_active_graph(s);
     node *n = sg_node_by_id(s, g->menu_node);
     bool readonly = sg_graph_readonly(s);
-    if (n) {
+    int output = 0, pin = -1;
+    if (n && graph_pin_by_id(n, g->menu_pin, &output, &pin)) {
+        sg_pin_menu(s, n, output ? ED_PIN_OUTPUT : ED_PIN_INPUT, pin);
+    } else if (n) {
         node_menu(s, n);
     } else if (sg_comment_by_id(s, g->menu_comment)) {
-        if (menu_item(k, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
-            ed_snapshot_before(e);
-            graph_remove_comment_box(gr, g->menu_comment);
-        }
+        sg_comment_menu(s, sg_comment_by_id(s, g->menu_comment));
     } else if (g->menu_edge >= 0 && g->menu_edge < acount(gr->edges)) {
         edge *ed = &gr->edges[g->menu_edge];
         if (ed->reroute_count &&
             menu_item(k, "reroutes", "Clear Reroutes", KIT_ICON_RESET, NULL, readonly)) {
             ed_snapshot_before(e);
             ed->reroute_count = 0;
+        } else if (menu_item(k, "straighten", "Straighten Connection", KIT_ICON_MOVE, "Q", readonly)) {
+            sg_straighten_wire(s, g->menu_edge);
         }
         if (menu_item(k, "delete", "Delete Wire", KIT_ICON_TRASH, studio_chord(s, "Alt+Click"), readonly)) {
             ed_link_ref link;
@@ -342,6 +482,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     sg_replay(s);
     sg_pointer(s);
     sg_shortcuts(s);
+    sg_nav_keys(s);
     asetlen(g->layouts, 0); /* gestures may have edited the graph */
     sg_camera_step(s);
     if (e->arrange_pending) {
@@ -352,6 +493,11 @@ void studio_graph_frame(studio *s, double delta_seconds)
         sg_frame_nodes(s, false, false);
         g->framed = true;
     }
+    node *reveal = sg_node_by_id(s, g->reveal);
+    if (reveal) {
+        sg_show_node(s, reveal, g->reveal_frame);
+    }
+    g->reveal = 0;
     rml_backend_resize_pixels(
         g->backend,
         (int)lroundf(r.w * scale),
@@ -362,7 +508,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     g->in.dp_ratio = g->zoom * scale;
     g->in.width = canvas_w(g);
     g->in.height = canvas_h(g);
-    kit_set_body_class(g->kit, "far", g->zoom < FAR_ZOOM);
+    kit_set_body_class(g->kit, "far", sg_far(s));
     kit_set_body_class(g->kit, "comfortable", s->prefs.comfortable);
     kit_set_body_class(g->kit, "light", s->light);
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
@@ -390,6 +536,9 @@ void studio_graph_free(studio *s)
     afree(g->box_base);
     afree(g->layouts);
     afree(g->unused);
+    afree(g->problems);
+    afree(g->find.hits);
+    afree(g->visits);
     *g = (studio_graph){ 0 };
 }
 
@@ -411,6 +560,9 @@ const char *studio_graph_cursor(const studio *s)
     }
     if (g->gesture == STUDIO_GRAPH_PAN || g->gesture == STUDIO_GRAPH_MOVE) {
         return "move";
+    }
+    if (g->gesture == STUDIO_GRAPH_RESIZE) {
+        return sg_resize_cursor(g->resize_edges);
     }
     if (g->gesture == STUDIO_GRAPH_LINK || g->hover_pin >= 0) {
         return "crosshair";
@@ -484,38 +636,28 @@ void studio_behavior_header(studio *s, int area)
     kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
-    char label[256];
     if (!gr) {
         kit_label(k, "title", "dim", "No behavior open");
         return;
     }
-    if (editor_graph_history_count(e) > 0) {
-        kit_button_desc back = { .icon = KIT_ICON_LEFT, .tip = "Back to the caller" };
-        if (kit_button(k, "back", &back)) {
-            editor_graph_back(e);
-        }
-    }
     char key[24];
     snprintf(key, sizeof key, "graphs:%d", area);
-    snprintf(
-        label,
-        sizeof label,
-        "%s \xe2\x80\xba %s",
-        s->scene->graph_document_id,
-        gr->name && gr->name[0] ? gr->name : "Event Graph"
-    );
     studio_graph *g = &s->graph;
+    sg_nav_header(s);
     if (g->renaming && g->rename_graph == gr->graph_id && g->rename_area == area) {
         rename_field(s, gr);
     } else {
-        kit_button_desc pick = { .label = label,
-                                 .icon = KIT_ICON_GRAPH,
-                                 .cls = "graph-pick",
-                                 .tip = "Graphs in this behavior" };
+        kit_button_desc pick = { .label = gr->name && gr->name[0] ? gr->name : "Event Graph",
+                                 .icon = gr->kind == GRAPH_FUNCTION ? KIT_ICON_FUNCTION
+                                       : gr->kind == GRAPH_MACRO ? KIT_ICON_EXPRESSION
+                                                                 : KIT_ICON_EVENT,
+                                 .cls = "crumb current",
+                                 .tip = "Graphs" };
         if (kit_button(k, "pick", &pick)) {
             kit_popup_open(k, key);
         }
     }
+    kit_pop(k);
     if (kit_popup_begin(k, key, "menu")) {
         kit_menu_group(k, "group", "Graphs");
         for (int i = 0; i < acount(e->asset->graphs); i++) {
@@ -557,6 +699,9 @@ void studio_behavior_header(studio *s, int area)
                 g->rename_focus = true;
                 snprintf(g->rename, sizeof g->rename, "%s", gr->name ? gr->name : "");
             }
+            if (menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL, false)) {
+                studio_find_graph_references(s, gr);
+            }
             const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro"
                                                          : "Delete Function";
             if (menu_item(k, "delete", remove, KIT_ICON_TRASH, NULL, locked)) {
@@ -591,6 +736,22 @@ void studio_behavior_header(studio *s, int area)
             &(kit_number_flow_desc){ .suffix = "%" }
         );
     }
+    bool readonly = sg_graph_readonly(s) || gr->math_expression;
+    kit_button_desc more = { .icon = KIT_ICON_MORE, .tip = "Graph" };
+    if (kit_button(k, "more", &more)) {
+        kit_popup_open(k, "graph-actions");
+    }
+    if (kit_popup_begin(k, "graph-actions", "menu")) {
+        if (menu_item(k, "optimize", "Optimize", KIT_ICON_EXPRESSION, NULL, readonly)) {
+            sg_optimize(s);
+        }
+        if (menu_item(k, "collapse", "Math to Expressions", KIT_ICON_EXPRESSION, NULL, readonly)) {
+            sg_collapse_math(s);
+        }
+        kit_menu_separator(k, "s0");
+        selection_items(s);
+        kit_popup_end(k);
+    }
     kit_button_desc tidy = { .icon = KIT_ICON_LAYOUT,
                              .tip = "Arrange",
                              .shortcut = studio_chord(s, "Shift+L"),
@@ -598,6 +759,13 @@ void studio_behavior_header(studio *s, int area)
     if (kit_button(k, "arrange", &tidy)) {
         sg_arrange(s, false);
         sg_frame_nodes(s, false, true);
+    }
+    kit_button_desc find = { .icon = KIT_ICON_SEARCH,
+                             .tip = "Find",
+                             .shortcut = studio_chord(s, "Mod+F"),
+                             .flags = g->find.open ? KIT_ON : 0 };
+    if (kit_button(k, "find", &find)) {
+        sg_find_open(s);
     }
     kit_button_desc fit = { .icon = KIT_ICON_FRAME, .tip = "Frame all", .shortcut = "Home" };
     if (kit_button(k, "frame", &fit)) {
@@ -629,5 +797,8 @@ void studio_behavior_body(studio *s, int area)
     }
     g->area = area;
     kit_surface(k, "graph", "graph-surface", "graph", &g->surface);
+    studio_members_drop(s);
+    studio_debug_call_stack(s);
+    sg_find_panel(s);
     studio_graph_menus(s);
 }

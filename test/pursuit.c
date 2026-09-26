@@ -37,9 +37,8 @@ static behavior_asset *read_behavior(const char *name)
     free(text);
     assert(asset);
     if (strcmp(name, "EnemyBehavior") == 0) {
-        assert(acount(asset->graphs) == 2 && acount(asset->graph->nodes) == 10);
-        graph *motion = asset->graphs[1];
-        assert(motion->kind == GRAPH_FUNCTION && strcmp(motion->name, "Pursuit Velocity") == 0);
+        graph *motion = behavior_asset_find_graph_by_name(asset, "Pursuit Velocity");
+        assert(motion && motion->kind == GRAPH_FUNCTION);
         node *entry = graph_node_by_id(motion, motion->entry_id);
         node *result = graph_node_by_id(motion, motion->return_id);
         assert(entry && result && entry->output_count == 5 && result->input_count == 1);
@@ -52,9 +51,13 @@ static behavior_asset *read_behavior(const char *name)
                             n->reference_id == motion->graph_id;
         }
         assert(calls_motion);
+        /* Speed reads the movement field, not a whole component to unwrap. */
         node *call = graph_node_by_id(asset->graph, 66);
-        const node_desc *speed = graph_input_conversion(asset->graph, call, 2);
-        assert(speed && strcmp(speed->name, "Unwrap_GameMovement") == 0);
+        const pin_binding *speed = graph_pin_binding(asset->graph, call, 0, 2);
+        assert(
+            speed && speed->kind == PIN_BINDING_COMPONENT_FIELD &&
+            !strcmp(speed->field_name, "speed")
+        );
     }
     compile_report report;
     compile_report_init(&report);

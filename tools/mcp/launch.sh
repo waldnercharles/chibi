@@ -6,7 +6,7 @@ repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd -P)
 default_project_root="$repo_root/projects/arena2d"
 project_root=${CHIBI_ROOT:-}
 if [ -z "$project_root" ]; then
-    if [ -f "$default_project_root/project.json" ]; then
+    if [ -f "$default_project_root/project.yaml" ]; then
         project_root="$default_project_root"
     else
         project_root="$repo_root"

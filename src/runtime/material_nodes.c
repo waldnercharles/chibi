@@ -80,6 +80,8 @@ static const node_access DAMAGE_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
 node_desc GAME_NODE_DamageMaterial = {
     .name = "Damage Material",
     .category = "Physics",
+    .description = "Queues Energy damage that carves Entity's material within "
+                   "Radius of Point; non-material targets are ignored.",
     .input_count = 7,
     .inputs = DAMAGE_IN,
     .output_count = 1,
@@ -145,6 +147,8 @@ static const node_access FRAGMENT_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 node_desc GAME_NODE_IsMaterialFragment = {
     .name = "Is Material Fragment",
     .category = "Physics",
+    .description = "Whether Entity is a fragment broken off destructible "
+                   "material.",
     .input_count = 1,
     .inputs = DAMAGE_IN + 1,
     .output_count = 1,
@@ -157,6 +161,8 @@ node_desc GAME_NODE_IsMaterialFragment = {
 node_desc GAME_NODE_IsPierceableMaterialFragment = {
     .name = "Is Pierceable Material Fragment",
     .category = "Physics",
+    .description = "Whether Entity is a material fragment that continuous "
+                   "sensors may pass through.",
     .input_count = 1,
     .inputs = DAMAGE_IN + 1,
     .output_count = 1,
@@ -169,6 +175,8 @@ node_desc GAME_NODE_IsPierceableMaterialFragment = {
 node_desc GAME_NODE_ReleaseMaterial = {
     .name = "Release Material",
     .category = "Physics",
+    .description = "Queues Entity's remaining material to break loose as one "
+                   "fragment, then destroys Entity.",
     .input_count = 2,
     .inputs = DAMAGE_IN,
     .output_count = 1,

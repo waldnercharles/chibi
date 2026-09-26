@@ -8,4 +8,4 @@ components:
     layer: -50
     shape: Circle
     width: 290.0
-  game.GameTransform: {x: -10.0, "y": -475.0}
+  GAME.GameTransform: {x: -10.0, "y": -475.0}

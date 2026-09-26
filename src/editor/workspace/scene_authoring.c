@@ -750,6 +750,13 @@ static ecs_world *debug_world(app_scene_authoring *scene, app_runtime_target tar
              : scene->world;
 }
 
+static game_live_world *debug_live(app_scene_authoring *scene, app_runtime_target target)
+{
+    return target == APP_RUNTIME_PREVIEW
+             ? game_prototype_preview_live(scene->prototype_preview)
+             : scene->live;
+}
+
 static game_behavior_world *debug_behaviors(app_scene_authoring *scene, app_runtime_target target)
 {
     return target == APP_RUNTIME_PREVIEW
@@ -760,7 +767,7 @@ static game_behavior_world *debug_behaviors(app_scene_authoring *scene, app_runt
 void sync_editor_inspection(app_scene_authoring *scene)
 {
     game_behavior_attachment_info info;
-    if (selected_behavior_attachment(scene, &info) &&
+    if (!scene->debug_pinned && selected_behavior_attachment(scene, &info) &&
         (!scene->debug.asset_name || scene->debug_target != scene->active_runtime_target ||
          ecs_entity_to_u64(scene->debug.entity) != ecs_entity_to_u64(info.entity) ||
          strcmp(scene->debug.asset_name, info.asset_name))) {
@@ -782,10 +789,12 @@ void sync_editor_inspection(app_scene_authoring *scene)
                 scene->graph_document_id &&
                 !strcmp(scene->graph_document_id, info.asset_name)) {
                 editor *e = scene->graph_editor;
+                game_live_world *live = debug_live(scene, scene->debug_target);
                 bool matches = editor_has_pending_edits(e)
-                                 ? scene_debug_matches(editor_behavior_asset(e), info.definition)
-                                 : scene_debug_matches_cached(
+                                 ? scene_debug_runs(live, editor_behavior_asset(e), info.definition)
+                                 : scene_debug_runs_cached(
                                        &scene->debug,
+                                       live,
                                        editor_behavior_asset(e),
                                        editor_edit_revision(e),
                                        info.definition
@@ -819,6 +828,39 @@ void sync_editor_inspection(app_scene_authoring *scene)
     editor_set_inspection_instance(scene->graph_editor, available ? info.instance : NULL);
     editor_set_inspection_run(scene->graph_editor, run);
     editor_set_inspection_trace(scene->graph_editor, trace, trace_count);
+}
+
+int app_scene_authoring_set_debug_target(
+    app_scene_authoring *scene,
+    app_runtime_target target,
+    ecs_entity entity,
+    const char *asset_name
+)
+{
+    if (target < APP_RUNTIME_PREVIEW || target > APP_RUNTIME_SCENE ||
+        !asset_name || !ecs_entity_is_alive(debug_world(scene, target), entity)) {
+        return -1;
+    }
+    game_behavior_world *behaviors = debug_behaviors(scene, target);
+    for (int i = 0; i < game_behavior_attachment_count_for_entity(behaviors, entity);
+         i++) {
+        game_behavior_attachment_info info;
+        if (game_behavior_attachment_info_at(behaviors, entity, i, &info) == 0 &&
+            !strcmp(info.asset_name, asset_name)) {
+            scene_debug_select(&scene->debug, &info, scene->debug_sessions[target]);
+            scene->debug_target = target;
+            scene->debug_pinned = true;
+            sync_editor_inspection(scene);
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned)
+{
+    scene->debug_pinned = pinned;
+    sync_editor_inspection(scene);
 }
 
 app_scene_authoring *app_scene_authoring_new_with_content_root(
@@ -1122,16 +1164,6 @@ void app_scene_authoring_refresh_content(app_scene_authoring *scene)
     if (scene) {
         content_refresh(scene);
     }
-}
-
-int app_scene_authoring_seed_default(app_scene_authoring *scene)
-{
-    if (!scene) {
-        return -1;
-    }
-    char path[CONTENT_PATH_CAP];
-    snprintf(path, sizeof path, "%s/scenes/Arena3D" ASSET_EXTENSION, scene->content_root);
-    return app_scene_authoring_load(scene, path);
 }
 
 void app_scene_authoring_free(app_scene_authoring *scene)

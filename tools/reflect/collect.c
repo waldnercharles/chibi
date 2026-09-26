@@ -489,7 +489,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             f.display_name = annotation_value(c, "node:name:");
             f.category = annotation_value(c, "node:category:");
             f.keywords = annotation_value(c, "node:keywords:");
-            f.operator_name = annotation_value(c, "node:operator:");
+            f.description = annotation_value(c, "node:description:");
             f.jit_kind = annotation_value(c, "node:jit:");
             if (f.jit_kind && strcmp(f.jit_kind, "v2-scale") != 0 &&
                 strcmp(f.jit_kind, "v2-add") != 0 &&
@@ -602,9 +602,9 @@ void reflect_dispose(collect_ctx *ctx)
         free(f->display_name);
         free(f->category);
         free(f->keywords);
+        free(f->description);
         free_strings(f->reads);
         free_strings(f->writes);
-        free(f->operator_name);
         free(f->jit_kind);
         free(f->conversion_from);
         free(f->conversion_to);

@@ -3,9 +3,14 @@
     const token = __CHIBI_SAVE_TOKEN__;
     const query = new URLSearchParams(location.search);
     const scene = query.get('scene');
-    Module['arguments'] = ['--project-root', __CHIBI_PROJECT__];
+    // ?project-root= opens another mirrored project, as in the packaged build.
+    const project = query.has('project-root') ? '/' + query.get('project-root').replace(/^\/+/, '') : __CHIBI_PROJECT__;
+    Module['arguments'] = ['--project-root', project];
     if (scene) Module['arguments'].push('--scene', scene);
     if (query.get('play') === '1') Module['arguments'].push('--play');
+    for (const name of ['open', 'graph']) {
+        if (query.get(name)) Module['arguments'].push(`--${name}`, query.get(name));
+    }
     const request = (method, path, body) => {
         const xhr = new XMLHttpRequest();
         xhr.open(method, path, false);

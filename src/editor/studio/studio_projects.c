@@ -32,7 +32,13 @@ static int compare_names(const void *a, const void *b)
 
 void studio_projects_load(studio *s)
 {
-    add_project(s, CHIBI_WORKSPACE_DIR "/project.json");
+#ifdef __EMSCRIPTEN__
+    /* Its projects open through the page (File > Import Project). */
+    if (web_projects_available()) {
+        return;
+    }
+#endif
+    add_project(s, CHIBI_WORKSPACE_DIR "/" CHIBI_PROJECT_MANIFEST);
     DIR *dir = opendir(CHIBI_WORKSPACE_DIR "/projects");
     struct dirent *entry;
     while (dir && (entry = readdir(dir))) {
@@ -43,7 +49,7 @@ void studio_projects_load(studio *s)
         snprintf(
             manifest,
             sizeof manifest,
-            CHIBI_WORKSPACE_DIR "/projects/%s/project.json",
+            CHIBI_WORKSPACE_DIR "/projects/%s/" CHIBI_PROJECT_MANIFEST,
             entry->d_name
         );
         add_project(s, manifest);
@@ -69,16 +75,6 @@ bool studio_project_current(const studio *s, int index)
     return !strcmp(s->projects[index].root, s->project_root);
 }
 
-static bool unsaved(studio *s)
-{
-    app_scene_authoring *scene = s->scene;
-    bool dirty = scene->scene_dirty;
-    for (int i = 0; i < acount(scene->tabs); i++) {
-        dirty = dirty || scene_tabs_dirty(scene, &scene->tabs[i]);
-    }
-    return dirty;
-}
-
 static void request(studio *s, int index)
 {
     free(s->open_project);
@@ -87,7 +83,7 @@ static void request(studio *s, int index)
 
 void studio_open_project(studio *s, int index)
 {
-    if (!unsaved(s)) {
+    if (!studio_unsaved(s)) {
         request(s, index);
         return;
     }
@@ -114,7 +110,8 @@ void studio_projects_frame(studio *s)
 void studio_projects_menu(studio *s)
 {
     kit *k = s->kit;
-    if (!kit_submenu_begin(k, "open_project", "Open Project", KIT_ICON_FOLDER)) {
+    if (!acount(s->projects) ||
+        !kit_submenu_begin(k, "open_project", "Open Project", KIT_ICON_FOLDER)) {
         return;
     }
     for (int i = 0; i < acount(s->projects); i++) {

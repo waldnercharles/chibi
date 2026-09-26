@@ -80,7 +80,6 @@ extern "C"
      * highlight_markup; reapplied only when it changes. */
     void kit_markup(kit *k, const char *key, const char *cls, const char *rml);
     /* Modify the last emitted element. */
-    void kit_text(kit *k, const char *text);
     void kit_attr(kit *k, const char *name, const char *value);
     void kit_flag(kit *k, const char *name, bool on);
     void kit_style(kit *k, const char *property, const char *value);
@@ -116,11 +115,8 @@ extern "C"
 
     /* Last-item queries, valid until the next emitted item. */
     bool kit_item_clicked(kit *k);
-    bool kit_item_double_clicked(kit *k);
     bool kit_item_context_clicked(kit *k); /* right press; open a context menu */
-    bool kit_item_pressed(kit *k);         /* left press this frame */
-    bool kit_item_hovered(kit *k);
-    bool kit_item_active(kit *k);    /* scrubbing, editing or held */
+    bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
 
@@ -192,8 +188,15 @@ extern "C"
     bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsigned flags);
     /* Up to three options render as a toggle group, more as a select. */
     bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
+    /* Base UI ToggleGroup: one pressed segment among any count, for switching
+     * views where every choice should stay visible. */
+    bool kit_toggle_group(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
     /* Commits on Enter or blur; Escape restores. Returns true on commit. */
     bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
+    /* A text field over several lines (shadcn Textarea): Shift+Enter starts a
+     * line and the field grows with its lines up to a scrolling height;
+     * otherwise it behaves as kit_text_field. */
+    bool kit_text_area(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
     /* Filters live; returns true whenever the text changes. Escape clears. */
     bool kit_search(kit *k, const char *key, char *buffer, size_t size, const char *placeholder);
     /* RGBA as 0xRRGGBBAA. Live while the picker is open; commits on close. */
@@ -221,12 +224,9 @@ extern "C"
         KIT_ROW_CONTEXT = 1 << 2,
         KIT_ROW_TWISTY = 1 << 3,
     };
-    /* Begins a row; emit trailing toggles inside, then kit_row_end. Returns KIT_ROW_* flags;
-     * modifier state for selection comes from kit_modifiers(). */
+    /* Begins a row; emit trailing toggles inside, then kit_row_end. Returns KIT_ROW_* flags. */
     unsigned kit_row_begin(kit *k, const char *key, const kit_row_desc *desc);
     void kit_row_end(kit *k);
-
-    unsigned kit_modifiers(const kit *k);
 
     /* Virtualized list (Virtuoso) of fixed-height rows. Begin sizes a scroll
      * container for every row and returns the visible range with overscan; emit
@@ -254,7 +254,6 @@ extern "C"
      * or at a point; begin returns true while open; end closes on activation. */
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
-    void kit_popup_close(kit *k, const char *key);
     bool kit_popup_is_open(const kit *k, const char *key);
     bool kit_popup_begin(kit *k, const char *key, const char *cls);
     void kit_popup_end(kit *k);
@@ -267,6 +266,7 @@ extern "C"
         int checked; /* -1 not checkable */
         bool disabled;
         bool current; /* the active choice among items that keep their icons */
+        uint32_t swatch; /* 0xRRGGBBAA: a color dot in the icon's place; 0 none */
     } kit_menu_item_desc;
     bool kit_menu_item(kit *k, const char *key, const kit_menu_item_desc *desc);
     void kit_menu_separator(kit *k, const char *key);
@@ -475,8 +475,6 @@ extern "C"
     const char *kit_hovered_path(const kit *k);
     /* True over a control that takes the pointer itself: fields, buttons, choices. */
     bool kit_pointer_on_control(const kit *k);
-    /* The path of the item emitted last, valid while it stays emitted. */
-    const char *kit_item_path(const kit *k);
     bool kit_find(const kit *k, const char *path, kit_rect *out);
     void kit_set_theme(kit *k, const char *name, bool active);
     void kit_set_body_class(kit *k, const char *name, bool on);

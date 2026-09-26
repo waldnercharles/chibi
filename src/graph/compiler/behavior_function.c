@@ -173,6 +173,16 @@ static int call(builder *b, node *n, int after)
     b->frame = parent;
     return next;
 }
+static bool call_results(const node *call)
+{
+    for (int i = 0; i < call->output_count; i++) {
+        if (call->output_pins[i].kind == PIN_DATA && !call->output_pins[i].field_source) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool return_values(builder *b, node *n)
 {
     behavior_function_frame frame = b->function->frames[b->frame];
@@ -248,6 +258,12 @@ static bool block(builder *b, int index)
     aclear(b->outputs);
     aclear(b->inputs);
     aclear(b->traced);
+    /* A call without results may end anywhere, as a void function does: the
+       path's end returns like its Return. */
+    node *ret = !n ? graph_node_by_id(b->graph, b->graph->return_id) : NULL;
+    if (ret && frame.source.call && !call_results(frame.source.call)) {
+        return return_values(b, ret);
+    }
     if (!n) {
         behavior_lower_emit(b, (behavior_function_instruction){ .op = BF_LEAVE, .target = b->frame });
         b->frame = frame.source.parent;
@@ -516,40 +532,18 @@ static bool batch_operation(behavior_function_op op)
         default: return false;
     }
 }
-behavior_batch_reason behavior_function_batch_reason(
-    const behavior_function *f,
-    const graph *g,
-    const node *entry
-)
+static bool batch_event(const behavior_function *f, const graph *g, const node *entry)
 {
-    if (!f || !g || !entry || !entry->desc) {
-        return BEHAVIOR_BATCH_UNAVAILABLE;
-    }
-    if (entry->desc->flow_kind != NODE_FLOW_EVENT) {
-        return BEHAVIOR_BATCH_NOT_EVENT;
-    }
-    if (entry->output_count != 1) {
-        return BEHAVIOR_BATCH_EVENT_PAYLOAD;
-    }
-    if (g->return_id) {
-        return BEHAVIOR_BATCH_GRAPH_RETURN;
-    }
-    if (f->waits) {
-        return BEHAVIOR_BATCH_WAITS;
-    }
-    if (f->breakpoints) {
-        return BEHAVIOR_BATCH_BREAKPOINTS;
+    if (!f || !g || !entry || !entry->desc || entry->desc->flow_kind != NODE_FLOW_EVENT ||
+        entry->output_count != 1 || g->return_id || f->waits || f->breakpoints) {
+        return false;
     }
     for (int i = 0; i < acount(f->instructions); i++) {
         if (!batch_operation(f->instructions[i].op)) {
-            return BEHAVIOR_BATCH_UNSUPPORTED_OPERATION;
+            return false;
         }
     }
-    return BEHAVIOR_BATCH_READY;
-}
-static bool batch_event(const behavior_function *f, const graph *g, const node *entry)
-{
-    return behavior_function_batch_reason(f, g, entry) == BEHAVIOR_BATCH_READY;
+    return true;
 }
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)

@@ -178,5 +178,7 @@ node_desc NODE_Count_Matching_Entities = {
     .work = NODE_WORK_ENTITY_REDUCTION,
     .access = &ACCESS,
     .category = "Entities",
-    .keywords = "query filter count reduce component conditions"
+    .keywords = "query filter count reduce component conditions",
+    .description = "Counts live Entities that pass all Conditions, each a "
+                   "component presence test or scalar field comparison."
 };

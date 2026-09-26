@@ -7,9 +7,7 @@
 
 /* CMPL: the compile and validation pass over one authored behavior_asset. The
  * pass is explicit and read-only (CMPL-1): it never rewires, retypes, or
- * deletes. CMPL-17 (editor navigation) and CMPL-19 (operator ambiguity) are
- * deferred: navigation is editor surface, and operator signatures arrive
- * with the reflection v2 widening ladder. */
+ * deletes. CMPL-17 (editor navigation) is deferred to the editor surface. */
 
 /* CMPL-16: the default event graph is the only graph today, with a stable
  * id of 1. Multi-graph behavior_assets (Phase 4) assign further ids here. */
@@ -33,8 +31,6 @@ enum
     CMPL_RULE_MISSING_REFERENCE = 7,      /* CMPL-7 */
     CMPL_RULE_DUPLICATE_NAME = 8,         /* CMPL-8 */
     CMPL_RULE_UNRESOLVED_WILDCARD = 12,   /* CMPL-12 */
-    CMPL_RULE_UNREACHABLE = 13,           /* CMPL-13 */
-    CMPL_RULE_UNCONNECTED_DATA = 14,      /* CMPL-14 */
     CMPL_RULE_UNUSED_VARIABLE = 15,       /* CMPL-15 */
     CMPL_RULE_FUNCTION_LATENT = 9,        /* CMPL-9 */
     CMPL_RULE_FUNCTION_SHAPE = 10,        /* CMPL-10 */

@@ -98,7 +98,7 @@ graphs:
       Value: {id: 61, type: float, flags: 0, default: 1.5}
   - id: 63
     type: Max
-    inputs: {B: 0.009999999776482582}
+    inputs: {B: 0.01}
   - id: 68
     type: Get Variable
     reference_id: 4

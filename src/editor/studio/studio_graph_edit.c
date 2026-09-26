@@ -1,8 +1,16 @@
 /* Graph canvas edits, refactoring, usage and the add-node palette. */
 #include "editor/graph/search.h"
 #include "editor/studio/studio_graph_internal.h"
+#include "editor/ui/labels.h"
+#include "graph/authoring/expand.h"
+#include "graph/authoring/linked.h"
+#include "graph/document/extract.h"
+#include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
+#include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/conv_nodes.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -145,10 +153,18 @@ void sg_select_only(editor *e, node *n)
 void sg_delete_selection(studio *s)
 {
     editor *e = sg_graph_editor(s);
-    if (sg_graph_readonly(s) || (!acount(e->selected) && !acount(e->selected_links))) {
+    uint64_t frame = studio_graph_comment(s);
+    if (sg_graph_readonly(s)) {
         return;
     }
-    ed_delete_selected(e);
+    if (frame && !acount(e->selected_links)) {
+        ed_snapshot_before(e);
+        graph_remove_comment_box(e->active_graph, frame);
+        return;
+    }
+    if (acount(e->selected) || acount(e->selected_links)) {
+        ed_delete_selected(e);
+    }
 }
 
 void sg_copy_selection(studio *s)
@@ -165,6 +181,50 @@ void sg_copy_selection(studio *s)
     }
 }
 
+/* Where a paste lands: the pointer over the canvas, else the view's center. */
+static void paste_point(const studio *s, float *x, float *y)
+{
+    const studio_graph *g = &s->graph;
+    if (g->in.mouse_x > -1e8f) {
+        *x = g->world_x;
+        *y = g->world_y;
+        return;
+    }
+    *x = g->x + g->surface.rect.w / 2 / g->zoom;
+    *y = g->y + g->surface.rect.h / 2 / g->zoom;
+}
+
+/* Pasted nodes center on the pointer (Unreal) and are selected. */
+static void place_pasted(studio *s, int first)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    float lo[2] = { INFINITY, INFINITY }, hi[2] = { -INFINITY, -INFINITY };
+    for (int i = first; i < acount(gr->nodes); i++) {
+        float b[4];
+        if (sg_node_visible(gr, gr->nodes[i]) && sg_node_box(s, gr->nodes[i], b)) {
+            lo[0] = fminf(lo[0], b[0]);
+            lo[1] = fminf(lo[1], b[1]);
+            hi[0] = fmaxf(hi[0], b[0] + b[2]);
+            hi[1] = fmaxf(hi[1], b[1] + b[3]);
+        }
+    }
+    float x, y;
+    paste_point(s, &x, &y);
+    float dx = lo[0] <= hi[0] ? roundf(x - (lo[0] + hi[0]) / 2) : 0;
+    float dy = lo[1] <= hi[1] ? roundf(y - (lo[1] + hi[1]) / 2) : 0;
+    ed_clear_selection(e);
+    for (int i = first; i < acount(gr->nodes); i++) {
+        node *n = gr->nodes[i];
+        n->x += dx;
+        n->y += dy;
+        if (sg_node_visible(gr, n)) {
+            n->placed = true;
+            ed_add_selected(e, n);
+        }
+    }
+}
+
 void sg_paste(studio *s)
 {
     editor *e = sg_graph_editor(s);
@@ -176,18 +236,195 @@ void sg_paste(studio *s)
     if (text) {
         ed_snapshot_before(e);
         int first = acount(e->active_graph->nodes);
-        if (graph_append_json(e->active_graph, text, 24, 24) == 0) {
-            ed_clear_selection(e);
-            for (int i = first; i < acount(e->active_graph->nodes); i++) {
-                if (sg_node_visible(e->active_graph, e->active_graph->nodes[i])) {
-                    ed_add_selected(e, e->active_graph->nodes[i]);
-                }
-            }
+        if (graph_append_json(e->active_graph, text, 0, 0) == 0) {
+            place_pasted(s, first);
         }
     }
     if (clipboard) {
         cf_free(clipboard);
     }
+}
+
+/* ---------- Selection layout ---------- */
+
+/* Applies moved positions as one undo step; `before` is the asset as it was. */
+static void commit_moves(editor *e, char *before, bool moved)
+{
+    if (!moved) {
+        free(before);
+        return;
+    }
+    e->pending_snapshot = before;
+    ed_commit_snapshot(e);
+}
+
+static void move_node(node *n, float x, float y, bool *moved)
+{
+    *moved |= n->x != x || n->y != y;
+    n->x = x;
+    n->y = y;
+    n->placed = true;
+}
+
+/* The selected nodes that draw a box, with their boxes. */
+static align_box *selected_boxes(studio *s, node ***nodes)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    align_box *boxes = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        float b[4];
+        if (sg_node_visible(gr, e->selected[i]) && sg_node_box(s, e->selected[i], b)) {
+            apush(*nodes, e->selected[i]);
+            apush(boxes, ((align_box){ b[0], b[1], b[2], b[3] }));
+        }
+    }
+    return boxes;
+}
+
+/* Moves the nodes to their boxes as one undo step, and frees both. */
+static void apply_boxes(studio *s, node **nodes, align_box *boxes)
+{
+    editor *e = sg_graph_editor(s);
+    char *before = sg_graph_readonly(s) ? NULL : ed_snapshot(e);
+    bool moved = false;
+    for (int i = 0; before && i < acount(nodes); i++) {
+        move_node(nodes[i], roundf(boxes[i].x), roundf(boxes[i].y), &moved);
+    }
+    commit_moves(e, before, moved);
+    afree(nodes);
+    afree(boxes);
+}
+
+void sg_align(studio *s, align_edge edge)
+{
+    node **nodes = NULL;
+    align_box *boxes = selected_boxes(s, &nodes);
+    align_boxes(boxes, acount(boxes), edge);
+    apply_boxes(s, nodes, boxes);
+}
+
+void sg_distribute(studio *s, bool vertical)
+{
+    node **nodes = NULL;
+    align_box *boxes = selected_boxes(s, &nodes);
+    distribute_boxes(boxes, acount(boxes), vertical);
+    apply_boxes(s, nodes, boxes);
+}
+
+/* Moves one end of a drawn wire so the wire runs level. */
+static void level_wire(studio *s, const edge *ed, bool move_source, bool *moved)
+{
+    graph *gr = sg_active_graph(s);
+    node *from, *to;
+    int from_pin, to_pin;
+    if (!sg_edge_ends(gr, ed, &from, &from_pin, &to, &to_pin) ||
+        !sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
+        graph_edge_is_local(gr, ed)) {
+        return;
+    }
+    float ax, ay, bx, by;
+    sg_socket_at(s, from, ED_PIN_OUTPUT, from_pin, &ax, &ay);
+    sg_socket_at(s, to, ED_PIN_INPUT, to_pin, &bx, &by);
+    node *n = move_source ? from : to;
+    move_node(n, n->x, n->y + (move_source ? by - ay : ay - by), moved);
+}
+
+/* A node's leading wire: its first wired execution input, else its first
+   wired data input; a node without inputs leads with its first output. */
+static const edge *leading_wire(const graph *gr, const node *n, bool *source)
+{
+    const edge *data = NULL, *out = NULL;
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *ed = &gr->edges[i];
+        if (ed->to_id == n->id && ed->kind == GRAPH_EDGE_EXEC) {
+            *source = false;
+            return ed;
+        }
+        if (ed->to_id == n->id && !data && !graph_edge_is_local(gr, ed) &&
+            !graph_node_is_inline(gr, graph_node_by_id(gr, ed->from_id))) {
+            data = ed;
+        }
+        out = !out && ed->from_id == n->id ? ed : out;
+    }
+    *source = !data;
+    return data ? data : out;
+}
+
+static int by_x(const void *a, const void *b)
+{
+    const node *left = *(node *const *)a, *right = *(node *const *)b;
+    return (left->x > right->x) - (left->x < right->x);
+}
+
+void sg_straighten(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    if (sg_graph_readonly(s)) {
+        return;
+    }
+    char *before = ed_snapshot(e);
+    bool moved = false;
+    for (int i = 0; i < acount(e->selected_links); i++) {
+        int w = ed_edge_index(e, &e->selected_links[i]);
+        if (w >= 0) {
+            level_wire(s, &gr->edges[w], false, &moved);
+        }
+    }
+    node **order = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        apush(order, e->selected[i]);
+    }
+    if (acount(order) > 1) {
+        qsort(order, (size_t)acount(order), sizeof *order, by_x);
+    }
+    for (int i = 0; i < acount(order); i++) {
+        bool source = false;
+        const edge *ed = leading_wire(gr, order[i], &source);
+        if (ed) {
+            level_wire(s, ed, source, &moved);
+        }
+    }
+    afree(order);
+    commit_moves(e, before, moved);
+}
+
+void sg_straighten_wire(studio *s, int index)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    if (sg_graph_readonly(s) || index < 0 || index >= acount(gr->edges)) {
+        return;
+    }
+    char *before = ed_snapshot(e);
+    bool moved = false;
+    level_wire(s, &gr->edges[index], false, &moved);
+    commit_moves(e, before, moved);
+}
+
+bool sg_spawn_node(studio *s, const char *name, float x, float y)
+{
+    editor *e = sg_graph_editor(s);
+    const node_desc *desc = registry_node_by_name(name);
+    if (!desc || sg_graph_readonly(s)) {
+        return false;
+    }
+    char label[128];
+    editor_node_label(desc, label, sizeof label);
+    ed_search_match *found = ed_search_matches(e, label);
+    node *n = NULL;
+    for (int i = 0; i < acount(found) && !n; i++) {
+        if (found[i].desc == desc && !found[i].function && !found[i].variable) {
+            n = ed_spawn_match_at(e, &found[i], x, y);
+        }
+    }
+    afree(found);
+    if (n) {
+        n->placed = true;
+        sg_select_only(e, n);
+    }
+    return n != NULL;
 }
 
 /* ---------- Usage ----------
@@ -253,29 +490,142 @@ void sg_find_unused(studio *s)
     free(used);
 }
 
-/* ---------- Refactoring ---------- */
+/* ---------- Selection ---------- */
 
-/* Ctrl+G: the selection becomes a call to a new function whose interface is
-   the wires crossing its edge (Blender, Unreal). */
-void sg_collapse_to_function(studio *s)
+/* Grows the selection along its wires (Blender's L and Alt+L, Unreal's Select
+   All Input and Output Nodes); selection never enters history. */
+void sg_select_linked(studio *s, bool upstream, bool all)
 {
     editor *e = sg_graph_editor(s);
-    for (int i = 1;; i++) {
-        snprintf(e->extract_name, sizeof e->extract_name, i == 1 ? "New Function" : "New Function %d", i);
-        if (!behavior_asset_find_graph_by_name(e->asset, e->extract_name)) {
-            break;
+    node **linked = NULL;
+    graph_linked_nodes(sg_active_graph(s), e->selected, acount(e->selected), upstream, all, &linked);
+    for (int i = 0; i < acount(linked); i++) {
+        ed_add_selected(e, linked[i]);
+    }
+    afree(linked);
+}
+
+/* ---------- Refactoring ---------- */
+
+/* Takes a refactored copy of the behavior as one undo step. */
+static void adopt(editor *e, behavior_asset *result)
+{
+    char *json = behavior_asset_save_json(result);
+    behavior_asset_free(result);
+    assert(json);
+    ed_snapshot_before(e);
+    int adopted = ed_adopt_behavior_asset(e, json);
+    free(json);
+    assert(adopted == 0);
+    (void)adopted;
+}
+
+static void refused(studio *s, const char *title, const char *error)
+{
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_WARNING, .title = title, .description = error });
+}
+
+static const char *extract(editor *e, graph_kind kind, const char *name, behavior_asset **result, uint64_t *call)
+{
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
+        return "Systems have no functions or macros.";
+    }
+    graph *gr = e->active_graph;
+    int count = acount(e->selected);
+    return kind == GRAPH_MACRO
+             ? behavior_asset_extract_macro(e->asset, gr, e->selected, count, name, result, call)
+             : behavior_asset_extract_function(e->asset, gr, e->selected, count, name, result, call);
+}
+
+/* The selection becomes a call to a new function (Ctrl+G) or macro whose
+   interface is the wires crossing its edge (Blender, Unreal). */
+void sg_collapse(studio *s, graph_kind kind)
+{
+    editor *e = sg_graph_editor(s);
+    const char *base = kind == GRAPH_MACRO ? "New Macro" : "New Function";
+    char name[128];
+    snprintf(name, sizeof name, "%s", base);
+    for (int i = 2; behavior_asset_find_graph_by_name(e->asset, name); i++) {
+        snprintf(name, sizeof name, "%s %d", base, i);
+    }
+    behavior_asset *result = NULL;
+    uint64_t call = 0;
+    const char *error = extract(e, kind, name, &result, &call);
+    if (error) {
+        refused(s, "Can't collapse", error);
+        return;
+    }
+    adopt(e, result);
+    sg_select_only(e, graph_node_by_id(e->active_graph, call));
+}
+
+/* The library function a call names, or NULL for any other node. */
+static const graph *library_function(const editor *e, const node *n)
+{
+    for (int i = 0; n->reference_asset && i < acount(e->asset_catalog); i++) {
+        const behavior_asset *library = e->asset_catalog[i];
+        const graph *target = !strcmp(library->name, n->reference_asset)
+                                ? behavior_asset_find_graph(library, n->reference_id)
+                                : NULL;
+        if (target) {
+            return target->kind == GRAPH_FUNCTION ? target : NULL;
         }
     }
-    const char *error = ed_extract_selection(e);
-    if (error) {
-        kit_toast(
-            s->kit,
-            0,
-            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
-                               .title = "Can't collapse",
-                               .description = error }
-        );
+    return NULL;
+}
+
+bool sg_refreshable(const studio *s)
+{
+    const editor *e = sg_graph_editor(s);
+    for (int i = 0; i < acount(e->selected); i++) {
+        if (library_function(e, e->selected[i])) {
+            return true;
+        }
     }
+    return false;
+}
+
+/* Unreal's Refresh Nodes: the selection's library calls take their
+   functions' current signatures, as one undo step. */
+void sg_refresh_nodes(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    unsigned long long before = graph_topology_revision(gr);
+    const char *error = NULL;
+    e->pending_snapshot = ed_snapshot(e);
+    for (int i = 0; i < acount(e->selected) && !error; i++) {
+        const graph *target = library_function(e, e->selected[i]);
+        error = target ? graph_library_refresh_call(gr, e->selected[i], target) : NULL;
+    }
+    if (graph_topology_revision(gr) != before) {
+        ed_commit_snapshot(e);
+    } else {
+        ed_cancel_snapshot(e);
+    }
+    if (error) {
+        refused(s, "Can't refresh", error);
+    }
+}
+
+/* Unreal's Expand Node: the call becomes the body it calls, selected. */
+void sg_expand_node(studio *s, node *call)
+{
+    editor *e = sg_graph_editor(s);
+    behavior_asset *result = NULL;
+    uint64_t *ids = NULL;
+    const char *error = behavior_asset_expand_call(e->asset, e->active_graph, call, &result, &ids);
+    if (error) {
+        refused(s, "Can't expand", error);
+        return;
+    }
+    adopt(e, result);
+    ed_clear_selection(e);
+    for (int i = 0; i < acount(ids); i++) {
+        ed_add_selected(e, graph_node_by_id(e->active_graph, ids[i]));
+    }
+    afree(ids);
+    e->arrange_pending = true;
 }
 
 void sg_convert_to_expression(studio *s)
@@ -298,10 +648,42 @@ void sg_convert_to_expression(studio *s)
     afree(selection);
 }
 
+/* Folds reads into bindings and names values used three or more times. */
+void sg_optimize(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    if (ed_optimize_graph(e) < 0) {
+        return;
+    }
+    studio_report(s, e->optimize_summary);
+}
+
+/* Each tree of three or more math nodes becomes one expression. */
+void sg_collapse_math(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    ed_snapshot_before(e);
+    behavior_expression_error error;
+    int created = behavior_expression_collapse_math(e->asset, e->active_graph, 3, &error);
+    if (created < 0) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Can't convert",
+                               .description = error.message }
+        );
+        return;
+    }
+    char message[64];
+    snprintf(message, sizeof message, "%d expressions", created);
+    studio_report(s, message);
+    e->arrange_pending = created > 0;
+}
+
 /* ---------- Add node ---------- */
 
-/* How well a search result can take the dragged wire: 3 an exact socket type,
-   2 a socket reached by conversion, 1 only a wildcard, 0 nothing typed. */
+/* How well a search result can take the dragged wire (wire_fit). */
 static int link_fit(const editor *e, const ed_search_match *match)
 {
     const node_desc *desc = match->desc;
@@ -315,15 +697,8 @@ static int link_fit(const editor *e, const ed_search_match *match)
     const pin_spec *pins = from_output ? desc->inputs : desc->outputs;
     int count = from_output ? desc->input_count : desc->output_count, best = 0;
     for (int i = 0; i < count; i++) {
-        const pin_spec *pin = &pins[i];
-        if (pin->kind != source->kind || (pin->flags & PIN_FLAG_SETTING)) {
-            continue;
-        }
-        bool named = pin->type == PIN_STRUCT || pin->type == PIN_ENUM;
-        bool exact = pin->type == source->type &&
-                     (!named || (pin->type_name && source->type_name &&
-                                 !strcmp(pin->type_name, source->type_name)));
-        int fit = pin->flags & PIN_FLAG_WILDCARD ? 1 : exact ? 3 : 2;
+        int fit = from_output ? wire_fit(source, &pins[i])
+                              : wire_fit(&pins[i], source);
         best = fit > best ? fit : best;
     }
     return best;

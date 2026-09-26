@@ -1,5 +1,3 @@
-#include "graph/nodes/struct_nodes.h"
-
 #include "graph/model/registry.h"
 #include "graph/runtime/flow.h"
 
@@ -37,10 +35,11 @@ node_desc NODE_SetMembers = {
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Struct",
     .keywords = "struct set members split reference",
+    .description = "Writes the member inputs it shows into the struct Struct "
+                   "refers to.",
 };
 
-node_desc *const STRUCT_NODES[] = { &NODE_SetMembers };
-const int STRUCT_NODE_COUNT = sizeof STRUCT_NODES / sizeof STRUCT_NODES[0];
+static node_desc *const STRUCT_NODES[] = { &NODE_SetMembers };
 
 const registry_pack CORE_STRUCT_PACK = {
     .name = "core.struct",

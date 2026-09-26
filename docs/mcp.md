@@ -68,8 +68,10 @@ outputs); an `id` appears only where the sequence breaks. Edges, locals and
 event bindings name pins as `<node id>.<pin name>`, or
 `<node id>.<pin>.<field>` for an exposed struct field. Wildcard pins (math
 operators, reroutes, loops) omit the types their connections determine.
-Expression functions store their `math_expression` source; loading rebuilds
-their nodes. A call to a function in the same asset takes each pin's
+Expression functions store their `math_expression` source and `entry_id`;
+loading rebuilds their nodes, mode and return node, and names them after their
+source unless `name` says otherwise. An expression call's pins omit the groups
+and flags its function implies. A call to a function in the same asset takes each pin's
 `declaration_id` from the signature pin with its name. Enums are spelled by
 label. A node whose pin names repeat lists its pins with explicit IDs instead. `build/chibi_ctl --project-root <root> --format`
 rewrites every asset in canonical form, and `--check` lists assets that
@@ -121,7 +123,7 @@ saving them. Tool results include complete `structuredContent` and
 - `previewShader`: compile and render a material or shape graph.
 - `previewScene`: render a prototype or scene with its authored presentation.
 - `searchAssets`: find catalog entries by kind, name, path, or description.
-- `searchNodes`: find reflected nodes and typed pins for graph authoring.
+- `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
@@ -132,12 +134,12 @@ saving them. Tool results include complete `structuredContent` and
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
 - `getExecutionStatus`: report the backend selected for a behavior or system.
-- `runScenario`: run a bounded deterministic prototype or scene scenario.
+- `runScenario`: run a bounded deterministic prototype or scene scenario; `behavior_failures` lists runs that stopped on an error, by node and message.
 - `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, and timing.
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
-- `describeRegistry`: inspect reflected types, services, operators, and components; request `sections: ["nodes"]` for every node and pin.
+- `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
 
 ## Check adapter distribution
@@ -165,11 +167,18 @@ writes only its bounded generated recording artifact under `/tmp`, and
 recording or a safe generated recording path.
 
 For graph work, the agent should reason from node identity, pins, edges, calls,
-effects, and diagnostics. `inspectGraph` omits node coordinates, inline UI
-hints, comment-box positions, and wire routing by default. Pass
+effects, and diagnostics. Node comments (`comment`) are part of that record.
+`inspectGraph` omits node coordinates, inline UI hints, hidden comment
+bubbles, comment-box positions, and wire routing by default. Pass
 `include_layout: true` when those editor details are needed. Placement is
 presentation data; the graph arranger assigns coordinates after graph content
 changes, so an agent does not need to choose node positions by hand.
+
+Each inspected node also lists its pins as `in` and `out`, written as
+`searchNodes` writes them (`"A: double"`, `"Then: exec"`), with the types
+wildcard pins resolved to. The serialized node fields omit pins that match
+their template, so these lists are where to find pin names to connect. Pass
+`include_pins: false` to leave them out.
 
 `buildPrototype` applies the same boundary to prototype assets. Components are
 selected by reflected name or stable key, `add_component` uses native defaults,
@@ -193,6 +202,40 @@ an edit. Submit graph changes through `buildGraph`. The server
 assigns IDs, initializes typed pins, validates the resulting asset, and
 automatically arranges the affected graphs. The edit API has no node coordinates
 or layout controls.
+
+`searchNodes` without a query or filter lists the domain's node types by
+category. For behaviors it adds the host and project events and the component
+and struct names that Component and Type settings take. It costs about 1,300
+tokens, so read it once instead of guessing names.
+
+A query ranks entries whose name, keywords, pins or expression function start
+with every word:
+- Nodes, with the expression that writes them: `clamp` returns
+  `{"type": "Clamp", "expression": "clamp(Value, Min, Max)", ...}`.
+- Configured component nodes: `set health current` returns
+  `{"type": "Set Component", "inputs": {"Component": "GameHealth"}, "field":
+  "current", "in": ["Exec: exec", "Entity: ecs.entity = Self", "current: int"],
+  ...}`. Pass `type` and `inputs` to `add_node`, and name the `field` in
+  `inputs` or `connect`.
+- Events: `on hit` returns `{"type": "Event", "event_name": "Contact Begin",
+  "out": ["Then: exec", "Other: ecs.entity", "Point: CF_V2"]}`, and a project
+  event also returns its `Send Event` with `reference_name`.
+
+To extend a graph from a pin, pass its type as `wire_from` (an output you
+will wire from) or `wire_to` (an input you will wire into), written as pins
+read: `exec`, `float`, `GameHealth`, `array<int>`. Results keep nodes that can
+take the wire, ranked like a wire dropped in Studio (exact type, then a
+conversion, then a wildcard), and name the pin to connect as `wire_input` or
+`wire_output`: `{"query": "destroy", "wire_from": "ecs.entity"}` returns
+Destroy Entity with `"wire_input": "Entity"`.
+
+Every result carries a one-sentence `description` of what the node or event
+does, from the node's `description`, the host event table or the event asset.
+
+Pins read `name: type`. Behavior search offers component nodes instead of the
+generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
+`domain: "system"` for System graphs, which use the generated nodes directly and
+only the nodes that need no service beyond the ECS world.
 
 Graph metadata can be authored in the same request with `description`,
 `owner_type`, and `graph_description`. The response echoes the selected graph
@@ -227,6 +270,11 @@ serialized pin IDs.
 Graph batches also support `select_graph`, `rename_graph`, `remove_graph`,
 `remove_variable`, `set_pin`, `remove_pin`, `split_pin`, `recombine_pin`,
 `expose_fields`, `hide_fields`, `bind_input`, `clear_binding`, and `create_local`.
+`create_local` on an output that already has a local renames that local.
+`set_comment` gives a node a comment, drawn as a bubble above it like
+Unreal's node comments: `{"op":"set_comment","node":12,"comment":"Clamp before
+the dash"}`. An empty `comment` removes it, and `"hidden": true` shows the
+bubble only while the node is hovered; either field alone keeps the other.
 Select the owning graph before referring to one of its nodes. Graph selectors
 accept IDs, names, or aliases created in the same request. Function calls can
 resolve `reference_name` without a numeric graph ID.
@@ -235,7 +283,12 @@ Add a Behavior Expression with `add_node` and its `source` text, for example
 `{"op":"add_node","type":"Behavior Expression","source":"vec2(x, y)","ref":"motion"}`.
 Use `set_expression` with the node selector and new `source` to regenerate it;
 valid edits reconcile pins and disconnect incompatible wires, while invalid edits
-leave the previous generated graph in place. Bind an assignment's leftmost
+leave the previous generated graph in place. Inputs match by name, as in
+Unreal's Math Expression: a name that stays keeps its wire or binding, a name
+that disappears loses it (the result lists it under `unfed_inputs`), and a new
+name starts unfed unless it matches a graph local, which it then reads. To
+rename an input and keep its wire, use `set_pin` with the expression input and
+the new `name`; the source is rewritten to match. Bind an assignment's leftmost
 identifier pin with the normal `bind_input` operation; it does not need a special
 name.
 
@@ -314,8 +367,7 @@ that consumes the library to see its effect.
 Requests are bounded: node search returns at most 50 entries, edit batches
 contain at most 128 operations, scene edits contain at most 128 operations and
 64 behavior attachments per entity. Shader previews are at most 512 by
-512; scene previews accept 64–1024 pixels per side. `searchNodes` can filter by pin type, container, pin kind, and purity;
-its text query also searches pin names and type names.
+512; scene previews accept 64–1024 pixels per side. `searchNodes` can filter by pin type, container, pin kind, and purity.
 Preview time is explicit and deterministic. Pass `parameters` as an object
 keyed by `Shader Parameter` names to try scalar values or exact-width vector
 arrays without editing the asset. Unknown names, nonfinite values, and wrong
@@ -327,7 +379,9 @@ preview framing. Use `sample_grid` to request up to a 16 by 16 CPU evaluation
 grid over `uv_min` and `uv_max`; each sample returns the UV coordinate and all
 shader output vectors, with local positions mapped from that UV rectangle.
 This separates graph behavior from production geometry or camera framing
-assumptions.
+assumptions. Materials read `beat_phase`, `beat_pulse`, and `influence` (linear
+RGB at the preview center, fading out at radius 50) in both the image and the
+samples, so scene-driven looks can be checked without a running scene.
 
 `optimizeGraph` uses the same optimizer as the editor's Graph Actions menu.
 Start with `dry_run: true`: it reports before and after node and edge counts,
@@ -335,7 +389,10 @@ folded inputs, removed nodes, local aliases, changed edges, and each skipped
 opportunity. Safe folds include component getters, variable reads, `DeltaTime`,
 `Self`, and constants when their source, consumer, conversion, fan-out, and
 debug state are unambiguous. The native controller validates the optimized
-clone before an apply request publishes it with `expected_hash`.
+clone before an apply request publishes it with `expected_hash`. With
+`math_expressions: true` it first turns math trees into expressions; the result
+lists each new expression's source under `expressions` and the graph's local
+names under `locals`, so a dry run shows the formulas to review before applying.
 
 The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 `2025-11-25`, keeps notifications response-free, and advertises the dynamic

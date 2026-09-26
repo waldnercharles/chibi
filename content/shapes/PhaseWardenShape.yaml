@@ -3,7 +3,7 @@ name: PhaseWardenShape
 domain: shape
 bounds_x: 20.0
 bounds_y: 20.0
-id_counter: 23
+id_counter: 78
 graphs:
 - kind: event
   name: ""
@@ -12,22 +12,24 @@ graphs:
   - {id: 3, type: Shader UV}
   - id: 5
     type: Shader Circle
-    inputs: {Radius: 0.4399999976158142}
+    inputs: {Radius: 0.44}
   - id: 9
     type: Shader Circle
-    inputs: {Radius: 0.2800000011920929}
+    inputs: {Radius: 0.28}
   - {id: 13, type: Shader Difference}
-  - id: 17
-    type: Shader Mapping
+  - id: 36
+    type: Behavior Expression
+    reference_id: 23
+    reference_name: uv - 0.5
     inputs:
-      Offset:
-        default: {x: -0.5, "y": -0.5}
-      Scale:
-        default: {x: 1.0, "y": 1.0}
+      uv: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
   edges:
-  - {from: 3.Position, to: 17.Position}
+  - {from: 3.UV, to: 36.uv}
   - {from: 5.Value, to: 13.A}
   - {from: 9.Value, to: 13.B}
   - {from: 13.Value, to: 1.Distance}
-  - {from: 17.Value, to: 5.Position}
-  - {from: 17.Value, to: 9.Position}
+  - {from: 36.Result, to: 5.Position}
+  - {from: 36.Result, to: 9.Position}
+- {id: 23, kind: function, math_expression: uv - 0.5, entry_id: 66}

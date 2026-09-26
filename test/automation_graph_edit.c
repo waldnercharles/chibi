@@ -222,6 +222,38 @@ void test_automation_graph_edit(void)
     free(edited);
 
     edited = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"value\",\"type\":"
+        "\"Integer\",\"inputs\":{\"Value\":7}},"
+        "{\"op\":\"add_node\",\"ref\":\"first\",\"type\":\"Add\"},"
+        "{\"op\":\"add_node\",\"ref\":\"second\",\"type\":\"Add\"},"
+        "{\"op\":\"connect\",\"from\":\"value\",\"from_pin\":\"Value\","
+        "\"to\":\"first\",\"to_pin\":\"A\"},"
+        "{\"op\":\"create_local\",\"node\":\"value\",\"pin\":\"Value\","
+        "\"name\":\"Seven\"},"
+        "{\"op\":\"connect\",\"from\":\"value\",\"from_pin\":\"Value\","
+        "\"to\":\"second\",\"to_pin\":\"A\"}]}",
+        &edited,
+        NULL
+    );
+    behavior_asset *named = edited ? behavior_asset_load_json(edited) : NULL;
+    int reads = 0;
+    for (int i = 0; named && i < acount(named->graph->nodes); i++) {
+        const pin_binding *b = named->graph->nodes[i]->input_count
+                                 ? named->graph->nodes[i]->input_pins[0].binding
+                                 : NULL;
+        reads += b && b->kind == PIN_BINDING_LOCAL;
+    }
+    test_check(status == CHIBI_AUTOMATION_OK && reads == 2, "MCP connections from a named output read it by name");
+    behavior_asset_free(named);
+    free(edited);
+
+    edited = NULL;
     response = NULL;
     status = edit_request(
         source,
@@ -311,6 +343,51 @@ void test_automation_graph_edit(void)
                            arranged_first->y != arranged_second->y);
     test_check(layout_enabled, "MCP graph edits arrange authored nodes by default");
     behavior_asset_free(arranged_asset);
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"note\",\"type\":"
+        "\"Integer\"},"
+        "{\"op\":\"set_comment\",\"node\":\"note\",\"comment\":\"Starting "
+        "health\"},"
+        "{\"op\":\"set_comment\",\"node\":\"note\",\"hidden\":true}]}",
+        &edited,
+        &response
+    );
+    behavior_asset *commented = edited ? behavior_asset_load_json(edited) : NULL;
+    node *note = commented ? find_node_type(commented->graph, "Integer") : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && note && note->comment &&
+            !strcmp(note->comment, "Starting health") && note->comment_hidden,
+        "MCP set_comment writes a node comment and hides it separately"
+    );
+    behavior_asset_free(commented);
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"note\",\"type\":"
+        "\"Integer\"},"
+        "{\"op\":\"set_comment\",\"node\":\"note\"}]}",
+        &edited,
+        &response
+    );
+    test_check(status != CHIBI_AUTOMATION_OK && !edited, "MCP set_comment needs a comment or hidden");
     yyjson_mut_doc_free(response);
     free(edited);
 

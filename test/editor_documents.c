@@ -68,8 +68,6 @@ static void nested_callers_survive_document_visits()
     assert(editor_visit_behavior_asset(e, source, inner_id, "Callers") == 0);
     assert(editor_active_graph(e)->graph_id == inner_id);
     assert(editor_graph_history_count(e) == 2);
-    assert(editor_graph_history_id(e, 0) == root_id);
-    assert(editor_graph_history_id(e, 1) == outer_id);
     assert(acount(e->selected) == 1 && e->selected[0]->id == value_id);
     assert(editor_graph_back(e) == 0);
     assert(editor_active_graph(e)->graph_id == outer_id);

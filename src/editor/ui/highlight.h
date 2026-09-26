@@ -42,6 +42,5 @@ int highlight_runs(highlight_language language, const char *text, int length, hi
  * run. Returns the length written, cut to fit size between whole characters,
  * so every tag and entity stays whole. */
 size_t highlight_markup(highlight_language language, const char *text, char *out, size_t size);
-const char *highlight_class(highlight_token token);
 
 #endif

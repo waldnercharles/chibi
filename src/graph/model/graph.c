@@ -238,6 +238,33 @@ int pin_types_compatible(const pin_spec *a, const pin_spec *b)
     return pin_compatible(a, b);
 }
 
+/* Retypes one wildcard pin, keeping its default as authored data where the
+ * type holds. */
+static void graph_wildcard_resolve_pin(graph *g, pin_spec *p, pin_type type, const char *type_name)
+{
+    char *copy = type_name ? graph_own_str(g, type_name, strlen(type_name)) : NULL;
+    /* Only aggregates, enums and handles are named types: a float spelled
+     * "float" is the same float as an unnamed one. */
+    bool named = type == PIN_STRUCT || type == PIN_ENUM || type == PIN_HANDLE;
+    bool changed_type = p->type != type || (named && (p->type_name || type_name) &&
+                                            (!p->type_name || !type_name ||
+                                             strcmp(p->type_name, type_name)));
+    /* A wildcard's default is still authored data. Keep it intact while a
+     * wire temporarily supplies the resolved type when the input also
+     * carries a dormant binding. Unbound wildcards retain the original retype
+     * behavior used by shader graph inputs. */
+    if (!p->binding || p->default_value.type != PIN_FLOW) {
+        if (changed_type) {
+            p->default_value = (pin_value){ 0 };
+        }
+        p->default_value.type = type;
+        p->default_value.container = p->container;
+        p->default_value.type_name = copy;
+    }
+    p->type = type;
+    p->type_name = copy;
+}
+
 static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type type, const char *type_name)
 {
     if (group == 0) {
@@ -247,37 +274,9 @@ static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type 
         pin_spec *pins = output ? n->output_pins : n->input_pins;
         int count = output ? n->output_count : n->input_count;
         for (int i = 0; i < count; i++) {
-            pin_spec *p = &pins[i];
-            if (!(p->flags & PIN_FLAG_WILDCARD) || p->group != group) {
-                continue;
+            if ((pins[i].flags & PIN_FLAG_WILDCARD) && pins[i].group == group) {
+                graph_wildcard_resolve_pin(g, &pins[i], type, type_name);
             }
-            char *copy = type_name ? graph_own_str(g, type_name, strlen(type_name))
-                                   : NULL;
-            /* A wildcard's default is still authored data. Keep it intact
-             * while a wire temporarily supplies the resolved type when the
-             * input also carries a dormant binding. Unbound wildcards retain
-             * the original retype behavior used by shader graph inputs. */
-            bool changed_type = p->type != type ||
-                                ((p->type_name || type_name) &&
-                                 (!p->type_name || !type_name ||
-                                  strcmp(p->type_name, type_name)));
-            if (!p->binding) {
-                if (changed_type) {
-                    p->default_value = (pin_value){ 0 };
-                }
-                p->default_value.type = type;
-                p->default_value.container = p->container;
-                p->default_value.type_name = copy;
-            } else if (p->default_value.type != PIN_FLOW) {
-                if (changed_type) {
-                    p->default_value = (pin_value){ 0 };
-                }
-                p->default_value.type = type;
-                p->default_value.container = p->container;
-                p->default_value.type_name = copy;
-            }
-            p->type = type;
-            p->type_name = copy;
         }
     }
 }
@@ -382,9 +381,13 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
             return -1;
         }
         pin_spec *p = &to->input_pins[to_pin];
+        p->container = value->container;
+        /* An ungrouped wildcard resolves alone. */
+        if (!p->group) {
+            graph_wildcard_resolve_pin(g, p, value->type, owned);
+        }
         p->type = value->type;
         p->type_name = owned;
-        p->container = value->container;
         graph_wildcard_resolve_group(g, to, p->group, value->type, value->type_name);
         in = &to->input_pins[to_pin];
     }
@@ -454,17 +457,6 @@ static void graph_wildcard_untouch(graph *g, uint64_t to_node_id, uint64_t to_pi
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin)
 {
     return graph_connect_data(g, from, from_pin, to, to_pin);
-}
-
-int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint64_t to_node, uint64_t to_pin)
-{
-    node *from = graph_node_by_id(g, from_node), *to = graph_node_by_id(g, to_node);
-    int fp = -1, tp = -1, out = 0, in = 0;
-    if (!graph_pin_by_id(from, from_pin, &out, &fp) ||
-        !graph_pin_by_id(to, to_pin, &in, &tp) || !out || in) {
-        return -1;
-    }
-    return graph_connect_data(g, from, fp, to, tp);
 }
 
 int graph_connect_exec_ids(
@@ -855,7 +847,8 @@ static const edge *inline_edge(const graph *g, const node *n)
     return outgoing;
 }
 
-static bool debug_state(const node *n)
+/* Watches, breakpoints and comments draw on the node's own box. */
+static bool annotated(const node *n)
 {
     for (int output = 0; output < 2; output++) {
         const pin_spec *pins = output ? n->output_pins : n->input_pins;
@@ -865,7 +858,7 @@ static bool debug_state(const node *n)
             }
         }
     }
-    return n->breakpoint;
+    return n->breakpoint || n->comment;
 }
 
 /* Nodes in the inline tree rooted at n, or 0 when n draws its own box.
@@ -879,7 +872,7 @@ static int inline_size(const graph *g, const node *n, const node *forced, int re
         return 0;
     }
     bool automatic = presentation == NODE_PRESENTATION_AUTO;
-    if (automatic && (g->math_expression || debug_state(n))) {
+    if (automatic && (g->math_expression || annotated(n))) {
         return 0;
     }
     int size = 1;
@@ -1110,40 +1103,6 @@ int graph_exec_input_count(const graph *g, const node *n, int pin)
         }
     }
     return count;
-}
-
-int graph_exec_input_source_at(
-    const graph *g,
-    const node *n,
-    int pin,
-    int ordinal,
-    node **src,
-    int *src_pin,
-    int *order
-)
-{
-    if (!g || !n || !src || !src_pin || !order || ordinal < 0 || pin < 0 ||
-        pin >= n->input_count || n->input_pins[pin].kind != PIN_EXEC) {
-        return 0;
-    }
-    int at = 0;
-    for (int i = 0; i < acount(g->edges); i++) {
-        edge *e = &g->edges[i];
-        if (e->kind != GRAPH_EDGE_EXEC || e->to_id != n->id ||
-            e->to_pin_id != n->input_pins[pin].id) {
-            continue;
-        }
-        if (at++ != ordinal) {
-            continue;
-        }
-        *src = edge_from_node(g, e, src_pin);
-        if (!*src) {
-            return 0;
-        }
-        *order = e->exec_order;
-        return 1;
-    }
-    return 0;
 }
 
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin)
@@ -1555,6 +1514,18 @@ int graph_set_breakpoint(graph *g, node *n, int enabled)
     return 0;
 }
 
+int graph_set_node_comment(graph *g, node *n, const char *comment, bool hidden)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
+        return -1;
+    }
+    bool empty = !comment || !comment[0];
+    n->comment = empty ? NULL : graph_own_str(g, comment, strlen(comment));
+    n->comment_hidden = !empty && hidden;
+    graph_changed(g);
+    return 0;
+}
+
 int graph_set_all_breakpoints(graph *g, int enabled)
 {
     if (!graph_mutation_allowed(g)) {
@@ -1596,7 +1567,6 @@ graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, f
         .width = width,
         .height = height,
         .title = graph_own_str(g, title, strlen(title)),
-        .color = 0xff808080u,
     };
     apush(g->comment_boxes, box);
     graph_changed(g);
@@ -2114,4 +2084,20 @@ char *graph_own_str(graph *g, const char *s, size_t len)
     copy[len] = '\0';
     apush(g->strings, copy);
     return copy;
+}
+
+const char *graph_node_name_literal(const graph *g, const node *n)
+{
+    for (int i = 0; i < n->input_count; i++) {
+        const pin_spec *p = &n->input_pins[i];
+        node *source = NULL;
+        int pin = -1;
+        if (p->name && !strcmp(p->name, "Name") &&
+            (p->type == PIN_STR || p->type == PIN_NAME) &&
+            p->default_value.str && p->default_value.str[0] && !p->binding &&
+            !graph_input_source(g, n, i, &source, &pin)) {
+            return p->default_value.str;
+        }
+    }
+    return NULL;
 }

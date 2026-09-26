@@ -54,14 +54,6 @@ static const flow_traversal *latest_flow_record(const editor *e, const edge *ed)
     return latest;
 }
 
-static bool execution_pulse_active(const editor *e)
-{
-    /* Whole-graph feedback is only for hosts without an execution trace. */
-    return !ed_inspection_blocked(e) && !e->inspection_instance &&
-           !ed_display_run(e) && e->execution_pulse_active && e->active_graph &&
-           e->execution_pulse_graph_id == e->active_graph->graph_id;
-}
-
 void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_activity *out)
 {
     assert(e && edge && out);
@@ -70,9 +62,8 @@ void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_a
         .traversed = record != NULL,
         .timestamp = record ? record->timestamp : 0,
     };
-    if (edge->kind != GRAPH_EDGE_EXEC || (!record && !execution_pulse_active(e))) {
+    if (edge->kind != GRAPH_EDGE_EXEC || !record) {
         return;
     }
-    double started = record ? record->timestamp : e->execution_pulse_time;
-    out->opacity = (float)flow_visual_heat(fmax(0.0, e->monotonic_time - started));
+    out->opacity = (float)flow_visual_heat(fmax(0.0, e->monotonic_time - record->timestamp));
 }

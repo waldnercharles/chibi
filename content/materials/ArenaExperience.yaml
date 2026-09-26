@@ -16,7 +16,7 @@ graphs:
         default: {x: 1.0, "y": 1.0, z: 1.0}
       Emission:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-      Roughness: 0.10000000149011612
+      Roughness: 0.1
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Unlit: true
@@ -32,7 +32,7 @@ graphs:
         type_name: ShaderVec3
         flags: 64
         group: 0
-        default: {x: 0.9374018907546997, "y": 1.0, z: 0.028911888599395752}
+        default: {x: 0.9374019, "y": 1.0, z: 0.028911889}
   - id: 11
     type: Shader Parameter
     reference_id: 1
@@ -57,7 +57,7 @@ graphs:
         type_name: ShaderVec3
         flags: 0
         group: 0
-        default: {x: 0.6499999761581421, "y": 1.0, z: 0.15000000596046448}
+        default: {x: 0.65, "y": 1.0, z: 0.15}
   edges:
   - {from: 9.Value, to: 1.Base Color}
   - {from: 9.Value, to: 13.A}

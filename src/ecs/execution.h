@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 /* Read-only storage metadata. Rows may be written under the node's declared
- * access contract. The world owns these arrays and refreshes them on schema
- * changes and entity growth. Retain column or row pointers only within spans
+ * access contract. The world owns these arrays and refreshes them on component
+ * registration and entity growth. Retain column or row pointers only within spans
  * proven to preserve storage, then reacquire them before the next span. */
 typedef struct ecs_execution_column
 {

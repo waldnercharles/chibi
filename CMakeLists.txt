@@ -88,7 +88,7 @@ if(NOT cute_framework_POPULATED)
     endif()
 endif()
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
+foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -106,6 +106,27 @@ endif()
 # WebGL has no base-vertex draw support; 32-bit indices keep large ImGui draw lists drawable.
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
+# Cute bundles yyjson 0.7 under the names of third_party/yyjson (0.12). A
+# static link can then pair 0.12 headers with 0.7 functions, which ignore
+# per-value flags such as shortest float output. Cute keeps its copy under
+# its own prefix.
+set(CUTE_YYJSON_SYMBOLS
+    unsafe_yyjson_equals unsafe_yyjson_mut_equals unsafe_yyjson_mut_ptr_getx
+    unsafe_yyjson_mut_ptr_putx unsafe_yyjson_mut_ptr_removex
+    unsafe_yyjson_mut_ptr_replacex unsafe_yyjson_ptr_getx unsafe_yyjson_str_pool_grow
+    unsafe_yyjson_val_pool_grow yyjson_alc_pool_init yyjson_doc_mut_copy
+    yyjson_merge_patch yyjson_mut_doc_free yyjson_mut_doc_imut_copy
+    yyjson_mut_doc_mut_copy yyjson_mut_doc_new yyjson_mut_doc_set_str_pool_size
+    yyjson_mut_doc_set_val_pool_size yyjson_mut_merge_patch yyjson_mut_patch
+    yyjson_mut_val_imut_copy yyjson_mut_val_mut_copy yyjson_mut_val_write_file
+    yyjson_mut_val_write_fp yyjson_mut_val_write_opts yyjson_mut_write_file
+    yyjson_mut_write_fp yyjson_mut_write_opts yyjson_patch yyjson_read_file
+    yyjson_read_fp yyjson_read_number yyjson_read_opts yyjson_val_mut_copy
+    yyjson_val_write_file yyjson_val_write_fp yyjson_val_write_opts yyjson_version
+    yyjson_write_file yyjson_write_fp yyjson_write_opts)
+foreach(symbol IN LISTS CUTE_YYJSON_SYMBOLS)
+    target_compile_definitions(cute PRIVATE ${symbol}=cf_${symbol})
+endforeach()
 # --- SLJIT backend ----------------------------------------------------------
 option(CHIBI_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -426,7 +447,7 @@ target_link_libraries(automation PUBLIC runtime_support core authoring_graph edi
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/gpu_timing.c
-    src/render/geometry_2d.c src/render/light_field_2d.c
+    src/render/geometry_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c
@@ -451,7 +472,7 @@ include(cmake/rmlui.cmake)
 add_library(editor STATIC ${EDITOR_SOURCES})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
-# Studio opens this tree's projects (project.json and projects/*) and runs
+# Studio opens this tree's projects (project.yaml and projects/*) and runs
 # projects/studio as its own UI. The browser mirrors the tree at its root.
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_compile_definitions(editor PRIVATE CHIBI_WORKSPACE_DIR="")
@@ -558,6 +579,7 @@ set(CHIBI_ASSET_ROOTS
     ${CMAKE_SOURCE_DIR}/projects/arena2d
     ${CMAKE_SOURCE_DIR}/projects/SpaceCadet
     ${CMAKE_SOURCE_DIR}/projects/hrc_lab
+    ${CMAKE_SOURCE_DIR}/projects/studio
     ${CMAKE_SOURCE_DIR}/test/fixtures)
 set(CHIBI_ASSET_CHECKS)
 foreach(asset_root ${CHIBI_ASSET_ROOTS})
@@ -601,20 +623,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(chibi PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/project.yaml"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
     target_link_options(chibi PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "-lidbfs.js"
         "-sEXPORTED_RUNTIME_METHODS=['FS']"
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
+        # Each sample is a self-contained project folder.
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.yaml@projects/arena3d/project.yaml"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@projects/arena3d/content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/studio@projects/studio"
@@ -631,7 +657,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/automation_asset_write.c test/automation_graph_edit.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
+    test/automation_asset_write.c test/automation_graph_edit.c test/automation_search.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
     test/arena_input.c
     test/physics.c
@@ -722,10 +748,6 @@ add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
 target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_activation PRIVATE core)
 
-add_executable(scene_benchmark test/scene_benchmark.c ${BASE_REGISTRY})
-target_include_directories(scene_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(scene_benchmark PRIVATE runtime_support)
-
 add_executable(system_benchmark test/system_benchmark.c ${APP_REGISTRY})
 target_include_directories(system_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(system_benchmark PRIVATE runtime_support ecs)
@@ -815,7 +837,7 @@ endif()
 # active when measuring optimized runtime libraries, which retain their normal
 # Release flags. Otherwise a Release review silently skips the workload.
 foreach(driver test_suite test_reload test_dev concurrent_runner bench_activation
-               scene_benchmark system_benchmark query_benchmark contact_benchmark)
+               system_benchmark query_benchmark contact_benchmark)
     if(TARGET ${driver})
         target_compile_options(${driver} PRIVATE -UNDEBUG)
     endif()

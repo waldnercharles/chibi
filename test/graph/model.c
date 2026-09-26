@@ -417,7 +417,6 @@ void run_graph_model_checks()
     );
     test_check(registry_node_count() > 0, "the parity surface is a classified registry, not a fixed count claim");
     test_check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "the complete primitive pin set is distinct");
-    test_check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "operator resolution has no implicit C fallback");
 
     {
         graph defaults;
@@ -604,17 +603,6 @@ void run_graph_model_checks()
             free(id_loaded);
         }
         free(id_json);
-        test_check(
-            graph_connect_data_ids(
-                &ids,
-                p1->id,
-                p1->output_pins[0].id,
-                p2->id,
-                p2->input_pins[0].id
-            ) != 0 ||
-                acount(ids.edges) == 1,
-            "cross-entity APIs address endpoints by IDs"
-        );
         graph_free(&ids);
     }
 

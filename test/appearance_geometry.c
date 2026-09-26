@@ -121,39 +121,19 @@ static void rotated_geometry()
     assert(game_appearance_rotated_bounds(&appearance, quarter_turn, &min, &max));
     assert(fabsf(min.x + 9.5f) < 0.0001f && fabsf(min.y + 4.5f) < 0.0001f);
     assert(fabsf(max.x - 9.5f) < 0.0001f && fabsf(max.y - 16.5f) < 0.0001f);
-    assert(game_appearance_contains_rotated(&appearance, quarter_turn, (CF_V2){ 0, 16 }));
-    assert(game_appearance_contains_rotated(&appearance, quarter_turn, (CF_V2){ 0 }));
-    assert(!game_appearance_contains_rotated(&appearance, quarter_turn, (CF_V2){ 0, 4 }));
-    assert(!game_appearance_contains_rotated(&appearance, quarter_turn, (CF_V2){ 16, 0 }));
     CF_V2 rotated;
     assert(game_appearance_rotate_point((CF_V2){ 16, 0 }, quarter_turn, &rotated));
     assert(fabsf(rotated.x) < 0.0001f && fabsf(rotated.y - 16) < 0.0001f);
-    const CF_V2 local[] = { { 6, 4.5f }, { 4, 0 }, { -4, -9 }, { 0 }, { 20, 20 } };
-    for (int i = 0; i < 5; i++) {
-        assert(game_appearance_rotate_point(local[i], diagonal, &rotated));
-        assert(
-            game_appearance_contains_rotated(&appearance, diagonal, rotated) ==
-            game_appearance_contains(&appearance, local[i])
-        );
-    }
     appearance = (GameAppearance){ .width = 18, .height = 6, .shape = GAME_SHAPE_CAPSULE };
     assert(game_appearance_rotated_bounds(&appearance, diagonal, &min, &max));
     float extent = 6 / sqrtf(2) + 3;
     assert(fabsf(min.x + extent) < 0.0001f && fabsf(min.y + extent) < 0.0001f);
     assert(fabsf(max.x - extent) < 0.0001f && fabsf(max.y - extent) < 0.0001f);
-    assert(game_appearance_rotate_point((CF_V2){ 8.99f, 0 }, diagonal, &rotated));
-    assert(game_appearance_contains_rotated(&appearance, diagonal, rotated));
-    assert(game_appearance_rotate_point((CF_V2){ -8.99f, 0 }, diagonal, &rotated));
-    assert(game_appearance_contains_rotated(&appearance, diagonal, rotated));
-    assert(!game_appearance_contains_rotated(&appearance, diagonal, (CF_V2){ 7, 7 }));
-    assert(game_appearance_rotate_point((CF_V2){ 9.01f, 0 }, diagonal, &rotated));
-    assert(!game_appearance_contains_rotated(&appearance, diagonal, rotated));
 
     min = (CF_V2){ 11, 12 };
     max = (CF_V2){ 13, 14 };
     assert(!game_appearance_rotated_bounds(&appearance, NAN, &min, &max));
     assert(min.x == 11 && min.y == 12 && max.x == 13 && max.y == 14);
-    assert(!game_appearance_contains_rotated(&appearance, INFINITY, (CF_V2){ 0 }));
     rotated = (CF_V2){ 15, 16 };
     assert(!game_appearance_rotate_point((CF_V2){ 1, 2 }, NAN, &rotated));
     assert(rotated.x == 15 && rotated.y == 16);

@@ -27,16 +27,16 @@ void ed_compile(editor *e)
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     char message[256];
-    behavior_asset *linked = behavior_asset_link_libraries(
+    behavior_asset_free(e->compiled);
+    e->compiled = behavior_asset_link_libraries(
         e->asset,
         e->asset_catalog,
         acount(e->asset_catalog),
         message,
         sizeof message
     );
-    if (linked) {
-        behavior_asset_compile(linked, &e->compile);
-        behavior_asset_free(linked);
+    if (e->compiled) {
+        behavior_asset_compile(e->compiled, &e->compile);
     } else {
         compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
                                           .rule = CMPL_RULE_MISSING_REFERENCE };
@@ -180,16 +180,6 @@ void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry 
     }
     e->inspection_trace = trace;
     e->inspection_trace_count = count > 0 ? count : 0;
-}
-
-void editor_set_execution_pulse(editor *e, double monotonic_time)
-{
-    if (!e || !e->active_graph) {
-        return;
-    }
-    e->execution_pulse_time = monotonic_time;
-    e->execution_pulse_graph_id = e->active_graph->graph_id;
-    e->execution_pulse_active = 1;
 }
 
 int editor_log_count(const editor *e)

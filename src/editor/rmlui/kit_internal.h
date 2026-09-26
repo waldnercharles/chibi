@@ -111,6 +111,7 @@ typedef struct widget
     bool pressing;
     bool suppress_click;
     bool focused;
+    bool area; /* a text field over several lines */
     double value;
     double start;
     double pending_value;
@@ -419,7 +420,6 @@ rml_element *raw_icon(rml_element *parent, const char *cls, uint32_t cp);
  * own, never their elements. */
 void node_free(node *n);
 void unmap(kit *k, node *n);
-void prune(kit *k, node *n);
 node *emit_in(kit *k, node *parent, const char *key, node_kind kind, const char *tag, const char *cls);
 node *emit(kit *k, const char *key, node_kind kind, const char *tag, const char *cls);
 void push_node(kit *k, node *n);
@@ -445,7 +445,6 @@ unsigned event_modifiers(const rml_event *e);
 void spring_step(spring *s, spring_params p, double dt);
 /* Motion's parameters for a visual duration and bounce. */
 spring_params spring_for(double visual_duration, double bounce);
-bool spring_resting(spring s);
 /* Takes the node: removes its element now, or keeps a presence node until its
  * exit transitions end. */
 void retire(kit *k, node *n);
@@ -492,7 +491,7 @@ void number_blur(kit *k, node *n, rml_element *target);
 void control_press(kit *k, node *n, const rml_event *e);
 void control_click(kit *k, node *n, rml_element *target);
 void control_drag(kit *k, node *n, const rml_event *e);
-void control_key(node *n, const rml_event *e);
+void control_key(kit *k, node *n, const rml_event *e);
 void control_change(node *n, rml_element *target);
 void control_focus(node *n, rml_element *target);
 void control_blur(node *n, rml_element *target);

@@ -1,6 +1,5 @@
 """Local workspace saves must survive reload without escaping project content."""
 import importlib.util
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -19,7 +18,7 @@ class WorkspaceSaves(unittest.TestCase):
         self.project = self.workspace / 'projects/bloom'
         self.content = self.project / 'content'
         self.content.mkdir(parents=True)
-        (self.project / 'project.json').write_text(json.dumps({'version': 1, 'content': 'content'}))
+        (self.project / 'project.yaml').write_text('version: 1\ncontent: content\n')
 
     def save(self, path, text='name: Bloom\n'):
         server.save_asset(self.workspace, {'path': path, 'text': text})
@@ -31,7 +30,7 @@ class WorkspaceSaves(unittest.TestCase):
         self.save('projects/bloom/content/scenes/Bloom.yaml', 'name: Revised\n')
         self.assertEqual(path.read_text(), 'name: Revised\n')
         self.assertEqual(server.workspace_assets(self.workspace), {
-            'projects/bloom/project.json': (self.project / 'project.json').read_text(),
+            'projects/bloom/project.yaml': (self.project / 'project.yaml').read_text(),
             'projects/bloom/content/scenes/Bloom.yaml': 'name: Revised\n',
         })
 

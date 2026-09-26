@@ -40,7 +40,7 @@ typedef struct graph_comment_box
     float width;
     float height;
     char *title;
-    uint32_t color;
+    uint32_t color; /* 0xRRGGBBAA; 0 takes the canvas's comment color */
 } graph_comment_box;
 
 #define GRAPH_EDGE_MAX_REROUTES 16
@@ -125,7 +125,6 @@ int graph_connect_data_conversion(
 );
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin);
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order);
-int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint64_t to_node, uint64_t to_pin);
 int graph_connect_exec_ids(
     graph *g,
     uint64_t from_node,
@@ -164,7 +163,8 @@ int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_bi
  * chosen Component, has exactly one outgoing edge (a data wire), and each
  * input is wired from an inline node or holds a value. The `auto`
  * presentation also requires a tree of at most GRAPH_INLINE_AUTO_NODES nodes
- * without breakpoints or watches, outside generated expression graphs. */
+ * without breakpoints, watches or comments, outside generated expression
+ * graphs. */
 #define GRAPH_INLINE_AUTO_NODES 3
 bool graph_node_is_inline(const graph *g, const node *n);
 /* Whether n would be inline with the `inline` presentation. */
@@ -176,15 +176,6 @@ node *graph_inline_owner(const graph *g, node *n);
 int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
-int graph_exec_input_source_at(
-    const graph *g,
-    const node *n,
-    int pin,
-    int ordinal,
-    node **src,
-    int *src_pin,
-    int *order
-);
 int graph_exec_input_count(const graph *g, const node *n, int pin);
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
 /* Counts all edges, including invalid fan-out; first is borrowed until mutation. */
@@ -193,6 +184,9 @@ int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node
 
 node *graph_node_by_id(const graph *g, uint64_t id);
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index);
+/* The literal a node names what it reads by, such as a Field Parameter's or
+   Get Global Variable's Name input (Radius, Score); NULL when it has none. */
+const char *graph_node_name_literal(const graph *g, const node *n);
 void graph_reindex(graph *g); /* rebuild id_table from g->nodes */
 uint64_t graph_alloc_id(graph *g);
 /* Copies the value and owns its strings, arrays and registered struct data. */
@@ -210,6 +204,8 @@ int graph_presentation_by_name(const char *name);
 /* Folds n, persisting `inline` only when `auto` would draw its box. */
 int graph_inline_node(graph *g, node *n);
 int graph_set_breakpoint(graph *g, node *n, int enabled);
+/* Sets n's comment; NULL or "" removes it. */
+int graph_set_node_comment(graph *g, node *n, const char *comment, bool hidden);
 int graph_set_all_breakpoints(graph *g, int enabled);
 int graph_set_pin_watch(graph *g, node *n, int output, int index, int enabled);
 graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, float y, float width, float height);

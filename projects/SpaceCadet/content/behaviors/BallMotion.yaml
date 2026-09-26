@@ -1,6 +1,6 @@
 version: 3
 name: BallMotion
-id_counter: 405
+id_counter: 491
 owner_type: ecs.entity
 graphs:
 - kind: event
@@ -14,34 +14,33 @@ graphs:
   - id: 4
     type: Get Global Variable
     inputs: {Name: Ready}
+    outputs:
+      Value: {type: double}
   - id: 21
     type: Behavior Expression
     reference_id: 7
     reference_name: ready < 0.5
     inputs:
       Exec: {id: 24, kind: exec}
-      ready: {id: 22, type: double, group: 1}
+      ready: {id: 22, type: double, flags: 0}
     outputs:
       "True": {id: 25, kind: exec}
       "False": {kind: exec}
-      Result: {id: 23, type: bool, flags: 2, group: 2}
+      Result: {id: 23, type: bool}
   - id: 74
     type: Behavior Expression
     reference_id: 41
-    reference_name: clamp(v + 480 * dt, -1150, 1000)
+    reference_name: clamp(vy + gravity * dt, -1150, 1000)
     inputs:
-      v:
+      vy:
         type: double
-        flags: 2
-        group: 1
         binding: {kind: component_field, component: GAME.GameVelocity, field: "y"}
       dt:
         type: double
-        flags: 2
-        group: 2
         binding: {kind: delta_time}
+      gravity: {id: 469, type: double, default: 480.0}
     outputs:
-      Result: {type: double, flags: 2, group: 3}
+      Result: {id: 77, type: double}
   - {id: 144, type: Set_GameVelocity_y}
   - id: 197
     type: Behavior Expression
@@ -52,46 +51,46 @@ graphs:
       "y":
         id: 198
         type: double
-        group: 1
-        binding: {kind: component_field, component: game.GameTransform, field: "y"}
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameTransform, field: "y"}
     outputs:
       "True": {id: 201, kind: exec}
       "False": {kind: exec}
-      Result: {id: 199, type: bool, flags: 2, group: 2}
+      Result: {id: 199, type: bool}
   - id: 217
     type: Get Global Variable
     inputs: {Name: Lives}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 241
     type: Behavior Expression
     reference_id: 220
-    reference_name: max(lives-1,0)
+    reference_name: max(lives - 1, 0)
     inputs:
-      lives: {type: float, type_name: null, flags: 2, group: 1}
+      lives: {type: float}
     outputs:
-      Result: {type: float, type_name: null, flags: 2, group: 2}
+      Result: {type: float}
   - id: 265
     type: Set Global Variable
     inputs:
       Name: Lives
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 292
     type: Set Global Variable
     inputs:
       Name: Ready
-      Value: {type: float, type_name: null, default: 1.0}
+      Value: {type: float, default: 1.0}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 298
     type: Set Global Variable
     inputs:
       Name: Charge
-      Value: {type: float, type_name: null}
+      Value: {type: float}
     outputs:
-      Value: {type: float, type_name: null}
+      Value: {type: float}
   - id: 304
     type: Set_GameTransform
     inputs:
@@ -104,11 +103,7 @@ graphs:
         default: {x: 0.0, "y": 0.0}
   - id: 314
     type: Play Sound
-    inputs:
-      Frequency: 190.0
-      End Frequency: 55.0
-      Duration: 0.4000000059604645
-      Volume: 0.4000000059604645
+    inputs: {Frequency: 190.0, End Frequency: 55.0, Duration: 0.4, Volume: 0.4}
   edges:
   - {from: 1.Then, to: 21.Exec}
   - {from: 4.Value, to: 21.ready}
@@ -123,35 +118,10 @@ graphs:
   - {from: 298.Then, to: 304.Exec}
   - {from: 304.Then, to: 309.Exec}
   - {from: 309.Then, to: 314.Exec}
-- id: 7
-  kind: function
-  name: ready < 0.5
-  math_expression: ready < 0.5
-  expression_mode: 3
-  entry_id: 324
-  return_id: 326
-  call_depth_limit: 64
+- {id: 7, kind: function, math_expression: ready < 0.5, entry_id: 324}
 - id: 41
   kind: function
-  name: clamp(v + 480 * dt, -1150, 1000)
-  math_expression: clamp(v + 480 * dt, -1150, 1000)
-  expression_mode: 1
-  entry_id: 338
-  return_id: 340
-  call_depth_limit: 64
-- id: 183
-  kind: function
-  name: y > 345
-  math_expression: y > 345
-  expression_mode: 3
-  entry_id: 371
-  return_id: 373
-  call_depth_limit: 64
-- id: 220
-  kind: function
-  name: max(lives-1,0)
-  math_expression: max(lives-1,0)
-  expression_mode: 1
-  entry_id: 385
-  return_id: 387
-  call_depth_limit: 64
+  math_expression: clamp(vy + gravity * dt, -1150, 1000)
+  entry_id: 439
+- {id: 183, kind: function, math_expression: y > 345, entry_id: 371}
+- {id: 220, kind: function, math_expression: 'max(lives - 1, 0)', entry_id: 471}

@@ -18,7 +18,7 @@ void studio_frame(studio *s, double delta_seconds);
 char *studio_take_project(studio *s);
 /* Shows an error that stays until dismissed. */
 void studio_error(studio *s, const char *title, const char *message);
-/* Test and inspection access to element rectangles by kit path. */
-bool studio_item_rect(const studio *s, const char *path, float rect[4]);
+/* Fills the workspace with the graph canvas without changing saved preferences. */
+void studio_maximize_graph(studio *s);
 
 #endif

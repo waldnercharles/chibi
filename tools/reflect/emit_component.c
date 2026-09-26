@@ -138,6 +138,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         s->name
     );
     fprintf(out, "    .pure_kind = NODE_PURE_CALL, .fn = __unwrap_%s_%s,\n", g_prefix, s->name);
+    fprintf(out, "    .description = \"Returns the %s a %s wraps.\",\n", field->name, s->name);
     fprintf(out, "    .jit_kind = NODE_JIT_UNWRAP,\n");
     fprintf(out, "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n", s->name, field_type_name(field));
     fputs("    .display_class = NODE_DISPLAY_PURE, .category = \"Conversion\",\n", out);
@@ -219,18 +220,21 @@ void emit_component_entity_nodes(FILE *out, const struct_info *s)
         fputs("    ecs_world *world = eval_context_service(ctx, \"ecs.world\");\n", out);
         fputs("    if (!world) return \"component access requires ecs.world\";\n", out);
         fputs("    ecs_entity entity = ecs_entity_from_u64(inputs[0].u64);\n", out);
-        fputs("    if (!ecs_entity_is_alive(world, entity)) return \"component access requires a live entity\";\n", out);
+        /* Has answers false for a destroyed entity, like Unreal's Is Valid. */
         if (i == 1) {
             fprintf(
                 out,
                 "    (void)a;\n    *out = (pin_value){ .type = PIN_BOOL, "
-                ".type_name = \"bool\", .b = %s_%s_has(world, entity) };\n",
+                ".type_name = \"bool\", .b = ecs_entity_is_alive(world, "
+                "entity) "
+                "&& %s_%s_has(world, entity) };\n",
                 g_prefix,
                 name
             );
             fputs("    return NULL;\n}\n\n", out);
             continue;
         }
+        fputs("    if (!ecs_entity_is_alive(world, entity)) return \"component access requires a live entity\";\n", out);
         fprintf(out, "    const %s *value = %s_%s_get_const(world, entity);\n", name, g_prefix, name);
         fputs("    if (!value) return \"entity lacks component\";\n", out);
         fprintf(out, "    *out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\", .ptr = arena_alloc(a, sizeof(%s)) };\n", name, name);

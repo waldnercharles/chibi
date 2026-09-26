@@ -1,6 +1,5 @@
 #include "render/shader_catalog.h"
 
-#include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/runtime/flow.h"
 #include "render/shader_images.h"
@@ -9,7 +8,6 @@
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
-#include <dirent.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdatomic.h>
@@ -76,13 +74,6 @@ int render_shader_parameter_width(int index, int slot)
 {
     return render_shader_parameter_name(index, slot) ? assets[index - 1].widths[slot]
                                                      : 0;
-}
-void render_shader_parameter_default(int index, int slot, float value[4])
-{
-    memset(value, 0, 4 * sizeof(float));
-    if (render_shader_parameter_name(index, slot)) {
-        memcpy(value, assets[index - 1].defaults[slot], 4 * sizeof(float));
-    }
 }
 static int parameter_slot(const shader_asset *asset, const char *name)
 {
@@ -356,75 +347,6 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
     ramp_revision++;
     return true;
 }
-int render_shader_load(const char *root)
-{
-    const char *folders[] = { "shader-libraries", "materials", "shapes" };
-    behavior_asset **sources = NULL;
-    int loaded = 0;
-    for (int f = 0; f < 3; f++) {
-        char path[2048];
-        snprintf(path, sizeof path, "%s/%s", root, folders[f]);
-        DIR *dir = opendir(path);
-        if (!dir) {
-            continue;
-        }
-        struct dirent *entry;
-        while ((entry = readdir(dir))) {
-            if (entry->d_name[0] == '.') {
-                continue;
-            }
-            snprintf(path, sizeof path, "%s/%s/%s", root, folders[f], entry->d_name);
-            FILE *file = fopen(path, "rb");
-            if (!file) {
-                continue;
-            }
-            if (fseek(file, 0, SEEK_END)) {
-                fclose(file);
-                continue;
-            }
-            long length = ftell(file);
-            rewind(file);
-            if (length < 0) {
-                fclose(file);
-                continue;
-            }
-            char *json = xmalloc((size_t)length + 1);
-            size_t size = fread(json, 1, (size_t)length, file);
-            fclose(file);
-            json[size] = 0;
-            behavior_asset *asset = behavior_asset_load_json(json);
-            free(json);
-            if (asset) {
-                apush(sources, asset);
-            }
-        }
-        closedir(dir);
-    }
-    for (int i = 0; i < acount(sources); i++) {
-        if (sources[i]->domain != BEHAVIOR_DOMAIN_MATERIAL &&
-            sources[i]->domain != BEHAVIOR_DOMAIN_SHAPE) {
-            continue;
-        }
-        char message[256];
-        shader_error error;
-        behavior_asset *linked = behavior_asset_link_libraries(
-            sources[i],
-            (const behavior_asset *const *)sources,
-            acount(sources),
-            message,
-            sizeof message
-        );
-        if (linked && render_shader_upsert(linked, &error)) {
-            loaded++;
-        }
-        behavior_asset_free(linked);
-    }
-    for (int i = 0; i < acount(sources); i++) {
-        behavior_asset_free(sources[i]);
-    }
-    afree(sources);
-    return loaded;
-}
 static int set_slot(const render_shader_set *set, int image)
 {
     for (int i = 0; i < set->count; i++) {
@@ -433,6 +355,20 @@ static int set_slot(const render_shader_set *set, int image)
         }
     }
     return -1;
+}
+
+static bool render_shader_set_contains(const render_shader_set *set, int id)
+{
+    if (id <= 0) {
+        return true;
+    }
+    const shader_asset *asset = &assets[id - 1];
+    for (int i = 0; i < acount(asset->images); i++) {
+        if (set_slot(set, asset->images[i]) < 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool asset_in_set(const render_shader_set *set, int index)
@@ -449,20 +385,6 @@ static int ramp_offset(const render_shader_set *set, int index)
         }
     }
     return offset;
-}
-
-bool render_shader_set_contains(const render_shader_set *set, int id)
-{
-    if (id <= 0) {
-        return true;
-    }
-    const shader_asset *asset = &assets[id - 1];
-    for (int i = 0; i < acount(asset->images); i++) {
-        if (set_slot(set, asset->images[i]) < 0) {
-            return false;
-        }
-    }
-    return true;
 }
 
 bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
@@ -766,6 +688,32 @@ void render_shader_clear_world(ecs_world *world)
         }
     }
 }
+uint64_t render_shader_overrides_hash(const ecs_world *world)
+{
+    uint64_t hash = 14695981039346656037ull;
+    while (atomic_flag_test_and_set_explicit(&override_lock, memory_order_acquire)) {
+    }
+    for (int i = 0; i < acount(overrides); i++) {
+        const shader_override *o = &overrides[i];
+        if (o->world != world) {
+            continue;
+        }
+        const unsigned char *parts[] = { (const unsigned char *)&o->entity,
+                                         (const unsigned char *)o->name,
+                                         (const unsigned char *)o->value };
+        size_t sizes[] = { sizeof o->entity,
+                           strlen(o->name),
+                           (size_t)o->width * sizeof *o->value };
+        for (int p = 0; p < 3; p++) {
+            for (size_t b = 0; b < sizes[p]; b++) {
+                hash = (hash ^ parts[p][b]) * 1099511628211ull;
+            }
+        }
+    }
+    atomic_flag_clear_explicit(&override_lock, memory_order_release);
+    return hash;
+}
+
 void render_shader_catalog_clear()
 {
     render_shader_parameter_cache_free(serial_parameters);
@@ -873,17 +821,21 @@ static const node_access parameter_access = {
     .flags = NODE_EFFECT_PARALLEL | NODE_EFFECT_ENTITY_SCOPED | NODE_EFFECT_HOST_SINK,
     .target_input = 1
 };
-static node_desc parameter_node = { .name = "Set Material Parameter",
-                                    .category = "Rendering/Material",
-                                    .inputs = parameter_inputs,
-                                    .input_count = 4,
-                                    .outputs = parameter_outputs,
-                                    .output_count = 1,
-                                    .flow_kind = NODE_FLOW_CUSTOM,
-                                    .flow = set_parameter,
-                                    .host_call = &parameter_call,
-                                    .display_class = NODE_DISPLAY_FLOW,
-                                    .access = &parameter_access };
+static node_desc parameter_node = {
+    .name = "Set Material Parameter",
+    .category = "Rendering/Material",
+    .description = "Overrides the named Shader Parameter of Entity's material "
+                   "for that entity only; Value must match its type.",
+    .inputs = parameter_inputs,
+    .input_count = 4,
+    .outputs = parameter_outputs,
+    .output_count = 1,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = set_parameter,
+    .host_call = &parameter_call,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &parameter_access
+};
 static node_desc *binding_nodes[] = { &parameter_node };
 const registry_pack SHADER_BINDING_PACK = { .name = "shader binding",
                                             .nodes = binding_nodes,

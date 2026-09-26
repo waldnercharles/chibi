@@ -13,11 +13,11 @@ components:
     drag:
       start: {x: 3.0, "y": 5.0}
     emission:
-      start: {x: 0.019999999552965164, "y": 0.03999999910593033}
+      start: {x: 0.02, "y": 0.04}
     end_color: 2147492352
-    fluid_mass: 0.00019999999494757503
+    fluid_mass: 0.0002
     heading_only: true
-    lifetime: {x: 0.20000000298023224, "y": 0.4000000059604645}
+    lifetime: {x: 0.2, "y": 0.4}
     metaball_blend: 4.5
     metaball_group: 2
     planar: true
@@ -25,9 +25,9 @@ components:
       exponent: 1.0
       start: {x: 0.5, "y": 1.5}
     speed: {x: 50.0, "y": 150.0}
-    spread: 6.2831854820251465
+    spread: 6.2831855
     velocity_inherit: 1.0
   GAME.GameProjectile: {lifetime: 1.5}
-  game.GameTransform: {}
+  GAME.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [ProjectileLifecycle]

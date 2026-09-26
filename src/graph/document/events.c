@@ -6,14 +6,51 @@
 #include <assert.h>
 #include <string.h>
 
-static const char *const GRAPH_HOST_EVENT_NAMES[] = {
-    "Begin", "End", "Tick", "Fire", "Dash", "Input", "Contact Begin",
+static const pin_spec TICK_PAYLOAD[] = {
+    { .name = "DeltaSeconds", .type = PIN_F32, .type_name = "float" },
+};
+static const pin_spec INPUT_PAYLOAD[] = {
+    { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+static const pin_spec CONTACT_PAYLOAD[] = {
+    { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+
+const graph_host_event_desc GRAPH_HOST_EVENTS[GRAPH_HOST_EVENT_COUNT] = {
+    [GRAPH_HOST_EVENT_BEGIN] = { .name = "Begin", .keywords = "start spawn create init ready", .description = "Runs once when the behavior starts." },
+    [GRAPH_HOST_EVENT_TICK] = { .name = "Tick",
+                                .keywords = "update frame every loop delta "
+                                            "time",
+                                .description = "Runs every frame; DeltaSeconds "
+                                               "is the time since the last "
+                                               "one.",
+                                .payload = TICK_PAYLOAD,
+                                .payload_count = 1 },
+    [GRAPH_HOST_EVENT_FIRE] = { .name = "Fire", .keywords = "shoot attack weapon", .description = "Runs when the Fire input is pressed, on entities that bind input actions." },
+    [GRAPH_HOST_EVENT_DASH] = { .name = "Dash", .keywords = "dodge boost", .description = "Runs when the Dash input is pressed, on entities that bind input actions." },
+    [GRAPH_HOST_EVENT_INPUT] = { .name = "Input",
+                                 .keywords = "move direction stick controls "
+                                             "player",
+                                 .description = "Runs with the movement "
+                                                "Direction for entities the "
+                                                "player controls.",
+                                 .payload = INPUT_PAYLOAD,
+                                 .payload_count = 1 },
+    [GRAPH_HOST_EVENT_CONTACT_BEGIN] = { .name = "Contact Begin",
+                                         .keywords = "hit collide collision "
+                                                     "touch overlap enter",
+                                         .description = "Runs when this entity "
+                                                        "starts touching Other "
+                                                        "at Point.",
+                                         .payload = CONTACT_PAYLOAD,
+                                         .payload_count = 2 },
 };
 
 const char *graph_host_event_name(graph_host_event event)
 {
     assert(event >= 0 && event < GRAPH_HOST_EVENT_COUNT);
-    return GRAPH_HOST_EVENT_NAMES[event];
+    return GRAPH_HOST_EVENTS[event].name;
 }
 
 bool graph_host_event_is(const char *name, graph_host_event event)
@@ -31,6 +68,24 @@ bool graph_event_host_name(const char *name)
     return false;
 }
 
+int graph_host_event_apply(graph *g, node *n)
+{
+    assert(n->desc == &NODE_Event);
+    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
+        const graph_host_event_desc *event = &GRAPH_HOST_EVENTS[i];
+        if (!graph_host_event_is(n->reference_name, i)) {
+            continue;
+        }
+        /* Then precedes the payload. */
+        for (int p = n->output_count - 1; p < event->payload_count; p++) {
+            if (graph_add_pin(g, n, 1, &event->payload[p]) < 0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
 static bool receiver(const node *n)
 {
     return n->desc->flow_kind == NODE_FLOW_EVENT;
@@ -38,8 +93,11 @@ static bool receiver(const node *n)
 
 static bool field_matches(const pin_spec *pin, const behavior_variable *field)
 {
+    /* A number's type names it; only named types compare their names. */
+    bool named = pin->type == PIN_STRUCT || pin->type == PIN_ENUM ||
+                 pin->type == PIN_HANDLE;
     return pin->type == field->type && pin->container == field->container &&
-           ((!pin->type_name && !field->type_name) ||
+           (!named || (!pin->type_name && !field->type_name) ||
             (pin->type_name && field->type_name &&
              !strcmp(pin->type_name, field->type_name)));
 }
@@ -192,6 +250,8 @@ node_desc NODE_CallEvent = {
     .display_class = NODE_DISPLAY_EVENT,
     .category = "Events",
     .keywords = "local custom event invoke",
+    .description = "Queues one of this behavior's own events with the payload "
+                   "inputs, then continues.",
 };
 static node_desc *const EVENT_NODES[] = { &NODE_CallEvent };
 const registry_pack CORE_EVENT_PACK = { .name = "core.events",

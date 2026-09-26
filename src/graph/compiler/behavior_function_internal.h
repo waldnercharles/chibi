@@ -15,13 +15,15 @@
     X(EXP, Exponential, exp)                                                   \
     X(LOG, Logarithm, log)                                                     \
     X(LOG10, Logarithm10, log10)                                               \
+    X(FRACT, Fract, behavior_fract)                                            \
+    X(SIGN, Sign, behavior_sign)                                               \
     X(SQRT, SquareRoot, sqrt)                                                  \
     X(FLOOR, Floor, floor)                                                     \
     X(CEIL, Ceiling, ceil)                                                     \
     X(ROUND, Round, round)
 #define BEHAVIOR_MATH_BINARY(X)                                                \
     X(POW, Power, pow)                                                         \
-    X(ATAN2, ArcTangent2, atan2)
+    X(ATAN2, Atan2, atan2)
 
 typedef enum
 {
@@ -71,8 +73,7 @@ typedef enum
 #define MATH_OP(op, name, fn) BF_##op,
     BEHAVIOR_MATH_UNARY(MATH_OP) BEHAVIOR_MATH_BINARY(MATH_OP)
 #undef MATH_OP
-        BF_ATAN2_F32,
-    BF_MOD_F32,
+        BF_MOD_F32,
     BF_MOD_F64,
     BF_HYPOT,
     BF_FMA,

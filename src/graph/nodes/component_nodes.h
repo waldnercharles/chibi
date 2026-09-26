@@ -79,6 +79,26 @@ int component_node_show_field(graph *g, node *n, const char *field, bool shown);
 /* Set: shows every settable field; false restores Value. */
 int component_node_split_value(graph *g, node *n, bool split);
 
+/* A configured component node that search offers: the node, its Component
+ * or Type setting, and for Set the one field it writes. Type names the
+ * component's or struct's type. */
+typedef struct
+{
+    const node_desc *desc;
+    const char *setting;
+    const char *field;
+    const type_desc *type;
+} component_node_preset;
+
+/* Get, Set, Has, Add and Remove for each component, Set for each settable
+ * field, and Make and Break for each struct. The caller frees the array. */
+component_node_preset *component_node_presets();
+/* A sentence on what the preset does, such as "Writes GameHealth's current on
+ * Entity, which defaults to Self." */
+void component_node_preset_describe(const component_node_preset *preset, char *buf, size_t size);
+/* Configures a new component node as its preset. */
+int component_node_configure(graph *g, node *n, const char *setting, const char *field);
+
 /* Documents omit what the setting implies. Loading prepares a node from its
  * key and field names before applying pin entries; writing compares pins
  * with the same shapes. */

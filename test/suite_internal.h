@@ -15,7 +15,6 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/fmt_nodes.h"
-#include "graph/nodes/operator.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"
@@ -27,7 +26,6 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
-#include "runtime/scenes/scene.h"
 #include "support/arena.h"
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -202,18 +200,22 @@ void run_prototype_live_checks();
 void run_live_checks(void);
 void run_engine_checks(void);
 void run_parallel_checks(void);
-void run_ecs_migration_checks(void);
-void run_scene_checks(void);
 void run_graph_model_checks();
 void run_graph_document_checks();
+void run_graph_comment_checks();
+void run_graph_find_checks();
 void run_graph_arrange_checks();
 void run_graph_inline_checks();
+void run_graph_editing_checks();
+void run_graph_collapse_checks();
 int bench_graph_arrange(int repeats, const char *only, const char *style);
 void run_runtime_execution_checks();
 void run_runtime_instance_checks();
 void run_graph_compile_checks();
 void run_graph_conversion_checks();
 void run_graph_functions_checks();
+void run_graph_signature_checks();
+void test_debugging();
 void run_runtime_arrays_checks();
 void run_runtime_catalog_checks();
 void run_support_format_checks();

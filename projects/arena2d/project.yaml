@@ -1,0 +1,4 @@
+version: 1
+name: Neon Swarm
+content: content
+start_scene: scenes/Sandbox.yaml

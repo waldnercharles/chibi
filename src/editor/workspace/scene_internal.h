@@ -116,6 +116,7 @@ struct app_scene_authoring
     scene_debug debug;
     app_runtime_target debug_target;
     uint64_t debug_sessions[2];
+    bool debug_pinned; /* the debug target stays put while the selection moves */
     app_debug_status debug_status;
     bool runtime_snapshot_valid;
     bool runtime_playing;
@@ -173,7 +174,6 @@ void scene_authoring_select_document(
 void scene_tabs_initialize(app_scene_authoring *scene);
 void scene_tabs_free(app_scene_authoring *scene);
 void scene_tabs_sync_current(app_scene_authoring *scene);
-void scene_tabs_mark_saved(app_scene_authoring *scene);
 void scene_tabs_mark_document_saved(
     app_scene_authoring *scene,
     app_editor_document_kind kind,
@@ -212,10 +212,6 @@ void free_behavior_names(char **names);
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
 
-const game_prototype_component *prototype_component_by_id(
-    const game_prototype *prototype,
-    ecs_component_id id
-);
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype);
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);

@@ -352,11 +352,6 @@ engine_focus engine_get_focus(const engine *engine)
     return engine ? engine->focus : ENGINE_FOCUS_NONE;
 }
 
-int engine_route_escape(engine *engine)
-{
-    return engine_set_focus(engine, ENGINE_FOCUS_NONE);
-}
-
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
 {
     return engine_input_controls(engine->input, controls, firing);

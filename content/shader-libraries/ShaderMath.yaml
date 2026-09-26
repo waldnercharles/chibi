@@ -1,8 +1,8 @@
 version: 3
 name: ShaderMath
 domain: shader-library
-id_counter: 163
-description: Shared pulse and ring masking functions with explicit inputs.
+id_counter: 589
+description: Shared pulse, ring mask and hit flash functions with explicit inputs.
 graphs:
 - {kind: event, name: Functions}
 - id: 56
@@ -15,27 +15,25 @@ graphs:
   - id: 57
     type: Function Entry
     outputs:
-    - {id: 61, name: Time, type: float, type_name: null, kind: data}
-    - {id: 62, name: Speed, type: float, type_name: null, kind: data}
+    - {id: 61, name: Time, type: float, kind: data}
+    - {id: 62, name: Speed, type: float, kind: data}
   - id: 59
     type: Return
     inputs:
-    - {id: 63, name: Brightness, type: float, type_name: null, kind: data}
-  - {id: 64, type: Shader Multiply}
-  - {id: 68, type: Shader Sin}
-  - id: 71
-    type: Shader Add
-    inputs: {B: 1.0}
-  - id: 75
-    type: Shader Multiply
-    inputs: {B: 0.5}
+    - {id: 63, name: Brightness, type: float, kind: data}
+  - id: 190
+    type: Behavior Expression
+    reference_id: 163
+    reference_name: (sin(time * speed) + 1) * 0.5
+    inputs:
+      time: {type: float}
+      speed: {type: float}
+    outputs:
+      Result: {type: float}
   edges:
-  - {from: 57.Time, to: 64.A}
-  - {from: 57.Speed, to: 64.B}
-  - {from: 64.Value, to: 68.Value}
-  - {from: 68.Value, to: 71.A}
-  - {from: 71.Value, to: 75.A}
-  - {from: 75.Value, to: 59.Brightness}
+  - {from: 57.Time, to: 190.time}
+  - {from: 57.Speed, to: 190.speed}
+  - {from: 190.Result, to: 59.Brightness}
 - id: 102
   kind: function
   name: Ring Mask
@@ -52,62 +50,85 @@ graphs:
       type_name: ShaderVec2
       kind: data
       default: {x: 0.0, "y": 0.0}
-    - id: 105
-      name: Radius
-      type: float
-      type_name: null
-      kind: data
-      default: 35.0
-    - {id: 106, name: Width, type: float, type_name: null, kind: data, default: 3.0}
+    - {id: 105, name: Radius, type: float, kind: data, default: 35.0}
+    - {id: 106, name: Width, type: float, kind: data, default: 3.0}
   - id: 107
     type: Return
     inputs:
-    - {id: 108, name: Mask, type: float, type_name: null, kind: data}
+    - {id: 108, name: Mask, type: float, kind: data}
   - id: 110
     type: Shader Circle
     inputs:
       Position:
         default: {x: 0.0, "y": 0.0}
-  - id: 114
-    type: Shader Abs
+  - id: 305
+    type: Behavior Expression
+    reference_id: 275
+    reference_name: saturate(1 - abs(distance) / max(width, 0.001))
     inputs:
-      Value: {flags: 0, group: 0}
+      distance: {type: float}
+      width: {type: float}
     outputs:
-      Value: {flags: 0, group: 0}
-  - id: 117
-    type: Shader Max
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0, default: 0.0010000000474974513}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 121
-    type: Shader Divide
-    inputs:
-      A: {flags: 0, group: 0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 125
-    type: Shader Subtract
-    inputs:
-      A: {flags: 0, group: 0, default: 1.0}
-      B: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
-  - id: 129
-    type: Shader Saturate
-    inputs:
-      Value: {flags: 0, group: 0}
-    outputs:
-      Value: {flags: 0, group: 0}
+      Result: {type: float}
   edges:
   - {from: 103.Position, to: 110.Position}
   - {from: 103.Radius, to: 110.Radius}
-  - {from: 103.Width, to: 117.A}
-  - {from: 110.Value, to: 114.Value}
-  - {from: 114.Value, to: 121.A}
-  - {from: 117.Value, to: 121.B}
-  - {from: 121.Value, to: 125.B}
-  - {from: 125.Value, to: 129.Value}
-  - {from: 129.Value, to: 107.Mask}
+  - {from: 103.Width, to: 305.width}
+  - {from: 110.Value, to: 305.distance}
+  - {from: 305.Result, to: 107.Mask}
+- id: 163
+  kind: function
+  math_expression: (sin(time * speed) + 1) * 0.5
+  entry_id: 249
+- id: 275
+  kind: function
+  math_expression: saturate(1 - abs(distance) / max(width, 0.001))
+  entry_id: 370
+- id: 399
+  kind: function
+  name: Hit Flash
+  entry_id: 400
+  return_id: 402
+  call_depth_limit: 64
+  nodes:
+  - id: 400
+    type: Function Entry
+    outputs:
+    - {id: 404, name: Color, type: struct, type_name: ShaderVec3, kind: data}
+    - {id: 405, name: Flash, type: float, kind: data}
+  - id: 402
+    type: Return
+    inputs:
+    - {id: 406, name: Base Color, type: struct, type_name: ShaderVec3, kind: data}
+    - {id: 407, name: Glow, type: struct, type_name: ShaderVec3, kind: data}
+  - id: 435
+    type: Behavior Expression
+    reference_id: 408
+    reference_name: mix(color, vec3(0.75, 0.95, 1), saturate(flash))
+    inputs:
+      color: {type: struct, type_name: ShaderVec3}
+      flash: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 515
+    type: Behavior Expression
+    reference_id: 493
+    reference_name: vec3(0.75, 0.95, 1) * flash
+    inputs:
+      flash: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 400.Color, to: 435.color}
+  - {from: 400.Flash, to: 435.flash}
+  - {from: 400.Flash, to: 515.flash}
+  - {from: 435.Result, to: 402.Base Color}
+  - {from: 515.Result, to: 402.Glow}
+- id: 408
+  kind: function
+  math_expression: mix(color, vec3(0.75, 0.95, 1), saturate(flash))
+  entry_id: 541
+- id: 493
+  kind: function
+  math_expression: vec3(0.75, 0.95, 1) * flash
+  entry_id: 568

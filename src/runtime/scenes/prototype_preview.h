@@ -41,7 +41,6 @@ int game_prototype_preview_update_behavior(
     char *message,
     size_t message_size
 );
-int game_prototype_preview_unregister_behavior(game_prototype_preview *preview, const char *asset_name);
 int game_prototype_preview_launch(
     game_prototype_preview *preview,
     const game_prototype *prototype,
@@ -69,8 +68,6 @@ int game_prototype_preview_tick(game_prototype_preview *preview, double monotoni
 engine *game_prototype_preview_runtime(game_prototype_preview *preview);
 /* Hold movement across fixed simulation steps. */
 int game_prototype_preview_sample_movement(game_prototype_preview *preview, float x, float y);
-/* Hold aim across fixed simulation steps. */
-int game_prototype_preview_sample_aim(game_prototype_preview *preview, CF_V2 aim, bool firing, bool point);
 /* Queue a local action for GameInput owners in the preview world. */
 int game_prototype_preview_input(
     game_prototype_preview *preview,
@@ -82,8 +79,8 @@ int game_prototype_preview_input(
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview);
 game_particles *game_prototype_preview_particles(game_prototype_preview *preview);
 game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview);
-game_entities *game_prototype_preview_entities(game_prototype_preview *preview);
 game_live_world *game_prototype_preview_live(game_prototype_preview *preview);
+game_entities *game_prototype_preview_entities(game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview);
 int game_prototype_preview_entity_count(const game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity_at(const game_prototype_preview *preview, int index);

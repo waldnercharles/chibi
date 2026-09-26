@@ -1,0 +1,150 @@
+diff --git a/Source/Core/DataControllerDefault.cpp b/Source/Core/DataControllerDefault.cpp
+index 69953ae2..6ebc8ee0 100644
+--- a/Source/Core/DataControllerDefault.cpp
++++ b/Source/Core/DataControllerDefault.cpp
+@@ -1,5 +1,6 @@
+ #include "DataControllerDefault.h"
+ #include "../../Include/RmlUi/Core/Element.h"
++#include "../../Include/RmlUi/Core/Elements/ElementFormControl.h"
+ #include "DataController.h"
+ #include "DataExpression.h"
+ #include "DataModel.h"
+@@ -12,10 +13,14 @@ DataControllerValue::DataControllerValue(Element* element) : DataController(elem
+ DataControllerValue::~DataControllerValue()
+ {
+ 	if (Element* element = GetElement())
++	{
+ 		element->RemoveEventListener(EventId::Change, this);
++		if (lazy)
++			element->RemoveEventListener(EventId::Blur, this);
++	}
+ }
+ 
+-bool DataControllerValue::Initialize(DataModel& model, Element* element, const String& variable_name, const String& /*modifier*/)
++bool DataControllerValue::Initialize(DataModel& model, Element* element, const String& variable_name, const String& modifier)
+ {
+ 	RMLUI_ASSERT(element);
+ 
+@@ -27,6 +32,9 @@ bool DataControllerValue::Initialize(DataModel& model, Element* element, const S
+ 		address = std::move(variable_address);
+ 
+ 	element->AddEventListener(EventId::Change, this);
++	lazy = modifier == "lazy";
++	if (lazy)
++		element->AddEventListener(EventId::Blur, this);
+ 
+ 	return true;
+ }
+@@ -37,11 +45,19 @@ void DataControllerValue::ProcessEvent(Event& event)
+ 	if (!element || event.GetTargetElement() != element)
+ 		return;
+ 
++	if (lazy && event == EventId::Change && !event.GetParameter("linebreak", false))
++		return;
++
+ 	Variant value_to_set;
+ 	const auto& parameters = event.GetParameters();
+ 	const auto override_value_it = parameters.find("data-binding-override-value");
+ 	const auto value_it = parameters.find("value");
+-	if (override_value_it != parameters.cend())
++	if (event == EventId::Blur)
++	{
++		if (auto* control = rmlui_dynamic_cast<ElementFormControl*>(element))
++			value_to_set = control->GetValue();
++	}
++	else if (override_value_it != parameters.cend())
+ 		value_to_set = override_value_it->second;
+ 	else if (value_it != parameters.cend())
+ 		value_to_set = value_it->second;
+diff --git a/Source/Core/DataControllerDefault.h b/Source/Core/DataControllerDefault.h
+index b6de1bb9..ce321729 100644
+--- a/Source/Core/DataControllerDefault.h
++++ b/Source/Core/DataControllerDefault.h
+@@ -21,13 +21,16 @@ public:
+ 	bool Initialize(DataModel& model, Element* element, const String& expression, const String& modifier) override;
+ 
+ private:
+-	// Responds to 'Change' events.
++	// Responds to 'Change' events, and 'Blur' events when lazy.
+ 	void ProcessEvent(Event& event) override;
+ 
+ 	// Delete this.
+ 	void Release() override;
+ 
+ 	DataAddress address;
++	// With the 'lazy' modifier (data-value-lazy), as Vue's v-model.lazy, a text input sets the value when it is
++	// committed with Enter or loses focus, rather than on every edit.
++	bool lazy = false;
+ };
+ 
+ class DataControllerEvent final : public DataController, private EventListener {
+diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
+index e54fb41a..b8a29e68 100644
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -1,4 +1,5 @@
+ #include "DataViewDefault.h"
++#include "../../Include/RmlUi/Core/Context.h"
+ #include "../../Include/RmlUi/Core/Core.h"
+ #include "../../Include/RmlUi/Core/DataVariable.h"
+ #include "../../Include/RmlUi/Core/Element.h"
+@@ -113,6 +114,27 @@ bool DataViewAttributeIf::Update(DataModel& model)
+ 
+ DataViewValue::DataViewValue(Element* element) : DataViewAttribute(element, "value", SortOffset_DataValue) {}
+ 
++bool DataViewValue::Update(DataModel& model)
++{
++	Variant variant;
++	Element* element = GetElement();
++	DataExpressionInterface expr_interface(&model, element);
++	if (!element || !GetExpression().Run(expr_interface, variant))
++		return false;
++
++	// As Vue's v-model does, leave the text of an input being edited alone until the value it shows changes.
++	const String value = variant.Get<String>();
++	const bool unchanged = shown && value == previous;
++	previous = value;
++	shown = true;
++	Context* context = element->GetContext();
++	if ((unchanged && context && context->GetFocusElement() == element) || element->GetAttribute<String>("value", "") == value)
++		return false;
++
++	element->SetAttribute("value", value);
++	return true;
++}
++
+ DataViewChecked::DataViewChecked(Element* element) : DataViewCommon(element, String(), SortOffset_DataChecked) {}
+ 
+ bool DataViewChecked::Update(DataModel& model)
+@@ -165,6 +187,13 @@ bool DataViewStyle::Update(DataModel& model)
+ 	{
+ 		const String value = variant.Get<String>();
+ 		const Property* p = element->GetLocalProperty(property_name);
++		// As Vue does for an undefined style value, an empty one leaves the property unset.
++		if (value.empty())
++		{
++			if (p)
++				element->RemoveProperty(property_name);
++			return p != nullptr;
++		}
+ 		if (!p || p->Get<String>() != value)
+ 		{
+ 			element->SetProperty(property_name, value);
+diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
+index 1dcefacd..f3ccd62e 100644
+--- a/Source/Core/DataViewDefault.h
++++ b/Source/Core/DataViewDefault.h
+@@ -48,6 +48,13 @@ public:
+ class DataViewValue final : public DataViewAttribute {
+ public:
+ 	DataViewValue(Element* element);
++
++	bool Update(DataModel& model) override;
++
++private:
++	// The value last shown, so a focused input keeps its text until the value changes.
++	String previous;
++	bool shown = false;
+ };
+ 
+ class DataViewChecked final : public DataViewCommon {

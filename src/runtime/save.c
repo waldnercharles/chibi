@@ -8,6 +8,7 @@
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -144,6 +145,17 @@ bool game_save_remove(game_save *save, const char *key)
     }
     save->error[0] = 0;
     return true;
+}
+
+int game_save_count(const game_save *save)
+{
+    return acount(save->entries);
+}
+
+const char *game_save_key(const game_save *save, int index)
+{
+    assert(index >= 0 && index < acount(save->entries));
+    return save->entries[index].key;
 }
 
 uint64_t game_save_revision(const game_save *save)

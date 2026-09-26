@@ -159,7 +159,7 @@ typedef struct
     int behavior_count;
 } reference_object;
 void reference_index_add_object(reference_index *index, int source, const reference_object *object);
-/* A ui document's widgets (<use ui>) and the events it sends (data-event,
+/* A ui document's widgets (<use ui>) and the events it sends (emit('Name'),
  * data-keys). */
 void reference_index_add_ui(reference_index *index, int source, const char *rml);
 

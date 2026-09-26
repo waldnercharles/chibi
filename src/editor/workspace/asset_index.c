@@ -151,7 +151,7 @@ static void add_ui_references(reference_index *index, app_scene_authoring *scene
         char *text = text_file_read(entry->path);
         ui_document document = { 0 };
         char error[160];
-        if (text && ui_document_read(text, &document, error, sizeof error)) {
+        if (text && ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
             int source = reference_index_find_asset(
                 index,
                 REFERENCE_ASSET_UI,

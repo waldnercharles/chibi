@@ -1,5 +1,6 @@
 #include "automation/controller.h"
 
+#include "assets/project.h"
 #include "assets/prototype.h"
 #include "assets/refactor.h"
 #include "assets/reference_index.h"
@@ -37,6 +38,7 @@
 #include "runtime/systems/system.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -1361,7 +1363,7 @@ static bool read_editor_asset(const char *json, char *error, size_t error_size)
 static bool read_ui_asset(const char *json, char *error, size_t error_size)
 {
     ui_document document = { 0 };
-    bool ok = ui_document_read(json, &document, error, error_size);
+    bool ok = ui_document_read(json, NULL, NULL, &document, error, error_size);
     ui_document_free(&document);
     return ok;
 }
@@ -1601,7 +1603,7 @@ static void catalog_add_content(reference_index *index, const catalog_asset *ass
         }
         case ASSET_UI: {
             ui_document document = { 0 };
-            if (ui_document_read(text, &document, error, sizeof error)) {
+            if (ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
                 reference_index_add_ui(index, asset->reference, document.rml);
             }
             ui_document_free(&document);
@@ -5922,7 +5924,7 @@ static int apply_scenario_input(
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     /* A UI activation as the presenter delivers it: a value first, then the
-       element's data-event to its GameUi entity. */
+       event the element emits to its GameUi entity. */
     for (size_t i = 0; i < yyjson_arr_size(input->ui); i++) {
         yyjson_val *action = yyjson_arr_get(input->ui, i);
         ecs_entity target = scenario_entity(context, request_string(action, "target"));
@@ -6156,11 +6158,34 @@ struct chibi_preview_run
     scenario_context context;
     scenario_sequence sequence;
     yyjson_doc *request;
+    char *page; /* the root ui document its UI shows on, or NULL */
 };
 
 game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
 {
     return run->context.preview;
+}
+
+const char *chibi_preview_page(const chibi_preview_run *run)
+{
+    return run->page;
+}
+
+/* The scene's root ui document, else the default in the manifest at `root`. */
+static char *preview_page(const char *root, const game_scene_document *scene)
+{
+    if (scene && scene->ui) {
+        return xstrdup(scene->ui);
+    }
+    char path[1024], error[128];
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    char *text = text_file_read(path);
+    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
+    free(text);
+    const char *ui = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), "ui"));
+    char *page = ui && ui[0] ? xstrdup(ui) : NULL;
+    yyjson_doc_free(manifest);
+    return page;
 }
 
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
@@ -6189,6 +6214,7 @@ void chibi_preview_free(chibi_preview_run *run)
     free_sequence(&run->sequence);
     scenario_context_free(&run->context);
     yyjson_doc_free(run->request);
+    free(run->page);
     free(run);
 }
 
@@ -6257,6 +6283,7 @@ int chibi_automation_preview(
                                game_prototype_preview_world(context->preview),
                                game_prototype_preview_entity(context->preview)
                            );
+        run->page = preview_page(root, context->scene);
         *out = run;
         return status;
     }
@@ -7770,7 +7797,8 @@ static int load_ui_events(const char *root, project_events *events, char *error,
         ui_document markup = { 0 };
         ui_document_event *found = NULL;
         char invalid[160];
-        if (text && ui_document_read(text, &markup, invalid, sizeof invalid)) {
+        if (text &&
+            ui_document_read(text, NULL, NULL, &markup, invalid, sizeof invalid)) {
             ui_document_events(markup.rml, &found);
         }
         for (int e = 0; e < acount(found); e++) {

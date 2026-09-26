@@ -6,7 +6,7 @@
 /* A caller or callee tree over a reference index (VS Code's call hierarchy).
  *
  * Items are functions and macros, the runs Event nodes start (handlers),
- * events, and senders outside graphs: a ui document's data-event, an action
+ * events, and senders outside graphs: a ui document's emit('Name'), an action
  * binding. A function's callers are the items holding its calls; an event's,
  * the items sending it; a handler's, its event. An item's callees are the
  * functions it calls and the events it sends; an event's, its handlers.

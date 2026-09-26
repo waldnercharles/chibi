@@ -93,19 +93,20 @@ class WorkspaceWatch:
 def save_asset(workspace, request):
     path = (workspace / request['path'].lstrip('/')).resolve()
     contents = [content_directory(project) for project in projects(workspace)]
-    if path.suffix != '.yaml' or not any(path.is_relative_to(content) for content in contents):
-        raise ValueError('Saves must be YAML assets inside a project content directory')
+    if path.suffix not in ('.yaml', '.rcss') or not any(path.is_relative_to(content) for content in contents):
+        raise ValueError('Saves must be YAML assets or RCSS inside a project content directory')
     text = request['text']
     if text is None:
         path.unlink(missing_ok=True)
         return
     # The engine writes asset documents as YAML mappings; a save must reload.
-    try:
-        document = yaml.safe_load(text)
-    except yaml.YAMLError as error:
-        raise ValueError(f'Saves must be YAML asset documents: {error}') from error
-    if not isinstance(document, dict):
-        raise ValueError('Saves must be YAML asset documents')
+    if path.suffix == '.yaml':
+        try:
+            document = yaml.safe_load(text)
+        except yaml.YAMLError as error:
+            raise ValueError(f'Saves must be YAML asset documents: {error}') from error
+        if not isinstance(document, dict):
+            raise ValueError('Saves must be YAML asset documents')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:
         temporary = Path(file.name)
@@ -133,10 +134,11 @@ def main():
     token = secrets.token_urlsafe(32)
     watch = WorkspaceWatch(workspace)
 
+    # Once a second, as native Studio polls its files; each scan walks every project.
     def follow():
         while True:
             watch.poll()
-            threading.Event().wait(0.25)
+            threading.Event().wait(1)
 
     threading.Thread(target=follow, daemon=True).start()
     # A served generation never changes under the browser's JS/WASM/data requests.

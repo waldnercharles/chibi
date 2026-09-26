@@ -131,7 +131,7 @@ static bool read_asset(
             l->scene = game_scene_document_load(text, why, size);
             return l->scene != NULL;
         case REFERENCE_ASSET_UI:
-            return ui_document_read(text, &l->ui, why, size);
+            return ui_document_read(text, NULL, NULL, &l->ui, why, size);
         case REFERENCE_ASSET_KIND_COUNT: break;
         default:
             l->graphs = behavior_asset_load_json(text);

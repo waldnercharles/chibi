@@ -8,6 +8,7 @@
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
+#include <SDL3/SDL_video.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,25 +21,15 @@ struct ui_mount
     char *content_root;
     char *name;
     file_watch watch;
-    char **uses;             /* the widgets its asset uses */
-    file_watch *use_watches; /* parallel to uses */
-    char *markup, *style;    /* from the last valid asset */
+    file_watch *uses;     /* the widgets and stylesheets its asset uses */
+    char *markup, *style; /* from the last valid asset */
     char error[256];
     rml_element *root;
     bool installed; /* root holds the current markup */
     ui_activation *pending;
     uint64_t applied; /* the model revision already applied */
-    game_save *settings;
-    uint64_t settings_seen; /* the settings revision shown; UINT64_MAX when stale */
-    bool refreshing;        /* ignore the change events a refresh raises */
-    bool autofocus; /* installed, and its autofocus element not yet focused */
+    bool autofocus;   /* installed, and its autofocus element not yet focused */
 };
-
-/* The events a mount's root reports. */
-static const rml_event_id MOUNT_EVENTS[] = { RML_EVENT_CLICK,
-                                             RML_EVENT_CHANGE,
-                                             RML_EVENT_SUBMIT,
-                                             RML_EVENT_KEYDOWN };
 
 /* The names data-keys binds, for keys that are not letters or digits. */
 static const struct
@@ -64,21 +55,12 @@ ui_mount *ui_mount_new(const char *content_root, const char *name)
     return m;
 }
 
-static void free_uses(ui_mount *m)
-{
-    for (int i = 0; i < acount(m->uses); i++) {
-        free(m->uses[i]);
-    }
-    afree(m->uses);
-}
-
 void ui_mount_free(ui_mount *m)
 {
     if (!m) {
         return;
     }
-    free_uses(m);
-    afree(m->use_watches);
+    afree(m->uses);
     afree(m->pending);
     free(m->content_root);
     free(m->name);
@@ -107,52 +89,67 @@ static void asset_path(const ui_mount *m, const char *name, char *path, size_t s
     snprintf(path, size, "%s/ui/%s.yaml", m->content_root, name);
 }
 
-/* Whether the asset or a widget it uses changed; polls every watch. */
-static bool changed(ui_mount *m, const char *path, double time)
+/* Whether any watched file changed; polls every one. */
+static bool files_changed(file_watch *watches, double time)
 {
-    bool any = file_watch_changed(&m->watch, path, time);
-    for (int i = 0; i < acount(m->uses); i++) {
-        char use[1024];
-        asset_path(m, m->uses[i], use, sizeof use);
-        any |= file_watch_changed(&m->use_watches[i], use, time);
+    bool any = false;
+    for (int i = 0; i < acount(watches); i++) {
+        any |= file_watch_changed(&watches[i], watches[i].path, time);
     }
     return any;
 }
 
-/* Replaces the watched widgets with `uses`, taking ownership. */
-static void watch_uses(ui_mount *m, char **uses, double time)
+/* Watches `paths` from now instead, taking them. */
+static void watch_paths(file_watch **watches, char **paths, double time)
 {
-    free_uses(m);
-    m->uses = uses;
-    asetlen(m->use_watches, acount(uses));
-    for (int i = 0; i < acount(uses); i++) {
-        char use[1024];
-        asset_path(m, uses[i], use, sizeof use);
-        m->use_watches[i] = (file_watch){ 0 };
-        file_watch_changed(&m->use_watches[i], use, time);
+    asetlen(*watches, 0);
+    for (int i = 0; i < acount(paths); i++) {
+        file_watch w = { 0 };
+        file_watch_changed(&w, paths[i], time);
+        apush(*watches, w);
+        free(paths[i]);
     }
+    afree(paths);
+}
+
+/* The widgets' files, then the stylesheets, taking both lists. */
+static char **used_files(const ui_mount *m, char **widgets, char **imports)
+{
+    for (int i = 0; i < acount(widgets); i++) {
+        char path[1024];
+        asset_path(m, widgets[i], path, sizeof path);
+        apush(imports, xstrdup(path));
+        free(widgets[i]);
+    }
+    afree(widgets);
+    return imports;
 }
 
 /* Reads the asset and its widgets when one changed; returns true when it
  * replaced the markup and RCSS. An invalid edit keeps the last valid ones. */
 static bool read_asset(ui_mount *m, double time)
 {
-    char path[1024];
+    char path[1024], directory[1024];
     asset_path(m, m->name, path, sizeof path);
-    if (!changed(m, path, time)) {
+    bool asset = file_watch_changed(&m->watch, path, time);
+    if (!files_changed(m->uses, time) && !asset) {
         return false;
     }
+    snprintf(directory, sizeof directory, "%s/ui", m->content_root);
     char *text = text_file_read(path);
-    char error[200] = "is missing";
+    char error[200] = "is missing", **imports = NULL, **widgets = NULL;
     ui_document source = { 0 };
-    bool read = text && ui_document_read(text, &source, error, sizeof error);
+    bool read = text &&
+                ui_document_read(text, directory, &imports, &source, error, sizeof error);
     free(text);
-    if (read) {
-        char root[1024], **uses = NULL;
-        snprintf(root, sizeof root, "%s/ui", m->content_root);
-        read = ui_document_expand(&source, m->name, root, &uses, error, sizeof error);
-        watch_uses(m, uses, time);
+    if (read && source.body) {
+        snprintf(error, sizeof error, "has a <body>, which only a scene's root document has");
+        read = false;
     }
+    if (read) {
+        read = ui_document_expand(&source, m->name, directory, &widgets, error, sizeof error);
+    }
+    watch_paths(&m->uses, used_files(m, widgets, imports), time);
     if (!read) {
         ui_document_free(&source);
         snprintf(m->error, sizeof m->error, "ui/%s.yaml %s", m->name, error);
@@ -175,15 +172,18 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         m->root = root;
         m->installed = false;
         rml_element_set_attribute(root, "data-ui", m->name);
-        for (size_t i = 0; i < sizeof MOUNT_EVENTS / sizeof *MOUNT_EVENTS; i++) {
-            rml_element_add_event_listener(root, MOUNT_EVENTS[i], listener, false);
-        }
+        rml_element_set_data_model(root, UI_DATA_MODEL);
+        rml_element_add_event_listener(root, RML_EVENT_KEYDOWN, listener, false);
     }
     if (!m->installed && m->markup) {
+        rml_backend_take_warning();
         rml_element_set_inner_rml(root, m->markup);
+        const char *warning = rml_backend_take_warning();
+        if (warning[0]) {
+            snprintf(m->error, sizeof m->error, "ui/%s.yaml %s", m->name, warning);
+        }
         m->installed = true;
         m->applied = 0;
-        m->settings_seen = UINT64_MAX;
         m->autofocus = true;
     }
     /* A host may keep the root hidden for a frame, and hidden elements refuse
@@ -203,136 +203,6 @@ bool ui_mount_holds(const ui_mount *m, rml_element *element)
         }
     }
     return false;
-}
-
-/* The element from `element` up that names an event in data-event. */
-static rml_element *event_source(rml_element *element, char *name, size_t size)
-{
-    for (; element; element = rml_element_parent(element)) {
-        if (rml_element_attribute(element, "data-event", name, size) > 0) {
-            return element;
-        }
-    }
-    return NULL;
-}
-
-/* The element from `element` up, within the mount, bound with data-setting. */
-static rml_element *setting_source(const ui_mount *m, rml_element *element, char *key, size_t size)
-{
-    for (; element && element != m->root; element = rml_element_parent(element)) {
-        if (rml_element_attribute(element, "data-setting", key, size) > 0) {
-            return element;
-        }
-    }
-    return NULL;
-}
-
-static bool input_type(rml_element *element, const char *type)
-{
-    char own[32] = "";
-    rml_element_attribute(element, "type", own, sizeof own);
-    return !strcmp(own, type);
-}
-
-/* The value a data-setting element stands for when it is an option: its own
- * value attribute, as on a radio or a <use> of an option widget. */
-static bool option_value(rml_element *element, char *value, size_t size)
-{
-    return rml_element_attribute(element, "value", value, size) > 0 &&
-           (!strcmp(rml_element_tag_name(element), "div") ||
-            input_type(element, "radio"));
-}
-
-/* Stores the setting a changed control inside a data-setting element holds. */
-static void write_setting(ui_mount *m, rml_element *control)
-{
-    char key[128], value[256];
-    rml_element *element = setting_source(m, control, key, sizeof key);
-    if (!element) {
-        return;
-    }
-    bool checked = rml_element_has_attribute(control, "checked");
-    if (option_value(element, value, sizeof value)) {
-        if (!checked) {
-            return;
-        }
-    } else if (input_type(control, "checkbox")) {
-        snprintf(value, sizeof value, "%s", checked ? "true" : "false");
-    } else {
-        rml_element_value(control, value, sizeof value);
-    }
-    game_save_set(m->settings, key, value);
-}
-
-static void set_checked(rml_element *control, bool checked)
-{
-    if (checked) {
-        rml_element_set_attribute(control, "checked", "");
-        return;
-    }
-    rml_element_remove_attribute(control, "checked");
-}
-
-/* Shows `value` in a data-setting element's controls: an option is checked
- * when the value is its own, a checkbox when it is "true". An option's radio
- * is named for the key, so each setting's radios form their own group. */
-static void show_setting(rml_element *element, const char *key, const char *value)
-{
-    char option[256];
-    bool is_option = option_value(element, option, sizeof option);
-    const char *tag = rml_element_tag_name(element);
-    bool control = !strcmp(tag, "input") || !strcmp(tag, "select") ||
-                   !strcmp(tag, "textarea");
-    rml_element *found = control
-                           ? element
-                           : rml_element_query_selector(element, "input, select, textarea");
-    if (!found) {
-        return;
-    }
-    if (is_option) {
-        if (input_type(found, "radio")) {
-            rml_element_set_attribute(found, "name", key);
-        }
-        set_checked(found, !strcmp(option, value));
-        return;
-    }
-    if (input_type(found, "checkbox")) {
-        set_checked(found, !strcmp(value, "true"));
-        return;
-    }
-    rml_element_set_value(found, value);
-}
-
-/* Shows each data-setting element's stored value; unset keys stay as authored. */
-static void refresh_settings(ui_mount *m)
-{
-    int count = rml_element_query_selector_all(m->root, "[data-setting]", NULL, 0);
-    rml_element **elements = count ? xmalloc((size_t)count * sizeof *elements) : NULL;
-    rml_element_query_selector_all(m->root, "[data-setting]", elements, count);
-    m->refreshing = true;
-    for (int i = 0; i < count; i++) {
-        char key[128];
-        rml_element_attribute(elements[i], "data-setting", key, sizeof key);
-        const char *value = game_save_get(m->settings, key);
-        if (value) {
-            show_setting(elements[i], key, value);
-        }
-    }
-    m->refreshing = false;
-    free(elements);
-}
-
-void ui_mount_settings(ui_mount *m, game_save *settings)
-{
-    if (settings != m->settings) {
-        m->settings = settings;
-        m->settings_seen = UINT64_MAX;
-    }
-    if (!m->installed || !settings || m->settings_seen == game_save_revision(settings)) {
-        return;
-    }
-    refresh_settings(m);
-    m->settings_seen = game_save_revision(settings);
 }
 
 /* The name data-keys uses for `key`, or NULL for keys it cannot bind. */
@@ -395,32 +265,22 @@ static void listen_key(ui_mount *m, const rml_event *event)
     }
 }
 
-/* A click activates buttons and other elements; inputs report changes, which
- * carry their value and first update a bound setting. */
 void ui_mount_listen(ui_mount *m, const rml_event *event)
 {
-    if (m->refreshing) {
-        return;
-    }
     if (event->id == RML_EVENT_KEYDOWN) {
         listen_key(m, event);
-        return;
     }
-    if (event->id == RML_EVENT_CHANGE && m->settings) {
-        write_setting(m, event->target);
-    }
+}
+
+void ui_mount_emit(ui_mount *m, rml_element *element, const char *event)
+{
+    assert(ui_mount_holds(m, element));
     ui_activation a = { 0 };
-    rml_element *source = event_source(event->target, a.event, sizeof a.event);
-    bool input = source && strcmp(rml_element_tag_name(source), "input") == 0;
-    if (!source || !ui_mount_holds(m, source) ||
-        (event->id == RML_EVENT_CLICK && input) ||
-        (event->id == RML_EVENT_CHANGE && !input)) {
-        return;
-    }
-    snprintf(a.id, sizeof a.id, "%s", rml_element_id(source));
+    snprintf(a.event, sizeof a.event, "%s", event);
+    snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
     char value[64];
-    if (event->id == RML_EVENT_CHANGE &&
-        rml_element_value(source, value, sizeof value) > 0) {
+    if (!strcmp(rml_element_tag_name(element), "input") &&
+        rml_element_value(element, value, sizeof value) > 0) {
         char *end;
         a.value = strtof(value, &end);
         a.has_value = end != value;
@@ -534,56 +394,160 @@ void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
     m->applied = game_ui_revision(model);
 }
 
-/* ---------- Themes ---------- */
+/* ---------- Data ---------- */
 
-bool ui_theme_sync(ui_theme *t, const char *content_root, double time)
+void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emit_fn emit, void *user)
 {
-    char path[1024];
-    snprintf(path, sizeof path, "%s/ui/Theme.rcss", content_root);
-    bool changed = !acount(t->watches);
-    if (changed) {
-        apush(t->watches, (file_watch){ 0 });
+    *d = (ui_data){ .doc = doc ? doc : yyjson_mut_doc_new(NULL),
+                    .save_seen = UINT64_MAX };
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(d->doc);
+    if (!root) {
+        root = yyjson_mut_obj(d->doc);
+        yyjson_mut_doc_set_root(d->doc, root);
     }
-    for (int i = 0; i < acount(t->watches); i++) {
-        changed |= file_watch_changed(&t->watches[i], i ? t->watches[i].path : path, time);
+    yyjson_mut_obj_add_val(d->doc, root, "save", yyjson_mut_obj(d->doc));
+    yyjson_mut_obj_add_bool(d->doc, yyjson_mut_obj_add_obj(d->doc, root, "system"), "dark", false);
+    d->model = rml_data_model_create(context, UI_DATA_MODEL, d->doc, emit, user);
+}
+
+/* A value a binding set, as saved text; NULL for what is not a value. */
+static const char *saved_text(yyjson_mut_val *v, char *buffer, size_t size)
+{
+    switch (yyjson_mut_get_type(v)) {
+        case YYJSON_TYPE_STR: return yyjson_mut_get_str(v);
+        case YYJSON_TYPE_BOOL: return yyjson_mut_get_bool(v) ? "true" : "false";
+        case YYJSON_TYPE_NUM:
+            snprintf(buffer, size, "%g", yyjson_mut_get_num(v));
+            return buffer;
+        default: return NULL;
     }
-    if (!changed) {
+}
+
+void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text)
+{
+    if (yyjson_mut_is_str(value) && !strcmp(yyjson_mut_get_str(value), text)) {
+        return;
+    }
+    yyjson_mut_val *copy = yyjson_mut_strcpy(doc, text);
+    yyjson_mut_set_strn(value, yyjson_mut_get_str(copy), yyjson_mut_get_len(copy));
+}
+
+/* Shows `save`'s keys in `shown`, changing only the values that differ, so
+ * a long session does not grow the JSON; removed keys read as null. */
+static void show_save(yyjson_mut_doc *doc, yyjson_mut_val *shown, const game_save *save)
+{
+    yyjson_mut_val *key;
+    yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
+    while ((key = yyjson_mut_obj_iter_next(&iter))) {
+        if (!save || !game_save_get(save, yyjson_mut_get_str(key))) {
+            yyjson_mut_set_null(yyjson_mut_obj_iter_get_val(key));
+        }
+    }
+    for (int i = 0; save && i < game_save_count(save); i++) {
+        const char *name = game_save_key(save, i), *text = game_save_get(save, name);
+        yyjson_mut_val *value = yyjson_mut_obj_get(shown, name);
+        if (!value) {
+            value = yyjson_mut_null(doc);
+            yyjson_mut_obj_add(shown, yyjson_mut_strcpy(doc, name), value);
+        }
+        bool flag = !strcmp(text, "true");
+        if (flag || !strcmp(text, "false")) {
+            yyjson_mut_set_bool(value, flag);
+            continue;
+        }
+        ui_data_set_text(doc, value, text);
+    }
+}
+
+/* Shows whether the system's theme is dark. */
+static void show_system(ui_data *d)
+{
+    yyjson_mut_val *system = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "system");
+    yyjson_mut_val *dark = yyjson_mut_obj_get(system, "dark");
+    bool now = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+    if (yyjson_mut_get_bool(dark) != now) {
+        yyjson_mut_set_bool(dark, now);
+        rml_data_model_dirty(d->model, "system");
+    }
+}
+
+void ui_data_sync(ui_data *d, game_save *save)
+{
+    show_system(d);
+    yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
+    uint64_t writes = rml_data_model_writes(d->model);
+    if (save && save == d->save && writes != d->writes_seen) {
+        yyjson_mut_val *key;
+        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
+        while ((key = yyjson_mut_obj_iter_next(&iter))) {
+            char number[32];
+            const char *text = saved_text(yyjson_mut_obj_iter_get_val(key), number, sizeof number);
+            if (text) {
+                game_save_set(save, yyjson_mut_get_str(key), text);
+            }
+        }
+    }
+    d->writes_seen = writes;
+    uint64_t revision = save ? game_save_revision(save) : 0;
+    if (save == d->save && revision == d->save_seen) {
+        return;
+    }
+    d->save = save;
+    d->save_seen = revision;
+    show_save(d->doc, shown, save);
+    rml_data_model_dirty(d->model, "save");
+}
+
+void ui_data_free(ui_data *d)
+{
+    rml_data_model_destroy(d->model);
+    yyjson_mut_doc_free(d->doc);
+    *d = (ui_data){ 0 };
+}
+
+/* ---------- Pages ---------- */
+
+bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double time)
+{
+    bool renamed = strcmp(p->name, name) != 0;
+    if (renamed) {
+        ui_page_free(p);
+        snprintf(p->name, sizeof p->name, "%s", name);
+    }
+    if (!name[0]) {
+        return renamed;
+    }
+    char path[1024], directory[1024];
+    snprintf(path, sizeof path, "%s/ui/%s.yaml", content_root, name);
+    bool changed = file_watch_changed(&p->asset, path, time);
+    if (!files_changed(p->imports, time) && !changed && !renamed) {
         return false;
     }
-    asetlen(t->watches, 1);
-    t->error[0] = '\0';
-    char *text = text_file_read(path);
-    if (!text) {
-        free(t->rcss);
-        t->rcss = NULL;
-        return true;
-    }
-    char directory[1024], error[200], **imports = NULL;
     snprintf(directory, sizeof directory, "%s/ui", content_root);
-    char *rcss = rcss_expand(text, directory, &imports, error, sizeof error);
+    char *text = text_file_read(path);
+    char error[200] = "is missing", **imports = NULL;
+    ui_document next = { 0 };
+    bool read = text &&
+                ui_document_read(text, directory, &imports, &next, error, sizeof error);
     free(text);
     /* Every file it reached, so fixing a broken import retries. */
-    for (int i = 0; i < acount(imports); i++) {
-        file_watch w = { 0 };
-        file_watch_changed(&w, imports[i], time);
-        apush(t->watches, w);
-        free(imports[i]);
+    watch_paths(&p->imports, imports, time);
+    if (!read) {
+        ui_document_free(&next);
+        snprintf(p->error, sizeof p->error, "ui/%s.yaml %s", name, error);
+        return renamed;
     }
-    afree(imports);
-    if (!rcss) {
-        snprintf(t->error, sizeof t->error, "ui/Theme.rcss %s", error);
-        return true;
-    }
-    free(t->rcss);
-    t->rcss = rcss;
+    ui_document_free(&p->document);
+    p->document = next;
+    p->error[0] = '\0';
     return true;
 }
 
-void ui_theme_free(ui_theme *t)
+void ui_page_free(ui_page *p)
 {
-    afree(t->watches);
-    free(t->rcss);
-    *t = (ui_theme){ 0 };
+    afree(p->imports);
+    ui_document_free(&p->document);
+    *p = (ui_page){ 0 };
 }
 
 /* ---------- Game host ---------- */
@@ -593,12 +557,16 @@ void ui_theme_free(ui_theme *t)
 /* The overlay's z-index, above any authored GameUi order. */
 #define OVERLAY_ORDER "1000000"
 
-/* The game document's own style: the editor's face, and a pointer that passes
- * through to the game except over what a player activates. */
-static const char BASE_RCSS
-    [] = "body { width: 100%; height: 100%; font-family: Inter; "
-         "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
-         "[data-event], input, select, textarea { pointer-events: auto; }\n";
+/* The game document's own style: the editor's face, a pointer that passes
+ * through to the game except over what a player activates, and a slot that
+ * fills what holds it. */
+static const char
+    BASE_RCSS[] = "body { width: 100%; height: 100%; font-family: Inter; "
+                  "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
+                  "slot { display: block; position: relative; width: 100%; "
+                  "height: 100%; }\n"
+                  "[data-event-click], input, select, textarea { "
+                  "pointer-events: auto; }\n";
 
 /* One GameUi entity's mount, or the host's overlay. */
 typedef struct ui_view
@@ -612,10 +580,12 @@ typedef struct ui_view
 struct render_ui
 {
     rml_backend *backend;
-    rml_element *doc;
+    rml_element *doc;  /* the page */
+    rml_element *slot; /* where the world's documents show on it */
     rml_listener *listener;
     char *content_root;
-    ui_theme theme;
+    ui_page page;
+    ui_data data;
     ui_view *views;
     ui_view overlay; /* its entity is unused */
     char overlay_state[32];
@@ -628,6 +598,76 @@ struct render_ui
 };
 
 static void on_event(void *user, const rml_event *event);
+static void on_emit(void *user, const rml_event *event, const char *name);
+
+/* Removes the view's root, which detaches the listener, then its mount. */
+static void close_view(render_ui *ui, ui_view *view)
+{
+    if (view->root) {
+        rml_element_remove_child(rml_element_parent(view->root), view->root);
+        ui->restyle = true;
+    }
+    ui_mount_free(view->mount);
+    *view = (ui_view){ .entity = view->entity };
+}
+
+/* The page body's attributes: the data model, then the page's own. */
+static char *frame_body(const char *attributes)
+{
+    const char *model = "data-model=\"" UI_DATA_MODEL "\"";
+    size_t size = strlen(model) + (attributes ? strlen(attributes) + 1 : 0) + 1;
+    char *body = xmalloc(size);
+    snprintf(body, size, "%s%s%s", model, attributes ? " " : "", attributes ? attributes : "");
+    return body;
+}
+
+/* The page's document: its body attributes, with the data model, and its
+ * markup, as ui_document_compose writes one. */
+static char *page_text(const ui_page *page)
+{
+    ui_document body = {
+        .rml = page->document.rml ? page->document.rml : "",
+        .rcss = "",
+        .body = frame_body(page->document.body),
+    };
+    char *text = ui_document_compose(&body, "");
+    free(body.body);
+    return text;
+}
+
+/* Shows the page anew: closes the world's documents, which open again in its
+ * slot, and loads its markup; markup RmlUi rejects is the page's error. */
+static void load_page(render_ui *ui)
+{
+    for (int i = 0; i < acount(ui->views); i++) {
+        close_view(ui, &ui->views[i]);
+    }
+    asetlen(ui->views, 0);
+    close_view(ui, &ui->overlay);
+    if (ui->doc) {
+        rml_document_close(ui->doc);
+    }
+    char *text = page_text(&ui->page);
+    rml_context *context = rml_backend_context(ui->backend);
+    rml_backend_take_warning();
+    ui->doc = rml_context_load_document_from_memory(context, text, "game-ui");
+    const char *warning = rml_backend_take_warning();
+    free(text);
+    if (warning[0] && !ui->page.error[0]) {
+        snprintf(
+            ui->page.error,
+            sizeof ui->page.error,
+            "ui/%s.yaml %s",
+            ui->page.name,
+            warning
+        );
+    }
+    assert(ui->doc);
+    rml_document_show(ui->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    ui->slot = rml_element_query_selector(ui->doc, "slot");
+    ui->slot = ui->slot ? ui->slot : ui->doc;
+    ui->restyle = true;
+}
 
 render_ui *render_ui_new(const char *content_root)
 {
@@ -636,23 +676,9 @@ render_ui *render_ui_new(const char *content_root)
     ui->backend = rml_backend_create(1, 1, 1);
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
-    rml_context *context = rml_backend_context(ui->backend);
-    ui->doc = rml_context_load_document_from_memory(context, "<rml><head/><body/></rml>", "game-ui");
-    assert(ui->doc);
-    rml_document_set_style_sheet(ui->doc, BASE_RCSS);
-    rml_document_show(ui->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    ui_data_init(&ui->data, rml_backend_context(ui->backend), NULL, on_emit, ui);
+    load_page(ui);
     return ui;
-}
-
-/* Removes the view's root, which detaches the listener, then its mount. */
-static void close_view(render_ui *ui, ui_view *view)
-{
-    if (view->root) {
-        rml_element_remove_child(ui->doc, view->root);
-        ui->restyle = true;
-    }
-    ui_mount_free(view->mount);
-    *view = (ui_view){ .entity = view->entity };
 }
 
 void render_ui_free(render_ui *ui)
@@ -665,9 +691,10 @@ void render_ui_free(render_ui *ui)
     }
     afree(ui->views);
     close_view(ui, &ui->overlay);
+    ui_data_free(&ui->data);
     rml_backend_destroy(ui->backend);
     rml_listener_destroy(ui->listener);
-    ui_theme_free(&ui->theme);
+    ui_page_free(&ui->page);
     free(ui->content_root);
     free(ui);
 }
@@ -685,25 +712,40 @@ static void open_view(render_ui *ui, ui_view *view, const char *name, const char
         { "width", "100%" },        { "height", "100%" },
     };
     view->mount = ui_mount_new(ui->content_root, name);
-    view->root = rml_element_create_child(ui->doc, "div", NULL);
+    view->root = rml_element_create_child(ui->slot, "div", NULL);
     for (size_t i = 0; i < sizeof LAYOUT / sizeof *LAYOUT; i++) {
         rml_element_set_property(view->root, LAYOUT[i][0], LAYOUT[i][1]);
     }
     rml_element_set_property(view->root, "z-index", order);
 }
 
-static void on_event(void *user, const rml_event *event)
+/* The overlay's or view's mount holding `element`, or NULL. */
+static ui_mount *mount_holding(render_ui *ui, rml_element *element)
 {
-    render_ui *ui = user;
-    if (ui->overlay.mount && ui_mount_holds(ui->overlay.mount, event->target)) {
-        ui_mount_listen(ui->overlay.mount, event);
-        return;
+    if (ui->overlay.mount && ui_mount_holds(ui->overlay.mount, element)) {
+        return ui->overlay.mount;
     }
     for (int i = 0; i < acount(ui->views); i++) {
-        if (ui->views[i].mount && ui_mount_holds(ui->views[i].mount, event->target)) {
-            ui_mount_listen(ui->views[i].mount, event);
-            return;
+        if (ui->views[i].mount && ui_mount_holds(ui->views[i].mount, element)) {
+            return ui->views[i].mount;
         }
+    }
+    return NULL;
+}
+
+static void on_event(void *user, const rml_event *event)
+{
+    ui_mount *m = mount_holding(user, event->target);
+    if (m) {
+        ui_mount_listen(m, event);
+    }
+}
+
+static void on_emit(void *user, const rml_event *event, const char *name)
+{
+    ui_mount *m = mount_holding(user, event->current);
+    if (m) {
+        ui_mount_emit(m, event->current, name);
     }
 }
 
@@ -841,13 +883,13 @@ static void append(char **sheet, const char *text)
     memcpy(*sheet + start, text, strlen(text));
 }
 
-/* The base, then the project's theme, then each shown asset's RCSS once. */
+/* The base, then the page's RCSS, then each shown asset's RCSS once. */
 static void install_styles(render_ui *ui)
 {
     char *sheet = NULL;
     const char **names = NULL;
     append(&sheet, BASE_RCSS);
-    append(&sheet, ui->theme.rcss ? ui->theme.rcss : "");
+    append(&sheet, ui->page.document.rcss ? ui->page.document.rcss : "");
     for (int i = -1; i < acount(ui->views); i++) {
         ui_mount *m = mount_at(ui, i);
         bool known = !m;
@@ -868,10 +910,10 @@ static void install_styles(render_ui *ui)
     afree(names);
 }
 
-/* Reports the theme's error, else the first mount's. */
+/* Reports the page's error, else the first mount's. */
 static void collect_error(render_ui *ui)
 {
-    snprintf(ui->error, sizeof ui->error, "%s", ui->theme.error);
+    snprintf(ui->error, sizeof ui->error, "%s", ui->page.error);
     for (int i = -1; i < acount(ui->views) && !ui->error[0]; i++) {
         ui_mount *m = mount_at(ui, i);
         if (m) {
@@ -886,6 +928,9 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     ecs_world *world = w->ecs;
     ui->time += dt;
     send_activations(ui, w);
+    if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
+        load_page(ui);
+    }
     if (width != ui->width || height != ui->height) {
         ui->width = width;
         ui->height = height;
@@ -909,7 +954,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ecs_query_end(&query);
     }
     close_unseen(ui, w->model);
-    ui->restyle |= ui_theme_sync(&ui->theme, ui->content_root, ui->time);
+    ui_data_sync(&ui->data, w->save);
     if (ui->restyle) {
         install_styles(ui);
         ui->restyle = false;
@@ -920,17 +965,14 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         if (m && w->model) {
             ui_mount_apply(m, w->model, ui->views[i].entity);
         }
-        if (m) {
-            ui_mount_settings(m, w->settings);
-        }
     }
     rml_backend_update(ui->backend, dt);
 }
 
 void render_ui_composite(render_ui *ui, CF_Canvas target)
 {
-    if ((!acount(ui->views) && !ui->overlay.mount) || ui->width <= 0 ||
-        ui->height <= 0) {
+    if ((!acount(ui->views) && !ui->overlay.mount && !ui->page.name[0]) ||
+        ui->width <= 0 || ui->height <= 0) {
         return;
     }
     rml_backend_render(ui->backend);

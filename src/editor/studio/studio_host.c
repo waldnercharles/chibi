@@ -8,6 +8,7 @@
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -119,13 +120,55 @@ static bool studio_key_pressed(const studio *s, SDL_Keycode key)
     return false;
 }
 
+float studio_pixel_ratio(const studio *s)
+{
+    return cf_app_get_pixel_scale() * s->prefs.ui_scale;
+}
+
+/* SDL reports window points; the editor lays out in dp, UI Scale apart. */
+static float to_dp(const studio *s, float points)
+{
+    return points / s->prefs.ui_scale;
+}
+
+/* How long frames run at full rate after input, for the tooltips and
+ * delayed motion it starts. */
+#define ACTIVE_AFTER_INPUT 1.0
+
+bool studio_active(const studio *s)
+{
+    return s->time < s->active_until ||
+           (app_scene_authoring_runtime_state(s->scene).playing && !s->pause.active);
+}
+
+/* No frame is needed while nothing moves: no input lately, no scene playing
+ * (a paused one waits), and the last frame drew what the one before it did,
+ * so any animation keeps frames coming without declaring itself. Timers
+ * without motion, such as a toast's lifetime, wait for the host's next idle
+ * frame. */
+double studio_idle_time(studio *s)
+{
+    bool changed = rml_backend_take_changed(s->backend);
+    if (s->graph.backend) {
+        changed |= rml_backend_take_changed(s->graph.backend);
+    }
+    if (changed || studio_active(s)) {
+        return 0;
+    }
+    double idle = kit_idle_time(s->kit);
+    return s->graph.kit ? fmin(idle, kit_idle_time(s->graph.kit)) : idle;
+}
+
 static void forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
+    if (acount(s->events)) {
+        s->active_until = s->time + ACTIVE_AFTER_INPUT;
+    }
     for (int b = 0; b < 3; b++) {
         in->pressed[b] = in->released[b] = false;
     }
-    in->wheel = 0;
+    in->wheel = s->zoom_wheel = 0;
     asetlen(s->keys, 0);
     s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
@@ -135,8 +178,8 @@ static void forward_input(studio *s)
                             .modifiers = rml_modifiers(s->mods) };
         switch (e->type) {
             case SDL_EVENT_MOUSE_MOTION:
-                in->mouse_x = input.x = e->motion.x;
-                in->mouse_y = input.y = e->motion.y;
+                in->mouse_x = input.x = to_dp(s, e->motion.x);
+                in->mouse_y = input.y = to_dp(s, e->motion.y);
                 input.type = RML_INPUT_POINTER_MOVE;
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -150,8 +193,8 @@ static void forward_input(studio *s)
                 if (b < 0) {
                     continue;
                 }
-                in->mouse_x = input.x = e->button.x;
-                in->mouse_y = input.y = e->button.y;
+                in->mouse_x = input.x = to_dp(s, e->button.x);
+                in->mouse_y = input.y = to_dp(s, e->button.y);
                 rml_input move = input;
                 move.type = RML_INPUT_POINTER_MOVE;
                 rml_backend_process_input(s->backend, &move);
@@ -166,9 +209,14 @@ static void forward_input(studio *s)
             case SDL_EVENT_MOUSE_WHEEL:
                 /* Zoom anchors where the wheel turned, which a motion event
                    may not have reported yet. */
-                in->mouse_x = input.x = e->wheel.mouse_x;
-                in->mouse_y = input.y = e->wheel.mouse_y;
+                in->mouse_x = input.x = to_dp(s, e->wheel.mouse_x);
+                in->mouse_y = input.y = to_dp(s, e->wheel.mouse_y);
                 in->wheel += e->wheel.y;
+                /* The modifiers as the wheel turned: a key released later in
+                   the same frame must not undo the gesture. */
+                if (studio_primary(s, s->mods) || (s->mods & SDL_KMOD_CTRL)) {
+                    s->zoom_wheel += e->wheel.y;
+                }
                 input.type = RML_INPUT_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;
                 input.wheel_y = -e->wheel.y;
@@ -293,11 +341,14 @@ static void draw_viewport(studio *s)
         engine_viewport_set_host_input(s->viewport, NULL);
         return;
     }
+    /* The Scene renders in window points, as games' UI scales with the view
+       and not with the editor's UI Scale. */
+    float ui = s->prefs.ui_scale;
     engine_viewport_host_input input = {
-        .width = s->surface.rect.w,
-        .height = s->surface.rect.h,
-        .x = s->surface.x,
-        .y = s->surface.y,
+        .width = s->surface.rect.w * ui,
+        .height = s->surface.rect.h * ui,
+        .x = s->surface.x * ui,
+        .y = s->surface.y * ui,
         .hovered = s->surface.hovered,
         .focused = s->focus_area == area && !kit_wants_keyboard(s->kit),
         .blocked = kit_command_is_open(s->kit),
@@ -312,6 +363,7 @@ static void draw_viewport(studio *s)
         input.pressed[b] = s->surface.pressed[b];
         input.released[b] = s->surface.released[b];
     }
+    studio_scene_view(s, &input);
     engine_viewport_set_host_input(s->viewport, &input);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
@@ -355,19 +407,35 @@ static void apply_prefs(studio *s, bool initial)
     }
 }
 
-/* The editor looks the way its own UI project's theme says; an edit to it
- * restyles every Studio document. */
-static void sync_theme(studio *s)
+/* With the Studio project open, its scene and previews are the editor's own UI,
+ * so their settings are these preferences, as the editor's panels' are. */
+static void share_project_prefs(studio *s)
 {
-    if (!ui_theme_sync(&s->theme, STUDIO_PROJECT "/content", s->time)) {
+    if (!s->own_project) {
         return;
     }
-    kit_theme(s->kit, s->theme.rcss);
-    if (s->graph.kit) {
-        kit_theme(s->graph.kit, s->theme.rcss);
+    game_behavior_world *previews = game_prototype_preview_behaviors(s->scene->prototype_preview);
+    studio_prefs_share(&s->prefs, game_behavior_save(s->scene->live->behaviors), &s->scene_prefs_seen);
+    studio_prefs_share(&s->prefs, game_behavior_save(previews), &s->preview_prefs_seen);
+}
+
+/* Studio's chrome is the Studio scene's page: the scene's root document's
+ * RCSS styles it, and an edit to it or an import restyles the editor. */
+static void sync_theme(studio *s)
+{
+    const char *name = s->ui ? studio_ui_page(s->ui) : "";
+    if (!ui_page_sync(&s->page, STUDIO_PROJECT "/content", name, s->time) &&
+        !s->page.error[0]) {
+        return;
     }
-    if (s->theme.error[0]) {
-        studio_error(s, "Theme", s->theme.error);
+    const char *rcss = s->page.document.rcss ? s->page.document.rcss : "";
+    kit_theme(s->kit, rcss);
+    if (s->graph.kit) {
+        kit_theme(s->graph.kit, rcss);
+    }
+    if (s->page.error[0]) {
+        studio_error(s, "Studio UI", s->page.error);
+        s->page.error[0] = '\0';
     }
 }
 
@@ -377,14 +445,17 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->scene = scene;
     s->viewport = viewport;
     s->project_root = project_root;
+    char studio_root[PATH_MAX];
+    s->own_project = realpath(STUDIO_PROJECT, studio_root) &&
+                     !strcmp(studio_root, project_root);
     s->backend = rml_backend_create(cf_app_get_width(), cf_app_get_height(), cf_app_get_pixel_scale());
     assert(s->backend);
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
-    sync_theme(s);
     s->prefs = studio_prefs_load();
     char error[256];
-    s->ui = studio_ui_new(STUDIO_PROJECT, error, sizeof error);
+    s->ui = studio_ui_new(rml_backend_context(s->backend), STUDIO_PROJECT, error, sizeof error);
+    sync_theme(s);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);
     }
@@ -398,6 +469,8 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->assets_hover = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->maximized = -1;
+    s->view.zoom = 1;
+    s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
@@ -441,7 +514,7 @@ void studio_free(studio *s)
     component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
     studio_ui_free(s->ui);
-    ui_theme_free(&s->theme);
+    ui_page_free(&s->page);
     rml_backend_destroy(s->backend);
     free(s);
 }
@@ -449,18 +522,19 @@ void studio_free(studio *s)
 void studio_frame(studio *s, double delta_seconds)
 {
     int width = cf_app_get_width(), height = cf_app_get_height();
-    float scale = cf_app_get_pixel_scale();
-    rml_backend_resize(s->backend, width, height, scale);
+    float scale = cf_app_get_pixel_scale(), ratio = studio_pixel_ratio(s);
+    rml_backend_resize_pixels(s->backend, (int)lroundf(width * scale), (int)lroundf(height * scale), ratio);
     s->time += delta_seconds;
     s->in.time = s->time;
-    s->in.dp_ratio = scale;
-    s->in.width = (float)width;
-    s->in.height = (float)height;
+    s->in.dp_ratio = ratio;
+    s->in.width = to_dp(s, (float)width);
+    s->in.height = to_dp(s, (float)height);
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
     sync_theme(s);
     studio_ui_frame(s);
+    share_project_prefs(s);
     studio_debug_frame(s);
     kit_begin(s->kit, &s->in);
     studio_emit(s);

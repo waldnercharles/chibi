@@ -1,13 +1,13 @@
 rml: |
   <div data-keys="Enter:Choose Space:Choose Down:Next Up:Previous" autofocus>
     <div class="menu-group">Wires</div>
-    <use ui="MenuOption" data-setting="wires" value="curved">Curved</use>
-    <use ui="MenuOption" data-setting="wires" value="orthogonal">Orthogonal</use>
-    <use ui="MenuOption" data-setting="wires" value="straight">Straight</use>
-    <use ui="MenuOption" data-setting="wires" value="subway">Subway</use>
+    <use ui="MenuOption" data-checked="save.wires" value="curved">Curved</use>
+    <use ui="MenuOption" data-checked="save.wires" value="orthogonal">Orthogonal</use>
+    <use ui="MenuOption" data-checked="save.wires" value="straight">Straight</use>
+    <use ui="MenuOption" data-checked="save.wires" value="subway">Subway</use>
     <div class="menu-sep"/>
     <div class="menu-group">Nodes</div>
-    <use ui="MenuCheck" data-setting="shortBindings">Short Bindings</use>
-    <use ui="MenuCheck" data-setting="titleFlow">Flow in Titles</use>
-    <use ui="MenuCheck" data-setting="compactNodes">Compact Nodes</use>
+    <use ui="MenuCheck" data-checked="save.shortBindings">Short Bindings</use>
+    <use ui="MenuCheck" data-checked="save.titleFlow">Flow in Titles</use>
+    <use ui="MenuCheck" data-checked="save.compactNodes">Compact Nodes</use>
   </div>

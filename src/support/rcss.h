@@ -15,9 +15,23 @@
  *
  * A rule's declarations come before its nested rules. @keyframes,
  * @decorator, @spritesheet and @font-face blocks pass through as written.
- * `directory` is where imports resolve; NULL allows none. Appends each file
+ * `directory` is where imports resolve; NULL leaves them as written, for
+ * checking a stylesheet away from its files. Appends each file
  * read to `imports` (support/array.h) when it is not NULL. Returns owned RCSS,
  * or NULL with a message in `error`. */
 char *rcss_expand(const char *text, const char *directory, char ***imports, char *error, size_t error_size);
+
+/* A custom property as written, for an editor that changes its value in
+ * place. */
+typedef struct rcss_variable
+{
+    char selector[128]; /* of the innermost rule declaring it, spaces collapsed */
+    char name[64];      /* with its leading -- */
+    int start, end;     /* the value's bytes in the text, trimmed */
+} rcss_variable;
+
+/* Appends each custom property `text` declares to `variables`
+ * (support/array.h), in order. */
+void rcss_variables(const char *text, rcss_variable **variables);
 
 #endif

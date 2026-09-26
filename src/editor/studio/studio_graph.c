@@ -451,7 +451,7 @@ static bool ensure_canvas(studio *s)
     if (g->kit) {
         return true;
     }
-    float scale = cf_app_get_pixel_scale();
+    float scale = studio_pixel_ratio(s);
     g->backend = rml_backend_create(
         (int)fmaxf(g->surface.rect.w, 1),
         (int)fmaxf(g->surface.rect.h, 1),
@@ -461,7 +461,7 @@ static bool ensure_canvas(studio *s)
         return false;
     }
     g->kit = kit_create(rml_backend_context(g->backend), "graph.rml");
-    kit_theme(g->kit, s->theme.rcss);
+    kit_theme(g->kit, s->page.document.rcss ? s->page.document.rcss : "");
     g->in.mouse_x = g->in.mouse_y = -1e9f;
     if (g->zoom <= 0) {
         g->zoom = 1;
@@ -488,7 +488,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
                 s->prefs.compact_nodes << 2 | (int)s->prefs.wires << 3;
     e->arrange_pending |= forms != g->forms;
     g->forms = forms;
-    float scale = cf_app_get_pixel_scale();
+    float scale = studio_pixel_ratio(s);
     rml_backend_resize_pixels(
         g->backend,
         (int)lroundf(r.w * scale),

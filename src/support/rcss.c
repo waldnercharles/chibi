@@ -287,11 +287,13 @@ static bool import(reader *r, const char *chunk, char **out)
 {
     const char *open = strpbrk(chunk, "\"'");
     const char *close = open ? strchr(open + 1, *open) : NULL;
-    if (!r->directory) {
-        return fail(r, "@import is only for stylesheet files");
-    }
     if (!close) {
         return fail(r, "@import needs a quoted file name");
+    }
+    if (!r->directory) {
+        put_text(out, chunk);
+        put_text(out, ";\n");
+        return true;
     }
     char path[1024];
     snprintf(path, sizeof path, "%s/%.*s", r->directory, (int)(close - open - 1), open + 1);
@@ -430,4 +432,129 @@ char *rcss_expand(const char *text, const char *directory, char ***imports, char
     }
     afree(seen);
     return out;
+}
+
+/* ---------- Custom properties ---------- */
+
+/* How deeply rules nest before rcss_variables stops naming their selectors. */
+#define VARIABLE_DEPTH 16
+
+/* Past the comment starting at `p`, or `p` when none does. */
+static const char *skip_comment(const char *p, int parens)
+{
+    if (p[0] == '/' && p[1] == '*') {
+        const char *end = strstr(p + 2, "*/");
+        return end ? end + 2 : p + strlen(p);
+    }
+    if (p[0] == '/' && p[1] == '/' && !parens) {
+        const char *end = strchr(p, '\n');
+        return end ? end : p + strlen(p);
+    }
+    return p;
+}
+
+static bool blank(const char *start, const char *end)
+{
+    for (; start < end; start++) {
+        if (!isspace((unsigned char)*start)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The selector in [start, end), trimmed, with each run of spaces as one. */
+static void collapse(char *out, size_t size, const char *start, const char *end)
+{
+    size_t n = 0;
+    bool space = false;
+    for (; start < end && n + 1 < size; start++) {
+        if (isspace((unsigned char)*start)) {
+            space = n > 0;
+            continue;
+        }
+        if (space && n + 2 < size) {
+            out[n++] = ' ';
+        }
+        space = false;
+        out[n++] = *start;
+    }
+    out[n] = '\0';
+}
+
+/* Adds the declaration in [start, end) when it sets a custom property. */
+static void add_variable(
+    const char *text,
+    const char *start,
+    const char *end,
+    const char *selector,
+    rcss_variable **out
+)
+{
+    while (start < end && isspace((unsigned char)*start)) {
+        start++;
+    }
+    const char *colon = memchr(start, ':', (size_t)(end - start));
+    if (end - start < 3 || strncmp(start, "--", 2) != 0 || !colon) {
+        return;
+    }
+    const char *name_end = colon, *value = colon + 1;
+    while (name_end > start && isspace((unsigned char)name_end[-1])) {
+        name_end--;
+    }
+    while (value < end && isspace((unsigned char)*value)) {
+        value++;
+    }
+    while (end > value && isspace((unsigned char)end[-1])) {
+        end--;
+    }
+    rcss_variable v = { .start = (int)(value - text), .end = (int)(end - text) };
+    snprintf(v.selector, sizeof v.selector, "%s", selector);
+    snprintf(v.name, sizeof v.name, "%.*s", (int)(name_end - start), start);
+    apush(*out, v);
+}
+
+void rcss_variables(const char *text, rcss_variable **variables)
+{
+    char selectors[VARIABLE_DEPTH][128];
+    int depth = 0, parens = 0;
+    char quote = 0;
+    const char *segment = text;
+    for (const char *p = text; *p; p++) {
+        if (quote) {
+            p += *p == '\\' && p[1];
+            quote = *p == quote ? 0 : quote;
+            continue;
+        }
+        const char *after = skip_comment(p, parens);
+        if (after != p) {
+            segment = blank(segment, p) ? after : segment;
+            p = after - 1;
+            continue;
+        }
+        if (*p == '"' || *p == '\'') {
+            quote = *p;
+            continue;
+        }
+        parens += *p == '(' ? 1 : *p == ')' && parens ? -1 : 0;
+        if (parens) {
+            continue;
+        }
+        if (*p == '{') {
+            if (depth < VARIABLE_DEPTH) {
+                collapse(selectors[depth], sizeof selectors[depth], segment, p);
+            }
+            depth++;
+            segment = p + 1;
+            continue;
+        }
+        if (*p != ';' && *p != '}') {
+            continue;
+        }
+        if (depth > 0 && depth <= VARIABLE_DEPTH) {
+            add_variable(text, segment, p, selectors[depth - 1], variables);
+        }
+        depth -= *p == '}' && depth > 0;
+        segment = p + 1;
+    }
 }

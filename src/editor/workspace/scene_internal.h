@@ -110,7 +110,9 @@ struct app_scene_authoring
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
     char *content_root;
-    tree_watch disk;     /* content files as last loaded or saved */
+    char *ui;         /* the scene's root ui document, or NULL for default_ui */
+    char *default_ui; /* the project's, or NULL */
+    tree_watch disk;  /* content files as last loaded or saved */
     char **disk_pending; /* changes waiting for the runtime to stop */
     int selected;
     ecs_entity reveal_actor;
@@ -283,6 +285,10 @@ void refresh_asset_catalog(app_scene_authoring *scene);
 void sync_editor_inspection(app_scene_authoring *scene);
 const char *system_component_name(ecs_component_id id, void *);
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
+/* Replaces the file with `text` at once; on the web the workspace server
+ * keeps it too. */
+int write_file_atomic(const char *path, const char *text);
+/* Writes an asset's in-memory JSON as its YAML file, as write_file_atomic. */
 int write_text_file_atomic(const char *path, const char *text);
 /* Removes a content file, from browser storage too. */
 int remove_content_file(const char *path);

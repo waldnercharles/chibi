@@ -32,8 +32,14 @@ static const uint32_t SERIES_COLORS[SERIES_COUNT] = { 0x6f9fe8ff,
                                                       0xd9a53dff,
                                                       0xc586c0ff };
 
+/* Samples only frames the editor runs for input or a playing scene: an idle
+ * editor's frames are not worth charting, and charting them would keep it
+ * drawing. */
 void studio_performance_sample(studio *s, double delta_seconds)
 {
+    if (!studio_active(s)) {
+        return;
+    }
     const engine_frame_timing *timing = app_scene_authoring_runtime_timing(s->scene);
     bool running = timing && app_scene_authoring_runtime_state(s->scene).playing;
     studio_perf_sample sample = {
@@ -62,17 +68,22 @@ void studio_performance_sample(studio *s, double delta_seconds)
     }
 }
 
-/* Averages refresh at 4 Hz; a readout that changes every frame cannot be read. */
+/* Averages refresh at 4 Hz; a readout that changes every frame cannot be read.
+ * An idle editor draws only when something changes, which it says. */
 static void refresh_readout(studio *s)
 {
+    if (!studio_active(s)) {
+        snprintf(s->perf_readout, sizeof s->perf_readout, "Idle");
+        return;
+    }
     if (s->time - s->perf_readout_time < 0.25 && s->perf_readout_time > 0) {
         return;
     }
     s->perf_readout_time = s->time;
-    double sum = 0, peak = 0;
+    double sum = 0, peak = 0, last = acount(s->perf) ? alast(s->perf).time : s->time;
     int count = 0;
     for (int i = 0; i < acount(s->perf); i++) {
-        if (s->perf[i].time >= s->time - 2) {
+        if (s->perf[i].time >= last - 2) {
             sum += s->perf[i].frame_ms;
             peak = fmax(peak, s->perf[i].frame_ms);
             count++;
@@ -132,13 +143,13 @@ void studio_performance_body(studio *s, int area)
     kit_chart_desc frame_chart = {
         .series = &frame_series,
         .series_count = 1,
-        .now = s->time,
+        .now = count ? s->perf[count - 1].time : 0,
         .window = (float)WINDOW,
         .reference = BUDGET_MS,
         .unit = "ms",
         .precision = 1,
         .fill = true,
-        .live = true,
+        .live = studio_active(s),
     };
     kit_chart(k, "frame", "perf-chart", &frame_chart);
     kit_label(k, "sim-title", "perf-heading", "Simulation");
@@ -150,11 +161,11 @@ void studio_performance_body(studio *s, int area)
         kit_chart_desc simulation = {
             .series = series,
             .series_count = SERIES_COUNT,
-            .now = s->time,
+            .now = count ? s->perf[count - 1].time : 0,
             .window = (float)WINDOW,
             .unit = "ms",
             .precision = 2,
-            .live = true,
+            .live = studio_active(s),
         };
         kit_chart(k, "simulation", "perf-chart", &simulation);
         kit_push(k, "legend", NULL, "perf-legend");

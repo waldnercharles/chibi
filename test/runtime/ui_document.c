@@ -19,6 +19,8 @@ static void composed_document()
         "  <div id=\"score\">0</div>\n"
         "rcss: |\n"
         "  #score { font-size: 24dp; }\n",
+        NULL,
+        NULL,
         &d,
         error,
         sizeof error
@@ -50,17 +52,60 @@ static void rejected_documents()
         { "rcss: 'div {}'", "rml must be nonempty" },
         { "rml: ''", "rml must be nonempty" },
         { "rml: '<div/>'\nstyle: dark", "unknown key style" },
-        { "rml: '<body><div/></body>'", "remove <body>" },
         { "rml: '<div/>'\nrcss: [1]", "rcss must be text" },
         { "rml: '<div/>'\nrcss: '</style><div>'", "must not close its style" },
         { "rml: '<div/>'\nrcss: '.a { color: red;'", "rcss line 1: missing }" },
+        { "rml: '<body class=\"x\"><p/></body><p/>'", "must hold all the markup" },
+        { "rml: '<div><body/></div>'", "remove <body>" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         ui_document d = { 0 };
         char error[256] = { 0 };
-        bool ok = ui_document_read(cases[i].yaml, &d, error, sizeof error);
+        bool ok = ui_document_read(cases[i].yaml, NULL, NULL, &d, error, sizeof error);
         test_check(!ok && strstr(error, cases[i].error) && !d.rml, cases[i].error);
     }
+}
+
+/* A scene's root document may wrap its markup in <body ...>, and its RCSS
+ * may import stylesheets beside it. */
+static void page_document()
+{
+    char root[] = "/tmp/chibi-ui-page-XXXXXX", path[128];
+    assert(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/tokens.rcss", root);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(":root { --a: 1; }\n", file);
+    fclose(file);
+    ui_document d = { 0 };
+    char error[256] = { 0 }, **imports = NULL;
+    bool ok = ui_document_read(
+        "rml: '<body class=\"page\" "
+        "data-class-dark=\"system.dark\"><slot/></body>'\n"
+        "rcss: '@import \"tokens.rcss\";'\n",
+        root,
+        &imports,
+        &d,
+        error,
+        sizeof error
+    );
+    char *composed = ok ? ui_document_compose(&d, "") : NULL;
+    test_check(
+        ok && !strcmp(d.body, "class=\"page\" data-class-dark=\"system.dark\"") &&
+            !strcmp(d.rml, "<slot/>") && strstr(d.rcss, "body { --a: 1; }") &&
+            acount(imports) == 1 &&
+            strstr(composed, "<body class=\"page\" data-class-dark=\"system.dark\"><slot/></body>"),
+        "a root document's <body> holds the page body's attributes and its "
+        "RCSS imports stylesheets"
+    );
+    free(composed);
+    for (int i = 0; i < acount(imports); i++) {
+        free(imports[i]);
+    }
+    afree(imports);
+    ui_document_free(&d);
+    unlink(path);
+    rmdir(root);
 }
 
 /* Nested RCSS flattens before the document scopes it. */
@@ -73,6 +118,8 @@ static void nested_rcss()
         "rcss: |\n"
         "  // rows\n"
         "  .menu { .item { margin: 0; &:hover { color: var(--fg); } } }\n",
+        NULL,
+        NULL,
         &d,
         error,
         sizeof error
@@ -92,10 +139,10 @@ static void last_valid_document()
 {
     ui_document d = { 0 };
     char error[256] = { 0 };
-    bool first = ui_document_read("rml: '<p>one</p>'", &d, error, sizeof error);
-    bool rejected = !ui_document_read("rml: ''", &d, error, sizeof error);
+    bool first = ui_document_read("rml: '<p>one</p>'", NULL, NULL, &d, error, sizeof error);
+    bool rejected = !ui_document_read("rml: ''", NULL, NULL, &d, error, sizeof error);
     bool kept = d.rml && strcmp(d.rml, "<p>one</p>") == 0;
-    bool replaced = ui_document_read("rml: '<p>two</p>'", &d, error, sizeof error);
+    bool replaced = ui_document_read("rml: '<p>two</p>'", NULL, NULL, &d, error, sizeof error);
     test_check(
         first && rejected && kept && replaced && strcmp(d.rml, "<p>two</p>") == 0,
         "an invalid ui asset keeps the last valid document"
@@ -140,6 +187,7 @@ static void expanded_widgets()
     write_widget(root, "Meter", "rml: <div class=\"fill\"/><slot/>\nrcss: '.fill { height: 4dp; }'\n");
     write_widget(root, "Row", "rml: <span><slot/></span>\n");
     write_widget(root, "Loop", "rml: <use ui=\"Loop\"/>\n");
+    write_widget(root, "Option", "rml: <label><input type=\"radio\" attrs/><slot/></label>\n");
     char text[512];
     char **uses = NULL;
     bool ok = expand_text(root, "<use ui=\"Meter\" id=\"hull\" class=\"wide\"/>", text, sizeof text, &uses);
@@ -179,6 +227,32 @@ static void expanded_widgets()
         "appears once"
     );
     free_names(uses);
+    uses = NULL;
+    ok = expand_text(
+        root,
+        "<use id=\"dark\" ui=\"Option\" data-checked=\"save.theme\" "
+        "value=\"dark\">Dark</use>",
+        text,
+        sizeof text,
+        &uses
+    );
+    test_check(
+        ok && !strncmp(
+                  text,
+                  "<div data-ui=\"Option\"><label><input type=\"radio\" "
+                  "id=\"dark\" "
+                  "data-checked=\"save.theme\" "
+                  "value=\"dark\"/>Dark</label></div>|",
+                  strlen(
+                      "<div data-ui=\"Option\"><label><input type=\"radio\" "
+                      "id=\"dark\" "
+                      "data-checked=\"save.theme\" "
+                      "value=\"dark\"/>Dark</label></div>|"
+                  )
+              ),
+        "a widget element marked attrs takes the use element's attributes"
+    );
+    free_names(uses);
     static const struct
     {
         const char *rml, *error;
@@ -201,8 +275,8 @@ static void expanded_widgets()
         "a ui asset names the widgets its markup uses"
     );
     free_names(names);
-    for (size_t i = 0; i < 3; i++) {
-        static const char *const files[] = { "Meter", "Row", "Loop" };
+    for (size_t i = 0; i < 4; i++) {
+        static const char *const files[] = { "Meter", "Row", "Loop", "Option" };
         char path[256];
         snprintf(path, sizeof path, "%s/%s.yaml", root, files[i]);
         unlink(path);
@@ -248,17 +322,18 @@ static void scoped_styles()
     }
 }
 
-/* Each data-event and data-keys binding, with the element that names it. */
+/* Each event a handler emits and each data-keys binding, with the element
+ * that names it. */
 static void named_events()
 {
     ui_document_event *events = NULL;
     ui_document_events(
-        "<!-- <b>x</b> <div data-event=\"Hidden\"/> -->"
+        "<!-- <b>x</b> <div data-event-click=\"emit('Hidden')\"/> -->"
         "<use ui=\"MenuButton\" id=\"resume\" "
-        "data-event=\"Resume\">Resume</use>"
-        "<div class=\"row wide\" title=\"a data-event='Fake'\" "
-        "data-event=\"Pick\"/>"
-        "<input type='range' data-event='Volume'/>"
+        "data-event-click=\"emit('Resume')\">Resume</use>"
+        "<div class=\"row wide\" title=\" data-event-click='emit(Fake)'\" "
+        "data-event-click=\"emit('Pick')\"/>"
+        "<input type='range' data-event-change=\"emit('Volume')\"/>"
         "<use ui=\"Dialog\" data-keys=\"Escape:Close Enter:Choose "
         "Space:Choose\"/>",
         &events
@@ -293,6 +368,7 @@ void test_ui_document()
     rejected_documents();
     last_valid_document();
     nested_rcss();
+    page_document();
     expanded_widgets();
     scoped_styles();
     named_events();

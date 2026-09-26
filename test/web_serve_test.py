@@ -59,6 +59,10 @@ class WorkspaceSaves(unittest.TestCase):
             self.save('projects/bloom/content/Bloom.yaml', '{')
         self.assertEqual((self.content / 'Bloom.yaml').read_text(), 'name: Bloom\n')
 
+    def test_theme_saves_as_written(self):
+        self.save('projects/bloom/content/ui/theme/tokens.rcss', ':root { --primary: #c2453b; }\n')
+        self.assertEqual((self.content / 'ui/theme/tokens.rcss').read_text(), ':root { --primary: #c2453b; }\n')
+
     def test_paths_stay_inside_content(self):
         (self.content / 'escape').symlink_to(self.project, target_is_directory=True)
         for path in ('projects/bloom/content/../outside.yaml', 'projects/bloom/outside.yaml',

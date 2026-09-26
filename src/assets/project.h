@@ -15,6 +15,7 @@ typedef struct
     char *content;
     char *name;
     char *start_scene;
+    char *ui; /* the root ui document scenes show their UI on by default, or NULL */
 } chibi_project;
 
 /* Resolve a project directory, its project.yaml, or a legacy content directory. */

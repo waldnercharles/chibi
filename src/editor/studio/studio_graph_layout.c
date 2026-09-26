@@ -337,7 +337,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
    where rows hide, at the least zoom that shows them. */
 float sg_text_width(const studio *s, const char *text, float size, int weight)
 {
-    float ratio = fmaxf(s->graph.zoom * cf_app_get_pixel_scale(), FAR_PIXELS);
+    float ratio = fmaxf(s->graph.zoom * studio_pixel_ratio(s), FAR_PIXELS);
     return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight, ratio)
                         : strlen(text) * size * 0.55f;
 }

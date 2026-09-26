@@ -697,10 +697,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 GameActionBinding;
 
 /* Shows the ui asset content/ui/<document>.yaml over the game view, above
- * documents with a lower order. An element's data-event attribute names the
- * event its activation sends to this entity; a changed input's value is read
- * with Get UI Value and `#id`. UI nodes set text, classes and values on the
- * elements an RCSS selector matches. */
+ * documents with a lower order. An element's emit('Event') binding, as in
+ * data-event-click="emit('Resume')", sends that event to this entity; an
+ * emitting input's value is read with Get UI Value and `#id`. UI nodes set
+ * text, classes and values on the elements an RCSS selector matches. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameUi)
 {
     const char *document;

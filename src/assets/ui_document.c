@@ -16,6 +16,8 @@
 /* The asset holds the body; composition supplies the document around it. */
 static const char *const DOCUMENT_TAGS[] = { "<rml", "<head", "<body" };
 
+static const char *tag_end(const char *p);
+
 static bool fail(char *error, size_t size, const char *format, ...)
 {
     va_list args;
@@ -25,7 +27,48 @@ static bool fail(char *error, size_t size, const char *format, ...)
     return false;
 }
 
-static bool read_root(yyjson_val *root, ui_document *out, char *error, size_t error_size)
+/* Splits markup wrapped in <body ...>...</body> into the body's attributes
+ * and its content; other markup is all content. */
+static bool split_body(const char *rml, ui_document *out, char *error, size_t error_size)
+{
+    const char *start = rml + strspn(rml, " \t\r\n");
+    bool wrapped = !strncmp(start, "<body", 5) &&
+                   (isspace((unsigned char)start[5]) || start[5] == '>' ||
+                    start[5] == '/');
+    const char *open_end = wrapped ? tag_end(start) : NULL;
+    if (!wrapped) {
+        out->rml = xstrdup(rml);
+        return true;
+    }
+    if (!open_end) {
+        return fail(error, error_size, "rml: <body> needs a >");
+    }
+    bool empty = open_end[-2] == '/';
+    const char *attrs = start + 5, *attrs_end = open_end - (empty ? 2 : 1);
+    const char *inner = open_end, *inner_end = open_end;
+    if (!empty) {
+        inner_end = strstr(inner, "</body>");
+        const char *after = inner_end ? inner_end + 7 : NULL;
+        if (!after || after[strspn(after, " \t\r\n")]) {
+            return fail(error, error_size, "rml: <body> must hold all the markup and end with </body>");
+        }
+    }
+    attrs += strspn(attrs, " \t\r\n");
+    out->body = xmalloc((size_t)(attrs_end - attrs) + 1);
+    snprintf(out->body, (size_t)(attrs_end - attrs) + 1, "%s", attrs);
+    out->rml = xmalloc((size_t)(inner_end - inner) + 1);
+    snprintf(out->rml, (size_t)(inner_end - inner) + 1, "%s", inner);
+    return true;
+}
+
+static bool read_root(
+    yyjson_val *root,
+    const char *directory,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size
+)
 {
     if (!yyjson_is_obj(root)) {
         return fail(error, error_size, "a ui asset must be a mapping");
@@ -46,25 +89,34 @@ static bool read_root(yyjson_val *root, ui_document *out, char *error, size_t er
     if (rcss && !yyjson_is_str(rcss)) {
         return fail(error, error_size, "rcss must be text");
     }
-    for (size_t i = 0; i < sizeof DOCUMENT_TAGS / sizeof *DOCUMENT_TAGS; i++) {
-        if (strstr(yyjson_get_str(rml), DOCUMENT_TAGS[i])) {
-            return fail(error, error_size, "rml holds body markup; remove %s>", DOCUMENT_TAGS[i]);
-        }
-    }
     if (rcss && strstr(yyjson_get_str(rcss), "</style")) {
         return fail(error, error_size, "rcss must not close its style block");
     }
+    if (!split_body(yyjson_get_str(rml), out, error, error_size)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof DOCUMENT_TAGS / sizeof *DOCUMENT_TAGS; i++) {
+        if (strstr(out->rml, DOCUMENT_TAGS[i])) {
+            return fail(error, error_size, "rml holds body markup; remove %s>", DOCUMENT_TAGS[i]);
+        }
+    }
     char message[200];
-    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", NULL, NULL, message, sizeof message);
+    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", directory, imports, message, sizeof message);
     if (!flat) {
         return fail(error, error_size, "rcss %s", message);
     }
-    out->rml = xstrdup(yyjson_get_str(rml));
     out->rcss = flat;
     return true;
 }
 
-bool ui_document_read(const char *text, ui_document *out, char *error, size_t error_size)
+bool ui_document_read(
+    const char *text,
+    const char *directory,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size
+)
 {
     assert(text && out);
     yyjson_doc *doc = asset_text_read(text, error, error_size);
@@ -72,7 +124,7 @@ bool ui_document_read(const char *text, ui_document *out, char *error, size_t er
         return false;
     }
     ui_document next = { 0 };
-    bool ok = read_root(yyjson_doc_get_root(doc), &next, error, error_size);
+    bool ok = read_root(yyjson_doc_get_root(doc), directory, imports, &next, error, error_size);
     yyjson_doc_free(doc);
     if (!ok) {
         ui_document_free(&next);
@@ -93,7 +145,7 @@ typedef struct use_tag
 {
     const char *open, *close; /* its first character and one past its end */
     const char *attrs, *attrs_end; /* the open tag's attributes */
-    const char *ui;                /* the ui attribute within them */
+    const char *ui, *ui_end;       /* the ui attribute within them */
     const char *inner, *inner_end; /* its children, empty when self-closing */
     char name[128];
 } use_tag;
@@ -196,6 +248,7 @@ static bool read_use_name(use_tag *tag)
         memcpy(tag->name, name, length);
         tag->name[length] = '\0';
         tag->ui = p + 1;
+        tag->ui_end = end + 1;
         return true;
     }
     return false;
@@ -242,8 +295,13 @@ static const ui_document *widget_named(expansion *x, const char *name)
     snprintf(path, sizeof path, "%s/%s.yaml", x->ui_root, name);
     char *text = text_file_read(path);
     char why[160] = "is missing";
-    bool read = text && ui_document_read(text, &alast(x->widgets), why, sizeof why);
+    bool read = text &&
+                ui_document_read(text, x->ui_root, NULL, &alast(x->widgets), why, sizeof why);
     free(text);
+    if (read && alast(x->widgets).body) {
+        snprintf(why, sizeof why, "has a <body>, which only a scene's root document has");
+        read = false;
+    }
     if (!read) {
         fail(x->error, x->error_size, "widget %s %s", name, why);
         return NULL;
@@ -271,6 +329,50 @@ static void put_filled(char **out, const char *body, const char *inner)
     put(out, slot + slot_length, strlen(slot + slot_length));
 }
 
+/* The widget element's attrs attribute, as Vue's v-bind="$attrs"; NULL
+ * when the widget marks none. */
+static const char *attrs_marker(const char *body)
+{
+    for (const char *p = body; (p = strstr(p, " attrs")); p += 6) {
+        if (isspace((unsigned char)p[6]) || p[6] == '/' || p[6] == '>') {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+/* Writes the attributes in [start, end) after one space, trimmed; nothing
+ * when there are none. */
+static void put_attribute_text(char **out, const char *start, const char *end)
+{
+    while (start < end && isspace((unsigned char)*start)) {
+        start++;
+    }
+    while (end > start && isspace((unsigned char)end[-1])) {
+        end--;
+    }
+    if (start < end) {
+        put(out, " ", 1);
+        put(out, start, (size_t)(end - start));
+    }
+}
+
+/* The widget's markup with the use element's attributes, but ui, in place of
+ * its attrs marker; NULL when it has none. */
+static char *put_attrs(const char *body, const use_tag *tag)
+{
+    const char *marker = attrs_marker(body);
+    if (!marker) {
+        return NULL;
+    }
+    char *out = NULL;
+    put(&out, body, (size_t)(marker - body));
+    put_attribute_text(&out, tag->attrs, tag->ui);
+    put_attribute_text(&out, tag->ui_end, tag->attrs_end);
+    put(&out, marker + 6, strlen(marker + 6) + 1);
+    return out;
+}
+
 static bool expand_use(expansion *x, const use_tag *tag, char **out)
 {
     for (int i = 0; i < x->depth; i++) {
@@ -296,13 +398,15 @@ static bool expand_use(expansion *x, const use_tag *tag, char **out)
     ok = ok && expand(x, widget_rml, &body);
     x->depth--;
     if (ok) {
+        char *marked = put_attrs(body, tag);
         put(out, "<div", 4);
-        put(out, tag->attrs, (size_t)(tag->ui - tag->attrs));
+        put(out, marked ? " " : tag->attrs, marked ? 1 : (size_t)(tag->ui - tag->attrs));
         put(out, "data-", 5);
-        put(out, tag->ui, (size_t)(tag->attrs_end - tag->ui));
+        put(out, tag->ui, (size_t)((marked ? tag->ui_end : tag->attrs_end) - tag->ui));
         put(out, ">", 1);
-        put_filled(out, body, inner);
+        put_filled(out, marked ? marked : body, inner);
         put(out, "</div>", 6);
+        afree(marked);
     }
     free(children);
     afree(inner);
@@ -631,6 +735,62 @@ static void push_key_events(ui_document_event **events, const char *bindings, co
     }
 }
 
+/* An event a data-event-* handler sends: the Name of each emit('Name'). */
+typedef struct
+{
+    const char *at;
+    size_t length;
+    bool change; /* the handler is data-event-change */
+} emit_span;
+
+/* Appends the emit('Name') calls of the data-event-* handlers among the
+ * tag's attributes [p, end), in order. */
+static void emit_spans(const char *p, const char *end, emit_span **spans)
+{
+    static const char PREFIX[] = "data-event-";
+    const size_t prefix = sizeof PREFIX - 1;
+    for (char quoted = 0; p < end; p++) {
+        if (quoted) {
+            quoted = *p == quoted ? 0 : quoted;
+            continue;
+        }
+        if (*p == '"' || *p == '\'') {
+            quoted = *p;
+            continue;
+        }
+        if (!isspace((unsigned char)*p) || (size_t)(end - p) <= prefix + 1 ||
+            strncmp(p + 1, PREFIX, prefix)) {
+            continue;
+        }
+        const char *type = p + 1 + prefix, *equals = type;
+        while (equals < end && name_char(*equals)) {
+            equals++;
+        }
+        if (end - equals < 2 || *equals != '=' ||
+            (equals[1] != '"' && equals[1] != '\'')) {
+            continue;
+        }
+        const char *value = equals + 2;
+        const char *close = memchr(value, equals[1], (size_t)(end - value));
+        if (!close) {
+            return;
+        }
+        bool change = equals - type == 6 && !strncmp(type, "change", 6);
+        for (const char *e = value; e + 6 < close; e++) {
+            if (strncmp(e, "emit(", 5) || (e[5] != '"' && e[5] != '\'')) {
+                continue;
+            }
+            const char *name = e + 6;
+            const char *stop = memchr(name, e[5], (size_t)(close - name));
+            if (stop && stop > name) {
+                apush(*spans, ((emit_span){ name, (size_t)(stop - name), change }));
+                e = stop;
+            }
+        }
+        p = close;
+    }
+}
+
 /* Appends the events of the tag opening at `open` and ending before `end`. */
 static void push_tag_events(ui_document_event **events, const char *open, const char *end)
 {
@@ -642,14 +802,17 @@ static void push_tag_events(ui_document_event **events, const char *open, const 
     snprintf(tag, sizeof tag, "%.*s", length, open + 1);
     const char *attrs = open + 1 + length;
     element_label(tag, attrs, end, element, sizeof element);
-    if (tag_attribute(attrs, end, "data-event", value, sizeof value) && value[0]) {
+    emit_span *emits = NULL;
+    emit_spans(attrs, end, &emits);
+    for (int i = 0; i < acount(emits); i++) {
         apush(
             *events,
-            ((ui_document_event){ .name = xstrdup(value),
+            ((ui_document_event){ .name = copy_text(emits[i].at, emits[i].length),
                                   .element = xstrdup(element),
-                                  .input = !strcmp(tag, "input") })
+                                  .input = emits[i].change })
         );
     }
+    afree(emits);
     if (tag_attribute(attrs, end, "data-keys", value, sizeof value)) {
         push_key_events(events, value, element);
     }
@@ -696,16 +859,18 @@ static void use_spans(const char *rml, name_span **spans)
     }
 }
 
-/* The events of the tag opening at `open`: its data-event, then each event
- * its data-keys bindings name. */
+/* The events of the tag opening at `open`: its handlers' emit('Name')
+ * calls, then each event its data-keys bindings name. */
 static void tag_event_spans(const char *open, const char *end, name_span **spans)
 {
-    size_t length;
-    const char *value = attribute_span(open, end, "data-event", &length);
-    if (value && length) {
-        apush(*spans, ((name_span){ value, length }));
+    emit_span *emits = NULL;
+    emit_spans(open, end, &emits);
+    for (int i = 0; i < acount(emits); i++) {
+        apush(*spans, ((name_span){ emits[i].at, emits[i].length }));
     }
-    value = attribute_span(open, end, "data-keys", &length);
+    afree(emits);
+    size_t length;
+    const char *value = attribute_span(open, end, "data-keys", &length);
     const char *stop = value ? value + length : NULL;
     for (const char *p = value; p && p < stop;) {
         p += strspn(p, " ");
@@ -773,11 +938,31 @@ char *ui_document_rename(const char *rml, bool event, const char *from, const ch
 char *ui_document_compose(const ui_document *document, const char *base)
 {
     static const char FORMAT[] = "<rml><head><style>%s\n%s</style></"
-                                 "head><body>%s</body></rml>";
-    int size = snprintf(NULL, 0, FORMAT, base, document->rcss, document->rml);
+                                 "head><body%s%s>%s</body></rml>";
+    const char *space = document->body ? " " : "",
+               *body = document->body ? document->body : "";
+    int size = snprintf(
+        NULL,
+        0,
+        FORMAT,
+        base,
+        document->rcss,
+        space,
+        body,
+        document->rml
+    );
     assert(size >= 0);
     char *text = xmalloc((size_t)size + 1);
-    snprintf(text, (size_t)size + 1, FORMAT, base, document->rcss, document->rml);
+    snprintf(
+        text,
+        (size_t)size + 1,
+        FORMAT,
+        base,
+        document->rcss,
+        space,
+        body,
+        document->rml
+    );
     return text;
 }
 
@@ -785,5 +970,6 @@ void ui_document_free(ui_document *document)
 {
     free(document->rml);
     free(document->rcss);
+    free(document->body);
     *document = (ui_document){ 0 };
 }

@@ -30,11 +30,17 @@ function(chibi_rmlui_dependencies)
             cmake_policy(POP)
         endif()
     endif()
-    # CSS color-mix(), so theme roles derive from a few tokens at runtime.
-    set(PATCH_SOURCE "${rmlui_SOURCE_DIR}")
-    set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-color-mix.patch")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
-    include(cmake/apply_patch.cmake)
+    # Web behavior RmlUi lacks: CSS color-mix(), so theme roles derive from a
+    # few tokens at runtime; HTML's radio groups, which need a name; Vue's
+    # bindings, whose v-model leaves an input being edited alone and has a
+    # lazy form, and whose empty style values unset; CSS's anonymous flex
+    # items, so text inside a flex container shows; and, as in browsers,
+    # setting a style to the value it holds lays nothing out.
+    set(patches "")
+    foreach(name color-mix radio-groups data-bindings flex-text same-style)
+        list(APPEND patches "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-${name}.patch")
+    endforeach()
+    chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})
     add_subdirectory("${rmlui_SOURCE_DIR}" "${rmlui_BINARY_DIR}")
     foreach(target freetype rmlui_core rmlui_debugger)
         set_target_properties(${target} PROPERTIES

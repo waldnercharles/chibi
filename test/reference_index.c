@@ -342,7 +342,8 @@ static void test_documents()
     reference_index_add_ui(
         index,
         hud,
-        "<use ui=\"Meter\" id=\"hull\"/>\n<div data-event=\"Launch\">Go</div>"
+        "<use ui=\"Meter\" id=\"hull\"/>\n<div "
+        "data-event-click=\"emit('Launch')\">Go</div>"
         "<div class=\"menu\" data-keys=\"Enter:Choose Down:Next\"></div>"
     );
     int meter = reference_index_find_name(index, REFERENCE_ASSET_UI, "Meter");

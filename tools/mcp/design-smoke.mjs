@@ -14,14 +14,14 @@ const controller = process.env.CHIBI_CTL || join(root, "build/chibi_ctl");
 for (const family of ["behaviors", "events", "prototypes", "scenes", "ui"]) {
   mkdirSync(join(project, "content", family), { recursive: true });
 }
-// UI documents are authored as files; their data-event names reach behaviors.
+// UI documents are authored as files; the events they emit reach behaviors.
 writeFileSync(join(project, "content/ui/Bank.yaml"), [
-  "rml: '<div id=\"extract\" data-event=\"Extract\">Extract</div>'",
+  "rml: '<div id=\"extract\" data-event-click=\"emit(''Extract'')\">Extract</div>'",
   "rcss: '#extract { position: absolute; left: 50%; top: 50%; width: 180dp; height: 44dp; margin-left: -90dp; margin-top: -22dp; background-color: #3a4a66; line-height: 44dp; text-align: center; }'",
   "",
 ].join("\n"));
 writeFileSync(join(project, "content/ui/Slot.yaml"), [
-  "rml: '<div id=\"slot\" data-event=\"Fit\">Empty modifier slot</div>'",
+  "rml: '<div id=\"slot\" data-event-click=\"emit(''Fit'')\">Empty modifier slot</div>'",
   "",
 ].join("\n"));
 // A widget host: it uses Slot and sends Award, an event definition.

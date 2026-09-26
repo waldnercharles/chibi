@@ -124,6 +124,8 @@ struct rml_backend
     int physical_width;
     int physical_height;
     bool gpu_ready;
+    bool changed; /* the last render drew what the one before it did not */
+    uint64_t frame_hash, drawn_hash; /* of the draw calls in a render */
     bool scissor_enabled;
     CF_Rect scissor;
     CF_M4x4 transform;
@@ -178,13 +180,26 @@ static void get_clipboard_text(rml_string *text)
     cf_free(clipboard);
 }
 
+/* The first warning since rml_backend_take_warning; RmlUi logs globally. */
+static char first_warning[256], taken_warning[256];
+
 static bool log_message(rml_log_type type, const char *message)
 {
     const char *prefix = type == RML_LOG_ERROR   ? "error"
                        : type == RML_LOG_WARNING ? "warning"
                                                  : "info";
     fprintf(stderr, "RmlUi %s: %s\n", prefix, message);
+    if (type != RML_LOG_INFO && !first_warning[0]) {
+        snprintf(first_warning, sizeof first_warning, "%s", message);
+    }
     return true;
+}
+
+const char *rml_backend_take_warning()
+{
+    memcpy(taken_warning, first_warning, sizeof taken_warning);
+    first_warning[0] = '\0';
+    return taken_warning;
 }
 
 static const rml_system_interface system_interface = {
@@ -329,6 +344,15 @@ static void destroy_gpu(rml_backend *backend)
 
 /* ---------- Render interface ---------- */
 
+/* Folds `size` bytes into an FNV-1a hash. */
+static void hash_bytes(uint64_t *hash, const void *data, size_t size)
+{
+    const unsigned char *bytes = data;
+    for (size_t i = 0; i < size; i++) {
+        *hash = (*hash ^ bytes[i]) * 0x100000001b3ull;
+    }
+}
+
 static uintptr_t compile_geometry(void *user, rml_mesh mesh)
 {
     rml_backend *backend = user;
@@ -355,6 +379,13 @@ static uintptr_t compile_geometry(void *user, rml_mesh mesh)
 static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation, uintptr_t texture)
 {
     rml_backend *backend = user;
+    /* What a draw shows, so a render that differs from the last one is seen. */
+    hash_bytes(&backend->frame_hash, &geometry, sizeof geometry);
+    hash_bytes(&backend->frame_hash, &translation, sizeof translation);
+    hash_bytes(&backend->frame_hash, &texture, sizeof texture);
+    hash_bytes(&backend->frame_hash, &backend->transform, sizeof backend->transform);
+    hash_bytes(&backend->frame_hash, &backend->scissor_enabled, sizeof backend->scissor_enabled);
+    hash_bytes(&backend->frame_hash, &backend->scissor, sizeof backend->scissor);
     const CF_Mesh *mesh = cf_map_get_ptr(backend->geometries, geometry);
     assert(mesh);
     CF_Texture gpu_texture = backend->white_texture;
@@ -734,7 +765,10 @@ void rml_backend_render(rml_backend *backend)
        RmlUi leaves unclipped is drawn under a scissor of the whole target. */
     cf_draw_push_scissor(viewport);
     enable_scissor_region(backend, false);
+    backend->frame_hash = 0xcbf29ce484222325ull;
     rml_context_render(backend->context);
+    backend->changed |= backend->frame_hash != backend->drawn_hash;
+    backend->drawn_hash = backend->frame_hash;
     enable_scissor_region(backend, false);
     cf_render_layers_to(backend->premultiplied_canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, true);
     destroy_released(backend);
@@ -756,6 +790,13 @@ void rml_backend_render(rml_backend *backend)
     cf_draw3d_pop_render_state();
     cf_draw3d_pop_shader();
     pop_target_view();
+}
+
+bool rml_backend_take_changed(rml_backend *backend)
+{
+    bool changed = backend->changed;
+    backend->changed = false;
+    return changed;
 }
 
 uint64_t rml_backend_texture(const rml_backend *backend)

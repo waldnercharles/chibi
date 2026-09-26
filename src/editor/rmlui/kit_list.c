@@ -41,8 +41,14 @@ static float reveal(const widget *w, const kit_list_desc *d, float row, float vi
     return scroll;
 }
 
-static void set_dp(rml_element *el, const char *property, float value)
+/* Sets `property` when it differs from `*applied`, since any write lays out
+ * the document again. */
+static void set_dp(rml_element *el, const char *property, float value, float *applied)
 {
+    if (value == *applied) {
+        return;
+    }
+    *applied = value;
     char buffer[32];
     snprintf(buffer, sizeof buffer, "%.2fdp", value);
     rml_element_set_property(el, property, buffer);
@@ -77,8 +83,8 @@ bool kit_list_begin(kit *k, const char *key, const char *cls, const kit_list_des
     /* Before the first layout the viewport is unknown; emit a screenful. */
     float extent = view > 0 ? view : 800;
     int to = math_min(d->count - 1, (int)ceilf((scroll + extent + overscan) / row));
-    set_dp(w->body, "height", total);
-    set_dp(w->body, "padding-top", from * row);
+    set_dp(w->body, "height", total, &w->body_height);
+    set_dp(w->body, "padding-top", from * row, &w->body_top);
     push_node(k, n);
     *first = from;
     *last = to;

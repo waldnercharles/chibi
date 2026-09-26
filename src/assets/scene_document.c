@@ -114,7 +114,14 @@ void game_scene_document_free(game_scene_document *document)
     }
     afree(document->entities);
     free(document->name);
+    free(document->ui);
     free(document);
+}
+
+void game_scene_document_set_ui(game_scene_document *document, const char *ui)
+{
+    free(document->ui);
+    document->ui = ui && ui[0] ? xstrdup(ui) : NULL;
 }
 
 int game_scene_document_set_perspective(game_scene_document *document, bool perspective)
@@ -306,6 +313,9 @@ char *game_scene_document_save(const game_scene_document *document)
     yyjson_mut_doc_set_root(json, root);
     yyjson_mut_obj_add_uint(json, root, "version", 1);
     yyjson_mut_obj_add_strcpy(json, root, "name", document->name);
+    if (document->ui) {
+        yyjson_mut_obj_add_strcpy(json, root, "ui", document->ui);
+    }
     if (document->perspective) {
         yyjson_mut_obj_add_str(json, root, "presentation", "3d");
     }
@@ -405,6 +415,14 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
     }
     document->perspective = presentation &&
                             !strcmp(yyjson_get_str(presentation), "3d");
+    yyjson_val *ui = yyjson_obj_get(root, "ui");
+    if (ui && (!yyjson_is_str(ui) || !yyjson_get_len(ui))) {
+        set_error(error, error_size, "scene ui must name a ui asset");
+        game_scene_document_free(document);
+        yyjson_doc_free(parsed);
+        return NULL;
+    }
+    game_scene_document_set_ui(document, yyjson_get_str(ui));
     yyjson_arr_iter iterator = yyjson_arr_iter_with(entities);
     yyjson_val *entity_value;
     int index = 0;

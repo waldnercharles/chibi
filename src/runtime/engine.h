@@ -102,6 +102,7 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
 typedef struct engine_viewport_host_input
 {
     float width, height;
+    float resolution; /* canvas pixels per unit of width and height, at least 1 */
     float x, y;
     bool hovered;
     bool focused; /* keyboard belongs to the Scene area */

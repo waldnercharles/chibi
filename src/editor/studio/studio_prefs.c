@@ -47,20 +47,24 @@ catch(_)
 #define PREFS_VERSION 1
 
 static const char *const THEMES[STUDIO_THEME_COUNT] = { "system", "dark", "light" };
+/* UI Scale's range, as Blender's Resolution Scale allows a useful subset of. */
+static const float UI_SCALE_MIN = 0.5f, UI_SCALE_MAX = 2.0f;
 static const char *const NODE_FLAGS[] = { "shortBindings", "titleFlow", "compact" };
 static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
                                                          "orthogonal",
                                                          "straight",
                                                          "subway" };
+/* An area showing a panel saves as {"panel": "<name>"}. */
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
-    "scene",  "behavior", "outliner",    "properties",
-    "output", "assets",   "performance", "members"
+    "scene",  "behavior",    "outliner", "properties", "output",
+    "assets", "performance", "members",  "panel"
 };
 
 studio_prefs studio_prefs_default()
 {
     studio_prefs p = {
         .theme = STUDIO_THEME_SYSTEM,
+        .ui_scale = 1,
         .side_width = 372,
         .main_split = 0.62f,
         .side_split = 0.38f,
@@ -83,12 +87,12 @@ studio_prefs studio_prefs_default()
 bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
 {
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (a->editors[i] != b->editors[i]) {
+        if (a->editors[i] != b->editors[i] || strcmp(a->panels[i], b->panels[i]) != 0) {
             return false;
         }
     }
     return a->theme == b->theme && a->comfortable == b->comfortable &&
-           a->reduced_motion == b->reduced_motion &&
+           a->ui_scale == b->ui_scale && a->reduced_motion == b->reduced_motion &&
            a->side_width == b->side_width && a->main_split == b->main_split &&
            a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
            a->drawer_height == b->drawer_height && a->wires == b->wires &&
@@ -148,6 +152,7 @@ studio_prefs studio_prefs_load()
     if (yyjson_is_str(density)) {
         p.comfortable = strcmp(yyjson_get_str(density), "comfortable") == 0;
     }
+    p.ui_scale = number(yyjson_obj_get(root, "uiScale"), p.ui_scale, UI_SCALE_MIN, UI_SCALE_MAX);
     yyjson_val *motion = yyjson_obj_get(root, "reduceMotion");
     if (yyjson_is_bool(motion)) {
         p.reduced_motion = yyjson_get_bool(motion);
@@ -174,12 +179,16 @@ studio_prefs studio_prefs_load()
     p.drawer_height = number(yyjson_obj_get(drawer, "height"), p.drawer_height, 80, 2000);
     yyjson_val *areas = yyjson_obj_get(layout, "areas");
     for (int i = 0; i < STUDIO_AREA_COUNT && i < (int)yyjson_arr_size(areas); i++) {
-        p.editors[i] = (studio_editor)name_index(
-            EDITORS,
-            STUDIO_EDITOR_COUNT,
-            yyjson_arr_get(areas, (size_t)i),
-            p.editors[i]
-        );
+        yyjson_val *area = yyjson_arr_get(areas, (size_t)i);
+        const char *panel = yyjson_get_str(yyjson_obj_get(area, "panel"));
+        if (panel && panel[0] && strlen(panel) < sizeof p.panels[i]) {
+            p.editors[i] = STUDIO_EDITOR_PANEL;
+            snprintf(p.panels[i], sizeof p.panels[i], "%s", panel);
+            continue;
+        }
+        int editor = name_index(EDITORS, STUDIO_EDITOR_COUNT, area, p.editors[i]);
+        p.editors[i] = editor == STUDIO_EDITOR_PANEL ? p.editors[i]
+                                                     : (studio_editor)editor;
     }
     yyjson_doc_free(doc);
     return p;
@@ -193,6 +202,7 @@ bool studio_prefs_save(const studio_prefs *p)
     yyjson_mut_obj_add_int(doc, root, "version", PREFS_VERSION);
     yyjson_mut_obj_add_str(doc, root, "theme", THEMES[p->theme]);
     yyjson_mut_obj_add_str(doc, root, "density", p->comfortable ? "comfortable" : "compact");
+    yyjson_mut_obj_add_real(doc, root, "uiScale", p->ui_scale);
     yyjson_mut_obj_add_bool(doc, root, "reduceMotion", p->reduced_motion);
     yyjson_mut_obj_add_str(doc, root, "wires", WIRES[p->wires]);
     yyjson_mut_val *nodes = yyjson_mut_obj_add_obj(doc, root, "nodes");
@@ -209,6 +219,10 @@ bool studio_prefs_save(const studio_prefs *p)
     yyjson_mut_obj_add_real(doc, drawer, "height", p->drawer_height);
     yyjson_mut_val *areas = yyjson_mut_obj_add_arr(doc, layout, "areas");
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        if (p->editors[i] == STUDIO_EDITOR_PANEL) {
+            yyjson_mut_obj_add_str(doc, yyjson_mut_arr_add_obj(doc, areas), "panel", p->panels[i]);
+            continue;
+        }
         yyjson_mut_arr_add_str(doc, areas, EDITORS[p->editors[i]]);
     }
     char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
@@ -248,6 +262,16 @@ static void share_name(game_save *save, const char *key, const char *const *name
     }
 }
 
+static void share_scale(game_save *save, float *value)
+{
+    const char *text = game_save_get(save, "uiScale");
+    char *end;
+    float scale = text ? strtof(text, &end) : 0;
+    if (text && end != text && !*end && scale >= UI_SCALE_MIN && scale <= UI_SCALE_MAX) {
+        *value = scale;
+    }
+}
+
 static void share_flag(game_save *save, const char *key, bool *value)
 {
     const char *text = game_save_get(save, key);
@@ -270,6 +294,7 @@ void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
         share_flag(save, "titleFlow", &p->title_flow);
         share_flag(save, "compactNodes", &p->compact_nodes);
         share_flag(save, "reduceMotion", &p->reduced_motion);
+        share_scale(save, &p->ui_scale);
     }
     game_save_set(save, "theme", THEMES[p->theme]);
     game_save_set(save, "density", DENSITIES[p->comfortable]);
@@ -278,5 +303,8 @@ void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
     game_save_set(save, "titleFlow", p->title_flow ? "true" : "false");
     game_save_set(save, "compactNodes", p->compact_nodes ? "true" : "false");
     game_save_set(save, "reduceMotion", p->reduced_motion ? "true" : "false");
+    char scale[16];
+    snprintf(scale, sizeof scale, "%g", p->ui_scale);
+    game_save_set(save, "uiScale", scale);
     *seen = game_save_revision(save);
 }

@@ -145,9 +145,10 @@ app_game_presentation *app_game_presentation_new(
     fit_scene_view(viewport, scene->world, (ecs_entity){ 0 });
     engine_viewport_set_render_callback(viewport, render_game, game);
     ui_world ui = { .ecs = scene->world,
+                    .page = app_scene_authoring_page(scene),
                     .model = engine_ui(scene->runtime),
                     .entities = scene->live->entities,
-                    .settings = game_behavior_save(scene->live->behaviors) };
+                    .save = game_behavior_save(scene->live->behaviors) };
     engine_viewport_set_ui(viewport, &ui, scene->content_root);
     return game;
 }

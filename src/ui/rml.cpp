@@ -357,6 +357,41 @@ private:
     void *user;
 };
 
+rml_event convert(Rml::Event &event)
+{
+    static const struct
+    {
+        const char *name;
+        unsigned bit;
+    } modifiers[] = {
+        { "ctrl_key", RML_KM_CTRL },
+        { "shift_key", RML_KM_SHIFT },
+        { "alt_key", RML_KM_ALT },
+        { "meta_key", RML_KM_META },
+        { "caps_lock_key", RML_KM_CAPSLOCK },
+        { "num_lock_key", RML_KM_NUMLOCK },
+        { "scroll_lock_key", RML_KM_SCROLLLOCK },
+    };
+    rml_event e = {};
+    e.id = (rml_event_id)event.GetId();
+    e.target = wrap(event.GetTargetElement());
+    e.current = wrap(event.GetCurrentElement());
+    e.drag_element = wrap(
+        static_cast<Rml::Element *>(event.GetParameter<void *>("drag_element", nullptr))
+    );
+    e.mouse_x = event.GetParameter<float>("mouse_x", 0);
+    e.mouse_y = event.GetParameter<float>("mouse_y", 0);
+    e.button = event.GetParameter<int>("button", 0);
+    e.key = (rml_key)event.GetParameter<int>("key_identifier", 0);
+    for (const auto &modifier : modifiers) {
+        if (event.GetParameter<int>(modifier.name, 0)) {
+            e.modifiers |= modifier.bit;
+        }
+    }
+    e.native = &event;
+    return e;
+}
+
 class Listener final : public Rml::EventListener
 {
 public:
@@ -368,36 +403,7 @@ public:
 
     void ProcessEvent(Rml::Event &event) override
     {
-        static const struct
-        {
-            const char *name;
-            unsigned bit;
-        } modifiers[] = {
-            { "ctrl_key", RML_KM_CTRL },
-            { "shift_key", RML_KM_SHIFT },
-            { "alt_key", RML_KM_ALT },
-            { "meta_key", RML_KM_META },
-            { "caps_lock_key", RML_KM_CAPSLOCK },
-            { "num_lock_key", RML_KM_NUMLOCK },
-            { "scroll_lock_key", RML_KM_SCROLLLOCK },
-        };
-        rml_event e = {};
-        e.id = (rml_event_id)event.GetId();
-        e.target = wrap(event.GetTargetElement());
-        e.current = wrap(event.GetCurrentElement());
-        e.drag_element = wrap(
-            static_cast<Rml::Element *>(event.GetParameter<void *>("drag_element", nullptr))
-        );
-        e.mouse_x = event.GetParameter<float>("mouse_x", 0);
-        e.mouse_y = event.GetParameter<float>("mouse_y", 0);
-        e.button = event.GetParameter<int>("button", 0);
-        e.key = (rml_key)event.GetParameter<int>("key_identifier", 0);
-        for (const auto &modifier : modifiers) {
-            if (event.GetParameter<int>(modifier.name, 0)) {
-                e.modifiers |= modifier.bit;
-            }
-        }
-        e.native = &event;
+        rml_event e = convert(event);
         fn(user, &e);
     }
 
@@ -463,6 +469,109 @@ CustomElement *custom(const rml_element *handle)
     assert(custom);
     return custom;
 }
+
+yyjson_mut_val *json(void *ptr)
+{
+    return static_cast<yyjson_mut_val *>(ptr);
+}
+
+/* A data variable over a yyjson value: object members by name, array items
+ * by index, and other values as scalars. Strings a binding writes are copied
+ * into the document, as are the members it names that are missing. */
+class JsonDefinition final : public Rml::VariableDefinition
+{
+public:
+    JsonDefinition(yyjson_mut_doc *doc)
+      : Rml::VariableDefinition(Rml::DataVariableType::Scalar)
+      , doc(doc)
+    {
+    }
+
+    bool Get(void *ptr, Rml::Variant &variant) override
+    {
+        yyjson_mut_val *v = json(ptr);
+        switch (yyjson_mut_get_type(v)) {
+        case YYJSON_TYPE_NULL:
+            variant.Clear();
+            return true;
+        case YYJSON_TYPE_BOOL:
+            variant = yyjson_mut_get_bool(v);
+            return true;
+        case YYJSON_TYPE_NUM:
+            variant = yyjson_mut_get_num(v);
+            return true;
+        case YYJSON_TYPE_STR:
+            variant = Rml::String(yyjson_mut_get_str(v), yyjson_mut_get_len(v));
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool Set(void *ptr, const Rml::Variant &variant) override
+    {
+        yyjson_mut_val *v = json(ptr);
+        bool set = false;
+        switch (variant.GetType()) {
+        case Rml::Variant::BOOL:
+            set = yyjson_mut_set_bool(v, variant.Get<bool>());
+            break;
+        case Rml::Variant::STRING: {
+            const Rml::String &s = variant.GetReference<Rml::String>();
+            if (yyjson_mut_is_str(v) && yyjson_mut_get_len(v) == s.size() &&
+                !memcmp(yyjson_mut_get_str(v), s.data(), s.size())) {
+                return true;
+            }
+            yyjson_mut_val *copy = yyjson_mut_strncpy(doc, s.data(), s.size());
+            set = yyjson_mut_set_strn(v, yyjson_mut_get_str(copy), s.size());
+            break;
+        }
+        case Rml::Variant::BYTE:
+        case Rml::Variant::INT:
+        case Rml::Variant::INT64:
+        case Rml::Variant::UINT:
+        case Rml::Variant::UINT64:
+        case Rml::Variant::FLOAT:
+        case Rml::Variant::DOUBLE:
+            set = yyjson_mut_set_real(v, variant.Get<double>());
+            break;
+        default:
+            break;
+        }
+        writes += set;
+        return set;
+    }
+
+    int Size(void *ptr) override { return (int)yyjson_mut_arr_size(json(ptr)); }
+
+    Rml::DataVariable Child(void *ptr, const Rml::DataAddressEntry &address) override
+    {
+        yyjson_mut_val *v = json(ptr);
+        if (yyjson_mut_is_arr(v) && address.name == "size") {
+            return Rml::MakeLiteralIntVariable(Size(ptr));
+        }
+        if (yyjson_mut_is_arr(v)) {
+            yyjson_mut_val *item = yyjson_mut_arr_get(v, (size_t)address.index);
+            return item ? Rml::DataVariable(this, item) : Rml::DataVariable();
+        }
+        if (!yyjson_mut_is_obj(v)) {
+            return Rml::DataVariable();
+        }
+        /* A member nothing set reads as null, as JavaScript's undefined does,
+           and a binding may set it. */
+        yyjson_mut_val *member = yyjson_mut_obj_get(v, address.name.c_str());
+        if (!member) {
+            member = yyjson_mut_null(doc);
+            yyjson_mut_obj_add(v, yyjson_mut_strncpy(doc, address.name.data(), address.name.size()), member);
+        }
+        return Rml::DataVariable(this, member);
+    }
+
+    uint64_t writes = 0;
+
+private:
+    yyjson_mut_doc *doc;
+};
 
 } // namespace
 
@@ -547,6 +656,11 @@ void rml_context_set_dp_ratio(rml_context *c, float dp_ratio)
 float rml_context_dp_ratio(const rml_context *c)
 {
     return context(c)->GetDensityIndependentPixelRatio();
+}
+
+double rml_context_next_update_delay(const rml_context *c)
+{
+    return context(c)->GetNextUpdateDelay();
 }
 
 bool rml_context_update(rml_context *c)
@@ -946,6 +1060,77 @@ void rml_element_remove_event_listener(rml_element *e, rml_event_id id, rml_list
 void rml_event_stop_propagation(const rml_event *event)
 {
     static_cast<Rml::Event *>(event->native)->StopPropagation();
+}
+
+/* ---------- Data models ---------- */
+
+struct rml_data_model
+{
+    rml_data_model(Rml::Context *context, const char *name, yyjson_mut_doc *doc)
+      : context(context)
+      , name(name)
+      , definition(doc)
+    {
+    }
+
+    Rml::Context *context;
+    Rml::String name;
+    Rml::DataModelHandle handle;
+    JsonDefinition definition;
+};
+
+rml_data_model *rml_data_model_create(
+    rml_context *c,
+    const char *name,
+    yyjson_mut_doc *doc,
+    rml_emit_fn emit,
+    void *user
+)
+{
+    Rml::DataModelConstructor constructor = context(c)->CreateDataModel(name, nullptr, true);
+    assert(constructor);
+    auto *model = new rml_data_model(context(c), name, doc);
+    model->handle = constructor.GetModelHandle();
+    yyjson_mut_val *key, *value;
+    yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(yyjson_mut_doc_get_root(doc));
+    while ((key = yyjson_mut_obj_iter_next(&iter))) {
+        value = yyjson_mut_obj_iter_get_val(key);
+        constructor.BindCustomDataVariable(yyjson_mut_get_str(key), Rml::DataVariable(&model->definition, value));
+    }
+    constructor.BindEventCallback(
+        "emit",
+        [emit, user](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &arguments) {
+            rml_event e = convert(event);
+            emit(user, &e, arguments.empty() ? "" : arguments[0].Get<Rml::String>().c_str());
+        }
+    );
+    return model;
+}
+
+void rml_data_model_destroy(rml_data_model *model)
+{
+    model->context->RemoveDataModel(model->name);
+    delete model;
+}
+
+void rml_data_model_dirty(rml_data_model *model, const char *variable)
+{
+    model->handle.DirtyVariable(variable);
+}
+
+uint64_t rml_data_model_writes(const rml_data_model *model)
+{
+    return model->definition.writes;
+}
+
+void rml_element_set_data_model(rml_element *e, const char *name)
+{
+    Rml::Element *self = element(e), *parent = self->GetParentNode();
+    assert(parent);
+    Rml::Element *next = self->GetNextSibling();
+    Rml::ElementPtr moved = parent->RemoveChild(self);
+    moved->SetAttribute("data-model", Rml::String(name));
+    parent->InsertBefore(std::move(moved), next);
 }
 
 /* ---------- Custom elements and geometry ---------- */

@@ -354,9 +354,9 @@ static void write_text(const char *path, const char *text)
     fclose(file);
 }
 
-/* Elements naming data-event or data-keys in a ui document offer their
- * events to behaviors, saying when each is sent. The player shell takes the
- * pause menu's own. */
+/* Elements whose handlers emit events, or with data-keys, in a ui document
+ * offer their events to behaviors, saying when each is sent. The player shell
+ * takes the pause menu's own. */
 static void ui_events()
 {
     char root[] = "/tmp/chibi-ui-events-XXXXXX";
@@ -373,12 +373,14 @@ static void ui_events()
     write_text(manifest, version);
     write_text(
         hud,
-        "rml: '<div class=\"button\" id=\"go\" data-event=\"Go\">Go</div>"
-        "<input type=\"range\" id=\"volume\" data-event=\"Volume\"/>"
+        "rml: '<div class=\"button\" id=\"go\" "
+        "data-event-click=\"emit(''Go'')\">Go</div>"
+        "<input type=\"range\" id=\"volume\" "
+        "data-event-change=\"emit(''Volume'')\"/>"
         "<div class=\"menu wide\" data-keys=\"Enter:Choose Space:Choose\"/>"
-        "<div data-event=\"Tick\"/>'\n"
+        "<div data-event-click=\"emit(''Tick'')\"/>'\n"
     );
-    write_text(pause, "rml: '<div data-event=\"Resume\">Resume</div>'\n");
+    write_text(pause, "rml: '<div data-event-click=\"emit(''Resume'')\">Resume</div>'\n");
     size_t bytes;
     char *outline = search_in(root, "\"domain\":\"behavior\"", &bytes);
     char *go = search_in(root, "\"query\":\"go\",\"limit\":1", &bytes);

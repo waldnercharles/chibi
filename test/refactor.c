@@ -89,7 +89,7 @@ static void add_content(test_project *p, int position, const test_asset *asset)
         }
         case REFERENCE_ASSET_UI: {
             ui_document document = { 0 };
-            assert(ui_document_read(asset->text, &document, error, sizeof error));
+            assert(ui_document_read(asset->text, NULL, NULL, &document, error, sizeof error));
             reference_index_add_ui(p->index, position, document.rml);
             ui_document_free(&document);
             return;
@@ -389,9 +389,9 @@ static void events()
     int payload_uses = acount(blockers);
     afree(blockers);
     test_asset *menu = asset_of(&p, asset_named(&p, REFERENCE_ASSET_UI, "PauseMenu"));
-    char *sent = strstr(menu->text, "data-event=\"Quit\"");
+    char *sent = strstr(menu->text, "emit('Quit')");
     assert(sent);
-    memcpy(sent, "data-event=\"Harm\"", strlen("data-event=\"Harm\""));
+    memcpy(sent, "emit('Harm')", strlen("emit('Harm')"));
     index_project(&p);
     refactor_blockers(p.index, variable, &blockers);
     test_check(
@@ -400,8 +400,8 @@ static void events()
         "a payload variable's blockers leave out ui and action sends"
     );
     afree(blockers);
-    sent = strstr(menu->text, "data-event=\"Harm\"");
-    memcpy(sent, "data-event=\"Quit\"", strlen("data-event=\"Quit\""));
+    sent = strstr(menu->text, "emit('Harm')");
+    memcpy(sent, "emit('Quit')", strlen("emit('Quit')"));
     index_project(&p);
 
     /* An event definition's file takes the event's name. */
@@ -429,7 +429,7 @@ static void events()
     test_check(
         listed && applied && uses == 1 && event_uses(&p, "Continue") == 1 &&
             event_uses(&p, "Resume") == 0,
-        "renaming a ui event rewrites the data-event that sends it"
+        "renaming a ui event rewrites the emit that sends it"
     );
 
     project = view(&p);

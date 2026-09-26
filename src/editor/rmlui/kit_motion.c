@@ -349,3 +349,10 @@ void kit_layout(kit *k)
     n->layout = true;
     apush(k->layout_nodes, n);
 }
+
+/* ---------- Idle ---------- */
+
+double kit_idle_time(const kit *k)
+{
+    return rml_context_next_update_delay(k->context);
+}

@@ -67,15 +67,41 @@ static void imports_resolve_in_order_once()
         free(imports[i]);
     }
     afree(imports);
-    fails("@import \"x.rcss\";", "line 1: @import is only for stylesheet files");
+    expands("@import \"x.rcss\";\n.a { x: 1; }", "@import \"x.rcss\";\n.a { x: 1; }\n");
     unlink(tokens);
     unlink(menu);
     rmdir(parts);
     rmdir(root);
 }
 
+static void lists_variables()
+{
+    const char
+        *text = "/* palette */\n:root {\n  --radius: 6dp;\n  --primary: "
+                "#3b6fc2; // blue\n}\n"
+                ".dark,\n.x { --primary: color-mix(in srgb, var(--a) 50%, "
+                "#000) }\n"
+                ".a { color: red; content: \"--no: 1;\"; .b { --c : 1 } }\n";
+    rcss_variable *v = NULL;
+    rcss_variables(text, &v);
+    static const char *const expected[][3] = {
+        { ":root", "--radius", "6dp" },
+        { ":root", "--primary", "#3b6fc2" },
+        { ".dark, .x", "--primary", "color-mix(in srgb, var(--a) 50%, #000)" },
+        { ".b", "--c", "1" },
+    };
+    assert(acount(v) == 4);
+    for (int i = 0; i < 4; i++) {
+        assert(!strcmp(v[i].selector, expected[i][0]) && !strcmp(v[i].name, expected[i][1]));
+        assert(!strncmp(text + v[i].start, expected[i][2], strlen(expected[i][2])));
+        assert(v[i].end - v[i].start == (int)strlen(expected[i][2]));
+    }
+    afree(v);
+}
+
 void test_rcss()
 {
+    lists_variables();
     expands(".a { color: red; }", ".a { color: red; }\n");
     expands(
         ".menu { color: red; .item { margin: 0; &:hover { color: blue; } } "
@@ -97,5 +123,5 @@ void test_rcss()
     fails(".a { @keyframes k { } }", "line 1: @keyframes k belongs at the top level");
     fails(".a { x: 1 } /* open", "line 1: a comment is missing its */");
     imports_resolve_in_order_once();
-    puts("rcss PASS: imports in order and once, nesting with & and selector lists, nested @media, comments and errors with lines");
+    puts("rcss PASS: imports in order and once, nesting with & and selector lists, nested @media, comments, errors with lines and custom properties as written");
 }

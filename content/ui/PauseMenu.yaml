@@ -3,9 +3,9 @@ rml: |
     <div class="title" id="paused">Paused</div>
     <div class="title" id="cleared">Encounter cleared</div>
     <div class="title" id="defeated">Defeated</div>
-    <div class="button" id="resume" data-event="Resume">Resume<span class="key">Enter</span></div>
-    <div class="button" data-event="Restart">Restart<span class="key">R</span></div>
-    <div class="button" data-event="Quit">Quit<span class="key">Q</span></div>
+    <div class="button" id="resume" data-event-click="emit('Resume')">Resume<span class="key">Enter</span></div>
+    <div class="button" data-event-click="emit('Restart')">Restart<span class="key">R</span></div>
+    <div class="button" data-event-click="emit('Quit')">Quit<span class="key">Q</span></div>
   </div>
 rcss: |
   body { background-color: #0004087d; pointer-events: auto; }

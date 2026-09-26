@@ -27,6 +27,7 @@ typedef enum
     STUDIO_EDITOR_ASSETS,
     STUDIO_EDITOR_PERFORMANCE,
     STUDIO_EDITOR_MEMBERS,
+    STUDIO_EDITOR_PANEL, /* an authored panel of the Studio project, named in studio_prefs.panels */
     STUDIO_EDITOR_COUNT,
 } studio_editor;
 
@@ -72,13 +73,15 @@ typedef struct
     studio_theme theme;
     bool comfortable;
     bool reduced_motion;
+    float ui_scale; /* the editor's size, as Blender's Resolution Scale; games' UI keeps its own */
     float side_width;
     float main_split;
     float side_split;
     bool drawer_open;
     float drawer_height;
     studio_editor editors[STUDIO_AREA_COUNT];
-    kit_wire_style wires; /* graph wire routing */
+    char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
+    kit_wire_style wires;               /* graph wire routing */
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
     bool title_flow;    /* unlabeled execution pins sit in node titles */
     bool compact_nodes; /* operators as symbols, one-output reads as pills */
@@ -457,6 +460,8 @@ struct studio
     app_scene_authoring *scene;
     engine_viewport *viewport;
     const char *project_root; /* the open project, owned by the application */
+    bool own_project; /* the open project is the Studio project, whose settings are these preferences */
+    uint64_t scene_prefs_seen, preview_prefs_seen;
     studio_project *projects;
     char *open_project; /* root chosen to open, until the application takes it */
     studio_disk_toast *disk_toasts; /* files that changed on disk under unsaved edits */
@@ -464,8 +469,8 @@ struct studio
     int discard_project; /* the project that toast opens */
     rml_backend *backend;
     kit *kit;
-    studio_ui *ui;  /* NULL when the Studio project could not load */
-    ui_theme theme; /* the Studio project's, which every Studio document uses */
+    studio_ui *ui; /* NULL when the Studio project could not load */
+    ui_page page; /* the Studio scene's root document, whose RCSS styles every Studio document */
     kit_frame_input in;
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
@@ -532,6 +537,13 @@ struct studio
     char property_search[128];
     bool text_input;
     kit_surface_input surface;
+    struct
+    {
+        float zoom; /* magnification of the Scene's frame, game UI included; 1 fits */
+        float x, y; /* the center shown, as fractions of the frame */
+        float u, v; /* the pointer last frame, as fractions of the Scene area */
+        bool panning;
+    } view;
     studio_graph graph;
     studio_members members;
     studio_refactor refactor;
@@ -549,13 +561,21 @@ struct studio
     studio_key *keys;  /* keys pressed this frame */
     SDL_Keymod mods;   /* modifier state as of the last replayed key event */
     int nav_button; /* mouse button 4 (-1, Back) or 5 (1, Forward) this frame */
-    int undo_toast; /* toast offering Undo for undo_toast_group */
+    float zoom_wheel; /* the wheel turned with Mod or Ctrl held this frame */
+    int undo_toast;   /* toast offering Undo for undo_toast_group */
     uint64_t undo_toast_group;
     char status[256];
     char seen_message[256]; /* last authoring message reported */
     double status_time;
     double time;
+    double active_until; /* frames run at full rate until then, after input */
 };
+
+/* Whether frames run at full rate for input or a playing scene, rather than
+ * only while the screen changes. */
+bool studio_active(const studio *s);
+/* Physical pixels per editor dp: the display's scale times UI Scale. */
+float studio_pixel_ratio(const studio *s);
 
 /* Platform shortcuts (studio_keys.c). */
 bool studio_detect_mac();
@@ -571,14 +591,52 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
  * made since `seen` applies first, then the preferences are written back. */
 void studio_prefs_share(studio_prefs *prefs, game_save *save, uint64_t *seen);
 
+/* A theme custom property a Theme panel row shows (studio_sources.c). */
+typedef struct studio_token
+{
+    int file;       /* index in the page's imports */
+    int start, end; /* the value's bytes in the file when read */
+    char name[64];
+    char *value; /* as read */
+    bool color;
+} studio_token;
+
+/* What authored panels bind beyond their world's `save` (studio_sources.c):
+ * `world`, the Scene world's saved keys, and `theme`, the custom properties
+ * of the stylesheets the open scene's root document imports. */
+typedef struct studio_sources
+{
+    game_save *save; /* the one `world` shows */
+    uint64_t save_seen;
+    char content_root[1024]; /* whose page `theme` shows */
+    ui_page page;            /* the open scene's root document */
+    studio_token *tokens;    /* in the order `theme` lists its rows */
+    uint64_t writes_seen;
+} studio_sources;
+
+/* Adds the `world` and `theme` variables to a data model's JSON. */
+void studio_sources_add(yyjson_mut_doc *doc);
+/* Applies what bindings changed, then shows the current values. */
+void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
+void studio_sources_free(studio_sources *sources);
+
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
  * cannot. Free it after the kit, whose hosts hold its listener. */
-studio_ui *studio_ui_new(const char *project_root, char *error, size_t size);
+/* The Studio scene's root ui document: its own, else the Studio project's
+ * default, else "". */
+const char *studio_ui_page(const studio_ui *ui);
+studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size);
 void studio_ui_free(studio_ui *ui);
 /* Steps the panels' behaviors and shares preferences; call after input. */
 void studio_ui_frame(studio *s);
 /* Shows the Studio scene entity `name`'s GameUi document in a kit host. */
 void studio_ui_panel(studio *s, const char *key, const char *name);
+/* The Studio scene's panels, each an editor type an area can show. */
+int studio_ui_panel_count(const studio *s);
+const char *studio_ui_panel_name(const studio *s, int index);
+/* Shows panel `name` filling area `area`'s body, whether or not its GameUi
+ * is hidden. */
+void studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
 void studio_ui_modal(studio *s, const char *name);
@@ -620,6 +678,9 @@ bool studio_matches(const char *query, const char *text);
 /* Editors emit into an area body; headers into the area header. */
 void studio_scene_header(studio *s, int area);
 void studio_scene_body(studio *s, int area);
+/* Takes the view zoom's gestures from the Scene area's pointer in `input`,
+ * given in area points, and leaves it in the frame's points. */
+void studio_scene_view(studio *s, engine_viewport_host_input *input);
 void studio_outliner_header(studio *s, int area);
 void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
@@ -799,6 +860,8 @@ void studio_debug_call_stack(studio *s);
 
 /* Commands shared by menus, shortcuts and the command palette. */
 void studio_toggle_drawer(studio *s, studio_editor editor);
+/* Steps UI Scale up (1) or down (-1), or restores it (0). */
+void studio_zoom(studio *s, int step);
 void studio_frame_selection(studio *s);
 void studio_duplicate(studio *s);
 void studio_delete(studio *s);

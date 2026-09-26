@@ -56,16 +56,10 @@ EM_JS(int, web_save_asset, (const char *path, const char *text), {
 })
 #endif
 
-int write_text_file_atomic(const char *path, const char *json)
+int write_file_atomic(const char *path, const char *text)
 {
-    char error[128];
-    char *text = asset_text_to_disk(json, error, sizeof error);
-    if (!text) {
-        return -1;
-    }
 #ifdef __EMSCRIPTEN__
     if (web_save_asset(path, text)) {
-        free(text);
         return -1;
     }
 #endif
@@ -75,7 +69,6 @@ int write_text_file_atomic(const char *path, const char *json)
     FILE *file = fopen(temporary, "wb");
     if (!file) {
         free(temporary);
-        free(text);
         return -1;
     }
     int result = fputs(text, file) < 0;
@@ -89,6 +82,17 @@ int write_text_file_atomic(const char *path, const char *json)
         remove(temporary);
     }
     free(temporary);
+    return result;
+}
+
+int write_text_file_atomic(const char *path, const char *json)
+{
+    char error[128];
+    char *text = asset_text_to_disk(json, error, sizeof error);
+    if (!text) {
+        return -1;
+    }
+    int result = write_file_atomic(path, text);
     free(text);
     return result;
 }
@@ -1202,6 +1206,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     scene_debug_clear(&scene->debug);
+    free(scene->ui);
+    free(scene->default_ui);
     editor_set_inspection_blocked(scene->graph_editor, false);
     app_scene_renderer_free(scene->renderer);
     finish_transform_edit(scene, true);

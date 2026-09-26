@@ -241,6 +241,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "graph_id", "uint64", false, "Select one graph by its stable authored ID." },
     { "graph_name", "string", false, "Select one graph by its authored name." },
     { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
+    { "include_pins", "boolean", false, "List each node's pins as \"name: type\" with resolved wildcard types; defaults to true." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -2686,12 +2687,37 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     yyjson_mut_obj_add_uint(doc, value, "topology_revision", effects->topology_revision);
 }
 
+static void add_pin_texts(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *item,
+    const char *key,
+    const pin_spec *pins,
+    int count,
+    bool settings
+);
+
+/* Each node's pins as they are, "name: type", with the types wildcards
+ * resolved to; the serialized nodes omit pins that match their template. */
+static void inspect_add_pins(yyjson_mut_doc *doc, yyjson_mut_val *nodes, const graph *source)
+{
+    size_t index, maximum;
+    yyjson_mut_val *item;
+    yyjson_mut_arr_foreach(nodes, index, maximum, item)
+    {
+        uint64_t id = yyjson_mut_get_uint(yyjson_mut_obj_get(item, "id"));
+        const node *n = graph_node_by_id(source, id);
+        add_pin_texts(doc, item, "in", n->input_pins, n->input_count, true);
+        add_pin_texts(doc, item, "out", n->output_pins, n->output_count, true);
+    }
+}
+
 static yyjson_mut_val *inspect_graph_value(
     yyjson_mut_doc *doc,
     const behavior_asset *asset,
     const graph *source,
     const compile_report *report,
-    bool include_layout
+    bool include_layout,
+    bool include_pins
 )
 {
     char *serialized = graph_save_json(source);
@@ -2741,6 +2767,9 @@ static yyjson_mut_val *inspect_graph_value(
         }
     }
     inspect_add_sorted_array(doc, object, "nodes", yyjson_obj_get(serialized_root, "nodes"), false, include_layout);
+    if (include_pins) {
+        inspect_add_pins(doc, yyjson_mut_obj_get(object, "nodes"), source);
+    }
     inspect_add_sorted_array(doc, object, "edges", yyjson_obj_get(serialized_root, "edges"), true, include_layout);
     inspect_add_calls(doc, object, asset, source, report);
     if (document) {
@@ -2814,6 +2843,12 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     bool include_layout = layout_value && yyjson_get_bool(layout_value);
+    yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
+    if (pins_value && !yyjson_is_bool(pins_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_pins must be a boolean");
+        return -1;
+    }
+    bool include_pins = !pins_value || yyjson_get_bool(pins_value);
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
@@ -2926,7 +2961,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
             result->doc,
             value,
             "graph",
-            inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout)
+            inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout, include_pins)
         );
     }
     inspect_add_validation(result->doc, value, asset, &report);
@@ -7600,10 +7635,12 @@ static void add_pin_texts(
         if (setting && !settings) {
             continue;
         }
-        const char *type = pin->kind == PIN_EXEC            ? "exec"
-                         : (pin->flags & PIN_FLAG_WILDCARD) ? "any"
-                         : pin->type_name ? pin->type_name
-                                          : pin_json_name(pin->type);
+        /* A wildcard keeps its flag once a connection types it. */
+        bool unresolved = (pin->flags & PIN_FLAG_WILDCARD) && pin->type == PIN_FLOW;
+        const char *type = pin->kind == PIN_EXEC ? "exec"
+                         : unresolved            ? "any"
+                         : pin->type_name        ? pin->type_name
+                                                 : pin_json_name(pin->type);
         const char *name = pin->name ? pin->name : "";
         const char *mark = setting                              ? " (setting)"
                          : (pin->flags & PIN_FLAG_DEFAULT_SELF) ? " = Self"

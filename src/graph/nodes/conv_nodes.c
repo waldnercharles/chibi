@@ -391,7 +391,10 @@ int wire_fit(const pin_spec *from, const pin_spec *to)
     if (from->kind == PIN_EXEC) {
         return 3;
     }
-    if ((from->flags | to->flags) & PIN_FLAG_WILDCARD) {
+    /* A wildcard keeps its flag once a connection types it. */
+    bool open = ((from->flags & PIN_FLAG_WILDCARD) && from->type == PIN_FLOW) ||
+                ((to->flags & PIN_FLAG_WILDCARD) && to->type == PIN_FLOW);
+    if (open) {
         return 1;
     }
     if (pin_compatible(from, to)) {

@@ -395,6 +395,10 @@ function buildToolDefinitions() {
         type: "boolean",
         description: "Include editor coordinates, inline hints, comment boxes, and wire routing. Omit for semantic graph data.",
       },
+      include_pins: {
+        type: "boolean",
+        description: "List each node's pins as \"name: type\" with the types wildcards resolved to, as searchNodes writes them; defaults to true.",
+      },
     },
   };
   const scenarioArguments = {

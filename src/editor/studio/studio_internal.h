@@ -173,7 +173,7 @@ typedef struct studio_visit studio_visit;
 /* A Find References result in Output (studio_find.c). */
 typedef struct
 {
-    int kind; /* asset_index_kind of the referencing asset */
+    int kind; /* reference_asset_kind of the referencing asset */
     char asset[128];
     uint64_t graph_id, node_id; /* 0 for an asset-level reference */
     char place[160];            /* graph or object */
@@ -417,8 +417,8 @@ struct studio
     studio_perf_sample *perf;
     double perf_readout_time;
     char perf_readout[96];
-    int assets_kind;           /* asset_index_kind, or -1 for all */
-    unsigned assets_collapsed; /* bit per asset_index_kind */
+    int assets_kind;           /* reference_asset_kind, or -1 for all */
+    unsigned assets_collapsed; /* bit per reference_asset_kind */
     char assets_filter[128];
     int assets_menu;             /* the asset under the row menu */
     char dropped_prototype[256]; /* placed by the viewport this frame */

@@ -24,6 +24,11 @@ writeFileSync(join(project, "content/ui/Slot.yaml"), [
   "rml: '<div id=\"slot\" data-event=\"Fit\">Empty modifier slot</div>'",
   "",
 ].join("\n"));
+// A widget host: it uses Slot and sends Award, an event definition.
+writeFileSync(join(project, "content/ui/Rack.yaml"), [
+  "rml: '<use ui=\"Slot\"/><div id=\"award\" data-keys=\"Enter:Award\">Award</div>'",
+  "",
+].join("\n"));
 
 function request(name, args, expectError = false) {
   const run = spawnSync(process.execPath, [join(root, "tools/mcp/server.mjs")], {
@@ -154,6 +159,17 @@ try {
   const bankUsers = request("inspectAssetDependencies", { kind: "ui", name: "Bank", direction: "incoming" });
   assert.ok(bankUsers.edges.some(edge => edge.from.kind === "prototype" && edge.from.name === "Bank"),
     "a GameUi document is a dependency of its prototype");
+  const rack = request("inspectAssetDependencies", { kind: "ui", name: "Rack" });
+  assert.ok(rack.edges.some(edge => edge.to.kind === "ui" && edge.to.name === "Slot"),
+    "a ui document depends on the widgets it uses");
+  assert.ok(rack.edges.some(edge => edge.to.kind === "event" && edge.to.name === "Award"),
+    "a ui document depends on the event definitions it sends");
+  const award = request("inspectAssetDependencies", { kind: "event", name: "Award", direction: "incoming" });
+  assert.ok(award.edges.some(edge => edge.from.kind === "behavior" && edge.from.name === "Receiver"),
+    "an event definition's handlers depend on it");
+  const spawners = request("inspectAssetDependencies", { kind: "prototype", name: "Payload", direction: "incoming" });
+  assert.ok(spawners.edges.some(edge => edge.from.kind === "behavior" && edge.from.name === "Spawner"),
+    "a spawned prototype is a dependency of the graph that spawns it");
   // A UI activation fits a part: GameHealth records it, the label shows it.
   create("behavior", "RecipeSlot", [
     { op: "add_node", type: "Event", event_name: "Fit", ref: "fit" },

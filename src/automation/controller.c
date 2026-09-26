@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 
 #include "assets/prototype.h"
+#include "assets/reference_index.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "assets/ui_document.h"
@@ -63,21 +64,22 @@ typedef struct
     const char *kind;
     const char *folder;
     asset_loader loader;
+    reference_asset_kind reference; /* KIND_COUNT for assets nothing references */
 } asset_family;
 
 static const asset_family ASSET_FAMILIES[] = {
-    { "behavior", "behaviors", ASSET_GRAPH },
-    { "event", "events", ASSET_GRAPH },
-    { "library", "libraries", ASSET_GRAPH },
-    { "material", "materials", ASSET_GRAPH },
-    { "shape", "shapes", ASSET_GRAPH },
-    { "field", "fields", ASSET_GRAPH },
-    { "shader-library", "shader-libraries", ASSET_GRAPH },
-    { "system", "systems", ASSET_SYSTEM },
-    { "prototype", "prototypes", ASSET_PROTOTYPE },
-    { "scene", "scenes", ASSET_SCENE },
-    { "editor", "editor", ASSET_EDITOR },
-    { "ui", "ui", ASSET_UI },
+    { "behavior", "behaviors", ASSET_GRAPH, REFERENCE_ASSET_BEHAVIOR },
+    { "event", "events", ASSET_GRAPH, REFERENCE_ASSET_EVENT },
+    { "library", "libraries", ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "material", "materials", ASSET_GRAPH, REFERENCE_ASSET_MATERIAL },
+    { "shape", "shapes", ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
+    { "field", "fields", ASSET_GRAPH, REFERENCE_ASSET_FIELD },
+    { "shader-library", "shader-libraries", ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "system", "systems", ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
+    { "prototype", "prototypes", ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
+    { "scene", "scenes", ASSET_SCENE, REFERENCE_ASSET_SCENE },
+    { "editor", "editor", ASSET_EDITOR, REFERENCE_ASSET_KIND_COUNT },
+    { "ui", "ui", ASSET_UI, REFERENCE_ASSET_UI },
 };
 
 typedef struct
@@ -127,9 +129,10 @@ typedef struct
     int errors;
     int warnings;
     catalog_member *members;
-    catalog_reference *dependencies;
+    catalog_reference *dependencies; /* derived from references */
     catalog_reference *dependents;
     catalog_diagnostic *diagnostics;
+    int reference; /* its position in the snapshot's references, or -1 */
 } catalog_asset;
 
 typedef struct
@@ -137,6 +140,7 @@ typedef struct
     char *root;
     asset_entry *entries;
     catalog_asset *assets;
+    reference_index *references;
     uint64_t revision;
     uint64_t content_hash;
 } catalog_snapshot;
@@ -1130,6 +1134,7 @@ static void free_catalog_snapshot(catalog_snapshot *snapshot)
     free(snapshot->root);
     free_asset_entries(snapshot->entries);
     free_catalog_assets(snapshot->assets);
+    reference_index_free(snapshot->references);
     memset(snapshot, 0, sizeof *snapshot);
 }
 
@@ -1162,130 +1167,6 @@ static void catalog_member_add(catalog_asset *asset, const char *kind, const cha
     }
     catalog_member member = { .kind = xstrdup(kind), .name = xstrdup(name) };
     apush(asset->members, member);
-}
-
-static char *catalog_normalize_name(const char *value)
-{
-    if (!value || !value[0]) {
-        return NULL;
-    }
-    const char *name = strrchr(value, '/');
-    name = name ? name + 1 : value;
-    size_t length = strlen(name);
-    if (length > sizeof ASSET_EXTENSION - 1 &&
-        !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
-        length -= sizeof ASSET_EXTENSION - 1;
-    }
-    if (!length) {
-        return NULL;
-    }
-    char *copy = xmalloc(length + 1);
-    memcpy(copy, name, length);
-    copy[length] = '\0';
-    return copy;
-}
-
-static void catalog_reference_add(catalog_asset *asset, const char *kind, const char *value)
-{
-    char *name = catalog_normalize_name(value);
-    if (!name) {
-        return;
-    }
-    const char *reference_kind = kind ? kind : "";
-    for (int i = 0; i < acount(asset->dependencies); i++) {
-        if (!strcmp(asset->dependencies[i].kind, reference_kind) &&
-            !strcmp(asset->dependencies[i].name, name)) {
-            free(name);
-            return;
-        }
-    }
-    catalog_reference reference = {
-        .kind = xstrdup(reference_kind),
-        .name = name,
-        .resolved = false,
-    };
-    apush(asset->dependencies, reference);
-}
-
-static void catalog_scan_references(catalog_asset *asset, yyjson_val *value)
-{
-    if (yyjson_is_obj(value)) {
-        yyjson_obj_iter iterator = yyjson_obj_iter_with(value);
-        yyjson_val *key;
-        while ((key = yyjson_obj_iter_next(&iterator))) {
-            const char *field = yyjson_get_str(key);
-            yyjson_val *child = yyjson_obj_iter_get_val(key);
-            if (yyjson_is_obj(child) && (!strcmp(field, "MaterialTerrain") ||
-                                         !strcmp(field, "GAME.MaterialTerrain"))) {
-                catalog_reference_add(asset, "field", request_string(child, "field"));
-            }
-            if (yyjson_is_obj(child) && (!strcmp(field, "EngineSystem") ||
-                                         !strcmp(field, "GAME.EngineSystem"))) {
-                catalog_reference_add(asset, "system", request_string(child, "asset"));
-            }
-            if (yyjson_is_obj(child) &&
-                (!strcmp(field, "GameUi") || !strcmp(field, "GAME.GameUi"))) {
-                catalog_reference_add(asset, "ui", request_string(child, "document"));
-            }
-            if (yyjson_is_str(child) && !strcmp(field, "rml") &&
-                !strcmp(asset->asset.family->kind, "ui")) {
-                char **names = NULL;
-                ui_document_use_names(yyjson_get_str(child), &names);
-                for (int i = 0; i < acount(names); i++) {
-                    catalog_reference_add(asset, "ui", names[i]);
-                    free(names[i]);
-                }
-                afree(names);
-            }
-            if (yyjson_is_str(child)) {
-                const char *kind = NULL;
-                if (!strcmp(field, "reference_asset") ||
-                    !strcmp(field, "includes") || !strcmp(field, "include")) {
-                    kind = !strcmp(asset->asset.family->kind, "material") ||
-                                   !strcmp(asset->asset.family->kind, "shader-library")
-                             ? "shader-library"
-                             : "library";
-                } else if (!strcmp(field, "prototype")) {
-                    kind = "prototype";
-                } else if (!strcmp(field, "material")) {
-                    kind = "material";
-                } else if (!strcmp(field, "shape")) {
-                    kind = "shape";
-                }
-                if (kind) {
-                    catalog_reference_add(asset, kind, yyjson_get_str(child));
-                }
-            } else if (yyjson_is_arr(child) && (!strcmp(field, "behaviors") || !strcmp(field, "includes"))) {
-                size_t index, count;
-                yyjson_val *item;
-                yyjson_arr_foreach(child, index, count, item)
-                {
-                    if (yyjson_is_str(item)) {
-                        catalog_reference_add(
-                            asset,
-                            !strcmp(field, "behaviors") ? "behavior" : "library",
-                            yyjson_get_str(item)
-                        );
-                    } else if (yyjson_is_obj(item)) {
-                        const char *name = request_string(item, "name");
-                        catalog_reference_add(
-                            asset,
-                            !strcmp(field, "behaviors") ? "behavior" : "library",
-                            name
-                        );
-                    }
-                }
-            }
-            catalog_scan_references(asset, child);
-        }
-    } else if (yyjson_is_arr(value)) {
-        size_t index, count;
-        yyjson_val *child;
-        yyjson_arr_foreach(value, index, count, child)
-        {
-            catalog_scan_references(asset, child);
-        }
-    }
 }
 
 static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
@@ -1510,78 +1391,194 @@ static int catalog_asset_index(const catalog_asset *assets, int count, const cha
     return -1;
 }
 
-static int catalog_resolve_index(
-    const catalog_asset *assets,
-    int count,
-    const catalog_asset *source,
-    const catalog_reference *reference
-)
+static const asset_family *family_by_reference(reference_asset_kind kind)
 {
-    int index = catalog_asset_index(assets, count, reference->kind, reference->name);
-    if (index >= 0) {
-        return index;
-    }
-    if (!reference->kind[0]) {
-        index = catalog_asset_index(assets, count, NULL, reference->name);
-        if (index >= 0) {
-            return index;
+    for (int i = 0; i < (int)(sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES); i++) {
+        if (ASSET_FAMILIES[i].reference == kind) {
+            return &ASSET_FAMILIES[i];
         }
     }
-    if (!strcmp(reference->kind, "library")) {
-        index = catalog_asset_index(assets, count, "shader-library", reference->name);
-        if (index >= 0) {
-            return index;
-        }
-    } else if (!strcmp(reference->kind, "shader-library")) {
-        index = catalog_asset_index(assets, count, "library", reference->name);
-        if (index >= 0) {
-            return index;
-        }
-    }
-    if (source && !strcmp(source->asset.family->kind, "shader-library")) {
-        return catalog_asset_index(assets, count, "library", reference->name);
-    }
-    return -1;
+    assert(!"every reference kind has a family");
+    return NULL;
 }
 
-static void catalog_resolve_references(catalog_asset *assets)
+static void catalog_reference_add(
+    catalog_reference **references,
+    const char *kind,
+    const char *name,
+    bool resolved
+)
 {
-    int count = acount(assets);
-    for (int i = 0; i < count; i++) {
-        catalog_asset *source = &assets[i];
-        qsort(
-            source->dependencies,
-            (size_t)acount(source->dependencies),
-            sizeof *source->dependencies,
-            catalog_reference_compare
-        );
-        for (int j = 0; j < acount(source->dependencies); j++) {
-            catalog_reference *reference = &source->dependencies[j];
-            int target_index = catalog_resolve_index(assets, count, source, reference);
-            if (target_index < 0) {
-                continue;
-            }
-            reference->resolved = true;
-            if (strcmp(reference->kind, assets[target_index].asset.family->kind)) {
-                free(reference->kind);
-                reference->kind = xstrdup(assets[target_index].asset.family->kind);
-            }
-            catalog_reference dependent = {
-                .kind = xstrdup(source->asset.family->kind),
-                .name = xstrdup(source->name),
-                .resolved = true,
-            };
-            apush(assets[target_index].dependents, dependent);
+    for (int i = 0; i < acount(*references); i++) {
+        if (!strcmp((*references)[i].kind, kind) &&
+            !strcmp((*references)[i].name, name)) {
+            return;
         }
     }
-    for (int i = 0; i < count; i++) {
-        qsort(
-            assets[i].dependents,
-            (size_t)acount(assets[i].dependents),
-            sizeof *assets[i].dependents,
-            catalog_reference_compare
-        );
+    catalog_reference reference = { .kind = xstrdup(kind),
+                                    .name = xstrdup(name),
+                                    .resolved = resolved };
+    apush(*references, reference);
+}
+
+/* Adds what an asset holds to the index. An asset its loader rejects holds
+ * nothing; its diagnostics say why. */
+static void catalog_add_content(reference_index *index, const catalog_asset *asset, const char *text)
+{
+    char error[256];
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    switch (asset->asset.family->loader) {
+        case ASSET_GRAPH: {
+            behavior_asset *graph = behavior_asset_load_json(text);
+            if (graph) {
+                reference_index_add_graphs(index, asset->reference, graph);
+            }
+            behavior_asset_free(graph);
+            return;
+        }
+        case ASSET_SYSTEM: {
+            game_system_document *system = game_system_document_load(
+                text,
+                automation_query_component,
+                NULL,
+                error,
+                sizeof error
+            );
+            if (system) {
+                reference_index_add_graphs(index, asset->reference, game_system_document_behavior_asset(system));
+                game_system_document_free(system);
+            }
+            return;
+        }
+        case ASSET_PROTOTYPE: {
+            game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
+            if (prototype) {
+                reference_index_add_prototype(index, asset->reference, prototype);
+                game_prototype_free(prototype);
+            }
+            return;
+        }
+        case ASSET_SCENE: {
+            game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
+            for (int i = 0; scene && i < acount(scene->entities); i++) {
+                const game_scene_entity *entity = &scene->entities[i];
+                reference_object object = {
+                    .name = entity->name,
+                    .prototype = entity->prototype,
+                    .overrides = entity->components_json,
+                    .behaviors = (const char *const *)entity->behaviors,
+                    .behavior_count = acount(entity->behaviors),
+                };
+                reference_index_add_object(index, asset->reference, &object);
+            }
+            game_scene_document_free(scene);
+            return;
+        }
+        case ASSET_UI: {
+            ui_document document = { 0 };
+            if (ui_document_read(text, &document, error, sizeof error)) {
+                reference_index_add_ui(index, asset->reference, document.rml);
+            }
+            ui_document_free(&document);
+            return;
+        }
+        case ASSET_EDITOR: return;
     }
+}
+
+/* Each asset's dependencies and dependents: the assets its references use. */
+static void catalog_link_references(catalog_asset *assets, const reference_index *index)
+{
+    int *catalog = xmalloc(((size_t)reference_index_asset_count(index) + 1) * sizeof *catalog);
+    for (int i = 0; i < reference_index_asset_count(index); i++) {
+        catalog[i] = -1;
+    }
+    for (int i = 0; i < acount(assets); i++) {
+        if (assets[i].reference >= 0) {
+            catalog[assets[i].reference] = i;
+        }
+    }
+    for (int i = 0; i < reference_index_count(index); i++) {
+        const reference *r = reference_index_at(index, i);
+        int target = reference_dependency(r);
+        if (target < 0) {
+            continue;
+        }
+        catalog_asset *source = &assets[catalog[r->source]];
+        const reference_asset *named = reference_index_asset_at(index, target);
+        catalog_asset *used = catalog[target] >= 0 ? &assets[catalog[target]] : NULL;
+        catalog_reference_add(
+            &source->dependencies,
+            used ? used->asset.family->kind : family_by_reference(named->kind)->kind,
+            named->name,
+            used != NULL
+        );
+        if (used) {
+            catalog_reference_add(
+                &used->dependents,
+                source->asset.family->kind,
+                source->name,
+                true
+            );
+        }
+    }
+    free(catalog);
+    for (int i = 0; i < acount(assets); i++) {
+        catalog_reference *dependencies = assets[i].dependencies;
+        catalog_reference *dependents = assets[i].dependents;
+        qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+        qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+    }
+}
+
+static char *catalog_path(const char *root, const catalog_asset *asset)
+{
+    size_t size = strlen(root) + strlen(asset->asset.relative) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", root, asset->asset.relative);
+    return path;
+}
+
+/* Every asset first, then what each holds, so references find the event
+ * definitions they name. */
+static int catalog_index_references(
+    const char *root,
+    catalog_asset *assets,
+    reference_index **out,
+    char *error,
+    size_t error_size
+)
+{
+    reference_index *index = reference_index_new();
+    for (int i = 0; i < acount(assets); i++) {
+        reference_asset_kind kind = assets[i].asset.family->reference;
+        char *path = catalog_path(root, &assets[i]);
+        assets[i]
+            .reference = kind == REFERENCE_ASSET_KIND_COUNT
+                           ? -1
+                           : reference_index_add_asset(index, kind, assets[i].name, path, NULL);
+        free(path);
+    }
+    for (int i = 0; i < acount(assets); i++) {
+        if (assets[i].reference < 0) {
+            continue;
+        }
+        char *path = catalog_path(root, &assets[i]);
+        char *text = read_file(path, NULL, NULL, error, error_size);
+        free(path);
+        if (!text) {
+            reference_index_free(index);
+            return -1;
+        }
+        catalog_add_content(index, &assets[i], text);
+        free(text);
+    }
+    catalog_link_references(assets, index);
+    *out = index;
+    return 0;
 }
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
@@ -1639,7 +1636,6 @@ static int load_catalog_asset(
             asset->description = xstrdup(description);
         }
         catalog_scan_members(asset, json_root);
-        catalog_scan_references(asset, json_root);
         yyjson_doc_free(document);
         catalog_validate_asset(root, asset, json);
     }
@@ -1662,10 +1658,9 @@ static int cached_catalog_asset_index(const catalog_asset *assets, const asset_e
 
 static void reset_catalog_derived_data(catalog_asset *asset)
 {
-    for (int i = 0; i < acount(asset->dependencies); i++) {
-        asset->dependencies[i].resolved = false;
-    }
+    free_catalog_references(asset->dependencies);
     free_catalog_references(asset->dependents);
+    asset->dependencies = NULL;
     asset->dependents = NULL;
 }
 
@@ -1674,6 +1669,7 @@ static int build_catalog_from_entries(
     const asset_entry *entries,
     catalog_asset *previous,
     catalog_asset **out,
+    reference_index **references,
     char *error,
     size_t error_size
 )
@@ -1697,7 +1693,10 @@ static int build_catalog_from_entries(
         }
         apush(assets, asset);
     }
-    catalog_resolve_references(assets);
+    if (catalog_index_references(root, assets, references, error, error_size) != 0) {
+        free_catalog_assets(assets);
+        return -1;
+    }
     *out = assets;
     return 0;
 }
@@ -1822,7 +1821,8 @@ static int catalog_snapshot_get(
         return 0;
     }
     catalog_asset *assets = NULL;
-    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, error, error_size) !=
+    reference_index *references = NULL;
+    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, &references, error, error_size) !=
         0) {
         free_asset_entries(entries);
         free_catalog_snapshot(&CATALOG_SNAPSHOT);
@@ -1833,6 +1833,7 @@ static int catalog_snapshot_get(
     CATALOG_SNAPSHOT.root = xstrdup(root);
     CATALOG_SNAPSHOT.entries = entries;
     CATALOG_SNAPSHOT.assets = assets;
+    CATALOG_SNAPSHOT.references = references;
     CATALOG_SNAPSHOT.revision = next_revision;
     CATALOG_SNAPSHOT.content_hash = catalog_content_hash(assets);
     *out = CATALOG_SNAPSHOT.assets;

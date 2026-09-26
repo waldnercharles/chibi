@@ -672,7 +672,7 @@ add_executable(test_suite
     test/surface.c
     test/arena_post.c
     test/content_catalog.c
-    test/asset_index.c
+    test/reference_index.c
     test/shader_effects.c
     test/shader_program.c
     test/shader_image.c

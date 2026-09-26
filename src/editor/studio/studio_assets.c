@@ -12,15 +12,15 @@
 #include <string.h>
 #include <strings.h>
 
-static const char *const KIND_LABELS[ASSET_INDEX_KIND_COUNT] = {
+static const char *const KIND_LABELS[REFERENCE_ASSET_KIND_COUNT] = {
     "Scenes", "Prototypes", "Behaviors", "Events",  "Materials",
     "Shapes", "Fields",     "Libraries", "Systems", "UI",
 };
-static const char *const KIND_NAMES[ASSET_INDEX_KIND_COUNT] = {
+static const char *const KIND_NAMES[REFERENCE_ASSET_KIND_COUNT] = {
     "scene", "prototype", "behavior", "event",  "material",
     "shape", "field",     "library",  "system", "ui",
 };
-static const uint32_t KIND_ICONS[ASSET_INDEX_KIND_COUNT] = {
+static const uint32_t KIND_ICONS[REFERENCE_ASSET_KIND_COUNT] = {
     KIT_ICON_SCENE,    KIT_ICON_PROTOTYPE, KIT_ICON_GRAPH, KIT_ICON_EVENT,
     KIT_ICON_MATERIAL, KIT_ICON_HEXAGON,   KIT_ICON_GRID,  KIT_ICON_LIBRARY,
     KIT_ICON_SYSTEM,   KIT_ICON_LAYOUT,
@@ -63,13 +63,13 @@ void studio_assets_header(studio *s, int area)
 {
     (void)area;
     kit *k = s->kit;
-    const char *kinds[ASSET_INDEX_KIND_COUNT + 1] = { "All" };
-    for (int i = 0; i < ASSET_INDEX_KIND_COUNT; i++) {
+    const char *kinds[REFERENCE_ASSET_KIND_COUNT + 1] = { "All" };
+    for (int i = 0; i < REFERENCE_ASSET_KIND_COUNT; i++) {
         kinds[i + 1] = KIND_LABELS[i];
     }
     int choice = s->assets_kind + 1;
     kit_push(k, "kind", NULL, "assets-kind");
-    if (kit_choice(k, "kind", &choice, kinds, ASSET_INDEX_KIND_COUNT + 1, 0)) {
+    if (kit_choice(k, "kind", &choice, kinds, REFERENCE_ASSET_KIND_COUNT + 1, 0)) {
         s->assets_kind = choice - 1;
     }
     kit_pop(k);
@@ -85,12 +85,12 @@ typedef struct
     int kind;
 } asset_row;
 
-static const asset_index *sort_index;
+static const reference_index *sort_index;
 
 static int by_name(const void *a, const void *b)
 {
-    const asset_index_asset *x = asset_index_asset_at(sort_index, *(const int *)a);
-    const asset_index_asset *y = asset_index_asset_at(sort_index, *(const int *)b);
+    const reference_asset *x = reference_index_asset_at(sort_index, *(const int *)a);
+    const reference_asset *y = reference_index_asset_at(sort_index, *(const int *)b);
     return x->kind != y->kind ? (int)x->kind - (int)y->kind
                               : strcasecmp(x->name, y->name);
 }
@@ -105,8 +105,8 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon)
 static void asset_menu(studio *s, const char *key)
 {
     kit *k = s->kit;
-    const asset_index *index = app_scene_authoring_asset_index(s->scene);
-    const asset_index_asset *asset = asset_index_asset_at(index, s->assets_menu);
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    const reference_asset *asset = reference_index_asset_at(index, s->assets_menu);
     if (!kit_popup_begin(k, key, "menu")) {
         return;
     }
@@ -131,19 +131,19 @@ void studio_assets_body(studio *s, int area)
     char menu_key[24];
     snprintf(menu_key, sizeof menu_key, "asset:%d", area);
     app_scene_authoring *scene = s->scene;
-    const asset_index *index = app_scene_authoring_asset_index(scene);
-    int count = index ? asset_index_asset_count(index) : 0;
+    const reference_index *index = app_scene_authoring_asset_index(scene);
+    int count = index ? reference_index_asset_count(index) : 0;
     int *uses = xcalloc((size_t)(count ? count : 1), sizeof *uses);
-    for (int r = 0; index && r < asset_index_reference_count(index); r++) {
-        const asset_index_reference *ref = asset_index_reference_at(index, r);
-        if (ref->target >= 0 && ref->target < count && ref->target != ref->source) {
-            uses[ref->target]++;
+    for (int r = 0; index && r < reference_index_count(index); r++) {
+        int used = reference_dependency(reference_index_at(index, r));
+        if (used >= 0) {
+            uses[used]++;
         }
     }
     int *matches = NULL;
     for (int i = 0; i < count; i++) {
-        const asset_index_asset *asset = asset_index_asset_at(index, i);
-        if (asset->name && asset->kind >= 0 && asset->kind < ASSET_INDEX_KIND_COUNT &&
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        if (asset->name && asset->kind >= 0 && asset->kind < REFERENCE_ASSET_KIND_COUNT &&
             (s->assets_kind < 0 || (int)asset->kind == s->assets_kind) &&
             contains(asset->name, s->assets_filter)) {
             apush(matches, i);
@@ -156,9 +156,10 @@ void studio_assets_body(studio *s, int area)
     bool grouped = s->assets_kind < 0;
     asset_row *rows = NULL;
     for (int m = 0; m < acount(matches); m++) {
-        int kind = (int)asset_index_asset_at(index, matches[m])->kind;
+        int kind = (int)reference_index_asset_at(index, matches[m])->kind;
         if (grouped &&
-            (m == 0 || (int)asset_index_asset_at(index, matches[m - 1])->kind != kind)) {
+            (m == 0 ||
+             (int)reference_index_asset_at(index, matches[m - 1])->kind != kind)) {
             apush(rows, ((asset_row){ -1, kind }));
         }
         if (!grouped || !(s->assets_collapsed & (1u << kind)) || s->assets_filter[0]) {
@@ -175,7 +176,7 @@ void studio_assets_body(studio *s, int area)
         if (rows[r].asset < 0) {
             int kind = rows[r].kind, total = 0;
             for (int m = 0; m < acount(matches); m++) {
-                total += (int)asset_index_asset_at(index, matches[m])->kind == kind;
+                total += (int)reference_index_asset_at(index, matches[m])->kind == kind;
             }
             snprintf(key, sizeof key, "g%d", kind);
             snprintf(meta, sizeof meta, "%d", total);
@@ -190,11 +191,11 @@ void studio_assets_body(studio *s, int area)
             kit_row_end(k);
             continue;
         }
-        const asset_index_asset *asset = asset_index_asset_at(index, rows[r].asset);
+        const reference_asset *asset = reference_index_asset_at(index, rows[r].asset);
         int used = uses[rows[r].asset];
         snprintf(key, sizeof key, "a%d", rows[r].asset);
         /* Scenes are entry points: nothing references them, so usage says nothing. */
-        bool counted = asset->kind != ASSET_INDEX_SCENE;
+        bool counted = asset->kind != REFERENCE_ASSET_SCENE;
         if (!counted) {
             meta[0] = '\0';
         } else if (used) {
@@ -205,7 +206,7 @@ void studio_assets_body(studio *s, int area)
         kit_row_desc row = {
             .label = asset->name,
             .icon = asset->unresolved ? KIT_ICON_WARNING
-                  : asset->kind == ASSET_INDEX_PROTOTYPE
+                  : asset->kind == REFERENCE_ASSET_PROTOTYPE
                       ? studio_prototype_icon(s, asset->name)
                       : KIND_ICONS[asset->kind],
             .depth = grouped,
@@ -216,7 +217,8 @@ void studio_assets_body(studio *s, int area)
         kit_row_end(k);
         kit_flag(k, "data-unused", counted && !used);
         kit_flag(k, "data-unresolved", asset->unresolved);
-        if (asset->kind == ASSET_INDEX_PROTOTYPE || asset->kind == ASSET_INDEX_BEHAVIOR) {
+        if (asset->kind == REFERENCE_ASSET_PROTOTYPE ||
+            asset->kind == REFERENCE_ASSET_BEHAVIOR) {
             kit_drag_desc drag = { .type = KIND_NAMES[asset->kind],
                                    .payload = asset->name,
                                    .icon = row.icon };

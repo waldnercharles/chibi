@@ -511,6 +511,55 @@ void ui_document_use_names(const char *rml, char ***names)
     }
 }
 
+/* The quoted value of the next `name` attribute at or after `p` in `rml`,
+ * with its length; NULL when there is none. */
+static const char *attribute_value(const char *rml, const char *p, const char *name, size_t *length)
+{
+    size_t name_length = strlen(name);
+    for (; (p = strstr(p, name)); p += name_length) {
+        if (p == rml || !isspace((unsigned char)p[-1]) || p[name_length] != '=') {
+            continue;
+        }
+        char quote = p[name_length + 1];
+        const char *value = p + name_length + 2;
+        const char *end = quote == '"' || quote == '\'' ? strchr(value, quote) : NULL;
+        if (end) {
+            *length = (size_t)(end - value);
+            return value;
+        }
+    }
+    return NULL;
+}
+
+static void push_name(char ***names, const char *name, size_t length)
+{
+    if (length) {
+        apush(*names, memcpy(xcalloc(length + 1, 1), name, length));
+    }
+}
+
+void ui_document_event_names(const char *rml, char ***names)
+{
+    size_t length;
+    for (const char *v = rml; (v = attribute_value(rml, v, "data-event", &length));
+         v += length) {
+        push_name(names, v, length);
+    }
+    for (const char *v = rml; (v = attribute_value(rml, v, "data-keys", &length));
+         v += length) {
+        /* Bindings are "Key:Event Key:Event". */
+        for (const char *p = v; p < v + length;) {
+            const char *end = p + strcspn(p, " ");
+            end = end < v + length ? end : v + length;
+            const char *colon = memchr(p, ':', (size_t)(end - p));
+            if (colon) {
+                push_name(names, colon + 1, (size_t)(end - colon - 1));
+            }
+            p = end + 1;
+        }
+    }
+}
+
 char *ui_document_compose(const ui_document *document, const char *base)
 {
     static const char FORMAT[] = "<rml><head><style>%s\n%s</style></"

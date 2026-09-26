@@ -14,7 +14,8 @@
  * `model` documents show as authored, without `entities` activations reach no
  * one, and without `settings` data-setting elements stay as authored. A
  * preview shows documents their GameUi keeps hidden, as an editor previews
- * a dialog before anything opens it. */
+ * a dialog before anything opens it; `revealed` shows one entity's the same
+ * way, as the editor shows the object selected in a scene it edits. */
 typedef struct ui_world
 {
     ecs_world *ecs;
@@ -22,6 +23,7 @@ typedef struct ui_world
     game_entities *entities;
     game_save *settings;
     bool preview;
+    uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
 } ui_world;
 
 /* ---------- Mounts ---------- */

@@ -223,6 +223,30 @@ void test_game_ui_presenter()
     test_check(keyed && game_entities_pending_events(live->entities) == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
     unlink(keys);
 
+    char panel[96];
+    snprintf(panel, sizeof panel, "%s/Panel.yaml", folder);
+    write_file(
+        panel,
+        "rml: <div id=\"go\" data-event=\"Go\">Go</div>\n"
+        "rcss: '#go { display: block; width: 200dp; height: 60dp; }'\n"
+    );
+    *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Panel", .hidden = true };
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    before = game_entities_pending_events(live->entities);
+    click(ui, 40, 20);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool unseen = game_entities_pending_events(live->entities) == before;
+    w.revealed = ecs_entity_to_u64(strip);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    click(ui, 40, 20);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    test_check(
+        unseen && game_entities_pending_events(live->entities) == before + 1,
+        "a hidden GameUi shows while the editor reveals its entity"
+    );
+    w.revealed = 0;
+    unlink(panel);
+
     render_ui_free(ui);
     game_live_world_free(live);
     ecs_world_free(world);

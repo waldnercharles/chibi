@@ -266,8 +266,27 @@ pins and connections without guessing IDs. Pin names avoid manually maintaining
 serialized pin IDs.
 Graph batches also support `select_graph`, `rename_graph`, `remove_graph`,
 `remove_variable`, `set_pin`, `remove_pin`, `split_pin`, `recombine_pin`,
-`expose_fields`, `hide_fields`, `bind_input`, `clear_binding`, and `create_local`.
-`create_local` on an output that already has a local renames that local.
+`expose_fields`, `hide_fields`, `bind_input`, `clear_binding`, `create_local`, and
+`expand_local`. `create_local` on an output that already has a local renames
+that local; without a `name`, a new local takes the name Studio's Name Value
+gives it. `expand_local` removes the local and wires its readers to the output
+again.
+
+Studio's code actions are operations too, and `ref` names what they create:
+- `collapse_to_function` and `collapse_to_macro` take `nodes` (IDs or refs) and
+  a `name`, and replace the selection with a call to a new graph. The call and
+  the graph both take `ref`.
+- `expand_node` replaces a call to one of the asset's own functions or macros
+  with a copy of its body.
+- `convert_to_expression` turns `nodes` that form a connected, pure calculation
+  into one Behavior Expression.
+- `promote_to_variable` gives an input a Get of a new variable, or an output a
+  Set; `name` defaults to the pin's name.
+
+`add_pin`, `remove_pin` and `set_pin` on a function's or macro's Entry outputs
+or Return inputs edit its signature, so every call to it follows: a renamed
+input keeps its wires on each call, and a new input shows its `default`.
+`set_pin.order` is refused there; remove the pin and add it again.
 `set_comment` gives a node a comment, drawn as a bubble above it like
 Unreal's node comments: `{"op":"set_comment","node":12,"comment":"Clamp before
 the dash"}`. An empty `comment` removes it, and `"hidden": true` shows the

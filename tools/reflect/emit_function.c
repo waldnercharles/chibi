@@ -309,7 +309,7 @@ static void emit_read_call(FILE *out, const fn_info *f)
 }
 static bool read_host_supported(const fn_info *f)
 {
-    if (f->effect_flags != (1u << 3) || acount(f->reads) || acount(f->writes)) {
+    if (f->effect_flags != (1u << 3)) {
         return false;
     }
     for (int i = 0; i < acount(f->pname); i++) {
@@ -553,7 +553,7 @@ static void emit_local_arg(FILE *out, const char *spelling, const char *pin, int
 
 static int fn_has_access(const fn_info *f)
 {
-    return acount(f->reads) || acount(f->writes) || f->effect_flags;
+    return f->effect_flags;
 }
 
 static const char *jit_kind_name(const char *kind)
@@ -600,43 +600,7 @@ static void emit_fn_access(FILE *out, const fn_info *f)
     if (!fn_has_access(f)) {
         return;
     }
-    if (acount(f->reads)) {
-        fprintf(out, "static const uint64_t %s_%s_reads[] = {", g_prefix, f->name);
-        for (int i = 0; i < acount(f->reads); i++) {
-            fprintf(
-                out,
-                "%sUINT64_C(%llu)",
-                i ? ", " : "",
-                (unsigned long long)stable_service_id(f->reads[i])
-            );
-        }
-        fputs("};\n", out);
-    }
-    if (acount(f->writes)) {
-        fprintf(out, "static const uint64_t %s_%s_writes[] = {", g_prefix, f->name);
-        for (int i = 0; i < acount(f->writes); i++) {
-            fprintf(
-                out,
-                "%sUINT64_C(%llu)",
-                i ? ", " : "",
-                (unsigned long long)stable_service_id(f->writes[i])
-            );
-        }
-        fputs("};\n", out);
-    }
-    fprintf(out, "static const node_access %s_%s_access = { .reads = ", g_prefix, f->name);
-    if (acount(f->reads)) {
-        fprintf(out, "%s_%s_reads", g_prefix, f->name);
-    } else {
-        fputs("NULL", out);
-    }
-    fprintf(out, ", .read_count = %d, .writes = ", acount(f->reads));
-    if (acount(f->writes)) {
-        fprintf(out, "%s_%s_writes", g_prefix, f->name);
-    } else {
-        fputs("NULL", out);
-    }
-    fprintf(out, ", .write_count = %d, .flags = %u };\n", acount(f->writes), f->effect_flags);
+    fprintf(out, "static const node_access %s_%s_access = { .flags = %u };\n", g_prefix, f->name, f->effect_flags);
 }
 
 void emit_exec_node(FILE *out, const fn_info *f)

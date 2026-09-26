@@ -55,6 +55,7 @@ static const intent INTENTS[] = {
     { "closest", "behavior", "Find Nearest Entity", NULL, NULL },
     { "owner", "behavior", "Self", NULL, NULL },
     { "sqrt", "behavior", "Square Root", NULL, NULL },
+    { "ln", "behavior", "Logarithm", NULL, NULL },
     { "vec2", "behavior", "Make Struct", "CF_V2", NULL },
 };
 
@@ -146,11 +147,14 @@ static void expression_forms()
 {
     size_t bytes;
     char *clamp = search("\"query\":\"clamp\",\"domain\":\"behavior\",\"limit\":1", &bytes);
+    char *smooth = search("\"query\":\"smoothstep\",\"domain\":\"shader\",\"limit\":1", &bytes);
     test_check(
-        clamp && strstr(clamp, "\"expression\":\"clamp(Value, Min, Max)\""),
-        "searchNodes gives the expression that writes a node"
+        clamp && strstr(clamp, "\"expression\":\"clamp(Value, Min, Max)\"") && smooth &&
+            strstr(smooth, "\"expression\":\"smoothstep(Min, Max, Value)\""),
+        "searchNodes gives the expression that writes a node, in argument order"
     );
     free(clamp);
+    free(smooth);
 }
 
 /* A wire's type filters and ranks nodes by the pin that takes it, like a

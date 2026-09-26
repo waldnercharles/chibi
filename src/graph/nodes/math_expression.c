@@ -253,6 +253,16 @@ int behavior_expression_arity(const node_desc *desc)
     return function ? function->arity : -1;
 }
 
+const char *behavior_expression_alias(const node_desc *desc, int index)
+{
+    for (size_t i = 0; i < sizeof functions / sizeof functions[0]; i++) {
+        if (implements(functions[i].nodes, desc->name) && !index--) {
+            return functions[i].name;
+        }
+    }
+    return NULL;
+}
+
 int behavior_expression_argument_input(const node_desc *desc, int argument)
 {
     const math_function *function = function_of(desc);

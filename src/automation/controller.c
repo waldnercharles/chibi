@@ -7594,11 +7594,13 @@ static int event_score(const node_match *match, const char *query)
 static int node_score(const node_desc *node, const char *query)
 {
     char secondary[1024] = "";
-    int used = 0, binding = 0;
+    int used = 0;
     append_word(secondary, sizeof secondary, &used, node->category);
     append_word(secondary, sizeof secondary, &used, node->keywords);
-    const char *spelling = behavior_expression_spelling(node, &binding);
-    append_word(secondary, sizeof secondary, &used, binding ? NULL : spelling);
+    const char *alias = NULL;
+    for (int i = 0; (alias = behavior_expression_alias(node, i)); i++) {
+        append_word(secondary, sizeof secondary, &used, alias);
+    }
     for (int i = 0; i < node->input_count; i++) {
         append_word(secondary, sizeof secondary, &used, node->inputs[i].name);
     }
@@ -7645,9 +7647,19 @@ static bool expression_form(const graph *g, const node *n, char *text, size_t si
     if (binding) {
         return false;
     }
+    /* A function's arguments can take the inputs in another order, as in
+     * smoothstep(Min, Max, Value). */
     int used = snprintf(text, size, "%s(", spelling);
-    for (int i = 0; i < count && used < (int)size; i++) {
-        used += snprintf(text + used, size - (size_t)used, "%s%s", i ? ", " : "", arguments[i]);
+    for (int i = 0; i < behavior_expression_arity(desc) && used < (int)size; i++) {
+        int input = behavior_expression_argument_input(desc, i);
+        assert(input < n->input_count);
+        used += snprintf(
+            text + used,
+            size - (size_t)used,
+            "%s%s",
+            i ? ", " : "",
+            n->input_pins[input].name
+        );
     }
     if (used < (int)size) {
         snprintf(text + used, size - (size_t)used, ")");

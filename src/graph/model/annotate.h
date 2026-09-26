@@ -39,11 +39,5 @@
 #define NODE_SERVICE(T) __attribute__((annotate("node:service:" #T)))
 /* Nominal graph handle stored in a uint64_t component field. */
 #define NODE_HANDLE(T) __attribute__((annotate("node:handle:" #T)))
-#define NODE_READS(T) __attribute__((annotate("node:reads:" #T)))
-#define NODE_WRITES(T) __attribute__((annotate("node:writes:" #T)))
-#define NODE_ENTITY_SCOPED __attribute__((annotate("node:entity-scoped")))
-#define NODE_STRUCTURAL __attribute__((annotate("node:structural")))
-#define NODE_WORLD_READ __attribute__((annotate("node:world-read")))
-#define NODE_HOST_SINK __attribute__((annotate("node:host-sink")))
 
 #endif

@@ -935,10 +935,11 @@ static void reverse_parallel_for(int count, void (*worker)(int, void *), void *u
 void run_parallel_checks(void)
 {
     test_check(
-        GAME_NODE_game_component_probe.access &&
-            GAME_NODE_game_component_probe.access->read_count == 1 &&
-            GAME_NODE_game_component_probe.access->reads[0] ==
-                GAME_COMPONENT_GameHealth.id,
+        GAME_NODE_Get_GameHealth.access &&
+            GAME_NODE_Get_GameHealth.access->read_count == 1 &&
+            GAME_NODE_Get_GameHealth.access->reads[0] ==
+                GAME_COMPONENT_GameHealth.id &&
+            (GAME_NODE_Get_GameHealth.access->flags & NODE_EFFECT_ENTITY_SCOPED),
         "node descriptors declare component reads, writes, and scope "
         "flags"
     );
@@ -954,7 +955,7 @@ void run_parallel_checks(void)
     );
 
     behavior_asset *safe = behavior_asset_new("SafeEffects");
-    graph_add_node(safe->graph, &GAME_NODE_game_component_probe);
+    graph_add_node(safe->graph, &GAME_NODE_Get_GameHealth);
     compile_report safe_report;
     compile_report_init(&safe_report);
     behavior_asset_compile(safe, &safe_report);

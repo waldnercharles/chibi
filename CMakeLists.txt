@@ -580,7 +580,8 @@ set(CHIBI_ASSET_ROOTS
     ${CMAKE_SOURCE_DIR}/projects/SpaceCadet
     ${CMAKE_SOURCE_DIR}/projects/hrc_lab
     ${CMAKE_SOURCE_DIR}/projects/studio
-    ${CMAKE_SOURCE_DIR}/test/fixtures)
+    ${CMAKE_SOURCE_DIR}/test/fixtures
+    ${CMAKE_SOURCE_DIR}/test/fixtures/studio)
 set(CHIBI_ASSET_CHECKS)
 foreach(asset_root ${CHIBI_ASSET_ROOTS})
     list(APPEND CHIBI_ASSET_CHECKS COMMAND ${CMAKE_COMMAND} -E env MallocNanoZone=0

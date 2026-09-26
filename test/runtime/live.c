@@ -64,9 +64,51 @@ static void automatic_layout_checks()
     game_live_definition_free(definition);
 }
 
+/* Component access nodes write one-line file entries. Wherever arrangement
+   puts them, the entries read the same, so the definition stays saved. */
+static void arranged_entries_checks()
+{
+    static const char *const kinds[] = {
+        "Get_GameCollider",
+        "GetEntity_GameCollider",
+        "Has_GameCollider",
+        "HasEntity_GameCollider",
+        "Set_GameCollider",
+        "SetEntity_GameCollider",
+        "Add_GameCollider",
+        "Remove_GameCollider",
+        "Make_GameCollider",
+        "Break_GameCollider",
+        "Set_GameCollider_ignore_entity",
+    };
+    static const float spots[][2] = { { 12, 0 }, { 1576, 261 }, { -1234567, -7654321 } };
+    behavior_asset *source = behavior_asset_new("Arranged");
+    for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) {
+        node *n = graph_add_node(source->graph, registry_node_by_name(kinds[i]));
+        assert(n);
+        n->placed = false;
+    }
+    game_live_definition *definition = game_live_definition_new("arranged", source);
+    bool saved = true;
+    for (size_t s = 0; s < sizeof spots / sizeof *spots; s++) {
+        char *json = behavior_asset_save_json(definition->working);
+        behavior_asset *open = behavior_asset_load_json(json);
+        free(json);
+        for (int i = 0; i < acount(open->graph->nodes); i++) {
+            open->graph->nodes[i]->x = spots[s][0];
+            open->graph->nodes[i]->y = spots[s][1];
+        }
+        saved &= game_live_sync_working(definition, open) == 0 && !definition->unsaved;
+        behavior_asset_free(open);
+    }
+    test_check(saved, "arranged component access nodes keep their file entries");
+    game_live_definition_free(definition);
+}
+
 void run_live_preview_checks(void)
 {
     automatic_layout_checks();
+    arranged_entries_checks();
     ecs_world *ecs = ecs_world_new();
     ecs_entity first = ecs_world_create_entity(ecs);
     ecs_entity second = ecs_world_create_entity(ecs);

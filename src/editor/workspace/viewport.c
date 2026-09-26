@@ -563,7 +563,8 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
     const engine_viewport_host_input *in = &viewport->host_input;
     viewport->image_size = (CF_V2){ in->width, in->height };
     viewport->focused = in->focused && !controls->editing;
-    int width = (int)in->width, height = (int)in->height;
+    float resolution = fmaxf(in->resolution, 1);
+    int width = (int)(in->width * resolution), height = (int)(in->height * resolution);
     if (width <= 0 || height <= 0) {
         cancel_viewport_pointer(viewport);
         return 0;

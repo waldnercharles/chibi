@@ -381,6 +381,55 @@ static void studio_toggle_maximized(studio *s, int area)
     s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
+/* UI Scale's steps, as browsers step a page's zoom, and the menus' choices. */
+static const float UI_ZOOMS[] = { 0.5f, 0.67f, 0.75f, 0.8f,  0.9f, 1,
+                                  1.1f, 1.25f, 1.5f,  1.75f, 2 };
+static const float UI_SCALES[] = { 0.5f, 0.75f, 1, 1.25f, 1.5f, 2 };
+enum
+{
+    UI_ZOOM_COUNT = sizeof UI_ZOOMS / sizeof *UI_ZOOMS,
+    UI_SCALE_COUNT = sizeof UI_SCALES / sizeof *UI_SCALES,
+};
+
+void studio_zoom(studio *s, int step)
+{
+    float scale = s->prefs.ui_scale, next = step ? scale : 1;
+    /* The last match is the nearest step: up from the top, down from the bottom. */
+    for (int i = 0; i < UI_ZOOM_COUNT; i++) {
+        float up = UI_ZOOMS[UI_ZOOM_COUNT - 1 - i], down = UI_ZOOMS[i];
+        if (step > 0 && up > scale + 0.001f) {
+            next = up;
+        }
+        if (step < 0 && down < scale - 0.001f) {
+            next = down;
+        }
+    }
+    s->prefs.ui_scale = next;
+}
+
+static void zoom_items(studio *s)
+{
+    kit *k = s->kit;
+    float scale = s->prefs.ui_scale;
+    kit_menu_group(k, "scale", "UI Scale");
+    if (item(
+            k,
+            "zoom-in",
+            "Zoom In",
+            KIT_ICON_ZOOM_IN,
+            studio_chord(s, "Mod+="),
+            scale >= UI_ZOOMS[UI_ZOOM_COUNT - 1]
+        )) {
+        studio_zoom(s, 1);
+    }
+    if (item(k, "zoom-out", "Zoom Out", KIT_ICON_ZOOM_OUT, studio_chord(s, "Mod+-"), scale <= UI_ZOOMS[0])) {
+        studio_zoom(s, -1);
+    }
+    if (item(k, "zoom-reset", "Reset Zoom", 0, studio_chord(s, "Mod+0"), scale == 1)) {
+        studio_zoom(s, 0);
+    }
+}
+
 #ifdef __EMSCRIPTEN__
 /* Export archives saved files and import reloads the page, so both need saved work. */
 static void project_menu_items(studio *s)
@@ -495,6 +544,8 @@ static void menus(studio *s)
             memcpy(s->prefs.editors, layout.editors, sizeof layout.editors);
             memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
         }
+        kit_menu_separator(k, "s3");
+        zoom_items(s);
         kit_popup_end(k);
     }
     if (kit_menubar_trigger(k, "object", "Object")) {
@@ -932,6 +983,36 @@ static void workspace(studio *s)
 
 /* ---------- Status bar ---------- */
 
+/* UI Scale stays in reach, as Office keeps its zoom in the status bar. */
+static void scale_control(studio *s)
+{
+    kit *k = s->kit;
+    char label[16];
+    snprintf(label, sizeof label, "%d%%", (int)lroundf(s->prefs.ui_scale * 100));
+    kit_button_desc d = { .label = label, .size = KIT_SM, .cls = "ui-scale", .tip = "UI Scale" };
+    if (kit_button(k, "scale", &d)) {
+        kit_popup_open(k, "scale-menu");
+    }
+    if (!kit_popup_begin(k, "scale-menu", "menu")) {
+        return;
+    }
+    zoom_items(s);
+    kit_menu_separator(k, "s1");
+    for (int i = 0; i < UI_SCALE_COUNT; i++) {
+        char key[8], text[8];
+        snprintf(key, sizeof key, "p%d", i);
+        snprintf(text, sizeof text, "%d%%", (int)lroundf(UI_SCALES[i] * 100));
+        kit_menu_item_desc preset = {
+            .label = text,
+            .checked = fabsf(s->prefs.ui_scale - UI_SCALES[i]) < 0.001f
+        };
+        if (kit_menu_item(k, key, &preset)) {
+            s->prefs.ui_scale = UI_SCALES[i];
+        }
+    }
+    kit_popup_end(k);
+}
+
 static void hint(kit *k, const char *key, const char *keys, uint32_t icon, const char *label)
 {
     kit_push(k, key, NULL, "hint");
@@ -1046,6 +1127,7 @@ static void statusbar(studio *s)
     kit_number_flow(k, "total", NULL, acount(s->scene->actors), &count);
     kit_pop(k);
     kit_pop(k);
+    scale_control(s);
     kit_pop(k);
 }
 
@@ -1064,6 +1146,9 @@ enum
     COMMAND_DENSITY,
     COMMAND_MOTION,
     COMMAND_THEME,
+    COMMAND_ZOOM_IN,
+    COMMAND_ZOOM_OUT,
+    COMMAND_ZOOM_RESET,
     COMMAND_ASSETS,
     COMMAND_OUTPUT,
     COMMAND_PERFORMANCE,
@@ -1105,6 +1190,9 @@ static void palette(studio *s)
           NULL,
           "appearance color mode settings",
           s->light ? KIT_ICON_MOON : KIT_ICON_SUN },
+        { "Zoom In", "Commands", NULL, studio_chord(s, "Mod+="), "ui scale larger bigger", KIT_ICON_ZOOM_IN },
+        { "Zoom Out", "Commands", NULL, studio_chord(s, "Mod+-"), "ui scale smaller", KIT_ICON_ZOOM_OUT },
+        { "Reset Zoom", "Commands", NULL, studio_chord(s, "Mod+0"), "ui scale actual size 100%", 0 },
         { "Toggle Assets",
           "Commands",
           NULL,
@@ -1183,6 +1271,9 @@ static void palette(studio *s)
             case COMMAND_THEME:
                 s->prefs.theme = s->light ? STUDIO_THEME_DARK : STUDIO_THEME_LIGHT;
                 break;
+            case COMMAND_ZOOM_IN: studio_zoom(s, 1); break;
+            case COMMAND_ZOOM_OUT: studio_zoom(s, -1); break;
+            case COMMAND_ZOOM_RESET: studio_zoom(s, 0); break;
             case COMMAND_ASSETS:
                 studio_toggle_drawer(s, STUDIO_EDITOR_ASSETS);
                 break;
@@ -1291,11 +1382,29 @@ static void step_selection(studio *s, int direction)
     afree(rows);
 }
 
-/* Held keys repeat to walk the Outliner and to undo or redo, never to toggle
-   or delete. */
+/* Mod = and Mod - step UI Scale and Mod 0 restores it, as browsers and VS
+   Code zoom. */
+static bool zoom_key(SDL_Keycode key, int *step)
+{
+    switch (key) {
+        case SDLK_EQUALS:
+        case SDLK_PLUS:
+        case SDLK_KP_PLUS: *step = 1; return true;
+        case SDLK_MINUS:
+        case SDLK_KP_MINUS: *step = -1; return true;
+        case SDLK_0:
+        case SDLK_KP_0: *step = 0; return true;
+        default: return false;
+    }
+}
+
+/* Held keys repeat to walk the Outliner, to undo or redo and to zoom, never
+   to toggle, delete or reset. */
 static bool repeats(SDL_Keycode key, bool mod)
 {
-    return mod ? key == SDLK_Z || key == SDLK_Y : key == SDLK_UP || key == SDLK_DOWN;
+    int step = 0;
+    return mod ? key == SDLK_Z || key == SDLK_Y || (zoom_key(key, &step) && step)
+               : key == SDLK_UP || key == SDLK_DOWN;
 }
 
 void studio_shortcuts(studio *s)
@@ -1309,6 +1418,7 @@ void studio_shortcuts(studio *s)
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);
         bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        int step;
         if (studio_debug_key(s, key, shift)) {
             continue;
         }
@@ -1323,6 +1433,8 @@ void studio_shortcuts(studio *s)
             studio_save(s);
         } else if (mod && key == SDLK_COMMA) {
             studio_ui_show(s, "Settings");
+        } else if (mod && zoom_key(key, &step)) {
+            studio_zoom(s, step);
         } else if (mod && key == SDLK_Z) {
             studio_history(s, shift);
         } else if (mod && key == SDLK_Y) {

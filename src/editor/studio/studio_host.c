@@ -168,7 +168,7 @@ static void forward_input(studio *s)
     for (int b = 0; b < 3; b++) {
         in->pressed[b] = in->released[b] = false;
     }
-    in->wheel = 0;
+    in->wheel = s->zoom_wheel = 0;
     asetlen(s->keys, 0);
     s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
@@ -212,6 +212,11 @@ static void forward_input(studio *s)
                 in->mouse_x = input.x = to_dp(s, e->wheel.mouse_x);
                 in->mouse_y = input.y = to_dp(s, e->wheel.mouse_y);
                 in->wheel += e->wheel.y;
+                /* The modifiers as the wheel turned: a key released later in
+                   the same frame must not undo the gesture. */
+                if (studio_primary(s, s->mods) || (s->mods & SDL_KMOD_CTRL)) {
+                    s->zoom_wheel += e->wheel.y;
+                }
                 input.type = RML_INPUT_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;
                 input.wheel_y = -e->wheel.y;
@@ -358,6 +363,7 @@ static void draw_viewport(studio *s)
         input.pressed[b] = s->surface.pressed[b];
         input.released[b] = s->surface.released[b];
     }
+    studio_scene_view(s, &input);
     engine_viewport_set_host_input(s->viewport, &input);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
@@ -462,6 +468,8 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->assets_kind = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->maximized = -1;
+    s->view.zoom = 1;
+    s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();

@@ -33,7 +33,7 @@ The workspace is a split tree of areas. A leaf holds an editor type and that edi
 
 ## Interaction rules
 
-- Keys act on the area under the pointer (Blender). Global keys: <kbd>⌘K</kbd>, <kbd>⌘P</kbd>, <kbd>⌘S</kbd>, <kbd>⌘Z</kbd>, <kbd>Space</kbd> play or pause, <kbd>F2</kbd>, <kbd>F10</kbd>.
+- Keys act on the area under the pointer (Blender). Global keys: <kbd>⌘K</kbd>, <kbd>⌘P</kbd>, <kbd>⌘S</kbd>, <kbd>⌘Z</kbd>, <kbd>⌘=</kbd> <kbd>⌘-</kbd> <kbd>⌘0</kbd> UI Scale, <kbd>Space</kbd> play or pause, <kbd>F2</kbd>, <kbd>F10</kbd>.
 - One modifier rule for numbers: <kbd>Alt</kbd> for fine steps, <kbd>Shift</kbd> for coarse steps, <kbd>Ctrl</kbd> to snap. This is Base UI's rule; Blender uses Shift for precision, and we accept that difference for consistency with keyboard stepping.
 - Every gesture commits once: a scrub, a picker session or a drag is one undo step. Live updates never write history.
 - While the scene is playing, properties show live values and are read-only.
@@ -107,7 +107,7 @@ Behavior changed from the ImGui editor:
 
 ## Decisions
 
-1. Density is an editor setting. Compact is the default. UI Scale (75–200%) sizes the whole editor, as Blender's Resolution Scale and Unreal's Application Scale do; games' UI keeps its own scale, in the Scene view and in Play. An idle editor draws at most four frames a second, as Blender redraws only on events: input, a running scene, a frame that draws anything the frame before it did not (so animations need no registration), or RmlUi's next update (a caret blink) bring back full rate, and a write that leaves a style unchanged lays nothing out.
+1. Density is an editor setting. Compact is the default. UI Scale (50–200%) sizes the whole editor, as Blender's Resolution Scale and Unreal's Application Scale do; games' UI keeps its own scale, in the Scene view and in Play. It steps as browsers and VS Code zoom (<kbd>⌘=</kbd>, <kbd>⌘-</kbd>, <kbd>⌘0</kbd>, View › UI Scale) and its percentage stays in the status bar, as Office keeps its zoom there. The Scene's view zoom is separate from its camera: the wheel moves the camera through the world, while <kbd>⌘</kbd> or <kbd>Ctrl</kbd> with the wheel, or the header's percentage, magnifies the rendered frame with its game UI, as Unity's Game view Scale does; the middle button pans it while magnified. The frame renders sharper up to 200% and magnifies its pixels beyond. An idle editor draws at most four frames a second, as Blender redraws only on events: input, a running scene, a frame that draws anything the frame before it did not (so animations need no registration), or RmlUi's next update (a caret blink) bring back full rate, and a write that leaves a style unchanged lays nothing out.
 2. Areas (Blender splits) replace floating docking.
 3. Properties tabs, prototype icons, and number ranges and units are authored per project in `content/editor/Components.yaml` (`src/editor/documents/component_presentation.h`). Studio re-reads the file within a second of a change. An invalid edit keeps the last valid file and reports the error; without the file, components show under Object with no icon and plain numbers.
 4. Open: orange selection in the viewport and graph, blue in lists.

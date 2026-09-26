@@ -29,6 +29,96 @@ bool studio_matches(const char *query, const char *text)
     return false;
 }
 
+/* ---------- View zoom ---------- */
+
+/* The view zoom magnifies the Scene's rendered frame, game UI included, as
+ * Unity's Game view Scale does; the wheel's camera zoom moves through the
+ * world instead. The frame renders sharper up to VIEW_SHARP_MAX, and beyond
+ * it its pixels magnify, so the canvas stays bounded. */
+#define VIEW_ZOOM_MAX 8.0f
+#define VIEW_SHARP_MAX 2.0f
+
+static const float VIEW_ZOOMS[] = { 1, 2, 4, 8 };
+
+/* Shows the frame at `zoom` around (x, y), kept inside the frame. */
+static void place_view(studio *s, float zoom, float x, float y)
+{
+    float half = 0.5f / zoom;
+    s->view.zoom = zoom;
+    s->view.x = fminf(fmaxf(x, half), 1 - half);
+    s->view.y = fminf(fmaxf(y, half), 1 - half);
+}
+
+/* Zooms keeping the frame point at (u, v), fractions of the area, in place. */
+static void zoom_view(studio *s, float zoom, float u, float v)
+{
+    float next = fminf(fmaxf(zoom, 1), VIEW_ZOOM_MAX);
+    float shift = 1 / s->view.zoom - 1 / next;
+    place_view(s, next, s->view.x + (u - 0.5f) * shift, s->view.y + (v - 0.5f) * shift);
+}
+
+/* Mod or Ctrl with the wheel zooms the view toward the pointer, as browsers
+ * zoom a pinch, and while the view magnifies the middle button pans it. */
+void studio_scene_view(studio *s, engine_viewport_host_input *input)
+{
+    float u = s->surface.x / s->surface.rect.w,
+          v = s->surface.y / s->surface.rect.h;
+    if (s->surface.hovered && s->zoom_wheel != 0) {
+        zoom_view(s, s->view.zoom * powf(1.1f, s->zoom_wheel), u, v);
+        input->wheel -= s->zoom_wheel;
+    }
+    float zoom = s->view.zoom;
+    s->view.panning = zoom > 1 && input->down[2] &&
+                      (s->view.panning || input->pressed[2]);
+    if (s->view.panning && !input->pressed[2]) {
+        place_view(
+            s,
+            zoom,
+            s->view.x - (u - s->view.u) / zoom,
+            s->view.y - (v - s->view.v) / zoom
+        );
+    }
+    s->view.u = u;
+    s->view.v = v;
+    if (zoom > 1) {
+        input->down[2] = input->pressed[2] = input->released[2] = false;
+    }
+    input->x = (s->view.x + (u - 0.5f) / zoom) * input->width;
+    input->y = (s->view.y + (v - 0.5f) / zoom) * input->height;
+    input->resolution = fminf(zoom, VIEW_SHARP_MAX);
+}
+
+static void view_zoom_menu(studio *s, int area)
+{
+    kit *k = s->kit;
+    char key[24], label[16];
+    snprintf(key, sizeof key, "zoom:%d", area);
+    snprintf(label, sizeof label, "%d%%", (int)lroundf(s->view.zoom * 100));
+    kit_button_desc zoom = { .label = label,
+                             .cls = "menu-btn",
+                             .tip = "View Zoom",
+                             .shortcut = studio_chord(s, "Mod+Scroll") };
+    if (kit_button(k, "zoom", &zoom)) {
+        kit_popup_open(k, key);
+    }
+    if (!kit_popup_begin(k, key, "menu")) {
+        return;
+    }
+    kit_menu_group(k, "group", "View Zoom");
+    for (size_t i = 0; i < sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS; i++) {
+        char item_key[8], item_label[8];
+        snprintf(item_key, sizeof item_key, "z%zu", i);
+        snprintf(item_label, sizeof item_label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
+        kit_menu_item_desc item = { .label = item_label,
+                                    .checked = fabsf(s->view.zoom - VIEW_ZOOMS[i]) <
+                                               0.005f };
+        if (kit_menu_item(k, item_key, &item)) {
+            zoom_view(s, VIEW_ZOOMS[i], 0.5f, 0.5f);
+        }
+    }
+    kit_popup_end(k);
+}
+
 /* ---------- Scene viewport ---------- */
 
 void studio_scene_header(studio *s, int area)
@@ -56,6 +146,7 @@ void studio_scene_header(studio *s, int area)
         kit_popup_end(k);
     }
     kit_leaf(k, "spacer", NULL, "spacer");
+    view_zoom_menu(s, area);
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .label = "Frame",
                               .tip = "Frame selected",
@@ -72,6 +163,11 @@ void studio_scene_body(studio *s, int area)
     app_scene_authoring *scene = s->scene;
     kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);
+    /* The part of the frame the view zoom shows, as fractions of it. */
+    float half = 0.5f / s->view.zoom;
+    char crop[64];
+    snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
+    kit_attr(k, "rect", crop);
     /* A prototype dropped here is placed under the pointer by the viewport. */
     kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
     kit_push(k, "tools", NULL, "toolshelf");

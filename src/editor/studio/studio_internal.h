@@ -442,6 +442,13 @@ struct studio
     char property_search[128];
     bool text_input;
     kit_surface_input surface;
+    struct
+    {
+        float zoom; /* magnification of the Scene's frame, game UI included; 1 fits */
+        float x, y; /* the center shown, as fractions of the frame */
+        float u, v; /* the pointer last frame, as fractions of the Scene area */
+        bool panning;
+    } view;
     studio_graph graph;
     studio_members members;
     uint64_t shown_member; /* member the Properties tabs last followed */
@@ -457,7 +464,8 @@ struct studio
     studio_key *keys;  /* keys pressed this frame */
     SDL_Keymod mods;   /* modifier state as of the last replayed key event */
     int nav_button; /* mouse button 4 (-1, Back) or 5 (1, Forward) this frame */
-    int undo_toast; /* toast offering Undo for undo_toast_group */
+    float zoom_wheel; /* the wheel turned with Mod or Ctrl held this frame */
+    int undo_toast;   /* toast offering Undo for undo_toast_group */
     uint64_t undo_toast_group;
     char status[256];
     char seen_message[256]; /* last authoring message reported */
@@ -573,6 +581,9 @@ bool studio_matches(const char *query, const char *text);
 /* Editors emit into an area body; headers into the area header. */
 void studio_scene_header(studio *s, int area);
 void studio_scene_body(studio *s, int area);
+/* Takes the view zoom's gestures from the Scene area's pointer in `input`,
+ * given in area points, and leaves it in the frame's points. */
+void studio_scene_view(studio *s, engine_viewport_host_input *input);
 void studio_outliner_header(studio *s, int area);
 void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
@@ -674,6 +685,8 @@ void studio_debug_call_stack(studio *s);
 
 /* Commands shared by menus, shortcuts and the command palette. */
 void studio_toggle_drawer(studio *s, studio_editor editor);
+/* Steps UI Scale up (1) or down (-1), or restores it (0). */
+void studio_zoom(studio *s, int step);
 void studio_frame_selection(studio *s);
 void studio_duplicate(studio *s);
 void studio_delete(studio *s);

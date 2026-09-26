@@ -62,6 +62,7 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 .statusbar .drawers { display: flex; align-items: center; gap: 2dp; }
 .statusbar .toggle-drawer { color: var(--faint-foreground); }
 .statusbar .toggle-drawer .icon { font-size: 12dp; width: 14dp; }
+.statusbar .ui-scale { flex-shrink: 0; color: var(--faint-foreground); font-family: InterNumeric; }
 .statusbar .toggle-drawer[data-state=on] { background-color: transparent; color: var(--foreground); }
 .statusbar .toggle-drawer[data-state=on] .icon { color: var(--primary-text); }
 

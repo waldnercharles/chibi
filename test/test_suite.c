@@ -24,6 +24,7 @@ void test_automation_graph_optimize();
 void test_automation_prototype_edit();
 void test_automation_scene_edit();
 void test_automation_asset_write();
+void test_automation_refactor();
 
 int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
@@ -49,6 +50,7 @@ void test_dash();
 void test_encounter();
 void test_system_arithmetic();
 void test_reference_index();
+void test_refactor();
 void test_system_nodes();
 void test_component_presentation();
 void test_file_watch();
@@ -86,8 +88,10 @@ TEST_CASE(all_checks)
     test_automation_prototype_edit();
     test_automation_scene_edit();
     test_automation_asset_write();
+    test_automation_refactor();
     run_content_catalog_checks();
     test_reference_index();
+    test_refactor();
     run_graph_model_checks();
     run_graph_document_checks();
     run_graph_comment_checks();
@@ -242,6 +246,11 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--reference-index")) {
         registry_validate();
         test_reference_index();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--refactor")) {
+        registry_validate();
+        test_refactor();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--debugging")) {
@@ -777,6 +786,7 @@ int main(int argc, char **argv)
         test_automation_prototype_edit();
         test_automation_scene_edit();
         test_automation_asset_write();
+        test_automation_refactor();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {

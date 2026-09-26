@@ -83,6 +83,7 @@ struct game_behavior_world
     game_behavior_parallel *update_parallel;
     game_behavior_update_stats update_stats;
     game_behavior_log_info *logs;
+    char **retired_names; /* renamed assets' names, which logs may borrow */
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
     flow_sink_fn sink;
@@ -609,6 +610,10 @@ void game_behavior_world_free(game_behavior_world *world)
         free(asset->name);
     }
     afree(world->assets);
+    for (int i = 0; i < acount(world->retired_names); i++) {
+        free(world->retired_names[i]);
+    }
+    afree(world->retired_names);
     for (uint32_t slot = 0; slot < world->attachment_slot_count; slot++) {
         afree(world->attachments_by_slot[slot]);
     }
@@ -752,6 +757,24 @@ int game_behavior_begin_pending(game_behavior_world *world)
         }
     }
     afree(pending);
+    return 0;
+}
+
+int game_behavior_rename_asset(game_behavior_world *world, const char *from, const char *to)
+{
+    behavior_asset_record *asset = find_asset(world, from);
+    if (!asset || !to[0] || find_asset(world, to)) {
+        return -1;
+    }
+    apush(world->retired_names, asset->name);
+    asset->name = xstrdup(to);
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        if (attachment->asset == asset && attachment->instance->sink_user) {
+            ((behavior_sink_context *)attachment->instance->sink_user)
+                ->asset_name = asset->name;
+        }
+    }
     return 0;
 }
 

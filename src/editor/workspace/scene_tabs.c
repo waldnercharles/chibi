@@ -830,6 +830,39 @@ static int remove_tab(app_scene_authoring *scene, int index)
     return 0;
 }
 
+void scene_tabs_rename(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *from,
+    const char *to,
+    const char *path
+)
+{
+    char *key = tab_key(kind, from, NULL);
+    int index = tab_find(scene, key);
+    free(key);
+    if (index < 0) {
+        return;
+    }
+    scene_document_tab *tab = &scene->tabs[index];
+    free(tab->key);
+    tab->key = tab_key(kind, to, NULL);
+    free(tab->label);
+    tab->label = tab_label(kind, to, path);
+    tab_set_path(tab, path);
+    capture_asset_baseline(scene, tab);
+}
+
+void scene_tabs_close(app_scene_authoring *scene, app_editor_document_kind kind, const char *id)
+{
+    char *key = tab_key(kind, id, NULL);
+    int index = tab_find(scene, key);
+    free(key);
+    if (index >= 0) {
+        remove_tab(scene, index);
+    }
+}
+
 int scene_tabs_discard(app_scene_authoring *scene, int index)
 {
     if (!scene || index < 0 || index >= acount(scene->tabs)) {

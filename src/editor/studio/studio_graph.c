@@ -256,6 +256,11 @@ static void node_menu(studio *s, node *n)
         studio_calls_node(s, n);
         return;
     }
+    if (studio_event_renameable(n) &&
+        menu_item(k, "rename-event", "Rename Event", KIT_ICON_EDIT, "F2", readonly)) {
+        studio_refactor_rename_event(s, studio_event_renameable(n));
+        return;
+    }
     graph_pin_run run;
     if (graph_pin_run_of(n, &run) &&
         menu_item(k, "addpin", "Add Pin", KIT_ICON_ADD, NULL, readonly)) {

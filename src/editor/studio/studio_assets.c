@@ -95,10 +95,21 @@ static int by_name(const void *a, const void *b)
                               : strcasecmp(x->name, y->name);
 }
 
-static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon)
+static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut)
 {
-    kit_menu_item_desc d = { .label = label, .icon = icon, .checked = -1 };
+    kit_menu_item_desc d = { .label = label,
+                             .icon = icon,
+                             .shortcut = shortcut,
+                             .checked = -1 };
     return kit_menu_item(k, key, &d);
+}
+
+/* Scenes are named by the project file and systems by the engine's schedule;
+   what is missing has no file to rename or delete. */
+static bool refactorable(const reference_asset *asset)
+{
+    return asset && !asset->unresolved && asset->kind != REFERENCE_ASSET_SCENE &&
+           asset->kind != REFERENCE_ASSET_SYSTEM;
 }
 
 /* A row's menu opens the asset or lists what references it (Find References). */
@@ -113,12 +124,21 @@ static void asset_menu(studio *s, const char *key)
     if (asset) {
         kit_menu_group(k, "group", asset->name);
     }
-    if (asset && menu_item(k, "open", "Open", KIT_ICON_EXTERNAL)) {
+    if (asset && menu_item(k, "open", "Open", KIT_ICON_EXTERNAL, NULL)) {
         finish_transform_edit(s->scene, false);
         app_scene_authoring_open_asset(s->scene, s->assets_menu);
     }
-    if (asset && menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES)) {
+    if (asset && menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL)) {
         studio_find_asset_references(s, s->assets_menu);
+    }
+    if (refactorable(asset)) {
+        if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, "F2")) {
+            studio_refactor_rename_asset(s, s->assets_menu);
+        }
+        kit_menu_separator(k, "s0");
+        if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X")) {
+            studio_refactor_delete_asset(s, s->assets_menu);
+        }
     }
     kit_popup_end(k);
 }
@@ -166,6 +186,7 @@ void studio_assets_body(studio *s, int area)
             apush(rows, ((asset_row){ matches[m], kind }));
         }
     }
+    s->assets_hover = -1;
     kit_list_desc list = { .count = acount(rows),
                            .row_height = s->prefs.comfortable ? 26 : 22,
                            .reveal = -1 };
@@ -215,6 +236,11 @@ void studio_assets_body(studio *s, int area)
         };
         unsigned events = kit_row_begin(k, key, &row);
         kit_row_end(k);
+        kit_rect rect = kit_item_rect(k);
+        if (s->in.mouse_x >= rect.x && s->in.mouse_x < rect.x + rect.w &&
+            s->in.mouse_y >= rect.y && s->in.mouse_y < rect.y + rect.h) {
+            s->assets_hover = rows[r].asset;
+        }
         kit_flag(k, "data-unused", counted && !used);
         kit_flag(k, "data-unresolved", asset->unresolved);
         if (asset->kind == REFERENCE_ASSET_PROTOTYPE ||
@@ -241,4 +267,21 @@ void studio_assets_body(studio *s, int area)
     afree(rows);
     afree(matches);
     free(uses);
+}
+
+bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
+{
+    if (s->assets_hover < 0 || studio_primary(s, mod) ||
+        (mod & (SDL_KMOD_ALT | SDL_KMOD_SHIFT))) {
+        return false;
+    }
+    if (key == SDLK_F2) {
+        studio_refactor_rename_asset(s, s->assets_hover);
+        return true;
+    }
+    if (key == SDLK_X || key == SDLK_DELETE) {
+        studio_refactor_delete_asset(s, s->assets_hover);
+        return true;
+    }
+    return false;
 }

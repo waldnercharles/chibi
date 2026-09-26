@@ -187,6 +187,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_projects.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_refactor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_ui.c
@@ -196,6 +197,7 @@ set(EDITOR_SOURCES
 set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/behavior_loader.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/project.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_refactor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_documents.c
@@ -240,6 +242,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/refactor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/reference_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/call_hierarchy.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c

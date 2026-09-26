@@ -862,6 +862,13 @@ void rml_element_set_selection_range(rml_element *e, int start, int end)
     });
 }
 
+void rml_element_selection_range(rml_element *e, int *start, int *end)
+{
+    text_control(e, [=](auto *control) {
+        control->GetSelection(start, end, nullptr);
+    });
+}
+
 void rml_element_click(rml_element *e)
 {
     element(e)->Click();

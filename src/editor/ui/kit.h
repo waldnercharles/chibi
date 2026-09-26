@@ -255,13 +255,15 @@ extern "C"
     );
     void kit_list_end(kit *k);
 
-    /* Popups live in the document's overlay layer. Open anchors below the last item
-     * or at a point; begin returns true while open; end closes on activation. */
+    /* Popups live in the document's overlay layer. Open anchors below the last
+     * item or at a point; begin returns true while open; end closes on
+     * activation, and close closes one and its submenus at once. */
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
     bool kit_popup_is_open(const kit *k, const char *key);
     bool kit_popup_begin(kit *k, const char *key, const char *cls);
     void kit_popup_end(kit *k);
+    void kit_popup_close(kit *k, const char *key);
 
     typedef struct kit_menu_item_desc
     {

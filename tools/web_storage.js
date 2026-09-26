@@ -153,6 +153,8 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         persist();
         return 0;
     };
+    // The editor has already removed the file from the mounted workspace.
+    Module['chibiDeleteAsset'] = Module['chibiSaveAsset'];
     const exportProject = () => {
         const files = [];
         walk(`${workspace}/${project}`, (name, data) => files.push([`${project}/${name}`, data]));

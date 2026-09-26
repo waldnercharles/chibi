@@ -378,6 +378,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->mods = SDL_GetModState();
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
+    s->assets_hover = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->maximized = -1;
     s->graph.area = -1;
@@ -416,6 +417,7 @@ void studio_free(studio *s)
     afree(s->keys);
     studio_projects_free(s);
     studio_disk_free(s);
+    studio_refactor_free(s);
     engine_viewport_set_host_input(s->viewport, NULL);
     editor_set_retained_keyboard(false);
     studio_graph_free(s);

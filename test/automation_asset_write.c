@@ -2,6 +2,7 @@
 #include "automation/controller.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -396,6 +397,84 @@ static void test_target_symlink(void)
     remove_project(root);
 }
 
+static int folder_entries(const char *folder)
+{
+    DIR *directory = opendir(folder);
+    assert(directory);
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory))) {
+        count += strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..");
+    }
+    closedir(directory);
+    return count;
+}
+
+/* A batch publishes every file or none, and rolls back to the originals. */
+static void test_batches(const char *root)
+{
+    char behaviors[PATH_MAX], a[PATH_MAX], b[PATH_MAX], c[PATH_MAX], moved[PATH_MAX];
+    snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
+    join_path(a, sizeof a, behaviors, "A.yaml");
+    join_path(b, sizeof b, behaviors, "B.yaml");
+    join_path(c, sizeof c, behaviors, "C.yaml");
+    join_path(moved, sizeof moved, behaviors, "Moved.yaml");
+    write_file(a, "a\n", 2);
+    write_file(b, "b\n", 2);
+    write_file(c, "c\n", 2);
+    char ha[32], hb[32], hc[32];
+    hash_text(ha, sizeof ha, "a\n");
+    hash_text(hb, sizeof hb, "b\n");
+    hash_text(hc, sizeof hc, "c\n");
+    automation_asset_change changes[] = {
+        { "behaviors", "A.yaml", NULL, "a2\n", ha },
+        { "behaviors", "B.yaml", "Moved.yaml", "b2\n", hb },
+        { "behaviors", "C.yaml", NULL, NULL, hc },
+    };
+    char error[160];
+    automation_asset_batch *batch = NULL;
+
+    /* A stale hash or a taken name publishes nothing. */
+    changes[2].expected_hash = hb;
+    assert(
+        automation_assets_publish(root, changes, 3, &batch, error, sizeof error) == CHIBI_AUTOMATION_CONFLICT
+    );
+    changes[2].expected_hash = hc;
+    changes[1].rename_to = "C.yaml";
+    assert(
+        automation_assets_publish(root, changes, 3, &batch, error, sizeof error) == CHIBI_AUTOMATION_CONFLICT
+    );
+    changes[1].rename_to = "Moved.yaml";
+    assert(!batch && folder_entries(behaviors) == 3);
+    assert_file_equals(a, "a\n", 2);
+
+    /* Published files roll back to the originals. */
+    assert(
+        automation_assets_publish(root, changes, 3, &batch, error, sizeof error) == CHIBI_AUTOMATION_OK
+    );
+    assert_file_equals(a, "a2\n", 3);
+    assert_file_equals(moved, "b2\n", 3);
+    assert_path_missing(b);
+    assert_path_missing(c);
+    assert(automation_assets_rollback(batch, error, sizeof error) == CHIBI_AUTOMATION_OK);
+    assert_file_equals(a, "a\n", 2);
+    assert_file_equals(b, "b\n", 2);
+    assert_file_equals(c, "c\n", 2);
+    assert_path_missing(moved);
+    assert(folder_entries(behaviors) == 3);
+
+    /* Committed files stay, and nothing is left beside them. */
+    assert(
+        automation_assets_publish(root, changes, 3, &batch, error, sizeof error) == CHIBI_AUTOMATION_OK
+    );
+    automation_assets_commit(batch);
+    assert_file_equals(a, "a2\n", 3);
+    assert_file_equals(moved, "b2\n", 3);
+    assert_path_missing(c);
+    assert(folder_entries(behaviors) == 2);
+    assert(unlink(a) == 0 && unlink(moved) == 0);
+}
+
 void test_automation_asset_write(void)
 {
     char root[] = "/tmp/chibi-asset-write-XXXXXX";
@@ -404,6 +483,7 @@ void test_automation_asset_write(void)
     test_concurrent_replacements(root, initial);
     test_replacement_and_create(root, initial);
     test_invalid_names(root);
+    test_batches(root);
     remove_project(root);
 
     test_content_symlink();

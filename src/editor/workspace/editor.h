@@ -127,6 +127,10 @@ int editor_reload_behavior_asset(
 );
 /* Reloads a cached document without changing the visible document. */
 int editor_reload_behavior_asset_document(editor *e, const behavior_asset *source, const char *key);
+/* Drops a cached document whose asset is gone, as after a delete. */
+void editor_forget_behavior_asset(editor *e, const char *key);
+/* A document, open or cached, keeps its history under its asset's new name. */
+void editor_rename_behavior_asset(editor *e, const char *from, const char *to);
 
 /* Replaces the editable Behavior Asset with a copy of source and opens graph_id. */
 int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id);

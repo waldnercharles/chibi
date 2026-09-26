@@ -424,6 +424,14 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
     if (!renamed && !contained && !removed) {
         return defaulted;
     }
+    /* Calls in other assets name a library function's parameters too. */
+    reference_symbol parameter = { .kind = REFERENCE_SYMBOL_PARAMETER,
+                                   .asset = studio_refresh_document_asset(s),
+                                   .graph_id = g->graph_id,
+                                   .id = pin->id };
+    if (renamed && studio_refactor_member_rename(s, parameter, pin->name, name)) {
+        return false;
+    }
     pin_spec type = { .kind = PIN_DATA,
                       .type = pin->type,
                       .type_name = pin->type_name,

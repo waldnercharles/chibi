@@ -223,6 +223,56 @@ void test_automation_graph_edit(void)
     behavior_asset_free(signature);
     free(edited);
 
+    /* set_pin.order moves a signature pin, and each call's pins follow with
+     * their wires; a Sequence's outputs move as any node's pins do. */
+    static const char reorder
+        [] = "{\"op\":\"add_graph\",\"name\":\"Math\",\"kind\":\"function\","
+             "\"pure\":true,\"ref\":\"math\"},"
+             "{\"op\":\"add_pin\",\"node\":\"math.entry\",\"side\":\"output\","
+             "\"name\":\"Value\",\"type\":\"float\"},"
+             "{\"op\":\"add_pin\",\"node\":\"math.entry\",\"side\":\"output\","
+             "\"name\":\"Scale\",\"type\":\"float\"},"
+             "{\"op\":\"select_graph\",\"graph\":0},"
+             "{\"op\":\"add_node\",\"ref\":\"call\",\"type\":\"Call Pure "
+             "Function\",\"reference_name\":\"Math\"},"
+             "{\"op\":\"add_node\",\"ref\":\"two\",\"type\":\"Real\"},"
+             "{\"op\":\"connect\",\"from\":\"two\",\"from_pin\":\"Value\","
+             "\"to\":\"call\",\"to_pin\":\"Value\"},"
+             "{\"op\":\"add_node\",\"ref\":\"seq\",\"type\":\"Sequence\"},"
+             "{\"op\":\"set_pin\",\"node\":\"seq\",\"side\":\"output\","
+             "\"pin\":\"Then0\",\"order\":1},"
+             "{\"op\":\"select_graph\",\"graph\":\"math\"},"
+             "{\"op\":\"set_pin\",\"node\":\"math.entry\",\"side\":\"output\","
+             "\"pin\":\"Scale\",\"order\":%d}";
+    char operations[2048], request[2048];
+    edited = NULL;
+    snprintf(operations, sizeof operations, reorder, 0);
+    snprintf(request, sizeof request, "{\"operations\":[%s]}", operations);
+    status = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &edited, NULL);
+    behavior_asset *moved = edited ? behavior_asset_load_json(edited) : NULL;
+    call = moved ? find_node_type(moved->graph, "Call Pure Function") : NULL;
+    node *sequence = moved ? find_node_type(moved->graph, "Sequence") : NULL;
+    node *two = NULL;
+    int two_pin = -1;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && call && find_pin(call, "Scale", false) == 0 &&
+            graph_input_source(moved->graph, call, 1, &two, &two_pin) &&
+            !strcmp(two->desc->name, "Real") && sequence &&
+            find_pin(sequence, "Then0", true) == 1,
+        "MCP set_pin.order reorders a signature and its calls keep their wires"
+    );
+    behavior_asset_free(moved);
+    free(edited);
+    edited = NULL;
+    snprintf(operations, sizeof operations, reorder, 2);
+    snprintf(request, sizeof request, "{\"operations\":[%s]}", operations);
+    status = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &edited, NULL);
+    test_check(
+        status != CHIBI_AUTOMATION_OK && !edited && strstr(edit_error, "set_pin.order"),
+        "MCP refuses to move a signature pin past the pins it declares"
+    );
+    free(edited);
+
     /* A setting shapes the other pins, so it may follow them in inputs. */
     edited = NULL;
     status = edit_request(

@@ -1,4 +1,5 @@
 #include "editor/graph/search.h"
+#include "editor/studio/studio_members_internal.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
 #include "graph/document/library.h"
@@ -658,8 +659,39 @@ static void check_component_search()
     editor_free(e);
 }
 
+/* Dropping an input's grip on another row in Member properties. */
+static void check_signature_drag()
+{
+    behavior_asset *asset = behavior_asset_new("Signature drag");
+    graph *fn = behavior_asset_add_function(asset, "Mix", 1);
+    const char *const names[] = { "A", "B", "C" };
+    for (int i = 0; i < 3; i++) {
+        pin_spec pin = { .name = names[i], .type = PIN_F32, .type_name = "float" };
+        graph_signature_add(asset, fn, false, &pin);
+    }
+    behavior_asset_add_function_call_node(asset, fn);
+    editor *e = editor_new(asset);
+    node *entry = graph_node_by_id(fn, fn->entry_id);
+    uint64_t dragged = entry->output_pins[2].id;
+    test_check(
+        !sm_move_signature_pin(e, fn, false, dragged, 2) && acount(e->undo) == 0,
+        "an input dropped on its own row changes nothing"
+    );
+    test_check(
+        sm_move_signature_pin(e, fn, false, dragged, 0) &&
+            acount(e->undo) == 1 && !strcmp(entry->output_pins[0].name, "C"),
+        "an input dropped on another row moves there as one undo step"
+    );
+    ed_undo(e);
+    fn = behavior_asset_find_graph_by_name(e->asset, "Mix");
+    entry = graph_node_by_id(fn, fn->entry_id);
+    test_check(!strcmp(entry->output_pins[2].name, "C"), "Undo puts a moved input back");
+    editor_free(e);
+}
+
 void run_editor_command_checks(void)
 {
+    check_signature_drag();
     check_linked_preview();
     check_library_problem_source();
     check_search_catalog();

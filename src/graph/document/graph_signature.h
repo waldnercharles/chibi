@@ -25,6 +25,11 @@ int graph_signature_set_pure(behavior_asset *asset, graph *function, bool pure);
 int graph_signature_add(behavior_asset *asset, graph *g, bool result, const pin_spec *pin);
 int graph_signature_remove(behavior_asset *asset, graph *g, bool result, int index);
 int graph_signature_rename(behavior_asset *asset, graph *g, bool result, int index, const char *name);
+/* Moves the pin at `from` to `to`, the index of another pin of the side, as
+ * dnd-kit's arrayMove does; calls keep their wires, bindings and defaults.
+ * Every Return of a graph gives its results in this order, so the others
+ * follow the primary one. */
+int graph_signature_move(behavior_asset *asset, graph *g, bool result, int from, int to);
 /* Takes the kind, type, type_name and container of `type`. */
 int graph_signature_retype(behavior_asset *asset, graph *g, bool result, int index, const pin_spec *type);
 /* A data input's default, which unwired call pins show. Calls still holding

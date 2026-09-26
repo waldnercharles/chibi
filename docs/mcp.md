@@ -289,7 +289,9 @@ Studio's code actions are operations too, and `ref` names what they create:
 `add_pin`, `remove_pin` and `set_pin` on a function's or macro's Entry outputs
 or Return inputs edit its signature, so every call to it follows: a renamed
 input keeps its wires on each call, and a new input shows its `default`.
-`set_pin.order` is refused there; remove the pin and add it again.
+`set_pin.order` moves a signature pin to the index of another pin that side
+declares; each call's pins follow and keep their wires, and so do the pins of
+the graph's other Return nodes.
 `set_comment` gives a node a comment, drawn as a bubble above it like
 Unreal's node comments: `{"op":"set_comment","node":12,"comment":"Clamp before
 the dash"}`. An empty `comment` removes it, and `"hidden": true` shows the

@@ -284,6 +284,31 @@ void studio_code_free(studio *s)
 {
     kit_code_editor_destroy(s->code.editor);
     s->code.editor = NULL;
+    ui_source_free(s->code.source);
+    s->code.source = NULL;
+    afree(s->code.spans);
+}
+
+/* Parses the editor's text as the part's language when either changed, and
+ * highlights it with the parse's spans. */
+static void parse_part(studio_code *c, kit_code_editor *e, ui_part part)
+{
+    ui_source_language language = part == UI_PART_RML ? UI_SOURCE_RML : UI_SOURCE_RCSS;
+    const char *text = kit_code_text(e, NULL);
+    if (c->source && c->source->blocks[0].language == language &&
+        !strcmp(c->source->text, text)) {
+        return;
+    }
+    ui_source_free(c->source);
+    c->source = ui_source_parse_block(text, language);
+    asetlen(c->spans, 0);
+    for (int i = 0; i < acount(c->source->spans); i++) {
+        const ui_source_span *span = &c->source->spans[i];
+        const char *cls = ui_source_kind_class(span->kind);
+        if (cls) {
+            apush(c->spans, ((kit_code_span){ span->start, span->end, cls }));
+        }
+    }
 }
 
 static int line_offset(const char *text, int line)
@@ -345,10 +370,13 @@ void studio_code_body(studio *s, int)
     ui_buffer *b = tab->ui;
     kit_push(k, "code", NULL, "code-editor");
     kit_code_editor *e = part_editor(s, tab);
+    parse_part(&s->code, e, b->part);
     kit_code_desc desc = {
         .vim = s->prefs.code_vim,
         .font_size = s->prefs.code_font_size,
         .mac = s->mac,
+        .spans = s->code.spans,
+        .span_count = acount(s->code.spans),
     };
     kit_code_result r = kit_code(k, "text", e, &desc);
     reveal(s, e, b);

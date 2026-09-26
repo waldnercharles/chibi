@@ -130,6 +130,9 @@ typedef struct ui_source
 /* Parses a ui asset's file text, or with `stylesheet` a whole .rcss file.
  * Text YAML cannot read still yields what its rml: and rcss: keys hold. */
 ui_source *ui_source_parse(const char *text, bool stylesheet);
+/* Parses `text` whole as one block, as the Text Editor shows an asset's rml
+ * or rcss value alone; a stylesheet is one RCSS block. */
+ui_source *ui_source_parse_block(const char *text, ui_source_language language);
 void ui_source_free(ui_source *source);
 
 /* The 1-based line and column of a byte offset, and back; an offset past

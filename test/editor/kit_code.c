@@ -1,7 +1,6 @@
 /* kit_code without a GPU: typing with the standard keys, a table of Vim
  * commands, text_edits and their undo, :w, chords for the host, completions,
  * and renders through a renderer that only counts what it is handed. */
-#include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
 #include "support/text_edit.h"
 #include "test/suite_internal.h"
@@ -15,11 +14,21 @@
 typedef struct counts
 {
     int compiled, rendered, textured, textures;
+    bool red, green; /* a mesh was drawn in #ff0000 or #00ff00 */
 } counts;
 
-static uintptr_t compile_geometry(void *user, rml_mesh)
+static bool same(rml_color a, rml_color b)
+{
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+static uintptr_t compile_geometry(void *user, rml_mesh mesh)
 {
     counts *c = user;
+    for (size_t i = 0; i < mesh.vertex_count; i++) {
+        c->red |= same(mesh.vertices[i].color, (rml_color){ 255, 0, 0, 255 });
+        c->green |= same(mesh.vertices[i].color, (rml_color){ 0, 255, 0, 255 });
+    }
     return (uintptr_t)++c->compiled;
 }
 
@@ -391,8 +400,10 @@ static bool rendering(fixture *f)
     }
     kit_code_set_text(f->e, lines);
     free(lines);
-    const kit_code_span spans[] = { { 0, 4, HIGHLIGHT_KEYWORD },
-                                    { 5, 6, HIGHLIGHT_NUMBER } };
+    /* A span takes its class's color; a second class refines the first. */
+    kit_style_sheet(f->k, "spans", "kit-code .tok-test { color: #ff0000; } kit-code .tok-refined { color: #00ff00; }");
+    const kit_code_span spans[] = { { 0, 4, "tok-test" },
+                                    { 5, 6, "tok-test tok-refined" } };
     const kit_code_marker markers[] = { { 2, KIT_CODE_ERROR, "unclosed tag" } };
     f->desc.spans = spans;
     f->desc.span_count = 2;
@@ -400,6 +411,8 @@ static bool rendering(fixture *f)
     f->desc.marker_count = 1;
     f->counts.rendered = f->counts.textured = 0;
     settle(f);
+    ok &= check(f->counts.red, "a span draws in its class's color");
+    ok &= check(f->counts.green, "a span's second class refines its color");
     ok &= check(f->counts.rendered > f->counts.textured, "rendering draws rectangles");
     ok &= check(f->counts.textured > 0 && f->counts.textures > 0, "text draws from the face's glyph textures");
     kit_blur(f->k);
@@ -443,6 +456,7 @@ static bool rendering(fixture *f)
     ok &= check(after + 3 < length, "dragging selects text");
     f->desc.spans = NULL;
     f->desc.span_count = 0;
+    kit_style_sheet(f->k, "spans", NULL);
     f->desc.markers = NULL;
     f->desc.marker_count = 0;
     return ok;

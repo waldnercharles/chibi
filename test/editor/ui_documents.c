@@ -632,6 +632,15 @@ static void text_editor(const char *folder)
     ui_buffer_edit(b, UI_PART_RCSS, &(text_edit){ 0, 0, "/* top */\n" }, 1);
     frames(&f, 1);
     test_check(!strcmp(kit_code_text(e, NULL), ui_buffer_text(b, UI_PART_RCSS)), "the code editor follows an edit made elsewhere");
+    frames(&f, 1);
+    const char *text = kit_code_text(e, NULL);
+    bool selector = false;
+    for (int i = 0; i < acount(s->code.spans); i++) {
+        const kit_code_span *span = &s->code.spans[i];
+        selector |= !strcmp(span->cls, "tok-keyword tok-selector") &&
+                    !strncmp(text + span->start, ".panel", 6);
+    }
+    test_check(selector, "the code editor highlights the part as ui_source parses it");
     fixture_free(&f);
 }
 

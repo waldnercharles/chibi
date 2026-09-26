@@ -167,8 +167,9 @@ extern "C"
         void (*set_clipboard)(void *user, const char *text);
         /* A malloc'd copy of the clipboard, or NULL; the bridge frees it. */
         char *(*get_clipboard)(void *user);
-        /* The role that colors the text at a byte. */
-        zep_color (*syntax)(void *user, long byte);
+        /* True to draw the text at a byte in `color`; false draws it in
+         * the text role. */
+        bool (*syntax)(void *user, long byte, zep_rgba *color);
     } zep_host;
 
     /* The host must outlive the editor. */

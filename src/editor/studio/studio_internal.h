@@ -1,6 +1,7 @@
 #ifndef CHIBI_EDITOR_STUDIO_INTERNAL_H
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
+#include "assets/ui_source.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
@@ -476,6 +477,10 @@ typedef struct
     kit_code_editor *editor;
     char editor_path[1024];
     ui_part editor_part;
+    /* The editor's text parsed as its part (assets/ui_source.h), and the
+       spans that highlight it. */
+    ui_source *source;
+    kit_code_span *spans; /* array */
 } studio_code;
 
 /* Assets ▸ New: the name of a new UI asset (studio_assets.c). */

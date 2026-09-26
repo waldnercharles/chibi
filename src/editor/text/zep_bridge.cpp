@@ -241,7 +241,7 @@ private:
     fs::path root;
 };
 
-/* Colors every byte with the role the host names. */
+/* Colors each byte as the host says. */
 class Syntax final : public Zep::ZepSyntax
 {
 public:
@@ -255,7 +255,11 @@ public:
     Zep::SyntaxResult GetSyntaxAt(const Zep::GlyphIterator &at) const override
     {
         Zep::SyntaxResult result;
-        result.foreground = (Zep::ThemeColor)host->syntax(host->user, at.Index());
+        zep_rgba c;
+        if (host->syntax(host->user, at.Index(), &c)) {
+            result.foreground = Zep::ThemeColor::Custom;
+            result.customForegroundColor = { c.r, c.g, c.b, c.a };
+        }
         return result;
     }
 

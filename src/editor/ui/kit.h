@@ -601,12 +601,13 @@ extern "C"
         kit_code_severity severity;
         const char *message;
     } kit_code_marker;
-    /* Highlighting: bytes [start, end) take a token class (highlight.h's
-     * highlight_token) whose tok-* color the theme gives. */
+    /* Highlighting, as Shiki's tokens carry classes: bytes [start, end)
+     * draw in the color the theme gives `cls`, tok-* classes such as
+     * ui_source_kind_class's "tok-keyword tok-tag". */
     typedef struct kit_code_span
     {
         int start, end;
-        int token;
+        const char *cls;
     } kit_code_span;
     /* A completion item: accepting it replaces the bytes from the desc's
      * completion_start to the cursor with insert (label when NULL). */
@@ -625,7 +626,7 @@ extern "C"
          * Mac (studio_host.c), so primary chords read as Control; the
          * editor trades them back so Vim sees the physical Control key. */
         bool mac;
-        const kit_code_span *spans; /* sorted by start */
+        const kit_code_span *spans; /* in order, not overlapping */
         int span_count;
         const kit_code_marker *markers;
         int marker_count;

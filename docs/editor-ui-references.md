@@ -240,6 +240,7 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 - Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes.
 - Diagnostics mark the gutter and underline their line; the message shows while the pointer rests on it.
 - Text is JetBrains Mono through RmlUi's font engine, a mesh per run of one color, cached until a render no longer draws it. Colors come from `theme/code.rcss`.
+- Highlighting spans carry classes, as Shiki's tokens do: a span draws in the color the theme gives its `tok-*` classes, so a refining class such as `tok-tag` can override its base (`tok-keyword`). The Text Editor takes its spans from `ui_source`.
 - The browser hands pasted text only to a `paste` event, which a Command+V the canvas lets through raises; the web build keeps it for the paste a frame later.
 
 ## Common mismatches to catch

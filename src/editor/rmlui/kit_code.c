@@ -11,7 +11,8 @@
  *   reuse theirs. A run no render uses is freed, and a change of the face's
  *   glyph textures clears them all.
  * - Colors: hidden swatch children take the theme's roles from
- *   theme/code.rcss, so Zep's palette follows the Studio theme.
+ *   theme/code.rcss, so Zep's palette follows the Studio theme, and one
+ *   swatch per class the spans name gives their text its color.
  * - Input: the element takes keys, text, the pointer and focus, and stops
  *   each key so RmlUi's Tab navigation never sees it. Vim reads the physical
  *   Control key; the standard keys read the primary modifier (Command on a
@@ -20,7 +21,6 @@
  *   event, so the web build keeps the latest for a paste right after it. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/text/zep_bridge.h"
-#include "editor/ui/highlight.h"
 #include "support/math.h"
 #include "support/text_edit.h"
 #include "support/xalloc.h"
@@ -99,19 +99,25 @@ static const struct
     { "zep-tip-border", { ZEP_COLOR_WIDGET_BORDER } },
     { "zep-flash", { ZEP_COLOR_FLASH } },
     { "zep-info", { ZEP_COLOR_INFO } },
-    { "tok-number", { ZEP_COLOR_NUMBER } },
-    { "tok-string", { ZEP_COLOR_STRING } },
-    { "tok-keyword", { ZEP_COLOR_KEYWORD } },
-    { "tok-name", { ZEP_COLOR_IDENTIFIER } },
-    /* Zep never draws with HiddenChar, so paths borrow it. */
-    { "tok-path", { ZEP_COLOR_HIDDEN_CHAR } },
-    { "tok-punct", { ZEP_COLOR_PARENTHESIS } },
-    { "tok-muted", { ZEP_COLOR_COMMENT } },
     { "tok-error", { ZEP_COLOR_ERROR } },
     { "tok-warning", { ZEP_COLOR_WARNING } },
 };
 
 #define SWATCH_COUNT (sizeof SWATCHES / sizeof *SWATCHES)
+
+/* The spans of one class, colored as its hidden swatch is. */
+typedef struct code_style
+{
+    char *cls;
+    rml_element *swatch;
+    zep_rgba color;
+} code_style;
+
+typedef struct code_span
+{
+    int start, end;
+    int style; /* index into the view's styles */
+} code_span;
 
 /* The element's user data: what one kit-code element draws with. */
 typedef struct code_view
@@ -122,6 +128,7 @@ typedef struct code_view
     rml_element *swatches[SWATCH_COUNT];
     rml_color colors[SWATCH_COUNT];
     bool colored;
+    code_style *styles;  /* array: each class spans named here */
     float width, height; /* the region Zep lays out in, pixels */
     bool rendered;
     bool dragging; /* the left button went down here and is held */
@@ -158,8 +165,9 @@ struct kit_code_editor
     int font_pixels;
     uintptr_t face;
     float ascent, line, advance;
-    kit_code_span *spans;    /* array */
-    uint64_t markers;        /* hash of the markers shown */
+    code_span *spans;   /* array */
+    uint64_t span_hash; /* of the spans shown; 0 before the view maps them */
+    uint64_t markers;   /* hash of the markers shown */
     completion *completions; /* array */
     uint64_t completion_hash;
     int completion_start, selected;
@@ -251,22 +259,6 @@ static long line_start(const char *text, size_t length, int line)
         at = end - text + 1;
     }
     return at;
-}
-
-static zep_color token_role(int token)
-{
-    switch ((highlight_token)token) {
-        case HIGHLIGHT_NUMBER: return ZEP_COLOR_NUMBER;
-        case HIGHLIGHT_STRING: return ZEP_COLOR_STRING;
-        case HIGHLIGHT_KEYWORD: return ZEP_COLOR_KEYWORD;
-        case HIGHLIGHT_NAME: return ZEP_COLOR_IDENTIFIER;
-        case HIGHLIGHT_PATH: return ZEP_COLOR_HIDDEN_CHAR;
-        case HIGHLIGHT_PUNCTUATION: return ZEP_COLOR_PARENTHESIS;
-        case HIGHLIGHT_MUTED: return ZEP_COLOR_COMMENT;
-        case HIGHLIGHT_ERROR: return ZEP_COLOR_ERROR;
-        case HIGHLIGHT_WARNING: return ZEP_COLOR_WARNING;
-        default: return ZEP_COLOR_TEXT;
-    }
 }
 
 /* ---------- Batches ---------- */
@@ -492,7 +484,7 @@ static char *on_get_clipboard(void *)
     return copy;
 }
 
-static zep_color on_syntax(void *user, long byte)
+static bool on_syntax(void *user, long byte, zep_rgba *color)
 {
     const kit_code_editor *e = user;
     int lo = 0, hi = acount(e->spans);
@@ -504,10 +496,11 @@ static zep_color on_syntax(void *user, long byte)
             hi = mid;
         }
     }
-    if (lo > 0 && byte < e->spans[lo - 1].end) {
-        return token_role(e->spans[lo - 1].token);
+    if (lo == 0 || byte >= e->spans[lo - 1].end) {
+        return false;
     }
-    return ZEP_COLOR_TEXT;
+    *color = e->view->styles[e->spans[lo - 1].style].color;
+    return true;
 }
 
 /* ---------- The editor ---------- */
@@ -1079,6 +1072,10 @@ static void view_release(void *user)
         rml_element_remove_event_listener(v->el, VIEW_EVENTS[i], v->listener, false);
     }
     rml_listener_destroy(v->listener);
+    for (int i = 0; i < acount(v->styles); i++) {
+        free(v->styles[i].cls);
+    }
+    afree(v->styles);
     batches_free(v);
     kept_free(v);
     texts_clear(v);
@@ -1295,6 +1292,7 @@ static void attach(code_view *v, kit_code_editor *e)
     v->width = v->height = 0;
     v->colored = false;
     v->rendered = false;
+    e->span_hash = 0;
     e->focused = rml_context_focus_element(rml_element_context(v->el)) == v->el;
     zep_set_focused(e->zep, e->focused);
 }
@@ -1311,6 +1309,9 @@ static void sync_colors(code_view *v)
         for (const zep_color *role = SWATCHES[i].roles; *role; role++) {
             zep_set_color(v->editor->zep, *role, straight(c));
         }
+    }
+    for (int i = 0; i < acount(v->styles); i++) {
+        v->styles[i].color = straight(rml_element_color(v->styles[i].swatch));
     }
     v->colored = true;
 }
@@ -1340,18 +1341,46 @@ static void configure(kit *k, kit_code_editor *e, const kit_code_desc *d)
     zep_set_font_height(e->zep, (int)e->line);
 }
 
-static void highlight(kit_code_editor *e, const kit_code_desc *d)
+static uint64_t spans_hash(const kit_code_desc *d)
 {
-    int count = math_max(d->span_count, 0);
-    bool same = acount(e->spans) == count &&
-                (!count ||
-                 !memcmp(e->spans, d->spans, sizeof *d->spans * (size_t)count));
-    if (same) {
+    uint64_t h = cf_fnv1a(&d->span_count, sizeof d->span_count);
+    for (int i = 0; i < d->span_count; i++) {
+        const kit_code_span *span = &d->spans[i];
+        h = h * 31 + (uint64_t)span->start;
+        h = h * 31 + (uint64_t)span->end;
+        h = h * 31 + (span->cls ? str_hash(span->cls) : 0);
+    }
+    return h | 1;
+}
+
+/* The style of spans of class `cls`, its swatch added on first use; the
+   swatch takes its color once the document next updates. */
+static int style_of(code_view *v, const char *cls)
+{
+    for (int i = 0; i < acount(v->styles); i++) {
+        if (!strcmp(v->styles[i].cls, cls)) {
+            return i;
+        }
+    }
+    code_style style = { .cls = xstrdup(cls), .swatch = raw(v->el, "span", cls, NULL) };
+    style.color = straight(rml_element_color(style.swatch));
+    apush(v->styles, style);
+    return acount(v->styles) - 1;
+}
+
+static void highlight(code_view *v, kit_code_editor *e, const kit_code_desc *d)
+{
+    uint64_t hash = spans_hash(d);
+    if (hash == e->span_hash) {
         return;
     }
-    asetlen(e->spans, count);
-    if (count) {
-        memcpy(e->spans, d->spans, sizeof *d->spans * (size_t)count);
+    e->span_hash = hash;
+    asetlen(e->spans, 0);
+    for (int i = 0; i < d->span_count; i++) {
+        const kit_code_span *span = &d->spans[i];
+        if (span->cls) {
+            apush(e->spans, ((code_span){ span->start, span->end, style_of(v, span->cls) }));
+        }
     }
 }
 
@@ -1497,8 +1526,8 @@ kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_
     code_view *v = view_of(n);
     attach(v, e);
     configure(k, e, d);
+    highlight(v, e, d);
     sync_colors(v);
-    highlight(e, d);
     diagnose(e, d);
     take_completions(e, d);
     show_completions(k, n, e, d);

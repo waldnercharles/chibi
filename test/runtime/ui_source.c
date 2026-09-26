@@ -169,6 +169,15 @@ static void outline()
         "ui source parses a whole stylesheet"
     );
     ui_source_free(s);
+
+    /* The Text Editor shows an asset's rml value alone (workstream C). */
+    s = ui_source_parse_block("<div class=\"a\">\n  <p/>\n</div>\n", UI_SOURCE_RML);
+    test_check(
+        acount(s->elements) == 2 && s->elements[1].start == 18 &&
+            acount(s->spans) && s->spans[0].start == 0 && !acount(s->diagnostics),
+        "ui source parses markup alone, its offsets into the text"
+    );
+    ui_source_free(s);
 }
 
 static void diagnostics()

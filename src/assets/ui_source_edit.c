@@ -886,7 +886,7 @@ void ui_source_set_block(
 )
 {
     const block_map *m = ui_source_map(source, language);
-    if (source->trees->stylesheet) {
+    if (source->trees->whole) {
         assert(m);
         apush(*edits, ((text_edit){ 0, (int)strlen(source->text), xstrdup(value) }));
         return;

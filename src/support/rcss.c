@@ -195,11 +195,26 @@ static void free_parts(char **parts)
     afree(parts);
 }
 
+/* The selectors with `:root` as `body`, which is RmlUi's root element. */
+static char *root_as_body(const char *selectors)
+{
+    char *out = NULL;
+    for (const char *p = selectors; *p;) {
+        bool root = !strncmp(p, ":root", 5) && !isalnum((unsigned char)p[5]) &&
+                    p[5] != '-' && p[5] != '_';
+        put_text(&out, root ? "body" : (char[]){ *p, 0 });
+        p += root ? 5 : 1;
+    }
+    return take(&out);
+}
+
 /* Each inner selector under each enclosing one: `&` takes the enclosing
  * selector's place, and a selector without one descends from it. */
-static char *combine(reader *r, const char *enclosing, const char *chunk)
+static char *combine(reader *r, const char *enclosing, const char *written)
 {
+    char *chunk = root_as_body(written);
     char **inner = split(chunk), **outer = enclosing ? split(enclosing) : NULL;
+    free(chunk);
     char *out = NULL;
     bool ok = true;
     for (int o = 0; ok && o < (enclosing ? acount(outer) : 1); o++) {

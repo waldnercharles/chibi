@@ -11,6 +11,7 @@
  *   &:hover, .dark &          `&` stands for the enclosing selector
  *   .a { @media (x) { } }     a nested @media wraps the rules inside it
  *   // comment                line comments are dropped, like block comments
+ *   :root { }                 names body, RmlUi's root, as CSS themes write it
  *
  * A rule's declarations come before its nested rules. @keyframes,
  * @decorator, @spritesheet and @font-face blocks pass through as written.

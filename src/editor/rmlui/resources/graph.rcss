@@ -26,7 +26,7 @@ body.graph-canvas {
     --bubble-fg: #1f1f22;
 }
 /* Light canvases keep full-color titles in lighter tints (Blender's light theme). */
-body.graph-canvas.light {
+body.graph-canvas:not(.dark) {
     --n-event: #c9737f;
     --n-flow: #8e8e98;
     --n-pure: #6d9a78;
@@ -52,9 +52,9 @@ body.graph-canvas.light {
 .gnode {
     position: absolute;
     background-color: var(--node); border: 1dp var(--node-edge); border-radius: var(--r-lg);
-    color: var(--fg); font-size: 12dp;
+    color: var(--foreground); font-size: 12dp;
 }
-.gnode[data-error] { border-color: var(--danger); }
+.gnode[data-error] { border-color: var(--destructive); }
 .gnode[data-warning] { border-color: var(--warning); }
 .gnode[data-selected] { border-color: var(--selected-object); z-index: 2; }
 .gnode[data-active] { border-color: var(--active-object); }
@@ -93,8 +93,8 @@ body.graph-canvas.light {
 .ghalf { position: relative; display: flex; align-items: center; gap: 6dp; height: 22dp; }
 .ghalf.in { padding-left: 10dp; }
 .ghalf.out { padding-right: 10dp; margin-left: auto; justify-content: flex-end; }
-.gpin-label { display: block; flex: 0 0 auto; color: var(--fg-2); white-space: nowrap; overflow: hidden; line-height: 22dp; }
-[data-hover] > .gpin-label { color: var(--fg); }
+.gpin-label { display: block; flex: 0 0 auto; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; line-height: 22dp; }
+[data-hover] > .gpin-label { color: var(--foreground); }
 .grow .field { flex: 1 1 auto; min-width: 0dp; height: 18dp; }
 .grow.out .field { flex: 0 0 64dp; }
 .grow .field .part { height: 16dp; line-height: 16dp; }
@@ -106,11 +106,11 @@ body.graph-canvas.light {
     padding: 0dp 6dp; border-radius: 3dp; background-color: var(--chip); color: var(--chip-fg);
     font-size: 11dp; line-height: 18dp; overflow: hidden;
 }
-.grow .chip .icon { flex: 0 0 auto; width: 12dp; font-size: 11dp; line-height: 18dp; color: var(--fg-3); }
+.grow .chip .icon { flex: 0 0 auto; width: 12dp; font-size: 11dp; line-height: 18dp; color: var(--faint-foreground); }
 .chip-text { display: block; flex: 1 1 auto; min-width: 0dp; white-space: nowrap; overflow: hidden; }
 .grow .chip.source { color: var(--tok-name); }
 /* A variadic node's last row adds a pin on its side (Unreal's Add pin). */
-.gadd .btn { color: var(--fg-3); }
+.gadd .btn { color: var(--faint-foreground); }
 
 /* An expression's source, lines wrapped by measure_node: 16 dp lines, 12 dp of
    padding and margin below, 28 dp across. */
@@ -127,7 +127,7 @@ body.graph-canvas.light {
 .gnode[data-form=operator] .grow.in { padding-right: 0dp; }
 .gsymbol {
     position: absolute; top: 0dp; bottom: 0dp; text-align: center; white-space: nowrap;
-    font-size: 18dp; font-weight: 700; color: var(--fg-2);
+    font-size: 18dp; font-weight: 700; color: var(--muted-foreground);
 }
 .gout { position: absolute; right: 0dp; width: 12dp; height: 22dp; }
 .gnode[data-form=getter] { border-radius: 13dp; }
@@ -153,7 +153,7 @@ body.far .gnode-head .title { font-size: 16dp; }
 }
 .gcomment-title {
     position: relative; display: block; height: 28dp; padding: 0dp 10dp; line-height: 28dp; font-size: 14dp; font-weight: 600;
-    color: var(--fg); white-space: nowrap; overflow: hidden; cursor: move;
+    color: var(--foreground); white-space: nowrap; overflow: hidden; cursor: move;
 }
 .gcomment-edit { position: relative; display: block; padding: 3dp 4dp; }
 .gcomment-edit .field { font-size: 14dp; font-weight: 600; }
@@ -183,11 +183,11 @@ body.far .gbubble { visibility: hidden; }
 /* Centered on the wire's middle by a negative margin (emit_conversions). */
 .gconversion {
     position: absolute; display: block; height: 16dp; margin-top: -8dp;
-    border-radius: 8dp; background-color: var(--conversion); border: 1dp var(--line-strong);
-    color: var(--fg-2); font-size: 10dp; line-height: 14dp; text-align: center; white-space: nowrap; overflow: hidden;
+    border-radius: 8dp; background-color: var(--conversion); border: 1dp var(--border);
+    color: var(--muted-foreground); font-size: 10dp; line-height: 14dp; text-align: center; white-space: nowrap; overflow: hidden;
 }
 
-.marquee { position: absolute; border: 1dp var(--accent-edge); background-color: var(--accent-soft); }
+.marquee { position: absolute; border: 1dp var(--primary-edge); background-color: var(--primary-soft); }
 .link-error {
     position: absolute; padding: 2dp 8dp; border-radius: var(--r); background-color: var(--notice);
     color: var(--notice-fg); font-size: 11dp; line-height: 16dp; white-space: nowrap;
@@ -205,10 +205,10 @@ body.far .gbubble { visibility: hidden; }
     background-color: var(--node); text-align: center; z-index: 3;
 }
 .gproblem .icon { width: 18dp; font-size: 14dp; line-height: 18dp; color: var(--warning); }
-.gnode[data-error] .gproblem .icon { color: var(--danger); }
+.gnode[data-error] .gproblem .icon { color: var(--destructive); }
 .gpaused {
     position: absolute; left: -5dp; top: -5dp; right: -5dp; bottom: -5dp;
-    border: 3dp var(--accent); border-radius: 10dp; pointer-events: none;
+    border: 3dp var(--primary); border-radius: 10dp; pointer-events: none;
     opacity: 1; transition: opacity 0.14s cubic-out;
 }
 .gpaused[data-starting-style] { opacity: 0; }
@@ -217,7 +217,7 @@ body.far .gbubble { visibility: hidden; }
 /* A watched pin's value floats outside the node beside its socket (Unreal). */
 .gwatch {
     position: absolute; top: -9dp; height: 16dp; padding: 0dp 6dp; border-radius: 8dp;
-    background-color: var(--accent); color: var(--on-accent); font-size: 10dp; line-height: 16dp;
+    background-color: var(--primary); color: var(--primary-foreground); font-size: 10dp; line-height: 16dp;
     font-family: InterNumeric; white-space: nowrap; pointer-events: none;
 }
 .in > .gwatch { right: 100%; margin-right: 10dp; }

@@ -1,7 +1,7 @@
 /* Charts (Liveline): the element draws series in `color` and the grid in
    `border-color`; labels are positioned by the kit. */
-kit-chart { display: block; position: relative; color: var(--accent-fg); border-color: var(--line); border-width: 0dp; }
-.chart-tick { position: absolute; left: 4dp; font-size: 10dp; line-height: 14dp; color: var(--fg-3); pointer-events: none; font-family: InterNumeric; }
-.chart-badge { position: absolute; right: 4dp; height: 18dp; line-height: 18dp; padding: 0dp 6dp; border-radius: 9dp; background-color: var(--accent); color: var(--on-accent); font-size: 10dp; font-family: InterNumeric; pointer-events: none; }
-.chart-hover { position: absolute; top: 4dp; height: 18dp; line-height: 18dp; padding: 0dp 6dp; border-radius: var(--r); background-color: var(--tooltip); border: 1dp var(--tooltip-edge); color: var(--fg); font-size: 10dp; font-family: InterNumeric; pointer-events: none; }
-body.light .chart-hover { color: #fafafa; }
+kit-chart { display: block; position: relative; color: var(--primary-text); border-color: var(--line); border-width: 0dp; }
+.chart-tick { position: absolute; left: 4dp; font-size: 10dp; line-height: 14dp; color: var(--faint-foreground); pointer-events: none; font-family: InterNumeric; }
+.chart-badge { position: absolute; right: 4dp; height: 18dp; line-height: 18dp; padding: 0dp 6dp; border-radius: 9dp; background-color: var(--primary); color: var(--primary-foreground); font-size: 10dp; font-family: InterNumeric; pointer-events: none; }
+.chart-hover { position: absolute; top: 4dp; height: 18dp; line-height: 18dp; padding: 0dp 6dp; border-radius: var(--r); background-color: var(--tooltip); border: 1dp var(--tooltip-edge); color: var(--foreground); font-size: 10dp; font-family: InterNumeric; pointer-events: none; }
+body:not(.dark) .chart-hover { color: #fafafa; }

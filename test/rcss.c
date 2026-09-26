@@ -85,6 +85,7 @@ void test_rcss()
         ".menu.open, .dark .menu { opacity: 1; }\n"
     );
     expands(".a, .b { .c, .d { x: 1; } }", ".a .c, .a .d, .b .c, .b .d { x: 1; }\n");
+    expands(":root { --a: 1; } :root .x, :rooted { y: 2; }", "body { --a: 1; }\nbody .x, :rooted { y: 2; }\n");
     expands("[data-x=\"a,b\"] { :not(.y, .z) { x: 1 } }", "[data-x=\"a,b\"] :not(.y, .z) { x: 1; }\n");
     expands("// line\n.a { /* block */ background: url(//x.png); // after\n content: \"//not\"; }", ".a { background: url(//x.png); content: \"//not\"; }\n");
     expands(".a { color: red; @media (theme: dark) { color: blue; .b { x: 1; } } }", ".a { color: red; }\n@media (theme: dark) {\n.a { color: blue; }\n.a .b { x: 1; }\n}\n");

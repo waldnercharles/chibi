@@ -1,11 +1,12 @@
 /* Resets, text helpers and scrollbars. */
 * { box-sizing: border-box; }
 div, section, header, nav, main, footer, p { display: block; }
+body { font-family: Inter; font-size: 12dp; line-height: 16dp; color: var(--foreground); }
 
-.icon { font-family: Symbols; font-size: 14dp; line-height: 16dp; width: 16dp; text-align: center; display: inline-block; color: var(--fg-2); }
+.icon { font-family: Symbols; font-size: 14dp; line-height: 16dp; width: 16dp; text-align: center; display: inline-block; color: var(--muted-foreground); }
 .icon.sm { font-size: 12dp; width: 12dp; }
-.dim { color: var(--fg-3); }
-.muted { color: var(--fg-2); }
+.dim { color: var(--faint-foreground); }
+.muted { color: var(--muted-foreground); }
 .spacer { flex: 1 1 0dp; }
 .row { display: flex; align-items: center; gap: 6dp; }
 

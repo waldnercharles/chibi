@@ -511,7 +511,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     g->in.height = canvas_h(g);
     kit_set_body_class(g->kit, "far", sg_far(s));
     kit_set_body_class(g->kit, "comfortable", s->prefs.comfortable);
-    kit_set_body_class(g->kit, "light", s->light);
+    kit_set_body_class(g->kit, "dark", !s->light);
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
     sg_find_unused(s);
     ed_refresh_values(e);

@@ -333,7 +333,7 @@ static void apply_prefs(studio *s, bool initial)
         s->light = light;
         kit_set_body_class(s->kit, "theme-switching", !initial);
         s->theme_switching = initial ? 0 : 1;
-        kit_set_body_class(s->kit, "light", light);
+        kit_set_body_class(s->kit, "dark", !light);
     }
     if (initial || p->comfortable != s->applied.comfortable) {
         kit_set_body_class(s->kit, "comfortable", p->comfortable);

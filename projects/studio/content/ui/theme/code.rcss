@@ -5,6 +5,6 @@
 .tok-name { color: var(--tok-name); }
 .tok-path { color: var(--tok-path); }
 .tok-punct { color: var(--tok-punct); }
-.tok-muted { color: var(--fg-3); }
-.tok-error { color: var(--danger); }
+.tok-muted { color: var(--faint-foreground); }
+.tok-error { color: var(--destructive); }
 .tok-warning { color: var(--warning); }

@@ -586,8 +586,12 @@ reach the host's entity, and `#hull .fill` selects inside one instance.
 Editing a widget reloads every document that uses it.
 
 A project's `content/ui/Theme.rcss` styles all of its UI: unscoped, before
-each asset's RCSS, so it holds tokens (`--fg`, `--accent`) and shared control
-classes that widgets use. It can `@import "theme/tokens.rcss";` files beside
+each asset's RCSS, so it holds tokens and shared control classes that widgets
+use. Tokens follow shadcn/ui: `--background`, `--foreground`, `--primary`,
+`--muted-foreground`, `--border` and the rest, light on `:root` and dark on
+`.dark`, so a shadcn theme's two variable blocks paste in as they are (`:root`
+names `body`). Studio's `theme/roles.rcss` derives the editor's other roles
+from them, and Studio sets `dark` on its body in the dark theme. It can `@import "theme/tokens.rcss";` files beside
 it, in order and once each, and an edit to any of them restyles. All RCSS,
 in themes and ui assets alike, takes Sass-style nested rules with `&` (a
 nested `@media` wraps its rules) and `//` comments, and colors take CSS

@@ -1,0 +1,21 @@
+diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+--- a/src/cute_graphics_gles.cpp
++++ b/src/cute_graphics_gles.cpp
+@@ -631,6 +631,9 @@
+ 	) {
+ 		glScissor(target->scissor.x, target->scissor.y, target->scissor.w, target->scissor.h);
+ 	}
++	// GL keeps the last box it was given while the test is off, so only a box
++	// applied above is recorded as current.
++	CF_GL_Rect scissor = target->scissor_enabled ? target->scissor : current->scissor;
+ 
+ 	if (target->stencil_reference != current->stencil_reference) {
+ 		GLenum front_compare = GL_ALWAYS;
+@@ -659,6 +662,7 @@
+ 	}
+ 
+ 	*current = *target;
++	current->scissor = scissor;
+ 	CF_POLL_OPENGL_ERROR();
+ }
+ 

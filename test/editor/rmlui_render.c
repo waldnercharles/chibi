@@ -1,6 +1,7 @@
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "test/suite_internal.h"
+#include "ui/rml.h"
 #include "ui/rml_backend.h"
 
 #include <assert.h>
@@ -34,10 +35,10 @@ static bool has_magenta(CF_Canvas canvas)
     return found;
 }
 
-static void queue_witness_geometry(void)
+static void queue_quad(CF_Color color)
 {
     cf_draw_push_layer(0);
-    cf_draw_push_color(cf_make_color_rgba(255, 0, 255, 255));
+    cf_draw_push_color(color);
     cf_draw_quad_fill2(
         (CF_V2){ -16, -16 },
         (CF_V2){ 16, -16 },
@@ -49,7 +50,57 @@ static void queue_witness_geometry(void)
     cf_draw_pop_layer();
 }
 
-int rmlui_render_run(const char *program)
+static void queue_witness_geometry(void)
+{
+    queue_quad(cf_make_color_rgba(255, 0, 255, 255));
+}
+
+/* A retained UI scissors to its whole target, as a game's HUD does inside the
+ * Scene view, so it must draw whatever scissor an earlier pass left behind. */
+static void check_scissor_left_behind()
+{
+    enum
+    {
+        WIDTH = 96,
+        HEIGHT = 64
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    rml_element *doc = rml_context_load_document_from_memory(
+        rml_backend_context(ui),
+        "<rml><body style=\"width: 100%; height: 100%; "
+        "background-color: #ff00ff;\"></body></rml>",
+        "scissor"
+    );
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    CF_Canvas clipped = cf_make_canvas(cf_canvas_defaults(256, 256));
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    assert(clipped.id && target.id);
+    cf_app_update(NULL);
+    /* Clipped to a pixel outside the target, as the editor clips a glyph. */
+    cf_draw_push_scissor((CF_Rect){ 200, 200, 1, 1 });
+    queue_quad(cf_make_color_rgba(0, 255, 0, 255));
+    cf_render_to(clipped, true);
+    cf_draw_pop_scissor();
+    /* Unclipped into a canvas of the UI's size, as the world renders. */
+    queue_quad(cf_make_color_rgba(0, 255, 0, 255));
+    cf_render_to(target, true);
+    rml_backend_update(ui, 1.0 / 60.0);
+    rml_backend_render(ui);
+    cf_draw_push();
+    rml_backend_present(ui);
+    cf_render_to(target, false);
+    cf_draw_pop();
+    cf_app_draw_onto_screen(true);
+    assert(has_magenta(target));
+    cf_destroy_canvas(clipped);
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+}
+
+int rmlui_render_run(const char *program, bool gles)
 {
     CF_Result result = cf_make_app(
         "RmlUi render smoke",
@@ -58,9 +109,16 @@ int rmlui_render_run(const char *program)
         0,
         1024,
         768,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
+            (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : 0),
         program
     );
+    if (cf_is_error(result) && gles) {
+        /* Desktop GLES needs a driver such as Mesa's. On macOS, put ANGLE's
+           libEGL.dylib and libGLESv2.dylib on DYLD_FALLBACK_LIBRARY_PATH. */
+        printf("RmlUi render SKIP: no GLES window: %s\n", result.details);
+        return 0;
+    }
     if (cf_is_error(result)) {
         fprintf(stderr, "RmlUi render app: %s\n", result.details);
         return 1;
@@ -92,9 +150,14 @@ int rmlui_render_run(const char *program)
         assert(has_magenta(witness));
     }
     cf_destroy_canvas(witness);
+    check_scissor_left_behind();
     kit_destroy(k);
     rml_backend_destroy(backend);
     cf_destroy_app();
-    puts("RmlUi render PASS: retained UI renders beside queued layer-0 draws");
+    printf(
+        "RmlUi render PASS%s: retained UI renders beside queued layer-0 draws "
+        "and under a scissor another pass left\n",
+        gles ? " on GLES" : ""
+    );
     return 0;
 }

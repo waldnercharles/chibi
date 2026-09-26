@@ -21,6 +21,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/instance.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
@@ -293,6 +294,8 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "query", "string", false, "Words that must all start a word in a node's or event's name, keywords, pin names or expression function; omit it and the filters to list the domain's node types and events." },
     { "domain", "string", false, "Filter to behavior, shader, field, or system nodes." },
     { "pin_type", "string", false, "Require a matching pin type or struct type name." },
+    { "wire_from", "string", false, "Type of an output to wire from (exec, float, GameHealth, array<int>); ranks nodes by the input that takes it." },
+    { "wire_to", "string", false, "Type of an input to wire into; ranks nodes by the output that feeds it." },
     { "pin_container", "string", false, "Require a matching pin container: single, array, set, or map." },
     { "pin_kind", "string", false, "Require a matching pin kind: data or exec." },
     { "pure", "boolean", false, "Require pure or impure node descriptors." },
@@ -7361,13 +7364,21 @@ static bool pin_matches(const pin_spec *pin, const pin_filter *filter)
             !strcmp(pin->kind == PIN_EXEC ? "exec" : "data", filter->pin_kind));
 }
 
-static bool pins_match(const node *n, const pin_filter *filter)
+/* A candidate's pins: a registry node's declared ones, or those a configured
+ * node has in a scratch graph. */
+typedef struct
+{
+    const pin_spec *inputs, *outputs;
+    int input_count, output_count;
+} pin_sides;
+
+static bool pins_match(const pin_sides *n, const pin_filter *filter)
 {
     bool pure = true;
     bool pin_filtered = filter->pin_type || filter->pin_container || filter->pin_kind;
     bool matched = !pin_filtered;
     for (int output = 0; output < 2; output++) {
-        const pin_spec *pins = output ? n->output_pins : n->input_pins;
+        const pin_spec *pins = output ? n->outputs : n->inputs;
         int count = output ? n->output_count : n->input_count;
         for (int i = 0; i < count; i++) {
             pure &= pins[i].kind != PIN_EXEC;
@@ -7388,13 +7399,17 @@ typedef struct
     const behavior_asset *definition;
     int score;
     int order;
+    /* With a wire to fit: how well (wire_fit) and through which pins. */
+    int fit;
+    int wire_input, wire_output;
 } node_match;
 
 static int node_match_compare(const void *a, const void *b)
 {
     const node_match *left = a, *right = b;
+    int fit = right->fit - left->fit;
     int score = right->score - left->score;
-    return score ? score : left->order - right->order;
+    return fit ? fit : score ? score : left->order - right->order;
 }
 
 static const char *match_event(const node_match *match)
@@ -7640,6 +7655,22 @@ static void add_node_match(
             yyjson_mut_obj_add_str(doc, item, "field", match->preset->field);
         }
     }
+    if (match->wire_input >= 0) {
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            item,
+            "wire_input",
+            n->input_pins[match->wire_input].name
+        );
+    }
+    if (match->wire_output >= 0) {
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            item,
+            "wire_output",
+            n->output_pins[match->wire_output].name
+        );
+    }
     char expression[256];
     if (expression_form(g, n, expression, sizeof expression)) {
         yyjson_mut_obj_add_strcpy(doc, item, "expression", expression);
@@ -7753,6 +7784,87 @@ static node_match *node_candidates(
     return matches;
 }
 
+/* A pin type as searchNodes writes it: "exec", "any", "float", "GameHealth",
+ * "ecs.entity" or "array<int>". */
+static bool wire_pin(const char *text, pin_spec *out)
+{
+    *out = (pin_spec){ .type = PIN_FLOW };
+    char base[128];
+    const char *open = strchr(text, '<');
+    size_t length = strlen(text);
+    if (open) {
+        const char *containers[] = { "array", "set", "map" };
+        const pin_container kinds[] = { PIN_CONTAINER_ARRAY,
+                                        PIN_CONTAINER_SET,
+                                        PIN_CONTAINER_MAP };
+        size_t prefix = (size_t)(open - text);
+        bool known = false;
+        for (int i = 0; i < 3; i++) {
+            if (strlen(containers[i]) == prefix &&
+                !strncmp(text, containers[i], prefix)) {
+                out->container = kinds[i];
+                known = true;
+            }
+        }
+        if (!known || text[length - 1] != '>' || length - prefix - 2 >= sizeof base) {
+            return false;
+        }
+        snprintf(base, sizeof base, "%.*s", (int)(length - prefix - 2), open + 1);
+    } else if (length >= sizeof base) {
+        return false;
+    } else {
+        snprintf(base, sizeof base, "%s", text);
+    }
+    if (!strcmp(base, "exec")) {
+        out->kind = PIN_EXEC;
+        return !open;
+    }
+    if (!strcmp(base, "any")) {
+        out->flags = PIN_FLAG_WILDCARD;
+        return true;
+    }
+    for (int i = PIN_BOOL; i < PIN_HANDLE; i++) {
+        if (!strcmp(base, pin_type_name((pin_type)i))) {
+            out->type = (pin_type)i;
+            return true;
+        }
+    }
+    /* A handle is named by the pins that carry it, such as ecs.entity. */
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *node = registry_node(i);
+        for (int p = 0; p < node->input_count; p++) {
+            if (node->inputs[p].type == PIN_HANDLE && node->inputs[p].type_name &&
+                !strcmp(node->inputs[p].type_name, base)) {
+                out->type = PIN_HANDLE;
+                out->type_name = node->inputs[p].type_name;
+                return true;
+            }
+        }
+    }
+    const type_desc *type = registry_type_by_name(base);
+    const enum_desc *enumeration = registry_enum_by_name(base);
+    out->type = type ? PIN_STRUCT : PIN_ENUM;
+    out->type_name = type ? type->name : enumeration ? enumeration->name : NULL;
+    return out->type_name != NULL;
+}
+
+/* The best pin on one side of `n` for a wire: into an input from `from`, or
+ * out of an output to `to`. Returns its fit and sets `pin`, or 0 and -1. */
+static int best_wire(const pin_sides *n, const pin_spec *from, const pin_spec *to, int *pin)
+{
+    const pin_spec *pins = from ? n->inputs : n->outputs;
+    int count = from ? n->input_count : n->output_count, best = 0;
+    *pin = -1;
+    for (int i = 0; i < count; i++) {
+        int fit = from ? wire_fit(from, &pins[i]) : wire_fit(&pins[i], to);
+        if (fit > best) {
+            best = fit;
+            *pin = i;
+        }
+    }
+    return best;
+}
+
 static int handle_search_nodes(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *query = request_string(request, "query");
@@ -7764,6 +7876,16 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     yyjson_val *limit_value = yyjson_obj_get(request, "limit");
     yyjson_val *offset_value = yyjson_obj_get(request, "offset");
     yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
+    const char *wire_from_text = request_string(request, "wire_from");
+    const char *wire_to_text = request_string(request, "wire_to");
+    pin_spec wire_from, wire_to;
+    if ((wire_from_text && !wire_pin(wire_from_text, &wire_from)) ||
+        (wire_to_text && !wire_pin(wire_to_text, &wire_to)) ||
+        (yyjson_obj_get(request, "wire_from") && !wire_from_text) ||
+        (yyjson_obj_get(request, "wire_to") && !wire_to_text)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "wire_from and wire_to take a pin type as searchNodes writes it, such as exec, float, GameHealth or array<int>");
+        return -1;
+    }
     if ((yyjson_obj_get(request, "query") && !query) ||
         (yyjson_obj_get(request, "domain") &&
          (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior") &&
@@ -7802,7 +7924,8 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     bool searched = query && query[0];
     bool pin_filtered = filter.pin_type || filter.pin_container ||
                         filter.pin_kind || filter.pure;
-    if (!searched && !pin_filtered) {
+    bool wired = wire_from_text || wire_to_text;
+    if (!searched && !pin_filtered && !wired) {
         add_node_outline(result->doc, value, domain, definitions);
         free_behavior_assets(definitions);
         return 0;
@@ -7810,26 +7933,45 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     int limit = limit_value ? (int)yyjson_get_sint(limit_value) : 10;
     int offset = offset_value ? (int)yyjson_get_sint(offset_value) : 0;
     bool pins = !pins_value || yyjson_get_bool(pins_value);
-    /* Presets and events need words to rank; a pin filter alone lists nodes. */
-    component_node_preset *presets = searched ? component_node_presets() : NULL;
-    node_match *candidates = node_candidates(domain, presets, searched ? definitions : NULL);
+    /* Presets and events need words or a wire to rank; a pin filter alone
+     * lists nodes. */
+    bool listed = searched || wired;
+    component_node_preset *presets = listed ? component_node_presets() : NULL;
+    node_match *candidates = node_candidates(domain, presets, listed ? definitions : NULL);
     behavior_asset *scratch = behavior_asset_new("Node search");
     node_match *matches = NULL;
     for (int i = 0; i < acount(candidates); i++) {
         node_match match = candidates[i];
-        bool offered = searched || !(match.host || match.definition);
+        bool offered = listed || !(match.host || match.definition);
         match.order = i;
         match.score = offered ? match_score(&match, query) : -1;
+        match.wire_input = match.wire_output = -1;
         if (match.score < 0) {
             continue;
         }
-        if (pin_filtered) {
-            node *n = match_node(scratch->graph, &match);
-            bool kept = pins_match(n, &filter);
-            int removed = graph_remove_node(scratch->graph, n);
+        if (pin_filtered || wired) {
+            bool configured = match.preset || match.host || match.definition;
+            node *n = configured ? match_node(scratch->graph, &match) : NULL;
+            pin_sides sides = n ? (pin_sides){ n->input_pins,
+                                               n->output_pins,
+                                               n->input_count,
+                                               n->output_count }
+                                : (pin_sides){ match.desc->inputs,
+                                               match.desc->outputs,
+                                               match.desc->input_count,
+                                               match.desc->output_count };
+            bool kept = pins_match(&sides, &filter);
+            int into = wire_from_text
+                         ? best_wire(&sides, &wire_from, NULL, &match.wire_input)
+                         : 3;
+            int out = wire_to_text
+                        ? best_wire(&sides, NULL, &wire_to, &match.wire_output)
+                        : 3;
+            match.fit = wired ? (into < out ? into : out) : 0;
+            int removed = n ? graph_remove_node(scratch->graph, n) : 0;
             assert(!removed);
             (void)removed;
-            if (!kept) {
+            if (!kept || (wired && !match.fit)) {
                 continue;
             }
         }

@@ -212,6 +212,14 @@ with every word:
   "out": ["Then: exec", "Other: ecs.entity", "Point: CF_V2"]}`, and a project
   event also returns its `Send Event` with `reference_name`.
 
+To extend a graph from a pin, pass its type as `wire_from` (an output you
+will wire from) or `wire_to` (an input you will wire into), written as pins
+read: `exec`, `float`, `GameHealth`, `array<int>`. Results keep nodes that can
+take the wire, ranked like a wire dropped in Studio (exact type, then a
+conversion, then a wildcard), and name the pin to connect as `wire_input` or
+`wire_output`: `{"query": "destroy", "wire_from": "ecs.entity"}` returns
+Destroy Entity with `"wire_input": "Entity"`.
+
 Pins read `name: type`. Behavior search offers component nodes instead of the
 generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
 `domain: "system"` for System graphs, which use the generated nodes directly and

@@ -10,6 +10,7 @@
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/conv_nodes.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -682,8 +683,7 @@ void sg_collapse_math(studio *s)
 
 /* ---------- Add node ---------- */
 
-/* How well a search result can take the dragged wire: 3 an exact socket type,
-   2 a socket reached by conversion, 1 only a wildcard, 0 nothing typed. */
+/* How well a search result can take the dragged wire (wire_fit). */
 static int link_fit(const editor *e, const ed_search_match *match)
 {
     const node_desc *desc = match->desc;
@@ -697,15 +697,8 @@ static int link_fit(const editor *e, const ed_search_match *match)
     const pin_spec *pins = from_output ? desc->inputs : desc->outputs;
     int count = from_output ? desc->input_count : desc->output_count, best = 0;
     for (int i = 0; i < count; i++) {
-        const pin_spec *pin = &pins[i];
-        if (pin->kind != source->kind || (pin->flags & PIN_FLAG_SETTING)) {
-            continue;
-        }
-        bool named = pin->type == PIN_STRUCT || pin->type == PIN_ENUM;
-        bool exact = pin->type == source->type &&
-                     (!named || (pin->type_name && source->type_name &&
-                                 !strcmp(pin->type_name, source->type_name)));
-        int fit = pin->flags & PIN_FLAG_WILDCARD ? 1 : exact ? 3 : 2;
+        int fit = from_output ? wire_fit(source, &pins[i])
+                              : wire_fit(&pins[i], source);
         best = fit > best ? fit : best;
     }
     return best;

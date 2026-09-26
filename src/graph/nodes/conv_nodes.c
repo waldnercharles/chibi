@@ -371,3 +371,20 @@ const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to)
     }
     return NULL;
 }
+
+int wire_fit(const pin_spec *from, const pin_spec *to)
+{
+    if (from->kind != to->kind || ((from->flags | to->flags) & PIN_FLAG_SETTING)) {
+        return 0;
+    }
+    if (from->kind == PIN_EXEC) {
+        return 3;
+    }
+    if ((from->flags | to->flags) & PIN_FLAG_WILDCARD) {
+        return 1;
+    }
+    if (pin_compatible(from, to)) {
+        return 3;
+    }
+    return conversion_for_pins(from, to) ? 2 : 0;
+}

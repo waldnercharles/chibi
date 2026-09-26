@@ -32,7 +32,7 @@ Status on 2026-09-25, after the optimize branch merged (#106). Update a row when
 | Safe delete | — | — | Both: list references before deleting a variable, function, event or asset |
 | Diagnostics | Live compile, node badges, Problems rows jump to the node | Whole project (`getAssetCatalog`), `validateAsset` | Studio: project-wide Problems |
 | Code actions | Optimize, Math to Expressions, Collapse to Function/Macro, Expand Node, Promote to Variable, Name Value | `optimizeGraph`, `create_local` | MCP: collapse, expand, promote; signature edits through `graph_signature` so calls follow |
-| Completion | Add menu ranked by the dropped pin | `searchNodes` by words, domain and pin filters | MCP: nodes compatible with a given pin, ranked like Studio's wire drop |
+| Completion | Add menu ranked by the dropped pin (`wire_fit`) | `searchNodes` `wire_from`/`wire_to`, ranked by the same `wire_fit` | — |
 | Hover | Pin values while debugging; pin types in the Node tab | Pins in `searchNodes` | Both: node descriptions (`node_desc` has none), in `searchNodes` results and as Studio tooltips, which also need to wrap (`.tooltip` is `white-space: nowrap`) |
 | Outline | Members panel | Catalog members, `inspectGraph` | Both: use, sender and handler counts per member |
 | Resolved types | Node tab | `inspectGraph` omits types that wildcard pins resolve to | MCP |

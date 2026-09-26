@@ -148,6 +148,33 @@ static void expression_forms()
     free(clamp);
 }
 
+/* A wire's type filters and ranks nodes by the pin that takes it, like a
+ * dropped wire in Studio: exact types first, then conversions, then
+ * wildcards. */
+static void wire_fits()
+{
+    size_t bytes;
+    char *destroy = search("\"query\":\"destroy\",\"wire_from\":\"ecs.entity\",\"include_pins\":false", &bytes);
+    char *health = search("\"wire_to\":\"GameHealth\",\"domain\":\"behavior\",\"limit\":1,\"include_pins\":false", &bytes);
+    char *after = search("\"query\":\"delay\",\"wire_from\":\"exec\",\"limit\":1,\"include_pins\":false", &bytes);
+    char *real = search("\"wire_from\":\"int\",\"wire_to\":\"float\",\"limit\":1,\"include_pins\":false", &bytes);
+    char *unknown = search("\"wire_from\":\"GameNothing\"", &bytes);
+    test_check(
+        destroy && strstr(destroy, "\"type\":\"Destroy Entity\",\"category\":\"Entities\",\"wire_input\":\"Entity\"") &&
+            health && strstr(health, "\"wire_output\":\"GameHealth\"") &&
+            after && strstr(after, "\"type\":\"Delay\"") &&
+            strstr(after, "\"wire_input\":\"Exec\"") && real &&
+            strstr(real, "\"type\":\"To Real\"") && unknown &&
+            strstr(unknown, "\"invalid_request\""),
+        "searchNodes ranks nodes by the pin that takes a wire of a given type"
+    );
+    free(destroy);
+    free(health);
+    free(after);
+    free(real);
+    free(unknown);
+}
+
 /* Responses stay small enough to read whole: the vocabulary outline, and a
  * page of results with pins. */
 static void response_budgets()
@@ -171,5 +198,6 @@ void test_automation_search()
     intents_rank();
     behavior_vocabulary();
     expression_forms();
+    wire_fits();
     response_budgets();
 }

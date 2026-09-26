@@ -111,10 +111,10 @@ static bool same_warning(const char *a, const char *b)
     }
 }
 
-static bool reported(ui_check_message *messages, const char *text)
+static bool among(char **warnings, const char *text)
 {
-    for (int i = 0; i < acount(messages); i++) {
-        if (same_warning(messages[i].text, text)) {
+    for (int i = 0; i < acount(warnings); i++) {
+        if (same_warning(warnings[i], text)) {
             return true;
         }
     }
@@ -144,27 +144,58 @@ static char *replaced(char *text, const char *from, const char *to)
     return out;
 }
 
-/* The warning with the document's line it names given as the block's. */
-static char *relocated(char *text, int line)
+/* The warning with the document's line it names, `line`, given as `place`
+ * instead, as "markup:4" becomes "line 3". */
+static char *relocated(char *text, int line, const char *place)
 {
-    char document[64], block[32];
-    snprintf(block, sizeof block, "line %d", line);
-    snprintf(document, sizeof document, MARKUP_URL ":%d", line + 1);
-    text = replaced(text, document, block);
-    snprintf(document, sizeof document, "line %d of " MARKUP_URL, line + 1);
-    return replaced(text, document, block);
+    char document[64];
+    snprintf(document, sizeof document, MARKUP_URL ":%d", line);
+    text = replaced(text, document, place);
+    snprintf(document, sizeof document, "line %d of " MARKUP_URL, line);
+    return replaced(text, document, place);
 }
 
-/* Loads `markup` in a document with the page's body attributes, as the
- * check's `part`, keeping each warning it has not yet reported. What the
- * document's closing line shows only follows from an earlier warning. */
-static void check_markup(
-    rml_context *context,
-    const char *body,
-    const char *markup,
-    ui_check_part part,
-    ui_check_message **out
-)
+/* A warning's line in `text`: the line it names, less the `offset` lines
+ * of the document before `text`, or where `text` holds what it quotes; 0
+ * when neither. */
+static int warning_line(const char *warning, const char *text, int offset)
+{
+    int named = named_line(warning);
+    return named ? named - offset : quoted_line(warning, text);
+}
+
+/* The offset in `text` of the start of 1-based line `line`. */
+static int line_offset(const char *text, int line)
+{
+    const char *p = text;
+    for (int i = 1; i < line && (p = strchr(p, '\n')); i++) {
+        p++;
+    }
+    return p ? (int)(p - text) : (int)strlen(text);
+}
+
+/* The data-src="<asset>:<line>" of the element whose start tag holds
+ * `at`, or the nearest before it, in markup ui_document_expand marked. */
+static bool element_source(const char *markup, int at, char *asset, size_t size, int *line)
+{
+    static const char ATTRIBUTE[] = "data-src=\"";
+    const char *found = NULL;
+    for (const char *p = markup; (p = strstr(p, ATTRIBUTE)) && p - markup <= at; p++) {
+        found = p + sizeof ATTRIBUTE - 1;
+    }
+    const char *colon = found ? strchr(found, ':') : NULL;
+    if (!colon) {
+        return false;
+    }
+    snprintf(asset, size, "%.*s", (int)(colon - found), found);
+    *line = atoi(colon + 1);
+    return true;
+}
+
+/* Loads `markup` in a document with the page's body attributes and returns
+ * the warnings RmlUi logs, bar those only the document's closing line
+ * shows, which follow from an earlier one. */
+static char **load_markup(rml_context *context, const char *body, const char *markup)
 {
     const char *space = body ? " " : "", *attributes = body ? body : "";
     const char *close = markup[0] && markup[strlen(markup) - 1] == '\n' ? "" : "\n";
@@ -179,43 +210,98 @@ static void check_markup(
         rml_document_close(document);
         rml_context_update(context);
     }
-    char **warnings = joined_warnings(rml_backend_take_warnings());
-    int lines = line_count(markup);
+    free(text);
+    char **warnings = joined_warnings(rml_backend_take_warnings()), **kept = NULL;
     for (int i = 0; i < acount(warnings); i++) {
-        int line = named_line(warnings[i]);
-        if (line > lines + 1 ||
-            (part == UI_CHECK_WIDGETS && reported(*out, warnings[i]))) {
+        if (named_line(warnings[i]) > line_count(markup) + 1) {
             free(warnings[i]);
             continue;
         }
-        line = part != UI_CHECK_RML ? 0
-             : line                 ? line - 1
-                                    : quoted_line(warnings[i], markup);
-        char *message = part == UI_CHECK_RML && line ? relocated(warnings[i], line)
-                                                     : warnings[i];
-        apush(*out, ((ui_check_message){ part, line, message }));
+        apush(kept, warnings[i]);
     }
     afree(warnings);
-    free(text);
+    return kept;
 }
 
-static void check_style(rml_context *context, const char *rcss, ui_check_message **out)
+/* The asset's markup alone, whose lines are its rml block's; returns what
+ * RmlUi logged, as it logged it. */
+static char **check_markup(rml_context *context, const ui_document *document, ui_check_message **out)
 {
-    rml_element *document = rml_context_load_document_from_memory(context, "<rml><head></head><body/></rml>", "style");
-    rml_backend_keep_warnings();
-    rml_document_set_style_sheet(document, rcss);
-    char **warnings = joined_warnings(rml_backend_take_warnings());
+    char **warnings = load_markup(context, document->body, document->rml);
     for (int i = 0; i < acount(warnings); i++) {
-        int line = named_line(warnings[i]);
+        int named = named_line(warnings[i]);
+        int line = warning_line(warnings[i], document->rml, 1);
+        line = line ? document->rml_line + line - 1 : 0;
+        char place[32];
+        snprintf(place, sizeof place, "line %d", line);
+        char *text = xstrdup(warnings[i]);
+        text = named ? relocated(text, named, place) : text;
+        apush(*out, ((ui_check_message){ UI_CHECK_RML, NULL, line, text }));
+    }
+    return warnings;
+}
+
+/* The markup a GameUi shows, each element marked with the asset and line
+ * that wrote it, for what the markup alone, which logged `shown`, did not
+ * show. */
+static void check_expanded(
+    rml_context *context,
+    const char *name,
+    const char *markup,
+    char **shown,
+    ui_check_message **out
+)
+{
+    char **warnings = load_markup(context, NULL, markup);
+    for (int i = 0; i < acount(warnings); i++) {
+        if (among(shown, warnings[i])) {
+            free(warnings[i]);
+            continue;
+        }
+        int named = named_line(warnings[i]);
+        int line = warning_line(warnings[i], markup, 1);
+        int at = line_offset(markup, line + 1) - 1;
+        char asset[128], place[192];
+        int source_line = 0;
+        bool found = line &&
+                     element_source(markup, at, asset, sizeof asset, &source_line);
+        ui_check_message m = { UI_CHECK_WIDGETS, NULL, 0, warnings[i] };
+        if (found) {
+            m.source = strcmp(asset, name) ? xstrdup(asset) : NULL;
+            m.line = source_line;
+            snprintf(place, sizeof place, "%s line %d", asset, source_line);
+            m.text = named ? relocated(warnings[i], named, place) : warnings[i];
+        }
+        apush(*out, m);
+    }
+    afree(warnings);
+}
+
+/* The asset's RCSS, imports read and nesting flattened; each warning at the
+ * line it came from, in the asset's rcss block or an imported file. */
+static void check_style(rml_context *context, const ui_document *document, ui_check_message **out)
+{
+    rml_element *sheet = rml_context_load_document_from_memory(context, "<rml><head></head><body/></rml>", "style");
+    rml_backend_keep_warnings();
+    rml_document_set_style_sheet(sheet, document->rcss);
+    char **warnings = joined_warnings(rml_backend_take_warnings());
+    const rcss_map *map = &document->map;
+    for (int i = 0; i < acount(warnings); i++) {
+        int line = warning_line(warnings[i], document->rcss, 0);
+        rcss_origin origin = line > 0 && line <= acount(map->lines)
+                               ? map->lines[line - 1]
+                               : (rcss_origin){ -1, 0 };
+        const char *source = origin.file >= 0 ? map->files[origin.file] : NULL;
         apush(
             *out,
             ((ui_check_message){ UI_CHECK_RCSS,
-                                 line ? line : quoted_line(warnings[i], rcss),
+                                 source ? xstrdup(source) : NULL,
+                                 origin.line,
                                  warnings[i] })
         );
     }
     afree(warnings);
-    rml_document_close(document);
+    rml_document_close(sheet);
     rml_context_update(context);
 }
 
@@ -227,13 +313,14 @@ static void free_names(char **names)
     afree(names);
 }
 
-/* The markup a GameUi shows, widgets expanded; false with the error when a
- * widget cannot be. */
+/* Expands the asset's widgets and checks what that shows; false with the
+ * error when a widget cannot be. */
 static bool check_widgets(
     rml_context *context,
     const ui_document *document,
     const char *name,
     const char *directory,
+    char **shown,
     ui_check_message **out,
     char *error,
     size_t error_size
@@ -244,11 +331,13 @@ static bool check_widgets(
     bool widgets = acount(uses) > 0;
     free_names(uses);
     uses = NULL;
-    ui_document expanded = { .rml = xstrdup(document->rml), .rcss = xstrdup("") };
+    ui_document expanded = { .rml = xstrdup(document->rml),
+                             .rcss = xstrdup(""),
+                             .rml_line = document->rml_line };
     bool ok = !widgets ||
-              ui_document_expand(&expanded, name, directory, &uses, error, error_size);
+              ui_document_expand(&expanded, name, directory, true, &uses, error, error_size);
     if (ok && widgets) {
-        check_markup(context, NULL, expanded.rml, UI_CHECK_WIDGETS, out);
+        check_expanded(context, name, expanded.rml, shown, out);
     }
     free_names(uses);
     ui_document_free(&expanded);
@@ -274,11 +363,12 @@ bool ui_check(
     rml_context *context = rml_backend_context(backend);
     ui_data data;
     ui_data_init(&data, context, NULL, ignore_emit, NULL);
-    check_markup(context, document.body, document.rml, UI_CHECK_RML, messages);
-    check_style(context, document.rcss, messages);
+    char **shown = check_markup(context, &document, messages);
+    check_style(context, &document, messages);
     /* A scene's page shows its markup as written; a GameUi expands widgets. */
     bool ok = document.body ||
-              check_widgets(context, &document, name, directory, messages, error, error_size);
+              check_widgets(context, &document, name, directory, shown, messages, error, error_size);
+    free_names(shown);
     ui_data_free(&data);
     rml_backend_destroy(backend);
     ui_document_free(&document);
@@ -302,6 +392,7 @@ void ui_check_property_names(char ***names)
 void ui_check_messages_free(ui_check_message *messages)
 {
     for (int i = 0; i < acount(messages); i++) {
+        free(messages[i].source);
         free(messages[i].text);
     }
     afree(messages);

@@ -1251,6 +1251,8 @@ bool rml_element_property_source(rml_element *e, const char *property, char *she
     copy(p->source->path, sheet, size);
     *line = p->source->line_number;
     return true;
+}
+
 /* ---------- UI language service (workstream B) ---------- */
 
 const char *rml_property_name(uint8_t id)

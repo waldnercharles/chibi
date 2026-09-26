@@ -33,9 +33,10 @@ static int failf(char *error, size_t size, int status, const char *format, ...)
 typedef struct diagnostic
 {
     const char *rule;
-    const char *block; /* NULL outside the blocks */
-    int block_line;    /* 0 when unknown */
-    int line, column;  /* in the file; 0 when unknown */
+    const char *block;  /* NULL outside the blocks */
+    const char *source; /* a widget or import the line is in, or NULL */
+    int block_line;     /* in `source` when set; 0 when unknown */
+    int line, column;   /* in the file; 0 when unknown */
     const char *message;
 } diagnostic;
 
@@ -47,6 +48,9 @@ static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const dia
     yyjson_mut_obj_add_strcpy(doc, object, "message", d->message);
     if (d->block) {
         yyjson_mut_obj_add_str(doc, object, "block", d->block);
+    }
+    if (d->source) {
+        yyjson_mut_obj_add_strcpy(doc, object, "source", d->source);
     }
     if (d->block_line) {
         yyjson_mut_obj_add_int(doc, object, "block_line", d->block_line);
@@ -86,11 +90,10 @@ static int syntax_diagnostics(const ui_source *source, yyjson_mut_doc *doc, yyjs
     return acount(source->diagnostics);
 }
 
-/* A markup warning's file line: its block line counted from the block's
- * first, when the block's lines are the file's. */
-static int markup_line(const ui_source *source, int block_line)
+/* A block line's file line, when the block's lines are the file's. */
+static int file_line(const ui_source *source, ui_source_language language, int block_line)
 {
-    const ui_source_block *block = block_of(source, UI_SOURCE_RML);
+    const ui_source_block *block = block_of(source, language);
     if (!block || !block_line) {
         return 0;
     }
@@ -118,12 +121,16 @@ int automation_ui_validate(
     }
     for (int i = 0; i < acount(messages); i++) {
         const ui_check_message *m = &messages[i];
-        int line = m->part == UI_CHECK_RML ? markup_line(source, m->line) : 0;
+        bool own = !m->source && m->part != UI_CHECK_WIDGETS;
+        ui_source_language block = m->part == UI_CHECK_RML ? UI_SOURCE_RML
+                                                           : UI_SOURCE_RCSS;
+        int line = own ? file_line(source, block, m->line) : 0;
         add_diagnostic(
             doc,
             diagnostics,
             &(diagnostic){ .rule = "RMLUI",
                            .block = PARTS[m->part],
+                           .source = m->source,
                            .block_line = m->line,
                            .line = line,
                            .column = line ? 1 : 0,

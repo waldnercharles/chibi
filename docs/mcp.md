@@ -337,10 +337,11 @@ is refused with its `diagnostics`:
   or an unreadable `@import`.
 - `RMLUI`: every warning RmlUi logs loading the asset in a scratch document
   with the ui data model, as a binding expression it cannot parse or an RCSS
-  property it rejects. `block` is `rml` for the markup, with its file
-  `line`; `rcss` for the styles, whose `block_line` counts lines of the
-  RCSS with imports read and nesting flattened; or `widgets` for what only
-  the markup with its widgets expanded shows.
+  property it rejects, at the line that wrote it. `block` is `rml` for the
+  markup and `rcss` for the styles, with the file `line`; a warning about an
+  imported stylesheet names it as `source`, with its `block_line` in that
+  file. `widgets` is what only the markup with its widgets expanded shows,
+  with the widget as `source` and its line in the widget's `rml` block.
 
 ## Check adapter distribution
 

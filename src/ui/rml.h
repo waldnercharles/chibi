@@ -548,6 +548,7 @@ extern "C"
         size_t size,
         int *line
     );
+
     /* ---------- UI language service (workstream B) ---------- */
 
     /* The name of the property, or shorthand, StyleSheetSpecification

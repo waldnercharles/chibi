@@ -11,22 +11,27 @@
 typedef enum
 {
     UI_CHECK_RML,     /* the asset's markup */
-    UI_CHECK_RCSS,    /* its RCSS, imports read and nesting flattened */
+    UI_CHECK_RCSS,    /* its RCSS, with the stylesheets it imports */
     UI_CHECK_WIDGETS, /* the markup with its widgets expanded, when only
                          that shows the warning */
 } ui_check_part;
 
+/* A warning at the line that wrote what it is about: a line of the checked
+ * asset's rml or rcss block (the part says which), or, with a `source`, of
+ * an imported stylesheet's file (RCSS) or a widget's rml block (WIDGETS). */
 typedef struct ui_check_message
 {
     ui_check_part part;
-    int line;   /* 1-based in the part's block, or 0 when unknown */
-    char *text; /* as RmlUi logged it */
+    char *source; /* NULL for the checked asset; a file path or widget name */
+    int line;     /* 1-based, or 0 when unknown */
+    char *text;   /* as RmlUi logged it, its document's line made this one */
 } ui_check_message;
 
-/* Checks ui asset `name` whose file text is `text`: its markup alone, so a
- * warning's line is the rml block's; its RCSS, with lines of the flattened
- * RCSS until RCSS keeps source lines; and, when it uses widgets, the
- * markup a GameUi shows, which reports only what the markup alone did not.
+/* Checks ui asset `name` whose file text is `text`: its markup alone; its
+ * RCSS, whose warnings the RCSS's source map (support/rcss.h) places in its
+ * block or an import; and, when it uses widgets, the markup a GameUi shows,
+ * which reports only what the markup alone did not, at the data-src of the
+ * element concerned (ui_document_expand).
  * Widgets and @imports resolve in `content_root`/ui through text_file_read,
  * so unsaved text counts. Appends each warning to `messages`
  * (support/array.h). Returns false with a message in `error` when the asset

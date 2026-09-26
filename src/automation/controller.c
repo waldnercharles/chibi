@@ -2006,10 +2006,15 @@ static int catalog_snapshot_get(
     return 0;
 }
 
+static void hash_text(uint64_t hash, char text[17])
+{
+    snprintf(text, 17, "%016llx", (unsigned long long)hash);
+}
+
 static void add_hash_named(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *key, uint64_t hash)
 {
-    char text[32];
-    snprintf(text, sizeof text, "%016llx", (unsigned long long)hash);
+    char text[17];
+    hash_text(hash, text);
     yyjson_mut_obj_add_strcpy(doc, object, key, text);
 }
 
@@ -2267,6 +2272,19 @@ static yyjson_mut_val *add_catalog_reference(
     return object;
 }
 
+static void add_catalog_diagnostics(yyjson_mut_doc *doc, yyjson_mut_val *object, const catalog_asset *asset)
+{
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
+    for (int i = 0; i < acount(asset->diagnostics); i++) {
+        const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+        yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
+        yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
+        yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
+    }
+}
+
 static yyjson_mut_val *add_catalog_asset(
     yyjson_mut_doc *doc,
     yyjson_mut_val *array,
@@ -2306,15 +2324,7 @@ static yyjson_mut_val *add_catalog_asset(
     for (int i = 0; i < acount(asset->dependents); i++) {
         add_catalog_reference(doc, dependents, &asset->dependents[i], assets, count);
     }
-    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
-    for (int i = 0; i < acount(asset->diagnostics); i++) {
-        const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
-        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
-        yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
-        yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
-        yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
-        yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
-    }
+    add_catalog_diagnostics(doc, object, asset);
     yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
     yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
     yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
@@ -9387,11 +9397,6 @@ static int refactor_view_load(const char *root, refactor_view *view, char *error
     return CHIBI_AUTOMATION_OK;
 }
 
-static void hash_text(uint64_t hash, char text[17])
-{
-    snprintf(text, 17, "%016llx", (unsigned long long)hash);
-}
-
 /* References elsewhere, each placed as find_references places a use. */
 static void add_refactor_uses(
     yyjson_mut_doc *doc,
@@ -9524,34 +9529,6 @@ typedef struct
     bool deleted;
 } refactor_published;
 
-static void add_invalid(yyjson_mut_doc *doc, yyjson_mut_val *invalid, const catalog_asset *asset)
-{
-    yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, invalid);
-    yyjson_mut_obj_add_strcpy(doc, item, "path", asset->asset.relative);
-    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, item, "diagnostics");
-    for (int d = 0; d < acount(asset->diagnostics); d++) {
-        yyjson_mut_val *diagnostic = yyjson_mut_arr_add_obj(doc, diagnostics);
-        yyjson_mut_obj_add_strcpy(
-            doc,
-            diagnostic,
-            "severity",
-            asset->diagnostics[d].severity
-        );
-        yyjson_mut_obj_add_strcpy(
-            doc,
-            diagnostic,
-            "rule_name",
-            asset->diagnostics[d].rule_name
-        );
-        yyjson_mut_obj_add_strcpy(
-            doc,
-            diagnostic,
-            "message",
-            asset->diagnostics[d].message
-        );
-    }
-}
-
 /* Counts the assets that validated before the change and no longer do, and
    lists their diagnostics; -1 when the catalog cannot be read. */
 static int refactor_invalid(
@@ -9577,7 +9554,14 @@ static int refactor_invalid(
              j++) {
             if (!strcmp(assets[j].asset.relative, published[i].path) &&
                 !assets[j].valid) {
-                add_invalid(result->doc, invalid, &assets[j]);
+                yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, invalid);
+                yyjson_mut_obj_add_strcpy(
+                    result->doc,
+                    item,
+                    "path",
+                    assets[j].asset.relative
+                );
+                add_catalog_diagnostics(result->doc, item, &assets[j]);
                 failed++;
             }
         }
@@ -9633,10 +9617,13 @@ static int refactor_publish(
     if (status == CHIBI_AUTOMATION_OK && invalid) {
         char why[256];
         snprintf(why, sizeof why, "%s", invalid < 0 ? error : "a changed asset no longer validates; every asset is restored");
+        /* A failed rollback keeps its own error, which says where the
+           originals are. */
         status = automation_assets_rollback(batch, error, size);
-        status = status == CHIBI_AUTOMATION_OK ? CHIBI_AUTOMATION_VALIDATION_ERROR
-                                               : status;
-        set_error(error, size, status == CHIBI_AUTOMATION_VALIDATION_ERROR ? why : error);
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            set_error(error, size, why);
+        }
     } else if (status == CHIBI_AUTOMATION_OK) {
         automation_assets_commit(batch);
     }

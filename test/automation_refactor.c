@@ -228,6 +228,24 @@ static void conflicts(const char *root)
     reply_free(&stale);
 }
 
+/* A dry run refuses what could never publish: a case-only rename, which file
+   systems that ignore case see as the file itself, and names no file takes. */
+static void refusals(const char *root)
+{
+    reply cased = ask(root, "{\"contract\":1,\"operation\":\"rename_symbol\",\"asset\":{\"kind\":\"behavior\",\"name\":\"Pursuit\"},\"new_name\":\"pursuit\"%s}", NULL);
+    reply unsafe = ask(root, "{\"contract\":1,\"operation\":\"rename_symbol\",\"event\":\"Harm\",\"new_name\":\"../Harm\"%s}", NULL);
+    test_check(
+        !ok(&cased) && !strcmp(error_code(&cased), "invalid_request") &&
+            strstr(cased.text, "only in case") && !ok(&unsafe) &&
+            !strcmp(error_code(&unsafe), "invalid_request") &&
+            exists(root, "content/events/Harm.yaml"),
+        "renameSymbol refuses case-only renames and names no file takes in the "
+        "dry run"
+    );
+    reply_free(&cased);
+    reply_free(&unsafe);
+}
+
 #define DELETE_PURSUIT                                                         \
     "{\"contract\":1,\"operation\":\"delete_symbol\",\"asset\":{\"kind\":"     \
     "\"behavior\",\"name\":\"Pursuit\"}%s}"
@@ -266,6 +284,7 @@ void test_automation_refactor()
     copy_project(root);
     renames(root);
     conflicts(root);
+    refusals(root);
     deletes(root);
     remove_tree(root);
 }

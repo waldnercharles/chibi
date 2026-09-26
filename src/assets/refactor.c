@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <yyjson.h>
 
 #define NAME_MAX_LENGTH 120
@@ -645,10 +646,34 @@ static bool valid_name(work *w, const char *name)
     return true;
 }
 
-static bool file_name(work *w, const char *name)
+/* Asset names name files, and events name their definitions' files. */
+static bool file_safe(work *w, const char *name)
 {
     return (name[0] != '.' && !strpbrk(name, "/\\:*?\"<>|") && !strstr(name, "..")) ||
            fail(w, "\"%s\" cannot name a file", name);
+}
+
+/* File systems that ignore case cannot tell a rename that only changes case
+   from the file itself. */
+static bool file_name(work *w, const char *from, const char *to)
+{
+    return file_safe(w, to) &&
+           (strcasecmp(from, to) ||
+            fail(w, "%s differs from %s only in case; rename it to another name first", to, from));
+}
+
+/* Another asset of the kind whose file the name would take. */
+static bool name_taken(const work *w, reference_asset_kind kind, int asset, const char *name)
+{
+    const reference_index *index = w->project->index;
+    for (int i = 0; i < reference_index_asset_count(index); i++) {
+        const reference_asset *other = reference_index_asset_at(index, i);
+        if (i != asset && other->kind == kind && other->name &&
+            !strcasecmp(other->name, name)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static const char *const KIND_NAMES[REFERENCE_ASSET_KIND_COUNT] = {
@@ -671,8 +696,16 @@ static reference_symbol event_named(const work *w, const char *name)
                                .name = name };
 }
 
+/* Every asset rename names its file here. */
 static bool name_asset(work *w, int asset, const char *to)
 {
+    const reference_asset *a = asset_at(w, asset);
+    if (!file_name(w, a->name, to)) {
+        return false;
+    }
+    if (name_taken(w, a->kind, asset, to)) {
+        return fail(w, "a %s named %s exists", KIND_NAMES[a->kind], to);
+    }
     loaded *l = load(w, asset);
     if (!l) {
         return false;
@@ -694,6 +727,9 @@ static bool rename_event(work *w, const char *from, const char *to)
     if (graph_event_host_name(from) || graph_event_host_name(to)) {
         return fail(w, "the engine names its host events");
     }
+    if (!file_safe(w, to) || (event.asset >= 0 && !name_asset(w, event.asset, to))) {
+        return false;
+    }
     if (reference_index_find_name(w->project->index, REFERENCE_ASSET_EVENT, to) >= 0 ||
         reference_index_count_uses(w->project->index, event_named(w, to), ~0u)) {
         return fail(w, "an event named %s exists", to);
@@ -701,8 +737,7 @@ static bool rename_event(work *w, const char *from, const char *to)
     const reference **uses = uses_of(w, event);
     bool ok = (acount(uses) || event.asset >= 0 ||
                fail(w, "nothing names the event %s", from)) &&
-              rename_uses(w, uses, from, to) &&
-              (event.asset < 0 || name_asset(w, event.asset, to));
+              rename_uses(w, uses, from, to);
     afree(uses);
     if (ok && event.asset >= 0) {
         note(entry(w, event.asset), reference_index_definition(w->project->index, event));
@@ -724,18 +759,11 @@ static bool rename_asset(work *w, int asset, const char *to)
             a->name
         );
     }
-    if (!file_name(w, to)) {
-        return false;
-    }
-    if (reference_index_find_name(w->project->index, a->kind, to) >= 0) {
-        return fail(w, "a %s named %s exists", KIND_NAMES[a->kind], to);
-    }
     char *from = xstrdup(a->name);
-    const reference **uses = uses_of(
-        w,
-        (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = asset }
-    );
-    bool ok = rename_uses(w, uses, from, to) && name_asset(w, asset, to);
+    bool ok = name_asset(w, asset, to);
+    const reference **uses = ok ? uses_of(w, (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = asset })
+                                : NULL;
+    ok = ok && rename_uses(w, uses, from, to);
     afree(uses);
     free(from);
     return ok;
@@ -787,16 +815,35 @@ static pin_spec *payload_pin(node *n, uint64_t variable, int *output, int *index
     return NULL;
 }
 
+/* Whether a pin on that side of `n`, other than the one at `except`, has
+   the name. */
+static bool pin_named(const node *n, int output, int except, const char *name)
+{
+    const pin_spec *pins = output ? n->output_pins : n->input_pins;
+    for (int i = 0; i < (output ? n->output_count : n->input_count); i++) {
+        if (i != except && same_text(pins[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Ui documents and action bindings send an event without a payload; senders
+   and handlers in graphs carry it. */
+static bool carries_payload(const reference *r)
+{
+    return r->node_id && !r->pin_id;
+}
+
 /* Senders and handlers name an event definition's variables on their
-   payload pins. */
+   payload pins, beside their own pins such as Entity and Then. */
 static bool rename_payload(work *w, int definition, uint64_t variable, const char *to)
 {
     const reference **uses = uses_of(w, event_named(w, asset_name(w, definition)));
     bool ok = true;
     for (int i = 0; ok && i < acount(uses); i++) {
         const reference *r = uses[i];
-        /* Ui documents and action bindings send no payload. */
-        if (!r->node_id || r->pin_id) {
+        if (!carries_payload(r)) {
             continue;
         }
         loaded *l = load(w, r->source);
@@ -806,8 +853,16 @@ static bool rename_payload(work *w, int definition, uint64_t variable, const cha
         ok = n != NULL;
         if (n && payload_pin(n, variable, &output, &index)) {
             note(l, r);
-            ok = graph_set_pin_name(g, n, output, index, to) == 0 ||
-                 fail(w, "could not rename the payload in %s", asset_name(w, r->source));
+            ok = (!pin_named(n, output, index, to) ||
+                  fail(
+                      w,
+                      "%s's %s node already has a pin named %s",
+                      asset_name(w, r->source),
+                      n->desc->name,
+                      to
+                  )) &&
+                 (graph_set_pin_name(g, n, output, index, to) == 0 ||
+                  fail(w, "could not rename the payload in %s", asset_name(w, r->source)));
         }
     }
     afree(uses);
@@ -1126,15 +1181,23 @@ void refactor_blockers(const reference_index *index, reference_symbol symbol, co
         *definition = symbol.kind == REFERENCE_SYMBOL_VARIABLE
                         ? reference_index_asset_at(index, symbol.asset)
                         : NULL;
-    if (definition && definition->kind == REFERENCE_ASSET_EVENT) {
-        reference_index_find_uses(
-            index,
-            (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT,
-                                .asset = symbol.asset,
-                                .name = definition->name },
-            uses
-        );
+    if (!definition || definition->kind != REFERENCE_ASSET_EVENT) {
+        return;
     }
+    const reference **sends = NULL;
+    reference_index_find_uses(
+        index,
+        (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT,
+                            .asset = symbol.asset,
+                            .name = definition->name },
+        &sends
+    );
+    for (int i = 0; i < acount(sends); i++) {
+        if (carries_payload(sends[i])) {
+            apush(*uses, sends[i]);
+        }
+    }
+    afree(sends);
 }
 
 static bool delete_member(work *w, reference_symbol symbol)

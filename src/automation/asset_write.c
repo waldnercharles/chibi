@@ -306,8 +306,13 @@ static int check_files(automation_asset_batch *batch, const automation_asset_cha
     return CHIBI_AUTOMATION_OK;
 }
 
-static void undo_files(automation_asset_batch *batch)
+static const char UNRESTORED[] = "could not restore every asset; originals are "
+                                 "kept beside them as .authoring-*.bak";
+
+/* Puts each original back and removes each new file; false when one stays. */
+static bool undo_files(automation_asset_batch *batch)
 {
+    bool restored = true;
     for (int i = acount(batch->files) - 1; i >= 0; i--) {
         batch_file *file = &batch->files[i];
         int fd = batch->folder_fds[file->folder];
@@ -318,12 +323,15 @@ static void undo_files(automation_asset_batch *batch)
             file->moved = false;
             file->backup[0] = 0;
         }
+        restored &= !file->placed && !file->moved;
     }
+    return restored;
 }
 
 /* Moves each original aside, then links its new text into place, which
-   fails rather than replace a file that appeared since the check. */
-static int place_files(automation_asset_batch *batch)
+   fails rather than replace a file that appeared since the check. When one
+   fails the others go back; *restored is false when one could not. */
+static int place_files(automation_asset_batch *batch, bool *restored)
 {
     static atomic_uint sequence;
     for (int i = 0; i < acount(batch->files); i++) {
@@ -342,8 +350,8 @@ static int place_files(automation_asset_batch *batch)
         if (!file->moved || (file->target && !file->placed)) {
             int status = errno == EEXIST ? CHIBI_AUTOMATION_CONFLICT
                                          : CHIBI_AUTOMATION_IO_ERROR;
-            undo_files(batch);
-            return status;
+            *restored = undo_files(batch);
+            return *restored ? status : CHIBI_AUTOMATION_IO_ERROR;
         }
     }
     return CHIBI_AUTOMATION_OK;
@@ -400,10 +408,20 @@ int automation_assets_publish(
         }
     }
     status = status == CHIBI_AUTOMATION_OK ? check_files(batch, changes, modes) : status;
-    status = status == CHIBI_AUTOMATION_OK ? place_files(batch) : status;
+    bool restored = true;
+    status = status == CHIBI_AUTOMATION_OK ? place_files(batch, &restored) : status;
     free(modes);
     if (status != CHIBI_AUTOMATION_OK) {
-        snprintf(error, error_size, "%s", status == CHIBI_AUTOMATION_CONFLICT ? "an asset changed or a new name is taken; inspect current hashes and retry" : "could not publish every asset");
+        snprintf(
+            error,
+            error_size,
+            "%s",
+            !restored ? UNRESTORED
+            : status == CHIBI_AUTOMATION_CONFLICT
+                ? "an asset changed or a new name is taken; inspect current "
+                  "hashes and retry"
+                : "could not publish every asset"
+        );
         batch_close(batch);
         return status;
     }
@@ -429,14 +447,10 @@ void automation_assets_commit(automation_asset_batch *batch)
 
 int automation_assets_rollback(automation_asset_batch *batch, char *error, size_t error_size)
 {
-    undo_files(batch);
-    bool restored = true;
-    for (int i = 0; i < acount(batch->files); i++) {
-        restored &= !batch->files[i].moved && !batch->files[i].placed;
-    }
+    bool restored = undo_files(batch);
     batch_close(batch);
     if (!restored) {
-        snprintf(error, error_size, "could not restore every asset; originals are kept beside them as .authoring-*.bak");
+        snprintf(error, error_size, "%s", UNRESTORED);
     }
     return restored ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
 }

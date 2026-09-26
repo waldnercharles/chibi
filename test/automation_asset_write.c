@@ -475,6 +475,40 @@ static void test_batches(const char *root)
     assert(unlink(a) == 0 && unlink(moved) == 0);
 }
 
+/* A file that cannot move aside midway puts back the ones already placed. */
+static void test_batch_failure(const char *root)
+{
+    if (geteuid() == 0) {
+        return; /* permissions do not stop root */
+    }
+    char behaviors[PATH_MAX], events[PATH_MAX], a[PATH_MAX], e[PATH_MAX];
+    snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
+    snprintf(events, sizeof events, "%s/content/events", root);
+    assert(mkdir(events, 0755) == 0);
+    join_path(a, sizeof a, behaviors, "A.yaml");
+    join_path(e, sizeof e, events, "E.yaml");
+    write_file(a, "a\n", 2);
+    write_file(e, "e\n", 2);
+    char ha[32], he[32];
+    hash_text(ha, sizeof ha, "a\n");
+    hash_text(he, sizeof he, "e\n");
+    automation_asset_change changes[] = {
+        { "behaviors", "A.yaml", "Moved.yaml", "a2\n", ha },
+        { "events", "E.yaml", NULL, NULL, he },
+    };
+    assert(chmod(events, 0555) == 0);
+    char error[160];
+    automation_asset_batch *batch = NULL;
+    int status = automation_assets_publish(root, changes, 2, &batch, error, sizeof error);
+    assert(chmod(events, 0755) == 0);
+    assert(status == CHIBI_AUTOMATION_IO_ERROR && !batch);
+    assert(!strstr(error, ".bak"));
+    assert_file_equals(a, "a\n", 2);
+    assert_file_equals(e, "e\n", 2);
+    assert(folder_entries(behaviors) == 1 && folder_entries(events) == 1);
+    assert(unlink(a) == 0 && unlink(e) == 0 && rmdir(events) == 0);
+}
+
 void test_automation_asset_write(void)
 {
     char root[] = "/tmp/chibi-asset-write-XXXXXX";
@@ -484,6 +518,7 @@ void test_automation_asset_write(void)
     test_replacement_and_create(root, initial);
     test_invalid_names(root);
     test_batches(root);
+    test_batch_failure(root);
     remove_project(root);
 
     test_content_symlink();

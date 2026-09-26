@@ -363,6 +363,61 @@ static void events()
                    strstr(p.texts[asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "HullDamage")], "Points");
     test_check(listed && applied && payload, "renaming an event definition's variable renames the payload pins of its senders and handlers");
 
+    /* Send Event has Exec and Entity inputs, and Event a Then output. */
+    char error[256];
+    refactor_project project = view(&p);
+    definition = behavior_asset_load_json(p.texts[harm]);
+    variable.id = behavior_asset_find_variable_by_name(definition, "Points")->id;
+    reference_symbol source = {
+        .kind = REFERENCE_SYMBOL_VARIABLE,
+        .asset = harm,
+        .id = behavior_asset_find_variable_by_name(definition, "Source")->id,
+    };
+    behavior_asset_free(definition);
+    bool clash = refactor_rename(&project, variable, "Exec", &plan, error, sizeof error) !=
+                     0 &&
+                 refactor_rename(&project, variable, "Then", &plan, error, sizeof error) !=
+                     0 &&
+                 refactor_rename(&project, source, "Entity", &plan, error, sizeof error) !=
+                     0;
+    test_check(clash, "renaming a payload variable refuses the name of a sender's or handler's own pin");
+
+    /* Ui documents and action bindings send no payload, so they leave a
+       payload variable free to delete. */
+    const reference **blockers = NULL;
+    refactor_blockers(p.index, variable, &blockers);
+    int payload_uses = acount(blockers);
+    afree(blockers);
+    test_asset *menu = asset_of(&p, asset_named(&p, REFERENCE_ASSET_UI, "PauseMenu"));
+    char *sent = strstr(menu->text, "data-event=\"Quit\"");
+    assert(sent);
+    memcpy(sent, "data-event=\"Harm\"", strlen("data-event=\"Harm\""));
+    index_project(&p);
+    refactor_blockers(p.index, variable, &blockers);
+    test_check(
+        payload_uses > 0 && acount(blockers) == payload_uses &&
+            event_uses(&p, "Harm") > payload_uses,
+        "a payload variable's blockers leave out ui and action sends"
+    );
+    afree(blockers);
+    sent = strstr(menu->text, "data-event=\"Harm\"");
+    memcpy(sent, "data-event=\"Quit\"", strlen("data-event=\"Quit\""));
+    index_project(&p);
+
+    /* An event definition's file takes the event's name. */
+    reference_symbol harm_event = { .kind = REFERENCE_SYMBOL_EVENT,
+                                    .asset = harm,
+                                    .name = "Harm" };
+    project = view(&p);
+    bool unsafe = refactor_rename(&project, harm_event, "../Harm", &plan, error, sizeof error) !=
+                      0 &&
+                  refactor_rename(&project, harm_event, "Ha:rm", &plan, error, sizeof error) !=
+                      0;
+    bool cased = refactor_rename(&project, harm_event, "harm", &plan, error, sizeof error) !=
+                     0 &&
+                 strstr(error, "only in case");
+    test_check(unsafe && cased, "renaming an event refuses names that cannot name its file, and case-only renames");
+
     /* An event no asset defines, sent by a ui document. */
     uses = event_uses(&p, "Resume");
     reference_symbol resume = { .kind = REFERENCE_SYMBOL_EVENT,
@@ -377,8 +432,7 @@ static void events()
         "renaming a ui event rewrites the data-event that sends it"
     );
 
-    char error[256];
-    refactor_project project = view(&p);
+    project = view(&p);
     reference_symbol fire = { .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = "Fire" };
     bool host = refactor_rename(&project, fire, "Shoot", &plan, error, sizeof error) != 0 &&
                 !acount(plan.edits);
@@ -454,7 +508,11 @@ static void assets()
     refactor_project project = view(&p);
     reference_symbol cave = asset_symbol(&p, REFERENCE_ASSET_PROTOTYPE, "Cave");
     bool taken = refactor_rename(&project, cave, "Player", &plan, error, sizeof error) !=
-                 0;
+                     0 &&
+                 refactor_rename(&project, cave, "player", &plan, error, sizeof error) !=
+                     0;
+    bool cased = refactor_rename(&project, cave, "cave", &plan, error, sizeof error) != 0 &&
+                 strstr(error, "only in case");
     bool invalid = refactor_rename(&project, cave, "../Cave", &plan, error, sizeof error) !=
                        0 &&
                    refactor_rename(&project, cave, " Cave", &plan, error, sizeof error) !=
@@ -472,7 +530,7 @@ static void assets()
                                 .name = "GameHealth" };
     bool component = refactor_rename(&project, health, "Vitality", &plan, error, sizeof error) !=
                      0;
-    test_check(taken && invalid && scene && component, "renaming refuses taken and unsafe names, scenes and components");
+    test_check(taken && cased && invalid && scene && component, "renaming refuses taken, case-only and unsafe names, scenes and components");
     project_free(&p);
 }
 

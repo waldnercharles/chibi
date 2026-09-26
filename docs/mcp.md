@@ -219,7 +219,9 @@ symbol as `findReferences` does: an `asset` `{kind, name}`, with `graph` or
 an `event`. An event with a definition renames or deletes its
 `content/events` asset too. A `component` or `field` is refused, since C
 reflection names them, and so are scenes, since `project.yaml` names the start
-scene by path.
+scene by path. An asset's or event's new name must name a file, and a rename
+that only changes an asset's case is refused, since file systems that ignore
+case see the same file; rename it through another name.
 
 Both default to `dry_run: true`. The dry run lists each asset it changes with
 its `path`, current `hash`, `after_hash`, `new_name` and `new_path` when the

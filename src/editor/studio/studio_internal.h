@@ -377,6 +377,8 @@ struct studio
     app_scene_authoring *scene;
     engine_viewport *viewport;
     const char *project_root; /* the open project, owned by the application */
+    bool own_project; /* the open project is the Studio project, whose settings are these preferences */
+    uint64_t scene_prefs_seen, preview_prefs_seen;
     studio_project *projects;
     char *open_project; /* root chosen to open, until the application takes it */
     studio_disk_toast *disk_toasts; /* files that changed on disk under unsaved edits */

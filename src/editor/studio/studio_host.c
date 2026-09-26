@@ -8,6 +8,7 @@
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -355,6 +356,18 @@ static void apply_prefs(studio *s, bool initial)
     }
 }
 
+/* With the Studio project open, its scene and previews are the editor's own UI,
+ * so their settings are these preferences, as the editor's panels' are. */
+static void share_project_prefs(studio *s)
+{
+    if (!s->own_project) {
+        return;
+    }
+    game_behavior_world *previews = game_prototype_preview_behaviors(s->scene->prototype_preview);
+    studio_prefs_share(&s->prefs, game_behavior_save(s->scene->live->behaviors), &s->scene_prefs_seen);
+    studio_prefs_share(&s->prefs, game_behavior_save(previews), &s->preview_prefs_seen);
+}
+
 /* The editor looks the way its own UI project's theme says; an edit to it
  * restyles every Studio document. */
 static void sync_theme(studio *s)
@@ -377,6 +390,9 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->scene = scene;
     s->viewport = viewport;
     s->project_root = project_root;
+    char studio_root[PATH_MAX];
+    s->own_project = realpath(STUDIO_PROJECT, studio_root) &&
+                     !strcmp(studio_root, project_root);
     s->backend = rml_backend_create(cf_app_get_width(), cf_app_get_height(), cf_app_get_pixel_scale());
     assert(s->backend);
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
@@ -455,6 +471,7 @@ void studio_frame(studio *s, double delta_seconds)
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
     sync_theme(s);
     studio_ui_frame(s);
+    share_project_prefs(s);
     studio_debug_frame(s);
     kit_begin(s->kit, &s->in);
     studio_emit(s);

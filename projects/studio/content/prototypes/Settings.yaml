@@ -1,3 +1,4 @@
 name: Settings
 components:
   GAME.GameUi: {document: Settings, hidden: true}
+behaviors: [Dismiss, MenuKeys]

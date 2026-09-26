@@ -8,6 +8,7 @@
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
+#include <SDL3/SDL_video.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -880,6 +881,17 @@ static void collect_error(render_ui *ui)
     }
 }
 
+/* A saved "theme" setting picks the palette, as Studio's theme setting does:
+ * dark, light, or the system's. */
+static void apply_theme_mode(render_ui *ui, game_save *settings)
+{
+    const char *mode = settings ? game_save_get(settings, "theme") : NULL;
+    bool dark = mode && (!strcmp(mode, "dark") ||
+                         (!strcmp(mode, "system") &&
+                          SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK));
+    rml_element_set_class(ui->doc, "dark", dark);
+}
+
 void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, double dt)
 {
     assert(ui && w && w->ecs);
@@ -908,6 +920,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ecs_query_end(&query);
     }
     close_unseen(ui, w->model);
+    apply_theme_mode(ui, w->settings);
     ui->restyle |= ui_theme_sync(&ui->theme, ui->content_root, ui->time);
     if (ui->restyle) {
         install_styles(ui);

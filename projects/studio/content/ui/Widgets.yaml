@@ -1,0 +1,11 @@
+rml: |
+  <div class="gallery">
+    <div class="menu-group">MenuOption</div>
+    <use ui="MenuOption" value="first">First</use>
+    <use ui="MenuOption" value="second">Second</use>
+    <div class="menu-sep"/>
+    <div class="menu-group">MenuCheck</div>
+    <use ui="MenuCheck">Check</use>
+  </div>
+rcss: |
+  .gallery { display: block; width: 220dp; }

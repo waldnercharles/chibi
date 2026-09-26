@@ -4,6 +4,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/file_watch.h"
+#include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
@@ -533,6 +534,58 @@ void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
     m->applied = game_ui_revision(model);
 }
 
+/* ---------- Themes ---------- */
+
+bool ui_theme_sync(ui_theme *t, const char *content_root, double time)
+{
+    char path[1024];
+    snprintf(path, sizeof path, "%s/ui/Theme.rcss", content_root);
+    bool changed = !acount(t->watches);
+    if (changed) {
+        apush(t->watches, (file_watch){ 0 });
+    }
+    for (int i = 0; i < acount(t->watches); i++) {
+        changed |= file_watch_changed(&t->watches[i], i ? t->watches[i].path : path, time);
+    }
+    if (!changed) {
+        return false;
+    }
+    asetlen(t->watches, 1);
+    t->error[0] = '\0';
+    char *text = text_file_read(path);
+    if (!text) {
+        free(t->rcss);
+        t->rcss = NULL;
+        return true;
+    }
+    char directory[1024], error[200], **imports = NULL;
+    snprintf(directory, sizeof directory, "%s/ui", content_root);
+    char *rcss = rcss_expand(text, directory, &imports, error, sizeof error);
+    free(text);
+    /* Every file it reached, so fixing a broken import retries. */
+    for (int i = 0; i < acount(imports); i++) {
+        file_watch w = { 0 };
+        file_watch_changed(&w, imports[i], time);
+        apush(t->watches, w);
+        free(imports[i]);
+    }
+    afree(imports);
+    if (!rcss) {
+        snprintf(t->error, sizeof t->error, "ui/Theme.rcss %s", error);
+        return true;
+    }
+    free(t->rcss);
+    t->rcss = rcss;
+    return true;
+}
+
+void ui_theme_free(ui_theme *t)
+{
+    afree(t->watches);
+    free(t->rcss);
+    *t = (ui_theme){ 0 };
+}
+
 /* ---------- Game host ---------- */
 
 /* The reference height at which one RCSS dp is one pixel. */
@@ -562,6 +615,7 @@ struct render_ui
     rml_element *doc;
     rml_listener *listener;
     char *content_root;
+    ui_theme theme;
     ui_view *views;
     ui_view overlay; /* its entity is unused */
     char overlay_state[32];
@@ -613,6 +667,7 @@ void render_ui_free(render_ui *ui)
     close_view(ui, &ui->overlay);
     rml_backend_destroy(ui->backend);
     rml_listener_destroy(ui->listener);
+    ui_theme_free(&ui->theme);
     free(ui->content_root);
     free(ui);
 }
@@ -730,7 +785,7 @@ static ui_view *find_view(render_ui *ui, uint64_t entity)
     return NULL;
 }
 
-static void show_view(render_ui *ui, uint64_t entity, const GameUi *component)
+static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, bool preview)
 {
     ui_view *view = find_view(ui, entity);
     if (!view) {
@@ -753,7 +808,7 @@ static void show_view(render_ui *ui, uint64_t entity, const GameUi *component)
     }
     ui->restyle |= ui_mount_sync(view->mount, view->root, ui->listener, ui->time);
     rml_element_set_property(view->root, "z-index", order);
-    rml_element_set_property(view->root, "display", component->hidden ? "none" : "block");
+    rml_element_set_property(view->root, "display", component->hidden && !preview ? "none" : "block");
 }
 
 /* Drops the views whose entity no longer shows a GameUi. */
@@ -779,14 +834,20 @@ static ui_mount *mount_at(const render_ui *ui, int i)
     return i < 0 ? ui->overlay.mount : ui->views[i].mount;
 }
 
-/* Puts each shown asset's RCSS after the base, once per asset. */
+static void append(char **sheet, const char *text)
+{
+    int start = acount(*sheet);
+    asetlen(*sheet, start + (int)strlen(text));
+    memcpy(*sheet + start, text, strlen(text));
+}
+
+/* The base, then the project's theme, then each shown asset's RCSS once. */
 static void install_styles(render_ui *ui)
 {
     char *sheet = NULL;
     const char **names = NULL;
-    int base = (int)sizeof BASE_RCSS - 1;
-    asetlen(sheet, base);
-    memcpy(sheet, BASE_RCSS, (size_t)base);
+    append(&sheet, BASE_RCSS);
+    append(&sheet, ui->theme.rcss ? ui->theme.rcss : "");
     for (int i = -1; i < acount(ui->views); i++) {
         ui_mount *m = mount_at(ui, i);
         bool known = !m;
@@ -797,10 +858,7 @@ static void install_styles(render_ui *ui)
             continue;
         }
         apush(names, ui_mount_name(m));
-        const char *style = ui_mount_style(m);
-        int start = acount(sheet);
-        asetlen(sheet, start + (int)strlen(style));
-        memcpy(sheet + start, style, strlen(style));
+        append(&sheet, ui_mount_style(m));
     }
     apush(sheet, '\0');
     if (!rml_document_set_style_sheet(ui->doc, sheet)) {
@@ -810,10 +868,10 @@ static void install_styles(render_ui *ui)
     afree(names);
 }
 
-/* Reports the first mount's error. */
+/* Reports the theme's error, else the first mount's. */
 static void collect_error(render_ui *ui)
 {
-    ui->error[0] = '\0';
+    snprintf(ui->error, sizeof ui->error, "%s", ui->theme.error);
     for (int i = -1; i < acount(ui->views) && !ui->error[0]; i++) {
         ui_mount *m = mount_at(ui, i);
         if (m) {
@@ -844,12 +902,13 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
             if (!ecs_entity_is_retiring(world, entity)) {
-                show_view(ui, ecs_entity_to_u64(entity), GAME_GameUi_get_const(world, entity));
+                show_view(ui, ecs_entity_to_u64(entity), GAME_GameUi_get_const(world, entity), w->preview);
             }
         }
         ecs_query_end(&query);
     }
     close_unseen(ui, w->model);
+    ui->restyle |= ui_theme_sync(&ui->theme, ui->content_root, ui->time);
     if (ui->restyle) {
         install_styles(ui);
         ui->restyle = false;

@@ -1,0 +1,139 @@
+--- a/Source/Core/PropertyParserColour.cpp
++++ b/Source/Core/PropertyParserColour.cpp
+@@ -112,6 +112,124 @@
+ 	values[2] = Math::Clamp(InverseSRGBNonlinearTransfer(b), 0.0f, 1.0f);
+ }
+ 
++// Reference: https://en.wikipedia.org/wiki/SRGB#Definition
++static float SRGBNonlinearTransfer(float channel)
++{
++	return channel > 0.04045f ? std::pow((channel + 0.055f) / 1.055f, 2.4f) : channel / 12.92f;
++}
++
++// Reference: https://bottosson.github.io/posts/oklab/
++static void RGBAToOklab(Array<float, 4>& values)
++{
++	float r = SRGBNonlinearTransfer(values[0]);
++	float g = SRGBNonlinearTransfer(values[1]);
++	float b = SRGBNonlinearTransfer(values[2]);
++
++	float l = std::cbrt(0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * b);
++	float m = std::cbrt(0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * b);
++	float s = std::cbrt(0.0883024619f * r + 0.2817188376f * g + 0.6299787005f * b);
++
++	values[0] = 0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s;
++	values[1] = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
++	values[2] = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
++}
++
++// Splits at `separator` outside parentheses; `separator` ' ' splits at any whitespace.
++static StringList SplitOutsideParentheses(const String& value, char separator)
++{
++	StringList parts;
++	String part;
++	int depth = 0;
++	for (char c : value)
++	{
++		depth += (c == '(') - (c == ')' && depth > 0);
++		const bool split = depth == 0 && (separator == ' ' ? StringUtilities::IsWhitespace(c) : c == separator);
++		if (!split)
++		{
++			part += c;
++			continue;
++		}
++		part = StringUtilities::StripWhitespace(part);
++		if (!part.empty() || separator != ' ')
++			parts.push_back(part);
++		part.clear();
++	}
++	part = StringUtilities::StripWhitespace(part);
++	if (!part.empty() || separator != ' ')
++		parts.push_back(part);
++	return parts;
++}
++
++// A color-mix() argument: a colour with an optional percentage before or after it; -1 when absent.
++static bool ParseMixArgument(const String& argument, Colourb& colour, float& percentage)
++{
++	StringList tokens = SplitOutsideParentheses(argument, ' ');
++	percentage = -1.0f;
++	if (tokens.size() == 2)
++	{
++		const size_t at = tokens[0].back() == '%' ? 0 : 1;
++		if (tokens[at].back() != '%')
++			return false;
++		percentage = (float)atof(tokens[at].c_str());
++		tokens.erase(tokens.begin() + at);
++	}
++	return tokens.size() == 1 && PropertyParserColour::ParseColour(colour, tokens[0]);
++}
++
++// CSS Color 5 color-mix(in srgb | oklab, <colour> [<percentage>], <colour> [<percentage>]): premultiplied interpolation, with
++// the alpha scaled down when the percentages sum below 100%.
++static bool ParseColourMix(Colourb& colour, const String& value)
++{
++	const size_t open = value.find('(');
++	const size_t close = value.rfind(')');
++	if (open == String::npos || close == String::npos || close < open)
++		return false;
++	StringList parts = SplitOutsideParentheses(value.substr(open + 1, close - open - 1), ',');
++	if (parts.size() != 3)
++		return false;
++	const bool oklab = parts[0] == "in oklab";
++	if (!oklab && parts[0] != "in srgb")
++		return false;
++
++	Colourb colours[2];
++	float percentages[2];
++	for (int i = 0; i < 2; i++)
++		if (!ParseMixArgument(parts[i + 1], colours[i], percentages[i]))
++			return false;
++	if (percentages[0] < 0 && percentages[1] < 0)
++		percentages[0] = percentages[1] = 50.0f;
++	else if (percentages[0] < 0)
++		percentages[0] = 100.0f - percentages[1];
++	else if (percentages[1] < 0)
++		percentages[1] = 100.0f - percentages[0];
++	const float sum = percentages[0] + percentages[1];
++	if (percentages[0] < 0 || percentages[1] < 0 || percentages[0] > 100 || percentages[1] > 100 || sum <= 0)
++		return false;
++
++	Array<float, 4> mixed = {};
++	for (int i = 0; i < 2; i++)
++	{
++		Array<float, 4> c;
++		for (int channel = 0; channel < 4; channel++)
++			c[channel] = colours[i][channel] * (1.0f / 255.0f);
++		if (oklab)
++			RGBAToOklab(c);
++		const float weight = percentages[i] / sum;
++		for (int channel = 0; channel < 3; channel++)
++			mixed[channel] += c[channel] * c[3] * weight;
++		mixed[3] += c[3] * weight;
++	}
++	if (mixed[3] > 0)
++		for (int channel = 0; channel < 3; channel++)
++			mixed[channel] /= mixed[3];
++	if (oklab)
++		OklabToRGBA(mixed);
++	mixed[3] *= std::min(sum, 100.0f) / 100.0f;
++	for (int channel = 0; channel < 4; channel++)
++		colour[channel] = (byte)Math::Clamp((int)std::lround(mixed[channel] * 255.0f), 0, 255);
++	return true;
++}
++
+ struct PropertyParserColourData {
+ 	const UnorderedMap<String, Colourb> html_colours = {
+ 		{"black", Colourb(0, 0, 0)},
+@@ -173,6 +291,11 @@
+ 	if (value[0] == '#')
+ 	{
+ 		if (!ParseHexColour(colour, value))
++			return false;
++	}
++	else if (value.substr(0, 9) == "color-mix")
++	{
++		if (!ParseColourMix(colour, value))
+ 			return false;
+ 	}
+ 	else if (value.substr(0, 3) == "rgb")

@@ -6,18 +6,22 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
+#include "support/file_watch.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
 /* What shown documents read and act on. Only `ecs` is required: without
  * `model` documents show as authored, without `entities` activations reach no
- * one, and without `settings` data-setting elements stay as authored. */
+ * one, and without `settings` data-setting elements stay as authored. A
+ * preview shows documents their GameUi keeps hidden, as an editor previews
+ * a dialog before anything opens it. */
 typedef struct ui_world
 {
     ecs_world *ecs;
     game_ui *model;
     game_entities *entities;
     game_save *settings;
+    bool preview;
 } ui_world;
 
 /* ---------- Mounts ---------- */
@@ -69,6 +73,25 @@ void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
  * checkbox holds "true" or "false", and other inputs and selects their value.
  * Refreshes the elements when a key changes. */
 void ui_mount_settings(ui_mount *mount, game_save *settings);
+
+/* ---------- Themes ---------- */
+
+/* A project's theme: its ui/Theme.rcss and the files it imports (see
+ * support/rcss.h), which style every UI document the project shows, unscoped
+ * and before each document's own RCSS. The Studio project's theme is the
+ * editor's. Re-read within a second of an edit to any of its files, keeping
+ * the last valid version. Zero-initialize. */
+typedef struct ui_theme
+{
+    file_watch *watches; /* Theme.rcss, then each file it imports */
+    char *rcss;          /* NULL while the project has no theme */
+    char error[256]; /* why the files are not the theme in use; "" when they are */
+} ui_theme;
+
+/* Re-reads the theme when one of its files changed and returns true; `rcss`
+ * then holds the new theme, or the last valid one with `error` set. */
+bool ui_theme_sync(ui_theme *theme, const char *content_root, double time);
+void ui_theme_free(ui_theme *theme);
 
 /* ---------- Game host ---------- */
 

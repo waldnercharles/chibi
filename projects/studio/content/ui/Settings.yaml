@@ -29,6 +29,6 @@ rml: |
     </div>
   </use>
 rcss: |
-  .title { display: block; padding: 2dp 6dp 10dp; font-size: 14dp; font-weight: 600; color: var(--fg); }
+  .title { display: block; padding: 2dp 6dp 10dp; font-size: 14dp; font-weight: 600; color: var(--foreground); }
   .columns { display: flex; gap: 12dp; }
   .column { display: block; width: 200dp; }

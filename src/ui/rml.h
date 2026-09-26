@@ -373,8 +373,6 @@ extern "C"
     );
     void rml_document_close(rml_element *document);
     void rml_document_update(rml_element *document);
-    /* Re-reads the document's source for its style sheets; elements stay. */
-    void rml_document_reload_style_sheet(rml_element *document);
     /* Replaces the document's style sheets with `rcss`; false, changing
      * nothing, when RmlUi reads no style sheet from it. */
     bool rml_document_set_style_sheet(rml_element *document, const char *rcss);

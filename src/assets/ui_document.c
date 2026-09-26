@@ -2,6 +2,7 @@
 
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
@@ -53,8 +54,13 @@ static bool read_root(yyjson_val *root, ui_document *out, char *error, size_t er
     if (rcss && strstr(yyjson_get_str(rcss), "</style")) {
         return fail(error, error_size, "rcss must not close its style block");
     }
+    char message[200];
+    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", NULL, NULL, message, sizeof message);
+    if (!flat) {
+        return fail(error, error_size, "rcss %s", message);
+    }
     out->rml = xstrdup(yyjson_get_str(rml));
-    out->rcss = xstrdup(rcss ? yyjson_get_str(rcss) : "");
+    out->rcss = flat;
     return true;
 }
 

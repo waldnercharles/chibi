@@ -87,15 +87,15 @@ if(NOT cute_framework_POPULATED)
         cmake_policy(POP)
     endif()
 endif()
-set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
+set(PATCH_SOURCE "${cute_framework_SOURCE_DIR}")
 foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window)
-    set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
-    include(cmake/apply_cute_patch.cmake)
+    set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
+    include(cmake/apply_patch.cmake)
 endforeach()
 unset(CUTE_PATCH_NAME)
-unset(CUTE_SOURCE)
-unset(CUTE_PATCH)
+unset(PATCH_SOURCE)
+unset(PATCH_FILE)
 add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
 # Apple's SDK uses fixed-underlying enum typedef declarations rejected by
 # upstream Clang 22. Restrict compatibility to the framework's SDK consumers.
@@ -709,6 +709,7 @@ add_executable(test_suite
     test/scene_disk.c
     test/scene_refactor.c
     test/tree_watch.c
+    test/rcss.c
     test/appearance_geometry.c
     test/retained_components.c
     test/editor_flow.c

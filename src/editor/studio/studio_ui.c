@@ -1,4 +1,4 @@
-/* The editor's authored UI: the Studio project (projects/studio) run as a
+/* The editor's authored UI: the Studio project (STUDIO_PROJECT) run as a
  * small world whose GameUi entities are panels. A panel's document mounts in
  * a kit host the way a game mounts it over its canvas, so its widgets,
  * behaviors and data-setting bindings work as they do in games. Studio's
@@ -11,11 +11,10 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
-#include "support/file_watch.h"
 #include "support/text_file.h"
+#include "support/tree_watch.h"
 #include "support/xalloc.h"
 
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,7 +35,7 @@ struct studio_ui
     game_prototype_preview *world;
     game_prototype **prototypes;
     panel *panels;
-    file_watch *behaviors; /* the panel behaviors, recompiled when edited */
+    tree_watch files; /* the project's assets, reloaded when edited */
     rml_listener *listener;
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
@@ -109,57 +108,85 @@ static bool launch(studio_ui *ui, char *error, size_t size)
     return ok;
 }
 
-/* Watches each behavior file the world loaded. */
-static void watch_behaviors(studio_ui *ui)
+static void report_error(studio *s, const char *path, const char *message)
 {
-    char folder[1024];
-    snprintf(folder, sizeof folder, "%s/behaviors", ui->content_root);
-    DIR *dir = opendir(folder);
-    struct dirent *entry;
-    while (dir && (entry = readdir(dir))) {
-        if (entry->d_name[0] == '.') {
-            continue;
-        }
-        file_watch w = { 0 };
-        char path[sizeof w.path];
-        snprintf(path, sizeof path, "%s/%s", folder, entry->d_name);
-        file_watch_changed(&w, path, 0);
-        apush(ui->behaviors, w);
-    }
-    if (dir) {
-        closedir(dir);
-    }
+    char error[1024];
+    snprintf(error, sizeof error, "%s %s", path, message);
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_ERROR, .title = "Studio UI", .description = error });
+    studio_record(s, KIT_TOAST_ERROR, error);
 }
 
-/* Recompiles edited panel behaviors into the running world, keeping their
+/* Recompiles an edited panel behavior into the running world, keeping its
  * state; a behavior that fails keeps its last valid version. */
-static void reload_behaviors(studio *s)
+static void reload_behavior(studio *s, const char *path)
+{
+    char *text = text_file_read(path);
+    if (!text) {
+        return;
+    }
+    behavior_asset *asset = behavior_asset_load_json(text);
+    free(text);
+    char message[256] = "is not a behavior";
+    if (!asset ||
+        game_prototype_preview_update_behavior(s->ui->world, asset->name, asset, false, message, sizeof message) <
+            0) {
+        report_error(s, path, message);
+    }
+    behavior_asset_free(asset);
+}
+
+static void free_world(studio_ui *ui)
+{
+    for (int i = 0; i < acount(ui->panels); i++) {
+        free(ui->panels[i].name);
+        ui_mount_free(ui->panels[i].mount);
+    }
+    afree(ui->panels);
+    game_prototype_preview_free(ui->world);
+    for (int i = 0; i < acount(ui->prototypes); i++) {
+        game_prototype_free(ui->prototypes[i]);
+    }
+    afree(ui->prototypes);
+    ui->panels = NULL;
+    ui->prototypes = NULL;
+}
+
+/* A new world for the Studio scene; panels mount again in their hosts. */
+static bool open_world(studio_ui *ui, char *error, size_t size)
+{
+    ui->world = game_prototype_preview_new(&ui->registry);
+    app_behavior_fixtures_load(game_prototype_preview_live(ui->world), NULL, ui->content_root);
+    return launch(ui, error, size);
+}
+
+static bool in_folder(const studio_ui *ui, const char *path, const char *folder)
+{
+    size_t root = strlen(ui->content_root), length = strlen(folder);
+    return !strncmp(path + root, folder, length) && path[root + length] == '/';
+}
+
+/* Behaviors reload in place; a scene or prototype edit relaunches the world.
+ * UI documents follow their files as they mount. */
+static void follow_disk(studio *s)
 {
     studio_ui *ui = s->ui;
-    for (int i = 0; i < acount(ui->behaviors); i++) {
-        file_watch *w = &ui->behaviors[i];
-        if (!file_watch_changed(w, w->path, s->time)) {
-            continue;
+    char **changed = tree_watch_poll(&ui->files, ui->content_root, ".yaml", s->time);
+    bool relaunch = false;
+    for (int i = 0; i < acount(changed); i++) {
+        if (in_folder(ui, changed[i], "/behaviors")) {
+            reload_behavior(s, changed[i]);
         }
-        char *text = text_file_read(w->path);
-        behavior_asset *asset = text ? behavior_asset_load_json(text) : NULL;
-        free(text);
-        char message[256] = "is not a behavior";
-        if (!asset ||
-            game_prototype_preview_update_behavior(ui->world, asset->name, asset, false, message, sizeof message) <
-                0) {
-            char error[1024];
-            snprintf(error, sizeof error, "%s %s", w->path, message);
-            kit_toast(
-                s->kit,
-                0,
-                &(kit_toast_desc){ .type = KIT_TOAST_ERROR,
-                                   .title = "Studio UI",
-                                   .description = error }
-            );
-            studio_record(s, KIT_TOAST_ERROR, error);
-        }
-        behavior_asset_free(asset);
+        relaunch |= in_folder(ui, changed[i], "/scenes") ||
+                    in_folder(ui, changed[i], "/prototypes");
+    }
+    tree_watch_changes_free(changed);
+    if (!relaunch) {
+        return;
+    }
+    free_world(ui);
+    char error[256];
+    if (!open_world(ui, error, sizeof error)) {
+        report_error(s, "scenes/Studio.yaml", error);
     }
 }
 
@@ -171,14 +198,12 @@ studio_ui *studio_ui_new(const char *project_root, char *error, size_t size)
     snprintf(ui->content_root, length, "%s/content", project_root);
     ui->registry = (game_prototype_registry){ .components = GAME_REGISTRY_COMPONENTS,
                                               .component_count = GAME_REGISTRY_COMPONENT_COUNT };
-    ui->world = game_prototype_preview_new(&ui->registry);
     ui->listener = rml_listener_create(on_event, ui);
-    app_behavior_fixtures_load(game_prototype_preview_live(ui->world), NULL, ui->content_root);
-    if (!launch(ui, error, size)) {
+    if (!open_world(ui, error, size)) {
         studio_ui_free(ui);
         return NULL;
     }
-    watch_behaviors(ui);
+    tree_watch_poll(&ui->files, ui->content_root, ".yaml", 0);
     return ui;
 }
 
@@ -189,17 +214,8 @@ void studio_ui_free(studio_ui *ui)
     if (!ui) {
         return;
     }
-    for (int i = 0; i < acount(ui->panels); i++) {
-        free(ui->panels[i].name);
-        ui_mount_free(ui->panels[i].mount);
-    }
-    afree(ui->panels);
-    game_prototype_preview_free(ui->world);
-    for (int i = 0; i < acount(ui->prototypes); i++) {
-        game_prototype_free(ui->prototypes[i]);
-    }
-    afree(ui->prototypes);
-    afree(ui->behaviors);
+    free_world(ui);
+    tree_watch_free(&ui->files);
     rml_listener_destroy(ui->listener);
     free(ui->content_root);
     free(ui);
@@ -215,7 +231,7 @@ void studio_ui_frame(studio *s)
     if (!s->ui) {
         return;
     }
-    reload_behaviors(s);
+    follow_disk(s);
     game_prototype_preview_tick(s->ui->world, s->time);
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }
@@ -230,11 +246,11 @@ static panel *find_panel(studio_ui *ui, const char *name)
     return NULL;
 }
 
-/* Sends the panel's activations to its entity, an input's value first. */
-static void send_activations(studio_ui *ui, panel *p, ecs_entity entity)
+/* Sends a mount's activations to its entity, an input's value first. */
+static void send_activations(studio_ui *ui, ui_mount *mount, ecs_entity entity)
 {
     ui_activation a;
-    while (ui_mount_take(p->mount, &a)) {
+    while (ui_mount_take(mount, &a)) {
         if (a.has_value && a.id[0]) {
             char selector[160];
             snprintf(selector, sizeof selector, "#%s", a.id);
@@ -255,9 +271,9 @@ static void send_activations(studio_ui *ui, panel *p, ecs_entity entity)
 }
 
 /* Reports a panel's asset error once when it appears. */
-static void report(studio *s, panel *p)
+static void report(studio *s, panel *p, ui_mount *mount)
 {
-    const char *error = ui_mount_error(p->mount);
+    const char *error = ui_mount_error(mount);
     if (!strcmp(error, p->error)) {
         return;
     }
@@ -272,61 +288,65 @@ static void report(studio *s, panel *p)
     }
 }
 
-/* The panel's entity and its GameUi, or NULL when it has none. */
-static const GameUi *panel_ui(studio_ui *ui, const panel *p, ecs_entity *entity)
+/* The panel's GameUi, or NULL when it has none. */
+static const GameUi *panel_ui(studio_ui *ui, const panel *p)
 {
     ecs_world *world = game_prototype_preview_world(ui->world);
-    *entity = game_prototype_preview_entity_at(ui->world, p->index);
-    return GAME_GameUi_has(world, *entity) ? GAME_GameUi_get_const(world, *entity)
-                                           : NULL;
+    ecs_entity entity = game_prototype_preview_entity_at(ui->world, p->index);
+    return GAME_GameUi_has(world, entity) ? GAME_GameUi_get_const(world, entity) : NULL;
 }
 
 /* Mounts the panel's document in `host` and runs its settings and events. */
-static void show_panel(studio *s, panel *p, rml_element *host, ecs_entity entity, const char *document)
+static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host, const char *document)
 {
     studio_ui *ui = s->ui;
-    if (p->mount && strcmp(ui_mount_name(p->mount), document) != 0) {
-        ui_mount_free(p->mount);
-        p->mount = NULL;
+    ecs_entity entity = game_prototype_preview_entity_at(ui->world, p->index);
+    if (*mount && strcmp(ui_mount_name(*mount), document) != 0) {
+        ui_mount_free(*mount);
+        *mount = NULL;
     }
-    if (!p->mount) {
-        p->mount = ui_mount_new(ui->content_root, document);
+    if (!*mount) {
+        *mount = ui_mount_new(ui->content_root, document);
     }
-    if (ui_mount_sync(p->mount, host, ui->listener, s->time)) {
-        kit_style_sheet(s->kit, document, ui_mount_style(p->mount));
+    if (ui_mount_sync(*mount, host, ui->listener, s->time)) {
+        kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }
-    ui_mount_apply(p->mount, engine_ui(game_prototype_preview_runtime(ui->world)), ecs_entity_to_u64(entity));
-    ui_mount_settings(p->mount, settings(ui));
-    send_activations(ui, p, entity);
-    report(s, p);
+    ui_mount_apply(*mount, engine_ui(game_prototype_preview_runtime(ui->world)), ecs_entity_to_u64(entity));
+    ui_mount_settings(*mount, settings(ui));
+    send_activations(ui, *mount, entity);
+    report(s, p, *mount);
 }
 
 void studio_ui_panel(studio *s, const char *key, const char *name)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
-    ecs_entity entity;
-    const GameUi *component = p ? panel_ui(s->ui, p, &entity) : NULL;
+    const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
     if (component && component->document && component->document[0]) {
-        show_panel(s, p, kit_host(s->kit, key, "panel-host"), entity, component->document);
+        show_panel(
+            s,
+            p,
+            &p->mount,
+            kit_host(s->kit, key, "panel-host"),
+            component->document
+        );
     }
 }
 
 void studio_ui_modal(studio *s, const char *name)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
-    ecs_entity entity;
-    const GameUi *component = p ? panel_ui(s->ui, p, &entity) : NULL;
+    const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
     if (component && !component->hidden && component->document &&
         component->document[0]) {
-        show_panel(s, p, kit_modal_host(s->kit, name), entity, component->document);
+        show_panel(s, p, &p->mount, kit_modal_host(s->kit, name), component->document);
     }
 }
 
 void studio_ui_show(studio *s, const char *name)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
-    ecs_entity entity;
-    if (p && panel_ui(s->ui, p, &entity)) {
+    if (p && panel_ui(s->ui, p)) {
+        ecs_entity entity = game_prototype_preview_entity_at(s->ui->world, p->index);
         GAME_GameUi_get(game_prototype_preview_world(s->ui->world), entity)->hidden = false;
     }
 }

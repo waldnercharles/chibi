@@ -1,0 +1,24 @@
+/* Studio's theme: shadcn/ui's tokens, the editor's roles derived from them,
+   and the control styles every Studio document and Studio project UI shares,
+   in import order. Ported from
+   docs/prototypes/studio/kit.css; differences from the web source: dp units,
+   seconds for durations, named tweens, body instead of :root, borders without
+   a style keyword, and no outline. RmlUi does not lay out text placed directly
+   in a flex container, so text-bearing parts are blocks with an explicit line
+   height. Documents size and paint their own body. */
+
+@import "theme/base.rcss";
+@import "theme/tokens.rcss";
+@import "theme/roles.rcss";
+@import "theme/button.rcss";
+@import "theme/field.rcss";
+@import "theme/panel.rcss";
+@import "theme/popup.rcss";
+@import "theme/command.rcss";
+@import "theme/tree.rcss";
+@import "theme/toast.rcss";
+@import "theme/motion.rcss";
+@import "theme/list.rcss";
+@import "theme/code.rcss";
+@import "theme/drag.rcss";
+@import "theme/chart.rcss";

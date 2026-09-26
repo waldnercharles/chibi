@@ -167,6 +167,7 @@ TEST_CASE(all_checks)
     test_component_nodes();
     test_editor_documents();
     test_tree_watch();
+    test_rcss();
     test_scene_debug();
     test_appearance_geometry();
     test_orientation();
@@ -191,7 +192,7 @@ TEST_CASE(all_checks)
     test_kit_host();
     test_editor_checkpoint();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text and reload their style sheets");
+    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets and mix colors");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

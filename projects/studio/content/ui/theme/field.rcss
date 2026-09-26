@@ -1,0 +1,84 @@
+/* Field shell (shadcn Input Group): addon, value, unit, stepper arrows. */
+.field {
+    position: relative; display: flex; align-items: center; height: var(--h); flex: 1 1 0dp;
+    background-color: var(--secondary); border-radius: var(--r); color: var(--foreground); overflow: hidden;
+    border: 1dp transparent;
+    transition: background-color 0.11s cubic-out;
+}
+.field:hover { background-color: var(--field-hover); }
+.field[data-disabled] { opacity: 0.45; }
+.field[data-readonly] { background-color: transparent; border-color: var(--border); }
+.field[data-readonly] .step { display: none; }
+.field[data-editing] { background-color: var(--field-edit); border-color: var(--ring); }
+.field[data-invalid] { border-color: var(--destructive); }
+.field[data-scrubbing] { background-color: var(--field-press); }
+.field:focus-visible { border-color: var(--ring); }
+.field.number { tab-index: auto; drag: drag; cursor: ew-resize; }
+.field .fill { position: absolute; left: 0dp; top: 0dp; bottom: 0dp; background-color: var(--fill); pointer-events: none; }
+.field:hover .fill, .field[data-scrubbing] .fill { background-color: var(--fill-hover); }
+.field .mark { position: absolute; left: 0dp; top: 3dp; bottom: 3dp; width: 2dp; border-radius: 1dp; background-color: transparent; }
+.field[data-overridden] .mark { background-color: var(--override); }
+.field .part { position: relative; display: block; height: var(--text-line); line-height: var(--text-line); }
+.field .addon { padding-left: 7dp; color: var(--faint-foreground); flex: 0 0 auto; }
+.field .addon.x { color: var(--axis-x); }
+.field .addon.y { color: var(--axis-y); }
+.field .value {
+    flex: 1 1 0dp; padding: 0dp 7dp; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: InterNumeric;
+}
+.field .unit { padding-right: 7dp; color: var(--faint-foreground); flex: 0 0 auto; margin-left: -4dp; }
+.field input.value { cursor: text; height: 16dp; line-height: 16dp; margin-top: 2dp; font-family: Inter; color: var(--foreground); }
+.field input.value selection { background-color: var(--primary); color: var(--primary-foreground); }
+.field .step {
+    position: absolute; top: 0dp; bottom: 0dp; width: 14dp; display: flex; align-items: center; justify-content: center;
+    color: var(--muted-foreground); opacity: 0; transition: opacity 0.11s cubic-out; cursor: arrow;
+}
+.field .step .icon { font-size: 10dp; width: 10dp; }
+.field .step.dec { left: 0dp; }
+.field .step.inc { right: 0dp; }
+.field:hover .step { opacity: 1; }
+.field.slider .step, .field[data-editing] .step, .field[data-scrubbing] .step { opacity: 0; }
+.field .step:hover { background-color: var(--press); }
+.field.text, .field.search { background-color: var(--field-edit); cursor: text; }
+.field.text:hover, .field.search:hover { background-color: var(--input-hover); }
+.field.text .value, .field.search .value { text-align: left; font-family: Inter; }
+.field.text input.value, .field.search input.value { width: 100%; padding: 0dp 7dp; }
+.field.search .addon { padding-left: 6dp; }
+.field.search .addon .icon { color: var(--faint-foreground); }
+.field.search input.value { padding-left: 5dp; }
+.field.area { display: block; height: auto; }
+.field.area textarea.value {
+    display: block; width: 100%; height: auto; padding: 2dp 7dp; line-height: 16dp; cursor: text;
+    font-family: Inter; color: var(--foreground); text-align: left; white-space: pre-wrap; overflow-y: auto;
+}
+.field.area textarea.value selection { background-color: var(--primary); color: var(--primary-foreground); }
+
+/* Joined vector: components share one control. */
+.joined { display: flex; flex: 1 1 0dp; gap: 1dp; }
+.joined .field { border-radius: 0dp; }
+.joined .field:first-child { border-radius: 4dp 0dp 0dp 4dp; }
+.joined .field:last-child { border-radius: 0dp 4dp 4dp 0dp; }
+
+/* Select trigger. */
+.field.select { justify-content: flex-start; padding: 0dp 4dp 0dp 8dp; gap: 6dp; cursor: arrow; }
+.field.select .value { padding: 0dp; text-align: left; font-family: Inter; }
+.field.select .caret { color: var(--faint-foreground); width: 14dp; }
+.field.select[data-open] { background-color: var(--field-edit); }
+
+/* Color field. */
+.field.color { cursor: arrow; }
+.field.color .swatch { position: absolute; left: 3dp; right: 3dp; top: 3dp; bottom: 3dp; border-radius: 2dp; }
+.field.color .swatch.none { border: 1dp var(--border); }
+
+/* Checkbox. */
+.check { display: inline-flex; align-items: center; gap: 7dp; height: var(--h); color: var(--foreground); tab-index: auto; }
+.check .box {
+    width: 14dp; height: 14dp; border-radius: 3dp; background-color: var(--secondary);
+    display: flex; align-items: center; justify-content: center;
+    transition: background-color 0.11s cubic-out;
+}
+.check:hover .box { background-color: var(--field-hover); }
+.check .box .icon { font-size: 11dp; width: 12dp; color: var(--primary-foreground); opacity: 0; }
+.check[data-checked] .box { background-color: var(--primary); }
+.check[data-checked] .box .icon { opacity: 1; }
+.check[data-disabled], .check[data-readonly] { opacity: 0.5; }

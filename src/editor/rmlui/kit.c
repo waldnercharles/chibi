@@ -4,6 +4,8 @@
  * They implement the Base UI contracts recorded in
  * docs/prototypes/studio/kit.html; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
+#include "support/rcss.h"
+#include "support/text_file.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -881,8 +883,8 @@ static const rml_event_id kit_events[] = {
 
 /* ---------- Stylesheet reload ---------- */
 
-/* RCSS edits apply without a rebuild: the document re-reads its stylesheets
-   when a resource stylesheet changes. */
+/* RCSS edits apply without a rebuild: the document restyles when a resource
+   stylesheet or the theme changes. */
 static void watch_styles(kit *k)
 {
     DIR *dir = opendir(CHIBI_RMLUI_RESOURCE_DIR);
@@ -902,16 +904,25 @@ static void watch_styles(kit *k)
     closedir(dir);
 }
 
-static void sync_styles(kit *k)
+/* The theme, then the document's own stylesheet, then the extra ones. */
+static void restyle(kit *k)
 {
-    bool changed = false;
-    for (int i = 0; i < acount(k->styles); i++) {
-        changed |= file_watch_changed(&k->styles[i], k->styles[i].path, k->in.time);
+    char *source = text_file_read(k->sheet), error[200];
+    assert(source);
+    char *own = rcss_expand(source, CHIBI_RMLUI_RESOURCE_DIR, NULL, error, sizeof error);
+    if (!own) {
+        fprintf(stderr, "%s %s\n", k->sheet, error);
+        own = source;
+        source = NULL;
     }
-    if (!changed && !k->restyle) {
-        return;
+    free(source);
+    char *rcss = NULL;
+    str_catf(&rcss, "%s\n%s", k->theme ? k->theme : "", own);
+    if (!rml_document_set_style_sheet(k->doc, rcss)) {
+        fprintf(stderr, "RmlUi could not read %s\n", k->sheet);
     }
-    rml_document_reload_style_sheet(k->doc);
+    free(rcss);
+    free(own);
     for (int i = 0; i < acount(k->extra_styles); i++) {
         const char *rcss = k->extra_styles[i].value;
         if (rcss[0] && !rml_document_add_style_sheet(k->doc, rcss)) {
@@ -923,6 +934,27 @@ static void sync_styles(kit *k)
         }
     }
     k->restyle = false;
+}
+
+static void sync_styles(kit *k)
+{
+    bool changed = false;
+    for (int i = 0; i < acount(k->styles); i++) {
+        changed |= file_watch_changed(&k->styles[i], k->styles[i].path, k->in.time);
+    }
+    if (changed || k->restyle) {
+        restyle(k);
+    }
+}
+
+void kit_theme(kit *k, const char *rcss)
+{
+    if (k->theme && rcss && !strcmp(k->theme, rcss)) {
+        return;
+    }
+    free(k->theme);
+    k->theme = rcss ? xstrdup(rcss) : NULL;
+    k->restyle = true;
 }
 
 void kit_style_sheet(kit *k, const char *key, const char *rcss)
@@ -956,6 +988,10 @@ kit *kit_create(void *context, const char *document_path)
     k->doc = rml_context_load_document(k->context, path);
     free(path);
     assert(k->doc);
+    size_t stem = strlen(document_path) - strlen(".rml");
+    assert(!strcmp(document_path + stem, ".rml"));
+    str_catf(&k->sheet, "%s/%.*s.rcss", CHIBI_RMLUI_RESOURCE_DIR, (int)stem, document_path);
+    k->restyle = true; /* on the first frame, after the owner sets a theme */
     rml_document_show(k->doc, RML_MODAL_NONE, RML_FOCUS_AUTO, RML_SCROLL_FLAG_AUTO);
     register_chart_element();
     register_wires_element();
@@ -1023,6 +1059,8 @@ static void kit_free(kit *k)
     afree(k->layout_nodes);
     afree(k->text_motion);
     afree(k->styles);
+    free(k->sheet);
+    free(k->theme);
     pairs_free(k->extra_styles);
     free(k);
 }

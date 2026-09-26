@@ -134,6 +134,10 @@ extern void test_component_fields();
 extern void test_component_nodes();
 extern void test_editor_documents();
 extern void test_tree_watch();
+extern void test_rcss();
+/* A kit styled with the Studio project's theme (test/editor/kit_host.c). */
+typedef struct kit kit;
+kit *test_kit_create(void *context, const char *document);
 extern void test_scene_debug();
 extern void test_appearance_geometry();
 extern void test_orientation();

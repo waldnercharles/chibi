@@ -53,6 +53,7 @@ static void rejected_documents()
         { "rml: '<body><div/></body>'", "remove <body>" },
         { "rml: '<div/>'\nrcss: [1]", "rcss must be text" },
         { "rml: '<div/>'\nrcss: '</style><div>'", "must not close its style" },
+        { "rml: '<div/>'\nrcss: '.a { color: red;'", "rcss line 1: missing }" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         ui_document d = { 0 };
@@ -60,6 +61,30 @@ static void rejected_documents()
         bool ok = ui_document_read(cases[i].yaml, &d, error, sizeof error);
         test_check(!ok && strstr(error, cases[i].error) && !d.rml, cases[i].error);
     }
+}
+
+/* Nested RCSS flattens before the document scopes it. */
+static void nested_rcss()
+{
+    ui_document d = { 0 };
+    char error[256] = { 0 };
+    bool ok = ui_document_read(
+        "rml: <div class=\"menu\"/>\n"
+        "rcss: |\n"
+        "  // rows\n"
+        "  .menu { .item { margin: 0; &:hover { color: var(--fg); } } }\n",
+        &d,
+        error,
+        sizeof error
+    );
+    char *scoped = ok ? ui_document_scope(d.rcss, "Menu") : NULL;
+    test_check(
+        scoped && strstr(scoped, "[data-ui=\"Menu\"] .menu .item { margin: 0; }") &&
+            strstr(scoped, "[data-ui=\"Menu\"] .menu .item:hover { color: var(--fg); }"),
+        "a ui asset's nested RCSS flattens, then scopes to the asset"
+    );
+    free(scoped);
+    ui_document_free(&d);
 }
 
 /* An invalid edit keeps the last valid document; a valid one replaces it. */
@@ -125,7 +150,7 @@ static void expanded_widgets()
                 "<div data-ui=\"Meter\" id=\"hull\" class=\"wide\"><div "
                 "class=\"fill\"/></div>"
                 "|[data-ui=\"Meter\"] .fill { height: 4dp; "
-                "}\n[data-ui=\"Host\"] #host {}\n"
+                "}\n\n[data-ui=\"Host\"] #host {}\n"
             ) &&
             acount(uses) == 1 && !strcmp(uses[0], "Meter"),
         "a used widget becomes a div with its markup, and its RCSS precedes "
@@ -148,7 +173,7 @@ static void expanded_widgets()
                   "</span></div><div data-ui=\"Meter\"><div "
                   "class=\"fill\"/></div>"
                   "|[data-ui=\"Meter\"] .fill { height: 4dp; "
-                  "}\n[data-ui=\"Host\"] #host {}\n"
+                  "}\n\n[data-ui=\"Host\"] #host {}\n"
               ),
         "children fill a widget's slot, widgets nest, and each widget's RCSS "
         "appears once"
@@ -267,6 +292,7 @@ void test_ui_document()
     composed_document();
     rejected_documents();
     last_valid_document();
+    nested_rcss();
     expanded_widgets();
     scoped_styles();
     named_events();

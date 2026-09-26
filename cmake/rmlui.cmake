@@ -19,7 +19,23 @@ function(chibi_rmlui_dependencies)
         GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
         GIT_TAG ba95ffe8bfb6370efb2cdcca927eaad4710c5413 # 6.3
         UPDATE_DISCONNECTED TRUE)
-    FetchContent_MakeAvailable(rmlui)
+    FetchContent_GetProperties(rmlui)
+    if(NOT rmlui_POPULATED)
+        if(POLICY CMP0169)
+            cmake_policy(PUSH)
+            cmake_policy(SET CMP0169 OLD)
+        endif()
+        FetchContent_Populate(rmlui)
+        if(POLICY CMP0169)
+            cmake_policy(POP)
+        endif()
+    endif()
+    # CSS color-mix(), so theme roles derive from a few tokens at runtime.
+    set(PATCH_SOURCE "${rmlui_SOURCE_DIR}")
+    set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-color-mix.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
+    include(cmake/apply_patch.cmake)
+    add_subdirectory("${rmlui_SOURCE_DIR}" "${rmlui_BINARY_DIR}")
     foreach(target freetype rmlui_core rmlui_debugger)
         set_target_properties(${target} PROPERTIES
             POSITION_INDEPENDENT_CODE ON

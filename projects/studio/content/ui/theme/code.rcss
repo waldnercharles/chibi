@@ -1,0 +1,10 @@
+/* Code tokens (Shiki classes). */
+.tok-number { color: var(--tok-number); }
+.tok-string { color: var(--tok-string); }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-name { color: var(--tok-name); }
+.tok-path { color: var(--tok-path); }
+.tok-punct { color: var(--tok-punct); }
+.tok-muted { color: var(--faint-foreground); }
+.tok-error { color: var(--destructive); }
+.tok-warning { color: var(--warning); }

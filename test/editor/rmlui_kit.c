@@ -1,6 +1,7 @@
 /* Studio kit contracts without a GPU: reconciliation, number fields, menus, command. */
 #include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
+#include "test/suite_internal.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -291,7 +292,7 @@ bool test_rmlui_kit()
                       .morph = "Play",
                       .reveal = -1 };
     f.backend = rml_backend_create(1024, 640, 1);
-    f.k = kit_create(rml_backend_context(f.backend), "studio.rml");
+    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 1024, .height = 640 };
     settle(&f);
     bool ok = true;
@@ -625,7 +626,8 @@ bool test_rmlui_kit()
     /* A second context, like the zoomed graph canvas, comes and goes while the
        first keeps working. */
     rml_backend *second = rml_backend_create(200, 100, 2);
-    kit *canvas = second ? kit_create(rml_backend_context(second), "graph.rml") : NULL;
+    kit *canvas = second ? test_kit_create(rml_backend_context(second), "graph.rml")
+                         : NULL;
     ok &= check(canvas != NULL, "a second context loads its document");
     if (canvas) {
         kit_frame_input in = { .dp_ratio = 2, .width = 200, .height = 100 };

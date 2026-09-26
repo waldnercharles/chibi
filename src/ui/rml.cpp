@@ -646,11 +646,6 @@ void rml_document_update(rml_element *d)
     document(d)->UpdateDocument();
 }
 
-void rml_document_reload_style_sheet(rml_element *d)
-{
-    document(d)->ReloadStyleSheet();
-}
-
 bool rml_document_set_style_sheet(rml_element *d, const char *rcss)
 {
     Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString(rcss);

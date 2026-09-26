@@ -158,12 +158,12 @@ static void asset_crumb(studio *s)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
-    const asset_index *index = app_scene_authoring_asset_index(scene);
-    asset_index_kind kind = scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM
-                              ? ASSET_INDEX_SYSTEM
-                              : asset_index_domain_kind(
-                                    sg_graph_editor(s)->asset->domain
-                                );
+    const reference_index *index = app_scene_authoring_asset_index(scene);
+    reference_asset_kind kind = scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM
+                                  ? REFERENCE_ASSET_SYSTEM
+                                  : reference_domain_kind(
+                                        sg_graph_editor(s)->asset->domain
+                                    );
     kit_button_desc crumb = { .label = scene->graph_document_id,
                               .icon = studio_asset_kind_icon(kind),
                               .cls = "crumb" };
@@ -181,10 +181,10 @@ static void asset_crumb(studio *s)
     }
     /* The other assets of its kind, to switch to (the prototype's All
        Behaviors). */
-    if (kind != ASSET_INDEX_SYSTEM &&
+    if (kind != REFERENCE_ASSET_SYSTEM &&
         kit_submenu_begin(k, "all", studio_asset_kind_label(kind), studio_asset_kind_icon(kind))) {
-        for (int i = 0; index && i < asset_index_asset_count(index); i++) {
-            const asset_index_asset *asset = asset_index_asset_at(index, i);
+        for (int i = 0; index && i < reference_index_asset_count(index); i++) {
+            const reference_asset *asset = reference_index_asset_at(index, i);
             if (asset->kind != kind || asset->unresolved) {
                 continue;
             }

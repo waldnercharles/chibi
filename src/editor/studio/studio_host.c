@@ -425,6 +425,10 @@ void studio_free(studio *s)
     afree(s->events);
     afree(s->records);
     afree(s->runtime_errors);
+    afree(s->project_problems);
+    afree(s->references);
+    afree(s->calls.rows);
+    afree(s->members.uses.items);
     afree(s->perf);
     afree(s->keys);
     studio_projects_free(s);

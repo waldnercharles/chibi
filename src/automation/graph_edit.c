@@ -1931,7 +1931,8 @@ static int operation_convert_to_expression(edit_context *ctx, yyjson_val *op)
     return add_node_ref(ctx, yyjson_obj_get(op, "ref"), call);
 }
 
-/* Renaming, retyping or removing a signature pin updates every call. */
+/* Moving, renaming, retyping or removing a signature pin updates every call;
+   a move applies first, so the other fields edit the pin where it lands. */
 static int signature_pin(
     edit_context *ctx,
     yyjson_val *op,
@@ -1948,10 +1949,14 @@ static int signature_pin(
                  ? signature_refused(ctx, operation)
                  : 0;
     }
-    if (yyjson_obj_get(op, "order")) {
-        set_error(ctx, "set_pin.order cannot reorder a signature; remove the pin and add it again");
+    yyjson_val *order = yyjson_obj_get(op, "order");
+    int to = index;
+    if (order && (!value_nonnegative_int(order, &to) ||
+                  graph_signature_move(asset, g, result, index, to))) {
+        set_error(ctx, "set_pin.order must be the index of another input or output the signature declares on that side");
         return -1;
     }
+    index = to;
     yyjson_val *name = yyjson_obj_get(op, "name");
     if (name &&
         (!yyjson_is_str(name) ||
@@ -2123,7 +2128,7 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
         int target;
         if (!result && order &&
             (!value_nonnegative_int(order, &target) ||
-             graph_move_pin(ctx->graph, n, output, index, target))) {
+             graph_move_pin(ctx->graph, n, output, index, target) < 0)) {
             result = -1;
         }
     } else if (!strcmp(operation, "bind_input")) {

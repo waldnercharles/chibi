@@ -153,7 +153,11 @@ body:not(.dark) .viewport {
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--faint-foreground); background-color: var(--canvas); }
 
 /* Output. */
-.output-views { width: 260dp; display: flex; }
+/* View labels carry counts, so segments fit their labels. */
+.output-views, .output-scope { display: flex; flex: 0 0 auto; }
+.output-views .segmented, .output-scope .segmented { flex: 0 0 auto; }
+.output-views .seg, .output-scope .seg { flex: 0 0 auto; }
+.output-scope { margin-left: 6dp; }
 .output-filter { width: 160dp; display: flex; }
 .output-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; padding: 2dp 0dp 6dp; font-family: InterNumeric; }
 .output-list .vlist-content > .output-line, .output-row { display: block; height: 20dp; line-height: 20dp; padding: 0dp 10dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -217,6 +221,9 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .members-list .tree-row[data-section] .name { font-weight: 600; }
 .member-row { display: block; }
 .member-swatch { width: 9dp; height: 9dp; flex: 0 0 auto; margin: 0dp 5dp 0dp 3dp; }
+/* A member's use count, which lists its uses in Find. */
+.tree-row .member-uses { height: 18dp; min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--faint-foreground); font-family: InterNumeric; }
+.tree-row .member-uses[data-unused] { color: var(--disabled-foreground); }
 .member-rename .field { height: 20dp; margin-right: 4dp; }
 .type-pick { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; }
 .type-pick .member-swatch { margin: 0dp 4dp; }
@@ -225,3 +232,6 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .param-row .field { flex: 1 1 0dp; }
 .param-row .type-pick { flex: 0 0 104dp; }
 .param-row .select { flex: 0 0 78dp; }
+.param-row .param-grip { flex: 0 0 12dp; width: 12dp; font-size: 12dp; color: var(--disabled-foreground); cursor: grab; }
+.param-row .param-grip:hover { color: var(--muted-foreground); }
+.param { border-radius: 4dp; }

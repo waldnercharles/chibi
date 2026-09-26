@@ -165,7 +165,7 @@ const operationProperties = {
     type: "integer",
     minimum: 0,
     maximum: 65535,
-    description: "Execution edge order.",
+    description: "Execution edge order for connect; for set_pin, the zero-based index the pin moves to.",
   },
   side: {
     type: "string",
@@ -260,7 +260,7 @@ const searchNodesDefinition = {
     domain: {
       type: "string",
       enum: ["behavior", "shader", "field", "system"],
-      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity.",
+      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity and only the nodes their compiler supports.",
     },
     pin_type: {
       type: "string",

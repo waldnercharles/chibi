@@ -235,14 +235,25 @@ static void node_menu(studio *s, node *n)
     bool readonly = sg_graph_readonly(s);
     char title[256];
     kit_menu_group(k, "title", ed_node_title(e, n, title, sizeof title));
+    const char *definition = studio_chord(s, "Alt+G");
     if (ed_is_graph_call(n) &&
-        menu_item(k, "open", "Open Graph", KIT_ICON_EXTERNAL, NULL, false)) {
+        menu_item(k, "open", "Open Graph", KIT_ICON_EXTERNAL, definition, false)) {
         editor_open_graph_call(e, n->id);
+        return;
+    }
+    if (!ed_is_graph_call(n) && studio_node_definable(n) &&
+        menu_item(k, "definition", "Go to Definition", KIT_ICON_EXTERNAL, definition, false)) {
+        studio_go_to_definition(s, n);
         return;
     }
     if (studio_node_referable(n) &&
         menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, studio_chord(s, "Shift+Alt+F"), false)) {
         studio_find_node_references(s, n);
+        return;
+    }
+    if (studio_node_traceable(n) &&
+        menu_item(k, "calls", "Call Hierarchy", KIT_ICON_CALLERS, studio_chord(s, "Shift+Alt+H"), false)) {
+        studio_calls_node(s, n);
         return;
     }
     graph_pin_run run;
@@ -507,6 +518,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     );
     g->in.time = s->time;
     g->in.dp_ratio = g->zoom * scale;
+    g->in.zoom = g->zoom;
     g->in.width = canvas_w(g);
     g->in.height = canvas_h(g);
     kit_set_body_class(g->kit, "far", sg_far(s));
@@ -703,6 +715,9 @@ void studio_behavior_header(studio *s, int area)
             if (menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL, false)) {
                 studio_find_graph_references(s, gr);
             }
+            if (menu_item(k, "calls", "Call Hierarchy", KIT_ICON_CALLERS, NULL, false)) {
+                studio_calls_graph(s, gr);
+            }
             const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro"
                                                          : "Delete Function";
             if (menu_item(k, "delete", remove, KIT_ICON_TRASH, NULL, locked)) {
@@ -723,10 +738,10 @@ void studio_behavior_header(studio *s, int area)
             runtime_entity_label(scene, scene->debug.entity)
         );
         kit_label(k, "debug", "badge accent debug-target", debug);
-        kit_tip(k, "Wires show this instance running", NULL);
+        kit_tip(k, "Wires show this instance running", NULL, NULL);
     } else if (scene->debug_status == APP_DEBUG_STALE) {
         kit_label(k, "debug", "badge debug-target", "Edited");
-        kit_tip(k, "The running behavior differs from this graph; save to update it", NULL);
+        kit_tip(k, "The running behavior differs from this graph; save to update it", NULL, NULL);
     }
     if (s->graph.kit && s->graph.surface.rect.w > 0) {
         kit_number_flow(
@@ -802,4 +817,5 @@ void studio_behavior_body(studio *s, int area)
     studio_debug_call_stack(s);
     sg_find_panel(s);
     studio_graph_menus(s);
+    studio_definition_peek(s);
 }

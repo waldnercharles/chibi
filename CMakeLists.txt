@@ -88,7 +88,7 @@ if(NOT cute_framework_POPULATED)
     endif()
 endif()
 set(PATCH_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window)
+foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window)
     set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
     include(cmake/apply_patch.cmake)
@@ -440,7 +440,7 @@ target_include_directories(authoring_graph PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(authoring_graph PUBLIC core)
 
 add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
-    src/automation/graph_optimize.c
+    src/automation/graph_optimize.c src/automation/navigation.c
     src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
@@ -657,7 +657,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/automation_asset_write.c test/automation_graph_edit.c test/automation_search.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
+    test/automation_asset_write.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
     test/arena_input.c
     test/physics.c
@@ -665,6 +665,7 @@ add_executable(test_suite
     test/encounter.c
     test/encounter_query_benchmark.c
     test/system_arithmetic.c
+    test/system_nodes.c
     test/arena_play.c
     test/editor_checkpoint.c
     test/math_expression.c
@@ -672,7 +673,7 @@ add_executable(test_suite
     test/surface.c
     test/arena_post.c
     test/content_catalog.c
-    test/asset_index.c
+    test/reference_index.c
     test/shader_effects.c
     test/shader_program.c
     test/shader_image.c
@@ -723,6 +724,7 @@ add_executable(test_suite
     test/radiance.c
     test/radiance_intervals.c
     test/interior_border.c
+    test/png_encoding.c
     test/sdf_coverage.c
     test/draw_backend.cpp
     src/host/stacktrace.c

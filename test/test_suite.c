@@ -19,6 +19,7 @@
 
 void test_automation_graph_edit();
 void test_automation_search();
+void test_automation_navigation();
 void test_automation_graph_optimize();
 void test_automation_prototype_edit();
 void test_automation_scene_edit();
@@ -36,6 +37,7 @@ void run_entity_presence_checks();
 void test_surface_cpu();
 void test_shader_effects_cpu();
 void test_shader_image_cpu();
+void test_png_encoding();
 void test_physics();
 void test_materials();
 void test_fields();
@@ -46,7 +48,8 @@ void test_game_capabilities();
 void test_dash();
 void test_encounter();
 void test_system_arithmetic();
-void test_asset_index();
+void test_reference_index();
+void test_system_nodes();
 void test_component_presentation();
 void test_file_watch();
 void test_ui_document();
@@ -78,16 +81,19 @@ TEST_CASE(all_checks)
     registry_validate();
     test_automation_graph_edit();
     test_automation_search();
+    test_automation_navigation();
     test_automation_graph_optimize();
     test_automation_prototype_edit();
     test_automation_scene_edit();
     test_automation_asset_write();
     run_content_catalog_checks();
-    test_asset_index();
+    test_reference_index();
     run_graph_model_checks();
     run_graph_document_checks();
     run_graph_comment_checks();
     run_graph_find_checks();
+    run_graph_describe_checks();
+    run_graph_problems_checks();
     run_graph_arrange_checks();
     run_graph_inline_checks();
     run_graph_editing_checks();
@@ -140,6 +146,7 @@ TEST_CASE(all_checks)
     test_surface_cpu();
     test_shader_effects_cpu();
     test_shader_image_cpu();
+    test_png_encoding();
     test_typed_events();
     test_component_conversion();
     test_field_outputs();
@@ -169,6 +176,7 @@ TEST_CASE(all_checks)
     test_enemy_attack();
     test_system_host_wait();
     test_system_arithmetic();
+    test_system_nodes();
     run_engine_checks();
     run_parallel_checks();
     run_editor_command_checks();
@@ -230,6 +238,11 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
         registry_validate();
         run_graph_signature_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--reference-index")) {
+        registry_validate();
+        test_reference_index();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--debugging")) {
@@ -760,6 +773,7 @@ int main(int argc, char **argv)
         registry_validate();
         test_automation_graph_edit();
         test_automation_search();
+        test_automation_navigation();
         test_automation_graph_optimize();
         test_automation_prototype_edit();
         test_automation_scene_edit();
@@ -779,6 +793,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--system-arithmetic") == 0) {
         registry_validate();
         test_system_arithmetic();
+        test_system_nodes();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--arena-combat") == 0) {

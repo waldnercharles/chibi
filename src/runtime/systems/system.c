@@ -200,10 +200,44 @@ static int program_register(const system_program *program, const node *target, i
     return result;
 }
 
-static int node_named(const node *target, const char *prefix)
+/* The data nodes compile_value evaluates, by how each computes its outputs. */
+static bool data_supported(const node_desc *desc)
 {
-    return target && target->desc && target->desc->name &&
-           strncmp(target->desc->name, prefix, strlen(prefix)) == 0;
+    int fields = desc->type ? desc->type->field_count : -1;
+    bool sized = fields >= 0 && fields <= SYSTEM_MAX_PINS;
+    switch (desc->pure_kind) {
+        case NODE_PURE_DELTA: return desc->output_count == 1;
+        case NODE_PURE_COPY:
+            return desc->input_count == 1 && desc->output_count == 1;
+        case NODE_PURE_MAKE:
+            return sized && desc->input_count == fields && desc->output_count == 1;
+        case NODE_PURE_BREAK:
+            return sized && desc->input_count == 1 && desc->output_count == fields;
+        case NODE_PURE_CALL:
+            return desc->fn && desc->input_count <= SYSTEM_MAX_PINS &&
+                   desc->output_count == 1;
+        case NODE_PURE_FUNCTION: return desc == &NODE_BehaviorExpression;
+        case NODE_PURE_READ: return desc == &NODE_RandomReal;
+        default: return false;
+    }
+}
+
+bool game_system_node_supported(const node_desc *desc)
+{
+    switch (desc->component_kind) {
+        case NODE_COMPONENT_GET_SELF: return true;
+        /* A whole-value write copies the struct, so text would go unretained. */
+        case NODE_COMPONENT_SET_SELF: return type_is_plain(desc->type);
+        case NODE_COMPONENT_NONE: break;
+        default: return false;
+    }
+    return desc == &NODE_Event || (node_desc_is_pure(desc) && data_supported(desc));
+}
+
+static bool node_is(const node *target, node_component_kind kind)
+{
+    return target->desc->component_kind == kind &&
+           game_system_node_supported(target->desc);
 }
 
 static int node_has_exec_pins(const node *target)
@@ -736,8 +770,12 @@ static int compile_dataflow(system_program *program)
     int set_count = 0;
     for (int i = 0; i < acount(program->graph->nodes); i++) {
         const node *target = program->graph->nodes[i];
-        if (!node_named(target, "Set_") || node_has_exec_pins(target)) {
+        if (target->desc->component_kind != NODE_COMPONENT_SET_SELF ||
+            node_has_exec_pins(target)) {
             continue;
+        }
+        if (!game_system_node_supported(target->desc)) {
+            return -1;
         }
         if (compile_component_set(program, target) != 0) {
             return -1;
@@ -810,11 +848,14 @@ static int compile_value(system_program *program, const node *target, int output
         program->node_state[index] = 2;
         return program->event_delta;
     }
-    if (node_named(target, "Get_")) {
+    if (node_is(target, NODE_COMPONENT_GET_SELF)) {
         if (node_has_exec_pins(target)) {
             return compile_exec(program, target) == 0 ? result : -1;
         }
         return compile_component_get(program, target) == 0 ? result : -1;
+    }
+    if (!game_system_node_supported(target->desc)) {
+        return -1;
     }
 
     program->node_state[index] = 1;
@@ -961,12 +1002,13 @@ static int compile_exec(system_program *program, const node *target)
     if (program->node_state[index] == 1 || target->input_count > SYSTEM_MAX_PINS) {
         return -1;
     }
-    if (!node_named(target, "Get_") && !node_named(target, "Set_")) {
+    bool get = node_is(target, NODE_COMPONENT_GET_SELF);
+    if (!get && !node_is(target, NODE_COMPONENT_SET_SELF)) {
         return -1;
     }
     program->node_state[index] = 1;
     system_instruction *instruction = NULL;
-    if (node_named(target, "Get_")) {
+    if (get) {
         if (!target->desc->access || target->desc->access->read_count != 1 ||
             target->input_count != 1 || target->output_count < 2) {
             program->node_state[index] = 0;

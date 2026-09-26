@@ -1,7 +1,5 @@
 #include "runtime/components.h"
 
-void game_component_probe(void) {}
-
 GameTransform game_move_transform(GameTransform transform, float x, float y)
 {
     transform.x += x;

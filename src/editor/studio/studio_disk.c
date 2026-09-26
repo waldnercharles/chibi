@@ -49,6 +49,8 @@ static void report(studio *s, app_disk_result result, const char *path, const ch
 void studio_disk_frame(studio *s)
 {
     app_disk_change *changes = app_scene_authoring_sync_disk(s->scene, s->time);
+    /* What changed on disk can change the project's problems. */
+    s->problems_checked = s->problems_checked && !acount(changes);
     for (int i = 0; i < acount(changes); i++) {
         report(s, changes[i].result, changes[i].path, changes[i].message);
     }
@@ -66,6 +68,7 @@ void studio_disk_frame(studio *s)
             path,
             app_scene_authoring_message(s->scene)
         );
+        s->problems_checked = false;
         free(path);
     }
 }

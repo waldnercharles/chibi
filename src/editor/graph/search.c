@@ -12,6 +12,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/systems/system.h"
 #include "support/text_search.h"
 
 #include <assert.h>
@@ -28,6 +29,8 @@ static const node_desc ed_math_desc = {
     .name = "Behavior Expression",
     .category = "Math",
     .keywords = "formula expression equation calculate",
+    .description = "Evaluates a formula as a value, an action run on Exec, or "
+                   "a branch that fires True or False from Result.",
     .inputs = ed_math_inputs,
     .input_count = 2,
     .outputs = ed_math_outputs,
@@ -38,6 +41,7 @@ static const node_desc ed_comment_box_desc = {
     .name = "Comment Box",
     .category = "Basic",
     .keywords = "comment note annotation",
+    .description = "Adds a titled frame for grouping nodes.",
     .display_class = NODE_DISPLAY_PURE
 };
 
@@ -142,24 +146,7 @@ static bool ed_struct_fields_connectable(const pin_spec *aggregate, const pin_sp
 
 static int ed_system_node_allowed(const node_desc *desc)
 {
-    if (desc == &ed_math_desc) {
-        return 1;
-    }
-    if (desc && desc->type && type_is_plain(desc->type) &&
-        (desc->component_kind == NODE_COMPONENT_GET_SELF ||
-         desc->component_kind == NODE_COMPONENT_SET_SELF)) {
-        return 1;
-    }
-    static const char *const names[] = {
-        "Event", "Add",   "Multiply", "Subtract", "Divide", "Min",
-        "Max",   "Clamp", "Modulo",   "Negate",   "Abs",    "Delta Time",
-    };
-    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
-        if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {
-            return 1;
-        }
-    }
-    return 0;
+    return desc == &ed_math_desc || game_system_node_supported(desc);
 }
 
 static int ed_compact_system_node(editor *e, node *n)
@@ -617,6 +604,17 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
         qsort(matches, (size_t)acount(matches), sizeof *matches, ed_search_match_cmp);
     }
     return matches;
+}
+
+node_subject ed_search_match_subject(const editor *e, const ed_search_match *match)
+{
+    return (node_subject){
+        .desc = match->desc,
+        .setting = match->setting,
+        .field = match->field,
+        .host = match->host_event ? &e->event_catalog[match->host_event - 1] : NULL,
+        .definition = match->event,
+    };
 }
 
 static node *spawn_match(editor *e, const ed_search_match *match)

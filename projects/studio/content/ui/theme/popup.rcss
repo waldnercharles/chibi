@@ -31,12 +31,17 @@
 .menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--border); }
 .menu-group { height: 22dp; line-height: 22dp; display: block; padding: 0dp 6dp; font-size: 11dp; color: var(--faint-foreground); }
 
+/* The label and shortcut stay on one line; a description wraps beneath them.
+   The kit sets the font size (kit_popup.c), undoing a canvas's zoom, so the
+   other lengths are in em. */
 .tooltip {
-    position: absolute; pointer-events: none; background-color: var(--tooltip); border: 1dp var(--tooltip-edge); border-radius: var(--r);
-    padding: 4dp 7dp; display: flex; align-items: center; gap: 8dp; white-space: nowrap; color: var(--foreground); font-size: 11dp;
+    position: absolute; pointer-events: none; background-color: var(--tooltip); border: 1dp var(--tooltip-edge); border-radius: 0.36em;
+    padding: 0.36em 0.64em; display: block; color: var(--foreground); line-height: 1.45em;
     z-index: 40;
 }
-.tooltip .kbd { color: var(--faint-foreground); }
+.tip-head { display: flex; align-items: center; gap: 0.73em; white-space: nowrap; }
+.tip-about { display: block; max-width: 23.6em; margin-top: 0.18em; line-height: 1.36em; color: var(--muted-foreground); white-space: normal; }
+.tooltip .kbd { font-size: 1em; color: var(--faint-foreground); }
 .tooltip { opacity: 1; transition: opacity 0.1s cubic-out; }
 .tooltip[data-starting-style] { opacity: 0; }
 .tooltip[data-instant] { transition: none; }

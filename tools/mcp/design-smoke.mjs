@@ -24,6 +24,11 @@ writeFileSync(join(project, "content/ui/Slot.yaml"), [
   "rml: '<div id=\"slot\" data-event=\"Fit\">Empty modifier slot</div>'",
   "",
 ].join("\n"));
+// A widget host: it uses Slot and sends Award, an event definition.
+writeFileSync(join(project, "content/ui/Rack.yaml"), [
+  "rml: '<use ui=\"Slot\"/><div id=\"award\" data-keys=\"Enter:Award\">Award</div>'",
+  "",
+].join("\n"));
 
 function request(name, args, expectError = false) {
   const run = spawnSync(process.execPath, [join(root, "tools/mcp/server.mjs")], {
@@ -81,6 +86,9 @@ function field(snapshot, entity, component, name) {
 
 try {
   assert.equal(request("searchNodes", { query: "Raycast" }).nodes[0].type, "Raycast");
+  const extract = request("searchNodes", { query: "extract", include_pins: false }).nodes[0];
+  assert.equal(extract.event_name, "Extract");
+  assert.equal(extract.description, "Sent when the player clicks #extract in Bank.");
   create("event", "Award", [{ op: "add_variable", name: "Amount", type: "int", default: 0 }]);
   create("behavior", "Receiver", [
     { op: "add_variable", name: "Reward", type: "int", default: 9, ref: "reward" },
@@ -154,6 +162,27 @@ try {
   const bankUsers = request("inspectAssetDependencies", { kind: "ui", name: "Bank", direction: "incoming" });
   assert.ok(bankUsers.edges.some(edge => edge.from.kind === "prototype" && edge.from.name === "Bank"),
     "a GameUi document is a dependency of its prototype");
+  const rack = request("inspectAssetDependencies", { kind: "ui", name: "Rack" });
+  assert.ok(rack.edges.some(edge => edge.to.kind === "ui" && edge.to.name === "Slot"),
+    "a ui document depends on the widgets it uses");
+  assert.ok(rack.edges.some(edge => edge.to.kind === "event" && edge.to.name === "Award"),
+    "a ui document depends on the event definitions it sends");
+  const award = request("inspectAssetDependencies", { kind: "event", name: "Award", direction: "incoming" });
+  assert.ok(award.edges.some(edge => edge.from.kind === "behavior" && edge.from.name === "Receiver"),
+    "an event definition's handlers depend on it");
+  const spawners = request("inspectAssetDependencies", { kind: "prototype", name: "Payload", direction: "incoming" });
+  assert.ok(spawners.edges.some(edge => edge.from.kind === "behavior" && edge.from.name === "Spawner"),
+    "a spawned prototype is a dependency of the graph that spawns it");
+  // A ui document's data-keys send Award; Receiver's handler runs on it.
+  const awards = request("callHierarchy", { event: "Award" });
+  assert.ok(awards.root.callers.some(item => item.kind === "place" && item.asset.kind === "ui" && item.asset.name === "Rack"),
+    "a ui document sending an event is its caller");
+  assert.ok(awards.root.callees.some(item => item.kind === "handler" && item.asset.name === "Receiver"),
+    "an event's handlers are its callees");
+  const awardUses = request("findReferences", { event: "Award", roles: ["send"] });
+  assert.ok(awardUses.definition.asset.kind === "event" && awardUses.uses.every(use => use.role === "send") &&
+    awardUses.uses.some(use => use.asset.name === "Rack") && awardUses.counts.handle >= 1,
+    "findReferences filters uses by role and counts every role");
   // A UI activation fits a part: GameHealth records it, the label shows it.
   create("behavior", "RecipeSlot", [
     { op: "add_node", type: "Event", event_name: "Fit", ref: "fit" },

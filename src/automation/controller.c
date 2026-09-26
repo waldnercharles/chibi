@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 
 #include "assets/prototype.h"
+#include "assets/reference_index.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "assets/ui_document.h"
@@ -8,16 +9,19 @@
 #include "automation/field_preview.h"
 #include "automation/graph_edit.h"
 #include "automation/graph_optimize.h"
+#include "automation/navigation.h"
 #include "automation/prototype_edit.h"
 #include "automation/scene_edit.h"
 #include "ecs/ecs.h"
 #include "editor/documents/component_presentation.h"
+#include "graph/authoring/describe.h"
 #include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/events.h"
 #include "graph/document/library.h"
+#include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
@@ -63,21 +67,22 @@ typedef struct
     const char *kind;
     const char *folder;
     asset_loader loader;
+    reference_asset_kind reference; /* KIND_COUNT for assets nothing references */
 } asset_family;
 
 static const asset_family ASSET_FAMILIES[] = {
-    { "behavior", "behaviors", ASSET_GRAPH },
-    { "event", "events", ASSET_GRAPH },
-    { "library", "libraries", ASSET_GRAPH },
-    { "material", "materials", ASSET_GRAPH },
-    { "shape", "shapes", ASSET_GRAPH },
-    { "field", "fields", ASSET_GRAPH },
-    { "shader-library", "shader-libraries", ASSET_GRAPH },
-    { "system", "systems", ASSET_SYSTEM },
-    { "prototype", "prototypes", ASSET_PROTOTYPE },
-    { "scene", "scenes", ASSET_SCENE },
-    { "editor", "editor", ASSET_EDITOR },
-    { "ui", "ui", ASSET_UI },
+    { "behavior", "behaviors", ASSET_GRAPH, REFERENCE_ASSET_BEHAVIOR },
+    { "event", "events", ASSET_GRAPH, REFERENCE_ASSET_EVENT },
+    { "library", "libraries", ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "material", "materials", ASSET_GRAPH, REFERENCE_ASSET_MATERIAL },
+    { "shape", "shapes", ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
+    { "field", "fields", ASSET_GRAPH, REFERENCE_ASSET_FIELD },
+    { "shader-library", "shader-libraries", ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "system", "systems", ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
+    { "prototype", "prototypes", ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
+    { "scene", "scenes", ASSET_SCENE, REFERENCE_ASSET_SCENE },
+    { "editor", "editor", ASSET_EDITOR, REFERENCE_ASSET_KIND_COUNT },
+    { "ui", "ui", ASSET_UI, REFERENCE_ASSET_UI },
 };
 
 typedef struct
@@ -127,9 +132,10 @@ typedef struct
     int errors;
     int warnings;
     catalog_member *members;
-    catalog_reference *dependencies;
+    catalog_reference *dependencies; /* derived from references */
     catalog_reference *dependents;
     catalog_diagnostic *diagnostics;
+    int reference; /* its position in the snapshot's references, or -1 */
 } catalog_asset;
 
 typedef struct
@@ -137,6 +143,7 @@ typedef struct
     char *root;
     asset_entry *entries;
     catalog_asset *assets;
+    reference_index *references;
     uint64_t revision;
     uint64_t content_hash;
 } catalog_snapshot;
@@ -244,6 +251,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "graph_name", "string", false, "Select one graph by its authored name." },
     { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
     { "include_pins", "boolean", false, "List each node's pins as \"name: type\" with resolved wildcard types; defaults to true." },
+    { "include_uses", "boolean", false, "Count project-wide uses by role of the asset, its functions and macros, and a behavior's variables; defaults to false." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -401,6 +409,31 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
     { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
     { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
+};
+
+static const contract_field CONTRACT_FIND_REFERENCES[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
+    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
+    { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
+    { "variable", "string", false, "Variable name in asset." },
+    { "parameter", "string", false, "Input or output name of the function graph names." },
+    { "local", "string", false, "Named value (local) in asset." },
+    { "event", "string", false, "Event name: a host event, an event definition, or a ui or action event." },
+    { "component", "string", false, "Component name or key." },
+    { "field", "string", false, "Field path of component." },
+    { "roles", "string[]", false, "Only uses in these roles: use, call, argument, read, write, send, handle, spawn, attach, bind." },
+    { "offset", "integer", false, "Zero-based page offset." },
+    { "limit", "integer", false, "Page size, default 50, maximum 200." },
+};
+static const contract_field CONTRACT_CALL_HIERARCHY[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "asset", "object", false, "Asset {kind, name} holding the function or macro." },
+    { "graph", "string", false, "Function or macro name in asset." },
+    { "graph_id", "uint64", false, "Function or macro ID in asset." },
+    { "event", "string", false, "Event name, instead of a function." },
+    { "direction", "string", false, "incoming (callers), outgoing (callees) or both; defaults to both." },
+    { "depth", "integer", false, "Levels below the root, 1 to 6; defaults to 2." },
 };
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
@@ -580,6 +613,26 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "Inspect direct or transitive asset dependency relationships.",
         CONTRACT_ASSET_DEPENDENCIES,
         CONTRACT_FIELD_COUNT(CONTRACT_ASSET_DEPENDENCIES),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "find_references",
+        "Find a symbol's definition and its uses across the project, by role.",
+        CONTRACT_FIND_REFERENCES,
+        CONTRACT_FIELD_COUNT(CONTRACT_FIND_REFERENCES),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "call_hierarchy",
+        "Trace a function's or event's callers and callees as a tree.",
+        CONTRACT_CALL_HIERARCHY,
+        CONTRACT_FIELD_COUNT(CONTRACT_CALL_HIERARCHY),
         1,
         true,
         true,
@@ -1130,6 +1183,7 @@ static void free_catalog_snapshot(catalog_snapshot *snapshot)
     free(snapshot->root);
     free_asset_entries(snapshot->entries);
     free_catalog_assets(snapshot->assets);
+    reference_index_free(snapshot->references);
     memset(snapshot, 0, sizeof *snapshot);
 }
 
@@ -1162,130 +1216,6 @@ static void catalog_member_add(catalog_asset *asset, const char *kind, const cha
     }
     catalog_member member = { .kind = xstrdup(kind), .name = xstrdup(name) };
     apush(asset->members, member);
-}
-
-static char *catalog_normalize_name(const char *value)
-{
-    if (!value || !value[0]) {
-        return NULL;
-    }
-    const char *name = strrchr(value, '/');
-    name = name ? name + 1 : value;
-    size_t length = strlen(name);
-    if (length > sizeof ASSET_EXTENSION - 1 &&
-        !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
-        length -= sizeof ASSET_EXTENSION - 1;
-    }
-    if (!length) {
-        return NULL;
-    }
-    char *copy = xmalloc(length + 1);
-    memcpy(copy, name, length);
-    copy[length] = '\0';
-    return copy;
-}
-
-static void catalog_reference_add(catalog_asset *asset, const char *kind, const char *value)
-{
-    char *name = catalog_normalize_name(value);
-    if (!name) {
-        return;
-    }
-    const char *reference_kind = kind ? kind : "";
-    for (int i = 0; i < acount(asset->dependencies); i++) {
-        if (!strcmp(asset->dependencies[i].kind, reference_kind) &&
-            !strcmp(asset->dependencies[i].name, name)) {
-            free(name);
-            return;
-        }
-    }
-    catalog_reference reference = {
-        .kind = xstrdup(reference_kind),
-        .name = name,
-        .resolved = false,
-    };
-    apush(asset->dependencies, reference);
-}
-
-static void catalog_scan_references(catalog_asset *asset, yyjson_val *value)
-{
-    if (yyjson_is_obj(value)) {
-        yyjson_obj_iter iterator = yyjson_obj_iter_with(value);
-        yyjson_val *key;
-        while ((key = yyjson_obj_iter_next(&iterator))) {
-            const char *field = yyjson_get_str(key);
-            yyjson_val *child = yyjson_obj_iter_get_val(key);
-            if (yyjson_is_obj(child) && (!strcmp(field, "MaterialTerrain") ||
-                                         !strcmp(field, "GAME.MaterialTerrain"))) {
-                catalog_reference_add(asset, "field", request_string(child, "field"));
-            }
-            if (yyjson_is_obj(child) && (!strcmp(field, "EngineSystem") ||
-                                         !strcmp(field, "GAME.EngineSystem"))) {
-                catalog_reference_add(asset, "system", request_string(child, "asset"));
-            }
-            if (yyjson_is_obj(child) &&
-                (!strcmp(field, "GameUi") || !strcmp(field, "GAME.GameUi"))) {
-                catalog_reference_add(asset, "ui", request_string(child, "document"));
-            }
-            if (yyjson_is_str(child) && !strcmp(field, "rml") &&
-                !strcmp(asset->asset.family->kind, "ui")) {
-                char **names = NULL;
-                ui_document_use_names(yyjson_get_str(child), &names);
-                for (int i = 0; i < acount(names); i++) {
-                    catalog_reference_add(asset, "ui", names[i]);
-                    free(names[i]);
-                }
-                afree(names);
-            }
-            if (yyjson_is_str(child)) {
-                const char *kind = NULL;
-                if (!strcmp(field, "reference_asset") ||
-                    !strcmp(field, "includes") || !strcmp(field, "include")) {
-                    kind = !strcmp(asset->asset.family->kind, "material") ||
-                                   !strcmp(asset->asset.family->kind, "shader-library")
-                             ? "shader-library"
-                             : "library";
-                } else if (!strcmp(field, "prototype")) {
-                    kind = "prototype";
-                } else if (!strcmp(field, "material")) {
-                    kind = "material";
-                } else if (!strcmp(field, "shape")) {
-                    kind = "shape";
-                }
-                if (kind) {
-                    catalog_reference_add(asset, kind, yyjson_get_str(child));
-                }
-            } else if (yyjson_is_arr(child) && (!strcmp(field, "behaviors") || !strcmp(field, "includes"))) {
-                size_t index, count;
-                yyjson_val *item;
-                yyjson_arr_foreach(child, index, count, item)
-                {
-                    if (yyjson_is_str(item)) {
-                        catalog_reference_add(
-                            asset,
-                            !strcmp(field, "behaviors") ? "behavior" : "library",
-                            yyjson_get_str(item)
-                        );
-                    } else if (yyjson_is_obj(item)) {
-                        const char *name = request_string(item, "name");
-                        catalog_reference_add(
-                            asset,
-                            !strcmp(field, "behaviors") ? "behavior" : "library",
-                            name
-                        );
-                    }
-                }
-            }
-            catalog_scan_references(asset, child);
-        }
-    } else if (yyjson_is_arr(value)) {
-        size_t index, count;
-        yyjson_val *child;
-        yyjson_arr_foreach(value, index, count, child)
-        {
-            catalog_scan_references(asset, child);
-        }
-    }
 }
 
 static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
@@ -1381,56 +1311,85 @@ static bool read_ui_asset(const char *json, char *error, size_t error_size)
     return ok;
 }
 
-static void catalog_validate_asset(const char *root, catalog_asset *asset, const char *json)
+/* What graph assets link with: the libraries, shader libraries and event
+   definitions, loaded once per catalog. `error` is why they did not load. */
+typedef struct
+{
+    behavior_asset **assets;
+    char error[256];
+} catalog_links;
+
+static bool links_family(const asset_family *family)
+{
+    return !strcmp(family->kind, "library") ||
+           !strcmp(family->kind, "shader-library") || !strcmp(family->kind, "event");
+}
+
+static void load_catalog_links(const char *root, const asset_entry *entries, catalog_links *links)
+{
+    for (int i = 0; i < acount(entries) && !links->error[0]; i++) {
+        if (!links_family(entries[i].family)) {
+            continue;
+        }
+        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(path_size);
+        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
+        char *json = read_file(path, NULL, NULL, links->error, sizeof links->error);
+        free(path);
+        behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+        if (json && !asset) {
+            snprintf(
+                links->error,
+                sizeof links->error,
+                "could not load %s: %s",
+                entries[i].relative,
+                graph_last_error()
+            );
+        }
+        free(json);
+        if (asset) {
+            apush(links->assets, asset);
+        }
+    }
+}
+
+static void catalog_add_report(catalog_asset *asset, const compile_report *report)
+{
+    asset->errors = report->error_count;
+    asset->warnings = report->warning_count;
+    for (int i = 0; i < acount(report->items); i++) {
+        const compile_diagnostic *diagnostic = &report->items[i];
+        catalog_add_diagnostic(
+            asset,
+            cmpl_severity_name(diagnostic->severity),
+            diagnostic->rule,
+            cmpl_rule_name(diagnostic->rule),
+            diagnostic->message
+        );
+    }
+}
+
+static void catalog_validate_asset(const catalog_links *links, catalog_asset *asset, const char *json)
 {
     const asset_family *family = asset->asset.family;
     if (family->loader == ASSET_GRAPH) {
         behavior_asset *behavior = behavior_asset_load_json(json);
-        char link_error[256] = { 0 };
-        if (behavior && behavior->domain == BEHAVIOR_DOMAIN_FIELD) {
-            behavior_asset **libraries = NULL;
-            int status = load_behavior_family_assets(
-                root,
-                family_by_kind("library"),
-                &libraries,
-                link_error,
-                sizeof link_error
-            );
-            behavior_asset *linked = status == CHIBI_AUTOMATION_OK
-                                       ? behavior_asset_link_libraries(
-                                             behavior,
-                                             (const behavior_asset *const *)libraries,
-                                             acount(libraries),
-                                             link_error,
-                                             sizeof link_error
-                                         )
-                                       : NULL;
-            behavior_asset_free(behavior);
-            free_behavior_assets(libraries);
-            behavior = linked;
-        }
-        if (!behavior) {
+        if (!behavior || links->error[0]) {
             asset->errors = 1;
-            catalog_add_diagnostic(asset, "error", 0, "LOAD", link_error[0] ? link_error : graph_last_error());
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", behavior ? links->error : graph_last_error());
         } else {
             compile_report report;
             compile_report_init(&report);
-            behavior_asset_compile(behavior, &report);
-            asset->errors = report.error_count;
-            asset->warnings = report.warning_count;
-            for (int i = 0; i < acount(report.items); i++) {
-                const compile_diagnostic *diagnostic = &report.items[i];
-                catalog_add_diagnostic(
-                    asset,
-                    cmpl_severity_name(diagnostic->severity),
-                    diagnostic->rule,
-                    cmpl_rule_name(diagnostic->rule),
-                    diagnostic->message
-                );
-            }
+            behavior_asset_free(behavior_asset_validate(
+                behavior,
+                (const behavior_asset *const *)links->assets,
+                acount(links->assets),
+                &report
+            ));
+            catalog_add_report(asset, &report);
             compile_report_free(&report);
-            behavior_asset_free(behavior);
         }
+        behavior_asset_free(behavior);
     } else if (family->loader == ASSET_SYSTEM) {
         char error[256] = { 0 };
         game_system_document *document = game_system_document_load(
@@ -1447,18 +1406,7 @@ static void catalog_validate_asset(const char *root, catalog_asset *asset, const
             compile_report report;
             compile_report_init(&report);
             behavior_asset_compile_for_system(game_system_document_behavior_asset(document), &report);
-            asset->errors = report.error_count;
-            asset->warnings = report.warning_count;
-            for (int i = 0; i < acount(report.items); i++) {
-                const compile_diagnostic *diagnostic = &report.items[i];
-                catalog_add_diagnostic(
-                    asset,
-                    cmpl_severity_name(diagnostic->severity),
-                    diagnostic->rule,
-                    cmpl_rule_name(diagnostic->rule),
-                    diagnostic->message
-                );
-            }
+            catalog_add_report(asset, &report);
             compile_report_free(&report);
             game_system_document_free(document);
         }
@@ -1510,78 +1458,202 @@ static int catalog_asset_index(const catalog_asset *assets, int count, const cha
     return -1;
 }
 
-static int catalog_resolve_index(
-    const catalog_asset *assets,
-    int count,
-    const catalog_asset *source,
-    const catalog_reference *reference
-)
+static const asset_family *family_by_reference(reference_asset_kind kind)
 {
-    int index = catalog_asset_index(assets, count, reference->kind, reference->name);
-    if (index >= 0) {
-        return index;
-    }
-    if (!reference->kind[0]) {
-        index = catalog_asset_index(assets, count, NULL, reference->name);
-        if (index >= 0) {
-            return index;
+    for (int i = 0; i < (int)(sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES); i++) {
+        if (ASSET_FAMILIES[i].reference == kind) {
+            return &ASSET_FAMILIES[i];
         }
     }
-    if (!strcmp(reference->kind, "library")) {
-        index = catalog_asset_index(assets, count, "shader-library", reference->name);
-        if (index >= 0) {
-            return index;
-        }
-    } else if (!strcmp(reference->kind, "shader-library")) {
-        index = catalog_asset_index(assets, count, "library", reference->name);
-        if (index >= 0) {
-            return index;
-        }
-    }
-    if (source && !strcmp(source->asset.family->kind, "shader-library")) {
-        return catalog_asset_index(assets, count, "library", reference->name);
-    }
-    return -1;
+    assert(!"every reference kind has a family");
+    return NULL;
 }
 
-static void catalog_resolve_references(catalog_asset *assets)
+static void catalog_reference_add(
+    catalog_reference **references,
+    const char *kind,
+    const char *name,
+    bool resolved
+)
 {
-    int count = acount(assets);
-    for (int i = 0; i < count; i++) {
-        catalog_asset *source = &assets[i];
-        qsort(
-            source->dependencies,
-            (size_t)acount(source->dependencies),
-            sizeof *source->dependencies,
-            catalog_reference_compare
-        );
-        for (int j = 0; j < acount(source->dependencies); j++) {
-            catalog_reference *reference = &source->dependencies[j];
-            int target_index = catalog_resolve_index(assets, count, source, reference);
-            if (target_index < 0) {
-                continue;
-            }
-            reference->resolved = true;
-            if (strcmp(reference->kind, assets[target_index].asset.family->kind)) {
-                free(reference->kind);
-                reference->kind = xstrdup(assets[target_index].asset.family->kind);
-            }
-            catalog_reference dependent = {
-                .kind = xstrdup(source->asset.family->kind),
-                .name = xstrdup(source->name),
-                .resolved = true,
-            };
-            apush(assets[target_index].dependents, dependent);
+    for (int i = 0; i < acount(*references); i++) {
+        if (!strcmp((*references)[i].kind, kind) &&
+            !strcmp((*references)[i].name, name)) {
+            return;
         }
     }
-    for (int i = 0; i < count; i++) {
-        qsort(
-            assets[i].dependents,
-            (size_t)acount(assets[i].dependents),
-            sizeof *assets[i].dependents,
-            catalog_reference_compare
-        );
+    catalog_reference reference = { .kind = xstrdup(kind),
+                                    .name = xstrdup(name),
+                                    .resolved = resolved };
+    apush(*references, reference);
+}
+
+/* Adds what an asset holds to the index. An asset its loader rejects holds
+ * nothing; its diagnostics say why. */
+static void catalog_add_content(reference_index *index, const catalog_asset *asset, const char *text)
+{
+    char error[256];
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    switch (asset->asset.family->loader) {
+        case ASSET_GRAPH: {
+            behavior_asset *graph = behavior_asset_load_json(text);
+            if (graph) {
+                reference_index_add_graphs(index, asset->reference, graph);
+            }
+            behavior_asset_free(graph);
+            return;
+        }
+        case ASSET_SYSTEM: {
+            game_system_document *system = game_system_document_load(
+                text,
+                automation_query_component,
+                NULL,
+                error,
+                sizeof error
+            );
+            if (system) {
+                reference_index_add_graphs(index, asset->reference, game_system_document_behavior_asset(system));
+                game_system_document_free(system);
+            }
+            return;
+        }
+        case ASSET_PROTOTYPE: {
+            game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
+            if (prototype) {
+                reference_index_add_prototype(index, asset->reference, prototype);
+                game_prototype_free(prototype);
+            }
+            return;
+        }
+        case ASSET_SCENE: {
+            game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
+            for (int i = 0; scene && i < acount(scene->entities); i++) {
+                const game_scene_entity *entity = &scene->entities[i];
+                reference_object object = {
+                    .name = entity->name,
+                    .prototype = entity->prototype,
+                    .overrides = entity->components_json,
+                    .behaviors = (const char *const *)entity->behaviors,
+                    .behavior_count = acount(entity->behaviors),
+                };
+                reference_index_add_object(index, asset->reference, &object);
+            }
+            game_scene_document_free(scene);
+            return;
+        }
+        case ASSET_UI: {
+            ui_document document = { 0 };
+            if (ui_document_read(text, &document, error, sizeof error)) {
+                reference_index_add_ui(index, asset->reference, document.rml);
+            }
+            ui_document_free(&document);
+            return;
+        }
+        case ASSET_EDITOR: return;
     }
+}
+
+/* The catalog asset at each reference index position, or -1 for an asset
+ * only named. The caller frees it. */
+static int *catalog_positions(const catalog_asset *assets, const reference_index *index)
+{
+    int *catalog = xmalloc(((size_t)reference_index_asset_count(index) + 1) * sizeof *catalog);
+    for (int i = 0; i < reference_index_asset_count(index); i++) {
+        catalog[i] = -1;
+    }
+    for (int i = 0; i < acount(assets); i++) {
+        if (assets[i].reference >= 0) {
+            catalog[assets[i].reference] = i;
+        }
+    }
+    return catalog;
+}
+
+/* Each asset's dependencies and dependents: the assets its references use. */
+static void catalog_link_references(catalog_asset *assets, const reference_index *index)
+{
+    int *catalog = catalog_positions(assets, index);
+    for (int i = 0; i < reference_index_count(index); i++) {
+        const reference *r = reference_index_at(index, i);
+        int target = reference_dependency(r);
+        if (target < 0) {
+            continue;
+        }
+        catalog_asset *source = &assets[catalog[r->source]];
+        const reference_asset *named = reference_index_asset_at(index, target);
+        catalog_asset *used = catalog[target] >= 0 ? &assets[catalog[target]] : NULL;
+        catalog_reference_add(
+            &source->dependencies,
+            used ? used->asset.family->kind : family_by_reference(named->kind)->kind,
+            named->name,
+            used != NULL
+        );
+        if (used) {
+            catalog_reference_add(
+                &used->dependents,
+                source->asset.family->kind,
+                source->name,
+                true
+            );
+        }
+    }
+    free(catalog);
+    for (int i = 0; i < acount(assets); i++) {
+        catalog_reference *dependencies = assets[i].dependencies;
+        catalog_reference *dependents = assets[i].dependents;
+        qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+        qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+    }
+}
+
+static char *catalog_path(const char *root, const catalog_asset *asset)
+{
+    size_t size = strlen(root) + strlen(asset->asset.relative) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", root, asset->asset.relative);
+    return path;
+}
+
+/* Every asset first, then what each holds, so references find the event
+ * definitions they name. */
+static int catalog_index_references(
+    const char *root,
+    catalog_asset *assets,
+    reference_index **out,
+    char *error,
+    size_t error_size
+)
+{
+    reference_index *index = reference_index_new();
+    for (int i = 0; i < acount(assets); i++) {
+        reference_asset_kind kind = assets[i].asset.family->reference;
+        char *path = catalog_path(root, &assets[i]);
+        assets[i]
+            .reference = kind == REFERENCE_ASSET_KIND_COUNT
+                           ? -1
+                           : reference_index_add_asset(index, kind, assets[i].name, path, NULL);
+        free(path);
+    }
+    for (int i = 0; i < acount(assets); i++) {
+        if (assets[i].reference < 0) {
+            continue;
+        }
+        char *path = catalog_path(root, &assets[i]);
+        char *text = read_file(path, NULL, NULL, error, error_size);
+        free(path);
+        if (!text) {
+            reference_index_free(index);
+            return -1;
+        }
+        catalog_add_content(index, &assets[i], text);
+        free(text);
+    }
+    catalog_link_references(assets, index);
+    *out = index;
+    return 0;
 }
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
@@ -1596,6 +1668,7 @@ static yyjson_doc *parse_asset_text(const char *text)
 
 static int load_catalog_asset(
     const char *root,
+    const catalog_links *links,
     const asset_entry *entry,
     catalog_asset *asset,
     char *error,
@@ -1639,9 +1712,8 @@ static int load_catalog_asset(
             asset->description = xstrdup(description);
         }
         catalog_scan_members(asset, json_root);
-        catalog_scan_references(asset, json_root);
         yyjson_doc_free(document);
-        catalog_validate_asset(root, asset, json);
+        catalog_validate_asset(links, asset, json);
     }
     free(json);
     return 0;
@@ -1662,11 +1734,30 @@ static int cached_catalog_asset_index(const catalog_asset *assets, const asset_e
 
 static void reset_catalog_derived_data(catalog_asset *asset)
 {
-    for (int i = 0; i < acount(asset->dependencies); i++) {
-        asset->dependencies[i].resolved = false;
-    }
+    free_catalog_references(asset->dependencies);
     free_catalog_references(asset->dependents);
+    asset->dependencies = NULL;
     asset->dependents = NULL;
+}
+
+/* Graph assets validate linked with the libraries and events, so their
+   cached results hold while those are unchanged. */
+static bool catalog_links_unchanged(const catalog_asset *previous, const asset_entry *entries)
+{
+    int unmatched = 0;
+    for (int i = 0; i < acount(previous); i++) {
+        unmatched += links_family(previous[i].asset.family);
+    }
+    for (int i = 0; i < acount(entries); i++) {
+        if (!links_family(entries[i].family)) {
+            continue;
+        }
+        if (cached_catalog_asset_index(previous, &entries[i]) < 0) {
+            return false;
+        }
+        unmatched--;
+    }
+    return unmatched == 0;
 }
 
 static int build_catalog_from_entries(
@@ -1674,13 +1765,19 @@ static int build_catalog_from_entries(
     const asset_entry *entries,
     catalog_asset *previous,
     catalog_asset **out,
+    reference_index **references,
     char *error,
     size_t error_size
 )
 {
     catalog_asset *assets = NULL;
-    for (int i = 0; i < acount(entries); i++) {
-        int previous_index = previous && strcmp(entries[i].family->kind, "field")
+    bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
+    catalog_links links = { 0 };
+    bool linked = false;
+    int status = 0;
+    for (int i = 0; i < acount(entries) && !status; i++) {
+        bool graph = entries[i].family->loader == ASSET_GRAPH;
+        int previous_index = previous && (!graph || graphs_cached)
                                ? cached_catalog_asset_index(previous, &entries[i])
                                : -1;
         if (previous_index >= 0) {
@@ -1690,14 +1787,25 @@ static int build_catalog_from_entries(
             apush(assets, asset);
             continue;
         }
-        catalog_asset asset = { 0 };
-        if (load_catalog_asset(root, &entries[i], &asset, error, error_size) != 0) {
-            free_catalog_assets(assets);
-            return -1;
+        if (graph && !linked) {
+            load_catalog_links(root, entries, &links);
+            linked = true;
         }
-        apush(assets, asset);
+        catalog_asset asset = { 0 };
+        status = load_catalog_asset(root, &links, &entries[i], &asset, error, error_size);
+        if (!status) {
+            apush(assets, asset);
+        }
     }
-    catalog_resolve_references(assets);
+    free_behavior_assets(links.assets);
+    if (status) {
+        free_catalog_assets(assets);
+        return -1;
+    }
+    if (catalog_index_references(root, assets, references, error, error_size) != 0) {
+        free_catalog_assets(assets);
+        return -1;
+    }
     *out = assets;
     return 0;
 }
@@ -1822,7 +1930,8 @@ static int catalog_snapshot_get(
         return 0;
     }
     catalog_asset *assets = NULL;
-    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, error, error_size) !=
+    reference_index *references = NULL;
+    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, &references, error, error_size) !=
         0) {
         free_asset_entries(entries);
         free_catalog_snapshot(&CATALOG_SNAPSHOT);
@@ -1833,6 +1942,7 @@ static int catalog_snapshot_get(
     CATALOG_SNAPSHOT.root = xstrdup(root);
     CATALOG_SNAPSHOT.entries = entries;
     CATALOG_SNAPSHOT.assets = assets;
+    CATALOG_SNAPSHOT.references = references;
     CATALOG_SNAPSHOT.revision = next_revision;
     CATALOG_SNAPSHOT.content_hash = catalog_content_hash(assets);
     *out = CATALOG_SNAPSHOT.assets;
@@ -2517,6 +2627,83 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     return 0;
 }
 
+/* The catalog's names for the reference index's assets; an asset only named
+ * takes its kind's family and no path. */
+static navigation_asset *navigation_assets(const catalog_asset *assets, const reference_index *index)
+{
+    int count = reference_index_asset_count(index);
+    int *catalog = catalog_positions(assets, index);
+    navigation_asset *named = xcalloc((size_t)count + 1, sizeof *named);
+    for (int i = 0; i < count; i++) {
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        const catalog_asset *found = catalog[i] >= 0 ? &assets[catalog[i]] : NULL;
+        named[i] = found ? (navigation_asset){ found->asset.family->kind,
+                                               found->name,
+                                               found->asset.relative }
+                         : (navigation_asset){ family_by_reference(asset->kind)->kind,
+                                               asset->name,
+                                               NULL };
+    }
+    free(catalog);
+    return named;
+}
+
+/* find_references and call_hierarchy, over the catalog's references. */
+static int handle_navigation(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0, content_hash = 0;
+    char error[256] = { 0 };
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error) !=
+        0) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
+    add_hash_named(result->doc, value, "content_hash", content_hash);
+    navigation nav = { CATALOG_SNAPSHOT.references,
+                       navigation_assets(assets, CATALOG_SNAPSHOT.references) };
+    bool hierarchy = !strcmp(request_string(request, "operation"), "call_hierarchy");
+    int status = hierarchy
+                   ? automation_call_hierarchy(&nav, request, result->doc, value, error, sizeof error)
+                   : automation_find_references(&nav, request, result->doc, value, error, sizeof error);
+    free((navigation_asset *)nav.assets);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    return 0;
+}
+
+/* inspect_graph's per-member use counts across the project. Skipped when the
+ * catalog cannot be read; the graph itself is still inspected. */
+static void add_graph_use_counts(
+    const char *root,
+    const asset_ref *ref,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value
+)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0, content_hash = 0;
+    char error[256] = { 0 };
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error) !=
+        0) {
+        return;
+    }
+    char *name = asset_name_from_filename(ref->filename);
+    int at = catalog_asset_index(assets, acount(assets), ref->family->kind, name);
+    free(name);
+    if (at < 0 || assets[at].reference < 0) {
+        return;
+    }
+    navigation nav = { CATALOG_SNAPSHOT.references,
+                       navigation_assets(assets, CATALOG_SNAPSHOT.references) };
+    automation_add_use_counts(&nav, assets[at].reference, doc, value);
+    free((navigation_asset *)nav.assets);
+}
+
 static uint64_t inspect_json_uint(yyjson_val *value)
 {
     if (yyjson_is_uint(value)) {
@@ -2877,6 +3064,11 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     bool include_pins = !pins_value || yyjson_get_bool(pins_value);
+    yyjson_val *uses_value = yyjson_obj_get(request, "include_uses");
+    if (uses_value && !yyjson_is_bool(uses_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_uses must be a boolean");
+        return -1;
+    }
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
@@ -2983,6 +3175,10 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         );
         yyjson_mut_obj_add_int(result->doc, summary, "node_count", acount(source->nodes));
         yyjson_mut_obj_add_int(result->doc, summary, "edge_count", acount(source->edges));
+    }
+    /* Counting reads the whole project, so it is asked for. */
+    if (uses_value && yyjson_get_bool(uses_value)) {
+        add_graph_use_counts(root, &ref, result->doc, value);
     }
     if (selected >= 0) {
         yyjson_mut_obj_add_val(
@@ -7393,29 +7589,158 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 }
 
 /* Behavior graphs author component nodes, which lower to the generated nodes
- * System graphs use directly; Systems bind only the ECS world. No domain
- * offers every domain's authoring nodes. */
+ * System graphs use directly; Systems offer the nodes their compiler turns
+ * into bytecode. No domain offers every domain's authoring nodes. */
 static bool domain_offers(const char *domain, const node_desc *node)
 {
+    if (domain && !strcmp(domain, "system")) {
+        return game_system_node_supported(node);
+    }
     bool shader = node->category && !strncmp(node->category, "Shader", 6);
     bool field = node->category && !strcmp(node->category, "Procedural Field");
     const char *own = shader ? "shader" : field ? "field" : "behavior";
-    bool system = domain && !strcmp(domain, "system");
-    if (domain && strcmp(system ? "behavior" : domain, own)) {
-        return false;
-    }
-    const char *service = node->host_call ? node->host_call->service
-                        : node->command   ? node->command->service
-                                          : NULL;
-    return system ? !component_node_kind_of(node) &&
-                        (!service || !strcmp(service, "ecs.world"))
-                  : !component_generated_kind(node);
+    return (!domain || !strcmp(domain, own)) && !component_generated_kind(node);
 }
 
 /* Component node presets and events belong to behavior graphs. */
 static bool behavior_vocabulary(const char *domain)
 {
     return !domain || !strcmp(domain, "behavior");
+}
+
+/* An event a ui document sends the GameUi entity showing it, words for it,
+ * and when, without the period: "Sent when the player clicks #go in Hud". */
+typedef struct
+{
+    char *name;
+    const char *keywords;
+    char description[256];
+} ui_event;
+
+/* The events a project names: its event definitions, and those its ui
+ * documents send behaviors. */
+typedef struct
+{
+    behavior_asset **definitions;
+    ui_event *ui;
+} project_events;
+
+static bool defined_event(const project_events *events, const char *name)
+{
+    for (int i = 0; i < acount(events->definitions); i++) {
+        if (!strcmp(events->definitions[i]->name, name)) {
+            return true;
+        }
+    }
+    return graph_event_host_name(name);
+}
+
+/* Adds what the player does in `document` to send `found` to its event's
+ * sentence while it fits, starting one for a new name. Host events and
+ * definitions already offer their own names. */
+static void add_ui_event(project_events *events, const ui_document_event *found, const char *document)
+{
+    char clause[192];
+    if (found->key) {
+        snprintf(
+            clause,
+            sizeof clause,
+            "presses %s inside %s in %s",
+            found->key,
+            found->element,
+            document
+        );
+    } else {
+        snprintf(
+            clause,
+            sizeof clause,
+            "%s %s in %s",
+            found->input ? "changes" : "clicks",
+            found->element,
+            document
+        );
+    }
+    for (int i = 0; i < acount(events->ui); i++) {
+        ui_event *event = &events->ui[i];
+        if (strcmp(event->name, found->name)) {
+            continue;
+        }
+        size_t used = strlen(event->description);
+        if (used + strlen(clause) + 6 < sizeof event->description) {
+            snprintf(event->description + used, sizeof event->description - used, ", or %s", clause);
+        }
+        return;
+    }
+    if (defined_event(events, found->name)) {
+        return;
+    }
+    ui_event event = { .name = xstrdup(found->name),
+                       .keywords = found->key   ? "UI key keyboard"
+                                 : found->input ? "UI input widget"
+                                                : "UI button widget" };
+    snprintf(event.description, sizeof event.description, "Sent when the player %s", clause);
+    apush(events->ui, event);
+}
+
+/* Adds the events the project's ui documents send; the pause menu's go to
+ * the player shell. An invalid document offers none until it validates. */
+static int load_ui_events(const char *root, project_events *events, char *error, size_t error_size)
+{
+    asset_entry *entries = NULL;
+    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    const asset_family *family = family_by_kind("ui");
+    int status = CHIBI_AUTOMATION_OK;
+    for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
+        char document[256], path[1024];
+        const char *filename = entries[i].filename;
+        int length = (int)(strlen(filename) - strlen(ASSET_EXTENSION));
+        snprintf(document, sizeof document, "%.*s", length, filename);
+        if (entries[i].family != family || !strcmp(document, UI_DOCUMENT_PAUSE_MENU)) {
+            continue;
+        }
+        snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
+        char *text = read_file(path, NULL, NULL, error, error_size);
+        ui_document markup = { 0 };
+        ui_document_event *found = NULL;
+        char invalid[160];
+        if (text && ui_document_read(text, &markup, invalid, sizeof invalid)) {
+            ui_document_events(markup.rml, &found);
+        }
+        for (int e = 0; e < acount(found); e++) {
+            add_ui_event(events, &found[e], document);
+        }
+        status = text ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
+        ui_document_events_free(found);
+        ui_document_free(&markup);
+        free(text);
+    }
+    free_asset_entries(entries);
+    return status;
+}
+
+static void free_project_events(project_events *events)
+{
+    free_behavior_assets(events->definitions);
+    for (int i = 0; i < acount(events->ui); i++) {
+        free(events->ui[i].name);
+    }
+    afree(events->ui);
+}
+
+static int load_project_events(const char *root, project_events *events, char *error, size_t error_size)
+{
+    int status = load_behavior_family_assets(
+        root,
+        family_by_kind("event"),
+        &events->definitions,
+        error,
+        error_size
+    );
+    return status == CHIBI_AUTOMATION_OK
+             ? load_ui_events(root, events, error, error_size)
+             : status;
 }
 
 typedef struct
@@ -7461,14 +7786,15 @@ static bool pins_match(const pin_sides *n, const pin_filter *filter)
 }
 
 /* A search result: a registry node, a component node preset, or an event. An
- * event is an Event node for a host event or an event definition, or a Send
- * Event for a definition. */
+ * event is an Event node for a host event, an event definition or a ui
+ * event, or a Send Event for a definition. */
 typedef struct
 {
     const node_desc *desc;
     const component_node_preset *preset;
     const graph_host_event_desc *host;
     const behavior_asset *definition;
+    const ui_event *ui;
     int score;
     int order;
     /* With a wire to fit: how well (wire_fit) and through which pins. */
@@ -7488,6 +7814,7 @@ static const char *match_event(const node_match *match)
 {
     return match->host       ? match->host->name
          : match->definition ? match->definition->name
+         : match->ui         ? match->ui->name
                              : NULL;
 }
 
@@ -7508,7 +7835,8 @@ static node *match_node(graph *g, const node_match *match)
     } else if (event && n->desc == &NODE_Event) {
         result = graph_set_event_name(g, n, event) ||
                  (match->host ? graph_host_event_apply(g, n)
-                              : graph_event_apply(g, n, match->definition));
+                  : match->definition ? graph_event_apply(g, n, match->definition)
+                                      : 0);
     } else if (event) {
         result = graph_set_node_reference(g, n, 0, event) ||
                  graph_event_apply(g, n, match->definition);
@@ -7556,37 +7884,42 @@ static int preset_score(const component_node_preset *preset, const char *query)
     return text_search_word_score(query, name, secondary);
 }
 
-/* An event reads as "On Contact Begin" or "Send Damage", with its keywords or
- * description and payload names. */
+/* An event's words beside its name: its keywords or description and payload
+ * names, and for a ui event what the player does. */
+static void event_words(const node_match *match, char *text, size_t size)
+{
+    int used = 0;
+    bool send = match->desc != &NODE_Event;
+    append_word(text, size, &used, send ? "Events send dispatch" : "Events when");
+    if (match->host) {
+        append_word(text, size, &used, match->host->keywords);
+        for (int i = 0; i < match->host->payload_count; i++) {
+            append_word(text, size, &used, match->host->payload[i].name);
+        }
+        return;
+    }
+    if (match->ui) {
+        append_word(text, size, &used, match->ui->keywords);
+        append_word(text, size, &used, match->ui->description);
+        return;
+    }
+    append_word(text, size, &used, match->definition->description);
+    for (int i = 0; i < acount(match->definition->variables); i++) {
+        append_word(text, size, &used, match->definition->variables[i].name);
+    }
+}
+
+/* An event reads as "On Contact Begin" or "Send Damage"; an Event also as
+ * its own name, so naming it exactly ranks it first. */
 static int event_score(const node_match *match, const char *query)
 {
     char name[256], secondary[1024] = "";
     bool send = match->desc != &NODE_Event;
     snprintf(name, sizeof name, "%s %s", send ? "Send" : "On", match_event(match));
-    int used = 0;
-    append_word(secondary, sizeof secondary, &used, send ? "Events send dispatch" : "Events when");
-    if (match->host) {
-        append_word(secondary, sizeof secondary, &used, match->host->keywords);
-        for (int i = 0; i < match->host->payload_count; i++) {
-            append_word(
-                secondary,
-                sizeof secondary,
-                &used,
-                match->host->payload[i].name
-            );
-        }
-        return text_search_word_score(query, name, secondary);
-    }
-    append_word(secondary, sizeof secondary, &used, match->definition->description);
-    for (int i = 0; i < acount(match->definition->variables); i++) {
-        append_word(
-            secondary,
-            sizeof secondary,
-            &used,
-            match->definition->variables[i].name
-        );
-    }
-    return text_search_word_score(query, name, secondary);
+    event_words(match, secondary, sizeof secondary);
+    int phrased = text_search_word_score(query, name, secondary);
+    int named = send ? -1 : text_search_word_score(query, match_event(match), secondary);
+    return phrased > named ? phrased : named;
 }
 
 /* Pin names and a node's expression function rank like keywords, so a query
@@ -7594,11 +7927,13 @@ static int event_score(const node_match *match, const char *query)
 static int node_score(const node_desc *node, const char *query)
 {
     char secondary[1024] = "";
-    int used = 0, binding = 0;
+    int used = 0;
     append_word(secondary, sizeof secondary, &used, node->category);
     append_word(secondary, sizeof secondary, &used, node->keywords);
-    const char *spelling = behavior_expression_spelling(node, &binding);
-    append_word(secondary, sizeof secondary, &used, binding ? NULL : spelling);
+    const char *alias = NULL;
+    for (int i = 0; (alias = behavior_expression_alias(node, i)); i++) {
+        append_word(secondary, sizeof secondary, &used, alias);
+    }
     for (int i = 0; i < node->input_count; i++) {
         append_word(secondary, sizeof secondary, &used, node->inputs[i].name);
     }
@@ -7610,9 +7945,9 @@ static int node_score(const node_desc *node, const char *query)
 
 static int match_score(const node_match *match, const char *query)
 {
-    return match->preset                    ? preset_score(match->preset, query)
-         : match->host || match->definition ? event_score(match, query)
-                                            : node_score(match->desc, query);
+    return match->preset      ? preset_score(match->preset, query)
+         : match_event(match) ? event_score(match, query)
+                              : node_score(match->desc, query);
 }
 
 /* How Behavior Expression writes a node over its data inputs: "clamp(Value,
@@ -7645,9 +7980,19 @@ static bool expression_form(const graph *g, const node *n, char *text, size_t si
     if (binding) {
         return false;
     }
+    /* A function's arguments can take the inputs in another order, as in
+     * smoothstep(Min, Max, Value). */
     int used = snprintf(text, size, "%s(", spelling);
-    for (int i = 0; i < count && used < (int)size; i++) {
-        used += snprintf(text + used, size - (size_t)used, "%s%s", i ? ", " : "", arguments[i]);
+    for (int i = 0; i < behavior_expression_arity(desc) && used < (int)size; i++) {
+        int input = behavior_expression_argument_input(desc, i);
+        assert(input < n->input_count);
+        used += snprintf(
+            text + used,
+            size - (size_t)used,
+            "%s%s",
+            i ? ", " : "",
+            n->input_pins[input].name
+        );
     }
     if (used < (int)size) {
         snprintf(text + used, size - (size_t)used, ")");
@@ -7696,22 +8041,21 @@ static void add_pin_texts(
     }
 }
 
-/* A match's sentence: its node's, a preset's, or an event's. */
+/* A match's sentence: its preset's, its event's or its node's. */
 static bool match_description(const node_match *match, char *text, size_t size)
 {
+    node_subject subject = { .desc = match->desc,
+                             .host = match->host,
+                             .definition = match->definition };
     if (match->preset) {
-        component_node_preset_describe(match->preset, text, size);
+        subject.setting = match->preset->setting;
+        subject.field = match->preset->field;
+    }
+    if (match->ui) {
+        snprintf(text, size, "%s.", match->ui->description);
         return true;
     }
-    if (match->definition && match->desc != &NODE_Event) {
-        snprintf(text, size, "Sends %s to Entity.", match->definition->name);
-        return true;
-    }
-    const char *about = match->host       ? match->host->description
-                      : match->definition ? match->definition->description
-                                          : match->desc->description;
-    snprintf(text, size, "%s", about ? about : "");
-    return text[0];
+    return node_subject_describe(&subject, text, size);
 }
 
 /* What add_node needs: the type; a preset's setting, by component or type
@@ -7787,19 +8131,12 @@ static void add_node_outline(
     yyjson_mut_doc *doc,
     yyjson_mut_val *value,
     const char *domain,
-    behavior_asset *const *definitions
+    const project_events *project
 )
 {
     static const char *const generated[] = {
         "Get_<Component>",
-        "GetEntity_<Component>",
-        "Has_<Component>",
-        "HasEntity_<Component>",
         "Set_<Component>",
-        "SetEntity_<Component>",
-        "Set_<Component>_<field>",
-        "Add_<Component>",
-        "Remove_<Component>",
         "Make_<Type>",
         "Break_<Type>",
     };
@@ -7831,8 +8168,11 @@ static void add_node_outline(
         for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
             yyjson_mut_arr_add_str(doc, events, GRAPH_HOST_EVENTS[i].name);
         }
-        for (int i = 0; i < acount(definitions); i++) {
-            yyjson_mut_arr_add_strcpy(doc, events, definitions[i]->name);
+        for (int i = 0; i < acount(project->definitions); i++) {
+            yyjson_mut_arr_add_strcpy(doc, events, project->definitions[i]->name);
+        }
+        for (int i = 0; i < acount(project->ui); i++) {
+            yyjson_mut_arr_add_strcpy(doc, events, project->ui[i].name);
         }
     }
     yyjson_mut_val *names = yyjson_mut_obj_add_obj(doc, value, system ? "names" : "settings");
@@ -7849,12 +8189,12 @@ static void add_node_outline(
     }
 }
 
-/* Registry nodes, then component node presets, host events and the project's
- * event definitions as Event and Send Event. */
+/* Registry nodes, then component node presets, host events, the project's
+ * event definitions as Event and Send Event, and its ui events as Event. */
 static node_match *node_candidates(
     const char *domain,
     const component_node_preset *presets,
-    behavior_asset *const *definitions
+    const project_events *project
 )
 {
     node_match *matches = NULL;
@@ -7873,9 +8213,13 @@ static node_match *node_candidates(
         apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GRAPH_HOST_EVENTS[i] }));
     }
     const node_desc *send = registry_node_by_name("Send Event");
-    for (int i = 0; i < acount(definitions); i++) {
-        apush(matches, ((node_match){ .desc = &NODE_Event, .definition = definitions[i] }));
-        apush(matches, ((node_match){ .desc = send, .definition = definitions[i] }));
+    for (int i = 0; i < acount(project->definitions); i++) {
+        behavior_asset *definition = project->definitions[i];
+        apush(matches, ((node_match){ .desc = &NODE_Event, .definition = definition }));
+        apush(matches, ((node_match){ .desc = send, .definition = definition }));
+    }
+    for (int i = 0; i < acount(project->ui); i++) {
+        apush(matches, ((node_match){ .desc = &NODE_Event, .ui = &project->ui[i] }));
     }
     return matches;
 }
@@ -8007,12 +8351,13 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page or include_pins");
         return -1;
     }
-    behavior_asset **definitions = NULL;
+    project_events events = { 0 };
     char error[256] = "";
     int status = behavior_vocabulary(domain)
-                   ? load_behavior_family_assets(root, family_by_kind("event"), &definitions, error, sizeof error)
+                   ? load_project_events(root, &events, error, sizeof error)
                    : CHIBI_AUTOMATION_OK;
     if (status != CHIBI_AUTOMATION_OK) {
+        free_project_events(&events);
         response_error(result, exit_code, status, error);
         return -1;
     }
@@ -8022,8 +8367,8 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
                         filter.pin_kind || filter.pure;
     bool wired = wire_from_text || wire_to_text;
     if (!searched && !pin_filtered && !wired) {
-        add_node_outline(result->doc, value, domain, definitions);
-        free_behavior_assets(definitions);
+        add_node_outline(result->doc, value, domain, &events);
+        free_project_events(&events);
         return 0;
     }
     int limit = limit_value ? (int)yyjson_get_sint(limit_value) : 10;
@@ -8033,12 +8378,12 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
      * lists nodes. */
     bool listed = searched || wired;
     component_node_preset *presets = listed ? component_node_presets() : NULL;
-    node_match *candidates = node_candidates(domain, presets, listed ? definitions : NULL);
+    node_match *candidates = node_candidates(domain, presets, &events);
     behavior_asset *scratch = behavior_asset_new("Node search");
     node_match *matches = NULL;
     for (int i = 0; i < acount(candidates); i++) {
         node_match match = candidates[i];
-        bool offered = listed || !(match.host || match.definition);
+        bool offered = listed || !match_event(&match);
         match.order = i;
         match.score = offered ? match_score(&match, query) : -1;
         match.wire_input = match.wire_output = -1;
@@ -8046,7 +8391,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
             continue;
         }
         if (pin_filtered || wired) {
-            bool configured = match.preset || match.host || match.definition;
+            bool configured = match.preset || match_event(&match);
             node *n = configured ? match_node(scratch->graph, &match) : NULL;
             pin_sides sides = n ? (pin_sides){ n->input_pins,
                                                n->output_pins,
@@ -8088,7 +8433,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     afree(candidates);
     afree(presets);
     behavior_asset_free(scratch);
-    free_behavior_assets(definitions);
+    free_project_events(&events);
     return 0;
 }
 
@@ -8946,6 +9291,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
            !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
+           !strcmp(operation, "find_references") ||
+           !strcmp(operation, "call_hierarchy") ||
            !strcmp(operation, "inspect_graph") ||
            !strcmp(operation, "inspect_system") ||
            !strcmp(operation, "run_scenario") ||
@@ -9034,6 +9381,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_search_assets(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "asset_dependencies")) {
         handle_asset_dependencies(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "find_references") || !strcmp(operation, "call_hierarchy")) {
+        handle_navigation(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {

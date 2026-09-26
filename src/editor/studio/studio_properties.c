@@ -610,11 +610,11 @@ static void behaviors_panel(studio *s, scene_actor *actor, bool locked)
     }
     kit_panel_end(k);
     if (kit_popup_begin(k, "attach-behavior", "menu")) {
-        const asset_index *index = app_scene_authoring_asset_index(scene);
-        int total = index ? asset_index_asset_count(index) : 0;
+        const reference_index *index = app_scene_authoring_asset_index(scene);
+        int total = index ? reference_index_asset_count(index) : 0;
         for (int i = 0; i < total; i++) {
-            const asset_index_asset *asset = asset_index_asset_at(index, i);
-            if (asset->kind != ASSET_INDEX_BEHAVIOR || !asset->name) {
+            const reference_asset *asset = reference_index_asset_at(index, i);
+            if (asset->kind != REFERENCE_ASSET_BEHAVIOR || !asset->name) {
                 continue;
             }
             bool attached = false;

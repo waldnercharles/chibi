@@ -1,7 +1,7 @@
 #include "editor/graph/eval_view.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
-#include "graph/document/library.h"
+#include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "graph/nodes/component_nodes.h"
 
@@ -26,24 +26,8 @@ void ed_compile(editor *e)
     ed_refresh_stale_behavior_expressions(e);
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
-    char message[256];
     behavior_asset_free(e->compiled);
-    e->compiled = behavior_asset_link_libraries(
-        e->asset,
-        e->asset_catalog,
-        acount(e->asset_catalog),
-        message,
-        sizeof message
-    );
-    if (e->compiled) {
-        behavior_asset_compile(e->compiled, &e->compile);
-    } else {
-        compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
-                                          .rule = CMPL_RULE_MISSING_REFERENCE };
-        snprintf(diagnostic.message, sizeof diagnostic.message, "%s", message[0] ? message : "Could not link project definitions.");
-        apush(e->compile.items, diagnostic);
-        e->compile.error_count++;
-    }
+    e->compiled = behavior_asset_validate(e->asset, e->asset_catalog, acount(e->asset_catalog), &e->compile);
 }
 
 unsigned editor_edit_revision(const editor *e)

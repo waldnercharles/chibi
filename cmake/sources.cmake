@@ -78,9 +78,11 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/problems.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/local.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/describe.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_set.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize.c
@@ -161,7 +163,9 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_calls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_debug.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_definition.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_comment.c
@@ -237,6 +241,8 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/reference_index.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/call_hierarchy.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/particle_nodes.c

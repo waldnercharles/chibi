@@ -4,9 +4,6 @@
 #include "graph/model/annotate.h"
 #include "runtime/components.h"
 
-NODE_EXEC NODE_DESCRIPTION(
-    "Does nothing; declares a read of Self's GameHealth for access checks."
-) void game_component_probe(void) NODE_READS(GameHealth) NODE_ENTITY_SCOPED;
 NODE_FN NODE_JIT("v2-move") NODE_DESCRIPTION(
     "Returns transform moved by x and y."
 ) GameTransform game_move_transform(GameTransform transform, float x, float y);

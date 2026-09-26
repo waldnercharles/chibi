@@ -212,7 +212,6 @@ extern node_desc GAME_NODE_Set_GameProjectile;
 extern node_desc GAME_NODE_Has_GameProjectile;
 extern node_desc GAME_NODE_Add_GameProjectile;
 extern node_desc GAME_NODE_Remove_GameProjectile;
-extern node_desc GAME_NODE_game_component_probe;
 
 extern const ecs_component_desc GAME_COMPONENT_GameMaterial;
 extern GameMaterial *GAME_GameMaterial_get(ecs_world *, ecs_entity);

@@ -378,6 +378,59 @@ function buildToolDefinitions() {
       },
     },
   };
+  const symbolProperties = {
+    asset: { ...assetArguments, description: "The asset {kind, name}; alone, the asset itself." },
+    graph: {
+      type: "string",
+      description: "Function or macro name in asset; also a parameter's function or the graph of a local.",
+    },
+    graph_id: {
+      type: "integer",
+      minimum: 0,
+      description: "Function or macro ID in asset, as inspectGraph lists it; also the graph of a local.",
+    },
+    event: {
+      type: "string",
+      description: "Event name instead of an asset: a host event such as Tick, an event definition, or a ui data-event or action name.",
+    },
+  };
+  const referenceArguments = {
+    type: "object",
+    properties: {
+      ...symbolProperties,
+      variable: { type: "string", description: "Variable name in asset." },
+      parameter: { type: "string", description: "Input or output name of the function that graph or graph_id selects." },
+      local: { type: "string", description: "Named value (local) in asset." },
+      component: { type: "string", description: "Component name or key instead of an asset." },
+      field: { type: "string", description: "Field path of component, such as current." },
+      roles: {
+        type: "array",
+        minItems: 1,
+        maxItems: 10,
+        items: {
+          type: "string",
+          enum: ["use", "call", "argument", "read", "write", "send", "handle", "spawn", "attach", "bind"],
+        },
+        description: "Only uses in these roles; counts still cover every role.",
+      },
+      limit: { type: "integer", minimum: 1, maximum: 200, description: "Uses per page; defaults to 50." },
+      offset: { type: "integer", minimum: 0, description: "Zero-based offset of the first use." },
+    },
+    additionalProperties: false,
+  };
+  const hierarchyArguments = {
+    type: "object",
+    properties: {
+      ...symbolProperties,
+      direction: {
+        type: "string",
+        enum: ["incoming", "outgoing", "both"],
+        description: "Callers (incoming), callees (outgoing) or both; defaults to both.",
+      },
+      depth: { type: "integer", minimum: 1, maximum: 6, description: "Levels below the root; defaults to 2." },
+    },
+    additionalProperties: false,
+  };
   const graphArguments = {
     ...assetArguments,
     properties: {
@@ -398,6 +451,10 @@ function buildToolDefinitions() {
       include_pins: {
         type: "boolean",
         description: "List each node's pins as \"name: type\" with the types wildcards resolved to, as searchNodes writes them; defaults to true.",
+      },
+      include_uses: {
+        type: "boolean",
+        description: "Add project-wide use counts by role to the asset, its functions and macros, and a behavior's variables. Reads every asset; defaults to false.",
       },
     },
   };
@@ -750,6 +807,20 @@ function buildToolDefinitions() {
       outputSchema,
     },
     {
+      name: "findReferences",
+      operation: "find_references",
+      description: "Find a symbol's definition and its uses across the project, by role.",
+      inputSchema: referenceArguments,
+      outputSchema,
+    },
+    {
+      name: "callHierarchy",
+      operation: "call_hierarchy",
+      description: "Trace a function's or event's callers and callees as a tree.",
+      inputSchema: hierarchyArguments,
+      outputSchema,
+    },
+    {
       name: "inspectGraph",
       operation: "inspect_graph",
       description: "Return normalized graph nodes, pins, edges, calls, effects, and validation diagnostics.",
@@ -1022,7 +1093,22 @@ function defaultNextSteps(name) {
   return getToolCatalogEntry(name)?.nextSteps || [];
 }
 
-function responseNextSteps(name, response) {
+// Words an agent uses for the player's UI, whose events come from ui assets.
+const uiQuery = /\b(ui|hud)\b|\b(button|click|menu|label|widget|slider)/i;
+
+// A UI search that finds no events: the ui asset has to name them first.
+function uiEventSteps(response, args) {
+  const nodes = response?.result?.nodes;
+  if (!Array.isArray(nodes) || !uiQuery.test(args?.query || "") ||
+      nodes.some((node) => node.type === "Event")) {
+    return [];
+  }
+  return [
+    "To react to a click or key, give the element a data-event (or data-keys) in content/ui/<Name>.yaml (kind ui), run build/chibi_ctl --project-root <root> --format, call validateAsset, then handle it with an Event node of that event_name.",
+  ];
+}
+
+function responseNextSteps(name, response, args) {
   const code = response?.error?.code;
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
@@ -1043,8 +1129,12 @@ function responseNextSteps(name, response) {
   if (name === "searchAssets" && Array.isArray(result?.assets) && result.assets.length === 0) {
     return ["Broaden the search query or call getAssetCatalog for project-wide context."];
   }
+  const uiSteps = name === "searchNodes" ? uiEventSteps(response, args) : [];
   if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
-    return ["Use fewer or different words, remove a restrictive pin filter, or call searchNodes without a query to list the node types."];
+    return [...uiSteps, "Use fewer or different words, remove a restrictive pin filter, or call searchNodes without a query to list the node types."];
+  }
+  if (uiSteps.length) {
+    return [...uiSteps, ...defaultNextSteps(name)];
   }
   if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
@@ -1069,14 +1159,14 @@ function addPublicContractNames(name, response) {
   return { ...response, result: { ...response.result, operations } };
 }
 
-function withToolGuidance(name, response) {
+function withToolGuidance(name, response, args) {
   const publicResponse = addPublicContractNames(name, response);
-  const nextSteps = responseNextSteps(name, publicResponse);
+  const nextSteps = responseNextSteps(name, publicResponse, args);
   return nextSteps.length ? { ...publicResponse, next_steps: nextSteps } : publicResponse;
 }
 
-function toolResult(name, response) {
-  const guidedResponse = withToolGuidance(name, response);
+function toolResult(name, response, args) {
+  const guidedResponse = withToolGuidance(name, response, args);
   const authoringResult = authoringToolResult(guidedResponse, name);
   if (authoringResult) {
     return authoringResult;
@@ -1175,7 +1265,11 @@ function toolSummary(name, response) {
       summary[key] = result[key];
     }
   }
-  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals"]) {
+  // findReferences: the uses by role.
+  if (isObject(result.counts)) {
+    summary.counts = result.counts;
+  }
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals", "uses"]) {
     if (Array.isArray(result[key])) {
       summary[`${key}_count`] = result[key].length;
     }
@@ -1352,7 +1446,7 @@ async function dispatch(message) {
       return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
-        result: toolResult(message.params.name, response),
+        result: toolResult(message.params.name, response, message.params.arguments),
       });
     } catch (error) {
       return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));

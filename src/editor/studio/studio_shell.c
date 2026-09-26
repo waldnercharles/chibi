@@ -20,13 +20,14 @@ EM_JS(void, web_import_project, (), { Module['chibiImportProject'](); })
 #endif
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
-    "Scene",  "Behavior",    "Outliner", "Properties", "Output",
-    "Assets", "Performance", "Members",  "Panel"
+    "Scene",  "Behavior",    "Outliner", "Properties",  "Output",
+    "Assets", "Performance", "Members",  "Text Editor", "Panel"
 };
 static const uint32_t EDITOR_ICONS[STUDIO_EDITOR_COUNT] = {
     KIT_ICON_VIEWPORT,    KIT_ICON_GRAPH,    KIT_ICON_OUTLINER,
     KIT_ICON_PROPERTIES,  KIT_ICON_OUTPUT,   KIT_ICON_ASSETS,
-    KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE, KIT_ICON_LAYOUT,
+    KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE, KIT_ICON_EXPRESSION,
+    KIT_ICON_LAYOUT,
 };
 
 static void dp(char *out, size_t size, float value)
@@ -121,7 +122,7 @@ void studio_error(studio *s, const char *title, const char *message)
     toast(s, KIT_TOAST_ERROR, title, message);
 }
 
-static void studio_save(studio *s)
+void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
     if (!studio_editable(s) || runtime_session(scene)) {
@@ -180,7 +181,7 @@ static void studio_save(studio *s)
 }
 
 /* History and dirty state belong to the active document, not always the scene. */
-static bool can_replay(studio *s, bool redo)
+bool studio_can_replay(studio *s, bool redo)
 {
     app_scene_authoring *scene = s->scene;
     if (graph_focused(s)) {
@@ -197,7 +198,7 @@ static bool can_replay(studio *s, bool redo)
     return false;
 }
 
-static bool active_dirty(studio *s)
+bool studio_active_dirty(studio *s)
 {
     app_scene_authoring *scene = s->scene;
     const scene_document_tab *tab = scene->active_tab >= 0 &&
@@ -230,9 +231,9 @@ static void document_history(studio *s, bool redo)
     }
 }
 
-static void studio_history(studio *s, bool redo)
+void studio_history(studio *s, bool redo)
 {
-    if (!studio_editable(s) || !can_replay(s, redo)) {
+    if (!studio_editable(s) || !studio_can_replay(s, redo)) {
         return;
     }
     if (graph_focused(s)) {
@@ -243,7 +244,7 @@ static void studio_history(studio *s, bool redo)
     document_history(s, redo);
 }
 
-static void studio_runtime(studio *s, app_runtime_command command)
+void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
     if (command == APP_RUNTIME_PLAY && studio_debug(s, STUDIO_RESUME)) {
@@ -376,10 +377,19 @@ void studio_toggle_drawer(studio *s, studio_editor editor)
     s->prefs.drawer_open = !showing;
 }
 
-/* Fills the workspace with one area, or restores the layout; -1 is no area. */
-static void studio_toggle_maximized(studio *s, int area)
+void studio_toggle_maximized(studio *s, int area)
 {
     s->maximized = s->maximized >= 0 ? -1 : area;
+}
+
+void studio_reset_layout(studio *s)
+{
+    studio_prefs layout = studio_prefs_default();
+    s->prefs.side_width = layout.side_width;
+    s->prefs.main_split = layout.main_split;
+    s->prefs.side_split = layout.side_split;
+    memcpy(s->prefs.editors, layout.editors, sizeof layout.editors);
+    memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
 }
 
 /* UI Scale's steps, as browsers step a page's zoom, and the menus' choices. */
@@ -410,25 +420,10 @@ void studio_zoom(studio *s, int step)
 
 static void zoom_items(studio *s)
 {
-    kit *k = s->kit;
-    float scale = s->prefs.ui_scale;
-    kit_menu_group(k, "scale", "UI Scale");
-    if (item(
-            k,
-            "zoom-in",
-            "Zoom In",
-            KIT_ICON_ZOOM_IN,
-            studio_chord(s, "Mod+="),
-            scale >= UI_ZOOMS[UI_ZOOM_COUNT - 1]
-        )) {
-        studio_zoom(s, 1);
-    }
-    if (item(k, "zoom-out", "Zoom Out", KIT_ICON_ZOOM_OUT, studio_chord(s, "Mod+-"), scale <= UI_ZOOMS[0])) {
-        studio_zoom(s, -1);
-    }
-    if (item(k, "zoom-reset", "Reset Zoom", 0, studio_chord(s, "Mod+0"), scale == 1)) {
-        studio_zoom(s, 0);
-    }
+    kit_menu_group(s->kit, "scale", "UI Scale");
+    studio_command_item(s, STUDIO_COMMAND_ZOOM_IN);
+    studio_command_item(s, STUDIO_COMMAND_ZOOM_OUT);
+    studio_command_item(s, STUDIO_COMMAND_ZOOM_RESET);
 }
 
 #ifdef __EMSCRIPTEN__
@@ -455,96 +450,41 @@ static void project_menu_items(studio *s)
 static void menus(studio *s)
 {
     kit *k = s->kit;
-    app_scene_authoring *scene = s->scene;
-    bool can_edit = studio_editable(s);
-    bool selection = selected_actor(scene) != NULL;
-    app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
     kit_push(k, "menus", "nav", "menus");
     if (kit_menubar_trigger(k, "file", "File")) {
-        if (item(k, "search", "Search", KIT_ICON_SEARCH, studio_chord(s, "Mod+K"), false)) {
-            kit_command_open(k, "Search objects, assets and commands");
-        }
+        studio_command_item(s, STUDIO_COMMAND_SEARCH);
         studio_projects_menu(s);
         kit_menu_separator(k, "s1");
-        if (item(k, "save", "Save", KIT_ICON_SAVE, studio_chord(s, "Mod+S"), !active_dirty(s))) {
-            studio_save(s);
-        }
-        if (item(k, "reload", "Reload", 0, NULL, !can_edit)) {
-            app_scene_authoring_reload(scene);
-        }
+        studio_command_item(s, STUDIO_COMMAND_SAVE);
+        studio_command_item(s, STUDIO_COMMAND_RELOAD);
 #ifdef __EMSCRIPTEN__
         if (web_projects_available()) {
             project_menu_items(s);
         }
 #endif
+        kit_menu_separator(k, "s2");
+        studio_command_item(s, STUDIO_COMMAND_SETTINGS);
         kit_popup_end(k);
     }
     if (kit_menubar_trigger(k, "edit", "Edit")) {
-        if (item(k, "undo", "Undo", KIT_ICON_UNDO, studio_chord(s, "Mod+Z"), !can_edit || !can_replay(s, false))) {
-            studio_history(s, false);
-        }
-        if (item(
-                k,
-                "redo",
-                "Redo",
-                KIT_ICON_REDO,
-                studio_chord(s, "Mod+Shift+Z"),
-                !can_edit || !can_replay(s, true)
-            )) {
-            studio_history(s, true);
-        }
+        studio_command_item(s, STUDIO_COMMAND_UNDO);
+        studio_command_item(s, STUDIO_COMMAND_REDO);
         kit_menu_separator(k, "s1");
-        if (item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), !can_edit || !selection)) {
-            studio_duplicate(s);
-        }
-        if (item(k, "delete", "Delete", KIT_ICON_TRASH, "X", !can_edit || !selection)) {
-            studio_delete(s);
-        }
+        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
+        studio_command_item(s, STUDIO_COMMAND_DELETE);
         kit_popup_end(k);
     }
     if (kit_menubar_trigger(k, "view", "View")) {
-        if (item(k, "frame", "Frame Selected", KIT_ICON_FRAME, "F", !selection)) {
-            studio_frame_selection(s);
-        }
-        if (item(k, "reset_camera", "Reset Camera", 0, NULL, false)) {
-            engine_viewport_reset_camera(s->viewport);
-        }
+        studio_command_item(s, STUDIO_COMMAND_FRAME);
+        studio_command_item(s, STUDIO_COMMAND_RESET_CAMERA);
         kit_menu_separator(k, "s1");
         kit_menu_group(k, "drawers", "Drawers");
-        static const studio_editor drawers[] = { STUDIO_EDITOR_ASSETS,
-                                                 STUDIO_EDITOR_OUTPUT,
-                                                 STUDIO_EDITOR_PERFORMANCE };
-        const char *const drawer_keys[] = { studio_chord(s, "Mod+Shift+A"),
-                                            studio_chord(s, "Mod+Shift+U"),
-                                            NULL };
-        for (int i = 0; i < 3; i++) {
-            char key[16];
-            snprintf(key, sizeof key, "drawer%d", i);
-            kit_menu_item_desc d = {
-                .label = EDITOR_LABELS[drawers[i]],
-                .shortcut = drawer_keys[i],
-                .checked = s->prefs.drawer_open &&
-                           s->prefs.editors[STUDIO_AREA_DRAWER] == drawers[i],
-            };
-            if (kit_menu_item(k, key, &d)) {
-                studio_toggle_drawer(s, drawers[i]);
-            }
-        }
+        studio_command_item(s, STUDIO_COMMAND_TOGGLE_ASSETS);
+        studio_command_item(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
+        studio_command_item(s, STUDIO_COMMAND_TOGGLE_PERFORMANCE);
         kit_menu_separator(k, "s2");
-        kit_menu_item_desc maximize = { .label = "Maximize Area",
-                                        .shortcut = "Ctrl+Space",
-                                        .checked = s->maximized >= 0 };
-        if (kit_menu_item(k, "maximize", &maximize)) {
-            studio_toggle_maximized(s, s->focus_area);
-        }
-        if (item(k, "reset_layout", "Reset Layout", KIT_ICON_LAYOUT, NULL, false)) {
-            studio_prefs layout = studio_prefs_default();
-            s->prefs.side_width = layout.side_width;
-            s->prefs.main_split = layout.main_split;
-            s->prefs.side_split = layout.side_split;
-            memcpy(s->prefs.editors, layout.editors, sizeof layout.editors);
-            memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
-        }
+        studio_command_item(s, STUDIO_COMMAND_MAXIMIZE);
+        studio_command_item(s, STUDIO_COMMAND_RESET_LAYOUT);
         kit_menu_separator(k, "s3");
         zoom_items(s);
         kit_popup_end(k);
@@ -554,36 +494,16 @@ static void menus(studio *s)
             add_menu_items(s);
             kit_submenu_end(k);
         }
-        if (item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), !can_edit || !selection)) {
-            studio_duplicate(s);
-        }
-        if (item(k, "delete", "Delete", KIT_ICON_TRASH, "X", !can_edit || !selection)) {
-            studio_delete(s);
-        }
+        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
+        studio_command_item(s, STUDIO_COMMAND_DELETE);
         kit_menu_separator(k, "s1");
-        scene_actor *actor = selected_actor(scene);
-        if (item(k, "prototype", "Open Prototype", KIT_ICON_PROTOTYPE, NULL, !actor)) {
-            app_scene_authoring_open_prototype(scene, actor->prototype_name);
-        }
+        studio_command_item(s, STUDIO_COMMAND_OPEN_PROTOTYPE);
         kit_popup_end(k);
     }
     if (kit_menubar_trigger(k, "play", "Play")) {
-        if (item(
-                k,
-                "play",
-                runtime.playing ? "Pause" : "Play",
-                runtime.playing ? KIT_ICON_PAUSE : KIT_ICON_PLAY,
-                "Space",
-                false
-            )) {
-            studio_runtime(s, APP_RUNTIME_PLAY);
-        }
-        if (item(k, "stop", "Stop", KIT_ICON_STOP, NULL, !runtime_session(scene))) {
-            studio_runtime(s, APP_RUNTIME_STOP);
-        }
-        if (item(k, "step", "Step", KIT_ICON_STEP, NULL, s->pause.active)) {
-            studio_runtime(s, APP_RUNTIME_STEP);
-        }
+        studio_command_item(s, STUDIO_COMMAND_PLAY);
+        studio_command_item(s, STUDIO_COMMAND_STOP);
+        studio_command_item(s, STUDIO_COMMAND_STEP);
         kit_menu_separator(k, "s1");
         studio_debug_menu(s);
         kit_popup_end(k);
@@ -876,6 +796,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
             studio_performance_header(s, index);
             break;
         case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
+        case STUDIO_EDITOR_CODE: studio_code_header(s, index); break;
         case STUDIO_EDITOR_PANEL:
             kit_label(k, "title", NULL, s->prefs.panels[index]);
             break;
@@ -902,6 +823,7 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
             studio_performance_body(s, index);
             break;
         case STUDIO_EDITOR_MEMBERS: studio_members_body(s, index); break;
+        case STUDIO_EDITOR_CODE: studio_code_body(s, index); break;
         case STUDIO_EDITOR_PANEL:
             studio_ui_area(s, index, s->prefs.panels[index]);
             break;
@@ -1134,28 +1056,6 @@ static void statusbar(studio *s)
 
 /* ---------- Command palette (cmdk) ---------- */
 
-enum
-{
-    COMMAND_SAVE,
-    COMMAND_UNDO,
-    COMMAND_REDO,
-    COMMAND_PLAY,
-    COMMAND_STOP,
-    COMMAND_FRAME,
-    COMMAND_DUPLICATE,
-    COMMAND_DELETE,
-    COMMAND_DENSITY,
-    COMMAND_MOTION,
-    COMMAND_THEME,
-    COMMAND_ZOOM_IN,
-    COMMAND_ZOOM_OUT,
-    COMMAND_ZOOM_RESET,
-    COMMAND_ASSETS,
-    COMMAND_OUTPUT,
-    COMMAND_PERFORMANCE,
-    COMMAND_COUNT,
-};
-
 static void palette(studio *s)
 {
     if (studio_graph_palette(s) || studio_member_palette(s) ||
@@ -1164,52 +1064,14 @@ static void palette(studio *s)
     }
     app_scene_authoring *scene = s->scene;
     kit_command_item *items = NULL;
-    const kit_command_item commands[COMMAND_COUNT] = {
-        { "Save", "Commands", NULL, studio_chord(s, "Mod+S"), NULL, KIT_ICON_SAVE },
-        { "Undo", "Commands", NULL, studio_chord(s, "Mod+Z"), NULL, KIT_ICON_UNDO },
-        { "Redo", "Commands", NULL, studio_chord(s, "Mod+Shift+Z"), NULL, KIT_ICON_REDO },
-        { "Play", "Commands", NULL, "Space", "run start preview pause", KIT_ICON_PLAY },
-        { "Stop", "Commands", NULL, NULL, NULL, KIT_ICON_STOP },
-        { "Frame Selected", "Commands", NULL, "F", "focus zoom", KIT_ICON_FRAME },
-        { "Duplicate", "Commands", NULL, studio_chord(s, "Shift+D"), "copy", KIT_ICON_COPY },
-        { "Delete", "Commands", NULL, "X", "remove", KIT_ICON_TRASH },
-        { s->prefs.comfortable ? "Compact Density" : "Comfortable Density",
-          "Commands",
-          NULL,
-          NULL,
-          "spacing size settings",
-          KIT_ICON_LAYOUT },
-        { s->prefs.reduced_motion ? "Full Motion" : "Reduce Motion",
-          "Commands",
-          NULL,
-          NULL,
-          "animation settings",
-          KIT_ICON_SETTINGS },
-        { s->light ? "Dark Theme" : "Light Theme",
-          "Commands",
-          NULL,
-          NULL,
-          "appearance color mode settings",
-          s->light ? KIT_ICON_MOON : KIT_ICON_SUN },
-        { "Zoom In", "Commands", NULL, studio_chord(s, "Mod+="), "ui scale larger bigger", KIT_ICON_ZOOM_IN },
-        { "Zoom Out", "Commands", NULL, studio_chord(s, "Mod+-"), "ui scale smaller", KIT_ICON_ZOOM_OUT },
-        { "Reset Zoom", "Commands", NULL, studio_chord(s, "Mod+0"), "ui scale actual size 100%", 0 },
-        { "Toggle Assets",
-          "Commands",
-          NULL,
-          studio_chord(s, "Mod+Shift+A"),
-          "drawer browser content",
-          KIT_ICON_ASSETS },
-        { "Toggle Output",
-          "Commands",
-          NULL,
-          studio_chord(s, "Mod+Shift+U"),
-          "drawer log console problems diagnostics",
-          KIT_ICON_OUTPUT },
-        { "Toggle Performance", "Commands", NULL, NULL, "drawer profiler frame time fps", KIT_ICON_PERFORMANCE },
-    };
-    for (int i = 0; i < COMMAND_COUNT; i++) {
-        apush(items, commands[i]);
+    for (int c = STUDIO_COMMAND_SEARCH + 1; c < STUDIO_COMMAND_COUNT; c++) {
+        studio_command_info info = studio_command_describe(s, (studio_command)c);
+        apush(
+            items,
+            ((
+                kit_command_item
+            ){ info.label, "Commands", NULL, info.shortcut, info.keywords, info.icon })
+        );
     }
     int objects = acount(items);
     for (int i = 0; i < acount(scene->actors); i++) {
@@ -1254,37 +1116,7 @@ static void palette(studio *s)
     }
     int chosen = kit_command(s->kit, items, acount(items));
     if (chosen >= 0 && chosen < objects) {
-        switch (chosen) {
-            case COMMAND_SAVE: studio_save(s); break;
-            case COMMAND_UNDO: studio_history(s, false); break;
-            case COMMAND_REDO: studio_history(s, true); break;
-            case COMMAND_PLAY: studio_runtime(s, APP_RUNTIME_PLAY); break;
-            case COMMAND_STOP: studio_runtime(s, APP_RUNTIME_STOP); break;
-            case COMMAND_FRAME: studio_frame_selection(s); break;
-            case COMMAND_DUPLICATE: studio_duplicate(s); break;
-            case COMMAND_DELETE: studio_delete(s); break;
-            case COMMAND_DENSITY:
-                s->prefs.comfortable = !s->prefs.comfortable;
-                break;
-            case COMMAND_MOTION:
-                s->prefs.reduced_motion = !s->prefs.reduced_motion;
-                break;
-            case COMMAND_THEME:
-                s->prefs.theme = s->light ? STUDIO_THEME_DARK : STUDIO_THEME_LIGHT;
-                break;
-            case COMMAND_ZOOM_IN: studio_zoom(s, 1); break;
-            case COMMAND_ZOOM_OUT: studio_zoom(s, -1); break;
-            case COMMAND_ZOOM_RESET: studio_zoom(s, 0); break;
-            case COMMAND_ASSETS:
-                studio_toggle_drawer(s, STUDIO_EDITOR_ASSETS);
-                break;
-            case COMMAND_OUTPUT:
-                studio_toggle_drawer(s, STUDIO_EDITOR_OUTPUT);
-                break;
-            case COMMAND_PERFORMANCE:
-                studio_toggle_drawer(s, STUDIO_EDITOR_PERFORMANCE);
-                break;
-        }
+        studio_command_run(s, (studio_command)(STUDIO_COMMAND_SEARCH + 1 + chosen));
     } else if (chosen >= objects && chosen < assets) {
         finish_transform_edit(scene, false);
         select_instance(scene, chosen - objects);
@@ -1429,13 +1261,13 @@ void studio_shortcuts(studio *s)
             continue;
         }
         if (mod && shift && (key == SDLK_A || key == SDLK_U)) {
-            studio_toggle_drawer(s, key == SDLK_A ? STUDIO_EDITOR_ASSETS : STUDIO_EDITOR_OUTPUT);
+            studio_command_run(s, key == SDLK_A ? STUDIO_COMMAND_TOGGLE_ASSETS : STUDIO_COMMAND_TOGGLE_OUTPUT);
         } else if (mod && (key == SDLK_K || key == SDLK_P)) {
-            kit_command_open(s->kit, "Search objects, assets and commands");
+            studio_command_run(s, STUDIO_COMMAND_SEARCH);
         } else if (mod && key == SDLK_S) {
             studio_save(s);
         } else if (mod && key == SDLK_COMMA) {
-            studio_ui_show(s, "Settings");
+            studio_command_run(s, STUDIO_COMMAND_SETTINGS);
         } else if (mod && zoom_key(key, &step)) {
             studio_zoom(s, step);
         } else if (mod && key == SDLK_Z) {

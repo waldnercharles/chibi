@@ -54,6 +54,8 @@ void test_refactor();
 void test_system_nodes();
 void test_component_presentation();
 void test_file_watch();
+void test_text_overlay();
+void test_studio_commands();
 void test_ui_document();
 void test_game_ui();
 void test_game_ui_presenter();
@@ -187,6 +189,8 @@ TEST_CASE(all_checks)
     run_editor_command_checks();
     test_component_presentation();
     test_file_watch();
+    test_text_overlay();
+    test_studio_commands();
     test_ui_document();
     test_game_ui();
     test_game_ui_presenter();

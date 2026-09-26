@@ -27,6 +27,7 @@ typedef enum
     STUDIO_EDITOR_ASSETS,
     STUDIO_EDITOR_PERFORMANCE,
     STUDIO_EDITOR_MEMBERS,
+    STUDIO_EDITOR_CODE, /* Blender's Text Editor: the active UI document's source */
     STUDIO_EDITOR_PANEL, /* an authored panel of the Studio project, named in studio_prefs.panels */
     STUDIO_EDITOR_COUNT,
 } studio_editor;
@@ -83,8 +84,11 @@ typedef struct
     char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
     kit_wire_style wires;               /* graph wire routing */
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
-    bool title_flow;    /* unlabeled execution pins sit in node titles */
-    bool compact_nodes; /* operators as symbols, one-output reads as pills */
+    bool title_flow;      /* unlabeled execution pins sit in node titles */
+    bool compact_nodes;   /* operators as symbols, one-output reads as pills */
+    bool code_vim;        /* the Text Editor edits with Vim's keys */
+    float code_font_size; /* the Text Editor's font size, in dp */
+    bool code_apply_live; /* UI edits apply as typed, not when saved */
 } studio_prefs;
 
 typedef struct
@@ -686,6 +690,11 @@ void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
 void studio_properties_header(studio *s, int area);
 void studio_properties_body(studio *s, int area);
+void studio_code_header(studio *s, int area);
+void studio_code_body(studio *s, int area);
+/* Opens a UI asset's or stylesheet's source at a 1-based line, as Blender's
+ * Edit Source does; false when it cannot be opened. */
+bool studio_open_ui_source(studio *s, const char *path, int line);
 void studio_behavior_header(studio *s, int area);
 void studio_behavior_body(studio *s, int area);
 /* After the Studio document is emitted: drive and render the graph canvas. */
@@ -858,9 +867,78 @@ void studio_debug_menu(studio *s);
 /* The paused run's call stack over the Behavior area. */
 void studio_debug_call_stack(studio *s);
 
-/* Commands shared by menus, shortcuts and the command palette. */
+/* Commands (studio_commands.c): one table the menus, the command palette,
+ * shortcuts and authored UI share, as VS Code's command registry. Authored
+ * UI runs one with emit('studio.<id>'). */
+typedef enum
+{
+    STUDIO_COMMAND_SEARCH,
+    STUDIO_COMMAND_SETTINGS,
+    STUDIO_COMMAND_SAVE,
+    STUDIO_COMMAND_RELOAD,
+    STUDIO_COMMAND_UNDO,
+    STUDIO_COMMAND_REDO,
+    STUDIO_COMMAND_DUPLICATE,
+    STUDIO_COMMAND_DELETE,
+    STUDIO_COMMAND_OPEN_PROTOTYPE,
+    STUDIO_COMMAND_FRAME,
+    STUDIO_COMMAND_RESET_CAMERA,
+    STUDIO_COMMAND_TOGGLE_ASSETS,
+    STUDIO_COMMAND_TOGGLE_OUTPUT,
+    STUDIO_COMMAND_TOGGLE_PERFORMANCE,
+    STUDIO_COMMAND_MAXIMIZE,
+    STUDIO_COMMAND_RESET_LAYOUT,
+    STUDIO_COMMAND_ZOOM_IN,
+    STUDIO_COMMAND_ZOOM_OUT,
+    STUDIO_COMMAND_ZOOM_RESET,
+    STUDIO_COMMAND_PLAY,
+    STUDIO_COMMAND_STOP,
+    STUDIO_COMMAND_STEP,
+    STUDIO_COMMAND_DENSITY,
+    STUDIO_COMMAND_MOTION,
+    STUDIO_COMMAND_THEME,
+    STUDIO_COMMAND_COUNT,
+} studio_command;
+
+typedef struct
+{
+    const char *id; /* stable, as in emit('studio.save') */
+    const char *label;
+    const char *menu;     /* the label in a menu */
+    const char *shortcut; /* in the platform's notation, or NULL */
+    const char *keywords; /* more words the palette matches */
+    uint32_t icon;
+} studio_command_info;
+
+/* How the command reads now: Play reads Pause while a scene plays. */
+studio_command_info studio_command_describe(studio *s, studio_command command);
+bool studio_command_enabled(studio *s, studio_command command);
+/* 1 or 0 for a command that toggles something, else -1. */
+int studio_command_checked(studio *s, studio_command command);
+/* Runs the command when it is enabled. */
+void studio_command_run(studio *s, studio_command command);
+/* The command whose id is `id`, or -1. */
+int studio_command_named(const char *id);
+const char *studio_command_id(studio_command command);
+/* A menu item for the command, run when chosen; true then. */
+bool studio_command_item(studio *s, studio_command command);
+
+/* What commands run (studio_shell.c). */
+void studio_save(studio *s);
+void studio_history(studio *s, bool redo);
+void studio_runtime(studio *s, app_runtime_command command);
+bool studio_can_replay(studio *s, bool redo);
+/* The active document has unsaved edits. */
+bool studio_active_dirty(studio *s);
+/* Fills the workspace with one area, or restores the layout; -1 is no area. */
+void studio_toggle_maximized(studio *s, int area);
+/* The default split sizes and area editors. */
+void studio_reset_layout(studio *s);
 void studio_toggle_drawer(studio *s, studio_editor editor);
-/* Steps UI Scale up (1) or down (-1), or restores it (0). */
+/* Steps UI Scale up (1) or down (-1), or restores it (0), within
+ * [STUDIO_UI_SCALE_MIN, STUDIO_UI_SCALE_MAX]. */
+#define STUDIO_UI_SCALE_MIN 0.5f
+#define STUDIO_UI_SCALE_MAX 2.0f
 void studio_zoom(studio *s, int step);
 void studio_frame_selection(studio *s);
 void studio_duplicate(studio *s);

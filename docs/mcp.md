@@ -587,7 +587,12 @@ Editing a widget reloads every document that uses it.
 
 A project's `content/ui/Theme.rcss` styles all of its UI: unscoped, before
 each asset's RCSS, so it holds tokens (`--fg`, `--accent`) and shared control
-classes that widgets use. The Studio project's theme is the editor's own, so
+classes that widgets use. It can `@import "theme/tokens.rcss";` files beside
+it, in order and once each, and an edit to any of them restyles. All RCSS,
+in themes and ui assets alike, takes Sass-style nested rules with `&` (a
+nested `@media` wraps its rules) and `//` comments, and colors take CSS
+`color-mix(in srgb | oklab, a [p%], b [p%])`, so shades derive from tokens:
+`color-mix(in oklab, var(--accent) 20%, transparent)`. The Studio project's theme is the editor's own, so
 its panels look the same in the editor, in the Scene and in a prototype
 preview. Prototype previews show a `GameUi` even while it is hidden.
 

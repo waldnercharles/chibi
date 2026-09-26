@@ -1,0 +1,42 @@
+/* Overlay layer: popups, tooltips and the command palette. */
+#layer { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; z-index: 10; }
+.modal-host { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: auto; z-index: 15; }
+.popup {
+    position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
+        border-radius: var(--r-lg); padding: 4dp; min-width: 180dp; max-width: 480dp; color: var(--fg);
+    display: block; z-index: 20;
+}
+.popup[data-unplaced] { visibility: hidden; }
+/* Presence: enter 140 ms, exit faster at 100 ms, easing in from the anchor side.
+   No transforms: the renderer clips by scissor, and RmlUi cannot scissor a
+   transformed element, so a transformed popup would stop clipping its scroll. */
+.popup { opacity: 1; margin-top: 0dp; transition: opacity margin-top 0.14s cubic-out; }
+.popup[data-starting-style], .popup[data-ending-style] { opacity: 0; margin-top: -3dp; }
+.popup[data-ending-style] { transition: opacity margin-top 0.1s cubic-in; }
+.menu-item {
+    display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 8dp 0dp 6dp; border-radius: var(--r);
+    white-space: nowrap; color: var(--fg);
+}
+.menu-item .lead { color: var(--fg-2); }
+.menu-item .label { flex: 1 1 auto; overflow: hidden; }
+.menu-item .kbd { margin-left: 24dp; flex: 0 0 auto; }
+.menu-item .chev { color: var(--fg-3); font-size: 11dp; }
+.menu-item[data-highlighted] { background-color: var(--accent); color: var(--on-accent); }
+.menu-item[data-highlighted] .lead, .menu-item[data-highlighted] .kbd, .menu-item[data-highlighted] .chev { color: #ffffffcc; }
+.menu-item[data-disabled] { color: var(--fg-off); }
+.menu-item[data-current] .label, .menu-item[data-current] .lead { color: var(--accent-fg); }
+.menu-item[data-current][data-highlighted] .label, .menu-item[data-current][data-highlighted] .lead { color: var(--on-accent); }
+.menu-item[data-disabled][data-highlighted] { background-color: var(--hover); color: var(--fg-off); }
+.menu-item[data-disabled] .lead, .menu-item[data-disabled] .kbd { color: var(--fg-off); }
+.menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--line-strong); }
+.menu-group { height: 22dp; line-height: 22dp; display: block; padding: 0dp 6dp; font-size: 11dp; color: var(--fg-3); }
+
+.tooltip {
+    position: absolute; pointer-events: none; background-color: var(--tooltip); border: 1dp var(--tooltip-edge); border-radius: var(--r);
+    padding: 4dp 7dp; display: flex; align-items: center; gap: 8dp; white-space: nowrap; color: var(--fg); font-size: 11dp;
+    z-index: 40;
+}
+.tooltip .kbd { color: var(--fg-3); }
+.tooltip { opacity: 1; transition: opacity 0.1s cubic-out; }
+.tooltip[data-starting-style] { opacity: 0; }
+.tooltip[data-instant] { transition: none; }

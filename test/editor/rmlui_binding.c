@@ -52,11 +52,42 @@ static bool replaces_style_sheet(rml_context *context)
     return set && !empty && c.r == 0 && c.g == 255 && c.b == 0;
 }
 
+static bool near(rml_color c, int r, int g, int b, int a)
+{
+    return abs(c.r - r) <= 2 && abs(c.g - g) <= 2 && abs(c.b - b) <= 2 &&
+           abs(c.a - a) <= 2;
+}
+
+/* color-mix() (cmake/patches/rmlui-color-mix.patch), with tokens resolved
+ * when the element is styled. */
+static bool mixes_colors(rml_context *context)
+{
+    rml_element *doc = rml_context_load_document_from_memory(
+        context,
+        "<rml><head><style>"
+        "body { --accent: #ff0000; }"
+        "#srgb { color: color-mix(in srgb, #ff0000 50%, #0000ff); }"
+        "#token { color: color-mix(in srgb, var(--accent) 50%, transparent); }"
+        "#oklab { color: color-mix(in oklab, black, white); }"
+        "</style></head><body><div id=\"srgb\"/><div id=\"token\"/><div "
+        "id=\"oklab\"/></body></rml>",
+        "[memory]"
+    );
+    assert(doc);
+    rml_context_update(context);
+    bool ok = near(rml_element_color(rml_element_by_id(doc, "srgb")), 128, 0, 128, 255) &&
+              near(rml_element_color(rml_element_by_id(doc, "token")), 255, 0, 0, 128) &&
+              near(rml_element_color(rml_element_by_id(doc, "oklab")), 99, 99, 99, 255);
+    rml_document_close(doc);
+    return ok;
+}
+
 bool test_rmlui_binding()
 {
     rml_backend *backend = rml_backend_create(320, 240, 1);
     rml_context *context = rml_backend_context(backend);
-    bool ok = loads_from_memory(context) && replaces_style_sheet(context);
+    bool ok = loads_from_memory(context) && replaces_style_sheet(context) &&
+              mixes_colors(context);
     rml_backend_destroy(backend);
     return ok;
 }

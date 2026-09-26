@@ -4,6 +4,7 @@
  * They implement the Base UI contracts recorded in
  * docs/prototypes/studio/kit.html; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
+#include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
@@ -869,8 +870,15 @@ static void watch_styles(kit *k)
 /* The theme, then the document's own stylesheet, then the extra ones. */
 static void restyle(kit *k)
 {
-    char *own = text_file_read(k->sheet);
-    assert(own);
+    char *source = text_file_read(k->sheet), error[200];
+    assert(source);
+    char *own = rcss_expand(source, CHIBI_RMLUI_RESOURCE_DIR, NULL, error, sizeof error);
+    if (!own) {
+        fprintf(stderr, "%s %s\n", k->sheet, error);
+        own = source;
+        source = NULL;
+    }
+    free(source);
     char *rcss = NULL;
     str_catf(&rcss, "%s\n%s", k->theme ? k->theme : "", own);
     if (!rml_document_set_style_sheet(k->doc, rcss)) {

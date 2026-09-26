@@ -1,0 +1,11 @@
+/* NumberFlow: one clipped wheel per digit; the kit moves the strip. Wheels and
+   symbols share one line box so they align. */
+.number-flow { display: inline-block; white-space: nowrap; font-family: InterNumeric; --nf-line: 16dp; }
+.nf-digit { display: inline-block; position: relative; overflow: hidden; height: var(--nf-line); vertical-align: top; }
+.nf-strip { display: block; }
+.nf-cell { display: block; height: var(--nf-line); line-height: var(--nf-line); text-align: center; }
+.nf-symbol { display: inline-block; height: var(--nf-line); line-height: var(--nf-line); vertical-align: top; }
+
+/* Torph: segments are boxes so they can move; leaving ones are placed absolutely. */
+.morph { display: inline-block; position: relative; white-space: nowrap; }
+.morph-seg { display: inline-block; white-space: pre; }

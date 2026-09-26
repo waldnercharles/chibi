@@ -4,6 +4,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/file_watch.h"
+#include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
@@ -539,16 +540,48 @@ bool ui_theme_sync(ui_theme *t, const char *content_root, double time)
 {
     char path[1024];
     snprintf(path, sizeof path, "%s/ui/Theme.rcss", content_root);
-    if (!file_watch_changed(&t->watch, path, time)) {
+    bool changed = !acount(t->watches);
+    if (changed) {
+        apush(t->watches, (file_watch){ 0 });
+    }
+    for (int i = 0; i < acount(t->watches); i++) {
+        changed |= file_watch_changed(&t->watches[i], i ? t->watches[i].path : path, time);
+    }
+    if (!changed) {
         return false;
     }
+    asetlen(t->watches, 1);
+    t->error[0] = '\0';
+    char *text = text_file_read(path);
+    if (!text) {
+        free(t->rcss);
+        t->rcss = NULL;
+        return true;
+    }
+    char directory[1024], error[200], **imports = NULL;
+    snprintf(directory, sizeof directory, "%s/ui", content_root);
+    char *rcss = rcss_expand(text, directory, &imports, error, sizeof error);
+    free(text);
+    /* Every file it reached, so fixing a broken import retries. */
+    for (int i = 0; i < acount(imports); i++) {
+        file_watch w = { 0 };
+        file_watch_changed(&w, imports[i], time);
+        apush(t->watches, w);
+        free(imports[i]);
+    }
+    afree(imports);
+    if (!rcss) {
+        snprintf(t->error, sizeof t->error, "ui/Theme.rcss %s", error);
+        return true;
+    }
     free(t->rcss);
-    t->rcss = text_file_read(path);
+    t->rcss = rcss;
     return true;
 }
 
 void ui_theme_free(ui_theme *t)
 {
+    afree(t->watches);
     free(t->rcss);
     *t = (ui_theme){ 0 };
 }
@@ -835,10 +868,10 @@ static void install_styles(render_ui *ui)
     afree(names);
 }
 
-/* Reports the first mount's error. */
+/* Reports the theme's error, else the first mount's. */
 static void collect_error(render_ui *ui)
 {
-    ui->error[0] = '\0';
+    snprintf(ui->error, sizeof ui->error, "%s", ui->theme.error);
     for (int i = -1; i < acount(ui->views) && !ui->error[0]; i++) {
         ui_mount *m = mount_at(ui, i);
         if (m) {

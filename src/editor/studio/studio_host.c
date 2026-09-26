@@ -366,6 +366,9 @@ static void sync_theme(studio *s)
     if (s->graph.kit) {
         kit_theme(s->graph.kit, s->theme.rcss);
     }
+    if (s->theme.error[0]) {
+        studio_error(s, "Theme", s->theme.error);
+    }
 }
 
 studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const char *project_root)

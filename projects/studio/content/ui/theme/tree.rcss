@@ -1,0 +1,18 @@
+/* Tree rows (Outliner, lists). */
+.tree-row {
+    display: flex; align-items: center; gap: 4dp; height: var(--row); padding-right: 4dp; border-radius: var(--r);
+    color: var(--fg); white-space: nowrap; border: 1dp transparent;
+}
+.tree-row:hover { background-color: var(--hover); }
+.tree-row[data-selected] { background-color: var(--selected); }
+.tree-row[data-active] { background-color: var(--active-row); }
+.tree-row[data-active] .name { color: var(--strong); }
+.tree-row .twisty { width: 14dp; font-size: 11dp; color: var(--fg-3); }
+.tree-row .name { flex: 1 1 0dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row .meta { color: var(--fg-3); font-size: 11dp; }
+.tree-row .trail { display: flex; align-items: center; gap: 1dp; }
+.tree-row .toggle { width: 20dp; height: 18dp; padding: 0dp; }
+.tree-row .toggle .icon { color: var(--fg-3); font-size: 13dp; }
+.tree-row .toggle[data-state=off] .icon { color: var(--fg-off); }
+.tree-row .toggle[data-state=on] { background-color: transparent; }
+.tree-row .inline .icon { font-size: 12dp; width: 14dp; color: var(--link); }

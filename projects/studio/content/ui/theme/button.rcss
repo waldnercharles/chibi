@@ -1,0 +1,39 @@
+/* Button — ghost (default), subtle, primary, outline, danger. */
+.btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6dp;
+    height: var(--h); padding: 0dp 8dp; border-radius: var(--r); white-space: nowrap;
+    color: var(--fg-2); background-color: transparent; border: 1dp transparent;
+    tab-index: auto;
+    transition: background-color color 0.11s cubic-out;
+}
+.btn .label { white-space: nowrap; }
+.btn:hover { background-color: var(--hover); color: var(--fg); }
+.btn:hover .icon { color: var(--fg); }
+.btn:active, .btn[data-pressed] { background-color: var(--press); color: var(--fg); }
+.btn[data-disabled] { opacity: 0.38; }
+.btn:focus-visible { border-color: var(--ring); }
+.btn.subtle { background-color: var(--field); color: var(--fg); }
+.btn.subtle:hover { background-color: var(--field-hover); }
+.btn.primary { background-color: var(--accent); color: var(--on-accent); }
+.btn.primary .icon { color: var(--on-accent); }
+.btn.primary:hover { background-color: var(--accent-hover); }
+.btn.outline { border-color: var(--line-strong); color: var(--fg); }
+.btn.danger { color: var(--danger); }
+.btn.icon-only { width: var(--h); padding: 0dp; }
+.btn.sm { height: var(--h-sm); font-size: 11dp; padding: 0dp 6dp; }
+.btn.sm.icon-only { width: var(--h-sm); padding: 0dp; }
+.btn[data-state=on] { background-color: var(--accent-soft); color: var(--fg); }
+.btn[data-state=on] .icon { color: var(--accent-fg); }
+
+/* Toggle group — Blender's expanded enum. */
+.segmented { display: flex; height: var(--h); background-color: var(--field); border-radius: var(--r); flex: 1 1 0dp; }
+.segmented .seg {
+    display: block; text-align: center; line-height: var(--h); flex: 1 1 0dp;
+    padding: 0dp 8dp; color: var(--fg-2); border-left: 1dp var(--edge); white-space: nowrap;
+    transition: background-color 0.11s cubic-out;
+}
+.segmented .seg:first-child { border-left: 0dp; border-radius: 4dp 0dp 0dp 4dp; }
+.segmented .seg:last-child { border-radius: 0dp 4dp 4dp 0dp; }
+.segmented .seg:hover { background-color: var(--field-hover); color: var(--fg); }
+.segmented .seg[data-pressed] { background-color: var(--accent); color: var(--on-accent); }
+.segmented[data-readonly] { opacity: 0.6; }

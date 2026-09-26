@@ -76,17 +76,20 @@ void ui_mount_settings(ui_mount *mount, game_save *settings);
 
 /* ---------- Themes ---------- */
 
-/* A project's theme: its ui/Theme.rcss, which styles every UI document the
- * project shows, unscoped and before each document's own RCSS. The Studio
- * project's theme is the editor's. Re-read within a second of an edit.
- * Zero-initialize. */
+/* A project's theme: its ui/Theme.rcss and the files it imports (see
+ * support/rcss.h), which style every UI document the project shows, unscoped
+ * and before each document's own RCSS. The Studio project's theme is the
+ * editor's. Re-read within a second of an edit to any of its files, keeping
+ * the last valid version. Zero-initialize. */
 typedef struct ui_theme
 {
-    file_watch watch;
-    char *rcss; /* NULL while the project has no theme */
+    file_watch *watches; /* Theme.rcss, then each file it imports */
+    char *rcss;          /* NULL while the project has no theme */
+    char error[256]; /* why the files are not the theme in use; "" when they are */
 } ui_theme;
 
-/* Re-reads the theme when its file changed; true when its RCSS changed. */
+/* Re-reads the theme when one of its files changed and returns true; `rcss`
+ * then holds the new theme, or the last valid one with `error` set. */
 bool ui_theme_sync(ui_theme *theme, const char *content_root, double time);
 void ui_theme_free(ui_theme *theme);
 

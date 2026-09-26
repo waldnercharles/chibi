@@ -1,0 +1,18 @@
+/* Resets, text helpers and scrollbars. */
+* { box-sizing: border-box; }
+div, section, header, nav, main, footer, p { display: block; }
+
+.icon { font-family: Symbols; font-size: 14dp; line-height: 16dp; width: 16dp; text-align: center; display: inline-block; color: var(--fg-2); }
+.icon.sm { font-size: 12dp; width: 12dp; }
+.dim { color: var(--fg-3); }
+.muted { color: var(--fg-2); }
+.spacer { flex: 1 1 0dp; }
+.row { display: flex; align-items: center; gap: 6dp; }
+
+scrollbarvertical { width: 8dp; margin-left: 0dp; }
+scrollbarvertical slidertrack { background-color: transparent; }
+scrollbarvertical sliderbar { margin: 2dp; border-radius: 3dp; background-color: var(--scrollbar); }
+scrollbarvertical sliderbar:hover { background-color: var(--scrollbar-hover); }
+scrollbarhorizontal { height: 8dp; }
+scrollbarhorizontal sliderbar { margin: 2dp; border-radius: 3dp; background-color: var(--scrollbar); }
+scrollbarcorner { background-color: transparent; }

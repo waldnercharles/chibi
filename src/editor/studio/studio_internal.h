@@ -466,6 +466,9 @@ struct studio
     double active_until; /* frames run at full rate until then, after input */
 };
 
+/* Whether frames run at full rate for input or a playing scene, rather than
+ * only while the screen changes. */
+bool studio_active(const studio *s);
 /* Physical pixels per editor dp: the display's scale times UI Scale. */
 float studio_pixel_ratio(const studio *s);
 

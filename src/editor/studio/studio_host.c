@@ -135,17 +135,24 @@ static float to_dp(const studio *s, float points)
  * delayed motion it starts. */
 #define ACTIVE_AFTER_INPUT 1.0
 
-/* No frame is needed while nothing moves: no input lately, no running scene,
- * and the last frame drew what the one before it did, so any animation keeps
- * frames coming without declaring itself. Timers without motion, such as a
- * toast's lifetime, wait for the host's next idle frame. */
+bool studio_active(const studio *s)
+{
+    return s->time < s->active_until ||
+           (app_scene_authoring_runtime_state(s->scene).playing && !s->pause.active);
+}
+
+/* No frame is needed while nothing moves: no input lately, no scene playing
+ * (a paused one waits), and the last frame drew what the one before it did,
+ * so any animation keeps frames coming without declaring itself. Timers
+ * without motion, such as a toast's lifetime, wait for the host's next idle
+ * frame. */
 double studio_idle_time(studio *s)
 {
     bool changed = rml_backend_take_changed(s->backend);
     if (s->graph.backend) {
         changed |= rml_backend_take_changed(s->graph.backend);
     }
-    if (changed || s->session || s->time < s->active_until) {
+    if (changed || studio_active(s)) {
         return 0;
     }
     double idle = kit_idle_time(s->kit);

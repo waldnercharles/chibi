@@ -131,10 +131,11 @@ def main():
     token = secrets.token_urlsafe(32)
     watch = WorkspaceWatch(workspace)
 
+    # Once a second, as native Studio polls its files; each scan walks every project.
     def follow():
         while True:
             watch.poll()
-            threading.Event().wait(0.25)
+            threading.Event().wait(1)
 
     threading.Thread(target=follow, daemon=True).start()
     # A served generation never changes under the browser's JS/WASM/data requests.

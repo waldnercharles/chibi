@@ -172,7 +172,7 @@ static void free_names(char **names)
 static bool expand_text(const char *root, const char *rml, char *out, size_t size, char ***uses)
 {
     ui_document d = { .rml = strdup(rml), .rcss = strdup("#host {}") };
-    bool ok = ui_document_expand(&d, "Host", root, uses, out, size);
+    bool ok = ui_document_expand(&d, "Host", root, false, uses, out, size);
     if (ok) {
         snprintf(out, size, "%s|%s", d.rml, d.rcss);
     }
@@ -198,7 +198,7 @@ static void expanded_widgets()
                 "<div data-ui=\"Meter\" id=\"hull\" class=\"wide\"><div "
                 "class=\"fill\"/></div>"
                 "|[data-ui=\"Meter\"] .fill { height: 4dp; "
-                "}\n\n[data-ui=\"Host\"] #host {}\n"
+                "}\n[data-ui=\"Host\"] #host {}\n"
             ) &&
             acount(uses) == 1 && !strcmp(uses[0], "Meter"),
         "a used widget becomes a div with its markup, and its RCSS precedes "
@@ -221,7 +221,7 @@ static void expanded_widgets()
                   "</span></div><div data-ui=\"Meter\"><div "
                   "class=\"fill\"/></div>"
                   "|[data-ui=\"Meter\"] .fill { height: 4dp; "
-                  "}\n\n[data-ui=\"Host\"] #host {}\n"
+                  "}\n[data-ui=\"Host\"] #host {}\n"
               ),
         "children fill a widget's slot, widgets nest, and each widget's RCSS "
         "appears once"
@@ -277,6 +277,132 @@ static void expanded_widgets()
     free_names(names);
     for (size_t i = 0; i < 4; i++) {
         static const char *const files[] = { "Meter", "Row", "Loop", "Option" };
+        char path[256];
+        snprintf(path, sizeof path, "%s/%s.yaml", root, files[i]);
+        unlink(path);
+    }
+    rmdir(root);
+}
+
+/* Whether line `line` of the map came from the file ending in `file` at
+ * line `source`. */
+static bool traced(const rcss_map *map, int line, const char *file, int source)
+{
+    if (line < 1 || line > acount(map->lines) || map->lines[line - 1].file < 0) {
+        return false;
+    }
+    const char *path = map->files[map->lines[line - 1].file];
+    size_t length = strlen(path), suffix = strlen(file);
+    return length >= suffix && !strcmp(path + length - suffix, file) &&
+           map->lines[line - 1].line == source;
+}
+
+static int count_of(const char *text, const char *part)
+{
+    int count = 0;
+    for (const char *p = text; (p = strstr(p, part)); p += strlen(part)) {
+        count++;
+    }
+    return count;
+}
+
+/* An expanded document traces each element and each line of RCSS to the
+ * asset that wrote it: a widget's to the widget, the rest to the document. */
+static void expanded_sources()
+{
+    char root[] = "/tmp/chibi-ui-sources-XXXXXX";
+    assert(mkdtemp(root));
+    write_widget(
+        root,
+        "Meter",
+        "rml: |\n"
+        "  <div class=\"meter\">\n"
+        "    <div class=\"fill\" attrs/>\n"
+        "    <slot/>\n"
+        "  </div>\n"
+        "rcss: |\n"
+        "  .meter { height: 4dp; }\n"
+        "\n"
+        "  .fill {\n"
+        "    width: 50%;\n"
+        "  }\n"
+    );
+    write_widget(root, "Row", "rml: <p class=\"row\"><slot/></p>\n");
+    ui_document d = { 0 };
+    char error[256] = "", **uses = NULL;
+    bool ok = ui_document_read(
+                  "rml: |\n"
+                  "  <div id=\"hud\">\n"
+                  "    <use ui=\"Meter\" id=\"hull\"\n"
+                  "         class=\"wide\">\n"
+                  "      <span>Hull</span>\n"
+                  "    </use>\n"
+                  "    <use ui=\"Row\" id=\"row\"/>\n"
+                  "  </div>\n"
+                  "rcss: |\n"
+                  "  #hud { display: block; }\n"
+                  "  #hull {\n"
+                  "    color: red;\n"
+                  "  }\n",
+                  root,
+                  NULL,
+                  &d,
+                  error,
+                  sizeof error
+              ) &&
+              ui_document_expand(&d, "Hud", root, true, &uses, error, sizeof error);
+    const char *rml = ok ? d.rml : "";
+    test_check(
+        ok && strstr(rml, "<div data-src=\"Hud:1\" id=\"hud\">") &&
+            strstr(rml, "<div data-src=\"Hud:2\" data-ui=\"Meter\"><div data-src=\"Meter:1\" class=\"meter\">") &&
+            strstr(rml, "<div data-src=\"Meter:2\" class=\"fill\" id=\"hull\"") &&
+            strstr(rml, "<span data-src=\"Hud:4\">Hull</span>") &&
+            strstr(rml, "<div data-src=\"Hud:6\" data-ui=\"Row\" id=\"row\"><p data-src=\"Row:1\" class=\"row\"></p></div>") &&
+            count_of(rml, "data-src") == 7 && !strstr(rml, "<slot"),
+        "an expanded element carries the asset and rml line that wrote it, a "
+        "widget's its widget's"
+    );
+    test_check(
+        ok &&
+            !strcmp(
+                d.rcss,
+                "[data-ui=\"Meter\"] .meter { height: 4dp; "
+                "}\n[data-ui=\"Meter\"] "
+                ".fill { width: 50%; }\n"
+                "[data-ui=\"Hud\"] #hud { display: block; }\n[data-ui=\"Hud\"] "
+                "#hull { "
+                "color: red; }\n"
+            ) &&
+            acount(d.map.lines) == 4 && traced(&d.map, 1, "/Meter.yaml", 1) &&
+            traced(&d.map, 2, "/Meter.yaml", 3) &&
+            traced(&d.map, 3, "/Hud.yaml", 1) && traced(&d.map, 4, "/Hud.yaml", 2),
+        "an expanded document's RCSS lines trace to each widget's rcss block, "
+        "then the document's"
+    );
+    ui_document_free(&d);
+    free_names(uses);
+
+    ok = ui_document_read(
+        "rml: |\n  <body\n    class=\"page\">\n    <!-- <b/> -->\n    <p "
+        "data-if=\"a <b\"/>\n  </body>\n",
+        NULL,
+        NULL,
+        &d,
+        error,
+        sizeof error
+    );
+    char *marked = ok ? ui_document_sources(d.rml, "Page", d.rml_line) : NULL;
+    test_check(
+        marked && d.rml_line == 2 &&
+            strstr(marked, "<p data-src=\"Page:4\" data-if=\"a <b\"/>") &&
+            count_of(marked, "data-src") == 1,
+        "a page's markup counts its lines from the rml block, past its <body>, "
+        "and marks no comment or attribute value"
+    );
+    free(marked);
+    ui_document_free(&d);
+    static const char *const files[] = { "Meter", "Row" };
+    for (size_t i = 0; i < sizeof files / sizeof *files; i++) {
         char path[256];
         snprintf(path, sizeof path, "%s/%s.yaml", root, files[i]);
         unlink(path);
@@ -370,6 +496,7 @@ void test_ui_document()
     nested_rcss();
     page_document();
     expanded_widgets();
+    expanded_sources();
     scoped_styles();
     named_events();
 }

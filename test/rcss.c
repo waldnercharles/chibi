@@ -35,6 +35,19 @@ static void write_text(const char *path, const char *text)
     fclose(file);
 }
 
+/* Whether line `line` of the map came from `file` (NULL for the text
+ * expanded itself) at line `source`. */
+static bool traced(const rcss_map *map, int line, const char *file, int source)
+{
+    if (line < 1 || line > acount(map->lines)) {
+        return false;
+    }
+    rcss_origin o = map->lines[line - 1];
+    bool same_file = file ? o.file >= 0 && !strcmp(map->files[o.file], file)
+                          : o.file == -1;
+    return same_file && o.line == source;
+}
+
 static void imports_resolve_in_order_once()
 {
     char root[] = "/tmp/chibi-rcss-XXXXXX";
@@ -45,28 +58,33 @@ static void imports_resolve_in_order_once()
     snprintf(menu, sizeof menu, "%s/parts/menu.rcss", root);
     assert(mkdir(parts, 0755) == 0);
     write_text(tokens, "body { --fg: #fff; }\n");
-    write_text(menu, "@import \"tokens.rcss\";\n.menu { color: var(--fg); .item { padding: 2dp; } }\n");
-    char **imports = NULL;
+    write_text(menu, "@import \"tokens.rcss\";\n.menu {\n  color: var(--fg);\n\n  .item { padding: 2dp; }\n}\n");
+    rcss_map map = { 0 };
     char error[256] = "";
     char *out = rcss_expand(
         "@import \"parts/tokens.rcss\";\n@import 'parts/menu.rcss';\n.last { "
         "margin: 0; }\n",
         root,
-        &imports,
+        &map,
         error,
         sizeof error
     );
     assert(
         out && !strcmp(out, "body { --fg: #fff; }\n.menu { color: var(--fg); }\n.menu .item { padding: 2dp; }\n.last { margin: 0; }\n")
     );
-    assert(acount(imports) == 2 && !strcmp(imports[0], tokens) && !strcmp(imports[1], menu));
+    assert(
+        acount(map.files) == 2 && !strcmp(map.files[0], tokens) &&
+        !strcmp(map.files[1], menu)
+    );
+    /* A nested rule behind an import maps to its selector in that file. */
+    assert(acount(map.lines) == 4 && traced(&map, 1, tokens, 1) && traced(&map, 2, menu, 2));
+    assert(traced(&map, 3, menu, 5) && traced(&map, 4, NULL, 3));
     free(out);
-    out = rcss_expand("@import \"parts/missing.rcss\";", root, &imports, error, sizeof error);
+    rcss_map_free(&map);
+    out = rcss_expand("@import \"parts/missing.rcss\";", root, &map, error, sizeof error);
     assert(!out && strstr(error, "cannot read") && strstr(error, "missing.rcss"));
-    for (int i = 0; i < acount(imports); i++) {
-        free(imports[i]);
-    }
-    afree(imports);
+    assert(acount(map.files) == 1 && strstr(map.files[0], "missing.rcss") && !map.lines);
+    rcss_map_free(&map);
     expands("@import \"x.rcss\";\n.a { x: 1; }", "@import \"x.rcss\";\n.a { x: 1; }\n");
     unlink(tokens);
     unlink(menu);
@@ -99,9 +117,63 @@ static void lists_variables()
     afree(v);
 }
 
+/* Each rule is one line; a block that passes through keeps its lines. */
+static void maps_lines()
+{
+    rcss_map map = { 0 };
+    char error[256] = "";
+    char *out = rcss_expand(
+        ".a,\n.b {\n  color:\n    red;\n  @media (x) {\n    .c { y: 1; }\n  "
+        "}\n}\n"
+        "@keyframes k {\n  from { x: 0; }\n}\n",
+        NULL,
+        &map,
+        error,
+        sizeof error
+    );
+    assert(
+        out &&
+        !strcmp(
+            out,
+            ".a, .b { color: red; }\n@media (x) {\n.a .c, .b .c { y: 1; }\n}\n"
+            "@keyframes k {\n  from { x: 0; }\n}\n"
+        )
+    );
+    assert(acount(map.lines) == 7 && traced(&map, 1, NULL, 1) && traced(&map, 2, NULL, 5));
+    assert(traced(&map, 3, NULL, 6) && traced(&map, 4, NULL, 7));
+    assert(traced(&map, 5, NULL, 9) && traced(&map, 6, NULL, 10) && traced(&map, 7, NULL, 11));
+    free(out);
+    rcss_map_own(&map, "own.rcss");
+    assert(traced(&map, 1, "own.rcss", 1) && acount(map.files) == 1);
+
+    /* Joined sheets keep their lines' origins; text without a map has none. */
+    rcss_map part = { 0 };
+    out = rcss_expand("\n.x { a: 1; }\n.y { b: 2; }", NULL, &part, error, sizeof error);
+    rcss_map_own(&part, "part.rcss");
+    char *sheet = NULL;
+    rcss_map joined = { 0 };
+    rcss_join(&sheet, &joined, "body { c: 3; }", NULL);
+    rcss_join(&sheet, &joined, out, &part);
+    rcss_join(&sheet, &joined, ".z { d: 4; }\n", &map);
+    apush(sheet, '\0');
+    assert(!strcmp(sheet, "body { c: 3; }\n.x { a: 1; }\n.y { b: 2; }\n.z { d: 4; }\n"));
+    assert(
+        acount(joined.lines) == 4 && joined.lines[0].line == 0 &&
+        joined.lines[0].file == -1
+    );
+    assert(traced(&joined, 2, "part.rcss", 2) && traced(&joined, 3, "part.rcss", 3));
+    assert(traced(&joined, 4, "own.rcss", 1) && acount(joined.files) == 2);
+    free(out);
+    afree(sheet);
+    rcss_map_free(&part);
+    rcss_map_free(&map);
+    rcss_map_free(&joined);
+}
+
 void test_rcss()
 {
     lists_variables();
+    maps_lines();
     expands(".a { color: red; }", ".a { color: red; }\n");
     expands(
         ".menu { color: red; .item { margin: 0; &:hover { color: blue; } } "
@@ -123,5 +195,5 @@ void test_rcss()
     fails(".a { @keyframes k { } }", "line 1: @keyframes k belongs at the top level");
     fails(".a { x: 1 } /* open", "line 1: a comment is missing its */");
     imports_resolve_in_order_once();
-    puts("rcss PASS: imports in order and once, nesting with & and selector lists, nested @media, comments, errors with lines and custom properties as written");
+    puts("rcss PASS: imports in order and once, nesting with & and selector lists, nested @media, comments, errors with lines, line maps through imports and joins, and custom properties as written");
 }

@@ -4,23 +4,13 @@
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct
-{
-    const char *s; /* comment-free source */
-    size_t at;
-    const char *name; /* for messages */
-    const char *directory;
-    char ***seen; /* every file read, so each is read once */
-    char *error;
-    size_t error_size;
-} reader;
 
 static void put(char **out, const char *text, size_t length)
 {
@@ -44,22 +34,158 @@ static char *take(char **out)
     return text;
 }
 
+/* ---------- Line maps ---------- */
+
+/* The index of `file` among the map's files, added when it is missing. */
+static int file_index(rcss_map *map, const char *file)
+{
+    for (int i = 0; i < acount(map->files); i++) {
+        if (!strcmp(map->files[i], file)) {
+            return i;
+        }
+    }
+    apush(map->files, xstrdup(file));
+    return acount(map->files) - 1;
+}
+
+void rcss_map_own(rcss_map *map, const char *file)
+{
+    for (int i = 0; i < acount(map->lines); i++) {
+        rcss_origin *o = &map->lines[i];
+        if (o->file < 0 && o->line) {
+            o->file = file_index(map, file);
+        }
+    }
+}
+
+static void free_strings(char **strings)
+{
+    for (int i = 0; i < acount(strings); i++) {
+        free(strings[i]);
+    }
+    afree(strings);
+}
+
+void rcss_map_free(rcss_map *map)
+{
+    free_strings(map->files);
+    afree(map->lines);
+    *map = (rcss_map){ 0 };
+}
+
+void rcss_join(char **sheet, rcss_map *map, const char *text, const rcss_map *part)
+{
+    assert(!acount(*sheet) || alast(*sheet) == '\n');
+    for (int line = 0; *text; line++) {
+        const char *end = strchr(text, '\n');
+        size_t length = end ? (size_t)(end - text) + 1 : strlen(text);
+        put(sheet, text, length);
+        if (!end) {
+            put(sheet, "\n", 1);
+        }
+        text += length;
+        rcss_origin o = part && line < acount(part->lines) ? part->lines[line]
+                                                           : (rcss_origin){ -1, 0 };
+        if (o.file >= 0) {
+            o.file = file_index(map, part->files[o.file]);
+        }
+        apush(map->lines, o);
+    }
+}
+
+/* ---------- Expansion ---------- */
+
+/* Every file one expansion reads, so each is read once, and where its
+ * message goes. */
+typedef struct
+{
+    char **files;
+    char *error;
+    size_t error_size;
+} expansion;
+
+typedef struct
+{
+    expansion *x;
+    const char *s; /* comment-free source */
+    size_t at;
+    int file;         /* its index in x->files, or -1 for the text expanded */
+    const char *name; /* for messages */
+    const char *directory;
+    size_t counted; /* the bytes line_at has counted, */
+    int line;       /* and the line after them */
+} reader;
+
+/* Expanded RCSS and the origin of each line it ends. */
+typedef struct
+{
+    char *text; /* support/array.h, without a terminator */
+    rcss_origin *lines;
+} output;
+
+/* The 1-based line of the source's byte `at`. */
+static int line_at(reader *r, size_t at)
+{
+    if (at < r->counted) {
+        r->counted = 0;
+        r->line = 1;
+    }
+    for (; r->counted < at && r->s[r->counted]; r->counted++) {
+        r->line += r->s[r->counted] == '\n';
+    }
+    return r->line;
+}
+
+static rcss_origin origin(reader *r, size_t at)
+{
+    return (rcss_origin){ r->file, line_at(r, at) };
+}
+
+/* Appends `length` bytes of `text` from line `at`, which each line break
+ * written moves down. */
+static void emit(output *o, rcss_origin *at, const char *text, size_t length)
+{
+    put(&o->text, text, length);
+    for (size_t i = 0; i < length; i++) {
+        if (text[i] == '\n') {
+            apush(o->lines, *at);
+            at->line++;
+        }
+    }
+}
+
+static void emit_text(output *o, rcss_origin *at, const char *text)
+{
+    emit(o, at, text, strlen(text));
+}
+
+static void emit_output(output *o, const output *from)
+{
+    put(&o->text, from->text, (size_t)acount(from->text));
+    for (int i = 0; i < acount(from->lines); i++) {
+        apush(o->lines, from->lines[i]);
+    }
+}
+
+static void output_free(output *o)
+{
+    afree(o->text);
+    afree(o->lines);
+}
+
 static bool fail(reader *r, const char *format, ...)
 {
-    int line = 1;
-    for (size_t i = 0; i < r->at && r->s[i]; i++) {
-        line += r->s[i] == '\n';
-    }
+    int line = line_at(r, r->at);
     char message[256];
     va_list args;
     va_start(args, format);
     vsnprintf(message, sizeof message, format, args);
     va_end(args);
     if (r->name[0]) {
-        snprintf(r->error, r->error_size, "%s line %d: %s", r->name, line, message);
+        snprintf(r->x->error, r->x->error_size, "%s line %d: %s", r->name, line, message);
         return false;
     }
-    snprintf(r->error, r->error_size, "line %d: %s", line, message);
+    snprintf(r->x->error, r->x->error_size, "line %d: %s", line, message);
     return false;
 }
 
@@ -131,6 +257,8 @@ static char scan(reader *r)
     return 0;
 }
 
+/* The text trimmed and on one line: each line break, with the space around
+ * it, becomes one space. */
 static char *trimmed(const char *s, size_t length)
 {
     while (length && isspace((unsigned char)*s)) {
@@ -140,10 +268,21 @@ static char *trimmed(const char *s, size_t length)
     while (length && isspace((unsigned char)s[length - 1])) {
         length--;
     }
-    char *text = xmalloc(length + 1);
-    memcpy(text, s, length);
-    text[length] = '\0';
-    return text;
+    char *out = NULL;
+    for (size_t i = 0; i < length; i++) {
+        if (s[i] != '\n' && s[i] != '\r') {
+            put(&out, s + i, 1);
+            continue;
+        }
+        while (acount(out) && isspace((unsigned char)alast(out))) {
+            asetlen(out, acount(out) - 1);
+        }
+        put_text(&out, " ");
+        while (i + 1 < length && isspace((unsigned char)s[i + 1])) {
+            i++;
+        }
+    }
+    return take(&out);
 }
 
 static bool at_rule(const char *chunk, const char *name)
@@ -185,14 +324,6 @@ static char **split(const char *list)
         }
     }
     return parts;
-}
-
-static void free_parts(char **parts)
-{
-    for (int i = 0; i < acount(parts); i++) {
-        free(parts[i]);
-    }
-    afree(parts);
 }
 
 /* The selectors with `:root` as `body`, which is RmlUi's root element. */
@@ -238,8 +369,8 @@ static char *combine(reader *r, const char *enclosing, const char *written)
             }
         }
     }
-    free_parts(inner);
-    free_parts(outer);
+    free_strings(inner);
+    free_strings(outer);
     if (!ok) {
         afree(out);
         fail(r, "& needs an enclosing rule");
@@ -249,7 +380,7 @@ static char *combine(reader *r, const char *enclosing, const char *written)
 }
 
 /* Copies a block that passes through, braces and all, from its `{`. */
-static bool copy_block(reader *r, const char *prelude, char **out)
+static bool copy_block(reader *r, const char *prelude, output *out)
 {
     size_t start = r->at;
     int depth = 0;
@@ -263,10 +394,11 @@ static bool copy_block(reader *r, const char *prelude, char **out)
         quote = c == '"' || c == '\'' ? c : 0;
         depth += c == '{' ? 1 : c == '}' ? -1 : 0;
         if (!depth) {
-            put_text(out, prelude);
-            put_text(out, " ");
-            put(out, r->s + start, r->at - start + 1);
-            put_text(out, "\n");
+            rcss_origin at = origin(r, start);
+            emit_text(out, &at, prelude);
+            emit_text(out, &at, " ");
+            emit(out, &at, r->s + start, r->at - start + 1);
+            emit_text(out, &at, "\n");
             r->at++;
             return true;
         }
@@ -274,16 +406,10 @@ static bool copy_block(reader *r, const char *prelude, char **out)
     return fail(r, "%s is missing its }", prelude);
 }
 
-static char *expand_text(
-    const char *text,
-    const char *name,
-    const char *directory,
-    char ***seen,
-    char *error,
-    size_t error_size
-);
+static bool expand_text(expansion *x, const char *text, int file, const char *directory, output *out);
 
-static bool import(reader *r, const char *chunk, char **out)
+/* Expands the file an @import on line `at` names in its place, once. */
+static bool import(reader *r, const char *chunk, rcss_origin at, output *out)
 {
     const char *open = strpbrk(chunk, "\"'");
     const char *close = open ? strchr(open + 1, *open) : NULL;
@@ -291,18 +417,19 @@ static bool import(reader *r, const char *chunk, char **out)
         return fail(r, "@import needs a quoted file name");
     }
     if (!r->directory) {
-        put_text(out, chunk);
-        put_text(out, ";\n");
+        emit_text(out, &at, chunk);
+        emit_text(out, &at, ";\n");
         return true;
     }
     char path[1024];
     snprintf(path, sizeof path, "%s/%.*s", r->directory, (int)(close - open - 1), open + 1);
-    for (int i = 0; i < acount(*r->seen); i++) {
-        if (!strcmp((*r->seen)[i], path)) {
+    char ***files = &r->x->files;
+    for (int i = 0; i < acount(*files); i++) {
+        if (!strcmp((*files)[i], path)) {
             return true;
         }
     }
-    apush(*r->seen, xstrdup(path));
+    apush(*files, xstrdup(path));
     char *source = text_file_read(path);
     if (!source) {
         return fail(r, "cannot read %s", path);
@@ -310,20 +437,34 @@ static bool import(reader *r, const char *chunk, char **out)
     char directory[1024];
     const char *slash = strrchr(path, '/');
     snprintf(directory, sizeof directory, "%.*s", (int)(slash - path), path);
-    char *flat = expand_text(source, slash + 1, directory, r->seen, r->error, r->error_size);
+    bool ok = expand_text(r->x, source, acount(*files) - 1, directory, out);
     free(source);
-    if (flat) {
-        put_text(out, flat);
-    }
-    free(flat);
-    return flat != NULL;
+    return ok;
+}
+
+static bool expand_block(reader *r, const char *selectors, rcss_origin at, bool in_block, output *out);
+
+/* Expands the rules of a nested @media block, from past its `{`, inside the
+ * block. */
+static bool expand_media(reader *r, const char *selectors, const char *prelude, rcss_origin at, output *out)
+{
+    output inner = { 0 };
+    bool ok = expand_block(r, selectors, at, true, &inner);
+    emit_text(out, &at, prelude);
+    emit_text(out, &at, " {\n");
+    emit_output(out, &inner);
+    rcss_origin close = origin(r, r->at - 1);
+    emit_text(out, &close, "}\n");
+    output_free(&inner);
+    return ok;
 }
 
 /* Expands a block's contents, whose rules sit under `selectors` (NULL at the
- * top level), consuming its closing brace. */
-static bool expand_block(reader *r, const char *selectors, bool in_block, char **out)
+ * top level) written on line `at`, consuming its closing brace. */
+static bool expand_block(reader *r, const char *selectors, rcss_origin at, bool in_block, output *out)
 {
-    char *declarations = NULL, *nested = NULL;
+    char *declarations = NULL;
+    output nested = { 0 };
     bool ok = true;
     for (;;) {
         while (isspace((unsigned char)r->s[r->at])) {
@@ -336,32 +477,25 @@ static bool expand_block(reader *r, const char *selectors, bool in_block, char *
             break;
         }
         size_t start = r->at;
+        rcss_origin here = origin(r, start);
         char end = scan(r);
         char *chunk = trimmed(r->s + start, r->at - start);
         if (end == '{') {
             r->at++;
             if (at_rule(chunk, "media")) {
-                char *inner = NULL;
-                ok = expand_block(r, selectors, true, &inner);
-                put_text(&nested, chunk);
-                put_text(&nested, " {\n");
-                if (inner) {
-                    put(&nested, inner, (size_t)acount(inner));
-                }
-                put_text(&nested, "}\n");
-                afree(inner);
+                ok = expand_media(r, selectors, chunk, here, &nested);
             } else if (chunk[0] == '@') {
                 r->at--;
                 ok = selectors ? fail(r, "%s belongs at the top level", chunk)
                                : copy_block(r, chunk, &nested);
             } else {
                 char *combined = combine(r, selectors, chunk);
-                ok = combined && expand_block(r, combined, true, &nested);
+                ok = combined && expand_block(r, combined, here, true, &nested);
                 free(combined);
             }
         } else if (at_rule(chunk, "import")) {
             ok = selectors ? fail(r, "@import belongs at the top level")
-                           : import(r, chunk, &nested);
+                           : import(r, chunk, here, &nested);
             r->at += end == ';';
         } else if (chunk[0]) {
             ok = selectors || fail(r, "%s needs a rule", chunk);
@@ -378,60 +512,57 @@ static bool expand_block(reader *r, const char *selectors, bool in_block, char *
         }
     }
     if (ok && selectors && acount(declarations)) {
-        put_text(out, selectors);
-        put_text(out, " {");
-        put(out, declarations, (size_t)acount(declarations));
-        put_text(out, " }\n");
+        emit_text(out, &at, selectors);
+        emit_text(out, &at, " {");
+        emit(out, &at, declarations, (size_t)acount(declarations));
+        emit_text(out, &at, " }\n");
     }
-    if (ok && acount(nested)) {
-        put(out, nested, (size_t)acount(nested));
+    if (ok) {
+        emit_output(out, &nested);
     }
     afree(declarations);
-    afree(nested);
+    output_free(&nested);
     return ok;
 }
 
-static char *expand_text(
-    const char *text,
-    const char *name,
-    const char *directory,
-    char ***seen,
-    char *error,
-    size_t error_size
-)
+/* Expands `text`, file `file` of the expansion or -1 for the text expanded
+ * itself, onto `out`. */
+static bool expand_text(expansion *x, const char *text, int file, const char *directory, output *out)
 {
     bool closed;
     char *source = strip_comments(text, &closed);
-    reader r = { .s = source,
-                 .name = name,
+    const char *path = file < 0 ? "" : x->files[file];
+    const char *slash = strrchr(path, '/');
+    reader r = { .x = x,
+                 .s = source,
+                 .file = file,
+                 .name = slash ? slash + 1 : path,
                  .directory = directory,
-                 .seen = seen,
-                 .error = error,
-                 .error_size = error_size };
-    char *out = NULL;
-    bool ok = closed ? expand_block(&r, NULL, false, &out)
+                 .line = 1 };
+    bool ok = closed ? expand_block(&r, NULL, origin(&r, 0), false, out)
                      : fail(&r, "a comment is missing its */");
     free(source);
-    if (!ok) {
-        afree(out);
-        return NULL;
-    }
-    return take(&out);
+    return ok;
 }
 
-char *rcss_expand(const char *text, const char *directory, char ***imports, char *error, size_t error_size)
+char *rcss_expand(const char *text, const char *directory, rcss_map *map, char *error, size_t error_size)
 {
-    char **seen = NULL;
-    char *out = expand_text(text, "", directory, &seen, error, error_size);
-    for (int i = 0; i < acount(seen); i++) {
-        if (imports) {
-            apush(*imports, seen[i]);
-        } else {
-            free(seen[i]);
-        }
+    assert(!map || (!map->files && !map->lines));
+    expansion x = { .error = error, .error_size = error_size };
+    output out = { 0 };
+    bool ok = expand_text(&x, text, -1, directory, &out);
+    char *flat = ok ? take(&out.text) : NULL;
+    if (!map) {
+        free_strings(x.files);
+    } else {
+        map->files = x.files;
     }
-    afree(seen);
-    return out;
+    if (map && ok) {
+        map->lines = out.lines;
+        out.lines = NULL;
+    }
+    output_free(&out);
+    return flat;
 }
 
 /* ---------- Custom properties ---------- */

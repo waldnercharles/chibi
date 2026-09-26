@@ -6,6 +6,7 @@
 #include "support/file_watch.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
+#include "support/ui_style.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL_video.h>
@@ -23,6 +24,7 @@ struct ui_mount
     file_watch watch;
     file_watch *uses;     /* the widgets and stylesheets its asset uses */
     char *markup, *style; /* from the last valid asset */
+    rcss_map map;         /* where each line of style came from */
     char error[256];
     rml_element *root;
     bool installed; /* root holds the current markup */
@@ -66,6 +68,7 @@ void ui_mount_free(ui_mount *m)
     free(m->name);
     free(m->markup);
     free(m->style);
+    rcss_map_free(&m->map);
     free(m);
 }
 
@@ -87,6 +90,15 @@ const char *ui_mount_error(const ui_mount *m)
 static void asset_path(const ui_mount *m, const char *name, char *path, size_t size)
 {
     snprintf(path, size, "%s/ui/%s.yaml", m->content_root, name);
+}
+
+/* Records RCSS a host will install as `kind` `path`, so the host finds where
+ * its lines came from (ui_style_map). */
+static void record_style(const char *kind, const char *path, const char *rcss, const rcss_map *map)
+{
+    char sheet[1100];
+    snprintf(sheet, sizeof sheet, "%s %s", kind, path);
+    ui_style_set(sheet, rcss, map);
 }
 
 /* Whether any watched file changed; polls every one. */
@@ -147,7 +159,7 @@ static bool read_asset(ui_mount *m, double time)
         read = false;
     }
     if (read) {
-        read = ui_document_expand(&source, m->name, directory, &widgets, error, sizeof error);
+        read = ui_document_expand(&source, m->name, directory, true, &widgets, error, sizeof error);
     }
     watch_paths(&m->uses, used_files(m, widgets, imports), time);
     if (!read) {
@@ -158,9 +170,12 @@ static bool read_asset(ui_mount *m, double time)
     m->error[0] = '\0';
     free(m->markup);
     free(m->style);
+    rcss_map_free(&m->map);
     m->markup = source.rml;
     m->style = source.rcss;
+    m->map = source.map;
     m->installed = false;
+    record_style("mount", path, m->style, &m->map);
     return true;
 }
 
@@ -537,9 +552,11 @@ bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double
         snprintf(p->error, sizeof p->error, "ui/%s.yaml %s", name, error);
         return renamed;
     }
+    rcss_map_own(&next.map, path);
     ui_document_free(&p->document);
     p->document = next;
     p->error[0] = '\0';
+    record_style("page", path, p->document.rcss, &p->document.map);
     return true;
 }
 
@@ -590,7 +607,8 @@ struct render_ui
     ui_view overlay; /* its entity is unused */
     char overlay_state[32];
     char overlay_event[128];
-    bool restyle; /* a mount's RCSS changed or a mount closed */
+    char sheet[32]; /* the name its style sheet reports (ui_style.h) */
+    bool restyle;   /* a mount's RCSS changed or a mount closed */
     double time;
     int width, height;
     float scale;
@@ -622,16 +640,20 @@ static char *frame_body(const char *attributes)
 }
 
 /* The page's document: its body attributes, with the data model, and its
- * markup, as ui_document_compose writes one. */
+ * markup marked with where it was written, as ui_document_compose writes
+ * one. */
 static char *page_text(const ui_page *page)
 {
+    const ui_document *d = &page->document;
+    char *marked = d->rml ? ui_document_sources(d->rml, page->name, d->rml_line) : NULL;
     ui_document body = {
-        .rml = page->document.rml ? page->document.rml : "",
+        .rml = marked ? marked : "",
         .rcss = "",
-        .body = frame_body(page->document.body),
+        .body = frame_body(d->body),
     };
     char *text = ui_document_compose(&body, "");
     free(body.body);
+    free(marked);
     return text;
 }
 
@@ -671,7 +693,9 @@ static void load_page(render_ui *ui)
 
 render_ui *render_ui_new(const char *content_root)
 {
+    static int hosts;
     render_ui *ui = xcalloc(1, sizeof *ui);
+    snprintf(ui->sheet, sizeof ui->sheet, "game-ui-%d", ++hosts);
     ui->content_root = xstrdup(content_root);
     ui->backend = rml_backend_create(1, 1, 1);
     ui->listener = rml_listener_create(on_event, ui);
@@ -695,6 +719,7 @@ void render_ui_free(render_ui *ui)
     rml_backend_destroy(ui->backend);
     rml_listener_destroy(ui->listener);
     ui_page_free(&ui->page);
+    ui_style_set(ui->sheet, NULL, NULL);
     free(ui->content_root);
     free(ui);
 }
@@ -881,20 +906,16 @@ static ui_mount *mount_at(const render_ui *ui, int i)
     return i < 0 ? ui->overlay.mount : ui->views[i].mount;
 }
 
-static void append(char **sheet, const char *text)
-{
-    int start = acount(*sheet);
-    asetlen(*sheet, start + (int)strlen(text));
-    memcpy(*sheet + start, text, strlen(text));
-}
-
-/* The base, then the page's RCSS, then each shown asset's RCSS once. */
+/* The base, then the page's RCSS, then each shown asset's RCSS once, with
+ * where each line came from recorded under the host's sheet name. */
 static void install_styles(render_ui *ui)
 {
     char *sheet = NULL;
     const char **names = NULL;
-    append(&sheet, BASE_RCSS);
-    append(&sheet, ui->page.document.rcss ? ui->page.document.rcss : "");
+    rcss_map map = { 0 };
+    const ui_document *page = &ui->page.document;
+    rcss_join(&sheet, &map, BASE_RCSS, NULL);
+    rcss_join(&sheet, &map, page->rcss ? page->rcss : "", &page->map);
     for (int i = -1; i < acount(ui->views); i++) {
         ui_mount *m = mount_at(ui, i);
         bool known = !m;
@@ -905,12 +926,14 @@ static void install_styles(render_ui *ui)
             continue;
         }
         apush(names, ui_mount_name(m));
-        append(&sheet, ui_mount_style(m));
+        rcss_join(&sheet, &map, ui_mount_style(m), &m->map);
     }
     apush(sheet, '\0');
-    if (!rml_document_set_style_sheet(ui->doc, sheet)) {
+    if (!rml_document_set_named_style_sheet(ui->doc, ui->sheet, sheet)) {
         snprintf(ui->error, sizeof ui->error, "RmlUi could not read the game UI style sheets");
     }
+    ui_style_set(ui->sheet, sheet, &map);
+    rcss_map_free(&map);
     afree(sheet);
     afree(names);
 }

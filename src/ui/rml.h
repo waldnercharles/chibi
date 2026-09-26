@@ -529,6 +529,26 @@ extern "C"
     /* Width in pixels, shaped with no language. */
     int rml_font_string_width(uintptr_t face, const char *text);
 
+    /* ---------- UI source maps (workstream A) ---------- */
+
+    /* As rml_document_set_style_sheet and rml_document_add_style_sheet, with
+     * the sheet named `name`: RmlUi reports the name as the path of each
+     * property's PropertySource, with the rule's 1-based line in `rcss`
+     * (support/ui_style.h). The name is a plain file name, without '/', ':'
+     * or '|', so relative image paths resolve as before. */
+    bool rml_document_set_named_style_sheet(rml_element *document, const char *name, const char *rcss);
+    bool rml_document_add_named_style_sheet(rml_element *document, const char *name, const char *rcss);
+    /* The name of the sheet and the line of the rule that set `property` on
+     * `element`, an ancestor's for an inherited value; false when no sheet's
+     * rule set it, as for an inline style or a default. */
+    bool rml_element_property_source(
+        rml_element *element,
+        const char *property,
+        char *sheet,
+        size_t size,
+        int *line
+    );
+
 #ifdef __cplusplus
 }
 #endif

@@ -6,9 +6,11 @@
 #include "editor/rmlui/kit_internal.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
+#include "support/ui_style.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <math.h>
 #include <stdarg.h>
@@ -904,34 +906,61 @@ static void watch_styles(kit *k)
     closedir(dir);
 }
 
-/* The theme, then the document's own stylesheet, then the extra ones. */
+/* The name RmlUi reports for the kit's sheet, "kit-<document>", or with a
+ * key, for that extra sheet, "kit-<document>-<key>" (support/ui_style.h). */
+static void sheet_name(const kit *k, const char *key, char *name, size_t size)
+{
+    const char *file = strrchr(k->sheet, '/');
+    file = file ? file + 1 : k->sheet;
+    int stem = (int)strcspn(file, ".");
+    snprintf(name, size, "kit-%.*s%s%s", stem, file, key ? "-" : "", key ? key : "");
+    for (char *c = name; *c; c++) {
+        *c = isalnum((unsigned char)*c) || *c == '-' ? *c : '_';
+    }
+}
+
+/* The theme, then the document's own stylesheet, as one sheet; then the
+ * extra ones. Each is recorded with where its lines came from: the theme's
+ * as its maker recorded them (ui_style_map). */
 static void restyle(kit *k)
 {
-    char *source = text_file_read(k->sheet), error[200];
+    char *source = text_file_read(k->sheet), error[200], name[160];
     assert(source);
-    char *own = rcss_expand(source, CHIBI_RMLUI_RESOURCE_DIR, NULL, error, sizeof error);
+    rcss_map own_map = { 0 };
+    char *own = rcss_expand(source, CHIBI_RMLUI_RESOURCE_DIR, &own_map, error, sizeof error);
     if (!own) {
         fprintf(stderr, "%s %s\n", k->sheet, error);
         own = source;
         source = NULL;
     }
     free(source);
+    rcss_map_own(&own_map, k->sheet);
+    const char *theme = k->theme ? k->theme : "";
     char *rcss = NULL;
-    str_catf(&rcss, "%s\n%s", k->theme ? k->theme : "", own);
-    if (!rml_document_set_style_sheet(k->doc, rcss)) {
+    rcss_map map = { 0 };
+    rcss_join(&rcss, &map, theme, ui_style_map(theme));
+    rcss_join(&rcss, &map, own, &own_map);
+    apush(rcss, '\0');
+    sheet_name(k, NULL, name, sizeof name);
+    if (!rml_document_set_named_style_sheet(k->doc, name, rcss)) {
         fprintf(stderr, "RmlUi could not read %s\n", k->sheet);
     }
-    free(rcss);
+    ui_style_set(name, rcss, &map);
+    afree(rcss);
     free(own);
+    rcss_map_free(&own_map);
+    rcss_map_free(&map);
     for (int i = 0; i < acount(k->extra_styles); i++) {
-        const char *rcss = k->extra_styles[i].value;
-        if (rcss[0] && !rml_document_add_style_sheet(k->doc, rcss)) {
+        const char *extra = k->extra_styles[i].value;
+        sheet_name(k, k->extra_styles[i].name, name, sizeof name);
+        if (extra[0] && !rml_document_add_named_style_sheet(k->doc, name, extra)) {
             fprintf(
                 stderr,
                 "RmlUi could not read the %s style sheet\n",
                 k->extra_styles[i].name
             );
         }
+        ui_style_set(name, extra, ui_style_map(extra));
     }
     k->restyle = false;
 }

@@ -20,6 +20,7 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/events.h"
 #include "graph/document/library.h"
+#include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
@@ -1263,56 +1264,85 @@ static bool read_ui_asset(const char *json, char *error, size_t error_size)
     return ok;
 }
 
-static void catalog_validate_asset(const char *root, catalog_asset *asset, const char *json)
+/* What graph assets link with: the libraries, shader libraries and event
+   definitions, loaded once per catalog. `error` is why they did not load. */
+typedef struct
+{
+    behavior_asset **assets;
+    char error[256];
+} catalog_links;
+
+static bool links_family(const asset_family *family)
+{
+    return !strcmp(family->kind, "library") ||
+           !strcmp(family->kind, "shader-library") || !strcmp(family->kind, "event");
+}
+
+static void load_catalog_links(const char *root, const asset_entry *entries, catalog_links *links)
+{
+    for (int i = 0; i < acount(entries) && !links->error[0]; i++) {
+        if (!links_family(entries[i].family)) {
+            continue;
+        }
+        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(path_size);
+        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
+        char *json = read_file(path, NULL, NULL, links->error, sizeof links->error);
+        free(path);
+        behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+        if (json && !asset) {
+            snprintf(
+                links->error,
+                sizeof links->error,
+                "could not load %s: %s",
+                entries[i].relative,
+                graph_last_error()
+            );
+        }
+        free(json);
+        if (asset) {
+            apush(links->assets, asset);
+        }
+    }
+}
+
+static void catalog_add_report(catalog_asset *asset, const compile_report *report)
+{
+    asset->errors = report->error_count;
+    asset->warnings = report->warning_count;
+    for (int i = 0; i < acount(report->items); i++) {
+        const compile_diagnostic *diagnostic = &report->items[i];
+        catalog_add_diagnostic(
+            asset,
+            cmpl_severity_name(diagnostic->severity),
+            diagnostic->rule,
+            cmpl_rule_name(diagnostic->rule),
+            diagnostic->message
+        );
+    }
+}
+
+static void catalog_validate_asset(const catalog_links *links, catalog_asset *asset, const char *json)
 {
     const asset_family *family = asset->asset.family;
     if (family->loader == ASSET_GRAPH) {
         behavior_asset *behavior = behavior_asset_load_json(json);
-        char link_error[256] = { 0 };
-        if (behavior && behavior->domain == BEHAVIOR_DOMAIN_FIELD) {
-            behavior_asset **libraries = NULL;
-            int status = load_behavior_family_assets(
-                root,
-                family_by_kind("library"),
-                &libraries,
-                link_error,
-                sizeof link_error
-            );
-            behavior_asset *linked = status == CHIBI_AUTOMATION_OK
-                                       ? behavior_asset_link_libraries(
-                                             behavior,
-                                             (const behavior_asset *const *)libraries,
-                                             acount(libraries),
-                                             link_error,
-                                             sizeof link_error
-                                         )
-                                       : NULL;
-            behavior_asset_free(behavior);
-            free_behavior_assets(libraries);
-            behavior = linked;
-        }
-        if (!behavior) {
+        if (!behavior || links->error[0]) {
             asset->errors = 1;
-            catalog_add_diagnostic(asset, "error", 0, "LOAD", link_error[0] ? link_error : graph_last_error());
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", behavior ? links->error : graph_last_error());
         } else {
             compile_report report;
             compile_report_init(&report);
-            behavior_asset_compile(behavior, &report);
-            asset->errors = report.error_count;
-            asset->warnings = report.warning_count;
-            for (int i = 0; i < acount(report.items); i++) {
-                const compile_diagnostic *diagnostic = &report.items[i];
-                catalog_add_diagnostic(
-                    asset,
-                    cmpl_severity_name(diagnostic->severity),
-                    diagnostic->rule,
-                    cmpl_rule_name(diagnostic->rule),
-                    diagnostic->message
-                );
-            }
+            behavior_asset_free(behavior_asset_validate(
+                behavior,
+                (const behavior_asset *const *)links->assets,
+                acount(links->assets),
+                &report
+            ));
+            catalog_add_report(asset, &report);
             compile_report_free(&report);
-            behavior_asset_free(behavior);
         }
+        behavior_asset_free(behavior);
     } else if (family->loader == ASSET_SYSTEM) {
         char error[256] = { 0 };
         game_system_document *document = game_system_document_load(
@@ -1329,18 +1359,7 @@ static void catalog_validate_asset(const char *root, catalog_asset *asset, const
             compile_report report;
             compile_report_init(&report);
             behavior_asset_compile_for_system(game_system_document_behavior_asset(document), &report);
-            asset->errors = report.error_count;
-            asset->warnings = report.warning_count;
-            for (int i = 0; i < acount(report.items); i++) {
-                const compile_diagnostic *diagnostic = &report.items[i];
-                catalog_add_diagnostic(
-                    asset,
-                    cmpl_severity_name(diagnostic->severity),
-                    diagnostic->rule,
-                    cmpl_rule_name(diagnostic->rule),
-                    diagnostic->message
-                );
-            }
+            catalog_add_report(asset, &report);
             compile_report_free(&report);
             game_system_document_free(document);
         }
@@ -1594,6 +1613,7 @@ static yyjson_doc *parse_asset_text(const char *text)
 
 static int load_catalog_asset(
     const char *root,
+    const catalog_links *links,
     const asset_entry *entry,
     catalog_asset *asset,
     char *error,
@@ -1638,7 +1658,7 @@ static int load_catalog_asset(
         }
         catalog_scan_members(asset, json_root);
         yyjson_doc_free(document);
-        catalog_validate_asset(root, asset, json);
+        catalog_validate_asset(links, asset, json);
     }
     free(json);
     return 0;
@@ -1665,6 +1685,26 @@ static void reset_catalog_derived_data(catalog_asset *asset)
     asset->dependents = NULL;
 }
 
+/* Graph assets validate linked with the libraries and events, so their
+   cached results hold while those are unchanged. */
+static bool catalog_links_unchanged(const catalog_asset *previous, const asset_entry *entries)
+{
+    int unmatched = 0;
+    for (int i = 0; i < acount(previous); i++) {
+        unmatched += links_family(previous[i].asset.family);
+    }
+    for (int i = 0; i < acount(entries); i++) {
+        if (!links_family(entries[i].family)) {
+            continue;
+        }
+        if (cached_catalog_asset_index(previous, &entries[i]) < 0) {
+            return false;
+        }
+        unmatched--;
+    }
+    return unmatched == 0;
+}
+
 static int build_catalog_from_entries(
     const char *root,
     const asset_entry *entries,
@@ -1676,8 +1716,13 @@ static int build_catalog_from_entries(
 )
 {
     catalog_asset *assets = NULL;
-    for (int i = 0; i < acount(entries); i++) {
-        int previous_index = previous && strcmp(entries[i].family->kind, "field")
+    bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
+    catalog_links links = { 0 };
+    bool linked = false;
+    int status = 0;
+    for (int i = 0; i < acount(entries) && !status; i++) {
+        bool graph = entries[i].family->loader == ASSET_GRAPH;
+        int previous_index = previous && (!graph || graphs_cached)
                                ? cached_catalog_asset_index(previous, &entries[i])
                                : -1;
         if (previous_index >= 0) {
@@ -1687,12 +1732,20 @@ static int build_catalog_from_entries(
             apush(assets, asset);
             continue;
         }
-        catalog_asset asset = { 0 };
-        if (load_catalog_asset(root, &entries[i], &asset, error, error_size) != 0) {
-            free_catalog_assets(assets);
-            return -1;
+        if (graph && !linked) {
+            load_catalog_links(root, entries, &links);
+            linked = true;
         }
-        apush(assets, asset);
+        catalog_asset asset = { 0 };
+        status = load_catalog_asset(root, &links, &entries[i], &asset, error, error_size);
+        if (!status) {
+            apush(assets, asset);
+        }
+    }
+    free_behavior_assets(links.assets);
+    if (status) {
+        free_catalog_assets(assets);
+        return -1;
     }
     if (catalog_index_references(root, assets, references, error, error_size) != 0) {
         free_catalog_assets(assets);

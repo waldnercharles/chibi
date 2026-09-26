@@ -78,6 +78,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/problems.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/local.c

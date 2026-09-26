@@ -134,6 +134,15 @@ bool ed_is_graph_call(const node *n);
 /* An operator's symbol, such as + or ≤, or NULL for a titled node. */
 const char *ed_node_symbol(const node_desc *desc);
 const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap);
+/* The title of a node of `asset`, open or not; `g` holds the node. */
+const char *ed_node_title_in(
+    const editor *e,
+    const behavior_asset *asset,
+    const graph *g,
+    const node *n,
+    char *buf,
+    size_t cap
+);
 const char *ed_pin_type_name(const pin_spec *spec);
 int ed_edge_index(const editor *e, const ed_link_ref *link);
 const editor_choices *ed_pin_choices(editor *e, node *n, int output, int index);

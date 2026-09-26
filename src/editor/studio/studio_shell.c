@@ -129,6 +129,7 @@ static void studio_save(studio *s)
         return;
     }
     finish_transform_edit(scene, false);
+    s->problems_checked = false;
     const char *failure = scene->message[0] ? scene->message : NULL;
     if (graph_focused(s) && scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         char title[160];

@@ -81,24 +81,24 @@ static const struct
     const char *cls;
     zep_color roles[3]; /* ends at ZEP_COLOR_NONE */
 } SWATCHES[] = {
-    { "code-text", { ZEP_COLOR_TEXT, ZEP_COLOR_NORMAL } },
-    { "code-background", { ZEP_COLOR_BACKGROUND } },
-    { "code-gutter", { ZEP_COLOR_LINE_NUMBER_BACKGROUND } },
-    { "code-line-number", { ZEP_COLOR_LINE_NUMBER, ZEP_COLOR_TEXT_DIM } },
-    { "code-line-number-active", { ZEP_COLOR_LINE_NUMBER_ACTIVE } },
-    { "code-cursor", { ZEP_COLOR_CURSOR_NORMAL } },
-    { "code-cursor-insert", { ZEP_COLOR_CURSOR_INSERT } },
-    { "code-selection", { ZEP_COLOR_VISUAL_SELECT_BACKGROUND } },
-    { "code-cursor-line", { ZEP_COLOR_CURSOR_LINE_BACKGROUND } },
-    { "code-status", { ZEP_COLOR_AIRLINE_BACKGROUND } },
-    { "code-mode", { ZEP_COLOR_MODE } },
-    { "code-whitespace", { ZEP_COLOR_WHITESPACE, ZEP_COLOR_HIDDEN_TEXT } },
-    { "code-scrollbar-track", { ZEP_COLOR_WIDGET_BACKGROUND } },
-    { "code-scrollbar", { ZEP_COLOR_WIDGET_INACTIVE } },
-    { "code-scrollbar-hover", { ZEP_COLOR_WIDGET_ACTIVE } },
-    { "code-tip-border", { ZEP_COLOR_WIDGET_BORDER } },
-    { "code-flash", { ZEP_COLOR_FLASH } },
-    { "code-info", { ZEP_COLOR_INFO } },
+    { "zep-text", { ZEP_COLOR_TEXT, ZEP_COLOR_NORMAL } },
+    { "zep-background", { ZEP_COLOR_BACKGROUND } },
+    { "zep-gutter", { ZEP_COLOR_LINE_NUMBER_BACKGROUND } },
+    { "zep-line-number", { ZEP_COLOR_LINE_NUMBER, ZEP_COLOR_TEXT_DIM } },
+    { "zep-line-number-active", { ZEP_COLOR_LINE_NUMBER_ACTIVE } },
+    { "zep-cursor", { ZEP_COLOR_CURSOR_NORMAL } },
+    { "zep-cursor-insert", { ZEP_COLOR_CURSOR_INSERT } },
+    { "zep-selection", { ZEP_COLOR_VISUAL_SELECT_BACKGROUND } },
+    { "zep-cursor-line", { ZEP_COLOR_CURSOR_LINE_BACKGROUND } },
+    { "zep-status", { ZEP_COLOR_AIRLINE_BACKGROUND } },
+    { "zep-mode", { ZEP_COLOR_MODE } },
+    { "zep-whitespace", { ZEP_COLOR_WHITESPACE, ZEP_COLOR_HIDDEN_TEXT } },
+    { "zep-scrollbar-track", { ZEP_COLOR_WIDGET_BACKGROUND } },
+    { "zep-scrollbar", { ZEP_COLOR_WIDGET_INACTIVE } },
+    { "zep-scrollbar-hover", { ZEP_COLOR_WIDGET_ACTIVE } },
+    { "zep-tip-border", { ZEP_COLOR_WIDGET_BORDER } },
+    { "zep-flash", { ZEP_COLOR_FLASH } },
+    { "zep-info", { ZEP_COLOR_INFO } },
     { "tok-number", { ZEP_COLOR_NUMBER } },
     { "tok-string", { ZEP_COLOR_STRING } },
     { "tok-keyword", { ZEP_COLOR_KEYWORD } },
@@ -1504,6 +1504,7 @@ kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_
     show_completions(k, n, e, d);
     k->last = n;
     kit_code_result result = e->result;
+    result.focused = e->focused;
     e->result = (kit_code_result){ .completion = -1 };
     return result;
 }

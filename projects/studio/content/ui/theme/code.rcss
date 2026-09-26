@@ -16,25 +16,25 @@ kit-code {
     tab-index: auto; drag: drag; font-family: "JetBrains Mono";
 }
 kit-code > span { visibility: hidden; position: absolute; width: 0dp; height: 0dp; }
-kit-code .code-text { color: var(--foreground); }
-kit-code .code-background { color: var(--canvas); }
-kit-code .code-gutter { color: var(--canvas); }
-kit-code .code-line-number { color: var(--faint-foreground); }
-kit-code .code-line-number-active { color: var(--muted-foreground); }
-kit-code .code-cursor { color: var(--foreground); }
-kit-code .code-cursor-insert { color: var(--foreground); }
-kit-code .code-selection { color: var(--primary-wash); }
-kit-code .code-cursor-line { color: var(--item-selected); }
+kit-code .zep-text { color: var(--foreground); }
+kit-code .zep-background { color: var(--canvas); }
+kit-code .zep-gutter { color: var(--canvas); }
+kit-code .zep-line-number { color: var(--faint-foreground); }
+kit-code .zep-line-number-active { color: var(--muted-foreground); }
+kit-code .zep-cursor { color: var(--foreground); }
+kit-code .zep-cursor-insert { color: var(--foreground); }
+kit-code .zep-selection { color: var(--primary-wash); }
+kit-code .zep-cursor-line { color: var(--item-selected); }
 /* Zep also marks the glyph under the pointer in the status color. */
-kit-code .code-status { color: transparent; }
-kit-code .code-mode { color: var(--primary); }
-kit-code .code-whitespace { color: var(--line); }
-kit-code .code-scrollbar-track { color: transparent; }
-kit-code .code-scrollbar { color: var(--scrollbar); }
-kit-code .code-scrollbar-hover { color: var(--scrollbar-hover); }
-kit-code .code-tip-border { color: var(--tooltip-edge); }
-kit-code .code-flash { color: var(--highlight); }
-kit-code .code-info { color: var(--primary); }
+kit-code .zep-status { color: transparent; }
+kit-code .zep-mode { color: var(--primary); }
+kit-code .zep-whitespace { color: var(--line); }
+kit-code .zep-scrollbar-track { color: transparent; }
+kit-code .zep-scrollbar { color: var(--scrollbar); }
+kit-code .zep-scrollbar-hover { color: var(--scrollbar-hover); }
+kit-code .zep-tip-border { color: var(--tooltip-edge); }
+kit-code .zep-flash { color: var(--highlight); }
+kit-code .zep-info { color: var(--primary); }
 
 /* Completions under the cursor; choosing one returns focus to the editor. */
 .code-completions {

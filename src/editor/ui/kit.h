@@ -497,18 +497,6 @@ extern "C"
     void kit_set_theme(kit *k, const char *name, bool active);
     void kit_set_body_class(kit *k, const char *name, bool on);
 
-    /* ---------- UI documents (workstream D) ---------- */
-
-    /* A text area filling its parent that edits source until kit_code lands:
-     * Enter breaks the line, Tab indents, Escape leaves the field, and every
-     * change reports at once. Returns the text, kept until kit_end, on the
-     * frame the user changed it; else NULL. A different `text` replaces the
-     * field's, as undo does. */
-    const char *kit_code_area(kit *k, const char *key, const char *text);
-    /* Focuses the text field emitted last and selects bytes [start, end) of
-     * its text, scrolling them into view. */
-    void kit_text_select(kit *k, int start, int end);
-
     /* ---------- UI Inspector (kit_inspect.c) ---------- */
 
     /* An element's boxes in the kit's logical pixels, outermost first. An
@@ -596,6 +584,7 @@ extern "C"
          * edit with, and on a Mac every Command chord in Vim but Z and V. */
         char chord[32];
         int completion; /* the accepted item, or -1 */
+        bool focused;   /* the editor holds the keyboard */
     } kit_code_result;
 
     typedef enum kit_code_severity

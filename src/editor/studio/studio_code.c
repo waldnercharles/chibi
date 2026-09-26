@@ -5,6 +5,7 @@
  * as they are typed (the code_apply_live preference), or when saved. */
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -235,11 +236,54 @@ void studio_code_header(studio *s, int)
 
 /* ---------- Body ---------- */
 
-/* The part's editor. A text area stands in until kit_code (Zep) lands; the
- * swap replaces this call. Returns the text when the user changed it. */
-static const char *edit_part(kit *k, const ui_buffer *b)
+/* The one edit that turns the editor's text into `text`: the bytes between
+ * their common start and end. */
+static void follow_text(kit_code_editor *e, const char *text)
 {
-    return kit_code_area(k, "text", ui_buffer_text(b, b->part));
+    size_t length, target = strlen(text);
+    const char *shown = kit_code_text(e, &length);
+    if (length == target && !memcmp(shown, text, length)) {
+        return;
+    }
+    size_t start = 0, end = 0;
+    while (start < length && start < target && shown[start] == text[start]) {
+        start++;
+    }
+    while (end < length - start && end < target - start &&
+           shown[length - 1 - end] == text[target - 1 - end]) {
+        end++;
+    }
+    char *insert = xmalloc(target - start - end + 1);
+    memcpy(insert, text + start, target - start - end);
+    insert[target - start - end] = '\0';
+    kit_code_apply(e, &(text_edit){ (int)start, (int)(length - end), insert }, 1);
+    free(insert);
+}
+
+/* The code editor over the shown part. The buffer keeps the text and its
+ * history: typing reaches it as typed text, and a change made elsewhere (the
+ * designer, the MCP, Studio's Undo, a reload) comes back to the editor as an
+ * edit, so the cursor keeps its place. Another document or part starts over. */
+static kit_code_editor *part_editor(studio *s, const scene_document_tab *tab)
+{
+    studio_code *c = &s->code;
+    const ui_buffer *b = tab->ui;
+    const char *text = ui_buffer_text(b, b->part);
+    if (!c->editor) {
+        c->editor = kit_code_editor_create(text);
+    }
+    if (strcmp(c->editor_path, tab->path) || c->editor_part != b->part) {
+        snprintf(c->editor_path, sizeof c->editor_path, "%s", tab->path);
+        c->editor_part = b->part;
+        kit_code_set_text(c->editor, text);
+    }
+    return c->editor;
+}
+
+void studio_code_free(studio *s)
+{
+    kit_code_editor_destroy(s->code.editor);
+    s->code.editor = NULL;
 }
 
 static int line_offset(const char *text, int line)
@@ -252,34 +296,33 @@ static int line_offset(const char *text, int line)
     return at;
 }
 
-/* Selects the line studio_open_ui_part asked for, once laid out. Call after
- * the part's editor. */
-static void reveal(studio *s, const ui_buffer *b)
+/* Puts the cursor on the line studio_open_ui_part asked for, once laid out,
+ * and focuses the editor. Call right after it. */
+static void reveal(studio *s, kit_code_editor *e, const ui_buffer *b)
 {
     if (!s->code.reveal || s->code.reveal_wait-- > 0) {
         return;
     }
-    const char *text = ui_buffer_text(b, b->part);
-    int start = line_offset(text, s->code.reveal);
-    kit_text_select(s->kit, start, start + (int)strcspn(text + start, "\n"));
+    kit_code_set_cursor(e, line_offset(ui_buffer_text(b, b->part), s->code.reveal));
+    kit_focus(s->kit);
     s->code.reveal = 0;
 }
 
-/* Save and history keys reach the document while its text has focus, which
- * keeps them from Studio's shortcuts. */
-static void editing_keys(studio *s)
+/* A chord the editor leaves to Studio runs the command it names, as the
+ * shortcuts would if typing had not turned them off. */
+static void run_chord(studio *s, const char *chord)
 {
-    for (int i = 0; i < acount(s->keys); i++) {
-        SDL_Keycode key = s->keys[i].key;
-        bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
-        if (!studio_primary(s, s->keys[i].mod)) {
-            continue;
+    const char *shown = studio_chord(s, chord);
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        studio_command_info info = studio_command_describe(s, (studio_command)c);
+        if (info.shortcut && !strcmp(info.shortcut, shown)) {
+            studio_command_run(s, (studio_command)c);
+            return;
         }
-        if (key == SDLK_S) {
-            studio_save(s);
-        } else if (key == SDLK_Z || key == SDLK_Y) {
-            studio_history(s, key == SDLK_Y || shift);
-        }
+    }
+    /* Studio's shortcuts search with Mod+P as well as Mod+K. */
+    if (!strcmp(chord, "Mod+P")) {
+        studio_command_run(s, STUDIO_COMMAND_SEARCH);
     }
 }
 
@@ -300,22 +343,29 @@ void studio_code_body(studio *s, int)
         return;
     }
     ui_buffer *b = tab->ui;
-    char font[16];
-    snprintf(font, sizeof font, "%.0fdp", s->prefs.code_font_size);
     kit_push(k, "code", NULL, "code-editor");
-    kit_style(k, "font-size", font);
-    const char *typed = edit_part(k, b);
-    bool editing = kit_item_active(k);
-    reveal(s, b);
+    kit_code_editor *e = part_editor(s, tab);
+    kit_code_desc desc = {
+        .vim = s->prefs.code_vim,
+        .font_size = s->prefs.code_font_size,
+        .mac = s->mac,
+    };
+    kit_code_result r = kit_code(k, "text", e, &desc);
+    reveal(s, e, b);
     /* Its text in focus makes the document active, so Save and Undo reach it. */
-    if ((editing || typed) && tab != active_ui(s)) {
+    bool typed = r.events & KIT_CODE_CHANGED;
+    if ((r.focused || typed) && tab != active_ui(s)) {
         scene_tabs_activate(s->scene, (int)(tab - s->scene->tabs));
     }
     if (typed) {
-        ui_buffer_type(b, b->part, typed, s->time);
+        ui_buffer_type(b, b->part, kit_code_text(e, NULL), s->time);
     }
-    if (editing) {
-        editing_keys(s);
+    follow_text(e, ui_buffer_text(b, b->part));
+    if (r.events & KIT_CODE_SAVED) {
+        studio_save(s);
+    }
+    if (r.events & KIT_CODE_CHORD) {
+        run_chord(s, r.chord);
     }
     if (b->error[0]) {
         kit_push(k, "status", NULL, "code-status");

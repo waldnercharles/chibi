@@ -36,6 +36,7 @@ void run_entity_presence_checks();
 void test_surface_cpu();
 void test_shader_effects_cpu();
 void test_shader_image_cpu();
+void test_png_encoding();
 void test_physics();
 void test_materials();
 void test_fields();
@@ -140,6 +141,7 @@ TEST_CASE(all_checks)
     test_surface_cpu();
     test_shader_effects_cpu();
     test_shader_image_cpu();
+    test_png_encoding();
     test_typed_events();
     test_component_conversion();
     test_field_outputs();

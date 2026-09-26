@@ -88,7 +88,7 @@ if(NOT cute_framework_POPULATED)
     endif()
 endif()
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window)
+foreach(CUTE_PATCH_NAME cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -722,6 +722,7 @@ add_executable(test_suite
     test/radiance.c
     test/radiance_intervals.c
     test/interior_border.c
+    test/png_encoding.c
     test/sdf_coverage.c
     test/draw_backend.cpp
     src/host/stacktrace.c

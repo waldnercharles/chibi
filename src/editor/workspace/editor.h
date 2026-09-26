@@ -9,6 +9,7 @@
 #include "graph/runtime/instance.h"
 
 typedef struct editor editor;
+struct ui_event;
 
 /* Checkpoints own no runtime pointers. Export returns malloc-owned JSON; import
  * is for a fresh candidate editor and rejects unsupported or invalid state. */
@@ -164,6 +165,9 @@ void editor_set_retained_keyboard(bool captured);
  * event nodes and their pins. */
 /* `events` is borrowed and must outlive the editor. */
 void editor_set_event_catalog(editor *e, const graph_host_event_desc *events, int count);
+/* The events the GameUi documents showing the asset's entities send it
+ * (assets/ui_events.h), offered as Event nodes; borrowed until the next call. */
+void editor_set_ui_event_catalog(editor *e, const struct ui_event *events, int count);
 void editor_set_asset_opener(editor *e, int (*open)(void *, const char *, uint64_t), void *user);
 void editor_set_prototype_catalog(editor *e, const char *const *names, int count);
 /* `assets` stay borrowed until the next call, so a host that frees one sets

@@ -1101,7 +1101,7 @@ static void statusbar(studio *s)
 static void palette(studio *s)
 {
     if (studio_graph_palette(s) || studio_member_palette(s) ||
-        !kit_command_is_open(s->kit)) {
+        studio_pick_palette(s) || !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1230,6 +1230,7 @@ void studio_emit(studio *s)
     sync_presentation(s);
     studio_disk_frame(s);
     studio_code_frame(s);
+    studio_canvas_follow(s);
     track_pointer(s);
     kit_root(s->kit, "app");
     topbar(s);

@@ -79,6 +79,8 @@ void test_ui_inspector();
 void test_ui_source();
 void test_ui_check();
 void test_ui_pages();
+/* UI wiring (workstream K) */
+void test_ui_wiring();
 
 static int fails;
 
@@ -222,6 +224,8 @@ TEST_CASE(all_checks)
     test_ui_source();
     test_ui_check();
     test_ui_pages();
+    /* UI wiring (workstream K) */
+    test_ui_wiring();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

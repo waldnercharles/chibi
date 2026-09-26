@@ -169,4 +169,11 @@ const char *render_ui_error(const render_ui *ui);
 /* The RmlUi context the documents live in, for inspecting them. */
 rml_context *render_ui_context(const render_ui *ui);
 
+/* ---------- UI wiring (workstream K) ---------- */
+
+/* Takes the overlay's oldest activation, with the element that sent it and
+ * an input's value, as Storybook's Actions log them; false when there is
+ * none. Use this or render_ui_take_overlay_event, not both. */
+bool render_ui_take_overlay_activation(render_ui *ui, ui_activation *out);
+
 #endif

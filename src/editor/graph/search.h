@@ -5,6 +5,7 @@
 #include "graph/model/behavior_asset.h"
 
 typedef struct editor editor;
+struct ui_event;
 typedef struct ed_search_match
 {
     const node_desc *desc;
@@ -13,6 +14,7 @@ typedef struct ed_search_match
     const char *prototype;
     const behavior_asset *event;
     int host_event; /* One-based index in the editor host event catalog. */
+    const struct ui_event *ui_event; /* an event a GameUi document sends */
     /* Component node presets: the Component or Type setting, and for Set the
      * one field it writes. */
     const char *setting;

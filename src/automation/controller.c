@@ -7,6 +7,7 @@
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "assets/ui_document.h"
+#include "assets/ui_events.h"
 #include "automation/asset_write.h"
 #include "automation/field_preview.h"
 #include "automation/graph_edit.h"
@@ -7784,17 +7785,8 @@ static bool behavior_vocabulary(const char *domain)
     return !domain || !strcmp(domain, "behavior");
 }
 
-/* An event a ui document sends the GameUi entity showing it, words for it,
- * and when, without the period: "Sent when the player clicks #go in Hud". */
-typedef struct
-{
-    char *name;
-    const char *keywords;
-    char description[256];
-} ui_event;
-
 /* The events a project names: its event definitions, and those its ui
- * documents send behaviors. */
+ * documents send behaviors (assets/ui_events.h). */
 typedef struct
 {
     behavior_asset **definitions;
@@ -7809,53 +7801,6 @@ static bool defined_event(const project_events *events, const char *name)
         }
     }
     return graph_event_host_name(name);
-}
-
-/* Adds what the player does in `document` to send `found` to its event's
- * sentence while it fits, starting one for a new name. Host events and
- * definitions already offer their own names. */
-static void add_ui_event(project_events *events, const ui_document_event *found, const char *document)
-{
-    char clause[192];
-    if (found->key) {
-        snprintf(
-            clause,
-            sizeof clause,
-            "presses %s inside %s in %s",
-            found->key,
-            found->element,
-            document
-        );
-    } else {
-        snprintf(
-            clause,
-            sizeof clause,
-            "%s %s in %s",
-            found->input ? "changes" : "clicks",
-            found->element,
-            document
-        );
-    }
-    for (int i = 0; i < acount(events->ui); i++) {
-        ui_event *event = &events->ui[i];
-        if (strcmp(event->name, found->name)) {
-            continue;
-        }
-        size_t used = strlen(event->description);
-        if (used + strlen(clause) + 6 < sizeof event->description) {
-            snprintf(event->description + used, sizeof event->description - used, ", or %s", clause);
-        }
-        return;
-    }
-    if (defined_event(events, found->name)) {
-        return;
-    }
-    ui_event event = { .name = xstrdup(found->name),
-                       .keywords = found->key   ? "UI key keyboard"
-                                 : found->input ? "UI input widget"
-                                                : "UI button widget" };
-    snprintf(event.description, sizeof event.description, "Sent when the player %s", clause);
-    apush(events->ui, event);
 }
 
 /* Adds the events the project's ui documents send; the pause menu's go to
@@ -7878,19 +7823,18 @@ static int load_ui_events(const char *root, project_events *events, char *error,
         }
         snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
         char *text = read_file(path, NULL, NULL, error, error_size);
-        ui_document markup = { 0 };
         ui_document_event *found = NULL;
-        char invalid[160];
-        if (text &&
-            ui_document_read(text, NULL, NULL, &markup, invalid, sizeof invalid)) {
-            ui_document_events(markup.rml, &found);
+        if (text) {
+            ui_events_read(text, &found);
         }
+        /* Host events and definitions already offer their own names. */
         for (int e = 0; e < acount(found); e++) {
-            add_ui_event(events, &found[e], document);
+            if (!defined_event(events, found[e].name)) {
+                ui_events_add(&events->ui, &found[e], document);
+            }
         }
         status = text ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
         ui_document_events_free(found);
-        ui_document_free(&markup);
         free(text);
     }
     free_asset_entries(entries);
@@ -7900,10 +7844,7 @@ static int load_ui_events(const char *root, project_events *events, char *error,
 static void free_project_events(project_events *events)
 {
     free_behavior_assets(events->definitions);
-    for (int i = 0; i < acount(events->ui); i++) {
-        free(events->ui[i].name);
-    }
-    afree(events->ui);
+    ui_events_free(events->ui);
 }
 
 static int load_project_events(const char *root, project_events *events, char *error, size_t error_size)

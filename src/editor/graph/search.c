@@ -1,5 +1,6 @@
 #include "editor/graph/search.h"
 
+#include "assets/ui_events.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
@@ -354,21 +355,27 @@ static void ed_search_components(const editor *e, ed_search_match **matches, con
     afree(presets);
 }
 
+/* An Event node of the asset already handles the event. */
+static bool ed_event_handled(const editor *e, const char *name)
+{
+    for (int g = 0; g < acount(e->asset->graphs); g++) {
+        const graph *graph = e->asset->graphs[g];
+        for (int n = 0; n < acount(graph->nodes); n++) {
+            const node *node = graph->nodes[n];
+            if (node->desc->flow_kind == NODE_FLOW_EVENT &&
+                node->reference_name && !strcmp(node->reference_name, name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void ed_search_host_events(const editor *e, ed_search_match **matches, const char *filter)
 {
     for (int i = 0; i < e->event_catalog_count; i++) {
         const graph_host_event_desc *event = &e->event_catalog[i];
-        bool used = false;
-        for (int g = 0; g < acount(e->asset->graphs); g++) {
-            const graph *graph = e->asset->graphs[g];
-            for (int n = 0; n < acount(graph->nodes); n++) {
-                const node *node = graph->nodes[n];
-                used |= node->desc->flow_kind == NODE_FLOW_EVENT &&
-                        node->reference_name &&
-                        !strcmp(node->reference_name, event->name);
-            }
-        }
-        if (used) {
+        if (ed_event_handled(e, event->name)) {
             continue;
         }
         pin_spec *outputs = NULL;
@@ -386,6 +393,28 @@ static void ed_search_host_events(const editor *e, ed_search_match **matches, co
         snprintf(match.name, sizeof match.name, "On %s", event->name);
         ed_add_search_match(e, matches, match, &signature, filter);
         afree(outputs);
+    }
+}
+
+/* Events GameUi documents send, found by their name and by what the player
+ * does to send them. */
+static void ed_search_ui_events(const editor *e, ed_search_match **matches, const char *filter)
+{
+    for (int i = 0; i < e->ui_event_catalog_count; i++) {
+        const ui_event *event = &e->ui_event_catalog[i];
+        if (ed_event_handled(e, event->name)) {
+            continue;
+        }
+        char keywords[384];
+        snprintf(keywords, sizeof keywords, "%s %s", event->keywords, event->description);
+        node_desc signature = NODE_Event;
+        signature.keywords = keywords;
+        signature.category = "UI Events";
+        ed_search_match match = { .desc = &NODE_Event,
+                                  .ui_event = event,
+                                  .category = "UI Events" };
+        snprintf(match.name, sizeof match.name, "On %s", event->name);
+        ed_add_search_match(e, matches, match, &signature, filter);
     }
 }
 
@@ -564,6 +593,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     }
     if (!shader && e->asset->domain == BEHAVIOR_DOMAIN_EVENT) {
         ed_search_host_events(e, &matches, filter);
+        ed_search_ui_events(e, &matches, filter);
         ed_search_events(e, &matches, filter);
         for (int i = 0; i < acount(e->asset->variables); i++) {
             const behavior_variable *v = &e->asset->variables[i];
@@ -669,6 +699,10 @@ static node *spawn_match(editor *e, const ed_search_match *match)
         graph_set_node_reference(g, n, 0, signature->name);
         ed_event_add_declared_params(e, n, signature);
     }
+    if (match->ui_event && graph_set_event_name(g, n, match->ui_event->name) != 0) {
+        graph_remove_node(g, n);
+        return NULL;
+    }
     if (match->event && graph_event_apply(g, n, match->event) != 0) {
         graph_remove_node(g, n);
         return NULL;
@@ -757,7 +791,8 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
         graph_remove_node(e->active_graph, n);
         n = NULL;
     }
-    if (n && !match->event && !match->host_event && ed_name_spawned_event(e, n) != 0) {
+    if (n && !match->event && !match->host_event && !match->ui_event &&
+        ed_name_spawned_event(e, n) != 0) {
         graph_remove_node(e->active_graph, n);
         n = NULL;
     }

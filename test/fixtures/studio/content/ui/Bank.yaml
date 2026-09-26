@@ -1,0 +1,4 @@
+rml: |
+  <div id="extract" data-event-click="emit('Extract')" data-keys="Escape:Close">Extract</div>
+rcss: |
+  #extract { display: block; width: 100%; height: 100%; }

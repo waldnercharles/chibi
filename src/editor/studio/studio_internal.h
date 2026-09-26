@@ -602,6 +602,27 @@ struct studio
     studio_code code;
     studio_new_ui new_ui;
     struct studio_inspect *inspect; /* the UI Inspector, NULL until used */
+    /* UI wiring (workstream K): the asset picker, the shown game UI's error
+       and the Canvas preview. */
+    struct
+    {
+        bool open;   /* the command surface is choosing an asset for `key` */
+        bool chosen; /* `value` waits for the field keyed `key` */
+        bool text;   /* a name no asset has may be chosen */
+        int kind;    /* reference_asset_kind */
+        char key[192];
+        char none[128]; /* the label of choosing none; "" when a name is required */
+        char current[128];
+        char value[128];
+    } pick;
+    char ui_error[256]; /* the shown game UI's error, as last recorded */
+    struct studio_canvas *canvas; /* NULL until a preview opens */
+    char followed[128]; /* the ui asset previewed because its document is active */
+    struct
+    {
+        bool read; /* events holds them while the Add menu is open */
+        struct ui_event *events; /* studio_behavior_ui_events */
+    } add_menu;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -927,6 +948,7 @@ typedef enum
     STUDIO_COMMAND_MOTION,
     STUDIO_COMMAND_THEME,
     STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
+    STUDIO_COMMAND_PREVIEW_UI,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -1110,5 +1132,112 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key);
 const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_input *input);
 /* After studio_emit: the pick overlay and the highlight. */
 void studio_inspect_emit(studio *s);
+/* ---------- UI wiring (workstream K) ---------- */
+
+struct ui_event;
+/* The events the GameUi documents shown on whatever attaches the open
+ * behavior send it (studio_graph_edit.c), which the Add menu offers as Event
+ * nodes. Free them with ui_events_free. */
+struct ui_event *studio_behavior_ui_events(studio *s);
+/* Drops the events the open Add menu read once; it reads them again when it
+ * next opens. */
+void studio_add_menu_close(studio *s);
+
+/* Asset pickers (studio_pick.c): a field naming an asset chooses one of its
+ * kind on the command surface, as Unity's object field and Unreal's asset
+ * picker do. */
+typedef struct
+{
+    int kind;         /* reference_asset_kind */
+    const char *none; /* the label of choosing none; NULL when a name is required */
+    bool text;        /* a name no asset has yet may be typed */
+} studio_pick_desc;
+/* The key of the pick that previews the chosen ui asset. */
+#define STUDIO_PICK_PREVIEW "@preview"
+/* An asset of `kind` a field can name: not a name only a reference makes
+ * up, nor a file of another format beside the assets, as a stylesheet under
+ * ui/. */
+bool studio_asset_nameable(const reference_asset *asset, int kind);
+/* The names of the nameable assets of `kind`, sorted. The caller afrees the
+ * array; the names belong to the index. */
+const char **studio_asset_names(const reference_index *index, int kind);
+/* An asset field showing `value`, keyed `key` across the project: the name
+ * chosen for it this frame ("" for none), or NULL. */
+const char *studio_asset_field(
+    studio *s,
+    const char *key,
+    const char *value,
+    const studio_pick_desc *desc,
+    unsigned flags
+);
+/* Opens the command surface over desc's assets for `key`. */
+void studio_pick_open(studio *s, const char *key, const char *current, const studio_pick_desc *desc);
+/* Items for the command surface while it picks an asset. */
+bool studio_pick_palette(studio *s);
+
+/* Game UI errors (studio_canvas.c): the shown documents' error, the scene's
+ * or the preview's, as "ui/Name.yaml message". A change is recorded in
+ * Output once; the Scene's notice and Output's Problems show it while it
+ * lasts. */
+void studio_ui_error(studio *s, const char *error);
+/* The ui asset an error names, in `out`; false when it names none. */
+bool studio_ui_error_asset(const char *error, char *out, size_t size);
+
+/* The Canvas preview (studio_canvas.c; its header and body in
+ * studio_scene.c): one ui asset alone over an empty world in the Scene area,
+ * as Storybook shows a story, at a screen size (Unity UI Builder's canvas
+ * size, UMG's screen size), on a light or dark backdrop, with a log of the
+ * events it emits (Storybook's Actions). */
+typedef enum
+{
+    STUDIO_CANVAS_FIT, /* the Scene area */
+    STUDIO_CANVAS_PHONE,
+    STUDIO_CANVAS_TABLET,
+    STUDIO_CANVAS_DESKTOP,
+    STUDIO_CANVAS_SIZE_COUNT,
+} studio_canvas_size;
+
+typedef struct
+{
+    const char *label;
+    int width, height; /* logical pixels; zero for Fit */
+} studio_canvas_size_info;
+studio_canvas_size_info studio_canvas_size_of(studio_canvas_size size);
+
+/* An event the previewed asset emitted, with its repeats in a row. */
+typedef struct
+{
+    double time;
+    int count;
+    char event[128];
+    char element[130]; /* "#id", or "" */
+    char value[32];    /* an input's value, or "" */
+} studio_canvas_action;
+
+#define STUDIO_CANVAS_ACTIONS 200
+
+typedef struct studio_canvas
+{
+    char asset[128]; /* "" while the Scene shows the scene */
+    studio_canvas_size size;
+    bool light;
+    engine_viewport *viewport; /* its frame and documents */
+    ecs_world *world;          /* empty: only the preview shows */
+    game_save *save;           /* what its bindings set */
+    studio_canvas_action *actions;
+} studio_canvas;
+
+/* Shows ui asset `asset` in the Scene area; NULL returns it to the scene. */
+void studio_preview_ui(studio *s, const char *asset);
+/* The Scene area follows the active document (Blender): while a ui asset's
+ * UI document is active, it previews that asset, and when another kind of
+ * document becomes active, it shows the scene again. Call every frame. */
+void studio_canvas_follow(studio *s);
+/* The previewed ui asset, or NULL while the Scene shows the scene. */
+const char *studio_previewed_ui(const studio *s);
+/* Draws the preview for the Scene's pointer `input` in place of the scene;
+ * false while none shows. */
+bool studio_canvas_draw(studio *s, engine_viewport_host_input *input);
+void studio_canvas_free(studio *s);
 
 #endif

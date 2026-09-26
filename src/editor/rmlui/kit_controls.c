@@ -966,3 +966,31 @@ void kit_text_select(kit *k, int start, int end)
     rml_element_focus(w->input_el, true);
     rml_element_set_selection_range(w->input_el, characters(text, start), characters(text, end));
 }
+
+/* ---------- UI wiring (workstream K) ---------- */
+
+bool kit_picker(kit *k, const char *key, const kit_picker_desc *d)
+{
+    node *n = emit(k, key, KIND_BUTTON, "div", "field select picker");
+    widget *w = &n->w;
+    if (!w->value_el) {
+        w->icon_el = raw_icon(n->el, "lead", 0);
+        w->value_el = raw(n->el, "span", "part value", NULL);
+        raw_icon(n->el, "caret", KIT_ICON_DOWN);
+    }
+    if (w->icon != d->icon) {
+        w->icon = d->icon;
+        char icon[5];
+        utf8(icon, d->icon);
+        rml_element_set_inner_rml(w->icon_el, icon);
+        rml_element_set_property(w->icon_el, "display", d->icon ? "inline-block" : "none");
+    }
+    bool empty = !d->value || !d->value[0];
+    set_element_text(w->value_el, empty ? d->placeholder : d->value);
+    set_flag(n, "data-placeholder", empty);
+    set_flag(n, "data-readonly", d->flags & KIT_READONLY);
+    set_flag(n, "data-disabled", d->flags & KIT_DISABLED);
+    set_flag(n, "data-invalid", d->flags & KIT_INVALID);
+    set_tip(n, d->tip, NULL, NULL);
+    return (n->events & EV_CLICK) && !(d->flags & (KIT_READONLY | KIT_DISABLED));
+}

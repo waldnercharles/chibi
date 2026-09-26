@@ -136,6 +136,10 @@ int reference_index_asset_count(const reference_index *index);
 const reference_asset *reference_index_asset_at(const reference_index *index, int position);
 /* The kind of asset a graph asset of this domain is. */
 reference_asset_kind reference_domain_kind(behavior_domain domain);
+/* The kind of asset a component field's text names, as GameUi.document names
+ * a ui asset and GameActionBinding.action an event; REFERENCE_ASSET_KIND_COUNT
+ * for a field that names none. `component` is its type's name, as GameUi. */
+reference_asset_kind reference_named_field_kind(const char *component, const char *field);
 
 /* Graph content: definitions of functions, macros, parameters, variables,
  * locals and an event definition's event; calls and their arguments;
@@ -184,6 +188,11 @@ int reference_index_count_uses(const reference_index *index, reference_symbol sy
  * declared; NULL for assets, which are their own definition, and for host
  * events, components and fields. */
 const reference *reference_index_definition(const reference_index *index, reference_symbol symbol);
+/* The ui assets shown on the entities `behavior` is attached to: the
+ * GameUi.document of each prototype and scene object that attaches it, whose
+ * events reach the behavior. Appends their positions once each to
+ * *documents (support/array.h). */
+void reference_index_attached_documents(const reference_index *index, int behavior, int **documents);
 /* Whether the run a handler starts reaches a node of its graph: along exec
  * wires from its Event node, and through the pure nodes feeding what runs.
  * handle is the Event node's HANDLE reference. */

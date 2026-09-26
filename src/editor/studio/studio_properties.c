@@ -373,6 +373,31 @@ static bool value_control(
     return changed;
 }
 
+/* A text field naming an asset (reference_named_field_kind) picks one of
+ * its kind; true when one was chosen for `key`, which value then holds. */
+static bool asset_control(studio *s, const char *key, reference_asset_kind kind, pin_value *value, unsigned flags)
+{
+    studio_pick_desc desc = { .kind = kind, .none = "None", .text = true };
+    const char *chosen = studio_asset_field(s, key, value->str, &desc, flags);
+    if (!chosen || !strcmp(chosen, value->str ? value->str : "")) {
+        return false;
+    }
+    value->str = chosen;
+    return true;
+}
+
+/* The kind of asset a field's text names, or REFERENCE_ASSET_KIND_COUNT. */
+static reference_asset_kind named_kind(
+    const ecs_component_desc *desc,
+    const type_field *field,
+    const pin_value *value
+)
+{
+    bool text = value->type == PIN_STR || value->type == PIN_NAME;
+    return text ? reference_named_field_kind(desc->type->name, field->name)
+                : REFERENCE_ASSET_KIND_COUNT;
+}
+
 static bool field_label(
     studio *s,
     const game_prototype_component *component,
@@ -413,7 +438,19 @@ static void field_row(
                                                                        : 0);
     bool active = false;
     kit_prop_begin(k, field->name, label);
-    bool changed = value_control(s, desc, field, &value, flags, &active, text, sizeof text);
+    reference_asset_kind named = named_kind(desc, field, &value);
+    char key[192];
+    snprintf(
+        key,
+        sizeof key,
+        "%llu/%s.%s",
+        (unsigned long long)ecs_entity_to_u64(actor->entity),
+        desc->name,
+        field->name
+    );
+    bool changed = named < REFERENCE_ASSET_KIND_COUNT
+                     ? asset_control(s, key, named, &value, flags)
+                     : value_control(s, desc, field, &value, flags, &active, text, sizeof text);
     context_target(s, actor, desc->id, index);
     kit_prop_end(k);
     if (!locked) {
@@ -648,29 +685,16 @@ static void page_panel(studio *s, bool locked)
         kit_panel_end(k);
         return;
     }
-    const char **labels = NULL;
     char project[160];
     snprintf(project, sizeof project, "Project (%s)", scene->default_ui ? scene->default_ui : "none");
-    apush(labels, project);
-    int value = 0;
-    const reference_index *index = app_scene_authoring_asset_index(scene);
-    for (int i = 0; index && i < reference_index_asset_count(index); i++) {
-        const reference_asset *asset = reference_index_asset_at(index, i);
-        if (asset->kind != REFERENCE_ASSET_UI || asset->unresolved) {
-            continue;
-        }
-        value = scene->ui && !strcmp(scene->ui, asset->name) ? acount(labels) : value;
-        apush(labels, asset->name);
-    }
     kit_prop_begin(k, "root", "Root document");
-    int chosen = value;
-    if (kit_choice(k, "value", &chosen, labels, acount(labels), locked ? KIT_READONLY : 0) &&
-        chosen != value) {
-        app_scene_authoring_set_ui(scene, chosen ? labels[chosen] : NULL);
+    studio_pick_desc desc = { .kind = REFERENCE_ASSET_UI, .none = project };
+    const char *chosen = studio_asset_field(s, "scene.ui", scene->ui, &desc, locked ? KIT_READONLY : 0);
+    if (chosen && strcmp(chosen, scene->ui ? scene->ui : "")) {
+        app_scene_authoring_set_ui(scene, chosen);
     }
     kit_prop_end(k);
     kit_panel_end(k);
-    afree(labels);
 }
 
 static void scene_panels(studio *s, bool locked)
@@ -781,17 +805,21 @@ static void prototype_row(
         return;
     }
     bool active = false;
+    unsigned flags = locked ? KIT_READONLY : 0;
     kit_prop_begin(k, field->name, label);
-    bool changed = value_control(
-        s,
-        component->desc,
-        field,
-        &value,
-        locked ? KIT_READONLY : 0,
-        &active,
-        text,
-        sizeof text
+    reference_asset_kind named = named_kind(component->desc, field, &value);
+    char pick[192];
+    snprintf(
+        pick,
+        sizeof pick,
+        "%s/%s.%s",
+        asset->prototype->name,
+        component->desc->name,
+        field->name
     );
+    bool changed = named < REFERENCE_ASSET_KIND_COUNT
+                     ? asset_control(s, pick, named, &value, flags)
+                     : value_control(s, component->desc, field, &value, flags, &active, text, sizeof text);
     kit_prop_end(k);
     if (locked) {
         return;

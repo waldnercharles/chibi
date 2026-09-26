@@ -536,6 +536,21 @@ extern "C"
     bool kit_element_path(const kit *k, rml_element *element, char *out, size_t size);
     /* tag#id.class.class, as a selector names the element. */
     void kit_element_selector(rml_element *element, char *out, size_t size);
+    /* ---------- UI wiring (workstream K) ---------- */
+
+    /* An asset field (Unity's object field, Unreal's asset picker, Base UI
+     * Combobox's trigger): the value with its icon and a caret, shaped like a
+     * select. Pressed, it returns true and the caller opens a search over
+     * the choices (kit_command); read-only and disabled fields never do. */
+    typedef struct kit_picker_desc
+    {
+        const char *value;       /* NULL or "" shows the placeholder, muted */
+        const char *placeholder; /* "None" */
+        uint32_t icon;
+        const char *tip;
+        unsigned flags; /* KIT_READONLY, KIT_DISABLED, KIT_INVALID */
+    } kit_picker_desc;
+    bool kit_picker(kit *k, const char *key, const kit_picker_desc *desc);
 
 #ifdef __cplusplus
 }

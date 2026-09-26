@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 bool studio_editable(const studio *s)
 {
@@ -122,8 +123,14 @@ static void view_zoom_menu(studio *s, int area)
 
 /* ---------- Scene viewport ---------- */
 
+static bool canvas_header(studio *s, int area);
+static bool canvas_body(studio *s);
+
 void studio_scene_header(studio *s, int area)
 {
+    if (canvas_header(s, area)) {
+        return;
+    }
     kit *k = s->kit;
     char key[24];
     snprintf(key, sizeof key, "view:%d", area);
@@ -157,18 +164,27 @@ void studio_scene_header(studio *s, int area)
     }
 }
 
+/* Shows the part of the frame the view zoom does, as fractions of it, on
+   the surface emitted last. */
+static void crop_view(studio *s)
+{
+    float half = 0.5f / s->view.zoom;
+    char crop[64];
+    snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
+    kit_attr(s->kit, "rect", crop);
+}
+
 void studio_scene_body(studio *s, int area)
 {
     (void)area;
+    if (canvas_body(s)) {
+        return;
+    }
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);
-    /* The part of the frame the view zoom shows, as fractions of it. */
-    float half = 0.5f / s->view.zoom;
-    char crop[64];
-    snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
-    kit_attr(k, "rect", crop);
+    crop_view(s);
     /* A prototype dropped here is placed under the pointer by the viewport. */
     kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
     kit_push(k, "tools", NULL, "toolshelf");
@@ -213,8 +229,10 @@ void studio_scene_body(studio *s, int area)
     if (runtime_session(scene)) {
         kit_label(k, "live", "badge accent live-badge", "Live");
     }
+    /* The renderer's error first, then the game UI's (render_ui_error). */
     const char *error = app_scene_renderer_error(scene->renderer);
-    if (error && error[0]) {
+    error = error && error[0] ? error : s->ui_error;
+    if (error[0]) {
         kit_label(k, "error", "notice", error);
     }
     kit_pop(k);
@@ -407,4 +425,322 @@ void studio_outliner_body(studio *s, int area)
         }
         kit_popup_end(k);
     }
+}
+
+/* ---------- Canvas preview ---------- */
+
+/* Where a ui asset is used: GameUi fields and <use ui> from the index, and
+   the scene's and the project's root document. A root document's row opens
+   the Scene tab of Properties, where it is chosen. */
+typedef struct
+{
+    char label[288];
+    uint32_t icon;
+    bool page;
+    studio_reference at;
+} canvas_user;
+
+static canvas_user *canvas_users(studio *s, const char *asset)
+{
+    app_scene_authoring *scene = s->scene;
+    canvas_user *users = NULL;
+    char title[128];
+    if (scene->ui && !strcmp(scene->ui, asset)) {
+        canvas_user user = { .icon = KIT_ICON_SCENE, .page = true };
+        snprintf(
+            user.label,
+            sizeof user.label,
+            "%s \xe2\x80\xba ui",
+            studio_scene_title(scene, title, sizeof title)
+        );
+        apush(users, user);
+    }
+    if (scene->default_ui && !strcmp(scene->default_ui, asset)) {
+        apush(
+            users,
+            ((canvas_user){ .label = "Project \xe2\x80\xba ui",
+                            .icon = KIT_ICON_FOLDER,
+                            .page = true })
+        );
+    }
+    const reference_index *index = app_scene_authoring_asset_index(scene);
+    int at = index ? reference_index_find_name(index, REFERENCE_ASSET_UI, asset) : -1;
+    const reference **uses = NULL;
+    if (at >= 0) {
+        reference_index_find_uses(
+            index,
+            (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = at },
+            &uses
+        );
+    }
+    for (int i = 0; i < acount(uses); i++) {
+        canvas_user user = { .at = studio_reference_of(index, uses[i]) };
+        user.icon = studio_asset_kind_icon(user.at.kind);
+        snprintf(
+            user.label,
+            sizeof user.label,
+            user.at.place[0] ? "%s \xe2\x80\xba %s" : "%s",
+            user.at.asset,
+            user.at.place
+        );
+        apush(users, user);
+    }
+    afree(uses);
+    return users;
+}
+
+/* A widget's document previews in its place; anything else opens and the
+   Scene area returns to the scene. */
+static void open_user(studio *s, const canvas_user *user)
+{
+    if (user->page) {
+        s->tab = STUDIO_TAB_SCENE;
+        studio_show_editor(s, STUDIO_EDITOR_PROPERTIES);
+        return;
+    }
+    if (user->at.kind == REFERENCE_ASSET_UI) {
+        studio_preview_ui(s, user->at.asset);
+        return;
+    }
+    studio_preview_ui(s, NULL);
+    studio_open_reference(s, &user->at);
+}
+
+/* The previewed asset's crumb: what uses it, and the other ui assets to
+   preview instead. */
+static void asset_crumb(studio *s, const char *asset)
+{
+    kit *k = s->kit;
+    kit_button_desc crumb = { .label = asset,
+                              .icon = studio_asset_kind_icon(REFERENCE_ASSET_UI),
+                              .cls = "crumb current" };
+    if (kit_button(k, "asset", &crumb)) {
+        kit_popup_open(k, "canvas-asset");
+    }
+    if (!kit_popup_begin(k, "canvas-asset", "menu")) {
+        return;
+    }
+    canvas_user *users = canvas_users(s, asset);
+    kit_menu_group(k, "used", "Used by");
+    for (int i = 0; i < acount(users); i++) {
+        char key[16];
+        snprintf(key, sizeof key, "u%d", i);
+        kit_menu_item_desc d = { .label = users[i].label,
+                                 .icon = users[i].icon,
+                                 .checked = -1 };
+        if (kit_menu_item(k, key, &d)) {
+            open_user(s, &users[i]);
+        }
+    }
+    if (!acount(users)) {
+        kit_menu_item_desc none = { .label = "Nothing uses it yet",
+                                    .checked = -1,
+                                    .disabled = true };
+        kit_menu_item(k, "none", &none);
+    }
+    afree(users);
+    kit_menu_separator(k, "s0");
+    const char **names = studio_asset_names(app_scene_authoring_asset_index(s->scene), REFERENCE_ASSET_UI);
+    if (kit_submenu_begin(k, "all", "Preview", KIT_ICON_LAYOUT)) {
+        for (int i = 0; i < acount(names); i++) {
+            char key[16];
+            snprintf(key, sizeof key, "a%d", i);
+            kit_menu_item_desc d = { .label = names[i],
+                                     .icon = studio_asset_kind_icon(REFERENCE_ASSET_UI),
+                                     .checked = -1,
+                                     .current = !strcmp(names[i], asset) };
+            if (kit_menu_item(k, key, &d) && !d.current) {
+                studio_preview_ui(s, names[i]);
+            }
+        }
+        kit_submenu_end(k);
+    }
+    afree(names);
+    kit_popup_end(k);
+}
+
+/* Scene › Asset, the screen size, the backdrop and the view zoom. */
+static bool canvas_header(studio *s, int area)
+{
+    if (!studio_previewed_ui(s)) {
+        return false;
+    }
+    kit *k = s->kit;
+    studio_canvas *c = s->canvas;
+    char asset[sizeof c->asset];
+    snprintf(asset, sizeof asset, "%s", c->asset);
+    kit_push(k, "crumbs", NULL, "crumbs");
+    kit_button_desc scene = { .label = "Scene",
+                              .icon = KIT_ICON_SCENE,
+                              .cls = "crumb",
+                              .tip = "Back to the scene" };
+    if (kit_button(k, "scene", &scene)) {
+        studio_preview_ui(s, NULL);
+    }
+    kit_icon(k, "sep", "crumb-sep", KIT_ICON_RIGHT);
+    asset_crumb(s, asset);
+    kit_pop(k);
+    const char *sizes[STUDIO_CANVAS_SIZE_COUNT];
+    for (int i = 0; i < STUDIO_CANVAS_SIZE_COUNT; i++) {
+        sizes[i] = studio_canvas_size_of((studio_canvas_size)i).label;
+    }
+    int size = (int)c->size;
+    kit_push(k, "sizes", NULL, "canvas-sizes");
+    if (kit_toggle_group(k, "size", &size, sizes, STUDIO_CANVAS_SIZE_COUNT, 0)) {
+        c->size = (studio_canvas_size)size;
+    }
+    kit_pop(k);
+    kit_button_desc backdrop = { .icon = c->light ? KIT_ICON_SUN : KIT_ICON_MOON,
+                                 .tip = c->light ? "Light backdrop" : "Dark backdrop" };
+    if (kit_button(k, "backdrop", &backdrop)) {
+        c->light = !c->light;
+    }
+    kit_leaf(k, "spacer", NULL, "spacer");
+    view_zoom_menu(s, area);
+    return true;
+}
+
+/* A screen size's frame, centered in the stage with room around it; Fit
+   fills the stage. */
+static void place_frame(kit *k, studio_canvas_size_info size, kit_rect stage)
+{
+    enum
+    {
+        MARGIN = 16,
+    };
+    float w = stage.w, h = stage.h;
+    if (size.width) {
+        float room_w = fmaxf(stage.w - 2 * MARGIN, 1),
+              room_h = fmaxf(stage.h - 2 * MARGIN, 1);
+        float aspect = (float)size.width / (float)size.height;
+        w = fminf(room_w, room_h * aspect);
+        h = w / aspect;
+    }
+    char value[32];
+    snprintf(value, sizeof value, "%.1fdp", (stage.w - w) / 2);
+    kit_style(k, "left", value);
+    snprintf(value, sizeof value, "%.1fdp", (stage.h - h) / 2);
+    kit_style(k, "top", value);
+    snprintf(value, sizeof value, "%.1fdp", w);
+    kit_style(k, "width", value);
+    snprintf(value, sizeof value, "%.1fdp", h);
+    kit_style(k, "height", value);
+}
+
+static void action_row(kit *k, const studio_canvas_action *a, int index)
+{
+    char key[16], time[16], count[16];
+    snprintf(key, sizeof key, "a%d", index);
+    int seconds = (int)a->time;
+    snprintf(time, sizeof time, "%02d:%02d", seconds / 60 % 100, seconds % 60);
+    snprintf(count, sizeof count, "\xc3\x97%d", a->count);
+    kit_push(k, key, NULL, "canvas-action");
+    kit_label(k, "event", "event", a->event);
+    kit_label(k, "element", "element", a->element);
+    kit_label(k, "value", "value", a->value);
+    kit_label(k, "count", "count", a->count > 1 ? count : "");
+    kit_label(k, "time", "time", time);
+    kit_pop(k);
+}
+
+/* Storybook's Actions: each event the asset emitted, newest last, in a
+   column beside the stage so it never covers the asset. */
+static void actions_panel(studio *s)
+{
+    kit *k = s->kit;
+    studio_canvas *c = s->canvas;
+    int total = acount(c->actions);
+    kit_push(k, "actions", NULL, "canvas-actions");
+    kit_push(k, "head", NULL, "canvas-actions-head");
+    kit_icon(k, "icon", NULL, KIT_ICON_EVENT);
+    kit_label(k, "title", "title", "Actions");
+    kit_number_flow(k, "count", "count", total, &(kit_number_flow_desc){ 0 });
+    kit_leaf(k, "spacer", NULL, "spacer");
+    kit_button_desc clear = { .icon = KIT_ICON_TRASH,
+                              .size = KIT_SM,
+                              .tip = "Clear",
+                              .flags = total ? 0 : KIT_DISABLED };
+    if (kit_button(k, "clear", &clear)) {
+        asetlen(c->actions, 0);
+        total = 0;
+    }
+    kit_pop(k);
+    if (!total) {
+        kit_label(k, "empty", "canvas-actions-empty", "No actions yet");
+        kit_pop(k);
+        return;
+    }
+    kit_list_desc list = { .count = total,
+                           .row_height = s->prefs.comfortable ? 24 : 20,
+                           .follow = true,
+                           .reveal = -1 };
+    int first, last;
+    kit_list_begin(k, "log", "canvas-actions-list", &list, &first, &last);
+    for (int r = first; r <= last && r < total; r++) {
+        action_row(k, &c->actions[r], r);
+    }
+    kit_list_end(k);
+    kit_pop(k);
+}
+
+/* The size and users of the previewed asset, over the stage's top left. */
+static void canvas_label(studio *s, studio_canvas_size_info size, kit_rect stage)
+{
+    kit *k = s->kit;
+    char line[288];
+    if (size.width) {
+        snprintf(line, sizeof line, "%s \xc2\xb7 %d \xc3\x97 %d", size.label, size.width, size.height);
+    } else {
+        float ui = s->prefs.ui_scale;
+        snprintf(
+            line,
+            sizeof line,
+            "Fit \xc2\xb7 %d \xc3\x97 %d",
+            (int)(stage.w * ui),
+            (int)(stage.h * ui)
+        );
+    }
+    kit_push(k, "label", NULL, "view-label canvas-label");
+    kit_label(k, "size", NULL, line);
+    canvas_user *users = canvas_users(s, s->canvas->asset);
+    int used = snprintf(line, sizeof line, "%s", acount(users) ? "Used by " : "Not used yet");
+    for (int i = 0; i < acount(users) && used < (int)sizeof line; i++) {
+        used += snprintf(
+            line + used,
+            sizeof line - (size_t)used,
+            "%s%s",
+            i ? ", " : "",
+            users[i].label
+        );
+    }
+    afree(users);
+    kit_label(k, "users", "dim", line);
+    kit_pop(k);
+}
+
+/* The stage, with the asset's frame at its screen size, its size and users
+   and the UI error, then the Actions log. Its keys differ from the scene's,
+   whose surface keeps no frame placement. */
+static bool canvas_body(studio *s)
+{
+    if (!studio_previewed_ui(s)) {
+        return false;
+    }
+    kit *k = s->kit;
+    studio_canvas *c = s->canvas;
+    kit_push(k, "canvas", NULL, KIT_CX(k, "viewport canvas", { "light", c->light }));
+    kit_push(k, "stage", NULL, "canvas-stage");
+    kit_rect stage = kit_item_rect(k);
+    studio_canvas_size_info size = studio_canvas_size_of(c->size);
+    kit_surface(k, "frame", "surface canvas-frame", "canvas", &s->surface);
+    crop_view(s);
+    place_frame(k, size, stage);
+    canvas_label(s, size, stage);
+    if (s->ui_error[0]) {
+        kit_label(k, "error", "notice", s->ui_error);
+    }
+    kit_pop(k);
+    actions_panel(s);
+    kit_pop(k);
+    return true;
 }

@@ -1,4 +1,5 @@
 /* Graph canvas edits, refactoring, usage and the add-node palette. */
+#include "assets/ui_events.h"
 #include "editor/graph/search.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
@@ -13,6 +14,7 @@
 #include "graph/nodes/conv_nodes.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "support/text_file.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -741,9 +743,60 @@ static const char *match_about(studio *s, const editor *e, const ed_search_match
 {
     node_subject subject = ed_search_match_subject(e, match);
     char text[256];
+    if (match->ui_event) {
+        snprintf(text, sizeof text, "%s.", match->ui_event->description);
+        return kit_string(s->kit, text);
+    }
     return node_subject_describe(&subject, text, sizeof text)
              ? kit_string(s->kit, text)
              : NULL;
+}
+
+/* ---------- UI events ---------- */
+
+/* The events a ui asset's markup sends that no host event or event
+ * definition names already. An invalid document sends none until it reads. */
+static void add_document_events(ui_event **events, const reference_index *index, const reference_asset *asset)
+{
+    char *text = text_file_read(asset->path);
+    ui_document_event *found = NULL;
+    if (text) {
+        ui_events_read(text, &found);
+    }
+    for (int i = 0; i < acount(found); i++) {
+        if (!graph_event_host_name(found[i].name) &&
+            reference_index_event_asset(index, found[i].name) < 0) {
+            ui_events_add(events, &found[i], asset->name);
+        }
+    }
+    ui_document_events_free(found);
+    free(text);
+}
+
+void studio_add_menu_close(studio *s)
+{
+    ui_events_free(s->add_menu.events);
+    s->add_menu.events = NULL;
+    s->add_menu.read = false;
+}
+
+ui_event *studio_behavior_ui_events(studio *s)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    int behavior = index ? studio_document_asset(s) : -1;
+    int *documents = NULL;
+    if (behavior >= 0) {
+        reference_index_attached_documents(index, behavior, &documents);
+    }
+    ui_event *events = NULL;
+    for (int i = 0; i < acount(documents); i++) {
+        const reference_asset *asset = reference_index_asset_at(index, documents[i]);
+        if (asset->path) {
+            add_document_events(&events, index, asset);
+        }
+    }
+    afree(documents);
+    return events;
 }
 
 bool studio_graph_palette(studio *s)
@@ -754,6 +807,7 @@ bool studio_graph_palette(studio *s)
         return false;
     }
     if (!kit_command_is_open(s->kit) || !studio_graph_active(s)) {
+        studio_add_menu_close(s);
         g->spawn_pending = false;
         if (e && e->spawn_link_pending) {
             ed_cancel_snapshot(e);
@@ -761,6 +815,11 @@ bool studio_graph_palette(studio *s)
         }
         return false;
     }
+    if (!s->add_menu.read) {
+        s->add_menu.events = studio_behavior_ui_events(s);
+        s->add_menu.read = true;
+    }
+    editor_set_ui_event_catalog(e, s->add_menu.events, acount(s->add_menu.events));
     ed_search_match *found = ed_search_matches(e, kit_command_query(s->kit));
     /* For a dragged wire, nodes whose socket matches its type exactly come
        first, then conversions, then wildcards; each band keeps search order. */
@@ -782,7 +841,7 @@ bool studio_graph_palette(studio *s)
                 .label = matches[i].name,
                 .group = matches[i].category,
                 .icon = matches[i].function ? KIT_ICON_FUNCTION
-                      : matches[i].host_event || matches[i].event ? KIT_ICON_EVENT
+                      : matches[i].host_event || matches[i].event || matches[i].ui_event ? KIT_ICON_EVENT
                       : matches[i].variable ? KIT_ICON_FIELD
                                             : 0,
                 .description = match_about(s, e, &matches[i]),
@@ -807,6 +866,10 @@ bool studio_graph_palette(studio *s)
             e->spawn_link_pending = 0;
         }
         g->spawn_pending = false;
+    }
+    editor_set_ui_event_catalog(e, NULL, 0);
+    if (!g->spawn_pending) {
+        studio_add_menu_close(s);
     }
     afree(items);
     afree(matches);

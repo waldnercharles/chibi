@@ -114,6 +114,8 @@ struct editor
     char connect_error[ED_LOG_MESSAGE];
     const graph_host_event_desc *event_catalog;
     int event_catalog_count;
+    const struct ui_event *ui_event_catalog; /* borrowed; the host's GameUi documents send them */
+    int ui_event_catalog_count;
     int (*open_asset)(void *, const char *, uint64_t);
     void *open_asset_user;
     const char **prototype_catalog; /* Owned array, borrowed project names. */

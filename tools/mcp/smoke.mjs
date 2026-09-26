@@ -439,6 +439,20 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
   throw new Error("native controller smoke checks failed");
 }
 
+// Dependencies come from the shared reference index: events a behavior
+// sends or handles, and prototypes a graph spawns.
+const edgeTo = (response, kind, name) =>
+  response.response.result?.edges?.some((edge) => edge.to.kind === kind && edge.to.name === name && edge.to.resolved);
+const edgeFrom = (response, kind, name) =>
+  response.response.result?.edges?.some((edge) => edge.from.kind === kind && edge.from.name === name);
+const spawners = nativeRequest("asset_dependencies", { kind: "prototype", name: "ArenaHitPulse", direction: "incoming" });
+const senders = nativeRequest("asset_dependencies", { kind: "event", name: "Damage", direction: "incoming" });
+if (!edgeTo(nativeDependencies, "event", "Damage") || !edgeTo(nativeDependencies, "event", "Died") ||
+    !edgeFrom(spawners, "behavior", "ArenaImpactFeedback") ||
+    !edgeFrom(senders, "behavior", "PlayerContactBehavior") || !edgeFrom(senders, "behavior", "HealthBehavior")) {
+  throw new Error("asset dependencies must include event and Spawn Prototype links");
+}
+
 const systemRoot = mkdtempSync(join(tmpdir(), "chibi-system-"));
 try {
   const systemDirectory = join(systemRoot, "content", "systems");

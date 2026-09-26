@@ -183,7 +183,7 @@ const entries = [
     operation: "asset_dependencies",
     adapter: "native",
     title: "Inspect asset dependencies",
-    description: "Inspect direct or transitive incoming and outgoing dependencies for one authored asset. Use this before changing a shared shader, behavior, prototype, or library so affected consumers are known. Revalidate dependent assets after a shared change.",
+    description: "Inspect direct or transitive incoming and outgoing dependencies for one authored asset: attached behaviors, placed or spawned prototypes, called libraries, sent or handled event definitions, and the assets component fields, pin defaults and ui widgets name. Use this before changing a shared shader, behavior, prototype, or library so affected consumers are known. Revalidate dependent assets after a shared change.",
     intentTerms: ["inspect", "asset", "dependencies"],
     candidates: ["getAssetDependencies", "inspectAssetDependencies"],
     legacyName: "asset_dependencies",

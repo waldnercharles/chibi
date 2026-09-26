@@ -129,7 +129,7 @@ saving them. Tool results include complete `structuredContent` and
 - `validateAsset`: run native asset loading and compiler diagnostics.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
 - `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts.
-- `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies.
+- `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies. An asset depends on the behaviors it attaches, the prototypes it places or spawns, the libraries it calls, the event definitions whose events it sends or handles, and the materials, shapes, fields, systems and ui documents its component fields, pin defaults and `<use ui>` widgets name.
 - `getProjectStatus`: return project, asset, and reflection counts.
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.

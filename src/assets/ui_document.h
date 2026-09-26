@@ -37,6 +37,9 @@ bool ui_document_expand(
 char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);
+/* Appends the name of each event the markup sends to `names`: every
+ * data-event, and each event a data-keys binding ("Key:Event ...") names. */
+void ui_document_event_names(const char *rml, char ***names);
 /* Owned RML document text: `base` then the asset's RCSS in the head, and its
  * markup in the body. */
 char *ui_document_compose(const ui_document *document, const char *base);

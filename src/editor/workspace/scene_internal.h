@@ -106,7 +106,7 @@ struct app_scene_authoring
     scene_actor *actors;
     scene_prototype_asset *prototypes;
     scene_content_entry *content;
-    asset_index *asset_index;
+    reference_index *asset_index;
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
     char *content_root;

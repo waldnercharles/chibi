@@ -47,7 +47,7 @@ void test_game_capabilities();
 void test_dash();
 void test_encounter();
 void test_system_arithmetic();
-void test_asset_index();
+void test_reference_index();
 void test_component_presentation();
 void test_file_watch();
 void test_ui_document();
@@ -84,7 +84,7 @@ TEST_CASE(all_checks)
     test_automation_scene_edit();
     test_automation_asset_write();
     run_content_catalog_checks();
-    test_asset_index();
+    test_reference_index();
     run_graph_model_checks();
     run_graph_document_checks();
     run_graph_comment_checks();
@@ -231,6 +231,11 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
         registry_validate();
         run_graph_signature_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--reference-index")) {
+        registry_validate();
+        test_reference_index();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--debugging")) {

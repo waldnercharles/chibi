@@ -1004,6 +1004,15 @@ void sg_shortcuts(studio *s)
             if (acount(e->selected) && studio_node_referable(e->selected[0])) {
                 studio_find_node_references(s, e->selected[0]);
             }
+        } else if (shift && alt && key == SDLK_H) {
+            if (acount(e->selected) && studio_node_traceable(e->selected[0])) {
+                studio_calls_node(s, e->selected[0]);
+            }
+        } else if (alt && !mod && !shift && key == SDLK_G) {
+            /* Unreal's Go to Definition. */
+            if (acount(e->selected) && studio_node_definable(e->selected[0])) {
+                studio_go_to_definition(s, e->selected[0]);
+            }
         } else if (!mod && !shift && key == SDLK_F) {
             g->frame_pending = true;
         } else if (!mod && key == SDLK_F2 && renameable_hover(s)) {

@@ -378,6 +378,59 @@ function buildToolDefinitions() {
       },
     },
   };
+  const symbolProperties = {
+    asset: { ...assetArguments, description: "The asset {kind, name}; alone, the asset itself." },
+    graph: {
+      type: "string",
+      description: "Function or macro name in asset; also a parameter's function or the graph of a local.",
+    },
+    graph_id: {
+      type: "integer",
+      minimum: 0,
+      description: "Function or macro ID in asset, as inspectGraph lists it; also the graph of a local.",
+    },
+    event: {
+      type: "string",
+      description: "Event name instead of an asset: a host event such as Tick, an event definition, or a ui data-event or action name.",
+    },
+  };
+  const referenceArguments = {
+    type: "object",
+    properties: {
+      ...symbolProperties,
+      variable: { type: "string", description: "Variable name in asset." },
+      parameter: { type: "string", description: "Input or output name of the function that graph or graph_id selects." },
+      local: { type: "string", description: "Named value (local) in asset." },
+      component: { type: "string", description: "Component name or key instead of an asset." },
+      field: { type: "string", description: "Field path of component, such as current." },
+      roles: {
+        type: "array",
+        minItems: 1,
+        maxItems: 10,
+        items: {
+          type: "string",
+          enum: ["use", "call", "argument", "read", "write", "send", "handle", "spawn", "attach", "bind"],
+        },
+        description: "Only uses in these roles; counts still cover every role.",
+      },
+      limit: { type: "integer", minimum: 1, maximum: 200, description: "Uses per page; defaults to 50." },
+      offset: { type: "integer", minimum: 0, description: "Zero-based offset of the first use." },
+    },
+    additionalProperties: false,
+  };
+  const hierarchyArguments = {
+    type: "object",
+    properties: {
+      ...symbolProperties,
+      direction: {
+        type: "string",
+        enum: ["incoming", "outgoing", "both"],
+        description: "Callers (incoming), callees (outgoing) or both; defaults to both.",
+      },
+      depth: { type: "integer", minimum: 1, maximum: 6, description: "Levels below the root; defaults to 2." },
+    },
+    additionalProperties: false,
+  };
   const graphArguments = {
     ...assetArguments,
     properties: {
@@ -398,6 +451,10 @@ function buildToolDefinitions() {
       include_pins: {
         type: "boolean",
         description: "List each node's pins as \"name: type\" with the types wildcards resolved to, as searchNodes writes them; defaults to true.",
+      },
+      include_uses: {
+        type: "boolean",
+        description: "Add project-wide use counts by role to the asset, its functions and macros, and a behavior's variables. Reads every asset; defaults to false.",
       },
     },
   };
@@ -747,6 +804,20 @@ function buildToolDefinitions() {
       operation: "asset_dependencies",
       description: "Inspect direct or transitive incoming and outgoing asset dependencies.",
       inputSchema: dependencyArguments,
+      outputSchema,
+    },
+    {
+      name: "findReferences",
+      operation: "find_references",
+      description: "Find a symbol's definition and its uses across the project, by role.",
+      inputSchema: referenceArguments,
+      outputSchema,
+    },
+    {
+      name: "callHierarchy",
+      operation: "call_hierarchy",
+      description: "Trace a function's or event's callers and callees as a tree.",
+      inputSchema: hierarchyArguments,
       outputSchema,
     },
     {
@@ -1194,7 +1265,11 @@ function toolSummary(name, response) {
       summary[key] = result[key];
     }
   }
-  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals"]) {
+  // findReferences: the uses by role.
+  if (isObject(result.counts)) {
+    summary.counts = result.counts;
+  }
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals", "uses"]) {
     if (Array.isArray(result[key])) {
       summary[`${key}_count`] = result[key].length;
     }

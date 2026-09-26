@@ -9,6 +9,7 @@
 #include "automation/field_preview.h"
 #include "automation/graph_edit.h"
 #include "automation/graph_optimize.h"
+#include "automation/navigation.h"
 #include "automation/prototype_edit.h"
 #include "automation/scene_edit.h"
 #include "ecs/ecs.h"
@@ -250,6 +251,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "graph_name", "string", false, "Select one graph by its authored name." },
     { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
     { "include_pins", "boolean", false, "List each node's pins as \"name: type\" with resolved wildcard types; defaults to true." },
+    { "include_uses", "boolean", false, "Count project-wide uses by role of the asset, its functions and macros, and a behavior's variables; defaults to false." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -407,6 +409,31 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
     { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
     { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
+};
+
+static const contract_field CONTRACT_FIND_REFERENCES[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
+    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
+    { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
+    { "variable", "string", false, "Variable name in asset." },
+    { "parameter", "string", false, "Input or output name of the function graph names." },
+    { "local", "string", false, "Named value (local) in asset." },
+    { "event", "string", false, "Event name: a host event, an event definition, or a ui or action event." },
+    { "component", "string", false, "Component name or key." },
+    { "field", "string", false, "Field path of component." },
+    { "roles", "string[]", false, "Only uses in these roles: use, call, argument, read, write, send, handle, spawn, attach, bind." },
+    { "offset", "integer", false, "Zero-based page offset." },
+    { "limit", "integer", false, "Page size, default 50, maximum 200." },
+};
+static const contract_field CONTRACT_CALL_HIERARCHY[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "asset", "object", false, "Asset {kind, name} holding the function or macro." },
+    { "graph", "string", false, "Function or macro name in asset." },
+    { "graph_id", "uint64", false, "Function or macro ID in asset." },
+    { "event", "string", false, "Event name, instead of a function." },
+    { "direction", "string", false, "incoming (callers), outgoing (callees) or both; defaults to both." },
+    { "depth", "integer", false, "Levels below the root, 1 to 6; defaults to 2." },
 };
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
@@ -586,6 +613,26 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "Inspect direct or transitive asset dependency relationships.",
         CONTRACT_ASSET_DEPENDENCIES,
         CONTRACT_FIELD_COUNT(CONTRACT_ASSET_DEPENDENCIES),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "find_references",
+        "Find a symbol's definition and its uses across the project, by role.",
+        CONTRACT_FIND_REFERENCES,
+        CONTRACT_FIELD_COUNT(CONTRACT_FIND_REFERENCES),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "call_hierarchy",
+        "Trace a function's or event's callers and callees as a tree.",
+        CONTRACT_CALL_HIERARCHY,
+        CONTRACT_FIELD_COUNT(CONTRACT_CALL_HIERARCHY),
         1,
         true,
         true,
@@ -1509,8 +1556,9 @@ static void catalog_add_content(reference_index *index, const catalog_asset *ass
     }
 }
 
-/* Each asset's dependencies and dependents: the assets its references use. */
-static void catalog_link_references(catalog_asset *assets, const reference_index *index)
+/* The catalog asset at each reference index position, or -1 for an asset
+ * only named. The caller frees it. */
+static int *catalog_positions(const catalog_asset *assets, const reference_index *index)
 {
     int *catalog = xmalloc(((size_t)reference_index_asset_count(index) + 1) * sizeof *catalog);
     for (int i = 0; i < reference_index_asset_count(index); i++) {
@@ -1521,6 +1569,13 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
             catalog[assets[i].reference] = i;
         }
     }
+    return catalog;
+}
+
+/* Each asset's dependencies and dependents: the assets its references use. */
+static void catalog_link_references(catalog_asset *assets, const reference_index *index)
+{
+    int *catalog = catalog_positions(assets, index);
     for (int i = 0; i < reference_index_count(index); i++) {
         const reference *r = reference_index_at(index, i);
         int target = reference_dependency(r);
@@ -2572,6 +2627,83 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     return 0;
 }
 
+/* The catalog's names for the reference index's assets; an asset only named
+ * takes its kind's family and no path. */
+static navigation_asset *navigation_assets(const catalog_asset *assets, const reference_index *index)
+{
+    int count = reference_index_asset_count(index);
+    int *catalog = catalog_positions(assets, index);
+    navigation_asset *named = xcalloc((size_t)count + 1, sizeof *named);
+    for (int i = 0; i < count; i++) {
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        const catalog_asset *found = catalog[i] >= 0 ? &assets[catalog[i]] : NULL;
+        named[i] = found ? (navigation_asset){ found->asset.family->kind,
+                                               found->name,
+                                               found->asset.relative }
+                         : (navigation_asset){ family_by_reference(asset->kind)->kind,
+                                               asset->name,
+                                               NULL };
+    }
+    free(catalog);
+    return named;
+}
+
+/* find_references and call_hierarchy, over the catalog's references. */
+static int handle_navigation(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0, content_hash = 0;
+    char error[256] = { 0 };
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error) !=
+        0) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
+    add_hash_named(result->doc, value, "content_hash", content_hash);
+    navigation nav = { CATALOG_SNAPSHOT.references,
+                       navigation_assets(assets, CATALOG_SNAPSHOT.references) };
+    bool hierarchy = !strcmp(request_string(request, "operation"), "call_hierarchy");
+    int status = hierarchy
+                   ? automation_call_hierarchy(&nav, request, result->doc, value, error, sizeof error)
+                   : automation_find_references(&nav, request, result->doc, value, error, sizeof error);
+    free((navigation_asset *)nav.assets);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    return 0;
+}
+
+/* inspect_graph's per-member use counts across the project. Skipped when the
+ * catalog cannot be read; the graph itself is still inspected. */
+static void add_graph_use_counts(
+    const char *root,
+    const asset_ref *ref,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value
+)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0, content_hash = 0;
+    char error[256] = { 0 };
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error) !=
+        0) {
+        return;
+    }
+    char *name = asset_name_from_filename(ref->filename);
+    int at = catalog_asset_index(assets, acount(assets), ref->family->kind, name);
+    free(name);
+    if (at < 0 || assets[at].reference < 0) {
+        return;
+    }
+    navigation nav = { CATALOG_SNAPSHOT.references,
+                       navigation_assets(assets, CATALOG_SNAPSHOT.references) };
+    automation_add_use_counts(&nav, assets[at].reference, doc, value);
+    free((navigation_asset *)nav.assets);
+}
+
 static uint64_t inspect_json_uint(yyjson_val *value)
 {
     if (yyjson_is_uint(value)) {
@@ -2932,6 +3064,11 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     bool include_pins = !pins_value || yyjson_get_bool(pins_value);
+    yyjson_val *uses_value = yyjson_obj_get(request, "include_uses");
+    if (uses_value && !yyjson_is_bool(uses_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_uses must be a boolean");
+        return -1;
+    }
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
@@ -3038,6 +3175,10 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         );
         yyjson_mut_obj_add_int(result->doc, summary, "node_count", acount(source->nodes));
         yyjson_mut_obj_add_int(result->doc, summary, "edge_count", acount(source->edges));
+    }
+    /* Counting reads the whole project, so it is asked for. */
+    if (uses_value && yyjson_get_bool(uses_value)) {
+        add_graph_use_counts(root, &ref, result->doc, value);
     }
     if (selected >= 0) {
         yyjson_mut_obj_add_val(
@@ -9150,6 +9291,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
            !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
+           !strcmp(operation, "find_references") ||
+           !strcmp(operation, "call_hierarchy") ||
            !strcmp(operation, "inspect_graph") ||
            !strcmp(operation, "inspect_system") ||
            !strcmp(operation, "run_scenario") ||
@@ -9238,6 +9381,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_search_assets(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "asset_dependencies")) {
         handle_asset_dependencies(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "find_references") || !strcmp(operation, "call_hierarchy")) {
+        handle_navigation(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {

@@ -1,3 +1,4 @@
+#include "assets/call_hierarchy.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
@@ -620,6 +621,22 @@ static const reference *indexed_reference(const reference_index *index, int sour
     return NULL;
 }
 
+static reference_symbol event_named(const char *name)
+{
+    return (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = name };
+}
+
+/* A handler of the root event in asset, among its callees. */
+static const call_item *handler_in(const call_item *items, int asset)
+{
+    for (int i = items[0].first; i < items[0].first + items[0].count; i++) {
+        if (items[i].kind == CALL_HANDLER && items[i].asset == asset) {
+            return &items[i];
+        }
+    }
+    return NULL;
+}
+
 /* Events without a definition are symbols by name only. */
 static const reference *handled_event(const reference_index *index, int source, const char *name)
 {
@@ -677,6 +694,13 @@ static void asset_references_follow_authored_edits()
     assert(emitter_graph);
     node *emitter_node = graph_node_by_id(emitter_graph, emitter->node_id);
     assert(emitter_node && !strcmp(emitter_node->reference_name, "Damage"));
+    /* Its calls trace too: Damage's handler in HealthBehavior. */
+    call_item *calls = call_hierarchy(index, event_named("Damage"), true, 1);
+    assert(
+        handler_in(calls, health) &&
+        handler_in(calls, health)->node_id == consumer->node_id
+    );
+    call_hierarchy_free(calls);
 
     /* These graph edits have not reached live apply or an editor frame. */
     assert(app_scene_authoring_open_behavior(f.scene, "HealthBehavior") == 0);
@@ -693,6 +717,9 @@ static void asset_references_follow_authored_edits()
         consumer && consumer->node_id == event_id &&
         consumer->graph_id == working->graph_id
     );
+    calls = call_hierarchy(index, event_named("PendingReferenceEvent"), true, 1);
+    assert(handler_in(calls, health) && handler_in(calls, health)->node_id == event_id);
+    call_hierarchy_free(calls);
 
     /* A second edit while already dirty must replace the old reference. */
     assert(graph_set_node_reference(working, event, 0, "UpdatedReferenceEvent") == 0);

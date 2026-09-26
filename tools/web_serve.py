@@ -92,10 +92,12 @@ class WorkspaceWatch:
 
 def save_asset(workspace, request):
     path = (workspace / request['path'].lstrip('/')).resolve()
-    contents = [content_directory(project) for project in projects(workspace)]
-    if path.suffix not in ('.yaml', '.rcss') or not any(path.is_relative_to(content) for content in contents):
-        raise ValueError('Saves must be YAML assets or RCSS inside a project content directory')
     text = request['text']
+    contents = [content_directory(project) for project in projects(workspace)]
+    # Settings rewrites a project's manifest, which is never removed.
+    manifest = text is not None and path in [(project / 'project.yaml').resolve() for project in projects(workspace)]
+    if not manifest and (path.suffix not in ('.yaml', '.rcss') or not any(path.is_relative_to(content) for content in contents)):
+        raise ValueError('Saves must be project manifests, or YAML assets or RCSS inside a project content directory')
     if text is None:
         path.unlink(missing_ok=True)
         return

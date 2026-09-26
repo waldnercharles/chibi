@@ -305,3 +305,6 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_canvas.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_pick.c
 )
+
+# ---------- Settings (workstream F) ----------
+list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_settings.c)

@@ -18,7 +18,7 @@ the earlier library catalog from the Codex RmlUi branch.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`) and tooltips in `kit_popup.c` | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow and Dialog | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
 | [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
@@ -31,7 +31,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, JSON, expressions |
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
-| [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs` | Done |
+| [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs`, whose preferences are rows of `studio_settings[]` | Done |
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
@@ -198,6 +198,7 @@ control's contract.
 - The persist middleware saves the whole store under one key, with a version for migration.
 - Kit version:
   - `studio_prefs` is the one store for view settings and layout.
+  - Each preference is a row of `studio_settings[]` (`studio_settings.c`): its JSON path, the saved key panels bind, its category, label, description, keywords, type and range. The preferences file, the saved keys and the Settings page all read and write through it; only the area layout is kept by hand.
   - Studio applies changes by comparison with the last applied copy.
   - It saves 0.5 s after the last change: a JSON file on desktop, `localStorage["chibi.studio"]` in the browser.
   - Missing fields keep their defaults.

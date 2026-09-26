@@ -1,12 +1,14 @@
 /* Studio preferences: one plain store persisted as a whole (zustand's persist
  * middleware). Reading keeps defaults for missing or invalid fields, so older
  * files migrate without a version switch. Desktop writes a JSON file in the
- * user directory; the browser uses localStorage. */
+ * user directory; the browser uses localStorage. Settings go through the
+ * settings table (studio_settings.c); the area layout is kept here. */
 #include "editor/studio/studio_internal.h"
 #include "platform/cute.h"
 #include "support/text_file.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,16 +48,6 @@ catch(_)
 
 #define PREFS_VERSION 1
 
-static const char *const THEMES[STUDIO_THEME_COUNT] = { "system", "dark", "light" };
-/* UI Scale's range, as Blender's Resolution Scale allows a useful subset of. */
-static const float UI_SCALE_MIN = STUDIO_UI_SCALE_MIN,
-                   UI_SCALE_MAX = STUDIO_UI_SCALE_MAX;
-static const char *const NODE_FLAGS[] = { "shortBindings", "titleFlow", "compact" };
-static const char *const CODE_FLAGS[] = { "vim", "applyLive" };
-static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
-                                                         "orthogonal",
-                                                         "straight",
-                                                         "subway" };
 /* An area showing a panel saves as {"panel": "<name>"}. */
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
     "scene",  "behavior",    "outliner", "properties", "output",
@@ -65,23 +57,19 @@ static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
 studio_prefs studio_prefs_default()
 {
     studio_prefs p = {
-        .theme = STUDIO_THEME_SYSTEM,
-        .ui_scale = 1,
         .side_width = 372,
         .main_split = 0.62f,
         .side_split = 0.38f,
         .drawer_height = 240,
-        .short_bindings = true,
-        .title_flow = true,
-        .compact_nodes = true,
-        .code_font_size = 13,
-        .code_apply_live = true,
         .editors = { STUDIO_EDITOR_SCENE,
                      STUDIO_EDITOR_BEHAVIOR,
                      STUDIO_EDITOR_OUTLINER,
                      STUDIO_EDITOR_PROPERTIES,
                      STUDIO_EDITOR_OUTPUT },
     };
+    for (int i = 0; i < studio_setting_count; i++) {
+        studio_setting_set(&p, &studio_settings[i], studio_settings[i].fallback);
+    }
 #ifdef __EMSCRIPTEN__
     p.reduced_motion = prefs_browser_reduced_motion();
 #endif
@@ -90,20 +78,20 @@ studio_prefs studio_prefs_default()
 
 bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
 {
+    for (int i = 0; i < studio_setting_count; i++) {
+        const studio_setting *s = &studio_settings[i];
+        if (studio_setting_get(a, s) != studio_setting_get(b, s)) {
+            return false;
+        }
+    }
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         if (a->editors[i] != b->editors[i] || strcmp(a->panels[i], b->panels[i]) != 0) {
             return false;
         }
     }
-    return a->theme == b->theme && a->comfortable == b->comfortable &&
-           a->ui_scale == b->ui_scale && a->reduced_motion == b->reduced_motion &&
-           a->side_width == b->side_width && a->main_split == b->main_split &&
+    return a->side_width == b->side_width && a->main_split == b->main_split &&
            a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
-           a->drawer_height == b->drawer_height && a->wires == b->wires &&
-           a->short_bindings == b->short_bindings &&
-           a->title_flow == b->title_flow && a->compact_nodes == b->compact_nodes &&
-           a->code_vim == b->code_vim && a->code_font_size == b->code_font_size &&
-           a->code_apply_live == b->code_apply_live;
+           a->drawer_height == b->drawer_height;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -126,6 +114,38 @@ static float number(yyjson_val *value, float fallback, float minimum, float maxi
     return v >= minimum && v <= maximum ? (float)v : fallback;
 }
 
+/* The value at a dotted path ("code.vim") under `root`, or NULL. */
+static yyjson_val *value_at(yyjson_val *root, const char *path)
+{
+    for (const char *at = path;; at++) {
+        size_t length = strcspn(at, ".");
+        root = yyjson_obj_getn(root, at, length);
+        at += length;
+        if (!*at) {
+            return root;
+        }
+    }
+}
+
+/* Keeps the default for a missing value, or one of the wrong type or range. */
+static void read_setting(studio_prefs *p, const studio_setting *s, yyjson_val *root)
+{
+    yyjson_val *value = value_at(root, s->key);
+    if (s->type == STUDIO_SETTING_NUMBER && yyjson_is_num(value)) {
+        char text[32];
+        snprintf(text, sizeof text, "%.9g", yyjson_get_num(value));
+        studio_setting_parse(p, s, text);
+        return;
+    }
+    if (s->type == STUDIO_SETTING_BOOL && yyjson_is_bool(value)) {
+        studio_setting_set(p, s, yyjson_get_bool(value));
+        return;
+    }
+    if (s->type == STUDIO_SETTING_CHOICE && yyjson_is_str(value)) {
+        studio_setting_parse(p, s, yyjson_get_str(value));
+    }
+}
+
 static char *read_json()
 {
 #ifdef __EMSCRIPTEN__
@@ -141,47 +161,18 @@ static char *read_json()
 #endif
 }
 
-studio_prefs studio_prefs_load()
+studio_prefs studio_prefs_read(const char *json)
 {
     studio_prefs p = studio_prefs_default();
-    char *json = read_json();
     yyjson_doc *doc = json ? yyjson_read(json, strlen(json), 0) : NULL;
-    free(json);
     yyjson_val *root = yyjson_doc_get_root(doc);
     if (!yyjson_is_obj(root)) {
         yyjson_doc_free(doc);
         return p;
     }
-    p.theme = (studio_theme)
-        name_index(THEMES, STUDIO_THEME_COUNT, yyjson_obj_get(root, "theme"), p.theme);
-    yyjson_val *density = yyjson_obj_get(root, "density");
-    if (yyjson_is_str(density)) {
-        p.comfortable = strcmp(yyjson_get_str(density), "comfortable") == 0;
+    for (int i = 0; i < studio_setting_count; i++) {
+        read_setting(&p, &studio_settings[i], root);
     }
-    p.ui_scale = number(yyjson_obj_get(root, "uiScale"), p.ui_scale, UI_SCALE_MIN, UI_SCALE_MAX);
-    yyjson_val *motion = yyjson_obj_get(root, "reduceMotion");
-    if (yyjson_is_bool(motion)) {
-        p.reduced_motion = yyjson_get_bool(motion);
-    }
-    p.wires = (kit_wire_style)
-        name_index(WIRES, KIT_WIRE_STYLE_COUNT, yyjson_obj_get(root, "wires"), p.wires);
-    yyjson_val *nodes = yyjson_obj_get(root, "nodes");
-    bool *flags[] = { &p.short_bindings, &p.title_flow, &p.compact_nodes };
-    for (int i = 0; i < 3; i++) {
-        yyjson_val *flag = yyjson_obj_get(nodes, NODE_FLAGS[i]);
-        if (yyjson_is_bool(flag)) {
-            *flags[i] = yyjson_get_bool(flag);
-        }
-    }
-    yyjson_val *code = yyjson_obj_get(root, "code");
-    bool *code_flags[] = { &p.code_vim, &p.code_apply_live };
-    for (int i = 0; i < 2; i++) {
-        yyjson_val *flag = yyjson_obj_get(code, CODE_FLAGS[i]);
-        if (yyjson_is_bool(flag)) {
-            *code_flags[i] = yyjson_get_bool(flag);
-        }
-    }
-    p.code_font_size = number(yyjson_obj_get(code, "fontSize"), p.code_font_size, 8, 32);
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.side_width = number(yyjson_obj_get(layout, "sideWidth"), p.side_width, 200, 1600);
     p.main_split = number(yyjson_obj_get(layout, "mainSplit"), p.main_split, 0.05f, 0.95f);
@@ -209,28 +200,62 @@ studio_prefs studio_prefs_load()
     return p;
 }
 
-bool studio_prefs_save(const studio_prefs *p)
+studio_prefs studio_prefs_load()
+{
+    char *json = read_json();
+    studio_prefs p = studio_prefs_read(json);
+    free(json);
+    return p;
+}
+
+/* The object holding the member at a dotted path ("code.vim"), made as
+ * needed; *name becomes the member's name. */
+static yyjson_mut_val *object_for(yyjson_mut_doc *doc, yyjson_mut_val *root, const char **name)
+{
+    for (const char *dot; (dot = strchr(*name, '.')); *name = dot + 1) {
+        size_t length = (size_t)(dot - *name);
+        yyjson_mut_val *child = yyjson_mut_obj_getn(root, *name, length);
+        if (!child) {
+            child = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add(root, yyjson_mut_strncpy(doc, *name, length), child);
+        }
+        root = child;
+    }
+    return root;
+}
+
+static void write_setting(
+    const studio_prefs *p,
+    const studio_setting *s,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *root
+)
+{
+    const char *name = s->key;
+    yyjson_mut_val *object = object_for(doc, root, &name);
+    float value = studio_setting_get(p, s);
+    switch (s->type) {
+        case STUDIO_SETTING_BOOL:
+            yyjson_mut_obj_add_bool(doc, object, name, value != 0);
+            return;
+        case STUDIO_SETTING_CHOICE:
+            yyjson_mut_obj_add_str(doc, object, name, s->choices[(int)value].value);
+            return;
+        case STUDIO_SETTING_NUMBER:
+            yyjson_mut_obj_add_real(doc, object, name, value);
+            return;
+    }
+}
+
+char *studio_prefs_write(const studio_prefs *p)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_int(doc, root, "version", PREFS_VERSION);
-    yyjson_mut_obj_add_str(doc, root, "theme", THEMES[p->theme]);
-    yyjson_mut_obj_add_str(doc, root, "density", p->comfortable ? "comfortable" : "compact");
-    yyjson_mut_obj_add_real(doc, root, "uiScale", p->ui_scale);
-    yyjson_mut_obj_add_bool(doc, root, "reduceMotion", p->reduced_motion);
-    yyjson_mut_obj_add_str(doc, root, "wires", WIRES[p->wires]);
-    yyjson_mut_val *nodes = yyjson_mut_obj_add_obj(doc, root, "nodes");
-    bool flags[] = { p->short_bindings, p->title_flow, p->compact_nodes };
-    for (int i = 0; i < 3; i++) {
-        yyjson_mut_obj_add_bool(doc, nodes, NODE_FLAGS[i], flags[i]);
+    for (int i = 0; i < studio_setting_count; i++) {
+        write_setting(p, &studio_settings[i], doc, root);
     }
-    yyjson_mut_val *code = yyjson_mut_obj_add_obj(doc, root, "code");
-    bool code_flags[] = { p->code_vim, p->code_apply_live };
-    for (int i = 0; i < 2; i++) {
-        yyjson_mut_obj_add_bool(doc, code, CODE_FLAGS[i], code_flags[i]);
-    }
-    yyjson_mut_obj_add_real(doc, code, "fontSize", p->code_font_size);
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_real(doc, layout, "sideWidth", p->side_width);
     yyjson_mut_obj_add_real(doc, layout, "mainSplit", p->main_split);
@@ -248,9 +273,13 @@ bool studio_prefs_save(const studio_prefs *p)
     }
     char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
     yyjson_mut_doc_free(doc);
-    if (!json) {
-        return false;
-    }
+    assert(json);
+    return json;
+}
+
+bool studio_prefs_save(const studio_prefs *p)
+{
+    char *json = studio_prefs_write(p);
 #ifdef __EMSCRIPTEN__
     bool ok = prefs_write_browser(json);
 #else
@@ -271,65 +300,20 @@ bool studio_prefs_save(const studio_prefs *p)
 
 /* ---------- Shared with authored panels ---------- */
 
-static const char *const DENSITIES[] = { "compact", "comfortable" };
-
-static void share_name(game_save *save, const char *key, const char *const *names, int count, int *value)
-{
-    const char *text = game_save_get(save, key);
-    for (int i = 0; text && i < count; i++) {
-        if (!strcmp(text, names[i])) {
-            *value = i;
-        }
-    }
-}
-
-static void share_scale(game_save *save, float *value)
-{
-    const char *text = game_save_get(save, "uiScale");
-    char *end;
-    float scale = text ? strtof(text, &end) : 0;
-    if (text && end != text && !*end && scale >= UI_SCALE_MIN && scale <= UI_SCALE_MAX) {
-        *value = scale;
-    }
-}
-
-static void share_flag(game_save *save, const char *key, bool *value)
-{
-    const char *text = game_save_get(save, key);
-    if (text) {
-        *value = !strcmp(text, "true");
-    }
-}
-
 void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
 {
     if (game_save_revision(save) != *seen) {
-        int theme = (int)p->theme, density = p->comfortable, wires = (int)p->wires;
-        share_name(save, "theme", THEMES, STUDIO_THEME_COUNT, &theme);
-        share_name(save, "density", DENSITIES, 2, &density);
-        share_name(save, "wires", WIRES, KIT_WIRE_STYLE_COUNT, &wires);
-        p->theme = (studio_theme)theme;
-        p->comfortable = density == 1;
-        p->wires = (kit_wire_style)wires;
-        share_flag(save, "shortBindings", &p->short_bindings);
-        share_flag(save, "titleFlow", &p->title_flow);
-        share_flag(save, "compactNodes", &p->compact_nodes);
-        share_flag(save, "reduceMotion", &p->reduced_motion);
-        share_flag(save, "codeVim", &p->code_vim);
-        share_flag(save, "codeApplyLive", &p->code_apply_live);
-        share_scale(save, &p->ui_scale);
+        for (int i = 0; i < studio_setting_count; i++) {
+            const char *text = game_save_get(save, studio_settings[i].save);
+            if (text) {
+                studio_setting_parse(p, &studio_settings[i], text);
+            }
+        }
     }
-    game_save_set(save, "theme", THEMES[p->theme]);
-    game_save_set(save, "density", DENSITIES[p->comfortable]);
-    game_save_set(save, "wires", WIRES[p->wires]);
-    game_save_set(save, "shortBindings", p->short_bindings ? "true" : "false");
-    game_save_set(save, "titleFlow", p->title_flow ? "true" : "false");
-    game_save_set(save, "compactNodes", p->compact_nodes ? "true" : "false");
-    game_save_set(save, "reduceMotion", p->reduced_motion ? "true" : "false");
-    game_save_set(save, "codeVim", p->code_vim ? "true" : "false");
-    game_save_set(save, "codeApplyLive", p->code_apply_live ? "true" : "false");
-    char scale[16];
-    snprintf(scale, sizeof scale, "%g", p->ui_scale);
-    game_save_set(save, "uiScale", scale);
+    for (int i = 0; i < studio_setting_count; i++) {
+        char text[32];
+        studio_setting_text(p, &studio_settings[i], text, sizeof text);
+        game_save_set(save, studio_settings[i].save, text);
+    }
     *seen = game_save_revision(save);
 }

@@ -53,6 +53,12 @@ class WorkspaceSaves(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.save('projects/bloom/project.yaml', None)
 
+    def test_manifest_saves(self):
+        self.save('projects/bloom/project.yaml', 'version: 1\ncontent: content\nui: Shell\n')
+        self.assertEqual((self.project / 'project.yaml').read_text(), 'version: 1\ncontent: content\nui: Shell\n')
+        with self.assertRaises(ValueError):
+            self.save('projects/bloom/project.yaml', '[]')
+
     def test_invalid_document_preserves_previous_asset(self):
         self.save('projects/bloom/content/Bloom.yaml')
         with self.assertRaises(ValueError):

@@ -6,7 +6,7 @@ entities:
   behaviors: [MenuKeys]
 - name: Settings
   prototype: Settings
-  behaviors: [MenuKeys, Dismiss]
+  behaviors: [NavKeys, Dismiss]
 - {name: Data, prototype: Data}
 - {name: Theme, prototype: Theme}
 - {name: Inspector, prototype: Inspector}

@@ -1252,4 +1252,100 @@ const char *studio_previewed_ui(const studio *s);
 bool studio_canvas_draw(studio *s, engine_viewport_host_input *input);
 void studio_canvas_free(studio *s);
 
+/* ---------- Settings (workstream F) ---------- */
+
+/* The Settings page's categories, in its sidebar's order. The Keyboard
+ * category lists the command registry; Project edits the open project's
+ * project.yaml. */
+typedef enum
+{
+    STUDIO_SETTINGS_APPEARANCE,
+    STUDIO_SETTINGS_GRAPH,
+    STUDIO_SETTINGS_TEXT,
+    STUDIO_SETTINGS_KEYBOARD,
+    STUDIO_SETTINGS_PROJECT,
+    STUDIO_SETTINGS_CATEGORY_COUNT,
+} studio_settings_category;
+
+typedef struct
+{
+    const char *id; /* what `settings.category` holds */
+    const char *label;
+    uint32_t icon;
+    bool project; /* under the Project tab, else Editor */
+} studio_settings_category_info;
+
+extern const studio_settings_category_info studio_settings_categories[STUDIO_SETTINGS_CATEGORY_COUNT];
+
+typedef enum
+{
+    STUDIO_SETTING_BOOL, /* a bool field; JSON true or false */
+    STUDIO_SETTING_CHOICE, /* a choice's index in an int or bool field; JSON its value */
+    STUDIO_SETTING_NUMBER, /* a float field within [min, max]; JSON a number */
+} studio_setting_type;
+
+typedef struct
+{
+    const char *value, *label;
+} studio_setting_choice;
+
+/* One preference (studio_settings.c): how the preferences file, the saved
+ * keys authored panels bind and the Settings page read and write it. */
+typedef struct
+{
+    const char *key;  /* its path in the preferences file: "code.vim" */
+    const char *save; /* the saved key authored panels bind: "codeVim" */
+    studio_settings_category category;
+    const char *label;
+    const char *description;
+    const char *keywords; /* more words search matches */
+    studio_setting_type type;
+    size_t offset, size;                  /* the studio_prefs field */
+    const studio_setting_choice *choices; /* a choice's values, or a number's presets */
+    int choice_count;
+    float min, max, step; /* a number's */
+    float fallback; /* the default: 0 or 1, a choice's index, or a number */
+} studio_setting;
+
+extern const studio_setting studio_settings[];
+extern const int studio_setting_count;
+
+/* The value: 0 or 1, a choice's index, or a number. */
+float studio_setting_get(const studio_prefs *prefs, const studio_setting *setting);
+void studio_setting_set(studio_prefs *prefs, const studio_setting *setting, float value);
+/* The value as text: "true" or "false", a choice's value, or a number. */
+void studio_setting_text(const studio_prefs *prefs, const studio_setting *setting, char *out, size_t size);
+/* Sets the value from text; false, leaving it, when the text is not valid. */
+bool studio_setting_parse(studio_prefs *prefs, const studio_setting *setting, const char *text);
+/* Whether each word of `query` is in the label, description, keywords or
+ * category, ignoring case. */
+bool studio_setting_matches(const studio_setting *setting, const char *query);
+/* The same for any text: each word of `query` is somewhere in `text`. */
+bool studio_settings_match(const char *query, const char *text);
+
+/* The preferences in a preferences file's JSON, NULL for none: defaults
+ * where a value is missing or invalid (studio_prefs.c). */
+studio_prefs studio_prefs_read(const char *json);
+/* Owned JSON text of the preferences file. */
+char *studio_prefs_write(const studio_prefs *prefs);
+
+/* The Settings page's variable, `settings` (studio_sources.c): the Editor or
+ * Project tab, the category, the search query, the categories and the rows
+ * they show. Rows edit through the table; Keyboard rows list the commands. */
+typedef struct studio_settings_view
+{
+    studio_prefs *prefs;                 /* edited in place */
+    const studio_command_info *commands; /* the Keyboard category's */
+    int command_count;
+    const char *project; /* the open project's name */
+    char root[128]; /* the project's root document, "" for none; the page may set it */
+    const char **documents; /* the project's ui assets (support/array.h) */
+} studio_settings_view;
+
+/* Adds the `settings` variable to a data model's JSON. */
+void studio_settings_add(yyjson_mut_doc *doc);
+/* Applies what the page's bindings changed to `view` when `wrote`, then shows
+ * it; true when the page changed. */
+bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool wrote);
+
 #endif

@@ -417,6 +417,42 @@ static const char *saved_text(yyjson_mut_val *v, char *buffer, size_t size)
     }
 }
 
+void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text)
+{
+    if (yyjson_mut_is_str(value) && !strcmp(yyjson_mut_get_str(value), text)) {
+        return;
+    }
+    yyjson_mut_val *copy = yyjson_mut_strcpy(doc, text);
+    yyjson_mut_set_strn(value, yyjson_mut_get_str(copy), yyjson_mut_get_len(copy));
+}
+
+/* Shows `save`'s keys in `shown`, changing only the values that differ, so
+ * a long session does not grow the JSON; removed keys read as null. */
+static void show_save(yyjson_mut_doc *doc, yyjson_mut_val *shown, const game_save *save)
+{
+    yyjson_mut_val *key;
+    yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
+    while ((key = yyjson_mut_obj_iter_next(&iter))) {
+        if (!save || !game_save_get(save, yyjson_mut_get_str(key))) {
+            yyjson_mut_set_null(yyjson_mut_obj_iter_get_val(key));
+        }
+    }
+    for (int i = 0; save && i < game_save_count(save); i++) {
+        const char *name = game_save_key(save, i), *text = game_save_get(save, name);
+        yyjson_mut_val *value = yyjson_mut_obj_get(shown, name);
+        if (!value) {
+            value = yyjson_mut_null(doc);
+            yyjson_mut_obj_add(shown, yyjson_mut_strcpy(doc, name), value);
+        }
+        bool flag = !strcmp(text, "true");
+        if (flag || !strcmp(text, "false")) {
+            yyjson_mut_set_bool(value, flag);
+            continue;
+        }
+        ui_data_set_text(doc, value, text);
+    }
+}
+
 void ui_data_sync(ui_data *d, game_save *save)
 {
     yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
@@ -439,16 +475,7 @@ void ui_data_sync(ui_data *d, game_save *save)
     }
     d->save = save;
     d->save_seen = revision;
-    yyjson_mut_obj_clear(shown);
-    for (int i = 0; save && i < game_save_count(save); i++) {
-        const char *key = game_save_key(save, i), *text = game_save_get(save, key);
-        bool flag = !strcmp(text, "true");
-        if (flag || !strcmp(text, "false")) {
-            yyjson_mut_obj_add_bool(d->doc, shown, key, flag);
-            continue;
-        }
-        yyjson_mut_obj_add_strcpy(d->doc, shown, key, text);
-    }
+    show_save(d->doc, shown, save);
     rml_data_model_dirty(d->model, "save");
 }
 

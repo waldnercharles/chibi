@@ -7,3 +7,5 @@ entities:
 - name: Settings
   prototype: Settings
   behaviors: [MenuKeys, Dismiss]
+- {name: Data, prototype: Data}
+- {name: Theme, prototype: Theme}

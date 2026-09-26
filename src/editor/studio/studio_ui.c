@@ -37,16 +37,23 @@ struct studio_ui
     panel *panels;
     tree_watch files; /* the project's assets, reloaded when edited */
     rml_listener *listener;
-    ui_data data;        /* what the kit's hosted panels bind */
+    ui_data data; /* what the kit's hosted panels bind */
+    studio_sources sources;
+    ui_mount *areas[STUDIO_AREA_COUNT]; /* each area's panel, when it shows one */
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
 
-/* The panel mount holding `element`, or NULL. */
+/* The panel or area mount holding `element`, or NULL. */
 static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
 {
     for (int i = 0; i < acount(ui->panels); i++) {
         if (ui->panels[i].mount && ui_mount_holds(ui->panels[i].mount, element)) {
             return ui->panels[i].mount;
+        }
+    }
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        if (ui->areas[i] && ui_mount_holds(ui->areas[i], element)) {
+            return ui->areas[i];
         }
     }
     return NULL;
@@ -158,6 +165,10 @@ static void free_world(studio_ui *ui)
         free(ui->panels[i].name);
         ui_mount_free(ui->panels[i].mount);
     }
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        ui_mount_free(ui->areas[i]);
+        ui->areas[i] = NULL;
+    }
     afree(ui->panels);
     game_prototype_preview_free(ui->world);
     for (int i = 0; i < acount(ui->prototypes); i++) {
@@ -210,7 +221,10 @@ static void follow_disk(studio *s)
 studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size)
 {
     studio_ui *ui = xcalloc(1, sizeof *ui);
-    ui_data_init(&ui->data, context, NULL, on_emit, ui);
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
+    studio_sources_add(doc);
+    ui_data_init(&ui->data, context, doc, on_emit, ui);
     size_t length = strlen(project_root) + sizeof "/content";
     ui->content_root = xmalloc(length);
     snprintf(ui->content_root, length, "%s/content", project_root);
@@ -233,6 +247,7 @@ void studio_ui_free(studio_ui *ui)
         return;
     }
     free_world(ui);
+    studio_sources_free(&ui->sources);
     ui_data_free(&ui->data);
     tree_watch_free(&ui->files);
     rml_listener_destroy(ui->listener);
@@ -253,6 +268,7 @@ void studio_ui_frame(studio *s)
     follow_disk(s);
     game_prototype_preview_tick(s->ui->world, s->time);
     ui_data_sync(&s->ui->data, settings(s->ui));
+    studio_sources_sync(s, &s->ui->sources, &s->ui->data);
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }
 
@@ -346,6 +362,31 @@ void studio_ui_panel(studio *s, const char *key, const char *name)
             p,
             &p->mount,
             kit_host(s->kit, key, "panel-host"),
+            component->document
+        );
+    }
+}
+
+int studio_ui_panel_count(const studio *s)
+{
+    return s->ui ? acount(s->ui->panels) : 0;
+}
+
+const char *studio_ui_panel_name(const studio *s, int index)
+{
+    return s->ui->panels[index].name;
+}
+
+void studio_ui_area(studio *s, int area, const char *name)
+{
+    panel *p = s->ui ? find_panel(s->ui, name) : NULL;
+    const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
+    if (component && component->document && component->document[0]) {
+        show_panel(
+            s,
+            p,
+            &s->ui->areas[area],
+            kit_host(s->kit, "panel", "area-panel"),
             component->document
         );
     }

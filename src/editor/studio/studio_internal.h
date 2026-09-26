@@ -27,6 +27,7 @@ typedef enum
     STUDIO_EDITOR_ASSETS,
     STUDIO_EDITOR_PERFORMANCE,
     STUDIO_EDITOR_MEMBERS,
+    STUDIO_EDITOR_PANEL, /* an authored panel of the Studio project, named in studio_prefs.panels */
     STUDIO_EDITOR_COUNT,
 } studio_editor;
 
@@ -78,7 +79,8 @@ typedef struct
     bool drawer_open;
     float drawer_height;
     studio_editor editors[STUDIO_AREA_COUNT];
-    kit_wire_style wires; /* graph wire routing */
+    char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
+    kit_wire_style wires;               /* graph wire routing */
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
     bool title_flow;    /* unlabeled execution pins sit in node titles */
     bool compact_nodes; /* operators as symbols, one-output reads as pills */
@@ -476,6 +478,35 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
  * made since `seen` applies first, then the preferences are written back. */
 void studio_prefs_share(studio_prefs *prefs, game_save *save, uint64_t *seen);
 
+/* A theme custom property a Theme panel row shows (studio_sources.c). */
+typedef struct studio_token
+{
+    int file;       /* index in the theme's watches */
+    int start, end; /* the value's bytes in the file when read */
+    char name[64];
+    char *value; /* as read */
+    bool color;
+} studio_token;
+
+/* What authored panels bind beyond their world's `save` (studio_sources.c):
+ * `world`, the Scene world's saved keys, and `theme`, the open project's
+ * theme tokens. */
+typedef struct studio_sources
+{
+    game_save *save; /* the one `world` shows */
+    uint64_t save_seen;
+    char content_root[1024]; /* whose theme `theme` shows */
+    ui_theme theme;
+    studio_token *tokens; /* in the order `theme` lists its rows */
+    uint64_t writes_seen;
+} studio_sources;
+
+/* Adds the `world` and `theme` variables to a data model's JSON. */
+void studio_sources_add(yyjson_mut_doc *doc);
+/* Applies what bindings changed, then shows the current values. */
+void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
+void studio_sources_free(studio_sources *sources);
+
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
  * cannot. Free it after the kit, whose hosts hold its listener. */
 studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size);
@@ -484,6 +515,12 @@ void studio_ui_free(studio_ui *ui);
 void studio_ui_frame(studio *s);
 /* Shows the Studio scene entity `name`'s GameUi document in a kit host. */
 void studio_ui_panel(studio *s, const char *key, const char *name);
+/* The Studio scene's panels, each an editor type an area can show. */
+int studio_ui_panel_count(const studio *s);
+const char *studio_ui_panel_name(const studio *s, int index);
+/* Shows panel `name` filling area `area`'s body, whether or not its GameUi
+ * is hidden. */
+void studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
 void studio_ui_modal(studio *s, const char *name);

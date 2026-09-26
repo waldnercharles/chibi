@@ -20,13 +20,13 @@ EM_JS(void, web_import_project, (), { Module['chibiImportProject'](); })
 #endif
 
 static const char *const EDITOR_LABELS[STUDIO_EDITOR_COUNT] = {
-    "Scene",  "Behavior", "Outliner",    "Properties",
-    "Output", "Assets",   "Performance", "Members"
+    "Scene",  "Behavior",    "Outliner", "Properties", "Output",
+    "Assets", "Performance", "Members",  "Panel"
 };
 static const uint32_t EDITOR_ICONS[STUDIO_EDITOR_COUNT] = {
     KIT_ICON_VIEWPORT,    KIT_ICON_GRAPH,    KIT_ICON_OUTLINER,
     KIT_ICON_PROPERTIES,  KIT_ICON_OUTPUT,   KIT_ICON_ASSETS,
-    KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE,
+    KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE, KIT_ICON_LAYOUT,
 };
 
 static void dp(char *out, size_t size, float value)
@@ -493,6 +493,7 @@ static void menus(studio *s)
             s->prefs.main_split = layout.main_split;
             s->prefs.side_split = layout.side_split;
             memcpy(s->prefs.editors, layout.editors, sizeof layout.editors);
+            memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
         }
         kit_popup_end(k);
     }
@@ -722,7 +723,34 @@ static void topbar(studio *s)
 static bool drawer_editor(studio_editor editor)
 {
     return editor == STUDIO_EDITOR_OUTPUT || editor == STUDIO_EDITOR_ASSETS ||
-           editor == STUDIO_EDITOR_PERFORMANCE;
+           editor == STUDIO_EDITOR_PERFORMANCE || editor == STUDIO_EDITOR_PANEL;
+}
+
+/* The Studio project's panels, after the built-in editors. */
+static void panel_types(studio *s, int area)
+{
+    kit *k = s->kit;
+    int count = studio_ui_panel_count(s);
+    if (count) {
+        kit_menu_separator(k, "panels-sep");
+        kit_menu_group(k, "panels", "Studio");
+    }
+    for (int i = 0; i < count; i++) {
+        const char *name = studio_ui_panel_name(s, i);
+        char item_key[16];
+        snprintf(item_key, sizeof item_key, "p%d", i);
+        kit_menu_item_desc item = {
+            .label = name,
+            .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
+            .checked = -1,
+            .current = s->prefs.editors[area] == STUDIO_EDITOR_PANEL &&
+                       !strcmp(s->prefs.panels[area], name),
+        };
+        if (kit_menu_item(k, item_key, &item)) {
+            s->prefs.editors[area] = STUDIO_EDITOR_PANEL;
+            snprintf(s->prefs.panels[area], sizeof s->prefs.panels[area], "%s", name);
+        }
+    }
 }
 
 void studio_maximize_graph(studio *s)
@@ -742,7 +770,9 @@ static void editor_type_menu(studio *s, int area)
     studio_editor *editor = &s->prefs.editors[area];
     kit_button_desc d = { .icon = EDITOR_ICONS[*editor],
                           .cls = "editor-type",
-                          .tip = EDITOR_LABELS[*editor] };
+                          .tip = *editor == STUDIO_EDITOR_PANEL
+                                   ? s->prefs.panels[area]
+                                   : EDITOR_LABELS[*editor] };
     char key[24];
     snprintf(key, sizeof key, "type:%d", area);
     if (kit_button(k, "type", &d)) {
@@ -750,7 +780,7 @@ static void editor_type_menu(studio *s, int area)
     }
     if (kit_popup_begin(k, key, "menu")) {
         kit_menu_group(k, "group", "Editor");
-        for (int e = 0; e < STUDIO_EDITOR_COUNT; e++) {
+        for (int e = 0; e < STUDIO_EDITOR_PANEL; e++) {
             if (area == STUDIO_AREA_DRAWER && !drawer_editor((studio_editor)e)) {
                 continue;
             }
@@ -764,6 +794,7 @@ static void editor_type_menu(studio *s, int area)
                 *editor = (studio_editor)e;
             }
         }
+        panel_types(s, area);
         kit_popup_end(k);
     }
 }
@@ -793,6 +824,9 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
             studio_performance_header(s, index);
             break;
         case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
+        case STUDIO_EDITOR_PANEL:
+            kit_label(k, "title", NULL, s->prefs.panels[index]);
+            break;
         default: break;
     }
     if (index == STUDIO_AREA_DRAWER) {
@@ -816,6 +850,9 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
             studio_performance_body(s, index);
             break;
         case STUDIO_EDITOR_MEMBERS: studio_members_body(s, index); break;
+        case STUDIO_EDITOR_PANEL:
+            studio_ui_area(s, index, s->prefs.panels[index]);
+            break;
         default: break;
     }
     kit_pop(k);

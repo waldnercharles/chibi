@@ -33,8 +33,8 @@ typedef struct ui_world
 
 /* A host's data model. Its variables are the members of `doc`'s root, among
  * them `save`: the world's saved keys as text, "true" and "false" as
- * booleans, which bindings may set. A key nothing saved reads as empty until
- * a binding sets it. */
+ * booleans, which bindings may set. A key nothing saved, or removed, reads
+ * as empty until a binding sets it. */
 typedef struct ui_data
 {
     yyjson_mut_doc *doc;
@@ -49,6 +49,9 @@ void ui_data_init(ui_data *data, rml_context *context, yyjson_mut_doc *doc, rml_
 /* Saves in `save` the keys bindings set, then shows its keys when they
  * changed. */
 void ui_data_sync(ui_data *data, game_save *save);
+/* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
+ * what it copies until it is freed, so views update values in place. */
+void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text);
 void ui_data_free(ui_data *data);
 
 /* ---------- Mounts ---------- */

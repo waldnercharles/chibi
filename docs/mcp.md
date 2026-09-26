@@ -583,7 +583,9 @@ div with the use element's attributes (`ui` becomes `data-ui`) around the
 widget's markup, whose `<slot/>` holds the use element's children. A widget
 element marked `attrs`, like Vue's `v-bind="$attrs"`, takes the use element's
 other attributes instead, so `<use ui="MenuCheck" data-checked="save.sound">`
-binds the widget's own checkbox. Widget RCSS comes before the host's, so the
+binds the widget's own checkbox. A widget takes data as RmlUi aliases, as Vue
+components take props: `<use ui="TextField" data-alias-text="row.value"/>`
+binds the widget's `text` to the row's value. Widget RCSS comes before the host's, so the
 host can restyle it; the events it emits reach the host's entity, and
 `#hull .fill` selects inside one instance. Editing a widget reloads every
 document that uses it.
@@ -620,7 +622,8 @@ the way to the focused one, so pick the focused row with a class, such as
 
 Documents bind data with RmlUi's data bindings, which follow Vue: `{{ save.name }}`
 in text, `data-for="item : list"`, `data-if`, `data-class-active="expr"`,
-`data-attr-src="expr"`, `data-value="save.volume"` on an input,
+`data-attr-src="expr"`, `data-value="save.volume"` on an input (`data-value-lazy`
+sets it on Enter or blur, as Vue's `v-model.lazy`),
 `data-checked="save.theme"` on a radio with a `value` or on a checkbox, and
 `data-event-click="expr"`, where `emit('Name')` sends an event to the entity.
 `save` holds the world's saved keys (the store of `Read Saved Text`) as text,

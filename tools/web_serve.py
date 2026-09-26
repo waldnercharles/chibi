@@ -93,16 +93,17 @@ class WorkspaceWatch:
 def save_asset(workspace, request):
     path = (workspace / request['path'].lstrip('/')).resolve()
     contents = [content_directory(project) for project in projects(workspace)]
-    if path.suffix != '.yaml' or not any(path.is_relative_to(content) for content in contents):
-        raise ValueError('Saves must be YAML assets inside a project content directory')
+    if path.suffix not in ('.yaml', '.rcss') or not any(path.is_relative_to(content) for content in contents):
+        raise ValueError('Saves must be YAML assets or RCSS inside a project content directory')
     text = request['text']
     # The engine writes asset documents as YAML mappings; a save must reload.
-    try:
-        document = yaml.safe_load(text)
-    except yaml.YAMLError as error:
-        raise ValueError(f'Saves must be YAML asset documents: {error}') from error
-    if not isinstance(document, dict):
-        raise ValueError('Saves must be YAML asset documents')
+    if path.suffix == '.yaml':
+        try:
+            document = yaml.safe_load(text)
+        except yaml.YAMLError as error:
+            raise ValueError(f'Saves must be YAML asset documents: {error}') from error
+        if not isinstance(document, dict):
+            raise ValueError('Saves must be YAML asset documents')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:
         temporary = Path(file.name)

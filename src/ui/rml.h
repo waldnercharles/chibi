@@ -479,8 +479,9 @@ extern "C"
     /* The data model `name` in `context`, for RmlUi's data bindings ({{ }},
      * data-for, data-value, data-checked, data-event-*, ...). Its variables
      * are the members of `doc`'s root object when it is created: objects bind
-     * by member name, a missing one reading as null until set, arrays by index
-     * and .size, and other values as scalars, which bindings may overwrite. The
+     * by member name, arrays by index and .size, and other values as scalars,
+     * which bindings may overwrite. As in JavaScript, a name no variable has
+     * reads as empty, and a missing member reads as null until set. The
      * doc must outlive the model and keep each variable's value in place,
      * changing its contents instead. Expressions may call emit('Name'). */
     rml_data_model *rml_data_model_create(

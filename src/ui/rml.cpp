@@ -518,6 +518,10 @@ public:
             break;
         case Rml::Variant::STRING: {
             const Rml::String &s = variant.GetReference<Rml::String>();
+            if (yyjson_mut_is_str(v) && yyjson_mut_get_len(v) == s.size() &&
+                !memcmp(yyjson_mut_get_str(v), s.data(), s.size())) {
+                return true;
+            }
             yyjson_mut_val *copy = yyjson_mut_strncpy(doc, s.data(), s.size());
             set = yyjson_mut_set_strn(v, yyjson_mut_get_str(copy), s.size());
             break;
@@ -1071,7 +1075,7 @@ rml_data_model *rml_data_model_create(
     void *user
 )
 {
-    Rml::DataModelConstructor constructor = context(c)->CreateDataModel(name);
+    Rml::DataModelConstructor constructor = context(c)->CreateDataModel(name, nullptr, true);
     assert(constructor);
     auto *model = new rml_data_model(context(c), name, doc);
     model->handle = constructor.GetModelHandle();

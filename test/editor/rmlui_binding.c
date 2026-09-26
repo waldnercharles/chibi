@@ -99,7 +99,8 @@ static bool text_is(rml_element *doc, const char *id, const char *text)
 }
 
 /* A data model over JSON: text and lists follow it, a missing member reads
- * empty, bindings write back and emit('Name') reaches the host. */
+ * empty, bindings write back, a lazy one on blur, and emit('Name') reaches
+ * the host. */
 static bool binds_data(rml_context *context)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -118,6 +119,7 @@ static bool binds_data(rml_context *context)
         "<div class=\"row\" data-for=\"row : rows\">{{ row.name }}</div>"
         "<div id=\"label\">{{ flags.label }}</div>"
         "<input id=\"on\" type=\"checkbox\" data-checked=\"flags.on\"/>"
+        "<input id=\"lazy\" type=\"text\" data-value-lazy=\"title\"/>"
         "<div id=\"go\" data-event-click=\"emit('Go')\"/></body></rml>",
         "[memory]"
     );
@@ -133,11 +135,17 @@ static bool binds_data(rml_context *context)
     bool wrote = rml_data_model_writes(model) == 1 &&
                  yyjson_mut_get_bool(yyjson_mut_obj_get(flags, "on"));
     rml_element_click(rml_element_by_id(doc, "go"));
+    rml_element *lazy = rml_element_by_id(doc, "lazy");
+    rml_element_focus(lazy, false);
+    rml_element_set_value(lazy, "Theme");
+    bool held = !strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(root, "title")), "Tokens");
+    rml_element_blur(lazy);
+    bool committed = !strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(root, "title")), "Theme");
     rml_document_close(doc);
     rml_context_update(context);
     rml_data_model_destroy(model);
     yyjson_mut_doc_free(json);
-    return shown && listed && wrote && !strcmp(emitted, "go:Go");
+    return shown && listed && wrote && !strcmp(emitted, "go:Go") && held && committed;
 }
 
 bool test_rmlui_binding()

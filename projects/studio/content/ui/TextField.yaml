@@ -1,0 +1,2 @@
+rml: <div class="field text"><input type="text" class="value" data-value-lazy="text"/></div>
+rcss: 'body { display: flex; flex: 1 1 0dp; }'

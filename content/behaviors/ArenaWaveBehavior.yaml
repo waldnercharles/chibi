@@ -34,9 +34,7 @@ graphs:
     type: Call Function
     reference_id: 2005
     reference_name: Refresh Encounter
-  - id: 2032
-    type: Event
-    reference_name: RefreshEncounter
+  - {id: 2032, type: Event, reference_name: RefreshEncounter}
   - id: 2034
     type: Call Function
     reference_id: 2005
@@ -221,10 +219,7 @@ graphs:
       Enemy Count: {type: int, kind: data}
       Player Alive: {type: bool, kind: data}
       Pending Deaths: {type: bool, kind: data}
-  - id: 3384
-    type: Set Variable
-    reference_id: 2003
-    reference_name: Enemy Count
+  - {id: 3384, type: Set Variable, reference_id: 2003, reference_name: Enemy Count}
   - id: 3389
     type: Set Variable
     reference_id: 2004

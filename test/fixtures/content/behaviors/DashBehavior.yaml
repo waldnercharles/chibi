@@ -25,10 +25,7 @@ graphs:
       Value.remaining: {id: 399}
   - {id: 360, type: Greater Or Equal}
   - {id: 364, type: Branch}
-  - id: 369
-    type: Call Function
-    reference_id: 39
-    reference_name: Start Dash
+  - {id: 369, type: Call Function, reference_id: 39, reference_name: Start Dash}
   - {id: 372, type: Event, reference_name: Tick}
   - id: 374
     type: Call Function
@@ -41,10 +38,7 @@ graphs:
       Value.remaining: {}
   - {id: 380, type: Less}
   - {id: 384, type: Branch}
-  - id: 389
-    type: Call Function
-    reference_id: 8
-    reference_name: Drive Dash
+  - {id: 389, type: Call Function, reference_id: 8, reference_name: Drive Dash}
   - id: 392
     type: Event
     reference_name: Contact Begin
@@ -344,10 +338,7 @@ graphs:
   - {id: 203, type: Set_GameDash_cooldown_remaining}
   - {id: 210, type: Less}
   - {id: 214, type: Branch}
-  - id: 219
-    type: Call Function
-    reference_id: 18
-    reference_name: Advance Dash
+  - {id: 219, type: Call Function, reference_id: 18, reference_name: Advance Dash}
   edges:
   - {from: 24.Then, to: 179.Exec}
   - {from: 177.Value, to: 179.Condition}

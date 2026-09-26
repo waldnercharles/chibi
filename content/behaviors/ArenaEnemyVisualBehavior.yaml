@@ -32,8 +32,7 @@ graphs:
         default: {x: -10.0, "y": -10.0, z: -10.0}
       Max:
         default: {x: 10.0, "y": 10.0, z: 10.0}
-  - id: 18
-    type: Set_GameVisualMotion_angular_velocity
+  - {id: 18, type: Set_GameVisualMotion_angular_velocity}
   - id: 24
     type: Event
     reference_name: Contact Begin

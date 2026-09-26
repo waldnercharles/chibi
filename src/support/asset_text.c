@@ -286,8 +286,15 @@ static bool scalar_fits(yyjson_val *item, size_t *width)
     return true;
 }
 
+static bool automatic_position(yyjson_val *object, const char *key)
+{
+    return yyjson_is_false(yyjson_obj_get(object, "placed")) &&
+           (!strcmp(key, "x") || !strcmp(key, "y") || !strcmp(key, "placed"));
+}
+
 /* Short lists and mappings of plain values, such as edges, read best on one
- * line. */
+ * line. Only what the file keeps counts, so arranging a node never restyles
+ * its entry. */
 static bool flow_style(yyjson_val *value)
 {
     size_t width = 0, i, count;
@@ -303,17 +310,14 @@ static bool flow_style(yyjson_val *value)
     }
     yyjson_obj_foreach(value, i, count, key, item)
     {
+        if (automatic_position(value, yyjson_get_str(key))) {
+            continue;
+        }
         if (!scalar_fits(key, &width) || !scalar_fits(item, &width)) {
             return false;
         }
     }
     return width <= 80;
-}
-
-static bool automatic_position(yyjson_val *object, const char *key)
-{
-    return yyjson_is_false(yyjson_obj_get(object, "placed")) &&
-           (!strcmp(key, "x") || !strcmp(key, "y") || !strcmp(key, "placed"));
 }
 
 static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value, bool root)

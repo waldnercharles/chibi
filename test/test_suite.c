@@ -61,6 +61,7 @@ void test_kit_host();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
+int studio_documents_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
 int rmlui_render_run(const char *program);
@@ -771,6 +772,10 @@ int main(int argc, char **argv)
         registry_validate();
         test_editor_documents();
         return scene_documents_run(program_name);
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-documents") == 0) {
+        registry_validate();
+        return studio_documents_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;

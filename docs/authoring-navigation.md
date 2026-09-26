@@ -35,7 +35,7 @@ Status on 2026-09-25, after the optimize branch merged (#106). Update a row when
 | Completion | Add menu ranked by the dropped pin (`wire_fit`) | `searchNodes` `wire_from`/`wire_to`, ranked by the same `wire_fit` | — |
 | Hover | Pin values while debugging; pin types in the Node tab | `searchNodes` returns every node's and event's `description` | Studio: show `node_desc.description` as node tooltips, which also need to wrap (`.tooltip` is `white-space: nowrap`); after `cwaldner/game-ui` |
 | Outline | Members panel | Catalog members, `inspectGraph` | Both: use, sender and handler counts per member |
-| Resolved types | Node tab | `inspectGraph` omits types that wildcard pins resolve to | MCP |
+| Resolved types | Node tab | `inspectGraph` lists each node's pins with their resolved types | — |
 | Find | ⌘F within one asset | `searchAssets` matches member names | Both: find nodes across the project |
 
 ## Order

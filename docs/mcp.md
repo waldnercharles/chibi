@@ -171,6 +171,12 @@ bubbles, comment-box positions, and wire routing by default. Pass
 presentation data; the graph arranger assigns coordinates after graph content
 changes, so an agent does not need to choose node positions by hand.
 
+Each inspected node also lists its pins as `in` and `out`, written as
+`searchNodes` writes them (`"A: double"`, `"Then: exec"`), with the types
+wildcard pins resolved to. The serialized node fields omit pins that match
+their template, so these lists are where to find pin names to connect. Pass
+`include_pins: false` to leave them out.
+
 `buildPrototype` applies the same boundary to prototype assets. Components are
 selected by reflected name or stable key, `add_component` uses native defaults,
 `set_field` accepts JSON values through the prototype loader's type conversion,

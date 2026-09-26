@@ -1,12 +1,16 @@
+#include "assets/project.h"
 #include "automation/controller.h"
 #include "graph/model/registry.h"
 #include "suite_internal.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* An agent's query and the node it means: the type, the component, struct or
  * event it names, and for a Set the field it writes. */
@@ -211,6 +215,63 @@ static void descriptions_complete()
     free(system);
 }
 
+/* inspectGraph lists each node's pins with the types wildcards resolved to,
+ * which the serialized nodes omit. */
+static void inspected_pins()
+{
+    char root[] = "/tmp/chibi-inspect-XXXXXX";
+    assert(mkdtemp(root));
+    char manifest[128], content[128], behaviors[128], asset[160];
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    snprintf(content, sizeof content, "%s/content", root);
+    snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
+    snprintf(asset, sizeof asset, "%s/Pins.yaml", behaviors);
+    FILE *file = fopen(manifest, "w");
+    assert(file);
+    fprintf(file, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    fclose(file);
+    assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
+    char request[1024];
+    snprintf(
+        request,
+        sizeof request,
+        "{\"contract\":1,\"operation\":\"edit_graph\",\"project_root\":\"%s\","
+        "\"kind\":\"behavior\",\"name\":\"Pins\",\"create\":true,"
+        "\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"two\",\"type\":\"Real\",\"inputs\":{"
+        "\"Value\":2}},"
+        "{\"op\":\"add_node\",\"ref\":\"sum\",\"type\":\"Add\"},"
+        "{\"op\":\"connect\",\"from\":\"two\",\"from_pin\":\"Value\",\"to\":"
+        "\"sum\",\"to_pin\":\"A\"}]}",
+        root
+    );
+    int exit_code = 0;
+    char *edited = chibi_automation_handle(request, ".", &exit_code);
+    snprintf(
+        request,
+        sizeof request,
+        "{\"contract\":1,\"operation\":\"inspect_graph\",\"project_root\":\"%"
+        "s\","
+        "\"kind\":\"behavior\",\"name\":\"Pins\"}",
+        root
+    );
+    char *inspected = chibi_automation_handle(request, ".", &exit_code);
+    test_check(
+        edited && strstr(edited, "\"ok\":true") && inspected &&
+            strstr(inspected, "\"type\":\"Add\"") &&
+            strstr(inspected, "\"in\":[\"A: double\",") &&
+            strstr(inspected, "\"out\":[\"Result: double\"]"),
+        "inspectGraph lists each node's pins with their resolved types"
+    );
+    free(edited);
+    free(inspected);
+    unlink(asset);
+    rmdir(behaviors);
+    rmdir(content);
+    unlink(manifest);
+    rmdir(root);
+}
+
 /* Responses stay small enough to read whole: the vocabulary outline, and a
  * page of results with pins. */
 static void response_budgets()
@@ -236,5 +297,6 @@ void test_automation_search()
     expression_forms();
     wire_fits();
     descriptions_complete();
+    inspected_pins();
     response_budgets();
 }

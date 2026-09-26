@@ -30,7 +30,7 @@ void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy)
 
 bool sg_far(const studio *s)
 {
-    return s->graph.zoom * cf_app_get_pixel_scale() < FAR_PIXELS;
+    return s->graph.zoom * studio_pixel_ratio(s) < FAR_PIXELS;
 }
 
 static void camera_to(studio *s, float zoom, float x, float y, bool animate)

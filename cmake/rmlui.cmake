@@ -31,10 +31,11 @@ function(chibi_rmlui_dependencies)
         endif()
     endif()
     # Web behavior RmlUi lacks: CSS color-mix(), so theme roles derive from a
-    # few tokens at runtime; HTML's radio groups, which need a name; and Vue's
-    # v-model, which leaves an input being edited alone and has a lazy form.
+    # few tokens at runtime; HTML's radio groups, which need a name; Vue's
+    # v-model, which leaves an input being edited alone and has a lazy form;
+    # and CSS's anonymous flex items, so text inside a flex container shows.
     set(PATCH_SOURCE "${rmlui_SOURCE_DIR}")
-    foreach(patch color-mix radio-groups lazy-value)
+    foreach(patch color-mix radio-groups lazy-value flex-text)
         set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-${patch}.patch")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
         include(cmake/apply_patch.cmake)

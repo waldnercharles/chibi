@@ -120,6 +120,17 @@ static bool studio_key_pressed(const studio *s, SDL_Keycode key)
     return false;
 }
 
+float studio_pixel_ratio(const studio *s)
+{
+    return cf_app_get_pixel_scale() * s->prefs.ui_scale;
+}
+
+/* SDL reports window points; the editor lays out in dp, UI Scale apart. */
+static float to_dp(const studio *s, float points)
+{
+    return points / s->prefs.ui_scale;
+}
+
 static void forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
@@ -136,8 +147,8 @@ static void forward_input(studio *s)
                             .modifiers = rml_modifiers(s->mods) };
         switch (e->type) {
             case SDL_EVENT_MOUSE_MOTION:
-                in->mouse_x = input.x = e->motion.x;
-                in->mouse_y = input.y = e->motion.y;
+                in->mouse_x = input.x = to_dp(s, e->motion.x);
+                in->mouse_y = input.y = to_dp(s, e->motion.y);
                 input.type = RML_INPUT_POINTER_MOVE;
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -151,8 +162,8 @@ static void forward_input(studio *s)
                 if (b < 0) {
                     continue;
                 }
-                in->mouse_x = input.x = e->button.x;
-                in->mouse_y = input.y = e->button.y;
+                in->mouse_x = input.x = to_dp(s, e->button.x);
+                in->mouse_y = input.y = to_dp(s, e->button.y);
                 rml_input move = input;
                 move.type = RML_INPUT_POINTER_MOVE;
                 rml_backend_process_input(s->backend, &move);
@@ -167,8 +178,8 @@ static void forward_input(studio *s)
             case SDL_EVENT_MOUSE_WHEEL:
                 /* Zoom anchors where the wheel turned, which a motion event
                    may not have reported yet. */
-                in->mouse_x = input.x = e->wheel.mouse_x;
-                in->mouse_y = input.y = e->wheel.mouse_y;
+                in->mouse_x = input.x = to_dp(s, e->wheel.mouse_x);
+                in->mouse_y = input.y = to_dp(s, e->wheel.mouse_y);
                 in->wheel += e->wheel.y;
                 input.type = RML_INPUT_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;
@@ -294,11 +305,14 @@ static void draw_viewport(studio *s)
         engine_viewport_set_host_input(s->viewport, NULL);
         return;
     }
+    /* The Scene renders in window points, as games' UI scales with the view
+       and not with the editor's UI Scale. */
+    float ui = s->prefs.ui_scale;
     engine_viewport_host_input input = {
-        .width = s->surface.rect.w,
-        .height = s->surface.rect.h,
-        .x = s->surface.x,
-        .y = s->surface.y,
+        .width = s->surface.rect.w * ui,
+        .height = s->surface.rect.h * ui,
+        .x = s->surface.x * ui,
+        .y = s->surface.y * ui,
         .hovered = s->surface.hovered,
         .focused = s->focus_area == area && !kit_wants_keyboard(s->kit),
         .blocked = kit_command_is_open(s->kit),
@@ -459,13 +473,13 @@ void studio_free(studio *s)
 void studio_frame(studio *s, double delta_seconds)
 {
     int width = cf_app_get_width(), height = cf_app_get_height();
-    float scale = cf_app_get_pixel_scale();
-    rml_backend_resize(s->backend, width, height, scale);
+    float scale = cf_app_get_pixel_scale(), ratio = studio_pixel_ratio(s);
+    rml_backend_resize_pixels(s->backend, (int)lroundf(width * scale), (int)lroundf(height * scale), ratio);
     s->time += delta_seconds;
     s->in.time = s->time;
-    s->in.dp_ratio = scale;
-    s->in.width = (float)width;
-    s->in.height = (float)height;
+    s->in.dp_ratio = ratio;
+    s->in.width = to_dp(s, (float)width);
+    s->in.height = to_dp(s, (float)height);
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
     app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));

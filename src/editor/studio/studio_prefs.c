@@ -47,6 +47,8 @@ catch(_)
 #define PREFS_VERSION 1
 
 static const char *const THEMES[STUDIO_THEME_COUNT] = { "system", "dark", "light" };
+/* UI Scale's range, as Blender's Resolution Scale allows a useful subset of. */
+static const float UI_SCALE_MIN = 0.5f, UI_SCALE_MAX = 2.0f;
 static const char *const NODE_FLAGS[] = { "shortBindings", "titleFlow", "compact" };
 static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
                                                          "orthogonal",
@@ -62,6 +64,7 @@ studio_prefs studio_prefs_default()
 {
     studio_prefs p = {
         .theme = STUDIO_THEME_SYSTEM,
+        .ui_scale = 1,
         .side_width = 372,
         .main_split = 0.62f,
         .side_split = 0.38f,
@@ -89,7 +92,7 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
         }
     }
     return a->theme == b->theme && a->comfortable == b->comfortable &&
-           a->reduced_motion == b->reduced_motion &&
+           a->ui_scale == b->ui_scale && a->reduced_motion == b->reduced_motion &&
            a->side_width == b->side_width && a->main_split == b->main_split &&
            a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
            a->drawer_height == b->drawer_height && a->wires == b->wires &&
@@ -149,6 +152,7 @@ studio_prefs studio_prefs_load()
     if (yyjson_is_str(density)) {
         p.comfortable = strcmp(yyjson_get_str(density), "comfortable") == 0;
     }
+    p.ui_scale = number(yyjson_obj_get(root, "uiScale"), p.ui_scale, UI_SCALE_MIN, UI_SCALE_MAX);
     yyjson_val *motion = yyjson_obj_get(root, "reduceMotion");
     if (yyjson_is_bool(motion)) {
         p.reduced_motion = yyjson_get_bool(motion);
@@ -198,6 +202,7 @@ bool studio_prefs_save(const studio_prefs *p)
     yyjson_mut_obj_add_int(doc, root, "version", PREFS_VERSION);
     yyjson_mut_obj_add_str(doc, root, "theme", THEMES[p->theme]);
     yyjson_mut_obj_add_str(doc, root, "density", p->comfortable ? "comfortable" : "compact");
+    yyjson_mut_obj_add_real(doc, root, "uiScale", p->ui_scale);
     yyjson_mut_obj_add_bool(doc, root, "reduceMotion", p->reduced_motion);
     yyjson_mut_obj_add_str(doc, root, "wires", WIRES[p->wires]);
     yyjson_mut_val *nodes = yyjson_mut_obj_add_obj(doc, root, "nodes");
@@ -257,6 +262,16 @@ static void share_name(game_save *save, const char *key, const char *const *name
     }
 }
 
+static void share_scale(game_save *save, float *value)
+{
+    const char *text = game_save_get(save, "uiScale");
+    char *end;
+    float scale = text ? strtof(text, &end) : 0;
+    if (text && end != text && !*end && scale >= UI_SCALE_MIN && scale <= UI_SCALE_MAX) {
+        *value = scale;
+    }
+}
+
 static void share_flag(game_save *save, const char *key, bool *value)
 {
     const char *text = game_save_get(save, key);
@@ -279,6 +294,7 @@ void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
         share_flag(save, "titleFlow", &p->title_flow);
         share_flag(save, "compactNodes", &p->compact_nodes);
         share_flag(save, "reduceMotion", &p->reduced_motion);
+        share_scale(save, &p->ui_scale);
     }
     game_save_set(save, "theme", THEMES[p->theme]);
     game_save_set(save, "density", DENSITIES[p->comfortable]);
@@ -287,5 +303,8 @@ void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
     game_save_set(save, "titleFlow", p->title_flow ? "true" : "false");
     game_save_set(save, "compactNodes", p->compact_nodes ? "true" : "false");
     game_save_set(save, "reduceMotion", p->reduced_motion ? "true" : "false");
+    char scale[16];
+    snprintf(scale, sizeof scale, "%g", p->ui_scale);
+    game_save_set(save, "uiScale", scale);
     *seen = game_save_revision(save);
 }

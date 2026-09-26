@@ -1,0 +1,52 @@
+diff --git a/Source/Core/Layout/BlockFormattingContext.cpp b/Source/Core/Layout/BlockFormattingContext.cpp
+index 526da4bb..43753946 100644
+--- a/Source/Core/Layout/BlockFormattingContext.cpp
++++ b/Source/Core/Layout/BlockFormattingContext.cpp
+@@ -1,6 +1,7 @@
+ #include "BlockFormattingContext.h"
+ #include "../../../Include/RmlUi/Core/ComputedValues.h"
+ #include "../../../Include/RmlUi/Core/Element.h"
++#include "../../../Include/RmlUi/Core/ElementText.h"
+ #include "../../../Include/RmlUi/Core/Profiling.h"
+ #include "../../../Include/RmlUi/Core/PropertyDefinition.h"
+ #include "../../../Include/RmlUi/Core/StyleSheetSpecification.h"
+@@ -116,6 +117,12 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
+ 	for (int layout_iteration = 0; layout_iteration < 3; layout_iteration++)
+ 	{
+ 		bool all_children_formatted = true;
++
++		// Text formatted on its own, as text directly inside a flex container is, lays out as the inline content of
++		// an anonymous block, as in CSS.
++		if (rmlui_dynamic_cast<ElementText*>(element))
++			all_children_formatted = FormatInlineBox(container.get(), element);
++
+ 		for (int i = 0; i < element->GetNumChildren() && all_children_formatted; i++)
+ 		{
+ 			if (!FormatBlockContainerChild(container.get(), element->GetChild(i)))
+diff --git a/Source/Core/Layout/FlexFormattingContext.cpp b/Source/Core/Layout/FlexFormattingContext.cpp
+index 68ec692a..8647f4e2 100644
+--- a/Source/Core/Layout/FlexFormattingContext.cpp
++++ b/Source/Core/Layout/FlexFormattingContext.cpp
+@@ -2,6 +2,7 @@
+ #include "../../../Include/RmlUi/Core/ComputedValues.h"
+ #include "../../../Include/RmlUi/Core/Element.h"
+ #include "../../../Include/RmlUi/Core/ElementScroll.h"
++#include "../../../Include/RmlUi/Core/ElementText.h"
+ #include "../../../Include/RmlUi/Core/Profiling.h"
+ #include "../../../Include/RmlUi/Core/Types.h"
+ #include "ContainerBox.h"
+@@ -955,8 +956,12 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
+ 			UniquePtr<LayoutBox> item_layout_box =
+ 				FormattingContext::FormatIndependent(flex_container_box, item.element, &item.box, FormattingContextType::Block);
+ 
+-			// Set the position of the element within the flex container
+-			item.element->SetOffset(flex_content_offset + item_offset, element_flex);
++			// Set the position of the element within the flex container. Text keeps the offset its anonymous block gave
++			// its first line.
++			Vector2f item_position = flex_content_offset + item_offset;
++			if (rmlui_dynamic_cast<ElementText*>(item.element))
++				item_position += item.element->GetRelativeOffset(BoxArea::Border);
++			item.element->SetOffset(item_position, element_flex);
+ 
+ 			// The flex container baseline is simply set to the first flex item that has a baseline.
+ 			if (!baseline_set && item_layout_box->GetBaselineOfLastLine(flex_baseline))

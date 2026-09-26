@@ -73,6 +73,7 @@ typedef struct
     studio_theme theme;
     bool comfortable;
     bool reduced_motion;
+    float ui_scale; /* the editor's size, as Blender's Resolution Scale; games' UI keeps its own */
     float side_width;
     float main_split;
     float side_split;
@@ -463,6 +464,9 @@ struct studio
     double status_time;
     double time;
 };
+
+/* Physical pixels per editor dp: the display's scale times UI Scale. */
+float studio_pixel_ratio(const studio *s);
 
 /* Platform shortcuts (studio_keys.c). */
 bool studio_detect_mac();

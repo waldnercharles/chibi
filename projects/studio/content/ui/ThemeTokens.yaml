@@ -6,7 +6,7 @@ rml: |
     </div>
     <div class="panel-body">
       <div class="prop" data-for="row : section.rows">
-        <div class="label"><span>{{ row.name }}</span></div>
+        <div class="label">{{ row.name }}</div>
         <div class="control">
           <use ui="ColorField" data-if="row.color" data-alias-color="row.value"/>
           <use ui="TextField" data-if="!row.color" data-alias-text="row.value"/>

@@ -4,6 +4,7 @@
 #include "ui/rml_backend.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,6 +84,46 @@ static bool mixes_colors(rml_context *context)
     return ok;
 }
 
+/* Where `text` starts, relative to `row`. */
+static rml_vec2 text_at(rml_element *row, rml_element *text)
+{
+    rml_vec2 at = rml_element_absolute_offset(text, RML_BOX_BORDER);
+    rml_vec2 origin = rml_element_absolute_offset(row, RML_BOX_BORDER);
+    return (rml_vec2){ at.x - origin.x, at.y - origin.y };
+}
+
+/* As in CSS, text directly inside a flex container is laid out as an item
+ * of its own, where a span of it would be (cmake/patches/rmlui-flex-text.patch). */
+static bool lays_out_flex_text(rml_context *context)
+{
+    rml_element *doc = rml_context_load_document_from_memory(
+        context,
+        "<rml><head><style>body { font-family: Inter; font-size: 12dp; }"
+        ".row { display: flex; align-items: center; width: 300dp; height: "
+        "40dp; }"
+        ".box { width: 10dp; height: 10dp; }"
+        "</style></head><body><div class=\"row\" id=\"bare\"><div "
+        "class=\"box\" id=\"a\"/>Label"
+        "<div class=\"box\" id=\"b\"/></div><div class=\"row\" "
+        "id=\"wrapped\"><div class=\"box\"/>"
+        "<span>Label</span></div></body></rml>",
+        "[memory]"
+    );
+    assert(doc);
+    rml_context_update(context);
+    rml_element *bare = rml_element_by_id(doc, "bare"),
+                *wrapped = rml_element_by_id(doc, "wrapped");
+    float a = rml_element_absolute_offset(rml_element_by_id(doc, "a"), RML_BOX_BORDER)
+                  .x;
+    float b = rml_element_absolute_offset(rml_element_by_id(doc, "b"), RML_BOX_BORDER)
+                  .x;
+    rml_vec2 text = text_at(bare, rml_element_child(bare, 1));
+    rml_vec2 span = text_at(wrapped, rml_element_first_child(rml_element_child(wrapped, 1)));
+    rml_document_close(doc);
+    return b - a > 10 + 20 && fabsf(text.x - span.x) < 0.5f &&
+           fabsf(text.y - span.y) < 0.5f;
+}
+
 static char emitted[32];
 
 static void on_emit(void *user, const rml_event *event, const char *name)
@@ -153,7 +194,8 @@ bool test_rmlui_binding()
     rml_backend *backend = rml_backend_create(320, 240, 1);
     rml_context *context = rml_backend_context(backend);
     bool ok = loads_from_memory(context) && replaces_style_sheet(context) &&
-              mixes_colors(context) && binds_data(context);
+              mixes_colors(context) && binds_data(context) &&
+              lays_out_flex_text(context);
     rml_backend_destroy(backend);
     return ok;
 }

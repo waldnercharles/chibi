@@ -12,6 +12,13 @@ rml: |
         <use ui="MenuOption" data-checked="save.density" value="compact">Compact</use>
         <use ui="MenuOption" data-checked="save.density" value="comfortable">Comfortable</use>
         <div class="menu-sep"/>
+        <div class="menu-group">UI Scale</div>
+        <use ui="MenuOption" data-checked="save.uiScale" value="0.75">75%</use>
+        <use ui="MenuOption" data-checked="save.uiScale" value="1">100%</use>
+        <use ui="MenuOption" data-checked="save.uiScale" value="1.25">125%</use>
+        <use ui="MenuOption" data-checked="save.uiScale" value="1.5">150%</use>
+        <use ui="MenuOption" data-checked="save.uiScale" value="2">200%</use>
+        <div class="menu-sep"/>
         <use ui="MenuCheck" data-checked="save.reduceMotion">Reduce Motion</use>
       </div>
       <div class="column">

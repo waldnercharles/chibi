@@ -298,3 +298,10 @@ list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/ui_style.c)
 list(APPEND APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_buffer.c
 )
+
+# UI wiring (workstream K): UI events, asset pickers and the Canvas preview.
+list(APPEND RUNTIME_SUPPORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_events.c)
+list(APPEND EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_canvas.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_pick.c
+)

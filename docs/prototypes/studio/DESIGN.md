@@ -104,6 +104,10 @@ Behavior changed from the ImGui editor:
 - Nodes that no event reaches, or whose values nothing reads, are dimmed. Wires attached to the selection or the hovered node stand out, and the rest recede.
 - Scrubbing a node's inline value is one undo step.
 - Saving a scene keeps its file name as the document name. It used to write "Scene".
+- A field that names an asset, such as `GameUi.document` or the Scene tab's root document, is a select that searches the project's assets of its kind on the command surface, with None and, where a name may be missing, the typed name. A name no asset has shows as invalid.
+- A game UI's error shows in the Scene's notice line and heads Output's Problems; Output records each new error once.
+- While a ui asset's document is active, the Scene area is its Canvas: the asset alone in the Scene area over an empty world, as Storybook shows a story: at a screen size (Fit, Phone, Tablet, Desktop), on a light or dark backdrop, magnified by the view zoom, with an Actions log of the events it emits and what uses it. Its events reach no behavior. Preview UI Asset… in the command palette, Preview in an asset's Assets menu and the Canvas's crumb show any ui asset the same way.
+- The Add menu offers the events that the GameUi documents on whatever attaches the open behavior send, described by what the player does ("Sent when the player clicks #extract in Bank").
 
 ## Decisions
 

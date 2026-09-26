@@ -342,6 +342,12 @@ static int named_field(const char *component, const char *field)
     return -1;
 }
 
+reference_asset_kind reference_named_field_kind(const char *component, const char *field)
+{
+    int named = named_field(component, field);
+    return named < 0 ? REFERENCE_ASSET_KIND_COUNT : NAMED_FIELDS[named].kind;
+}
+
 /* ---------- Graphs ---------- */
 
 /* Where in a graph asset references are being added. */
@@ -1040,6 +1046,58 @@ const reference *reference_index_definition(const reference_index *index, refere
         }
     }
     return NULL;
+}
+
+/* Both references belong to the same prototype, or the same scene object. */
+static bool same_holder(const reference *a, const reference *b)
+{
+    return a->source == b->source &&
+           (a->object ? same_text(a->object, b->object) : !b->object);
+}
+
+static bool attaches(const reference *r, int behavior)
+{
+    return r->role == REFERENCE_ATTACH &&
+           r->symbol.kind == REFERENCE_SYMBOL_ASSET && r->symbol.asset == behavior;
+}
+
+/* A GameUi.document naming a ui asset. */
+static bool shows_document(const reference_index *index, const reference *r)
+{
+    return r->role == REFERENCE_BIND && r->component &&
+           !strcmp(r->component, "GameUi.document") && r->symbol.asset >= 0 &&
+           index->assets[r->symbol.asset].kind == REFERENCE_ASSET_UI;
+}
+
+static bool listed(const int *positions, int position)
+{
+    for (int i = 0; i < acount(positions); i++) {
+        if (positions[i] == position) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void reference_index_attached_documents(const reference_index *index, int behavior, int **documents)
+{
+    const reference **holders = NULL;
+    for (int i = 0; i < acount(index->references); i++) {
+        if (attaches(&index->references[i], behavior)) {
+            apush(holders, &index->references[i]);
+        }
+    }
+    for (int i = 0; acount(holders) && i < acount(index->references); i++) {
+        const reference *r = &index->references[i];
+        bool held = false;
+        for (int h = 0; !held && shows_document(index, r) && h < acount(holders); h++) {
+            held = same_holder(r, holders[h]);
+        }
+        if (held && !listed(*documents, r->symbol.asset)) {
+            apush(*documents, r->symbol.asset);
+        }
+    }
+    afree(holders);
 }
 
 bool reference_index_reaches(const reference_index *index, const reference *handle, uint64_t node_id)

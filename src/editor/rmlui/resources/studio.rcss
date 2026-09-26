@@ -274,3 +274,31 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .new-ui-field { display: block; padding: 2dp 4dp 4dp; }
 .new-ui-field .field { height: 24dp; }
 .new-ui-error { display: flex; align-items: center; gap: 8dp; min-height: var(--h); padding: 0dp 8dp 0dp 6dp; color: var(--destructive); }
+
+/* UI wiring (workstream K): the Canvas preview of one ui asset in the Scene area. */
+.canvas-sizes { display: flex; flex: 0 0 auto; margin-left: 6dp; }
+.canvas-sizes .segmented { flex: 0 0 auto; }
+.canvas-sizes .seg { flex: 0 0 auto; }
+.viewport.canvas { display: flex; }
+/* The stage sits a step darker than the frame's backdrop, so a screen size's edges show. */
+.canvas-stage { position: relative; flex: 1 1 0dp; overflow: hidden; background-color: #121214; }
+.viewport.canvas.light .canvas-stage { background-color: #d4d4d8; }
+.viewport .canvas-label { left: 12dp; right: 12dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewport .canvas-label .dim { overflow: hidden; text-overflow: ellipsis; }
+.viewport.canvas.light .canvas-label { color: #3f3f46; }
+.viewport.canvas.light .canvas-label .dim { color: #71717a; }
+.canvas-actions { flex: 0 0 240dp; display: flex; flex-direction: column; border-left: 1dp var(--line); background-color: var(--floating); }
+.canvas-actions-head { display: flex; align-items: center; gap: 6dp; height: var(--header-h); flex: 0 0 auto; padding: 0dp 4dp 0dp 10dp; font-size: 11dp; border-bottom: 1dp var(--line); }
+.canvas-actions-head .icon { color: var(--faint-foreground); font-size: 12dp; width: 14dp; }
+.canvas-actions-head .title { font-weight: 600; color: var(--foreground); }
+.canvas-actions-head .count { color: var(--faint-foreground); font-family: InterNumeric; }
+.canvas-actions-list { position: relative; flex: 1 1 0dp; padding: 2dp 4dp; font-family: InterNumeric; }
+.canvas-action { display: flex; align-items: center; gap: 6dp; height: 20dp; padding: 0dp 6dp; border-radius: var(--r); white-space: nowrap; overflow: hidden; }
+body.comfortable .canvas-action { height: 24dp; }
+.canvas-action:hover { background-color: var(--accent); }
+.canvas-action .event { color: var(--primary-text); font-weight: 600; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.canvas-action .element { color: var(--muted-foreground); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.canvas-action .value { color: var(--foreground); flex: 0 0 auto; }
+.canvas-action .count { color: var(--faint-foreground); flex: 0 0 auto; }
+.canvas-action .time { margin-left: auto; color: var(--faint-foreground); flex: 0 0 auto; }
+.canvas-actions-empty { display: block; padding: 16dp 10dp; text-align: center; color: var(--faint-foreground); font-size: 11dp; pointer-events: none; }

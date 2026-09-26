@@ -184,6 +184,12 @@ void editor_set_event_catalog(editor *e, const graph_host_event_desc *events, in
     e->event_catalog_count = count > 0 ? count : 0;
 }
 
+void editor_set_ui_event_catalog(editor *e, const struct ui_event *events, int count)
+{
+    e->ui_event_catalog = count > 0 ? events : NULL;
+    e->ui_event_catalog_count = count > 0 ? count : 0;
+}
+
 void editor_set_asset_opener(editor *e, int (*open)(void *, const char *, uint64_t), void *user)
 {
     e->open_asset = open;

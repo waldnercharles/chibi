@@ -123,6 +123,10 @@ static void asset_menu(studio *s, const char *key)
         finish_transform_edit(s->scene, false);
         app_scene_authoring_open_asset(s->scene, s->assets_menu);
     }
+    if (asset && studio_asset_nameable(asset, REFERENCE_ASSET_UI) &&
+        menu_item(k, "preview", "Preview", KIT_ICON_LAYOUT, NULL)) {
+        studio_preview_ui(s, asset->name);
+    }
     if (asset && menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL)) {
         studio_find_asset_references(s, s->assets_menu);
     }

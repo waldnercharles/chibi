@@ -1009,3 +1009,10 @@ void render_ui_composite(render_ui *ui, CF_Canvas target)
     cf_render_to(target, false);
     cf_draw_pop();
 }
+
+/* ---------- UI wiring (workstream K) ---------- */
+
+bool render_ui_take_overlay_activation(render_ui *ui, ui_activation *out)
+{
+    return ui->overlay.mount && ui_mount_take(ui->overlay.mount, out);
+}

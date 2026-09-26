@@ -1,0 +1,4 @@
+name: Vault
+components:
+  GAME.GameUi: {document: Bank}
+behaviors: [Teller]

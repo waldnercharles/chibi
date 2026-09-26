@@ -117,13 +117,20 @@ static void check_project(studio *s)
     s->problems_checked = true;
 }
 
+/* The shown game UI's error leads the rows of either scope (studio_ui_error). */
+static int ui_problems(const studio *s)
+{
+    return s->ui_error[0] != '\0';
+}
+
 static int problem_count(const studio *s)
 {
     if (s->problems_scope == PROBLEMS_PROJECT) {
-        return acount(s->project_problems);
+        return acount(s->project_problems) + ui_problems(s);
     }
     const compile_report *report = problems(s);
-    return report ? report->error_count + report->warning_count : 0;
+    return (report ? report->error_count + report->warning_count : 0) +
+           ui_problems(s);
 }
 
 /* The scope of the Problems view, and Refresh for the project's. */
@@ -284,6 +291,29 @@ static void located_row_begin(kit *k, const char *key, kit_toast_type kind, cons
     kit_markup(k, "text", "output-line", markup);
 }
 
+/* The game UI error's row names its asset, whose source it opens, or else
+   whose preview. */
+static void ui_problem_row(studio *s)
+{
+    kit *k = s->kit;
+    char asset[128] = "", place[160] = "Game UI";
+    const char *message = s->ui_error;
+    if (studio_ui_error_asset(s->ui_error, asset, sizeof asset)) {
+        snprintf(place, sizeof place, "ui/%s.yaml", asset);
+        message += strlen(place) + (s->ui_error[strlen(place)] == ' ');
+    }
+    located_row_begin(k, "ui", KIT_TOAST_ERROR, place, message);
+    kit_pop(k);
+    if (!kit_item_clicked(k) || !asset[0]) {
+        return;
+    }
+    char path[1024];
+    snprintf(path, sizeof path, "%s/%s", s->scene->content_root, place);
+    if (!studio_open_ui_source(s, path, 1)) {
+        studio_preview_ui(s, asset);
+    }
+}
+
 /* Rows open their asset and reveal the node, like the open asset's. */
 static void project_view(studio *s, float row)
 {
@@ -297,10 +327,14 @@ static void project_view(studio *s, float row)
             apush(shown, i);
         }
     }
-    kit_list_desc list = { .count = acount(shown), .row_height = row, .reveal = -1 };
+    int ui = ui_problems(s) && contains(s->ui_error, s->output_filter);
+    kit_list_desc list = { .count = acount(shown) + ui, .row_height = row, .reveal = -1 };
     int first, last;
     kit_list_begin(k, "project", "output-list", &list, &first, &last);
-    for (int r = first; r <= last && r < acount(shown); r++) {
+    if (ui && first == 0) {
+        ui_problem_row(s);
+    }
+    for (int r = first > ui ? first - ui : 0; r <= last - ui && r < acount(shown); r++) {
         const studio_problem *p = &s->project_problems[shown[r]];
         char key[24];
         snprintf(key, sizeof key, "q%d", shown[r]);
@@ -311,8 +345,8 @@ static void project_view(studio *s, float row)
         }
     }
     kit_list_end(k);
-    if (!acount(shown)) {
-        empty(k, total ? "No matches" : "No problems");
+    if (!acount(shown) && !ui) {
+        empty(k, total || ui_problems(s) ? "No matches" : "No problems");
     }
     afree(shown);
 }
@@ -333,10 +367,14 @@ static void problems_view(studio *s, float row)
             apush(shown, i);
         }
     }
-    kit_list_desc list = { .count = acount(shown), .row_height = row, .reveal = -1 };
+    int ui = ui_problems(s) && contains(s->ui_error, s->output_filter);
+    kit_list_desc list = { .count = acount(shown) + ui, .row_height = row, .reveal = -1 };
     int first, last;
     kit_list_begin(k, "problems", "output-list", &list, &first, &last);
-    for (int r = first; r <= last && r < acount(shown); r++) {
+    if (ui && first == 0) {
+        ui_problem_row(s);
+    }
+    for (int r = first > ui ? first - ui : 0; r <= last - ui && r < acount(shown); r++) {
         const compile_diagnostic *d = &report->items[shown[r]];
         studio_node_ref at = studio_problem_at(s, d);
         char key[24], place[256];
@@ -357,8 +395,8 @@ static void problems_view(studio *s, float row)
         }
     }
     kit_list_end(k);
-    if (!acount(shown)) {
-        empty(k, total ? "No matches" : "No problems");
+    if (!acount(shown) && !ui) {
+        empty(k, total || ui_problems(s) ? "No matches" : "No problems");
     }
     afree(shown);
 }

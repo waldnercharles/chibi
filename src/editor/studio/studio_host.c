@@ -387,9 +387,14 @@ static void draw_viewport(studio *s)
         input.released[b] = s->surface.released[b];
     }
     studio_scene_view(s, &input);
+    if (studio_canvas_draw(s, &input)) {
+        engine_viewport_set_host_input(s->viewport, NULL);
+        return;
+    }
     engine_viewport_set_host_input(s->viewport, &input);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
+    studio_ui_error(s, render_ui_error(engine_viewport_ui(s->viewport)));
 }
 
 /* Preferences apply by comparison with the last applied copy, like a zustand
@@ -531,6 +536,8 @@ void studio_free(studio *s)
     studio_projects_free(s);
     studio_disk_free(s);
     studio_refactor_free(s);
+    studio_canvas_free(s);
+    studio_add_menu_close(s);
     engine_viewport_set_host_input(s->viewport, NULL);
     editor_set_retained_keyboard(false);
     studio_graph_free(s);

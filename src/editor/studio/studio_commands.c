@@ -58,6 +58,8 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_THEME] = { "theme", "Light Theme", NULL, NULL, "appearance color mode settings", KIT_ICON_SUN },
     /* UI Inspector (studio_inspect.c) */
     [STUDIO_COMMAND_INSPECT] = { "inspect-element", "Inspect Element", NULL, "Mod+Shift+C", "ui inspector devtools debugger pick styles rml rcss", KIT_ICON_SELECT },
+    /* UI wiring (workstream K) */
+    [STUDIO_COMMAND_PREVIEW_UI] = { "preview-ui", "Preview UI Asset\xe2\x80\xa6", NULL, NULL, "canvas storybook widget document screen size", KIT_ICON_LAYOUT },
 };
 
 studio_command_info studio_command_describe(studio *s, studio_command command)
@@ -195,6 +197,14 @@ void studio_command_run(studio *s, studio_command command)
             s->prefs.theme = s->light ? STUDIO_THEME_DARK : STUDIO_THEME_LIGHT;
             break;
         case STUDIO_COMMAND_INSPECT: studio_inspect_toggle(s); break;
+        case STUDIO_COMMAND_PREVIEW_UI:
+            studio_pick_open(
+                s,
+                STUDIO_PICK_PREVIEW,
+                studio_previewed_ui(s),
+                &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI }
+            );
+            break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }

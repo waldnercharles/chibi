@@ -82,3 +82,8 @@
 .check[data-checked] .box { background-color: var(--primary); }
 .check[data-checked] .box .icon { opacity: 1; }
 .check[data-disabled], .check[data-readonly] { opacity: 0.5; }
+
+/* Asset field (kit_picker): a select trigger that opens a search over assets. */
+.field.select.picker { tab-index: auto; }
+.field.select.picker .lead { color: var(--muted-foreground); width: 14dp; font-size: 12dp; }
+.field.select.picker[data-placeholder] .value { color: var(--faint-foreground); }

@@ -560,7 +560,7 @@ static void document_tabs(studio *s)
         } else {
             kit_flag(k, "data-state", false);
         }
-        kit_tip(k, tab->path, NULL);
+        kit_tip(k, tab->path, NULL, NULL);
         kit_icon(k, "icon", NULL, icon);
         kit_label(k, "label", "label", tab->label ? tab->label : "Untitled");
         if (dirty) {

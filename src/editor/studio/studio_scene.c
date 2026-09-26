@@ -77,7 +77,7 @@ void studio_scene_body(studio *s, int area)
     kit_push(k, "tools", NULL, "toolshelf");
     kit_button_desc select = { .icon = KIT_ICON_SELECT, .tip = "Select", .flags = KIT_ON };
     kit_button(k, "select", &select);
-    kit_tip(k, "Select", NULL);
+    kit_tip(k, "Select", NULL, NULL);
     kit_attr(k, "data-tip-side", "right");
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .tip = "Frame selected",

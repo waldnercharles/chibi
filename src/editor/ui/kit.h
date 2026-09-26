@@ -62,6 +62,9 @@ extern "C"
         bool down[3], pressed[3], released[3];
         float wheel;
         unsigned modifiers; /* KIT_MOD_* */
+        /* A canvas's zoom, folded into dp_ratio, which tooltips undo to keep
+         * their size on screen; 0 means 1. */
+        float zoom;
     } kit_frame_input;
 
     /* Emit the frame between begin and end. Input for this frame must already be
@@ -83,7 +86,9 @@ extern "C"
     void kit_attr(kit *k, const char *name, const char *value);
     void kit_flag(kit *k, const char *name, bool on);
     void kit_style(kit *k, const char *property, const char *value);
-    void kit_tip(kit *k, const char *label, const char *shortcut);
+    /* A tooltip on the last item: a label, an optional shortcut and, when the
+     * label alone does not explain the item, a short description that wraps. */
+    void kit_tip(kit *k, const char *label, const char *shortcut, const char *description);
 
     /* Motion. Presence (Motion's AnimatePresence, Base UI's starting and ending
      * styles): the last item mounts with data-starting-style for one frame and,
@@ -279,7 +284,8 @@ extern "C"
      * popup and returns true: emit items, then kit_popup_end. */
     bool kit_menubar_trigger(kit *k, const char *key, const char *label);
 
-    /* Command palette (cmdk). Emit items while open; returns the chosen index or -1. */
+    /* Command palette (cmdk). Emit items while open; returns the chosen index
+     * or -1. A description shows as a muted second line under the label. */
     typedef struct kit_command_item
     {
         const char *label;
@@ -288,6 +294,7 @@ extern "C"
         const char *shortcut;
         const char *keywords;
         uint32_t icon;
+        const char *description;
     } kit_command_item;
     void kit_command_open(kit *k, const char *placeholder);
     bool kit_command_is_open(const kit *k);

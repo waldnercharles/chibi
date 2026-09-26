@@ -90,6 +90,7 @@ TEST_CASE(all_checks)
     run_graph_document_checks();
     run_graph_comment_checks();
     run_graph_find_checks();
+    run_graph_describe_checks();
     run_graph_arrange_checks();
     run_graph_inline_checks();
     run_graph_editing_checks();

@@ -43,7 +43,9 @@ the earlier library catalog from the Codex RmlUi branch.
 State lives in `data-*` attributes (`data-open`, `data-pressed`, `data-highlighted`,
 `data-disabled`, `data-starting-style`, `data-ending-style`). Menus open on press,
 switch on hover within a menubar and open submenus after 100 ms. Tooltips show
-after 500 ms and stay warm for 400 ms within a group. Number fields repeat held
+after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
+shortcut and an optional description that wraps; in a zoomed canvas it keeps
+its size on screen. Number fields repeat held
 steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press
 and return focus to their trigger. `docs/prototypes/studio/kit.html` lists every
 control's contract.
@@ -62,6 +64,7 @@ control's contract.
   - Ctrl+N/J/P/K also move.
   - Enter selects. Backspace on an empty query, or Escape, pops a page.
 - Hovering selects an item. Beyond about 2,000 items, filter and virtualize externally.
+- An item's description shows as a muted second line; tooltips stay hidden while the palette is open.
 
 ### DialKit
 

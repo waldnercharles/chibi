@@ -506,6 +506,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
     );
     g->in.time = s->time;
     g->in.dp_ratio = g->zoom * scale;
+    g->in.zoom = g->zoom;
     g->in.width = canvas_w(g);
     g->in.height = canvas_h(g);
     kit_set_body_class(g->kit, "far", sg_far(s));
@@ -722,10 +723,10 @@ void studio_behavior_header(studio *s, int area)
             runtime_entity_label(scene, scene->debug.entity)
         );
         kit_label(k, "debug", "badge accent debug-target", debug);
-        kit_tip(k, "Wires show this instance running", NULL);
+        kit_tip(k, "Wires show this instance running", NULL, NULL);
     } else if (scene->debug_status == APP_DEBUG_STALE) {
         kit_label(k, "debug", "badge debug-target", "Edited");
-        kit_tip(k, "The running behavior differs from this graph; save to update it", NULL);
+        kit_tip(k, "The running behavior differs from this graph; save to update it", NULL, NULL);
     }
     if (s->graph.kit && s->graph.surface.rect.w > 0) {
         kit_number_flow(

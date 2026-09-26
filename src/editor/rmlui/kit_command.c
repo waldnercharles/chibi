@@ -1,7 +1,7 @@
 /* The command palette after cmdk: a modal list filtered and ranked with
  * command-score as the query changes, groups ordered by their best match, and
- * the matched characters in bold. Up, Down, Ctrl+N/P and Ctrl+J/K move the
- * selection; Enter chooses and Escape closes. */
+ * the matched characters in bold, over an item's description. Up, Down,
+ * Ctrl+N/P and Ctrl+J/K move the selection; Enter chooses and Escape closes. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/ui/kit_icons.h"
 #include "support/math.h"
@@ -429,7 +429,9 @@ static void emit_row(kit *k, const kit_command_item *it, int index, bool selecte
     widget *w = &item->w;
     if (!w->label_el) {
         w->icon_el = raw_icon(item->el, "", 0);
-        w->label_el = raw(item->el, "span", "label", NULL);
+        w->head_el = raw(item->el, "div", "text", NULL);
+        w->label_el = raw(w->head_el, "span", "label", NULL);
+        w->about_el = raw(w->head_el, "span", "about", NULL);
         w->meta_el = raw(item->el, "span", "meta", NULL);
         w->kbd_el = raw(item->el, "span", "kbd", NULL);
     }
@@ -445,6 +447,8 @@ static void emit_row(kit *k, const kit_command_item *it, int index, bool selecte
         rml_element_set_inner_rml(w->label_el, w->label);
     }
     free(rml);
+    set_element_text(w->about_el, it->description);
+    set_flag(item, "data-described", it->description && it->description[0]);
     set_element_text(w->meta_el, it->meta);
     set_element_text(w->kbd_el, it->shortcut);
     /* Keyboard moves reveal the selection with the least scrolling; hovering

@@ -13,6 +13,7 @@
 #include "automation/scene_edit.h"
 #include "ecs/ecs.h"
 #include "editor/documents/component_presentation.h"
+#include "graph/authoring/describe.h"
 #include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
@@ -7846,26 +7847,21 @@ static void add_pin_texts(
     }
 }
 
-/* A match's sentence: its node's, a preset's, or an event's. */
+/* A match's sentence: its preset's, its event's or its node's. */
 static bool match_description(const node_match *match, char *text, size_t size)
 {
+    node_subject subject = { .desc = match->desc,
+                             .host = match->host,
+                             .definition = match->definition };
     if (match->preset) {
-        component_node_preset_describe(match->preset, text, size);
-        return true;
-    }
-    if (match->definition && match->desc != &NODE_Event) {
-        snprintf(text, size, "Sends %s to Entity.", match->definition->name);
-        return true;
+        subject.setting = match->preset->setting;
+        subject.field = match->preset->field;
     }
     if (match->ui) {
         snprintf(text, size, "%s.", match->ui->description);
         return true;
     }
-    const char *about = match->host       ? match->host->description
-                      : match->definition ? match->definition->description
-                                          : match->desc->description;
-    snprintf(text, size, "%s", about ? about : "");
-    return text[0];
+    return node_subject_describe(&subject, text, size);
 }
 
 /* What add_node needs: the type; a preset's setting, by component or type

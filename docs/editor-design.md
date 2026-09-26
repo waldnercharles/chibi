@@ -44,8 +44,10 @@ markup.
 
 `build/test_suite --rmlui-kit` exercises kit reconciliation, number fields,
 menus and commands without a GPU. The `--rmlui-render` smoke test renders the
-retained UI while preserving queued scene geometry. `make test-render` includes
-that smoke test.
+retained UI while preserving queued scene geometry, and under a scissor an
+earlier pass left. `--rmlui-render-gles` repeats it on the web build's GLES
+backend where a desktop GLES driver exists, and skips otherwise. `make
+test-render` includes both.
 
 ## Current goal, September 9, 2026
 

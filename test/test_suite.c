@@ -64,7 +64,7 @@ int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
-int rmlui_render_run(const char *program);
+int rmlui_render_run(const char *program, bool gles);
 
 static int fails;
 
@@ -781,7 +781,10 @@ int main(int argc, char **argv)
         return test_rmlui_kit() ? 0 : 1;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-render") == 0) {
-        return rmlui_render_run(program_name);
+        return rmlui_render_run(program_name, false);
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-render-gles") == 0) {
+        return rmlui_render_run(program_name, true);
     }
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();

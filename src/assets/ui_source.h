@@ -144,6 +144,9 @@ int ui_source_element_at(const ui_source *source, int offset);
 /* An element attribute's value as the markup means it, owned; NULL when the
  * element lacks it. */
 char *ui_source_attribute_value(const ui_source *source, int element, const char *name);
+/* Whether an attribute holds a data binding's expression, as data-if,
+ * data-value and data-event-click do. */
+bool ui_source_is_binding(const char *name, int length);
 
 /* ---------- Project knowledge ---------- */
 
@@ -222,15 +225,19 @@ typedef enum
     UI_SYMBOL_WIDGET,   /* <use ui="Name"> */
     UI_SYMBOL_VARIABLE, /* var(--name) or a --name declaration */
     UI_SYMBOL_CLASS, /* in a class attribute, data-class-name or a selector */
+    UI_SYMBOL_SAVE_KEY, /* save.name in a binding */
 } ui_source_symbol_kind;
 
 typedef struct ui_source_symbol
 {
     ui_source_symbol_kind kind;
     char name[128];
-    int start, end; /* where the text names it */
+    int start, end;  /* where the text names it */
+    bool definition; /* a --name declaration, or a class in a selector */
 } ui_source_symbol;
 
+/* Appends each symbol the source names, block by block in order. */
+void ui_source_symbols(const ui_source *source, ui_source_symbol **symbols);
 /* The symbol at `offset`; kind NONE when none is there. */
 ui_source_symbol ui_source_symbol_at(const ui_source *source, int offset);
 

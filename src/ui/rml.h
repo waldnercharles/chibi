@@ -548,6 +548,12 @@ extern "C"
         size_t size,
         int *line
     );
+    /* ---------- UI language service (workstream B) ---------- */
+
+    /* The names of the properties and shorthands RCSS takes, as
+     * StyleSheetSpecification registers them: writes up to `max` and returns
+     * how many there are. Valid from rml_initialize until rml_shutdown. */
+    int rml_property_names(const char **names, int max);
 
     /* ---------- Inspection (the UI Inspector) ---------- */
 

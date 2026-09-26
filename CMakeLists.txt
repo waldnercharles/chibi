@@ -907,6 +907,7 @@ add_library(ui_source STATIC
 target_include_directories(ui_source PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ui_source PUBLIC runtime_support core chibi_tree_sitter)
 target_link_libraries(editor PRIVATE ui_source)
-target_link_libraries(automation PUBLIC ui_source)
+# ui_edit validates through ui_check, which lives with the RmlUi host.
+target_link_libraries(automation PUBLIC ui_source chibi_render)
 target_sources(automation PRIVATE src/automation/ui_edit.c)
 target_sources(chibi_render PRIVATE src/render/ui_check.c)

@@ -174,8 +174,8 @@ static void add_file(ui_source_project *project, char *path, bool stylesheet)
 
 static void learn(ui_source_project *project, const ui_source *source)
 {
-    occurrence *found = NULL;
-    ui_source_occurrences(source, &found);
+    ui_source_symbol *found = NULL;
+    ui_source_symbols(source, &found);
     for (int i = 0; i < acount(found); i++) {
         char ***list = found[i].kind == UI_SYMBOL_CLASS    ? &project->classes
                      : found[i].kind == UI_SYMBOL_VARIABLE ? &project->variables
@@ -595,16 +595,13 @@ void ui_source_completions_free(ui_source_completions *completions)
 
 ui_source_symbol ui_source_symbol_at(const ui_source *source, int offset)
 {
-    occurrence *found = NULL;
-    ui_source_occurrences(source, &found);
+    ui_source_symbol *found = NULL;
+    ui_source_symbols(source, &found);
     ui_source_symbol symbol = { .kind = UI_SYMBOL_NONE };
     for (int i = 0; i < acount(found); i++) {
-        const occurrence *o = &found[i];
-        if (o->kind != UI_SYMBOL_SAVE_KEY && o->start <= offset && offset <= o->end) {
-            symbol = (ui_source_symbol){ .kind = o->kind,
-                                         .start = o->start,
-                                         .end = o->end };
-            snprintf(symbol.name, sizeof symbol.name, "%s", o->name);
+        const ui_source_symbol *o = &found[i];
+        if (o->start <= offset && offset <= o->end) {
+            symbol = *o;
             break;
         }
     }
@@ -644,11 +641,11 @@ static void file_references(
         !strcmp(file->name, symbol->name)) {
         add_location(out, source, file->path, 0, 0, true);
     }
-    occurrence *found = NULL;
-    ui_source_occurrences(source, &found);
+    ui_source_symbol *found = NULL;
+    ui_source_symbols(source, &found);
     for (int i = 0; i < acount(found); i++) {
-        const occurrence *o = &found[i];
-        if (o->kind == (int)symbol->kind && o->definition == definitions &&
+        const ui_source_symbol *o = &found[i];
+        if (o->kind == symbol->kind && o->definition == definitions &&
             !strcmp(o->name, symbol->name)) {
             add_location(out, source, file->path, o->start, o->end, definitions);
         }

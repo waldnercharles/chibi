@@ -1054,3 +1054,21 @@ bool reference_index_reaches(const reference_index *index, const reference *hand
     }
     return false;
 }
+
+/* ---------- UI pages (workstream B) ---------- */
+
+void reference_index_add_page(reference_index *index, int source, const char *scene_ui, const char *project_ui)
+{
+    bool own = scene_ui && scene_ui[0];
+    const char *page = own ? scene_ui : project_ui;
+    if (!page || !page[0]) {
+        return;
+    }
+    reference at = {
+        .role = REFERENCE_BIND,
+        .source = source,
+        .component = own ? REFERENCE_SCENE_PAGE : REFERENCE_PROJECT_PAGE,
+    };
+    at.symbol = asset_symbol(named_asset(index, REFERENCE_ASSET_UI, page));
+    add(index, at);
+}

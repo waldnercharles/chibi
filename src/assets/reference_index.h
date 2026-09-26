@@ -189,4 +189,16 @@ const reference *reference_index_definition(const reference_index *index, refere
  * handle is the Event node's HANDLE reference. */
 bool reference_index_reaches(const reference_index *index, const reference *handle, uint64_t node_id);
 
+/* ---------- UI pages (workstream B) ---------- */
+
+/* The component a page reference names: the scene's own ui:, or the
+ * project's, which a scene naming none shows its UI on. */
+#define REFERENCE_SCENE_PAGE "ui"
+#define REFERENCE_PROJECT_PAGE "project ui"
+
+/* A scene's page, its root ui document: `scene_ui` when the scene names
+ * one, else `project_ui`, the project's default; with neither, nothing. It
+ * binds the ui asset, and its component says which of the two names it. */
+void reference_index_add_page(reference_index *index, int source, const char *scene_ui, const char *project_ui);
+
 #endif

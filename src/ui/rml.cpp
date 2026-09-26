@@ -1251,6 +1251,23 @@ bool rml_element_property_source(rml_element *e, const char *property, char *she
     copy(p->source->path, sheet, size);
     *line = p->source->line_number;
     return true;
+/* ---------- UI language service (workstream B) ---------- */
+
+int rml_property_names(const char **names, int max)
+{
+    using Spec = Rml::StyleSheetSpecification;
+    int count = 0;
+    for (int id = 1; id < (int)Rml::PropertyId::MaxNumIds; id++) {
+        if (Spec::GetProperty((Rml::PropertyId)id) && count++ < max) {
+            names[count - 1] = Spec::GetPropertyName((Rml::PropertyId)id).c_str();
+        }
+    }
+    for (int id = 1; id < (int)Rml::ShorthandId::MaxNumIds; id++) {
+        if (Spec::GetShorthand((Rml::ShorthandId)id) && count++ < max) {
+            names[count - 1] = Spec::GetShorthandName((Rml::ShorthandId)id).c_str();
+        }
+    }
+    return count;
 }
 
 /* ---------- Inspection (the UI Inspector) ---------- */

@@ -38,22 +38,8 @@ struct ui_source_tree
     bool stylesheet; /* the text is a whole .rcss file */
 };
 
-/* An occurrence of a symbol, or of a save key, in file offsets. */
-#define UI_SYMBOL_SAVE_KEY (UI_SYMBOL_CLASS + 1)
-
-typedef struct occurrence
-{
-    int kind; /* ui_source_symbol_kind or UI_SYMBOL_SAVE_KEY */
-    char name[128];
-    int start, end;
-    bool definition;
-} occurrence;
-
 const block_map *ui_source_map(const ui_source *source, ui_source_language language);
 /* A value offset's file offset. */
 int ui_source_file_offset(const block_map *map, int at);
-/* Appends every symbol and save key the source names. */
-void ui_source_occurrences(const ui_source *source, occurrence **out);
-bool ui_source_is_binding(const char *attribute, int length);
 
 #endif

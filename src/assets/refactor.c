@@ -545,8 +545,23 @@ static bool rename_override(
     return ok;
 }
 
+/* A scene's page: its own ui: follows; the project's default is
+ * project.yaml's, which the plan does not reach. */
+static bool rename_page(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
+{
+    if (strcmp(r->component, REFERENCE_SCENE_PAGE)) {
+        return fail(w, "project.yaml names %s as its scenes' page; point it at another first", from);
+    }
+    bool named = same_text(l->scene->ui, from);
+    game_scene_document_set_ui(l->scene, to);
+    return renamed_count(w, r, named, expected);
+}
+
 static bool rename_object(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
 {
+    if (!r->object) {
+        return rename_page(w, l, r, from, to, expected);
+    }
     game_scene_document *scene = l->scene;
     int entity = game_scene_document_entity_index(scene, r->object);
     if (entity < 0) {

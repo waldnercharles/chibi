@@ -1263,12 +1263,19 @@ char *ui_source_attribute_value(const ui_source *source, int element, const char
 
 /* ---------- Occurrences ---------- */
 
-static void add_occurrence(occurrence **out, const block_map *m, int kind, int start, int end, bool definition)
+static void add_occurrence(
+    ui_source_symbol **out,
+    const block_map *m,
+    ui_source_symbol_kind kind,
+    int start,
+    int end,
+    bool definition
+)
 {
-    occurrence o = { .kind = kind,
-                     .start = m->offsets[start],
-                     .end = file_end(m, end),
-                     .definition = definition };
+    ui_source_symbol o = { .kind = kind,
+                           .start = m->offsets[start],
+                           .end = file_end(m, end),
+                           .definition = definition };
     snprintf(o.name, sizeof o.name, "%.*s", end - start, m->value + start);
     apush(*out, o);
 }
@@ -1279,7 +1286,7 @@ static bool class_char(char c)
 }
 
 /* Each class a class attribute's value names. */
-static void class_occurrences(const block_map *m, const ui_source_attribute *a, occurrence **out)
+static void class_occurrences(const block_map *m, const ui_source_attribute *a, ui_source_symbol **out)
 {
     for (int i = a->value_start; i < a->value_end;) {
         int start = i;
@@ -1294,7 +1301,7 @@ static void class_occurrences(const block_map *m, const ui_source_attribute *a, 
 }
 
 /* Each var(--name) in [start, end) of the value. */
-static void variable_occurrences(const block_map *m, int start, int end, occurrence **out)
+static void variable_occurrences(const block_map *m, int start, int end, ui_source_symbol **out)
 {
     for (int i = start; i + 6 <= end; i++) {
         if (strncmp(m->value + i, "var(--", 6)) {
@@ -1309,7 +1316,7 @@ static void variable_occurrences(const block_map *m, int start, int end, occurre
     }
 }
 
-static void element_occurrences(const block_map *m, const ui_source_element *e, occurrence **out)
+static void element_occurrences(const block_map *m, const ui_source_element *e, ui_source_symbol **out)
 {
     static const char CLASS_BINDING[] = "data-class-";
     for (int i = 0; i < acount(e->attributes); i++) {
@@ -1338,7 +1345,7 @@ static void element_occurrences(const block_map *m, const ui_source_element *e, 
 }
 
 /* Each save.key the markup binds. */
-static void save_occurrences(const block_map *m, occurrence **out)
+static void save_occurrences(const block_map *m, ui_source_symbol **out)
 {
     for (const char *p = m->value; (p = strstr(p, "save.")); p += 5) {
         if (p > m->value && (word_char(p[-1]) || p[-1] == '.')) {
@@ -1354,7 +1361,7 @@ static void save_occurrences(const block_map *m, occurrence **out)
     }
 }
 
-static void css_occurrences(const block_map *m, TSNode node, occurrence **out)
+static void css_occurrences(const block_map *m, TSNode node, ui_source_symbol **out)
 {
     const char *type = ts_node_type(node);
     const char *text = m->value + node_start(node);
@@ -1375,7 +1382,7 @@ static void css_occurrences(const block_map *m, TSNode node, occurrence **out)
     }
 }
 
-void ui_source_occurrences(const ui_source *source, occurrence **out)
+void ui_source_symbols(const ui_source *source, ui_source_symbol **out)
 {
     for (int b = 0; b < acount(source->trees->maps); b++) {
         const block_map *m = &source->trees->maps[b];

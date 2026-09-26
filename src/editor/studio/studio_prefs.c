@@ -48,8 +48,10 @@ catch(_)
 
 static const char *const THEMES[STUDIO_THEME_COUNT] = { "system", "dark", "light" };
 /* UI Scale's range, as Blender's Resolution Scale allows a useful subset of. */
-static const float UI_SCALE_MIN = 0.5f, UI_SCALE_MAX = 2.0f;
+static const float UI_SCALE_MIN = STUDIO_UI_SCALE_MIN,
+                   UI_SCALE_MAX = STUDIO_UI_SCALE_MAX;
 static const char *const NODE_FLAGS[] = { "shortBindings", "titleFlow", "compact" };
+static const char *const CODE_FLAGS[] = { "vim", "applyLive" };
 static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
                                                          "orthogonal",
                                                          "straight",
@@ -57,7 +59,7 @@ static const char *const WIRES[KIT_WIRE_STYLE_COUNT] = { "curved",
 /* An area showing a panel saves as {"panel": "<name>"}. */
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
     "scene",  "behavior",    "outliner", "properties", "output",
-    "assets", "performance", "members",  "panel"
+    "assets", "performance", "members",  "code",       "panel"
 };
 
 studio_prefs studio_prefs_default()
@@ -72,6 +74,8 @@ studio_prefs studio_prefs_default()
         .short_bindings = true,
         .title_flow = true,
         .compact_nodes = true,
+        .code_font_size = 13,
+        .code_apply_live = true,
         .editors = { STUDIO_EDITOR_SCENE,
                      STUDIO_EDITOR_BEHAVIOR,
                      STUDIO_EDITOR_OUTLINER,
@@ -97,7 +101,9 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
            a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
            a->drawer_height == b->drawer_height && a->wires == b->wires &&
            a->short_bindings == b->short_bindings &&
-           a->title_flow == b->title_flow && a->compact_nodes == b->compact_nodes;
+           a->title_flow == b->title_flow && a->compact_nodes == b->compact_nodes &&
+           a->code_vim == b->code_vim && a->code_font_size == b->code_font_size &&
+           a->code_apply_live == b->code_apply_live;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -167,6 +173,15 @@ studio_prefs studio_prefs_load()
             *flags[i] = yyjson_get_bool(flag);
         }
     }
+    yyjson_val *code = yyjson_obj_get(root, "code");
+    bool *code_flags[] = { &p.code_vim, &p.code_apply_live };
+    for (int i = 0; i < 2; i++) {
+        yyjson_val *flag = yyjson_obj_get(code, CODE_FLAGS[i]);
+        if (yyjson_is_bool(flag)) {
+            *code_flags[i] = yyjson_get_bool(flag);
+        }
+    }
+    p.code_font_size = number(yyjson_obj_get(code, "fontSize"), p.code_font_size, 8, 32);
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.side_width = number(yyjson_obj_get(layout, "sideWidth"), p.side_width, 200, 1600);
     p.main_split = number(yyjson_obj_get(layout, "mainSplit"), p.main_split, 0.05f, 0.95f);
@@ -210,6 +225,12 @@ bool studio_prefs_save(const studio_prefs *p)
     for (int i = 0; i < 3; i++) {
         yyjson_mut_obj_add_bool(doc, nodes, NODE_FLAGS[i], flags[i]);
     }
+    yyjson_mut_val *code = yyjson_mut_obj_add_obj(doc, root, "code");
+    bool code_flags[] = { p->code_vim, p->code_apply_live };
+    for (int i = 0; i < 2; i++) {
+        yyjson_mut_obj_add_bool(doc, code, CODE_FLAGS[i], code_flags[i]);
+    }
+    yyjson_mut_obj_add_real(doc, code, "fontSize", p->code_font_size);
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_real(doc, layout, "sideWidth", p->side_width);
     yyjson_mut_obj_add_real(doc, layout, "mainSplit", p->main_split);
@@ -294,6 +315,8 @@ void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
         share_flag(save, "titleFlow", &p->title_flow);
         share_flag(save, "compactNodes", &p->compact_nodes);
         share_flag(save, "reduceMotion", &p->reduced_motion);
+        share_flag(save, "codeVim", &p->code_vim);
+        share_flag(save, "codeApplyLive", &p->code_apply_live);
         share_scale(save, &p->ui_scale);
     }
     game_save_set(save, "theme", THEMES[p->theme]);
@@ -303,6 +326,8 @@ void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)
     game_save_set(save, "titleFlow", p->title_flow ? "true" : "false");
     game_save_set(save, "compactNodes", p->compact_nodes ? "true" : "false");
     game_save_set(save, "reduceMotion", p->reduced_motion ? "true" : "false");
+    game_save_set(save, "codeVim", p->code_vim ? "true" : "false");
+    game_save_set(save, "codeApplyLive", p->code_apply_live ? "true" : "false");
     char scale[16];
     snprintf(scale, sizeof scale, "%g", p->ui_scale);
     game_save_set(save, "uiScale", scale);

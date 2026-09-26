@@ -1,5 +1,6 @@
 #include "support/text_file.h"
 
+#include "support/text_overlay.h"
 #include "support/xalloc.h"
 
 #include <stdio.h>
@@ -7,6 +8,10 @@
 
 char *text_file_read(const char *path)
 {
+    const char *overlay = text_overlay_text(path);
+    if (overlay) {
+        return xstrdup(overlay);
+    }
     FILE *file = fopen(path, "rb");
     if (!file || fseek(file, 0, SEEK_END) != 0) {
         if (file) {

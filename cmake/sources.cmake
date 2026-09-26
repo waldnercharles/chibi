@@ -126,7 +126,9 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/file_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/rcss.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_overlay.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/tree_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
@@ -190,6 +192,8 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_refactor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_scene.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_code.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_commands.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_sources.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_ui.c

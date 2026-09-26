@@ -704,6 +704,11 @@ const char *render_ui_error(const render_ui *ui)
     return ui->error;
 }
 
+rml_context *render_ui_context(const render_ui *ui)
+{
+    return rml_backend_context(ui->backend);
+}
+
 /* Opens a mount of `name` in a new full-view root stacked at `order`. */
 static void open_view(render_ui *ui, ui_view *view, const char *name, const char *order)
 {

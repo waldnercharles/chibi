@@ -298,10 +298,20 @@ static panel *find_panel(studio_ui *ui, const char *name)
 }
 
 /* Sends a mount's activations to its entity, an input's value first. */
-static void send_activations(studio_ui *ui, ui_mount *mount, ecs_entity entity)
+/* Sends a panel's events to its entity's behaviors; emit('studio.<id>') runs
+ * Studio's command `id` instead. */
+static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
 {
+    studio_ui *ui = s->ui;
     ui_activation a;
     while (ui_mount_take(mount, &a)) {
+        int command = strncmp(a.event, "studio.", 7)
+                        ? -1
+                        : studio_command_named(a.event + 7);
+        if (command >= 0) {
+            studio_command_run(s, (studio_command)command);
+            continue;
+        }
         if (a.has_value && a.id[0]) {
             char selector[160];
             snprintf(selector, sizeof selector, "#%s", a.id);
@@ -363,7 +373,7 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }
     ui_mount_apply(*mount, engine_ui(game_prototype_preview_runtime(ui->world)), ecs_entity_to_u64(entity));
-    send_activations(ui, *mount, entity);
+    send_activations(s, *mount, entity);
     report(s, p, *mount);
 }
 

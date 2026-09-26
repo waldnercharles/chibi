@@ -161,5 +161,7 @@ unsigned render_ui_input(render_ui *ui, const rml_input *input);
 void render_ui_composite(render_ui *ui, CF_Canvas target);
 /* The first mount's error, or "" when every shown asset loaded. */
 const char *render_ui_error(const render_ui *ui);
+/* The RmlUi context the documents live in, for inspecting them. */
+rml_context *render_ui_context(const render_ui *ui);
 
 #endif

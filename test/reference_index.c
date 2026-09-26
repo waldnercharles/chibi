@@ -1,5 +1,6 @@
 #include "assets/reference_index.h"
 
+#include "assets/call_hierarchy.h"
 #include "assets/prototype.h"
 #include "graph/document/graph_signature.h"
 #include "graph/model/local.h"
@@ -188,6 +189,13 @@ static void test_graphs()
     assert(uses(index, amount, REFERENCE_ARGUMENT, h.call) == 1);
     assert(uses(index, amount, REFERENCE_READ, NULL) == 1);
     assert(reference_index_definition(index, amount)->pin_id == h.amount);
+    /* Definitions carry their names, and references their pins'. */
+    assert(!strcmp(reference_index_definition(index, heal)->symbol.name, "Heal"));
+    assert(!strcmp(reference_index_definition(index, amount)->symbol.name, "Amount"));
+    const reference **arguments = NULL;
+    reference_index_find_uses(index, amount, &arguments);
+    assert(acount(arguments) == 2 && !strcmp(arguments[0]->pin, "Amount"));
+    afree(arguments);
     reference_symbol health = { .kind = REFERENCE_SYMBOL_VARIABLE,
                                 .asset = source,
                                 .id = h.health->id };
@@ -200,6 +208,8 @@ static void test_graphs()
                             .id = h.local };
     assert(uses(index, hp, REFERENCE_READ, h.call) == 1);
     assert(reference_index_definition(index, hp)->node_id == h.get->id);
+    assert(!strcmp(reference_index_definition(index, hp)->symbol.name, "hp"));
+    assert(!strcmp(reference_index_definition(index, health)->symbol.name, "health"));
 
     /* Events by name: a definition's belongs to its asset; host events and
        undeclared ones to none. */
@@ -353,9 +363,86 @@ static void test_documents()
     game_prototype_free(ship);
 }
 
+static const reference *handler(const reference_index *index, const char *event)
+{
+    const reference **found = NULL;
+    reference_index_find_uses(index, named(REFERENCE_SYMBOL_EVENT, event, NULL), &found);
+    const reference *handle = acount(found) ? found[0] : NULL;
+    afree(found);
+    assert(handle && handle->role == REFERENCE_HANDLE);
+    return handle;
+}
+
+/* The child of item `at` of kind with this name, or -1. */
+static int child(const call_item *items, int at, call_kind kind, const char *name)
+{
+    for (int i = items[at].first; i < items[at].first + items[at].count; i++) {
+        if (items[i].kind == kind && items[i].name && !strcmp(items[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* A handler's run reaches what exec wires lead to from its Event node. A
+ * function's callers climb through the handler whose run calls it to its
+ * event; a host event's callees are its handlers and what they send, and a
+ * function calling itself is a cycle. */
+static void test_calls()
+{
+    healer h = healer_new();
+    graph *g = h.asset->graph;
+    assert(graph_connect_exec(g, h.handle, 0, h.call, 0, 0) == 0);
+    assert(graph_connect_exec(g, h.tick, 0, h.send, 0, 0) == 0);
+    assert(behavior_asset_add_function_call_node_to_graph(h.asset, h.heal, h.heal));
+    reference_index *index = reference_index_new();
+    int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.yaml", NULL);
+    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.yaml", NULL);
+    behavior_asset *damaged = behavior_asset_new("Damaged");
+    damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    reference_index_add_graphs(index, event, damaged);
+    reference_index_add_graphs(index, source, h.asset);
+    const reference *on_damage = handler(index, "Damaged");
+    assert(reference_index_reaches(index, on_damage, h.call->id));
+    assert(!reference_index_reaches(index, on_damage, h.send->id));
+    assert(reference_index_reaches(index, handler(index, "Tick"), h.send->id));
+
+    reference_symbol heal = { .kind = REFERENCE_SYMBOL_GRAPH,
+                              .asset = source,
+                              .id = h.heal->graph_id };
+    call_item *callers = call_hierarchy(index, heal, false, 2);
+    int by_handler = child(callers, 0, CALL_HANDLER, "Damaged");
+    int by_itself = child(callers, 0, CALL_FUNCTION, "Heal");
+    assert(by_handler > 0 && callers[by_handler].node_id == h.handle->id);
+    assert(
+        acount(callers[by_handler].sites) == 1 &&
+        callers[by_handler].sites[0]->node_id == h.call->id
+    );
+    int damage = child(callers, by_handler, CALL_EVENT, "Damaged");
+    assert(damage > 0 && callers[damage].asset == event && !callers[damage].count);
+    assert(by_itself > 0 && callers[by_itself].cycle && !callers[by_itself].count);
+    call_hierarchy_free(callers);
+
+    call_item *callees = call_hierarchy(index, named(REFERENCE_SYMBOL_EVENT, "Tick", NULL), true, 1);
+    int tick = child(callees, 0, CALL_HANDLER, "Tick");
+    assert(
+        callees[0].asset == -1 && tick > 0 && callees[tick].more &&
+        !callees[tick].count
+    );
+    call_hierarchy_free(callees);
+    callees = call_hierarchy(index, named(REFERENCE_SYMBOL_EVENT, "Tick", NULL), true, 2);
+    assert(child(callees, child(callees, 0, CALL_HANDLER, "Tick"), CALL_EVENT, "Healed") > 0);
+    call_hierarchy_free(callees);
+
+    reference_index_free(index);
+    behavior_asset_free(damaged);
+    behavior_asset_free(h.asset);
+}
+
 void test_reference_index()
 {
     test_assets();
     test_graphs();
     test_documents();
+    test_calls();
 }

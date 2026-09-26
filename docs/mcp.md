@@ -108,6 +108,10 @@ domain:
   body markup and optional `rcss` styles, run `--format`, then call
   `validateAsset`.
 
+Before changing or removing a function, variable, event, component field or
+shared asset, check what the edit affects with `findReferences`, and trace
+who reaches a function or event with `callHierarchy`.
+
 Call `validateAsset` after every published change. Use `previewShader`,
 `previewScene`, `runScenario`, `captureRuntimeSnapshot`, or
 `profileScenario` for evidence. Existing assets require the current
@@ -124,12 +128,14 @@ saving them. Tool results include complete `structuredContent` and
 - `previewScene`: render a prototype or scene with its authored presentation.
 - `searchAssets`: find catalog entries by kind, name, path, or description.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
-- `inspectGraph`: inspect graph content, diagnostics, and the current content hash.
+- `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
 - `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
 - `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies. An asset depends on the behaviors it attaches, the prototypes it places or spawns, the libraries it calls, the event definitions whose events it sends or handles, and the materials, shapes, fields, systems and ui documents its component fields, pin defaults and `<use ui>` widgets name.
+- `findReferences`: find a symbol's definition and every use across the project by role, with counts; see [Navigate references](#navigate-references).
+- `callHierarchy`: trace a function's or event's callers and callees as a tree.
 - `getProjectStatus`: return project, asset, and reflection counts.
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
@@ -141,6 +147,66 @@ saving them. Tool results include complete `structuredContent` and
 - `replayScenario`: replay a returned recording and report divergence.
 - `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
+
+## Navigate references
+
+`findReferences` and `callHierarchy` read the project's reference index: every
+place an asset names another asset or a symbol inside one, with its asset,
+graph, node, pin and role. Both select a symbol by name:
+
+- An asset: `{"asset": {"kind": "prototype", "name": "Bullet"}}`. Its uses
+  are the references that depend on it: attachments, spawns, calls into a
+  library, sends and handles of an event definition's event, and the assets
+  component fields, pin defaults and `<use ui>` widgets name.
+- A function or macro: add `"graph": "Apply Damage"` or `"graph_id": 1001`
+  to the asset.
+- A member of the asset: `"variable": "Health"`; `"parameter": "Amount"`
+  with the function's `graph`; or `"local": "speed"`, with `graph` or
+  `graph_id` when several graphs have one by that name.
+- An event: `{"event": "Damaged"}`. Host events (`Tick`, `Contact Begin`), ui
+  `data-event` names and action names count too.
+- A component or one of its fields: `{"component": "GameHealth"}` or
+  `{"component": "GameHealth", "field": "current"}`.
+
+`findReferences` returns the `definition` (an asset is its own; a component's
+is its reflected key and field type; host events have none), `counts` of
+every use by role, and a page of `uses` (`limit`, default 50, and `offset`),
+which `roles` can narrow. Each use names its role and asset, and either its
+`graph_id`, `graph`, `node` and `pin` or its scene `object` and `component`
+field. Pass `graph_id` and the asset to `inspectGraph` to read around a node:
+
+```json
+{"event": "Damage", "roles": ["send"]}
+```
+
+```json
+{"symbol": {"kind": "event", "name": "Damage"},
+ "definition": {"asset": {"kind": "event", "name": "Damage", "path": "content/events/Damage.yaml"}},
+ "counts": {"send": 2, "handle": 1},
+ "uses": [{"role": "send", "asset": {"kind": "behavior", "name": "PlayerContactBehavior"},
+           "graph_id": 3, "graph": "Apply Contact Damage", "node": 107}, ...],
+ "total": 2, "offset": 0, "count": 2, "has_more": false}
+```
+
+`callHierarchy` takes a function or macro, or an event, with `direction`
+(`incoming`, `outgoing` or `both`, the default) and `depth` (1 to 6, default
+2). Its `root` lists `callers` and `callees`. Items are:
+
+- `function`: a function or macro, by asset, `graph_id` and `name`.
+- `handler`: the run an Event node starts, by asset, `graph_id`, `node` and
+  `event`. A call or send in an event graph belongs to each handler whose
+  exec wires reach it.
+- `event`: callers are its senders and callees its handlers; `host` marks
+  engine events.
+- `place`: a sender outside graphs, such as a ui document or an action
+  binding.
+- `graph`: the part of an event graph no handler runs.
+
+`sites` lists the node IDs of the calls or sends joining an item to its
+parent, and `cycle` marks an item that repeats an ancestor (it is not
+expanded). `more` marks an item, the root included, with children left out:
+past the depth, or past the tree's limit of 1,024 items. Trace again from
+that item, or with a greater depth, to list them.
 
 ## Check adapter distribution
 

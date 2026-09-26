@@ -25,6 +25,8 @@ const expectedPublicNames = [
   "listAssets",
   "getAssetCatalog",
   "inspectAssetDependencies",
+  "findReferences",
+  "callHierarchy",
   "getProjectStatus",
   "describeComponents",
   "inspectSystem",
@@ -73,7 +75,7 @@ const requests = [
   { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "getAssetCatalog", arguments: {} } },
   { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health" } } },
   { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
+  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_uses: true } } },
   { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
   { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
@@ -109,6 +111,13 @@ const requests = [
       { op: "add_node", ref: "expression", type: "Behavior Expression", source: "x + 1" },
       { op: "set_expression", node: "expression", source: "x * 2" },
     ],
+  } } },
+  { jsonrpc: "2.0", id: 60, method: "tools/call", params: { name: "findReferences", arguments: { event: "Damage" } } },
+  { jsonrpc: "2.0", id: 61, method: "tools/call", params: { name: "callHierarchy", arguments: {
+    asset: { kind: "behavior", name: "PlayerContactBehavior" }, graph: "Apply Contact Damage",
+  } } },
+  { jsonrpc: "2.0", id: 62, method: "tools/call", params: { name: "findReferences", arguments: {
+    asset: { kind: "behavior", name: "HealthBehavior" }, variable: "__mcp_no_such_variable__",
   } } },
   { jsonrpc: "2.0", method: "ping" },
 ];
@@ -272,6 +281,30 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !buttonNodes.next_steps?.some((step) => step.includes("content/ui/")) ||
     (responseById.get(14)?.result?.content?.[0]?.text || "").length > 2048) {
   throw new Error("native MCP operations failed");
+}
+// Navigation: an event's definition, senders and handlers by node and graph;
+// a function's callers through the handler whose run reaches the call, and
+// its callees through the events it sends; use counts in inspectGraph.
+const references = toolPayload(responseById.get(60));
+const hierarchy = toolPayload(responseById.get(61));
+const referenceSummary = JSON.parse(responseById.get(60)?.result?.content?.[0]?.text || "{}");
+const contactSend = references.result?.uses?.find((use) =>
+  use.role === "send" && use.asset?.name === "PlayerContactBehavior");
+const contactCaller = hierarchy.result?.root?.callers?.find((item) => item.name === "Check Enemy Contact");
+const damageCallee = hierarchy.result?.root?.callees?.find((item) => item.kind === "event" && item.name === "Damage");
+const applyDamage = healthGraph.result?.graphs?.find((graph) => graph.name === "Apply Damage");
+if (references.ok !== true || references.result?.definition?.asset?.path !== "content/events/Damage.yaml" ||
+    !(references.result?.counts?.send >= 2) || references.result?.counts?.handle !== 1 ||
+    contactSend?.graph !== "Apply Contact Damage" || !Number.isInteger(contactSend?.node) ||
+    referenceSummary.counts?.send !== references.result.counts.send ||
+    hierarchy.ok !== true || hierarchy.result?.root?.name !== "Apply Contact Damage" ||
+    contactCaller?.callers?.[0]?.kind !== "handler" || contactCaller.callers[0].event !== "Contact Begin" ||
+    !damageCallee?.callees?.some((item) => item.kind === "handler" && item.asset?.name === "HealthBehavior") ||
+    !(applyDamage?.uses?.call >= 1) || !(healthGraph.result?.uses?.attach >= 1) ||
+    Object.hasOwn(libraryGraph.result || {}, "uses") ||
+    responseById.get(62)?.result?.isError !== true ||
+    toolPayload(responseById.get(62))?.error?.code !== "asset_not_found") {
+  throw new Error("findReferences, callHierarchy and inspectGraph use counts failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
   template.uriTemplate === "chibi://asset/{kind}/{name}")) {

@@ -30,7 +30,7 @@ static const char *use_label(reference_role role)
 }
 
 /* A node reference names its graph; another, the object or field holding it. */
-static studio_reference row_of(const reference_index *index, const reference *use)
+studio_reference studio_reference_of(const reference_index *index, const reference *use)
 {
     const reference_asset *source = reference_index_asset_at(index, use->source);
     studio_reference row = { .kind = (int)source->kind,
@@ -46,35 +46,36 @@ static studio_reference row_of(const reference_index *index, const reference *us
     return row;
 }
 
-static void find(studio *s, const char *title, reference_symbol symbol)
+void studio_find_references(studio *s, const char *title, reference_symbol symbol)
 {
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
     const reference **uses = NULL;
     reference_index_find_uses(index, symbol, &uses);
     asetlen(s->references, 0);
     for (int i = 0; i < acount(uses); i++) {
-        apush(s->references, row_of(index, uses[i]));
+        apush(s->references, studio_reference_of(index, uses[i]));
     }
     afree(uses);
     snprintf(s->references_title, sizeof s->references_title, "%s", title);
     studio_output_find(s);
 }
 
-/* The index position of the open graph document, fresh with its edits. */
-static int document_asset(studio *s)
+int studio_document_asset(const studio *s)
 {
-    app_scene_authoring *scene = s->scene;
-    app_scene_authoring_refresh_asset_index(scene);
+    const app_scene_authoring *scene = s->scene;
     const reference_index *index = app_scene_authoring_asset_index(scene);
-    editor *e = sg_graph_editor(s);
-    if (scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM) {
-        return reference_index_find_name(index, REFERENCE_ASSET_SYSTEM, scene->graph_document_id);
-    }
-    return reference_index_find_name(
-        index,
-        reference_domain_kind(e->asset->domain),
-        scene->graph_document_id
-    );
+    reference_asset_kind kind = scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM
+                                  ? REFERENCE_ASSET_SYSTEM
+                                  : reference_domain_kind(
+                                        sg_graph_editor(s)->asset->domain
+                                    );
+    return reference_index_find_name(index, kind, scene->graph_document_id);
+}
+
+int studio_refresh_document_asset(studio *s)
+{
+    app_scene_authoring_refresh_asset_index(s->scene);
+    return studio_document_asset(s);
 }
 
 static reference_symbol asset_symbol(int asset)
@@ -85,7 +86,7 @@ static reference_symbol asset_symbol(int asset)
 /* A target the index lacks lists no references rather than nothing at all. */
 void studio_find_document_references(studio *s)
 {
-    find(s, s->scene->graph_document_id, asset_symbol(document_asset(s)));
+    studio_find_references(s, s->scene->graph_document_id, asset_symbol(studio_refresh_document_asset(s)));
 }
 
 void studio_find_asset_references(studio *s, int asset)
@@ -94,14 +95,14 @@ void studio_find_asset_references(studio *s, int asset)
     const reference_asset *
         found = reference_index_asset_at(app_scene_authoring_asset_index(s->scene), asset);
     if (found) {
-        find(s, found->name, asset_symbol(asset));
+        studio_find_references(s, found->name, asset_symbol(asset));
     }
 }
 
 void studio_find_graph_references(studio *s, const graph *gr)
 {
-    int asset = document_asset(s);
-    find(
+    int asset = studio_refresh_document_asset(s);
+    studio_find_references(
         s,
         gr->name,
         (reference_symbol){ .kind = REFERENCE_SYMBOL_GRAPH, .asset = asset, .id = gr->graph_id }
@@ -112,8 +113,8 @@ void studio_find_variable_references(studio *s, uint64_t variable_id)
 {
     const behavior_variable
         *v = behavior_asset_find_variable_by_id(sg_graph_editor(s)->asset, variable_id);
-    int asset = document_asset(s);
-    find(
+    int asset = studio_refresh_document_asset(s);
+    studio_find_references(
         s,
         v ? v->name : "Variable",
         (reference_symbol){ .kind = REFERENCE_SYMBOL_VARIABLE, .asset = asset, .id = variable_id }
@@ -166,14 +167,19 @@ bool studio_node_referable(const node *n)
            spawned_prototype(n) || accessed_component(n);
 }
 
+bool studio_node_traceable(const node *n)
+{
+    return graph_call(n) || event_node(n);
+}
+
 /* What a node references: the function it calls, the variable it reads or
    writes, the event it sends or handles, the prototype it spawns, or the
    component it accesses. */
-void studio_find_node_references(studio *s, const node *n)
+reference_symbol studio_node_symbol(studio *s, const node *n, const char **title)
 {
-    int document = document_asset(s);
+    int document = studio_refresh_document_asset(s);
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
-    const char *title = n->reference_name;
+    *title = n->reference_name;
     reference_symbol symbol = asset_symbol(-1);
     if (graph_call(n)) {
         bool library = n->reference_asset && n->reference_asset[0];
@@ -193,17 +199,25 @@ void studio_find_node_references(studio *s, const node *n)
                                      .asset = -1,
                                      .name = n->reference_name };
     } else if (spawned_prototype(n)) {
-        title = spawned_prototype(n);
+        *title = spawned_prototype(n);
         symbol = asset_symbol(
-            reference_index_find_name(index, REFERENCE_ASSET_PROTOTYPE, title)
+            reference_index_find_name(index, REFERENCE_ASSET_PROTOTYPE, *title)
         );
     } else if (accessed_component(n)) {
-        title = accessed_component(n);
+        *title = accessed_component(n);
         symbol = (reference_symbol){ .kind = REFERENCE_SYMBOL_COMPONENT,
                                      .asset = -1,
-                                     .name = title };
+                                     .name = *title };
     }
-    find(s, title ? title : n->desc->name, symbol);
+    *title = *title ? *title : n->desc->name;
+    return symbol;
+}
+
+void studio_find_node_references(studio *s, const node *n)
+{
+    const char *title;
+    reference_symbol symbol = studio_node_symbol(s, n, &title);
+    studio_find_references(s, title, symbol);
 }
 
 void studio_find_clear(studio *s)
@@ -220,7 +234,7 @@ static bool matches(const studio_reference *row, const char *filter)
 
 /* The open document stays open, keeping its history; another opens first.
    A node reference reveals its node, and a scene's its object. */
-static void open_reference(studio *s, const studio_reference *row)
+void studio_open_reference(studio *s, const studio_reference *row)
 {
     app_scene_authoring *scene = s->scene;
     bool open = scene->graph_document_id &&
@@ -283,7 +297,7 @@ void studio_find_view(studio *s, float row_height)
                            .twisty = -1,
                            .meta = ref->use };
         if (kit_row_begin(k, key, &d) & KIT_ROW_CLICK) {
-            open_reference(s, ref);
+            studio_open_reference(s, ref);
         }
         kit_row_end(k);
     }

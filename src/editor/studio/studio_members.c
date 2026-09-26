@@ -1,8 +1,10 @@
-/* Members: the open behavior's graphs, functions, macros and variables, and
- * the open graph's named values, after Unreal's My Blueprint. A click opens a
- * graph or selects a member for Properties; double-click or F2 renames. A
- * variable dragged onto the canvas places its Get, or its Set with Alt
- * (Unreal), and a function or macro its call. */
+/* Members: the open behavior's graphs, the events it handles, its functions,
+ * macros and variables, and the open graph's named values, after Unreal's My
+ * Blueprint. A click opens a graph or selects a member for Properties;
+ * double-click or F2 renames. A variable dragged onto the canvas places its
+ * Get, or its Set with Alt (Unreal), and a function or macro its call. Each
+ * member counts its uses across the project, and the count lists them in
+ * Find. */
 #include "editor/studio/studio_members_internal.h"
 #include "support/array.h"
 
@@ -13,6 +15,7 @@
 typedef enum
 {
     SECTION_GRAPHS,
+    SECTION_EVENTS,
     SECTION_FUNCTIONS,
     SECTION_MACROS,
     SECTION_VARIABLES,
@@ -21,7 +24,7 @@ typedef enum
 } section;
 
 static const char *const SECTION_LABELS[SECTION_COUNT] = {
-    "Graphs", "Functions", "Macros", "Variables", "Named Values",
+    "Graphs", "Events", "Functions", "Macros", "Variables", "Named Values",
 };
 
 typedef enum
@@ -31,15 +34,28 @@ typedef enum
     ROW_GRAPH,
     ROW_VARIABLE,
     ROW_LOCAL,
+    ROW_EVENT,
 } row_kind;
 
 typedef struct
 {
     row_kind kind;
-    int index; /* section, graph, variable or local; a category's first variable */
+    /* section, graph, variable or local; a category's first variable; an
+       event's graph, or -1 for an event definition's own event */
+    int index;
     int depth;
     int count; /* a section's or category's members */
+    int node;  /* an event's Event node in its graph */
 } member_row;
+
+/* A member's uses by role, counted once per build of the asset index. */
+struct studio_member_uses
+{
+    reference_symbol_kind kind;
+    uint64_t graph_id, id;
+    char event[128];
+    int roles[REFERENCE_ROLE_COUNT];
+};
 
 /* ---------- Selection ---------- */
 
@@ -381,6 +397,9 @@ static bool shows(section sec, behavior_domain domain)
         case SECTION_FUNCTIONS:
             return domain != BEHAVIOR_DOMAIN_EVENT_DEFINITION;
         case SECTION_MACROS: return domain == BEHAVIOR_DOMAIN_EVENT;
+        case SECTION_EVENTS:
+            return domain == BEHAVIOR_DOMAIN_EVENT ||
+                   domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION;
         case SECTION_VARIABLES:
             return domain == BEHAVIOR_DOMAIN_EVENT ||
                    domain == BEHAVIOR_DOMAIN_FIELD ||
@@ -452,6 +471,55 @@ static int variable_rows(const behavior_asset *asset, const char *filter, member
     return total;
 }
 
+static bool event_node(const node *n)
+{
+    return n && n->desc && !strcmp(n->desc->name, "Event") &&
+           n->reference_name && n->reference_name[0];
+}
+
+/* Whether an Event node for this event comes before node `index` of graph
+   `at`; each event lists once. */
+static bool event_listed(const behavior_asset *asset, int at, int index, const char *name)
+{
+    for (int g = 0; g <= at; g++) {
+        const graph *gr = asset->graphs[g];
+        for (int i = 0; i < (g == at ? index : acount(gr->nodes)); i++) {
+            if (event_node(gr->nodes[i]) &&
+                !strcmp(gr->nodes[i]->reference_name, name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* The events a behavior's event graphs handle, or an event definition's own. */
+static int event_rows(const studio *s, member_row **rows)
+{
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    const char *filter = s->members.filter;
+    if (asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+        bool shown = studio_matches(filter, s->scene->graph_document_id);
+        if (shown) {
+            apush(*rows, ((member_row){ ROW_EVENT, -1, 1, 0, 0 }));
+        }
+        return shown;
+    }
+    int count = 0;
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        const graph *gr = asset->graphs[g];
+        for (int i = 0; gr->kind == GRAPH_EVENT && i < acount(gr->nodes); i++) {
+            const node *n = gr->nodes[i];
+            if (event_node(n) && studio_matches(filter, n->reference_name) &&
+                !event_listed(asset, g, i, n->reference_name)) {
+                apush(*rows, ((member_row){ ROW_EVENT, g, 1, 0, i }));
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
 static int section_rows(const studio *s, section sec, member_row **rows)
 {
     const behavior_asset *asset = sg_graph_editor(s)->asset;
@@ -460,6 +528,9 @@ static int section_rows(const studio *s, section sec, member_row **rows)
     int count = 0;
     if (sec == SECTION_VARIABLES) {
         return variable_rows(asset, filter, rows);
+    }
+    if (sec == SECTION_EVENTS) {
+        return event_rows(s, rows);
     }
     if (sec == SECTION_VALUES) {
         for (int i = 0; i < acount(active->locals); i++) {
@@ -607,27 +678,37 @@ static bool renaming(const studio *s, studio_member_kind kind, uint64_t id)
     return s->members.rename_kind == kind && s->members.rename_id == id;
 }
 
-/* Whether a row shows the member being renamed. */
-static bool renaming_row(const studio *s, const member_row *row)
+/* The member a row shows; NONE for sections, categories and events. */
+static studio_member_kind row_member(const studio *s, const member_row *row, uint64_t *id)
 {
     const behavior_asset *asset = sg_graph_editor(s)->asset;
     switch (row->kind) {
         case ROW_GRAPH:
-            return renaming(s, STUDIO_MEMBER_GRAPH, asset->graphs[row->index]->graph_id);
+            *id = asset->graphs[row->index]->graph_id;
+            return STUDIO_MEMBER_GRAPH;
         case ROW_VARIABLE:
-            return renaming(
-                s,
-                STUDIO_MEMBER_VARIABLE,
-                asset->variables[row->index].id
-            );
+            *id = asset->variables[row->index].id;
+            return STUDIO_MEMBER_VARIABLE;
         case ROW_LOCAL:
-            return renaming(
-                s,
-                STUDIO_MEMBER_LOCAL,
-                sg_active_graph(s)->locals[row->index].id
-            );
-        default: return false;
+            *id = sg_active_graph(s)->locals[row->index].id;
+            return STUDIO_MEMBER_LOCAL;
+        default: return STUDIO_MEMBER_NONE;
     }
+}
+
+/* Whether a row shows the member being renamed. */
+static bool renaming_row(const studio *s, const member_row *row)
+{
+    uint64_t id = 0;
+    studio_member_kind kind = row_member(s, row, &id);
+    return kind && renaming(s, kind, id);
+}
+
+static bool selected_row(const studio *s, const member_row *row)
+{
+    uint64_t id = 0;
+    studio_member_kind kind = row_member(s, row, &id);
+    return kind && kind == s->members.kind && id == s->members.id;
 }
 
 static void open_menu(studio *s, unsigned events, int area)
@@ -645,6 +726,124 @@ static void member_drag(kit *k, char kind, uint64_t id, const char *label, uint3
     snprintf(payload, sizeof payload, "%c%llu", kind, (unsigned long long)id);
     kit_drag_desc drag = { .type = "member", .payload = payload, .label = label, .icon = icon };
     kit_drag_source(k, &drag);
+}
+
+/* ---------- Uses ---------- */
+
+static const char *const ROLE_WORDS[REFERENCE_ROLE_COUNT] = {
+    [REFERENCE_USE] = "use",           [REFERENCE_CALL] = "call",
+    [REFERENCE_ARGUMENT] = "argument", [REFERENCE_READ] = "read",
+    [REFERENCE_WRITE] = "write",       [REFERENCE_SEND] = "sender",
+    [REFERENCE_HANDLE] = "handler",    [REFERENCE_SPAWN] = "spawn",
+    [REFERENCE_ATTACH] = "attachment", [REFERENCE_BIND] = "binding",
+};
+
+static bool same_member(const struct studio_member_uses *uses, const reference_symbol *symbol)
+{
+    if (uses->kind != symbol->kind) {
+        return false;
+    }
+    return symbol->kind == REFERENCE_SYMBOL_EVENT
+             ? !strcmp(uses->event, symbol->name)
+             : uses->graph_id == symbol->graph_id && uses->id == symbol->id;
+}
+
+static struct studio_member_uses *uses_of(studio_members *m, const reference_symbol *symbol)
+{
+    for (int i = 0; i < acount(m->uses.items); i++) {
+        if (same_member(&m->uses.items[i], symbol)) {
+            return &m->uses.items[i];
+        }
+    }
+    return NULL;
+}
+
+/* Tallies by role the uses of the document's graphs, variables and locals,
+   and of every event. */
+static void count_uses(studio_members *m, const reference_index *index, int asset)
+{
+    asetlen(m->uses.items, 0);
+    for (int i = 0; asset >= 0 && i < reference_index_count(index); i++) {
+        const reference *r = reference_index_at(index, i);
+        const reference_symbol *symbol = &r->symbol;
+        bool event = symbol->kind == REFERENCE_SYMBOL_EVENT;
+        bool member = symbol->asset == asset &&
+                      (symbol->kind == REFERENCE_SYMBOL_GRAPH ||
+                       symbol->kind == REFERENCE_SYMBOL_VARIABLE ||
+                       symbol->kind == REFERENCE_SYMBOL_LOCAL);
+        if (r->role == REFERENCE_DEFINE || (!event && !member)) {
+            continue;
+        }
+        struct studio_member_uses *uses = uses_of(m, symbol);
+        if (!uses) {
+            struct studio_member_uses added = { .kind = symbol->kind,
+                                                .graph_id = symbol->graph_id,
+                                                .id = symbol->id };
+            snprintf(added.event, sizeof added.event, "%s", event ? symbol->name : "");
+            apush(m->uses.items, added);
+            uses = &alast(m->uses.items);
+        }
+        uses->roles[r->role]++;
+    }
+}
+
+/* Counts follow the index's builds and the open document. */
+static const struct studio_member_uses *member_uses(studio *s, const reference_symbol *symbol)
+{
+    studio_members *m = &s->members;
+    unsigned built = s->scene->asset_index_built_generation;
+    int asset = studio_document_asset(s);
+    if (!m->uses.counted || m->uses.generation != built || m->uses.asset != asset) {
+        count_uses(m, app_scene_authoring_asset_index(s->scene), asset);
+        m->uses.counted = true;
+        m->uses.generation = built;
+        m->uses.asset = asset;
+    }
+    return uses_of(m, symbol);
+}
+
+/* A graph, variable or local of the open document. */
+static reference_symbol own_symbol(const studio *s, reference_symbol_kind kind, uint64_t graph_id, uint64_t id)
+{
+    return (reference_symbol){ .kind = kind,
+                               .asset = studio_document_asset(s),
+                               .graph_id = graph_id,
+                               .id = id };
+}
+
+/* A member's use count, whose tip splits it by role; pressing it lists the
+   uses in Find. Events count every sender and handler. */
+static void uses_button(studio *s, const char *title, reference_symbol symbol)
+{
+    const struct studio_member_uses *uses = member_uses(s, &symbol);
+    char tip[160] = "", label[16];
+    int total = 0;
+    for (int role = 0; uses && role < REFERENCE_ROLE_COUNT; role++) {
+        int count = uses->roles[role];
+        size_t used = strlen(tip);
+        if (count) {
+            snprintf(
+                tip + used,
+                sizeof tip - used,
+                "%s%d %s%s",
+                total ? ", " : "",
+                count,
+                ROLE_WORDS[role],
+                count == 1 ? "" : "s"
+            );
+        }
+        total += count;
+    }
+    snprintf(label, sizeof label, "%d", total);
+    kit_button_desc d = { .label = label,
+                          .size = KIT_SM,
+                          .cls = "member-uses",
+                          .tip = total ? tip : "No uses" };
+    bool pressed = kit_button(s->kit, "uses", &d);
+    kit_flag(s->kit, "data-unused", total == 0);
+    if (pressed) {
+        studio_find_references(s, title, symbol);
+    }
 }
 
 static void graph_row(studio *s, const member_row *row, int area)
@@ -675,6 +874,9 @@ static void graph_row(studio *s, const member_row *row, int area)
         .flags = (selected ? KIT_ON : 0) | (g == e->active_graph ? KIT_ACTIVE : 0)
     };
     unsigned events = kit_row_begin(k, "row", &d);
+    if (member) {
+        uses_button(s, graph_label(g), own_symbol(s, REFERENCE_SYMBOL_GRAPH, 0, g->graph_id));
+    }
     kit_row_end(k);
     if (member) {
         member_drag(k, 'g', g->graph_id, graph_label(g), icon);
@@ -718,6 +920,10 @@ static void variable_row(studio *s, const member_row *row, int area)
                        .flags = selected ? KIT_ON | KIT_ACTIVE : 0 };
     unsigned events = kit_row_begin(k, "row", &d);
     sm_swatch(s, "type", &pin);
+    /* Event and field parameters are read by name, not through Get nodes. */
+    if (asset->domain == BEHAVIOR_DOMAIN_EVENT) {
+        uses_button(s, v->name, own_symbol(s, REFERENCE_SYMBOL_VARIABLE, 0, v->id));
+    }
     kit_row_end(k);
     /* Get and Set nodes read a behavior's own variables. */
     if (asset->domain == BEHAVIOR_DOMAIN_EVENT) {
@@ -777,6 +983,11 @@ static void local_row(studio *s, const member_row *row, int area)
     if (pin) {
         sm_swatch(s, "type", pin);
     }
+    uses_button(
+        s,
+        local->name,
+        own_symbol(s, REFERENCE_SYMBOL_LOCAL, gr->graph_id, local->id)
+    );
     kit_row_end(k);
     kit_pop(k);
     if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
@@ -786,6 +997,31 @@ static void local_row(studio *s, const member_row *row, int area)
         start_rename(s, STUDIO_MEMBER_LOCAL, s->members.id);
     }
     open_menu(s, events, area);
+}
+
+/* An event the behavior handles, which a click reveals, or an event
+   definition's own event. */
+static void event_row(studio *s, const member_row *row)
+{
+    kit *k = s->kit;
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    const graph *gr = row->index >= 0 ? asset->graphs[row->index] : NULL;
+    const node *n = gr ? gr->nodes[row->node] : NULL;
+    const char *name = n ? n->reference_name : s->scene->graph_document_id;
+    char key[32];
+    snprintf(key, sizeof key, "e%d.%d", row->index, row->node);
+    kit_push(k, key, NULL, "member-row");
+    kit_row_desc d = { .label = name,
+                       .icon = KIT_ICON_EVENT,
+                       .depth = row->depth,
+                       .twisty = -1 };
+    unsigned events = kit_row_begin(k, "row", &d);
+    uses_button(s, name, (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = name });
+    kit_row_end(k);
+    kit_pop(k);
+    if (n && (events & KIT_ROW_CLICK)) {
+        studio_reveal_node(s, gr->graph_id, n->id);
+    }
 }
 
 static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
@@ -828,6 +1064,10 @@ static void member_menu(studio *s, int area)
             studio_find_variable_references(s, m->id);
         }
     }
+    if (callable &&
+        menu_item(k, "calls", "Call Hierarchy", KIT_ICON_CALLERS, NULL, false)) {
+        studio_calls_graph(s, g);
+    }
     kit_menu_separator(k, "s0");
     if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
         delete_member(s);
@@ -856,11 +1096,16 @@ void studio_members_body(studio *s, int area)
         return;
     }
     member_row *rows = member_rows(s);
-    /* A new member, named as it is added, scrolls into view. */
+    /* A new member, named as it is added, scrolls into view, and so does
+       one Go to Definition selects. */
     int reveal = -1;
     for (int r = 0; s->members.rename_focus && r < acount(rows); r++) {
         reveal = renaming_row(s, &rows[r]) ? r : reveal;
     }
+    for (int r = 0; s->members.reveal && r < acount(rows); r++) {
+        reveal = selected_row(s, &rows[r]) ? r : reveal;
+    }
+    s->members.reveal = false;
     kit_list_desc list = { .count = acount(rows),
                            .row_height = s->prefs.comfortable ? 26 : 22,
                            .reveal = reveal };
@@ -873,6 +1118,7 @@ void studio_members_body(studio *s, int area)
             case ROW_GRAPH: graph_row(s, &rows[r], area); break;
             case ROW_VARIABLE: variable_row(s, &rows[r], area); break;
             case ROW_LOCAL: local_row(s, &rows[r], area); break;
+            case ROW_EVENT: event_row(s, &rows[r]); break;
         }
     }
     kit_list_end(k);
@@ -941,4 +1187,18 @@ void studio_members_drop(studio *s)
     n->placed = true;
     sg_select_only(e, n);
     s->focus_area = s->graph.area;
+}
+
+/* Its section opens, and Members shows in an area or the drawer. */
+void studio_members_reveal(studio *s, studio_member_kind kind, uint64_t id)
+{
+    select_member(s, kind, id);
+    graph *g = sm_graph(s);
+    section sec = kind == STUDIO_MEMBER_VARIABLE ? SECTION_VARIABLES
+                : kind == STUDIO_MEMBER_LOCAL    ? SECTION_VALUES
+                : g                              ? graph_section(g)
+                                                 : SECTION_GRAPHS;
+    s->members.reveal = true;
+    s->members.collapsed &= ~(1u << sec);
+    studio_show_editor(s, STUDIO_EDITOR_MEMBERS);
 }

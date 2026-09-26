@@ -260,7 +260,7 @@ const searchNodesDefinition = {
     domain: {
       type: "string",
       enum: ["behavior", "shader", "field", "system"],
-      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity.",
+      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity and only the nodes their compiler supports.",
     },
     pin_type: {
       type: "string",

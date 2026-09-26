@@ -7394,23 +7394,17 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 }
 
 /* Behavior graphs author component nodes, which lower to the generated nodes
- * System graphs use directly; Systems bind only the ECS world. No domain
- * offers every domain's authoring nodes. */
+ * System graphs use directly; Systems offer the nodes their compiler turns
+ * into bytecode. No domain offers every domain's authoring nodes. */
 static bool domain_offers(const char *domain, const node_desc *node)
 {
+    if (domain && !strcmp(domain, "system")) {
+        return game_system_node_supported(node);
+    }
     bool shader = node->category && !strncmp(node->category, "Shader", 6);
     bool field = node->category && !strcmp(node->category, "Procedural Field");
     const char *own = shader ? "shader" : field ? "field" : "behavior";
-    bool system = domain && !strcmp(domain, "system");
-    if (domain && strcmp(system ? "behavior" : domain, own)) {
-        return false;
-    }
-    const char *service = node->host_call ? node->host_call->service
-                        : node->command   ? node->command->service
-                                          : NULL;
-    return system ? !component_node_kind_of(node) &&
-                        (!service || !strcmp(service, "ecs.world"))
-                  : !component_generated_kind(node);
+    return (!domain || !strcmp(domain, own)) && !component_generated_kind(node);
 }
 
 /* Component node presets and events belong to behavior graphs. */
@@ -7805,14 +7799,7 @@ static void add_node_outline(
 {
     static const char *const generated[] = {
         "Get_<Component>",
-        "GetEntity_<Component>",
-        "Has_<Component>",
-        "HasEntity_<Component>",
         "Set_<Component>",
-        "SetEntity_<Component>",
-        "Set_<Component>_<field>",
-        "Add_<Component>",
-        "Remove_<Component>",
         "Make_<Type>",
         "Break_<Type>",
     };

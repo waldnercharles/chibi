@@ -12,6 +12,14 @@
  * source of truth; the reusable instance is only an execution scratchpad. */
 typedef struct game_system game_system;
 
+/* Whether the System compiler turns a node into bytecode: the Event node,
+ * Get_<Component>, Set_<Component> for a component without text, and the data
+ * nodes it evaluates per entity: literals, Delta Time, copies, generated
+ * Make_ and Break_, Behavior Expression, Random Real, and calls with one
+ * result and only data inputs. Studio and the MCP offer exactly these for
+ * System graphs; other nodes fall back to the flow interpreter. */
+bool game_system_node_supported(const node_desc *desc);
+
 game_system *game_system_new(ecs_world *world, behavior_asset *definition);
 void game_system_free(game_system *system);
 /* The authored filter is combined with the graph's inferred component access

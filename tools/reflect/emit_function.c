@@ -407,6 +407,7 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    .inputs = %s_%s_make_inputs,\n", g_prefix, s->name);
     fprintf(out, "    .outputs = %s_%s_make_outputs,\n", g_prefix, s->name);
     fprintf(out, "    .pure_kind = NODE_PURE_MAKE,\n");
+    fprintf(out, "    .description = \"Builds a %s from its fields.\",\n", s->name);
     fprintf(out, "    .access = &%s_%s_value_access,\n", g_prefix, s->name);
     fprintf(out, "    .type = &%s_T_%s,\n", g_prefix, s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
@@ -427,6 +428,7 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    .inputs = %s_%s_break_inputs,\n", g_prefix, s->name);
     fprintf(out, "    .outputs = %s_%s_break_outputs,\n", g_prefix, s->name);
     fprintf(out, "    .pure_kind = NODE_PURE_BREAK,\n");
+    fprintf(out, "    .description = \"Splits a %s into its fields.\",\n", s->name);
     fprintf(out, "    .access = &%s_%s_value_access,\n", g_prefix, s->name);
     fprintf(out, "    .type = &%s_T_%s,\n", g_prefix, s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");

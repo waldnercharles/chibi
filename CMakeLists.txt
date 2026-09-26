@@ -665,6 +665,7 @@ add_executable(test_suite
     test/encounter.c
     test/encounter_query_benchmark.c
     test/system_arithmetic.c
+    test/system_nodes.c
     test/arena_play.c
     test/editor_checkpoint.c
     test/math_expression.c

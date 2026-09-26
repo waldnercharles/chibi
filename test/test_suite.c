@@ -48,6 +48,7 @@ void test_dash();
 void test_encounter();
 void test_system_arithmetic();
 void test_reference_index();
+void test_system_nodes();
 void test_component_presentation();
 void test_file_watch();
 void test_ui_document();
@@ -170,6 +171,7 @@ TEST_CASE(all_checks)
     test_enemy_attack();
     test_system_host_wait();
     test_system_arithmetic();
+    test_system_nodes();
     run_engine_checks();
     run_parallel_checks();
     run_editor_command_checks();
@@ -785,6 +787,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--system-arithmetic") == 0) {
         registry_validate();
         test_system_arithmetic();
+        test_system_nodes();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--arena-combat") == 0) {

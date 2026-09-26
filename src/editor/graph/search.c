@@ -12,6 +12,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/systems/system.h"
 #include "support/text_search.h"
 
 #include <assert.h>
@@ -142,24 +143,7 @@ static bool ed_struct_fields_connectable(const pin_spec *aggregate, const pin_sp
 
 static int ed_system_node_allowed(const node_desc *desc)
 {
-    if (desc == &ed_math_desc) {
-        return 1;
-    }
-    if (desc && desc->type && type_is_plain(desc->type) &&
-        (desc->component_kind == NODE_COMPONENT_GET_SELF ||
-         desc->component_kind == NODE_COMPONENT_SET_SELF)) {
-        return 1;
-    }
-    static const char *const names[] = {
-        "Event", "Add",   "Multiply", "Subtract", "Divide", "Min",
-        "Max",   "Clamp", "Modulo",   "Negate",   "Abs",    "Delta Time",
-    };
-    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
-        if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {
-            return 1;
-        }
-    }
-    return 0;
+    return desc == &ed_math_desc || game_system_node_supported(desc);
 }
 
 static int ed_compact_system_node(editor *e, node *n)

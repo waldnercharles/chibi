@@ -111,7 +111,7 @@ const entries = [
     operation: "search_nodes",
     adapter: "authoring",
     title: "Search graph nodes",
-    description: "Find graph nodes, events and their pins by words, domain, or pin type. Call it without a query to list a domain's node types, events, and the components and struct types their settings take. A result gives add_node's type; a one-sentence description; for a configured node such as Make Struct or Set Component its inputs; for an event its event_name or reference_name; and the Behavior Expression that writes the node. Pass them and the pin names to buildGraph.",
+    description: "Find graph nodes, events and their pins by words, domain, or pin type. Call it without a query to list a domain's node types, events (including those UI documents send), and the components and struct types their settings take. A result gives add_node's type; a one-sentence description; for a configured node such as Make Struct or Set Component its inputs; for an event its event_name or reference_name; and the Behavior Expression that writes the node. Pass them and the pin names to buildGraph.",
     intentTerms: ["search", "nodes"],
     candidates: ["findNodes", "searchNodes"],
     legacyName: "search_nodes",

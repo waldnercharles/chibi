@@ -204,9 +204,10 @@ automatically arranges the affected graphs. The edit API has no node coordinates
 or layout controls.
 
 `searchNodes` without a query or filter lists the domain's node types by
-category. For behaviors it adds the host and project events and the component
-and struct names that Component and Type settings take. It costs about 1,300
-tokens, so read it once instead of guessing names.
+category. For behaviors it adds the host events, the project's event
+definitions, the events its ui documents send, and the component and struct
+names that Component and Type settings take. It costs about 1,300 tokens
+(5.5 KB) in the bundled projects, so read it once instead of guessing names.
 
 A query ranks entries whose name, keywords, pins or expression function start
 with every word:
@@ -219,7 +220,14 @@ with every word:
   `inputs` or `connect`.
 - Events: `on hit` returns `{"type": "Event", "event_name": "Contact Begin",
   "out": ["Then: exec", "Other: ecs.entity", "Point: CF_V2"]}`, and a project
-  event also returns its `Send Event` with `reference_name`.
+  event also returns its `Send Event` with `reference_name`. Naming an event
+  exactly ranks it first.
+- UI events: each `data-event` and `data-keys` name in `content/ui` reaches the
+  `GameUi` entity showing the document, so `extract` returns `{"type":
+  "Event", "event_name": "Extract", "description": "Sent when the player
+  clicks #extract in Bank."}`. The pause menu's events go to the player shell
+  and are not listed. A UI query such as `button` that finds no event suggests authoring
+  one in the ui asset.
 
 To extend a graph from a pin, pass its type as `wire_from` (an output you
 will wire from) or `wire_to` (an input you will wire into), written as pins
@@ -230,12 +238,17 @@ conversion, then a wildcard), and name the pin to connect as `wire_input` or
 Destroy Entity with `"wire_input": "Entity"`.
 
 Every result carries a one-sentence `description` of what the node or event
-does, from the node's `description`, the host event table or the event asset.
+does, from the node's `description`, the host event table, the event asset or
+the ui document.
 
 Pins read `name: type`. Behavior search offers component nodes instead of the
 generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
-`domain: "system"` for System graphs, which use the generated nodes directly and
-only the nodes that need no service beyond the ECS world.
+`domain: "system"` for System graphs, which use the generated nodes directly.
+They offer what the System compiler turns into bytecode, the same list Studio
+shows: the Tick `Event`, `Get_<Component>`, `Set_<Component>` for components
+without text, `Make_<Type>`, `Break_<Type>`, Behavior Expression, Delta Time,
+Random Real, and data nodes with one result. Other nodes run through the
+slower flow interpreter, so they are not offered.
 
 Graph metadata can be authored in the same request with `description`,
 `owner_type`, and `graph_description`. The response echoes the selected graph

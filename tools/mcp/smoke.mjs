@@ -102,6 +102,7 @@ const requests = [
   { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
   { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
   { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
+  { jsonrpc: "2.0", id: 38, method: "tools/call", params: { name: "searchNodes", arguments: { query: "button", include_pins: false } } },
   { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildGraph", arguments: {
     kind: "behavior", name: "McpExpressionProbe", create: true, dry_run: true,
     operations: [
@@ -223,6 +224,7 @@ const pagedSearch = toolPayload(responseById.get(30));
 const secondCatalogPage = toolPayload(responseById.get(31));
 const missingAssets = toolPayload(responseById.get(35));
 const missingNodes = toolPayload(responseById.get(36));
+const buttonNodes = toolPayload(responseById.get(38));
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !status.next_steps?.length || !assets.next_steps?.length ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -266,6 +268,8 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !missingAssets.next_steps?.length ||
     missingNodes.ok !== true || missingNodes.result?.nodes?.length !== 0 ||
     !missingNodes.next_steps?.length ||
+    !buttonNodes.result?.nodes?.some((node) => node.type === "Click UI Element") ||
+    !buttonNodes.next_steps?.some((step) => step.includes("content/ui/")) ||
     (responseById.get(14)?.result?.content?.[0]?.text || "").length > 2048) {
   throw new Error("native MCP operations failed");
 }

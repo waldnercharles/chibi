@@ -37,9 +37,26 @@ bool ui_document_expand(
 char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);
-/* Appends the name of each event the markup sends to `names`: every
- * data-event, and each event a data-keys binding ("Key:Event ...") names. */
-void ui_document_event_names(const char *rml, char ***names);
+
+/* The ui asset the player shell shows while paused. The shell takes its
+ * events, so they never reach behaviors. */
+#define UI_DOCUMENT_PAUSE_MENU "PauseMenu"
+
+/* An event markup sends the entity showing it: a data-event element's when
+ * the player clicks it, or changes it for an input, and a data-keys
+ * binding's when the player presses its key with focus inside. */
+typedef struct ui_document_event
+{
+    char *name;
+    char *element; /* "#id", "tag.class", "tag", or a <use>'s widget name */
+    char *key;     /* the data-keys key; NULL for a data-event */
+    bool input;    /* a data-event on an input, sent when it changes */
+} ui_document_event;
+
+/* Appends each event the markup names, in document order, to `events`. */
+void ui_document_events(const char *rml, ui_document_event **events);
+void ui_document_events_free(ui_document_event *events);
+
 /* Owned RML document text: `base` then the asset's RCSS in the head, and its
  * markup in the body. */
 char *ui_document_compose(const ui_document *document, const char *base);

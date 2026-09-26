@@ -7413,6 +7413,141 @@ static bool behavior_vocabulary(const char *domain)
     return !domain || !strcmp(domain, "behavior");
 }
 
+/* An event a ui document sends the GameUi entity showing it, words for it,
+ * and when, without the period: "Sent when the player clicks #go in Hud". */
+typedef struct
+{
+    char *name;
+    const char *keywords;
+    char description[256];
+} ui_event;
+
+/* The events a project names: its event definitions, and those its ui
+ * documents send behaviors. */
+typedef struct
+{
+    behavior_asset **definitions;
+    ui_event *ui;
+} project_events;
+
+static bool defined_event(const project_events *events, const char *name)
+{
+    for (int i = 0; i < acount(events->definitions); i++) {
+        if (!strcmp(events->definitions[i]->name, name)) {
+            return true;
+        }
+    }
+    return graph_event_host_name(name);
+}
+
+/* Adds what the player does in `document` to send `found` to its event's
+ * sentence while it fits, starting one for a new name. Host events and
+ * definitions already offer their own names. */
+static void add_ui_event(project_events *events, const ui_document_event *found, const char *document)
+{
+    char clause[192];
+    if (found->key) {
+        snprintf(
+            clause,
+            sizeof clause,
+            "presses %s inside %s in %s",
+            found->key,
+            found->element,
+            document
+        );
+    } else {
+        snprintf(
+            clause,
+            sizeof clause,
+            "%s %s in %s",
+            found->input ? "changes" : "clicks",
+            found->element,
+            document
+        );
+    }
+    for (int i = 0; i < acount(events->ui); i++) {
+        ui_event *event = &events->ui[i];
+        if (strcmp(event->name, found->name)) {
+            continue;
+        }
+        size_t used = strlen(event->description);
+        if (used + strlen(clause) + 6 < sizeof event->description) {
+            snprintf(event->description + used, sizeof event->description - used, ", or %s", clause);
+        }
+        return;
+    }
+    if (defined_event(events, found->name)) {
+        return;
+    }
+    ui_event event = { .name = xstrdup(found->name),
+                       .keywords = found->key   ? "UI key keyboard"
+                                 : found->input ? "UI input widget"
+                                                : "UI button widget" };
+    snprintf(event.description, sizeof event.description, "Sent when the player %s", clause);
+    apush(events->ui, event);
+}
+
+/* Adds the events the project's ui documents send; the pause menu's go to
+ * the player shell. An invalid document offers none until it validates. */
+static int load_ui_events(const char *root, project_events *events, char *error, size_t error_size)
+{
+    asset_entry *entries = NULL;
+    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    const asset_family *family = family_by_kind("ui");
+    int status = CHIBI_AUTOMATION_OK;
+    for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
+        char document[256], path[1024];
+        const char *filename = entries[i].filename;
+        int length = (int)(strlen(filename) - strlen(ASSET_EXTENSION));
+        snprintf(document, sizeof document, "%.*s", length, filename);
+        if (entries[i].family != family || !strcmp(document, UI_DOCUMENT_PAUSE_MENU)) {
+            continue;
+        }
+        snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
+        char *text = read_file(path, NULL, NULL, error, error_size);
+        ui_document markup = { 0 };
+        ui_document_event *found = NULL;
+        char invalid[160];
+        if (text && ui_document_read(text, &markup, invalid, sizeof invalid)) {
+            ui_document_events(markup.rml, &found);
+        }
+        for (int e = 0; e < acount(found); e++) {
+            add_ui_event(events, &found[e], document);
+        }
+        status = text ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
+        ui_document_events_free(found);
+        ui_document_free(&markup);
+        free(text);
+    }
+    free_asset_entries(entries);
+    return status;
+}
+
+static void free_project_events(project_events *events)
+{
+    free_behavior_assets(events->definitions);
+    for (int i = 0; i < acount(events->ui); i++) {
+        free(events->ui[i].name);
+    }
+    afree(events->ui);
+}
+
+static int load_project_events(const char *root, project_events *events, char *error, size_t error_size)
+{
+    int status = load_behavior_family_assets(
+        root,
+        family_by_kind("event"),
+        &events->definitions,
+        error,
+        error_size
+    );
+    return status == CHIBI_AUTOMATION_OK
+             ? load_ui_events(root, events, error, error_size)
+             : status;
+}
+
 typedef struct
 {
     const char *pin_type;
@@ -7456,14 +7591,15 @@ static bool pins_match(const pin_sides *n, const pin_filter *filter)
 }
 
 /* A search result: a registry node, a component node preset, or an event. An
- * event is an Event node for a host event or an event definition, or a Send
- * Event for a definition. */
+ * event is an Event node for a host event, an event definition or a ui
+ * event, or a Send Event for a definition. */
 typedef struct
 {
     const node_desc *desc;
     const component_node_preset *preset;
     const graph_host_event_desc *host;
     const behavior_asset *definition;
+    const ui_event *ui;
     int score;
     int order;
     /* With a wire to fit: how well (wire_fit) and through which pins. */
@@ -7483,6 +7619,7 @@ static const char *match_event(const node_match *match)
 {
     return match->host       ? match->host->name
          : match->definition ? match->definition->name
+         : match->ui         ? match->ui->name
                              : NULL;
 }
 
@@ -7503,7 +7640,8 @@ static node *match_node(graph *g, const node_match *match)
     } else if (event && n->desc == &NODE_Event) {
         result = graph_set_event_name(g, n, event) ||
                  (match->host ? graph_host_event_apply(g, n)
-                              : graph_event_apply(g, n, match->definition));
+                  : match->definition ? graph_event_apply(g, n, match->definition)
+                                      : 0);
     } else if (event) {
         result = graph_set_node_reference(g, n, 0, event) ||
                  graph_event_apply(g, n, match->definition);
@@ -7551,37 +7689,42 @@ static int preset_score(const component_node_preset *preset, const char *query)
     return text_search_word_score(query, name, secondary);
 }
 
-/* An event reads as "On Contact Begin" or "Send Damage", with its keywords or
- * description and payload names. */
+/* An event's words beside its name: its keywords or description and payload
+ * names, and for a ui event what the player does. */
+static void event_words(const node_match *match, char *text, size_t size)
+{
+    int used = 0;
+    bool send = match->desc != &NODE_Event;
+    append_word(text, size, &used, send ? "Events send dispatch" : "Events when");
+    if (match->host) {
+        append_word(text, size, &used, match->host->keywords);
+        for (int i = 0; i < match->host->payload_count; i++) {
+            append_word(text, size, &used, match->host->payload[i].name);
+        }
+        return;
+    }
+    if (match->ui) {
+        append_word(text, size, &used, match->ui->keywords);
+        append_word(text, size, &used, match->ui->description);
+        return;
+    }
+    append_word(text, size, &used, match->definition->description);
+    for (int i = 0; i < acount(match->definition->variables); i++) {
+        append_word(text, size, &used, match->definition->variables[i].name);
+    }
+}
+
+/* An event reads as "On Contact Begin" or "Send Damage"; an Event also as
+ * its own name, so naming it exactly ranks it first. */
 static int event_score(const node_match *match, const char *query)
 {
     char name[256], secondary[1024] = "";
     bool send = match->desc != &NODE_Event;
     snprintf(name, sizeof name, "%s %s", send ? "Send" : "On", match_event(match));
-    int used = 0;
-    append_word(secondary, sizeof secondary, &used, send ? "Events send dispatch" : "Events when");
-    if (match->host) {
-        append_word(secondary, sizeof secondary, &used, match->host->keywords);
-        for (int i = 0; i < match->host->payload_count; i++) {
-            append_word(
-                secondary,
-                sizeof secondary,
-                &used,
-                match->host->payload[i].name
-            );
-        }
-        return text_search_word_score(query, name, secondary);
-    }
-    append_word(secondary, sizeof secondary, &used, match->definition->description);
-    for (int i = 0; i < acount(match->definition->variables); i++) {
-        append_word(
-            secondary,
-            sizeof secondary,
-            &used,
-            match->definition->variables[i].name
-        );
-    }
-    return text_search_word_score(query, name, secondary);
+    event_words(match, secondary, sizeof secondary);
+    int phrased = text_search_word_score(query, name, secondary);
+    int named = send ? -1 : text_search_word_score(query, match_event(match), secondary);
+    return phrased > named ? phrased : named;
 }
 
 /* Pin names and a node's expression function rank like keywords, so a query
@@ -7607,9 +7750,9 @@ static int node_score(const node_desc *node, const char *query)
 
 static int match_score(const node_match *match, const char *query)
 {
-    return match->preset                    ? preset_score(match->preset, query)
-         : match->host || match->definition ? event_score(match, query)
-                                            : node_score(match->desc, query);
+    return match->preset      ? preset_score(match->preset, query)
+         : match_event(match) ? event_score(match, query)
+                              : node_score(match->desc, query);
 }
 
 /* How Behavior Expression writes a node over its data inputs: "clamp(Value,
@@ -7714,6 +7857,10 @@ static bool match_description(const node_match *match, char *text, size_t size)
         snprintf(text, size, "Sends %s to Entity.", match->definition->name);
         return true;
     }
+    if (match->ui) {
+        snprintf(text, size, "%s.", match->ui->description);
+        return true;
+    }
     const char *about = match->host       ? match->host->description
                       : match->definition ? match->definition->description
                                           : match->desc->description;
@@ -7794,7 +7941,7 @@ static void add_node_outline(
     yyjson_mut_doc *doc,
     yyjson_mut_val *value,
     const char *domain,
-    behavior_asset *const *definitions
+    const project_events *project
 )
 {
     static const char *const generated[] = {
@@ -7831,8 +7978,11 @@ static void add_node_outline(
         for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
             yyjson_mut_arr_add_str(doc, events, GRAPH_HOST_EVENTS[i].name);
         }
-        for (int i = 0; i < acount(definitions); i++) {
-            yyjson_mut_arr_add_strcpy(doc, events, definitions[i]->name);
+        for (int i = 0; i < acount(project->definitions); i++) {
+            yyjson_mut_arr_add_strcpy(doc, events, project->definitions[i]->name);
+        }
+        for (int i = 0; i < acount(project->ui); i++) {
+            yyjson_mut_arr_add_strcpy(doc, events, project->ui[i].name);
         }
     }
     yyjson_mut_val *names = yyjson_mut_obj_add_obj(doc, value, system ? "names" : "settings");
@@ -7849,12 +7999,12 @@ static void add_node_outline(
     }
 }
 
-/* Registry nodes, then component node presets, host events and the project's
- * event definitions as Event and Send Event. */
+/* Registry nodes, then component node presets, host events, the project's
+ * event definitions as Event and Send Event, and its ui events as Event. */
 static node_match *node_candidates(
     const char *domain,
     const component_node_preset *presets,
-    behavior_asset *const *definitions
+    const project_events *project
 )
 {
     node_match *matches = NULL;
@@ -7873,9 +8023,13 @@ static node_match *node_candidates(
         apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GRAPH_HOST_EVENTS[i] }));
     }
     const node_desc *send = registry_node_by_name("Send Event");
-    for (int i = 0; i < acount(definitions); i++) {
-        apush(matches, ((node_match){ .desc = &NODE_Event, .definition = definitions[i] }));
-        apush(matches, ((node_match){ .desc = send, .definition = definitions[i] }));
+    for (int i = 0; i < acount(project->definitions); i++) {
+        behavior_asset *definition = project->definitions[i];
+        apush(matches, ((node_match){ .desc = &NODE_Event, .definition = definition }));
+        apush(matches, ((node_match){ .desc = send, .definition = definition }));
+    }
+    for (int i = 0; i < acount(project->ui); i++) {
+        apush(matches, ((node_match){ .desc = &NODE_Event, .ui = &project->ui[i] }));
     }
     return matches;
 }
@@ -8007,12 +8161,13 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page or include_pins");
         return -1;
     }
-    behavior_asset **definitions = NULL;
+    project_events events = { 0 };
     char error[256] = "";
     int status = behavior_vocabulary(domain)
-                   ? load_behavior_family_assets(root, family_by_kind("event"), &definitions, error, sizeof error)
+                   ? load_project_events(root, &events, error, sizeof error)
                    : CHIBI_AUTOMATION_OK;
     if (status != CHIBI_AUTOMATION_OK) {
+        free_project_events(&events);
         response_error(result, exit_code, status, error);
         return -1;
     }
@@ -8022,8 +8177,8 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
                         filter.pin_kind || filter.pure;
     bool wired = wire_from_text || wire_to_text;
     if (!searched && !pin_filtered && !wired) {
-        add_node_outline(result->doc, value, domain, definitions);
-        free_behavior_assets(definitions);
+        add_node_outline(result->doc, value, domain, &events);
+        free_project_events(&events);
         return 0;
     }
     int limit = limit_value ? (int)yyjson_get_sint(limit_value) : 10;
@@ -8033,12 +8188,12 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
      * lists nodes. */
     bool listed = searched || wired;
     component_node_preset *presets = listed ? component_node_presets() : NULL;
-    node_match *candidates = node_candidates(domain, presets, listed ? definitions : NULL);
+    node_match *candidates = node_candidates(domain, presets, &events);
     behavior_asset *scratch = behavior_asset_new("Node search");
     node_match *matches = NULL;
     for (int i = 0; i < acount(candidates); i++) {
         node_match match = candidates[i];
-        bool offered = listed || !(match.host || match.definition);
+        bool offered = listed || !match_event(&match);
         match.order = i;
         match.score = offered ? match_score(&match, query) : -1;
         match.wire_input = match.wire_output = -1;
@@ -8046,7 +8201,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
             continue;
         }
         if (pin_filtered || wired) {
-            bool configured = match.preset || match.host || match.definition;
+            bool configured = match.preset || match_event(&match);
             node *n = configured ? match_node(scratch->graph, &match) : NULL;
             pin_sides sides = n ? (pin_sides){ n->input_pins,
                                                n->output_pins,
@@ -8088,7 +8243,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     afree(candidates);
     afree(presets);
     behavior_asset_free(scratch);
-    free_behavior_assets(definitions);
+    free_project_events(&events);
     return 0;
 }
 

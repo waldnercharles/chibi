@@ -1,7 +1,9 @@
 #include "assets/project.h"
 #include "automation/controller.h"
 #include "graph/model/registry.h"
+#include "runtime/systems/system.h"
 #include "suite_internal.h"
+#include "support/array.h"
 #include "support/text_search.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -58,16 +60,27 @@ static const intent INTENTS[] = {
     { "sqrt", "behavior", "Square Root", NULL, NULL },
     { "ln", "behavior", "Logarithm", NULL, NULL },
     { "vec2", "behavior", "Make Struct", "CF_V2", NULL },
+    { "button", "behavior", "Click UI Element", NULL, NULL },
+    { "click", "behavior", "Click UI Element", NULL, NULL },
+    { "menu", "behavior", "Set UI Visible", NULL, NULL },
+    { "hud", "behavior", "Set UI Text", NULL, NULL },
+    { "label", "behavior", "Set UI Text", NULL, NULL },
+    { "slider", "behavior", "Set UI Value", NULL, NULL },
 };
 
-static char *search(const char *arguments, size_t *bytes)
+static char *search_in(const char *root, const char *arguments, size_t *bytes)
 {
     char request[512];
     snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"search_nodes\",%s}", arguments);
     int exit_code = 0;
-    char *response = chibi_automation_handle(request, ".", &exit_code);
+    char *response = chibi_automation_handle(request, root, &exit_code);
     *bytes = response ? strlen(response) : 0;
     return response;
+}
+
+static char *search(const char *arguments, size_t *bytes)
+{
+    return search_in(".", arguments, bytes);
 }
 
 static bool same(const char *text, const char *expected)
@@ -186,38 +199,94 @@ static void wire_fits()
     free(unknown);
 }
 
-/* Every node the outline offers, in every domain, describes itself. */
+/* The names searchNodes returns: result node types, or outline names. */
+static const char **listed_names(const char *response)
+{
+    yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
+    yyjson_val *result = yyjson_obj_get(yyjson_doc_get_root(doc), "result");
+    const char **names = NULL;
+    size_t at, max;
+    yyjson_val *item, *category;
+    yyjson_arr_foreach(yyjson_obj_get(result, "nodes"), at, max, item)
+    {
+        apush(
+            names,
+            registry_node_by_name(yyjson_get_str(yyjson_obj_get(item, "type")))->name
+        );
+    }
+    yyjson_obj_iter categories = yyjson_obj_iter_with(yyjson_obj_get(result, "categories"));
+    while ((category = yyjson_obj_iter_next(&categories))) {
+        yyjson_arr_foreach(yyjson_obj_iter_get_val(category), at, max, item)
+        {
+            apush(names, registry_node_by_name(yyjson_get_str(item))->name);
+        }
+    }
+    yyjson_doc_free(doc);
+    return names;
+}
+
+/* Every node the outline offers, in every domain, and every node System
+ * search finds describes itself. */
 static void descriptions_complete()
 {
-    size_t bytes;
-    char *listed = search("\"include_pins\":false", &bytes);
-    char *system = search("\"domain\":\"system\"", &bytes);
+    const char *const requests[] = {
+        "\"include_pins\":false",
+        "\"domain\":\"system\"",
+        "\"query\":\"health\",\"domain\":\"system\",\"limit\":50,\"include_"
+        "pins\":false",
+        "\"query\":\"transform\",\"domain\":\"system\",\"limit\":50,\"include_"
+        "pins\":false",
+    };
     int missing = 0;
-    const char *responses[] = { listed, system };
-    for (int r = 0; r < 2; r++) {
-        yyjson_doc *doc = yyjson_read(responses[r], strlen(responses[r]), 0);
-        yyjson_val *categories = yyjson_obj_get(
-            yyjson_obj_get(yyjson_doc_get_root(doc), "result"),
-            "categories"
-        );
-        size_t at, max, i, count;
-        yyjson_val *category, *names, *name;
-        yyjson_obj_foreach(categories, at, max, category, names)
-        {
-            yyjson_arr_foreach(names, i, count, name)
-            {
-                const node_desc *desc = registry_node_by_name(yyjson_get_str(name));
-                if (!desc->description || !desc->description[0]) {
-                    printf("  %s has no description\n", desc->name);
-                    missing++;
-                }
+    for (size_t r = 0; r < sizeof requests / sizeof *requests; r++) {
+        size_t bytes;
+        char *response = search(requests[r], &bytes);
+        const char **names = listed_names(response);
+        for (int i = 0; i < acount(names); i++) {
+            const node_desc *desc = registry_node_by_name(names[i]);
+            if (!desc->description || !desc->description[0]) {
+                printf("  %s has no description\n", desc->name);
+                missing++;
             }
         }
-        yyjson_doc_free(doc);
+        afree(names);
+        free(response);
     }
     test_check(!missing, "every node searchNodes lists has a description");
-    free(listed);
-    free(system);
+}
+
+/* System search offers what the System compiler lowers: Get_ and Set_ of a
+ * whole component, Make_ and Break_, but not field or entity setters, Has_
+ * or Add_. */
+static void system_offers()
+{
+    size_t bytes;
+    char *outline = search("\"domain\":\"system\"", &bytes);
+    char *health = search("\"query\":\"health\",\"domain\":\"system\",\"limit\":50,\"include_pins\":false", &bytes);
+    const char **names = listed_names(outline);
+    const char **found = listed_names(health);
+    int unsupported = 0;
+    for (int i = 0; i < acount(names); i++) {
+        unsupported += !game_system_node_supported(registry_node_by_name(names[i]));
+    }
+    for (int i = 0; i < acount(found); i++) {
+        unsupported += !game_system_node_supported(registry_node_by_name(found[i]));
+    }
+    test_check(
+        !unsupported && acount(names) && strstr(health, "\"Get_GameHealth\"") &&
+            strstr(health, "\"Set_GameHealth\"") &&
+            strstr(health, "\"Make_GameHealth\"") &&
+            strstr(health, "\"Break_GameHealth\"") &&
+            !strstr(health, "Set_GameHealth_current") &&
+            !strstr(health, "GetEntity_GameHealth") &&
+            !strstr(health, "Has_GameHealth") &&
+            !strstr(health, "Add_GameHealth") && !strstr(outline, "\"Branch\""),
+        "searchNodes offers System graphs only the nodes their compiler lowers"
+    );
+    afree(names);
+    afree(found);
+    free(outline);
+    free(health);
 }
 
 /* inspectGraph lists each node's pins with the types wildcards resolved to,
@@ -277,6 +346,72 @@ static void inspected_pins()
     rmdir(root);
 }
 
+static void write_text(const char *path, const char *text)
+{
+    FILE *file = fopen(path, "w");
+    assert(file);
+    fputs(text, file);
+    fclose(file);
+}
+
+/* Elements naming data-event or data-keys in a ui document offer their
+ * events to behaviors, saying when each is sent. The player shell takes the
+ * pause menu's own. */
+static void ui_events()
+{
+    char root[] = "/tmp/chibi-ui-events-XXXXXX";
+    assert(mkdtemp(root));
+    char manifest[128], content[128], ui[128], hud[160], pause[160];
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    snprintf(content, sizeof content, "%s/content", root);
+    snprintf(ui, sizeof ui, "%s/content/ui", root);
+    snprintf(hud, sizeof hud, "%s/Hud.yaml", ui);
+    snprintf(pause, sizeof pause, "%s/PauseMenu.yaml", ui);
+    assert(!mkdir(content, 0755) && !mkdir(ui, 0755));
+    char version[64];
+    snprintf(version, sizeof version, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    write_text(manifest, version);
+    write_text(
+        hud,
+        "rml: '<div class=\"button\" id=\"go\" data-event=\"Go\">Go</div>"
+        "<input type=\"range\" id=\"volume\" data-event=\"Volume\"/>"
+        "<div class=\"menu wide\" data-keys=\"Enter:Choose Space:Choose\"/>"
+        "<div data-event=\"Tick\"/>'\n"
+    );
+    write_text(pause, "rml: '<div data-event=\"Resume\">Resume</div>'\n");
+    size_t bytes;
+    char *outline = search_in(root, "\"domain\":\"behavior\"", &bytes);
+    char *go = search_in(root, "\"query\":\"go\",\"limit\":1", &bytes);
+    char *volume = search_in(root, "\"query\":\"volume\",\"limit\":1", &bytes);
+    char *choose = search_in(root, "\"query\":\"choose\",\"limit\":1", &bytes);
+    char *button = search_in(root, "\"query\":\"button\",\"limit\":3", &bytes);
+    char *resume = search_in(root, "\"query\":\"resume\"", &bytes);
+    test_check(
+        outline &&
+            strstr(outline, "\"Contact Begin\",\"Go\",\"Volume\",\"Choose\"]") && go &&
+            strstr(go, "\"type\":\"Event\",\"event_name\":\"Go\",\"description\":\"Sent when the player clicks #go in Hud.\"") &&
+            volume &&
+            strstr(volume, "\"description\":\"Sent when the player changes #volume in Hud.\"") &&
+            choose &&
+            strstr(choose, "\"description\":\"Sent when the player presses Enter or Space inside div.menu in Hud.\"") &&
+            button && strstr(button, "\"event_name\":\"Go\"") && resume &&
+            !strstr(resume, "\"Resume\""),
+        "searchNodes offers the events ui documents send behaviors, saying when"
+    );
+    free(outline);
+    free(go);
+    free(volume);
+    free(choose);
+    free(button);
+    free(resume);
+    unlink(hud);
+    unlink(pause);
+    rmdir(ui);
+    rmdir(content);
+    unlink(manifest);
+    rmdir(root);
+}
+
 /* Responses stay small enough to read whole: the vocabulary outline, and a
  * page of results with pins. */
 static void response_budgets()
@@ -287,8 +422,8 @@ static void response_budgets()
     test_check(
         listed && strstr(listed, "\"categories\"") &&
             strstr(listed, "\"GameHealth\"") && strstr(listed, "\"Contact Begin\"") &&
-            outline < 8192 && found && page < 2560,
-        "searchNodes lists the behavior vocabulary in under 8 KB and a page of "
+            outline < 6144 && found && page < 2560,
+        "searchNodes lists the behavior vocabulary in under 6 KB and a page of "
         "pins in under 2.5 KB"
     );
     free(listed);
@@ -352,6 +487,8 @@ void test_automation_search()
     expression_forms();
     wire_fits();
     descriptions_complete();
+    system_offers();
     inspected_pins();
+    ui_events();
     response_budgets();
 }

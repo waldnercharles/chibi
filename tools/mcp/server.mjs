@@ -1022,7 +1022,22 @@ function defaultNextSteps(name) {
   return getToolCatalogEntry(name)?.nextSteps || [];
 }
 
-function responseNextSteps(name, response) {
+// Words an agent uses for the player's UI, whose events come from ui assets.
+const uiQuery = /\b(ui|hud)\b|\b(button|click|menu|label|widget|slider)/i;
+
+// A UI search that finds no events: the ui asset has to name them first.
+function uiEventSteps(response, args) {
+  const nodes = response?.result?.nodes;
+  if (!Array.isArray(nodes) || !uiQuery.test(args?.query || "") ||
+      nodes.some((node) => node.type === "Event")) {
+    return [];
+  }
+  return [
+    "To react to a click or key, give the element a data-event (or data-keys) in content/ui/<Name>.yaml (kind ui), run build/chibi_ctl --project-root <root> --format, call validateAsset, then handle it with an Event node of that event_name.",
+  ];
+}
+
+function responseNextSteps(name, response, args) {
   const code = response?.error?.code;
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
@@ -1043,8 +1058,12 @@ function responseNextSteps(name, response) {
   if (name === "searchAssets" && Array.isArray(result?.assets) && result.assets.length === 0) {
     return ["Broaden the search query or call getAssetCatalog for project-wide context."];
   }
+  const uiSteps = name === "searchNodes" ? uiEventSteps(response, args) : [];
   if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
-    return ["Use fewer or different words, remove a restrictive pin filter, or call searchNodes without a query to list the node types."];
+    return [...uiSteps, "Use fewer or different words, remove a restrictive pin filter, or call searchNodes without a query to list the node types."];
+  }
+  if (uiSteps.length) {
+    return [...uiSteps, ...defaultNextSteps(name)];
   }
   if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
@@ -1069,14 +1088,14 @@ function addPublicContractNames(name, response) {
   return { ...response, result: { ...response.result, operations } };
 }
 
-function withToolGuidance(name, response) {
+function withToolGuidance(name, response, args) {
   const publicResponse = addPublicContractNames(name, response);
-  const nextSteps = responseNextSteps(name, publicResponse);
+  const nextSteps = responseNextSteps(name, publicResponse, args);
   return nextSteps.length ? { ...publicResponse, next_steps: nextSteps } : publicResponse;
 }
 
-function toolResult(name, response) {
-  const guidedResponse = withToolGuidance(name, response);
+function toolResult(name, response, args) {
+  const guidedResponse = withToolGuidance(name, response, args);
   const authoringResult = authoringToolResult(guidedResponse, name);
   if (authoringResult) {
     return authoringResult;
@@ -1352,7 +1371,7 @@ async function dispatch(message) {
       return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
-        result: toolResult(message.params.name, response),
+        result: toolResult(message.params.name, response, message.params.arguments),
       });
     } catch (error) {
       return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));

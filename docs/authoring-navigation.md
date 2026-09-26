@@ -2,7 +2,7 @@
 
 Studio users and MCP agents get the navigation and refactoring a language server gives code: find references, rename, go to definition and the rest below. Each feature is built once, in a module outside `src/editor/`, and ships in both Studio and the MCP. It is done when both expose it.
 
-`searchNodes` set the pattern (#105). The editor and the MCP share `component_node_presets`, `support/text_search` and `GRAPH_HOST_EVENTS` instead of keeping parallel copies.
+`searchNodes` set the pattern (#105). The editor and the MCP share `component_node_presets`, `support/text_search`, `GRAPH_HOST_EVENTS` and the System node list `game_system_node_supported` instead of keeping parallel copies.
 
 The reference index (`src/assets/reference_index.h`) is the shared base for navigation. Studio builds one from its authored state, unsaved edits included (`src/editor/workspace/asset_index.c`); the MCP catalog builds one from the project's files (`CATALOG_SNAPSHOT.references` in `src/automation/controller.c`). It records every reference below with its asset, graph, node, pin and role, and answers find uses, definitions and use counts.
 
@@ -17,7 +17,7 @@ A reference names a symbol by ID or by name. A rename rewrites every by-name ref
 | Variable | Variable ID on Get/Set nodes and bindings |
 | Local | Data edges from the output it names; only the local holds the name |
 | Expression input | Name in the expression source |
-| Event (host or definition) | Name: `event_name` on Event nodes, `reference_name` on Send and Call Event |
+| Event (host, definition or UI) | Name: `event_name` on Event nodes, `reference_name` on Send and Call Event, and a UI document's `data-event` or `data-keys` |
 | Component, field | Stable key and field name, on component nodes and bindings |
 | Prototype, material, shape, UI document | Asset name: in pin defaults such as `Spawn Prototype`'s and a `GameShader` value's, in component fields such as `GameUi.document` and `GameSpawnRequest.prototype`, and in `<use ui>` |
 | UI event | Name in a UI document's `data-event` and `data-keys`, and in `GameActionBinding.action` |
@@ -35,7 +35,7 @@ Status on 2026-09-25, after the shared reference index landed. Update a row when
 | Safe delete | — | — | Both: list references before deleting a variable, function, event or asset |
 | Diagnostics | Live compile, node badges, Problems rows jump to the node | Whole project (`getAssetCatalog`), `validateAsset` | Studio: project-wide Problems |
 | Code actions | Optimize, Math to Expressions, Collapse to Function/Macro, Expand Node, Promote to Variable, Name Value; dragging a function's or macro's inputs and outputs to reorder them | `optimizeGraph`, `create_local`/`expand_local`, `collapse_to_function`/`collapse_to_macro`, `expand_node`, `convert_to_expression`, `promote_to_variable`; Entry/Return pin edits, including `set_pin.order`, go through `graph_signature` | Studio: reordering from the keyboard (the kit's drag has no keyboard sensor) |
-| Completion | Add menu ranked by the dropped pin (`wire_fit`) | `searchNodes` `wire_from`/`wire_to`, ranked by the same `wire_fit` | — |
+| Completion | Add menu ranked by the dropped pin (`wire_fit`) | `searchNodes` `wire_from`/`wire_to`, ranked by the same `wire_fit`; UI events from `ui_document_events` | Studio: UI events in the Add menu |
 | Hover | Pin values while debugging; pin types in the Node tab | `searchNodes` returns every node's and event's `description` | Studio: show `node_desc.description` as node tooltips, which also need to wrap (`.tooltip` is `white-space: nowrap`); after `cwaldner/game-ui` |
 | Outline | Members panel | Catalog members, `inspectGraph` | Both: use, sender and handler counts per member (`reference_index_count_uses`) |
 | Resolved types | Node tab | `inspectGraph` lists each node's pins with their resolved types | — |

@@ -86,6 +86,9 @@ function field(snapshot, entity, component, name) {
 
 try {
   assert.equal(request("searchNodes", { query: "Raycast" }).nodes[0].type, "Raycast");
+  const extract = request("searchNodes", { query: "extract", include_pins: false }).nodes[0];
+  assert.equal(extract.event_name, "Extract");
+  assert.equal(extract.description, "Sent when the player clicks #extract in Bank.");
   create("event", "Award", [{ op: "add_variable", name: "Amount", type: "int", default: 0 }]);
   create("behavior", "Receiver", [
     { op: "add_variable", name: "Reward", type: "int", default: 9, ref: "reward" },

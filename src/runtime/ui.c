@@ -356,7 +356,7 @@ static const node_access READ = { .flags = NODE_EFFECT_WORLD_READ };
 EFFECT_NODE(
     SET_TEXT,
     "Set UI Text",
-    "label hud score caption",
+    "label hud score caption widget element selector",
     "Sets the text of the entity's UI elements that match the Element "
     "selector.",
     TEXT_IN,
@@ -365,7 +365,7 @@ EFFECT_NODE(
 EFFECT_NODE(
     SET_CLASS,
     "Set UI Class",
-    "style state highlight rcss",
+    "style state highlight rcss hud widget element selector",
     "Adds or removes a class on the entity's UI elements that match the "
     "Element selector.",
     CLASS_IN,
@@ -374,7 +374,7 @@ EFFECT_NODE(
 EFFECT_NODE(
     SET_VISIBLE,
     "Set UI Visible",
-    "show hide display",
+    "show hide display widget menu hud element selector",
     "Shows or hides the entity's UI elements that match the Element selector.",
     VISIBLE_IN,
     visible_call
@@ -382,7 +382,7 @@ EFFECT_NODE(
 EFFECT_NODE(
     SET_VALUE,
     "Set UI Value",
-    "progress slider meter bar",
+    "progress slider meter bar hud widget element selector",
     "Sets the value of the entity's sliders, meters and inputs that match the "
     "Element selector.",
     VALUE_IN,
@@ -391,7 +391,7 @@ EFFECT_NODE(
 EFFECT_NODE(
     FOCUS,
     "Focus UI Element",
-    "keyboard select input",
+    "keyboard select input widget button selector",
     "Gives keyboard focus to the entity's first UI element that matches the "
     "Element selector.",
     FOCUS_IN,
@@ -400,7 +400,7 @@ EFFECT_NODE(
 EFFECT_NODE(
     CLICK,
     "Click UI Element",
-    "press activate button choose",
+    "press activate button choose widget selector",
     "Clicks the entity's first UI element that matches the Element selector, "
     "as a pointer would.",
     FOCUS_IN,
@@ -409,7 +409,7 @@ EFFECT_NODE(
 EFFECT_NODE(
     MOVE_FOCUS,
     "Move UI Focus",
-    "next previous navigate arrow keyboard",
+    "next previous navigate arrow keyboard menu widget element selector",
     "Moves keyboard focus Step places through the entity's UI elements that "
     "match the Element selector.",
     MOVE_FOCUS_IN,
@@ -425,10 +425,10 @@ static const node_host_call GET_CALL = {
 static node_desc GET_VALUE = {
     .name = "Get UI Value",
     .category = "UI",
-    .keywords = "slider input progress read",
-    .description = "Reads the value of the entity's UI element that matches "
-                   "the "
-                   "Element selector; Known is false until it has one.",
+    .keywords = "slider input progress read widget element selector",
+    .description = "Reads the value last set under the Element selector, or "
+                   "a player's input under #id; Known is false until there is "
+                   "one.",
     .input_count = 2,
     .inputs = GET_IN,
     .output_count = 2,

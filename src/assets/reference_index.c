@@ -869,15 +869,15 @@ void reference_index_add_ui(reference_index *index, int source, const char *rml)
         add(index, at);
         free(names[i]);
     }
-    asetlen(names, 0);
-    ui_document_event_names(rml, &names);
-    at.role = REFERENCE_SEND;
-    for (int i = 0; i < acount(names); i++) {
-        at.symbol = event_symbol(index, names[i]);
-        add(index, at);
-        free(names[i]);
-    }
     afree(names);
+    ui_document_event *events = NULL;
+    ui_document_events(rml, &events);
+    at.role = REFERENCE_SEND;
+    for (int i = 0; i < acount(events); i++) {
+        at.symbol = event_symbol(index, events[i].name);
+        add(index, at);
+    }
+    ui_document_events_free(events);
 }
 
 /* ---------- Queries ---------- */

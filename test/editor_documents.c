@@ -2,6 +2,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -81,8 +82,50 @@ static void nested_callers_survive_document_visits()
     puts("editor documents PASS: nested caller ancestry and selection survive document visits");
 }
 
+/* Studio compiles each document it shows, refreshing expressions whose
+   reference inputs are bound. A current expression keeps its IDs, so the
+   compile leaves an unedited document as it was saved. */
+static void compile_keeps_unedited_document()
+{
+    behavior_asset *authored = behavior_asset_new("Compiled");
+    pin_value initial = { .type = PIN_F64 };
+    behavior_variable *position = behavior_asset_add_variable(
+        authored,
+        "position",
+        PIN_F64,
+        "double",
+        PIN_CONTAINER_SINGLE,
+        &initial,
+        NULL
+    );
+    node *call = behavior_expression_add(authored, authored->graph, "position += 1", NULL);
+    assert(position && call);
+    int target = 0;
+    while (target < call->input_count &&
+           !(call->input_pins[target].flags & PIN_FLAG_REFERENCE)) {
+        target++;
+    }
+    assert(target < call->input_count);
+    pin_binding binding = { .kind = PIN_BINDING_VARIABLE,
+                            .variable_id = position->id,
+                            .source_asset = authored->name };
+    assert(graph_set_pin_binding(authored->graph, call, 0, target, &binding) == 0);
+    assert(behavior_expression_refresh(authored, call, NULL) == 0);
+    char *saved = behavior_asset_save_json(authored);
+    behavior_asset_free(authored);
+    editor *e = editor_new(behavior_asset_load_json(saved));
+    assert(editor_command_apply(e, (editor_command){ .kind = EDITOR_COMMAND_COMPILE }) == 0);
+    char *compiled = behavior_asset_save_json(editor_behavior_asset(e));
+    assert(!strcmp(compiled, saved));
+    free(compiled);
+    free(saved);
+    editor_free(e);
+    puts("editor documents PASS: compiling an unedited document leaves it as saved");
+}
+
 void test_editor_documents()
 {
     reload_keeps_document_identity();
     nested_callers_survive_document_visits();
+    compile_keeps_unedited_document();
 }

@@ -4,7 +4,7 @@
  * typeahead; submenus open after a 100 ms hover; an open menubar moves between
  * its triggers. A tooltip shows after a 500 ms hover, switches instantly within
  * 400 ms of the last one, and hides while a button is held or a popup or the
- * palette is open. */
+ * palette is open. It holds a label, a shortcut and an optional description. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/ui/kit_icons.h"
 #include "support/math.h"
@@ -18,6 +18,8 @@
 
 /* A menu is as wide as its widest row and the popup's padding, in bounds. */
 static const float popup_chrome = 10, menu_min = 180, menu_max = 480;
+/* Tooltip text in dp on screen, and its distance from the target. */
+static const float tip_size = 11, tip_gap = 6;
 
 /* ---------- Opening and closing ---------- */
 
@@ -468,6 +470,11 @@ void kit_popup_open_at(kit *k, const char *key, float x, float y)
     open_popup(k, key, (kit_rect){ 0 }, true, x, y, "");
 }
 
+void kit_popup_close(kit *k, const char *key)
+{
+    close_popup(k, key);
+}
+
 bool kit_popup_is_open(const kit *k, const char *key)
 {
     popup *p = popup_find(k, key);
@@ -680,10 +687,11 @@ static void set_optional_attr(node *n, const char *name, const char *value)
     set_flag(n, name, false);
 }
 
-void set_tip(node *n, const char *label, const char *shortcut)
+void set_tip(node *n, const char *label, const char *shortcut, const char *description)
 {
     set_optional_attr(n, "data-tip", label);
     set_optional_attr(n, "data-kbd", shortcut);
+    set_optional_attr(n, "data-tip-about", description);
 }
 
 /* The hovered element with a tip, unless a held button, a popup or the
@@ -702,12 +710,20 @@ static rml_element *tip_owner(kit *k)
     return NULL;
 }
 
+/* Tooltips keep their size on screen in a zoomed canvas. */
+static float tip_scale(const kit *k)
+{
+    return k->in.zoom > 0 ? 1 / k->in.zoom : 1;
+}
+
+/* The label and shortcut on one line; a description wraps beneath them. */
 static void show_tip(kit *k, rml_element *target)
 {
     char *tip = element_attribute(target, "data-tip");
     char *shortcut = element_attribute(target, "data-kbd");
+    char *about = element_attribute(target, "data-tip-about");
     char *rml = NULL;
-    str_cat(&rml, "<span>");
+    str_cat(&rml, "<div class=\"tip-head\"><span>");
     escape(&rml, tip);
     str_cat(&rml, "</span>");
     if (shortcut[0]) {
@@ -715,11 +731,21 @@ static void show_tip(kit *k, rml_element *target)
         escape(&rml, shortcut);
         str_cat(&rml, "</span>");
     }
+    str_cat(&rml, "</div>");
+    if (about[0]) {
+        str_cat(&rml, "<div class=\"tip-about\">");
+        escape(&rml, about);
+        str_cat(&rml, "</div>");
+    }
     rml_element_set_inner_rml(k->tooltip, rml);
     free(rml);
+    free(about);
     free(shortcut);
     free(tip);
-    rml_element_set_property(k->tooltip, "display", "flex");
+    char size[32];
+    snprintf(size, sizeof size, "%.2fdp", tip_size * tip_scale(k));
+    rml_element_set_property(k->tooltip, "font-size", size);
+    rml_element_set_property(k->tooltip, "display", "block");
     /* Warm tooltips in a group switch instantly (Base UI); a cold one fades in. */
     flag_element(k->tooltip, "data-instant", k->in.time < k->tip_warm_until);
     flag_element(k->tooltip, "data-starting-style", !k->reduced_motion);
@@ -736,12 +762,13 @@ static void place_tip(kit *k, rml_element *target)
     char *side = element_attribute(target, "data-tip-side");
     bool right = strcmp(side, "right") == 0;
     free(side);
-    float x = right ? r.x + r.w + 6 : r.x + r.w / 2 - size.w / 2;
-    float y = right ? r.y + r.h / 2 - size.h / 2 : r.y + r.h + 6;
-    if (!right && y + size.h > k->in.height - 4) {
-        y = r.y - size.h - 6;
+    float gap = tip_gap * tip_scale(k), edge = 4 * tip_scale(k);
+    float x = right ? r.x + r.w + gap : r.x + r.w / 2 - size.w / 2;
+    float y = right ? r.y + r.h / 2 - size.h / 2 : r.y + r.h + gap;
+    if (!right && y + size.h > k->in.height - edge) {
+        y = r.y - size.h - gap;
     }
-    x = math_clamp(x, 4.0f, math_max(4.0f, k->in.width - size.w - 4));
+    x = math_clamp(x, edge, math_max(edge, k->in.width - size.w - edge));
     set_position(k->tooltip, x, y);
 }
 
@@ -771,8 +798,8 @@ void update_tooltip(kit *k)
     place_tip(k, target);
 }
 
-void kit_tip(kit *k, const char *label, const char *shortcut)
+void kit_tip(kit *k, const char *label, const char *shortcut, const char *description)
 {
     assert(k->last);
-    set_tip(k->last, label, shortcut);
+    set_tip(k->last, label, shortcut, description);
 }

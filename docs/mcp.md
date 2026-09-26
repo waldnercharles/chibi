@@ -108,6 +108,10 @@ domain:
   body markup and optional `rcss` styles, run `--format`, then call
   `validateAsset`.
 
+Before changing or removing a function, variable, event, component field or
+shared asset, check what the edit affects with `findReferences`, and trace
+who reaches a function or event with `callHierarchy`.
+
 Call `validateAsset` after every published change. Use `previewShader`,
 `previewScene`, `runScenario`, `captureRuntimeSnapshot`, or
 `profileScenario` for evidence. Existing assets require the current
@@ -120,16 +124,20 @@ saving them. Tool results include complete `structuredContent` and
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
+- `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
+- `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
 - `previewShader`: compile and render a material or shape graph.
 - `previewScene`: render a prototype or scene with its authored presentation.
 - `searchAssets`: find catalog entries by kind, name, path, or description.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
-- `inspectGraph`: inspect graph content, diagnostics, and the current content hash.
+- `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
-- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts.
-- `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies.
+- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
+- `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies. An asset depends on the behaviors it attaches, the prototypes it places or spawns, the libraries it calls, the event definitions whose events it sends or handles, and the materials, shapes, fields, systems and ui documents its component fields, pin defaults and `<use ui>` widgets name.
+- `findReferences`: find a symbol's definition and every use across the project by role, with counts; see [Navigate references](#navigate-references).
+- `callHierarchy`: trace a function's or event's callers and callees as a tree.
 - `getProjectStatus`: return project, asset, and reflection counts.
 - `describeComponents`: inspect reflected component fields, stable keys, and native defaults.
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
@@ -141,6 +149,123 @@ saving them. Tool results include complete `structuredContent` and
 - `replayScenario`: replay a returned recording and report divergence.
 - `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
+
+## Navigate references
+
+`findReferences` and `callHierarchy` read the project's reference index: every
+place an asset names another asset or a symbol inside one, with its asset,
+graph, node, pin and role. Both select a symbol by name:
+
+- An asset: `{"asset": {"kind": "prototype", "name": "Bullet"}}`. Its uses
+  are the references that depend on it: attachments, spawns, calls into a
+  library, sends and handles of an event definition's event, and the assets
+  component fields, pin defaults and `<use ui>` widgets name.
+- A function or macro: add `"graph": "Apply Damage"` or `"graph_id": 1001`
+  to the asset.
+- A member of the asset: `"variable": "Health"`; `"parameter": "Amount"`
+  with the function's `graph`; or `"local": "speed"`, with `graph` or
+  `graph_id` when several graphs have one by that name.
+- An event: `{"event": "Damaged"}`. Host events (`Tick`, `Contact Begin`), ui
+  `data-event` names and action names count too.
+- A component or one of its fields: `{"component": "GameHealth"}` or
+  `{"component": "GameHealth", "field": "current"}`.
+
+`findReferences` returns the `definition` (an asset is its own; a component's
+is its reflected key and field type; host events have none), `counts` of
+every use by role, and a page of `uses` (`limit`, default 50, and `offset`),
+which `roles` can narrow. Each use names its role and asset, and either its
+`graph_id`, `graph`, `node` and `pin` or its scene `object` and `component`
+field. Pass `graph_id` and the asset to `inspectGraph` to read around a node:
+
+```json
+{"event": "Damage", "roles": ["send"]}
+```
+
+```json
+{"symbol": {"kind": "event", "name": "Damage"},
+ "definition": {"asset": {"kind": "event", "name": "Damage", "path": "content/events/Damage.yaml"}},
+ "counts": {"send": 2, "handle": 1},
+ "uses": [{"role": "send", "asset": {"kind": "behavior", "name": "PlayerContactBehavior"},
+           "graph_id": 3, "graph": "Apply Contact Damage", "node": 107}, ...],
+ "total": 2, "offset": 0, "count": 2, "has_more": false}
+```
+
+`callHierarchy` takes a function or macro, or an event, with `direction`
+(`incoming`, `outgoing` or `both`, the default) and `depth` (1 to 6, default
+2). Its `root` lists `callers` and `callees`. Items are:
+
+- `function`: a function or macro, by asset, `graph_id` and `name`.
+- `handler`: the run an Event node starts, by asset, `graph_id`, `node` and
+  `event`. A call or send in an event graph belongs to each handler whose
+  exec wires reach it.
+- `event`: callers are its senders and callees its handlers; `host` marks
+  engine events.
+- `place`: a sender outside graphs, such as a ui document or an action
+  binding.
+- `graph`: the part of an event graph no handler runs.
+
+`sites` lists the node IDs of the calls or sends joining an item to its
+parent, and `cycle` marks an item that repeats an ancestor (it is not
+expanded). `more` marks an item, the root included, with children left out:
+past the depth, or past the tree's limit of 1,024 items. Trace again from
+that item, or with a greater depth, to list them.
+
+## Rename and delete across assets
+
+`renameSymbol` and `deleteSymbol` change every asset a symbol reaches as one
+change, as a language server's rename and safe delete do. They select the
+symbol as `findReferences` does: an `asset` `{kind, name}`, with `graph` or
+`graph_id` for a function or macro, or `variable`, `parameter` or `local`; or
+an `event`. An event with a definition renames or deletes its
+`content/events` asset too. A `component` or `field` is refused, since C
+reflection names them, and so are scenes, since `project.yaml` names the start
+scene by path. An asset's or event's new name must name a file, and a rename
+that only changes an asset's case is refused, since file systems that ignore
+case see the same file; rename it through another name.
+
+Both default to `dry_run: true`. The dry run lists each asset it changes with
+its `path`, current `hash`, `after_hash`, `new_name` and `new_path` when the
+file is renamed, `deleted` when it goes, and `changes`: the references
+rewritten there, placed as `findReferences` places a use (`role`, `graph_id`,
+`graph`, `node`, `pin`, or `object` and `component`). `expected_hashes` maps
+each path to its hash, and `mentions` lists values that still equal the old
+name where the index records no reference, such as a prototype name a library
+call passes on to `Spawn Prototype`; review and edit those with `buildGraph`.
+To publish, call again with `dry_run: false` and the dry run's
+`expected_hashes` unchanged. An asset that changed since, or a dry run that no
+longer matches the assets the change reaches, is an `asset_conflict` and
+publishes nothing:
+
+```json
+{"event": "Damage", "new_name": "Harm"}
+```
+
+```json
+{"dry_run": true, "published": false,
+ "assets": [{"kind": "behavior", "name": "HullDamage", "path": "content/behaviors/HullDamage.yaml",
+             "hash": "1b670a0c93c49454", "after_hash": "2f787d311593ea17",
+             "changes": [{"role": "handle", "graph_id": 0, "node": 1}]},
+            {"kind": "event", "name": "Damage", "path": "content/events/Damage.yaml",
+             "hash": "2944b52c078d8949", "new_name": "Harm", "new_path": "content/events/Harm.yaml",
+             "after_hash": "7ff62620cd89e472", "changes": [{"role": "define"}]}, ...],
+ "expected_hashes": {"content/behaviors/HullDamage.yaml": "1b670a0c93c49454", ...},
+ "mentions": [], "dangling": []}
+```
+
+A rename rewrites event nodes, Send and Call Event, `data-event` and
+`data-keys`, `GameActionBinding.action`, attachments, placed and spawned
+prototypes, component fields and struct defaults such as a `GameShader`
+value's material, mesh parts, `<use ui>` widgets, library calls'
+`reference_asset` and `reference_name`, the pins of calls in other assets that
+follow a library function's parameter, and the payload pins an event
+definition's variables name. The files are written together; each changed
+asset is then validated, and if one that validated before no longer does,
+every file is restored and `invalid` lists its diagnostics.
+
+`deleteSymbol` refuses while anything references the symbol and lists those
+`references`. With `force` it deletes anyway and lists them as `dangling`. A
+variable goes with its Get and Set nodes and bindings, as in Unreal, so its own
+uses never dangle. Deleting an asset or an event definition removes its file.
 
 ## Check adapter distribution
 
@@ -204,9 +329,10 @@ automatically arranges the affected graphs. The edit API has no node coordinates
 or layout controls.
 
 `searchNodes` without a query or filter lists the domain's node types by
-category. For behaviors it adds the host and project events and the component
-and struct names that Component and Type settings take. It costs about 1,300
-tokens, so read it once instead of guessing names.
+category. For behaviors it adds the host events, the project's event
+definitions, the events its ui documents send, and the component and struct
+names that Component and Type settings take. It costs about 1,300 tokens
+(5.5 KB) in the bundled projects, so read it once instead of guessing names.
 
 A query ranks entries whose name, keywords, pins or expression function start
 with every word:
@@ -219,7 +345,14 @@ with every word:
   `inputs` or `connect`.
 - Events: `on hit` returns `{"type": "Event", "event_name": "Contact Begin",
   "out": ["Then: exec", "Other: ecs.entity", "Point: CF_V2"]}`, and a project
-  event also returns its `Send Event` with `reference_name`.
+  event also returns its `Send Event` with `reference_name`. Naming an event
+  exactly ranks it first.
+- UI events: each `data-event` and `data-keys` name in `content/ui` reaches the
+  `GameUi` entity showing the document, so `extract` returns `{"type":
+  "Event", "event_name": "Extract", "description": "Sent when the player
+  clicks #extract in Bank."}`. The pause menu's events go to the player shell
+  and are not listed. A UI query such as `button` that finds no event suggests authoring
+  one in the ui asset.
 
 To extend a graph from a pin, pass its type as `wire_from` (an output you
 will wire from) or `wire_to` (an input you will wire into), written as pins
@@ -230,12 +363,17 @@ conversion, then a wildcard), and name the pin to connect as `wire_input` or
 Destroy Entity with `"wire_input": "Entity"`.
 
 Every result carries a one-sentence `description` of what the node or event
-does, from the node's `description`, the host event table or the event asset.
+does, from the node's `description`, the host event table, the event asset or
+the ui document.
 
 Pins read `name: type`. Behavior search offers component nodes instead of the
 generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
-`domain: "system"` for System graphs, which use the generated nodes directly and
-only the nodes that need no service beyond the ECS world.
+`domain: "system"` for System graphs, which use the generated nodes directly.
+They offer what the System compiler turns into bytecode, the same list Studio
+shows: the Tick `Event`, `Get_<Component>`, `Set_<Component>` for components
+without text, `Make_<Type>`, `Break_<Type>`, Behavior Expression, Delta Time,
+Random Real, and data nodes with one result. Other nodes run through the
+slower flow interpreter, so they are not offered.
 
 Graph metadata can be authored in the same request with `description`,
 `owner_type`, and `graph_description`. The response echoes the selected graph
@@ -289,7 +427,9 @@ Studio's code actions are operations too, and `ref` names what they create:
 `add_pin`, `remove_pin` and `set_pin` on a function's or macro's Entry outputs
 or Return inputs edit its signature, so every call to it follows: a renamed
 input keeps its wires on each call, and a new input shows its `default`.
-`set_pin.order` is refused there; remove the pin and add it again.
+`set_pin.order` moves a signature pin to the index of another pin that side
+declares; each call's pins follow and keep their wires, and so do the pins of
+the graph's other Return nodes.
 `set_comment` gives a node a comment, drawn as a bubble above it like
 Unreal's node comments: `{"op":"set_comment","node":12,"comment":"Clamp before
 the dash"}`. An empty `comment` removes it, and `"hidden": true` shows the

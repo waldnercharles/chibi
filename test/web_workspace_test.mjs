@@ -63,6 +63,8 @@ assert(!files.has('/content/scenes/Arena3D.yaml'));
 const path = '/projects/arena2d/content/scenes/Sandbox.yaml';
 assert.equal(Module.chibiSaveAsset(path, 'name: Edited\n'), 0);
 assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: 'name: Edited\n' });
+assert.equal(Module.chibiDeleteAsset(path), 0);
+assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: null });
 Request.prototype.send = function () { this.status = 400; this.responseText = 'Outside project content'; };
 assert.equal(Module.chibiSaveAsset('/outside.yaml', '{}'), -1);
 assert.deepEqual(errors, ['Outside project content']);

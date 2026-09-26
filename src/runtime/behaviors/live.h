@@ -69,6 +69,9 @@ game_live_world *game_live_world_new(ecs_world *ecs);
 void game_live_world_free(game_live_world *world);
 int game_live_add_definition(game_live_world *world, game_live_definition *definition);
 int game_live_remove_definition(game_live_world *world, const char *asset_name);
+/* Renames a definition in place: its runtime registration and attachments
+   follow. Returns -1 when the name is taken. */
+int game_live_rename_definition(game_live_world *world, const char *from, const char *to);
 int game_live_can_preview_library(
     game_live_world *world,
     game_live_definition *definition,

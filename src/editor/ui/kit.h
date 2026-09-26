@@ -67,6 +67,9 @@ extern "C"
         bool down[3], pressed[3], released[3];
         float wheel;
         unsigned modifiers; /* KIT_MOD_* */
+        /* A canvas's zoom, folded into dp_ratio, which tooltips undo to keep
+         * their size on screen; 0 means 1. */
+        float zoom;
     } kit_frame_input;
 
     /* Emit the frame between begin and end. Input for this frame must already be
@@ -91,7 +94,9 @@ extern "C"
     void kit_attr(kit *k, const char *name, const char *value);
     void kit_flag(kit *k, const char *name, bool on);
     void kit_style(kit *k, const char *property, const char *value);
-    void kit_tip(kit *k, const char *label, const char *shortcut);
+    /* A tooltip on the last item: a label, an optional shortcut and, when the
+     * label alone does not explain the item, a short description that wraps. */
+    void kit_tip(kit *k, const char *label, const char *shortcut, const char *description);
 
     /* Motion. Presence (Motion's AnimatePresence, Base UI's starting and ending
      * styles): the last item mounts with data-starting-style for one frame and,
@@ -127,6 +132,7 @@ extern "C"
     bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
+    bool kit_item_hovered(kit *k); /* under the pointer and not clipped away */
 
     /* Conditional class lists (clsx): KIT_CX(k, "area", { "fill", fill }, { "live", live })
      * joins the base with each class whose condition holds. The string lives until
@@ -258,13 +264,15 @@ extern "C"
     );
     void kit_list_end(kit *k);
 
-    /* Popups live in the document's overlay layer. Open anchors below the last item
-     * or at a point; begin returns true while open; end closes on activation. */
+    /* Popups live in the document's overlay layer. Open anchors below the last
+     * item or at a point; begin returns true while open; end closes on
+     * activation, and close closes one and its submenus at once. */
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
     bool kit_popup_is_open(const kit *k, const char *key);
     bool kit_popup_begin(kit *k, const char *key, const char *cls);
     void kit_popup_end(kit *k);
+    void kit_popup_close(kit *k, const char *key);
 
     typedef struct kit_menu_item_desc
     {
@@ -287,7 +295,8 @@ extern "C"
      * popup and returns true: emit items, then kit_popup_end. */
     bool kit_menubar_trigger(kit *k, const char *key, const char *label);
 
-    /* Command palette (cmdk). Emit items while open; returns the chosen index or -1. */
+    /* Command palette (cmdk). Emit items while open; returns the chosen index
+     * or -1. A description shows as a muted second line under the label. */
     typedef struct kit_command_item
     {
         const char *label;
@@ -296,6 +305,7 @@ extern "C"
         const char *shortcut;
         const char *keywords;
         uint32_t icon;
+        const char *description;
     } kit_command_item;
     void kit_command_open(kit *k, const char *placeholder);
     bool kit_command_is_open(const kit *k);

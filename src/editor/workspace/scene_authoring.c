@@ -97,6 +97,26 @@ int write_text_file_atomic(const char *path, const char *json)
     return result;
 }
 
+#ifdef __EMSCRIPTEN__
+EM_JS(int, web_delete_asset, (const char *path), {
+    return Module['chibiDeleteAsset']
+             ? Module['chibiDeleteAsset'](UTF8ToString(path))
+             : 0;
+})
+#endif
+
+int remove_content_file(const char *path)
+{
+    if (remove(path) != 0) {
+        return -1;
+    }
+#ifdef __EMSCRIPTEN__
+    return web_delete_asset(path);
+#else
+    return 0;
+#endif
+}
+
 int save_content_file(app_scene_authoring *scene, const char *path, const char *json)
 {
     int result = write_text_file_atomic(path, json);
@@ -919,7 +939,7 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
         return NULL;
     }
     scene->content_root = xstrdup(content_root);
-    scene->asset_index = asset_index_new();
+    scene->asset_index = reference_index_new();
     scene->asset_index_generation = 1;
     content_refresh(scene);
     scene->selected = -1;
@@ -1210,7 +1230,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         remove_selected(scene);
     }
     afree(scene->actors);
-    asset_index_free(scene->asset_index);
+    reference_index_free(scene->asset_index);
     scene_tabs_free(scene);
     scene_history_free(scene->history);
     for (int i = 0; i < acount(scene->prototypes); i++) {

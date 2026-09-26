@@ -19,10 +19,12 @@
 
 void test_automation_graph_edit();
 void test_automation_search();
+void test_automation_navigation();
 void test_automation_graph_optimize();
 void test_automation_prototype_edit();
 void test_automation_scene_edit();
 void test_automation_asset_write();
+void test_automation_refactor();
 
 int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
@@ -36,6 +38,7 @@ void run_entity_presence_checks();
 void test_surface_cpu();
 void test_shader_effects_cpu();
 void test_shader_image_cpu();
+void test_png_encoding();
 void test_physics();
 void test_materials();
 void test_fields();
@@ -46,7 +49,9 @@ void test_game_capabilities();
 void test_dash();
 void test_encounter();
 void test_system_arithmetic();
-void test_asset_index();
+void test_reference_index();
+void test_refactor();
+void test_system_nodes();
 void test_component_presentation();
 void test_file_watch();
 void test_ui_document();
@@ -56,6 +61,7 @@ void test_kit_host();
 void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
+int studio_documents_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
 int rmlui_render_run(const char *program, bool gles);
@@ -78,16 +84,21 @@ TEST_CASE(all_checks)
     registry_validate();
     test_automation_graph_edit();
     test_automation_search();
+    test_automation_navigation();
     test_automation_graph_optimize();
     test_automation_prototype_edit();
     test_automation_scene_edit();
     test_automation_asset_write();
+    test_automation_refactor();
     run_content_catalog_checks();
-    test_asset_index();
+    test_reference_index();
+    test_refactor();
     run_graph_model_checks();
     run_graph_document_checks();
     run_graph_comment_checks();
     run_graph_find_checks();
+    run_graph_describe_checks();
+    run_graph_problems_checks();
     run_graph_arrange_checks();
     run_graph_inline_checks();
     run_graph_editing_checks();
@@ -140,6 +151,7 @@ TEST_CASE(all_checks)
     test_surface_cpu();
     test_shader_effects_cpu();
     test_shader_image_cpu();
+    test_png_encoding();
     test_typed_events();
     test_component_conversion();
     test_field_outputs();
@@ -169,6 +181,7 @@ TEST_CASE(all_checks)
     test_enemy_attack();
     test_system_host_wait();
     test_system_arithmetic();
+    test_system_nodes();
     run_engine_checks();
     run_parallel_checks();
     run_editor_command_checks();
@@ -230,6 +243,16 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
         registry_validate();
         run_graph_signature_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--reference-index")) {
+        registry_validate();
+        test_reference_index();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--refactor")) {
+        registry_validate();
+        test_refactor();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--debugging")) {
@@ -750,6 +773,10 @@ int main(int argc, char **argv)
         test_editor_documents();
         return scene_documents_run(program_name);
     }
+    if (argc > 1 && strcmp(argv[1], "--studio-documents") == 0) {
+        registry_validate();
+        return studio_documents_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
     }
@@ -763,10 +790,12 @@ int main(int argc, char **argv)
         registry_validate();
         test_automation_graph_edit();
         test_automation_search();
+        test_automation_navigation();
         test_automation_graph_optimize();
         test_automation_prototype_edit();
         test_automation_scene_edit();
         test_automation_asset_write();
+        test_automation_refactor();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {
@@ -782,6 +811,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--system-arithmetic") == 0) {
         registry_validate();
         test_system_arithmetic();
+        test_system_nodes();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--arena-combat") == 0) {

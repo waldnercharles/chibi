@@ -26,18 +26,26 @@ typedef struct
     int context;
     double flow;
     const char *morph;
-    int reveal, rows_emitted;
+    int reveal, rows_emitted, hovered_row;
     char dropped[32];
     char note[64];
     int note_commits;
     bool focus_note;
+    bool open_rename;             /* a popover with a name field and one item */
+    bool focus_rename, b_renames; /* item B opens the popover focused */
+    char rename[32];
+    int rename_commits, rename_applied;
 } kit_fixture;
 
 static const kit_command_item COMMANDS[] = {
     { "Alpha", "Commands", NULL, NULL, NULL, 0 },
     { "Beta", "Commands", NULL, NULL, "second", 0 },
-    { "Frame Selected", "Commands", NULL, "F", "focus", 0 },
+    { "Frame Selected", "Commands", NULL, "F", "focus", 0, "Centers the view on the selection." },
 };
+
+static const char
+    TIP_ABOUT[] = "Fires True when Condition is true, otherwise False, "
+                  "and continues from whichever output fired.";
 
 static void emit(kit_fixture *f)
 {
@@ -50,6 +58,7 @@ static void emit(kit_fixture *f)
         kit_menu_item_desc b = { .label = "B", .checked = -1 };
         if (kit_menu_item(k, "b", &b)) {
             f->menu_b++;
+            f->open_rename = f->focus_rename = f->b_renames;
         }
         kit_popup_end(k);
     }
@@ -57,6 +66,10 @@ static void emit(kit_fixture *f)
     if (kit_button(k, "button", &button)) {
         f->clicks++;
     }
+    kit_leaf(k, "about", NULL, NULL);
+    kit_style(k, "width", "40dp");
+    kit_style(k, "height", "20dp");
+    kit_tip(k, "Branch", NULL, TIP_ABOUT);
     kit_pop(k);
     kit_push(k, "fields", NULL, "prop-scroll");
     kit_style(k, "width", "300dp");
@@ -96,6 +109,7 @@ static void emit(kit_fixture *f)
     kit_list_desc list = { .count = 1000, .row_height = 20, .reveal = f->reveal };
     int first, last;
     kit_list_begin(k, "big", NULL, &list, &first, &last);
+    f->hovered_row = -1;
     kit_style(k, "height", "200dp");
     kit_style(k, "flex", "0 0 auto");
     for (int i = first; i <= last; i++) {
@@ -104,6 +118,9 @@ static void emit(kit_fixture *f)
         kit_label(k, row, NULL, row);
         kit_style(k, "display", "block");
         kit_style(k, "height", "20dp");
+        if (kit_item_hovered(k)) {
+            f->hovered_row = i;
+        }
     }
     kit_list_end(k);
     f->rows_emitted = last - first + 1;
@@ -120,6 +137,20 @@ static void emit(kit_fixture *f)
     kit_style(k, "margin-left", "40dp");
     kit_drop_target(k, "thing", f->dropped, sizeof f->dropped);
     kit_pop(k);
+    if (f->open_rename) {
+        f->open_rename = false;
+        kit_popup_open_at(k, "rename", 100, 100);
+    }
+    if (kit_popup_begin(k, "rename", "menu")) {
+        f->rename_commits += kit_text_field(k, "name", f->rename, sizeof f->rename, NULL, 0);
+        if (f->focus_rename) {
+            kit_focus(k);
+            f->focus_rename = false;
+        }
+        kit_menu_item_desc apply = { .label = "Apply", .checked = -1 };
+        f->rename_applied += kit_menu_item(k, "apply", &apply);
+        kit_popup_end(k);
+    }
     if (f->open_command) {
         f->open_command = false;
         kit_command_open(k, "Search");
@@ -217,6 +248,29 @@ static void first_row_text(kit_fixture *f, char *text, size_t size)
         }
     }
     text[n] = '\0';
+}
+
+/* The shown tooltip's size, with its description's text. */
+static rml_vec2 tip_shown(kit_fixture *f, const char *path, char *about, size_t size)
+{
+    float x, y;
+    center(f, path, &x, &y);
+    pointer(f, RML_INPUT_POINTER_MOVE, 1, 1);
+    for (int i = 0; i < 10; i++) {
+        frame(f);
+    }
+    pointer(f, RML_INPUT_POINTER_MOVE, x, y);
+    for (int i = 0; i < 45; i++) {
+        frame(f);
+    }
+    rml_element *hovered = rml_context_hover_element(rml_backend_context(f->backend));
+    rml_element *document = rml_element_owner_document(hovered);
+    rml_element *text = rml_element_query_selector(document, ".tooltip .tip-about");
+    about[0] = '\0';
+    if (text) {
+        rml_element_inner_rml(text, about, size);
+    }
+    return rml_element_box_size(rml_element_query_selector(document, ".tooltip"), RML_BOX_BORDER);
 }
 
 static bool check(bool ok, const char *what)
@@ -372,6 +426,41 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(f.menu_b == 1 && !kit_popup_is_open(f.k, "menu:app/bar/file"), "item activates and closes the menu");
 
+    /* A field in a popup takes typing and Enter; the popup keeps Escape. */
+    f.open_rename = true;
+    settle(&f);
+    ok &= check(click(&f, "layer/@rename/name"), "popover field is laid out");
+    key(&f, RML_INPUT_KEY_A, 0);
+    type(&f, "ab");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.rename_commits == 1 && !strcmp(f.rename, "ab") && !f.rename_applied &&
+            kit_popup_is_open(f.k, "rename"),
+        "a popover's field takes letters and Enter instead of the menu's "
+        "typeahead"
+    );
+    ok &= check(click(&f, "layer/@rename/name"), "popover field refocuses");
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "Escape in a popover's field closes the popover");
+    f.b_renames = true;
+    ok &= check(click(&f, "app/bar/file"), "menu trigger reopens");
+    settle(&f);
+    ok &= check(click(&f, "layer/@menu:app/bar/file/b"), "menu item is laid out again");
+    settle(&f);
+    ok &= check(
+        kit_popup_is_open(f.k, "rename") && kit_wants_text(f.k, NULL),
+        "a popover a menu item opens keeps its field's focus as the menu closes"
+    );
+    type(&f, "c");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(!strcmp(f.rename, "c"), "typing replaces the selection the move kept");
+    kit_popup_close(f.k, "rename");
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "close closes a popup at once");
+
     /* Command palette: ranking and keyboard selection. */
     f.open_command = true;
     settle(&f);
@@ -403,6 +492,30 @@ bool test_rmlui_kit()
     ok &= check(strcmp(matched_space, "Frame Selected") == 0, "highlighting keeps a matched space");
     ok &= check(strcmp(gap_space, "Frame Selected") == 0, "highlighting keeps a space between matches");
 
+    /* A described command takes a second line; others keep one. */
+    kit_rect plain, described;
+    f.open_command = true;
+    settle(&f);
+    ok &= check(
+        kit_find(f.k, "layer/@command/i0", &plain) &&
+            kit_find(f.k, "layer/@command/i2", &described) &&
+            described.h > plain.h,
+        "a command's description is a second line"
+    );
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    settle(&f);
+
+    /* Tooltips: the description wraps under the label, and a zoomed canvas
+       keeps the tooltip's size on screen. */
+    char about[256];
+    rml_vec2 tip = tip_shown(&f, "app/bar/about", about, sizeof about);
+    ok &= check(!strcmp(about, TIP_ABOUT), "a tooltip shows its description");
+    ok &= check(tip.x < 300 && tip.y > 40, "a tooltip's description wraps");
+    f.in.zoom = 2;
+    rml_vec2 zoomed = tip_shown(&f, "app/bar/about", about, sizeof about);
+    f.in.zoom = 0;
+    ok &= check(zoomed.x < tip.x * 0.6f, "a zoomed canvas's tooltip undoes the zoom");
+
     /* Keyed children reorder and prune without recreating survivors. */
     float ay, cy;
     kit_rect removed;
@@ -424,6 +537,17 @@ bool test_rmlui_kit()
     f.reveal = 999;
     settle(&f);
     ok &= check(kit_find(f.k, "app/big/r999", &removed) && f.rows_emitted < 40, "reveal scrolls to the row");
+
+    /* Hover finds the row under the pointer, never an overscan row laid out
+       past the list's edge and clipped. */
+    kit_rect big;
+    ok &= check(kit_find(f.k, "app/big", &big), "list is laid out");
+    pointer(&f, RML_INPUT_POINTER_MOVE, big.x + 5, big.y + 5);
+    settle(&f);
+    ok &= check(f.hovered_row >= 0, "the row under the pointer is hovered");
+    pointer(&f, RML_INPUT_POINTER_MOVE, big.x + 5, big.y - 5);
+    settle(&f);
+    ok &= check(f.hovered_row < 0, "an overscan row outside the list is not hovered");
 
     /* Drag and drop: picked up after 5 dp, dropped on the target under the pointer. */
     float sx = 0, sy = 0, tx = 0, ty = 0;

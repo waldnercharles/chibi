@@ -253,6 +253,16 @@ int behavior_expression_arity(const node_desc *desc)
     return function ? function->arity : -1;
 }
 
+const char *behavior_expression_alias(const node_desc *desc, int index)
+{
+    for (size_t i = 0; i < sizeof functions / sizeof functions[0]; i++) {
+        if (implements(functions[i].nodes, desc->name) && !index--) {
+            return functions[i].name;
+        }
+    }
+    return NULL;
+}
+
 int behavior_expression_argument_input(const node_desc *desc, int argument)
 {
     const math_function *function = function_of(desc);
@@ -2781,10 +2791,13 @@ graph *behavior_expression_rebuild(const behavior_asset *asset, const graph *gen
                                : NULL;
 }
 
-static bool id_used(const behavior_asset *asset, uint64_t id)
+static bool id_used(const behavior_asset *asset, const graph *except, uint64_t id)
 {
     for (int i = 0; i < acount(asset->graphs); i++) {
         const graph *g = asset->graphs[i];
+        if (g == except) {
+            continue;
+        }
         for (int j = 0; j < acount(g->nodes); j++) {
             const node *n = g->nodes[j];
             int output = 0, index = -1;
@@ -2796,17 +2809,18 @@ static bool id_used(const behavior_asset *asset, uint64_t id)
     return false;
 }
 
-static bool body_ids_free(const behavior_asset *asset, const graph *body)
+/* Whether body's IDs are free in asset, beside those of the graph it replaces. */
+static bool body_ids_free(const behavior_asset *asset, const graph *body, const graph *replaced)
 {
     for (int i = 0; i < acount(body->nodes); i++) {
         const node *n = body->nodes[i];
-        if (id_used(asset, n->id)) {
+        if (id_used(asset, replaced, n->id)) {
             return false;
         }
         for (int output = 0; output < 2; output++) {
             const pin_spec *pins = output ? n->output_pins : n->input_pins;
             for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
-                if (id_used(asset, pins[p].id)) {
+                if (id_used(asset, replaced, pins[p].id)) {
                     return false;
                 }
             }
@@ -2819,7 +2833,7 @@ int behavior_expression_restore(behavior_asset *asset, graph *generated)
 {
     assert(!acount(generated->nodes));
     graph *body = behavior_expression_rebuild(asset, generated);
-    if (body && !body_ids_free(asset, body)) {
+    if (body && !body_ids_free(asset, body, generated)) {
         /* A changed generator can need more IDs than the document reserved. */
         graph_free(body);
         free(body);
@@ -2847,7 +2861,9 @@ int behavior_expression_restore(behavior_asset *asset, graph *generated)
 static graph *adopt(behavior_asset *asset, behavior_asset *staged, graph *previous)
 {
     graph *generated = staged->graphs[1];
-    asset->graph->id_counter = staged->graph->id_counter;
+    if (staged->graph->id_counter > asset->graph->id_counter) {
+        asset->graph->id_counter = staged->graph->id_counter;
+    }
     asetlen(staged->graphs, 1);
     behavior_asset_free(staged);
     generated->owner = asset;
@@ -3188,6 +3204,27 @@ static int set_source(
     return 0;
 }
 
+/* A body regenerates from the IDs it holds, as a loaded one does, so
+   refreshing a current expression leaves its document unchanged. One that
+   needs more IDs than it held takes new ones. */
+static behavior_asset *regenerate(
+    behavior_asset *asset,
+    node *call,
+    const char *source,
+    const graph *previous,
+    behavior_expression_error *error
+)
+{
+    assert(previous->entry_id);
+    graph *caller = caller_graph(asset, call);
+    behavior_asset *staged = generate(asset, caller, call, source, error, NULL, 0, previous->entry_id - 1);
+    if (!staged || body_ids_free(asset, staged->graphs[1], previous)) {
+        return staged;
+    }
+    behavior_asset_free(staged);
+    return generate(asset, caller, call, source, error, NULL, 0, asset->graph->id_counter);
+}
+
 int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error)
 {
     behavior_expression_error local;
@@ -3202,16 +3239,7 @@ int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expr
         return -1;
     }
     synchronize_connected_inputs(asset, call);
-    behavior_asset *staged = generate(
-        asset,
-        caller_graph(asset, call),
-        call,
-        source,
-        error,
-        NULL,
-        0,
-        asset->graph->id_counter
-    );
+    behavior_asset *staged = regenerate(asset, call, source, previous, error);
     if (!staged) {
         return -1;
     }

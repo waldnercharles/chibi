@@ -322,6 +322,46 @@ static void scoped_styles()
     }
 }
 
+/* Each event a handler emits and each data-keys binding, with the element
+ * that names it. */
+static void named_events()
+{
+    ui_document_event *events = NULL;
+    ui_document_events(
+        "<!-- <b>x</b> <div data-event-click=\"emit('Hidden')\"/> -->"
+        "<use ui=\"MenuButton\" id=\"resume\" "
+        "data-event-click=\"emit('Resume')\">Resume</use>"
+        "<div class=\"row wide\" title=\" data-event-click='emit(Fake)'\" "
+        "data-event-click=\"emit('Pick')\"/>"
+        "<input type='range' data-event-change=\"emit('Volume')\"/>"
+        "<use ui=\"Dialog\" data-keys=\"Escape:Close Enter:Choose "
+        "Space:Choose\"/>",
+        &events
+    );
+    static const struct
+    {
+        const char *name, *element, *key;
+        bool input;
+    } expected[] = {
+        { "Resume", "#resume", NULL, false },
+        { "Pick", "div.row", NULL, false },
+        { "Volume", "input", NULL, true },
+        { "Close", "Dialog", "Escape", false },
+        { "Choose", "Dialog", "Enter or Space", false },
+    };
+    bool same = acount(events) == (int)(sizeof expected / sizeof *expected);
+    for (int i = 0; same && i < acount(events); i++) {
+        same = !strcmp(events[i].name, expected[i].name) &&
+               !strcmp(events[i].element, expected[i].element) &&
+               (expected[i].key
+                    ? events[i].key && !strcmp(events[i].key, expected[i].key)
+                    : !events[i].key) &&
+               events[i].input == expected[i].input;
+    }
+    test_check(same, "a ui asset names the events its elements send and the elements that send them");
+    ui_document_events_free(events);
+}
+
 void test_ui_document()
 {
     composed_document();
@@ -331,4 +371,5 @@ void test_ui_document()
     page_document();
     expanded_widgets();
     scoped_styles();
+    named_events();
 }

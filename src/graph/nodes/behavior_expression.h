@@ -63,6 +63,9 @@ int behavior_expression_arity(const node_desc *desc);
 /* The node input that takes a function's argument; GLSL argument order can
  * differ from a node's input order, as in smoothstep(edge0, edge1, x). */
 int behavior_expression_argument_input(const node_desc *desc, int argument);
+/* The index-th function spelling a node implements, such as log and then ln
+ * for Logarithm; NULL past the last. */
+const char *behavior_expression_alias(const node_desc *desc, int index);
 /* A value a formatted expression reads, which an editor may name in its own
  * style: text [start, start + length) spells `read`. */
 typedef struct behavior_expression_read

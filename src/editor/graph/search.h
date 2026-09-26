@@ -1,6 +1,7 @@
 #ifndef CHIBI_EDITOR_GRAPH_SEARCH_H
 #define CHIBI_EDITOR_GRAPH_SEARCH_H
 
+#include "graph/authoring/describe.h"
 #include "graph/model/behavior_asset.h"
 
 typedef struct editor editor;
@@ -23,6 +24,8 @@ typedef struct ed_search_match
 
 /* Caller owns the returned core/array. Entries borrow the current catalogs. */
 ed_search_match *ed_search_matches(const editor *e, const char *filter);
+/* What a result stands for, to describe it (node_subject_describe). */
+node_subject ed_search_match_subject(const editor *e, const ed_search_match *match);
 /* Spawns at world (x, y) as one undo step: shader parameters, System compaction
  * and event naming apply, and a pending link-drag wires the new node. Comment
  * boxes are created and return NULL. */

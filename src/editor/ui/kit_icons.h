@@ -93,6 +93,8 @@ enum
     KIT_ICON_DOT = 0xf0765,         /* nf-md-circle */
     KIT_ICON_COMMENT = 0xea6b,      /* nf-cod-comment */
     KIT_ICON_REFERENCES = 0xeb36,   /* nf-cod-references */
+    KIT_ICON_CALLERS = 0xeb92,      /* nf-cod-call_incoming */
+    KIT_ICON_CALLEES = 0xeb93,      /* nf-cod-call_outgoing */
     KIT_ICON_SYSTEM = 0xeba2,       /* nf-cod-server_process */
     KIT_ICON_TERMINAL = 0xea85,     /* nf-cod-terminal */
     KIT_ICON_LAYOUT = 0xebeb,       /* nf-cod-layout */

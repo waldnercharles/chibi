@@ -27,9 +27,7 @@ graphs:
     outputs:
       Value: {flags: 0}
       Value.damage: {id: 46}
-  - id: 145
-    type: Direction To
-    reference_name: Direction To
+  - {id: 145, type: Direction To, reference_name: Direction To}
   - id: 197
     type: Call Function
     reference_id: 189

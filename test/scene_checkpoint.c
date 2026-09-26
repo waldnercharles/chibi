@@ -1,3 +1,4 @@
+#include "assets/call_hierarchy.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
@@ -602,25 +603,50 @@ static void checkpoint_restores_next_scene_key()
     fixture_free(&f);
 }
 
-static int indexed_asset(const asset_index *index, asset_index_kind kind, const char *name)
+static int indexed_asset(const reference_index *index, reference_asset_kind kind, const char *name)
 {
-    int asset = asset_index_find_name(index, kind, name);
+    int asset = reference_index_find_name(index, kind, name);
     assert(asset >= 0);
     return asset;
 }
 
-static const asset_index_reference *indexed_reference(
-    const asset_index *index,
-    int source,
-    int target,
-    asset_index_reference_kind kind
-)
+static const reference *indexed_reference(const reference_index *index, int source, int target, reference_role role)
 {
-    for (int i = 0; i < asset_index_reference_count(index); i++) {
-        const asset_index_reference *reference = asset_index_reference_at(index, i);
-        if (reference->source == source && reference->target == target &&
-            reference->kind == kind) {
-            return reference;
+    for (int i = 0; i < reference_index_count(index); i++) {
+        const reference *r = reference_index_at(index, i);
+        if (r->source == source && reference_dependency(r) == target && r->role == role) {
+            return r;
+        }
+    }
+    return NULL;
+}
+
+static reference_symbol event_named(const char *name)
+{
+    return (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = name };
+}
+
+/* A handler of the root event in asset, among its callees. */
+static const call_item *handler_in(const call_item *items, int asset)
+{
+    for (int i = items[0].first; i < items[0].first + items[0].count; i++) {
+        if (items[i].kind == CALL_HANDLER && items[i].asset == asset) {
+            return &items[i];
+        }
+    }
+    return NULL;
+}
+
+/* Events without a definition are symbols by name only. */
+static const reference *handled_event(const reference_index *index, int source, const char *name)
+{
+    for (int i = 0; i < reference_index_count(index); i++) {
+        const reference *r = reference_index_at(index, i);
+        if (r->source == source && r->role == REFERENCE_HANDLE &&
+            r->symbol.kind == REFERENCE_SYMBOL_EVENT &&
+            !strcmp(r->symbol.name, name)) {
+            assert(r->symbol.asset == -1);
+            return r;
         }
     }
     return NULL;
@@ -632,24 +658,24 @@ static void asset_references_follow_authored_edits()
     assert(app_scene_authoring_set_content_root(f.scene, "content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    const asset_index *index = app_scene_authoring_asset_index(f.scene);
-    int arena = asset_index_find(index, ASSET_INDEX_SCENE, "content/scenes/Arena3D.yaml", 0);
+    const reference_index *index = app_scene_authoring_asset_index(f.scene);
+    int arena = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, "content/scenes/Arena3D.yaml", NULL);
     assert(arena >= 0);
     char *arena_path = realpath("content/scenes/Arena3D.yaml", NULL);
-    assert(arena_path && asset_index_find(index, ASSET_INDEX_SCENE, arena_path, 0) == arena);
-    free(arena_path);
-    int player = indexed_asset(index, ASSET_INDEX_PROTOTYPE, "ArenaPlayer");
-    int material = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaPlayer");
-    int health = indexed_asset(index, ASSET_INDEX_BEHAVIOR, "HealthBehavior");
-    int damage = indexed_asset(index, ASSET_INDEX_EVENT, "Damage");
-    assert(player != material);
-    const asset_index_reference *binding = indexed_reference(index, player, material, ASSET_INDEX_COMPONENT_BINDING);
     assert(
-        binding && !strcmp(binding->component, "GameShader") &&
-        !strcmp(binding->field, "material")
+        arena_path &&
+        reference_index_find_asset(index, REFERENCE_ASSET_SCENE, arena_path, NULL) == arena
     );
-    assert(indexed_reference(index, player, health, ASSET_INDEX_BEHAVIOR_ATTACHMENT));
-    const asset_index_reference *consumer = indexed_reference(index, health, damage, ASSET_INDEX_EVENT_CONSUMER);
+    free(arena_path);
+    int player = indexed_asset(index, REFERENCE_ASSET_PROTOTYPE, "ArenaPlayer");
+    int material = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaPlayer");
+    int health = indexed_asset(index, REFERENCE_ASSET_BEHAVIOR, "HealthBehavior");
+    int damage = indexed_asset(index, REFERENCE_ASSET_EVENT, "Damage");
+    assert(player != material);
+    const reference *binding = indexed_reference(index, player, material, REFERENCE_BIND);
+    assert(binding && !strcmp(binding->component, "GameShader.material"));
+    assert(indexed_reference(index, player, health, REFERENCE_ATTACH));
+    const reference *consumer = indexed_reference(index, health, damage, REFERENCE_HANDLE);
     assert(consumer && consumer->node_id);
     graph *consumer_graph = behavior_asset_find_graph(
         game_live_find_definition(f.live, "HealthBehavior")->working,
@@ -658,8 +684,8 @@ static void asset_references_follow_authored_edits()
     assert(consumer_graph);
     node *consumer_node = graph_node_by_id(consumer_graph, consumer->node_id);
     assert(consumer_node && !strcmp(consumer_node->reference_name, "Damage"));
-    int contact = indexed_asset(index, ASSET_INDEX_BEHAVIOR, "PlayerContactBehavior");
-    const asset_index_reference *emitter = indexed_reference(index, contact, damage, ASSET_INDEX_EVENT_EMITTER);
+    int contact = indexed_asset(index, REFERENCE_ASSET_BEHAVIOR, "PlayerContactBehavior");
+    const reference *emitter = indexed_reference(index, contact, damage, REFERENCE_SEND);
     assert(emitter && emitter->node_id);
     graph *emitter_graph = behavior_asset_find_graph(
         game_live_find_definition(f.live, "PlayerContactBehavior")->working,
@@ -668,6 +694,13 @@ static void asset_references_follow_authored_edits()
     assert(emitter_graph);
     node *emitter_node = graph_node_by_id(emitter_graph, emitter->node_id);
     assert(emitter_node && !strcmp(emitter_node->reference_name, "Damage"));
+    /* Its calls trace too: Damage's handler in HealthBehavior. */
+    call_item *calls = call_hierarchy(index, event_named("Damage"), true, 1);
+    assert(
+        handler_in(calls, health) &&
+        handler_in(calls, health)->node_id == consumer->node_id
+    );
+    call_hierarchy_free(calls);
 
     /* These graph edits have not reached live apply or an editor frame. */
     assert(app_scene_authoring_open_behavior(f.scene, "HealthBehavior") == 0);
@@ -677,26 +710,27 @@ static void asset_references_follow_authored_edits()
     assert(graph_set_node_reference(working, event, 0, "PendingReferenceEvent") == 0);
     uint64_t event_id = event->id;
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    health = indexed_asset(index, ASSET_INDEX_BEHAVIOR, "HealthBehavior");
-    int pending = indexed_asset(index, ASSET_INDEX_EVENT, "PendingReferenceEvent");
-    assert(asset_index_asset_at(index, pending)->unresolved);
-    consumer = indexed_reference(index, health, pending, ASSET_INDEX_EVENT_CONSUMER);
+    health = indexed_asset(index, REFERENCE_ASSET_BEHAVIOR, "HealthBehavior");
+    assert(reference_index_find_name(index, REFERENCE_ASSET_EVENT, "PendingReferenceEvent") < 0);
+    consumer = handled_event(index, health, "PendingReferenceEvent");
     assert(
         consumer && consumer->node_id == event_id &&
         consumer->graph_id == working->graph_id
     );
+    calls = call_hierarchy(index, event_named("PendingReferenceEvent"), true, 1);
+    assert(handler_in(calls, health) && handler_in(calls, health)->node_id == event_id);
+    call_hierarchy_free(calls);
 
     /* A second edit while already dirty must replace the old reference. */
     assert(graph_set_node_reference(working, event, 0, "UpdatedReferenceEvent") == 0);
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    health = indexed_asset(index, ASSET_INDEX_BEHAVIOR, "HealthBehavior");
-    int updated = indexed_asset(index, ASSET_INDEX_EVENT, "UpdatedReferenceEvent");
-    assert(asset_index_find_name(index, ASSET_INDEX_EVENT, "PendingReferenceEvent") < 0);
-    consumer = indexed_reference(index, health, updated, ASSET_INDEX_EVENT_CONSUMER);
+    health = indexed_asset(index, REFERENCE_ASSET_BEHAVIOR, "HealthBehavior");
+    assert(!handled_event(index, health, "PendingReferenceEvent"));
+    consumer = handled_event(index, health, "UpdatedReferenceEvent");
     assert(consumer && consumer->node_id == event_id);
     assert(graph_remove_node(working, event) == 0);
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    assert(asset_index_find_name(index, ASSET_INDEX_EVENT, "UpdatedReferenceEvent") < 0);
+    assert(!handled_event(index, health, "UpdatedReferenceEvent"));
 
     assert(
         app_scene_authoring_set_prototype_field(
@@ -708,11 +742,11 @@ static void asset_references_follow_authored_edits()
         ) == 0
     );
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    player = indexed_asset(index, ASSET_INDEX_PROTOTYPE, "ArenaPlayer");
-    material = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaPlayer");
-    int floor = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaFloor");
-    assert(!indexed_reference(index, player, material, ASSET_INDEX_COMPONENT_BINDING));
-    assert(indexed_reference(index, player, floor, ASSET_INDEX_COMPONENT_BINDING));
+    player = indexed_asset(index, REFERENCE_ASSET_PROTOTYPE, "ArenaPlayer");
+    material = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaPlayer");
+    int floor = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaFloor");
+    assert(!indexed_reference(index, player, material, REFERENCE_BIND));
+    assert(indexed_reference(index, player, floor, REFERENCE_BIND));
 
     assert(
         app_scene_authoring_register_prototype(
@@ -760,24 +794,24 @@ static void asset_references_follow_authored_edits()
     assert(
         !strcmp(GAME_GameShader_get_const(f.world, f.scene->actors[0].entity)->material, "ArenaFloor")
     );
-    int second_scene = asset_index_find(index, ASSET_INDEX_SCENE, second_path, 0);
-    material = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaPlayer");
-    floor = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaFloor");
+    int second_scene = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, second_path, NULL);
+    material = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaPlayer");
+    floor = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaFloor");
     assert(second_scene >= 0);
-    assert(!indexed_reference(index, second_scene, material, ASSET_INDEX_COMPONENT_BINDING));
-    binding = indexed_reference(index, second_scene, floor, ASSET_INDEX_COMPONENT_BINDING);
-    assert(binding && binding->actor && binding->actor[0]);
+    assert(!indexed_reference(index, second_scene, material, REFERENCE_BIND));
+    binding = indexed_reference(index, second_scene, floor, REFERENCE_BIND);
+    assert(binding && binding->object && binding->object[0]);
 
     assert(scene_tabs_activate(f.scene, first_tab) == 0);
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    int first_scene = asset_index_find(index, ASSET_INDEX_SCENE, first_path, 0);
-    second_scene = asset_index_find(index, ASSET_INDEX_SCENE, second_path, 0);
-    material = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaPlayer");
-    floor = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaFloor");
+    int first_scene = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, first_path, NULL);
+    second_scene = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, second_path, NULL);
+    material = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaPlayer");
+    floor = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaFloor");
     assert(first_scene >= 0 && second_scene >= 0 && first_scene != second_scene);
-    assert(indexed_reference(index, first_scene, material, ASSET_INDEX_COMPONENT_BINDING));
-    assert(indexed_reference(index, second_scene, floor, ASSET_INDEX_COMPONENT_BINDING));
-    assert(!indexed_reference(index, second_scene, material, ASSET_INDEX_COMPONENT_BINDING));
+    assert(indexed_reference(index, first_scene, material, REFERENCE_BIND));
+    assert(indexed_reference(index, second_scene, floor, REFERENCE_BIND));
+    assert(!indexed_reference(index, second_scene, material, REFERENCE_BIND));
     assert(app_scene_authoring_open_asset(f.scene, second_scene) == 0);
     assert(f.scene->active_tab == second_tab && f.scene->scene_dirty);
     assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
@@ -791,11 +825,11 @@ static void asset_references_follow_authored_edits()
         ) == ECS_OK
     );
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
-    second_scene = asset_index_find(index, ASSET_INDEX_SCENE, second_path, 0);
-    floor = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaFloor");
-    int enemy = indexed_asset(index, ASSET_INDEX_MATERIAL, "ArenaEnemy");
-    assert(indexed_reference(index, second_scene, floor, ASSET_INDEX_COMPONENT_BINDING));
-    assert(!indexed_reference(index, second_scene, enemy, ASSET_INDEX_COMPONENT_BINDING));
+    second_scene = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, second_path, NULL);
+    floor = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaFloor");
+    int enemy = indexed_asset(index, REFERENCE_ASSET_MATERIAL, "ArenaEnemy");
+    assert(indexed_reference(index, second_scene, floor, REFERENCE_BIND));
+    assert(!indexed_reference(index, second_scene, enemy, REFERENCE_BIND));
     assert(
         !strcmp(GAME_GameShader_get_const(f.world, f.scene->actors[0].entity)->material, "ArenaEnemy")
     );
@@ -938,6 +972,7 @@ static int test_scene_checkpoint()
 
 void test_scene_instances();
 void test_scene_disk();
+void test_scene_refactor();
 
 int scene_documents_run(const char *program)
 {
@@ -960,6 +995,7 @@ int scene_documents_run(const char *program)
     int failed = test_scene_checkpoint();
     test_scene_instances();
     test_scene_disk();
+    test_scene_refactor();
     app_input_shutdown();
     cf_destroy_app();
     return failed;

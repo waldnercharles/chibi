@@ -284,6 +284,45 @@ int graph_signature_rename(behavior_asset *asset, graph *g, bool result, int ind
     return 0;
 }
 
+/* The pin of `n` that follows `declared` moves to where the one following
+   `target` is. */
+static void follow_move(graph *g, node *n, int output, const pin_spec *declared, const pin_spec *target)
+{
+    int from = call_pin(n, output, declared), to = call_pin(n, output, target);
+    if (from >= 0 && to >= 0) {
+        graph_move_pin(g, n, output, from, to);
+    }
+}
+
+int graph_signature_move(behavior_asset *asset, graph *g, bool result, int from, int to)
+{
+    node *owner = owner_of(asset, g, result);
+    if (!owner || !declaration(g, owner, !result, from) ||
+        !declaration(g, owner, !result, to)) {
+        return -1;
+    }
+    int count;
+    const pin_spec *pins = side_pins(owner, !result, &count);
+    pin_spec declared = pins[from], target = pins[to];
+    graph_move_pin(g, owner, !result, from, to);
+    for (int i = 0; result && i < acount(g->nodes); i++) {
+        node *n = g->nodes[i];
+        if (n->desc == &NODE_Return && n != owner) {
+            follow_move(g, n, 0, &declared, &target);
+        }
+    }
+    for (int i = 0; macro(g) && i < acount(asset->graphs); i++) {
+        graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            if (calls(caller->nodes[j], g)) {
+                follow_move(caller, caller->nodes[j], result, &declared, &target);
+            }
+        }
+    }
+    refresh_calls(asset, g);
+    return 0;
+}
+
 int graph_signature_retype(behavior_asset *asset, graph *g, bool result, int index, const pin_spec *type)
 {
     node *owner = owner_of(asset, g, result);

@@ -34,9 +34,7 @@ graphs:
     type: Call Function
     reference_id: 2005
     reference_name: Refresh Encounter
-  - id: 2032
-    type: Event
-    reference_name: RefreshEncounter
+  - {id: 2032, type: Event, reference_name: RefreshEncounter}
   - id: 2034
     type: Call Function
     reference_id: 2005
@@ -221,10 +219,7 @@ graphs:
       Enemy Count: {type: int, kind: data}
       Player Alive: {type: bool, kind: data}
       Pending Deaths: {type: bool, kind: data}
-  - id: 3384
-    type: Set Variable
-    reference_id: 2003
-    reference_name: Enemy Count
+  - {id: 3384, type: Set Variable, reference_id: 2003, reference_name: Enemy Count}
   - id: 3389
     type: Set Variable
     reference_id: 2004
@@ -933,38 +928,8 @@ graphs:
 - {id: 4007, kind: function, math_expression: 'max(Interval, 0.01)', entry_id: 4088}
 - id: 4052
   kind: function
-  name: Elapsed -= spawnInterval
   math_expression: Elapsed -= spawnInterval
-  expression_mode: 2
   entry_id: 4071
-  return_id: 4073
-  call_depth_limit: 64
-  nodes:
-  - id: 4071
-    type: Function Entry
-    outputs:
-      Elapsed: {id: 4075, type: float, kind: data, group: 1}
-      spawnInterval: {type: float, kind: data, flags: 2, group: 2}
-  - id: 4073
-    type: Return
-    inputs:
-      Result: {id: 4077, kind: data, flags: 2, group: 3}
-  - {id: 4078, type: Subtract}
-  - id: 4082
-    type: Set Variable
-    reference_id: 2002
-    reference_name: Elapsed
-    inputs:
-      Value: {type: float}
-    outputs:
-      Value: {type: float}
-  edges:
-  - {from: 4071.Exec, to: 4082.Exec}
-  - {from: 4071.Elapsed, to: 4078.A}
-  - {from: 4071.spawnInterval, to: 4078.B}
-  - {from: 4078.Result, to: 4082.Value}
-  - {from: 4082.Then, to: 4073.Exec}
-  - {from: 4082.Value, to: 4073.Result}
 - id: 4102
   kind: function
   name: Spawns Left In Wave

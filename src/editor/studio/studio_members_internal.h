@@ -19,6 +19,10 @@ void sm_swatch(studio *s, const char *key, const pin_spec *pin);
 /* Records `before`, a snapshot taken before an edit, as one undo step when
    the edit succeeded; frees it otherwise. Returns `ok`. */
 bool sm_record(editor *e, char *before, bool ok);
+/* Moves the input or output whose pin id is `dragged` to index `to`, as one
+   undo step; a pin dropped on itself changes nothing. Returns true when the
+   signature changed. */
+bool sm_move_signature_pin(editor *e, graph *g, bool result, uint64_t dragged, int to);
 void sm_refused(studio *s, const char *title);
 
 #endif

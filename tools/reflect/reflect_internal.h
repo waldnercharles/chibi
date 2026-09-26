@@ -64,8 +64,6 @@ typedef struct
     int *pservice;        /* service-backed parameters */
     char **pservice_type; /* nominal service type */
     char **pout_type;     /* pointee spelling for explicit outputs */
-    char **reads;         /* NODE_READS type names */
-    char **writes;        /* NODE_WRITES type names */
     unsigned effect_flags;
     char *display_name;
     char *category;

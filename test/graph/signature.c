@@ -419,6 +419,150 @@ static void check_promote_flow()
     behavior_asset_free(asset);
 }
 
+static node *float_get(behavior_asset *asset, const char *name)
+{
+    behavior_variable *v = behavior_asset_add_variable(asset, name, PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, NULL);
+    return behavior_asset_add_get_node(asset, v->id);
+}
+
+static bool wired_from(const graph *g, const node *n, int pin, const node *from, int from_pin)
+{
+    node *source = NULL;
+    int source_pin = -1;
+    return graph_input_source(g, n, pin, &source, &source_pin) &&
+           source == from && source_pin == from_pin;
+}
+
+static bool runs_into(const graph *g, const node *from, const node *to, int pin)
+{
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind == GRAPH_EDGE_EXEC && e->from_id == from->id &&
+            e->to_id == to->id && e->to_pin_id == to->input_pins[pin].id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool named(const pin_spec *pins, int count, const char *const *expected)
+{
+    for (int i = 0; i < count; i++) {
+        if (!pins[i].name || strcmp(pins[i].name, expected[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* A second Return as MCP's add_node makes one, with the first's data pins. */
+static node *add_return(graph *fn)
+{
+    node *first = graph_node_by_id(fn, fn->return_id);
+    node *second = graph_add_node(fn, &NODE_Return);
+    for (int i = 0; i < first->input_count; i++) {
+        if (first->input_pins[i].kind == PIN_DATA) {
+            graph_add_pin(fn, second, 0, &first->input_pins[i]);
+        }
+    }
+    return second;
+}
+
+static void check_function_moves()
+{
+    behavior_asset *asset = behavior_asset_new("Moves");
+    graph *fn = behavior_asset_add_function(asset, "Mix", 0);
+    node *entry = graph_node_by_id(fn, fn->entry_id);
+    node *ret = graph_node_by_id(fn, fn->return_id);
+    graph_connect_exec(fn, entry, 0, ret, 0, 0);
+    const char *const signature[] = { "A", "B", "Low", "High" };
+    for (int i = 0; i < 4; i++) {
+        pin_spec pin = { .name = signature[i], .type = PIN_F32, .type_name = "float" };
+        graph_signature_add(asset, fn, i >= 2, &pin);
+    }
+    node *second = add_return(fn);
+    node *call = behavior_asset_add_function_call_node(asset, fn);
+    node *a = float_get(asset, "First");
+    graph_connect_data(asset->graph, a, 0, call, find_pin(call, 0, "A"));
+    graph_set_pin_default(
+        asset->graph,
+        call,
+        0,
+        find_pin(call, 0, "B"),
+        &(pin_value){ .type = PIN_F32, .f = 3 }
+    );
+    uint64_t kept = behavior_asset_add_variable(asset, "Kept", PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, NULL)
+                        ->id;
+    node *set = behavior_asset_add_set_node(asset, kept);
+    graph_connect_data(asset->graph, call, find_pin(call, 1, "High"), set, 1);
+    char *before = behavior_asset_save_json(asset);
+    test_check(
+        graph_signature_move(asset, fn, false, 1, 0) != 0 &&
+            graph_signature_move(asset, fn, false, 1, 3) != 0 &&
+            graph_signature_move(asset, fn, true, 0, 1) != 0,
+        "a signature pin moves only onto another pin its side declares"
+    );
+    char *after = behavior_asset_save_json(asset);
+    test_check(before && after && !strcmp(before, after), "a refused move changes nothing");
+    free(before);
+    free(after);
+    test_check(
+        graph_signature_move(asset, fn, false, 2, 1) == 0 &&
+            named(entry->output_pins, 3, (const char *[]){ "Exec", "B", "A" }) &&
+            named(call->input_pins, 3, (const char *[]){ "Exec", "B", "A" }) &&
+            wired_from(asset->graph, call, 2, a, 0) &&
+            call->input_pins[1].default_value.f == 3,
+        "a moved function input moves on its calls, which keep their wires and "
+        "defaults"
+    );
+    test_check(
+        graph_signature_move(asset, fn, true, 2, 1) == 0 &&
+            named(ret->input_pins, 3, (const char *[]){ "Exec", "High", "Low" }) &&
+            named(second->input_pins, 3, (const char *[]){ "Exec", "High", "Low" }) &&
+            named(call->output_pins, 3, (const char *[]){ "Then", "High", "Low" }) &&
+            wired_from(asset->graph, set, 1, call, 1),
+        "a moved result moves on every Return and on each call, which keeps "
+        "its wires"
+    );
+    compile_report report;
+    compile_report_init(&report);
+    behavior_asset_compile(asset, &report);
+    test_check(!rule_reported(&report, CMPL_RULE_CALL_SIGNATURE), "calls still match a reordered function");
+    compile_report_free(&report);
+    behavior_asset_free(asset);
+}
+
+/* A macro's calls mirror its tunnels, execution pins included. */
+static void check_macro_moves()
+{
+    behavior_asset *asset = behavior_asset_new("Macro moves");
+    graph *macro = behavior_asset_add_macro(asset, "Route");
+    node *entry = graph_node_by_id(macro, macro->entry_id);
+    pin_spec amount = { .name = "Amount",
+                        .kind = PIN_DATA,
+                        .type = PIN_F32,
+                        .type_name = "float" };
+    pin_spec side = EXEC_PIN;
+    side.name = "Side";
+    graph_signature_add(asset, macro, false, &amount);
+    graph_signature_add(asset, macro, false, &side);
+    node *call = behavior_asset_add_macro_call_node(asset, macro);
+    node *number = float_get(asset, "Number");
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    graph_set_event_name(asset->graph, event, "Go");
+    graph_connect_data(asset->graph, number, 0, call, find_pin(call, 0, "Amount"));
+    graph_connect_exec(asset->graph, event, 0, call, find_pin(call, 0, "Side"), 0);
+    test_check(
+        graph_signature_move(asset, macro, false, 2, 0) == 0 &&
+            named(entry->output_pins, 3, (const char *[]){ "Side", "Exec", "Amount" }) &&
+            named(call->input_pins, 3, (const char *[]){ "Side", "Exec", "Amount" }) &&
+            wired_from(asset->graph, call, 2, number, 0) &&
+            runs_into(asset->graph, event, call, 0),
+        "a moved macro input moves on its calls, which keep their wires"
+    );
+    behavior_asset_free(asset);
+}
+
 void run_graph_signature_checks()
 {
     check_signature_edits();
@@ -429,4 +573,6 @@ void run_graph_signature_checks()
     check_input_defaults();
     check_pure_domains();
     check_promote_flow();
+    check_function_moves();
+    check_macro_moves();
 }

@@ -1,5 +1,6 @@
 #include "editor/workspace/game_presentation.h"
 
+#include "assets/ui_document.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
@@ -350,7 +351,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     );
     render_ui_set_overlay(
         engine_viewport_ui(game->viewport),
-        "PauseMenu",
+        UI_DOCUMENT_PAUSE_MENU,
         playing ? NULL : menu_state(status)
     );
     int drawn = engine_viewport_image(game->viewport, size.x, size.y);

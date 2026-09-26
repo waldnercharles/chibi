@@ -129,6 +129,7 @@ static void studio_save(studio *s)
         return;
     }
     finish_transform_edit(scene, false);
+    s->problems_checked = false;
     const char *failure = scene->message[0] ? scene->message : NULL;
     if (graph_focused(s) && scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         char title[160];
@@ -612,7 +613,7 @@ static void document_tabs(studio *s)
         } else {
             kit_flag(k, "data-state", false);
         }
-        kit_tip(k, tab->path, NULL);
+        kit_tip(k, tab->path, NULL, NULL);
         kit_icon(k, "icon", NULL, icon);
         kit_label(k, "label", "label", tab->label ? tab->label : "Untitled");
         if (dirty) {
@@ -1224,11 +1225,11 @@ static void palette(studio *s)
         );
     }
     int assets = acount(items);
-    const asset_index *index = app_scene_authoring_asset_index(scene);
-    int asset_count = index ? asset_index_asset_count(index) : 0;
+    const reference_index *index = app_scene_authoring_asset_index(scene);
+    int asset_count = index ? reference_index_asset_count(index) : 0;
     for (int i = 0; i < asset_count; i++) {
-        const asset_index_asset *asset = asset_index_asset_at(index, i);
-        if (!asset->name || asset->kind < 0 || asset->kind >= ASSET_INDEX_KIND_COUNT) {
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        if (!asset->name || asset->kind < 0 || asset->kind >= REFERENCE_ASSET_KIND_COUNT) {
             continue;
         }
         const char *kind = studio_asset_kind_name(asset->kind);
@@ -1298,8 +1299,9 @@ static void palette(studio *s)
     } else if (chosen >= assets) {
         int position = 0;
         for (int i = 0; i < asset_count; i++) {
-            const asset_index_asset *asset = asset_index_asset_at(index, i);
-            if (asset->name && asset->kind >= 0 && asset->kind < ASSET_INDEX_KIND_COUNT &&
+            const reference_asset *asset = reference_index_asset_at(index, i);
+            if (asset->name && asset->kind >= 0 &&
+                asset->kind < REFERENCE_ASSET_KIND_COUNT &&
                 position++ == chosen - assets) {
                 app_scene_authoring_open_asset(scene, i);
                 break;
@@ -1363,6 +1365,7 @@ void studio_emit(studio *s)
     studio_projects_frame(s);
     studio_rewire_toast(s);
     studio_members_toast(s);
+    studio_refactor_frame(s);
 }
 
 /* Up and Down walk the Outliner's visible rows (Blender). */
@@ -1446,6 +1449,11 @@ void studio_shortcuts(studio *s)
         } else if (
             editor == STUDIO_EDITOR_MEMBERS &&
             studio_members_key(s, key, s->keys[i].mod)
+        ) {
+            continue;
+        } else if (
+            editor == STUDIO_EDITOR_ASSETS &&
+            studio_assets_key(s, key, s->keys[i].mod)
         ) {
             continue;
         } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {

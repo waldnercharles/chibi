@@ -505,26 +505,6 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             if ((f.conversion_from == NULL) != (f.conversion_to == NULL)) {
                 reflect_error(c, "a conversion needs both source and target types");
             }
-            char *read_type = annotation_value(c, "node:reads:");
-            char *write_type = annotation_value(c, "node:writes:");
-            if (read_type) {
-                apush(f.reads, read_type);
-            }
-            if (write_type) {
-                apush(f.writes, write_type);
-            }
-            if (has_annotate(c, "node:entity-scoped")) {
-                f.effect_flags |= 1u << 4;
-            }
-            if (has_annotate(c, "node:structural")) {
-                f.effect_flags |= 1u << 0;
-            }
-            if (has_annotate(c, "node:world-read")) {
-                f.effect_flags |= 1u << 1;
-            }
-            if (has_annotate(c, "node:host-sink")) {
-                f.effect_flags |= 1u << 2;
-            }
             clang_visitChildren(c, param_visitor, &f);
             if (f.jit_kind && !strcmp(f.jit_kind, "identity") &&
                 (!pure || !f.ret_pin || strcmp(f.ret_pin, "PIN_STRUCT") ||
@@ -603,8 +583,6 @@ void reflect_dispose(collect_ctx *ctx)
         free(f->category);
         free(f->keywords);
         free(f->description);
-        free_strings(f->reads);
-        free_strings(f->writes);
         free(f->jit_kind);
         free(f->conversion_from);
         free(f->conversion_to);

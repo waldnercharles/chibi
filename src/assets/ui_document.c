@@ -621,6 +621,320 @@ void ui_document_use_names(const char *rml, char ***names)
     }
 }
 
+/* ---------- Events ---------- */
+
+/* The quoted value of attribute `name` in the tag's attributes [p, end),
+ * with its length; NULL when the tag lacks it. */
+static const char *attribute_span(const char *p, const char *end, const char *name, size_t *size)
+{
+    size_t length = strlen(name);
+    for (char quoted = 0; p < end; p++) {
+        if (quoted) {
+            quoted = *p == quoted ? 0 : quoted;
+            continue;
+        }
+        if (*p == '"' || *p == '\'') {
+            quoted = *p;
+            continue;
+        }
+        if (!isspace((unsigned char)*p) || (size_t)(end - p) < length + 3 ||
+            strncmp(p + 1, name, length) || p[length + 1] != '=') {
+            continue;
+        }
+        char quote = p[length + 2];
+        const char *value = p + length + 3;
+        const char *close = quote == '"' || quote == '\''
+                              ? memchr(value, quote, (size_t)(end - value))
+                              : NULL;
+        *size = close ? (size_t)(close - value) : 0;
+        return close ? value : NULL;
+    }
+    return NULL;
+}
+
+/* Copies the quoted value of attribute `name` in the tag's attributes
+ * [p, end) into `out`; false when the tag lacks it. */
+static bool tag_attribute(const char *p, const char *end, const char *name, char *out, size_t size)
+{
+    size_t length;
+    const char *value = attribute_span(p, end, name, &length);
+    if (value) {
+        snprintf(out, size, "%.*s", (int)length, value);
+    }
+    return value != NULL;
+}
+
+/* How an event names its element: "#id", else "tag.class" with the first
+ * class, else the tag, where a <use>'s tag is its widget. */
+static void element_label(const char *tag, const char *attrs, const char *end, char *out, size_t size)
+{
+    char id[128], widget[128], classes[256];
+    if (tag_attribute(attrs, end, "id", id, sizeof id) && id[0]) {
+        snprintf(out, size, "#%s", id);
+        return;
+    }
+    if (!strcmp(tag, "use") && tag_attribute(attrs, end, "ui", widget, sizeof widget)) {
+        tag = widget;
+    }
+    if (!tag_attribute(attrs, end, "class", classes, sizeof classes) || !classes[0]) {
+        snprintf(out, size, "%s", tag);
+        return;
+    }
+    snprintf(out, size, "%s.%.*s", tag, (int)strcspn(classes, " "), classes);
+}
+
+static char *copy_text(const char *text, size_t length)
+{
+    char *copy = xmalloc(length + 1);
+    memcpy(copy, text, length);
+    copy[length] = '\0';
+    return copy;
+}
+
+/* The event among events[first...] named `name`, or -1. */
+static int named_event(const ui_document_event *events, int first, const char *name, size_t length)
+{
+    for (int i = first; i < acount(events); i++) {
+        if (strlen(events[i].name) == length && !strncmp(events[i].name, name, length)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Appends the events one "Key:Event Key:Event" binding list names; keys
+ * bound to the same event join as "Enter or Space". */
+static void push_key_events(ui_document_event **events, const char *bindings, const char *element)
+{
+    int first = acount(*events);
+    for (const char *p = bindings; *p;) {
+        p += strspn(p, " ");
+        const char *binding = p;
+        p += strcspn(p, " ");
+        const char *colon = memchr(binding, ':', (size_t)(p - binding));
+        if (!colon || colon == binding || colon + 1 == p) {
+            continue;
+        }
+        char key[64];
+        snprintf(key, sizeof key, "%.*s", (int)(colon - binding), binding);
+        size_t length = (size_t)(p - colon - 1);
+        int bound = named_event(*events, first, colon + 1, length);
+        if (bound < 0) {
+            apush(
+                *events,
+                ((ui_document_event){ .name = copy_text(colon + 1, length),
+                                      .element = xstrdup(element),
+                                      .key = xstrdup(key) })
+            );
+            continue;
+        }
+        char joined[256];
+        snprintf(joined, sizeof joined, "%s or %s", (*events)[bound].key, key);
+        free((*events)[bound].key);
+        (*events)[bound].key = xstrdup(joined);
+    }
+}
+
+/* An event a data-event-* handler sends: the Name of each emit('Name'). */
+typedef struct
+{
+    const char *at;
+    size_t length;
+    bool change; /* the handler is data-event-change */
+} emit_span;
+
+/* Appends the emit('Name') calls of the data-event-* handlers among the
+ * tag's attributes [p, end), in order. */
+static void emit_spans(const char *p, const char *end, emit_span **spans)
+{
+    static const char PREFIX[] = "data-event-";
+    const size_t prefix = sizeof PREFIX - 1;
+    for (char quoted = 0; p < end; p++) {
+        if (quoted) {
+            quoted = *p == quoted ? 0 : quoted;
+            continue;
+        }
+        if (*p == '"' || *p == '\'') {
+            quoted = *p;
+            continue;
+        }
+        if (!isspace((unsigned char)*p) || (size_t)(end - p) <= prefix + 1 ||
+            strncmp(p + 1, PREFIX, prefix)) {
+            continue;
+        }
+        const char *type = p + 1 + prefix, *equals = type;
+        while (equals < end && name_char(*equals)) {
+            equals++;
+        }
+        if (end - equals < 2 || *equals != '=' ||
+            (equals[1] != '"' && equals[1] != '\'')) {
+            continue;
+        }
+        const char *value = equals + 2;
+        const char *close = memchr(value, equals[1], (size_t)(end - value));
+        if (!close) {
+            return;
+        }
+        bool change = equals - type == 6 && !strncmp(type, "change", 6);
+        for (const char *e = value; e + 6 < close; e++) {
+            if (strncmp(e, "emit(", 5) || (e[5] != '"' && e[5] != '\'')) {
+                continue;
+            }
+            const char *name = e + 6;
+            const char *stop = memchr(name, e[5], (size_t)(close - name));
+            if (stop && stop > name) {
+                apush(*spans, ((emit_span){ name, (size_t)(stop - name), change }));
+                e = stop;
+            }
+        }
+        p = close;
+    }
+}
+
+/* Appends the events of the tag opening at `open` and ending before `end`. */
+static void push_tag_events(ui_document_event **events, const char *open, const char *end)
+{
+    char tag[64], element[256], value[256];
+    int length = 0;
+    while (name_char(open[1 + length])) {
+        length++;
+    }
+    snprintf(tag, sizeof tag, "%.*s", length, open + 1);
+    const char *attrs = open + 1 + length;
+    element_label(tag, attrs, end, element, sizeof element);
+    emit_span *emits = NULL;
+    emit_spans(attrs, end, &emits);
+    for (int i = 0; i < acount(emits); i++) {
+        apush(
+            *events,
+            ((ui_document_event){ .name = copy_text(emits[i].at, emits[i].length),
+                                  .element = xstrdup(element),
+                                  .input = emits[i].change })
+        );
+    }
+    afree(emits);
+    if (tag_attribute(attrs, end, "data-keys", value, sizeof value)) {
+        push_key_events(events, value, element);
+    }
+}
+
+void ui_document_events(const char *rml, ui_document_event **events)
+{
+    for (const char *p = strchr(rml, '<'); p; p = strchr(p, '<')) {
+        const char *end = strncmp(p, "<!--", 4) ? tag_end(p) : strstr(p, "-->");
+        if (!end) {
+            return;
+        }
+        if (isalpha((unsigned char)p[1])) {
+            push_tag_events(events, p, end);
+        }
+        p = end;
+    }
+}
+
+void ui_document_events_free(ui_document_event *events)
+{
+    for (int i = 0; i < acount(events); i++) {
+        free(events[i].name);
+        free(events[i].element);
+        free(events[i].key);
+    }
+    afree(events);
+}
+
+/* ---------- Renames ---------- */
+
+/* Where markup names a widget or an event. */
+typedef struct
+{
+    const char *at;
+    size_t length;
+} name_span;
+
+static void use_spans(const char *rml, name_span **spans)
+{
+    use_tag tag;
+    for (const char *p = rml; next_use(p, &tag) == USE_FOUND; p = tag.inner) {
+        apush(*spans, ((name_span){ tag.ui + 4, strlen(tag.name) }));
+    }
+}
+
+/* The events of the tag opening at `open`: its handlers' emit('Name')
+ * calls, then each event its data-keys bindings name. */
+static void tag_event_spans(const char *open, const char *end, name_span **spans)
+{
+    emit_span *emits = NULL;
+    emit_spans(open, end, &emits);
+    for (int i = 0; i < acount(emits); i++) {
+        apush(*spans, ((name_span){ emits[i].at, emits[i].length }));
+    }
+    afree(emits);
+    size_t length;
+    const char *value = attribute_span(open, end, "data-keys", &length);
+    const char *stop = value ? value + length : NULL;
+    for (const char *p = value; p && p < stop;) {
+        p += strspn(p, " ");
+        const char *binding = p;
+        while (p < stop && *p != ' ') {
+            p++;
+        }
+        const char *colon = memchr(binding, ':', (size_t)(p - binding));
+        if (colon && colon != binding && colon + 1 < p) {
+            apush(*spans, ((name_span){ colon + 1, (size_t)(p - colon - 1) }));
+        }
+    }
+}
+
+static void event_spans(const char *rml, name_span **spans)
+{
+    for (const char *p = strchr(rml, '<'); p; p = strchr(p, '<')) {
+        const char *end = strncmp(p, "<!--", 4) ? tag_end(p) : strstr(p, "-->");
+        if (!end) {
+            return;
+        }
+        if (isalpha((unsigned char)p[1])) {
+            tag_event_spans(p, end, spans);
+        }
+        p = end;
+    }
+}
+
+static int span_order(const void *a, const void *b)
+{
+    const char *left = ((const name_span *)a)->at;
+    const char *right = ((const name_span *)b)->at;
+    return (left > right) - (left < right);
+}
+
+char *ui_document_rename(const char *rml, bool event, const char *from, const char *to, int *count)
+{
+    name_span *spans = NULL;
+    if (event) {
+        event_spans(rml, &spans);
+    } else {
+        use_spans(rml, &spans);
+    }
+    qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    char *out = NULL;
+    const char *p = rml;
+    *count = 0;
+    for (int i = 0; i < acount(spans); i++) {
+        const name_span *span = &spans[i];
+        if (span->length != strlen(from) || memcmp(span->at, from, span->length)) {
+            continue;
+        }
+        put(&out, p, (size_t)(span->at - p));
+        put(&out, to, strlen(to));
+        p = span->at + span->length;
+        ++*count;
+    }
+    put(&out, p, strlen(p) + 1);
+    char *text = xstrdup(out);
+    afree(out);
+    afree(spans);
+    return text;
+}
+
 char *ui_document_compose(const ui_document *document, const char *base)
 {
     static const char FORMAT[] = "<rml><head><style>%s\n%s</style></"

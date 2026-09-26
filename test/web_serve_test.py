@@ -46,6 +46,13 @@ class WorkspaceSaves(unittest.TestCase):
         watch.poll()
         self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.yaml': None}))
 
+    def test_save_without_text_deletes(self):
+        self.save('projects/bloom/content/Bloom.yaml')
+        self.save('projects/bloom/content/Bloom.yaml', None)
+        self.assertFalse((self.content / 'Bloom.yaml').exists())
+        with self.assertRaises(ValueError):
+            self.save('projects/bloom/project.yaml', None)
+
     def test_invalid_document_preserves_previous_asset(self):
         self.save('projects/bloom/content/Bloom.yaml')
         with self.assertRaises(ValueError):

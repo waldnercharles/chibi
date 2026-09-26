@@ -258,9 +258,7 @@ graphs:
         type: handle
         type_name: ecs.entity
         default: []
-  - id: 1132
-    type: Send Event
-    reference_name: RefreshEncounter
+  - {id: 1132, type: Send Event, reference_name: RefreshEncounter}
   edges:
   - {from: 1011.Then, to: 1117.Exec}
   - {from: 1115.Has, to: 1117.Condition}

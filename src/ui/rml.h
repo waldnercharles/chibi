@@ -437,6 +437,7 @@ extern "C"
     void rml_element_set_value(rml_element *element, const char *value);
     void rml_element_select(rml_element *element);
     void rml_element_set_selection_range(rml_element *element, int start, int end);
+    void rml_element_selection_range(rml_element *element, int *start, int *end);
 
     bool rml_element_focus(rml_element *element, bool focus_visible);
     /* Simulates a click, as a pointer press and release on the element do. */

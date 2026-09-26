@@ -72,6 +72,8 @@ int game_behavior_unregister_asset(
     const char *asset_name,
     behavior_asset **definition
 );
+/* Attachments and instances keep their asset under its new name. */
+int game_behavior_rename_asset(game_behavior_world *world, const char *from, const char *to);
 int game_behavior_replace_asset(
     game_behavior_world *world,
     const char *asset_name,

@@ -151,6 +151,39 @@ int editor_reload_behavior_asset_document(editor *e, const behavior_asset *sourc
     return 0;
 }
 
+void editor_forget_behavior_asset(editor *e, const char *key)
+{
+    for (int i = 0; i < acount(e->documents); i++) {
+        ed_document_history *history = &e->documents[i];
+        if (strcmp(history->key, key) != 0) {
+            continue;
+        }
+        free(history->key);
+        free(history->json);
+        free(history->saved);
+        ed_free_string_stack(&history->undo);
+        ed_free_string_stack(&history->redo);
+        afree(history->links);
+        free(history->location.nodes);
+        adel(e->documents, i);
+        return;
+    }
+}
+
+void editor_rename_behavior_asset(editor *e, const char *from, const char *to)
+{
+    if (e->document_key && !strcmp(e->document_key, from)) {
+        free(e->document_key);
+        e->document_key = xstrdup(to);
+    }
+    for (int i = 0; i < acount(e->documents); i++) {
+        if (!strcmp(e->documents[i].key, from)) {
+            free(e->documents[i].key);
+            e->documents[i].key = xstrdup(to);
+        }
+    }
+}
+
 static ed_location capture_location(const editor *e)
 {
     ed_location location = {

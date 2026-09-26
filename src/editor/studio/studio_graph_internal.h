@@ -112,6 +112,8 @@ void sg_frame_nodes(studio *s, bool selection, bool animate);
 /* Frames the selection holding n, or pans n into view unless it is in view. */
 void sg_show_node(studio *s, node *n, bool frame);
 void sg_follow_graph(studio *s);
+/* The open graph keeps its camera though its asset was renamed. */
+void sg_keep_graph_view(studio *s);
 void sg_update_routes(studio *s);
 void sg_arrange(studio *s, bool automatic_only);
 

@@ -313,3 +313,285 @@ app_disk_result app_scene_authoring_reload_path(app_scene_authoring *scene, cons
 {
     return sync_path(scene, path, true);
 }
+
+/* ---------- Refactors ---------- */
+
+bool scene_same_file(const char *a, const char *b)
+{
+    if (!a || !b) {
+        return false;
+    }
+    char *left = realpath(a, NULL), *right = realpath(b, NULL);
+    bool same = left && right ? !strcmp(left, right) : !strcmp(a, b);
+    free(left);
+    free(right);
+    return same;
+}
+
+static game_live_definition *definition_file(app_scene_authoring *scene, const char *path)
+{
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        game_live_definition *definition = game_live_definition_at(scene->live, i);
+        if (scene_same_file(game_live_definition_path(definition), path)) {
+            return definition;
+        }
+    }
+    return NULL;
+}
+
+static scene_prototype_asset *prototype_file(app_scene_authoring *scene, const char *path)
+{
+    for (int i = 0; i < acount(scene->prototypes); i++) {
+        if (scene_same_file(scene->prototypes[i].path, path)) {
+            return &scene->prototypes[i];
+        }
+    }
+    return NULL;
+}
+
+static void rename_id(char **id, const char *from, const char *to)
+{
+    if (*id && !strcmp(*id, from)) {
+        free(*id);
+        *id = xstrdup(to);
+    }
+}
+
+/* The open document, the graph editor's and the tabs follow a rename. */
+static void rename_document(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *from,
+    const char *to,
+    const char *path
+)
+{
+    scene_tabs_rename(scene, kind, from, to, path);
+    if (scene->document.kind == kind) {
+        rename_id(&scene->document_id, from, to);
+        scene->document.id = scene->document_id;
+    }
+    if (scene->graph_document_kind == kind) {
+        rename_id(&scene->graph_document_id, from, to);
+    }
+}
+
+/* A renamed prototype keeps its place, tab and instances. */
+static void move_prototype(app_scene_authoring *scene, scene_prototype_asset *asset, const char *to)
+{
+    char *json = read_scene_file(to);
+    char error[256];
+    game_prototype *loaded = json
+                               ? game_prototype_load(json, &scene->registry, error, sizeof error)
+                               : NULL;
+    free(json);
+    if (!loaded) {
+        snprintf(scene->message, sizeof scene->message, "Could not load %s.", content_basename(to));
+        return;
+    }
+    char *from = xstrdup(asset->prototype->name);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        rename_id(&scene->actors[i].prototype_name, from, loaded->name);
+    }
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        rename_id(&scene->tabs[i].selected_prototype_name, from, loaded->name);
+    }
+    free(asset->prototype->name);
+    asset->prototype->name = xstrdup(loaded->name);
+    free(asset->path);
+    asset->path = xstrdup(to);
+    rename_document(scene, APP_EDITOR_DOCUMENT_PROTOTYPE, from, loaded->name, to);
+    game_prototype_free(loaded);
+    reload_prototype_asset(scene, asset);
+    free(from);
+}
+
+/* A renamed definition keeps its place, tab, attachments and history. */
+static void move_definition(app_scene_authoring *scene, game_live_definition *definition, const char *to)
+{
+    char *json = read_scene_file(to);
+    behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
+    free(json);
+    char *from = xstrdup(definition->name);
+    char *name = loaded ? xstrdup(loaded->name) : NULL;
+    behavior_asset_free(loaded);
+    if (!name || game_live_rename_definition(scene->live, from, name) != 0) {
+        snprintf(scene->message, sizeof scene->message, "Could not load %s.", content_basename(to));
+        free(from);
+        free(name);
+        return;
+    }
+    game_live_definition_set_path(definition, to);
+    editor_rename_behavior_asset(scene->graph_editor, from, name);
+    rename_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, from, name, to);
+    if (scene->prototype_preview) {
+        game_prototype_preview_register_behavior(
+            scene->prototype_preview,
+            name,
+            definition->working
+        );
+    }
+    reload_behavior_from_disk(scene, name);
+    free(from);
+    free(name);
+}
+
+/* Another definition for the graph editor while one goes. */
+static game_live_definition *other_definition(app_scene_authoring *scene, const game_live_definition *leaving)
+{
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        game_live_definition *definition = game_live_definition_at(scene->live, i);
+        if (definition != leaving) {
+            return definition;
+        }
+    }
+    return NULL;
+}
+
+/* A definition whose file went: its tab closes, the graph editor turns to
+   another, and it leaves the live world unless the world still runs it. */
+static void forget_definition(app_scene_authoring *scene, game_live_definition *leaving)
+{
+    char *name = xstrdup(leaving->name);
+    scene_tabs_close(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, name);
+    game_live_definition *shown = other_definition(scene, leaving);
+    if (scene->definition == leaving && shown) {
+        open_behavior_graph(scene, shown->name);
+    }
+    editor_forget_behavior_asset(scene->graph_editor, name);
+    if (scene->definition == leaving) {
+        game_live_definition_set_path(leaving, NULL);
+        free(name);
+        return;
+    }
+    if (scene->editor_definition_seen == leaving) {
+        scene->editor_definition_seen = scene->definition;
+    }
+    /* Attached instances keep it, with its path, until they go. */
+    game_live_remove_definition(scene->live, name);
+    free(name);
+}
+
+static void forget_index(int *index, int removed)
+{
+    *index = *index == removed ? -1 : *index - (*index > removed);
+}
+
+/* A deleted prototype goes, unless the open scene still places it; then it
+   stays, unsaved. */
+static void forget_prototype(app_scene_authoring *scene, scene_prototype_asset *asset)
+{
+    const char *name = asset->prototype->name;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (!strcmp(scene->actors[i].prototype_name, name)) {
+            free(asset->path);
+            asset->path = NULL;
+            asset->dirty = 1;
+            return;
+        }
+    }
+    if (previewed_prototype(scene) == asset) {
+        app_scene_authoring_stop_prototype_preview(scene);
+    }
+    scene_tabs_close(scene, APP_EDITOR_DOCUMENT_PROTOTYPE, name);
+    int removed = (int)(asset - scene->prototypes);
+    forget_index(&scene->selected_prototype, removed);
+    forget_index(&scene->runtime_preview_prototype, removed);
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        forget_index(&scene->tabs[i].selected_prototype, removed);
+    }
+    game_prototype_free(asset->prototype);
+    free(asset->path);
+    clear_prototype_history(asset);
+    int count = acount(scene->prototypes);
+    memmove(asset, asset + 1, (size_t)(count - removed - 1) * sizeof *asset);
+    asetlen(scene->prototypes, count - 1);
+}
+
+static bool named_file(const char *path, const char *name)
+{
+    const char *base = content_basename(path);
+    size_t length = strlen(name);
+    return !strncmp(base, name, length) && !strcmp(base + length, ASSET_EXTENSION);
+}
+
+/* A file that comes back, as Undo brings back a deleted one, takes up what
+   Studio kept of it without a path: a prototype the scene still places, or
+   the definition the graph editor still shows. */
+static bool adopt_file(app_scene_authoring *scene, const char *path)
+{
+    bool prototypes = content_path_in_folder(scene, path, "prototypes");
+    for (int i = 0; prototypes && i < acount(scene->prototypes); i++) {
+        scene_prototype_asset *asset = &scene->prototypes[i];
+        if (!asset->path && named_file(path, asset->prototype->name)) {
+            asset->path = xstrdup(path);
+            asset->dirty = 0;
+            reload_prototype_asset(scene, asset);
+            return true;
+        }
+    }
+    bool graphs = in_graph_folder(scene, path);
+    for (int i = 0; graphs && i < game_live_definition_count(scene->live); i++) {
+        game_live_definition *definition = game_live_definition_at(scene->live, i);
+        if (!game_live_definition_path(definition) &&
+            named_file(path, definition->name)) {
+            game_live_definition_set_path(definition, path);
+            reload_behavior_from_disk(scene, definition->name);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void forget_file(app_scene_authoring *scene, const char *from)
+{
+    game_live_definition *definition = definition_file(scene, from);
+    scene_prototype_asset *prototype = prototype_file(scene, from);
+    if (definition) {
+        forget_definition(scene, definition);
+    }
+    if (prototype) {
+        forget_prototype(scene, prototype);
+    }
+}
+
+void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (moves[i].from) {
+            tree_watch_note(&scene->disk, moves[i].from);
+        }
+        if (moves[i].to) {
+            tree_watch_note(&scene->disk, moves[i].to);
+        }
+    }
+    content_refresh(scene);
+    /* New and renamed files first, so the files that name them find them. */
+    for (int i = 0; i < count; i++) {
+        const scene_move *move = &moves[i];
+        bool moved = move->to && (!move->from || strcmp(move->from, move->to));
+        scene_prototype_asset *prototype = moved ? prototype_file(scene, move->from)
+                                                 : NULL;
+        game_live_definition *definition = moved ? definition_file(scene, move->from)
+                                                 : NULL;
+        if (prototype) {
+            move_prototype(scene, prototype, move->to);
+        } else if (definition) {
+            move_definition(scene, definition, move->to);
+        } else if (moved && (move->from || !adopt_file(scene, move->to))) {
+            sync_path(scene, move->to, true);
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (moves[i].from && moves[i].to && !strcmp(moves[i].from, moves[i].to)) {
+            sync_path(scene, moves[i].to, true);
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (moves[i].from && !moves[i].to) {
+            forget_file(scene, moves[i].from);
+        }
+    }
+    refresh_asset_catalog(scene);
+    asset_index_invalidate(scene);
+}

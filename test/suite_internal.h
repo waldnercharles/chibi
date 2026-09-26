@@ -209,6 +209,8 @@ void run_graph_model_checks();
 void run_graph_document_checks();
 void run_graph_comment_checks();
 void run_graph_find_checks();
+void run_graph_describe_checks();
+void run_graph_problems_checks();
 void run_graph_arrange_checks();
 void run_graph_inline_checks();
 void run_graph_editing_checks();

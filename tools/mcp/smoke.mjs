@@ -15,6 +15,8 @@ const expectedPublicNames = [
   "buildPrototype",
   "buildScene",
   "optimizeGraph",
+  "renameSymbol",
+  "deleteSymbol",
   "previewShader",
   "previewScene",
   "searchAssets",
@@ -25,6 +27,8 @@ const expectedPublicNames = [
   "listAssets",
   "getAssetCatalog",
   "inspectAssetDependencies",
+  "findReferences",
+  "callHierarchy",
   "getProjectStatus",
   "describeComponents",
   "inspectSystem",
@@ -73,7 +77,7 @@ const requests = [
   { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "getAssetCatalog", arguments: {} } },
   { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health" } } },
   { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
+  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_uses: true } } },
   { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
   { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
@@ -102,12 +106,22 @@ const requests = [
   { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
   { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
   { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
+  { jsonrpc: "2.0", id: 38, method: "tools/call", params: { name: "searchNodes", arguments: { query: "button", include_pins: false } } },
+  { jsonrpc: "2.0", id: 39, method: "tools/call", params: { name: "renameSymbol", arguments: { event: "Damage", new_name: "Harm" } } },
+  { jsonrpc: "2.0", id: 40, method: "tools/call", params: { name: "deleteSymbol", arguments: { asset: { kind: "behavior", name: "HealthBehavior" } } } },
   { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildGraph", arguments: {
     kind: "behavior", name: "McpExpressionProbe", create: true, dry_run: true,
     operations: [
       { op: "add_node", ref: "expression", type: "Behavior Expression", source: "x + 1" },
       { op: "set_expression", node: "expression", source: "x * 2" },
     ],
+  } } },
+  { jsonrpc: "2.0", id: 60, method: "tools/call", params: { name: "findReferences", arguments: { event: "Damage" } } },
+  { jsonrpc: "2.0", id: 61, method: "tools/call", params: { name: "callHierarchy", arguments: {
+    asset: { kind: "behavior", name: "PlayerContactBehavior" }, graph: "Apply Contact Damage",
+  } } },
+  { jsonrpc: "2.0", id: 62, method: "tools/call", params: { name: "findReferences", arguments: {
+    asset: { kind: "behavior", name: "HealthBehavior" }, variable: "__mcp_no_such_variable__",
   } } },
   { jsonrpc: "2.0", method: "ping" },
 ];
@@ -223,6 +237,18 @@ const pagedSearch = toolPayload(responseById.get(30));
 const secondCatalogPage = toolPayload(responseById.get(31));
 const missingAssets = toolPayload(responseById.get(35));
 const missingNodes = toolPayload(responseById.get(36));
+const buttonNodes = toolPayload(responseById.get(38));
+// Read-only: a rename's dry run publishes nothing, and a used behavior refuses deletion.
+const renamed = toolPayload(responseById.get(39));
+const refusedDelete = toolPayload(responseById.get(40));
+if (renamed.ok !== true || renamed.result?.dry_run !== true || renamed.result?.published !== false ||
+    !renamed.result?.assets?.some((asset) => asset.path === "content/events/Damage.yaml" && asset.new_name === "Harm") ||
+    Object.keys(renamed.result?.expected_hashes || {}).length !== renamed.result.assets.length ||
+    !renamed.next_steps?.some((step) => step.includes("expected_hashes")) ||
+    refusedDelete.ok !== false || !(refusedDelete.result?.references?.length >= 3) ||
+    !refusedDelete.next_steps?.some((step) => step.includes("force"))) {
+  throw new Error("renameSymbol or deleteSymbol did not dry-run and refuse as expected");
+}
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !status.next_steps?.length || !assets.next_steps?.length ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -266,8 +292,34 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !missingAssets.next_steps?.length ||
     missingNodes.ok !== true || missingNodes.result?.nodes?.length !== 0 ||
     !missingNodes.next_steps?.length ||
+    !buttonNodes.result?.nodes?.some((node) => node.type === "Click UI Element") ||
+    !buttonNodes.next_steps?.some((step) => step.includes("content/ui/")) ||
     (responseById.get(14)?.result?.content?.[0]?.text || "").length > 2048) {
   throw new Error("native MCP operations failed");
+}
+// Navigation: an event's definition, senders and handlers by node and graph;
+// a function's callers through the handler whose run reaches the call, and
+// its callees through the events it sends; use counts in inspectGraph.
+const references = toolPayload(responseById.get(60));
+const hierarchy = toolPayload(responseById.get(61));
+const referenceSummary = JSON.parse(responseById.get(60)?.result?.content?.[0]?.text || "{}");
+const contactSend = references.result?.uses?.find((use) =>
+  use.role === "send" && use.asset?.name === "PlayerContactBehavior");
+const contactCaller = hierarchy.result?.root?.callers?.find((item) => item.name === "Check Enemy Contact");
+const damageCallee = hierarchy.result?.root?.callees?.find((item) => item.kind === "event" && item.name === "Damage");
+const applyDamage = healthGraph.result?.graphs?.find((graph) => graph.name === "Apply Damage");
+if (references.ok !== true || references.result?.definition?.asset?.path !== "content/events/Damage.yaml" ||
+    !(references.result?.counts?.send >= 2) || references.result?.counts?.handle !== 1 ||
+    contactSend?.graph !== "Apply Contact Damage" || !Number.isInteger(contactSend?.node) ||
+    referenceSummary.counts?.send !== references.result.counts.send ||
+    hierarchy.ok !== true || hierarchy.result?.root?.name !== "Apply Contact Damage" ||
+    contactCaller?.callers?.[0]?.kind !== "handler" || contactCaller.callers[0].event !== "Contact Begin" ||
+    !damageCallee?.callees?.some((item) => item.kind === "handler" && item.asset?.name === "HealthBehavior") ||
+    !(applyDamage?.uses?.call >= 1) || !(healthGraph.result?.uses?.attach >= 1) ||
+    Object.hasOwn(libraryGraph.result || {}, "uses") ||
+    responseById.get(62)?.result?.isError !== true ||
+    toolPayload(responseById.get(62))?.error?.code !== "asset_not_found") {
+  throw new Error("findReferences, callHierarchy and inspectGraph use counts failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
   template.uriTemplate === "chibi://asset/{kind}/{name}")) {
@@ -437,6 +489,20 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     !(defaultRegistry.response.result?.components?.length > 0) ||
     nativeMissing.status !== 6 || nativeMissing.response.error?.code !== "asset_not_found") {
   throw new Error("native controller smoke checks failed");
+}
+
+// Dependencies come from the shared reference index: events a behavior
+// sends or handles, and prototypes a graph spawns.
+const edgeTo = (response, kind, name) =>
+  response.response.result?.edges?.some((edge) => edge.to.kind === kind && edge.to.name === name && edge.to.resolved);
+const edgeFrom = (response, kind, name) =>
+  response.response.result?.edges?.some((edge) => edge.from.kind === kind && edge.from.name === name);
+const spawners = nativeRequest("asset_dependencies", { kind: "prototype", name: "ArenaHitPulse", direction: "incoming" });
+const senders = nativeRequest("asset_dependencies", { kind: "event", name: "Damage", direction: "incoming" });
+if (!edgeTo(nativeDependencies, "event", "Damage") || !edgeTo(nativeDependencies, "event", "Died") ||
+    !edgeFrom(spawners, "behavior", "ArenaImpactFeedback") ||
+    !edgeFrom(senders, "behavior", "PlayerContactBehavior") || !edgeFrom(senders, "behavior", "HealthBehavior")) {
+  throw new Error("asset dependencies must include event and Spawn Prototype links");
 }
 
 const systemRoot = mkdtempSync(join(tmpdir(), "chibi-system-"));

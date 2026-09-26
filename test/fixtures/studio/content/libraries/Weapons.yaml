@@ -1,0 +1,25 @@
+version: 3
+name: Weapons
+domain: library
+id_counter: 10253
+graphs:
+- {kind: event, name: Events}
+- id: 1
+  kind: function
+  name: Ignore Shooter
+  entry_id: 2
+  return_id: 6
+  call_depth_limit: 64
+  nodes:
+  - id: 2
+    type: Function Entry
+    outputs:
+      Shooter: {type: handle, type_name: ecs.entity, kind: data}
+      Projectile: {type: handle, type_name: ecs.entity, kind: data}
+  - {id: 6, type: Return}
+  - {id: 10247, type: Set_GameCollider_ignore_entity}
+  edges:
+  - {from: 2.Exec, to: 10247.Exec}
+  - {from: 2.Shooter, to: 10247.Value}
+  - {from: 2.Projectile, to: 10247.Target}
+  - {from: 10247.Then, to: 6.Exec}

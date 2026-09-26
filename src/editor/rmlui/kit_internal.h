@@ -132,7 +132,8 @@ typedef struct widget
     rml_element *body;           /* list content */
     float body_height, body_top; /* list: the content sizing applied, in dp */
     rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
-        *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el, *swatch_el;
+        *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el,
+        *swatch_el, *about_el;
 } widget;
 
 /* Motion (kit_motion.c). A spring's state along one axis, as displacement
@@ -515,7 +516,7 @@ void menu_click(kit *k, node *n);
 void menu_hover(kit *k, node *n);
 /* False when no popup is open. */
 bool popup_key(kit *k, const rml_event *e);
-void set_tip(node *n, const char *label, const char *shortcut);
+void set_tip(node *n, const char *label, const char *shortcut, const char *description);
 void update_tooltip(kit *k);
 
 /* ---------- Command palette (kit_command.c) ---------- */

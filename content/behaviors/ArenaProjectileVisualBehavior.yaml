@@ -25,8 +25,7 @@ graphs:
         default: {x: -10.0, "y": -10.0, z: -10.0}
       Max:
         default: {x: 10.0, "y": 10.0, z: 10.0}
-  - id: 18
-    type: Set_GameVisualMotion_angular_velocity
+  - {id: 18, type: Set_GameVisualMotion_angular_velocity}
   edges:
   - {from: 2.Then, to: 8.Exec}
   - {from: 4.Result, to: 8.Value}

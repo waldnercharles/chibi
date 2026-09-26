@@ -62,6 +62,9 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
         checkpoint_text(doc, item, "system", tab->system_json);
         checkpoint_text(doc, item, "system_saved", tab->system_saved);
         checkpoint_text(doc, item, "asset_saved", tab->asset_saved);
+        if (tab->ui) {
+            yyjson_mut_obj_add_val(doc, item, "ui", ui_buffer_checkpoint(tab->ui, doc));
+        }
     }
 }
 
@@ -77,6 +80,7 @@ static void free_checkpoint_tab(scene_document_tab *tab)
     free(tab->asset_saved);
     free(tab->system_json);
     free(tab->system_saved);
+    ui_buffer_free(tab->ui);
 }
 
 static bool restore_next_scene_key(app_scene_authoring *scene, yyjson_val *root)
@@ -113,7 +117,7 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
         const char *key = yyjson_get_str(yyjson_obj_get(item, "key"));
         const char *label = yyjson_get_str(yyjson_obj_get(item, "label"));
         if (!yyjson_is_obj(item) || !key || !label ||
-            kind < APP_EDITOR_DOCUMENT_SCENE || kind > APP_EDITOR_DOCUMENT_SYSTEM) {
+            kind < APP_EDITOR_DOCUMENT_SCENE || kind > APP_EDITOR_DOCUMENT_UI) {
             goto fail;
         }
         for (int j = 0; j < acount(candidate); j++) {
@@ -137,8 +141,12 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
             .system_json = checkpoint_copy_text(item, "system"),
             .system_saved = checkpoint_copy_text(item, "system_saved"),
             .asset_saved = checkpoint_copy_text(item, "asset_saved"),
+            .ui = kind == APP_EDITOR_DOCUMENT_UI
+                    ? ui_buffer_restore(yyjson_obj_get(item, "ui"))
+                    : NULL,
         };
-        if (!checkpoint_read_camera(yyjson_obj_get(item, "camera"), &tab.camera)) {
+        if (!checkpoint_read_camera(yyjson_obj_get(item, "camera"), &tab.camera) ||
+            (kind == APP_EDITOR_DOCUMENT_UI && !tab.ui)) {
             free_checkpoint_tab(&tab);
             goto fail;
         }
@@ -564,7 +572,7 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     int result = -1;
     if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1 || !scene_json ||
         !document || !content || kind < APP_EDITOR_DOCUMENT_SCENE ||
-        kind > APP_EDITOR_DOCUMENT_SYSTEM || !yyjson_is_arr(prototypes) ||
+        kind > APP_EDITOR_DOCUMENT_UI || !yyjson_is_arr(prototypes) ||
         !yyjson_is_arr(behaviors) || !yyjson_is_arr(actors)) {
         goto done;
     }

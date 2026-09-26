@@ -9,9 +9,11 @@
 char *text_file_read(const char *path)
 {
     const char *overlay = text_overlay_text(path);
-    if (overlay) {
-        return xstrdup(overlay);
-    }
+    return overlay ? xstrdup(overlay) : text_file_read_disk(path);
+}
+
+char *text_file_read_disk(const char *path)
+{
     FILE *file = fopen(path, "rb");
     if (!file || fseek(file, 0, SEEK_END) != 0) {
         if (file) {

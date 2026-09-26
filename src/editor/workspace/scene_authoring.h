@@ -70,6 +70,7 @@ typedef enum
     APP_EDITOR_DOCUMENT_PROTOTYPE,
     APP_EDITOR_DOCUMENT_BEHAVIOR,
     APP_EDITOR_DOCUMENT_SYSTEM,
+    APP_EDITOR_DOCUMENT_UI, /* a ui asset or stylesheet, identified by its absolute path */
 } app_editor_document_kind;
 
 typedef struct

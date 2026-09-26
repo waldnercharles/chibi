@@ -125,6 +125,11 @@ void studio_error(studio *s, const char *title, const char *message)
 void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
+    /* Text saves while the scene runs, as it applies live. */
+    if (!graph_focused(s) && studio_ui_buffer(s)) {
+        studio_code_save(s);
+        return;
+    }
     if (!studio_editable(s) || runtime_session(scene)) {
         toast(s, KIT_TOAST_WARNING, "Stop the scene to save", NULL);
         return;
@@ -187,6 +192,10 @@ bool studio_can_replay(studio *s, bool redo)
     if (graph_focused(s)) {
         return studio_graph_can_replay(s, redo);
     }
+    ui_buffer *text = studio_ui_buffer(s);
+    if (text) {
+        return redo ? ui_buffer_can_redo(text) : ui_buffer_can_undo(text);
+    }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         return asset && acount(redo ? asset->redo : asset->undo) > 0;
@@ -233,6 +242,17 @@ static void document_history(studio *s, bool redo)
 
 void studio_history(studio *s, bool redo)
 {
+    ui_buffer *text = graph_focused(s) ? NULL : studio_ui_buffer(s);
+    /* Text replays while the scene runs, as it applies live. */
+    if (text && studio_can_replay(s, redo)) {
+        if (redo) {
+            ui_buffer_redo(text);
+        } else {
+            ui_buffer_undo(text);
+        }
+        studio_report(s, redo ? "Redo" : "Undo");
+        return;
+    }
     if (!studio_editable(s) || !studio_can_replay(s, redo)) {
         return;
     }
@@ -511,20 +531,30 @@ static void menus(studio *s)
     kit_pop(k);
 }
 
+static uint32_t tab_icon(const scene_document_tab *tab)
+{
+    switch (tab->kind) {
+        case APP_EDITOR_DOCUMENT_SCENE: return KIT_ICON_SCENE;
+        case APP_EDITOR_DOCUMENT_PROTOTYPE: return KIT_ICON_PROTOTYPE;
+        case APP_EDITOR_DOCUMENT_BEHAVIOR: return KIT_ICON_GRAPH;
+        case APP_EDITOR_DOCUMENT_SYSTEM: return KIT_ICON_SYSTEM;
+        case APP_EDITOR_DOCUMENT_UI:
+            return tab->ui->stylesheet ? KIT_ICON_FILE : KIT_ICON_LAYOUT;
+    }
+    return KIT_ICON_FILE;
+}
+
 static void document_tabs(studio *s)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
+    int closing = -1;
     kit_push(k, "docs", "nav", "doc-tabs");
     for (int i = 0; i < acount(scene->tabs); i++) {
         const scene_document_tab *tab = &scene->tabs[i];
         bool active = i == scene->active_tab;
         bool dirty = scene_tabs_dirty(scene, tab);
-        uint32_t icon = tab->kind == APP_EDITOR_DOCUMENT_SCENE ? KIT_ICON_SCENE
-                      : tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR ? KIT_ICON_GRAPH
-                      : tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE
-                          ? KIT_ICON_PROTOTYPE
-                          : KIT_ICON_SYSTEM;
+        uint32_t icon = tab_icon(tab);
         char key[24];
         snprintf(key, sizeof key, "t%d", i);
         kit_push(k, key, "button", "btn doc-tab");
@@ -539,6 +569,14 @@ static void document_tabs(studio *s)
         if (dirty) {
             kit_leaf(k, "dirty", NULL, "dirty-dot");
         }
+        /* UI documents close; other documents stay for the session. */
+        kit_button_desc close = { .icon = KIT_ICON_CLOSE,
+                                  .size = KIT_SM,
+                                  .cls = "doc-close",
+                                  .tip = "Close" };
+        if (tab->kind == APP_EDITOR_DOCUMENT_UI && kit_button(k, "close", &close)) {
+            closing = i;
+        }
         kit_pop(k);
         if (kit_item_clicked(k) && !active) {
             finish_transform_edit(scene, false);
@@ -546,6 +584,9 @@ static void document_tabs(studio *s)
         }
     }
     kit_pop(k);
+    if (closing >= 0) {
+        studio_code_close(s, closing);
+    }
 }
 
 /* What Play runs: the scene, or a preview of the selected prototype. Fixed
@@ -695,7 +736,8 @@ static void topbar(studio *s)
 static bool drawer_editor(studio_editor editor)
 {
     return editor == STUDIO_EDITOR_OUTPUT || editor == STUDIO_EDITOR_ASSETS ||
-           editor == STUDIO_EDITOR_PERFORMANCE || editor == STUDIO_EDITOR_PANEL;
+           editor == STUDIO_EDITOR_PERFORMANCE ||
+           editor == STUDIO_EDITOR_PANEL || editor == STUDIO_EDITOR_CODE;
 }
 
 /* The Studio project's panels, after the built-in editors. */
@@ -1187,6 +1229,7 @@ void studio_emit(studio *s)
 {
     sync_presentation(s);
     studio_disk_frame(s);
+    studio_code_frame(s);
     track_pointer(s);
     kit_root(s->kit, "app");
     topbar(s);

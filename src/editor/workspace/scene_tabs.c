@@ -30,6 +30,7 @@ static void free_tab(scene_document_tab *tab)
     free(tab->asset_saved);
     free(tab->system_json);
     free(tab->system_saved);
+    ui_buffer_free(tab->ui);
     *tab = (scene_document_tab){ 0 };
 }
 
@@ -40,6 +41,7 @@ static const char *tab_kind_name(app_editor_document_kind kind)
         case APP_EDITOR_DOCUMENT_PROTOTYPE: return "prototype";
         case APP_EDITOR_DOCUMENT_BEHAVIOR: return "behavior";
         case APP_EDITOR_DOCUMENT_SYSTEM: return "system";
+        case APP_EDITOR_DOCUMENT_UI: return "ui";
     }
     return "document";
 }
@@ -394,6 +396,32 @@ void scene_tabs_free(app_scene_authoring *scene)
     scene->current_scene_tab_key = NULL;
 }
 
+/* The file behind a document, or NULL for one never saved. */
+static const char *document_path(app_scene_authoring *scene, app_editor_document_kind kind, const char *id)
+{
+    switch (kind) {
+        case APP_EDITOR_DOCUMENT_SCENE: return scene->scene_path;
+        case APP_EDITOR_DOCUMENT_SYSTEM: return scene->system_path;
+        case APP_EDITOR_DOCUMENT_PROTOTYPE: {
+            scene_prototype_asset *asset = find_prototype(scene, id);
+            return asset ? asset->path : NULL;
+        }
+        case APP_EDITOR_DOCUMENT_BEHAVIOR: {
+            game_live_definition *definition = game_live_find_definition(scene->live, id);
+            return definition ? game_live_definition_path(definition) : NULL;
+        }
+        case APP_EDITOR_DOCUMENT_UI: return id;
+    }
+    return NULL;
+}
+
+/* Documents named by their file rather than an asset name. */
+static bool keyed_by_path(app_editor_document_kind kind)
+{
+    return kind == APP_EDITOR_DOCUMENT_SCENE ||
+           kind == APP_EDITOR_DOCUMENT_SYSTEM || kind == APP_EDITOR_DOCUMENT_UI;
+}
+
 void scene_tabs_document_selected(
     app_scene_authoring *scene,
     app_editor_document_kind kind,
@@ -405,20 +433,10 @@ void scene_tabs_document_selected(
         return;
     }
     int previous = scene->active_tab;
-    const char *path = kind == APP_EDITOR_DOCUMENT_SCENE  ? scene->scene_path
-                     : kind == APP_EDITOR_DOCUMENT_SYSTEM ? scene->system_path
-                     : kind == APP_EDITOR_DOCUMENT_PROTOTYPE
-                         ? (find_prototype(scene, id)
-                                ? find_prototype(scene, id)->path
-                                : NULL)
-                         : (game_live_find_definition(scene->live, id)
-                                ? game_live_definition_path(
-                                      game_live_find_definition(scene->live, id)
-                                  )
-                                : NULL);
+    const char *path = document_path(scene, kind, id);
     scene_document_tab *current = active_tab(scene);
     if (current && current->kind == kind && !scene->tabs_transitioning) {
-        bool same = kind == APP_EDITOR_DOCUMENT_SCENE || kind == APP_EDITOR_DOCUMENT_SYSTEM
+        bool same = keyed_by_path(kind)
                       ? ((!path && !current->path) ||
                          (path && current->path && !strcmp(path, current->path)))
                       : !strcmp(current->key + strlen(tab_kind_name(kind)) + 1, id);
@@ -453,6 +471,10 @@ void scene_tabs_document_selected(
         index = tab_find(scene, key);
     }
     free(key);
+    /* Only scene_tabs_open_ui makes a UI document's tab, with its text. */
+    if (index < 0 && kind == APP_EDITOR_DOCUMENT_UI) {
+        return;
+    }
     if (index < 0 && kind == APP_EDITOR_DOCUMENT_SCENE && acount(scene->tabs) == 1 &&
         scene->tabs[0].kind == APP_EDITOR_DOCUMENT_SCENE && !scene->tabs[0].scene_json) {
         index = 0;
@@ -559,6 +581,8 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
                                            false
                                        )
                                      : open_system_asset(scene, target->path);
+    } else if (target->kind == APP_EDITOR_DOCUMENT_UI) {
+        scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_UI, target->path);
     }
     if (result == 0) {
         if (target->kind == APP_EDITOR_DOCUMENT_SCENE) {
@@ -584,6 +608,12 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
                 open_behavior_asset(scene, prior->key + strlen("behavior:"));
             } else if (prior->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
                 load_system_document_json(scene, prior->system_json, prior->path, false);
+            } else if (prior->kind == APP_EDITOR_DOCUMENT_UI) {
+                scene_authoring_select_document(
+                    scene,
+                    APP_EDITOR_DOCUMENT_UI,
+                    prior->path
+                );
             }
             scene->active_tab = previous;
         }
@@ -682,6 +712,9 @@ bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
         return !tab->system_saved || !tab->system_json ||
                strcmp(tab->system_saved, tab->system_json) != 0;
     }
+    if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
+        return ui_buffer_dirty(tab->ui);
+    }
     return false;
 }
 
@@ -775,6 +808,8 @@ static int discard_tab(app_scene_authoring *scene, int index)
             return discard_prototype(scene, tab);
         case APP_EDITOR_DOCUMENT_BEHAVIOR: return discard_behavior(scene, tab);
         case APP_EDITOR_DOCUMENT_SYSTEM: return discard_system(scene, tab);
+        /* The edits go with the tab's buffer. */
+        case APP_EDITOR_DOCUMENT_UI: return 0;
     }
     return -1;
 }
@@ -877,4 +912,51 @@ int scene_tabs_discard(app_scene_authoring *scene, int index)
         return -1;
     }
     return remove_tab(scene, index);
+}
+
+/* ---------- UI documents ---------- */
+
+scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path)
+{
+    char *absolute = realpath(path, NULL);
+    const char *key = absolute ? absolute : path;
+    scene_document_tab *found = NULL;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        scene_document_tab *tab = &scene->tabs[i];
+        if (tab->kind == APP_EDITOR_DOCUMENT_UI && !strcmp(tab->path, key)) {
+            found = tab;
+            break;
+        }
+    }
+    free(absolute);
+    return found;
+}
+
+/* A new tab holding the document's text, keyed by its absolute path. */
+static int add_ui_tab(app_scene_authoring *scene, const char *path)
+{
+    char error[256] = "no such file";
+    char *absolute = realpath(path, NULL);
+    ui_buffer *buffer = absolute ? ui_buffer_open(absolute, error, sizeof error) : NULL;
+    if (!buffer) {
+        snprintf(scene->message, sizeof scene->message, "Could not open %s: %s", content_basename(path), error);
+        free(absolute);
+        return -1;
+    }
+    scene_document_tab tab = {
+        .kind = APP_EDITOR_DOCUMENT_UI,
+        .key = tab_key(APP_EDITOR_DOCUMENT_UI, absolute, absolute),
+        .label = tab_label(APP_EDITOR_DOCUMENT_UI, NULL, absolute),
+        .path = absolute,
+        .ui = buffer,
+    };
+    apush(scene->tabs, tab);
+    return acount(scene->tabs) - 1;
+}
+
+int scene_tabs_open_ui(app_scene_authoring *scene, const char *path)
+{
+    scene_document_tab *open = scene_tabs_ui(scene, path);
+    int index = open ? (int)(open - scene->tabs) : add_ui_tab(scene, path);
+    return index < 0 ? -1 : scene_tabs_activate(scene, index);
 }

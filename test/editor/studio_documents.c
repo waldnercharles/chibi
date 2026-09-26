@@ -107,6 +107,9 @@ static void reload_keeps_viewed_graph_saved()
     fixture_free(&f);
 }
 
+/* UI documents as tabs and in the Text Editor (test/editor/ui_documents.c). */
+void test_ui_document_tabs();
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -126,6 +129,7 @@ int studio_documents_run(const char *program)
     app_scene_renderer_initialize();
     app_input_initialize();
     reload_keeps_viewed_graph_saved();
+    test_ui_document_tabs();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

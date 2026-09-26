@@ -265,14 +265,41 @@ static void push_unique(char ***paths, const char *path)
     apush(*paths, xstrdup(path));
 }
 
+static void add_change(app_disk_change **changes, app_disk_result result, const char *path, const char *message)
+{
+    app_disk_change change = { .result = result, .path = xstrdup(path) };
+    snprintf(change.message, sizeof change.message, "%s", message);
+    apush(*changes, change);
+}
+
+/* Open UI documents follow their files wherever they are, as a ui asset of
+ * another project or a stylesheet: one without edits reloads. */
+static app_disk_change *sync_ui_documents(app_scene_authoring *scene, double now)
+{
+    app_disk_change *changes = NULL;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        scene_document_tab *tab = &scene->tabs[i];
+        if (tab->kind != APP_EDITOR_DOCUMENT_UI || !ui_buffer_poll_disk(tab->ui, now)) {
+            continue;
+        }
+        app_disk_result result = ui_buffer_dirty(tab->ui) ? APP_DISK_UNSAVED
+                               : reload_ui_document(scene, tab) == 0
+                                   ? APP_DISK_RELOADED
+                                   : APP_DISK_FAILED;
+        add_change(&changes, result, tab->path, scene->message);
+    }
+    return changes;
+}
+
 app_disk_change *app_scene_authoring_sync_disk(app_scene_authoring *scene, double now)
 {
+    app_disk_change *changes = sync_ui_documents(scene, now);
     if (!scene->content_root) {
-        return NULL;
+        return changes;
     }
     char **changed = tree_watch_poll(&scene->disk, scene->content_root, ASSET_EXTENSION, now);
     if (!changed && (!acount(scene->disk_pending) || runtime_session(scene))) {
-        return NULL;
+        return changes;
     }
     if (changed) {
         content_refresh(scene);
@@ -283,19 +310,15 @@ app_disk_change *app_scene_authoring_sync_disk(app_scene_authoring *scene, doubl
         push_unique(&paths, changed[i]);
     }
     tree_watch_changes_free(changed);
-    app_disk_change *changes = NULL;
     for (int i = 0; i < acount(paths); i++) {
         if (waits_for_runtime(scene, paths[i])) {
             push_unique(&scene->disk_pending, paths[i]);
             continue;
         }
         app_disk_result result = sync_path(scene, paths[i], false);
-        if (result == APP_DISK_NONE) {
-            continue;
+        if (result != APP_DISK_NONE) {
+            add_change(&changes, result, paths[i], scene->message);
         }
-        app_disk_change change = { .result = result, .path = xstrdup(paths[i]) };
-        snprintf(change.message, sizeof change.message, "%s", scene->message);
-        apush(changes, change);
     }
     tree_watch_changes_free(paths);
     return changes;
@@ -311,6 +334,10 @@ void app_disk_changes_free(app_disk_change *changes)
 
 app_disk_result app_scene_authoring_reload_path(app_scene_authoring *scene, const char *path)
 {
+    scene_document_tab *ui = tab_at(scene, APP_EDITOR_DOCUMENT_UI, path);
+    if (ui) {
+        return reload_ui_document(scene, ui) == 0 ? APP_DISK_RELOADED : APP_DISK_FAILED;
+    }
     return sync_path(scene, path, true);
 }
 

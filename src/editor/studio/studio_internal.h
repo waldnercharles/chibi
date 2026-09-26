@@ -459,6 +459,30 @@ typedef struct
     char *name;
 } studio_project;
 
+/* UI documents (workstream D). The Text Editor (studio_code.c) shows the
+ * active UI document and keeps the last one while a document of another kind
+ * is active. */
+typedef struct
+{
+    char path[1024];      /* the UI document shown, or empty */
+    int reveal;           /* a 1-based line of the shown part to select, or 0 */
+    int reveal_wait;      /* frames until that line is laid out */
+    int overwrite_toast;  /* offers to save over a file changed on disk */
+    char overwrite[1024]; /* that file */
+    int close_toast;      /* confirms closing a document with unsaved edits */
+    char close[1024];     /* that document */
+} studio_code;
+
+/* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
+typedef struct
+{
+    int kind;     /* ui_new_kind */
+    bool opening; /* open the popover this frame */
+    bool focus;   /* focus the name field on its first frame */
+    char name[64];
+    char error[160];
+} studio_new_ui;
+
 struct studio
 {
     app_scene_authoring *scene;
@@ -574,6 +598,9 @@ struct studio
     double status_time;
     double time;
     double active_until; /* frames run at full rate until then, after input */
+    /* UI documents (workstream D). */
+    studio_code code;
+    studio_new_ui new_ui;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -946,5 +973,25 @@ void studio_duplicate(studio *s);
 void studio_delete(studio *s);
 void studio_add_object(studio *s, const char *prototype);
 uint32_t studio_prototype_icon(const studio *s, const char *prototype);
+
+/* ---------- UI documents (workstream D, studio_code.c) ---------- */
+
+/* Before the areas: applies UI edits live (the code_apply_live preference)
+ * and shows the Text Editor when a UI document becomes active. */
+void studio_code_frame(studio *s);
+/* Opens a UI document's part at a 1-based line of that part's text, as a
+ * style origin names a line of a ui asset's rcss block (UI_PART_RCSS); false
+ * when it cannot be opened. studio_open_ui_source opens the rml block, whose
+ * lines data-src names; a stylesheet has only its RCSS, numbered by file. */
+bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line);
+/* The active UI document's text, or NULL when another kind is active. */
+ui_buffer *studio_ui_buffer(studio *s);
+/* Saves the active UI document, offering to save over a file that changed
+ * on disk. */
+void studio_code_save(studio *s);
+/* Closes a UI document's tab, asking first when it has unsaved edits. */
+void studio_code_close(studio *s, int tab);
+/* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
+void studio_new_ui_button(studio *s);
 
 #endif

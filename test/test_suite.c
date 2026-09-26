@@ -71,6 +71,8 @@ int rmlui_render_run(const char *program, bool gles);
 void test_studio_pinch();
 /* UI source maps (workstream A) */
 void test_ui_sources();
+/* UI documents (workstream D). */
+void test_ui_documents();
 
 static int fails;
 
@@ -206,6 +208,8 @@ TEST_CASE(all_checks)
     test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
     /* UI source maps (workstream A) */
     test_ui_sources();
+    /* UI documents (workstream D). */
+    test_ui_documents();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -788,6 +792,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-documents") == 0) {
         registry_validate();
         return studio_documents_run(program_name) || fails ? 1 : 0;
+    }
+    /* UI documents (workstream D). */
+    if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {
+        test_ui_documents();
+        return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;

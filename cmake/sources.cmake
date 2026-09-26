@@ -291,3 +291,8 @@ set(RUNTIME_SUPPORT_SOURCES
 # UI source maps (docs/studio-ui-authoring.md, workstream A): where installed
 # stylesheets were written.
 list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/ui_style.c)
+
+# UI documents (Studio UI authoring, workstream D).
+list(APPEND APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_buffer.c
+)

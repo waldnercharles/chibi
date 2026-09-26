@@ -49,6 +49,11 @@ Add `ARGS=--play` to launch into Play. `PROJECT` works the same for
 opens at its manifest's start scene. In the browser, add
 `?scene=scenes/<file>.yaml` to the editor URL to open another scene.
 
+File > Open Project and the command palette switch between the repository's
+projects (`project.json` and `projects/*`) without relaunching. `make web-serve`
+mirrors all of them into the browser at `/`, so `?project-root=/projects/<name>`
+also opens one.
+
 Run `make help` for the complete target list and the purpose of each target.
 
 The [frame-time optimization roadmap](docs/research/frame-time-roadmap.md)
@@ -107,7 +112,7 @@ Make directory, use a fresh directory: `make dev DEV_BUILD_DIR=build-dev/ninja`.
 Existing directories retain their generator. With GNU Make versions before 4,
 changed sources require a clean build because timestamp precision can miss relinks.
 
-The workspace checkpoint preserves unsaved scene, prototype and graph edits,
+The workspace checkpoint preserves the open project, unsaved scene, prototype and graph edits,
 Undo/Redo, selection, graph navigation and native window geometry. Play restarts from the
 authored scene with its previous running or paused intent. Live simulation
 memory and in-progress pointer gestures are recreated. Checkpoints live in

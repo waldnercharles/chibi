@@ -20,7 +20,9 @@
 #include "runtime/behaviors/live.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
+#include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,9 +50,11 @@ typedef struct
     double monotonic_time;
     double fixed_dt;
     const chibi_host *host;
+    char *project_root; /* the open project, as opened */
 } app_loop;
 
-static void app_cleanup(app_loop *loop)
+/* Frees what open_workspace built; the loop itself remains. */
+static void close_workspace(app_loop *loop)
 {
     app_game_presentation_free(loop->game);
     app_scene_authoring_free(loop->authoring);
@@ -60,6 +64,20 @@ static void app_cleanup(app_loop *loop)
     render_shader_catalog_clear();
     ecs_world_free(loop->world);
     engine_viewport_free(loop->viewport);
+    free(loop->project_root);
+    loop->game = NULL;
+    loop->authoring = NULL;
+    loop->runtime = NULL;
+    loop->live = NULL;
+    loop->graph_editor = NULL;
+    loop->world = NULL;
+    loop->viewport = NULL;
+    loop->project_root = NULL;
+}
+
+static void app_cleanup(app_loop *loop)
+{
+    close_workspace(loop);
     loop->host->release(loop);
 }
 
@@ -111,6 +129,155 @@ static int app_frame(app_loop *loop)
     }
     CHIBI_TRACE_ZONE_END(frame_zone);
     return finished;
+}
+
+/* Opens `project_path` at `scene_path` (NULL for its start scene) into the
+ * loop's world, runtime, authoring and viewport. */
+static bool open_workspace(
+    app_loop *loop,
+    const char *project_path,
+    const char *scene_path,
+    bool play,
+    char *error,
+    size_t error_size
+)
+{
+    chibi_project project = { 0 };
+    if (chibi_project_open(&project, project_path, error, error_size) != 0) {
+        return false;
+    }
+    char *resolved_scene = chibi_project_scene_path(&project, scene_path);
+    if (!resolved_scene) {
+        snprintf(
+            error,
+            error_size,
+            "Project does not define a start scene: %s",
+            project.root
+        );
+        chibi_project_free(&project);
+        return false;
+    }
+
+    /* The host owns shader setup; image sources must precede graph registration. */
+    if (!render_image_mount_content(project.content, error, error_size)) {
+        free(resolved_scene);
+        chibi_project_free(&project);
+        return false;
+    }
+    registry_validate();
+    behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
+    ecs_world *world = ecs_world_new();
+    engine_viewport *viewport = engine_viewport_new(640, 360);
+    editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
+    game_live_world *live = world ? game_live_world_new(world) : NULL;
+    char *definition_json = editor_definition
+                              ? behavior_asset_save_json(editor_definition)
+                              : NULL;
+    behavior_asset *definition_behavior_asset = definition_json
+                                                  ? behavior_asset_load_json(definition_json)
+                                                  : NULL;
+    free(definition_json);
+    game_live_definition *definition = definition_behavior_asset
+                                         ? game_live_definition_new("AppBehavior", definition_behavior_asset)
+                                         : NULL;
+    engine *runtime = world ? engine_new(world, live) : NULL;
+    app_scene_authoring *authoring = NULL;
+    int components_ok = world != NULL;
+    for (int i = 0; components_ok && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        components_ok = ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) ==
+                        ECS_OK;
+    }
+    if (!world || !components_ok || !viewport || !graph_editor || !live ||
+        !definition || !runtime || game_live_add_definition(live, definition) != 0) {
+        app_scene_authoring_free(authoring);
+        engine_free(runtime);
+        game_live_definition_free(definition);
+        game_live_world_free(live);
+        editor_free(graph_editor);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        free(resolved_scene);
+        chibi_project_free(&project);
+        return false;
+    }
+    authoring = app_scene_authoring_new_with_content_root(
+        world,
+        live,
+        definition,
+        editor_behavior_asset(graph_editor),
+        graph_editor,
+        NULL,
+        NULL,
+        runtime,
+        project.content
+    );
+    bool scene_ready = authoring &&
+                       app_scene_authoring_load_content(authoring) == 0 &&
+                       app_scene_authoring_load(authoring, resolved_scene) == 0;
+    if (!scene_ready || app_scene_authoring_apply_pending(authoring) != 0) {
+        snprintf(
+            error,
+            error_size,
+            "Could not initialize scene: %s",
+            authoring ? app_scene_authoring_message(authoring) : "authoring unavailable"
+        );
+        app_scene_authoring_free(authoring);
+        engine_free(runtime);
+        game_live_world_free(live);
+        editor_free(graph_editor);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        free(resolved_scene);
+        chibi_project_free(&project);
+        return false;
+    }
+    free(resolved_scene);
+    char *root = xstrdup(project.root);
+    chibi_project_free(&project);
+    /* Put the shipped movement graph on screen on first launch. The graph is
+     * still reachable through Files after switching documents. */
+    if (!play && game_live_find_definition(live, "TwinStickInputBehavior")) {
+        (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
+    }
+    editor_set_event_catalog(
+        graph_editor,
+        APP_EVENT_CATALOG,
+        (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
+    );
+    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
+    engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
+    engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);
+
+    loop->graph_editor = graph_editor;
+    loop->runtime = runtime;
+    loop->world = world;
+    loop->live = live;
+    loop->viewport = viewport;
+    loop->authoring = authoring;
+    loop->project_root = root;
+    return true;
+}
+
+/* Replaces the open project with the one at `path`, rebuilding the editor as
+ * a launch would. A project that fails to open reopens the current one. */
+static void open_project(app_loop *loop, const char *path)
+{
+    char error[512];
+    char *previous = xstrdup(loop->project_root);
+    studio_free(loop->studio);
+    close_workspace(loop);
+    bool opened = open_workspace(loop, path, NULL, false, error, sizeof error);
+    if (!opened) {
+        char unused[512];
+        bool restored = open_workspace(loop, previous, NULL, false, unused, sizeof unused);
+        assert(restored);
+        (void)restored;
+    }
+    free(previous);
+    loop->studio = studio_new(loop->authoring, loop->viewport, loop->project_root);
+    if (!opened) {
+        studio_error(loop->studio, "Could not open project", error);
+    }
 }
 
 static void *application_create(const chibi_host *host, const char *checkpoint, char *error, size_t error_size)
@@ -168,126 +335,32 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
     }
 
-    chibi_project project = { 0 };
-    if (chibi_project_open(&project, project_path, error, error_size) != 0) {
-        return NULL;
-    }
-    char *resolved_scene = chibi_project_scene_path(&project, scene_path);
-    if (!resolved_scene) {
-        snprintf(
-            error,
-            error_size,
-            "Project does not define a start scene: %s",
-            project.root
-        );
-        chibi_project_free(&project);
-        return NULL;
-    }
-
-    /* The host owns shader setup; image sources must precede graph registration. */
-    if (!render_image_mount_content(project.content, error, error_size)) {
-        free(resolved_scene);
-        chibi_project_free(&project);
-        return NULL;
-    }
-    registry_validate();
-    behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
-    ecs_world *world = ecs_world_new();
-    engine_viewport *viewport = engine_viewport_new(640, 360);
-    editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
-    game_live_world *live = world ? game_live_world_new(world) : NULL;
-    char *definition_json = editor_definition
-                              ? behavior_asset_save_json(editor_definition)
-                              : NULL;
-    behavior_asset *definition_behavior_asset = definition_json
-                                                  ? behavior_asset_load_json(definition_json)
-                                                  : NULL;
-    free(definition_json);
-    game_live_definition *definition = definition_behavior_asset
-                                         ? game_live_definition_new("AppBehavior", definition_behavior_asset)
-                                         : NULL;
-    engine *runtime = world ? engine_new(world, live) : NULL;
-    app_scene_authoring *authoring = NULL;
-    int components_ok = world != NULL;
-    for (int i = 0; components_ok && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        components_ok = ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) ==
-                        ECS_OK;
-    }
-    if (!world || !components_ok || !viewport || !graph_editor || !live ||
-        !definition || !runtime || game_live_add_definition(live, definition) != 0) {
-        app_scene_authoring_free(authoring);
-        engine_free(runtime);
-        game_live_definition_free(definition);
-        game_live_world_free(live);
-        editor_free(graph_editor);
-        ecs_world_free(world);
-        engine_viewport_free(viewport);
-        free(resolved_scene);
-        chibi_project_free(&project);
-        return NULL;
-    }
-    authoring = app_scene_authoring_new_with_content_root(
-        world,
-        live,
-        definition,
-        editor_behavior_asset(graph_editor),
-        graph_editor,
-        NULL,
-        NULL,
-        runtime,
-        project.content
+    /* A reload reopens the project Studio had open, which may not be the one
+       the host launched with. */
+    yyjson_doc *saved = checkpoint ? yyjson_read(checkpoint, strlen(checkpoint), 0)
+                                   : NULL;
+    const char *saved_project = yyjson_get_str(
+        yyjson_obj_get(yyjson_doc_get_root(saved), "project")
     );
-    bool scene_ready = authoring &&
-                       app_scene_authoring_load_content(authoring) == 0 &&
-                       app_scene_authoring_load(authoring, resolved_scene) == 0;
-    if (!scene_ready || app_scene_authoring_apply_pending(authoring) != 0) {
-        snprintf(
-            error,
-            error_size,
-            "Could not initialize scene: %s",
-            authoring ? app_scene_authoring_message(authoring) : "authoring unavailable"
-        );
-        app_scene_authoring_free(authoring);
-        engine_free(runtime);
-        game_live_world_free(live);
-        editor_free(graph_editor);
-        ecs_world_free(world);
-        engine_viewport_free(viewport);
-        free(resolved_scene);
-        chibi_project_free(&project);
-        return NULL;
+    if (saved_project) {
+        project_path = saved_project;
+        scene_path = NULL;
     }
-    free(resolved_scene);
-    chibi_project_free(&project);
-    /* Put the shipped movement graph on screen on first launch. The graph is
-     * still reachable through Files after switching documents. */
-    if (!play && game_live_find_definition(live, "TwinStickInputBehavior")) {
-        (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
-    }
-    editor_set_event_catalog(
-        graph_editor,
-        APP_EVENT_CATALOG,
-        (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
-    );
-    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
-    engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
-    engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);
-
     app_loop *loop = host->allocate(sizeof *loop);
-    *loop = (app_loop){
-        .host = host,
-        .graph_editor = graph_editor,
-        .runtime = runtime,
-        .world = world,
-        .live = live,
-        .viewport = viewport,
-        .authoring = authoring,
-        .frames = frames,
-        .screenshot_path = screenshot_path,
-        .capture_error = 0,
-        .headless = headless,
-        .fixed_dt = fixed_dt,
-    };
+    *loop = (app_loop){ .host = host,
+                        .frames = frames,
+                        .screenshot_path = screenshot_path,
+                        .headless = headless,
+                        .fixed_dt = fixed_dt };
+    bool opened = open_workspace(loop, project_path, scene_path, play, error, error_size);
+    yyjson_doc_free(saved);
+    if (!opened) {
+        host->release(loop);
+        return NULL;
+    }
+    app_scene_authoring *authoring = loop->authoring;
+    editor *graph_editor = loop->graph_editor;
+    engine_viewport *viewport = loop->viewport;
     if (play) {
         loop->game = app_game_presentation_new(authoring, viewport, !headless);
         if (!loop->game) {
@@ -338,6 +411,7 @@ static char *application_checkpoint(void *state)
         yyjson_mut_val *root = yyjson_mut_obj(doc);
         yyjson_mut_doc_set_root(doc, root);
         yyjson_mut_obj_add_int(doc, root, "version", 1);
+        yyjson_mut_obj_add_str(doc, root, "project", loop->project_root);
         yyjson_mut_obj_add_str(doc, root, "scene", scene);
         yyjson_mut_obj_add_str(doc, root, "graph", graph);
         char *encoded = yyjson_mut_write(doc, 0, NULL);
@@ -364,7 +438,7 @@ static void application_activate(void *state)
 #endif
     app_input_initialize();
     if (!loop->game) {
-        loop->studio = studio_new(loop->authoring, loop->viewport);
+        loop->studio = studio_new(loop->authoring, loop->viewport, loop->project_root);
     }
 }
 
@@ -382,6 +456,11 @@ static int application_frame(void *state)
     int finished = app_frame(loop);
     if (finished < 0) {
         return -1;
+    }
+    char *project = loop->game ? NULL : studio_take_project(loop->studio);
+    if (project) {
+        open_project(loop, project);
+        free(project);
     }
     return finished ? (loop->capture_error ? -1 : 1) : 0;
 }

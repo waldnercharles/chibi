@@ -99,6 +99,11 @@ static void toast(studio *s, kit_toast_type type, const char *title, const char 
     );
 }
 
+void studio_error(studio *s, const char *title, const char *message)
+{
+    toast(s, KIT_TOAST_ERROR, title, message);
+}
+
 void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
@@ -342,6 +347,7 @@ static void menus(studio *s)
         if (item(k, "search", "Search", KIT_ICON_SEARCH, studio_chord(s, "Mod+K"), false)) {
             kit_command_open(k, "Search objects, assets and commands");
         }
+        studio_projects_menu(s);
         kit_menu_separator(k, "s1");
         if (item(k, "save", "Save", KIT_ICON_SAVE, studio_chord(s, "Mod+S"), !active_dirty(s))) {
             studio_save(s);
@@ -988,6 +994,15 @@ static void palette(studio *s)
                                  studio_asset_kind_icon(asset->kind) })
         );
     }
+    int projects = acount(items);
+    for (int i = 0; i < acount(s->projects); i++) {
+        if (!studio_project_current(s, i)) {
+            apush(
+                items,
+                ((kit_command_item){ s->projects[i].name, "Projects", NULL, NULL, "open switch", KIT_ICON_FOLDER })
+            );
+        }
+    }
     int chosen = kit_command(s->kit, items, acount(items));
     if (chosen >= 0 && chosen < objects) {
         switch (chosen) {
@@ -1022,6 +1037,13 @@ static void palette(studio *s)
         finish_transform_edit(scene, false);
         select_instance(scene, chosen - objects);
         studio_frame_selection(s);
+    } else if (chosen >= projects) {
+        int position = projects;
+        for (int i = 0; i < acount(s->projects); i++) {
+            if (!studio_project_current(s, i) && position++ == chosen) {
+                studio_open_project(s, i);
+            }
+        }
     } else if (chosen >= assets) {
         int position = 0;
         for (int i = 0; i < asset_count; i++) {
@@ -1086,6 +1108,7 @@ void studio_emit(studio *s)
     statusbar(s);
     palette(s);
     undo_toast(s);
+    studio_projects_frame(s);
 }
 
 /* Up and Down walk the Outliner's visible rows (Blender). */

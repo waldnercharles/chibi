@@ -224,10 +224,22 @@ typedef struct
 /* The editor's authored UI world (studio_ui.c). */
 typedef struct studio_ui studio_ui;
 
+/* A project the workspace offers to open. */
+typedef struct
+{
+    char *root; /* as chibi_project_open resolves it */
+    char *name;
+} studio_project;
+
 struct studio
 {
     app_scene_authoring *scene;
     engine_viewport *viewport;
+    const char *project_root; /* the open project, owned by the application */
+    studio_project *projects;
+    char *open_project; /* root chosen to open, until the application takes it */
+    int discard_toast;  /* toast confirming unsaved changes are discarded */
+    int discard_project; /* the project that toast opens */
     rml_backend *backend;
     kit *kit;
     studio_ui *ui; /* NULL when the Studio project could not load */
@@ -313,6 +325,16 @@ void studio_ui_panel(studio *s, const char *key, const char *name);
 void studio_ui_modal(studio *s, const char *name);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
+
+/* Projects (studio_projects.c). */
+void studio_projects_load(studio *s);
+void studio_projects_free(studio *s);
+bool studio_project_current(const studio *s, int index);
+/* Opens projects[index] after the frame, once unsaved changes are discarded. */
+void studio_open_project(studio *s, int index);
+void studio_projects_frame(studio *s);
+/* File > Open Project. */
+void studio_projects_menu(studio *s);
 
 /* Shell. */
 void studio_emit(studio *s);

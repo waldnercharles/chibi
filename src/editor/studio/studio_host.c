@@ -348,24 +348,26 @@ static void apply_prefs(studio *s, bool initial)
     }
 }
 
-studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport)
+studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const char *project_root)
 {
     studio *s = xcalloc(1, sizeof *s);
     s->scene = scene;
     s->viewport = viewport;
+    s->project_root = project_root;
     s->backend = rml_backend_create(cf_app_get_width(), cf_app_get_height(), cf_app_get_pixel_scale());
     assert(s->backend);
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
     s->prefs = studio_prefs_load();
     char error[256];
-    s->ui = studio_ui_new(CHIBI_STUDIO_PROJECT_DIR, error, sizeof error);
+    s->ui = studio_ui_new(CHIBI_WORKSPACE_DIR "/projects/studio", error, sizeof error);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);
     }
     s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
     s->mac = studio_detect_mac();
     apply_prefs(s, true);
+    studio_projects_load(s);
     s->mods = SDL_GetModState();
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
@@ -400,6 +402,7 @@ void studio_free(studio *s)
     afree(s->records);
     afree(s->perf);
     afree(s->keys);
+    studio_projects_free(s);
     engine_viewport_set_host_input(s->viewport, NULL);
     editor_set_retained_keyboard(false);
     studio_graph_free(s);

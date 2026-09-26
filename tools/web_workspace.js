@@ -3,8 +3,7 @@
     const token = __CHIBI_SAVE_TOKEN__;
     const query = new URLSearchParams(location.search);
     const scene = query.get('scene');
-    const root = '/workspace/';
-    Module['arguments'] = ['--project-root', root];
+    Module['arguments'] = ['--project-root', __CHIBI_PROJECT__];
     if (scene) Module['arguments'].push('--scene', scene);
     if (query.get('play') === '1') Module['arguments'].push('--play');
     const request = (method, path, body) => {
@@ -18,8 +17,7 @@
     };
     Module['chibiSaveAsset'] = (path, text) => {
         try {
-            if (!path.startsWith(root)) throw new Error('Asset is outside the served project');
-            request('POST', '/__chibi/save', {path: path.slice(root.length), text});
+            request('POST', '/__chibi/save', {path, text});
             return 0;
         } catch (error) {
             Module['showError'](error.message);
@@ -31,7 +29,7 @@
         try {
             const files = JSON.parse(request('GET', '/__chibi/assets'));
             for (const [path, text] of Object.entries(files)) {
-                const destination = root + path;
+                const destination = '/' + path;
                 Module['FS'].mkdirTree(destination.slice(0, destination.lastIndexOf('/')));
                 Module['FS'].writeFile(destination, text);
             }

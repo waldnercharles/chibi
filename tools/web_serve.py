@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Serve a consistent browser build with saves routed to the selected local project."""
+"""Serve a consistent browser build with the workspace's projects and saves routed back to them."""
 import argparse
 import json
 import secrets
 import shutil
 import tempfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 import yaml
@@ -20,10 +20,28 @@ def content_directory(project):
     return content
 
 
-def save_asset(project, content, request):
-    path = (project / request['path'].lstrip('/')).resolve()
-    if not path.is_relative_to(content) or path.suffix != '.yaml':
-        raise ValueError('Saves must be YAML assets inside this project content directory')
+def projects(workspace):
+    """The workspace's own project and those in its projects directory, as Studio lists them."""
+    manifests = [workspace / 'project.json', *sorted(workspace.glob('projects/*/project.json'))]
+    return [manifest.parent for manifest in manifests if manifest.is_file()]
+
+
+def workspace_assets(workspace):
+    assets = {}
+    for project in projects(workspace):
+        assets[str((project / 'project.json').relative_to(workspace))] = (project / 'project.json').read_text()
+        content = content_directory(project)
+        for path in content.rglob('*.yaml'):
+            if path.resolve().is_relative_to(content):
+                assets[str(path.relative_to(workspace))] = path.read_text()
+    return assets
+
+
+def save_asset(workspace, request):
+    path = (workspace / request['path'].lstrip('/')).resolve()
+    contents = [content_directory(project) for project in projects(workspace)]
+    if path.suffix != '.yaml' or not any(path.is_relative_to(content) for content in contents):
+        raise ValueError('Saves must be YAML assets inside a project content directory')
     text = request['text']
     # The engine writes asset documents as YAML mappings; a save must reload.
     try:
@@ -45,11 +63,17 @@ def save_asset(project, content, request):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, default=Path('build-web'))
+    parser.add_argument('--workspace', type=Path, default=Path(__file__).resolve().parents[1],
+                        help='directory whose project.json and projects/* the browser can open')
     parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
     args = parser.parse_args()
+    workspace = args.workspace.resolve()
     project = args.project.resolve()
-    content = content_directory(project)
+    if not project.is_relative_to(workspace):
+        parser.error(f'{project} is outside {workspace}')
+    # The browser mirrors the workspace at its file system root.
+    start = str(PurePosixPath('/') / project.relative_to(workspace).as_posix())
     token = secrets.token_urlsafe(32)
     # A served generation never changes under the browser's JS/WASM/data requests.
     with tempfile.TemporaryDirectory(prefix='chibi-web-') as directory:
@@ -58,6 +82,7 @@ def main():
             shutil.copy2(args.build / f'chibi.{suffix}', snapshot)
         bridge = (Path(__file__).with_name('web_workspace.js')).read_text()
         bridge = bridge.replace('__CHIBI_SAVE_TOKEN__', json.dumps(token))
+        bridge = bridge.replace('__CHIBI_PROJECT__', json.dumps(start))
         html = snapshot / 'chibi.html'
         html.write_text(html.read_text().replace('<script async', f'<script>{bridge}</script><script async'))
 
@@ -82,10 +107,7 @@ def main():
                     if self.headers.get('X-Chibi-Token') != token:
                         self.send_error(403)
                         return
-                    assets = {str(p.relative_to(project)): p.read_text()
-                              for p in content.rglob('*.yaml') if p.resolve().is_relative_to(content)}
-                    assets['project.json'] = (project / 'project.json').read_text()
-                    body = json.dumps(assets).encode()
+                    body = json.dumps(workspace_assets(workspace)).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(body)))
@@ -110,7 +132,7 @@ def main():
                     self.send_error(413)
                     return
                 try:
-                    save_asset(project, content, json.loads(self.rfile.read(length)))
+                    save_asset(workspace, json.loads(self.rfile.read(length)))
                 except (ValueError, KeyError, TypeError, OSError) as error:
                     self.send_error(400, str(error))
                     return
@@ -118,7 +140,7 @@ def main():
                 self.end_headers()
 
         print(f'Editor: http://127.0.0.1:{args.port}/chibi.html', flush=True)
-        print(f'Saves: {content}', flush=True)
+        print(f'Project: {project}', flush=True)
         ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
 
 

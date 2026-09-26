@@ -451,8 +451,13 @@ include(cmake/rmlui.cmake)
 add_library(editor STATIC ${EDITOR_SOURCES})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
-# The editor's authored UI, which Studio runs as its own small world.
-target_compile_definitions(editor PRIVATE CHIBI_STUDIO_PROJECT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/projects/studio")
+# Studio opens this tree's projects (project.json and projects/*) and runs
+# projects/studio as its own UI. The browser mirrors the tree at its root.
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_compile_definitions(editor PRIVATE CHIBI_WORKSPACE_DIR="")
+else()
+    target_compile_definitions(editor PRIVATE CHIBI_WORKSPACE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
@@ -612,7 +617,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/studio@${CMAKE_CURRENT_SOURCE_DIR}/projects/studio"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/studio@projects/studio"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
 endif()

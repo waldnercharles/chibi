@@ -10,6 +10,13 @@ typedef struct app_scene_authoring app_scene_authoring;
 /* Authored world settings; editable while Scene and prototype preview are stopped.
  * Records one undo step. Invalid settings leave the world unchanged. */
 int app_scene_authoring_set_physics(app_scene_authoring *scene, game_physics_settings settings);
+/* The root ui document the scene's UI shows on: its own, else the project's
+ * default, else NULL. */
+const char *app_scene_authoring_page(const app_scene_authoring *scene);
+/* Names the scene's root ui document; NULL or "" uses the project's. */
+void app_scene_authoring_set_ui(app_scene_authoring *scene, const char *ui);
+/* The project's default root ui document; NULL for none. */
+void app_scene_authoring_set_default_ui(app_scene_authoring *scene, const char *ui);
 typedef struct editor editor;
 typedef const char *(*app_scene_prototype_resolve_fn)(const char *name, void *user);
 

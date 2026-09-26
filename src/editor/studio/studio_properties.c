@@ -635,10 +635,48 @@ static void behaviors_panel(studio *s, scene_actor *actor, bool locked)
     free_behavior_names(names);
 }
 
+/* The scene's root ui document: the project's default, or one of its ui
+ * assets. */
+static void page_panel(studio *s, bool locked)
+{
+    kit *k = s->kit;
+    app_scene_authoring *scene = s->scene;
+    if (!studio_matches(s->property_search, "Root document")) {
+        return;
+    }
+    if (!kit_panel_begin(k, "ui", "UI", NULL, true)) {
+        kit_panel_end(k);
+        return;
+    }
+    const char **labels = NULL;
+    char project[160];
+    snprintf(project, sizeof project, "Project (%s)", scene->default_ui ? scene->default_ui : "none");
+    apush(labels, project);
+    int value = 0;
+    for (int i = 0; i < asset_index_asset_count(scene->asset_index); i++) {
+        const asset_index_asset *asset = asset_index_asset_at(scene->asset_index, i);
+        if (asset->kind != ASSET_INDEX_UI) {
+            continue;
+        }
+        value = scene->ui && !strcmp(scene->ui, asset->name) ? acount(labels) : value;
+        apush(labels, asset->name);
+    }
+    kit_prop_begin(k, "root", "Root document");
+    int chosen = value;
+    if (kit_choice(k, "value", &chosen, labels, acount(labels), locked ? KIT_READONLY : 0) &&
+        chosen != value) {
+        app_scene_authoring_set_ui(scene, chosen ? labels[chosen] : NULL);
+    }
+    kit_prop_end(k);
+    kit_panel_end(k);
+    afree(labels);
+}
+
 static void scene_panels(studio *s, bool locked)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
+    page_panel(s, locked);
     game_physics_settings settings = game_physics_configuration(scene->live->physics);
     game_physics_settings next = settings;
     unsigned flags = locked ? KIT_READONLY : 0;

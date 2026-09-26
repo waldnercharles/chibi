@@ -110,7 +110,9 @@ struct app_scene_authoring
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
     char *content_root;
-    tree_watch disk;     /* content files as last loaded or saved */
+    char *ui;         /* the scene's root ui document, or NULL for default_ui */
+    char *default_ui; /* the project's, or NULL */
+    tree_watch disk;  /* content files as last loaded or saved */
     char **disk_pending; /* changes waiting for the runtime to stop */
     int selected;
     ecs_entity reveal_actor;

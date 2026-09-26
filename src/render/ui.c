@@ -21,9 +21,8 @@ struct ui_mount
     char *content_root;
     char *name;
     file_watch watch;
-    char **uses;             /* the widgets its asset uses */
-    file_watch *use_watches; /* parallel to uses */
-    char *markup, *style;    /* from the last valid asset */
+    file_watch *uses;     /* the widgets and stylesheets its asset uses */
+    char *markup, *style; /* from the last valid asset */
     char error[256];
     rml_element *root;
     bool installed; /* root holds the current markup */
@@ -56,21 +55,12 @@ ui_mount *ui_mount_new(const char *content_root, const char *name)
     return m;
 }
 
-static void free_uses(ui_mount *m)
-{
-    for (int i = 0; i < acount(m->uses); i++) {
-        free(m->uses[i]);
-    }
-    afree(m->uses);
-}
-
 void ui_mount_free(ui_mount *m)
 {
     if (!m) {
         return;
     }
-    free_uses(m);
-    afree(m->use_watches);
+    afree(m->uses);
     afree(m->pending);
     free(m->content_root);
     free(m->name);
@@ -99,52 +89,67 @@ static void asset_path(const ui_mount *m, const char *name, char *path, size_t s
     snprintf(path, size, "%s/ui/%s.yaml", m->content_root, name);
 }
 
-/* Whether the asset or a widget it uses changed; polls every watch. */
-static bool changed(ui_mount *m, const char *path, double time)
+/* Whether any watched file changed; polls every one. */
+static bool files_changed(file_watch *watches, double time)
 {
-    bool any = file_watch_changed(&m->watch, path, time);
-    for (int i = 0; i < acount(m->uses); i++) {
-        char use[1024];
-        asset_path(m, m->uses[i], use, sizeof use);
-        any |= file_watch_changed(&m->use_watches[i], use, time);
+    bool any = false;
+    for (int i = 0; i < acount(watches); i++) {
+        any |= file_watch_changed(&watches[i], watches[i].path, time);
     }
     return any;
 }
 
-/* Replaces the watched widgets with `uses`, taking ownership. */
-static void watch_uses(ui_mount *m, char **uses, double time)
+/* Watches `paths` from now instead, taking them. */
+static void watch_paths(file_watch **watches, char **paths, double time)
 {
-    free_uses(m);
-    m->uses = uses;
-    asetlen(m->use_watches, acount(uses));
-    for (int i = 0; i < acount(uses); i++) {
-        char use[1024];
-        asset_path(m, uses[i], use, sizeof use);
-        m->use_watches[i] = (file_watch){ 0 };
-        file_watch_changed(&m->use_watches[i], use, time);
+    asetlen(*watches, 0);
+    for (int i = 0; i < acount(paths); i++) {
+        file_watch w = { 0 };
+        file_watch_changed(&w, paths[i], time);
+        apush(*watches, w);
+        free(paths[i]);
     }
+    afree(paths);
+}
+
+/* The widgets' files, then the stylesheets, taking both lists. */
+static char **used_files(const ui_mount *m, char **widgets, char **imports)
+{
+    for (int i = 0; i < acount(widgets); i++) {
+        char path[1024];
+        asset_path(m, widgets[i], path, sizeof path);
+        apush(imports, xstrdup(path));
+        free(widgets[i]);
+    }
+    afree(widgets);
+    return imports;
 }
 
 /* Reads the asset and its widgets when one changed; returns true when it
  * replaced the markup and RCSS. An invalid edit keeps the last valid ones. */
 static bool read_asset(ui_mount *m, double time)
 {
-    char path[1024];
+    char path[1024], directory[1024];
     asset_path(m, m->name, path, sizeof path);
-    if (!changed(m, path, time)) {
+    bool asset = file_watch_changed(&m->watch, path, time);
+    if (!files_changed(m->uses, time) && !asset) {
         return false;
     }
+    snprintf(directory, sizeof directory, "%s/ui", m->content_root);
     char *text = text_file_read(path);
-    char error[200] = "is missing";
+    char error[200] = "is missing", **imports = NULL, **widgets = NULL;
     ui_document source = { 0 };
-    bool read = text && ui_document_read(text, &source, error, sizeof error);
+    bool read = text &&
+                ui_document_read(text, directory, &imports, &source, error, sizeof error);
     free(text);
-    if (read) {
-        char root[1024], **uses = NULL;
-        snprintf(root, sizeof root, "%s/ui", m->content_root);
-        read = ui_document_expand(&source, m->name, root, &uses, error, sizeof error);
-        watch_uses(m, uses, time);
+    if (read && source.body) {
+        snprintf(error, sizeof error, "has a <body>, which only a scene's root document has");
+        read = false;
     }
+    if (read) {
+        read = ui_document_expand(&source, m->name, directory, &widgets, error, sizeof error);
+    }
+    watch_paths(&m->uses, used_files(m, widgets, imports), time);
     if (!read) {
         ui_document_free(&source);
         snprintf(m->error, sizeof m->error, "ui/%s.yaml %s", m->name, error);
@@ -401,6 +406,7 @@ void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emi
         yyjson_mut_doc_set_root(d->doc, root);
     }
     yyjson_mut_obj_add_val(d->doc, root, "save", yyjson_mut_obj(d->doc));
+    yyjson_mut_obj_add_bool(d->doc, yyjson_mut_obj_add_obj(d->doc, root, "system"), "dark", false);
     d->model = rml_data_model_create(context, UI_DATA_MODEL, d->doc, emit, user);
 }
 
@@ -453,8 +459,21 @@ static void show_save(yyjson_mut_doc *doc, yyjson_mut_val *shown, const game_sav
     }
 }
 
+/* Shows whether the system's theme is dark. */
+static void show_system(ui_data *d)
+{
+    yyjson_mut_val *system = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "system");
+    yyjson_mut_val *dark = yyjson_mut_obj_get(system, "dark");
+    bool now = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK;
+    if (yyjson_mut_get_bool(dark) != now) {
+        yyjson_mut_set_bool(dark, now);
+        rml_data_model_dirty(d->model, "system");
+    }
+}
+
 void ui_data_sync(ui_data *d, game_save *save)
 {
+    show_system(d);
     yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
     uint64_t writes = rml_data_model_writes(d->model);
     if (save && save == d->save && writes != d->writes_seen) {
@@ -486,56 +505,49 @@ void ui_data_free(ui_data *d)
     *d = (ui_data){ 0 };
 }
 
-/* ---------- Themes ---------- */
+/* ---------- Pages ---------- */
 
-bool ui_theme_sync(ui_theme *t, const char *content_root, double time)
+bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double time)
 {
-    char path[1024];
-    snprintf(path, sizeof path, "%s/ui/Theme.rcss", content_root);
-    bool changed = !acount(t->watches);
-    if (changed) {
-        apush(t->watches, (file_watch){ 0 });
+    bool renamed = strcmp(p->name, name) != 0;
+    if (renamed) {
+        ui_page_free(p);
+        snprintf(p->name, sizeof p->name, "%s", name);
     }
-    for (int i = 0; i < acount(t->watches); i++) {
-        changed |= file_watch_changed(&t->watches[i], i ? t->watches[i].path : path, time);
+    if (!name[0]) {
+        return renamed;
     }
-    if (!changed) {
+    char path[1024], directory[1024];
+    snprintf(path, sizeof path, "%s/ui/%s.yaml", content_root, name);
+    bool changed = file_watch_changed(&p->asset, path, time);
+    if (!files_changed(p->imports, time) && !changed && !renamed) {
         return false;
     }
-    asetlen(t->watches, 1);
-    t->error[0] = '\0';
-    char *text = text_file_read(path);
-    if (!text) {
-        free(t->rcss);
-        t->rcss = NULL;
-        return true;
-    }
-    char directory[1024], error[200], **imports = NULL;
     snprintf(directory, sizeof directory, "%s/ui", content_root);
-    char *rcss = rcss_expand(text, directory, &imports, error, sizeof error);
+    char *text = text_file_read(path);
+    char error[200] = "is missing", **imports = NULL;
+    ui_document next = { 0 };
+    bool read = text &&
+                ui_document_read(text, directory, &imports, &next, error, sizeof error);
     free(text);
     /* Every file it reached, so fixing a broken import retries. */
-    for (int i = 0; i < acount(imports); i++) {
-        file_watch w = { 0 };
-        file_watch_changed(&w, imports[i], time);
-        apush(t->watches, w);
-        free(imports[i]);
+    watch_paths(&p->imports, imports, time);
+    if (!read) {
+        ui_document_free(&next);
+        snprintf(p->error, sizeof p->error, "ui/%s.yaml %s", name, error);
+        return renamed;
     }
-    afree(imports);
-    if (!rcss) {
-        snprintf(t->error, sizeof t->error, "ui/Theme.rcss %s", error);
-        return true;
-    }
-    free(t->rcss);
-    t->rcss = rcss;
+    ui_document_free(&p->document);
+    p->document = next;
+    p->error[0] = '\0';
     return true;
 }
 
-void ui_theme_free(ui_theme *t)
+void ui_page_free(ui_page *p)
 {
-    afree(t->watches);
-    free(t->rcss);
-    *t = (ui_theme){ 0 };
+    afree(p->imports);
+    ui_document_free(&p->document);
+    *p = (ui_page){ 0 };
 }
 
 /* ---------- Game host ---------- */
@@ -545,11 +557,14 @@ void ui_theme_free(ui_theme *t)
 /* The overlay's z-index, above any authored GameUi order. */
 #define OVERLAY_ORDER "1000000"
 
-/* The game document's own style: the editor's face, and a pointer that passes
- * through to the game except over what a player activates. */
+/* The game document's own style: the editor's face, a pointer that passes
+ * through to the game except over what a player activates, and a slot that
+ * fills what holds it. */
 static const char
     BASE_RCSS[] = "body { width: 100%; height: 100%; font-family: Inter; "
                   "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
+                  "slot { display: block; position: relative; width: 100%; "
+                  "height: 100%; }\n"
                   "[data-event-click], input, select, textarea { "
                   "pointer-events: auto; }\n";
 
@@ -565,10 +580,11 @@ typedef struct ui_view
 struct render_ui
 {
     rml_backend *backend;
-    rml_element *doc;
+    rml_element *doc;  /* the page */
+    rml_element *slot; /* where the world's documents show on it */
     rml_listener *listener;
     char *content_root;
-    ui_theme theme;
+    ui_page page;
     ui_data data;
     ui_view *views;
     ui_view overlay; /* its entity is unused */
@@ -584,6 +600,75 @@ struct render_ui
 static void on_event(void *user, const rml_event *event);
 static void on_emit(void *user, const rml_event *event, const char *name);
 
+/* Removes the view's root, which detaches the listener, then its mount. */
+static void close_view(render_ui *ui, ui_view *view)
+{
+    if (view->root) {
+        rml_element_remove_child(rml_element_parent(view->root), view->root);
+        ui->restyle = true;
+    }
+    ui_mount_free(view->mount);
+    *view = (ui_view){ .entity = view->entity };
+}
+
+/* The page body's attributes: the data model, then the page's own. */
+static char *frame_body(const char *attributes)
+{
+    const char *model = "data-model=\"" UI_DATA_MODEL "\"";
+    size_t size = strlen(model) + (attributes ? strlen(attributes) + 1 : 0) + 1;
+    char *body = xmalloc(size);
+    snprintf(body, size, "%s%s%s", model, attributes ? " " : "", attributes ? attributes : "");
+    return body;
+}
+
+/* The page's document: its body attributes, with the data model, and its
+ * markup, as ui_document_compose writes one. */
+static char *page_text(const ui_page *page)
+{
+    ui_document body = {
+        .rml = page->document.rml ? page->document.rml : "",
+        .rcss = "",
+        .body = frame_body(page->document.body),
+    };
+    char *text = ui_document_compose(&body, "");
+    free(body.body);
+    return text;
+}
+
+/* Shows the page anew: closes the world's documents, which open again in its
+ * slot, and loads its markup; markup RmlUi rejects is the page's error. */
+static void load_page(render_ui *ui)
+{
+    for (int i = 0; i < acount(ui->views); i++) {
+        close_view(ui, &ui->views[i]);
+    }
+    asetlen(ui->views, 0);
+    close_view(ui, &ui->overlay);
+    if (ui->doc) {
+        rml_document_close(ui->doc);
+    }
+    char *text = page_text(&ui->page);
+    rml_context *context = rml_backend_context(ui->backend);
+    rml_backend_take_warning();
+    ui->doc = rml_context_load_document_from_memory(context, text, "game-ui");
+    const char *warning = rml_backend_take_warning();
+    free(text);
+    if (warning[0] && !ui->page.error[0]) {
+        snprintf(
+            ui->page.error,
+            sizeof ui->page.error,
+            "ui/%s.yaml %s",
+            ui->page.name,
+            warning
+        );
+    }
+    assert(ui->doc);
+    rml_document_show(ui->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    ui->slot = rml_element_query_selector(ui->doc, "slot");
+    ui->slot = ui->slot ? ui->slot : ui->doc;
+    ui->restyle = true;
+}
+
 render_ui *render_ui_new(const char *content_root)
 {
     render_ui *ui = xcalloc(1, sizeof *ui);
@@ -591,24 +676,9 @@ render_ui *render_ui_new(const char *content_root)
     ui->backend = rml_backend_create(1, 1, 1);
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
-    rml_context *context = rml_backend_context(ui->backend);
-    ui_data_init(&ui->data, context, NULL, on_emit, ui);
-    ui->doc = rml_context_load_document_from_memory(context, "<rml><head/><body/></rml>", "game-ui");
-    assert(ui->doc);
-    rml_document_set_style_sheet(ui->doc, BASE_RCSS);
-    rml_document_show(ui->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    ui_data_init(&ui->data, rml_backend_context(ui->backend), NULL, on_emit, ui);
+    load_page(ui);
     return ui;
-}
-
-/* Removes the view's root, which detaches the listener, then its mount. */
-static void close_view(render_ui *ui, ui_view *view)
-{
-    if (view->root) {
-        rml_element_remove_child(ui->doc, view->root);
-        ui->restyle = true;
-    }
-    ui_mount_free(view->mount);
-    *view = (ui_view){ .entity = view->entity };
 }
 
 void render_ui_free(render_ui *ui)
@@ -624,7 +694,7 @@ void render_ui_free(render_ui *ui)
     ui_data_free(&ui->data);
     rml_backend_destroy(ui->backend);
     rml_listener_destroy(ui->listener);
-    ui_theme_free(&ui->theme);
+    ui_page_free(&ui->page);
     free(ui->content_root);
     free(ui);
 }
@@ -642,7 +712,7 @@ static void open_view(render_ui *ui, ui_view *view, const char *name, const char
         { "width", "100%" },        { "height", "100%" },
     };
     view->mount = ui_mount_new(ui->content_root, name);
-    view->root = rml_element_create_child(ui->doc, "div", NULL);
+    view->root = rml_element_create_child(ui->slot, "div", NULL);
     for (size_t i = 0; i < sizeof LAYOUT / sizeof *LAYOUT; i++) {
         rml_element_set_property(view->root, LAYOUT[i][0], LAYOUT[i][1]);
     }
@@ -813,13 +883,13 @@ static void append(char **sheet, const char *text)
     memcpy(*sheet + start, text, strlen(text));
 }
 
-/* The base, then the project's theme, then each shown asset's RCSS once. */
+/* The base, then the page's RCSS, then each shown asset's RCSS once. */
 static void install_styles(render_ui *ui)
 {
     char *sheet = NULL;
     const char **names = NULL;
     append(&sheet, BASE_RCSS);
-    append(&sheet, ui->theme.rcss ? ui->theme.rcss : "");
+    append(&sheet, ui->page.document.rcss ? ui->page.document.rcss : "");
     for (int i = -1; i < acount(ui->views); i++) {
         ui_mount *m = mount_at(ui, i);
         bool known = !m;
@@ -840,10 +910,10 @@ static void install_styles(render_ui *ui)
     afree(names);
 }
 
-/* Reports the theme's error, else the first mount's. */
+/* Reports the page's error, else the first mount's. */
 static void collect_error(render_ui *ui)
 {
-    snprintf(ui->error, sizeof ui->error, "%s", ui->theme.error);
+    snprintf(ui->error, sizeof ui->error, "%s", ui->page.error);
     for (int i = -1; i < acount(ui->views) && !ui->error[0]; i++) {
         ui_mount *m = mount_at(ui, i);
         if (m) {
@@ -852,23 +922,15 @@ static void collect_error(render_ui *ui)
     }
 }
 
-/* A saved "theme" setting picks the palette, as Studio's theme setting does:
- * dark, light, or the system's. */
-static void apply_theme_mode(render_ui *ui, game_save *save)
-{
-    const char *mode = save ? game_save_get(save, "theme") : NULL;
-    bool dark = mode && (!strcmp(mode, "dark") ||
-                         (!strcmp(mode, "system") &&
-                          SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK));
-    rml_element_set_class(ui->doc, "dark", dark);
-}
-
 void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, double dt)
 {
     assert(ui && w && w->ecs);
     ecs_world *world = w->ecs;
     ui->time += dt;
     send_activations(ui, w);
+    if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
+        load_page(ui);
+    }
     if (width != ui->width || height != ui->height) {
         ui->width = width;
         ui->height = height;
@@ -891,9 +953,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ecs_query_end(&query);
     }
     close_unseen(ui, w->model);
-    apply_theme_mode(ui, w->save);
     ui_data_sync(&ui->data, w->save);
-    ui->restyle |= ui_theme_sync(&ui->theme, ui->content_root, ui->time);
     if (ui->restyle) {
         install_styles(ui);
         ui->restyle = false;
@@ -910,8 +970,8 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
 
 void render_ui_composite(render_ui *ui, CF_Canvas target)
 {
-    if ((!acount(ui->views) && !ui->overlay.mount) || ui->width <= 0 ||
-        ui->height <= 0) {
+    if ((!acount(ui->views) && !ui->overlay.mount && !ui->page.name[0]) ||
+        ui->width <= 0 || ui->height <= 0) {
         return;
     }
     rml_backend_render(ui->backend);

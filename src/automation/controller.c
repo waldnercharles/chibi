@@ -1,5 +1,6 @@
 #include "automation/controller.h"
 
+#include "assets/project.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
@@ -30,6 +31,7 @@
 #include "runtime/systems/system.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -1376,7 +1378,7 @@ static bool read_editor_asset(const char *json, char *error, size_t error_size)
 static bool read_ui_asset(const char *json, char *error, size_t error_size)
 {
     ui_document document = { 0 };
-    bool ok = ui_document_read(json, &document, error, error_size);
+    bool ok = ui_document_read(json, NULL, NULL, &document, error, error_size);
     ui_document_free(&document);
     return ok;
 }
@@ -5895,11 +5897,34 @@ struct chibi_preview_run
     scenario_context context;
     scenario_sequence sequence;
     yyjson_doc *request;
+    char *page; /* the root ui document its UI shows on, or NULL */
 };
 
 game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
 {
     return run->context.preview;
+}
+
+const char *chibi_preview_page(const chibi_preview_run *run)
+{
+    return run->page;
+}
+
+/* The scene's root ui document, else the default in the manifest at `root`. */
+static char *preview_page(const char *root, const game_scene_document *scene)
+{
+    if (scene && scene->ui) {
+        return xstrdup(scene->ui);
+    }
+    char path[1024], error[128];
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    char *text = text_file_read(path);
+    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
+    free(text);
+    const char *ui = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), "ui"));
+    char *page = ui && ui[0] ? xstrdup(ui) : NULL;
+    yyjson_doc_free(manifest);
+    return page;
 }
 
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
@@ -5928,6 +5953,7 @@ void chibi_preview_free(chibi_preview_run *run)
     free_sequence(&run->sequence);
     scenario_context_free(&run->context);
     yyjson_doc_free(run->request);
+    free(run->page);
     free(run);
 }
 
@@ -5996,6 +6022,7 @@ int chibi_automation_preview(
                                game_prototype_preview_world(context->preview),
                                game_prototype_preview_entity(context->preview)
                            );
+        run->page = preview_page(root, context->scene);
         *out = run;
         return status;
     }

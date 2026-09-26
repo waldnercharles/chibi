@@ -112,14 +112,7 @@ static char *read_file(const char *path, char *error, size_t error_size)
     return json;
 }
 
-static int read_manifest(
-    const char *path,
-    char **name,
-    char **content,
-    char **start_scene,
-    char *error,
-    size_t error_size
-)
+static int read_manifest(const char *path, chibi_project *project, char *error, size_t error_size)
 {
     char *text = read_file(path, error, error_size);
     if (!text) {
@@ -162,9 +155,11 @@ static int read_manifest(
     yyjson_val *name_value = yyjson_obj_get(root, "name");
     yyjson_val *content_value = yyjson_obj_get(root, "content");
     yyjson_val *scene_value = yyjson_obj_get(root, "start_scene");
+    yyjson_val *ui_value = yyjson_obj_get(root, "ui");
     if ((name_value && !yyjson_is_str(name_value)) ||
         (content_value && !yyjson_is_str(content_value)) ||
-        (scene_value && !yyjson_is_str(scene_value))) {
+        (scene_value && !yyjson_is_str(scene_value)) ||
+        (ui_value && !yyjson_is_str(ui_value))) {
         yyjson_doc_free(document);
         set_errorf(error, error_size, "Project manifest fields must be strings: %s", path);
         return -1;
@@ -172,16 +167,18 @@ static int read_manifest(
     const char *manifest_name = yyjson_get_str(name_value);
     const char *manifest_content = yyjson_get_str(content_value);
     const char *manifest_scene = yyjson_get_str(scene_value);
+    const char *manifest_ui = yyjson_get_str(ui_value);
     if ((manifest_name && !manifest_name[0]) ||
         (manifest_content && !manifest_content[0]) ||
-        (manifest_scene && !manifest_scene[0])) {
+        (manifest_scene && !manifest_scene[0]) || (manifest_ui && !manifest_ui[0])) {
         yyjson_doc_free(document);
         set_errorf(error, error_size, "Project manifest contains an empty field: %s", path);
         return -1;
     }
-    *name = manifest_name ? xstrdup(manifest_name) : NULL;
-    *content = manifest_content ? xstrdup(manifest_content) : NULL;
-    *start_scene = manifest_scene ? xstrdup(manifest_scene) : NULL;
+    project->name = manifest_name ? xstrdup(manifest_name) : NULL;
+    project->content = manifest_content ? xstrdup(manifest_content) : NULL;
+    project->start_scene = manifest_scene ? xstrdup(manifest_scene) : NULL;
+    project->ui = manifest_ui ? xstrdup(manifest_ui) : NULL;
     yyjson_doc_free(document);
     return 0;
 }
@@ -214,6 +211,7 @@ void chibi_project_free(chibi_project *project)
     free(project->content);
     free(project->name);
     free(project->start_scene);
+    free(project->ui);
     *project = (chibi_project){ 0 };
 }
 
@@ -269,9 +267,7 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
         return -1;
     }
     project->root = root;
-    if (manifest &&
-        read_manifest(manifest, &project->name, &project->content, &project->start_scene, error, error_size) !=
-            0) {
+    if (manifest && read_manifest(manifest, project, error, error_size) != 0) {
         chibi_project_free(project);
         free(input);
         free(manifest);

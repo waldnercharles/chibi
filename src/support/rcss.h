@@ -15,7 +15,8 @@
  *
  * A rule's declarations come before its nested rules. @keyframes,
  * @decorator, @spritesheet and @font-face blocks pass through as written.
- * `directory` is where imports resolve; NULL allows none. Appends each file
+ * `directory` is where imports resolve; NULL leaves them as written, for
+ * checking a stylesheet away from its files. Appends each file
  * read to `imports` (support/array.h) when it is not NULL. Returns owned RCSS,
  * or NULL with a message in `error`. */
 char *rcss_expand(const char *text, const char *directory, char ***imports, char *error, size_t error_size);

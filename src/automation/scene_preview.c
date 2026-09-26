@@ -156,6 +156,7 @@ static bool render_scene(
         char content_root[1024];
         snprintf(content_root, sizeof content_root, "%s/content", root);
         ui_world ui = { .ecs = game_prototype_preview_world(scene.preview),
+                        .page = chibi_preview_page(run),
                         .model = engine_ui(preview_runtime),
                         .entities = game_prototype_preview_entities(scene.preview) };
         engine_viewport_set_ui(scene.viewport, &ui, content_root);

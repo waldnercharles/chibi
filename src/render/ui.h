@@ -1,6 +1,7 @@
 #ifndef CHIBI_RENDER_UI_H
 #define CHIBI_RENDER_UI_H
 
+#include "assets/ui_document.h"
 #include "ecs/ecs.h"
 #include "platform/cute.h"
 #include "runtime/behaviors/entities.h"
@@ -11,13 +12,14 @@
 #include "ui/rml_backend.h"
 
 /* What shown documents read and act on. Only `ecs` is required: without
- * `model` documents show as authored, without `entities` activations reach no
- * one, and without `save` documents bind an empty `save`. A preview shows
- * documents their GameUi keeps hidden, as an editor previews a dialog before
- * anything opens it. */
+ * `page` documents show on a bare page, without `model` as authored, without
+ * `entities` activations reach no one, and without `save` documents bind an
+ * empty `save`. A preview shows documents their GameUi keeps hidden, as an
+ * editor previews a dialog before anything opens it. */
 typedef struct ui_world
 {
     ecs_world *ecs;
+    const char *page; /* the scene's root ui document (ui_page) */
     game_ui *model;
     game_entities *entities;
     game_save *save;
@@ -33,8 +35,9 @@ typedef struct ui_world
 
 /* A host's data model. Its variables are the members of `doc`'s root, among
  * them `save`: the world's saved keys as text, "true" and "false" as
- * booleans, which bindings may set. A key nothing saved, or removed, reads
- * as empty until a binding sets it. */
+ * booleans, which bindings may set; a key nothing saved, or removed, reads
+ * as empty until a binding sets it. `system.dark` tells whether the
+ * system's theme is dark, as CSS's prefers-color-scheme does. */
 typedef struct ui_data
 {
     yyjson_mut_doc *doc;
@@ -43,11 +46,12 @@ typedef struct ui_data
     uint64_t save_seen, writes_seen;
 } ui_data;
 
-/* Creates the model in `context` over `doc`, which it takes, adding `save` to
- * its root; a NULL doc has no other variables. `emit` hears emit('Event'). */
+/* Creates the model in `context` over `doc`, which it takes, adding `save`
+ * and `system` to its root; a NULL doc has no other variables. `emit` hears
+ * emit('Event'). */
 void ui_data_init(ui_data *data, rml_context *context, yyjson_mut_doc *doc, rml_emit_fn emit, void *user);
 /* Saves in `save` the keys bindings set, then shows its keys when they
- * changed. */
+ * changed, and the system's theme. */
 void ui_data_sync(ui_data *data, game_save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */
@@ -102,29 +106,34 @@ bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
 
-/* ---------- Themes ---------- */
+/* ---------- Pages ---------- */
 
-/* A project's theme: its ui/Theme.rcss and the files it imports (see
- * support/rcss.h), which style every UI document the project shows, unscoped
- * and before each document's own RCSS. The Studio project's theme is the
- * editor's. Re-read within a second of an edit to any of its files, keeping
- * the last valid version. Zero-initialize. */
-typedef struct ui_theme
+/* A scene's root document, which a scene names with `ui:` and a project
+ * gives its scenes by default: the page the scene's documents show on, as a
+ * web page's root layout. Its RCSS, with the stylesheets it @imports (a
+ * theme's tokens, say), styles the whole page unscoped; its markup is the
+ * page body, which it may wrap in <body ...> to set the body's attributes;
+ * and the scene's documents show in its <slot/>, or after its markup.
+ * Re-read within a second of an edit to it or an import, keeping the last
+ * valid version. Zero-initialize. */
+typedef struct ui_page
 {
-    file_watch *watches; /* Theme.rcss, then each file it imports */
-    char *rcss;          /* NULL while the project has no theme */
-    char error[256]; /* why the files are not the theme in use; "" when they are */
-} ui_theme;
+    char name[128]; /* the ui asset shown; "" for none */
+    file_watch asset;
+    file_watch *imports;  /* the stylesheets its RCSS imports */
+    ui_document document; /* its last valid version, RCSS unscoped */
+    char error[256]; /* why the asset is not the version shown; "" when it is */
+} ui_page;
 
-/* Re-reads the theme when one of its files changed and returns true; `rcss`
- * then holds the new theme, or the last valid one with `error` set. */
-bool ui_theme_sync(ui_theme *theme, const char *content_root, double time);
-void ui_theme_free(ui_theme *theme);
+/* Shows ui asset `name` ("" for none), re-reading it when it or an import
+ * changed; true when `document` changed. */
+bool ui_page_sync(ui_page *page, const char *content_root, const char *name, double time);
+void ui_page_free(ui_page *page);
 
 /* ---------- Game host ---------- */
 
 /* Presents a world's GameUi documents over a canvas: one mount per entity in
- * a single document, stacked by GameUi.order. It applies what behaviors set
+ * the world's page, stacked by GameUi.order. It applies what behaviors set
  * in the game_ui model and sends activations to their entities. Game UI
  * passes the pointer through except over data-event-click elements and
  * inputs, or where RCSS sets pointer-events: auto. RCSS dp units scale with

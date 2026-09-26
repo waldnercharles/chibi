@@ -275,6 +275,9 @@ static bool open_workspace(
         runtime,
         project.content
     );
+    if (authoring) {
+        app_scene_authoring_set_default_ui(authoring, project.ui);
+    }
     bool scene_ready = authoring &&
                        app_scene_authoring_load_content(authoring) == 0 &&
                        app_scene_authoring_load(authoring, resolved_scene) == 0;

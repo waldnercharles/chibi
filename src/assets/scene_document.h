@@ -18,6 +18,7 @@ typedef struct
 typedef struct game_scene_document
 {
     char *name;
+    char *ui; /* the root ui document its UI shows on (render/ui.h), or NULL for the project's */
     game_scene_entity *entities;
     bool perspective;
     game_physics_settings physics;
@@ -26,6 +27,8 @@ typedef struct game_scene_document
 game_scene_document *game_scene_document_new(const char *name);
 void game_scene_document_free(game_scene_document *document);
 int game_scene_document_set_perspective(game_scene_document *document, bool perspective);
+/* Names the scene's root ui document; NULL or "" leaves the project's. */
+void game_scene_document_set_ui(game_scene_document *document, const char *ui);
 int game_scene_document_entity_index(const game_scene_document *document, const char *name);
 int game_scene_document_add_entity(
     game_scene_document *document,

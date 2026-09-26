@@ -24,14 +24,18 @@ typedef struct
     ui_data data;
 } host_fixture;
 
-/* A kit styled with the Studio project's theme, as the editor styles its own. */
+/* A kit styled with the Studio scene's root document, as the editor styles
+ * its own. */
 kit *test_kit_create(void *context, const char *document)
 {
     kit *k = kit_create(context, document);
-    ui_theme theme = { 0 };
-    assert(ui_theme_sync(&theme, "projects/studio/content", 0) && theme.rcss);
-    kit_theme(k, theme.rcss);
-    ui_theme_free(&theme);
+    ui_page page = { 0 };
+    assert(
+        ui_page_sync(&page, "projects/studio/content", "StudioShell", 0) &&
+        page.document.rcss
+    );
+    kit_theme(k, page.document.rcss);
+    ui_page_free(&page);
     return k;
 }
 

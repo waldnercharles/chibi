@@ -67,7 +67,7 @@ static void imports_resolve_in_order_once()
         free(imports[i]);
     }
     afree(imports);
-    fails("@import \"x.rcss\";", "line 1: @import is only for stylesheet files");
+    expands("@import \"x.rcss\";\n.a { x: 1; }", "@import \"x.rcss\";\n.a { x: 1; }\n");
     unlink(tokens);
     unlink(menu);
     rmdir(parts);

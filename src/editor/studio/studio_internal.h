@@ -389,8 +389,8 @@ struct studio
     int discard_project; /* the project that toast opens */
     rml_backend *backend;
     kit *kit;
-    studio_ui *ui;  /* NULL when the Studio project could not load */
-    ui_theme theme; /* the Studio project's, which every Studio document uses */
+    studio_ui *ui; /* NULL when the Studio project could not load */
+    ui_page page; /* the Studio scene's root document, whose RCSS styles every Studio document */
     kit_frame_input in;
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
@@ -489,7 +489,7 @@ void studio_prefs_share(studio_prefs *prefs, game_save *save, uint64_t *seen);
 /* A theme custom property a Theme panel row shows (studio_sources.c). */
 typedef struct studio_token
 {
-    int file;       /* index in the theme's watches */
+    int file;       /* index in the page's imports */
     int start, end; /* the value's bytes in the file when read */
     char name[64];
     char *value; /* as read */
@@ -497,15 +497,15 @@ typedef struct studio_token
 } studio_token;
 
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
- * `world`, the Scene world's saved keys, and `theme`, the open project's
- * theme tokens. */
+ * `world`, the Scene world's saved keys, and `theme`, the custom properties
+ * of the stylesheets the open scene's root document imports. */
 typedef struct studio_sources
 {
     game_save *save; /* the one `world` shows */
     uint64_t save_seen;
-    char content_root[1024]; /* whose theme `theme` shows */
-    ui_theme theme;
-    studio_token *tokens; /* in the order `theme` lists its rows */
+    char content_root[1024]; /* whose page `theme` shows */
+    ui_page page;            /* the open scene's root document */
+    studio_token *tokens;    /* in the order `theme` lists its rows */
     uint64_t writes_seen;
 } studio_sources;
 
@@ -517,6 +517,9 @@ void studio_sources_free(studio_sources *sources);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
  * cannot. Free it after the kit, whose hosts hold its listener. */
+/* The Studio scene's root ui document: its own, else the Studio project's
+ * default, else "". */
+const char *studio_ui_page(const studio_ui *ui);
 studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size);
 void studio_ui_free(studio_ui *ui);
 /* Steps the panels' behaviors and shares preferences; call after input. */

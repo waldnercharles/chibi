@@ -1,7 +1,9 @@
 /* GameUi documents without a GPU: loading, model application and events. */
+#include "assets/project.h"
 #include "render/ui.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
+#include "support/text_file.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -35,18 +37,21 @@ static void click(render_ui *ui, float x, float y)
 static bool shipped_documents_load(
     ecs_world *world,
     ecs_entity entity,
-    const char *content,
+    const char *project_root,
     char *failure,
     size_t size
 )
 {
-    char folder[256];
-    snprintf(folder, sizeof folder, "%s/ui", content);
+    chibi_project project = { 0 };
+    assert(chibi_project_open(&project, project_root, failure, size) == 0);
+    char folder[1024];
+    snprintf(folder, sizeof folder, "%s/ui", project.content);
     DIR *dir = opendir(folder);
     if (!dir) {
+        chibi_project_free(&project);
         return true;
     }
-    render_ui *ui = render_ui_new(content);
+    render_ui *ui = render_ui_new(project.content);
     ui_world w = { .ecs = world };
     bool ok = true;
     for (struct dirent *e; ok && (e = readdir(dir));) {
@@ -57,13 +62,29 @@ static bool shipped_documents_load(
             continue;
         }
         snprintf(name, sizeof name, "%.*s", (int)(length - 5), e->d_name);
-        *GAME_GameUi_get(world, entity) = (GameUi){ .document = name };
+        /* A root document, with its <body>, shows as the page. */
+        char path[1300];
+        snprintf(path, sizeof path, "%s/%s", folder, e->d_name);
+        char *text = text_file_read(path), error[64];
+        ui_document document = { 0 };
+        bool page = text &&
+                    ui_document_read(text, NULL, NULL, &document, error, sizeof error) &&
+                    document.body;
+        free(text);
+        ui_document_free(&document);
+        /* Other documents show on the project's default page, as in a scene. */
+        w.page = page ? name : project.ui;
+        *GAME_GameUi_get(world, entity) = (GameUi){ .document = page ? "" : name };
+        rml_backend_take_warning();
         render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-        ok = !render_ui_error(ui)[0];
-        snprintf(failure, size, "%s", render_ui_error(ui));
+        render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+        const char *warning = rml_backend_take_warning();
+        ok = !render_ui_error(ui)[0] && !warning[0];
+        snprintf(failure, size, "ui/%s.yaml: %s", name, warning[0] ? warning : render_ui_error(ui));
     }
     closedir(dir);
     render_ui_free(ui);
+    chibi_project_free(&project);
     return ok;
 }
 
@@ -76,10 +97,10 @@ static void shipped_documents()
     ecs_entity entity = ecs_world_create_entity(world);
     assert(GAME_GameUi_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    static const char *const CONTENT[] = { "content",
-                                           "projects/arena2d/content",
-                                           "projects/SpaceCadet/content",
-                                           "projects/studio/content" };
+    static const char *const CONTENT[] = { ".",
+                                           "projects/arena2d",
+                                           "projects/SpaceCadet",
+                                           "projects/studio" };
     char failure[256] = "";
     bool ok = true;
     for (size_t i = 0; ok && i < sizeof CONTENT / sizeof *CONTENT; i++) {
@@ -296,6 +317,28 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(keyed && game_entities_pending_events(live->entities) == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
     unlink(keys);
+
+    /* A page's RCSS styles the documents in its slot, unscoped. */
+    char page[96], tall[96];
+    snprintf(page, sizeof page, "%s/Page.yaml", folder);
+    snprintf(tall, sizeof tall, "%s/Tall.yaml", folder);
+    write_file(page, "rml: '<body class=\"page\"><div class=\"bar\"/><slot/></body>'\nrcss: '.page .tall { display: block; height: 80dp; }'\n");
+    write_file(tall, "rml: <div class=\"tall\" data-event-click=\"emit('Hit')\">Hit</div>\n");
+    *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Tall" };
+    w.page = "Page";
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    before = game_entities_pending_events(live->entities);
+    click(ui, 40, 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    test_check(
+        !render_ui_error(ui)[0] &&
+            game_entities_pending_events(live->entities) == before + 1,
+        "a scene's root document styles the documents shown on it"
+    );
+    w.page = NULL;
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    unlink(page);
+    unlink(tall);
 
     char broken[96];
     snprintf(broken, sizeof broken, "%s/Broken.yaml", folder);

@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 /* Syntax highlighting as token runs, after Shiki: a lexer per language turns a
- * line into runs, and themes color runs by token class (tok-* in the Studio theme, Theme.rcss).
+ * line into runs, and themes color runs by token class (tok-* in the Studio theme, theme/roles.rcss).
  * Lines are independent; no language here carries state across lines. */
 typedef enum
 {

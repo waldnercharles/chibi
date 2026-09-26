@@ -20,9 +20,10 @@ extern "C"
      * on change, and kit_item_* queries describe the last emitted item.
      *
      * Keys are unique among siblings. Paths join ancestor keys with '/' and name
-     * items for tests and inspection. Styling lives in the Studio project's
-     * theme (projects/studio/content/ui/Theme.rcss); behavior follows the Base
-     * UI contracts in docs/prototypes/studio/kit.html. */
+     * items for tests and inspection. Styling lives in the Studio scene's root
+     * document (projects/studio/content/ui/StudioShell.yaml and the theme files
+     * it imports); behavior follows the Base UI contracts in
+     * docs/prototypes/studio/kit.html. */
 
     typedef struct kit kit;
 
@@ -53,7 +54,7 @@ extern "C"
     kit *kit_create(void *context, const char *document_path);
     void kit_destroy(kit *k);
     /* RCSS that precedes the document's own stylesheet: the tokens and control
-       styles of a project's theme (its ui/Theme.rcss). */
+       styles of a scene's root document (render/ui.h ui_page). */
     void kit_theme(kit *k, const char *rcss);
 
     /* Host pointer state for the frame, in logical pixels. */

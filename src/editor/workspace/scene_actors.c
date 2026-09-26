@@ -473,6 +473,28 @@ static void apply_physics_settings(app_scene_authoring *scene, game_physics_sett
     asset_index_invalidate(scene);
 }
 
+const char *app_scene_authoring_page(const app_scene_authoring *scene)
+{
+    return scene->ui ? scene->ui : scene->default_ui;
+}
+
+static void set_name(char **field, const char *name)
+{
+    free(*field);
+    *field = name && name[0] ? xstrdup(name) : NULL;
+}
+
+void app_scene_authoring_set_ui(app_scene_authoring *scene, const char *ui)
+{
+    set_name(&scene->ui, ui);
+    scene->scene_dirty = true;
+}
+
+void app_scene_authoring_set_default_ui(app_scene_authoring *scene, const char *ui)
+{
+    set_name(&scene->default_ui, ui);
+}
+
 int app_scene_authoring_set_physics(app_scene_authoring *scene, game_physics_settings settings)
 {
     if (scene->runtime_snapshot_valid || scene->preview_playing ||

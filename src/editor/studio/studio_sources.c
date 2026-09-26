@@ -1,8 +1,8 @@
 /* The data Studio's authored panels bind beyond their own world's `save`
  * (render/ui.h): `world`, the saved keys of the world the Scene shows, and
- * `theme`, the custom properties of the open project's theme files. A
- * panel's edits apply back: a saved key to the save, and a theme value to
- * its file, which restyles everything the theme styles. */
+ * `theme`, the custom properties of the stylesheets the open scene's root
+ * document imports. A panel's edits apply back: a saved key to the save, and
+ * a theme value to its file, which restyles everything the page styles. */
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/scenes/prototype_preview.h"
@@ -168,10 +168,10 @@ static void show_theme(studio_sources *src, ui_data *data)
     yyjson_mut_arr_clear(sections);
     free_tokens(src);
     yyjson_mut_val *rows = NULL;
-    for (int f = 0; f < acount(src->theme.watches); f++) {
-        const char *path = src->theme.watches[f].path;
-        char *text = file_watch_exists(&src->theme.watches[f]) ? text_file_read(path)
-                                                               : NULL;
+    for (int f = 0; f < acount(src->page.imports); f++) {
+        const char *path = src->page.imports[f].path;
+        char *text = file_watch_exists(&src->page.imports[f]) ? text_file_read(path)
+                                                              : NULL;
         rcss_variable *vars = NULL;
         if (text) {
             rcss_variables(text, &vars);
@@ -234,7 +234,7 @@ static bool theme_edited(const studio_sources *src, ui_data *data)
  * old one; a value the file no longer holds is left alone. */
 static void save_file(studio *s, studio_sources *src, ui_data *data, int file)
 {
-    const char *path = src->theme.watches[file].path;
+    const char *path = src->page.imports[file].path;
     char *text = text_file_read(path);
     if (!text) {
         return;
@@ -271,7 +271,7 @@ static void save_file(studio *s, studio_sources *src, ui_data *data, int file)
 
 static void save_theme(studio *s, studio_sources *src, ui_data *data)
 {
-    for (int f = 0; f < acount(src->theme.watches); f++) {
+    for (int f = 0; f < acount(src->page.imports); f++) {
         bool edited = false;
         for (int i = 0; i < acount(src->tokens) && !edited; i++) {
             const char *value = row_value(data, i);
@@ -289,13 +289,14 @@ static void sync_theme(studio *s, studio_sources *src, ui_data *data, bool wrote
 {
     const char *content = s->scene->content_root;
     if (strcmp(src->content_root, content) != 0) {
-        ui_theme_free(&src->theme);
+        ui_page_free(&src->page);
         snprintf(src->content_root, sizeof src->content_root, "%s", content);
     }
     if (wrote && theme_edited(src, data)) {
         save_theme(s, src, data);
     }
-    if (ui_theme_sync(&src->theme, content, s->time)) {
+    const char *page = app_scene_authoring_page(s->scene);
+    if (ui_page_sync(&src->page, content, page ? page : "", s->time)) {
         show_theme(src, data);
     }
 }
@@ -312,6 +313,6 @@ void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
 void studio_sources_free(studio_sources *src)
 {
     free_tokens(src);
-    ui_theme_free(&src->theme);
+    ui_page_free(&src->page);
     *src = (studio_sources){ 0 };
 }

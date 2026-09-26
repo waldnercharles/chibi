@@ -413,19 +413,23 @@ static void share_project_prefs(studio *s)
     studio_prefs_share(&s->prefs, game_behavior_save(previews), &s->preview_prefs_seen);
 }
 
-/* The editor looks the way its own UI project's theme says; an edit to it
- * restyles every Studio document. */
+/* Studio's chrome is the Studio scene's page: the scene's root document's
+ * RCSS styles it, and an edit to it or an import restyles the editor. */
 static void sync_theme(studio *s)
 {
-    if (!ui_theme_sync(&s->theme, STUDIO_PROJECT "/content", s->time)) {
+    const char *name = s->ui ? studio_ui_page(s->ui) : "";
+    if (!ui_page_sync(&s->page, STUDIO_PROJECT "/content", name, s->time) &&
+        !s->page.error[0]) {
         return;
     }
-    kit_theme(s->kit, s->theme.rcss);
+    const char *rcss = s->page.document.rcss ? s->page.document.rcss : "";
+    kit_theme(s->kit, rcss);
     if (s->graph.kit) {
-        kit_theme(s->graph.kit, s->theme.rcss);
+        kit_theme(s->graph.kit, rcss);
     }
-    if (s->theme.error[0]) {
-        studio_error(s, "Theme", s->theme.error);
+    if (s->page.error[0]) {
+        studio_error(s, "Studio UI", s->page.error);
+        s->page.error[0] = '\0';
     }
 }
 
@@ -442,10 +446,10 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     assert(s->backend);
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
-    sync_theme(s);
     s->prefs = studio_prefs_load();
     char error[256];
     s->ui = studio_ui_new(rml_backend_context(s->backend), STUDIO_PROJECT, error, sizeof error);
+    sync_theme(s);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);
     }
@@ -496,7 +500,7 @@ void studio_free(studio *s)
     component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
     studio_ui_free(s->ui);
-    ui_theme_free(&s->theme);
+    ui_page_free(&s->page);
     rml_backend_destroy(s->backend);
     free(s);
 }

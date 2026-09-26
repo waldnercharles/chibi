@@ -4,17 +4,30 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* A ui asset: RML body markup and the RCSS that styles it. */
+/* A ui asset: RML body markup and the RCSS that styles it. A scene's root
+ * document may wrap its markup in <body ...>, as a web page's layout does,
+ * to set the page body's attributes, such as a data-class-dark binding. */
 typedef struct ui_document
 {
     char *rml;
     char *rcss; /* empty when the asset has none */
+    char *body; /* the <body> attributes as written, or NULL */
 } ui_document;
 
 /* Parses a ui asset into `out`, which is empty or holds an earlier read.
- * Returns false with a message in `error` and leaves `out` unchanged when the
- * asset is invalid, so a caller keeps the last valid document. */
-bool ui_document_read(const char *text, ui_document *out, char *error, size_t error_size);
+ * RCSS @imports resolve in `directory`, appending each file read to
+ * `imports` (support/array.h) when it is not NULL; a NULL directory leaves
+ * them as written. Returns false with a message in `error` and leaves `out`
+ * unchanged when the asset is invalid, so a caller keeps the last valid
+ * document. */
+bool ui_document_read(
+    const char *text,
+    const char *directory,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size
+);
 /* Replaces each <use ui="Name" .../> in the markup with the widget asset
  * `ui_root`/Name.yaml: a div with the use element's attributes, `ui` renamed
  * data-ui, around the widget's markup. A widget element with an attrs
@@ -40,7 +53,7 @@ char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);
 /* Owned RML document text: `base` then the asset's RCSS in the head, and its
- * markup in the body. */
+ * markup in a body with its body attributes. */
 char *ui_document_compose(const ui_document *document, const char *base);
 void ui_document_free(ui_document *document);
 

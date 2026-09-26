@@ -287,11 +287,13 @@ static bool import(reader *r, const char *chunk, char **out)
 {
     const char *open = strpbrk(chunk, "\"'");
     const char *close = open ? strchr(open + 1, *open) : NULL;
-    if (!r->directory) {
-        return fail(r, "@import is only for stylesheet files");
-    }
     if (!close) {
         return fail(r, "@import needs a quoted file name");
+    }
+    if (!r->directory) {
+        put_text(out, chunk);
+        put_text(out, ";\n");
+        return true;
     }
     char path[1024];
     snprintf(path, sizeof path, "%s/%.*s", r->directory, (int)(close - open - 1), open + 1);

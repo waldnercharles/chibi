@@ -2,3 +2,4 @@ version: 1
 name: Studio
 content: content
 start_scene: scenes/Studio.yaml
+ui: StudioShell

@@ -19,6 +19,8 @@ static void composed_document()
         "  <div id=\"score\">0</div>\n"
         "rcss: |\n"
         "  #score { font-size: 24dp; }\n",
+        NULL,
+        NULL,
         &d,
         error,
         sizeof error
@@ -50,17 +52,60 @@ static void rejected_documents()
         { "rcss: 'div {}'", "rml must be nonempty" },
         { "rml: ''", "rml must be nonempty" },
         { "rml: '<div/>'\nstyle: dark", "unknown key style" },
-        { "rml: '<body><div/></body>'", "remove <body>" },
         { "rml: '<div/>'\nrcss: [1]", "rcss must be text" },
         { "rml: '<div/>'\nrcss: '</style><div>'", "must not close its style" },
         { "rml: '<div/>'\nrcss: '.a { color: red;'", "rcss line 1: missing }" },
+        { "rml: '<body class=\"x\"><p/></body><p/>'", "must hold all the markup" },
+        { "rml: '<div><body/></div>'", "remove <body>" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         ui_document d = { 0 };
         char error[256] = { 0 };
-        bool ok = ui_document_read(cases[i].yaml, &d, error, sizeof error);
+        bool ok = ui_document_read(cases[i].yaml, NULL, NULL, &d, error, sizeof error);
         test_check(!ok && strstr(error, cases[i].error) && !d.rml, cases[i].error);
     }
+}
+
+/* A scene's root document may wrap its markup in <body ...>, and its RCSS
+ * may import stylesheets beside it. */
+static void page_document()
+{
+    char root[] = "/tmp/chibi-ui-page-XXXXXX", path[128];
+    assert(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/tokens.rcss", root);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(":root { --a: 1; }\n", file);
+    fclose(file);
+    ui_document d = { 0 };
+    char error[256] = { 0 }, **imports = NULL;
+    bool ok = ui_document_read(
+        "rml: '<body class=\"page\" "
+        "data-class-dark=\"system.dark\"><slot/></body>'\n"
+        "rcss: '@import \"tokens.rcss\";'\n",
+        root,
+        &imports,
+        &d,
+        error,
+        sizeof error
+    );
+    char *composed = ok ? ui_document_compose(&d, "") : NULL;
+    test_check(
+        ok && !strcmp(d.body, "class=\"page\" data-class-dark=\"system.dark\"") &&
+            !strcmp(d.rml, "<slot/>") && strstr(d.rcss, "body { --a: 1; }") &&
+            acount(imports) == 1 &&
+            strstr(composed, "<body class=\"page\" data-class-dark=\"system.dark\"><slot/></body>"),
+        "a root document's <body> holds the page body's attributes and its "
+        "RCSS imports stylesheets"
+    );
+    free(composed);
+    for (int i = 0; i < acount(imports); i++) {
+        free(imports[i]);
+    }
+    afree(imports);
+    ui_document_free(&d);
+    unlink(path);
+    rmdir(root);
 }
 
 /* Nested RCSS flattens before the document scopes it. */
@@ -73,6 +118,8 @@ static void nested_rcss()
         "rcss: |\n"
         "  // rows\n"
         "  .menu { .item { margin: 0; &:hover { color: var(--fg); } } }\n",
+        NULL,
+        NULL,
         &d,
         error,
         sizeof error
@@ -92,10 +139,10 @@ static void last_valid_document()
 {
     ui_document d = { 0 };
     char error[256] = { 0 };
-    bool first = ui_document_read("rml: '<p>one</p>'", &d, error, sizeof error);
-    bool rejected = !ui_document_read("rml: ''", &d, error, sizeof error);
+    bool first = ui_document_read("rml: '<p>one</p>'", NULL, NULL, &d, error, sizeof error);
+    bool rejected = !ui_document_read("rml: ''", NULL, NULL, &d, error, sizeof error);
     bool kept = d.rml && strcmp(d.rml, "<p>one</p>") == 0;
-    bool replaced = ui_document_read("rml: '<p>two</p>'", &d, error, sizeof error);
+    bool replaced = ui_document_read("rml: '<p>two</p>'", NULL, NULL, &d, error, sizeof error);
     test_check(
         first && rejected && kept && replaced && strcmp(d.rml, "<p>two</p>") == 0,
         "an invalid ui asset keeps the last valid document"
@@ -281,6 +328,7 @@ void test_ui_document()
     rejected_documents();
     last_valid_document();
     nested_rcss();
+    page_document();
     expanded_widgets();
     scoped_styles();
 }

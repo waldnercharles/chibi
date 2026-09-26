@@ -16,6 +16,8 @@
 /* The asset holds the body; composition supplies the document around it. */
 static const char *const DOCUMENT_TAGS[] = { "<rml", "<head", "<body" };
 
+static const char *tag_end(const char *p);
+
 static bool fail(char *error, size_t size, const char *format, ...)
 {
     va_list args;
@@ -25,7 +27,48 @@ static bool fail(char *error, size_t size, const char *format, ...)
     return false;
 }
 
-static bool read_root(yyjson_val *root, ui_document *out, char *error, size_t error_size)
+/* Splits markup wrapped in <body ...>...</body> into the body's attributes
+ * and its content; other markup is all content. */
+static bool split_body(const char *rml, ui_document *out, char *error, size_t error_size)
+{
+    const char *start = rml + strspn(rml, " \t\r\n");
+    bool wrapped = !strncmp(start, "<body", 5) &&
+                   (isspace((unsigned char)start[5]) || start[5] == '>' ||
+                    start[5] == '/');
+    const char *open_end = wrapped ? tag_end(start) : NULL;
+    if (!wrapped) {
+        out->rml = xstrdup(rml);
+        return true;
+    }
+    if (!open_end) {
+        return fail(error, error_size, "rml: <body> needs a >");
+    }
+    bool empty = open_end[-2] == '/';
+    const char *attrs = start + 5, *attrs_end = open_end - (empty ? 2 : 1);
+    const char *inner = open_end, *inner_end = open_end;
+    if (!empty) {
+        inner_end = strstr(inner, "</body>");
+        const char *after = inner_end ? inner_end + 7 : NULL;
+        if (!after || after[strspn(after, " \t\r\n")]) {
+            return fail(error, error_size, "rml: <body> must hold all the markup and end with </body>");
+        }
+    }
+    attrs += strspn(attrs, " \t\r\n");
+    out->body = xmalloc((size_t)(attrs_end - attrs) + 1);
+    snprintf(out->body, (size_t)(attrs_end - attrs) + 1, "%s", attrs);
+    out->rml = xmalloc((size_t)(inner_end - inner) + 1);
+    snprintf(out->rml, (size_t)(inner_end - inner) + 1, "%s", inner);
+    return true;
+}
+
+static bool read_root(
+    yyjson_val *root,
+    const char *directory,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size
+)
 {
     if (!yyjson_is_obj(root)) {
         return fail(error, error_size, "a ui asset must be a mapping");
@@ -46,25 +89,34 @@ static bool read_root(yyjson_val *root, ui_document *out, char *error, size_t er
     if (rcss && !yyjson_is_str(rcss)) {
         return fail(error, error_size, "rcss must be text");
     }
-    for (size_t i = 0; i < sizeof DOCUMENT_TAGS / sizeof *DOCUMENT_TAGS; i++) {
-        if (strstr(yyjson_get_str(rml), DOCUMENT_TAGS[i])) {
-            return fail(error, error_size, "rml holds body markup; remove %s>", DOCUMENT_TAGS[i]);
-        }
-    }
     if (rcss && strstr(yyjson_get_str(rcss), "</style")) {
         return fail(error, error_size, "rcss must not close its style block");
     }
+    if (!split_body(yyjson_get_str(rml), out, error, error_size)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof DOCUMENT_TAGS / sizeof *DOCUMENT_TAGS; i++) {
+        if (strstr(out->rml, DOCUMENT_TAGS[i])) {
+            return fail(error, error_size, "rml holds body markup; remove %s>", DOCUMENT_TAGS[i]);
+        }
+    }
     char message[200];
-    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", NULL, NULL, message, sizeof message);
+    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", directory, imports, message, sizeof message);
     if (!flat) {
         return fail(error, error_size, "rcss %s", message);
     }
-    out->rml = xstrdup(yyjson_get_str(rml));
     out->rcss = flat;
     return true;
 }
 
-bool ui_document_read(const char *text, ui_document *out, char *error, size_t error_size)
+bool ui_document_read(
+    const char *text,
+    const char *directory,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size
+)
 {
     assert(text && out);
     yyjson_doc *doc = asset_text_read(text, error, error_size);
@@ -72,7 +124,7 @@ bool ui_document_read(const char *text, ui_document *out, char *error, size_t er
         return false;
     }
     ui_document next = { 0 };
-    bool ok = read_root(yyjson_doc_get_root(doc), &next, error, error_size);
+    bool ok = read_root(yyjson_doc_get_root(doc), directory, imports, &next, error, error_size);
     yyjson_doc_free(doc);
     if (!ok) {
         ui_document_free(&next);
@@ -243,8 +295,13 @@ static const ui_document *widget_named(expansion *x, const char *name)
     snprintf(path, sizeof path, "%s/%s.yaml", x->ui_root, name);
     char *text = text_file_read(path);
     char why[160] = "is missing";
-    bool read = text && ui_document_read(text, &alast(x->widgets), why, sizeof why);
+    bool read = text &&
+                ui_document_read(text, x->ui_root, NULL, &alast(x->widgets), why, sizeof why);
     free(text);
+    if (read && alast(x->widgets).body) {
+        snprintf(why, sizeof why, "has a <body>, which only a scene's root document has");
+        read = false;
+    }
     if (!read) {
         fail(x->error, x->error_size, "widget %s %s", name, why);
         return NULL;
@@ -567,11 +624,31 @@ void ui_document_use_names(const char *rml, char ***names)
 char *ui_document_compose(const ui_document *document, const char *base)
 {
     static const char FORMAT[] = "<rml><head><style>%s\n%s</style></"
-                                 "head><body>%s</body></rml>";
-    int size = snprintf(NULL, 0, FORMAT, base, document->rcss, document->rml);
+                                 "head><body%s%s>%s</body></rml>";
+    const char *space = document->body ? " " : "",
+               *body = document->body ? document->body : "";
+    int size = snprintf(
+        NULL,
+        0,
+        FORMAT,
+        base,
+        document->rcss,
+        space,
+        body,
+        document->rml
+    );
     assert(size >= 0);
     char *text = xmalloc((size_t)size + 1);
-    snprintf(text, (size_t)size + 1, FORMAT, base, document->rcss, document->rml);
+    snprintf(
+        text,
+        (size_t)size + 1,
+        FORMAT,
+        base,
+        document->rcss,
+        space,
+        body,
+        document->rml
+    );
     return text;
 }
 
@@ -579,5 +656,6 @@ void ui_document_free(ui_document *document)
 {
     free(document->rml);
     free(document->rcss);
+    free(document->body);
     *document = (ui_document){ 0 };
 }

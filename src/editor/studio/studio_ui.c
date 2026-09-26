@@ -4,6 +4,7 @@
  * behaviors and data bindings work as they do in games. Studio's preferences
  * are that world's saved keys. */
 #include "assets/behavior_loader.h"
+#include "assets/project.h"
 #include "assets/scene_document.h"
 #include "editor/studio/studio_internal.h"
 #include "graph/document/serialize.h"
@@ -31,6 +32,8 @@ typedef struct panel
 struct studio_ui
 {
     char *content_root;
+    char *default_page; /* the Studio project's default root document, or NULL */
+    char *page;         /* the Studio scene's root document, or NULL */
     game_prototype_registry registry;
     game_prototype_preview *world;
     game_prototype **prototypes;
@@ -103,6 +106,9 @@ static bool launch(studio_ui *ui, char *error, size_t size)
     if (!scene) {
         return false;
     }
+    free(ui->page);
+    const char *page = scene->ui ? scene->ui : ui->default_page;
+    ui->page = page ? xstrdup(page) : NULL;
     game_prototype_preview_scene_entity *entities = NULL;
     bool ok = true;
     for (int i = 0; ok && i < acount(scene->entities); i++) {
@@ -221,6 +227,13 @@ static void follow_disk(studio *s)
 studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size)
 {
     studio_ui *ui = xcalloc(1, sizeof *ui);
+    chibi_project project = { 0 };
+    char manifest_error[256];
+    if (chibi_project_open(&project, project_root, manifest_error, sizeof manifest_error) == 0 &&
+        project.ui) {
+        ui->default_page = xstrdup(project.ui);
+    }
+    chibi_project_free(&project);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
     studio_sources_add(doc);
@@ -247,6 +260,8 @@ void studio_ui_free(studio_ui *ui)
         return;
     }
     free_world(ui);
+    free(ui->page);
+    free(ui->default_page);
     studio_sources_free(&ui->sources);
     ui_data_free(&ui->data);
     tree_watch_free(&ui->files);
@@ -365,6 +380,11 @@ void studio_ui_panel(studio *s, const char *key, const char *name)
             component->document
         );
     }
+}
+
+const char *studio_ui_page(const studio_ui *ui)
+{
+    return ui->page ? ui->page : "";
 }
 
 int studio_ui_panel_count(const studio *s)

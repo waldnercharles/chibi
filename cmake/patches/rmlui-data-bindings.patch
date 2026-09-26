@@ -79,7 +79,7 @@ index b6de1bb9..ce321729 100644
  
  class DataControllerEvent final : public DataController, private EventListener {
 diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
-index e54fb41a..d4e55c8c 100644
+index e54fb41a..b8a29e68 100644
 --- a/Source/Core/DataViewDefault.cpp
 +++ b/Source/Core/DataViewDefault.cpp
 @@ -1,4 +1,5 @@
@@ -116,6 +116,20 @@ index e54fb41a..d4e55c8c 100644
  DataViewChecked::DataViewChecked(Element* element) : DataViewCommon(element, String(), SortOffset_DataChecked) {}
  
  bool DataViewChecked::Update(DataModel& model)
+@@ -165,6 +187,13 @@ bool DataViewStyle::Update(DataModel& model)
+ 	{
+ 		const String value = variant.Get<String>();
+ 		const Property* p = element->GetLocalProperty(property_name);
++		// As Vue does for an undefined style value, an empty one leaves the property unset.
++		if (value.empty())
++		{
++			if (p)
++				element->RemoveProperty(property_name);
++			return p != nullptr;
++		}
+ 		if (!p || p->Get<String>() != value)
+ 		{
+ 			element->SetProperty(property_name, value);
 diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
 index 1dcefacd..f3ccd62e 100644
 --- a/Source/Core/DataViewDefault.h

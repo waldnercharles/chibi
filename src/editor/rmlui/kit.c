@@ -1229,6 +1229,12 @@ kit_rect kit_item_rect(kit *k)
     return k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
 }
 
+bool kit_item_hovered(kit *k)
+{
+    rml_element *hover = rml_context_hover_element(k->context);
+    return k->last && hover && within(hover, k->last->el);
+}
+
 const char *kit_string(kit *k, const char *text)
 {
     apush(k->strings, xstrdup(text ? text : ""));

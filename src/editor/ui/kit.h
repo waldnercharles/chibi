@@ -124,6 +124,7 @@ extern "C"
     bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
+    bool kit_item_hovered(kit *k); /* under the pointer and not clipped away */
 
     /* Conditional class lists (clsx): KIT_CX(k, "area", { "fill", fill }, { "live", live })
      * joins the base with each class whose condition holds. The string lives until

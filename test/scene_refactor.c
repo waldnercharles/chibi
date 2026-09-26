@@ -34,6 +34,10 @@ static const char
              "- {name: Dot_1, prototype: Dot, behaviors: [Pulse]}\n"
              "- {name: Dot_2, prototype: Dot, behaviors: [Pulse]}\n";
 
+static const char *const FOLDERS[] = { "behaviors", "libraries", "prototypes", "scenes" };
+#define FOLDER_COUNT ((int)(sizeof FOLDERS / sizeof *FOLDERS))
+#define WEAPONS "projects/arena2d/content/libraries/WeaponActions.yaml"
+
 static void path_to(const refactor_fixture *f, const char *name, char *out, size_t size)
 {
     snprintf(out, size, "%s/%s", f->root, name);
@@ -73,12 +77,15 @@ static refactor_fixture fixture_new()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(f.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    const char *folders[] = { "behaviors", "prototypes", "scenes" };
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < FOLDER_COUNT; i++) {
         char folder[128];
-        path_to(&f, folders[i], folder, sizeof folder);
+        path_to(&f, FOLDERS[i], folder, sizeof folder);
         assert(mkdir(folder, 0755) == 0);
     }
+    char *library = text_file_read(WEAPONS);
+    assert(library);
+    write_asset(&f, "libraries/WeaponActions.yaml", library);
+    free(library);
     write_asset(&f, "behaviors/Pulse.yaml", PULSE);
     write_asset(&f, "prototypes/Dot.yaml", DOT);
     write_asset(&f, "scenes/Main.yaml", MAIN);
@@ -112,10 +119,9 @@ static void fixture_free(refactor_fixture *f)
     game_live_world_free(f->live);
     editor_free(f->graph);
     ecs_world_free(f->world);
-    const char *folders[] = { "behaviors", "prototypes", "scenes" };
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < FOLDER_COUNT; i++) {
         char folder[128];
-        path_to(f, folders[i], folder, sizeof folder);
+        path_to(f, FOLDERS[i], folder, sizeof folder);
         DIR *directory = opendir(folder);
         struct dirent *item;
         while (directory && (item = readdir(directory))) {
@@ -155,11 +161,18 @@ static app_refactor *rename_to(
 }
 
 /* A behavior's file and name follow its rename, as do the prototype and
- * objects attaching it; Undo puts every file back. */
+ * objects attaching it; Undo puts every file back. The open behavior stays
+ * open and saved under its new name. */
 static void behaviors()
 {
     refactor_fixture f = fixture_new();
     char error[256] = "";
+    assert(
+        app_scene_authoring_open_asset(
+            f.scene,
+            asset_named(&f, REFERENCE_ASSET_BEHAVIOR, "Pulse").asset
+        ) == 0
+    );
     app_refactor *plan = rename_to(
         &f,
         asset_named(&f, REFERENCE_ASSET_BEHAVIOR, "Pulse"),
@@ -179,6 +192,12 @@ static void behaviors()
     bool loaded = game_live_find_definition(f.live, "Beat") &&
                   !game_live_find_definition(f.live, "Pulse") &&
                   game_prototype_has_graph(find_prototype(f.scene, "Dot")->prototype, "Beat");
+    sync_behavior_working(f.scene);
+    bool saved = loaded && !game_live_find_definition(f.live, "Beat")->unsaved &&
+                 !strcmp(f.scene->document_id, "Beat");
+    if (!saved) {
+        printf("  the open behavior is unsaved after its rename\n");
+    }
     app_refactor *redo = NULL;
     bool undone = undo &&
                   app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) ==
@@ -190,10 +209,48 @@ static void behaviors()
     if (!(listed && moved && loaded && undone)) {
         printf("  behavior rename: %s\n", error);
     }
-    assert(listed && moved && loaded && undone);
+    assert(listed && moved && loaded && saved && undone);
     app_refactor_free(plan);
     app_refactor_free(undo);
     app_refactor_free(redo);
+    fixture_free(&f);
+}
+
+/* An open library keeps its function graph open and saved when renamed. */
+static void libraries()
+{
+    refactor_fixture f = fixture_new();
+    char error[256] = "";
+    assert(
+        app_scene_authoring_open_asset(
+            f.scene,
+            asset_named(&f, REFERENCE_ASSET_LIBRARY, "WeaponActions").asset
+        ) == 0
+    );
+    sync_behavior_working(f.scene);
+    assert(!game_live_find_definition(f.live, "WeaponActions")->unsaved);
+    app_refactor *plan = rename_to(
+        &f,
+        asset_named(&f, REFERENCE_ASSET_LIBRARY, "WeaponActions"),
+        "Weapons",
+        error,
+        sizeof error
+    );
+    app_refactor *undo = NULL;
+    assert(
+        plan &&
+        app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) == 0
+    );
+    sync_behavior_working(f.scene);
+    game_live_definition *renamed = game_live_find_definition(f.live, "Weapons");
+    bool saved = renamed && !renamed->unsaved &&
+                 !strcmp(f.scene->document_id, "Weapons");
+    if (!saved) {
+        printf("  the open library is unsaved after its rename: %s\n", error);
+    }
+    assert(saved);
+    app_refactor_free(plan);
+    app_refactor_free(undo);
     fixture_free(&f);
 }
 
@@ -237,6 +294,8 @@ static void refusals()
     app_refactor *plan = rename_to(&f, pulse, "Beat", error, sizeof error);
     assert(!plan && strstr(error, "Save Dot"));
     find_prototype(f.scene, "Dot")->dirty = 0;
+    plan = rename_to(&f, pulse, "pulse", error, sizeof error);
+    assert(!plan && strstr(error, "only in case"));
     plan = rename_to(&f, pulse, "Beat", error, sizeof error);
     assert(plan);
     write_asset(&f, "prototypes/Dot.yaml", "name: Dot\nbehaviors: [Pulse]\n");
@@ -244,6 +303,30 @@ static void refusals()
     assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) != 0);
     assert(!undo && exists(&f, "behaviors/Pulse.yaml") && !exists(&f, "behaviors/Beat.yaml"));
     app_refactor_free(plan);
+
+    /* Edits made after a rename keep its Undo from reloading over them. */
+    write_asset(&f, "prototypes/Dot.yaml", DOT);
+    char dot[128];
+    path_to(&f, "prototypes/Dot.yaml", dot, sizeof dot);
+    app_scene_authoring_reload_path(f.scene, dot);
+    plan = rename_to(&f, asset_named(&f, REFERENCE_ASSET_BEHAVIOR, "Pulse"), "Beat", error, sizeof error);
+    assert(
+        plan &&
+        app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) == 0
+    );
+    find_prototype(f.scene, "Dot")->dirty = 1;
+    app_refactor *redo = NULL;
+    bool kept = app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) !=
+                    0 &&
+                strstr(error, "Save Dot") && exists(&f, "behaviors/Beat.yaml") &&
+                find_prototype(f.scene, "Dot")->dirty;
+    if (!kept) {
+        printf("  undo over unsaved edits: %s\n", error);
+    }
+    assert(kept);
+    app_refactor_free(plan);
+    app_refactor_free(undo);
+    app_refactor_free(redo);
     fixture_free(&f);
 }
 
@@ -255,7 +338,7 @@ static void deletes()
     app_refactor *plan = NULL;
     reference_symbol pulse = asset_named(&f, REFERENCE_ASSET_BEHAVIOR, "Pulse");
     assert(app_scene_authoring_plan_delete(f.scene, pulse, &plan, error, sizeof error) == 0);
-    assert(app_refactor_count(plan) == 1 && app_refactor_at(plan, 0).deleted);
+    assert(app_refactor_count(plan) == 1);
     app_refactor *undo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) == 0);
     assert(!exists(&f, "behaviors/Pulse.yaml"));
@@ -265,12 +348,42 @@ static void deletes()
     app_refactor_free(plan);
     app_refactor_free(undo);
     app_refactor_free(redo);
+
+    /* A deleted prototype the scene still places stays in memory without a
+       file; Undo gives it its file back. */
+    reference_symbol dot = asset_named(&f, REFERENCE_ASSET_PROTOTYPE, "Dot");
+    assert(app_scene_authoring_plan_delete(f.scene, dot, &plan, error, sizeof error) == 0);
+    assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) == 0);
+    scene_prototype_asset *kept = find_prototype(f.scene, "Dot");
+    assert(kept && !kept->path && kept->dirty);
+    assert(app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) == 0);
+    int copies = 0;
+    for (int i = 0; i < acount(f.scene->prototypes); i++) {
+        copies += !strcmp(f.scene->prototypes[i].prototype->name, "Dot");
+    }
+    kept = find_prototype(f.scene, "Dot");
+    bool adopted = copies == 1 && kept->path && !kept->dirty &&
+                   exists(&f, "prototypes/Dot.yaml");
+    if (!adopted) {
+        printf(
+            "  undo of a placed prototype's delete: %d copies, path %s, dirty "
+            "%d\n",
+            copies,
+            kept->path ? kept->path : "none",
+            kept->dirty
+        );
+    }
+    assert(adopted);
+    app_refactor_free(plan);
+    app_refactor_free(undo);
+    app_refactor_free(redo);
     fixture_free(&f);
 }
 
 void test_scene_refactor()
 {
     behaviors();
+    libraries();
     prototypes();
     refusals();
     deletes();

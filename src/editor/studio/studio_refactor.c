@@ -9,6 +9,7 @@
 #include "editor/workspace/asset_refactor.h"
 #include "graph/document/events.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,7 +80,7 @@ static void plan(studio *s)
     );
 }
 
-void studio_refactor_rename(studio *s, reference_symbol symbol, const char *name)
+static void open_rename(studio *s, reference_symbol symbol, const char *name)
 {
     begin(s, STUDIO_REFACTOR_RENAME, symbol, name);
 }
@@ -159,12 +160,28 @@ static void refused(studio *s, const char *title, const char *error)
     kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_WARNING, .title = title, .description = error });
 }
 
+/* Applies a plan; renaming the open graph asset keeps its graph's camera. */
+static int apply_plan(studio *s, const app_refactor *plan, app_refactor **undo, char *error, size_t size)
+{
+    const char *id = s->scene->graph_document_id;
+    char *open = id ? xstrdup(id) : NULL;
+    int result = app_scene_authoring_apply_refactor(s->scene, plan, undo, error, size);
+    for (int i = 0; result == 0 && open && i < app_refactor_count(plan); i++) {
+        app_refactor_asset asset = app_refactor_at(plan, i);
+        if (asset.renamed && !strcmp(asset.name, open) && s->scene->graph_document_id &&
+            !strcmp(asset.renamed, s->scene->graph_document_id)) {
+            sg_keep_graph_view(s);
+        }
+    }
+    free(open);
+    return result;
+}
+
 static void apply(studio *s, const app_refactor *plan, const char *title)
 {
     app_refactor *undo = NULL;
     char error[256] = "";
-    if (app_scene_authoring_apply_refactor(s->scene, plan, &undo, error, sizeof error) !=
-        0) {
+    if (apply_plan(s, plan, &undo, error, sizeof error) != 0) {
         refused(s, "Nothing changed", error);
         return;
     }
@@ -180,9 +197,10 @@ static void apply_rename(studio *s)
     close_state(r);
 }
 
-static bool deletable(int kind)
+bool studio_asset_refactorable(const reference_asset *asset)
 {
-    return kind != REFERENCE_ASSET_SCENE && kind != REFERENCE_ASSET_SYSTEM;
+    return asset && !asset->unresolved && asset->kind != REFERENCE_ASSET_SCENE &&
+           asset->kind != REFERENCE_ASSET_SYSTEM;
 }
 
 /* Deletes an asset's file, or an event definition's. */
@@ -205,7 +223,7 @@ void studio_refactor_delete_asset(studio *s, int asset)
 {
     const reference_asset *
         found = reference_index_asset_at(app_scene_authoring_asset_index(s->scene), asset);
-    if (!found || found->unresolved || !deletable((int)found->kind)) {
+    if (!studio_asset_refactorable(found)) {
         return;
     }
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = asset };
@@ -220,8 +238,8 @@ void studio_refactor_rename_asset(studio *s, int asset)
 {
     const reference_asset *
         found = reference_index_asset_at(app_scene_authoring_asset_index(s->scene), asset);
-    if (found && !found->unresolved && deletable((int)found->kind)) {
-        studio_refactor_rename(
+    if (studio_asset_refactorable(found)) {
+        open_rename(
             s,
             (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = asset },
             found->name
@@ -266,7 +284,7 @@ void studio_refactor_rename_event(studio *s, const char *event)
         .asset = reference_index_find_name(app_scene_authoring_asset_index(s->scene), REFERENCE_ASSET_EVENT, event),
         .name = event,
     };
-    studio_refactor_rename(s, symbol, event);
+    open_rename(s, symbol, event);
 }
 
 /* ---------- Popover ---------- */
@@ -343,7 +361,9 @@ static void rename_body(studio *s)
         plan(s);
     }
     bool current = r->plan && !strcmp(r->planned, r->name);
-    if (!committed && current && enter_pressed(s)) {
+    /* The Enter that planned a member's rename in its own field shows the
+       popover; only an Enter pressed while it shows applies. */
+    if (!committed && current && r->shown && enter_pressed(s)) {
         apply_rename(s);
         return;
     }
@@ -393,8 +413,7 @@ void studio_refactor_frame(studio *s)
         r->undo = NULL;
         app_refactor *redo = NULL;
         char error[256] = "";
-        if (app_scene_authoring_apply_refactor(s->scene, undo, &redo, error, sizeof error) ==
-            0) {
+        if (apply_plan(s, undo, &redo, error, sizeof error) == 0) {
             studio_report(s, "Undo");
         } else {
             refused(s, "Can't undo", error);
@@ -423,6 +442,7 @@ void studio_refactor_frame(studio *s)
     if (!r->mode) {
         kit_popup_close(k, POPOVER);
     }
+    r->shown = r->mode != STUDIO_REFACTOR_CLOSED;
 }
 
 void studio_refactor_free(studio *s)

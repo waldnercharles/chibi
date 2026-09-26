@@ -362,6 +362,18 @@ static void delete_member(studio *s)
     }
 }
 
+bool studio_members_rename_across(
+    studio *s,
+    studio_member_kind kind,
+    uint64_t id,
+    const char *name,
+    const char *new_name
+)
+{
+    return name && strcmp(name, new_name) &&
+           studio_refactor_member_rename(s, member_symbol(s, kind, id), name, new_name);
+}
+
 static void rename_graph(studio *s, graph *g, const char *name)
 {
     editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
@@ -383,8 +395,7 @@ static void rename_member(studio *s, const char *name)
     const char *old = m->rename_kind == STUDIO_MEMBER_GRAPH ? (g ? g->name : NULL)
                     : m->rename_kind == STUDIO_MEMBER_VARIABLE ? (v ? v->name : NULL)
                                                                : NULL;
-    if (old && strcmp(old, name) &&
-        studio_refactor_member_rename(s, member_symbol(s, m->rename_kind, m->rename_id), old, name)) {
+    if (studio_members_rename_across(s, m->rename_kind, m->rename_id, old, name)) {
         return;
     }
     switch (m->rename_kind) {

@@ -50,8 +50,7 @@ typedef struct
     int kind; /* reference_asset_kind */
     const char *name;
     const char *renamed; /* its new name, or NULL */
-    bool deleted;
-    int changes; /* references rewritten in it */
+    int changes;         /* references rewritten in it */
 } app_refactor_asset;
 
 int app_refactor_count(const app_refactor *plan);

@@ -60,7 +60,6 @@ app_refactor_asset app_refactor_at(const app_refactor *plan, int index)
     return (app_refactor_asset){ .kind = file->kind,
                                  .name = file->name,
                                  .renamed = file->renamed,
-                                 .deleted = !file->to,
                                  .changes = file->changes };
 }
 
@@ -71,47 +70,52 @@ int app_refactor_mentions(const app_refactor *plan)
 
 /* ---------- Planning ---------- */
 
-static bool same_file(const char *a, const char *b)
-{
-    if (!a || !b) {
-        return false;
-    }
-    char *left = realpath(a, NULL), *right = realpath(b, NULL);
-    bool same = left && right ? !strcmp(left, right) : !strcmp(a, b);
-    free(left);
-    free(right);
-    return same;
-}
-
 /* Whether Studio holds edits of the file it has not saved. */
 static bool unsaved(app_scene_authoring *scene, const char *path)
 {
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         game_live_definition *definition = game_live_definition_at(scene->live, i);
         if (definition->unsaved &&
-            same_file(game_live_definition_path(definition), path)) {
+            scene_same_file(game_live_definition_path(definition), path)) {
             return true;
         }
     }
     for (int i = 0; i < acount(scene->prototypes); i++) {
-        if (scene->prototypes[i].dirty && same_file(scene->prototypes[i].path, path)) {
+        if (scene->prototypes[i].dirty &&
+            scene_same_file(scene->prototypes[i].path, path)) {
             return true;
         }
     }
     for (int i = 0; i < acount(scene->tabs); i++) {
-        if (same_file(scene->tabs[i].path, path) &&
+        if (scene_same_file(scene->tabs[i].path, path) &&
             scene_tabs_dirty(scene, &scene->tabs[i])) {
             return true;
         }
     }
-    return scene->scene_dirty && same_file(scene->scene_path, path);
+    return scene->scene_dirty && scene_same_file(scene->scene_path, path);
+}
+
+/* Refuses a file Studio holds unsaved edits of, naming what to save first. */
+static bool saved(app_scene_authoring *scene, const char *path, const char *name, char *error, size_t size)
+{
+    if (!path || !unsaved(scene, path)) {
+        return true;
+    }
+    snprintf(error, size, "Save %s first", name);
+    return false;
+}
+
+/* What Studio holds of its open documents, where unsaved() looks. */
+static void sync_edits(app_scene_authoring *scene)
+{
+    sync_behavior_working(scene);
+    scene_tabs_sync_current(scene);
 }
 
 /* The index, fresh with every edit, and each asset's saved file. */
 static char **saved_texts(app_scene_authoring *scene)
 {
-    sync_behavior_working(scene);
-    scene_tabs_sync_current(scene);
+    sync_edits(scene);
     app_scene_authoring_refresh_asset_index(scene);
     const reference_index *index = scene->asset_index;
     int count = reference_index_asset_count(index);
@@ -194,10 +198,7 @@ static int plan_symbol(
     for (int i = 0; result == 0 && i < acount(plan.edits); i++) {
         const reference_asset
             *asset = reference_index_asset_at(index, plan.edits[i].asset);
-        if (unsaved(scene, asset->path)) {
-            snprintf(error, size, "Save %s first", asset->name);
-            result = -1;
-        }
+        result = saved(scene, asset->path, asset->name, error, size) ? 0 : -1;
     }
     if (result == 0) {
         *out = files_of(index, texts, &plan);
@@ -334,6 +335,13 @@ int app_scene_authoring_apply_refactor(
     if (runtime_session(scene)) {
         snprintf(error, error_size, "Stop the scene first");
         return -1;
+    }
+    /* Edits made since the plan, as before an Undo, are not reloaded over. */
+    sync_edits(scene);
+    for (int i = 0; i < acount(plan->files); i++) {
+        if (!saved(scene, plan->files[i].from, plan->files[i].name, error, error_size)) {
+            return -1;
+        }
     }
     if (!current(plan, error, error_size)) {
         return -1;

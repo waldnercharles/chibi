@@ -295,5 +295,7 @@ typedef struct
 /* Brings what Studio holds of moved files up to date: new files load, a
    renamed prototype or behavior keeps its tab, changed files reload, and
    what a removed file held goes. */
+/* Whether two paths name one file, as realpath resolves them. */
+bool scene_same_file(const char *a, const char *b);
 void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count);
 #endif

@@ -316,7 +316,7 @@ app_disk_result app_scene_authoring_reload_path(app_scene_authoring *scene, cons
 
 /* ---------- Refactors ---------- */
 
-static bool same_file(const char *a, const char *b)
+bool scene_same_file(const char *a, const char *b)
 {
     if (!a || !b) {
         return false;
@@ -332,7 +332,7 @@ static game_live_definition *definition_file(app_scene_authoring *scene, const c
 {
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         game_live_definition *definition = game_live_definition_at(scene->live, i);
-        if (same_file(game_live_definition_path(definition), path)) {
+        if (scene_same_file(game_live_definition_path(definition), path)) {
             return definition;
         }
     }
@@ -342,7 +342,7 @@ static game_live_definition *definition_file(app_scene_authoring *scene, const c
 static scene_prototype_asset *prototype_file(app_scene_authoring *scene, const char *path)
 {
     for (int i = 0; i < acount(scene->prototypes); i++) {
-        if (same_file(scene->prototypes[i].path, path)) {
+        if (scene_same_file(scene->prototypes[i].path, path)) {
             return &scene->prototypes[i];
         }
     }
@@ -508,6 +508,41 @@ static void forget_prototype(app_scene_authoring *scene, scene_prototype_asset *
     asetlen(scene->prototypes, count - 1);
 }
 
+static bool named_file(const char *path, const char *name)
+{
+    const char *base = content_basename(path);
+    size_t length = strlen(name);
+    return !strncmp(base, name, length) && !strcmp(base + length, ASSET_EXTENSION);
+}
+
+/* A file that comes back, as Undo brings back a deleted one, takes up what
+   Studio kept of it without a path: a prototype the scene still places, or
+   the definition the graph editor still shows. */
+static bool adopt_file(app_scene_authoring *scene, const char *path)
+{
+    bool prototypes = content_path_in_folder(scene, path, "prototypes");
+    for (int i = 0; prototypes && i < acount(scene->prototypes); i++) {
+        scene_prototype_asset *asset = &scene->prototypes[i];
+        if (!asset->path && named_file(path, asset->prototype->name)) {
+            asset->path = xstrdup(path);
+            asset->dirty = 0;
+            reload_prototype_asset(scene, asset);
+            return true;
+        }
+    }
+    bool graphs = in_graph_folder(scene, path);
+    for (int i = 0; graphs && i < game_live_definition_count(scene->live); i++) {
+        game_live_definition *definition = game_live_definition_at(scene->live, i);
+        if (!game_live_definition_path(definition) &&
+            named_file(path, definition->name)) {
+            game_live_definition_set_path(definition, path);
+            reload_behavior_from_disk(scene, definition->name);
+            return true;
+        }
+    }
+    return false;
+}
+
 static void forget_file(app_scene_authoring *scene, const char *from)
 {
     game_live_definition *definition = definition_file(scene, from);
@@ -543,7 +578,7 @@ void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int 
             move_prototype(scene, prototype, move->to);
         } else if (definition) {
             move_definition(scene, definition, move->to);
-        } else if (moved) {
+        } else if (moved && (move->from || !adopt_file(scene, move->to))) {
             sync_path(scene, move->to, true);
         }
     }

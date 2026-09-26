@@ -25,7 +25,7 @@ typedef struct
     int context;
     double flow;
     const char *morph;
-    int reveal, rows_emitted;
+    int reveal, rows_emitted, hovered_row;
     char dropped[32];
     char note[64];
     int note_commits;
@@ -108,6 +108,7 @@ static void emit(kit_fixture *f)
     kit_list_desc list = { .count = 1000, .row_height = 20, .reveal = f->reveal };
     int first, last;
     kit_list_begin(k, "big", NULL, &list, &first, &last);
+    f->hovered_row = -1;
     kit_style(k, "height", "200dp");
     kit_style(k, "flex", "0 0 auto");
     for (int i = first; i <= last; i++) {
@@ -116,6 +117,9 @@ static void emit(kit_fixture *f)
         kit_label(k, row, NULL, row);
         kit_style(k, "display", "block");
         kit_style(k, "height", "20dp");
+        if (kit_item_hovered(k)) {
+            f->hovered_row = i;
+        }
     }
     kit_list_end(k);
     f->rows_emitted = last - first + 1;
@@ -532,6 +536,17 @@ bool test_rmlui_kit()
     f.reveal = 999;
     settle(&f);
     ok &= check(kit_find(f.k, "app/big/r999", &removed) && f.rows_emitted < 40, "reveal scrolls to the row");
+
+    /* Hover finds the row under the pointer, never an overscan row laid out
+       past the list's edge and clipped. */
+    kit_rect big;
+    ok &= check(kit_find(f.k, "app/big", &big), "list is laid out");
+    pointer(&f, RML_INPUT_POINTER_MOVE, big.x + 5, big.y + 5);
+    settle(&f);
+    ok &= check(f.hovered_row >= 0, "the row under the pointer is hovered");
+    pointer(&f, RML_INPUT_POINTER_MOVE, big.x + 5, big.y - 5);
+    settle(&f);
+    ok &= check(f.hovered_row < 0, "an overscan row outside the list is not hovered");
 
     /* Drag and drop: picked up after 5 dp, dropped on the target under the pointer. */
     float sx = 0, sy = 0, tx = 0, ty = 0;

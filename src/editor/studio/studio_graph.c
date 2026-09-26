@@ -633,7 +633,8 @@ static void rename_field(studio *s, graph *gr)
     kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     bool committed = kit_text_field(k, "rename", g->rename, sizeof g->rename, NULL, 0);
-    if (committed && g->rename[0] && (!gr->name || strcmp(gr->name, g->rename))) {
+    if (committed && g->rename[0] && (!gr->name || strcmp(gr->name, g->rename)) &&
+        !studio_members_rename_across(s, STUDIO_MEMBER_GRAPH, gr->graph_id, gr->name, g->rename)) {
         editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
                                   .data.rename_graph = { gr->graph_id, g->rename } };
         if (editor_command_apply(e, rename) != 0) {

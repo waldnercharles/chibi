@@ -104,14 +104,6 @@ static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon,
     return kit_menu_item(k, key, &d);
 }
 
-/* Scenes are named by the project file and systems by the engine's schedule;
-   what is missing has no file to rename or delete. */
-static bool refactorable(const reference_asset *asset)
-{
-    return asset && !asset->unresolved && asset->kind != REFERENCE_ASSET_SCENE &&
-           asset->kind != REFERENCE_ASSET_SYSTEM;
-}
-
 /* A row's menu opens the asset or lists what references it (Find References). */
 static void asset_menu(studio *s, const char *key)
 {
@@ -131,7 +123,7 @@ static void asset_menu(studio *s, const char *key)
     if (asset && menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL)) {
         studio_find_asset_references(s, s->assets_menu);
     }
-    if (refactorable(asset)) {
+    if (studio_asset_refactorable(asset)) {
         if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, "F2")) {
             studio_refactor_rename_asset(s, s->assets_menu);
         }
@@ -236,9 +228,8 @@ void studio_assets_body(studio *s, int area)
         };
         unsigned events = kit_row_begin(k, key, &row);
         kit_row_end(k);
-        kit_rect rect = kit_item_rect(k);
-        if (s->in.mouse_x >= rect.x && s->in.mouse_x < rect.x + rect.w &&
-            s->in.mouse_y >= rect.y && s->in.mouse_y < rect.y + rect.h) {
+        /* Overscan rows and rows scrolled under the header are clipped. */
+        if (kit_item_hovered(k)) {
             s->assets_hover = rows[r].asset;
         }
         kit_flag(k, "data-unused", counted && !used);

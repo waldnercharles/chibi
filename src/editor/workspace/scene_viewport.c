@@ -402,10 +402,15 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         preview ? game_prototype_preview_runtime(scene->prototype_preview)
                 : scene->runtime
     );
+    /* While the scene is edited, the selected object shows its UI even when it
+       starts hidden; Play shows what the game would. */
+    scene_actor *selected = scene->runtime_snapshot_valid ? NULL
+                                                          : selected_actor(scene);
     ui_world ui = { .ecs = scene->world,
                     .model = engine_ui(scene->runtime),
                     .entities = scene->live->entities,
-                    .settings = game_behavior_save(scene->live->behaviors) };
+                    .settings = game_behavior_save(scene->live->behaviors),
+                    .revealed = selected ? ecs_entity_to_u64(selected->entity) : 0 };
     if (preview) {
         game_prototype_preview *p = scene->prototype_preview;
         ui = (ui_world){

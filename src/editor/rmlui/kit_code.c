@@ -942,6 +942,15 @@ static void text_input(kit_code_editor *e, const char *text)
     }
 }
 
+static void event_text(kit_code_editor *e, const rml_event *event)
+{
+    size_t size = rml_event_text(event, NULL, 0) + 1;
+    char *text = xmalloc(size);
+    rml_event_text(event, text, size);
+    text_input(e, text);
+    free(text);
+}
+
 /* ---------- Pointer and focus ---------- */
 
 static rml_vec2 local(const code_view *v, const rml_event *event)
@@ -1006,14 +1015,9 @@ static void on_view_event(void *user, const rml_event *event)
         return;
     }
     rml_vec2 at = local(v, event);
-    char text[64];
     switch (event->id) {
         case RML_EVENT_KEYDOWN: key_down(e, event); break;
-        case RML_EVENT_TEXTINPUT:
-            if (rml_event_text(event, text, sizeof text) < sizeof text) {
-                text_input(e, text);
-            }
-            break;
+        case RML_EVENT_TEXTINPUT: event_text(e, event); break;
         case RML_EVENT_MOUSEDOWN: press(v, at, event->button); break;
         case RML_EVENT_MOUSEUP:
             v->dragging = false;
@@ -1389,7 +1393,8 @@ static void diagnose(kit_code_editor *e, const kit_code_desc *d)
         const kit_code_marker *m = &d->markers[i];
         long start = line_start(text, length, m->line);
         long end = line_start(text, length, m->line + 1);
-        unsigned display = ZEP_MARK_UNDERLINE | ZEP_MARK_INDICATOR | ZEP_MARK_TOOLTIP;
+        unsigned display = ZEP_MARK_UNDERLINE | ZEP_MARK_INDICATOR |
+                           ZEP_MARK_TOOLTIP_AT_LINE;
         zep_add_marker(
             e->zep,
             start,

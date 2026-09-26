@@ -67,6 +67,8 @@ int studio_documents_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
 int rmlui_render_run(const char *program, bool gles);
+/* Trackpad pinch (G). */
+void test_studio_pinch();
 
 static int fails;
 
@@ -196,6 +198,8 @@ TEST_CASE(all_checks)
     test_game_ui_presenter();
     test_kit_host();
     test_editor_checkpoint();
+    /* Trackpad pinch (G). */
+    test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
 

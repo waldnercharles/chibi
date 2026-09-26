@@ -566,6 +566,7 @@ struct studio
     SDL_Keymod mods;   /* modifier state as of the last replayed key event */
     int nav_button; /* mouse button 4 (-1, Back) or 5 (1, Forward) this frame */
     float zoom_wheel; /* the wheel turned with Mod or Ctrl held this frame */
+    float pinch;      /* the log of this frame's trackpad pinch scale, or 0 */
     int undo_toast;   /* toast offering Undo for undo_toast_group */
     uint64_t undo_toast_group;
     char status[256];

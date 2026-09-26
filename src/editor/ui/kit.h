@@ -592,8 +592,8 @@ extern "C"
         unsigned events;
         /* A chord with the primary modifier the editor leaves to the host,
          * in studio_chord notation ("Mod+S", "Mod+Shift+A"): Save, Search,
-         * Settings, UI Scale and the drawers always, anything the standard
-         * keys do not edit with, and on a Mac every Command chord in Vim. */
+         * UI Scale and the drawers always, anything the standard keys do not
+         * edit with, and on a Mac every Command chord in Vim but Z and V. */
         char chord[32];
         int completion; /* the accepted item, or -1 */
     } kit_code_result;

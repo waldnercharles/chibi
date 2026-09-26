@@ -82,6 +82,12 @@ const operationProperties = {
       "bind_input",
       "clear_binding",
       "create_local",
+      "expand_local",
+      "collapse_to_function",
+      "collapse_to_macro",
+      "expand_node",
+      "promote_to_variable",
+      "convert_to_expression",
     ],
     description: "Semantic graph operation.",
   },
@@ -91,6 +97,11 @@ const operationProperties = {
   },
   node: {
     description: "Node ID or reference returned by add_node.",
+  },
+  nodes: {
+    type: "array",
+    items: { oneOf: [{ type: "integer", minimum: 0 }, { type: "string" }] },
+    description: "Node IDs or references for collapse_to_function, collapse_to_macro and convert_to_expression.",
   },
   graph: {
     oneOf: [{ type: "integer", minimum: 0 }, { type: "string" }],

@@ -119,6 +119,110 @@ void test_automation_graph_edit(void)
     yyjson_mut_doc_free(response);
     free(edited);
 
+    /* Studio's code actions as operations: collapse a selection into a
+     * function, expand its call back, convert math to an expression, promote
+     * a pin to a variable, and name a value without choosing the name. */
+    static const char base
+        [] = "{\"op\":\"add_node\",\"ref\":\"two\",\"type\":\"Real\","
+             "\"inputs\":{\"Value\":2}},"
+             "{\"op\":\"add_node\",\"ref\":\"double\",\"type\":\"Multiply\"},"
+             "{\"op\":\"connect\",\"from\":\"two\",\"from_pin\":\"Value\","
+             "\"to\":\"double\",\"to_pin\":\"A\"},"
+             "{\"op\":\"set_input\",\"node\":\"double\",\"pin\":\"B\","
+             "\"value\":3},"
+             "{\"op\":\"add_node\",\"ref\":\"plus\",\"type\":\"Add\"},"
+             "{\"op\":\"connect\",\"from\":\"double\",\"from_pin\":\"Result\","
+             "\"to\":\"plus\",\"to_pin\":\"A\"}";
+    const char *actions[] = {
+        "{\"op\":\"collapse_to_function\",\"nodes\":[\"double\"],\"name\":"
+        "\"Double\",\"ref\":\"fn\"}",
+        "{\"op\":\"collapse_to_function\",\"nodes\":[\"double\"],\"name\":"
+        "\"Double\",\"ref\":\"fn\"},"
+        "{\"op\":\"expand_node\",\"node\":\"fn\"}",
+        "{\"op\":\"convert_to_expression\",\"nodes\":[\"double\",\"plus\"],"
+        "\"ref\":\"expr\"}",
+        "{\"op\":\"add_node\",\"ref\":\"gate\",\"type\":\"Branch\"},"
+        "{\"op\":\"promote_to_variable\",\"node\":\"gate\",\"pin\":"
+        "\"Condition\",\"ref\":\"flag\"}",
+        "{\"op\":\"create_local\",\"node\":\"two\",\"pin\":\"Value\"}",
+        "{\"op\":\"create_local\",\"node\":\"two\",\"pin\":\"Value\"},"
+        "{\"op\":\"expand_local\",\"node\":\"two\",\"pin\":\"Value\"}",
+    };
+    char *results[6] = { 0 };
+    int statuses[6];
+    for (int i = 0; i < 6; i++) {
+        char request[2048];
+        snprintf(request, sizeof request, "{\"operations\":[%s,%s]}", base, actions[i]);
+        statuses[i] = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &results[i], NULL);
+    }
+    int multiplies = 0;
+    for (const char *at = results[1];
+         at && (at = strstr(at, "\"type\": \"Multiply\""));
+         at++) {
+        multiplies++;
+    }
+    test_check(
+        statuses[0] == CHIBI_AUTOMATION_OK &&
+            strstr(results[0], "\"name\": \"Double\"") &&
+            strstr(results[0], "\"type\": \"Call Pure Function\"") &&
+            statuses[1] == CHIBI_AUTOMATION_OK && multiplies == 2 &&
+            !strstr(results[1], "\"type\": \"Call Pure Function\"") &&
+            statuses[2] == CHIBI_AUTOMATION_OK &&
+            strstr(results[2], "\"type\": \"Behavior Expression\"") &&
+            statuses[3] == CHIBI_AUTOMATION_OK &&
+            strstr(results[3], "\"name\": \"Condition\"") &&
+            strstr(results[3], "\"type\": \"Get Variable\"") &&
+            statuses[4] == CHIBI_AUTOMATION_OK && strstr(results[4], "\"locals\"") &&
+            statuses[5] == CHIBI_AUTOMATION_OK && !strstr(results[5], "\"locals\""),
+        "MCP graph edits collapse, expand, convert, promote and name values "
+        "like Studio"
+    );
+    for (int i = 0; i < 6; i++) {
+        free(results[i]);
+    }
+
+    /* Editing a function's Entry or Return pins edits its signature, so
+     * calls to it follow the rename and gain the new input and its default. */
+    edited = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":["
+        "{\"op\":\"add_graph\",\"name\":\"Math\",\"kind\":\"function\","
+        "\"pure\":true,\"ref\":\"math\"},"
+        "{\"op\":\"add_pin\",\"node\":\"math.entry\",\"side\":\"output\","
+        "\"name\":\"Value\",\"type\":\"float\"},"
+        "{\"op\":\"add_pin\",\"node\":\"math.return\",\"side\":\"input\","
+        "\"name\":\"Result\",\"type\":\"float\"},"
+        "{\"op\":\"connect\",\"from\":\"math.entry\",\"from_pin\":\"Value\","
+        "\"to\":\"math.return\",\"to_pin\":\"Result\"},"
+        "{\"op\":\"select_graph\",\"graph\":0},"
+        "{\"op\":\"add_node\",\"ref\":\"call\",\"type\":\"Call Pure "
+        "Function\",\"reference_name\":\"Math\"},"
+        "{\"op\":\"select_graph\",\"graph\":\"math\"},"
+        "{\"op\":\"set_pin\",\"node\":\"math.entry\",\"side\":\"output\","
+        "\"pin\":\"Value\",\"name\":\"Amount\"},"
+        "{\"op\":\"add_pin\",\"node\":\"math.entry\",\"side\":\"output\","
+        "\"name\":\"Scale\",\"type\":\"float\",\"default\":2}]}",
+        &edited,
+        NULL
+    );
+    behavior_asset *signature = edited ? behavior_asset_load_json(edited) : NULL;
+    node *call = signature ? find_node_type(signature->graph, "Call Pure Function")
+                           : NULL;
+    int scale = call ? find_pin(call, "Scale", false) : -1;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && call && find_pin(call, "Amount", false) >= 0 &&
+            find_pin(call, "Value", false) < 0 && scale >= 0 &&
+            call->input_pins[scale].default_value.f == 2.0f,
+        "MCP signature pin edits carry to the function's calls"
+    );
+    behavior_asset_free(signature);
+    free(edited);
+
     /* A setting shapes the other pins, so it may follow them in inputs. */
     edited = NULL;
     status = edit_request(

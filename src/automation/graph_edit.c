@@ -1,9 +1,13 @@
 #include "automation/graph_edit.h"
 
+#include "graph/authoring/expand.h"
 #include "graph/authoring/layout.h"
+#include "graph/authoring/optimize.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/events.h"
+#include "graph/document/extract.h"
+#include "graph/document/graph_signature.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/document/serialize_internal.h"
@@ -1335,6 +1339,26 @@ static int operation_add_graph(edit_context *ctx, yyjson_val *op)
     return 0;
 }
 
+/* Entry outputs and Return inputs declare a function's or macro's signature,
+ * and edits there go through graph_signature so its calls follow. The side:
+ * 0 an input the Entry declares, 1 a result on Return, -1 any other pin. */
+static int signature_side(const edit_context *ctx, const node *n, bool output)
+{
+    const graph *g = ctx->graph;
+    if (g->kind != GRAPH_FUNCTION && g->kind != GRAPH_MACRO) {
+        return -1;
+    }
+    return output && n->id == g->entry_id   ? 0
+         : !output && n->id == g->return_id ? 1
+                                            : -1;
+}
+
+static int signature_refused(edit_context *ctx, const char *operation)
+{
+    set_error(ctx, "%s could not change the signature: names are unique, only macros take exec pins, and a paused call blocks edits", operation);
+    return -1;
+}
+
 static int operation_add_pin(edit_context *ctx, yyjson_val *op)
 {
     node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
@@ -1409,7 +1433,14 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
                               .kind = kind,
                               .container = container,
                               .default_value = { .type = type, .type_name = type_name } };
-    int index = graph_append_pin(ctx->graph, n, output, &template_pin);
+    int signature = signature_side(ctx, n, output);
+    if (signature >= 0 &&
+        graph_signature_add(ctx->asset, ctx->graph, signature, &template_pin)) {
+        return signature_refused(ctx, "add_pin");
+    }
+    int index = signature >= 0
+                  ? (output ? n->output_count : n->input_count) - 1
+                  : graph_append_pin(ctx->graph, n, output, &template_pin);
     if (index < 0) {
         set_error(ctx, "could not add pin '%s'", name);
         return -1;
@@ -1420,7 +1451,12 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
         int read_error = container >= PIN_CONTAINER_ARRAY
                            ? serialize_read_array(type, type_name, default_json, &value, ctx->graph)
                            : serialize_read_value(type, type_name, default_json, &value, ctx->graph);
-        if (read_error || graph_set_pin_default(ctx->graph, n, output, index, &value)) {
+        /* An input's default is the one its calls show. */
+        int set = read_error ? -1
+                : signature == 0
+                    ? graph_signature_set_default(ctx->asset, ctx->graph, index, &value)
+                    : graph_set_pin_default(ctx->graph, n, output, index, &value);
+        if (set) {
             set_error(ctx, "add_pin.default does not match pin '%s'", name);
             return -1;
         }
@@ -1654,11 +1690,298 @@ static int operation_add_self_node(edit_context *ctx, yyjson_val *op)
     return add_node_ref(ctx, yyjson_obj_get(op, "ref"), n);
 }
 
+/* The node with this ID in any of the asset's graphs, and its graph. */
+static node *asset_node(const behavior_asset *asset, uint64_t id, graph **owner)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        node *n = graph_node_by_id(asset->graphs[i], id);
+        if (n) {
+            *owner = asset->graphs[i];
+            return n;
+        }
+    }
+    return NULL;
+}
+
+/* Drops refs to nodes an operation removed. */
+static void prune_node_refs(edit_context *ctx)
+{
+    graph *owner = NULL;
+    for (int i = acount(ctx->nodes) - 1; i >= 0; i--) {
+        if (!asset_node(ctx->asset, ctx->nodes[i].id, &owner)) {
+            adel(ctx->nodes, i);
+        }
+    }
+}
+
+/* Collapsing and expanding return a replacement asset that keeps node and
+ * graph IDs. Take it over and find each ref, the current graph and the graphs
+ * to arrange again by ID; a generated ref name moves to its node's graph. */
+static void replace_asset(edit_context *ctx, behavior_asset *replacement)
+{
+    uint64_t current = ctx->graph->graph_id;
+    uint64_t *arranged = NULL;
+    for (int i = 0; i < acount(ctx->layout_graphs); i++) {
+        apush(arranged, ctx->layout_graphs[i]->graph_id);
+    }
+    for (int i = acount(ctx->nodes) - 1; i >= 0; i--) {
+        node_ref *ref = &ctx->nodes[i];
+        graph *owner = NULL;
+        ref->node = asset_node(replacement, ref->id, &owner);
+        if (!ref->node) {
+            adel(ctx->nodes, i);
+            continue;
+        }
+        ref->name = graph_own_str(owner, ref->name, strlen(ref->name));
+    }
+    for (int i = acount(ctx->graphs) - 1; i >= 0; i--) {
+        ctx->graphs[i]
+            .graph = behavior_asset_find_graph(replacement, ctx->graphs[i].id);
+        if (!ctx->graphs[i].graph) {
+            adel(ctx->graphs, i);
+        }
+    }
+    asetlen(ctx->layout_graphs, 0);
+    for (int i = 0; i < acount(arranged); i++) {
+        graph *g = behavior_asset_find_graph(replacement, arranged[i]);
+        if (g) {
+            apush(ctx->layout_graphs, g);
+        }
+    }
+    afree(arranged);
+    behavior_asset_free(ctx->asset);
+    ctx->asset = replacement;
+    ctx->graph = behavior_asset_find_graph(replacement, current);
+    assert(ctx->graph);
+}
+
+/* The nodes an operation's "nodes" array selects in the current graph. */
+static node **selected_nodes(edit_context *ctx, yyjson_val *op, const char *operation)
+{
+    yyjson_val *list = yyjson_obj_get(op, "nodes");
+    if (!yyjson_is_arr(list) || !yyjson_arr_size(list)) {
+        set_error(ctx, "%s requires a nodes array of node IDs or refs", operation);
+        return NULL;
+    }
+    node **nodes = NULL;
+    size_t at, max;
+    yyjson_val *selector;
+    yyjson_arr_foreach(list, at, max, selector)
+    {
+        node *n = node_by_selector(ctx, selector);
+        if (!n) {
+            afree(nodes);
+            return NULL;
+        }
+        apush(nodes, n);
+    }
+    return nodes;
+}
+
+/* Collapse to Function or Macro: the selection becomes a new graph named
+ * `name` and a call to it; `ref` names both. */
+static int operation_collapse(edit_context *ctx, yyjson_val *op, bool macro)
+{
+    const char *operation = macro ? "collapse_to_macro" : "collapse_to_function";
+    const char *name = NULL;
+    if (ctx->graph->dataflow) {
+        set_error(ctx, "%s is unavailable in System graphs", operation);
+        return -1;
+    }
+    if (!string_value(yyjson_obj_get(op, "name"), &name) || !name[0]) {
+        set_error(ctx, "%s.name is required", operation);
+        return -1;
+    }
+    node **selection = selected_nodes(ctx, op, operation);
+    if (!selection) {
+        return -1;
+    }
+    behavior_asset *replacement = NULL;
+    uint64_t call_id = 0;
+    int count = acount(selection);
+    const char *error = macro ? behavior_asset_extract_macro(
+                                    ctx->asset,
+                                    ctx->graph,
+                                    selection,
+                                    count,
+                                    name,
+                                    &replacement,
+                                    &call_id
+                                )
+                              : behavior_asset_extract_function(
+                                    ctx->asset,
+                                    ctx->graph,
+                                    selection,
+                                    count,
+                                    name,
+                                    &replacement,
+                                    &call_id
+                                );
+    afree(selection);
+    if (error) {
+        set_error(ctx, "%s", error);
+        return -1;
+    }
+    replace_asset(ctx, replacement);
+    node *call = graph_node_by_id(ctx->graph, call_id);
+    graph *made = behavior_asset_find_graph(ctx->asset, call->reference_id);
+    yyjson_val *ref = yyjson_obj_get(op, "ref");
+    return add_node_ref(ctx, ref, call) || add_graph_ref(ctx, ref, made) ||
+                   add_layout_graph(ctx, made)
+             ? -1
+             : 0;
+}
+
+/* Expand Node: a call to one of the asset's own functions or macros becomes a
+ * copy of its body. */
+static int operation_expand_node(edit_context *ctx, yyjson_val *op)
+{
+    node *call = node_by_selector(ctx, yyjson_obj_get(op, "node"));
+    if (!call) {
+        return -1;
+    }
+    if (call->desc == &NODE_BehaviorExpression) {
+        set_error(ctx, "expand_node does not expand a Behavior Expression; edit its source instead");
+        return -1;
+    }
+    behavior_asset *replacement = NULL;
+    uint64_t *ids = NULL;
+    const char *error = behavior_asset_expand_call(ctx->asset, ctx->graph, call, &replacement, &ids);
+    afree(ids);
+    if (error) {
+        set_error(ctx, "%s", error);
+        return -1;
+    }
+    replace_asset(ctx, replacement);
+    return 0;
+}
+
+/* Promote to Variable: a new variable typed as the pin, with a Get wired to
+ * an input or a Set wired from an output. `ref` names the variable and that
+ * node; the name defaults to the pin's, numbered past existing variables. */
+static int operation_promote_to_variable(edit_context *ctx, yyjson_val *op)
+{
+    node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
+    const char *side = "input";
+    yyjson_val *side_json = yyjson_obj_get(op, "side");
+    if (!n || (side_json && !string_value(side_json, &side)) ||
+        (strcmp(side, "input") && strcmp(side, "output"))) {
+        set_error(ctx, "promote_to_variable requires a node and input or output side");
+        return -1;
+    }
+    int output = !strcmp(side, "output");
+    const pin_spec *pin = NULL;
+    int index = pin_index(ctx, n, yyjson_obj_get(op, "pin"), output, &pin);
+    if (index < 0) {
+        return -1;
+    }
+    if (ctx->asset->domain != BEHAVIOR_DOMAIN_EVENT || ctx->graph->dataflow) {
+        set_error(ctx, "promote_to_variable needs a behavior's graph");
+        return -1;
+    }
+    if (pin->kind != PIN_DATA || pin->type == PIN_FLOW) {
+        set_error(ctx, "promote_to_variable needs a typed data pin; connect a wildcard first");
+        return -1;
+    }
+    char name[128];
+    const char *requested = NULL;
+    if (string_value(yyjson_obj_get(op, "name"), &requested) && requested[0]) {
+        snprintf(name, sizeof name, "%s", requested);
+    } else {
+        snprintf(name, sizeof name, "%s", pin->name);
+        for (int i = 2; behavior_asset_find_variable_by_name(ctx->asset, name); i++) {
+            snprintf(name, sizeof name, "%s %d", pin->name, i);
+        }
+    }
+    behavior_variable *
+        variable = behavior_asset_promote_pin_to_variable(ctx->asset, n, output, index, name);
+    if (!variable) {
+        set_error(ctx, "could not promote %s pin '%s' to a variable", side, pin->name);
+        return -1;
+    }
+    yyjson_val *ref = yyjson_obj_get(op, "ref");
+    return add_variable_ref(ctx, ref, variable) ||
+                   add_node_ref(ctx, ref, alast(ctx->graph->nodes))
+             ? -1
+             : 0;
+}
+
+/* A connected, pure calculation becomes one Behavior Expression call, which
+ * `ref` names. */
+static int operation_convert_to_expression(edit_context *ctx, yyjson_val *op)
+{
+    node **selection = selected_nodes(ctx, op, "convert_to_expression");
+    if (!selection) {
+        return -1;
+    }
+    behavior_expression_error error = { 0 };
+    node *call = behavior_expression_convert_selection(
+        ctx->asset,
+        ctx->graph,
+        selection,
+        acount(selection),
+        &error
+    );
+    afree(selection);
+    if (!call) {
+        set_error(ctx, "%s", error.message[0] ? error.message : "could not convert the nodes to an expression");
+        return -1;
+    }
+    prune_node_refs(ctx);
+    return add_node_ref(ctx, yyjson_obj_get(op, "ref"), call);
+}
+
+/* Renaming, retyping or removing a signature pin updates every call. */
+static int signature_pin(
+    edit_context *ctx,
+    yyjson_val *op,
+    const char *operation,
+    int result,
+    pin_spec pin,
+    int index
+)
+{
+    behavior_asset *asset = ctx->asset;
+    graph *g = ctx->graph;
+    if (!strcmp(operation, "remove_pin")) {
+        return graph_signature_remove(asset, g, result, index)
+                 ? signature_refused(ctx, operation)
+                 : 0;
+    }
+    if (yyjson_obj_get(op, "order")) {
+        set_error(ctx, "set_pin.order cannot reorder a signature; remove the pin and add it again");
+        return -1;
+    }
+    yyjson_val *name = yyjson_obj_get(op, "name");
+    if (name &&
+        (!yyjson_is_str(name) ||
+         graph_signature_rename(asset, g, result, index, yyjson_get_str(name)))) {
+        return signature_refused(ctx, operation);
+    }
+    yyjson_val *type_json = yyjson_obj_get(op, "type");
+    yyjson_val *named = yyjson_obj_get(op, "type_name");
+    yyjson_val *container_json = yyjson_obj_get(op, "container");
+    if (!type_json && !named && !container_json) {
+        return 0;
+    }
+    if ((type_json && type_from_value(type_json, &pin.type, &pin.type_name)) ||
+        (named && !string_value(named, &pin.type_name)) ||
+        (container_json && container_from_value(container_json, &pin.container)) ||
+        (pin.type == PIN_STRUCT && !pin.type_name)) {
+        set_error(ctx, "set_pin.type, type_name or container is invalid");
+        return -1;
+    }
+    return graph_signature_retype(asset, g, result, index, &pin)
+             ? signature_refused(ctx, operation)
+             : 0;
+}
+
 static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operation)
 {
     node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
     /* Locals and exposed fields exist only on outputs. */
     bool output_only = !strcmp(operation, "create_local") ||
+                       !strcmp(operation, "expand_local") ||
                        !strcmp(operation, "expose_fields") ||
                        !strcmp(operation, "hide_fields");
     const char *side = output_only ? "output" : "input";
@@ -1688,6 +2011,18 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
         }
         return 0;
     }
+    int signature = signature_side(ctx, n, output);
+    if (signature >= 0 &&
+        (!strcmp(operation, "set_pin") || !strcmp(operation, "remove_pin"))) {
+        return signature_pin(
+            ctx,
+            op,
+            operation,
+            signature,
+            output ? n->output_pins[index] : n->input_pins[index],
+            index
+        );
+    }
     int result = -1;
     if (!strcmp(operation, "remove_pin")) {
         result = graph_remove_pin(ctx->graph, n, output, index);
@@ -1702,15 +2037,26 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
     } else if (!strcmp(operation, "clear_binding")) {
         result = graph_set_pin_binding(ctx->graph, n, output, index, NULL);
     } else if (!strcmp(operation, "create_local")) {
-        /* Naming an output that already has a local renames that local. */
+        /* Naming an output that already has a local renames that local; with
+         * no name, a new local takes the one Name Value would give it. */
         const char *name = NULL;
+        char generated[128];
         const graph_local *local = output ? graph_output_local(ctx->graph, n, index)
                                           : NULL;
-        if (output && string_value(yyjson_obj_get(op, "name"), &name)) {
+        if (output && !string_value(yyjson_obj_get(op, "name"), &name) && !local) {
+            graph_local_name(ctx->graph, n, index, generated, sizeof generated);
+            name = generated;
+        }
+        if (output && name) {
             result = local ? graph_rename_local(ctx->graph, local->id, name)
                    : graph_create_local(ctx->graph, n, index, name) ? 0
                                                                     : -1;
         }
+    } else if (!strcmp(operation, "expand_local")) {
+        /* The local's readers take the wire from its output again. */
+        const graph_local *local = output ? graph_output_local(ctx->graph, n, index)
+                                          : NULL;
+        result = local ? graph_expand_local(ctx->graph, local->id) : -1;
     } else if (
         !strcmp(operation, "set_pin") && n->desc == &NODE_BehaviorExpression &&
         !output && yyjson_is_str(yyjson_obj_get(op, "name"))
@@ -1949,11 +2295,23 @@ static int apply_operation(edit_context *ctx, yyjson_val *op)
         !strcmp(name, "split_pin") || !strcmp(name, "recombine_pin") ||
         !strcmp(name, "expose_fields") || !strcmp(name, "hide_fields") ||
         !strcmp(name, "bind_input") || !strcmp(name, "clear_binding") ||
-        !strcmp(name, "create_local")) {
+        !strcmp(name, "create_local") || !strcmp(name, "expand_local")) {
         return operation_pin(ctx, op, name);
     }
     if (!strcmp(name, "add_node")) {
         return operation_add_node(ctx, op);
+    }
+    if (!strcmp(name, "collapse_to_function") || !strcmp(name, "collapse_to_macro")) {
+        return operation_collapse(ctx, op, !strcmp(name, "collapse_to_macro"));
+    }
+    if (!strcmp(name, "expand_node")) {
+        return operation_expand_node(ctx, op);
+    }
+    if (!strcmp(name, "promote_to_variable")) {
+        return operation_promote_to_variable(ctx, op);
+    }
+    if (!strcmp(name, "convert_to_expression")) {
+        return operation_convert_to_expression(ctx, op);
     }
     if (!strcmp(name, "set_expression")) {
         return operation_set_expression(ctx, op);

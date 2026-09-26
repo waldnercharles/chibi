@@ -131,9 +131,25 @@ static float to_dp(const studio *s, float points)
     return points / s->prefs.ui_scale;
 }
 
+/* How long frames run at full rate after input, for the transitions,
+ * tooltips and springs it starts. */
+#define ACTIVE_AFTER_INPUT 1.0
+
+double studio_idle_time(const studio *s)
+{
+    if (s->session || s->time < s->active_until) {
+        return 0;
+    }
+    double idle = kit_idle_time(s->kit);
+    return s->graph.kit ? fmin(idle, kit_idle_time(s->graph.kit)) : idle;
+}
+
 static void forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
+    if (acount(s->events)) {
+        s->active_until = s->time + ACTIVE_AFTER_INPUT;
+    }
     for (int b = 0; b < 3; b++) {
         in->pressed[b] = in->released[b] = false;
     }

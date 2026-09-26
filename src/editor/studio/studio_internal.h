@@ -463,6 +463,7 @@ struct studio
     char seen_message[256]; /* last authoring message reported */
     double status_time;
     double time;
+    double active_until; /* frames run at full rate until then, after input */
 };
 
 /* Physical pixels per editor dp: the display's scale times UI Scale. */

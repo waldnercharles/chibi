@@ -14,6 +14,9 @@ void studio_free(studio *s);
 /* Process input, emit the UI, draw the viewport and queue the composited frame.
  * Call after the scene frame; the host presents with cf_app_draw_onto_screen. */
 void studio_frame(studio *s, double delta_seconds);
+/* Seconds Studio can wait for input before its next frame: none just after
+ * input, while a scene runs or while its UI animates. */
+double studio_idle_time(const studio *s);
 /* The project root the user chose to open, owned by the caller, or NULL. */
 char *studio_take_project(studio *s);
 /* Shows an error that stays until dismissed. */

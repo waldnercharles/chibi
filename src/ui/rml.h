@@ -341,6 +341,9 @@ extern "C"
     void rml_context_set_dimensions(rml_context *context, int width, int height);
     void rml_context_set_dp_ratio(rml_context *context, float dp_ratio);
     float rml_context_dp_ratio(const rml_context *context);
+    /* Seconds until the context next needs an update and render, for a caret
+     * blink or a transition; infinity when only input can change it. */
+    double rml_context_next_update_delay(const rml_context *context);
     bool rml_context_update(rml_context *context);
     bool rml_context_render(rml_context *context);
     rml_element *rml_context_load_document(rml_context *context, const char *path);

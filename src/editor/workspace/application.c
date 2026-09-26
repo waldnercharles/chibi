@@ -21,6 +21,8 @@
 #include "runtime/generated.h"
 #include "support/xalloc.h"
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_timer.h>
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -29,6 +31,9 @@
 #include <yyjson.h>
 
 #define APP_DEFAULT_SCREENSHOT_PATH "/tmp/chibi-screenshot.png"
+/* The longest an idle editor goes without a frame, so file watches, toasts
+   and the development host still come round. */
+#define APP_IDLE_FRAME 0.25
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
 
 typedef struct
@@ -49,6 +54,7 @@ typedef struct
     int headless;
     double monotonic_time;
     double fixed_dt;
+    uint64_t next_frame_ms; /* an idle editor waits for input until then */
     const chibi_host *host;
     char *project_root; /* the open project, as opened */
 } app_loop;
@@ -81,10 +87,41 @@ static void app_cleanup(app_loop *loop)
     loop->host->release(loop);
 }
 
+/* Whether an idle editor waits instead of running this frame: until input
+ * arrives or its next frame is due, blocking natively and skipping the
+ * browser's animation frame on the web. */
+static bool app_idle(const app_loop *loop)
+{
+    uint64_t now = SDL_GetTicks();
+    if (now >= loop->next_frame_ms || SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST)) {
+        return false;
+    }
+#ifdef __EMSCRIPTEN__
+    return true;
+#else
+    SDL_WaitEventTimeout(NULL, (Sint32)(loop->next_frame_ms - now));
+    return false;
+#endif
+}
+
+/* An editor without anything moving waits for input, up to APP_IDLE_FRAME;
+ * games, captures and fixed frame counts always run. */
+static void schedule_frame(app_loop *loop)
+{
+    double idle = loop->game || loop->frames || loop->fixed_dt
+                    ? 0
+                    : studio_idle_time(loop->studio);
+    loop->next_frame_ms = SDL_GetTicks() +
+                          (uint64_t)(fmin(idle, APP_IDLE_FRAME) * 1000);
+}
+
 static int app_frame(app_loop *loop)
 {
     if (!cf_app_is_running()) {
         return 1;
+    }
+    if (app_idle(loop)) {
+        return 0;
     }
     CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Application frame");
     CHIBI_TRACE_ZONE_BEGIN(window_zone, "Window update");
@@ -113,6 +150,7 @@ static int app_frame(app_loop *loop)
     CHIBI_TRACE_ZONE_BEGIN(present_zone, "Present / GPU wait");
     cf_app_draw_onto_screen(true);
     CHIBI_TRACE_ZONE_END(present_zone);
+    schedule_frame(loop);
     CHIBI_TRACE_FRAME_MARK("Application frame");
     if (status) {
         CHIBI_TRACE_ZONE_END(frame_zone);

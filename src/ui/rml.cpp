@@ -658,6 +658,11 @@ float rml_context_dp_ratio(const rml_context *c)
     return context(c)->GetDensityIndependentPixelRatio();
 }
 
+double rml_context_next_update_delay(const rml_context *c)
+{
+    return context(c)->GetNextUpdateDelay();
+}
+
 bool rml_context_update(rml_context *c)
 {
     return context(c)->Update();

@@ -72,6 +72,10 @@ extern "C"
      * processed; end removes anything not emitted and applies deferred work. */
     void kit_begin(kit *k, const kit_frame_input *input);
     void kit_end(kit *k);
+    /* Seconds the kit can go without a frame: none while motion, toasts, a
+     * drag or a pending tooltip are in flight, else until RmlUi next needs
+     * one, which is infinity when only input can change it. */
+    double kit_idle_time(const kit *k);
 
     /* Structure. `tag` defaults to div; `cls` is a space-separated class list. */
     void kit_root(kit *k, const char *element_id);

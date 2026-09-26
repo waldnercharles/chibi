@@ -127,9 +127,10 @@ typedef struct widget
     uint32_t icon;
     uint32_t color;
     float hsv[3];
-    int drag_part;     /* color picker: 1 plane, 2 hue */
-    bool at_bottom;    /* list: pinned to the bottom */
-    rml_element *body; /* list content */
+    int drag_part;               /* color picker: 1 plane, 2 hue */
+    bool at_bottom;              /* list: pinned to the bottom */
+    rml_element *body;           /* list content */
+    float body_height, body_top; /* list: the content sizing applied, in dp */
     rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
         *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el, *swatch_el;
 } widget;

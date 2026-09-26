@@ -1,0 +1,59 @@
+#ifndef CHIBI_UI_SOURCE_INTERNAL_H
+#define CHIBI_UI_SOURCE_INTERNAL_H
+
+/* What ui_source.c, ui_source_edit.c and ui_source_complete.c share: each
+ * block's value as YAML means it, where its bytes are in the file, and its
+ * tree-sitter parse. Outlines are kept in the value's offsets too, which
+ * edits and completion work in. */
+
+#include "assets/ui_source.h"
+
+#include <tree_sitter/api.h>
+
+/* How a block's value is written in the file. */
+typedef enum
+{
+    SCALAR_LITERAL, /* a | block, whose lines map in place */
+    SCALAR_INLINE,  /* one line, plain or quoted */
+    SCALAR_OTHER,   /* anything else: positions fall on the scalar's start */
+} scalar_style;
+
+typedef struct block_map
+{
+    ui_source_language language;
+    scalar_style style;
+    char *value;
+    int length;
+    int *offsets; /* the file offset of each value byte, and of its end */
+    int indent;   /* a literal block's indentation */
+    int scalar_start, scalar_end; /* the scalar in the file, indicator included */
+    TSTree *tree;
+    ui_source_element *elements; /* in the value's offsets */
+} block_map;
+
+struct ui_source_tree
+{
+    block_map *maps; /* parallel to ui_source.blocks */
+    int *lines;      /* each line's first byte */
+    bool stylesheet; /* the text is a whole .rcss file */
+};
+
+/* An occurrence of a symbol, or of a save key, in file offsets. */
+#define UI_SYMBOL_SAVE_KEY (UI_SYMBOL_CLASS + 1)
+
+typedef struct occurrence
+{
+    int kind; /* ui_source_symbol_kind or UI_SYMBOL_SAVE_KEY */
+    char name[128];
+    int start, end;
+    bool definition;
+} occurrence;
+
+const block_map *ui_source_map(const ui_source *source, ui_source_language language);
+/* A value offset's file offset. */
+int ui_source_file_offset(const block_map *map, int at);
+/* Appends every symbol and save key the source names. */
+void ui_source_occurrences(const ui_source *source, occurrence **out);
+bool ui_source_is_binding(const char *attribute, int length);
+
+#endif

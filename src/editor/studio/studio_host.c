@@ -187,6 +187,10 @@ static void forward_input(studio *s)
     s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
+        /* The Inspector's pick keys reach no document. */
+        if (e->type == SDL_EVENT_KEY_DOWN && studio_inspect_key(s, &e->key)) {
+            continue;
+        }
         rml_input input = { .x = in->mouse_x,
                             .y = in->mouse_y,
                             .modifiers = rml_modifiers(s->mods) };
@@ -533,6 +537,8 @@ void studio_free(studio *s)
     component_presentation_free(&s->presentation.hints);
     kit_destroy(s->kit);
     studio_ui_free(s->ui);
+    /* After the panels' data, which shows the Inspector's strings. */
+    studio_inspect_free(s->inspect);
     ui_page_free(&s->page);
     rml_backend_destroy(s->backend);
     free(s);
@@ -557,6 +563,7 @@ void studio_frame(studio *s, double delta_seconds)
     studio_debug_frame(s);
     kit_begin(s->kit, &s->in);
     studio_emit(s);
+    studio_inspect_emit(s);
     kit_end(s->kit);
     bool typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
     if (!typing) {

@@ -549,6 +549,55 @@ extern "C"
         int *line
     );
 
+    /* ---------- Inspection (the UI Inspector) ---------- */
+
+    /* A property as an element's style holds it, and where it was declared:
+     * the sheet's name (ui_style_origin maps it and the line to a file) and
+     * the rule's line and selector. An inline property has an empty path and
+     * rule and line 0. The strings are valid during the callback. */
+    typedef struct rml_property_info
+    {
+        const char *name;
+        const char *value;
+        const char *path;
+        int line;
+        const char *rule;
+        int specificity;
+    } rml_property_info;
+
+    typedef void (*rml_property_fn)(void *user, const rml_property_info *property);
+    typedef void (*rml_attribute_fn)(void *user, const char *name, const char *value);
+
+    int rml_context_document_count(const rml_context *context);
+    rml_element *rml_context_document(rml_context *context, int index);
+    /* The element that takes the pointer at `point`, in context pixels,
+     * outside `ignore`, which may be NULL; NULL when none does. */
+    rml_element *rml_context_element_at_point(
+        rml_context *context,
+        rml_vec2 point,
+        const rml_element *ignore
+    );
+
+    /* Calls fn with each attribute's name and value. */
+    void rml_element_attributes(const rml_element *element, rml_attribute_fn fn, void *user);
+    size_t rml_element_class_names(const rml_element *element, char *buffer, size_t size);
+    /* The pseudo classes set on the element, separated by spaces. */
+    size_t rml_element_pseudo_classes(const rml_element *element, char *buffer, size_t size);
+    void rml_element_set_pseudo_class(rml_element *element, const char *name, bool on);
+    /* Calls fn with each property the element's style defines, or with
+     * `inherited_by`, only those that element inherits from it. */
+    void rml_element_local_properties(
+        const rml_element *element,
+        rml_element *inherited_by,
+        rml_property_fn fn,
+        void *user
+    );
+    /* The value the element uses for property `name`, from its style, an
+     * ancestor or the default; 0 and "" for an unknown property. */
+    size_t rml_element_property(rml_element *element, const char *name, char *buffer, size_t size);
+    /* A text node's text; the element's tag must be "#text". */
+    size_t rml_element_text(const rml_element *element, char *buffer, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

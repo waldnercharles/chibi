@@ -509,6 +509,34 @@ extern "C"
      * its text, scrolling them into view. */
     void kit_text_select(kit *k, int start, int end);
 
+    /* ---------- UI Inspector (kit_inspect.c) ---------- */
+
+    /* An element's boxes in the kit's logical pixels, outermost first. An
+     * empty clip leaves the overlay unclipped; otherwise it stays inside it,
+     * as over the surface that shows another context's element. */
+    typedef struct kit_highlight_desc
+    {
+        kit_rect margin, border, padding, content;
+        kit_rect clip;
+        const char *label; /* beside the border box, e.g. "div.row 120 × 24" */
+    } kit_highlight_desc;
+    /* The Inspector's overlay, above everything in the layer. While picking
+     * it takes the pointer, so a press picks rather than reaching what is
+     * under it; after kit_inspect_end, kit_item_clicked tells when it was
+     * clicked. Returns its element, which picks ignore. */
+    rml_element *kit_inspect_begin(kit *k, const char *key, bool picking);
+    void kit_inspect_end(kit *k);
+    /* DevTools' node highlight: margin, border, padding and content bands in
+     * their colors. Emit between kit_inspect_begin and kit_inspect_end. */
+    void kit_highlight(kit *k, const char *key, const kit_highlight_desc *desc, const char *cls);
+    /* A readable path for `element`: the key path of one the kit emitted,
+     * else the nearest emitted ancestor's path and tag#id.class steps below
+     * it. True when the kit draws it, rather than content mounted in a
+     * kit_host or an element of another document. */
+    bool kit_element_path(const kit *k, rml_element *element, char *out, size_t size);
+    /* tag#id.class.class, as a selector names the element. */
+    void kit_element_selector(rml_element *element, char *out, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

@@ -601,6 +601,7 @@ struct studio
     /* UI documents (workstream D). */
     studio_code code;
     studio_new_ui new_ui;
+    struct studio_inspect *inspect; /* the UI Inspector, NULL until used */
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -925,6 +926,7 @@ typedef enum
     STUDIO_COMMAND_DENSITY,
     STUDIO_COMMAND_MOTION,
     STUDIO_COMMAND_THEME,
+    STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -993,5 +995,120 @@ void studio_code_save(studio *s);
 void studio_code_close(studio *s, int tab);
 /* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
 void studio_new_ui_button(studio *s);
+
+/* ---------- UI Inspector (studio_inspect.c) ---------- */
+
+/* The documents the Inspector shows: Studio's own, which its authored panels
+ * share; the graph canvas's; and the game UI the Scene shows. */
+typedef enum
+{
+    STUDIO_INSPECT_STUDIO,
+    STUDIO_INSPECT_GRAPH,
+    STUDIO_INSPECT_GAME,
+    STUDIO_INSPECT_TARGET_COUNT,
+} studio_inspect_target;
+
+/* The pseudo classes the Inspector can force, as DevTools' Force state. */
+typedef enum
+{
+    STUDIO_PSEUDO_HOVER,
+    STUDIO_PSEUDO_ACTIVE,
+    STUDIO_PSEUDO_FOCUS,
+    STUDIO_PSEUDO_CHECKED,
+    STUDIO_PSEUDO_COUNT,
+} studio_pseudo;
+
+/* A row of the Elements tree: an element, or a text node by its text. */
+typedef struct studio_inspect_row
+{
+    int depth;
+    bool node;   /* a text node */
+    bool parent; /* has children to expand */
+    bool open, selected, hovered;
+    bool hidden;     /* not displayed */
+    char indent[16]; /* its depth as padding, e.g. "28dp" */
+    char tag[32];
+    char id[64];       /* "#id", or "" */
+    char classes[128]; /* ".a.b", or "" */
+    char widget[64];   /* the ui asset or widget it shows (data-ui) */
+    char text[96];     /* a text node's text, or an element's only text */
+} studio_inspect_row;
+
+/* A line of the Styles pane: a rule's heading, or a declaration under it. */
+typedef struct studio_inspect_style
+{
+    bool heading;
+    bool ancestor;      /* a heading naming the ancestor whose rules follow */
+    bool inherited;     /* declared for an ancestor */
+    bool linked;        /* the heading's origin opens in the Text Editor */
+    char selector[128]; /* a heading's rule, "style" when inline */
+    char origin[160];   /* a heading's file and line */
+    char name[64], value[160];
+    char file[256]; /* where a linked heading opens */
+    int line;
+} studio_inspect_style;
+
+typedef struct studio_inspect_pair
+{
+    char name[64], value[160];
+} studio_inspect_pair;
+
+/* What the Inspector panel shows: the tree of the target's documents and
+ * the selected element's box, styles, computed values and attributes. */
+typedef struct studio_inspect_model
+{
+    studio_inspect_target target;
+    bool targets[STUDIO_INSPECT_TARGET_COUNT]; /* which have a document now */
+    bool picking;
+    bool wide;         /* its area is wider than tall: panes side by side */
+    char shortcut[32]; /* Inspect Element's, in the platform's notation */
+    bool changed;      /* since the last read */
+    studio_inspect_row *rows;
+    bool more; /* rows stopped at their limit */
+    bool selection;
+    bool detached;    /* the selected element left its document */
+    bool native;      /* drawn by Studio's C code rather than from a ui asset */
+    bool editable;    /* its source opens in the Text Editor */
+    char title[160];  /* tag#id.class */
+    char path[320];   /* its kit path, or the steps to it */
+    char source[160]; /* "Asset:line", an asset, or "Native (C)" */
+    char pseudo[96];  /* the pseudo classes set */
+    bool force[STUDIO_PSEUDO_COUNT]; /* forced on the selection */
+    char box[3][4][12]; /* margin, border and padding: top, right, bottom, left */
+    char size[40];      /* the content box, "120 × 24" */
+    studio_inspect_style *styles;
+    studio_inspect_pair *computed, *attributes;
+} studio_inspect_model;
+
+/* What the panel asked for since the last sync: rows of the tree, a Styles
+ * row whose origin to open, -1 for none; a target to show, or -1. */
+typedef struct studio_inspect_input
+{
+    int select, toggle, hover, rule;
+    int target;
+    bool source; /* Edit Source */
+    bool force[STUDIO_PSEUDO_COUNT];
+} studio_inspect_input;
+
+typedef struct studio_inspect studio_inspect;
+
+studio_inspect *studio_inspect_new();
+void studio_inspect_free(studio_inspect *in);
+/* Selects `element` and reveals it in the tree. */
+void studio_inspect_select(studio_inspect *in, rml_element *element);
+/* Lists `context`'s documents as the tree and describes the selection; `k`
+ * names its own elements by their key paths. */
+const studio_inspect_model *studio_inspect_read(studio_inspect *in, rml_context *context, const kit *k);
+
+/* Inspect Element: starts picking, showing the panel, or stops. */
+void studio_inspect_toggle(studio *s);
+bool studio_inspect_picking(const studio *s);
+/* Takes Mod+Shift+C, and Escape while picking, before the documents do. */
+bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key);
+/* Applies what the panel asked and reads what it shows; NULL while neither
+ * an area shows the panel nor a pick is on. */
+const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_input *input);
+/* After studio_emit: the pick overlay and the highlight. */
+void studio_inspect_emit(studio *s);
 
 #endif

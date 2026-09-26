@@ -9,3 +9,4 @@ entities:
   behaviors: [MenuKeys, Dismiss]
 - {name: Data, prototype: Data}
 - {name: Theme, prototype: Theme}
+- {name: Inspector, prototype: Inspector}

@@ -236,9 +236,14 @@ void control_drag(kit *k, node *n, const rml_event *e)
     color_drag(k, n, e->mouse_x, e->mouse_y);
 }
 
+static bool code_key(kit *k, node *n, const rml_event *e);
+
 static void field_key(kit *k, node *n, const rml_event *e)
 {
     widget *w = &n->w;
+    if (w->code && code_key(k, n, e)) {
+        return;
+    }
     bool enter = e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER;
     if (enter && w->area && (e->modifiers & RML_KM_SHIFT)) {
         rml_context_process_text_input(k->context, "\n", 1);
@@ -895,4 +900,69 @@ void kit_surface(kit *k, const char *key, const char *cls, const char *texture, 
     }
     out.wheel = out.hovered ? k->in.wheel : 0;
     *input = out;
+}
+
+/* ---------- Code area (UI documents, until kit_code) ---------- */
+
+/* Enter breaks the line (RmlUi's textarea leaves that to text input); Tab
+   indents by two spaces rather than moving focus; Escape leaves the field
+   with its text. */
+static bool code_key(kit *k, node *n, const rml_event *e)
+{
+    switch (e->key) {
+        case RML_KEY_RETURN:
+        case RML_KEY_NUMPADENTER:
+            rml_context_process_text_input(k->context, "\n", 1);
+            break;
+        case RML_KEY_TAB:
+            if (!(e->modifiers & RML_KM_SHIFT)) {
+                rml_context_process_text_input(k->context, "  ", 2);
+            }
+            break;
+        case RML_KEY_ESCAPE: rml_element_blur(n->w.input_el); break;
+        default: return false;
+    }
+    rml_event_stop_propagation(e);
+    return true;
+}
+
+const char *kit_code_area(kit *k, const char *key, const char *text)
+{
+    node *n = emit(k, key, KIND_TEXT, "div", "field text area code");
+    widget *w = &n->w;
+    if (!w->input_el) {
+        w->area = w->code = true;
+        w->input_el = raw(n->el, "textarea", "part value", NULL);
+    }
+    /* Changes report as typed, never as a commit on Enter or blur. */
+    w->pending = false;
+    if (!str_eq(w->draft, w->applied)) {
+        str_set(&w->applied, w->draft);
+        return kit_string(k, w->draft ? w->draft : "");
+    }
+    if (!str_eq(w->applied, text)) {
+        str_set(&w->applied, text);
+        str_set(&w->draft, text);
+        rml_element_set_value(w->input_el, text);
+    }
+    return NULL;
+}
+
+/* RmlUi selects by character; the kit counts bytes of UTF-8. */
+static int characters(const char *text, int bytes)
+{
+    int count = 0;
+    for (int i = 0; i < bytes && text[i]; i++) {
+        count += ((unsigned char)text[i] & 0xc0) != 0x80;
+    }
+    return count;
+}
+
+void kit_text_select(kit *k, int start, int end)
+{
+    assert(k->last && k->last->w.input_el);
+    widget *w = &k->last->w;
+    const char *text = w->applied ? w->applied : "";
+    rml_element_focus(w->input_el, true);
+    rml_element_set_selection_range(w->input_el, characters(text, start), characters(text, end));
 }

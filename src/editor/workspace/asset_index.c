@@ -405,7 +405,8 @@ int app_scene_authoring_open_asset(app_scene_authoring *scene, int position)
         case REFERENCE_ASSET_FIELD:
         case REFERENCE_ASSET_LIBRARY:
             return app_scene_authoring_open_behavior(scene, asset->name);
-        case REFERENCE_ASSET_UI: return asset->path ? 0 : -1;
+        case REFERENCE_ASSET_UI:
+            return asset->path ? scene_tabs_open_ui(scene, asset->path) : -1;
         case REFERENCE_ASSET_KIND_COUNT: break;
     }
     return -1;

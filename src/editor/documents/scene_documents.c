@@ -349,8 +349,22 @@ static int reload_prototype_document(app_scene_authoring *scene)
     return reload_prototype_asset(scene, asset);
 }
 
+int reload_ui_document(app_scene_authoring *scene, scene_document_tab *tab)
+{
+    char error[256];
+    if (!ui_buffer_reload(tab->ui, error, sizeof error)) {
+        snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", tab->label, error);
+        return -1;
+    }
+    snprintf(scene->message, sizeof scene->message, "Reloaded %s.", tab->label);
+    return 0;
+}
+
 static int reload_active_document(app_scene_authoring *scene)
 {
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_UI) {
+        return reload_ui_document(scene, scene_tabs_ui(scene, scene->document.id));
+    }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
         return scene->system_path ? load_system_asset(scene, scene->system_path, true)
                                   : -1;
@@ -582,8 +596,36 @@ int save_behavior_document(app_scene_authoring *scene)
     return saved;
 }
 
+int save_ui_document(app_scene_authoring *scene, scene_document_tab *tab)
+{
+    char *text = ui_buffer_compose(tab->ui);
+    int result = write_file_atomic(tab->path, text);
+    if (result == 0) {
+        ui_buffer_saved(tab->ui, text);
+    } else {
+        snprintf(scene->message, sizeof scene->message, "Could not write %s.", tab->label);
+    }
+    free(text);
+    return result;
+}
+
+/* A UI document saves over its file only while the file is the one it
+ * loaded or last saved. */
+static int save_active_ui_document(app_scene_authoring *scene)
+{
+    scene_document_tab *tab = scene_tabs_ui(scene, scene->document.id);
+    if (!ui_buffer_on_disk(tab->ui)) {
+        snprintf(scene->message, sizeof scene->message, "%s changed on disk.", tab->label);
+        return -1;
+    }
+    return save_ui_document(scene, tab);
+}
+
 int save_active_document(app_scene_authoring *scene)
 {
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_UI) {
+        return save_active_ui_document(scene);
+    }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
         if (!scene->system_document || !scene->system_path) {
             snprintf(scene->message, sizeof scene->message, "System requires Save As.");

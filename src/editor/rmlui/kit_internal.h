@@ -112,6 +112,7 @@ typedef struct widget
     bool suppress_click;
     bool focused;
     bool area; /* a text field over several lines */
+    bool code; /* a code area: keys type rather than commit (kit_code_area) */
     double value;
     double start;
     double pending_value;

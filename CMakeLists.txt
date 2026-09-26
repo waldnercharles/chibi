@@ -893,3 +893,7 @@ else()
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDS material_engine_smoke VERBATIM)
 endif()
+
+# UI documents (Studio UI authoring, workstream D): the test suite compiles the
+# scene tabs itself, and they hold UI buffers.
+target_sources(test_suite PRIVATE src/editor/documents/ui_buffer.c)

@@ -2,6 +2,7 @@
 #define CHIBI_SCENE_INTERNAL_H
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
+#include "editor/documents/ui_buffer.h"
 #include "editor/workspace/asset_index.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/scene_authoring.h"
@@ -67,6 +68,7 @@ typedef struct
     char *system_saved;
     unsigned system_editor_revision;
     unsigned system_query_revision;
+    ui_buffer *ui; /* a UI document's text, owned; NULL for other kinds */
 } scene_document_tab;
 
 /* Private authoring state. Module replacement transfers versioned document
@@ -304,4 +306,16 @@ typedef struct
 /* Whether two paths name one file, as realpath resolves them. */
 bool scene_same_file(const char *a, const char *b);
 void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count);
+
+/* ---------- UI documents (Studio UI authoring, workstream D) ---------- */
+
+/* Opens the ui asset or stylesheet at `path` in its tab, or activates the tab
+ * already showing it; -1 with the message set when the file cannot open. */
+int scene_tabs_open_ui(app_scene_authoring *scene, const char *path);
+/* The tab of the UI document at `path`, however it is spelled, or NULL. */
+scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path);
+/* Writes a UI document's text as its file, whatever the file holds now. */
+int save_ui_document(app_scene_authoring *scene, scene_document_tab *tab);
+/* Replaces a UI document's text with its file, discarding its edits. */
+int reload_ui_document(app_scene_authoring *scene, scene_document_tab *tab);
 #endif

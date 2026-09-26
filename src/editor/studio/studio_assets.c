@@ -1,6 +1,7 @@
 /* Assets: every indexed asset as a virtualized list, filtered by kind and name.
- * Prototypes drag into the Scene or the Outliner to place an instance; behaviors
- * drag onto an Outliner row to attach. Double-click opens the asset. */
+ * Prototypes drag into the Scene or the Outliner to place an instance;
+ * behaviors drag onto an Outliner row to attach. Double-click opens the asset.
+ * New makes a UI widget, document or stylesheet and opens it. */
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/asset_index.h"
 #include "support/array.h"
@@ -11,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 
 static const char *const KIND_LABELS[REFERENCE_ASSET_KIND_COUNT] = {
     "Scenes", "Prototypes", "Behaviors", "Events",  "Materials",
@@ -76,6 +78,7 @@ void studio_assets_header(studio *s, int area)
     kit_push(k, "filter", NULL, "assets-filter");
     kit_search(k, "search", s->assets_filter, sizeof s->assets_filter, "Filter");
     kit_pop(k);
+    studio_new_ui_button(s);
 }
 
 /* Rows of the list: a group header (asset < 0, kind set) or an asset. */
@@ -275,4 +278,125 @@ bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
         return true;
     }
     return false;
+}
+
+/* ---------- New UI assets ---------- */
+
+static const char *const NEW_LABELS[UI_NEW_KIND_COUNT] = { "UI Widget",
+                                                           "UI Document",
+                                                           "Stylesheet" };
+static const uint32_t NEW_ICONS[UI_NEW_KIND_COUNT] = { KIT_ICON_LAYOUT,
+                                                       KIT_ICON_LAYOUT,
+                                                       KIT_ICON_FILE };
+static const mode_t UI_FOLDER_MODE = 0777;
+#define NAME_POPOVER "new-ui-name"
+
+static bool enter_pressed(const studio *s)
+{
+    for (int i = 0; i < acount(s->keys); i++) {
+        if (s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Writes the new asset in the project's ui folder and opens it; false when
+   the name is invalid or taken. */
+static bool create(studio *s)
+{
+    studio_new_ui *n = &s->new_ui;
+    char *folder = content_path_join(s->scene->content_root, "ui");
+    mkdir(folder, UI_FOLDER_MODE);
+    char *path = ui_buffer_new_path(
+        folder,
+        (ui_new_kind)n->kind,
+        n->name,
+        n->error,
+        sizeof n->error
+    );
+    free(folder);
+    if (!path) {
+        return false;
+    }
+    char *text = ui_buffer_template((ui_new_kind)n->kind);
+    if (write_file_atomic(path, text) != 0) {
+        studio_error(s, "Could not create", content_basename(path));
+    } else {
+        content_refresh(s->scene);
+        studio_open_ui_source(s, path, 1);
+    }
+    free(text);
+    free(path);
+    return true;
+}
+
+static void kind_menu(studio *s)
+{
+    kit *k = s->kit;
+    if (!kit_popup_begin(k, "new-ui", "menu")) {
+        return;
+    }
+    kit_menu_group(k, "group", "New");
+    for (int i = 0; i < UI_NEW_KIND_COUNT; i++) {
+        char key[8];
+        snprintf(key, sizeof key, "k%d", i);
+        if (menu_item(k, key, NEW_LABELS[i], NEW_ICONS[i], NULL)) {
+            s->new_ui = (studio_new_ui){ .kind = i, .opening = true, .focus = true };
+        }
+    }
+    kit_popup_end(k);
+}
+
+static void name_popover(studio *s)
+{
+    kit *k = s->kit;
+    studio_new_ui *n = &s->new_ui;
+    if (!kit_popup_begin(k, NAME_POPOVER, "menu new-ui")) {
+        return;
+    }
+    char title[64];
+    snprintf(title, sizeof title, "New %s", NEW_LABELS[n->kind]);
+    kit_menu_group(k, "title", title);
+    kit_push(k, "field", NULL, "new-ui-field");
+    bool committed = kit_text_field(k, "name", n->name, sizeof n->name, "Name", 0);
+    if (n->focus) {
+        kit_focus(k);
+        n->focus = false;
+    }
+    kit_pop(k);
+    if (n->error[0]) {
+        kit_push(k, "error", NULL, "new-ui-error");
+        kit_icon(k, "icon", NULL, KIT_ICON_WARNING);
+        kit_label(k, "label", "label", n->error);
+        kit_pop(k);
+    }
+    kit_menu_separator(k, "sep");
+    bool chosen = menu_item(k, "create", "Create", KIT_ICON_ADD, NULL);
+    bool entered = committed && enter_pressed(s);
+    kit_popup_end(k);
+    if (!chosen && !entered) {
+        return;
+    }
+    if (create(s)) {
+        kit_popup_close(k, NAME_POPOVER);
+        return;
+    }
+    /* A name that fails asks again, even after Create closed the popover. */
+    n->opening = n->focus = true;
+}
+
+void studio_new_ui_button(studio *s)
+{
+    kit *k = s->kit;
+    kit_button_desc add = { .icon = KIT_ICON_ADD, .tip = "New UI asset" };
+    if (kit_button(k, "new", &add)) {
+        kit_popup_open(k, "new-ui");
+    }
+    if (s->new_ui.opening) {
+        kit_popup_open(k, NAME_POPOVER);
+        s->new_ui.opening = false;
+    }
+    kind_menu(s);
+    name_popover(s);
 }

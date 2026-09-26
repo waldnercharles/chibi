@@ -832,6 +832,10 @@ void sg_replay(studio *s)
         rml_backend_process_input(g->backend, &ev);
     }
     asetlen(g->events, 0);
+    /* A pinch zooms at the pointer, as scrolling does. */
+    if (s->pinch != 0 && g->surface.hovered && !blocked) {
+        sg_zoom_at(g, g->zoom * expf(s->pinch), s->in.mouse_x, s->in.mouse_y);
+    }
 }
 
 static void snap_link(studio *s, graph_hit *hit)

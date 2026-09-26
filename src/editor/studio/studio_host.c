@@ -14,6 +14,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+/* SDL's browser backend reports no pinch: the page shell turns a browser's
+ * pinch, a wheel with Ctrl held or Safari's gesture events, into the pinch
+ * SDL's macOS backend reports. */
+EMSCRIPTEN_KEEPALIVE void studio_web_pinch(float scale)
+{
+    SDL_Event event = { .pinch = { .type = SDL_EVENT_PINCH_UPDATE, .scale = scale } };
+    SDL_PushEvent(&event);
+}
+#endif
+
 /* SDL keys forwarded to RmlUi; values are RmlUi 6.3 key identifiers. */
 static rml_input_key input_key(SDL_Keycode key)
 {
@@ -101,6 +114,7 @@ static bool SDLCALL queue_event(void *user, SDL_Event *event)
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
         case SDL_EVENT_TEXT_INPUT:
+        case SDL_EVENT_PINCH_UPDATE:
         case SDL_EVENT_WINDOW_MOUSE_LEAVE: apush(s->events, *event); break;
         case SDL_EVENT_SYSTEM_THEME_CHANGED:
             s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
@@ -168,7 +182,7 @@ static void forward_input(studio *s)
     for (int b = 0; b < 3; b++) {
         in->pressed[b] = in->released[b] = false;
     }
-    in->wheel = s->zoom_wheel = 0;
+    in->wheel = s->zoom_wheel = s->pinch = 0;
     asetlen(s->keys, 0);
     s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
@@ -221,6 +235,11 @@ static void forward_input(studio *s)
                 input.wheel_x = -e->wheel.x;
                 input.wheel_y = -e->wheel.y;
                 break;
+            case SDL_EVENT_PINCH_UPDATE:
+                /* The Scene view and the graph canvas zoom a pinch at the
+                   pointer; scales multiply, so their logs add. */
+                s->pinch += logf(e->pinch.scale);
+                continue;
             case SDL_EVENT_WINDOW_MOUSE_LEAVE:
                 input.type = RML_INPUT_POINTER_LEAVE;
                 break;

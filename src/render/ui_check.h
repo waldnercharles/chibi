@@ -42,4 +42,9 @@ bool ui_check(
 );
 void ui_check_messages_free(ui_check_message *messages);
 
+/* Appends a copy of the name of each property and shorthand RCSS takes, as
+ * RmlUi registers them, to `names` (support/array.h); a ui_source_project's
+ * `properties`. RmlUi must be initialized. */
+void ui_check_property_names(char ***names);
+
 #endif

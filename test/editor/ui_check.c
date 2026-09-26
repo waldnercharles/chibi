@@ -120,13 +120,16 @@ void test_ui_check()
     assert(system(command) == 0);
 
     rml_backend *backend = rml_backend_create(1, 1, 1);
-    const char *names[512];
-    int count = rml_property_names(names, 512);
+    char **names = NULL;
+    ui_check_property_names(&names);
     bool color = false, margin = false;
-    for (int i = 0; i < count && i < 512; i++) {
+    for (int i = 0; i < acount(names); i++) {
         color |= !strcmp(names[i], "color");
         margin |= !strcmp(names[i], "margin");
+        free(names[i]);
     }
+    int count = acount(names);
+    afree(names);
     rml_backend_destroy(backend);
-    test_check(count > 100 && count <= 512 && color && margin, "RmlUi lists the RCSS properties and shorthands it registers");
+    test_check(count > 100 && color && margin, "RmlUi lists the RCSS properties and shorthands it registers");
 }

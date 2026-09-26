@@ -26,7 +26,9 @@ typedef struct block_map
     int length;
     int *offsets; /* the file offset of each value byte, and of its end */
     int indent;   /* a literal block's indentation */
-    int scalar_start, scalar_end; /* the scalar in the file, indicator included */
+    /* The scalar in the file, indicator included; an inline one's end is its
+     * line's, past any comment. */
+    int scalar_start, scalar_end;
     TSTree *tree;
     ui_source_element *elements; /* in the value's offsets */
 } block_map;

@@ -55,7 +55,7 @@ These are on `main` and used by more than one workstream.
 | Stylesheet origin | `rml_element_property_source(element, property, sheet, size, &line)` (`src/ui/rml.h`), then `ui_style_origin(sheet, line, path, size, &source_line)` (`src/support/ui_style.h`) (A) | RmlUi reports the rule's sheet name and its line. Hosts install named sheets (`rml_document_set_named_style_sheet`, `rml_document_add_named_style_sheet`) and record each sheet's `rcss_map` with `ui_style_set`. The sheets are `game-ui-<n>` for a `render_ui`, `kit-<document>` for a kit's theme and resources, and `kit-<document>-<key>` for each `kit_style_sheet`. `path` is an imported stylesheet's path; for a line of a ui asset's own `rcss` block it is the asset's `.yaml` path, and the line counts from the block's first line |
 | UI language service | `src/assets/ui_source.h` (B) | Parses a ui asset's file (or a `.rcss` file) with tree-sitter: spans, outline, diagnostics, completion, symbols and references, and edits as `text_edit`s on the file. Positions are file byte offsets |
 | UI check | `ui_check(content_root, name, text, …)` in `src/render/ui_check.h` (B) | Every RmlUi warning of a ui asset, with its block's line |
-| RCSS properties | `rml_property_names` in `src/ui/rml.h` (B) | What `ui_source_project.properties` takes |
+| RCSS properties | `ui_check_property_names` in `src/render/ui_check.h` (B), over `rml_property_name` and `rml_shorthand_name` in `src/ui/rml.h` | What `ui_source_project.properties` takes |
 
 ## Workstreams
 

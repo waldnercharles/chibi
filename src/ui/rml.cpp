@@ -1253,21 +1253,20 @@ bool rml_element_property_source(rml_element *e, const char *property, char *she
     return true;
 /* ---------- UI language service (workstream B) ---------- */
 
-int rml_property_names(const char **names, int max)
+const char *rml_property_name(uint8_t id)
 {
-    using Spec = Rml::StyleSheetSpecification;
-    int count = 0;
-    for (int id = 1; id < (int)Rml::PropertyId::MaxNumIds; id++) {
-        if (Spec::GetProperty((Rml::PropertyId)id) && count++ < max) {
-            names[count - 1] = Spec::GetPropertyName((Rml::PropertyId)id).c_str();
-        }
-    }
-    for (int id = 1; id < (int)Rml::ShorthandId::MaxNumIds; id++) {
-        if (Spec::GetShorthand((Rml::ShorthandId)id) && count++ < max) {
-            names[count - 1] = Spec::GetShorthandName((Rml::ShorthandId)id).c_str();
-        }
-    }
-    return count;
+    Rml::PropertyId property = (Rml::PropertyId)id;
+    return Rml::StyleSheetSpecification::GetProperty(property)
+             ? Rml::StyleSheetSpecification::GetPropertyName(property).c_str()
+             : nullptr;
+}
+
+const char *rml_shorthand_name(uint8_t id)
+{
+    Rml::ShorthandId shorthand = (Rml::ShorthandId)id;
+    return Rml::StyleSheetSpecification::GetShorthand(shorthand)
+             ? Rml::StyleSheetSpecification::GetShorthandName(shorthand).c_str()
+             : nullptr;
 }
 
 /* ---------- Inspection (the UI Inspector) ---------- */

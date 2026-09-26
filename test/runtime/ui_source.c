@@ -415,6 +415,48 @@ static void inline_edits()
     test_check(ok, "ui source edits classes, style declarations and elements that share a line");
 }
 
+/* Blocks whose last line has no line break, whose inline scalar carries a
+ * comment, or which are empty. */
+static void edge_edits()
+{
+    static const struct
+    {
+        const char *label, *text, *expected;
+        bool move;
+    } cases[] = {
+        { "append to a block without a final line break",
+          "rml: |\n  <div>\n    <p/>\n  </div>",
+          "rml: |\n  <div>\n    <p/>\n  </div>\n  <span/>",
+          false },
+        { "move after an element on the last line",
+          "rml: |\n  <div>\n    <p/>\n  </div>",
+          "rml: |\n  <div>\n  </div>\n  <p/>",
+          true },
+        { "rewrite an inline block and drop its comment",
+          "rml: <div/> # note\n",
+          "rml: |-\n  <div/>\n  <span/>\n",
+          false },
+        { "fill an empty block",
+          "rml: |\nrcss: 'b { }'\n",
+          "rml: |\n  <span/>\nrcss: 'b { }'\n",
+          false },
+    };
+    bool ok = true;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        ui_source *s = ui_source_parse(cases[i].text, false);
+        text_edit *list = NULL;
+        char error[160];
+        bool applied = cases[i].move
+                         ? ui_source_move_element(s, 1, 0, UI_SOURCE_AFTER, &list, error, sizeof error)
+                         : ui_source_insert_element(s, -1, UI_SOURCE_INSIDE, "<span/>", &list, error, sizeof error);
+        char *text = applied ? edited(cases[i].text, list) : NULL;
+        ok &= expect_text(cases[i].label, text, cases[i].expected);
+        free(text);
+        ui_source_free(s);
+    }
+    test_check(ok, "ui source edits blocks without a final line break, with a comment, or empty");
+}
+
 static void edits()
 {
     static const struct
@@ -455,6 +497,7 @@ static void edits()
     }
     test_check(ok, "ui source edits attributes, classes, inline style and elements, keeping the block's indentation");
     inline_edits();
+    edge_edits();
 
     ui_source *s = ui_source_parse(EDIT_SAMPLE, false);
     text_edit *list = NULL;

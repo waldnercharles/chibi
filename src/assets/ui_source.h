@@ -159,7 +159,8 @@ typedef struct ui_source_file
 
 /* What the project around a document offers it. ui_source_project_scan
  * fills everything but `properties`, which the caller adds from RmlUi
- * (rml_property_names in ui/rml.h). Lists are sorted and unique. */
+ * (ui_check_property_names in render/ui_check.h). Lists are sorted and
+ * unique. */
 typedef struct ui_source_project
 {
     ui_source_file *files; /* ui assets, then stylesheets */

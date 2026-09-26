@@ -550,10 +550,11 @@ extern "C"
     );
     /* ---------- UI language service (workstream B) ---------- */
 
-    /* The names of the properties and shorthands RCSS takes, as
-     * StyleSheetSpecification registers them: writes up to `max` and returns
-     * how many there are. Valid from rml_initialize until rml_shutdown. */
-    int rml_property_names(const char **names, int max);
+    /* The name of the property, or shorthand, StyleSheetSpecification
+     * registers with `id`; NULL for an id it has not. Valid from
+     * rml_initialize until rml_shutdown. */
+    const char *rml_property_name(uint8_t id);
+    const char *rml_shorthand_name(uint8_t id);
 
     /* ---------- Inspection (the UI Inspector) ---------- */
 

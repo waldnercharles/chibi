@@ -461,17 +461,19 @@ static void complete_value(request *r, const ui_source_project *project, const c
 {
     char attribute[64];
     attribute_before(r->value, quote, attribute, sizeof attribute);
+    if (!strcmp(attribute, "style")) {
+        complete_css(r, project, quote + 1, 1);
+        return;
+    }
+    if (ui_source_is_binding(attribute, (int)strlen(attribute))) {
+        complete_binding(r, project);
+        return;
+    }
     int start = word_start(r, false);
     if (!strcmp(tag, "use") && !strcmp(attribute, "ui")) {
         offer_list(r, UI_COMPLETE_WIDGET, project->widgets, start);
     } else if (!strcmp(attribute, "class")) {
         offer_list(r, UI_COMPLETE_CLASS, project->classes, start);
-    } else if (!strcmp(attribute, "style")) {
-        complete_css(r, project, quote + 1, 1);
-        return;
-    } else if (ui_source_is_binding(attribute, (int)strlen(attribute))) {
-        complete_binding(r, project);
-        return;
     }
     settle(r, start);
 }

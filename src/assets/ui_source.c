@@ -19,6 +19,10 @@
 const TSLanguage *tree_sitter_css();
 const TSLanguage *tree_sitter_html();
 
+/* The indentation of a literal block's lines when it has none yet, as the
+ * asset writer indents them. */
+#define LITERAL_INDENT 2
+
 /* The keys a ui asset's blocks hold, by language. */
 static const char *const BLOCK_KEYS[] = { "rml", "rcss" };
 
@@ -125,33 +129,34 @@ static bool read_literal(const char *text, int header, block_map *m)
         return false;
     }
     int p = text[header_end] ? header_end + 1 : header_end;
-    m->indent = indent ? indent : first_indent(text, p);
+    indent = indent ? indent : first_indent(text, p);
+    /* An empty block's lines, once edits add them, take the usual step. */
+    m->indent = indent ? indent : LITERAL_INDENT;
     int kept = 0; /* the value's length through its last line of content */
     m->scalar_end = header_end;
-    while (m->indent && text[p]) {
+    while (indent && text[p]) {
         int end = line_end(text, p), spaces = leading_spaces(text, p, end);
         bool blank = p + spaces == end;
-        if (!blank && spaces < m->indent) {
+        if (!blank && spaces < indent) {
             break;
         }
-        for (int k = p + m->indent; k < end; k++) {
+        for (int k = p + indent; k < end; k++) {
             map_push(m, text[k], k);
         }
-        map_push(m, '\n', end);
-        if (!blank || spaces > m->indent) {
+        if (text[end]) {
+            map_push(m, '\n', end);
+        }
+        if (!blank || spaces > indent) {
             kept = acount(m->value);
             m->scalar_end = end;
         }
         p = text[end] ? end + 1 : end;
     }
-    asetlen(m->value, chomp == '+' ? acount(m->value) : kept - (chomp == '-' && kept));
+    bool strip = chomp == '-' && kept && m->value[kept - 1] == '\n';
+    asetlen(m->value, chomp == '+' ? acount(m->value) : kept - strip);
     asetlen(m->offsets, acount(m->value));
     m->style = SCALAR_LITERAL;
     map_finish(m, p);
-    /* A last line without a line break ends at the text's end. */
-    int size = (int)strlen(text);
-    m->offsets[m->length] = m->offsets[m->length] > size ? size
-                                                         : m->offsets[m->length];
     return true;
 }
 
@@ -229,7 +234,7 @@ static bool read_quoted(const char *text, int open, block_map *m)
         p += length;
     }
     m->style = SCALAR_INLINE;
-    m->scalar_end = p + 1;
+    m->scalar_end = line_end(text, p);
     map_finish(m, open + 1);
     return true;
 }
@@ -254,7 +259,7 @@ static bool read_plain(const char *text, int start, block_map *m)
         map_push(m, text[p], p);
     }
     m->style = SCALAR_INLINE;
-    m->scalar_end = end;
+    m->scalar_end = next;
     map_finish(m, start);
     return true;
 }

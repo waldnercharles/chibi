@@ -539,8 +539,8 @@ static char **props(const ui_source *source)
         }
     }
     const ui_source_block *block = block_of(source, UI_SOURCE_RML);
-    for (const char *p = block ? source->text + block->start : "";
-         (p = strstr(p, "{{"));) {
+    char *markup = block ? slice(source, block->start, block->end) : xstrdup("");
+    for (const char *p = markup; (p = strstr(p, "{{"));) {
         const char *close = strstr(p, "}}");
         if (!close) {
             break;
@@ -551,6 +551,7 @@ static char **props(const ui_source *source)
         free(expression);
         p = close + 2;
     }
+    free(markup);
     char **out = NULL;
     for (int i = 0; i < acount(roots); i++) {
         bool model = !strcmp(roots[i], "save") || !strcmp(roots[i], "system") ||

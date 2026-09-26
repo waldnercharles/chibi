@@ -8,6 +8,7 @@
 #include "ui/rml_backend.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -282,6 +283,20 @@ bool ui_check(
     rml_backend_destroy(backend);
     ui_document_free(&document);
     return ok;
+}
+
+void ui_check_property_names(char ***names)
+{
+    for (int id = 1; id <= UINT8_MAX; id++) {
+        const char *property = rml_property_name((uint8_t)id);
+        const char *shorthand = rml_shorthand_name((uint8_t)id);
+        if (property) {
+            apush(*names, xstrdup(property));
+        }
+        if (shorthand) {
+            apush(*names, xstrdup(shorthand));
+        }
+    }
 }
 
 void ui_check_messages_free(ui_check_message *messages)

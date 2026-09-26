@@ -18,5 +18,9 @@ bool conversion_is_vector_splat(const node_desc *conversion);
 const node_desc *conversion_for(pin_type from, pin_type to);
 const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to);
 int conversion_matches_pins(const pin_spec *from, const pin_spec *to, const node_desc *conversion);
+/* How well a wire from output `from` fits input `to`: 3 connectable as is
+ * (pin_compatible, or both exec), 2 through a conversion, 1 a wildcard, 0 not
+ * at all. Settings take no wires. */
+int wire_fit(const pin_spec *from, const pin_spec *to);
 
 #endif

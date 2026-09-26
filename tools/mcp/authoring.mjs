@@ -255,6 +255,14 @@ const searchNodesDefinition = {
       type: "string",
       description: "Require a matching pin type or struct type name, such as float or ShaderVec3.",
     },
+    wire_from: {
+      type: "string",
+      description: "Type of an existing output to wire from, as searchNodes writes pins: exec, float, GameHealth, ecs.entity or array<int>. Keeps nodes with an input that takes it, ranked exact type, then conversion, then wildcard, and names that input as wire_input.",
+    },
+    wire_to: {
+      type: "string",
+      description: "Type of an existing input to wire into. Keeps nodes with an output that feeds it, ranked like wire_from, and names that output as wire_output.",
+    },
     pin_container: {
       type: "string",
       enum: ["single", "array", "set", "map"],

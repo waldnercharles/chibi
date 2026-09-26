@@ -165,7 +165,7 @@ const operationProperties = {
     type: "integer",
     minimum: 0,
     maximum: 65535,
-    description: "Execution edge order.",
+    description: "Execution edge order for connect; for set_pin, the zero-based index the pin moves to.",
   },
   side: {
     type: "string",

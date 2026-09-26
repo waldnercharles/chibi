@@ -1,16 +1,18 @@
 /* The Member tab in Properties: the details of the member selected in
  * Members, as Unreal's Details shows a My Blueprint selection. A variable has
  * its type, container, category and default; a function or macro its inputs
- * and outputs, with their containers and the inputs' defaults, and a function
- * its purity; a named value its name and source. Types are chosen from a
- * search over basic types, structures and enums, and Exec for a macro
- * (Unreal's pin type picker), on the command surface. */
+ * and outputs, with their containers and the inputs' defaults, reordered by
+ * dragging their grips, and a function its purity; a named value its name and
+ * source. Types are chosen from a search over basic types, structures and
+ * enums, and Exec for a macro (Unreal's pin type picker), on the command
+ * surface. */
 #include "editor/studio/studio_members_internal.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct
@@ -359,8 +361,33 @@ static bool default_row(studio *s, graph *g, int index)
     return true;
 }
 
-/* One input or output: its name, type, container and a remove button, and
-   an input's default below. Returns true when an edit changed the pins. */
+bool sm_move_signature_pin(editor *e, graph *g, bool result, uint64_t dragged, int to)
+{
+    int output, from = -1;
+    graph_pin_by_id(signature_node(g, result), dragged, &output, &from);
+    if (from == to) {
+        return false;
+    }
+    char *before = ed_snapshot(e);
+    return sm_record(e, before, graph_signature_move(e->asset, g, result, from, to) == 0);
+}
+
+/* A grip that drags the pin onto another row of its side (dnd-kit). */
+static void grip(studio *s, const pin_spec *pin, const char *type)
+{
+    kit_icon(s->kit, "grip", "param-grip", KIT_ICON_GRIP);
+    if (locked(s)) {
+        return;
+    }
+    char id[24];
+    snprintf(id, sizeof id, "%llu", (unsigned long long)pin->id);
+    kit_drag_desc drag = { .type = type, .payload = id, .label = pin->name };
+    kit_drag_source(s->kit, &drag);
+}
+
+/* One input or output: a grip, its name, type, container and a remove
+   button, and an input's default below. Returns true when an edit changed
+   the pins. */
 static bool signature_row(studio *s, graph *g, bool result, int index)
 {
     kit *k = s->kit;
@@ -370,11 +397,14 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
                                  : &owner->output_pins[index];
     unsigned flags = locked(s) ? KIT_READONLY : 0;
     bool exec = pin->kind == PIN_EXEC;
-    char key[32], name[128];
+    const char *drag = result ? "result" : "parameter";
+    char key[32], name[128], dropped[24];
     snprintf(key, sizeof key, "p%llu", (unsigned long long)pin->id);
     snprintf(name, sizeof name, "%s", pin->name ? pin->name : "");
     kit_push(k, key, NULL, "param");
+    kit_layout(k);
     kit_push(k, "pin", NULL, "param-row");
+    grip(s, pin, drag);
     bool renamed = kit_text_field(k, "name", name, sizeof name, NULL, flags) &&
                    name[0] && strcmp(name, pin->name);
     type_button(s, pin, g->graph_id, pin->id);
@@ -388,6 +418,9 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
     kit_pop(k);
     bool defaulted = !result && default_row(s, g, index);
     kit_pop(k);
+    if (kit_drop_target(k, drag, dropped, sizeof dropped)) {
+        return sm_move_signature_pin(e, g, result, strtoull(dropped, NULL, 10), index);
+    }
     if (!renamed && !contained && !removed) {
         return defaulted;
     }

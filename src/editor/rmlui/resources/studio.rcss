@@ -223,3 +223,6 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .param-row .field { flex: 1 1 0dp; }
 .param-row .type-pick { flex: 0 0 104dp; }
 .param-row .select { flex: 0 0 78dp; }
+.param-row .param-grip { flex: 0 0 12dp; width: 12dp; font-size: 12dp; color: var(--fg-off); cursor: grab; }
+.param-row .param-grip:hover { color: var(--fg-2); }
+.param { border-radius: 4dp; }

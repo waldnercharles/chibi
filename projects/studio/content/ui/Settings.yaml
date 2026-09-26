@@ -4,27 +4,27 @@ rml: |
     <div class="columns">
       <div class="column">
         <div class="menu-group">Theme</div>
-        <use ui="MenuOption" data-setting="theme" value="system">System</use>
-        <use ui="MenuOption" data-setting="theme" value="dark">Dark</use>
-        <use ui="MenuOption" data-setting="theme" value="light">Light</use>
+        <use ui="MenuOption" data-checked="save.theme" value="system">System</use>
+        <use ui="MenuOption" data-checked="save.theme" value="dark">Dark</use>
+        <use ui="MenuOption" data-checked="save.theme" value="light">Light</use>
         <div class="menu-sep"/>
         <div class="menu-group">Density</div>
-        <use ui="MenuOption" data-setting="density" value="compact">Compact</use>
-        <use ui="MenuOption" data-setting="density" value="comfortable">Comfortable</use>
+        <use ui="MenuOption" data-checked="save.density" value="compact">Compact</use>
+        <use ui="MenuOption" data-checked="save.density" value="comfortable">Comfortable</use>
         <div class="menu-sep"/>
-        <use ui="MenuCheck" data-setting="reduceMotion">Reduce Motion</use>
+        <use ui="MenuCheck" data-checked="save.reduceMotion">Reduce Motion</use>
       </div>
       <div class="column">
         <div class="menu-group">Graph Wires</div>
-        <use ui="MenuOption" data-setting="wires" value="curved">Curved</use>
-        <use ui="MenuOption" data-setting="wires" value="orthogonal">Orthogonal</use>
-        <use ui="MenuOption" data-setting="wires" value="straight">Straight</use>
-        <use ui="MenuOption" data-setting="wires" value="subway">Subway</use>
+        <use ui="MenuOption" data-checked="save.wires" value="curved">Curved</use>
+        <use ui="MenuOption" data-checked="save.wires" value="orthogonal">Orthogonal</use>
+        <use ui="MenuOption" data-checked="save.wires" value="straight">Straight</use>
+        <use ui="MenuOption" data-checked="save.wires" value="subway">Subway</use>
         <div class="menu-sep"/>
         <div class="menu-group">Graph Nodes</div>
-        <use ui="MenuCheck" data-setting="shortBindings">Short Bindings</use>
-        <use ui="MenuCheck" data-setting="titleFlow">Flow in Titles</use>
-        <use ui="MenuCheck" data-setting="compactNodes">Compact Nodes</use>
+        <use ui="MenuCheck" data-checked="save.shortBindings">Short Bindings</use>
+        <use ui="MenuCheck" data-checked="save.titleFlow">Flow in Titles</use>
+        <use ui="MenuCheck" data-checked="save.compactNodes">Compact Nodes</use>
       </div>
     </div>
   </use>

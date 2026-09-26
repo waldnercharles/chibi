@@ -140,6 +140,7 @@ static void expanded_widgets()
     write_widget(root, "Meter", "rml: <div class=\"fill\"/><slot/>\nrcss: '.fill { height: 4dp; }'\n");
     write_widget(root, "Row", "rml: <span><slot/></span>\n");
     write_widget(root, "Loop", "rml: <use ui=\"Loop\"/>\n");
+    write_widget(root, "Option", "rml: <label><input type=\"radio\" attrs/><slot/></label>\n");
     char text[512];
     char **uses = NULL;
     bool ok = expand_text(root, "<use ui=\"Meter\" id=\"hull\" class=\"wide\"/>", text, sizeof text, &uses);
@@ -179,6 +180,32 @@ static void expanded_widgets()
         "appears once"
     );
     free_names(uses);
+    uses = NULL;
+    ok = expand_text(
+        root,
+        "<use id=\"dark\" ui=\"Option\" data-checked=\"save.theme\" "
+        "value=\"dark\">Dark</use>",
+        text,
+        sizeof text,
+        &uses
+    );
+    test_check(
+        ok && !strncmp(
+                  text,
+                  "<div data-ui=\"Option\"><label><input type=\"radio\" "
+                  "id=\"dark\" "
+                  "data-checked=\"save.theme\" "
+                  "value=\"dark\"/>Dark</label></div>|",
+                  strlen(
+                      "<div data-ui=\"Option\"><label><input type=\"radio\" "
+                      "id=\"dark\" "
+                      "data-checked=\"save.theme\" "
+                      "value=\"dark\"/>Dark</label></div>|"
+                  )
+              ),
+        "a widget element marked attrs takes the use element's attributes"
+    );
+    free_names(uses);
     static const struct
     {
         const char *rml, *error;
@@ -201,8 +228,8 @@ static void expanded_widgets()
         "a ui asset names the widgets its markup uses"
     );
     free_names(names);
-    for (size_t i = 0; i < 3; i++) {
-        static const char *const files[] = { "Meter", "Row", "Loop" };
+    for (size_t i = 0; i < 4; i++) {
+        static const char *const files[] = { "Meter", "Row", "Loop", "Option" };
         char path[256];
         snprintf(path, sizeof path, "%s/%s.yaml", root, files[i]);
         unlink(path);

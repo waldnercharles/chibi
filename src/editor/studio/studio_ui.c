@@ -1,8 +1,8 @@
 /* The editor's authored UI: the Studio project (STUDIO_PROJECT) run as a
  * small world whose GameUi entities are panels. A panel's document mounts in
  * a kit host the way a game mounts it over its canvas, so its widgets,
- * behaviors and data-setting bindings work as they do in games. Studio's
- * preferences are that world's saved keys. */
+ * behaviors and data bindings work as they do in games. Studio's preferences
+ * are that world's saved keys. */
 #include "assets/behavior_loader.h"
 #include "assets/scene_document.h"
 #include "editor/studio/studio_internal.h"
@@ -37,17 +37,34 @@ struct studio_ui
     panel *panels;
     tree_watch files; /* the project's assets, reloaded when edited */
     rml_listener *listener;
+    ui_data data;        /* what the kit's hosted panels bind */
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
 
+/* The panel mount holding `element`, or NULL. */
+static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
+{
+    for (int i = 0; i < acount(ui->panels); i++) {
+        if (ui->panels[i].mount && ui_mount_holds(ui->panels[i].mount, element)) {
+            return ui->panels[i].mount;
+        }
+    }
+    return NULL;
+}
+
 static void on_event(void *user, const rml_event *event)
 {
-    studio_ui *ui = user;
-    for (int i = 0; i < acount(ui->panels); i++) {
-        if (ui->panels[i].mount && ui_mount_holds(ui->panels[i].mount, event->target)) {
-            ui_mount_listen(ui->panels[i].mount, event);
-            return;
-        }
+    ui_mount *m = mount_holding(user, event->target);
+    if (m) {
+        ui_mount_listen(m, event);
+    }
+}
+
+static void on_emit(void *user, const rml_event *event, const char *name)
+{
+    ui_mount *m = mount_holding(user, event->current);
+    if (m) {
+        ui_mount_emit(m, event->current, name);
     }
 }
 
@@ -190,9 +207,10 @@ static void follow_disk(studio *s)
     }
 }
 
-studio_ui *studio_ui_new(const char *project_root, char *error, size_t size)
+studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size)
 {
     studio_ui *ui = xcalloc(1, sizeof *ui);
+    ui_data_init(&ui->data, context, NULL, on_emit, ui);
     size_t length = strlen(project_root) + sizeof "/content";
     ui->content_root = xmalloc(length);
     snprintf(ui->content_root, length, "%s/content", project_root);
@@ -215,6 +233,7 @@ void studio_ui_free(studio_ui *ui)
         return;
     }
     free_world(ui);
+    ui_data_free(&ui->data);
     tree_watch_free(&ui->files);
     rml_listener_destroy(ui->listener);
     free(ui->content_root);
@@ -233,6 +252,7 @@ void studio_ui_frame(studio *s)
     }
     follow_disk(s);
     game_prototype_preview_tick(s->ui->world, s->time);
+    ui_data_sync(&s->ui->data, settings(s->ui));
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }
 
@@ -296,7 +316,7 @@ static const GameUi *panel_ui(studio_ui *ui, const panel *p)
     return GAME_GameUi_has(world, entity) ? GAME_GameUi_get_const(world, entity) : NULL;
 }
 
-/* Mounts the panel's document in `host` and runs its settings and events. */
+/* Mounts the panel's document in `host` and runs its events. */
 static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host, const char *document)
 {
     studio_ui *ui = s->ui;
@@ -312,7 +332,6 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }
     ui_mount_apply(*mount, engine_ui(game_prototype_preview_runtime(ui->world)), ecs_entity_to_u64(entity));
-    ui_mount_settings(*mount, settings(ui));
     send_activations(ui, *mount, entity);
     report(s, p, *mount);
 }

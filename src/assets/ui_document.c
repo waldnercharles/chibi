@@ -93,7 +93,7 @@ typedef struct use_tag
 {
     const char *open, *close; /* its first character and one past its end */
     const char *attrs, *attrs_end; /* the open tag's attributes */
-    const char *ui;                /* the ui attribute within them */
+    const char *ui, *ui_end;       /* the ui attribute within them */
     const char *inner, *inner_end; /* its children, empty when self-closing */
     char name[128];
 } use_tag;
@@ -196,6 +196,7 @@ static bool read_use_name(use_tag *tag)
         memcpy(tag->name, name, length);
         tag->name[length] = '\0';
         tag->ui = p + 1;
+        tag->ui_end = end + 1;
         return true;
     }
     return false;
@@ -271,6 +272,50 @@ static void put_filled(char **out, const char *body, const char *inner)
     put(out, slot + slot_length, strlen(slot + slot_length));
 }
 
+/* The widget element's attrs attribute, as Vue's v-bind="$attrs"; NULL
+ * when the widget marks none. */
+static const char *attrs_marker(const char *body)
+{
+    for (const char *p = body; (p = strstr(p, " attrs")); p += 6) {
+        if (isspace((unsigned char)p[6]) || p[6] == '/' || p[6] == '>') {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+/* Writes the attributes in [start, end) after one space, trimmed; nothing
+ * when there are none. */
+static void put_attribute_text(char **out, const char *start, const char *end)
+{
+    while (start < end && isspace((unsigned char)*start)) {
+        start++;
+    }
+    while (end > start && isspace((unsigned char)end[-1])) {
+        end--;
+    }
+    if (start < end) {
+        put(out, " ", 1);
+        put(out, start, (size_t)(end - start));
+    }
+}
+
+/* The widget's markup with the use element's attributes, but ui, in place of
+ * its attrs marker; NULL when it has none. */
+static char *put_attrs(const char *body, const use_tag *tag)
+{
+    const char *marker = attrs_marker(body);
+    if (!marker) {
+        return NULL;
+    }
+    char *out = NULL;
+    put(&out, body, (size_t)(marker - body));
+    put_attribute_text(&out, tag->attrs, tag->ui);
+    put_attribute_text(&out, tag->ui_end, tag->attrs_end);
+    put(&out, marker + 6, strlen(marker + 6) + 1);
+    return out;
+}
+
 static bool expand_use(expansion *x, const use_tag *tag, char **out)
 {
     for (int i = 0; i < x->depth; i++) {
@@ -296,13 +341,15 @@ static bool expand_use(expansion *x, const use_tag *tag, char **out)
     ok = ok && expand(x, widget_rml, &body);
     x->depth--;
     if (ok) {
+        char *marked = put_attrs(body, tag);
         put(out, "<div", 4);
-        put(out, tag->attrs, (size_t)(tag->ui - tag->attrs));
+        put(out, marked ? " " : tag->attrs, marked ? 1 : (size_t)(tag->ui - tag->attrs));
         put(out, "data-", 5);
-        put(out, tag->ui, (size_t)(tag->attrs_end - tag->ui));
+        put(out, tag->ui, (size_t)((marked ? tag->ui_end : tag->attrs_end) - tag->ui));
         put(out, ">", 1);
-        put_filled(out, body, inner);
+        put_filled(out, marked ? marked : body, inner);
         put(out, "</div>", 6);
+        afree(marked);
     }
     free(children);
     afree(inner);

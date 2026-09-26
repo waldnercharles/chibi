@@ -478,7 +478,7 @@ void studio_prefs_share(studio_prefs *prefs, game_save *save, uint64_t *seen);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
  * cannot. Free it after the kit, whose hosts hold its listener. */
-studio_ui *studio_ui_new(const char *project_root, char *error, size_t size);
+studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size);
 void studio_ui_free(studio_ui *ui);
 /* Steps the panels' behaviors and shares preferences; call after input. */
 void studio_ui_frame(studio *s);

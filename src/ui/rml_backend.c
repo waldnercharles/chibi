@@ -178,13 +178,26 @@ static void get_clipboard_text(rml_string *text)
     cf_free(clipboard);
 }
 
+/* The first warning since rml_backend_take_warning; RmlUi logs globally. */
+static char first_warning[256], taken_warning[256];
+
 static bool log_message(rml_log_type type, const char *message)
 {
     const char *prefix = type == RML_LOG_ERROR   ? "error"
                        : type == RML_LOG_WARNING ? "warning"
                                                  : "info";
     fprintf(stderr, "RmlUi %s: %s\n", prefix, message);
+    if (type != RML_LOG_INFO && !first_warning[0]) {
+        snprintf(first_warning, sizeof first_warning, "%s", message);
+    }
     return true;
+}
+
+const char *rml_backend_take_warning()
+{
+    memcpy(taken_warning, first_warning, sizeof taken_warning);
+    first_warning[0] = '\0';
+    return taken_warning;
 }
 
 static const rml_system_interface system_interface = {

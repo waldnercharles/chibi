@@ -523,9 +523,9 @@ Each input can contain:
   float, double, name, string, or entity. Entity values resolve scene names.
 - `ui: [{"target": "hud", "element": "#volume", "event": "Volume", "value": 0.5}]`,
   a player activating an element of a `GameUi` document: the optional `value`
-  is stored under the `element` selector for `Get UI Value`, then the
-  element's `data-event` is sent to the target entity, as the rendered
-  document does.
+  is stored under the `element` selector for `Get UI Value`, then the event
+  the element emits is sent to the target entity, as the rendered document
+  does.
 
 Aim goes through the engine's normal input path. An `Aim` event and the old
 object-shaped `actions` input are not part of this contract.
@@ -563,7 +563,7 @@ extraction policy.
 | --- | --- |
 | Camera | One enabled `GameCamera` plus `GameTransform`. Positive width/height set the logical span; offset follows the entity. Disable it to release the camera. |
 | Controls | `GameActionBinding` maps one physical source to an event name. Multiple entities can bind the same action; their held states combine. `firing` also sets GameAim.firing. Remove GameInput while fitting to suspend ship controls. |
-| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and a player-changed input under `#id`. An element's `data-event` sends that event to the entity when clicked or, for an input, changed. |
+| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and an emitting input's value under `#id`. `data-event-click="emit('Resume')"` sends that event to the entity when clicked; on an input, `data-event-change` sends it with the input's value. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
 | Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
@@ -574,16 +574,19 @@ extraction policy.
 
 RCSS `dp` units scale with the view height, 720 pixels being one pixel per
 `dp`; `GameUi.order` stacks documents. UI events carry no payload, like action
-events: name each button's `data-event`, and read an input's value with
-`Get UI Value`. Behavior graphs own rules, text and history. While the pointer
+events: each button emits its event with `data-event-click="emit('Name')"`,
+and a behavior reads an input's value with `Get UI Value`. Behavior graphs own rules, text and history. While the pointer
 is over an interactive element, it does not reach gameplay.
 
 A ui asset reuses another as a widget with `<use ui="Meter" id="hull"/>`: a
 div with the use element's attributes (`ui` becomes `data-ui`) around the
-widget's markup, whose `<slot/>` holds the use element's children. Widget
-RCSS comes before the host's, so the host can restyle it; its `data-event`s
-reach the host's entity, and `#hull .fill` selects inside one instance.
-Editing a widget reloads every document that uses it.
+widget's markup, whose `<slot/>` holds the use element's children. A widget
+element marked `attrs`, like Vue's `v-bind="$attrs"`, takes the use element's
+other attributes instead, so `<use ui="MenuCheck" data-checked="save.sound">`
+binds the widget's own checkbox. Widget RCSS comes before the host's, so the
+host can restyle it; the events it emits reach the host's entity, and
+`#hull .fill` selects inside one instance. Editing a widget reloads every
+document that uses it.
 
 A project's `content/ui/Theme.rcss` styles all of its UI: unscoped, before
 each asset's RCSS, so it holds tokens and shared control classes that widgets
@@ -603,7 +606,7 @@ preview. Prototype previews show a `GameUi` even while it is hidden.
 Each asset's RCSS applies only inside it: rules are scoped to the element
 showing the asset (`data-ui="<name>"`), and `body` in a selector names that
 element, so `body.paused #title` styles a state class set on it. Game UI lets
-the pointer through to the game except over `data-event` elements and inputs;
+the pointer through to the game except over `data-event-click` elements and inputs;
 set `pointer-events: auto` where a document should block it, such as a menu's
 backdrop.
 
@@ -615,11 +618,15 @@ Left, Right, Home, End, PageUp and PageDown. A document focuses its first
 the way to the focused one, so pick the focused row with a class, such as
 `.row:focus`.
 
-An element with `data-setting="key"` shows and edits that saved key (the
-same store as `Read Saved Text`): a checkbox holds `true` or `false`, an
-element with a `value` attribute is an option that is checked while the key
-holds that value, and other inputs hold their value. Changes stay pending
-until a behavior commits the save.
+Documents bind data with RmlUi's data bindings, which follow Vue: `{{ save.name }}`
+in text, `data-for="item : list"`, `data-if`, `data-class-active="expr"`,
+`data-attr-src="expr"`, `data-value="save.volume"` on an input,
+`data-checked="save.theme"` on a radio with a `value` or on a checkbox, and
+`data-event-click="expr"`, where `emit('Name')` sends an event to the entity.
+`save` holds the world's saved keys (the store of `Read Saved Text`) as text,
+`true` and `false` as booleans; a key nothing saved reads empty until a
+binding sets it, and changes stay pending until a behavior commits the save.
+As in HTML, radios group only by `name`.
 
 The player shows `content/ui/PauseMenu.yaml` while paused. Its `body` has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`

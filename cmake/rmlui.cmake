@@ -30,11 +30,14 @@ function(chibi_rmlui_dependencies)
             cmake_policy(POP)
         endif()
     endif()
-    # CSS color-mix(), so theme roles derive from a few tokens at runtime.
+    # Web behavior RmlUi lacks: CSS color-mix(), so theme roles derive from a
+    # few tokens at runtime, and HTML's radio groups, which need a name.
     set(PATCH_SOURCE "${rmlui_SOURCE_DIR}")
-    set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-color-mix.patch")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
-    include(cmake/apply_patch.cmake)
+    foreach(patch color-mix radio-groups)
+        set(PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-${patch}.patch")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PATCH_FILE}")
+        include(cmake/apply_patch.cmake)
+    endforeach()
     add_subdirectory("${rmlui_SOURCE_DIR}" "${rmlui_BINARY_DIR}")
     foreach(target freetype rmlui_core rmlui_debugger)
         set_target_properties(${target} PROPERTIES

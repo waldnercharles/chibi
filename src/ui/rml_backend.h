@@ -160,6 +160,9 @@ extern "C"
     const char *rml_backend_cursor(const rml_backend *backend);
     /* Queue the rendered UI over the app canvas; drawn by cf_app_draw_onto_screen. */
     void rml_backend_present(rml_backend *backend);
+    /* The first warning or error RmlUi logged since the last call, or "" when
+     * it logged none; a caller brackets an operation with two calls. */
+    const char *rml_backend_take_warning();
 
 #ifdef __cplusplus
 }

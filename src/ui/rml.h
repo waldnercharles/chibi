@@ -12,6 +12,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <yyjson.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -26,6 +27,7 @@ extern "C"
     typedef struct rml_render_manager rml_render_manager;
     typedef struct rml_geometry rml_geometry;
     typedef struct rml_string rml_string;
+    typedef struct rml_data_model rml_data_model;
 
     typedef struct rml_vec2
     {
@@ -467,6 +469,36 @@ extern "C"
         bool capture
     );
     void rml_event_stop_propagation(const rml_event *event);
+
+    /* ---------- Data models ---------- */
+
+    /* An expression's emit('Name'): `event` is the one whose data-event-*
+     * binding ran it, and its current element holds that binding. */
+    typedef void (*rml_emit_fn)(void *user, const rml_event *event, const char *name);
+
+    /* The data model `name` in `context`, for RmlUi's data bindings ({{ }},
+     * data-for, data-value, data-checked, data-event-*, ...). Its variables
+     * are the members of `doc`'s root object when it is created: objects bind
+     * by member name, a missing one reading as null until set, arrays by index
+     * and .size, and other values as scalars, which bindings may overwrite. The
+     * doc must outlive the model and keep each variable's value in place,
+     * changing its contents instead. Expressions may call emit('Name'). */
+    rml_data_model *rml_data_model_create(
+        rml_context *context,
+        const char *name,
+        yyjson_mut_doc *doc,
+        rml_emit_fn emit,
+        void *user
+    );
+    /* Removes the model from its context, unbinding its elements. */
+    void rml_data_model_destroy(rml_data_model *model);
+    /* Updates what binds `variable` after its value changed. */
+    void rml_data_model_dirty(rml_data_model *model, const char *variable);
+    /* How many values bindings have written, so a caller sees when to read. */
+    uint64_t rml_data_model_writes(const rml_data_model *model);
+    /* Binds the element and its descendants to the context's model `name`,
+     * as data-model="name" in markup does. The element must have a parent. */
+    void rml_element_set_data_model(rml_element *element, const char *name);
 
     /* ---------- Custom elements and geometry ---------- */
 

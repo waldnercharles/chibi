@@ -17,8 +17,10 @@ typedef struct ui_document
 bool ui_document_read(const char *text, ui_document *out, char *error, size_t error_size);
 /* Replaces each <use ui="Name" .../> in the markup with the widget asset
  * `ui_root`/Name.yaml: a div with the use element's attributes, `ui` renamed
- * data-ui, around the widget's markup. The use element's children fill the
- * widget's <slot/>. The RCSS becomes each widget's, then the document's, each
+ * data-ui, around the widget's markup. A widget element with an attrs
+ * attribute takes the use element's other attributes in its place instead,
+ * as Vue's v-bind="$attrs" does, so a binding reaches the widget's input.
+ * The use element's children fill the widget's <slot/>. The RCSS becomes each widget's, then the document's, each
  * scoped to its data-ui name (ui_document_scope), the document's to `name`.
  * Appends every widget name it looks up to `uses` (support/array.h), even on
  * failure. Returns false with a message in `error`, leaving `document`

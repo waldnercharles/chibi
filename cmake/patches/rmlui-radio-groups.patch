@@ -1,0 +1,15 @@
+diff --git a/Source/Core/Elements/InputTypeRadio.cpp b/Source/Core/Elements/InputTypeRadio.cpp
+index 19290ba2..a14044fb 100644
+--- a/Source/Core/Elements/InputTypeRadio.cpp
++++ b/Source/Core/Elements/InputTypeRadio.cpp
+@@ -71,6 +71,10 @@ bool InputTypeRadio::GetIntrinsicDimensions(Vector2f& dimensions, float& ratio)
+ 
+ void InputTypeRadio::PopRadioSet()
+ {
++	// As in HTML, only radio buttons with a name form a group.
++	if (element->GetName().empty())
++		return;
++
+ 	// Uncheck all other radio buttons with our name in the form.
+ 	String stop_tag;
+ 	Element* parent = element->GetParentNode();

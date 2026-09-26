@@ -21,6 +21,7 @@ typedef struct
     ui_mount *mount;
     const char *host_key;
     rml_element *host;
+    ui_data data;
 } host_fixture;
 
 /* A kit styled with the Studio project's theme, as the editor styles its own. */
@@ -37,6 +38,31 @@ kit *test_kit_create(void *context, const char *document)
 static void on_event(void *user, const rml_event *event)
 {
     ui_mount_listen(user, event);
+}
+
+static void on_emit(void *user, const rml_event *event, const char *name)
+{
+    ui_mount_emit(user, event->current, name);
+}
+
+/* A Studio kit whose host shows the ui asset `name`, bound to its own data. */
+static void open_fixture(host_fixture *f, const char *root, const char *name)
+{
+    f->backend = rml_backend_create(640, 480, 1);
+    f->k = test_kit_create(rml_backend_context(f->backend), "studio.rml");
+    f->in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
+    f->mount = ui_mount_new(root, name);
+    f->listener = rml_listener_create(on_event, f->mount);
+    ui_data_init(&f->data, rml_backend_context(f->backend), NULL, on_emit, f->mount);
+}
+
+static void close_fixture(host_fixture *f)
+{
+    kit_destroy(f->k);
+    ui_data_free(&f->data);
+    rml_backend_destroy(f->backend);
+    ui_mount_free(f->mount);
+    rml_listener_destroy(f->listener);
 }
 
 static void frame(host_fixture *f)
@@ -128,11 +154,7 @@ static void popup_navigation(const char *root)
     );
     fclose(file);
     host_fixture f = { .host_key = "menu-host" };
-    f.backend = rml_backend_create(640, 480, 1);
-    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
-    f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
-    f.mount = ui_mount_new(root, "Menu");
-    f.listener = rml_listener_create(on_event, f.mount);
+    open_fixture(&f, root, "Menu");
     popup_frame(&f, true);
     for (int i = 0; i < 4; i++) {
         popup_frame(&f, false);
@@ -164,14 +186,11 @@ static void popup_navigation(const char *root)
         "clicks the focused row"
     );
     game_ui_free(model);
-    kit_destroy(f.k);
-    rml_backend_destroy(f.backend);
-    ui_mount_free(f.mount);
-    rml_listener_destroy(f.listener);
+    close_fixture(&f);
     unlink(path);
 }
 
-/* Options bound to different settings keep their own checks. */
+/* As in HTML, radios without a name form no group. */
 static void option_groups(const char *root)
 {
     char path[128];
@@ -179,34 +198,27 @@ static void option_groups(const char *root)
     FILE *file = fopen(path, "wb");
     assert(file);
     fputs(
-        "rml: <input type=\"radio\" id=\"x\" data-setting=\"first\" "
+        "rml: <input type=\"radio\" id=\"x\" data-checked=\"save.first\" "
         "value=\"x\"/><input "
-        "type=\"radio\" id=\"y\" data-setting=\"second\" value=\"y\"/>\n",
+        "type=\"radio\" id=\"y\" data-checked=\"save.second\" value=\"y\"/>\n",
         file
     );
     fclose(file);
     host_fixture f = { .host_key = "groups" };
-    f.backend = rml_backend_create(640, 480, 1);
-    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
-    f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
-    f.mount = ui_mount_new(root, "Groups");
-    f.listener = rml_listener_create(on_event, f.mount);
+    open_fixture(&f, root, "Groups");
     game_save *save = game_save_new();
     game_save_set(save, "first", "x");
     game_save_set(save, "second", "y");
     for (int i = 0; i < 3; i++) {
+        ui_data_sync(&f.data, save);
         frame(&f);
-        ui_mount_settings(f.mount, save);
     }
     test_check(
         rml_element_has_attribute(rml_element_query_selector(f.host, "#x"), "checked") &&
             rml_element_has_attribute(rml_element_query_selector(f.host, "#y"), "checked"),
-        "each setting's options form their own radio group"
+        "unnamed radios bound to different keys keep their own checks"
     );
-    kit_destroy(f.k);
-    rml_backend_destroy(f.backend);
-    ui_mount_free(f.mount);
-    rml_listener_destroy(f.listener);
+    close_fixture(&f);
     game_save_free(save);
     unlink(path);
 }
@@ -221,18 +233,15 @@ void test_kit_host()
     FILE *file = fopen(path, "wb");
     assert(file);
     fputs(
-        "rml: <div class=\"button\" id=\"go\" data-event=\"Go\">Go</div>\n"
+        "rml: <div class=\"button\" id=\"go\" "
+        "data-event-click=\"emit('Go')\">Go</div>\n"
         "rcss: '.button { display: block; height: 50dp; }'\n",
         file
     );
     fclose(file);
 
     host_fixture f = { .host_key = "panel" };
-    f.backend = rml_backend_create(640, 480, 1);
-    f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
-    f.in = (kit_frame_input){ .dp_ratio = 1, .width = 640, .height = 480 };
-    f.mount = ui_mount_new(root, "Panel");
-    f.listener = rml_listener_create(on_event, f.mount);
+    open_fixture(&f, root, "Panel");
     for (int i = 0; i < 3; i++) {
         frame(&f);
     }
@@ -248,7 +257,7 @@ void test_kit_host()
     ui_activation a;
     bool taken = ui_mount_take(f.mount, &a) && !strcmp(a.event, "Go") &&
                  !strcmp(a.id, "go");
-    test_check(taken, "a data-event in hosted content reaches its mount");
+    test_check(taken, "an event hosted content emits reaches its mount");
 
     f.host_key = "moved";
     for (int i = 0; i < 3; i++) {
@@ -256,10 +265,7 @@ void test_kit_host()
     }
     test_check(height_of(f.host, "#go") == 50, "a mount follows its host to a new element");
 
-    kit_destroy(f.k);
-    rml_backend_destroy(f.backend);
-    ui_mount_free(f.mount);
-    rml_listener_destroy(f.listener);
+    close_fixture(&f);
     unlink(path);
     popup_navigation(root);
     option_groups(root);

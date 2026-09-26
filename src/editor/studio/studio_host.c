@@ -400,7 +400,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     sync_theme(s);
     s->prefs = studio_prefs_load();
     char error[256];
-    s->ui = studio_ui_new(STUDIO_PROJECT, error, sizeof error);
+    s->ui = studio_ui_new(rml_backend_context(s->backend), STUDIO_PROJECT, error, sizeof error);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);
     }

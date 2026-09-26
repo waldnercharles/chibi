@@ -29,17 +29,8 @@ struct ui_mount
     bool installed; /* root holds the current markup */
     ui_activation *pending;
     uint64_t applied; /* the model revision already applied */
-    game_save *settings;
-    uint64_t settings_seen; /* the settings revision shown; UINT64_MAX when stale */
-    bool refreshing;        /* ignore the change events a refresh raises */
-    bool autofocus; /* installed, and its autofocus element not yet focused */
+    bool autofocus;   /* installed, and its autofocus element not yet focused */
 };
-
-/* The events a mount's root reports. */
-static const rml_event_id MOUNT_EVENTS[] = { RML_EVENT_CLICK,
-                                             RML_EVENT_CHANGE,
-                                             RML_EVENT_SUBMIT,
-                                             RML_EVENT_KEYDOWN };
 
 /* The names data-keys binds, for keys that are not letters or digits. */
 static const struct
@@ -176,15 +167,18 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         m->root = root;
         m->installed = false;
         rml_element_set_attribute(root, "data-ui", m->name);
-        for (size_t i = 0; i < sizeof MOUNT_EVENTS / sizeof *MOUNT_EVENTS; i++) {
-            rml_element_add_event_listener(root, MOUNT_EVENTS[i], listener, false);
-        }
+        rml_element_set_data_model(root, UI_DATA_MODEL);
+        rml_element_add_event_listener(root, RML_EVENT_KEYDOWN, listener, false);
     }
     if (!m->installed && m->markup) {
+        rml_backend_take_warning();
         rml_element_set_inner_rml(root, m->markup);
+        const char *warning = rml_backend_take_warning();
+        if (warning[0]) {
+            snprintf(m->error, sizeof m->error, "ui/%s.yaml %s", m->name, warning);
+        }
         m->installed = true;
         m->applied = 0;
-        m->settings_seen = UINT64_MAX;
         m->autofocus = true;
     }
     /* A host may keep the root hidden for a frame, and hidden elements refuse
@@ -204,136 +198,6 @@ bool ui_mount_holds(const ui_mount *m, rml_element *element)
         }
     }
     return false;
-}
-
-/* The element from `element` up that names an event in data-event. */
-static rml_element *event_source(rml_element *element, char *name, size_t size)
-{
-    for (; element; element = rml_element_parent(element)) {
-        if (rml_element_attribute(element, "data-event", name, size) > 0) {
-            return element;
-        }
-    }
-    return NULL;
-}
-
-/* The element from `element` up, within the mount, bound with data-setting. */
-static rml_element *setting_source(const ui_mount *m, rml_element *element, char *key, size_t size)
-{
-    for (; element && element != m->root; element = rml_element_parent(element)) {
-        if (rml_element_attribute(element, "data-setting", key, size) > 0) {
-            return element;
-        }
-    }
-    return NULL;
-}
-
-static bool input_type(rml_element *element, const char *type)
-{
-    char own[32] = "";
-    rml_element_attribute(element, "type", own, sizeof own);
-    return !strcmp(own, type);
-}
-
-/* The value a data-setting element stands for when it is an option: its own
- * value attribute, as on a radio or a <use> of an option widget. */
-static bool option_value(rml_element *element, char *value, size_t size)
-{
-    return rml_element_attribute(element, "value", value, size) > 0 &&
-           (!strcmp(rml_element_tag_name(element), "div") ||
-            input_type(element, "radio"));
-}
-
-/* Stores the setting a changed control inside a data-setting element holds. */
-static void write_setting(ui_mount *m, rml_element *control)
-{
-    char key[128], value[256];
-    rml_element *element = setting_source(m, control, key, sizeof key);
-    if (!element) {
-        return;
-    }
-    bool checked = rml_element_has_attribute(control, "checked");
-    if (option_value(element, value, sizeof value)) {
-        if (!checked) {
-            return;
-        }
-    } else if (input_type(control, "checkbox")) {
-        snprintf(value, sizeof value, "%s", checked ? "true" : "false");
-    } else {
-        rml_element_value(control, value, sizeof value);
-    }
-    game_save_set(m->settings, key, value);
-}
-
-static void set_checked(rml_element *control, bool checked)
-{
-    if (checked) {
-        rml_element_set_attribute(control, "checked", "");
-        return;
-    }
-    rml_element_remove_attribute(control, "checked");
-}
-
-/* Shows `value` in a data-setting element's controls: an option is checked
- * when the value is its own, a checkbox when it is "true". An option's radio
- * is named for the key, so each setting's radios form their own group. */
-static void show_setting(rml_element *element, const char *key, const char *value)
-{
-    char option[256];
-    bool is_option = option_value(element, option, sizeof option);
-    const char *tag = rml_element_tag_name(element);
-    bool control = !strcmp(tag, "input") || !strcmp(tag, "select") ||
-                   !strcmp(tag, "textarea");
-    rml_element *found = control
-                           ? element
-                           : rml_element_query_selector(element, "input, select, textarea");
-    if (!found) {
-        return;
-    }
-    if (is_option) {
-        if (input_type(found, "radio")) {
-            rml_element_set_attribute(found, "name", key);
-        }
-        set_checked(found, !strcmp(option, value));
-        return;
-    }
-    if (input_type(found, "checkbox")) {
-        set_checked(found, !strcmp(value, "true"));
-        return;
-    }
-    rml_element_set_value(found, value);
-}
-
-/* Shows each data-setting element's stored value; unset keys stay as authored. */
-static void refresh_settings(ui_mount *m)
-{
-    int count = rml_element_query_selector_all(m->root, "[data-setting]", NULL, 0);
-    rml_element **elements = count ? xmalloc((size_t)count * sizeof *elements) : NULL;
-    rml_element_query_selector_all(m->root, "[data-setting]", elements, count);
-    m->refreshing = true;
-    for (int i = 0; i < count; i++) {
-        char key[128];
-        rml_element_attribute(elements[i], "data-setting", key, sizeof key);
-        const char *value = game_save_get(m->settings, key);
-        if (value) {
-            show_setting(elements[i], key, value);
-        }
-    }
-    m->refreshing = false;
-    free(elements);
-}
-
-void ui_mount_settings(ui_mount *m, game_save *settings)
-{
-    if (settings != m->settings) {
-        m->settings = settings;
-        m->settings_seen = UINT64_MAX;
-    }
-    if (!m->installed || !settings || m->settings_seen == game_save_revision(settings)) {
-        return;
-    }
-    refresh_settings(m);
-    m->settings_seen = game_save_revision(settings);
 }
 
 /* The name data-keys uses for `key`, or NULL for keys it cannot bind. */
@@ -396,32 +260,22 @@ static void listen_key(ui_mount *m, const rml_event *event)
     }
 }
 
-/* A click activates buttons and other elements; inputs report changes, which
- * carry their value and first update a bound setting. */
 void ui_mount_listen(ui_mount *m, const rml_event *event)
 {
-    if (m->refreshing) {
-        return;
-    }
     if (event->id == RML_EVENT_KEYDOWN) {
         listen_key(m, event);
-        return;
     }
-    if (event->id == RML_EVENT_CHANGE && m->settings) {
-        write_setting(m, event->target);
-    }
+}
+
+void ui_mount_emit(ui_mount *m, rml_element *element, const char *event)
+{
+    assert(ui_mount_holds(m, element));
     ui_activation a = { 0 };
-    rml_element *source = event_source(event->target, a.event, sizeof a.event);
-    bool input = source && strcmp(rml_element_tag_name(source), "input") == 0;
-    if (!source || !ui_mount_holds(m, source) ||
-        (event->id == RML_EVENT_CLICK && input) ||
-        (event->id == RML_EVENT_CHANGE && !input)) {
-        return;
-    }
-    snprintf(a.id, sizeof a.id, "%s", rml_element_id(source));
+    snprintf(a.event, sizeof a.event, "%s", event);
+    snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
     char value[64];
-    if (event->id == RML_EVENT_CHANGE &&
-        rml_element_value(source, value, sizeof value) > 0) {
+    if (!strcmp(rml_element_tag_name(element), "input") &&
+        rml_element_value(element, value, sizeof value) > 0) {
         char *end;
         a.value = strtof(value, &end);
         a.has_value = end != value;
@@ -535,6 +389,76 @@ void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
     m->applied = game_ui_revision(model);
 }
 
+/* ---------- Data ---------- */
+
+void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emit_fn emit, void *user)
+{
+    *d = (ui_data){ .doc = doc ? doc : yyjson_mut_doc_new(NULL),
+                    .save_seen = UINT64_MAX };
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(d->doc);
+    if (!root) {
+        root = yyjson_mut_obj(d->doc);
+        yyjson_mut_doc_set_root(d->doc, root);
+    }
+    yyjson_mut_obj_add_val(d->doc, root, "save", yyjson_mut_obj(d->doc));
+    d->model = rml_data_model_create(context, UI_DATA_MODEL, d->doc, emit, user);
+}
+
+/* A value a binding set, as saved text; NULL for what is not a value. */
+static const char *saved_text(yyjson_mut_val *v, char *buffer, size_t size)
+{
+    switch (yyjson_mut_get_type(v)) {
+        case YYJSON_TYPE_STR: return yyjson_mut_get_str(v);
+        case YYJSON_TYPE_BOOL: return yyjson_mut_get_bool(v) ? "true" : "false";
+        case YYJSON_TYPE_NUM:
+            snprintf(buffer, size, "%g", yyjson_mut_get_num(v));
+            return buffer;
+        default: return NULL;
+    }
+}
+
+void ui_data_sync(ui_data *d, game_save *save)
+{
+    yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
+    uint64_t writes = rml_data_model_writes(d->model);
+    if (save && save == d->save && writes != d->writes_seen) {
+        yyjson_mut_val *key;
+        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
+        while ((key = yyjson_mut_obj_iter_next(&iter))) {
+            char number[32];
+            const char *text = saved_text(yyjson_mut_obj_iter_get_val(key), number, sizeof number);
+            if (text) {
+                game_save_set(save, yyjson_mut_get_str(key), text);
+            }
+        }
+    }
+    d->writes_seen = writes;
+    uint64_t revision = save ? game_save_revision(save) : 0;
+    if (save == d->save && revision == d->save_seen) {
+        return;
+    }
+    d->save = save;
+    d->save_seen = revision;
+    yyjson_mut_obj_clear(shown);
+    for (int i = 0; save && i < game_save_count(save); i++) {
+        const char *key = game_save_key(save, i), *text = game_save_get(save, key);
+        bool flag = !strcmp(text, "true");
+        if (flag || !strcmp(text, "false")) {
+            yyjson_mut_obj_add_bool(d->doc, shown, key, flag);
+            continue;
+        }
+        yyjson_mut_obj_add_strcpy(d->doc, shown, key, text);
+    }
+    rml_data_model_dirty(d->model, "save");
+}
+
+void ui_data_free(ui_data *d)
+{
+    rml_data_model_destroy(d->model);
+    yyjson_mut_doc_free(d->doc);
+    *d = (ui_data){ 0 };
+}
+
 /* ---------- Themes ---------- */
 
 bool ui_theme_sync(ui_theme *t, const char *content_root, double time)
@@ -596,10 +520,11 @@ void ui_theme_free(ui_theme *t)
 
 /* The game document's own style: the editor's face, and a pointer that passes
  * through to the game except over what a player activates. */
-static const char BASE_RCSS
-    [] = "body { width: 100%; height: 100%; font-family: Inter; "
-         "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
-         "[data-event], input, select, textarea { pointer-events: auto; }\n";
+static const char
+    BASE_RCSS[] = "body { width: 100%; height: 100%; font-family: Inter; "
+                  "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
+                  "[data-event-click], input, select, textarea { "
+                  "pointer-events: auto; }\n";
 
 /* One GameUi entity's mount, or the host's overlay. */
 typedef struct ui_view
@@ -617,6 +542,7 @@ struct render_ui
     rml_listener *listener;
     char *content_root;
     ui_theme theme;
+    ui_data data;
     ui_view *views;
     ui_view overlay; /* its entity is unused */
     char overlay_state[32];
@@ -629,6 +555,7 @@ struct render_ui
 };
 
 static void on_event(void *user, const rml_event *event);
+static void on_emit(void *user, const rml_event *event, const char *name);
 
 render_ui *render_ui_new(const char *content_root)
 {
@@ -638,6 +565,7 @@ render_ui *render_ui_new(const char *content_root)
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
     rml_context *context = rml_backend_context(ui->backend);
+    ui_data_init(&ui->data, context, NULL, on_emit, ui);
     ui->doc = rml_context_load_document_from_memory(context, "<rml><head/><body/></rml>", "game-ui");
     assert(ui->doc);
     rml_document_set_style_sheet(ui->doc, BASE_RCSS);
@@ -666,6 +594,7 @@ void render_ui_free(render_ui *ui)
     }
     afree(ui->views);
     close_view(ui, &ui->overlay);
+    ui_data_free(&ui->data);
     rml_backend_destroy(ui->backend);
     rml_listener_destroy(ui->listener);
     ui_theme_free(&ui->theme);
@@ -693,18 +622,33 @@ static void open_view(render_ui *ui, ui_view *view, const char *name, const char
     rml_element_set_property(view->root, "z-index", order);
 }
 
-static void on_event(void *user, const rml_event *event)
+/* The overlay's or view's mount holding `element`, or NULL. */
+static ui_mount *mount_holding(render_ui *ui, rml_element *element)
 {
-    render_ui *ui = user;
-    if (ui->overlay.mount && ui_mount_holds(ui->overlay.mount, event->target)) {
-        ui_mount_listen(ui->overlay.mount, event);
-        return;
+    if (ui->overlay.mount && ui_mount_holds(ui->overlay.mount, element)) {
+        return ui->overlay.mount;
     }
     for (int i = 0; i < acount(ui->views); i++) {
-        if (ui->views[i].mount && ui_mount_holds(ui->views[i].mount, event->target)) {
-            ui_mount_listen(ui->views[i].mount, event);
-            return;
+        if (ui->views[i].mount && ui_mount_holds(ui->views[i].mount, element)) {
+            return ui->views[i].mount;
         }
+    }
+    return NULL;
+}
+
+static void on_event(void *user, const rml_event *event)
+{
+    ui_mount *m = mount_holding(user, event->target);
+    if (m) {
+        ui_mount_listen(m, event);
+    }
+}
+
+static void on_emit(void *user, const rml_event *event, const char *name)
+{
+    ui_mount *m = mount_holding(user, event->current);
+    if (m) {
+        ui_mount_emit(m, event->current, name);
     }
 }
 
@@ -883,9 +827,9 @@ static void collect_error(render_ui *ui)
 
 /* A saved "theme" setting picks the palette, as Studio's theme setting does:
  * dark, light, or the system's. */
-static void apply_theme_mode(render_ui *ui, game_save *settings)
+static void apply_theme_mode(render_ui *ui, game_save *save)
 {
-    const char *mode = settings ? game_save_get(settings, "theme") : NULL;
+    const char *mode = save ? game_save_get(save, "theme") : NULL;
     bool dark = mode && (!strcmp(mode, "dark") ||
                          (!strcmp(mode, "system") &&
                           SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK));
@@ -920,7 +864,8 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ecs_query_end(&query);
     }
     close_unseen(ui, w->model);
-    apply_theme_mode(ui, w->settings);
+    apply_theme_mode(ui, w->save);
+    ui_data_sync(&ui->data, w->save);
     ui->restyle |= ui_theme_sync(&ui->theme, ui->content_root, ui->time);
     if (ui->restyle) {
         install_styles(ui);
@@ -931,9 +876,6 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ui_mount *m = ui->views[i].mount;
         if (m && w->model) {
             ui_mount_apply(m, w->model, ui->views[i].entity);
-        }
-        if (m) {
-            ui_mount_settings(m, w->settings);
         }
     }
     rml_backend_update(ui->backend, dt);

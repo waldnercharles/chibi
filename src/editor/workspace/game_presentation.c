@@ -146,7 +146,7 @@ app_game_presentation *app_game_presentation_new(
     ui_world ui = { .ecs = scene->world,
                     .model = engine_ui(scene->runtime),
                     .entities = scene->live->entities,
-                    .settings = game_behavior_save(scene->live->behaviors) };
+                    .save = game_behavior_save(scene->live->behaviors) };
     engine_viewport_set_ui(viewport, &ui, scene->content_root);
     return game;
 }

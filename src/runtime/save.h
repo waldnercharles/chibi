@@ -17,6 +17,9 @@ const char *game_save_error(const game_save *save);
 const char *game_save_get(const game_save *save, const char *key);
 bool game_save_set(game_save *save, const char *key, const char *text);
 bool game_save_remove(game_save *save, const char *key);
+/* The entries in the order their keys were first set. */
+int game_save_count(const game_save *save);
+const char *game_save_key(const game_save *save, int index);
 /* Bumped by every change to the entries, so views can refresh. */
 uint64_t game_save_revision(const game_save *save);
 bool game_save_commit(game_save *save);

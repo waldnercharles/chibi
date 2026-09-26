@@ -5661,7 +5661,7 @@ static int apply_scenario_input(
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     /* A UI activation as the presenter delivers it: a value first, then the
-       element's data-event to its GameUi entity. */
+       event the element emits to its GameUi entity. */
     for (size_t i = 0; i < yyjson_arr_size(input->ui); i++) {
         yyjson_val *action = yyjson_arr_get(input->ui, i);
         ecs_entity target = scenario_entity(context, request_string(action, "target"));

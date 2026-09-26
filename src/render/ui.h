@@ -12,29 +12,57 @@
 
 /* What shown documents read and act on. Only `ecs` is required: without
  * `model` documents show as authored, without `entities` activations reach no
- * one, and without `settings` data-setting elements stay as authored. A
- * preview shows documents their GameUi keeps hidden, as an editor previews
- * a dialog before anything opens it. */
+ * one, and without `save` documents bind an empty `save`. A preview shows
+ * documents their GameUi keeps hidden, as an editor previews a dialog before
+ * anything opens it. */
 typedef struct ui_world
 {
     ecs_world *ecs;
     game_ui *model;
     game_entities *entities;
-    game_save *settings;
+    game_save *save;
     bool preview;
 } ui_world;
+
+/* ---------- Data ---------- */
+
+/* The data model every mount binds, with RmlUi's data bindings (see rml.h):
+ * {{ save.name }}, data-for, data-value="save.volume",
+ * data-checked="save.theme", data-event-click="emit('Close')". */
+#define UI_DATA_MODEL "ui"
+
+/* A host's data model. Its variables are the members of `doc`'s root, among
+ * them `save`: the world's saved keys as text, "true" and "false" as
+ * booleans, which bindings may set. A key nothing saved reads as empty until
+ * a binding sets it. */
+typedef struct ui_data
+{
+    yyjson_mut_doc *doc;
+    rml_data_model *model;
+    game_save *save; /* the one `save` shows */
+    uint64_t save_seen, writes_seen;
+} ui_data;
+
+/* Creates the model in `context` over `doc`, which it takes, adding `save` to
+ * its root; a NULL doc has no other variables. `emit` hears emit('Event'). */
+void ui_data_init(ui_data *data, rml_context *context, yyjson_mut_doc *doc, rml_emit_fn emit, void *user);
+/* Saves in `save` the keys bindings set, then shows its keys when they
+ * changed. */
+void ui_data_sync(ui_data *data, game_save *save);
+void ui_data_free(ui_data *data);
 
 /* ---------- Mounts ---------- */
 
 /* One ui asset shown inside a host element: content/ui/<name>.yaml expanded
  * with its widgets, re-read within a second of an edit to either, keeping the
- * last valid version. The host element gets data-ui="<name>", and the mount's
- * RCSS is scoped to it; the host installs that RCSS in the element's
- * document. Games and the editor host mounts the same way. */
+ * last valid version. The host element gets data-ui="<name>" and binds the
+ * context's UI_DATA_MODEL, and the mount's RCSS is scoped to it; the host
+ * installs that RCSS in the element's document. Games and the editor host
+ * mounts the same way. */
 typedef struct ui_mount ui_mount;
 
-/* A data-event activation: the event, the element's id ("" when it has none)
- * and a changed input's value. */
+/* An activation: the event emitted or bound to a key, the id of the element
+ * whose binding sent it ("" when it has none), and an input's value. */
 typedef struct ui_activation
 {
     char event[128];
@@ -47,32 +75,29 @@ ui_mount *ui_mount_new(const char *content_root, const char *name);
 void ui_mount_free(ui_mount *mount);
 const char *ui_mount_name(const ui_mount *mount);
 /* Shows the asset in `root`, moving it there when the root changes, and
- * reloads it when it or a widget changed. `listener` hears the root's
- * activations for ui_mount_listen. Returns true when the RCSS changed. */
+ * reloads it when it or a widget changed. `listener` hears the root's keys
+ * for ui_mount_listen. Returns true when the RCSS changed. */
 bool ui_mount_sync(ui_mount *mount, rml_element *root, rml_listener *listener, double time);
 /* The scoped RCSS of the last valid asset, "" before one loads. */
 const char *ui_mount_style(const ui_mount *mount);
-/* The last read error, "" when the asset loaded. */
+/* The last read error, or what RmlUi rejected in the markup it installed,
+ * such as a binding's expression; "" when the asset loaded. */
 const char *ui_mount_error(const ui_mount *mount);
 /* Whether `element` is the mount's root or inside it. */
 bool ui_mount_holds(const ui_mount *mount, rml_element *element);
-/* Records the activation an event in the mount's root makes, if any: a click
- * on a data-event element, a change or submit of a data-event input, or a key
+/* Records the activation a key down in the mount's root makes, if any: a key
  * bound by data-keys="Key:Event ..." on the focused element or an ancestor
  * (keys are A-Z, 0-9, Space, Enter, Escape, Tab, Backspace, Delete, arrows as
  * Up/Down/Left/Right, Home, End, PageUp and PageDown). An installed asset
  * focuses its first autofocus element. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
+/* Records `event` as emitted by the binding on `element`, which the mount
+ * holds; an input's value comes with it. */
+void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event);
 /* Takes the oldest activation; false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
-/* Binds each data-setting element to that key in `settings`, both ways. An
- * element with a value attribute (a radio, or a widget used with one) is an
- * option: checked while the setting is its value, and choosing it sets it. A
- * checkbox holds "true" or "false", and other inputs and selects their value.
- * Refreshes the elements when a key changes. */
-void ui_mount_settings(ui_mount *mount, game_save *settings);
 
 /* ---------- Themes ---------- */
 
@@ -97,8 +122,8 @@ void ui_theme_free(ui_theme *theme);
 
 /* Presents a world's GameUi documents over a canvas: one mount per entity in
  * a single document, stacked by GameUi.order. It applies what behaviors set
- * in the game_ui model and sends data-event activations to their entities.
- * Game UI passes the pointer through except over data-event elements and
+ * in the game_ui model and sends activations to their entities. Game UI
+ * passes the pointer through except over data-event-click elements and
  * inputs, or where RCSS sets pointer-events: auto. RCSS dp units scale with
  * the canvas height, 720 pixels being 1. */
 typedef struct render_ui render_ui;

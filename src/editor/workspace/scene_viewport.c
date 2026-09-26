@@ -405,16 +405,14 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     ui_world ui = { .ecs = scene->world,
                     .model = engine_ui(scene->runtime),
                     .entities = scene->live->entities,
-                    .settings = game_behavior_save(scene->live->behaviors) };
+                    .save = game_behavior_save(scene->live->behaviors) };
     if (preview) {
         game_prototype_preview *p = scene->prototype_preview;
-        ui = (ui_world){
-            .ecs = game_prototype_preview_world(p),
-            .model = engine_ui(game_prototype_preview_runtime(p)),
-            .entities = game_prototype_preview_entities(p),
-            .settings = game_behavior_save(game_prototype_preview_behaviors(p)),
-            .preview = true
-        };
+        ui = (ui_world){ .ecs = game_prototype_preview_world(p),
+                         .model = engine_ui(game_prototype_preview_runtime(p)),
+                         .entities = game_prototype_preview_entities(p),
+                         .save = game_behavior_save(game_prototype_preview_behaviors(p)),
+                         .preview = true };
     }
     engine_viewport_set_ui(viewport, &ui, scene->content_root);
     bool perspective = scene->perspective;

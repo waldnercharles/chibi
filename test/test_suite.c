@@ -180,7 +180,7 @@ TEST_CASE(all_checks)
     test_kit_host();
     test_editor_checkpoint();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets and mix colors");
+    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors and bind JSON data");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

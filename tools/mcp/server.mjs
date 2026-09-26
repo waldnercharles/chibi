@@ -616,7 +616,7 @@ function buildToolDefinitions() {
       ui: { type: "array", maxItems: 32, items: { type: "object", properties: {
         target: { type: "string", description: "Scene entity name with a GameUi." },
         element: { type: "string", description: "RCSS selector of the element in its ui document, such as #volume." },
-        event: { type: "string", description: "The element's data-event name." },
+        event: { type: "string", description: "The event the element emits, as in data-event-click=\"emit('Name')\"." },
         value: { type: "number", description: "An input's new value, readable with Get UI Value." },
       }, required: ["target", "element", "event"], additionalProperties: false },
         description: "Player UI activations, delivered as the presenter does: an optional value, then the named event to the GameUi entity." },

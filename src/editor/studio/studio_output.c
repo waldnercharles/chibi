@@ -21,7 +21,8 @@ enum
     OUTPUT_PROBLEMS,
     OUTPUT_RUNTIME,
     OUTPUT_INFO,
-    OUTPUT_FIND, /* Find References (studio_find.c) */
+    OUTPUT_FIND,  /* Find References (studio_find.c) */
+    OUTPUT_CALLS, /* Call Hierarchy (studio_calls.c) */
     OUTPUT_VIEWS,
 };
 
@@ -155,7 +156,8 @@ void studio_output_header(studio *s, int area)
     char problems_label[32], runtime_label[32];
     snprintf(problems_label, sizeof problems_label, count ? "Problems %d" : "Problems", count);
     snprintf(runtime_label, sizeof runtime_label, errors ? "Runtime %d" : "Runtime", errors);
-    const char *views[OUTPUT_VIEWS] = { "Log", problems_label, runtime_label, "Info", "Find" };
+    const char *views[OUTPUT_VIEWS] = { "Log",  problems_label, runtime_label,
+                                        "Info", "Find",         "Calls" };
     kit_push(k, "views", NULL, "output-views");
     kit_toggle_group(k, "view", &s->output_view, views, OUTPUT_VIEWS, 0);
     kit_pop(k);
@@ -175,6 +177,7 @@ void studio_output_header(studio *s, int area)
         case OUTPUT_RUNTIME: clearable = errors > 0; break;
         case OUTPUT_INFO: clearable = acount(s->records) > 0; break;
         case OUTPUT_FIND: clearable = s->references_title[0] != '\0'; break;
+        case OUTPUT_CALLS: clearable = s->calls.title[0] != '\0'; break;
     }
     kit_button_desc clear = { .icon = KIT_ICON_TRASH,
                               .tip = "Clear",
@@ -187,6 +190,7 @@ void studio_output_header(studio *s, int area)
         case OUTPUT_RUNTIME: asetlen(s->runtime_errors, 0); break;
         case OUTPUT_INFO: asetlen(s->records, 0); break;
         case OUTPUT_FIND: studio_find_clear(s); break;
+        case OUTPUT_CALLS: studio_calls_clear(s); break;
     }
 }
 
@@ -449,22 +453,34 @@ void studio_output_body(studio *s, int area)
         case OUTPUT_RUNTIME: runtime_view(s, row); break;
         case OUTPUT_INFO: info_view(s, row); break;
         case OUTPUT_FIND: studio_find_view(s, row); break;
+        case OUTPUT_CALLS: studio_calls_view(s, row); break;
         default: log_view(s, row); break;
     }
 }
 
-/* A maximized area gives way so the results show. */
-void studio_output_find(studio *s)
+/* A maximized area gives way so the editor shows. */
+void studio_show_editor(studio *s, studio_editor editor)
 {
-    s->output_view = OUTPUT_FIND;
-    if (s->maximized >= 0 && s->prefs.editors[s->maximized] != STUDIO_EDITOR_OUTPUT) {
+    if (s->maximized >= 0 && s->prefs.editors[s->maximized] != editor) {
         s->maximized = -1;
     }
     for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
         bool shown = area != STUDIO_AREA_DRAWER || s->prefs.drawer_open;
-        if (shown && s->prefs.editors[area] == STUDIO_EDITOR_OUTPUT) {
+        if (shown && s->prefs.editors[area] == editor) {
             return;
         }
     }
-    studio_toggle_drawer(s, STUDIO_EDITOR_OUTPUT);
+    studio_toggle_drawer(s, editor);
+}
+
+void studio_output_find(studio *s)
+{
+    s->output_view = OUTPUT_FIND;
+    studio_show_editor(s, STUDIO_EDITOR_OUTPUT);
+}
+
+void studio_output_calls(studio *s)
+{
+    s->output_view = OUTPUT_CALLS;
+    studio_show_editor(s, STUDIO_EDITOR_OUTPUT);
 }

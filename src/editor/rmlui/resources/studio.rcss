@@ -219,6 +219,9 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .members-list .tree-row[data-section] .name { font-weight: 600; }
 .member-row { display: block; }
 .member-swatch { width: 9dp; height: 9dp; flex: 0 0 auto; margin: 0dp 5dp 0dp 3dp; }
+/* A member's use count, which lists its uses in Find. */
+.tree-row .member-uses { height: 18dp; min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--fg-3); font-family: InterNumeric; }
+.tree-row .member-uses[data-unused] { color: var(--fg-off); }
 .member-rename .field { height: 20dp; margin-right: 4dp; }
 .type-pick { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; }
 .type-pick .member-swatch { margin: 0dp 4dp; }

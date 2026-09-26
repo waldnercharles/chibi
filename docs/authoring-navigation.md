@@ -24,20 +24,20 @@ A reference names a symbol by ID or by name. A rename rewrites every by-name ref
 
 ## Features
 
-Status on 2026-09-25, after the shared reference index landed. Update a row when its feature lands.
+Status on 2026-09-25, after read-only navigation landed. Update a row when its feature lands.
 
 | Feature | Studio | MCP | Missing |
 | --- | --- | --- | --- |
-| Find references | Per node across the project, for functions, variables, events (host and undeclared too), components and assets | Per asset only (`inspectAssetDependencies`), with event send/handle, `Spawn Prototype`, `GameSpawnRequest` and UI links | Both: views of what the index already records (fields, locals, parameters, reads vs writes, senders vs handlers). MCP: any per-node results |
+| Find references | Per node across the project, for functions, variables, events (host and undeclared too), components and assets; locals and events from Members' use counts, component fields from the component peek; rows label reads, writes, sends and handles | `findReferences`: the definition and every use by role (asset, graph, node, pin, or scene object and component field) of an asset, function, parameter, variable, local, event, component or field, with counts per role, a role filter and pages | Studio: parameters |
 | Rename | Variables, locals, function parameters (calls in the same asset), expression inputs | Graphs, variables, locals, expression inputs | Both: events, assets and prototypes across assets; library functions and parameters across callers |
-| Go to definition | Call → graph, with breadcrumbs and Back/Forward | `inspectGraph` resolves calls | Both: event → event asset, Get/Set → variable, Spawn → prototype, component node → component |
-| Call hierarchy | Callers through Find References; call stack while paused | Outgoing calls per graph | Both: a caller/callee tree, event send → handle chains |
+| Go to definition | Alt+G and the node menu: call → graph, with breadcrumbs and Back/Forward; event node → event definition; Get/Set → the variable in Members; Spawn Prototype → prototype; component node → a peek of its fields with their use counts | `findReferences` returns each symbol's `definition`: an asset, graph node, pin or a component's reflected field type | — |
+| Call hierarchy | Output ▸ Calls (Shift+Alt+H, the node, Members and graph menus): callers or callees of a function or event as a tree; a row opens its call, send or Event node; call stack while paused | `callHierarchy`: callers and callees to a depth, through the Event handlers whose runs reach a call, ui and action senders, host events, with cycles marked | — |
 | Safe delete | — | — | Both: list references before deleting a variable, function, event or asset |
 | Diagnostics | Live compile, node badges, Problems rows jump to the node; Problems ▸ Project lists every graph asset's errors and warnings, checked after saves, reloads and Refresh | Whole project (`getAssetCatalog`, linked like Studio's), `validateAsset` | Studio: systems in Problems ▸ Project |
 | Code actions | Optimize, Math to Expressions, Collapse to Function/Macro, Expand Node, Promote to Variable, Name Value; dragging a function's or macro's inputs and outputs to reorder them | `optimizeGraph`, `create_local`/`expand_local`, `collapse_to_function`/`collapse_to_macro`, `expand_node`, `convert_to_expression`, `promote_to_variable`; Entry/Return pin edits, including `set_pin.order`, go through `graph_signature` | Studio: reordering from the keyboard (the kit's drag has no keyboard sensor) |
 | Completion | Add menu ranked by the dropped pin (`wire_fit`) | `searchNodes` `wire_from`/`wire_to`, ranked by the same `wire_fit`; UI events from `ui_document_events` | Studio: UI events in the Add menu |
 | Hover | Pin values while debugging; pin types in the Node tab; node titles show their description in a tooltip, and add-node results as a second line | `searchNodes` returns every node's and event's `description` | Both: descriptions of functions, variables and pins |
-| Outline | Members panel | Catalog members, `inspectGraph` | Both: use, sender and handler counts per member (`reference_index_count_uses`) |
+| Outline | Members panel, with the events a behavior handles; each function, macro, variable, named value and event shows its use count (senders and handlers for events), which opens Find | Catalog members; `inspectGraph` counts uses by role for the asset, its functions and macros, and a behavior's variables | — |
 | Resolved types | Node tab | `inspectGraph` lists each node's pins with their resolved types | — |
 | Find | ⌘F within one asset | `searchAssets` matches member names | Both: find nodes across the project |
 
@@ -46,6 +46,6 @@ Status on 2026-09-25, after the shared reference index landed. Update a row when
 The optimize branch (#106) supplied function signatures and code actions, and step 1 the shared index the rest build on.
 
 1. **Shared index.** Done: `src/assets/reference_index.{c,h}` replaced the core of Studio's asset index and the controller's `catalog_scan_references`, adding event, `Spawn Prototype` and UI links to the MCP.
-2. **Read-only navigation.** Find references, go to definition and call hierarchy on that index: an MCP tool each, plus Studio views.
+2. **Read-only navigation.** Done: `findReferences` (with definitions) and `callHierarchy` in the MCP, over the index's pin names, definition names and the nodes each Event node's run reaches (`reference_index_reaches`), and `src/assets/call_hierarchy.{c,h}`; Studio's Go to Definition, Output ▸ Calls and Members use counts.
 3. **Multi-asset edits.** Rename and safe delete, as one atomic, hash-checked change with a dry run that lists every affected asset.
 4. **The rest.** Code-action parity, hover descriptions, completion from a pin, resolved types, project-wide find.

@@ -162,7 +162,9 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_calls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_debug.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_definition.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_comment.c

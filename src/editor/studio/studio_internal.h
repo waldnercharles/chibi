@@ -190,6 +190,20 @@ typedef struct
     const char *use;            /* Call, Read, Handles... */
 } studio_reference;
 
+/* A row of Output's Calls view (studio_calls.c), copied from the call
+   hierarchy so it outlives the index it came from. */
+typedef struct
+{
+    char label[128];
+    char meta[128]; /* the asset holding it */
+    uint32_t icon;
+    studio_reference at; /* the call, send or Event node joining it to its parent */
+    int depth;
+    bool open;   /* its children show */
+    bool parent; /* has children */
+    bool cycle;  /* repeats an ancestor */
+} studio_call;
+
 enum
 {
     STUDIO_VALUE_NAMES = 8, /* outputs per node the Outputs panel can name */
@@ -351,6 +365,14 @@ typedef struct
         uint64_t id;     /* the variable, or the function whose pin it is */
         uint64_t pin_id; /* the Entry or Return pin, or 0 for the variable */
     } pick;
+    bool reveal; /* scroll the selected member into view */
+    struct
+    {
+        bool counted;
+        unsigned generation; /* the asset index build counted */
+        int asset;           /* the document counted */
+        struct studio_member_uses *items;
+    } uses; /* each member's uses across the project */
 } studio_members;
 
 /* The open project's editor/Components.yaml, re-read when it changes. */
@@ -438,6 +460,22 @@ struct studio
     char output_filter[128];
     char references_title[160]; /* what Output's Find view lists references to */
     studio_reference *references;
+    struct
+    {
+        char title[160]; /* the function or event traced; empty for none */
+        int root;        /* REFERENCE_SYMBOL_GRAPH or REFERENCE_SYMBOL_EVENT */
+        int asset_kind;  /* a function's asset */
+        char asset[128];
+        uint64_t graph_id;
+        int callees; /* 0 lists callers, 1 callees */
+        studio_call *rows;
+    } calls; /* Output's Calls view */
+    struct
+    {
+        bool request; /* open at x, y on the next frame */
+        float x, y;
+        char component[128];
+    } peek; /* a component node's Go to Definition: its fields */
     char outliner_filter[128];
     bool outliner_collapsed;
     bool outliner_reveal; /* scroll the selection into view on the next frame */
@@ -581,6 +619,10 @@ void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
 /* Shows Output's Find view, opening the drawer when no area shows Output. */
 void studio_output_find(studio *s);
+/* Shows Output's Calls view the same way. */
+void studio_output_calls(studio *s);
+/* Shows an editor: in an area already showing it, else in the drawer. */
+void studio_show_editor(studio *s, studio_editor editor);
 
 /* Find References (studio_find.c): lists what references an asset, or a
    function, variable, event or prototype, in Output's Find view; rows open
@@ -593,8 +635,36 @@ void studio_find_variable_references(studio *s, uint64_t variable_id);
 /* Calls, variable nodes, events and spawns reference something. */
 bool studio_node_referable(const node *n);
 void studio_find_node_references(studio *s, const node *n);
+void studio_find_references(studio *s, const char *title, reference_symbol symbol);
 void studio_find_view(studio *s, float row);
 void studio_find_clear(studio *s);
+/* What a referable node names, with a title for it; the index is refreshed
+   first. An ASSET symbol at -1 for nothing. */
+reference_symbol studio_node_symbol(studio *s, const node *n, const char **title);
+/* The open graph document's position in the index as last built, or -1. */
+int studio_document_asset(const studio *s);
+studio_reference studio_reference_of(const reference_index *index, const reference *use);
+/* Opens a Find or Calls row's asset and reveals its node or object. */
+void studio_open_reference(studio *s, const studio_reference *row);
+
+/* Go to Definition (studio_definition.c): a call opens its graph, a Get or
+   Set its variable in Members, an event node its event definition, Spawn
+   Prototype its prototype, and a component node peeks its fields and their
+   uses. */
+bool studio_node_definable(const node *n);
+void studio_go_to_definition(studio *s, node *n);
+/* The component peek; call every frame with the Behavior area. */
+void studio_definition_peek(studio *s);
+
+/* Call Hierarchy (studio_calls.c): a function's or event's callers or
+   callees as a tree in Output's Calls view. Calls and event nodes trace. */
+bool studio_node_traceable(const node *n);
+void studio_calls_node(studio *s, const node *n);
+void studio_calls_graph(studio *s, const graph *gr);
+void studio_calls_view(studio *s, float row);
+void studio_calls_clear(studio *s);
+/* Selects a member of the open behavior and scrolls Members to it. */
+void studio_members_reveal(studio *s, studio_member_kind kind, uint64_t id);
 /* Opens a graph of the open document and frames one of its nodes. */
 void studio_reveal_node(studio *s, uint64_t graph_id, uint64_t node_id);
 void studio_record(studio *s, kit_toast_type kind, const char *text);

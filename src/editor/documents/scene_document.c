@@ -107,7 +107,7 @@ int app_scene_authoring_save(app_scene_authoring *scene, const char *path)
     if (!json) {
         return -1;
     }
-    int result = write_text_file_atomic(path, json);
+    int result = save_content_file(scene, path, json);
     free(json);
     if (result == 0) {
         char *saved_path = xstrdup(path);

@@ -5,9 +5,10 @@ import json
 import secrets
 import shutil
 import tempfile
+import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
@@ -26,15 +27,67 @@ def projects(workspace):
     return [manifest.parent for manifest in manifests if manifest.is_file()]
 
 
-def workspace_assets(workspace):
-    assets = {}
+def workspace_files(workspace):
+    """Each project's manifest and content assets, by path relative to the workspace."""
+    files = {}
     for project in projects(workspace):
-        assets[str((project / 'project.yaml').relative_to(workspace))] = (project / 'project.yaml').read_text()
+        files[str((project / 'project.yaml').relative_to(workspace))] = project / 'project.yaml'
         content = content_directory(project)
         for path in content.rglob('*.yaml'):
             if path.resolve().is_relative_to(content):
-                assets[str(path.relative_to(workspace))] = path.read_text()
-    return assets
+                files[str(path.relative_to(workspace))] = path
+    return files
+
+
+def workspace_assets(workspace):
+    return {name: path.read_text() for name, path in workspace_files(workspace).items()}
+
+
+class WorkspaceWatch:
+    """Versions the workspace's files so the browser can follow edits made on disk."""
+
+    def __init__(self, workspace):
+        self.workspace = workspace
+        self.version = 0
+        self.stamps = self.scan()
+        self.changed = {}  # path -> the version that last changed it
+        self.condition = threading.Condition()
+
+    def scan(self):
+        stamps = {}
+        for name, path in workspace_files(self.workspace).items():
+            try:
+                info = path.stat()
+            except OSError:
+                continue
+            stamps[name] = (info.st_mtime_ns, info.st_size)
+        return stamps
+
+    def poll(self):
+        stamps = self.scan()
+        changed = {name for name in stamps.keys() | self.stamps.keys() if stamps.get(name) != self.stamps.get(name)}
+        if not changed:
+            return
+        with self.condition:
+            self.version += 1
+            for name in changed:
+                self.changed[name] = self.version
+            self.stamps = stamps
+            self.condition.notify_all()
+
+    def changes(self, since, timeout):
+        """The version and each file changed after `since`, as text or None when removed."""
+        with self.condition:
+            self.condition.wait_for(lambda: self.version > since, timeout)
+            version = self.version
+            names = [name for name, changed in self.changed.items() if changed > since]
+        files = {}
+        for name in names:
+            try:
+                files[name] = (self.workspace / name).read_text()
+            except OSError:
+                files[name] = None
+        return version, files
 
 
 def save_asset(workspace, request):
@@ -75,6 +128,14 @@ def main():
     # The browser mirrors the workspace at its file system root.
     start = str(PurePosixPath('/') / project.relative_to(workspace).as_posix())
     token = secrets.token_urlsafe(32)
+    watch = WorkspaceWatch(workspace)
+
+    def follow():
+        while True:
+            watch.poll()
+            threading.Event().wait(0.25)
+
+    threading.Thread(target=follow, daemon=True).start()
     # A served generation never changes under the browser's JS/WASM/data requests.
     with tempfile.TemporaryDirectory(prefix='chibi-web-') as directory:
         snapshot = Path(directory)
@@ -102,17 +163,33 @@ def main():
                 self.send_header('Cache-Control', 'no-store')
                 super().end_headers()
 
+            def send_json(self, value, version):
+                body = json.dumps(value).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('X-Chibi-Version', str(version))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_GET(self):
-                if urlsplit(self.path).path == '/__chibi/assets':
-                    if self.headers.get('X-Chibi-Token') != token:
-                        self.send_error(403)
+                url = urlsplit(self.path)
+                if url.path in ('/__chibi/assets', '/__chibi/changes') and self.headers.get('X-Chibi-Token') != token:
+                    self.send_error(403)
+                    return
+                if url.path == '/__chibi/assets':
+                    version = watch.version
+                    self.send_json(workspace_assets(workspace), version)
+                    return
+                # Waits for the next edit on disk, so the page can mirror it at once.
+                if url.path == '/__chibi/changes':
+                    try:
+                        since = int(parse_qs(url.query)['since'][0])
+                    except (KeyError, ValueError):
+                        self.send_error(400, 'since is required')
                         return
-                    body = json.dumps(workspace_assets(workspace)).encode()
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Content-Length', str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
+                    version, files = watch.changes(since, 20)
+                    self.send_json(files, version)
                     return
                 # Ignore validators left over from another preview server.
                 if 'If-Modified-Since' in self.headers:

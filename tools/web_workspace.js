@@ -18,7 +18,7 @@
         if (body) xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.send(body ? JSON.stringify(body) : null);
         if (xhr.status < 200 || xhr.status >= 300) throw new Error(xhr.responseText || 'Local save failed');
-        return xhr.responseText;
+        return xhr;
     };
     Module['chibiSaveAsset'] = (path, text) => {
         try {
@@ -29,15 +29,38 @@
             return -1;
         }
     };
+    // An unchanged file keeps its time, so the page's own saves do not read as edits.
+    const mirror = (path, text) => {
+        const fs = Module['FS'];
+        const destination = '/' + path;
+        const exists = fs.analyzePath(destination).exists;
+        if (text === null) {
+            if (exists) fs.unlink(destination);
+            return;
+        }
+        if (exists && fs.readFile(destination, {encoding: 'utf8'}) === text) return;
+        fs.mkdirTree(destination.slice(0, destination.lastIndexOf('/')));
+        fs.writeFile(destination, text);
+    };
+    // Edits made on disk reach the editor, which reloads them as it does natively.
+    const follow = async version => {
+        for (;;) {
+            try {
+                const response = await fetch(`/__chibi/changes?since=${version}`, {headers: {'X-Chibi-Token': token}});
+                if (!response.ok) throw new Error(await response.text());
+                version = Number(response.headers.get('X-Chibi-Version'));
+                for (const [path, text] of Object.entries(await response.json())) mirror(path, text);
+            } catch {
+                await new Promise(retry => setTimeout(retry, 1000));
+            }
+        }
+    };
     const initialize = Module['onRuntimeInitialized'];
     Module['onRuntimeInitialized'] = () => {
         try {
-            const files = JSON.parse(request('GET', '/__chibi/assets'));
-            for (const [path, text] of Object.entries(files)) {
-                const destination = '/' + path;
-                Module['FS'].mkdirTree(destination.slice(0, destination.lastIndexOf('/')));
-                Module['FS'].writeFile(destination, text);
-            }
+            const xhr = request('GET', '/__chibi/assets');
+            for (const [path, text] of Object.entries(JSON.parse(xhr.responseText))) mirror(path, text);
+            follow(Number(xhr.getResponseHeader('X-Chibi-Version')));
         } catch (error) {
             Module['showError'](error.message);
             throw error;

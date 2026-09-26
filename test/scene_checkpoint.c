@@ -911,6 +911,7 @@ static int test_scene_checkpoint()
 }
 
 void test_scene_instances();
+void test_scene_disk();
 
 int scene_documents_run(const char *program)
 {
@@ -932,6 +933,7 @@ int scene_documents_run(const char *program)
     app_input_initialize();
     int failed = test_scene_checkpoint();
     test_scene_instances();
+    test_scene_disk();
     app_input_shutdown();
     cf_destroy_app();
     return failed;

@@ -130,6 +130,12 @@ When a behavior source changed after the checkpoint was written, the editor
 keeps the checkpointed copy; File > Reload on that behavior replaces it with the
 source.
 
+The editor follows its project on disk, so edits from another program, MCP or
+version control appear as they are saved. Graph assets and systems apply at
+once, even while playing; prototypes and the open scene reload when the runtime
+stops, keeping the view and selection. A document with unsaved edits keeps them
+and offers Reload. `make web-serve` sends the same edits to the browser.
+
 ## Code map
 
 | Location | Responsibility |

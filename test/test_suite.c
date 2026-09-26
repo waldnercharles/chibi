@@ -155,6 +155,7 @@ TEST_CASE(all_checks)
     test_component_fields();
     test_component_nodes();
     test_editor_documents();
+    test_tree_watch();
     test_scene_debug();
     test_appearance_geometry();
     test_orientation();

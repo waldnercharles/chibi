@@ -690,6 +690,7 @@ add_executable(test_suite
     src/editor/workspace/scene_runtime.c
     src/editor/workspace/scene_tabs.c
     src/editor/workspace/scene_viewport.c
+    src/editor/documents/scene_disk.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c
     src/editor/documents/scene_prototypes.c
@@ -702,6 +703,8 @@ add_executable(test_suite
     src/editor/workspace/game_presentation.c
     test/scene_history.c
     test/scene_checkpoint.c
+    test/scene_disk.c
+    test/tree_watch.c
     test/appearance_geometry.c
     test/retained_components.c
     test/editor_flow.c

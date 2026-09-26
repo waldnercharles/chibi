@@ -128,7 +128,7 @@ static int save_behavior_definition(
     if (!json) {
         return -1;
     }
-    int result = write_text_file_atomic(path, json);
+    int result = save_content_file(scene, path, json);
     if (result == 0) {
         game_live_definition_set_path(definition, path);
         definition->unsaved = false;
@@ -184,7 +184,7 @@ static char *document_default_path(app_scene_authoring *scene)
     return path;
 }
 
-static int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name)
+int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name)
 {
     game_live_definition *definition = asset_name
                                          ? game_live_find_definition(scene->live, asset_name)
@@ -205,7 +205,7 @@ static int reload_behavior_from_disk(app_scene_authoring *scene, const char *ass
     behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!loaded) {
-        snprintf(scene->message, sizeof scene->message, "Could not reload %s.", path);
+        snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", path, graph_last_error());
         return -1;
     }
     if (!loaded->name || strcmp(loaded->name, definition->name) != 0) {
@@ -286,15 +286,8 @@ static int reload_behavior_document(app_scene_authoring *scene)
     return reload_behavior_from_disk(scene, NULL);
 }
 
-static int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
-
-static int reload_prototype_document(app_scene_authoring *scene)
+int reload_prototype_asset(app_scene_authoring *scene, scene_prototype_asset *asset)
 {
-    scene_prototype_asset *asset = selected_prototype(scene);
-    if (!asset || !asset->path) {
-        snprintf(scene->message, sizeof scene->message, "Prototype requires Save As before Reload.");
-        return -1;
-    }
     char *json = read_scene_file(asset->path);
     char error[256];
     game_prototype *loaded = json
@@ -305,8 +298,9 @@ static int reload_prototype_document(app_scene_authoring *scene)
         snprintf(
             scene->message,
             sizeof scene->message,
-            "Could not reload %s.",
-            asset->path
+            "Could not reload %s: %s",
+            asset->path,
+            json ? error : "unreadable"
         );
         return -1;
     }
@@ -338,6 +332,16 @@ static int reload_prototype_document(app_scene_authoring *scene)
     clear_prototype_history(asset);
     snprintf(scene->message, sizeof scene->message, "Reloaded %s.", asset->path);
     return 0;
+}
+
+static int reload_prototype_document(app_scene_authoring *scene)
+{
+    scene_prototype_asset *asset = selected_prototype(scene);
+    if (!asset || !asset->path) {
+        snprintf(scene->message, sizeof scene->message, "Prototype requires Save As before Reload.");
+        return -1;
+    }
+    return reload_prototype_asset(scene, asset);
 }
 
 static int reload_active_document(app_scene_authoring *scene)
@@ -425,7 +429,7 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     return 0;
 }
 
-static int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
+int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
 {
     char *json = read_scene_file(path);
     if (!json) {
@@ -469,7 +473,7 @@ static int save_system_document(app_scene_authoring *scene, const char *path)
     if (!json) {
         return -1;
     }
-    int result = write_text_file_atomic(path, json);
+    int result = save_content_file(scene, path, json);
     free(json);
     if (result == 0) {
         char *saved_path = xstrdup(path);

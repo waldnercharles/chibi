@@ -1224,6 +1224,7 @@ static void sync_presentation(studio *s)
 void studio_emit(studio *s)
 {
     sync_presentation(s);
+    studio_disk_frame(s);
     track_pointer(s);
     kit_root(s->kit, "app");
     topbar(s);

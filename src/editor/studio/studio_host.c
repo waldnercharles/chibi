@@ -411,6 +411,7 @@ void studio_free(studio *s)
     afree(s->perf);
     afree(s->keys);
     studio_projects_free(s);
+    studio_disk_free(s);
     engine_viewport_set_host_input(s->viewport, NULL);
     editor_set_retained_keyboard(false);
     studio_graph_free(s);

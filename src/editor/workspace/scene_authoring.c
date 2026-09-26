@@ -93,6 +93,15 @@ int write_text_file_atomic(const char *path, const char *json)
     return result;
 }
 
+int save_content_file(app_scene_authoring *scene, const char *path, const char *json)
+{
+    int result = write_text_file_atomic(path, json);
+    if (result == 0) {
+        tree_watch_note(&scene->disk, path);
+    }
+    return result;
+}
+
 game_prototype_registry app_component_registry(void)
 {
     return (game_prototype_registry){
@@ -1210,6 +1219,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         free(scene->content[i].path);
     }
     afree(scene->content);
+    tree_watch_free(&scene->disk);
+    tree_watch_changes_free(scene->disk_pending);
     free(scene->content_root);
     free(scene->scene_path);
     game_system_document_free(scene->system_document);

@@ -354,6 +354,13 @@ typedef struct
 /* The editor's authored UI world (studio_ui.c). */
 typedef struct studio_ui studio_ui;
 
+/* A toast offering to reload a file over unsaved edits. */
+typedef struct
+{
+    int toast;
+    char *path;
+} studio_disk_toast;
+
 /* A project the workspace offers to open. */
 typedef struct
 {
@@ -368,7 +375,8 @@ struct studio
     const char *project_root; /* the open project, owned by the application */
     studio_project *projects;
     char *open_project; /* root chosen to open, until the application takes it */
-    int discard_toast;  /* toast confirming unsaved changes are discarded */
+    studio_disk_toast *disk_toasts; /* files that changed on disk under unsaved edits */
+    int discard_toast;   /* toast confirming unsaved changes are discarded */
     int discard_project; /* the project that toast opens */
     rml_backend *backend;
     kit *kit;
@@ -474,6 +482,11 @@ void studio_ui_panel(studio *s, const char *key, const char *name);
 void studio_ui_modal(studio *s, const char *name);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
+
+/* Content changed on disk (studio_disk.c): reloads it and raises failures and
+   unsaved conflicts as toasts. */
+void studio_disk_frame(studio *s);
+void studio_disk_free(studio *s);
 
 /* Projects (studio_projects.c). */
 #ifdef __EMSCRIPTEN__

@@ -155,6 +155,32 @@ const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_au
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_reload(app_scene_authoring *scene);
+
+/* What a content file another program changed did to the editor. */
+typedef enum
+{
+    APP_DISK_NONE, /* nothing open uses it */
+    APP_DISK_RELOADED,
+    APP_DISK_FAILED, /* the previous version stays; the message says why */
+    APP_DISK_UNSAVED, /* its document keeps unsaved edits until reloaded by path */
+} app_disk_result;
+
+typedef struct
+{
+    app_disk_result result;
+    char *path;
+    char message[256];
+} app_disk_change;
+
+/* Reloads content files that changed on disk, checking at most once a second:
+ * graph assets and systems at once, prototypes and scenes once the runtime
+ * stops. Returns an owned array of what used them, or NULL. */
+app_disk_change *app_scene_authoring_sync_disk(app_scene_authoring *scene, double now);
+void app_disk_changes_free(app_disk_change *changes);
+/* Replaces the document at `path` with the file, discarding unsaved edits;
+ * the message says what happened. */
+app_disk_result app_scene_authoring_reload_path(app_scene_authoring *scene, const char *path);
+
 const char *app_scene_authoring_message(const app_scene_authoring *scene);
 /* Select a live host-spawned entity without adding it to the authored scene. */
 int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity);

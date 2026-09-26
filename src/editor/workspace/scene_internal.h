@@ -8,6 +8,7 @@
 #include "editor/workspace/scene_debug.h"
 #include "render/scene_renderer.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "support/tree_watch.h"
 
 typedef struct
 {
@@ -109,6 +110,8 @@ struct app_scene_authoring
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
     char *content_root;
+    tree_watch disk;     /* content files as last loaded or saved */
+    char **disk_pending; /* changes waiting for the runtime to stop */
     int selected;
     ecs_entity reveal_actor;
     ecs_entity runtime_selected;
@@ -241,6 +244,7 @@ char *content_path_join(const char *base, const char *name);
 scene_prototype_asset *find_prototype(app_scene_authoring *scene, const char *name);
 void free_behavior_snapshots(game_prototype **snapshots);
 void invalidate_runtime_snapshot(app_scene_authoring *scene);
+int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
 int open_system_asset(app_scene_authoring *scene, const char *path);
 void preview_behavior_edits(app_scene_authoring *scene);
@@ -250,11 +254,16 @@ int prototype_redo(app_scene_authoring *scene);
 int prototype_undo(app_scene_authoring *scene);
 char *read_scene_file(const char *path);
 int refresh_prototype_instances(app_scene_authoring *scene, scene_prototype_asset *asset);
+/* Replace an asset with its file, as File > Reload does. */
+int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name);
+int reload_prototype_asset(app_scene_authoring *scene, scene_prototype_asset *asset);
 void remove_selected(app_scene_authoring *scene);
 int replay_scene_edit(app_scene_authoring *scene, bool redo);
 const ecs_component_desc *resolve_system_component(const char *name, void *);
 int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, const game_prototype *prototype);
 int save_active_document(app_scene_authoring *scene);
+/* Writes a content file and records it, so it does not reload as a change on disk. */
+int save_content_file(app_scene_authoring *scene, const char *path, const char *json);
 int save_behavior_document(app_scene_authoring *scene);
 void select_prototype(app_scene_authoring *scene, int index);
 void set_behavior_component_context(app_scene_authoring *scene, const char *asset_name);

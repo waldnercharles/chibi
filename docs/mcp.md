@@ -351,9 +351,10 @@ batches publish one complete file, and concurrent MCP writes to the same asset
 are serialized. The hash is checked again just before publication; this is
 not a locking protocol shared with unrelated filesystem writers.
 
-These are offline asset edits. They do not modify an open editor document or
-add an editor undo entry; save or close unsaved editor work before editing the
-same asset through MCP. Referenced libraries are linked for validation, while
+These are asset edits on disk, without an editor undo entry. An open editor
+reloads what they change: graph assets and systems at once, prototypes and the
+open scene when its runtime stops. A document with unsaved edits in the editor
+keeps them and offers Reload instead. Referenced libraries are linked for validation, while
 the saved file retains its authored library references.
 
 Call `previewShader` with `{"kind":"material","name":"WarmSurface"}` to

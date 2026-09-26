@@ -125,6 +125,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/file_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_search.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/tree_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
 )
 
@@ -166,6 +167,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_nav.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_layout.c
@@ -190,6 +192,7 @@ set(EDITOR_SOURCES
 set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/behavior_loader.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/project.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_documents.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_history.c

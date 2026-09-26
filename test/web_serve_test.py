@@ -34,6 +34,18 @@ class WorkspaceSaves(unittest.TestCase):
             'projects/bloom/content/scenes/Bloom.yaml': 'name: Revised\n',
         })
 
+    def test_watch_follows_edits_and_removals(self):
+        asset = self.content / 'A.yaml'
+        asset.write_text('a: 1\n')
+        watch = server.WorkspaceWatch(self.workspace)
+        self.assertEqual(watch.changes(0, 0), (0, {}))
+        asset.write_text('a: 22\n')
+        watch.poll()
+        self.assertEqual(watch.changes(0, 0), (1, {'projects/bloom/content/A.yaml': 'a: 22\n'}))
+        asset.unlink()
+        watch.poll()
+        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.yaml': None}))
+
     def test_invalid_document_preserves_previous_asset(self):
         self.save('projects/bloom/content/Bloom.yaml')
         with self.assertRaises(ValueError):

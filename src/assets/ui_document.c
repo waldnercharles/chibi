@@ -18,6 +18,21 @@ static const char *const DOCUMENT_TAGS[] = { "<rml", "<head", "<body" };
 
 static const char *tag_end(const char *p);
 
+/* The line breaks in [p, end). */
+static int breaks(const char *p, const char *end)
+{
+    int count = 0;
+    for (; p < end; p++) {
+        count += *p == '\n';
+    }
+    return count;
+}
+
+static int line_breaks(const char *text)
+{
+    return breaks(text, text + strlen(text));
+}
+
 static bool fail(char *error, size_t size, const char *format, ...)
 {
     va_list args;
@@ -38,6 +53,7 @@ static bool split_body(const char *rml, ui_document *out, char *error, size_t er
     const char *open_end = wrapped ? tag_end(start) : NULL;
     if (!wrapped) {
         out->rml = xstrdup(rml);
+        out->rml_line = 1;
         return true;
     }
     if (!open_end) {
@@ -58,6 +74,7 @@ static bool split_body(const char *rml, ui_document *out, char *error, size_t er
     snprintf(out->body, (size_t)(attrs_end - attrs) + 1, "%s", attrs);
     out->rml = xmalloc((size_t)(inner_end - inner) + 1);
     snprintf(out->rml, (size_t)(inner_end - inner) + 1, "%s", inner);
+    out->rml_line = 1 + breaks(rml, inner);
     return true;
 }
 
@@ -101,7 +118,10 @@ static bool read_root(
         }
     }
     char message[200];
-    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", directory, imports, message, sizeof message);
+    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", directory, &out->map, message, sizeof message);
+    for (int i = 0; imports && i < acount(out->map.files); i++) {
+        apush(*imports, xstrdup(out->map.files[i]));
+    }
     if (!flat) {
         return fail(error, error_size, "rcss %s", message);
     }
@@ -164,8 +184,11 @@ typedef struct expansion
     ui_document *widgets; /* parallel to names; empty until read */
     const char *stack[UI_USE_DEPTH];
     int depth;
+    bool sources; /* mark each element with where it was written */
     char *error;
     size_t error_size;
+    char *rcss; /* the scoped RCSS joined so far (rcss_join) */
+    rcss_map map;
 } expansion;
 
 static void put(char **out, const char *text, size_t length)
@@ -306,7 +329,13 @@ static const ui_document *widget_named(expansion *x, const char *name)
         fail(x->error, x->error_size, "widget %s %s", name, why);
         return NULL;
     }
-    return &alast(x->widgets);
+    ui_document *widget = &alast(x->widgets);
+    if (x->sources) {
+        char *marked = ui_document_sources(widget->rml, name, widget->rml_line);
+        free(widget->rml);
+        widget->rml = marked;
+    }
+    return widget;
 }
 
 static bool expand(expansion *x, const char *rml, char **out);
@@ -357,8 +386,19 @@ static void put_attribute_text(char **out, const char *start, const char *end)
     }
 }
 
-/* The widget's markup with the use element's attributes, but ui, in place of
- * its attrs marker; NULL when it has none. */
+/* Past the data-src ui_document_sources puts first in a tag's attributes,
+ * or `attrs` when there is none. */
+static const char *past_source(const char *attrs)
+{
+    static const char SOURCE[] = " data-src=\"";
+    const char *close = strncmp(attrs, SOURCE, sizeof SOURCE - 1)
+                          ? NULL
+                          : strchr(attrs + sizeof SOURCE - 1, '"');
+    return close ? close + 1 : attrs;
+}
+
+/* The widget's markup with the use element's attributes, but ui and data-src,
+ * in place of its attrs marker; NULL when it has none. */
 static char *put_attrs(const char *body, const use_tag *tag)
 {
     const char *marker = attrs_marker(body);
@@ -367,7 +407,7 @@ static char *put_attrs(const char *body, const use_tag *tag)
     }
     char *out = NULL;
     put(&out, body, (size_t)(marker - body));
-    put_attribute_text(&out, tag->attrs, tag->ui);
+    put_attribute_text(&out, past_source(tag->attrs), tag->ui);
     put_attribute_text(&out, tag->ui_end, tag->attrs_end);
     put(&out, marker + 6, strlen(marker + 6) + 1);
     return out;
@@ -398,9 +438,15 @@ static bool expand_use(expansion *x, const use_tag *tag, char **out)
     ok = ok && expand(x, widget_rml, &body);
     x->depth--;
     if (ok) {
+        /* A widget element marked attrs takes the use element's attributes
+           but data-src, which stays on the div. */
         char *marked = put_attrs(body, tag);
+        const char *kept = marked ? past_source(tag->attrs) : tag->ui;
         put(out, "<div", 4);
-        put(out, marked ? " " : tag->attrs, marked ? 1 : (size_t)(tag->ui - tag->attrs));
+        put(out, tag->attrs, (size_t)(kept - tag->attrs));
+        if (marked) {
+            put(out, " ", 1);
+        }
         put(out, "data-", 5);
         put(out, tag->ui, (size_t)((marked ? tag->ui_end : tag->attrs_end) - tag->ui));
         put(out, ">", 1);
@@ -568,15 +614,75 @@ char *ui_document_scope(const char *rcss, const char *name)
     return text;
 }
 
-/* Appends `rcss` scoped to `name`, with a line break, when there is any. */
-static void put_scoped(char **out, const char *rcss, const char *name)
+/* ---------- Sources ---------- */
+
+/* Whether the tag opening at `p` is a `name` element. */
+static bool tag_named(const char *p, const char *name)
 {
-    if (!rcss[0]) {
+    size_t length = strlen(name);
+    return !strncmp(p + 1, name, length) && !name_char(p[1 + length]);
+}
+
+/* Past the markup opening at `p`: a comment, or a start tag, whose quoted
+ * values may hold '<'; else past the '<'. NULL when it is unterminated. */
+static const char *markup_end(const char *p)
+{
+    if (!strncmp(p, "<!--", 4)) {
+        const char *end = strstr(p, "-->");
+        return end ? end + 3 : NULL;
+    }
+    return isalpha((unsigned char)p[1]) ? tag_end(p) : p + 1;
+}
+
+static void put_source(char **out, const char *asset, int line)
+{
+    char mark[320];
+    int length = snprintf(mark, sizeof mark, " data-src=\"%s:%d\"", asset, line);
+    assert(length > 0 && (size_t)length < sizeof mark);
+    put(out, mark, (size_t)length);
+}
+
+char *ui_document_sources(const char *rml, const char *asset, int first)
+{
+    char *out = NULL;
+    const char *copied = rml;
+    int line = first;
+    for (const char *p = strchr(rml, '<'); p; p = strchr(p, '<')) {
+        const char *end = markup_end(p);
+        if (!end) {
+            break;
+        }
+        if (isalpha((unsigned char)p[1]) && !tag_named(p, "slot")) {
+            const char *name_end = p + 1;
+            while (name_char(*name_end)) {
+                name_end++;
+            }
+            line += breaks(copied, p);
+            put(&out, copied, (size_t)(name_end - copied));
+            put_source(&out, asset, line);
+            copied = name_end;
+        }
+        p = end;
+    }
+    put(&out, copied, strlen(copied) + 1);
+    char *text = xstrdup(out);
+    afree(out);
+    return text;
+}
+
+/* Appends asset `name`'s RCSS, scoped to it, to the expansion's, naming its
+ * own lines its file's. */
+static void put_scoped(expansion *x, ui_document *asset, const char *name)
+{
+    if (!asset->rcss[0]) {
         return;
     }
-    char *scoped = ui_document_scope(rcss, name);
-    put(out, scoped, strlen(scoped));
-    put(out, "\n", 1);
+    char path[1024];
+    snprintf(path, sizeof path, "%s/%s.yaml", x->ui_root, name);
+    rcss_map_own(&asset->map, path);
+    char *scoped = ui_document_scope(asset->rcss, name);
+    assert(line_breaks(scoped) == line_breaks(asset->rcss)); /* so the map holds */
+    rcss_join(&x->rcss, &x->map, scoped, &asset->map);
     free(scoped);
 }
 
@@ -584,25 +690,35 @@ bool ui_document_expand(
     ui_document *document,
     const char *name,
     const char *ui_root,
+    bool sources,
     char ***uses,
     char *error,
     size_t error_size
 )
 {
-    expansion x = { .ui_root = ui_root, .error = error, .error_size = error_size };
+    expansion x = { .ui_root = ui_root,
+                    .sources = sources,
+                    .error = error,
+                    .error_size = error_size };
+    char *marked = sources
+                     ? ui_document_sources(document->rml, name, document->rml_line)
+                     : NULL;
     char *rml = NULL;
-    bool ok = expand(&x, document->rml, &rml);
+    bool ok = expand(&x, marked ? marked : document->rml, &rml);
+    free(marked);
     if (ok) {
-        char *rcss = NULL;
         for (int i = 0; i < acount(x.widgets); i++) {
-            put_scoped(&rcss, x.widgets[i].rcss, x.names[i]);
+            put_scoped(&x, &x.widgets[i], x.names[i]);
         }
-        put_scoped(&rcss, document->rcss, name);
-        put(&rcss, "", 1);
+        put_scoped(&x, document, name);
+        apush(x.rcss, '\0');
         ui_document_free(document);
-        *document = (ui_document){ .rml = xstrdup(rml), .rcss = xstrdup(rcss) };
-        afree(rcss);
+        *document = (ui_document){ .rml = xstrdup(rml),
+                                   .rcss = xstrdup(x.rcss),
+                                   .map = x.map };
+        x.map = (rcss_map){ 0 };
     }
+    afree(x.rcss);
     afree(rml);
     for (int i = 0; i < acount(x.names); i++) {
         apush(*uses, x.names[i]);
@@ -971,5 +1087,6 @@ void ui_document_free(ui_document *document)
     free(document->rml);
     free(document->rcss);
     free(document->body);
+    rcss_map_free(&document->map);
     *document = (ui_document){ 0 };
 }

@@ -1,6 +1,8 @@
 #ifndef CHIBI_UI_DOCUMENT_H
 #define CHIBI_UI_DOCUMENT_H
 
+#include "support/rcss.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -10,16 +12,19 @@
 typedef struct ui_document
 {
     char *rml;
-    char *rcss; /* empty when the asset has none */
-    char *body; /* the <body> attributes as written, or NULL */
+    char *rcss;   /* empty when the asset has none */
+    char *body;   /* the <body> attributes as written, or NULL */
+    int rml_line; /* the line of the rml block `rml` starts on */
+    rcss_map map; /* where each rcss line came from; the block's own are -1 */
 } ui_document;
 
 /* Parses a ui asset into `out`, which is empty or holds an earlier read.
  * RCSS @imports resolve in `directory`, appending each file read to
  * `imports` (support/array.h) when it is not NULL; a NULL directory leaves
- * them as written. Returns false with a message in `error` and leaves `out`
- * unchanged when the asset is invalid, so a caller keeps the last valid
- * document. */
+ * them as written. `map` traces each line of the expanded RCSS to an import
+ * or to its line in the `rcss` block. Returns false with a message in
+ * `error` and leaves `out` unchanged when the asset is invalid, so a caller
+ * keeps the last valid document. */
 bool ui_document_read(
     const char *text,
     const char *directory,
@@ -33,8 +38,12 @@ bool ui_document_read(
  * data-ui, around the widget's markup. A widget element with an attrs
  * attribute takes the use element's other attributes in its place instead,
  * as Vue's v-bind="$attrs" does, so a binding reaches the widget's input.
- * The use element's children fill the widget's <slot/>. The RCSS becomes each widget's, then the document's, each
- * scoped to its data-ui name (ui_document_scope), the document's to `name`.
+ * The use element's children fill the widget's <slot/>. The RCSS becomes
+ * each widget's, then the document's, each scoped to its data-ui name
+ * (ui_document_scope), the document's to `name`; the map names each asset's
+ * own lines `ui_root`/Name.yaml. With `sources`, each element is marked with
+ * where it was written (ui_document_sources): a widget's elements with the
+ * widget's asset, and the div in place of a <use> with the use element's.
  * Appends every widget name it looks up to `uses` (support/array.h), even on
  * failure. Returns false with a message in `error`, leaving `document`
  * unchanged, when a widget is missing, invalid, or uses itself. */
@@ -42,13 +51,20 @@ bool ui_document_expand(
     ui_document *document,
     const char *name,
     const char *ui_root,
+    bool sources,
     char ***uses,
     char *error,
     size_t error_size
 );
+/* Owned markup with data-src="<asset>:<line>" first in each element's start
+ * tag but <slot>'s, where `line` is the 1-based line in the asset's rml block
+ * the tag starts on, and `rml` starts on line `first`. Studio's Inspector
+ * reads it to show where an element was written; data-src is reserved. */
+char *ui_document_sources(const char *rml, const char *asset, int first);
 /* Owned RCSS whose rules only match inside elements with data-ui="name":
  * `body` in a selector names that element, and other selectors match within
- * it. @media blocks are scoped too; other at-rules are kept as written. */
+ * it. @media blocks are scoped too; other at-rules are kept as written. Each
+ * line of expanded RCSS (rcss_expand) keeps its line, so its map holds. */
 char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);

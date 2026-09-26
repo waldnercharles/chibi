@@ -1203,3 +1203,52 @@ int rml_font_string_width(uintptr_t face, const char *text)
     Rml::StringView string(text, text + std::strlen(text));
     return Rml::GetFontEngineInterface()->GetStringWidth(face, string, shaping);
 }
+
+/* ---------- UI source maps (workstream A) ---------- */
+
+#include <RmlUi/Core/StreamMemory.h>
+
+namespace {
+
+Rml::SharedPtr<Rml::StyleSheetContainer> named_sheet(const char *name, const char *rcss)
+{
+    Rml::StreamMemory stream(reinterpret_cast<const Rml::byte *>(rcss), std::strlen(rcss));
+    stream.SetSourceURL(name);
+    return Rml::Factory::InstanceStyleSheetStream(&stream);
+}
+
+} // namespace
+
+bool rml_document_set_named_style_sheet(rml_element *d, const char *name, const char *rcss)
+{
+    Rml::SharedPtr<Rml::StyleSheetContainer> sheet = named_sheet(name, rcss);
+    if (!sheet) {
+        return false;
+    }
+    document(d)->SetStyleSheetContainer(sheet);
+    return true;
+}
+
+bool rml_document_add_named_style_sheet(rml_element *d, const char *name, const char *rcss)
+{
+    Rml::SharedPtr<Rml::StyleSheetContainer> added = named_sheet(name, rcss);
+    if (!added) {
+        return false;
+    }
+    const Rml::StyleSheetContainer *current = document(d)->GetStyleSheetContainer();
+    document(d)->SetStyleSheetContainer(
+        current ? current->CombineStyleSheetContainer(*added) : added
+    );
+    return true;
+}
+
+bool rml_element_property_source(rml_element *e, const char *property, char *sheet, size_t size, int *line)
+{
+    const Rml::Property *p = element(e)->GetProperty(property);
+    if (!p || !p->source) {
+        return false;
+    }
+    copy(p->source->path, sheet, size);
+    *line = p->source->line_number;
+    return true;
+}

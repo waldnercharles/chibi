@@ -68,7 +68,10 @@ void ui_data_free(ui_data *data);
  * last valid version. The host element gets data-ui="<name>" and binds the
  * context's UI_DATA_MODEL, and the mount's RCSS is scoped to it; the host
  * installs that RCSS in the element's document. Games and the editor host
- * mounts the same way. */
+ * mounts the same way. Each element carries data-src="<asset>:<line>"
+ * (ui_document_sources), and the mount records where each line of its RCSS
+ * came from, so a host that installs it can trace its rules
+ * (support/ui_style.h). */
 typedef struct ui_mount ui_mount;
 
 /* An activation: the event emitted or bound to a key, the id of the element
@@ -137,10 +140,12 @@ void ui_page_free(ui_page *page);
 
 /* Presents a world's GameUi documents over a canvas: one mount per entity in
  * the world's page, stacked by GameUi.order. It applies what behaviors set
- * in the game_ui model and sends activations to their entities. Game UI
- * passes the pointer through except over data-event-click elements and
- * inputs, or where RCSS sets pointer-events: auto. RCSS dp units scale with
- * the canvas height, 720 pixels being 1. */
+ * in the game_ui model and sends activations to their entities. Its style
+ * sheet is named "game-ui-<n>" (support/ui_style.h), and the page's elements
+ * carry data-src as a mount's do. Game UI passes the pointer through except
+ * over data-event-click elements and inputs, or where RCSS sets
+ * pointer-events: auto. RCSS dp units scale with the canvas height, 720
+ * pixels being 1. */
 typedef struct render_ui render_ui;
 
 render_ui *render_ui_new(const char *content_root);

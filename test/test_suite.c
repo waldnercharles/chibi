@@ -69,6 +69,8 @@ bool test_rmlui_binding();
 int rmlui_render_run(const char *program, bool gles);
 /* Trackpad pinch (G). */
 void test_studio_pinch();
+/* UI source maps (workstream A) */
+void test_ui_sources();
 
 static int fails;
 
@@ -202,6 +204,8 @@ TEST_CASE(all_checks)
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
+    /* UI source maps (workstream A) */
+    test_ui_sources();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

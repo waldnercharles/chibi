@@ -50,8 +50,8 @@ These are on `main` and used by more than one workstream.
 | `studio_open_ui_source(s, path, line)` | `studio_code.c` | Stub returning false until UI documents land (D) |
 | `render_ui_context(ui)` | `src/render/ui.h` | The game UI's RmlUi context, for the Inspector |
 | Text Editor preferences | `studio_prefs`: `code_vim`, `code_font_size`, `code_apply_live` | Mirrored to `save.codeVim` and `save.codeApplyLive` |
-| Element source | `data-src="<Asset>:<line>"` on expanded elements (A) | The line is 1-based in the asset's `rml` block |
-| Stylesheet origin | `ui_style_origin(sheet, line)` → file and line (A) | Maps RmlUi's `PropertySource` lines to files |
+| Element source | `data-src="<Asset>:<line>"` on each element: `ui_document_sources(rml, asset, first)` and `ui_document_expand(…, sources, …)` in `src/assets/ui_document.h` (A) | The line is 1-based in the asset's `rml` block. A widget's elements name the widget, and the div in place of a `<use>` names the use element. Every `ui_mount` and `render_ui`'s page mark their elements; `<slot>` is never marked, and `data-src` is reserved |
+| Stylesheet origin | `rml_element_property_source(element, property, sheet, size, &line)` (`src/ui/rml.h`), then `ui_style_origin(sheet, line, path, size, &source_line)` (`src/support/ui_style.h`) (A) | RmlUi reports the rule's sheet name and its line. Hosts install named sheets (`rml_document_set_named_style_sheet`, `rml_document_add_named_style_sheet`) and record each sheet's `rcss_map` with `ui_style_set`. The sheets are `game-ui-<n>` for a `render_ui`, `kit-<document>` for a kit's theme and resources, and `kit-<document>-<key>` for each `kit_style_sheet`. `path` is an imported stylesheet's path; for a line of a ui asset's own `rcss` block it is the asset's `.yaml` path, and the line counts from the block's first line |
 
 ## Workstreams
 

@@ -287,3 +287,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/schedule.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/system.c
 )
+
+# UI source maps (docs/studio-ui-authoring.md, workstream A): where installed
+# stylesheets were written.
+list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/ui_style.c)

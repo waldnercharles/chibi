@@ -129,6 +129,7 @@ static void studio_save(studio *s)
         return;
     }
     finish_transform_edit(scene, false);
+    s->problems_checked = false;
     const char *failure = scene->message[0] ? scene->message : NULL;
     if (graph_focused(s) && scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         char title[160];
@@ -560,7 +561,7 @@ static void document_tabs(studio *s)
         } else {
             kit_flag(k, "data-state", false);
         }
-        kit_tip(k, tab->path, NULL);
+        kit_tip(k, tab->path, NULL, NULL);
         kit_icon(k, "icon", NULL, icon);
         kit_label(k, "label", "label", tab->label ? tab->label : "Untitled");
         if (dirty) {

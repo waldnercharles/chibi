@@ -29,6 +29,8 @@ static const node_desc ed_math_desc = {
     .name = "Behavior Expression",
     .category = "Math",
     .keywords = "formula expression equation calculate",
+    .description = "Evaluates a formula as a value, an action run on Exec, or "
+                   "a branch that fires True or False from Result.",
     .inputs = ed_math_inputs,
     .input_count = 2,
     .outputs = ed_math_outputs,
@@ -39,6 +41,7 @@ static const node_desc ed_comment_box_desc = {
     .name = "Comment Box",
     .category = "Basic",
     .keywords = "comment note annotation",
+    .description = "Adds a titled frame for grouping nodes.",
     .display_class = NODE_DISPLAY_PURE
 };
 
@@ -601,6 +604,17 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
         qsort(matches, (size_t)acount(matches), sizeof *matches, ed_search_match_cmp);
     }
     return matches;
+}
+
+node_subject ed_search_match_subject(const editor *e, const ed_search_match *match)
+{
+    return (node_subject){
+        .desc = match->desc,
+        .setting = match->setting,
+        .field = match->field,
+        .host = match->host_event ? &e->event_catalog[match->host_event - 1] : NULL,
+        .definition = match->event,
+    };
 }
 
 static node *spawn_match(editor *e, const ed_search_match *match)

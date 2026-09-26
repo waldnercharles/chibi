@@ -35,8 +35,12 @@ typedef struct
 static const kit_command_item COMMANDS[] = {
     { "Alpha", "Commands", NULL, NULL, NULL, 0 },
     { "Beta", "Commands", NULL, NULL, "second", 0 },
-    { "Frame Selected", "Commands", NULL, "F", "focus", 0 },
+    { "Frame Selected", "Commands", NULL, "F", "focus", 0, "Centers the view on the selection." },
 };
+
+static const char
+    TIP_ABOUT[] = "Fires True when Condition is true, otherwise False, "
+                  "and continues from whichever output fired.";
 
 static void emit(kit_fixture *f)
 {
@@ -56,6 +60,10 @@ static void emit(kit_fixture *f)
     if (kit_button(k, "button", &button)) {
         f->clicks++;
     }
+    kit_leaf(k, "about", NULL, NULL);
+    kit_style(k, "width", "40dp");
+    kit_style(k, "height", "20dp");
+    kit_tip(k, "Branch", NULL, TIP_ABOUT);
     kit_pop(k);
     kit_push(k, "fields", NULL, "prop-scroll");
     kit_style(k, "width", "300dp");
@@ -216,6 +224,29 @@ static void first_row_text(kit_fixture *f, char *text, size_t size)
         }
     }
     text[n] = '\0';
+}
+
+/* The shown tooltip's size, with its description's text. */
+static rml_vec2 tip_shown(kit_fixture *f, const char *path, char *about, size_t size)
+{
+    float x, y;
+    center(f, path, &x, &y);
+    pointer(f, RML_INPUT_POINTER_MOVE, 1, 1);
+    for (int i = 0; i < 10; i++) {
+        frame(f);
+    }
+    pointer(f, RML_INPUT_POINTER_MOVE, x, y);
+    for (int i = 0; i < 45; i++) {
+        frame(f);
+    }
+    rml_element *hovered = rml_context_hover_element(rml_backend_context(f->backend));
+    rml_element *document = rml_element_owner_document(hovered);
+    rml_element *text = rml_element_query_selector(document, ".tooltip .tip-about");
+    about[0] = '\0';
+    if (text) {
+        rml_element_inner_rml(text, about, size);
+    }
+    return rml_element_box_size(rml_element_query_selector(document, ".tooltip"), RML_BOX_BORDER);
 }
 
 static bool check(bool ok, const char *what)
@@ -401,6 +432,30 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(strcmp(matched_space, "Frame Selected") == 0, "highlighting keeps a matched space");
     ok &= check(strcmp(gap_space, "Frame Selected") == 0, "highlighting keeps a space between matches");
+
+    /* A described command takes a second line; others keep one. */
+    kit_rect plain, described;
+    f.open_command = true;
+    settle(&f);
+    ok &= check(
+        kit_find(f.k, "layer/@command/i0", &plain) &&
+            kit_find(f.k, "layer/@command/i2", &described) &&
+            described.h > plain.h,
+        "a command's description is a second line"
+    );
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    settle(&f);
+
+    /* Tooltips: the description wraps under the label, and a zoomed canvas
+       keeps the tooltip's size on screen. */
+    char about[256];
+    rml_vec2 tip = tip_shown(&f, "app/bar/about", about, sizeof about);
+    ok &= check(!strcmp(about, TIP_ABOUT), "a tooltip shows its description");
+    ok &= check(tip.x < 300 && tip.y > 40, "a tooltip's description wraps");
+    f.in.zoom = 2;
+    rml_vec2 zoomed = tip_shown(&f, "app/bar/about", about, sizeof about);
+    f.in.zoom = 0;
+    ok &= check(zoomed.x < tip.x * 0.6f, "a zoomed canvas's tooltip undoes the zoom");
 
     /* Keyed children reorder and prune without recreating survivors. */
     float ay, cy;

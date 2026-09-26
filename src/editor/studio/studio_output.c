@@ -1,10 +1,14 @@
 /* Output: the behavior log, compiler problems, the playing scene's runtime
  * errors (Unreal's message log) and the operation history (Blender's Info
  * editor), as virtualized, highlighted rows. Logs follow new output while
- * scrolled to the bottom; problems and errors open their node. */
+ * scrolled to the bottom; problems and errors open their node. Problems
+ * cover the open asset as it compiles live, or every graph asset of the
+ * project as of its last check. */
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/highlight.h"
+#include "editor/workspace/editor_internal.h"
 #include "graph/compiler/compile.h"
+#include "graph/document/problems.h"
 #include "support/array.h"
 
 #include <ctype.h>
@@ -19,6 +23,12 @@ enum
     OUTPUT_INFO,
     OUTPUT_FIND, /* Find References (studio_find.c) */
     OUTPUT_VIEWS,
+};
+
+enum
+{
+    PROBLEMS_ASSET,
+    PROBLEMS_PROJECT,
 };
 
 #define OUTPUT_LINE 1536
@@ -66,12 +76,81 @@ static const compile_report *problems(const studio *s)
     return q.compile;
 }
 
+/* "Asset › Graph › Node" for a problem, as far as the asset still holds it. */
+static void problem_place(const editor *e, const catalog_problem *problem, char *out, size_t size)
+{
+    graph *g = behavior_asset_find_graph(problem->asset, problem->graph_id);
+    node *n = g && problem->node_id ? graph_node_by_id(g, problem->node_id) : NULL;
+    if (!g) {
+        snprintf(out, size, "%s", problem->asset->name);
+        return;
+    }
+    const char *name = g->name && g->name[0] ? g->name : "Event Graph";
+    if (!n) {
+        snprintf(out, size, "%s \xe2\x80\xba %s", problem->asset->name, name);
+        return;
+    }
+    char title[128];
+    ed_node_title_in(e, problem->asset, g, graph_inline_owner(g, n), title, sizeof title);
+    snprintf(out, size, "%s \xe2\x80\xba %s \xe2\x80\xba %s", problem->asset->name, name, title);
+}
+
+/* Validates every graph asset of the project, with its unsaved edits. That
+   compiles them all, so it runs only while the project's problems show and
+   something was saved or reloaded since the last check, or on Refresh. */
+static void check_project(studio *s)
+{
+    const editor *e = s->scene->graph_editor;
+    catalog_problem *found = behavior_catalog_problems(e->asset_catalog, acount(e->asset_catalog));
+    asetlen(s->project_problems, 0);
+    for (int i = 0; i < acount(found); i++) {
+        studio_problem p = { .at = { .graph_id = found[i].graph_id,
+                                     .node_id = found[i].node_id },
+                             .error = found[i].severity == CMPL_ERROR };
+        snprintf(p.at.asset, sizeof p.at.asset, "%s", found[i].asset->name);
+        snprintf(p.message, sizeof p.message, "%s", found[i].message);
+        problem_place(e, &found[i], p.place, sizeof p.place);
+        apush(s->project_problems, p);
+    }
+    afree(found);
+    s->problems_checked = true;
+}
+
+static int problem_count(const studio *s)
+{
+    if (s->problems_scope == PROBLEMS_PROJECT) {
+        return acount(s->project_problems);
+    }
+    const compile_report *report = problems(s);
+    return report ? report->error_count + report->warning_count : 0;
+}
+
+/* The scope of the Problems view, and Refresh for the project's. */
+static void problems_header(studio *s)
+{
+    kit *k = s->kit;
+    static const char *const SCOPES[] = { "Asset", "Project" };
+    kit_push(k, "scope", NULL, "output-scope");
+    kit_toggle_group(k, "scope", &s->problems_scope, SCOPES, 2, 0);
+    kit_pop(k);
+    if (s->problems_scope != PROBLEMS_PROJECT) {
+        return;
+    }
+    kit_button_desc refresh = { .icon = KIT_ICON_REFRESH, .tip = "Refresh" };
+    if (kit_button(k, "refresh", &refresh)) {
+        s->problems_checked = false;
+    }
+}
+
 void studio_output_header(studio *s, int area)
 {
     (void)area;
     kit *k = s->kit;
-    const compile_report *report = problems(s);
-    int count = report ? report->error_count + report->warning_count : 0;
+    if (s->problems_scope == PROBLEMS_PROJECT && !s->problems_checked &&
+        s->scene->graph_editor) {
+        check_project(s);
+    }
+    int count = problem_count(s);
     int errors = acount(s->runtime_errors);
     char problems_label[32], runtime_label[32];
     snprintf(problems_label, sizeof problems_label, count ? "Problems %d" : "Problems", count);
@@ -80,6 +159,9 @@ void studio_output_header(studio *s, int area)
     kit_push(k, "views", NULL, "output-views");
     kit_toggle_group(k, "view", &s->output_view, views, OUTPUT_VIEWS, 0);
     kit_pop(k);
+    if (s->output_view == OUTPUT_PROBLEMS) {
+        problems_header(s);
+    }
     kit_leaf(k, "spacer", NULL, "spacer");
     kit_push(k, "filter", NULL, "output-filter");
     kit_search(k, "search", s->output_filter, sizeof s->output_filter, "Filter");
@@ -198,8 +280,45 @@ static void located_row_begin(kit *k, const char *key, kit_toast_type kind, cons
     kit_markup(k, "text", "output-line", markup);
 }
 
+/* Rows open their asset and reveal the node, like the open asset's. */
+static void project_view(studio *s, float row)
+{
+    kit *k = s->kit;
+    int total = acount(s->project_problems);
+    int *shown = NULL;
+    for (int i = 0; i < total; i++) {
+        const studio_problem *p = &s->project_problems[i];
+        if (contains(p->message, s->output_filter) ||
+            contains(p->place, s->output_filter)) {
+            apush(shown, i);
+        }
+    }
+    kit_list_desc list = { .count = acount(shown), .row_height = row, .reveal = -1 };
+    int first, last;
+    kit_list_begin(k, "project", "output-list", &list, &first, &last);
+    for (int r = first; r <= last && r < acount(shown); r++) {
+        const studio_problem *p = &s->project_problems[shown[r]];
+        char key[24];
+        snprintf(key, sizeof key, "q%d", shown[r]);
+        located_row_begin(k, key, p->error ? KIT_TOAST_ERROR : KIT_TOAST_WARNING, p->place, p->message);
+        kit_pop(k);
+        if (kit_item_clicked(k)) {
+            studio_reveal(s, &p->at);
+        }
+    }
+    kit_list_end(k);
+    if (!acount(shown)) {
+        empty(k, total ? "No matches" : "No problems");
+    }
+    afree(shown);
+}
+
 static void problems_view(studio *s, float row)
 {
+    if (s->problems_scope == PROBLEMS_PROJECT) {
+        project_view(s, row);
+        return;
+    }
     kit *k = s->kit;
     const compile_report *report = problems(s);
     int total = report ? acount(report->items) : 0;

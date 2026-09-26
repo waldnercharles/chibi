@@ -736,6 +736,16 @@ static void place_on_wire(studio *s, node *n, const ed_pin_view *from)
     }
 }
 
+/* What a search result does, as its second line. */
+static const char *match_about(studio *s, const editor *e, const ed_search_match *match)
+{
+    node_subject subject = ed_search_match_subject(e, match);
+    char text[256];
+    return node_subject_describe(&subject, text, sizeof text)
+             ? kit_string(s->kit, text)
+             : NULL;
+}
+
 bool studio_graph_palette(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -768,15 +778,15 @@ bool studio_graph_palette(studio *s)
     for (int i = 0; i < count; i++) {
         apush(
             items,
-            ((kit_command_item){ matches[i].name,
-                                 matches[i].category,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 matches[i].function ? KIT_ICON_FUNCTION
-                                 : matches[i].host_event || matches[i].event ? KIT_ICON_EVENT
-                                 : matches[i].variable ? KIT_ICON_FIELD
-                                                       : 0 })
+            ((kit_command_item){
+                .label = matches[i].name,
+                .group = matches[i].category,
+                .icon = matches[i].function ? KIT_ICON_FUNCTION
+                      : matches[i].host_event || matches[i].event ? KIT_ICON_EVENT
+                      : matches[i].variable ? KIT_ICON_FIELD
+                                            : 0,
+                .description = match_about(s, e, &matches[i]),
+            })
         );
     }
     int chosen = kit_command_ranked(s->kit, items, acount(items));

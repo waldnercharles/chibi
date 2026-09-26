@@ -2,6 +2,7 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
+#include "graph/authoring/describe.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
@@ -353,6 +354,21 @@ static void emit_dp(kit *k, const char *property, float value)
     kit_style(k, property, text);
 }
 
+/* Hovering a node's title tells what it does, under its full title. The tip
+   is set while the node is hovered, so idle nodes cost nothing. */
+static void emit_about(studio *s, node *n)
+{
+    const editor *e = sg_graph_editor(s);
+    if (s->graph.hover_node != n->id) {
+        return;
+    }
+    node_subject subject = node_subject_of(n, e->asset_catalog, acount(e->asset_catalog));
+    char about[256], title[256];
+    if (node_subject_describe(&subject, about, sizeof about)) {
+        kit_tip(s->graph.kit, sg_node_title(s, n, FORM_FULL, title, sizeof title), NULL, about);
+    }
+}
+
 static void emit_head(studio *s, node *n, const node_layout *l)
 {
     kit *k = s->graph.kit;
@@ -369,6 +385,7 @@ static void emit_head(studio *s, node *n, const node_layout *l)
         kit_icon(k, "i", NULL, icon);
     }
     kit_label(k, "t", "title", sg_node_title(s, n, l->form, title, sizeof title));
+    emit_about(s, n);
     if (l->head_out >= 0) {
         emit_pin(s, n, ED_PIN_OUTPUT, l->head_out, "hpin out", 0);
     }
@@ -461,6 +478,7 @@ static void emit_operator(studio *s, node *n, const node_layout *l)
         }
     }
     kit_label(k, "sym", "gsymbol", ed_node_symbol(n->desc));
+    emit_about(s, n);
     emit_dp(k, "left", l->column + PART_GAP);
     emit_dp(k, "right", SOCKET_PAD);
     emit_dp(k, "line-height", body);
@@ -557,7 +575,7 @@ static void emit_marks(studio *s, const studio_node_problem *problem, bool pause
     kit *k = s->graph.kit;
     if (problem) {
         kit_push(k, "problem", NULL, "gproblem");
-        kit_tip(k, problem->text, NULL);
+        kit_tip(k, problem->error ? "Error" : "Warning", NULL, problem->text);
         kit_icon(k, "i", NULL, problem->error ? KIT_ICON_ERROR : KIT_ICON_WARNING);
         kit_pop(k);
     }

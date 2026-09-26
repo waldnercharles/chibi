@@ -543,6 +543,49 @@ static void check_event_catalog_search()
     editor_free(e);
 }
 
+/* Search results that are undescribed, printing each. */
+static int undescribed(const editor *e, const char *query)
+{
+    ed_search_match *matches = ed_search_matches(e, query);
+    int missing = 0;
+    for (int i = 0; i < acount(matches); i++) {
+        node_subject subject = ed_search_match_subject(e, &matches[i]);
+        char about[256];
+        if (!node_subject_describe(&subject, about, sizeof about)) {
+            printf("  %s has no description\n", matches[i].name);
+            missing++;
+        }
+    }
+    afree(matches);
+    return missing;
+}
+
+/* The add-node palette describes each result: node types, component presets,
+   engine events and event definitions, sending one names it. */
+static void check_search_descriptions()
+{
+    behavior_asset *asset = behavior_asset_new("Described search");
+    behavior_asset *hit = behavior_asset_new("Hit");
+    hit->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    editor *e = editor_new(asset);
+    editor_set_event_catalog(e, GRAPH_HOST_EVENTS, GRAPH_HOST_EVENT_COUNT);
+    const behavior_asset *catalog[] = { hit };
+    editor_set_asset_catalog(e, catalog, 1);
+    test_check(!undescribed(e, "") && !undescribed(e, "health"), "every add-node search result has a description");
+    ed_search_match *matches = ed_search_matches(e, "Send Hit");
+    node_subject subject = acount(matches) ? ed_search_match_subject(e, &matches[0])
+                                           : (node_subject){ 0 };
+    char about[256] = "";
+    test_check(
+        subject.desc && node_subject_describe(&subject, about, sizeof about) &&
+            !strcmp(about, "Sends Hit to Entity."),
+        "a Send result names the event it sends"
+    );
+    afree(matches);
+    editor_free(e);
+    behavior_asset_free(hit);
+}
+
 /* Browsing the catalog with no query: entries by kind. */
 static void component_catalog_counts(const editor *e, const char *label)
 {
@@ -699,6 +742,7 @@ void run_editor_command_checks(void)
     check_library_search_snapshot();
     check_typed_wire_search();
     check_event_catalog_search();
+    check_search_descriptions();
     check_insert_on_wire();
     behavior_asset *asset = behavior_asset_new("Editor command test");
     node *source = graph_add_node(asset->graph, &g_editor_float_desc);

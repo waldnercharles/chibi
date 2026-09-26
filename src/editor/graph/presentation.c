@@ -55,6 +55,18 @@ static bool ed_component_title(const node *n, char *buf, size_t cap)
 
 const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
 {
+    return ed_node_title_in(e, e->asset, e->active_graph, n, buf, cap);
+}
+
+const char *ed_node_title_in(
+    const editor *e,
+    const behavior_asset *asset,
+    const graph *g,
+    const node *n,
+    char *buf,
+    size_t cap
+)
+{
     if (ed_component_title(n, buf, cap)) {
         return buf;
     }
@@ -68,34 +80,34 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
         return buf;
     }
     if (ed_is_graph_call(n)) {
-        const behavior_asset *asset = e->asset;
+        const behavior_asset *callee = asset;
         if (n->reference_asset) {
-            asset = NULL;
+            callee = NULL;
             for (int i = 0; i < acount(e->asset_catalog); i++) {
                 if (!strcmp(e->asset_catalog[i]->name, n->reference_asset)) {
-                    asset = e->asset_catalog[i];
+                    callee = e->asset_catalog[i];
                     break;
                 }
             }
         }
-        const graph *target = behavior_asset_find_graph(asset, n->reference_id);
+        const graph *target = behavior_asset_find_graph(callee, n->reference_id);
         const char *name = target ? target->name : n->reference_name;
         if (n->reference_asset && target) {
-            snprintf(buf, cap, "%s.%s", asset->name, name);
+            snprintf(buf, cap, "%s.%s", callee->name, name);
             return buf;
         }
         if (!name || !name[0]) {
             editor_node_label(n->desc, buf, cap);
             return buf;
         }
-        if (behavior_expression_source(e->asset, n)) {
+        if (behavior_expression_source(asset, n)) {
             snprintf(buf, cap, "%s", name);
         } else {
             editor_identifier_label(name, buf, cap);
         }
         return buf;
     }
-    const char *expression = behavior_expression_source(e->asset, n);
+    const char *expression = behavior_expression_source(asset, n);
     if (expression) {
         snprintf(buf, cap, "%s", expression);
         return buf;
@@ -106,7 +118,6 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
         return buf;
     }
     /* A macro's tunnels read as Inputs and Outputs, as in Unreal. */
-    const graph *g = e->active_graph;
     if (g && g->kind == GRAPH_MACRO && (n->id == g->entry_id || n->id == g->return_id)) {
         snprintf(buf, cap, "%s", n->id == g->entry_id ? "Inputs" : "Outputs");
         return buf;
@@ -114,7 +125,7 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
     char label[256];
     editor_node_label(n->desc, label, sizeof label);
     if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
-        const behavior_variable *variable = behavior_asset_find_variable_by_id(e->asset, n->reference_id);
+        const behavior_variable *variable = behavior_asset_find_variable_by_id(asset, n->reference_id);
         if (variable && variable->name) {
             char name[192];
             editor_identifier_label(variable->name, name, sizeof name);

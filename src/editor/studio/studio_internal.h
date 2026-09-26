@@ -113,6 +113,15 @@ typedef struct
     uint64_t graph_id, node_id;
 } studio_node_ref;
 
+/* An error or warning in one of the project's graph assets (studio_output.c). */
+typedef struct
+{
+    studio_node_ref at;
+    char place[256]; /* "Asset › Graph › Node" */
+    bool error;
+    char message[CMPL_MESSAGE_MAX];
+} studio_problem;
+
 /* Runs of the playing scene that failed at one node with one message. */
 typedef struct
 {
@@ -403,6 +412,9 @@ struct studio
     int shown_actor;     /* scene selection the Properties tabs last followed */
     studio_record_entry *records;
     studio_runtime_error *runtime_errors;
+    studio_problem *project_problems; /* the last check of every graph asset */
+    bool problems_checked;            /* no save or reload since that check */
+    int problems_scope;               /* the open asset, or the project */
     bool session;          /* the scene or a preview ran last frame */
     uint64_t compiled_key; /* the revision the open behavior's problems describe */
     struct

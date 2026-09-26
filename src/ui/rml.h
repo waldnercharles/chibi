@@ -606,6 +606,44 @@ extern "C"
     /* A text node's text; the element's tag must be "#text". */
     size_t rml_element_text(const rml_element *element, char *buffer, size_t size);
 
+    /* ---------- Text drawn by a custom element (workstream C, kit_code) ---------- */
+
+    /* A face's vertical metrics, in pixels. */
+    typedef struct rml_font_metrics
+    {
+        float ascent;  /* above the baseline */
+        float descent; /* below the baseline */
+        float line_spacing;
+    } rml_font_metrics;
+    rml_font_metrics rml_font_face_metrics(uintptr_t face);
+    /* Changes when the face's glyph textures do, which retires its text. */
+    int rml_font_version(uintptr_t face);
+    /* Width in pixels of text[0, size), as rml_font_string_width. */
+    int rml_font_string_width_n(uintptr_t face, const char *text, size_t size);
+
+    /* One line of text in a face, as meshes over the face's glyph textures
+     * with the baseline's start at the origin. The color is premultiplied. */
+    typedef struct rml_text rml_text;
+    rml_text *rml_text_create(
+        rml_render_manager *manager,
+        uintptr_t face,
+        const char *text,
+        size_t size,
+        rml_color color
+    );
+    void rml_text_render(const rml_text *text, rml_vec2 translation);
+    void rml_text_destroy(rml_text *text);
+
+    /* The scissor region in pixels; false while none is set. */
+    bool rml_render_scissor(const rml_render_manager *manager, rml_rect *region);
+    /* NULL removes the scissor. */
+    void rml_render_set_scissor(rml_render_manager *manager, const rml_rect *region);
+
+    /* A textinput event's text, copied as snprintf does. */
+    size_t rml_event_text(const rml_event *event, char *buffer, size_t size);
+    /* A mousescroll event's wheel delta; positive y scrolls down. */
+    rml_vec2 rml_event_wheel(const rml_event *event);
+
 #ifdef __cplusplus
 }
 #endif

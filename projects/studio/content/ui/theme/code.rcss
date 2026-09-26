@@ -8,3 +8,44 @@
 .tok-muted { color: var(--faint-foreground); }
 .tok-error { color: var(--destructive); }
 .tok-warning { color: var(--warning); }
+
+/* The code editor (kit_code). Zep draws it; each hidden swatch hands one of
+   its roles the color set here, and the tok-* classes above color the tokens. */
+kit-code {
+    display: block; position: relative; overflow: hidden; cursor: text;
+    tab-index: auto; drag: drag; font-family: "JetBrains Mono";
+}
+kit-code > span { visibility: hidden; position: absolute; width: 0dp; height: 0dp; }
+kit-code .code-text { color: var(--foreground); }
+kit-code .code-background { color: var(--canvas); }
+kit-code .code-gutter { color: var(--canvas); }
+kit-code .code-line-number { color: var(--faint-foreground); }
+kit-code .code-line-number-active { color: var(--muted-foreground); }
+kit-code .code-cursor { color: var(--foreground); }
+kit-code .code-cursor-insert { color: var(--foreground); }
+kit-code .code-selection { color: var(--primary-wash); }
+kit-code .code-cursor-line { color: var(--item-selected); }
+/* Zep also marks the glyph under the pointer in the status color. */
+kit-code .code-status { color: transparent; }
+kit-code .code-mode { color: var(--primary); }
+kit-code .code-whitespace { color: var(--line); }
+kit-code .code-scrollbar-track { color: transparent; }
+kit-code .code-scrollbar { color: var(--scrollbar); }
+kit-code .code-scrollbar-hover { color: var(--scrollbar-hover); }
+kit-code .code-tip-border { color: var(--tooltip-edge); }
+kit-code .code-flash { color: var(--highlight); }
+kit-code .code-info { color: var(--primary); }
+
+/* Completions under the cursor; choosing one returns focus to the editor. */
+.code-completions {
+    position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
+    border-radius: var(--r-lg); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
+    font-family: "JetBrains Mono"; font-size: 12dp;
+}
+.code-completion {
+    display: flex; align-items: center; gap: 12dp; height: var(--h); padding: 0dp 6dp; border-radius: var(--r);
+    white-space: nowrap; color: var(--foreground);
+}
+.code-completion .detail { margin-left: auto; font-family: Inter; color: var(--muted-foreground); }
+.code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
+.code-completion[data-highlighted] .detail { color: #ffffffcc; }

@@ -911,3 +911,11 @@ target_link_libraries(editor PRIVATE ui_source)
 target_link_libraries(automation PUBLIC ui_source chibi_render)
 target_sources(automation PRIVATE src/automation/ui_edit.c)
 target_sources(chibi_render PRIVATE src/render/ui_check.c)
+# --- Text editor on Zep (workstream C) ---------------------------------------
+# JetBrains Mono (OFL), the code editor's face, embedded as the UI faces are.
+set(GEN_CODE_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_code_font.c)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf" "${GEN_CODE_FONT}" editor_code_font)
+target_sources(chibi_ui PRIVATE ${GEN_CODE_FONT})
+add_dependencies(chibi_ui generate_editor_code_font)
+# Zep, its C binding and the kit_code primitive.
+include(cmake/zep.cmake)

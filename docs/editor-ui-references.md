@@ -36,6 +36,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
+| [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h` | Partial; highlighting, diagnostics and completion items come from the caller |
 
 ## Contracts
 
@@ -224,6 +225,23 @@ control's contract.
 - Styles lists the declarations that win, inline first and then by rule, most specific first, with each rule's file and line (`ui_style_origin`). Inherited declarations follow under the ancestor that gives them. RmlUi keeps only winning declarations, so nothing is struck through as overridden.
 - Force state holds `:hover`, `:active`, `:focus` and `:checked` on the selection until it is cleared.
 
+### Zep (kit_code)
+
+Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
+`kit_code.c` routes input and draws.
+
+- The editor object keeps the text, cursor and undo history; `kit_code` shows it for a frame. Edits from elsewhere arrive as `text_edit`s through `kit_code_apply`, one undo step.
+- Keys:
+  - Vim reads the physical Control key; the standard keys read the primary modifier (Command on a Mac), with Option and Command arrows moving by words and to line ends there.
+  - Save, Search, UI Scale and the drawers go back to the host as `kit_code_result.chord`, as do primary chords the standard keys do not edit with, and every Command chord in Vim on a Mac except Z (undo) and V (paste).
+  - Tab types; keys never reach RmlUi's focus navigation.
+  - `:w`, `:wq` and `:x` report `KIT_CODE_SAVED`; `:<line>` moves there; commands that would open files or windows do nothing.
+- A press places the cursor and dragging selects; the wheel scrolls by three lines a notch.
+- Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes.
+- Diagnostics mark the gutter and underline their line; the message shows while the pointer rests on it.
+- Text is JetBrains Mono through RmlUi's font engine, a mesh per run of one color, cached until a render no longer draws it. Colors come from `theme/code.rcss`.
+- The browser hands pasted text only to a `paste` event, which a Command+V the canvas lets through raises; the web build keeps it for the paste a frame later.
+
 ## Common mismatches to catch
 
 - **Toasts built by hand, or a modal used for a notice.** Use `kit_toast`. The status-bar report is for the last operation; toasts are for results the user might act on, such as Undo after Delete, or must not miss, such as a failed save.
@@ -238,3 +256,4 @@ control's contract.
 - **A theme, density or motion toggle that flashes or animates.** Apply preferences before the first frame and suspend transitions for the switch (next-themes).
 - **A chart built from many elements.** Use the chart element (Liveline, Recharts).
 - **Colors matched with regular expressions at the call site.** Use the shared token-run highlighter (Shiki).
+- **Source text edited in a text area.** Use `kit_code` (Zep) for anything longer than a note: it keeps undo, Vim and the standard keys, and takes edits as `text_edit`s.

@@ -81,6 +81,8 @@ void test_ui_check();
 void test_ui_pages();
 /* UI wiring (workstream K) */
 void test_ui_wiring();
+/* Workstream C: the code editor. */
+bool test_kit_code();
 
 static int fails;
 
@@ -226,6 +228,8 @@ TEST_CASE(all_checks)
     test_ui_pages();
     /* UI wiring (workstream K) */
     test_ui_wiring();
+    /* Workstream C: the code editor. */
+    test_check(test_kit_code(), "Code editor: standard and Vim keys, text_edits with undo, :w, host chords, completions and cached rendering");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -828,6 +832,10 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
+    }
+    /* Workstream C: the code editor alone. */
+    if (argc > 1 && strcmp(argv[1], "--kit-code") == 0) {
+        return test_kit_code() ? 0 : 1;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-render") == 0) {
         return rmlui_render_run(program_name, false);

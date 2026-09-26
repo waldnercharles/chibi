@@ -1025,6 +1025,7 @@ kit *kit_create(void *context, const char *document_path)
     register_chart_element();
     register_wires_element();
     register_dot_element();
+    register_code_element();
     k->listener = rml_listener_create(on_event, k);
     for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
         rml_element_add_event_listener(k->doc, kit_events[i], k->listener, true);
@@ -1331,10 +1332,10 @@ bool kit_wants_keyboard(const kit *k)
     }
     rml_element *focus = rml_context_focus_element(k->context);
     /* A focused number field handles its own keys during RmlUi dispatch; global
-       shortcuts still apply unless text is being edited. Hosted content owns
-       the keyboard while it holds focus. */
+       shortcuts still apply unless text is being edited. Hosted content and a
+       code editor own the keyboard while they hold focus. */
     node *n = focus ? node_for(k, focus) : NULL;
-    return focus && (is_input(focus) || (n && n->hosted));
+    return focus && (is_input(focus) || (n && (n->hosted || n->kind == KIND_CODE)));
 }
 
 bool kit_accepts_text(const kit *k)
@@ -1344,17 +1345,19 @@ bool kit_accepts_text(const kit *k)
         return false;
     }
     node *n = element_node(k, focus);
-    return is_input(focus) || (n && n->kind == KIND_NUMBER);
+    return is_input(focus) || (n && (n->kind == KIND_NUMBER || n->kind == KIND_CODE));
 }
 
 bool kit_wants_text(const kit *k, kit_rect *caret)
 {
     rml_element *focus = rml_context_focus_element(k->context);
-    if (!focus || !is_input(focus)) {
+    node *n = focus ? element_node(k, focus) : NULL;
+    bool code = n && n->kind == KIND_CODE;
+    if (!focus || !(is_input(focus) || code)) {
         return false;
     }
     if (caret) {
-        *caret = element_rect(k, focus);
+        *caret = code ? code_caret(k, n) : element_rect(k, focus);
     }
     return true;
 }

@@ -96,6 +96,11 @@ function uiDocuments() {
   assert.equal(published.published, true);
   assert.equal(published.hash, dry.after_hash);
   assert.equal(request("validateAsset", { kind: "ui", name: "Panel" }).valid, true);
+  const title = request("findReferences", { ui_class: "title" });
+  assert.deepEqual([title.definitions, title.uses].map(list => list.map(item => [item.path, item.line])),
+    [[["content/ui/Panel.yaml", 7]], [["content/ui/Panel.yaml", 3]]]);
+  assert.deepEqual(request("findReferences", { token: "--accent" }).uses.map(item => item.line), [7]);
+  assert.deepEqual(request("findReferences", { save_key: "hull" }).uses.map(item => item.line), [4]);
   request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, operations: [{ op: "delete_element", element: 1 }] }, true);
   assert.equal(lastResponse.error.code, "asset_conflict");
   const broken = request("buildUi", { kind: "ui", name: "Panel", expected_hash: published.hash, operations: [

@@ -270,10 +270,11 @@ typedef enum
     UI_SOURCE_AFTER,
 } ui_source_place;
 
-/* Each operation appends the edits that make its change to `edits`
- * (support/array.h), their texts owned by the array until
- * ui_source_edits_free. New lines take the indentation of the lines around
- * them. Returns false with a message in `error` and appends nothing when the
+/* Each operation names elements by their index in `elements`, and appends
+ * the edits that make its change to `edits` (support/array.h), their texts
+ * owned by the array until ui_source_edits_free. New lines take the
+ * indentation of the lines around them; a block written on one line is
+ * written again whole, as the asset writer writes it. Returns false with a message in `error` and appends nothing when the
  * change cannot be made. Edits of one call never overlap, but edits of
  * separate calls may: apply them, then parse again, between calls. */
 bool ui_source_set_attribute(

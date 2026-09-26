@@ -255,11 +255,13 @@ static bool identifier_char(char c)
     return isalnum((unsigned char)c) || c == '_';
 }
 
-/* Starts the word ending at the offset, of the characters `accept` takes. */
-static int word_start(const request *r, bool (*accept)(char))
+/* Starts the word ending at the offset: of identifier characters, or of
+ * name characters, which take '-' too. */
+static int word_start(const request *r, bool identifier)
 {
     int start = r->at;
-    while (start > 0 && accept(r->value[start - 1])) {
+    while (start > 0 && (identifier ? identifier_char(r->value[start - 1])
+                                    : name_char(r->value[start - 1]))) {
         start--;
     }
     return start;
@@ -303,7 +305,7 @@ static void settle(request *r, int start)
 /* Completes a data binding: the key after save. */
 static void complete_binding(request *r, const ui_source_project *project)
 {
-    int start = word_start(r, identifier_char);
+    int start = word_start(r, true);
     if (start >= 5 && !strncmp(r->value + start - 5, "save.", 5) &&
         (start == 5 || !identifier_char(r->value[start - 6]))) {
         offer_list(r, UI_COMPLETE_SAVE_KEY, project->save_keys, start);
@@ -388,7 +390,7 @@ static css_place css_place_at(const char *v, int from, int at, int depth)
 
 static void complete_css(request *r, const ui_source_project *project, int from, int depth)
 {
-    int start = word_start(r, name_char);
+    int start = word_start(r, false);
     switch (css_place_at(r->value, from, r->at, depth)) {
         case CSS_VARIABLE:
             offer_list(r, UI_COMPLETE_VARIABLE, project->variables, start);
@@ -459,7 +461,7 @@ static void complete_value(request *r, const ui_source_project *project, const c
 {
     char attribute[64];
     attribute_before(r->value, quote, attribute, sizeof attribute);
-    int start = word_start(r, name_char);
+    int start = word_start(r, false);
     if (!strcmp(tag, "use") && !strcmp(attribute, "ui")) {
         offer_list(r, UI_COMPLETE_WIDGET, project->widgets, start);
     } else if (!strcmp(attribute, "class")) {
@@ -493,7 +495,7 @@ static void complete_tag(request *r, const ui_source_project *project, const tag
         complete_value(r, project, tag, s->quote_at);
         return;
     }
-    int start = word_start(r, name_char);
+    int start = word_start(r, false);
     static const char CLASS_BINDING[] = "data-class-";
     if (r->at - start >= (int)sizeof CLASS_BINDING - 1 &&
         !strncmp(v + start, CLASS_BINDING, sizeof CLASS_BINDING - 1)) {

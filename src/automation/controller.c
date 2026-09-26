@@ -431,6 +431,10 @@ static const contract_field CONTRACT_FIND_REFERENCES[] = {
     { "roles", "string[]", false, "Only uses in these roles: use, call, argument, read, write, send, handle, spawn, attach, bind." },
     { "offset", "integer", false, "Zero-based page offset." },
     { "limit", "integer", false, "Page size, default 50, maximum 200." },
+    /* UI language service (workstream B) */
+    { "ui_class", "string", false, "A class ui assets and stylesheets name, instead of an asset." },
+    { "token", "string", false, "A custom property, with its --, instead of an asset." },
+    { "save_key", "string", false, "A save key ui bindings read as save.<key>, instead of an asset." },
 };
 static const contract_field CONTRACT_CALL_HIERARCHY[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -2799,6 +2803,17 @@ static navigation_asset *navigation_assets(const catalog_asset *assets, const re
 /* find_references and call_hierarchy, over the catalog's references. */
 static int handle_navigation(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
+    /* UI language service (workstream B): classes, tokens and save keys. */
+    if (!strcmp(request_string(request, "operation"), "find_references") &&
+        automation_ui_references_requested(request)) {
+        char failure[256] = { 0 };
+        yyjson_mut_val *found = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+        int status = automation_ui_references(root, request, result->doc, found, failure, sizeof failure);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, failure);
+        }
+        return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+    }
     catalog_asset *assets = NULL;
     uint64_t revision = 0, content_hash = 0;
     char error[256] = { 0 };

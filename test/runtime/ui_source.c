@@ -366,6 +366,55 @@ static bool apply_case(ui_source *s, edit_case which, text_edit **edits)
     return false;
 }
 
+/* Edits within one line: a middle class, style declarations replaced and
+ * removed, and elements that share their line. */
+static void inline_edits()
+{
+    static const char SAMPLE_LINE[] = "rml: |\n"
+                                      "  <p class=\"a b c\" style=\"width: "
+                                      "1dp; height: 2dp;\">Text<b>x</b></p>\n"
+                                      "  <hr/>\n";
+    static const struct
+    {
+        const char *label;
+        const char *expected;
+    } cases[] = {
+        { "remove a middle class", "  <p class=\"a c\" style=\"width: 1dp; height: 2dp;\">Text<b>x</b></p>\n  <hr/>\n" },
+        { "replace a style property", "  <p class=\"a b c\" style=\"width: 3dp; height: 2dp;\">Text<b>x</b></p>\n  <hr/>\n" },
+        { "remove the last style property", "  <p class=\"a b c\" style=\"width: 1dp;\">Text<b>x</b></p>\n  <hr/>\n" },
+        { "remove the first style property", "  <p class=\"a b c\" style=\"height: 2dp;\">Text<b>x</b></p>\n  <hr/>\n" },
+        { "insert a child before an inline close tag", "  <p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text<b>x</b><i/></p>\n  <hr/>\n" },
+        { "delete an element that shares its line", "  <p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text</p>\n  <hr/>\n" },
+        { "move an element after one on its own line", "  <p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text</p>\n  <hr/>\n  <b>x</b>\n" },
+    };
+    bool ok = true;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        ui_source *s = ui_source_parse(SAMPLE_LINE, false);
+        text_edit *list = NULL;
+        char error[160];
+        bool applied = i == 0
+                         ? ui_source_remove_class(s, 0, "b", &list, error, sizeof error)
+                     : i == 1
+                         ? ui_source_set_style(s, 0, "width", "3dp", &list, error, sizeof error)
+                     : i == 2
+                         ? ui_source_set_style(s, 0, "height", NULL, &list, error, sizeof error)
+                     : i == 3
+                         ? ui_source_set_style(s, 0, "width", NULL, &list, error, sizeof error)
+                     : i == 4
+                         ? ui_source_insert_element(s, 0, UI_SOURCE_INSIDE, "<i/>", &list, error, sizeof error)
+                     : i == 5
+                         ? ui_source_delete_element(s, 1, &list, error, sizeof error)
+                         : ui_source_move_element(s, 1, 2, UI_SOURCE_AFTER, &list, error, sizeof error);
+        char *text = applied ? edited(SAMPLE_LINE, list) : NULL;
+        char expected[512];
+        snprintf(expected, sizeof expected, "rml: |\n%s", cases[i].expected);
+        ok &= expect_text(cases[i].label, text, expected);
+        free(text);
+        ui_source_free(s);
+    }
+    test_check(ok, "ui source edits classes, style declarations and elements that share a line");
+}
+
 static void edits()
 {
     static const struct
@@ -405,6 +454,7 @@ static void edits()
         ui_source_free(s);
     }
     test_check(ok, "ui source edits attributes, classes, inline style and elements, keeping the block's indentation");
+    inline_edits();
 
     ui_source *s = ui_source_parse(EDIT_SAMPLE, false);
     text_edit *list = NULL;

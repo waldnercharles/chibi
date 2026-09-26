@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUTOMATION_UI_EDIT_H
 #define CHIBI_AUTOMATION_UI_EDIT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 typedef struct yyjson_mut_doc yyjson_mut_doc;
@@ -43,5 +44,21 @@ int automation_ui_edit(
  * custom properties, classes and save keys it names, and its syntax
  * errors. */
 void automation_ui_inspect(const char *text, yyjson_mut_doc *doc, yyjson_mut_val *result);
+
+/* Whether a findReferences request names what ui assets and stylesheets
+ * name: a class ("ui_class"), a custom property ("token", with its --) or a
+ * save key ("save_key"). */
+bool automation_ui_references_requested(yyjson_val *request);
+/* Their definitions (a selector styling the class, a declaration of the
+ * property) and uses across the ui assets and stylesheets under
+ * `root`/content, each at its path, line and column. */
+int automation_ui_references(
+    const char *root,
+    yyjson_val *request,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    char *error,
+    size_t error_size
+);
 
 #endif

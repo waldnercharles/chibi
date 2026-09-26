@@ -742,3 +742,87 @@ void automation_ui_inspect(const char *text, yyjson_mut_doc *doc, yyjson_mut_val
     syntax_diagnostics(source, doc, diagnostics);
     ui_source_free(source);
 }
+
+/* ---------- References ---------- */
+
+/* The symbols a findReferences request names by these keys. */
+static const struct
+{
+    const char *key;
+    ui_source_symbol_kind kind;
+} UI_SYMBOL_KEYS[] = {
+    { "ui_class", UI_SYMBOL_CLASS },
+    { "token", UI_SYMBOL_VARIABLE },
+    { "save_key", UI_SYMBOL_SAVE_KEY },
+};
+
+bool automation_ui_references_requested(yyjson_val *request)
+{
+    for (size_t i = 0; i < sizeof UI_SYMBOL_KEYS / sizeof *UI_SYMBOL_KEYS; i++) {
+        if (yyjson_obj_get(request, UI_SYMBOL_KEYS[i].key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void add_locations(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const ui_source_location *locations,
+    bool definitions,
+    size_t prefix
+)
+{
+    for (int i = 0; i < acount(locations); i++) {
+        if (locations[i].definition != definitions) {
+            continue;
+        }
+        yyjson_mut_val *place = yyjson_mut_arr_add_obj(doc, array);
+        yyjson_mut_obj_add_strcpy(doc, place, "path", locations[i].path + prefix);
+        yyjson_mut_obj_add_int(doc, place, "line", locations[i].line);
+        yyjson_mut_obj_add_int(doc, place, "column", locations[i].column);
+    }
+}
+
+int automation_ui_references(
+    const char *root,
+    yyjson_val *request,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    char *error,
+    size_t error_size
+)
+{
+    ui_source_symbol symbol = { .kind = UI_SYMBOL_NONE };
+    const char *key = NULL;
+    for (size_t i = 0; i < sizeof UI_SYMBOL_KEYS / sizeof *UI_SYMBOL_KEYS; i++) {
+        const char *name = yyjson_get_str(
+            yyjson_obj_get(request, UI_SYMBOL_KEYS[i].key)
+        );
+        if (name && name[0] && strlen(name) < sizeof symbol.name) {
+            symbol.kind = UI_SYMBOL_KEYS[i].kind;
+            snprintf(symbol.name, sizeof symbol.name, "%s", name);
+            key = UI_SYMBOL_KEYS[i].key;
+        }
+    }
+    if (!key) {
+        return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "ui_class, token and save_key each take a name");
+    }
+    char content[1024];
+    snprintf(content, sizeof content, "%s/content", root);
+    ui_source_project project = { 0 };
+    ui_source_project_scan(&project, content);
+    ui_source_location *found = NULL;
+    ui_source_references(&project, &symbol, &found);
+    yyjson_mut_val *named = yyjson_mut_obj_add_obj(doc, result, "symbol");
+    yyjson_mut_obj_add_str(doc, named, "kind", key);
+    yyjson_mut_obj_add_strcpy(doc, named, "name", symbol.name);
+    size_t prefix = strlen(root) + 1;
+    add_locations(doc, yyjson_mut_obj_add_arr(doc, result, "definitions"), found, true, prefix);
+    add_locations(doc, yyjson_mut_obj_add_arr(doc, result, "uses"), found, false, prefix);
+    yyjson_mut_obj_add_int(doc, result, "total", acount(found));
+    ui_source_locations_free(found);
+    ui_source_project_free(&project);
+    return CHIBI_AUTOMATION_OK;
+}

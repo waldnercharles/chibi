@@ -403,6 +403,9 @@ function buildToolDefinitions() {
       local: { type: "string", description: "Named value (local) in asset." },
       component: { type: "string", description: "Component name or key instead of an asset." },
       field: { type: "string", description: "Field path of component, such as current." },
+      ui_class: { type: "string", description: "A class ui assets and stylesheets name, instead of an asset." },
+      token: { type: "string", description: "A custom property with its --, such as --primary, instead of an asset." },
+      save_key: { type: "string", description: "A save key ui bindings read as save.<key>, instead of an asset." },
       roles: {
         type: "array",
         minItems: 1,

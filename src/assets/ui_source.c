@@ -1157,9 +1157,7 @@ static void parse_block(ui_source *source, block_map *m, bool stylesheet)
         outline_rcss(source, m, root, -1);
     }
     paint_block(source, m, stylesheet);
-    if (m->style != SCALAR_OTHER) {
-        diagnose(source, m, root);
-    }
+    diagnose(source, m, root);
 }
 
 ui_source *ui_source_parse(const char *text, bool stylesheet)
@@ -1386,9 +1384,6 @@ void ui_source_symbols(const ui_source *source, ui_source_symbol **out)
 {
     for (int b = 0; b < acount(source->trees->maps); b++) {
         const block_map *m = &source->trees->maps[b];
-        if (m->style == SCALAR_OTHER) {
-            continue;
-        }
         if (m->language == UI_SOURCE_RCSS) {
             css_occurrences(m, ts_tree_root_node(m->tree), out);
             continue;

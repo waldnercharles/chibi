@@ -93,6 +93,26 @@ int write_text_file_atomic(const char *path, const char *json)
     return result;
 }
 
+#ifdef __EMSCRIPTEN__
+EM_JS(int, web_delete_asset, (const char *path), {
+    return Module['chibiDeleteAsset']
+             ? Module['chibiDeleteAsset'](UTF8ToString(path))
+             : 0;
+})
+#endif
+
+int remove_content_file(const char *path)
+{
+    if (remove(path) != 0) {
+        return -1;
+    }
+#ifdef __EMSCRIPTEN__
+    return web_delete_asset(path);
+#else
+    return 0;
+#endif
+}
+
 int save_content_file(app_scene_authoring *scene, const char *path, const char *json)
 {
     int result = write_text_file_atomic(path, json);

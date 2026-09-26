@@ -25,11 +25,15 @@ typedef struct
     int context;
     double flow;
     const char *morph;
-    int reveal, rows_emitted;
+    int reveal, rows_emitted, hovered_row;
     char dropped[32];
     char note[64];
     int note_commits;
     bool focus_note;
+    bool open_rename;             /* a popover with a name field and one item */
+    bool focus_rename, b_renames; /* item B opens the popover focused */
+    char rename[32];
+    int rename_commits, rename_applied;
 } kit_fixture;
 
 static const kit_command_item COMMANDS[] = {
@@ -53,6 +57,7 @@ static void emit(kit_fixture *f)
         kit_menu_item_desc b = { .label = "B", .checked = -1 };
         if (kit_menu_item(k, "b", &b)) {
             f->menu_b++;
+            f->open_rename = f->focus_rename = f->b_renames;
         }
         kit_popup_end(k);
     }
@@ -103,6 +108,7 @@ static void emit(kit_fixture *f)
     kit_list_desc list = { .count = 1000, .row_height = 20, .reveal = f->reveal };
     int first, last;
     kit_list_begin(k, "big", NULL, &list, &first, &last);
+    f->hovered_row = -1;
     kit_style(k, "height", "200dp");
     kit_style(k, "flex", "0 0 auto");
     for (int i = first; i <= last; i++) {
@@ -111,6 +117,9 @@ static void emit(kit_fixture *f)
         kit_label(k, row, NULL, row);
         kit_style(k, "display", "block");
         kit_style(k, "height", "20dp");
+        if (kit_item_hovered(k)) {
+            f->hovered_row = i;
+        }
     }
     kit_list_end(k);
     f->rows_emitted = last - first + 1;
@@ -127,6 +136,20 @@ static void emit(kit_fixture *f)
     kit_style(k, "margin-left", "40dp");
     kit_drop_target(k, "thing", f->dropped, sizeof f->dropped);
     kit_pop(k);
+    if (f->open_rename) {
+        f->open_rename = false;
+        kit_popup_open_at(k, "rename", 100, 100);
+    }
+    if (kit_popup_begin(k, "rename", "menu")) {
+        f->rename_commits += kit_text_field(k, "name", f->rename, sizeof f->rename, NULL, 0);
+        if (f->focus_rename) {
+            kit_focus(k);
+            f->focus_rename = false;
+        }
+        kit_menu_item_desc apply = { .label = "Apply", .checked = -1 };
+        f->rename_applied += kit_menu_item(k, "apply", &apply);
+        kit_popup_end(k);
+    }
     if (f->open_command) {
         f->open_command = false;
         kit_command_open(k, "Search");
@@ -402,6 +425,41 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(f.menu_b == 1 && !kit_popup_is_open(f.k, "menu:app/bar/file"), "item activates and closes the menu");
 
+    /* A field in a popup takes typing and Enter; the popup keeps Escape. */
+    f.open_rename = true;
+    settle(&f);
+    ok &= check(click(&f, "layer/@rename/name"), "popover field is laid out");
+    key(&f, RML_INPUT_KEY_A, 0);
+    type(&f, "ab");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.rename_commits == 1 && !strcmp(f.rename, "ab") && !f.rename_applied &&
+            kit_popup_is_open(f.k, "rename"),
+        "a popover's field takes letters and Enter instead of the menu's "
+        "typeahead"
+    );
+    ok &= check(click(&f, "layer/@rename/name"), "popover field refocuses");
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "Escape in a popover's field closes the popover");
+    f.b_renames = true;
+    ok &= check(click(&f, "app/bar/file"), "menu trigger reopens");
+    settle(&f);
+    ok &= check(click(&f, "layer/@menu:app/bar/file/b"), "menu item is laid out again");
+    settle(&f);
+    ok &= check(
+        kit_popup_is_open(f.k, "rename") && kit_wants_text(f.k, NULL),
+        "a popover a menu item opens keeps its field's focus as the menu closes"
+    );
+    type(&f, "c");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(!strcmp(f.rename, "c"), "typing replaces the selection the move kept");
+    kit_popup_close(f.k, "rename");
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "close closes a popup at once");
+
     /* Command palette: ranking and keyboard selection. */
     f.open_command = true;
     settle(&f);
@@ -478,6 +536,17 @@ bool test_rmlui_kit()
     f.reveal = 999;
     settle(&f);
     ok &= check(kit_find(f.k, "app/big/r999", &removed) && f.rows_emitted < 40, "reveal scrolls to the row");
+
+    /* Hover finds the row under the pointer, never an overscan row laid out
+       past the list's edge and clipped. */
+    kit_rect big;
+    ok &= check(kit_find(f.k, "app/big", &big), "list is laid out");
+    pointer(&f, RML_INPUT_POINTER_MOVE, big.x + 5, big.y + 5);
+    settle(&f);
+    ok &= check(f.hovered_row >= 0, "the row under the pointer is hovered");
+    pointer(&f, RML_INPUT_POINTER_MOVE, big.x + 5, big.y - 5);
+    settle(&f);
+    ok &= check(f.hovered_row < 0, "an overscan row outside the list is not hovered");
 
     /* Drag and drop: picked up after 5 dp, dropped on the target under the pointer. */
     float sx = 0, sy = 0, tx = 0, ty = 0;

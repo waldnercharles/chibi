@@ -1237,6 +1237,7 @@ void studio_emit(studio *s)
     studio_projects_frame(s);
     studio_rewire_toast(s);
     studio_members_toast(s);
+    studio_refactor_frame(s);
 }
 
 /* Up and Down walk the Outliner's visible rows (Blender). */
@@ -1299,6 +1300,11 @@ void studio_shortcuts(studio *s)
         } else if (
             editor == STUDIO_EDITOR_MEMBERS &&
             studio_members_key(s, key, s->keys[i].mod)
+        ) {
+            continue;
+        } else if (
+            editor == STUDIO_EDITOR_ASSETS &&
+            studio_assets_key(s, key, s->keys[i].mod)
         ) {
             continue;
         } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {

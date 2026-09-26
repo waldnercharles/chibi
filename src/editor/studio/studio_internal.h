@@ -388,6 +388,42 @@ typedef struct
     } uses; /* each member's uses across the project */
 } studio_members;
 
+typedef enum
+{
+    STUDIO_REFACTOR_CLOSED,
+    STUDIO_REFACTOR_RENAME,
+    STUDIO_REFACTOR_DELETE,
+} studio_refactor_mode;
+
+typedef struct
+{
+    char text[192]; /* "Asset > Place" */
+} studio_refactor_use;
+
+/* The rename or safe-delete popover (studio_refactor.c). The symbol's asset
+   is found again by kind and name, since the index may rebuild meanwhile. */
+typedef struct
+{
+    studio_refactor_mode mode;
+    bool opening; /* open the popover this frame */
+    bool focus;   /* focus the name field on its first frame */
+    bool shown;   /* the popover showed last frame */
+    reference_symbol symbol;
+    int asset_kind;
+    char asset[128]; /* the asset holding the symbol, or the asset itself */
+    char event[128]; /* an event's name, which symbol.name borrows */
+    char title[128]; /* the symbol's name */
+    char name[128];  /* the new name, as typed */
+    char planned[128];
+    struct app_refactor *plan; /* renames to `planned` */
+    char error[192];
+    studio_refactor_use *uses; /* what a delete leaves dangling */
+    studio_member_kind member; /* a used member whose delete is confirmed */
+    uint64_t member_id;
+    struct app_refactor *undo; /* puts back the last applied change's files */
+    int undo_toast;
+} studio_refactor;
+
 /* The open project's editor/Components.yaml, re-read when it changes. */
 typedef struct
 {
@@ -493,6 +529,8 @@ struct studio
     kit_surface_input surface;
     studio_graph graph;
     studio_members members;
+    studio_refactor refactor;
+    int assets_hover;      /* the asset row under the pointer, or -1 */
     uint64_t shown_member; /* member the Properties tabs last followed */
     studio_presentation presentation;
     struct
@@ -611,6 +649,17 @@ bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 void studio_members_drop(studio *s);
 /* Runs the Undo a member delete's toast offers; call every frame. */
 void studio_members_toast(studio *s);
+/* Deletes a member at once, even while it is used. */
+void studio_members_delete_now(studio *s, studio_member_kind kind, uint64_t id);
+/* A rename of the open asset's function, macro or variable that other assets
+   name goes through the refactor popover: true when it took it. */
+bool studio_members_rename_across(
+    studio *s,
+    studio_member_kind kind,
+    uint64_t id,
+    const char *name,
+    const char *new_name
+);
 /* The selected member as a key that changes with the selection, or 0. */
 uint64_t studio_member_shown(studio *s);
 void studio_member_properties(studio *s);
@@ -618,6 +667,9 @@ void studio_member_properties(studio *s);
 bool studio_member_palette(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
+/* Keys over the Assets area: F2 renames the row under the pointer, X or
+   Delete deletes it. True when one was taken. */
+bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 const char *studio_asset_kind_name(int kind);
 uint32_t studio_asset_kind_icon(int kind);
 const char *studio_asset_kind_label(int kind); /* plural: "Behaviors" */
@@ -679,6 +731,36 @@ void studio_members_reveal(studio *s, studio_member_kind kind, uint64_t id);
 /* Opens a graph of the open document and frames one of its nodes. */
 void studio_reveal_node(studio *s, uint64_t graph_id, uint64_t node_id);
 void studio_record(studio *s, kit_toast_type kind, const char *text);
+
+/* Rename and safe delete across files (studio_refactor.c). A rename opens a
+   popover with the new name and the assets it rewrites; a delete of what is
+   still used lists the uses and asks. Applied changes offer Undo in a toast. */
+/* Whether an asset renames and deletes as a file: scenes and systems are
+   named elsewhere, and a missing asset has no file. */
+bool studio_asset_refactorable(const reference_asset *asset);
+/* Renames an event, its definition when it has one, and what sends and
+   handles it; host events keep their names. */
+void studio_refactor_rename_event(studio *s, const char *event);
+/* The event an Event, Call Event or Send Event node names, unless the host
+   names it; NULL for other nodes. */
+const char *studio_event_renameable(const node *n);
+void studio_refactor_rename_asset(studio *s, int asset);
+/* A member rename that reaches other assets goes through the popover: true
+   when it took it. */
+bool studio_refactor_member_rename(studio *s, reference_symbol symbol, const char *name, const char *new_name);
+/* Asks before deleting a symbol still used: true when the popover took it;
+   its Delete then deletes the member, or the asset when member is none. */
+bool studio_refactor_confirm_delete(
+    studio *s,
+    reference_symbol symbol,
+    const char *name,
+    studio_member_kind member,
+    uint64_t id
+);
+void studio_refactor_delete_asset(studio *s, int asset);
+/* The popover and the Undo toast; call every frame. */
+void studio_refactor_frame(studio *s);
+void studio_refactor_free(studio *s);
 
 /* Debugging (studio_debug.c). */
 typedef enum

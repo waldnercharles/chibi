@@ -57,6 +57,11 @@ typedef struct ui_document_event
 void ui_document_events(const char *rml, ui_document_event **events);
 void ui_document_events_free(ui_document_event *events);
 
+/* Owned markup with each name in it equal to `from` renamed `to`: widget
+ * names (<use ui>), or with `event`, the events data-event and data-keys
+ * send. Sets *count to the names renamed. */
+char *ui_document_rename(const char *rml, bool event, const char *from, const char *to, int *count);
+
 /* Owned RML document text: `base` then the asset's RCSS in the head, and its
  * markup in the body. */
 char *ui_document_compose(const ui_document *document, const char *base);

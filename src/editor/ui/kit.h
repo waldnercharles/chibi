@@ -124,6 +124,7 @@ extern "C"
     bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
+    bool kit_item_hovered(kit *k); /* under the pointer and not clipped away */
 
     /* Conditional class lists (clsx): KIT_CX(k, "area", { "fill", fill }, { "live", live })
      * joins the base with each class whose condition holds. The string lives until
@@ -255,13 +256,15 @@ extern "C"
     );
     void kit_list_end(kit *k);
 
-    /* Popups live in the document's overlay layer. Open anchors below the last item
-     * or at a point; begin returns true while open; end closes on activation. */
+    /* Popups live in the document's overlay layer. Open anchors below the last
+     * item or at a point; begin returns true while open; end closes on
+     * activation, and close closes one and its submenus at once. */
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
     bool kit_popup_is_open(const kit *k, const char *key);
     bool kit_popup_begin(kit *k, const char *key, const char *cls);
     void kit_popup_end(kit *k);
+    void kit_popup_close(kit *k, const char *key);
 
     typedef struct kit_menu_item_desc
     {

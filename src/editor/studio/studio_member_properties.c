@@ -294,7 +294,8 @@ static void variable_properties(studio *s, const behavior_variable *v)
         snprintf(name, sizeof name, "%s", v->name);
         snprintf(category, sizeof category, "%s", v->category ? v->category : "");
         kit_prop_begin(k, "name", "Name");
-        if (kit_text_field(k, "v", name, sizeof name, NULL, flags) && name[0]) {
+        if (kit_text_field(k, "v", name, sizeof name, NULL, flags) && name[0] &&
+            !studio_members_rename_across(s, STUDIO_MEMBER_VARIABLE, id, v->name, name)) {
             char *before = ed_snapshot(e);
             variable_edit(s, before, behavior_asset_rename_variable(e->asset, id, name) == 0, "A variable has that name");
         }
@@ -424,6 +425,14 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
     if (!renamed && !contained && !removed) {
         return defaulted;
     }
+    /* Calls in other assets name a library function's parameters too. */
+    reference_symbol parameter = { .kind = REFERENCE_SYMBOL_PARAMETER,
+                                   .asset = studio_refresh_document_asset(s),
+                                   .graph_id = g->graph_id,
+                                   .id = pin->id };
+    if (renamed && studio_refactor_member_rename(s, parameter, pin->name, name)) {
+        return false;
+    }
     pin_spec type = { .kind = PIN_DATA,
                       .type = pin->type,
                       .type_name = pin->type_name,
@@ -512,7 +521,8 @@ static void graph_properties(studio *s, graph *g)
         snprintf(name, sizeof name, "%s", g->name);
         kit_prop_begin(k, "name", "Name");
         if (kit_text_field(k, "v", name, sizeof name, NULL, locked(s) ? KIT_READONLY : 0) &&
-            name[0] && strcmp(name, g->name)) {
+            name[0] && strcmp(name, g->name) &&
+            !studio_members_rename_across(s, STUDIO_MEMBER_GRAPH, g->graph_id, g->name, name)) {
             editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
                                       .data.rename_graph = { g->graph_id, name } };
             if (editor_command_apply(e, rename) != 0) {

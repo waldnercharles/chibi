@@ -223,6 +223,15 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .tree-row .member-uses { height: 18dp; min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--fg-3); font-family: InterNumeric; }
 .tree-row .member-uses[data-unused] { color: var(--fg-off); }
 .member-rename .field { height: 20dp; margin-right: 4dp; }
+/* Rename and safe delete: the new name, then the assets it rewrites or the
+   uses a delete leaves, as rows shaped like the menu's items. */
+.popup.refactor { width: 300dp; }
+.refactor-field { display: block; padding: 2dp 4dp 4dp; }
+.refactor-field .field { height: 24dp; }
+.refactor-row { display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 8dp 0dp 6dp; white-space: nowrap; color: var(--fg); }
+.refactor-row .lead { color: var(--fg-2); }
+.refactor-row .label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.refactor-row .kbd { margin-left: 16dp; flex: 0 0 auto; color: var(--fg-3); }
 .type-pick { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; }
 .type-pick .member-swatch { margin: 0dp 4dp; }
 .type-pick .type-button { flex: 1 1 0dp; justify-content: flex-start; overflow: hidden; }

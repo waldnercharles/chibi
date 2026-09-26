@@ -256,6 +256,11 @@ static void node_menu(studio *s, node *n)
         studio_calls_node(s, n);
         return;
     }
+    if (studio_event_renameable(n) &&
+        menu_item(k, "rename-event", "Rename Event", KIT_ICON_EDIT, "F2", readonly)) {
+        studio_refactor_rename_event(s, studio_event_renameable(n));
+        return;
+    }
     graph_pin_run run;
     if (graph_pin_run_of(n, &run) &&
         menu_item(k, "addpin", "Add Pin", KIT_ICON_ADD, NULL, readonly)) {
@@ -628,7 +633,8 @@ static void rename_field(studio *s, graph *gr)
     kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     bool committed = kit_text_field(k, "rename", g->rename, sizeof g->rename, NULL, 0);
-    if (committed && g->rename[0] && (!gr->name || strcmp(gr->name, g->rename))) {
+    if (committed && g->rename[0] && (!gr->name || strcmp(gr->name, g->rename)) &&
+        !studio_members_rename_across(s, STUDIO_MEMBER_GRAPH, gr->graph_id, gr->name, g->rename)) {
         editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
                                   .data.rename_graph = { gr->graph_id, g->rename } };
         if (editor_command_apply(e, rename) != 0) {

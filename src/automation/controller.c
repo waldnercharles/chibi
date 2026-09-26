@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 
 #include "assets/prototype.h"
+#include "assets/refactor.h"
 #include "assets/reference_index.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
@@ -20,9 +21,11 @@
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/events.h"
+#include "graph/document/graph_signature.h"
 #include "graph/document/library.h"
 #include "graph/document/problems.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
@@ -435,6 +438,36 @@ static const contract_field CONTRACT_CALL_HIERARCHY[] = {
     { "direction", "string", false, "incoming (callers), outgoing (callees) or both; defaults to both." },
     { "depth", "integer", false, "Levels below the root, 1 to 6; defaults to 2." },
 };
+static const contract_field CONTRACT_RENAME_SYMBOL[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
+    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
+    { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
+    { "variable", "string", false, "Variable name in asset." },
+    { "parameter", "string", false, "Input or output name of the function graph names." },
+    { "local", "string", false, "Named value (local) in asset." },
+    { "event", "string", false, "Event name; its definition, when it has one, goes with it." },
+    { "component", "string", false, "Component name or key; refused, since C reflection names it." },
+    { "field", "string", false, "Field path of component; refused." },
+    { "dry_run", "boolean", false, "List every asset and change without publishing; defaults to true." },
+    { "expected_hashes", "object", false, "The dry run's path-to-hash map; required to publish." },
+    { "new_name", "string", true, "The symbol's new name." },
+};
+static const contract_field CONTRACT_DELETE_SYMBOL[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
+    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
+    { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
+    { "variable", "string", false, "Variable name in asset." },
+    { "parameter", "string", false, "Input or output name of the function graph names." },
+    { "local", "string", false, "Named value (local) in asset." },
+    { "event", "string", false, "Event name; its definition, when it has one, goes with it." },
+    { "component", "string", false, "Component name or key; refused, since C reflection names it." },
+    { "field", "string", false, "Field path of component; refused." },
+    { "dry_run", "boolean", false, "List every asset and change without publishing; defaults to true." },
+    { "expected_hashes", "object", false, "The dry run's path-to-hash map; required to publish." },
+    { "force", "boolean", false, "Delete while references remain, and list them as dangling." },
+};
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
     { "search_nodes",
@@ -713,6 +746,28 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         true,
         true,
         false,
+    },
+    {
+        "rename_symbol",
+        "Rename a symbol and every reference to it across assets, as one "
+        "hash-checked change.",
+        CONTRACT_RENAME_SYMBOL,
+        CONTRACT_FIELD_COUNT(CONTRACT_RENAME_SYMBOL),
+        1,
+        false,
+        false,
+        true,
+    },
+    {
+        "delete_symbol",
+        "Delete an asset, event definition, function or variable that nothing "
+        "references, as one hash-checked change.",
+        CONTRACT_DELETE_SYMBOL,
+        CONTRACT_FIELD_COUNT(CONTRACT_DELETE_SYMBOL),
+        1,
+        false,
+        false,
+        true,
     },
 };
 
@@ -1951,10 +2006,15 @@ static int catalog_snapshot_get(
     return 0;
 }
 
+static void hash_text(uint64_t hash, char text[17])
+{
+    snprintf(text, 17, "%016llx", (unsigned long long)hash);
+}
+
 static void add_hash_named(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *key, uint64_t hash)
 {
-    char text[32];
-    snprintf(text, sizeof text, "%016llx", (unsigned long long)hash);
+    char text[17];
+    hash_text(hash, text);
     yyjson_mut_obj_add_strcpy(doc, object, key, text);
 }
 
@@ -2212,6 +2272,19 @@ static yyjson_mut_val *add_catalog_reference(
     return object;
 }
 
+static void add_catalog_diagnostics(yyjson_mut_doc *doc, yyjson_mut_val *object, const catalog_asset *asset)
+{
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
+    for (int i = 0; i < acount(asset->diagnostics); i++) {
+        const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+        yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
+        yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
+        yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
+    }
+}
+
 static yyjson_mut_val *add_catalog_asset(
     yyjson_mut_doc *doc,
     yyjson_mut_val *array,
@@ -2251,15 +2324,7 @@ static yyjson_mut_val *add_catalog_asset(
     for (int i = 0; i < acount(asset->dependents); i++) {
         add_catalog_reference(doc, dependents, &asset->dependents[i], assets, count);
     }
-    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
-    for (int i = 0; i < acount(asset->diagnostics); i++) {
-        const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
-        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
-        yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
-        yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
-        yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
-        yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
-    }
+    add_catalog_diagnostics(doc, object, asset);
     yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
     yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
     yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
@@ -9279,6 +9344,363 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
     return status == CHIBI_AUTOMATION_OK ? 0 : -1;
 }
 
+/* ---------- Rename and safe delete ---------- */
+
+/* The project as refactor.h plans on it: the catalog's index, the names
+   navigation gives its assets, and each indexed asset's file text and hash. */
+typedef struct
+{
+    catalog_asset *assets;
+    navigation nav;
+    int count;    /* the index's assets */
+    char **texts; /* parallel to the index */
+    uint64_t *hashes;
+    int *catalog; /* the catalog asset at each index position, or -1 */
+} refactor_view;
+
+/* Publishing rebuilds the catalog, which frees the index and its assets. */
+static void refactor_view_free(refactor_view *view)
+{
+    for (int i = 0; i < view->count; i++) {
+        free(view->texts[i]);
+    }
+    free(view->texts);
+    free(view->hashes);
+    free(view->catalog);
+    free((navigation_asset *)view->nav.assets);
+}
+
+static int refactor_view_load(const char *root, refactor_view *view, char *error, size_t size)
+{
+    uint64_t revision, content_hash;
+    *view = (refactor_view){ 0 };
+    if (catalog_snapshot_get(root, &view->assets, &revision, &content_hash, error, size)) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    const reference_index *index = CATALOG_SNAPSHOT.references;
+    view->nav = (navigation){ index, navigation_assets(view->assets, index) };
+    view->count = reference_index_asset_count(index);
+    view->catalog = catalog_positions(view->assets, index);
+    view->texts = xcalloc((size_t)view->count + 1, sizeof *view->texts);
+    view->hashes = xcalloc((size_t)view->count + 1, sizeof *view->hashes);
+    for (int i = 0; i < view->count; i++) {
+        if (view->catalog[i] < 0) {
+            continue;
+        }
+        char *path = catalog_path(root, &view->assets[view->catalog[i]]);
+        view->texts[i] = read_file(path, NULL, &view->hashes[i], error, size);
+        free(path);
+        if (!view->texts[i]) {
+            return CHIBI_AUTOMATION_IO_ERROR;
+        }
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* References elsewhere, each placed as find_references places a use. */
+static void add_refactor_uses(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *parent,
+    const char *key,
+    const refactor_view *view,
+    const reference *const *uses
+)
+{
+    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, parent, key);
+    for (int i = 0; i < acount(uses); i++) {
+        automation_add_use(&view->nav, doc, yyjson_mut_arr_add_obj(doc, array), uses[i], true);
+    }
+}
+
+static void add_refactor_asset(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const refactor_view *view,
+    int position
+)
+{
+    const navigation_asset *asset = &view->nav.assets[position];
+    yyjson_mut_obj_add_strcpy(doc, object, "kind", asset->kind);
+    yyjson_mut_obj_add_strcpy(doc, object, "name", asset->name);
+    yyjson_mut_obj_add_strcpy(doc, object, "path", asset->path);
+}
+
+static void add_refactor_edit(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *item,
+    yyjson_mut_val *hashes,
+    const refactor_view *view,
+    const refactor_edit *edit
+)
+{
+    const catalog_asset *asset = &view->assets[view->catalog[edit->asset]];
+    char hash[17];
+    hash_text(view->hashes[edit->asset], hash);
+    add_refactor_asset(doc, item, view, edit->asset);
+    yyjson_mut_obj_add_strcpy(doc, item, "hash", hash);
+    yyjson_mut_obj_add(
+        hashes,
+        yyjson_mut_strcpy(doc, asset->asset.relative),
+        yyjson_mut_strcpy(doc, hash)
+    );
+    if (edit->name) {
+        char path[512];
+        snprintf(
+            path,
+            sizeof path,
+            "content/%s/%s" ASSET_EXTENSION,
+            asset->asset.family->folder,
+            edit->name
+        );
+        yyjson_mut_obj_add_strcpy(doc, item, "new_name", edit->name);
+        yyjson_mut_obj_add_strcpy(doc, item, "new_path", path);
+    }
+    if (edit->text) {
+        add_hash_named(doc, item, "after_hash", automation_content_hash(edit->text, strlen(edit->text)));
+    } else {
+        yyjson_mut_obj_add_bool(doc, item, "deleted", true);
+    }
+    yyjson_mut_val *changes = yyjson_mut_obj_add_arr(doc, item, "changes");
+    for (int i = 0; i < acount(edit->references); i++) {
+        automation_add_use(&view->nav, doc, yyjson_mut_arr_add_obj(doc, changes), edit->references[i], false);
+    }
+}
+
+/* Every asset the plan changes, with its changes and hashes. */
+static void add_refactor_plan(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value,
+    const refactor_view *view,
+    const refactor_plan *plan
+)
+{
+    yyjson_mut_val *assets = yyjson_mut_obj_add_arr(doc, value, "assets");
+    yyjson_mut_val *hashes = yyjson_mut_obj_add_obj(doc, value, "expected_hashes");
+    for (int i = 0; i < acount(plan->edits); i++) {
+        add_refactor_edit(doc, yyjson_mut_arr_add_obj(doc, assets), hashes, view, &plan->edits[i]);
+    }
+    yyjson_mut_val *mentions = yyjson_mut_obj_add_arr(doc, value, "mentions");
+    for (int i = 0; i < acount(plan->mentions); i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, mentions);
+        add_refactor_asset(doc, item, view, plan->mentions[i].asset);
+        yyjson_mut_obj_add_strcpy(doc, item, "value", plan->mentions[i].path);
+    }
+    add_refactor_uses(doc, value, "dangling", view, plan->dangling);
+}
+
+/* The dry run's hashes name exactly the assets the plan changes, as they
+   are now. */
+static int refactor_expected(
+    yyjson_val *request,
+    const refactor_view *view,
+    const refactor_plan *plan,
+    char *error,
+    size_t size
+)
+{
+    yyjson_val *expected = yyjson_obj_get(request, "expected_hashes");
+    if (!yyjson_is_obj(expected)) {
+        set_error(error, size, "publishing requires expected_hashes from the dry run");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    bool same = yyjson_obj_size(expected) == (size_t)acount(plan->edits);
+    for (int i = 0; same && i < acount(plan->edits); i++) {
+        const refactor_edit *edit = &plan->edits[i];
+        char hash[17];
+        hash_text(view->hashes[edit->asset], hash);
+        const char *given = yyjson_get_str(
+            yyjson_obj_get(expected, view->nav.assets[edit->asset].path)
+        );
+        same = given && !strcmp(given, hash);
+    }
+    if (!same) {
+        set_error(error, size, "the assets changed since the dry run; run it again and pass its expected_hashes");
+        return CHIBI_AUTOMATION_CONFLICT;
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* A published asset: its path after the change, and whether it validated
+   before. */
+typedef struct
+{
+    char path[512];
+    bool valid;
+    bool deleted;
+} refactor_published;
+
+/* Counts the assets that validated before the change and no longer do, and
+   lists their diagnostics; -1 when the catalog cannot be read. */
+static int refactor_invalid(
+    const char *root,
+    const refactor_published *published,
+    int count,
+    response *result,
+    yyjson_mut_val *value,
+    char *error,
+    size_t size
+)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision, content_hash;
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, size)) {
+        return -1;
+    }
+    yyjson_mut_val *invalid = yyjson_mut_obj_add_arr(result->doc, value, "invalid");
+    int failed = 0;
+    for (int i = 0; i < count; i++) {
+        for (int j = 0;
+             published[i].valid && !published[i].deleted && j < acount(assets);
+             j++) {
+            if (!strcmp(assets[j].asset.relative, published[i].path) &&
+                !assets[j].valid) {
+                yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, invalid);
+                yyjson_mut_obj_add_strcpy(
+                    result->doc,
+                    item,
+                    "path",
+                    assets[j].asset.relative
+                );
+                add_catalog_diagnostics(result->doc, item, &assets[j]);
+                failed++;
+            }
+        }
+    }
+    return failed;
+}
+
+/* Publishes a plan's edits as one batch, validates each asset it changed,
+   and puts every original back when one that validated no longer does. */
+static int refactor_publish(
+    const char *root,
+    const refactor_view *view,
+    const refactor_plan *plan,
+    bool revalidate,
+    response *result,
+    yyjson_mut_val *value,
+    char *error,
+    size_t size
+)
+{
+    int count = acount(plan->edits);
+    automation_asset_change *changes = xcalloc((size_t)count, sizeof *changes);
+    refactor_published *published = xcalloc((size_t)count, sizeof *published);
+    char (*hashes)[17] = xcalloc((size_t)count, sizeof *hashes);
+    char (*names)[256] = xcalloc((size_t)count, sizeof *names);
+    for (int i = 0; i < count; i++) {
+        const refactor_edit *edit = &plan->edits[i];
+        const catalog_asset *asset = &view->assets[view->catalog[edit->asset]];
+        hash_text(view->hashes[edit->asset], hashes[i]);
+        snprintf(names[i], sizeof names[i], "%s" ASSET_EXTENSION, edit->name ? edit->name : "");
+        const char *filename = edit->name ? names[i] : asset->asset.filename;
+        changes[i] = (automation_asset_change){ .folder = asset->asset.family->folder,
+                                                .filename = asset->asset.filename,
+                                                .rename_to = edit->name ? names[i] : NULL,
+                                                .text = edit->text,
+                                                .expected_hash = hashes[i] };
+        snprintf(
+            published[i].path,
+            sizeof published[i].path,
+            "content/%s/%s",
+            asset->asset.family->folder,
+            filename
+        );
+        published[i].valid = asset->valid;
+        published[i].deleted = !edit->text;
+    }
+    automation_asset_batch *batch = NULL;
+    int status = automation_assets_publish(root, changes, count, &batch, error, size);
+    /* The catalog is rebuilt from here on; the view is stale. */
+    int invalid = status == CHIBI_AUTOMATION_OK && revalidate
+                    ? refactor_invalid(root, published, count, result, value, error, size)
+                    : 0;
+    if (status == CHIBI_AUTOMATION_OK && invalid) {
+        char why[256];
+        snprintf(why, sizeof why, "%s", invalid < 0 ? error : "a changed asset no longer validates; every asset is restored");
+        /* A failed rollback keeps its own error, which says where the
+           originals are. */
+        status = automation_assets_rollback(batch, error, size);
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            set_error(error, size, why);
+        }
+    } else if (status == CHIBI_AUTOMATION_OK) {
+        automation_assets_commit(batch);
+    }
+    free(changes);
+    free(published);
+    free(hashes);
+    free(names);
+    return status;
+}
+
+/* rename_symbol and delete_symbol: plan on the catalog's files, list the
+   plan, and publish it when the request brings the dry run's hashes. */
+static int handle_refactor(const char *root, yyjson_val *request, bool rename, response *result, int *exit_code)
+{
+    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
+    yyjson_val *force_value = yyjson_obj_get(request, "force");
+    const char *name = request_string(request, "new_name");
+    bool dry = !dry_value || yyjson_get_bool(dry_value);
+    bool force = yyjson_get_bool(force_value);
+    char error[256] = { 0 };
+    if ((dry_value && !yyjson_is_bool(dry_value)) ||
+        (force_value && !yyjson_is_bool(force_value)) || (rename && !name)) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            rename ? "rename_symbol requires new_name and a boolean dry_run"
+                   : "delete_symbol takes boolean dry_run and force"
+        );
+        return -1;
+    }
+    refactor_view view;
+    reference_symbol symbol = { 0 };
+    int status = refactor_view_load(root, &view, error, sizeof error);
+    status = status == CHIBI_AUTOMATION_OK
+               ? automation_select_symbol(&view.nav, request, &symbol, error, sizeof error)
+               : status;
+    game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
+                                         .component_count = GAME_REGISTRY_COMPONENT_COUNT };
+    refactor_project project = { .index = view.nav.index,
+                                 .texts = (const char *const *)view.texts,
+                                 .registry = &registry };
+    refactor_plan plan = { 0 };
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
+    if (status == CHIBI_AUTOMATION_OK && !rename && !force) {
+        const reference **blockers = NULL;
+        refactor_blockers(view.nav.index, symbol, &blockers);
+        add_refactor_uses(result->doc, value, "references", &view, blockers);
+        afree(blockers);
+    }
+    if (status == CHIBI_AUTOMATION_OK &&
+        (rename ? refactor_rename(&project, symbol, name, &plan, error, sizeof error)
+                : refactor_delete(&project, symbol, force, &plan, error, sizeof error))) {
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        add_refactor_plan(result->doc, value, &view, &plan);
+    }
+    if (status == CHIBI_AUTOMATION_OK && !dry) {
+        status = refactor_expected(request, &view, &plan, error, sizeof error);
+    }
+    if (status == CHIBI_AUTOMATION_OK && !dry) {
+        status = refactor_publish(root, &view, &plan, rename || !force, result, value, error, sizeof error);
+        yyjson_mut_obj_remove_key(value, "published");
+        yyjson_mut_obj_add_bool(result->doc, value, "published", status == CHIBI_AUTOMATION_OK);
+    }
+    refactor_plan_free(&plan);
+    refactor_view_free(&view);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    return 0;
+}
+
 static int operation_requires_root(const char *operation)
 {
     return !strcmp(operation, "edit_graph") || !strcmp(operation, "edit_prototype") ||
@@ -9298,7 +9720,9 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "run_scenario") ||
            !strcmp(operation, "runtime_snapshot") ||
            !strcmp(operation, "record_scenario") ||
-           !strcmp(operation, "replay_scenario");
+           !strcmp(operation, "replay_scenario") ||
+           !strcmp(operation, "rename_symbol") ||
+           !strcmp(operation, "delete_symbol");
 }
 
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -9397,6 +9821,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_replay_scenario(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "read_recording")) {
         handle_read_recording(root_value, &result, exit_code);
+    } else if (!strcmp(operation, "rename_symbol") || !strcmp(operation, "delete_symbol")) {
+        handle_refactor(root, root_value, !strcmp(operation, "rename_symbol"), &result, exit_code);
     } else {
         handle_describe_registry(root_value, &result, exit_code);
     }

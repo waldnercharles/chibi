@@ -766,6 +766,38 @@ function buildToolDefinitions() {
     ],
     additionalProperties: false,
   };
+  // Rename and delete select a symbol as findReferences does.
+  const editProperties = {
+    ...symbolProperties,
+    variable: referenceArguments.properties.variable,
+    parameter: referenceArguments.properties.parameter,
+    local: referenceArguments.properties.local,
+    component: { type: "string", description: "Component name or key; refused, since C reflection names it." },
+    field: { type: "string", description: "Field path of component; refused." },
+    dry_run: { type: "boolean", default: true, description: "List every asset and change without publishing; defaults to true." },
+    expected_hashes: {
+      type: "object",
+      additionalProperties: { type: "string" },
+      description: "The dry run's expected_hashes, passed back unchanged; required when dry_run is false.",
+    },
+  };
+  const renameArguments = {
+    type: "object",
+    properties: {
+      ...editProperties,
+      new_name: { type: "string", description: "The symbol's new name; an asset's also names its file." },
+    },
+    required: ["new_name"],
+    additionalProperties: false,
+  };
+  const deleteArguments = {
+    type: "object",
+    properties: {
+      ...editProperties,
+      force: { type: "boolean", description: "Delete while references remain, and list them as dangling." },
+    },
+    additionalProperties: false,
+  };
   return [
     {
       name: "getProjectStatus",
@@ -818,6 +850,20 @@ function buildToolDefinitions() {
       operation: "call_hierarchy",
       description: "Trace a function's or event's callers and callees as a tree.",
       inputSchema: hierarchyArguments,
+      outputSchema,
+    },
+    {
+      name: "renameSymbol",
+      operation: "rename_symbol",
+      description: "Rename a symbol and every reference to it across assets.",
+      inputSchema: renameArguments,
+      outputSchema,
+    },
+    {
+      name: "deleteSymbol",
+      operation: "delete_symbol",
+      description: "Delete a symbol nothing references, or force it and list what dangles.",
+      inputSchema: deleteArguments,
       outputSchema,
     },
     {
@@ -1113,6 +1159,15 @@ function responseNextSteps(name, response, args) {
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
   }
+  const refactor = name === "renameSymbol" || name === "deleteSymbol";
+  if (refactor && code === "asset_conflict") {
+    return [`Call ${name} again as a dry run for current expected_hashes, then publish with them.`];
+  }
+  if (refactor && code === "invalid_request") {
+    return name === "deleteSymbol" && Array.isArray(response?.result?.references) && response.result.references.length
+      ? ["Remove the listed references, or pass force to delete anyway and leave them dangling."]
+      : ["Correct the symbol selector or the new name, then run the dry run again."];
+  }
   if (code === "asset_conflict") {
     return ["Call inspectGraph or readAsset for the current content hash, then retry the edit."];
   }
@@ -1135,6 +1190,12 @@ function responseNextSteps(name, response, args) {
   }
   if (uiSteps.length) {
     return [...uiSteps, ...defaultNextSteps(name)];
+  }
+  if (refactor && result?.dry_run === true) {
+    return [
+      "Review the listed assets, changes and mentions.",
+      `Call ${name} with dry_run false and the returned expected_hashes to publish.`,
+    ];
   }
   if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
@@ -1195,6 +1256,20 @@ function errorDetails(result) {
   const details = {};
   if (Number.isInteger(result.failed_operation)) {
     details.failed_operation = result.failed_operation;
+  }
+  // A refused delete names what still uses the symbol; a failed publish, what no longer validates.
+  if (Array.isArray(result.references) && result.references.length) {
+    details.references = result.references.slice(0, 8).map((item) => ({
+      kind: item.kind,
+      name: item.name,
+      role: item.role,
+      graph: item.graph,
+      object: item.object,
+      component: item.component,
+    }));
+  }
+  if (Array.isArray(result.invalid) && result.invalid.length) {
+    details.invalid = result.invalid.slice(0, 8);
   }
   const diagnostics = result.diagnostics ?? result.validation?.diagnostics;
   if (Array.isArray(diagnostics) && diagnostics.length) {
@@ -1269,7 +1344,7 @@ function toolSummary(name, response) {
   if (isObject(result.counts)) {
     summary.counts = result.counts;
   }
-  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals", "uses"]) {
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals", "uses", "mentions", "dangling", "references", "invalid"]) {
     if (Array.isArray(result[key])) {
       summary[`${key}_count`] = result[key].length;
     }

@@ -29,6 +29,8 @@
             return -1;
         }
     };
+    // A save without text deletes the file, as a rename or delete does.
+    Module['chibiDeleteAsset'] = path => Module['chibiSaveAsset'](path, null);
     // An unchanged file keeps its time, so the page's own saves do not read as edits.
     const mirror = (path, text) => {
         const fs = Module['FS'];

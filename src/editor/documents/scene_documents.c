@@ -35,7 +35,7 @@ static int sync_open_behavior(app_scene_authoring *scene)
     return 0;
 }
 
-static int open_behavior_graph(app_scene_authoring *scene, const char *asset_name)
+int open_behavior_graph(app_scene_authoring *scene, const char *asset_name)
 {
     game_live_definition *target = game_live_find_definition(scene->live, asset_name);
     if (!target || !scene->graph_editor || sync_open_behavior(scene) != 0) {

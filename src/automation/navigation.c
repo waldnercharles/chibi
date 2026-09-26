@@ -303,8 +303,21 @@ static void add_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *ke
     }
 }
 
-/* Where a reference is: its asset, and its graph, node and pin or its scene
+/* Where in its asset a reference is: its graph, node and pin, or its scene
  * object and component field. */
+static void add_within(yyjson_mut_doc *doc, yyjson_mut_val *object, const reference *r)
+{
+    if (r->node_id) {
+        yyjson_mut_obj_add_uint(doc, object, "graph_id", r->graph_id);
+        add_text(doc, object, "graph", r->graph);
+        yyjson_mut_obj_add_uint(doc, object, "node", r->node_id);
+        add_text(doc, object, "pin", r->pin);
+    }
+    add_text(doc, object, "object", r->object);
+    add_text(doc, object, "component", r->component);
+}
+
+/* Where a reference is: its asset, and where in it. */
 static void add_place(
     const navigation *nav,
     yyjson_mut_doc *doc,
@@ -314,14 +327,7 @@ static void add_place(
 )
 {
     add_asset(nav, doc, object, r->source, path);
-    if (r->node_id) {
-        yyjson_mut_obj_add_uint(doc, object, "graph_id", r->graph_id);
-        add_text(doc, object, "graph", r->graph);
-        yyjson_mut_obj_add_uint(doc, object, "node", r->node_id);
-        add_text(doc, object, "pin", r->pin);
-    }
-    add_text(doc, object, "object", r->object);
-    add_text(doc, object, "component", r->component);
+    add_within(doc, object, r);
 }
 
 static void add_symbol(const navigation *nav, yyjson_mut_doc *doc, yyjson_mut_val *result, reference_symbol symbol)
@@ -677,4 +683,32 @@ void automation_add_use_counts(const navigation *nav, int asset, yyjson_mut_doc 
         };
         add_use_counts(nav, doc, item, variable);
     }
+}
+
+/* ---------- Shared with rename and delete ---------- */
+
+int automation_select_symbol(
+    const navigation *nav,
+    yyjson_val *request,
+    reference_symbol *symbol,
+    char *error,
+    size_t error_size
+)
+{
+    return select_symbol(nav, request, symbol, error, error_size);
+}
+
+void automation_add_use(
+    const navigation *nav,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const reference *r,
+    bool asset
+)
+{
+    yyjson_mut_obj_add_str(doc, object, "role", ROLES[r->role]);
+    if (asset) {
+        add_asset(nav, doc, object, r->source, false);
+    }
+    add_within(doc, object, r);
 }

@@ -96,6 +96,9 @@ def save_asset(workspace, request):
     if path.suffix != '.yaml' or not any(path.is_relative_to(content) for content in contents):
         raise ValueError('Saves must be YAML assets inside a project content directory')
     text = request['text']
+    if text is None:
+        path.unlink(missing_ok=True)
+        return
     # The engine writes asset documents as YAML mappings; a save must reload.
     try:
         document = yaml.safe_load(text)

@@ -124,6 +124,8 @@ saving them. Tool results include complete `structuredContent` and
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
+- `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
+- `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
 - `previewShader`: compile and render a material or shape graph.
 - `previewScene`: render a prototype or scene with its authored presentation.
 - `searchAssets`: find catalog entries by kind, name, path, or description.
@@ -207,6 +209,63 @@ parent, and `cycle` marks an item that repeats an ancestor (it is not
 expanded). `more` marks an item, the root included, with children left out:
 past the depth, or past the tree's limit of 1,024 items. Trace again from
 that item, or with a greater depth, to list them.
+
+## Rename and delete across assets
+
+`renameSymbol` and `deleteSymbol` change every asset a symbol reaches as one
+change, as a language server's rename and safe delete do. They select the
+symbol as `findReferences` does: an `asset` `{kind, name}`, with `graph` or
+`graph_id` for a function or macro, or `variable`, `parameter` or `local`; or
+an `event`. An event with a definition renames or deletes its
+`content/events` asset too. A `component` or `field` is refused, since C
+reflection names them, and so are scenes, since `project.yaml` names the start
+scene by path. An asset's or event's new name must name a file, and a rename
+that only changes an asset's case is refused, since file systems that ignore
+case see the same file; rename it through another name.
+
+Both default to `dry_run: true`. The dry run lists each asset it changes with
+its `path`, current `hash`, `after_hash`, `new_name` and `new_path` when the
+file is renamed, `deleted` when it goes, and `changes`: the references
+rewritten there, placed as `findReferences` places a use (`role`, `graph_id`,
+`graph`, `node`, `pin`, or `object` and `component`). `expected_hashes` maps
+each path to its hash, and `mentions` lists values that still equal the old
+name where the index records no reference, such as a prototype name a library
+call passes on to `Spawn Prototype`; review and edit those with `buildGraph`.
+To publish, call again with `dry_run: false` and the dry run's
+`expected_hashes` unchanged. An asset that changed since, or a dry run that no
+longer matches the assets the change reaches, is an `asset_conflict` and
+publishes nothing:
+
+```json
+{"event": "Damage", "new_name": "Harm"}
+```
+
+```json
+{"dry_run": true, "published": false,
+ "assets": [{"kind": "behavior", "name": "HullDamage", "path": "content/behaviors/HullDamage.yaml",
+             "hash": "1b670a0c93c49454", "after_hash": "2f787d311593ea17",
+             "changes": [{"role": "handle", "graph_id": 0, "node": 1}]},
+            {"kind": "event", "name": "Damage", "path": "content/events/Damage.yaml",
+             "hash": "2944b52c078d8949", "new_name": "Harm", "new_path": "content/events/Harm.yaml",
+             "after_hash": "7ff62620cd89e472", "changes": [{"role": "define"}]}, ...],
+ "expected_hashes": {"content/behaviors/HullDamage.yaml": "1b670a0c93c49454", ...},
+ "mentions": [], "dangling": []}
+```
+
+A rename rewrites event nodes, Send and Call Event, `data-event` and
+`data-keys`, `GameActionBinding.action`, attachments, placed and spawned
+prototypes, component fields and struct defaults such as a `GameShader`
+value's material, mesh parts, `<use ui>` widgets, library calls'
+`reference_asset` and `reference_name`, the pins of calls in other assets that
+follow a library function's parameter, and the payload pins an event
+definition's variables name. The files are written together; each changed
+asset is then validated, and if one that validated before no longer does,
+every file is restored and `invalid` lists its diagnostics.
+
+`deleteSymbol` refuses while anything references the symbol and lists those
+`references`. With `force` it deletes anyway and lists them as `dangling`. A
+variable goes with its Get and Set nodes and bindings, as in Unreal, so its own
+uses never dangle. Deleting an asset or an event definition removes its file.
 
 ## Check adapter distribution
 

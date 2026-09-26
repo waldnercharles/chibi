@@ -498,6 +498,34 @@ static void rotate_child(node *parent, int i, int j)
     parent->children[i] = moved;
 }
 
+static bool is_input(const rml_element *el)
+{
+    const char *tag = rml_element_tag_name(el);
+    return !strcmp(tag, "input") || !strcmp(tag, "textarea");
+}
+
+/* Moving detaches the element, which drops RmlUi focus and text selection
+ * inside it; restore both so reordering keyed siblings (popups in the layer)
+ * keeps an edit going. */
+static void move_element(kit *k, rml_element *parent, rml_element *el, rml_element *before)
+{
+    rml_element *focus = rml_context_focus_element(k->context);
+    if (!focus || !within(focus, el)) {
+        rml_element_move_child(parent, el, before);
+        return;
+    }
+    int start = 0, end = 0;
+    bool text = is_input(focus);
+    if (text) {
+        rml_element_selection_range(focus, &start, &end);
+    }
+    rml_element_move_child(parent, el, before);
+    rml_element_focus(focus, true);
+    if (text) {
+        rml_element_set_selection_range(focus, start, end);
+    }
+}
+
 /* The first child from the cursor with this key, brought to the cursor. One
  * of another kind or tag is retired so a new one takes its place. */
 static node *reuse_child(kit *k, node *parent, const char *key, node_kind kind, const char *tag)
@@ -515,8 +543,12 @@ static node *reuse_child(kit *k, node *parent, const char *key, node_kind kind, 
             return NULL;
         }
         if (j != i) {
-            rml_element *before = parent->children[i]->el;
-            rml_element_move_child(parent->container, candidate->el, before);
+            move_element(
+                k,
+                parent->container,
+                candidate->el,
+                parent->children[i]->el
+            );
             rotate_child(parent, i, j);
         }
         return candidate;
@@ -758,7 +790,12 @@ static void keydown(kit *k, const rml_event *e, node *n)
     if (n && n->hosted && e->key != RML_KEY_ESCAPE && e->key != RML_KEY_TAB) {
         return;
     }
-    if (command_key(k, e) || popup_key(k, e) || !n) {
+    /* A field in a popup takes its own keys, as in a Base UI Popover; the
+       popup keeps Escape and Tab, so typing never runs a menu's typeahead. */
+    bool entry = n && (n->kind == KIND_TEXT || n->kind == KIND_SEARCH ||
+                       n->kind == KIND_NUMBER);
+    bool popup_keys = !entry || e->key == RML_KEY_ESCAPE || e->key == RML_KEY_TAB;
+    if (command_key(k, e) || (popup_keys && popup_key(k, e)) || !n) {
         return;
     }
     if (n->kind == KIND_NUMBER) {
@@ -1192,6 +1229,12 @@ kit_rect kit_item_rect(kit *k)
     return k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
 }
 
+bool kit_item_hovered(kit *k)
+{
+    rml_element *hover = rml_context_hover_element(k->context);
+    return k->last && hover && within(hover, k->last->el);
+}
+
 const char *kit_string(kit *k, const char *text)
 {
     apush(k->strings, xstrdup(text ? text : ""));
@@ -1213,12 +1256,6 @@ const char *kit_classes(kit *k, const char *base, const kit_class *list, int cou
 }
 
 /* ---------- Host queries ---------- */
-
-static bool is_input(const rml_element *el)
-{
-    const char *tag = rml_element_tag_name(el);
-    return !strcmp(tag, "input") || !strcmp(tag, "textarea");
-}
 
 bool kit_wants_keyboard(const kit *k)
 {

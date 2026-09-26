@@ -295,9 +295,18 @@ void studio_members_toast(studio *s)
     }
 }
 
+/* The open document's member as a symbol of the asset index. */
+static reference_symbol member_symbol(studio *s, studio_member_kind kind, uint64_t id)
+{
+    reference_symbol symbol = { .asset = studio_refresh_document_asset(s), .id = id };
+    symbol.kind = kind == STUDIO_MEMBER_GRAPH ? REFERENCE_SYMBOL_GRAPH
+                                              : REFERENCE_SYMBOL_VARIABLE;
+    return symbol;
+}
+
 /* Deleting a variable deletes its Get and Set nodes (Unreal); deleting a
    named value draws its wires again. */
-static void delete_member(studio *s)
+static void delete_member_now(studio *s)
 {
     editor *e = sg_graph_editor(s);
     studio_members *m = &s->members;
@@ -329,6 +338,42 @@ static void delete_member(studio *s)
     }
 }
 
+void studio_members_delete_now(studio *s, studio_member_kind kind, uint64_t id)
+{
+    select_member(s, kind, id);
+    delete_member_now(s);
+}
+
+/* A function or variable something still uses asks first, listing its uses. */
+static void delete_member(studio *s)
+{
+    studio_members *m = &s->members;
+    bool asks = (m->kind == STUDIO_MEMBER_GRAPH || m->kind == STUDIO_MEMBER_VARIABLE) &&
+                !locked(s) &&
+                studio_refactor_confirm_delete(
+                    s,
+                    member_symbol(s, m->kind, m->id),
+                    member_name(s),
+                    m->kind,
+                    m->id
+                );
+    if (!asks) {
+        delete_member_now(s);
+    }
+}
+
+bool studio_members_rename_across(
+    studio *s,
+    studio_member_kind kind,
+    uint64_t id,
+    const char *name,
+    const char *new_name
+)
+{
+    return name && strcmp(name, new_name) &&
+           studio_refactor_member_rename(s, member_symbol(s, kind, id), name, new_name);
+}
+
 static void rename_graph(studio *s, graph *g, const char *name)
 {
     editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
@@ -346,6 +391,13 @@ static void rename_member(studio *s, const char *name)
     const behavior_variable *v = behavior_asset_find_variable_by_id(e->asset, m->rename_id);
     const graph_local *local = graph_local_by_id(sg_active_graph(s), m->rename_id);
     char *before = NULL;
+    /* A library's functions and an event's payload are named elsewhere too. */
+    const char *old = m->rename_kind == STUDIO_MEMBER_GRAPH ? (g ? g->name : NULL)
+                    : m->rename_kind == STUDIO_MEMBER_VARIABLE ? (v ? v->name : NULL)
+                                                               : NULL;
+    if (studio_members_rename_across(s, m->rename_kind, m->rename_id, old, name)) {
+        return;
+    }
     switch (m->rename_kind) {
         case STUDIO_MEMBER_GRAPH:
             if (g && strcmp(g->name, name)) {

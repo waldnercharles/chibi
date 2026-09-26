@@ -15,6 +15,8 @@ const expectedPublicNames = [
   "buildPrototype",
   "buildScene",
   "optimizeGraph",
+  "renameSymbol",
+  "deleteSymbol",
   "previewShader",
   "previewScene",
   "searchAssets",
@@ -105,6 +107,8 @@ const requests = [
   { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
   { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
   { jsonrpc: "2.0", id: 38, method: "tools/call", params: { name: "searchNodes", arguments: { query: "button", include_pins: false } } },
+  { jsonrpc: "2.0", id: 39, method: "tools/call", params: { name: "renameSymbol", arguments: { event: "Damage", new_name: "Harm" } } },
+  { jsonrpc: "2.0", id: 40, method: "tools/call", params: { name: "deleteSymbol", arguments: { asset: { kind: "behavior", name: "HealthBehavior" } } } },
   { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildGraph", arguments: {
     kind: "behavior", name: "McpExpressionProbe", create: true, dry_run: true,
     operations: [
@@ -234,6 +238,17 @@ const secondCatalogPage = toolPayload(responseById.get(31));
 const missingAssets = toolPayload(responseById.get(35));
 const missingNodes = toolPayload(responseById.get(36));
 const buttonNodes = toolPayload(responseById.get(38));
+// Read-only: a rename's dry run publishes nothing, and a used behavior refuses deletion.
+const renamed = toolPayload(responseById.get(39));
+const refusedDelete = toolPayload(responseById.get(40));
+if (renamed.ok !== true || renamed.result?.dry_run !== true || renamed.result?.published !== false ||
+    !renamed.result?.assets?.some((asset) => asset.path === "content/events/Damage.yaml" && asset.new_name === "Harm") ||
+    Object.keys(renamed.result?.expected_hashes || {}).length !== renamed.result.assets.length ||
+    !renamed.next_steps?.some((step) => step.includes("expected_hashes")) ||
+    refusedDelete.ok !== false || !(refusedDelete.result?.references?.length >= 3) ||
+    !refusedDelete.next_steps?.some((step) => step.includes("force"))) {
+  throw new Error("renameSymbol or deleteSymbol did not dry-run and refuse as expected");
+}
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
     !status.next_steps?.length || !assets.next_steps?.length ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||

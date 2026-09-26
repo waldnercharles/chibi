@@ -657,7 +657,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/automation_asset_write.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
+    test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
     test/arena_input.c
     test/physics.c
@@ -674,6 +674,7 @@ add_executable(test_suite
     test/arena_post.c
     test/content_catalog.c
     test/reference_index.c
+    test/refactor.c
     test/shader_effects.c
     test/shader_program.c
     test/shader_image.c
@@ -687,6 +688,7 @@ add_executable(test_suite
     src/assets/project.c
     src/editor/workspace/scene_authoring.c
     src/editor/workspace/asset_index.c
+    src/editor/workspace/asset_refactor.c
     src/editor/workspace/scene_actors.c
     src/editor/workspace/scene_runtime.c
     src/editor/workspace/scene_tabs.c
@@ -705,6 +707,7 @@ add_executable(test_suite
     test/scene_history.c
     test/scene_checkpoint.c
     test/scene_disk.c
+    test/scene_refactor.c
     test/tree_watch.c
     test/appearance_geometry.c
     test/retained_components.c

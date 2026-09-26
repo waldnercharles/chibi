@@ -154,6 +154,11 @@ static uint64_t graph_key(const studio *s)
     return (h ^ gr->graph_id) * 1099511628211ull | 1;
 }
 
+void sg_keep_graph_view(studio *s)
+{
+    s->graph.graph_id = graph_key(s);
+}
+
 /* Each graph keeps its own camera; one seen for the first time is framed. */
 void sg_follow_graph(studio *s)
 {

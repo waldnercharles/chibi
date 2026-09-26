@@ -320,6 +320,19 @@ int game_live_add_definition(game_live_world *world, game_live_definition *defin
     return 0;
 }
 
+int game_live_rename_definition(game_live_world *world, const char *from, const char *to)
+{
+    game_live_definition *definition = find_definition(world, from);
+    if (!definition || find_definition(world, to) ||
+        (definition->working->domain == BEHAVIOR_DOMAIN_EVENT &&
+         game_behavior_rename_asset(world->behaviors, from, to) != 0)) {
+        return -1;
+    }
+    free(definition->name);
+    definition->name = xstrdup(to);
+    return 0;
+}
+
 int game_live_remove_definition(game_live_world *world, const char *asset_name)
 {
     if (!world || !asset_name) {
@@ -328,7 +341,7 @@ int game_live_remove_definition(game_live_world *world, const char *asset_name)
     for (int i = 0; i < acount(world->definitions); i++) {
         game_live_definition *definition = world->definitions[i];
         if (strcmp(definition->name, asset_name) != 0 ||
-            (definition->applied->domain == BEHAVIOR_DOMAIN_EVENT &&
+            (definition->working->domain == BEHAVIOR_DOMAIN_EVENT &&
              game_behavior_unregister_asset(
                  world->behaviors,
                  asset_name,

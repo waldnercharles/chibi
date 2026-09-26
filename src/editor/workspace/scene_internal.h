@@ -194,6 +194,15 @@ bool scene_tabs_path_in_use(
     const char *path
 );
 int scene_tabs_activate(app_scene_authoring *scene, int index);
+/* A behavior's or prototype's tab follows its rename, or closes. */
+void scene_tabs_rename(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *from,
+    const char *to,
+    const char *path
+);
+void scene_tabs_close(app_scene_authoring *scene, app_editor_document_kind kind, const char *id);
 int scene_tabs_discard(app_scene_authoring *scene, int index);
 bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab);
 const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
@@ -246,6 +255,8 @@ void free_behavior_snapshots(game_prototype **snapshots);
 void invalidate_runtime_snapshot(app_scene_authoring *scene);
 int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
+/* Shows a behavior in the graph editor without changing the document. */
+int open_behavior_graph(app_scene_authoring *scene, const char *asset_name);
 int open_system_asset(app_scene_authoring *scene, const char *path);
 void preview_behavior_edits(app_scene_authoring *scene);
 scene_prototype_asset *prototype_at(app_scene_authoring *scene, int index);
@@ -273,4 +284,18 @@ void sync_editor_inspection(app_scene_authoring *scene);
 const char *system_component_name(ecs_component_id id, void *);
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
 int write_text_file_atomic(const char *path, const char *text);
+/* Removes a content file, from browser storage too. */
+int remove_content_file(const char *path);
+/* A file a refactor wrote (from == to), moved, created (no from) or removed
+   (no to). */
+typedef struct
+{
+    const char *from, *to;
+} scene_move;
+/* Brings what Studio holds of moved files up to date: new files load, a
+   renamed prototype or behavior keeps its tab, changed files reload, and
+   what a removed file held goes. */
+/* Whether two paths name one file, as realpath resolves them. */
+bool scene_same_file(const char *a, const char *b);
+void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count);
 #endif

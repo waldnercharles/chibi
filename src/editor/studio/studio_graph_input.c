@@ -956,6 +956,13 @@ void sg_pointer(studio *s)
 }
 
 /* Canvas shortcuts act on the area under the pointer or last clicked (Blender). */
+/* The event node under the pointer, whose event F2 renames. */
+static node *event_hover(studio *s)
+{
+    node *n = sg_node_by_id(s, s->graph.hover_node);
+    return studio_event_renameable(n) && !sg_graph_readonly(s) ? n : NULL;
+}
+
 /* The expression input under the pointer, which F2 renames. */
 static node *renameable_hover(studio *s)
 {
@@ -1017,6 +1024,8 @@ void sg_shortcuts(studio *s)
             g->frame_pending = true;
         } else if (!mod && key == SDLK_F2 && renameable_hover(s)) {
             sg_rename_pin(s, renameable_hover(s), g->hover_pin);
+        } else if (!mod && key == SDLK_F2 && event_hover(s)) {
+            studio_refactor_rename_event(s, studio_event_renameable(event_hover(s)));
         } else if (!mod && !shift && key == SDLK_Q) {
             sg_straighten(s);
         } else if (!mod && key == SDLK_HOME) {

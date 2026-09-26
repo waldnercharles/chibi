@@ -352,22 +352,7 @@ void kit_layout(kit *k)
 
 /* ---------- Idle ---------- */
 
-static bool springs_moving(const kit *k)
-{
-    for (int i = 0; i < cf_map_size(k->springs); i++) {
-        if (k->springs[i].s.x != 0 || k->springs[i].s.v != 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 double kit_idle_time(const kit *k)
 {
-    bool motion = acount(k->entering) || acount(k->exiting) ||
-                  acount(k->layout_nodes) || k->layout_pass ||
-                  acount(k->text_motion) || springs_moving(k);
-    bool pending = acount(k->toasts) || k->drag.pending || k->drag.active ||
-                   k->restyle || (k->tip_target && !k->tip_visible);
-    return motion || pending ? 0 : rml_context_next_update_delay(k->context);
+    return rml_context_next_update_delay(k->context);
 }

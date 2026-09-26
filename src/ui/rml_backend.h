@@ -148,6 +148,9 @@ extern "C"
     void rml_backend_update(rml_backend *backend, double delta_seconds);
     /* Called only from the live app's final draw phase, after a Cute GPU context exists. */
     void rml_backend_render(rml_backend *backend);
+    /* Whether a render since the last call drew anything the render before it
+     * did not, as an animation does each frame; then clears it. */
+    bool rml_backend_take_changed(rml_backend *backend);
     /* CF texture handle for the transparent output canvas; zero until the first render. */
     uint64_t rml_backend_texture(const rml_backend *backend);
     /* Returns input consumed by RmlUi, as RML_INPUT_CAPTURE_* flags. */

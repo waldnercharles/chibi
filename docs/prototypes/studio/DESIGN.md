@@ -107,7 +107,7 @@ Behavior changed from the ImGui editor:
 
 ## Decisions
 
-1. Density is an editor setting. Compact is the default. UI Scale (75–200%) sizes the whole editor, as Blender's Resolution Scale and Unreal's Application Scale do; games' UI keeps its own scale, in the Scene view and in Play. An idle editor draws at most four frames a second, as Blender redraws only on events: input, a running scene, kit motion or RmlUi's next update (a caret blink or transition) bring back full rate, and a write that leaves a style unchanged lays nothing out.
+1. Density is an editor setting. Compact is the default. UI Scale (75–200%) sizes the whole editor, as Blender's Resolution Scale and Unreal's Application Scale do; games' UI keeps its own scale, in the Scene view and in Play. An idle editor draws at most four frames a second, as Blender redraws only on events: input, a running scene, a frame that draws anything the frame before it did not (so animations need no registration), or RmlUi's next update (a caret blink) bring back full rate, and a write that leaves a style unchanged lays nothing out.
 2. Areas (Blender splits) replace floating docking.
 3. Properties tabs, prototype icons, and number ranges and units are authored per project in `content/editor/Components.yaml` (`src/editor/documents/component_presentation.h`). Studio re-reads the file within a second of a change. An invalid edit keeps the last valid file and reports the error; without the file, components show under Object with no icon and plain numbers.
 4. Open: orange selection in the viewport and graph, blue in lists.

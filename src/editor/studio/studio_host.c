@@ -131,13 +131,21 @@ static float to_dp(const studio *s, float points)
     return points / s->prefs.ui_scale;
 }
 
-/* How long frames run at full rate after input, for the transitions,
- * tooltips and springs it starts. */
+/* How long frames run at full rate after input, for the tooltips and
+ * delayed motion it starts. */
 #define ACTIVE_AFTER_INPUT 1.0
 
-double studio_idle_time(const studio *s)
+/* No frame is needed while nothing moves: no input lately, no running scene,
+ * and the last frame drew what the one before it did, so any animation keeps
+ * frames coming without declaring itself. Timers without motion, such as a
+ * toast's lifetime, wait for the host's next idle frame. */
+double studio_idle_time(studio *s)
 {
-    if (s->session || s->time < s->active_until) {
+    bool changed = rml_backend_take_changed(s->backend);
+    if (s->graph.backend) {
+        changed |= rml_backend_take_changed(s->graph.backend);
+    }
+    if (changed || s->session || s->time < s->active_until) {
         return 0;
     }
     double idle = kit_idle_time(s->kit);

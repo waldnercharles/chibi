@@ -15,8 +15,9 @@ void studio_free(studio *s);
  * Call after the scene frame; the host presents with cf_app_draw_onto_screen. */
 void studio_frame(studio *s, double delta_seconds);
 /* Seconds Studio can wait for input before its next frame: none just after
- * input, while a scene runs or while its UI animates. */
-double studio_idle_time(const studio *s);
+ * input, while a scene runs or while its UI changes from frame to frame.
+ * Call once per frame, after studio_frame. */
+double studio_idle_time(studio *s);
 /* The project root the user chose to open, owned by the caller, or NULL. */
 char *studio_take_project(studio *s);
 /* Shows an error that stays until dismissed. */

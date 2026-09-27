@@ -1009,6 +1009,14 @@ static bool modifier_key(rml_key key)
            key == RML_KEY_LMETA || key == RML_KEY_RMETA;
 }
 
+/* A key or a press hides the hover card until the pointer moves again,
+   whatever moves came before it. */
+static void block_hover(kit_code_editor *e)
+{
+    e->hover_blocked = true;
+    e->pointer_moved = false;
+}
+
 /* Go to Definition (F12), Find References (Shift+F12) and completion
    (Control+Space) ask the host. */
 static bool host_request(kit_code_editor *e, rml_key key, keys m)
@@ -1030,7 +1038,7 @@ static void key_down(kit_code_editor *e, const rml_event *event)
     if (modifier_key(key)) {
         return;
     }
-    e->hover_blocked = true;
+    block_hover(e);
     if (completion_key(e, key) || host_request(e, key, m)) {
         return;
     }
@@ -1244,7 +1252,7 @@ static void on_view_event(void *user, const rml_event *event)
         case RML_EVENT_KEYDOWN: key_down(e, event); break;
         case RML_EVENT_TEXTINPUT: event_text(e, event); break;
         case RML_EVENT_MOUSEDOWN:
-            e->hover_blocked = true;
+            block_hover(e);
             press(v, at, event->button);
             if (primary_click(e, event)) {
                 v->dragging = false;

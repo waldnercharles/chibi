@@ -87,6 +87,9 @@ bool test_kit_code();
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
 
+/* ---------- Authored status bar (workstream J) ---------- */
+void test_kit_slot();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -235,6 +238,8 @@ TEST_CASE(all_checks)
     test_check(test_kit_code(), "Code editor: standard and Vim keys, text_edits with undo, :w, host chords, completions and cached rendering");
     /* ---------- Settings (workstream F) ---------- */
     test_studio_settings();
+    /* ---------- Authored status bar (workstream J) ---------- */
+    test_kit_slot();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -925,6 +930,11 @@ int main(int argc, char **argv)
     /* ---------- Settings (workstream F) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--studio-settings")) {
         test_studio_settings();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Authored status bar (workstream J) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--kit-slot")) {
+        test_kit_slot();
         return fails ? 1 : 0;
     }
     pu_run_test("all_checks", all_checks);

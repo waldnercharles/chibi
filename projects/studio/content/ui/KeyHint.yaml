@@ -1,0 +1,8 @@
+rml: <span class="icon" data-if="hint.icon != ''">{{ hint.icon }}</span><span class="kbd-key" data-if="hint.key != ''">{{ hint.key }}</span><span class="label">{{ hint.label }}</span>
+rcss: |
+  /* A key hint, as a status bar or a game's button prompt shows one: a mouse
+     icon or a key, and what it does. Repeat it over items with an icon, a key
+     and a label: <use ui="KeyHint" data-for="hint : hints"/>. */
+  body { display: flex; align-items: center; gap: 4dp; }
+  .icon { font-size: 13dp; width: 14dp; color: var(--faint-foreground); }
+  .kbd-key { height: 16dp; min-width: 16dp; }

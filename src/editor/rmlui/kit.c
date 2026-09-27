@@ -336,7 +336,7 @@ rml_element *raw_icon(rml_element *parent, const char *cls, uint32_t cp)
 
 /* ---------- Nodes ---------- */
 
-static node *node_new(node_kind kind)
+node *node_new(node_kind kind)
 {
     node *n = xcalloc(1, sizeof *n);
     n->kind = kind;
@@ -435,14 +435,20 @@ static void index_node(kit *k, node *n)
     cf_map_set(k->by_path, h, n);
 }
 
+/* An index entry goes only while it is n's: a native slot's nodes outlive
+ * their elements, whose addresses may already index new nodes. */
 void unmap(kit *k, node *n)
 {
     for (int i = 0; i < acount(n->children); i++) {
         unmap(k, n->children[i]);
     }
     forget_motion(k, n);
-    cf_map_del(k->by_element, element_key(n->el));
-    cf_map_del(k->by_path, str_hash(n->path));
+    if (cf_map_get(k->by_element, element_key(n->el)) == n) {
+        cf_map_del(k->by_element, element_key(n->el));
+    }
+    if (cf_map_get(k->by_path, str_hash(n->path)) == n) {
+        cf_map_del(k->by_path, str_hash(n->path));
+    }
     if (k->last == n) {
         k->last = NULL;
     }
@@ -836,6 +842,7 @@ static void mouseover(kit *k, node *n)
 static void on_event(void *user, const rml_event *e)
 {
     kit *k = user;
+    check_slots(k);
     node *n = owner(k, node_for(k, e->target));
     switch (e->id) {
         case RML_EVENT_MOUSEDOWN: mousedown(k, e, n); break;
@@ -1049,6 +1056,7 @@ static void kit_free(kit *k)
         node_free(k->roots[i]);
     }
     afree(k->roots);
+    free_slots(k);
     for (int i = 0; i < acount(k->exiting); i++) {
         node_free(k->exiting[i].node);
     }
@@ -1103,6 +1111,11 @@ void kit_destroy(kit *k)
     for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
         rml_element_remove_event_listener(k->doc, kit_events[i], k->listener, true);
     }
+    /* The context releases a closed document later, and hosted content
+       holds its owner's listeners, which may be gone by then. */
+    for (int i = 0; i < acount(k->roots); i++) {
+        rml_element_set_inner_rml(k->roots[i]->el, "");
+    }
     rml_document_close(k->doc);
     rml_listener_destroy(k->listener);
     kit_free(k);
@@ -1124,6 +1137,7 @@ static void close_root(kit *k)
 void kit_begin(kit *k, const kit_frame_input *input)
 {
     k->in = *input;
+    check_slots(k);
     sync_styles(k);
     aclear(k->triggers);
     place_popups(k);
@@ -1141,6 +1155,7 @@ void kit_end(kit *k)
     toasts_frame(k);
     drag_end_frame(k);
     prune(k, k->layer);
+    end_slots(k);
     if (!k->command.open) {
         k->command_backdrop = NULL;
     }

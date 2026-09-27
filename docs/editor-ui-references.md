@@ -18,7 +18,7 @@ the earlier library catalog from the Codex RmlUi branch.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow and Dialog | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
 | [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
@@ -36,6 +36,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
+| [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): the status bar's UI Scale | Done |
 | [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h` | Partial; highlighting, diagnostics and completion items come from the caller |
 
 ## Contracts
@@ -225,6 +226,13 @@ control's contract.
 - The tree reveals a pick. An element's only text shows on its row, and text nodes show as their text. Hovering a row highlights its element.
 - Styles lists the declarations that win, inline first and then by rule, most specific first, with each rule's file and line (`ui_style_origin`). Inherited declarations follow under the ancestor that gives them. RmlUi keeps only winning declarations, so nothing is struck through as overridden.
 - Force state holds `:hover`, `:active`, `:focus` and `:checked` on the selection until it is cleared.
+
+### Unity IMGUIContainer (native slots)
+
+- An authored layout names an element; native code draws into it each frame, and what the element holds otherwise stays.
+- The kit marks the element it adopts, `data-kit-slot="<key>"`, and finds it again before input and emission. Authored content is rebuilt behind the kit's back (a mount reloading its asset, data-for recreating an item), and RmlUi's pools give a new element the old one's address, so the mark, not the address, tells them apart. A slot whose element is gone drops its nodes without touching their elements and builds anew in the new one.
+- A slot not begun in a frame loses its content, as any kit item does.
+- Popups, menus and tooltips a slot opens live in the kit's layer, as elsewhere.
 
 ### Zep (kit_code)
 

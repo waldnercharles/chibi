@@ -1,0 +1,53 @@
+rml: |
+  <div class="statusbar" data-class-live="editor.playing">
+    <div class="hints"><use ui="KeyHint" data-for="hint : editor.hints"/></div>
+    <div class="spacer"/>
+    <div class="report" data-class-shown="editor.reporting"><span class="icon">&#xeab2;</span><span>{{ editor.report }}</span></div>
+    <div class="spacer"/>
+    <div class="drawers">
+      <button class="btn sm toggle-drawer" data-tip="Assets" data-attr-data-kbd="editor.assetsKey" data-attr-data-state="editor.assets ? 'on' : 'off'" data-event-click="emit('studio.toggle-assets')"><span class="icon">&#xeb29;</span><span class="label">Assets</span></button>
+      <button class="btn sm toggle-drawer" data-tip="Output" data-attr-data-kbd="editor.outputKey" data-attr-data-state="editor.output ? 'on' : 'off'" data-event-click="emit('studio.toggle-output')"><span class="icon">&#xeb9d;</span><span class="label">Output</span></button>
+      <button class="btn sm toggle-drawer" data-tip="Performance" data-attr-data-state="editor.performance ? 'on' : 'off'" data-event-click="emit('studio.toggle-performance')"><span class="icon">&#xf04c5;</span><span class="label">Performance</span></button>
+    </div>
+    <div class="stats">
+      <span class="strong">{{ editor.scene }}</span>
+      <span data-class-strong="editor.selection != ''">{{ editor.selection != '' ? editor.selection : 'No selection' }}</span>
+      <span class="count">Objects {{ editor.selection != '' ? 1 : 0 }}/{{ editor.objects }}</span>
+    </div>
+    <div id="ui-scale"/>
+  </div>
+rcss: |
+  /* Studio's status bar (studio_shell.c hosts it; studio_sources.c binds
+     `editor`): the hovered area's key hints, the last operation's report, the
+     drawer toggles, the scene's stats and UI Scale, a native kit control in
+     the #ui-scale slot. */
+  body { flex: 0 0 auto; }
+  .statusbar {
+    height: 24dp; display: flex; align-items: center; gap: 14dp; padding: 0dp 10dp;
+    background-color: var(--muted); border-top: 1dp var(--edge); color: var(--muted-foreground);
+    font-size: 11dp; white-space: nowrap;
+  }
+  .statusbar.live { border-top-color: var(--primary-edge); }
+  // Hints give way first when the window narrows.
+  .hints { display: flex; align-items: center; gap: 12dp; flex: 0 1 auto; min-width: 0dp; overflow: hidden; }
+  .report {
+    display: flex; align-items: center; gap: 6dp; color: var(--foreground);
+    opacity: 0; transition: opacity 0.2s cubic-out;
+    &.shown { opacity: 1; }
+    .icon { color: var(--success); font-size: 12dp; }
+  }
+  .drawers { display: flex; align-items: center; gap: 2dp; flex-shrink: 0; }
+  .toggle-drawer {
+    color: var(--faint-foreground);
+    .icon { font-size: 12dp; width: 14dp; }
+    &[data-state=on] { background-color: transparent; color: var(--foreground); }
+    &[data-state=on] .icon { color: var(--primary-text); }
+  }
+  .stats { display: flex; gap: 10dp; flex-shrink: 0; color: var(--faint-foreground); font-family: InterNumeric; }
+  .stats .strong { color: var(--muted-foreground); }
+  .count { display: block; white-space: nowrap; line-height: 16dp; }
+  #ui-scale { display: flex; flex-shrink: 0; }
+  .ui-scale { color: var(--faint-foreground); font-family: InterNumeric; }
+  @media (theme: reduced-motion) {
+    .report { transition: none; }
+  }

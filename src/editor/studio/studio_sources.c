@@ -1,8 +1,9 @@
 /* The data Studio's authored panels bind beyond their own world's `save`
  * (render/ui.h): `world`, the saved keys of the world the Scene shows, and
  * `theme`, the custom properties of the stylesheets the open scene's root
- * document imports; `settings`, the Settings page's preferences; and
- * `inspector`, the UI Inspector's (see its section below). A panel's
+ * document imports; `settings`, the Settings page's preferences;
+ * `inspector`, the UI Inspector's (see its section below); and `editor`,
+ * what the status bar shows (the last section). A panel's
  * edits apply back: a saved key to the save, a theme value to its file,
  * which restyles everything the page styles, and a setting to the
  * preferences. */
@@ -24,6 +25,7 @@
 
 static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root);
 static void sync_inspector(studio *s, ui_data *data);
+static void sync_editor(studio *s, ui_data *data);
 
 void studio_sources_add(yyjson_mut_doc *doc)
 {
@@ -34,6 +36,7 @@ void studio_sources_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_arr(doc, yyjson_mut_obj_add_obj(doc, root, "theme"), "sections");
     add_inspector(doc, root);
     studio_settings_add(doc);
+    studio_status_add(doc);
 }
 
 static yyjson_mut_val *variable(ui_data *data, const char *name)
@@ -951,6 +954,7 @@ void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
     sync_theme(s, src, data, wrote);
     sync_inspector(s, data);
     sync_settings(s, data, wrote);
+    sync_editor(s, data);
 }
 
 void studio_sources_free(studio_sources *src)
@@ -1238,5 +1242,153 @@ static void sync_inspector(studio *s, ui_data *data)
     if (m && m->changed) {
         show_inspector(data->doc, in, m);
         rml_data_model_dirty(data->model, "inspector");
+    }
+}
+
+/* ---------- Editor (workstream J) ---------- */
+
+/* `editor`, what the status bar shows (studio_status): `hints`, a list of
+ * {icon, key, label}; report and reporting; assets, output and performance,
+ * the drawer toggles, with assetsKey and outputKey; scene, selection,
+ * objects and playing. Values change only when they differ, so bindings
+ * update in place, and hints the list sheds wait in `spare`. */
+
+/* Reports show for three seconds, then fade (DESIGN.md). */
+#define REPORT_SECONDS 3.0
+
+static const char *const HINT_TEXTS[] = { "icon", "key", "label", NULL };
+static const item_shape HINT = { HINT_TEXTS, NO_FLAGS };
+static const char *const STATUS_TEXTS[] = { "report", "assetsKey", "outputKey",
+                                            "scene",  "selection", NULL };
+static const char *const STATUS_FLAGS[] = { "reporting",   "assets",  "output",
+                                            "performance", "playing", NULL };
+
+void studio_status_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *editor = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "editor");
+    yyjson_mut_obj_add_arr(doc, editor, "hints");
+    yyjson_mut_obj_add_arr(doc, editor, "spare");
+    add_texts(doc, editor, STATUS_TEXTS);
+    add_flags(doc, editor, STATUS_FLAGS);
+    yyjson_mut_obj_add_real(doc, editor, "objects", 0);
+}
+
+static bool show_hints(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_status *status)
+{
+    yyjson_mut_val *list = member(editor, "hints");
+    bool changed = (int)yyjson_mut_arr_size(list) != status->hint_count;
+    resize(doc, list, member(editor, "spare"), status->hint_count, &HINT);
+    for (int i = 0; i < status->hint_count; i++) {
+        const studio_hint *h = &status->hints[i];
+        yyjson_mut_val *item = yyjson_mut_arr_get(list, (size_t)i);
+        char icon[5] = "";
+        if (h->icon) {
+            utf8_icon(icon, h->icon);
+        }
+        changed |= put_text(doc, item, "icon", icon);
+        changed |= put_text(doc, item, "key", h->key ? h->key : "");
+        changed |= put_text(doc, item, "label", h->label);
+    }
+    return changed;
+}
+
+bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
+{
+    yyjson_mut_val *editor = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "editor");
+    bool changed = show_hints(doc, editor, status);
+    const char *texts[] = { status->report,
+                            status->assets_key,
+                            status->output_key,
+                            status->scene,
+                            status->selection };
+    for (int t = 0; STATUS_TEXTS[t]; t++) {
+        changed |= put_text(doc, editor, STATUS_TEXTS[t], texts[t] ? texts[t] : "");
+    }
+    const bool flags[] = { status->reporting,
+                           status->assets,
+                           status->output,
+                           status->performance,
+                           status->playing };
+    for (int f = 0; STATUS_FLAGS[f]; f++) {
+        changed |= put_bool(editor, STATUS_FLAGS[f], flags[f]);
+    }
+    changed |= put_number(editor, "objects", status->objects);
+    return changed;
+}
+
+typedef struct hint_list
+{
+    const studio_hint *hints;
+    int count;
+} hint_list;
+
+#define HINT_LIST(list) ((hint_list){ list, (int)(sizeof list / sizeof *list) })
+
+/* The key hints of the editor under the pointer; keys in studio_chord
+ * notation. */
+static hint_list editor_hints(const studio *s)
+{
+    static const studio_hint SCENE[] = { { KIT_ICON_MOUSE, NULL, "Select" },
+                                         { KIT_ICON_PAN, NULL, "Pan (middle)" },
+                                         { 0, "F", "Frame" } };
+    static const studio_hint PROPERTIES[] = { { KIT_ICON_MOUSE, NULL, "Drag to scrub" },
+                                              { 0, "Alt", "Fine" },
+                                              { 0, "Shift", "Coarse" },
+                                              { 0, "Ctrl", "Snap" } };
+    static const studio_hint OUTLINER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
+                                            { 0, "F", "Frame" },
+                                            { 0, "X", "Delete" } };
+    static const studio_hint MEMBERS[] = { { KIT_ICON_MOUSE, NULL, "Drag to graph" },
+                                           { 0, "Alt", "Set" },
+                                           { 0, "F2", "Rename" },
+                                           { 0, "X", "Delete" } };
+    static const studio_hint BEHAVIOR[] = { { KIT_ICON_MOUSE, NULL, "Select" },
+                                            { 0, "Shift+A", "Add" },
+                                            { 0, "Q", "Straighten" } };
+    static const studio_hint MOVING[] = { { 0, "Ctrl", "Snap" } };
+    static const studio_hint OTHER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
+                                         { 0, "Mod+K", "Search" } };
+    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
+                                              : STUDIO_EDITOR_COUNT;
+    switch (editor) {
+        case STUDIO_EDITOR_SCENE: return HINT_LIST(SCENE);
+        case STUDIO_EDITOR_PROPERTIES: return HINT_LIST(PROPERTIES);
+        case STUDIO_EDITOR_OUTLINER: return HINT_LIST(OUTLINER);
+        case STUDIO_EDITOR_MEMBERS: return HINT_LIST(MEMBERS);
+        case STUDIO_EDITOR_BEHAVIOR:
+            return s->graph.gesture == STUDIO_GRAPH_MOVE ? HINT_LIST(MOVING)
+                                                         : HINT_LIST(BEHAVIOR);
+        default: return HINT_LIST(OTHER);
+    }
+}
+
+static void sync_editor(studio *s, ui_data *data)
+{
+    char title[128];
+    scene_actor *actor = selected_actor(s->scene);
+    studio_status status = {
+        .report = s->status,
+        .reporting = s->status[0] && s->time - s->status_time < REPORT_SECONDS,
+        .assets = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_ASSETS) == 1,
+        .output = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_OUTPUT) == 1,
+        .performance = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_PERFORMANCE) == 1,
+        .assets_key = studio_command_describe(s, STUDIO_COMMAND_TOGGLE_ASSETS).shortcut,
+        .output_key = studio_command_describe(s, STUDIO_COMMAND_TOGGLE_OUTPUT).shortcut,
+        .scene = studio_scene_title(s->scene, title, sizeof title),
+        .selection = actor ? actor->name : "",
+        .objects = acount(s->scene->actors),
+        .playing = app_scene_authoring_runtime_state(s->scene).playing,
+    };
+    hint_list hints = editor_hints(s);
+    assert(hints.count <= STUDIO_HINT_MAX);
+    status.hint_count = hints.count;
+    for (int i = 0; i < hints.count; i++) {
+        status.hints[i] = hints.hints[i];
+        status.hints[i].key = hints.hints[i].key
+                                ? studio_chord(s, hints.hints[i].key)
+                                : NULL;
+    }
+    if (studio_status_show(data->doc, &status)) {
+        rml_data_model_dirty(data->model, "editor");
     }
 }

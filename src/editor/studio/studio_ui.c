@@ -377,19 +377,16 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     report(s, p, *mount);
 }
 
-void studio_ui_panel(studio *s, const char *key, const char *name)
+rml_element *studio_ui_panel(studio *s, const char *key, const char *name)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
     const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
-    if (component && component->document && component->document[0]) {
-        show_panel(
-            s,
-            p,
-            &p->mount,
-            kit_host(s->kit, key, "panel-host"),
-            component->document
-        );
+    if (!component || !component->document || !component->document[0]) {
+        return NULL;
     }
+    rml_element *host = kit_host(s->kit, key, "panel-host");
+    show_panel(s, p, &p->mount, host, component->document);
+    return host;
 }
 
 const char *studio_ui_page(const studio_ui *ui)

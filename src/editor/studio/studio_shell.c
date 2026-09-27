@@ -978,122 +978,34 @@ static void scale_control(studio *s)
     kit_popup_end(k);
 }
 
-static void hint(kit *k, const char *key, const char *keys, uint32_t icon, const char *label)
+/* Authoring messages report like any other operation. */
+static void follow_messages(studio *s)
 {
-    kit_push(k, key, NULL, "hint");
-    if (icon) {
-        kit_icon(k, "i", NULL, icon);
-    } else {
-        kit_label(k, "k", "kbd-key", keys);
+    if (!strcmp(s->scene->message, s->seen_message)) {
+        return;
     }
-    kit_label(k, "l", NULL, label);
-    kit_pop(k);
+    snprintf(s->seen_message, sizeof s->seen_message, "%s", s->scene->message);
+    if (s->seen_message[0]) {
+        studio_report(s, s->seen_message);
+    }
 }
 
+/* The status bar is authored: projects/studio's StatusBar binds `editor`
+   (studio_sources.c) and runs commands. UI Scale stays native, with its
+   menu, in the bar's #ui-scale slot. A click leaves the keyboard to the
+   areas. */
 static void statusbar(studio *s)
 {
-    kit *k = s->kit;
-    kit_push(k, "status", "footer", "statusbar");
-    kit_push(k, "hints", NULL, "hints");
-    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
-                                              : STUDIO_EDITOR_COUNT;
-    switch (editor) {
-        case STUDIO_EDITOR_SCENE:
-            hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
-            hint(k, "pan", NULL, KIT_ICON_PAN, "Pan (middle)");
-            hint(k, "frame", "F", 0, "Frame");
-            break;
-        case STUDIO_EDITOR_PROPERTIES:
-            hint(k, "scrub", NULL, KIT_ICON_MOUSE, "Drag to scrub");
-            hint(k, "fine", studio_chord(s, "Alt"), 0, "Fine");
-            hint(k, "coarse", studio_chord(s, "Shift"), 0, "Coarse");
-            hint(k, "snap", studio_chord(s, "Ctrl"), 0, "Snap");
-            break;
-        case STUDIO_EDITOR_OUTLINER:
-            hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
-            hint(k, "frame", "F", 0, "Frame");
-            hint(k, "delete", "X", 0, "Delete");
-            break;
-        case STUDIO_EDITOR_MEMBERS:
-            hint(k, "drag", NULL, KIT_ICON_MOUSE, "Drag to graph");
-            hint(k, "set", studio_chord(s, "Alt"), 0, "Set");
-            hint(k, "rename", "F2", 0, "Rename");
-            hint(k, "delete", "X", 0, "Delete");
-            break;
-        case STUDIO_EDITOR_BEHAVIOR:
-            if (s->graph.gesture == STUDIO_GRAPH_MOVE) {
-                hint(k, "snap", studio_chord(s, "Ctrl"), 0, "Snap");
-                break;
-            }
-            hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
-            hint(k, "add", studio_chord(s, "Shift+A"), 0, "Add");
-            hint(k, "straighten", "Q", 0, "Straighten");
-            break;
-        default:
-            hint(k, "select", NULL, KIT_ICON_MOUSE, "Select");
-            hint(k, "search", studio_chord(s, "Mod+K"), 0, "Search");
-            break;
+    follow_messages(s);
+    rml_element *host = studio_ui_panel(s, "status", "StatusBar");
+    if (!host) {
+        return;
     }
-    kit_pop(k);
-    kit_leaf(k, "spacer", NULL, "spacer");
-    /* Authoring messages report like any other operation: shown for three seconds. */
-    if (strcmp(s->scene->message, s->seen_message) != 0) {
-        snprintf(s->seen_message, sizeof s->seen_message, "%s", s->scene->message);
-        if (s->seen_message[0]) {
-            studio_report(s, s->seen_message);
-        }
+    kit_release_focus(s->kit, host);
+    if (kit_slot_begin(s->kit, "scale", host, "#ui-scale")) {
+        scale_control(s);
+        kit_slot_end(s->kit);
     }
-    const char *message = s->time - s->status_time < 3 ? s->status : "";
-    if (message[0]) {
-        kit_push(k, "report", NULL, "report");
-        kit_presence(k);
-        kit_icon(k, "i", NULL, KIT_ICON_CHECK);
-        kit_morph(k, "l", NULL, message);
-        kit_pop(k);
-    }
-    kit_leaf(k, "spacer2", NULL, "spacer");
-    kit_push(k, "drawers", NULL, "drawers");
-    const struct
-    {
-        studio_editor editor;
-        const char *shortcut;
-    } toggles[] = { { STUDIO_EDITOR_ASSETS, studio_chord(s, "Mod+Shift+A") },
-                    { STUDIO_EDITOR_OUTPUT, studio_chord(s, "Mod+Shift+U") },
-                    { STUDIO_EDITOR_PERFORMANCE, NULL } };
-    for (size_t i = 0; i < sizeof toggles / sizeof *toggles; i++) {
-        studio_editor e = toggles[i].editor;
-        bool on = s->prefs.drawer_open && s->prefs.editors[STUDIO_AREA_DRAWER] == e;
-        char key[16];
-        snprintf(key, sizeof key, "d%d", (int)e);
-        kit_button_desc d = {
-            .label = EDITOR_LABELS[e],
-            .icon = EDITOR_ICONS[e],
-            .size = KIT_SM,
-            .cls = "toggle-drawer",
-            .tip = EDITOR_LABELS[e],
-            .shortcut = toggles[i].shortcut,
-            .flags = on ? KIT_ON : 0,
-        };
-        if (kit_button(k, key, &d)) {
-            studio_toggle_drawer(s, e);
-        }
-    }
-    kit_pop(k);
-    kit_push(k, "stats", NULL, "stats");
-    char title[128];
-    kit_label(k, "scene", "strong", studio_scene_title(s->scene, title, sizeof title));
-    scene_actor *actor = selected_actor(s->scene);
-    kit_label(k, "selection", actor ? "strong" : NULL, actor ? actor->name : "No selection");
-    kit_push(k, "objects", NULL, "count");
-    kit_label(k, "l", NULL, "Objects ");
-    const kit_number_flow_desc count = { 0 };
-    kit_number_flow(k, "selected", NULL, actor ? 1 : 0, &count);
-    kit_label(k, "of", NULL, "/");
-    kit_number_flow(k, "total", NULL, acount(s->scene->actors), &count);
-    kit_pop(k);
-    kit_pop(k);
-    scale_control(s);
-    kit_pop(k);
 }
 
 /* ---------- Command palette (cmdk) ---------- */

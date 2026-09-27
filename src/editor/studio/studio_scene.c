@@ -90,6 +90,24 @@ void studio_scene_view(studio *s, engine_viewport_host_input *input)
     input->resolution = fminf(zoom, VIEW_SHARP_MAX);
 }
 
+/* The View Zoom choices, in a menu the caller has open. */
+static void view_zoom_items(studio *s)
+{
+    kit *k = s->kit;
+    kit_menu_group(k, "zoom-group", "View Zoom");
+    for (size_t i = 0; i < sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS; i++) {
+        char item_key[8], item_label[8];
+        snprintf(item_key, sizeof item_key, "z%zu", i);
+        snprintf(item_label, sizeof item_label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
+        kit_menu_item_desc item = { .label = item_label,
+                                    .checked = fabsf(s->view.zoom - VIEW_ZOOMS[i]) <
+                                               0.005f };
+        if (kit_menu_item(k, item_key, &item)) {
+            zoom_view(s, VIEW_ZOOMS[i], 0.5f, 0.5f);
+        }
+    }
+}
+
 static void view_zoom_menu(studio *s, int area)
 {
     kit *k = s->kit;
@@ -103,22 +121,10 @@ static void view_zoom_menu(studio *s, int area)
     if (kit_button(k, "zoom", &zoom)) {
         kit_popup_open(k, key);
     }
-    if (!kit_popup_begin(k, key, "menu")) {
-        return;
+    if (kit_popup_begin(k, key, "menu")) {
+        view_zoom_items(s);
+        kit_popup_end(k);
     }
-    kit_menu_group(k, "group", "View Zoom");
-    for (size_t i = 0; i < sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS; i++) {
-        char item_key[8], item_label[8];
-        snprintf(item_key, sizeof item_key, "z%zu", i);
-        snprintf(item_label, sizeof item_label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
-        kit_menu_item_desc item = { .label = item_label,
-                                    .checked = fabsf(s->view.zoom - VIEW_ZOOMS[i]) <
-                                               0.005f };
-        if (kit_menu_item(k, item_key, &item)) {
-            zoom_view(s, VIEW_ZOOMS[i], 0.5f, 0.5f);
-        }
-    }
-    kit_popup_end(k);
 }
 
 /* ---------- Scene viewport ---------- */
@@ -156,10 +162,17 @@ void studio_scene_header(studio *s, int area)
         if (kit_menu_item(k, "reset", &reset)) {
             engine_viewport_reset_camera(s->viewport);
         }
+        kit_menu_separator(k, "s1");
+        view_zoom_items(s);
         kit_popup_end(k);
     }
     kit_leaf(k, "spacer", NULL, "spacer");
-    view_zoom_menu(s, area);
+    /* View Zoom magnifies the frame, the game's UI too, apart from the
+       camera the readout shows; it shows here only while it magnifies, as a
+       browser shows its zoom, so one zoom reads at a time. */
+    if (fabsf(s->view.zoom - 1) > 0.005f) {
+        view_zoom_menu(s, area);
+    }
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .label = "Frame",
                               .tip = "Frame selected",
@@ -199,7 +212,6 @@ static void view_overlay(studio *s)
     kit_pop(k);
     kit_push(k, "label", NULL, "view-label");
     kit_presence(k);
-    kit_label(k, "mode", NULL, "Top orthographic");
     char title[128], context[256];
     scene_actor *actor = selected_actor(s->scene);
     snprintf(

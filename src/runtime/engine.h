@@ -14,6 +14,7 @@ typedef struct engine_viewport engine_viewport;
 typedef struct render_arena_camera render_arena_camera;
 typedef struct render_ui render_ui;
 typedef struct ui_world ui_world;
+typedef struct rml_input rml_input;
 
 typedef enum
 {
@@ -112,6 +113,11 @@ typedef struct engine_viewport_host_input
     bool alt;
     bool escape;
     char dropped_prototype[256];
+    /* Keys the host passes on, kept until its engine_viewport_draw: while
+       `focused` and the game plays, its documents take them, so their
+       data-keys bindings hear them. */
+    const rml_input *keys;
+    int key_count;
 } engine_viewport_host_input;
 
 /* Required before engine_viewport_draw. The host displays the canvas texture. */

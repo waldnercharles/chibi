@@ -11,6 +11,8 @@
 #include "support/text_overlay.h"
 #include "test/suite_internal.h"
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_keyboard.h>
 #include <assert.h>
 #include <limits.h>
 #include <stdio.h>
@@ -376,6 +378,74 @@ static void status_bar_follows_studio()
     fixture_free(&f);
 }
 
+/* ---------- Wave 2 follow-ups (workstream P) ---------- */
+
+static void key_event(SDL_Scancode key, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
+    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.key.scancode = key;
+    event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
+    event.key.down = down;
+    assert(SDL_PushEvent(&event));
+}
+
+static bool logged_last(const studio *s, const char *event)
+{
+    const studio_canvas *c = s->canvas;
+    return acount(c->actions) &&
+           !strcmp(c->actions[acount(c->actions) - 1].event, event);
+}
+
+/* The Canvas preview takes the keys typed while its area has the keyboard,
+   so the asset's data-keys bindings send their events, and not while
+   another area has it. */
+static void preview_hears_keys()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    text_overlay_set(
+        BANK,
+        "rml: |\n  <div id=\"extract\" autofocus "
+        "data-keys=\"C:Close\">Extract</div>\n"
+        "rcss: |\n  #extract { display: block; height: 100%; tab-index: auto; "
+        "}\n"
+    );
+    frames(&f, 3);
+    studio_preview_ui(s, "Bank");
+    frames(&f, 8);
+    s->focus_area = STUDIO_AREA_BOTTOM;
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    frames(&f, 2);
+    bool elsewhere = !logged_last(s, "Close");
+    s->focus_area = STUDIO_AREA_TOP;
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    frames(&f, 2);
+    test_check(elsewhere && logged_last(s, "Close"), "the focused Canvas preview takes keys, so data-keys bindings fire");
+    studio_preview_ui(s, NULL);
+    frames(&f, 3);
+    game_entities *entities = f.scene->live->entities;
+    int before = game_entities_pending_events(entities);
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    frames(&f, 2);
+    bool editing = game_entities_pending_events(entities) == before;
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 3);
+    before = game_entities_pending_events(entities);
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    /* The key reaches the document, whose activation reaches Vault a frame
+       later, before the next scene frame runs it. */
+    frames(&f, 2);
+    bool playing = game_entities_pending_events(entities) == before + 1;
+    test_check(editing && playing, "the focused Scene's game documents take keys while the scene plays");
+    text_overlay_set(BANK, NULL);
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -402,6 +472,8 @@ int studio_documents_run(const char *program)
     status_bar_follows_studio();
     /* Workstream I: code intelligence in the Text Editor. */
     test_code_intelligence_studio();
+    /* Wave 2 follow-ups (workstream P) */
+    preview_hears_keys();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

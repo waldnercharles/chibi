@@ -3,9 +3,28 @@
   <nav id="menubar" class="menus"/>
   <!-- The menubar's menus, drawn natively in #menubar: each <li command>
        runs a Studio command by its id, each <li list> is a list Studio
-       fills, a <li label> heads a group and <hr/> separates. -->
+       fills, a <li label> heads a group, <hr/> separates and a <menu> inside
+       a menu is a submenu. -->
   <div id="menus">
     <menu label="File">
+      <menu label="New">
+        <li command="newScene"/>
+        <li command="newPrototype"/>
+        <hr/>
+        <li command="newBehavior"/>
+        <li command="newEvent"/>
+        <li command="newSystem"/>
+        <li command="newLibrary"/>
+        <hr/>
+        <li command="newMaterial"/>
+        <li command="newShape"/>
+        <li command="newField"/>
+        <li command="newShaderLibrary"/>
+        <hr/>
+        <li command="newUiWidget"/>
+        <li command="newUiDocument"/>
+        <li command="newStylesheet"/>
+      </menu>
       <li command="search"/>
       <li list="projects"/>
       <hr/>

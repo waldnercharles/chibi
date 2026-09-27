@@ -1,6 +1,8 @@
 #ifndef CHIBI_EDITOR_STUDIO_INTERNAL_H
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
+#include "assets/new_asset.h"
+#include "assets/project.h"
 #include "assets/ui_source.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/documents/ui_code.h"
@@ -550,21 +552,27 @@ typedef struct
     } problems;
 } studio_code;
 
-/* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
+/* Assets ▸ New (studio_assets.c): the kinds of asset Studio makes, each
+   new_asset_kind and then each ui_new_kind, and the name of the new one. */
+#define STUDIO_NEW_KIND_COUNT (NEW_ASSET_KIND_COUNT + UI_NEW_KIND_COUNT)
 typedef struct
 {
-    int kind;     /* ui_new_kind */
-    bool opening; /* open the popover this frame */
+    int kind;     /* below STUDIO_NEW_KIND_COUNT */
+    bool opening; /* open the name popover this frame */
     bool focus;   /* focus the name field on its first frame */
+    bool shown;   /* the popover showed last frame, so an Enter is for it */
     char name[64];
     char error[160];
-} studio_new_ui;
+} studio_new_asset;
 
 struct studio
 {
     app_scene_authoring *scene;
     engine_viewport *viewport;
     const char *project_root; /* the open project, owned by the application */
+    /* Its manifest as opened, with the name and start scene it defaults to;
+       Settings ▸ Project shows and rewrites it. Empty when it would not open. */
+    chibi_project project;
     bool own_project; /* the open project is the Studio project, whose settings are these preferences */
     uint64_t scene_prefs_seen, preview_prefs_seen;
     studio_project *projects;
@@ -677,7 +685,7 @@ struct studio
     double active_until; /* frames run at full rate until then, after input */
     /* UI documents (workstream D). */
     studio_code code;
-    studio_new_ui new_ui;
+    studio_new_asset new_asset;
     struct studio_inspect *inspect; /* the UI Inspector, NULL until used */
     /* UI wiring (workstream K): the asset picker, the shown game UI's error
        and the Canvas preview. */
@@ -1064,6 +1072,20 @@ typedef enum
     STUDIO_COMMAND_THEME,
     STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
     STUDIO_COMMAND_PREVIEW_UI,
+    /* Assets ▸ New: a command per kind, in studio_new_asset's order */
+    STUDIO_COMMAND_NEW_SCENE,
+    STUDIO_COMMAND_NEW_PROTOTYPE,
+    STUDIO_COMMAND_NEW_BEHAVIOR,
+    STUDIO_COMMAND_NEW_EVENT,
+    STUDIO_COMMAND_NEW_SYSTEM,
+    STUDIO_COMMAND_NEW_LIBRARY,
+    STUDIO_COMMAND_NEW_MATERIAL,
+    STUDIO_COMMAND_NEW_SHAPE,
+    STUDIO_COMMAND_NEW_FIELD,
+    STUDIO_COMMAND_NEW_SHADER_LIBRARY,
+    STUDIO_COMMAND_NEW_UI_WIDGET,
+    STUDIO_COMMAND_NEW_UI_DOCUMENT,
+    STUDIO_COMMAND_NEW_STYLESHEET,
     /* Authored top bar and area headers (workstream T) */
     STUDIO_COMMAND_SELECT_TAB,
     STUDIO_COMMAND_CLOSE_TAB,
@@ -1156,8 +1178,14 @@ void studio_code_free(studio *s);
 /* Workstream I: opens a place in a UI document's part, as Go to Definition
  * and Find References rows do; false when it cannot be opened. */
 bool studio_code_open_place(studio *s, const ui_code_place *place);
-/* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
-void studio_new_ui_button(studio *s);
+/* Assets ▸ New (studio_assets.c): the header's button opens a menu of every
+   kind, grouped, with the Assets filter's kind first. A kind, from the menu
+   or its New … command, asks for a name, then writes the asset and opens it
+   as Assets opens it. The frame draws the menu and the name popover wherever
+   they opened. */
+void studio_new_asset_button(studio *s);
+void studio_new_asset_start(studio *s, int kind);
+void studio_new_asset_frame(studio *s);
 
 /* ---------- UI Inspector (studio_inspect.c) ---------- */
 
@@ -1458,6 +1486,16 @@ studio_prefs studio_prefs_read(const char *json);
 /* Owned JSON text of the preferences file. */
 char *studio_prefs_write(const studio_prefs *prefs);
 
+/* The Project tab's rows: fields of the open project's project.yaml, in the
+ * page's order. */
+typedef enum
+{
+    STUDIO_PROJECT_NAME,        /* text */
+    STUDIO_PROJECT_START_SCENE, /* a scene, by its path under content */
+    STUDIO_PROJECT_UI,          /* the root document: a ui asset, or none */
+    STUDIO_PROJECT_FIELD_COUNT,
+} studio_project_field;
+
 /* The Settings page's variable, `settings` (studio_sources.c): the Editor or
  * Project tab, the category, the search query, the categories and the rows
  * they show. Rows edit through the table; Keyboard rows list the commands. */
@@ -1467,8 +1505,12 @@ typedef struct studio_settings_view
     const studio_command_info *commands; /* the Keyboard category's */
     int command_count;
     const char *project; /* the open project's name */
-    char root[128]; /* the project's root document, "" for none; the page may set it */
-    const char **documents; /* the project's ui assets (support/array.h) */
+    /* Each project.yaml field as the project reads it, "" for none; the
+       page may set them. */
+    char fields[STUDIO_PROJECT_FIELD_COUNT][256];
+    /* The assets a field chooses from (support/array.h): Start Scene's
+       scenes and Root Document's ui assets; none for Name. */
+    studio_setting_choice *choices[STUDIO_PROJECT_FIELD_COUNT];
 } studio_settings_view;
 
 /* Adds the `settings` variable to a data model's JSON. */

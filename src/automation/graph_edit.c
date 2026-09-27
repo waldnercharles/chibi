@@ -1,5 +1,6 @@
 #include "automation/graph_edit.h"
 
+#include "assets/new_asset.h"
 #include "graph/authoring/expand.h"
 #include "graph/authoring/layout.h"
 #include "graph/authoring/optimize.h"
@@ -2660,19 +2661,13 @@ int automation_graph_edit(
         if (!kind) {
             return fail_request(&ctx, "asset kind is required when creating an asset");
         }
-        ctx.asset = behavior_asset_new(name && name[0] ? name : "Untitled");
-        ctx.asset->domain = requested_domain;
-        if (ctx.asset->domain == BEHAVIOR_DOMAIN_SHAPE) {
-            ctx.asset->bounds[0] = 32.0f;
-            ctx.asset->bounds[1] = 32.0f;
-        }
-        if (is_shader_domain(ctx.asset)) {
-            node *output = shader_graph_add_output(ctx.asset->graph, ctx.asset->domain == BEHAVIOR_DOMAIN_SHAPE);
-            if (!output || add_node_ref_name(&ctx, "output", output)) {
-                int status = fail_validation(&ctx, "could not create shader output node");
-                free_edit_context(&ctx);
-                return status;
-            }
+        ctx.asset = new_asset_graph(requested_domain, name && name[0] ? name : "Untitled");
+        /* A material's, shape's or field's output node, its only one. */
+        node **nodes = ctx.asset->graph->nodes;
+        if (acount(nodes) && add_node_ref_name(&ctx, "output", nodes[0])) {
+            int status = fail_validation(&ctx, "could not name the output node");
+            free_edit_context(&ctx);
+            return status;
         }
     }
     ctx.graph = select_graph(&ctx, request);

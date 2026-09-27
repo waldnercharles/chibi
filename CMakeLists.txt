@@ -435,7 +435,7 @@ endif()
 
 add_library(authoring_graph STATIC src/automation/graph_edit.c)
 target_include_directories(authoring_graph PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(authoring_graph PUBLIC core)
+target_link_libraries(authoring_graph PUBLIC runtime_support core)
 
 add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
     src/automation/graph_optimize.c src/automation/navigation.c

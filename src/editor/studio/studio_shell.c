@@ -551,17 +551,23 @@ static bool entry_attribute(rml_element *entry, const char *name, char *value, s
 }
 
 /* A menu's entries in order: <li command="id"> runs a command by its id,
-   <li list="name"> is a list Studio fills, <li label="..."> heads a group
-   and <hr/> separates. */
+   <li list="name"> is a list Studio fills, <li label="..."> heads a group,
+   <hr/> separates and a <menu label> inside opens a submenu. */
 static void menu_entries(studio *s, rml_element *menu)
 {
     kit *k = s->kit;
     for (int i = 0; i < rml_element_child_count(menu); i++) {
         rml_element *entry = rml_element_child(menu, i);
+        const char *tag = rml_element_tag_name(entry);
         char key[16], value[128];
         snprintf(key, sizeof key, "e%d", i);
-        if (!strcmp(rml_element_tag_name(entry), "hr")) {
+        if (!strcmp(tag, "hr")) {
             kit_menu_separator(k, key);
+        } else if (!strcmp(tag, "menu") && entry_attribute(entry, "label", value, sizeof value)) {
+            if (kit_submenu_begin(k, key, value, 0)) {
+                menu_entries(s, entry);
+                kit_submenu_end(k);
+            }
         } else if (entry_attribute(entry, "command", value, sizeof value)) {
             int command = studio_command_named(value);
             if (command < 0) {
@@ -1195,6 +1201,7 @@ void studio_emit(studio *s)
     studio_designer_frame(s);
     statusbar(s);
     palette(s);
+    studio_new_asset_frame(s);
     undo_toast(s);
     studio_projects_frame(s);
     studio_rewire_toast(s);

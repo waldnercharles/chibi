@@ -68,6 +68,8 @@ game_prototype *game_prototype_load(
     char *error,
     size_t error_size
 );
+/* A prototype named `name` with no components or behaviors. */
+game_prototype *game_prototype_new(const char *name);
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);
 const char *game_prototype_identity(const game_prototype *prototype);
 const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype);

@@ -18,6 +18,18 @@ typedef struct
     bool indexed; /* runs only on the tab its argument names */
 } command_entry;
 
+/* A New … command: the palette shows "New Behavior…", a menu the kind. */
+#define NEW_ASSET(name, kind, words, glyph)                                    \
+    { .id = "new" name,                                                        \
+      .label = "New " kind "\xe2\x80\xa6",                                     \
+      .menu = kind,                                                            \
+      .keywords = "create add asset " words,                                   \
+      .icon = glyph }
+_Static_assert(
+    STUDIO_COMMAND_NEW_STYLESHEET - STUDIO_COMMAND_NEW_SCENE + 1 == STUDIO_NEW_KIND_COUNT,
+    "a New command per kind"
+);
+
 static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_SEARCH] = { "search", "Search", NULL, "Mod+K", "find go to", KIT_ICON_SEARCH },
     [STUDIO_COMMAND_SETTINGS] = { "settings", "Settings", NULL, "Mod+,", "preferences options", KIT_ICON_SETTINGS },
@@ -63,6 +75,20 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_INSPECT] = { "inspectElement", "Inspect Element", NULL, "Mod+Shift+C", "ui inspector devtools debugger pick styles rml rcss", KIT_ICON_SELECT },
     /* UI wiring (workstream K) */
     [STUDIO_COMMAND_PREVIEW_UI] = { "previewUi", "Preview UI Asset\xe2\x80\xa6", NULL, NULL, "canvas storybook widget document screen size", KIT_ICON_LAYOUT },
+    /* Assets ▸ New lists each by its kind (studio_assets.c). */
+    [STUDIO_COMMAND_NEW_SCENE] = NEW_ASSET("Scene", "Scene", "level world", KIT_ICON_SCENE),
+    [STUDIO_COMMAND_NEW_PROTOTYPE] = NEW_ASSET("Prototype", "Prototype", "prefab template entity", KIT_ICON_PROTOTYPE),
+    [STUDIO_COMMAND_NEW_BEHAVIOR] = NEW_ASSET("Behavior", "Behavior", "graph script blueprint", KIT_ICON_GRAPH),
+    [STUDIO_COMMAND_NEW_EVENT] = NEW_ASSET("Event", "Event", "signal message definition", KIT_ICON_EVENT),
+    [STUDIO_COMMAND_NEW_SYSTEM] = NEW_ASSET("System", "System", "ecs query graph", KIT_ICON_SYSTEM),
+    [STUDIO_COMMAND_NEW_LIBRARY] = NEW_ASSET("Library", "Library", "functions macros graph", KIT_ICON_LIBRARY),
+    [STUDIO_COMMAND_NEW_MATERIAL] = NEW_ASSET("Material", "Material", "shader surface", KIT_ICON_MATERIAL),
+    [STUDIO_COMMAND_NEW_SHAPE] = NEW_ASSET("Shape", "Shape", "shader sdf distance", KIT_ICON_HEXAGON),
+    [STUDIO_COMMAND_NEW_FIELD] = NEW_ASSET("Field", "Field", "procedural terrain noise", KIT_ICON_GRID),
+    [STUDIO_COMMAND_NEW_SHADER_LIBRARY] = NEW_ASSET("ShaderLibrary", "Shader Library", "shader functions", KIT_ICON_LIBRARY),
+    [STUDIO_COMMAND_NEW_UI_WIDGET] = NEW_ASSET("UiWidget", "UI Widget", "component rml", KIT_ICON_LAYOUT),
+    [STUDIO_COMMAND_NEW_UI_DOCUMENT] = NEW_ASSET("UiDocument", "UI Document", "panel screen rml", KIT_ICON_LAYOUT),
+    [STUDIO_COMMAND_NEW_STYLESHEET] = NEW_ASSET("Stylesheet", "Stylesheet", "ui styles rcss css", KIT_ICON_FILE),
     /* Authored top bar and area headers (workstream T): the document tabs'
        commands take the tab's index, emit('studio.selectTab', i). */
     [STUDIO_COMMAND_SELECT_TAB] = { "selectTab", "Select Tab", NULL, NULL, "document switch", KIT_ICON_FILE, true },
@@ -262,6 +288,21 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
                 studio_previewed_ui(s),
                 &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI }
             );
+            break;
+        case STUDIO_COMMAND_NEW_SCENE:
+        case STUDIO_COMMAND_NEW_PROTOTYPE:
+        case STUDIO_COMMAND_NEW_BEHAVIOR:
+        case STUDIO_COMMAND_NEW_EVENT:
+        case STUDIO_COMMAND_NEW_SYSTEM:
+        case STUDIO_COMMAND_NEW_LIBRARY:
+        case STUDIO_COMMAND_NEW_MATERIAL:
+        case STUDIO_COMMAND_NEW_SHAPE:
+        case STUDIO_COMMAND_NEW_FIELD:
+        case STUDIO_COMMAND_NEW_SHADER_LIBRARY:
+        case STUDIO_COMMAND_NEW_UI_WIDGET:
+        case STUDIO_COMMAND_NEW_UI_DOCUMENT:
+        case STUDIO_COMMAND_NEW_STYLESHEET:
+            studio_new_asset_start(s, command - STUDIO_COMMAND_NEW_SCENE);
             break;
         case STUDIO_COMMAND_SELECT_TAB:
             finish_transform_edit(s->scene, false);

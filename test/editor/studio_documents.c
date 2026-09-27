@@ -125,6 +125,8 @@ static void reload_keeps_viewed_graph_saved()
 
 /* UI documents as tabs and in the Text Editor (test/editor/ui_documents.c). */
 void test_ui_document_tabs();
+/* Assets ▸ New and Settings ▸ Project (test/editor/studio_new_assets.c). */
+void test_studio_new_assets();
 /* Workstream I: the Text Editor's code intelligence
    (test/editor/code_intelligence_studio.c). */
 void test_code_intelligence_studio();
@@ -902,6 +904,7 @@ int studio_documents_run(const char *program)
     app_input_initialize();
     reload_keeps_viewed_graph_saved();
     test_ui_document_tabs();
+    test_studio_new_assets();
     /* UI wiring (workstream K) */
     ui_wiring_checks();
     /* Authored status bar (workstream J) */

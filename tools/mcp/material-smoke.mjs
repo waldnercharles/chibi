@@ -31,9 +31,8 @@ try {
     { op: "add_node", type: "Field X", ref: "x" },
     { op: "add_node", type: "Field Y", ref: "y" },
     { op: "add_node", type: "Field Circle", ref: "disc", inputs: { Radius: 12 } },
-    { op: "add_node", type: "Field Output", ref: "out" },
     connect("x", "Value", "disc", "X"), connect("y", "Value", "disc", "Y"),
-    connect("disc", "Value", "out", "Value"),
+    connect("disc", "Value", "output", "Value"),
   ] });
   assert.equal(result("validateAsset", field).valid, true);
   const before = result("readAsset", field);

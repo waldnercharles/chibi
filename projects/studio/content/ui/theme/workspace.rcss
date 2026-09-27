@@ -231,10 +231,10 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .code-status { display: flex; align-items: center; gap: 6dp; height: 22dp; flex: 0 0 auto; padding: 0dp 8dp; border-top: 1dp var(--edge); background-color: var(--muted); color: var(--destructive); white-space: nowrap; overflow: hidden; }
 .code-status .message { overflow: hidden; text-overflow: ellipsis; }
 /* Assets ▸ New: the name of the new asset. */
-.popup.new-ui { width: 260dp; }
-.new-ui-field { display: block; padding: 2dp 4dp 4dp; }
-.new-ui-field .field { height: 24dp; }
-.new-ui-error { display: flex; align-items: center; gap: 8dp; min-height: var(--h); padding: 0dp 8dp 0dp 6dp; color: var(--destructive); }
+.popup.new-asset { width: 260dp; }
+.new-asset-field { display: block; padding: 2dp 4dp 4dp; }
+.new-asset-field .field { height: 24dp; }
+.new-asset-error { display: flex; align-items: center; gap: 8dp; min-height: var(--h); padding: 0dp 8dp 0dp 6dp; color: var(--destructive); }
 
 /* UI wiring (workstream K): the Canvas preview of one ui asset in the Scene area. */
 .canvas-sizes { display: flex; flex: 0 0 auto; margin-left: 6dp; }

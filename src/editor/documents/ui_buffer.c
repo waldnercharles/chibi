@@ -1,5 +1,6 @@
 #include "editor/documents/ui_buffer.h"
 
+#include "assets/new_asset.h"
 #include "assets/ui_document.h"
 #include "support/array.h"
 #include "support/rcss.h"
@@ -8,7 +9,6 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,7 +18,6 @@
 #define UI_BUFFER_TYPING 1.0
 /* Seconds between looks at the file on disk. */
 #define UI_BUFFER_POLL 1.0
-#define UI_NAME_MAX 64
 
 static char *copy(const char *text)
 {
@@ -546,23 +545,9 @@ ui_buffer *ui_buffer_restore(yyjson_val *value)
 /* ---------- New assets ---------- */
 
 /* Names become file names and <use ui="Name"> values. */
-static bool valid_name(const char *name)
-{
-    if (!isalpha((unsigned char)name[0]) || strlen(name) > UI_NAME_MAX) {
-        return false;
-    }
-    for (const char *c = name; *c; c++) {
-        if (!isalnum((unsigned char)*c) && *c != '_' && *c != '-') {
-            return false;
-        }
-    }
-    return true;
-}
-
 char *ui_buffer_new_path(const char *folder, ui_new_kind kind, const char *name, char *error, size_t size)
 {
-    if (!valid_name(name)) {
-        snprintf(error, size, name[0] ? "Start with a letter; use letters, digits, - and _" : "Enter a name");
+    if (!new_asset_name_valid(name, error, size)) {
         return NULL;
     }
     const char *extension = kind == UI_NEW_STYLESHEET ? UI_STYLE_EXTENSION

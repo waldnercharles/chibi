@@ -275,6 +275,12 @@ static bool to_guest(studio *s, const SDL_Event *e)
             s->guest->mods = e->key.mod;
             return guest_keys(s, e);
         case SDL_EVENT_TEXT_INPUT: return guest_keys(s, e);
+        case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+            if (s->guest_hover) {
+                apush(s->guest->events, *e);
+            }
+            s->guest_hover = false;
+            return false;
         default: return false;
     }
 }

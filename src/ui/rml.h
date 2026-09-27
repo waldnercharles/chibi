@@ -663,6 +663,12 @@ extern "C"
      * resources: face handles from before are gone. */
     unsigned rml_font_generation();
 
+    /* ---------- Wave 2 follow-ups (workstream P) ---------- */
+
+    /* Takes the oldest value a binding changed since it was last taken, each
+     * value once; false when there is none. Values stay in the model's doc. */
+    bool rml_data_model_take_written(rml_data_model *model, yyjson_mut_val **value);
+
 #ifdef __cplusplus
 }
 #endif

@@ -486,23 +486,39 @@ static void show_system(ui_data *d)
     }
 }
 
+/* The key `shown` holds `value` under, or NULL. */
+static const char *shown_key(yyjson_mut_val *shown, const yyjson_mut_val *value)
+{
+    yyjson_mut_val *key;
+    yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
+    while ((key = yyjson_mut_obj_iter_next(&iter))) {
+        if (yyjson_mut_obj_iter_get_val(key) == value) {
+            return yyjson_mut_get_str(key);
+        }
+    }
+    return NULL;
+}
+
+/* Saves in `save` the shown keys bindings changed, and only those: a key the
+ * save changed since it was shown keeps the save's value. */
+static void save_written(ui_data *d, yyjson_mut_val *shown, game_save *save)
+{
+    yyjson_mut_val *value;
+    while (rml_data_model_take_written(d->model, &value)) {
+        char number[32];
+        const char *key = save && save == d->save ? shown_key(shown, value) : NULL;
+        const char *text = key ? saved_text(value, number, sizeof number) : NULL;
+        if (text) {
+            game_save_set(save, key, text);
+        }
+    }
+}
+
 void ui_data_sync(ui_data *d, game_save *save)
 {
     show_system(d);
     yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
-    uint64_t writes = rml_data_model_writes(d->model);
-    if (save && save == d->save && writes != d->writes_seen) {
-        yyjson_mut_val *key;
-        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
-        while ((key = yyjson_mut_obj_iter_next(&iter))) {
-            char number[32];
-            const char *text = saved_text(yyjson_mut_obj_iter_get_val(key), number, sizeof number);
-            if (text) {
-                game_save_set(save, yyjson_mut_get_str(key), text);
-            }
-        }
-    }
-    d->writes_seen = writes;
+    save_written(d, shown, save);
     uint64_t revision = save ? game_save_revision(save) : 0;
     if (save == d->save && revision == d->save_seen) {
         return;

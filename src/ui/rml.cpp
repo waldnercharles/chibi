@@ -9,6 +9,7 @@
 #include <RmlUi/Core/Mesh.h>
 #include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/TextShapingContext.h>
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdio>
@@ -539,6 +540,9 @@ public:
             break;
         }
         writes += set;
+        if (set && std::find(written.begin(), written.end(), v) == written.end()) {
+            written.push_back(v);
+        }
         return set;
     }
 
@@ -568,6 +572,7 @@ public:
     }
 
     uint64_t writes = 0;
+    Rml::Vector<yyjson_mut_val *> written; /* each once, until taken */
 
 private:
     yyjson_mut_doc *doc;
@@ -1460,4 +1465,17 @@ bool rml_property_describe(const char *name, char *initial, size_t size, bool *i
 unsigned rml_font_generation()
 {
     return font_generation;
+}
+
+/* ---------- Wave 2 follow-ups (workstream P) ---------- */
+
+bool rml_data_model_take_written(rml_data_model *model, yyjson_mut_val **value)
+{
+    Rml::Vector<yyjson_mut_val *> &written = model->definition.written;
+    if (written.empty()) {
+        return false;
+    }
+    *value = written.front();
+    written.erase(written.begin());
+    return true;
 }

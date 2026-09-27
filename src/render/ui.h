@@ -46,15 +46,16 @@ typedef struct ui_data
     yyjson_mut_doc *doc;
     rml_data_model *model;
     game_save *save; /* the one `save` shows */
-    uint64_t save_seen, writes_seen;
+    uint64_t save_seen;
 } ui_data;
 
 /* Creates the model in `context` over `doc`, which it takes, adding `save`
  * and `system` to its root; a NULL doc has no other variables. `emit` hears
  * emit('Event'). */
 void ui_data_init(ui_data *data, rml_context *context, yyjson_mut_doc *doc, rml_emit_fn emit, void *user);
-/* Saves in `save` the keys bindings set, then shows its keys when they
- * changed, and the system's theme. */
+/* Saves in `save` the keys bindings changed since the last sync, and no
+ * others, so a key the save changed meanwhile keeps its value; then shows its
+ * keys when they changed, and the system's theme. */
 void ui_data_sync(ui_data *data, game_save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */

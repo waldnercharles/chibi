@@ -296,6 +296,15 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     const char *volume = game_save_get(settings, "volume");
     test_check(volume && !strcmp(volume, "loud"), "a radio bound to a key nothing saved yet saves its value when chosen");
+    game_save_set(settings, "volume", "quiet");
+    click(ui, 20, 20);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    test_check(
+        !strcmp(game_save_get(settings, "sound"), "true") &&
+            !strcmp(game_save_get(settings, "volume"), "quiet"),
+        "a binding saves only the key it changed, so a key saved in the same "
+        "frame keeps its value"
+    );
     unlink(options);
 
     char keys[96];

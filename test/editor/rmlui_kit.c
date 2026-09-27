@@ -503,6 +503,25 @@ bool test_rmlui_kit()
     ok &= check(f.chosen == 2, "command-score ranks Frame Selected for \"fs\"");
     ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
 
+    /* Rows a new query brings under a still pointer leave the selection on
+       the best match (cmdk): only a pointer that moves chooses a row. */
+    f.open_command = true;
+    settle(&f);
+    rml_element *rows[4];
+    rml_element *input = rml_context_focus_element(rml_backend_context(f.backend));
+    int row_count = rml_element_query_selector_all(rml_element_owner_document(input), ".cmd-item", rows, 4);
+    rml_vec2 at = row_count > 1 ? rml_element_absolute_offset(rows[1], RML_BOX_BORDER)
+                                : (rml_vec2){ 0 };
+    pointer(&f, RML_INPUT_POINTER_MOVE, at.x + 4, at.y + 4);
+    frame(&f);
+    /* "l" drops Beta, so Frame Selected's row comes under the pointer. */
+    f.chosen = -1;
+    type(&f, "l");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(row_count > 1 && f.chosen == 0, "a still pointer leaves Enter on the best match");
+
     /* Match highlighting keeps the spaces RmlUi would drop as blank text:
        one inside a bold run and one alone between two. */
     char matched_space[64], gap_space[64];

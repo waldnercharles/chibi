@@ -61,6 +61,7 @@
               <span class="readout">{{ row.value }}</span>
               <use ui="Slider" data-value="row.position" min="0" max="1" data-attr-step="row.tick"/>
             </div>
+            <div class="text-control" data-for="row.text"><use ui="TextField" data-alias-text="row.value"/></div>
             <div class="keys" data-if="row.type == 'shortcut'">
               <span class="key" data-for="key : row.keys">{{ key }}</span>
               <span class="none" data-if="row.keys.size == 0">&#x2014;</span>

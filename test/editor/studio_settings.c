@@ -134,14 +134,31 @@ static void page_open(page_fixture *f)
                                       .commands = f->commands,
                                       .command_count = 3,
                                       .project = "Arena" };
-    apush(f->view.documents, "Hud");
-    apush(f->view.documents, "Shell");
+    snprintf(f->view.fields[STUDIO_PROJECT_NAME], sizeof f->view.fields[0], "Arena");
+    snprintf(f->view.fields[STUDIO_PROJECT_START_SCENE], sizeof f->view.fields[0], "scenes/Main.yaml");
+    apush(
+        f->view.choices[STUDIO_PROJECT_START_SCENE],
+        ((studio_setting_choice){ "scenes/Main.yaml", "Main" })
+    );
+    apush(
+        f->view.choices[STUDIO_PROJECT_START_SCENE],
+        ((studio_setting_choice){ "scenes/Boss.yaml", "Boss" })
+    );
+    apush(f->view.choices[STUDIO_PROJECT_UI], ((studio_setting_choice){ "Hud", "Hud" }));
+    apush(f->view.choices[STUDIO_PROJECT_UI], ((studio_setting_choice){ "Shell", "Shell" }));
     studio_settings_sync(&f->view, f->doc, false);
+}
+
+static void page_view_free(studio_settings_view *view)
+{
+    for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
+        afree(view->choices[f]);
+    }
 }
 
 static void page_close(page_fixture *f)
 {
-    afree(f->view.documents);
+    page_view_free(&f->view);
     yyjson_mut_doc_free(f->doc);
 }
 
@@ -222,7 +239,7 @@ static void page_rows()
     shown(&f, keys, sizeof keys);
     int rows = (int)yyjson_mut_arr_size(member(f.page, "rows"));
     test_check(
-        rows == studio_setting_count + 3 + 1 &&
+        rows == studio_setting_count + 3 + STUDIO_PROJECT_FIELD_COUNT &&
             !strcmp(keys, "theme density uiScale reduceMotion") &&
             !strcmp(yyjson_mut_get_str(member(f.page, "title")), "Appearance") &&
             category_flag(&f, STUDIO_SETTINGS_PROJECT, "hidden"),
@@ -315,22 +332,47 @@ static void page_keyboard_and_project()
     studio_settings_sync(&f.view, f.doc, true);
     shown(&f, keys, sizeof keys);
     yyjson_mut_val *root = row_named(&f, "project.ui");
-    bool scoped = !strcmp(keys, "project.ui") &&
+    bool scoped = !strcmp(keys, "project.name project.startScene project.ui") &&
                   !strcmp(yyjson_mut_get_str(member(f.page, "category")), "project") &&
                   category_flag(&f, STUDIO_SETTINGS_APPEARANCE, "hidden") &&
                   !strcmp(text_of_page(&f, "project"), "Arena") &&
                   yyjson_mut_arr_size(member(root, "choices")) == 3;
     set_text(&f, root, "value", "Hud");
     studio_settings_sync(&f.view, f.doc, true);
-    bool chosen = !strcmp(f.view.root, "Hud") &&
+    bool chosen = !strcmp(f.view.fields[STUDIO_PROJECT_UI], "Hud") &&
                   yyjson_mut_get_bool(member(root, "modified"));
     set_text(&f, root, "value", "Missing");
     studio_settings_sync(&f.view, f.doc, true);
     test_check(
-        scoped && chosen && !strcmp(f.view.root, "Hud") &&
+        scoped && chosen && !strcmp(f.view.fields[STUDIO_PROJECT_UI], "Hud") &&
             !strcmp(yyjson_mut_get_str(member(root, "value")), "Hud"),
         "the Project tab sets the root document to one of the project's ui "
         "documents"
+    );
+
+    yyjson_mut_val *name = row_named(&f, "project.name");
+    yyjson_mut_val *start = row_named(&f, "project.startScene");
+    bool shown_name = !strcmp(yyjson_mut_get_str(member(name, "value")), "Arena") &&
+                      yyjson_mut_arr_size(member(name, "text")) == 1 &&
+                      !yyjson_mut_get_bool(member(name, "modified"));
+    set_text(&f, name, "value", "Neon Swarm");
+    set_text(&f, start, "value", "scenes/Boss.yaml");
+    studio_settings_sync(&f.view, f.doc, true);
+    bool renamed = !strcmp(f.view.fields[STUDIO_PROJECT_NAME], "Neon Swarm") &&
+                   !strcmp(f.view.fields[STUDIO_PROJECT_START_SCENE], "scenes/Boss.yaml");
+    set_text(&f, name, "value", "");
+    set_text(&f, start, "value", "scenes/Missing.yaml");
+    studio_settings_sync(&f.view, f.doc, true);
+    yyjson_mut_val *first = yyjson_mut_arr_get(member(start, "choices"), 0);
+    test_check(
+        shown_name && renamed &&
+            !strcmp(f.view.fields[STUDIO_PROJECT_NAME], "Neon Swarm") &&
+            !strcmp(f.view.fields[STUDIO_PROJECT_START_SCENE], "scenes/Boss.yaml") &&
+            yyjson_mut_arr_size(member(start, "choices")) == 2 &&
+            !strcmp(yyjson_mut_get_str(member(first, "label")), "Main") &&
+            !yyjson_mut_get_bool(member(start, "modified")),
+        "the Project tab names the project and picks its start scene, which "
+        "neither can leave empty"
     );
     page_close(&f);
 }
@@ -482,12 +524,37 @@ static void page_mount()
         mount_frame(&f);
     }
     test_check(graph_shown && rml_data_model_writes(f.data.model) == settled, "choosing a category leaves search and shows its controls, which write nothing until used");
+
+    set_text(&f.page, f.page.page, "scope", "project");
+    rml_data_model_dirty(f.data.model, "settings");
+    for (int i = 0; i < 3; i++) {
+        mount_frame(&f);
+    }
+    rml_element *name = NULL;
+    bool project = visible(&f, ".text-control input", &name) == 1 &&
+                   visible(&f, "select", &select) == 2;
+    if (project) {
+        click(&f, name);
+        rml_backend_process_input(
+            f.backend,
+            &(rml_input){ .type = RML_INPUT_TEXT_INPUT, .text = " Lab", .text_size = 4 }
+        );
+        click(&f, rml_element_query_selector(f.host, ".page-title"));
+    }
+    for (int i = 0; i < 3; i++) {
+        mount_frame(&f);
+    }
+    test_check(
+        project && !strcmp(f.page.view.fields[STUDIO_PROJECT_NAME], "Arena Lab"),
+        "the Project tab shows the name as a text field, committed when it "
+        "loses focus, and the start scene and root document as selects"
+    );
     kit_destroy(f.k);
     ui_data_free(&f.data);
     rml_backend_destroy(f.backend);
     ui_mount_free(f.mount);
     rml_listener_destroy(f.listener);
-    afree(f.page.view.documents);
+    page_view_free(&f.page.view);
     game_save_free(f.save);
 }
 

@@ -45,6 +45,10 @@
   text-transform: uppercase; letter-spacing: 0.5dp;
 }
 .range { display: flex; align-items: center; gap: 10dp; }
+/* A text setting is outlined as the search is, on the page's own fill, and
+   has a width a select's content gives it. */
+.text-control { display: flex; width: 180dp; }
+.text-control .field { border-color: var(--border); }
 /* The number sits before its slider, so controls end in one column and
    Up and Down move straight between them. */
 .readout { width: 24dp; text-align: right; font-family: InterNumeric; color: var(--muted-foreground); }

@@ -1,0 +1,396 @@
+/* Assets ▸ New and Settings ▸ Project over a project on disk: every kind New
+ * makes is written as its model saves it, joins the asset index at once and
+ * opens as Assets opens it; the Project rows rewrite project.yaml. */
+#include "assets/new_asset.h"
+#include "assets/system_document.h"
+#include "editor/studio/studio_internal.h"
+#include "editor/workspace/input.h"
+#include "support/array.h"
+#include "support/asset_text.h"
+#include "support/text_file.h"
+#include "test/suite_internal.h"
+
+#include <SDL3/SDL_events.h>
+#include <assert.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define FRAME_SECONDS (1.0 / 60.0)
+#define MANIFEST                                                               \
+    "version: 2\nname: Fresh\ncontent: content\nstart_scene: "                 \
+    "scenes/Main.yaml\n"
+
+typedef struct
+{
+    ecs_world *world;
+    game_live_world *live;
+    engine *runtime;
+    editor *graph;
+    engine_viewport *viewport;
+    app_scene_authoring *scene;
+    studio *studio;
+    double time;
+    char root[64], content[96];
+} new_fixture;
+
+static void write_text(const char *path, const char *text)
+{
+    FILE *file = fopen(path, "w");
+    assert(file && fputs(text, file) >= 0 && fclose(file) == 0);
+}
+
+static void join(char *out, size_t size, const char *folder, const char *name)
+{
+    snprintf(out, size, "%s/%s", folder, name);
+}
+
+/* A project with one scene, Main, and Studio over it. */
+static new_fixture fixture_new()
+{
+    new_fixture f = { .world = ecs_world_new() };
+    snprintf(f.root, sizeof f.root, "/tmp/chibi-new-XXXXXX");
+    assert(mkdtemp(f.root));
+    char path[160], error[128];
+    join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
+    write_text(path, MANIFEST);
+    join(f.content, sizeof f.content, f.root, "content");
+    join(path, sizeof path, f.content, "scenes");
+    assert(mkdir(f.content, 0755) == 0 && mkdir(path, 0755) == 0);
+    char *json = new_asset_json(NEW_ASSET_SCENE, "Main");
+    char *yaml = asset_text_to_disk(json, error, sizeof error);
+    join(path, sizeof path, f.content, "scenes/Main.yaml");
+    write_text(path, yaml);
+    free(yaml);
+    free(json);
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(f.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    f.live = game_live_world_new(f.world);
+    game_live_definition *definition = game_live_definition_new("Editing", behavior_asset_new("Editing"));
+    assert(definition && game_live_add_definition(f.live, definition) == 0);
+    f.graph = editor_new(behavior_asset_new("Editing"));
+    f.runtime = engine_new(f.world, f.live);
+    f.viewport = engine_viewport_new(640, 360);
+    f.scene = app_scene_authoring_new(
+        f.world,
+        f.live,
+        definition,
+        editor_behavior_asset(f.graph),
+        f.graph,
+        NULL,
+        NULL,
+        f.runtime
+    );
+    assert(app_scene_authoring_set_content_root(f.scene, f.content) == 0);
+    assert(app_scene_authoring_load_content(f.scene) == 0);
+    assert(app_scene_authoring_load(f.scene, path) == 0);
+    f.studio = studio_new(f.scene, f.viewport, f.root);
+    return f;
+}
+
+static void remove_tree(const char *path)
+{
+    DIR *directory = opendir(path);
+    struct dirent *item;
+    while (directory && (item = readdir(directory))) {
+        if (item->d_name[0] == '.') {
+            continue;
+        }
+        char child[512];
+        join(child, sizeof child, path, item->d_name);
+        struct stat info;
+        assert(lstat(child, &info) == 0);
+        if (S_ISDIR(info.st_mode)) {
+            remove_tree(child);
+        } else {
+            assert(remove(child) == 0);
+        }
+    }
+    if (directory) {
+        closedir(directory);
+    }
+    assert(rmdir(path) == 0);
+}
+
+static void fixture_free(new_fixture *f)
+{
+    studio_free(f->studio);
+    app_scene_authoring_free(f->scene);
+    engine_free(f->runtime);
+    game_live_world_free(f->live);
+    editor_free(f->graph);
+    ecs_world_free(f->world);
+    engine_viewport_free(f->viewport);
+    remove_tree(f->root);
+}
+
+static void frames(new_fixture *f, int count)
+{
+    for (int i = 0; i < count; i++) {
+        f->time += FRAME_SECONDS;
+        cf_app_update(NULL);
+        app_input_frame();
+        editor_tick(f->graph, f->time);
+        assert(app_scene_authoring_frame(f->scene, f->time) == FLOW_OK);
+        studio_frame(f->studio, FRAME_SECONDS);
+        cf_app_draw_onto_screen(true);
+        /* The user's preferences stay as they are. */
+        f->studio->prefs_changed_at = 0;
+    }
+}
+
+static void press(SDL_Scancode key)
+{
+    for (int down = 1; down >= 0; down--) {
+        SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
+        event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+        event.key.scancode = key;
+        event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
+        event.key.down = down;
+        assert(SDL_PushEvent(&event));
+    }
+}
+
+/* The file's text as its model loads and saves it, in the form --format
+   writes. */
+static char *canonical(new_asset_kind kind, const char *text)
+{
+    char error[256];
+    char *json = NULL;
+    if (kind == NEW_ASSET_SCENE) {
+        game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
+        json = scene ? game_scene_document_save(scene) : NULL;
+        game_scene_document_free(scene);
+    } else if (kind == NEW_ASSET_PROTOTYPE) {
+        game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
+                                             .component_count = GAME_REGISTRY_COMPONENT_COUNT };
+        game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
+        json = prototype ? game_prototype_save(prototype) : NULL;
+        game_prototype_free(prototype);
+    } else if (kind == NEW_ASSET_SYSTEM) {
+        game_system_document *system = game_system_document_load(text, NULL, NULL, error, sizeof error);
+        json = system ? game_system_document_save(system, NULL, NULL, NULL) : NULL;
+        game_system_document_free(system);
+    } else {
+        behavior_asset *asset = behavior_asset_load_json(text);
+        json = asset ? behavior_asset_save_json(asset) : NULL;
+        behavior_asset_free(asset);
+    }
+    char *disk = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
+    free(json);
+    return disk;
+}
+
+/* Whether no node of a graph asset's text holds a position, so the editor
+   arranges them all. */
+static bool automatic(new_asset_kind kind, const char *text)
+{
+    if (kind == NEW_ASSET_SCENE || kind == NEW_ASSET_PROTOTYPE) {
+        return true;
+    }
+    behavior_asset *asset = behavior_asset_load_json(text);
+    bool placed = !asset;
+    for (int i = 0; asset && i < acount(asset->graph->nodes); i++) {
+        placed |= asset->graph->nodes[i]->placed;
+    }
+    behavior_asset_free(asset);
+    return !placed;
+}
+
+/* The asset `kind` makes is open as Assets opens it. */
+static bool opened(const app_scene_authoring *scene, int kind, const char *name, const char *path)
+{
+    app_editor_document_context document = app_scene_authoring_document(scene);
+    switch (kind) {
+        case NEW_ASSET_SCENE:
+            return document.kind == APP_EDITOR_DOCUMENT_SCENE &&
+                   scene_same_file(scene->scene_path, path);
+        case NEW_ASSET_PROTOTYPE:
+            return document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
+                   !strcmp(document.id, name);
+        case NEW_ASSET_SYSTEM:
+            return document.kind == APP_EDITOR_DOCUMENT_SYSTEM &&
+                   !strcmp(document.id, name);
+        default:
+            if (kind >= NEW_ASSET_KIND_COUNT) {
+                return document.kind == APP_EDITOR_DOCUMENT_UI &&
+                       scene_same_file(document.id, path);
+            }
+            return document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
+                   !strcmp(document.id, name);
+    }
+}
+
+static const reference_asset_kind INDEXED[STUDIO_NEW_KIND_COUNT] = {
+    REFERENCE_ASSET_SCENE,    REFERENCE_ASSET_PROTOTYPE,
+    REFERENCE_ASSET_BEHAVIOR, REFERENCE_ASSET_EVENT,
+    REFERENCE_ASSET_SYSTEM,   REFERENCE_ASSET_LIBRARY,
+    REFERENCE_ASSET_MATERIAL, REFERENCE_ASSET_SHAPE,
+    REFERENCE_ASSET_FIELD,    REFERENCE_ASSET_LIBRARY,
+    REFERENCE_ASSET_UI,       REFERENCE_ASSET_UI,
+    REFERENCE_ASSET_UI,
+};
+
+/* Each New … command asks for a name, Enter makes the asset, and Studio
+   opens it. */
+static void creates_every_kind()
+{
+    new_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    for (int kind = 0; kind < STUDIO_NEW_KIND_COUNT; kind++) {
+        studio_command_run(s, (studio_command)(STUDIO_COMMAND_NEW_SCENE + kind));
+        frames(&f, 2);
+        bool asked = kit_popup_is_open(s->kit, "new-asset-name");
+        char name[64];
+        snprintf(name, sizeof name, "%s", s->new_asset.name);
+        press(SDL_SCANCODE_RETURN);
+        frames(&f, 2);
+        char file[288];
+        const char *extension = kind < NEW_ASSET_KIND_COUNT ? ASSET_EXTENSION
+                              : kind == STUDIO_NEW_KIND_COUNT - 1
+                                  ? UI_STYLE_EXTENSION
+                                  : UI_MARKUP_EXTENSION;
+        const char *folder = kind < NEW_ASSET_KIND_COUNT
+                               ? new_asset_folder((new_asset_kind)kind)
+                               : "ui";
+        snprintf(file, sizeof file, "%s/%s/%s%s", f.content, folder, name, extension);
+        char *text = text_file_read(file);
+        char *again = text && kind < NEW_ASSET_KIND_COUNT
+                        ? canonical((new_asset_kind)kind, text)
+                        : NULL;
+        bool canonical_text = kind >= NEW_ASSET_KIND_COUNT ||
+                              (again && !strcmp(again, text) &&
+                               automatic((new_asset_kind)kind, text));
+        const reference_index *index = app_scene_authoring_asset_index(f.scene);
+        bool indexed = reference_index_find_asset(index, INDEXED[kind], file, NULL) >= 0;
+        bool open = opened(f.scene, kind, name, file);
+        bool closed = !kit_popup_is_open(s->kit, "new-asset-name");
+        if (!(asked && text && canonical_text && indexed && open && closed)) {
+            printf(
+                "  %s: asked %d, written %d, canonical %d, indexed %d, open "
+                "%d, closed %d: %s\n",
+                name,
+                asked,
+                text != NULL,
+                canonical_text,
+                indexed,
+                open,
+                closed,
+                app_scene_authoring_message(f.scene)
+            );
+        }
+        test_check(
+            asked && text && canonical_text && indexed && open && closed,
+            "a New command names the asset, writes it canonical, indexes it "
+            "and opens it"
+        );
+        free(again);
+        free(text);
+    }
+    studio_new_asset_start(s, NEW_ASSET_BEHAVIOR);
+    bool numbered = !strcmp(s->new_asset.name, "NewBehavior2");
+    snprintf(s->new_asset.name, sizeof s->new_asset.name, "NewScene");
+    frames(&f, 2);
+    press(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool refused = strstr(s->new_asset.error, "NewScene already exists") != NULL &&
+                   kit_popup_is_open(s->kit, "new-asset-name");
+    test_check(numbered && refused, "a new asset's default name is free, and a taken name asks again");
+    fixture_free(&f);
+}
+
+/* With the Assets filter on a kind, New lists that kind first. */
+static void menu_puts_filter_first()
+{
+    new_fixture f = fixture_new();
+    studio *s = f.studio;
+    s->assets_kind = REFERENCE_ASSET_BEHAVIOR;
+    frames(&f, 2);
+    kit_popup_open_at(s->kit, "new-asset", 10, 10);
+    frames(&f, 2);
+    kit_rect behavior, scene;
+    bool shown = kit_find(s->kit, "layer/@new-asset/newBehavior", &behavior) &&
+                 kit_find(s->kit, "layer/@new-asset/newScene", &scene);
+    test_check(shown && behavior.y < scene.y, "the New menu lists the Assets filter's kind first");
+    fixture_free(&f);
+}
+
+static rml_element *settings_element(studio *s, const char *selector)
+{
+    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
+    rml_element *matches[16];
+    int count = rml_element_query_selector_all(doc, selector, matches, 16);
+    for (int i = 0; i < count && i < 16; i++) {
+        if (rml_element_is_visible(matches[i], true)) {
+            return matches[i];
+        }
+    }
+    return NULL;
+}
+
+/* Settings ▸ Project renames the project and picks its start scene, each
+   written to project.yaml in its place. */
+static void project_settings_write()
+{
+    new_fixture f = fixture_new();
+    studio *s = f.studio;
+    char path[160];
+    join(path, sizeof path, f.content, "scenes/Boss.yaml");
+    char *json = new_asset_json(NEW_ASSET_SCENE, "Boss"), error[128];
+    char *yaml = asset_text_to_disk(json, error, sizeof error);
+    write_text(path, yaml);
+    free(yaml);
+    free(json);
+    content_refresh(f.scene);
+    studio_command_run(s, STUDIO_COMMAND_SETTINGS);
+    frames(&f, 3);
+    rml_element *scope = settings_element(s, "[data-ui=Settings] .scope input[value=project]");
+    if (scope) {
+        rml_element_click(scope);
+    }
+    frames(&f, 3);
+    rml_element *name = settings_element(s, "[data-ui=Settings] .text-control input");
+    rml_element *start = settings_element(s, "[data-ui=Settings] select");
+    char shown[64] = "";
+    if (name && start) {
+        rml_element_value(name, shown, sizeof shown);
+        rml_element_set_value(start, "scenes/Boss.yaml");
+        frames(&f, 2);
+        rml_element_focus(name, false);
+        rml_element_select(name);
+        rml_backend_process_input(
+            s->backend,
+            &(rml_input){ .type = RML_INPUT_TEXT_INPUT, .text = "Renamed", .text_size = 7 }
+        );
+        rml_element_blur(name);
+    }
+    frames(&f, 3);
+    join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
+    char *manifest = text_file_read(path);
+    const char *expected = "version: 2\nname: Renamed\ncontent: content\n"
+                           "start_scene: scenes/Boss.yaml\n";
+    bool written = manifest && !strcmp(manifest, expected);
+    if (!written) {
+        printf("  shown '%s', manifest:\n%s\n", shown, manifest ? manifest : "(none)");
+    }
+    test_check(
+        scope && !strcmp(shown, "Fresh") && written &&
+            !strcmp(s->project.start_scene, "scenes/Boss.yaml"),
+        "Settings ▸ Project renames the project and sets its start scene in "
+        "project.yaml"
+    );
+    free(manifest);
+    fixture_free(&f);
+}
+
+void test_studio_new_assets()
+{
+    creates_every_kind();
+    menu_puts_filter_first();
+    project_settings_write();
+}

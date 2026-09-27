@@ -1,0 +1,21 @@
+rml: |
+  <div id="hud" autofocus="" data-keys="H:Repair">
+    <use ui="Meter" id="hull">Hull</use>
+    <div id="status">Systems nominal</div>
+    <div id="repair" data-event-click="emit('Repair')">Repair hull<span class="key">H</span></div>
+  </div>
+rcss: |
+  #hud {
+    position: absolute; left: 16dp; top: 16dp; width: 208dp; padding: 12dp 14dp;
+    background-color: #050e15d9; border: 1dp #416f7e80; border-radius: 8dp;
+    tab-index: auto;
+  }
+  #status { display: block; margin-top: 8dp; line-height: 16dp; font-size: 12dp; color: #7fa6b3; }
+  #repair {
+    display: block; margin-top: 10dp; height: 28dp; padding: 0 10dp; line-height: 28dp;
+    font-size: 12dp; color: #ccf8fb;
+    background-color: #173744; border-radius: 4dp;
+    &:hover { background-color: #205363; }
+    &:active { background-color: #2d6a79; }
+    .key { float: right; color: #7fa6b3; }
+  }

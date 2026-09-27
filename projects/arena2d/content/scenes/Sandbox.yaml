@@ -77,3 +77,6 @@ entities:
   prototype: DriftingMarker
   components:
     GameTransform: {x: -400, "y": 90}
+- name: HUD
+  prototype: HUD
+  behaviors: [HudDisplay]

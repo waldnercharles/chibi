@@ -69,10 +69,55 @@ typedef enum
     STUDIO_THEME_COUNT,
 } studio_theme;
 
+typedef enum
+{
+    STUDIO_COMMAND_SEARCH,
+    STUDIO_COMMAND_SETTINGS,
+    STUDIO_COMMAND_SAVE,
+    STUDIO_COMMAND_RELOAD,
+    STUDIO_COMMAND_UNDO,
+    STUDIO_COMMAND_REDO,
+    STUDIO_COMMAND_DUPLICATE,
+    STUDIO_COMMAND_DELETE,
+    STUDIO_COMMAND_OPEN_PROTOTYPE,
+    STUDIO_COMMAND_FRAME,
+    STUDIO_COMMAND_RESET_CAMERA,
+    STUDIO_COMMAND_TOGGLE_ASSETS,
+    STUDIO_COMMAND_TOGGLE_OUTPUT,
+    STUDIO_COMMAND_TOGGLE_PERFORMANCE,
+    STUDIO_COMMAND_MAXIMIZE,
+    STUDIO_COMMAND_RESET_LAYOUT,
+    STUDIO_COMMAND_ZOOM_IN,
+    STUDIO_COMMAND_ZOOM_OUT,
+    STUDIO_COMMAND_ZOOM_RESET,
+    STUDIO_COMMAND_PLAY,
+    STUDIO_COMMAND_STOP,
+    STUDIO_COMMAND_STEP,
+    STUDIO_COMMAND_DENSITY,
+    STUDIO_COMMAND_MOTION,
+    STUDIO_COMMAND_THEME,
+    STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
+    STUDIO_COMMAND_PREVIEW_UI,
+    /* Authored top bar and area headers (workstream T) */
+    STUDIO_COMMAND_SELECT_TAB,
+    STUDIO_COMMAND_CLOSE_TAB,
+    STUDIO_COMMAND_CLOSE_DRAWER,
+    STUDIO_COMMAND_RESUME,
+    STUDIO_COMMAND_STEP_OVER,
+    STUDIO_COMMAND_STEP_INTO,
+    STUDIO_COMMAND_STEP_OUT,
+    STUDIO_COMMAND_SELECT_PREVIOUS,
+    STUDIO_COMMAND_SELECT_NEXT,
+    STUDIO_COMMAND_COUNT,
+} studio_command;
+
+#define STUDIO_CHORD_SIZE 64
+
 /* Editor preferences (studio_prefs.c). The one store for view settings and the
  * area layout; everything else is authoring state owned by the C model. */
 typedef struct
 {
+    char shortcuts[STUDIO_COMMAND_COUNT][STUDIO_CHORD_SIZE]; /* empty uses the default */
     studio_theme theme;
     bool comfortable;
     bool reduced_motion;
@@ -572,6 +617,7 @@ struct studio
     int focus_area;
     int maximized; /* the area filling the workspace (Blender's Ctrl Space), or -1 */
     studio_prefs prefs;
+    int shortcut_recording; /* command + 1 while Settings captures a chord */
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
     bool system_light;
@@ -983,9 +1029,6 @@ void studio_node_place(const studio *s, const studio_node_ref *at, char *out, si
 studio_node_ref studio_problem_at(const studio *s, const compile_diagnostic *d);
 /* Continues the paused run; false while none is paused. */
 bool studio_debug(studio *s, studio_debug_command command);
-/* F5, F10, F11 and Shift F11 act while a run is paused, even over a focused
-   game, and repeat to walk a run. True when the key continued the run. */
-bool studio_debug_key(studio *s, SDL_Keycode key, bool shift);
 /* Step Over, Into and Out in the transport while a run is paused. */
 void studio_debug_steps(studio *s);
 /* Resume and the steps as menu items, enabled while a run is paused. */
@@ -998,42 +1041,6 @@ void studio_debug_call_stack(studio *s);
  * UI runs one with emit('studio.<id>'), or on a tab or an area with
  * emit('studio.<id>', index), and binds its state as `commands.<id>`
  * (studio_sources.c). */
-typedef enum
-{
-    STUDIO_COMMAND_SEARCH,
-    STUDIO_COMMAND_SETTINGS,
-    STUDIO_COMMAND_SAVE,
-    STUDIO_COMMAND_RELOAD,
-    STUDIO_COMMAND_UNDO,
-    STUDIO_COMMAND_REDO,
-    STUDIO_COMMAND_DUPLICATE,
-    STUDIO_COMMAND_DELETE,
-    STUDIO_COMMAND_OPEN_PROTOTYPE,
-    STUDIO_COMMAND_FRAME,
-    STUDIO_COMMAND_RESET_CAMERA,
-    STUDIO_COMMAND_TOGGLE_ASSETS,
-    STUDIO_COMMAND_TOGGLE_OUTPUT,
-    STUDIO_COMMAND_TOGGLE_PERFORMANCE,
-    STUDIO_COMMAND_MAXIMIZE,
-    STUDIO_COMMAND_RESET_LAYOUT,
-    STUDIO_COMMAND_ZOOM_IN,
-    STUDIO_COMMAND_ZOOM_OUT,
-    STUDIO_COMMAND_ZOOM_RESET,
-    STUDIO_COMMAND_PLAY,
-    STUDIO_COMMAND_STOP,
-    STUDIO_COMMAND_STEP,
-    STUDIO_COMMAND_DENSITY,
-    STUDIO_COMMAND_MOTION,
-    STUDIO_COMMAND_THEME,
-    STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
-    STUDIO_COMMAND_PREVIEW_UI,
-    /* Authored top bar and area headers (workstream T) */
-    STUDIO_COMMAND_SELECT_TAB,
-    STUDIO_COMMAND_CLOSE_TAB,
-    STUDIO_COMMAND_CLOSE_DRAWER,
-    STUDIO_COMMAND_COUNT,
-} studio_command;
-
 typedef struct
 {
     const char *id; /* stable, camelCase, as in emit('studio.toggleAssets') */
@@ -1062,6 +1069,24 @@ int studio_command_named(const char *id);
 const char *studio_command_id(studio_command command);
 /* A menu item for the command, run when chosen; true then. */
 bool studio_command_item(studio *s, studio_command command);
+
+/* Effective shortcuts and the contexts that can receive them. */
+int studio_command_for_key(
+    const studio_prefs *prefs,
+    SDL_Keycode key,
+    SDL_Keymod mod,
+    studio_editor editor,
+    bool mac
+);
+const char *studio_command_chord(const studio_prefs *prefs, studio_command command);
+const char *studio_command_default_chord(studio_command command);
+const char *studio_command_context(studio_command command);
+int studio_command_conflict(const studio_prefs *prefs, studio_command command, const char *chord, bool mac);
+bool studio_chord_parse(const char *chord, bool mac, studio_key *out);
+bool studio_chord_valid(const char *chord);
+bool studio_chord_matches(const char *chord, SDL_Keycode key, SDL_Keymod mod, bool mac);
+void studio_chord_format(char *out, size_t size, const char *chord, bool mac);
+bool studio_shortcut_record(studio_prefs *prefs, int *recording, studio_key key, bool mac);
 
 /* What commands run (studio_shell.c). */
 void studio_save(studio *s);
@@ -1418,6 +1443,8 @@ typedef struct studio_settings_view
     studio_prefs *prefs;                 /* edited in place */
     const studio_command_info *commands; /* the Keyboard category's */
     int command_count;
+    int recording; /* command + 1, zero when idle */
+    bool mac;
     const char *project; /* the open project's name */
     char root[128]; /* the project's root document, "" for none; the page may set it */
     const char **documents; /* the project's ui assets (support/array.h) */
@@ -1438,6 +1465,7 @@ typedef struct studio_hint
     uint32_t icon;   /* a kit icon, or 0 for the key */
     const char *key; /* in the platform's notation */
     const char *label;
+    int command; /* command + 1 for a rebindable hint, zero for editor gestures */
 } studio_hint;
 
 #define STUDIO_HINT_MAX 4

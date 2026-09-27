@@ -84,6 +84,11 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
             return false;
         }
     }
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        if (strcmp(a->shortcuts[c], b->shortcuts[c])) {
+            return false;
+        }
+    }
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         if (a->editors[i] != b->editors[i] || strcmp(a->panels[i], b->panels[i]) != 0) {
             return false;
@@ -173,6 +178,16 @@ studio_prefs studio_prefs_read(const char *json)
     for (int i = 0; i < studio_setting_count; i++) {
         read_setting(&p, &studio_settings[i], root);
     }
+    yyjson_val *shortcuts = yyjson_obj_get(root, "shortcuts");
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        const char *chord = yyjson_get_str(
+            yyjson_obj_get(shortcuts, studio_command_id(c))
+        );
+        if (studio_chord_valid(chord) &&
+            strcmp(chord, studio_command_default_chord(c))) {
+            snprintf(p.shortcuts[c], sizeof p.shortcuts[c], "%s", chord);
+        }
+    }
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.side_width = number(yyjson_obj_get(layout, "sideWidth"), p.side_width, 200, 1600);
     p.main_split = number(yyjson_obj_get(layout, "mainSplit"), p.main_split, 0.05f, 0.95f);
@@ -255,6 +270,12 @@ char *studio_prefs_write(const studio_prefs *p)
     yyjson_mut_obj_add_int(doc, root, "version", PREFS_VERSION);
     for (int i = 0; i < studio_setting_count; i++) {
         write_setting(p, &studio_settings[i], doc, root);
+    }
+    yyjson_mut_val *shortcuts = yyjson_mut_obj_add_obj(doc, root, "shortcuts");
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        if (p->shortcuts[c][0]) {
+            yyjson_mut_obj_add_str(doc, shortcuts, studio_command_id(c), p->shortcuts[c]);
+        }
     }
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_real(doc, layout, "sideWidth", p->side_width);

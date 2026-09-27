@@ -38,7 +38,6 @@
           <span class="page-title" data-if="settings.query == ''">{{ settings.title }}</span>
           <span class="page-title" data-if="settings.query != ''">Search Results</span>
           <span class="badge accent" data-if="settings.query != ''">{{ settings.matches }}</span>
-          <span class="badge" data-if="settings.query == '' &amp;&amp; settings.category == 'keyboard'">Read-only</span>
           <span class="badge" data-if="settings.scope == 'project'">{{ settings.project }}</span>
         </div>
         <div class="row-slot" data-for="row : settings.rows" data-if="row.shown">
@@ -61,9 +60,15 @@
               <span class="readout">{{ row.value }}</span>
               <use ui="Slider" data-value="row.position" min="0" max="1" data-attr-step="row.tick"/>
             </div>
-            <div class="keys" data-if="row.type == 'shortcut'">
-              <span class="key" data-for="key : row.keys">{{ key }}</span>
-              <span class="none" data-if="row.keys.size == 0">&#x2014;</span>
+            <div class="shortcut" data-if="row.type == 'shortcut'">
+              <div class="keys">
+                <span class="key" data-for="key : row.keys">{{ key }}</span>
+                <span class="none" data-if="row.keys.size == 0">Unassigned</span>
+                <button class="btn outline sm record-shortcut" data-if="!row.indexed &amp;&amp; !row.recording" data-event-click="row.record = true">Record</button>
+                <span class="recording" data-if="row.recording">Press a key combination. Esc cancels.</span>
+              </div>
+              <span class="shortcut-context">{{ row.context }}</span>
+              <span class="shortcut-conflict" data-if="row.conflict != ''">{{ row.conflict }}</span>
             </div>
           </use>
         </div>

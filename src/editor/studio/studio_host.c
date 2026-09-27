@@ -132,7 +132,8 @@ static bool SDLCALL queue_event(void *user, SDL_Event *event)
         case SDL_EVENT_KEY_UP:
         case SDL_EVENT_TEXT_INPUT:
         case SDL_EVENT_PINCH_UPDATE:
-        case SDL_EVENT_WINDOW_MOUSE_LEAVE: apush(s->events, *event); break;
+        case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+        case SDL_EVENT_WINDOW_FOCUS_LOST: apush(s->events, *event); break;
         case SDL_EVENT_SYSTEM_THEME_CHANGED:
             s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
             break;
@@ -203,8 +204,30 @@ static void forward_input(studio *s)
     asetlen(s->keys, 0);
     asetlen(s->game_input, 0);
     s->nav_button = 0;
+    bool recording = s->shortcut_recording != 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
+        if (e->type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+            s->shortcut_recording = 0;
+            recording = false;
+            s->mods = SDL_KMOD_NONE;
+            continue;
+        }
+        if (recording && (e->type == SDL_EVENT_KEY_DOWN || e->type == SDL_EVENT_KEY_UP ||
+                          e->type == SDL_EVENT_TEXT_INPUT)) {
+            if (e->type != SDL_EVENT_TEXT_INPUT) {
+                s->mods = e->key.mod;
+            }
+            if (e->type == SDL_EVENT_KEY_DOWN) {
+                studio_shortcut_record(
+                    &s->prefs,
+                    &s->shortcut_recording,
+                    (studio_key){ e->key.key, e->key.mod, e->key.repeat },
+                    s->mac
+                );
+            }
+            continue;
+        }
         /* The Inspector's pick keys reach no document. */
         if (e->type == SDL_EVENT_KEY_DOWN && studio_inspect_key(s, &e->key)) {
             continue;

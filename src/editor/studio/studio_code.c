@@ -860,17 +860,13 @@ static void run_chord(studio *s, const char *chord)
         studio_nav_step(s, chord[4] == ']' ? 1 : -1);
         return;
     }
-    const char *shown = studio_chord(s, chord);
-    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
-        studio_command_info info = studio_command_describe(s, (studio_command)c);
-        if (info.shortcut && !strcmp(info.shortcut, shown)) {
-            studio_command_run(s, (studio_command)c);
-            return;
-        }
+    studio_key key;
+    if (!studio_chord_parse(chord, s->mac, &key)) {
+        return;
     }
-    /* Studio's shortcuts search with Mod+P as well as Mod+K. */
-    if (!strcmp(chord, "Mod+P")) {
-        studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    int command = studio_command_for_key(&s->prefs, key.key, key.mod, STUDIO_EDITOR_CODE, s->mac);
+    if (command >= 0) {
+        studio_command_run(s, command);
     }
 }
 

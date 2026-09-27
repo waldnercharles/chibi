@@ -932,8 +932,13 @@ void studio_inspect_toggle(studio *s)
 
 bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key)
 {
-    bool chord = key->key == SDLK_C && (key->mod & SDL_KMOD_SHIFT) &&
-                 studio_primary(s, key->mod);
+    bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
+    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
+                                              : STUDIO_EDITOR_COUNT;
+    bool typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
+    bool chord = (!(gameplay || typing) || studio_primary(s, key->mod)) &&
+                 studio_command_for_key(&s->prefs, key->key, key->mod, editor, s->mac) ==
+                     STUDIO_COMMAND_INSPECT;
     if (chord) {
         if (!key->repeat) {
             studio_command_run(s, STUDIO_COMMAND_INSPECT);

@@ -450,9 +450,11 @@ static yyjson_mut_val *add_row(
     const char *type
 )
 {
-    static const char *const TEXTS[] = { "key",   "label",   "description",
-                                         "value", "default", "position" };
-    static const char *const FLAGS[] = { "shown", "head", "modified" };
+    static const char *const TEXTS[] = { "key",     "label",    "description",
+                                         "value",   "default",  "position",
+                                         "context", "conflict", "bound" };
+    static const char *const FLAGS[] = { "shown",  "head",      "modified",
+                                         "record", "recording", "indexed" };
     static const char *const LISTS[] = { "choices", "bool", "choice", "range", "keys" };
     static const char *const NUMBERS[] = { "min", "max", "step", "tick" };
     yyjson_mut_val *row = yyjson_mut_arr_add_obj(doc, rows);
@@ -552,6 +554,12 @@ static void build_rows(const studio_settings_view *view, yyjson_mut_doc *doc, yy
         put_text(doc, row, "key", text);
         snprintf(text, sizeof text, "studio.%s", view->commands[c].id);
         put_text(doc, row, "description", text);
+        int command = studio_command_named(view->commands[c].id);
+        if (command >= 0) {
+            put_text(doc, row, "default", studio_command_default_chord(command));
+            put_text(doc, row, "context", studio_command_context(command));
+        }
+        put_bool(row, "indexed", view->commands[c].indexed);
     }
     yyjson_mut_val *root = add_row(doc, rows, STUDIO_SETTINGS_PROJECT, "asset");
     yyjson_mut_set_str(yyjson_mut_obj_get(root, "key"), SETTINGS_ROOT_KEY);
@@ -598,6 +606,29 @@ static void apply_rows(studio_settings_view *view, yyjson_mut_val *rows)
             studio_setting_parse(view->prefs, s, value);
         } else if (ranged(s)) {
             apply_position(view->prefs, s, row);
+        }
+    }
+    for (int c = 0; c < view->command_count; c++) {
+        int command = studio_command_named(view->commands[c].id);
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + c));
+        if (command < 0 || view->commands[c].indexed) {
+            continue;
+        }
+        if (yyjson_mut_get_bool(yyjson_mut_obj_get(row, "record"))) {
+            view->recording = command + 1;
+            put_bool(row, "record", false);
+        }
+        const char *value = text_of(row, "value");
+        if (!strcmp(value, text_of(row, "bound"))) {
+            continue;
+        }
+        if (!strcmp(value, studio_command_default_chord(command))) {
+            view->prefs->shortcuts[command][0] = '\0';
+            if (view->recording == command + 1) {
+                view->recording = 0;
+            }
+        } else if (studio_chord_valid(value)) {
+            snprintf(view->prefs->shortcuts[command], STUDIO_CHORD_SIZE, "%s", value);
         }
     }
     char buffer[32];
@@ -688,11 +719,32 @@ static bool show_values(const studio_settings_view *view, yyjson_mut_doc *doc, y
     }
     for (int c = 0; c < view->command_count; c++) {
         yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + c));
-        const char *shortcut = view->commands[c].shortcut ? view->commands[c].shortcut
-                                                          : "";
+        int command = studio_command_named(view->commands[c].id);
+        const char *chord = command >= 0 ? studio_command_chord(view->prefs, command)
+                                         : "";
+        char shortcut[STUDIO_CHORD_SIZE];
+        studio_chord_format(shortcut, sizeof shortcut, chord, view->mac);
         changed |= put_text(doc, row, "label", view->commands[c].label);
-        changed |= put_text(doc, row, "value", shortcut);
+        changed |= put_text(doc, row, "value", chord);
+        changed |= put_text(doc, row, "bound", chord);
         changed |= show_keys(doc, yyjson_mut_obj_get(row, "keys"), shortcut);
+        changed |= put_bool(row, "modified", command >= 0 && view->prefs->shortcuts[command][0]);
+        changed |= put_bool(row, "recording", command >= 0 && view->recording == command + 1);
+        int conflict = command >= 0
+                         ? studio_command_conflict(view->prefs, command, chord, view->mac)
+                         : -1;
+        const char *label = conflict >= 0 ? studio_command_id(conflict) : "";
+        for (int other = 0; conflict >= 0 && other < view->command_count; other++) {
+            if (!strcmp(view->commands[other].id, label)) {
+                label = view->commands[other].label;
+                break;
+            }
+        }
+        char message[192] = "";
+        if (conflict >= 0) {
+            snprintf(message, sizeof message, "Also assigned to %s", label);
+        }
+        changed |= put_text(doc, row, "conflict", message);
     }
     yyjson_mut_val *root = yyjson_mut_arr_get_last(rows);
     changed |= show_root_choices(view, doc, yyjson_mut_obj_get(root, "choices"));
@@ -823,9 +875,22 @@ bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool 
     } else if (wrote) {
         apply_rows(view, rows);
     }
+    yyjson_mut_val *recording = NULL;
+    for (int c = 0; view->recording && c < view->command_count; c++) {
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + c));
+        if (studio_command_named(view->commands[c].id) == view->recording - 1 &&
+            yyjson_mut_get_bool(yyjson_mut_obj_get(row, "shown"))) {
+            recording = row;
+        }
+    }
     bool changed = show_values(view, doc, rows);
     changed |= put_text(doc, page, "project", view->project);
-    return show_visible(view, doc, page) || changed || built;
+    changed |= show_visible(view, doc, page);
+    if (recording && !yyjson_mut_get_bool(yyjson_mut_obj_get(recording, "shown"))) {
+        view->recording = 0;
+        changed |= put_bool(recording, "recording", false);
+    }
+    return changed || built;
 }
 
 /* The open project's ui documents, sorted by name. */
@@ -914,12 +979,15 @@ static void sync_settings(studio *s, ui_data *data, bool wrote)
     studio_settings_view view = { .prefs = &s->prefs,
                                   .commands = commands,
                                   .command_count = STUDIO_COMMAND_COUNT,
+                                  .recording = s->shortcut_recording,
+                                  .mac = s->mac,
                                   .project = project_name(s),
                                   .documents = ui_documents(s) };
     snprintf(view.root, sizeof view.root, "%s", root);
     if (studio_settings_sync(&view, data->doc, wrote)) {
         rml_data_model_dirty(data->model, "settings");
     }
+    s->shortcut_recording = view.recording;
     if (strcmp(view.root, root) != 0) {
         set_project_root(s, view.root);
     }
@@ -1357,14 +1425,16 @@ static hint_list editor_hints(studio *s)
 {
     static const studio_hint SCENE[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                          { KIT_ICON_PAN, NULL, "Pan (middle)" },
-                                         { 0, "F", "Frame" } };
+                                         { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 } };
     static const studio_hint PROPERTIES[] = { { KIT_ICON_MOUSE, NULL, "Drag to scrub" },
                                               { 0, "Alt", "Fine" },
                                               { 0, "Shift", "Coarse" },
                                               { 0, "Ctrl", "Snap" } };
-    static const studio_hint OUTLINER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
-                                            { 0, "F", "Frame" },
-                                            { 0, "X", "Delete" } };
+    static const studio_hint OUTLINER[] = {
+        { KIT_ICON_MOUSE, NULL, "Select" },
+        { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 },
+        { 0, NULL, "Delete", STUDIO_COMMAND_DELETE + 1 }
+    };
     /* Visual designer (workstream H): the Outliner as a UI document's Hierarchy. */
     static const studio_hint HIERARCHY[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                              { KIT_ICON_MOVE, NULL, "Drag to move" },
@@ -1379,7 +1449,7 @@ static hint_list editor_hints(studio *s)
                                             { 0, "Q", "Straighten" } };
     static const studio_hint MOVING[] = { { 0, "Ctrl", "Snap" } };
     static const studio_hint OTHER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
-                                         { 0, "Mod+K", "Search" } };
+                                         { 0, NULL, "Search", STUDIO_COMMAND_SEARCH + 1 } };
     studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
                                               : STUDIO_EDITOR_COUNT;
     switch (editor) {
@@ -1418,9 +1488,10 @@ static void sync_editor(studio *s, ui_data *data)
     status.hint_count = hints.count;
     for (int i = 0; i < hints.count; i++) {
         status.hints[i] = hints.hints[i];
-        status.hints[i].key = hints.hints[i].key
-                                ? studio_chord(s, hints.hints[i].key)
-                                : NULL;
+        const char *chord = hints.hints[i].command
+                              ? studio_command_chord(&s->prefs, hints.hints[i].command - 1)
+                              : hints.hints[i].key;
+        status.hints[i].key = chord ? studio_chord(s, chord) : NULL;
     }
     if (studio_status_show(data->doc, &status)) {
         rml_data_model_dirty(data->model, "editor");

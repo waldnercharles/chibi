@@ -385,14 +385,21 @@ static void status_bar_follows_studio()
 
 /* ---------- Wave 2 follow-ups (workstream P) ---------- */
 
-static void key_event(SDL_Scancode key, bool down)
+static void key_event_mod(SDL_Scancode key, bool down, SDL_Keymod mod, bool repeat)
 {
     SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
     event.key.windowID = SDL_GetWindowID(cf_app_get_window());
     event.key.scancode = key;
-    event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
+    event.key.key = SDL_GetKeyFromScancode(key, mod, true);
+    event.key.mod = mod;
     event.key.down = down;
+    event.key.repeat = repeat;
     assert(SDL_PushEvent(&event));
+}
+
+static void key_event(SDL_Scancode key, bool down)
+{
+    key_event_mod(key, down, SDL_KMOD_NONE, false);
 }
 
 static bool logged_last(const studio *s, const char *event)
@@ -463,6 +470,105 @@ static rml_element *studio_element(studio *s, const char *selector)
         found = rml_element_query_selector(rml_context_document(context, i), selector);
     }
     return found;
+}
+
+static void text_event(const char *text);
+
+/* Recording consumes key and text events before the normal shortcut and
+   game-input paths. A repeat must leave the recorder active for the next
+   non-repeat keydown. */
+static void settings_records_shortcut()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    studio_ui_show(s, "Settings");
+    frames(&f, 4);
+    rml_element *search_field = studio_element(s, ".search-input");
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    frames(&f, 2);
+    bool text_field_kept = search_field &&
+                           !app_scene_authoring_runtime_state(f.scene).playing;
+
+    /* The Settings page test covers the Record control. Here, exercise the
+       host after that control has requested a recording. */
+    s->shortcut_recording = STUDIO_COMMAND_SEARCH + 1;
+    bool recording = s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+    SDL_Event lost = { .type = SDL_EVENT_WINDOW_FOCUS_LOST };
+    lost.window.windowID = SDL_GetWindowID(cf_app_get_window());
+    assert(SDL_PushEvent(&lost));
+    frames(&f, 1);
+    bool focus_canceled = recording && s->shortcut_recording == 0 &&
+                          !s->prefs.shortcuts[STUDIO_COMMAND_SEARCH][0];
+    lost.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
+    assert(SDL_PushEvent(&lost));
+    frames(&f, 1);
+    s->shortcut_recording = STUDIO_COMMAND_SEARCH + 1;
+    recording = s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    SDL_Scancode primary_key = s->mac ? SDL_SCANCODE_LGUI : SDL_SCANCODE_LCTRL;
+    key_event_mod(primary_key, true, primary, false);
+    key_event_mod(SDL_SCANCODE_P, true, primary | SDL_KMOD_SHIFT, true);
+    key_event_mod(SDL_SCANCODE_P, false, primary | SDL_KMOD_SHIFT, false);
+    frames(&f, 2);
+    bool repeat_ignored = recording &&
+                          s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+    text_event("p");
+    key_event_mod(SDL_SCANCODE_P, true, primary | SDL_KMOD_SHIFT, false);
+    key_event_mod(SDL_SCANCODE_P, false, primary | SDL_KMOD_SHIFT, false);
+    key_event_mod(primary_key, false, SDL_KMOD_NONE, false);
+    frames(&f, 3);
+    bool captured = s->shortcut_recording == 0 &&
+                    !strcmp(s->prefs.shortcuts[STUDIO_COMMAND_SEARCH], "Mod+Shift+P");
+    if (!(text_field_kept && focus_canceled && repeat_ignored && captured)) {
+        printf(
+            "  %d %d %d %d (recording %d)\n",
+            text_field_kept,
+            focus_canceled,
+            repeat_ignored,
+            captured,
+            s->shortcut_recording
+        );
+    }
+    test_check(
+        text_field_kept && focus_canceled && repeat_ignored && captured,
+        "Settings text focus blocks Play; focus loss cancels recording, which "
+        "ignores repeats and captures a chord through the host input queue"
+    );
+    fixture_free(&f);
+}
+
+/* Repeats remain limited to commands that are useful while held. */
+static void shortcut_repeat_policy()
+{
+    studio_fixture zoom = fixture_new();
+    studio *s = zoom.studio;
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    snprintf(s->prefs.shortcuts[STUDIO_COMMAND_ZOOM_IN], STUDIO_CHORD_SIZE, "Mod+F12");
+    s->prefs.ui_scale = 1;
+    apush(s->keys, ((studio_key){ SDLK_F12, primary, true }));
+    studio_shortcuts(s);
+    float held_scale = s->prefs.ui_scale;
+    asetlen(s->keys, 0);
+    apush(s->keys, ((studio_key){ SDLK_F12, primary, false }));
+    studio_shortcuts(s);
+    bool zoom_repeat_runs = held_scale > 1;
+    bool zoom_press_runs = s->prefs.ui_scale > held_scale;
+    fixture_free(&zoom);
+
+    studio_fixture search = fixture_new();
+    s = search.studio;
+    primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    apush(s->keys, ((studio_key){ SDLK_K, primary, true }));
+    studio_shortcuts(s);
+    bool toggle_repeat_ignored = !kit_command_is_open(s->kit);
+    asetlen(s->keys, 0);
+    apush(s->keys, ((studio_key){ SDLK_K, primary, false }));
+    studio_shortcuts(s);
+    bool toggle_press_runs = kit_command_is_open(s->kit);
+    test_check(zoom_repeat_runs && zoom_press_runs && toggle_repeat_ignored && toggle_press_runs, "repeatable zoom runs on a held shortcut while the Search toggle waits for a fresh press");
+    fixture_free(&search);
 }
 
 /* Whether the Scene's last draw framed the camera it holds now, as the
@@ -700,6 +806,8 @@ int studio_documents_run(const char *program)
     test_code_intelligence_studio();
     /* Wave 2 follow-ups (workstream P) */
     preview_hears_keys();
+    settings_records_shortcut();
+    shortcut_repeat_policy();
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */
     chrome_follows_studio();

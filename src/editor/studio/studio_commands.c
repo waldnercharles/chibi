@@ -11,85 +11,475 @@ typedef struct
 {
     const char *id;
     const char *label;
-    const char *menu;  /* the label in a menu, when it differs */
-    const char *chord; /* studio_chord notation; Ctrl stays Ctrl on macOS */
+    const char *menu;       /* the label in a menu, when it differs */
+    const char *chord;      /* default studio_chord notation */
+    const char *aliases[4]; /* alternate chords active only without an override */
+    const char *context;
+    uint32_t contexts; /* zero is global; else a mask of editor types */
+    uint32_t excluded_contexts;
     const char *keywords;
     uint32_t icon;
     bool indexed; /* runs only on the tab its argument names */
+    bool repeat;
+    int phase;
 } command_entry;
 
+#define EDITOR_BIT(editor) (1u << (editor))
+#define EDITOR_ALL ((1u << (STUDIO_EDITOR_COUNT + 1)) - 1)
+
+enum
+{
+    SHORTCUT_DEBUG,
+    SHORTCUT_EARLY,
+    SHORTCUT_PLAY,
+    SHORTCUT_EDITOR,
+};
+
 static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
-    [STUDIO_COMMAND_SEARCH] = { "search", "Search", NULL, "Mod+K", "find go to", KIT_ICON_SEARCH },
-    [STUDIO_COMMAND_SETTINGS] = { "settings", "Settings", NULL, "Mod+,", "preferences options", KIT_ICON_SETTINGS },
-    [STUDIO_COMMAND_SAVE] = { "save", "Save", NULL, "Mod+S", NULL, KIT_ICON_SAVE },
-    [STUDIO_COMMAND_RELOAD] = { "reload", "Reload", NULL, NULL, "revert disk", 0 },
-    [STUDIO_COMMAND_UNDO] = { "undo", "Undo", NULL, "Mod+Z", NULL, KIT_ICON_UNDO },
-    [STUDIO_COMMAND_REDO] = { "redo", "Redo", NULL, "Mod+Shift+Z", NULL, KIT_ICON_REDO },
-    [STUDIO_COMMAND_DUPLICATE] = { "duplicate", "Duplicate", NULL, "Shift+D", "copy", KIT_ICON_COPY },
-    [STUDIO_COMMAND_DELETE] = { "delete", "Delete", NULL, "X", "remove", KIT_ICON_TRASH },
-    [STUDIO_COMMAND_OPEN_PROTOTYPE] = { "openPrototype", "Open Prototype", NULL, NULL, "edit", KIT_ICON_PROTOTYPE },
-    [STUDIO_COMMAND_FRAME] = { "frame", "Frame Selected", NULL, "F", "focus zoom", KIT_ICON_FRAME },
-    [STUDIO_COMMAND_RESET_CAMERA] = { "resetCamera", "Reset Camera", NULL, NULL, "view", 0 },
-    [STUDIO_COMMAND_TOGGLE_ASSETS] = { "toggleAssets",
-                                       "Toggle Assets",
-                                       "Assets",
-                                       "Mod+Shift+A",
-                                       "drawer browser content",
-                                       KIT_ICON_ASSETS },
-    [STUDIO_COMMAND_TOGGLE_OUTPUT] = { "toggleOutput", "Toggle Output", "Output", "Mod+Shift+U", "drawer log console problems diagnostics", KIT_ICON_OUTPUT },
-    [STUDIO_COMMAND_TOGGLE_PERFORMANCE] = { "togglePerformance",
-                                            "Toggle Performance",
-                                            "Performance",
-                                            NULL,
-                                            "drawer profiler frame time fps",
-                                            KIT_ICON_PERFORMANCE },
-    [STUDIO_COMMAND_MAXIMIZE] = { "maximize", "Maximize Area", NULL, "Ctrl+Space", "fullscreen", KIT_ICON_MAXIMIZE },
-    [STUDIO_COMMAND_RESET_LAYOUT] = { "resetLayout", "Reset Layout", NULL, NULL, "areas default", KIT_ICON_LAYOUT },
-    [STUDIO_COMMAND_ZOOM_IN] = { "zoomIn", "Zoom In", NULL, "Mod+=", "ui scale larger bigger", KIT_ICON_ZOOM_IN },
-    [STUDIO_COMMAND_ZOOM_OUT] = { "zoomOut", "Zoom Out", NULL, "Mod+-", "ui scale smaller", KIT_ICON_ZOOM_OUT },
-    [STUDIO_COMMAND_ZOOM_RESET] = { "zoomReset", "Reset Zoom", NULL, "Mod+0", "ui scale actual size 100%", 0 },
-    [STUDIO_COMMAND_PLAY] = { "play", "Play", NULL, "Space", "run start preview pause", KIT_ICON_PLAY },
-    [STUDIO_COMMAND_STOP] = { "stop", "Stop", NULL, NULL, NULL, KIT_ICON_STOP },
-    [STUDIO_COMMAND_STEP] = { "step", "Step", NULL, NULL, "frame advance", KIT_ICON_STEP },
-    [STUDIO_COMMAND_DENSITY] = { "density",
-                                 "Comfortable Density",
-                                 NULL,
-                                 NULL,
-                                 "spacing size settings",
-                                 KIT_ICON_LAYOUT },
-    [STUDIO_COMMAND_MOTION] = { "motion", "Reduce Motion", NULL, NULL, "animation settings", KIT_ICON_SETTINGS },
-    [STUDIO_COMMAND_THEME] = { "theme", "Light Theme", NULL, NULL, "appearance color mode settings", KIT_ICON_SUN },
+    [STUDIO_COMMAND_SEARCH] = { .id = "search",
+                                .label = "Search",
+                                .chord = "Mod+K",
+                                .aliases = { "Mod+P" },
+                                .context = "Global",
+                                .keywords = "find go to",
+                                .icon = KIT_ICON_SEARCH,
+                                .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_SETTINGS] = { .id = "settings",
+                                  .label = "Settings",
+                                  .chord = "Mod+,",
+                                  .context = "Global",
+                                  .keywords = "preferences options",
+                                  .icon = KIT_ICON_SETTINGS,
+                                  .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_SAVE] = { .id = "save",
+                              .label = "Save",
+                              .chord = "Mod+S",
+                              .context = "Global",
+                              .icon = KIT_ICON_SAVE,
+                              .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_RELOAD] = { .id = "reload",
+                                .label = "Reload",
+                                .context = "Global",
+                                .keywords = "revert disk",
+                                .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_UNDO] = { .id = "undo",
+                              .label = "Undo",
+                              .chord = "Mod+Z",
+                              .context = "Global",
+                              .icon = KIT_ICON_UNDO,
+                              .repeat = true,
+                              .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_REDO] = { .id = "redo",
+                              .label = "Redo",
+                              .chord = "Mod+Shift+Z",
+                              .aliases = { "Mod+Y" },
+                              .context = "Global",
+                              .icon = KIT_ICON_REDO,
+                              .repeat = true,
+                              .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_DUPLICATE] = { .id = "duplicate",
+                                   .label = "Duplicate",
+                                   .chord = "Shift+D",
+                                   .context = "Except Behavior and Properties",
+                                   .excluded_contexts = EDITOR_BIT(STUDIO_EDITOR_BEHAVIOR) |
+                                                        EDITOR_BIT(STUDIO_EDITOR_PROPERTIES),
+                                   .keywords = "copy",
+                                   .icon = KIT_ICON_COPY,
+                                   .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_DELETE] = { .id = "delete",
+                                .label = "Delete",
+                                .chord = "X",
+                                .aliases = { "Delete" },
+                                .context = "Outliner",
+                                .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                .keywords = "remove",
+                                .icon = KIT_ICON_TRASH,
+                                .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_OPEN_PROTOTYPE] = { .id = "openPrototype",
+                                        .label = "Open Prototype",
+                                        .context = "Global",
+                                        .keywords = "edit",
+                                        .icon = KIT_ICON_PROTOTYPE,
+                                        .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_FRAME] = { .id = "frame",
+                               .label = "Frame Selected",
+                               .chord = "F",
+                               .context = "Scene, Outliner",
+                               .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                           EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                               .keywords = "focus zoom",
+                               .icon = KIT_ICON_FRAME,
+                               .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_RESET_CAMERA] = { .id = "resetCamera",
+                                      .label = "Reset Camera",
+                                      .context = "Global",
+                                      .keywords = "view",
+                                      .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_TOGGLE_ASSETS] = { .id = "toggleAssets",
+                                       .label = "Toggle Assets",
+                                       .menu = "Assets",
+                                       .chord = "Mod+Shift+A",
+                                       .context = "Global",
+                                       .keywords = "drawer browser content",
+                                       .icon = KIT_ICON_ASSETS,
+                                       .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_TOGGLE_OUTPUT] = { .id = "toggleOutput",
+                                       .label = "Toggle Output",
+                                       .menu = "Output",
+                                       .chord = "Mod+Shift+U",
+                                       .context = "Global",
+                                       .keywords = "drawer log console "
+                                                   "problems diagnostics",
+                                       .icon = KIT_ICON_OUTPUT,
+                                       .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_TOGGLE_PERFORMANCE] = { .id = "togglePerformance",
+                                            .label = "Toggle Performance",
+                                            .menu = "Performance",
+                                            .context = "Global",
+                                            .keywords = "drawer profiler frame "
+                                                        "time fps",
+                                            .icon = KIT_ICON_PERFORMANCE,
+                                            .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_MAXIMIZE] = { .id = "maximize",
+                                  .label = "Maximize Area",
+                                  .chord = "Ctrl+Space",
+                                  .context = "Area under pointer",
+                                  .keywords = "fullscreen",
+                                  .icon = KIT_ICON_MAXIMIZE,
+                                  .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_RESET_LAYOUT] = { .id = "resetLayout",
+                                      .label = "Reset Layout",
+                                      .context = "Global",
+                                      .keywords = "areas default",
+                                      .icon = KIT_ICON_LAYOUT,
+                                      .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_ZOOM_IN] = { .id = "zoomIn",
+                                 .label = "Zoom In",
+                                 .chord = "Mod+=",
+                                 .aliases = { "Mod+Shift+=", "Mod+Plus", "Mod+Shift+Plus", "Mod+KeypadPlus" },
+                                 .context = "Global",
+                                 .keywords = "ui scale larger bigger",
+                                 .icon = KIT_ICON_ZOOM_IN,
+                                 .repeat = true,
+                                 .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_ZOOM_OUT] = { .id = "zoomOut",
+                                  .label = "Zoom Out",
+                                  .chord = "Mod+-",
+                                  .aliases = { "Mod+Shift+-", "Mod+Keypad -" },
+                                  .context = "Global",
+                                  .keywords = "ui scale smaller",
+                                  .icon = KIT_ICON_ZOOM_OUT,
+                                  .repeat = true,
+                                  .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_ZOOM_RESET] = { .id = "zoomReset",
+                                    .label = "Reset Zoom",
+                                    .chord = "Mod+0",
+                                    .aliases = { "Mod+Keypad 0" },
+                                    .context = "Global",
+                                    .keywords = "ui scale actual size 100%",
+                                    .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_PLAY] = { .id = "play",
+                              .label = "Play",
+                              .chord = "Space",
+                              .aliases = { "Shift+Space", "Alt+Space", "Alt+Shift+Space" },
+                              .context = "Except Behavior",
+                              .excluded_contexts = EDITOR_BIT(STUDIO_EDITOR_BEHAVIOR),
+                              .keywords = "run start preview pause",
+                              .icon = KIT_ICON_PLAY,
+                              .phase = SHORTCUT_PLAY },
+    [STUDIO_COMMAND_STOP] = { .id = "stop",
+                              .label = "Stop",
+                              .context = "Global",
+                              .icon = KIT_ICON_STOP,
+                              .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_STEP] = { .id = "step",
+                              .label = "Step",
+                              .context = "Global",
+                              .keywords = "frame advance",
+                              .icon = KIT_ICON_STEP,
+                              .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_DENSITY] = { .id = "density",
+                                 .label = "Comfortable Density",
+                                 .context = "Global",
+                                 .keywords = "spacing size settings",
+                                 .icon = KIT_ICON_LAYOUT,
+                                 .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_MOTION] = { .id = "motion",
+                                .label = "Reduce Motion",
+                                .context = "Global",
+                                .keywords = "animation settings",
+                                .icon = KIT_ICON_SETTINGS,
+                                .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_THEME] = { .id = "theme",
+                               .label = "Light Theme",
+                               .context = "Global",
+                               .keywords = "appearance color mode settings",
+                               .icon = KIT_ICON_SUN,
+                               .phase = SHORTCUT_EDITOR },
     /* UI Inspector (studio_inspect.c) */
-    [STUDIO_COMMAND_INSPECT] = { "inspectElement", "Inspect Element", NULL, "Mod+Shift+C", "ui inspector devtools debugger pick styles rml rcss", KIT_ICON_SELECT },
+    [STUDIO_COMMAND_INSPECT] = { .id = "inspectElement",
+                                 .label = "Inspect Element",
+                                 .chord = "Mod+Shift+C",
+                                 .context = "Global",
+                                 .keywords = "ui inspector devtools debugger "
+                                             "pick styles rml rcss",
+                                 .icon = KIT_ICON_SELECT,
+                                 .phase = SHORTCUT_EARLY },
     /* UI wiring (workstream K) */
-    [STUDIO_COMMAND_PREVIEW_UI] = { "previewUi", "Preview UI Asset\xe2\x80\xa6", NULL, NULL, "canvas storybook widget document screen size", KIT_ICON_LAYOUT },
+    [STUDIO_COMMAND_PREVIEW_UI] = { .id = "previewUi",
+                                    .label = "Preview UI Asset\xe2\x80\xa6",
+                                    .context = "Global",
+                                    .keywords = "canvas storybook widget "
+                                                "document screen size",
+                                    .icon = KIT_ICON_LAYOUT,
+                                    .phase = SHORTCUT_EDITOR },
     /* Authored top bar and area headers (workstream T): the document tabs'
        commands take the tab's index, emit('studio.selectTab', i). */
-    [STUDIO_COMMAND_SELECT_TAB] = { "selectTab", "Select Tab", NULL, NULL, "document switch", KIT_ICON_FILE, true },
-    [STUDIO_COMMAND_CLOSE_TAB] = { "closeTab", "Close Tab", NULL, NULL, "document", KIT_ICON_CLOSE },
-    [STUDIO_COMMAND_CLOSE_DRAWER] = { "closeDrawer", "Close Drawer", NULL, NULL, "hide panel", KIT_ICON_CLOSE },
+    [STUDIO_COMMAND_SELECT_TAB] = { .id = "selectTab",
+                                    .label = "Select Tab",
+                                    .context = "Global",
+                                    .keywords = "document switch",
+                                    .icon = KIT_ICON_FILE,
+                                    .indexed = true,
+                                    .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_CLOSE_TAB] = { .id = "closeTab",
+                                   .label = "Close Tab",
+                                   .context = "Global",
+                                   .keywords = "document",
+                                   .icon = KIT_ICON_CLOSE,
+                                   .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_CLOSE_DRAWER] = { .id = "closeDrawer",
+                                      .label = "Close Drawer",
+                                      .context = "Global",
+                                      .keywords = "hide panel",
+                                      .icon = KIT_ICON_CLOSE,
+                                      .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SELECT_PREVIOUS] = { .id = "selectPrevious",
+                                         .label = "Select Previous",
+                                         .chord = "Up",
+                                         .context = "Outliner",
+                                         .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                         .repeat = true,
+                                         .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SELECT_NEXT] = { .id = "selectNext",
+                                     .label = "Select Next",
+                                     .chord = "Down",
+                                     .context = "Outliner",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                     .repeat = true,
+                                     .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_RESUME] = { .id = "resume",
+                                .label = "Resume",
+                                .chord = "F5",
+                                .context = "When paused",
+                                .icon = KIT_ICON_CONTINUE,
+                                .repeat = true,
+                                .phase = SHORTCUT_DEBUG },
+    [STUDIO_COMMAND_STEP_OVER] = { .id = "stepOver",
+                                   .label = "Step Over",
+                                   .chord = "F10",
+                                   .context = "When paused",
+                                   .icon = KIT_ICON_STEP_OVER,
+                                   .repeat = true,
+                                   .phase = SHORTCUT_DEBUG },
+    [STUDIO_COMMAND_STEP_INTO] = { .id = "stepInto",
+                                   .label = "Step Into",
+                                   .chord = "F11",
+                                   .context = "When paused",
+                                   .icon = KIT_ICON_STEP_INTO,
+                                   .repeat = true,
+                                   .phase = SHORTCUT_DEBUG },
+    [STUDIO_COMMAND_STEP_OUT] = { .id = "stepOut",
+                                  .label = "Step Out",
+                                  .chord = "Shift+F11",
+                                  .context = "When paused",
+                                  .icon = KIT_ICON_STEP_OUT,
+                                  .repeat = true,
+                                  .phase = SHORTCUT_DEBUG },
 };
+
+const char *studio_command_default_chord(studio_command command)
+{
+    const char *chord = COMMANDS[command].chord;
+    return chord ? chord : "";
+}
+
+const char *studio_command_chord(const studio_prefs *prefs, studio_command command)
+{
+    return prefs->shortcuts[command][0] ? prefs->shortcuts[command]
+                                        : studio_command_default_chord(command);
+}
+
+const char *studio_command_context(studio_command command)
+{
+    const char *context = COMMANDS[command].context;
+    return context ? context : "";
+}
+
+static uint32_t command_contexts(const command_entry *entry)
+{
+    uint32_t contexts = entry->contexts ? entry->contexts : EDITOR_ALL;
+    return contexts & ~entry->excluded_contexts;
+}
+
+static bool contexts_overlap(const command_entry *a, const command_entry *b)
+{
+    return command_contexts(a) & command_contexts(b);
+}
+
+static bool chord_conflicts(const char *a, const char *b, bool mac)
+{
+    studio_key left, right;
+    return studio_chord_parse(a, mac, &left) && studio_chord_parse(b, mac, &right) &&
+           left.key == right.key && left.mod == right.mod;
+}
+
+static bool override_set(const studio_prefs *prefs, studio_command command)
+{
+    return prefs->shortcuts[command][0] != '\0';
+}
+
+static const char *default_binding(const command_entry *entry, int index)
+{
+    if (!index) {
+        return entry->chord;
+    }
+    return entry->aliases[index - 1];
+}
+
+/* The current binding and, only while unmodified, its default aliases. */
+static int binding_count(const studio_prefs *prefs, studio_command command)
+{
+    const command_entry *entry = &COMMANDS[command];
+    if (override_set(prefs, command)) {
+        return 1;
+    }
+    int count = entry->chord != NULL;
+    while (count < 5 && entry->aliases[count - (entry->chord != NULL)]) {
+        count++;
+    }
+    return count;
+}
+
+static const char *binding_at(const studio_prefs *prefs, studio_command command, int index)
+{
+    if (override_set(prefs, command)) {
+        return index ? NULL : prefs->shortcuts[command];
+    }
+    return default_binding(&COMMANDS[command], index);
+}
+
+int studio_command_conflict(const studio_prefs *prefs, studio_command command, const char *chord, bool mac)
+{
+    if (!chord || !chord[0]) {
+        return -1;
+    }
+    const command_entry *source = &COMMANDS[command];
+    bool source_override = override_set(prefs, command);
+    int source_count = source_override ||
+                               strcmp(chord, studio_command_chord(prefs, command))
+                         ? 1
+                         : binding_count(prefs, command);
+    if (!source_count) {
+        source_count = 1;
+    }
+    for (int other = 0; other < STUDIO_COMMAND_COUNT; other++) {
+        if (other == (int)command || COMMANDS[other].indexed ||
+            !contexts_overlap(source, &COMMANDS[other])) {
+            continue;
+        }
+        int other_count = binding_count(prefs, (studio_command)other);
+        for (int source_index = 0; source_index < source_count; source_index++) {
+            const char *source_binding = source_index
+                                           ? binding_at(prefs, command, source_index)
+                                           : chord;
+            for (int candidate = 0; candidate < other_count; candidate++) {
+                if (chord_conflicts(
+                        source_binding,
+                        binding_at(prefs, (studio_command)other, candidate),
+                        mac
+                    )) {
+                    return other;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+static bool command_context_matches(const command_entry *entry, studio_editor editor)
+{
+    if (entry->contexts && (editor >= STUDIO_EDITOR_COUNT ||
+                            !(entry->contexts & EDITOR_BIT(editor)))) {
+        return false;
+    }
+    return editor >= STUDIO_EDITOR_COUNT ||
+           !(entry->excluded_contexts & EDITOR_BIT(editor));
+}
+
+static bool command_binding_matches(
+    const studio_prefs *prefs,
+    studio_command command,
+    SDL_Keycode key,
+    SDL_Keymod mod,
+    bool mac
+)
+{
+    int count = binding_count(prefs, command);
+    for (int i = 0; i < count; i++) {
+        if (studio_chord_matches(binding_at(prefs, command, i), key, mod, mac)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int studio_command_for_key(
+    const studio_prefs *prefs,
+    SDL_Keycode key,
+    SDL_Keymod mod,
+    studio_editor editor,
+    bool mac
+)
+{
+    /* A user's binding wins over another command's default in a collision. */
+    for (int overrides = 1; overrides >= 0; overrides--) {
+        for (int phase = SHORTCUT_DEBUG; phase <= SHORTCUT_EDITOR; phase++) {
+            for (int command = 0; command < STUDIO_COMMAND_COUNT; command++) {
+                const command_entry *entry = &COMMANDS[command];
+                if (entry->phase != phase || entry->indexed ||
+                    override_set(prefs, (studio_command)command) != overrides ||
+                    !command_context_matches(entry, editor)) {
+                    continue;
+                }
+                if (command_binding_matches(prefs, (studio_command)command, key, mod, mac)) {
+                    return command;
+                }
+            }
+        }
+    }
+    return -1;
+}
 
 studio_command_info studio_command_describe(studio *s, studio_command command)
 {
     const command_entry *e = &COMMANDS[command];
+    const char *chord = studio_command_chord(&s->prefs, command);
     studio_command_info info = {
         .id = e->id,
         .label = e->label,
         .menu = e->menu ? e->menu : e->label,
-        .shortcut = e->chord ? studio_chord(s, e->chord) : NULL,
+        .shortcut = chord[0] ? studio_chord(s, chord) : NULL,
         .keywords = e->keywords,
         .icon = e->icon,
         .indexed = e->indexed,
     };
     switch (command) {
-        case STUDIO_COMMAND_MAXIMIZE: info.shortcut = e->chord; break;
         case STUDIO_COMMAND_PLAY:
             /* Play resumes a run paused at a breakpoint (Unreal). */
             if (s->pause.active) {
                 info.label = info.menu = "Resume";
                 info.icon = KIT_ICON_CONTINUE;
-                info.shortcut = "F5";
             } else if (app_scene_authoring_runtime_state(s->scene).playing) {
                 info.label = info.menu = "Pause";
                 info.icon = KIT_ICON_PAUSE;
@@ -137,6 +527,23 @@ static int tab_at(const studio *s, int argument)
     return argument >= 0 ? argument : s->scene->active_tab;
 }
 
+/* Up and Down walk the Outliner's visible rows (Blender). */
+static void step_selection(studio *s, int direction)
+{
+    int *rows = studio_outliner_rows(s);
+    int count = acount(rows), at = -1;
+    for (int r = 0; r < count; r++) {
+        at = rows[r] == s->scene->selected ? r : at;
+    }
+    int next = at < 0 ? (direction > 0 ? 0 : count - 1) : at + direction;
+    if (count && next >= 0 && next < count) {
+        finish_transform_edit(s->scene, false);
+        select_instance(s->scene, rows[next]);
+        s->outliner_reveal = true;
+    }
+    afree(rows);
+}
+
 /* Whether the command runs on `argument`, a tab or an area, or on the active
  * one for -1. */
 static bool enabled_with(studio *s, studio_command command, int argument)
@@ -167,6 +574,10 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_ZOOM_RESET: return s->prefs.ui_scale != 1;
         case STUDIO_COMMAND_STOP: return runtime_session(s->scene);
         case STUDIO_COMMAND_STEP: return !s->pause.active;
+        case STUDIO_COMMAND_RESUME:
+        case STUDIO_COMMAND_STEP_OVER:
+        case STUDIO_COMMAND_STEP_INTO:
+        case STUDIO_COMMAND_STEP_OUT: return s->pause.active;
         default: return true;
     }
 }
@@ -226,6 +637,12 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_PLAY: studio_runtime(s, APP_RUNTIME_PLAY); break;
         case STUDIO_COMMAND_STOP: studio_runtime(s, APP_RUNTIME_STOP); break;
         case STUDIO_COMMAND_STEP: studio_runtime(s, APP_RUNTIME_STEP); break;
+        case STUDIO_COMMAND_SELECT_PREVIOUS: step_selection(s, -1); break;
+        case STUDIO_COMMAND_SELECT_NEXT: step_selection(s, 1); break;
+        case STUDIO_COMMAND_RESUME: studio_debug(s, STUDIO_RESUME); break;
+        case STUDIO_COMMAND_STEP_OVER: studio_debug(s, STUDIO_STEP_OVER); break;
+        case STUDIO_COMMAND_STEP_INTO: studio_debug(s, STUDIO_STEP_INTO); break;
+        case STUDIO_COMMAND_STEP_OUT: studio_debug(s, STUDIO_STEP_OUT); break;
         case STUDIO_COMMAND_DENSITY:
             s->prefs.comfortable = !s->prefs.comfortable;
             break;
@@ -284,4 +701,56 @@ bool studio_command_item(studio *s, studio_command command)
     }
     studio_command_run(s, command);
     return true;
+}
+
+void studio_shortcuts(studio *s)
+{
+    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
+                                              : STUDIO_EDITOR_COUNT;
+    /* A game in the focused viewport owns keys without its primary modifier. */
+    bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
+    for (int i = 0; i < acount(s->keys); i++) {
+        studio_key key = s->keys[i];
+        bool primary = studio_primary(s, key.mod);
+        int command = studio_command_for_key(&s->prefs, key.key, key.mod, editor, s->mac);
+        bool repeatable = command >= 0
+                            ? COMMANDS[command].repeat
+                            : !primary && (key.key == SDLK_UP || key.key == SDLK_DOWN);
+        if (key.repeat && !repeatable) {
+            continue;
+        }
+        if (command >= 0 && COMMANDS[command].phase == SHORTCUT_DEBUG &&
+            s->pause.active) {
+            studio_command_run(s, (studio_command)command);
+            continue;
+        }
+        if (gameplay && !primary) {
+            continue;
+        }
+        if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EARLY) {
+            studio_command_run_with(
+                s,
+                (studio_command)command,
+                command == STUDIO_COMMAND_MAXIMIZE ? s->hover_area : -1
+            );
+            continue;
+        }
+        if (studio_designer_key(s, editor, key.key, key.mod)) {
+            /* Designer keys precede Space, which carries a row in the Canvas. */
+            continue;
+        }
+        if (command >= 0 && COMMANDS[command].phase == SHORTCUT_PLAY) {
+            studio_command_run(s, (studio_command)command);
+            continue;
+        }
+        if (editor == STUDIO_EDITOR_MEMBERS && studio_members_key(s, key.key, key.mod)) {
+            continue;
+        }
+        if (editor == STUDIO_EDITOR_ASSETS && studio_assets_key(s, key.key, key.mod)) {
+            continue;
+        }
+        if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EDITOR) {
+            studio_command_run(s, (studio_command)command);
+        }
+    }
 }

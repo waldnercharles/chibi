@@ -205,10 +205,11 @@ control's contract.
 - The persist middleware saves the whole store under one key, with a version for migration.
 - Kit version:
   - `studio_prefs` is the one store for view settings and layout.
-  - Each preference is a row of `studio_settings[]` (`studio_settings.c`): its JSON path, the saved key panels bind, its category, label, description, keywords, type and range. The preferences file, the saved keys and the Settings page all read and write through it; only the area layout is kept by hand.
+  - Each preference is a row of `studio_settings[]` (`studio_settings.c`): its JSON path, the saved key panels bind, its category, label, description, keywords, type and range. The preferences file, the saved keys and the Settings page all read and write through it; the area layout and command shortcut overrides are kept by hand.
   - Studio applies changes by comparison with the last applied copy.
   - It saves 0.5 s after the last change: a JSON file on desktop, `localStorage["chibi.studio"]` in the browser.
   - Missing fields keep their defaults.
+  - Keyboard uses the command registry for defaults, area contexts, aliases and repeat policy. Overrides persist by command ID. Record captures one chord before editor input, Escape cancels, and Reset restores the default and its aliases. Overlapping assignments are shown on both rows; an override takes priority over a default binding.
 - Authoring state never goes in this store; it belongs to the C model.
 
 ### next-themes

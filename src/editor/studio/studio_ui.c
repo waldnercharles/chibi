@@ -458,6 +458,8 @@ void studio_ui_modal(studio *s, const char *name)
     if (component && !component->hidden && component->document &&
         component->document[0]) {
         show_panel(s, p, &p->mount, kit_modal_host(s->kit, name), component->document);
+    } else if (!strcmp(name, "Settings")) {
+        s->shortcut_recording = 0;
     }
 }
 

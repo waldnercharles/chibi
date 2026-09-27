@@ -83,7 +83,6 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
         .indexed = e->indexed,
     };
     switch (command) {
-        case STUDIO_COMMAND_MAXIMIZE: info.shortcut = e->chord; break;
         case STUDIO_COMMAND_PLAY:
             /* Play resumes a run paused at a breakpoint (Unreal). */
             if (s->pause.active) {

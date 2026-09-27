@@ -111,6 +111,8 @@ void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy);
 bool sg_far(const studio *s);
 void sg_camera_step(studio *s);
 void sg_frame_nodes(studio *s, bool selection, bool animate);
+/* The first view of a graph: fitted, or its start at a legible zoom. */
+void sg_frame_open(studio *s);
 /* Frames the selection holding n, or pans n into view unless it is in view. */
 void sg_show_node(studio *s, node *n, bool frame);
 void sg_follow_graph(studio *s);

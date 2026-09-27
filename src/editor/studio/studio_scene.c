@@ -440,7 +440,7 @@ void studio_outliner_body(studio *s, int area)
         }
         kit_menu_item_desc duplicate = { .label = "Duplicate",
                                          .icon = KIT_ICON_COPY,
-                                         .shortcut = "Shift+D",
+                                         .shortcut = studio_chord(s, "Shift+D"),
                                          .checked = -1,
                                          .disabled = !studio_editable(s) };
         if (kit_menu_item(k, "duplicate", &duplicate)) {

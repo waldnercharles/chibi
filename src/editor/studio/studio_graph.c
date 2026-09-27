@@ -507,7 +507,7 @@ void studio_graph_frame(studio *s, double delta_seconds)
         e->arrange_pending = false;
     }
     if (!g->framed) {
-        sg_frame_nodes(s, false, false);
+        sg_frame_open(s);
         g->framed = true;
     }
     node *reveal = sg_node_by_id(s, g->reveal);

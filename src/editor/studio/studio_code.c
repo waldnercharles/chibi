@@ -272,6 +272,29 @@ static void check_shown(studio *s)
     c->markers_stale = true;
 }
 
+/* The Text Editor follows the active UI document as the other areas do: a
+   document opens it, and a drawer it opened closes when no UI document is
+   active, leaving the graph its room. */
+static void follow_active(studio *s, const scene_document_tab *active)
+{
+    studio_code *c = &s->code;
+    if (!active) {
+        if (c->opened_drawer &&
+            s->prefs.editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_CODE) {
+            s->prefs.drawer_open = false;
+        }
+        c->following = c->opened_drawer = false;
+        return;
+    }
+    if (c->following && !strcmp(active->path, c->path)) {
+        return;
+    }
+    snprintf(c->path, sizeof c->path, "%s", active->path);
+    c->opened_drawer |= !studio_editor_shown(s, STUDIO_EDITOR_CODE);
+    c->following = true;
+    studio_show_editor(s, STUDIO_EDITOR_CODE);
+}
+
 void studio_code_frame(studio *s)
 {
     bool applied = false;
@@ -285,11 +308,7 @@ void studio_code_frame(studio *s)
     if (applied) {
         asset_index_invalidate(s->scene);
     }
-    scene_document_tab *active = active_ui(s);
-    if (active && strcmp(active->path, s->code.path)) {
-        snprintf(s->code.path, sizeof s->code.path, "%s", active->path);
-        studio_show_editor(s, STUDIO_EDITOR_CODE);
-    }
+    follow_active(s, active_ui(s));
     prune_editors(s);
     check_shown(s);
     toast_actions(s);

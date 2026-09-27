@@ -335,7 +335,7 @@ static const struct
     [STUDIO_RESUME] = { "resume", "Resume", "F5", KIT_ICON_CONTINUE },
     [STUDIO_STEP_OVER] = { "over", "Step Over", "F10", KIT_ICON_STEP_OVER },
     [STUDIO_STEP_INTO] = { "into", "Step Into", "F11", KIT_ICON_STEP_INTO },
-    [STUDIO_STEP_OUT] = { "out", "Step Out", "Shift F11", KIT_ICON_STEP_OUT },
+    [STUDIO_STEP_OUT] = { "out", "Step Out", "Shift+F11", KIT_ICON_STEP_OUT },
 };
 
 bool studio_debug_key(studio *s, SDL_Keycode key, bool shift)
@@ -353,7 +353,7 @@ void studio_debug_steps(studio *s)
     for (int c = STUDIO_STEP_OVER; c <= STUDIO_STEP_OUT; c++) {
         kit_button_desc d = { .icon = COMMANDS[c].icon,
                               .tip = COMMANDS[c].label,
-                              .shortcut = COMMANDS[c].shortcut };
+                              .shortcut = studio_chord(s, COMMANDS[c].shortcut) };
         if (kit_button(s->kit, COMMANDS[c].key, &d)) {
             studio_debug(s, (studio_debug_command)c);
         }
@@ -365,7 +365,7 @@ void studio_debug_menu(studio *s)
     for (int c = STUDIO_RESUME; c <= STUDIO_STEP_OUT; c++) {
         kit_menu_item_desc d = { .label = COMMANDS[c].label,
                                  .icon = COMMANDS[c].icon,
-                                 .shortcut = COMMANDS[c].shortcut,
+                                 .shortcut = studio_chord(s, COMMANDS[c].shortcut),
                                  .checked = -1,
                                  .disabled = !s->pause.active };
         if (kit_menu_item(s->kit, COMMANDS[c].key, &d)) {

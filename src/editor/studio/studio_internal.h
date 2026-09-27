@@ -528,7 +528,9 @@ typedef struct
     char *hover;
     int hover_at;
     const ui_source *hover_source;
-    bool replayed; /* Undo or Redo from the editor changed the text */
+    bool replayed;      /* Undo or Redo from the editor changed the text */
+    bool following;     /* a UI document was active last frame */
+    bool opened_drawer; /* following it opened the drawer */
     /* Workstream Q: the shown document's problems for Output
        (studio_code_problems), and the revisions of the text and the check
        they describe. */
@@ -892,6 +894,8 @@ void studio_output_find(studio *s);
 void studio_output_calls(studio *s);
 /* Shows an editor: in an area already showing it, else in the drawer. */
 void studio_show_editor(studio *s, studio_editor editor);
+/* Whether an area or the open drawer shows the editor. */
+bool studio_editor_shown(const studio *s, studio_editor editor);
 
 /* Find References (studio_find.c): lists what references an asset, or a
    function, variable, event or prototype, in Output's Find view; rows open

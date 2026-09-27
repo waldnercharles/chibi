@@ -105,9 +105,9 @@ domain:
   edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
   call `validateAsset`.
 - Game UI documents (`content/ui/<Name>.yaml`, kind `ui`, with `rml` body
-  markup and optional `rcss` styles): read one with `inspectUi`, change it
-  with `buildUi`, then call `validateAsset`; see
-  [Author a UI document](#author-a-ui-document).
+  markup and optional `rcss` styles): write its RML and RCSS in the file, run
+  `--format`, then call `validateAsset`; `inspectUi` summarizes one and
+  completes at a position. See [Author a UI document](#author-a-ui-document).
 
 Before changing or removing a function, variable, event, component field or
 shared asset, check what the edit affects with `findReferences`, and trace
@@ -124,7 +124,6 @@ saving them. Tool results include complete `structuredContent` and
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
-- `buildUi`: create or edit a ui asset's markup and styles as text edits that keep its formatting, validated with RmlUi before saving.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
 - `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
 - `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
@@ -306,36 +305,19 @@ from the same language service. `items` lists each choice's `label` and
 to `at`, the word typed so far. `total` counts them all; at most 200 are
 listed.
 
-`buildUi` applies `operations` in order, each to the text the one before it
-left, and names an element by its `inspectUi` index or by a selector exactly
-one element matches: a tag, `#id` and `.class` parts, as `#resume` or
-`use.card`. Indexes after an insert, move or delete refer to the new text.
+Write the asset as you would HTML and CSS:
 
-| Operation | Fields |
-| --- | --- |
-| `set_attribute`, `remove_attribute` | `element`, `name`, and `value` to set |
-| `add_class`, `remove_class` | `element`, `class` |
-| `set_style`, `remove_style` | `element`, `property`, and `value` to set: one declaration of the `style` attribute |
-| `insert_element` | `markup`, and `target` with `position` `inside` (after its children, the default), `before` or `after`; without `target`, at the end of the markup |
-| `move_element` | `element`, `target`, `position` |
-| `delete_element` | `element` |
-| `set_rml`, `set_rcss` | `text`: the block's whole value |
-
-Edits keep the author's formatting: new lines take the indentation of the
-lines around them, and a self-closing element opened to hold a child gains a
-close tag. The result lists each operation's `changes` as file edits by line
-and column. Like the other build tools it needs `expected_hash` unless it
-`create`s the asset (whose operations must `set_rml`), and `dry_run: true`
-returns the new `text` without saving. The edited asset is written in
-canonical form and validated first, as `validateAsset` does; an invalid one
-is refused with its `diagnostics`:
-
-```json
-{"kind": "ui", "name": "PauseMenu", "expected_hash": "eade8b8fb50dc048",
- "operations": [
-   {"op": "insert_element", "target": "#panel", "markup": "<div class=\"hint\">Esc to resume</div>"},
-   {"op": "set_style", "element": "#defeated", "property": "color", "value": "#ff8c96"}]}
+```yaml
+rml: |
+  <div id="panel">
+    <span class="title">{{ save.name }}</span>
+  </div>
+rcss: |
+  .title { color: var(--accent); }
 ```
+
+Then run `build/chibi_ctl --project-root <root> --format`, which rewrites it
+in canonical form, and call `validateAsset`.
 
 `validateAsset` on a ui asset reports, as `rule_name`:
 

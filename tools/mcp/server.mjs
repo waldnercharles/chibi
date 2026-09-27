@@ -22,7 +22,7 @@ const serverVersion = "0.2.0";
 const serverInstructions = [
   "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
   "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, inspectUi, describeComponents, or getProjectStatus.",
-  "2. Build with buildGraph, buildPrototype, buildScene, or buildUi for UI documents. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
+  "2. Build with buildGraph, buildPrototype, or buildScene. Write UI documents (content/ui/<Name>.yaml, RML and RCSS) directly as files. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
   "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
   "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
@@ -811,43 +811,6 @@ function buildToolDefinitions() {
     required: ["kind", "name"],
     additionalProperties: false,
   };
-  const uiElement = {
-    oneOf: [{ type: "integer", minimum: 0 }, { type: "string" }],
-    description: "An element: its inspectUi index, or a selector exactly one element matches, as #resume or use.card.",
-  };
-  const uiOperation = {
-    type: "object",
-    properties: {
-      op: {
-        type: "string",
-        enum: ["set_attribute", "remove_attribute", "add_class", "remove_class", "set_style", "remove_style",
-          "insert_element", "move_element", "delete_element", "set_rml", "set_rcss"],
-      },
-      element: uiElement,
-      target: { ...uiElement, description: "insert_element and move_element: the element to place by; omit for the markup itself." },
-      position: { type: "string", enum: ["inside", "before", "after"], description: "Where by target; defaults to inside, after its children." },
-      name: { type: "string", description: "Attribute name." },
-      value: { type: "string", description: "Attribute or style value." },
-      class: { type: "string", description: "Class name." },
-      property: { type: "string", description: "Inline style property." },
-      markup: { type: "string", description: "RML to insert; its lines take the indentation of the lines around them." },
-      text: { type: "string", description: "set_rml and set_rcss: the block's whole new value." },
-    },
-    required: ["op"],
-    additionalProperties: false,
-  };
-  const uiEditArguments = {
-    type: "object",
-    properties: {
-      ...uiArguments.properties,
-      create: { type: "boolean", description: "Create the asset; its operations must include set_rml." },
-      expected_hash: { type: "string", description: "The asset's current hash from inspectUi; required unless create." },
-      dry_run: { type: "boolean", description: "Validate and return the new text without writing." },
-      operations: { type: "array", minItems: 1, maxItems: 128, items: uiOperation, description: "Edits applied in order, each to the text the one before left; indexes refer to that text." },
-    },
-    required: ["kind", "name", "operations"],
-    additionalProperties: false,
-  };
   const renameArguments = {
     type: "object",
     properties: {
@@ -931,13 +894,6 @@ function buildToolDefinitions() {
       operation: "delete_symbol",
       description: "Delete a symbol nothing references, or force it and list what dangles.",
       inputSchema: deleteArguments,
-      outputSchema,
-    },
-    {
-      name: "buildUi",
-      operation: "edit_ui",
-      description: "Edit a ui asset's markup and styles with text edits that keep its formatting.",
-      inputSchema: uiEditArguments,
       outputSchema,
     },
     {
@@ -1249,9 +1205,6 @@ function responseNextSteps(name, response, args) {
       ? ["Remove the listed references, or pass force to delete anyway and leave them dangling."]
       : ["Correct the symbol selector or the new name, then run the dry run again."];
   }
-  if (code === "asset_conflict" && name === "buildUi") {
-    return ["Call inspectUi for the current content hash and element indexes, then retry the edit."];
-  }
   if (code === "asset_conflict") {
     return ["Call inspectGraph or readAsset for the current content hash, then retry the edit."];
   }
@@ -1281,7 +1234,7 @@ function responseNextSteps(name, response, args) {
       `Call ${name} with dry_run false and the returned expected_hashes to publish.`,
     ];
   }
-  if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene" || name === "buildUi") &&
+  if ((name === "buildGraph" || name === "buildPrototype" || name === "buildScene") &&
       result?.dry_run === true) {
     return [
       "Review the dry-run diagnostics and proposed changes.",

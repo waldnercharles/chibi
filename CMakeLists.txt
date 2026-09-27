@@ -900,7 +900,7 @@ target_sources(test_suite PRIVATE src/editor/documents/ui_buffer.c)
 
 # --- UI language service (workstream B) ---------------------------------------
 # ui_source parses ui assets with tree-sitter for Studio and the MCP; ui_check
-# validates one in a scratch RmlUi document; ui_edit applies buildUi batches.
+# validates one in a scratch RmlUi document; ui_edit serves the MCP's ui tools.
 include(cmake/tree_sitter.cmake)
 add_library(ui_source STATIC
     src/assets/ui_source.c src/assets/ui_source_complete.c src/assets/ui_source_edit.c)

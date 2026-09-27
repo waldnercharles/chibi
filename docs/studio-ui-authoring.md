@@ -18,7 +18,7 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
 
 ## Decisions
 
-- **Text is the source of truth.** The Text Editor, the visual designer and the MCP all change a UI document through `text_edit`s (`src/support/text_edit.h`). There is one undo stack, and the author's formatting survives.
+- **Text is the source of truth.** The Text Editor and the visual designer change a UI document through `text_edit`s (`src/support/text_edit.h`). There is one undo stack, and the author's formatting survives. Agents write the RML and RCSS in the file, as a person does.
 - **One history: the document's buffer.** The `ui_buffer` keeps the undo history and the Text Editor's code editors keep none (`kit_code_desc.history`). Typing reaches the buffer as typed text, which joins the step being typed; an accepted completion is a step of its own; and the editor's undo keys (⌘Z, Vim's `u` and Control+R) step the buffer as Studio's Undo does. Whatever changes the buffer comes back to the editor as one edit, so its cursor keeps its place, and after an undo it lands on the change. Each open document part keeps its own code editor, with its cursor, scroll and Vim state.
 - **The text editor is [Zep](https://github.com/Rezonality/zep)** (MIT; Vim and standard modes), drawn through RmlUi, not ImGui.
   - `src/editor/text/zep_bridge.{h,cpp}` is a pass-through C wrapper, like `src/ui/rml.cpp`.

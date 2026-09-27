@@ -436,7 +436,7 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     scene_document_tab *tab = scene->active_tab >= 0 ? &scene->tabs[scene->active_tab]
                                                      : NULL;
     if (tab && !tab->system_saved) {
-        tab->system_saved = xstrdup(json);
+        tab->system_saved = tab->system_json ? xstrdup(tab->system_json) : NULL;
     }
     snprintf(
         scene->message,

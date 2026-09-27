@@ -1,7 +1,7 @@
 /* The editor's roles beyond shadcn's, derived from the palette so a pasted
    theme carries through. Mixes that differ in the dark palette repeat under
    .dark; status, override and code colors are the editor's own. */
-body {
+body, .dark {
     /* Surfaces, darkest to lightest. */
     --app: color-mix(in srgb, var(--background) 83%, #000);
     --edge: color-mix(in srgb, var(--background) 80%, #000);

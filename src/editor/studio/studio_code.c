@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -416,15 +417,36 @@ static void file_problems(studio *s, const char *path, studio_ui_problem **out)
     }
 }
 
+static bool scanned(const ui_source_project *project, const char *path)
+{
+    for (int i = 0; i < acount(project->files); i++) {
+        if (!strcmp(project->files[i].path, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The project's ui assets and stylesheets, then the open documents that
+   lie elsewhere. */
 void studio_code_project_problems(studio *s, studio_ui_problem **out)
 {
     if (!s->code.checker) {
         s->code.checker = rml_backend_create(1280, 720, 1);
     }
+    char root[PATH_MAX];
     ui_source_project project = { 0 };
-    ui_source_project_scan(&project, s->scene->content_root);
+    if (realpath(s->scene->content_root, root)) {
+        ui_source_project_scan(&project, root);
+    }
     for (int i = 0; i < acount(project.files); i++) {
         file_problems(s, project.files[i].path, out);
+    }
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        const scene_document_tab *tab = &s->scene->tabs[i];
+        if (tab->kind == APP_EDITOR_DOCUMENT_UI && !scanned(&project, tab->path)) {
+            file_problems(s, tab->path, out);
+        }
     }
     ui_source_project_free(&project);
 }

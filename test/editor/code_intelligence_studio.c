@@ -5,6 +5,7 @@
  * asset, and Shift+F12 lists a class's places in Output's Find view.
  * Workstream Q: Output lists the problems, Back and Forward follow F12, and
  * the Hierarchy moves a row with the keyboard. */
+#define _GNU_SOURCE
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"

@@ -227,6 +227,71 @@ static void option_groups(const char *root)
     unlink(path);
 }
 
+/* A field of the editor's, then a modal dialog hosting the asset. */
+static void modal_frame(host_fixture *f)
+{
+    kit *k = f->k;
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    kit_leaf(k, "field", "input", NULL);
+    f->host = kit_modal_host(k, f->host_key);
+    if (ui_mount_sync(f->mount, f->host, f->listener, f->in.time)) {
+        kit_style_sheet(k, "Dialog", ui_mount_style(f->mount));
+    }
+    kit_end(k);
+    rml_backend_update(f->backend, 1.0 / 60.0);
+    f->in.time += 1.0 / 60.0;
+}
+
+static void press_tab(host_fixture *f, bool shift)
+{
+    rml_input tab = { .type = RML_INPUT_KEY_PRESS,
+                      .key = RML_INPUT_KEY_TAB,
+                      .modifiers = shift ? RML_INPUT_MOD_SHIFT : 0 };
+    rml_backend_process_input(f->backend, &tab);
+    tab.type = RML_INPUT_KEY_RELEASE;
+    rml_backend_process_input(f->backend, &tab);
+    modal_frame(f);
+}
+
+/* Tab and Shift+Tab cycle through a modal's fields and never reach the
+ * editor's behind it; from the editor, Tab enters the modal. */
+static void modal_focus(const char *root)
+{
+    char path[128];
+    snprintf(path, sizeof path, "%s/ui/Dialog.yaml", root);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(
+        "rml: <input type=\"text\" id=\"a\" autofocus/><input type=\"text\" "
+        "id=\"b\"/>\n",
+        file
+    );
+    fclose(file);
+    host_fixture f = { .host_key = "dialog" };
+    open_fixture(&f, root, "Dialog");
+    for (int i = 0; i < 3; i++) {
+        modal_frame(&f);
+    }
+    bool first = !strcmp(focused_id(&f), "a");
+    press_tab(&f, false);
+    bool next = !strcmp(focused_id(&f), "b");
+    press_tab(&f, false);
+    bool wrapped = !strcmp(focused_id(&f), "a");
+    press_tab(&f, true);
+    bool back = !strcmp(focused_id(&f), "b");
+    rml_element *field = rml_element_query_selector(rml_element_owner_document(f.host), "#app input");
+    bool left = field && rml_element_focus(field, true);
+    press_tab(&f, false);
+    test_check(
+        first && next && wrapped && back && left && !strcmp(focused_id(&f), "a"),
+        "Tab and Shift+Tab keep the focus inside a modal host, wrapping, and "
+        "Tab from the editor enters it"
+    );
+    close_fixture(&f);
+    unlink(path);
+}
+
 void test_kit_host()
 {
     char root[] = "/tmp/chibi-kit-host-XXXXXX", folder[64], path[96];
@@ -273,6 +338,7 @@ void test_kit_host()
     unlink(path);
     popup_navigation(root);
     option_groups(root);
+    modal_focus(root);
     rmdir(folder);
     rmdir(root);
 }

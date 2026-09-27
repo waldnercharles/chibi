@@ -788,12 +788,68 @@ static void drag(kit *k, const rml_event *e)
     control_drag(k, n, e);
 }
 
+/* The modal host emitted last, or NULL: kit_modal_host's hosts are the
+ * layer's only hosted children. */
+static rml_element *top_modal(const kit *k)
+{
+    for (int i = acount(k->layer->children) - 1; i >= 0; i--) {
+        if (k->layer->children[i]->hosted) {
+            return k->layer->children[i]->el;
+        }
+    }
+    return NULL;
+}
+
+/* Whether Tab can focus `el`, as RmlUi's own Tab search decides. */
+static bool tabbable(rml_element *el)
+{
+    char tab[8], focus[8];
+    rml_element_property(el, "tab-index", tab, sizeof tab);
+    rml_element_property(el, "focus", focus, sizeof focus);
+    return !strcmp(tab, "auto") && strcmp(focus, "none") != 0 &&
+           rml_element_is_visible(el, true);
+}
+
+/* Tab and Shift+Tab move the focus through the open modal's tabbable
+ * elements in document order, wrapping at either end, so it never reaches
+ * the editor behind the modal, as Base UI's Dialog traps focus. */
+static bool trap_focus(kit *k, const rml_event *e)
+{
+    rml_element *modal = e->key == RML_KEY_TAB && !k->command.open ? top_modal(k)
+                                                                   : NULL;
+    if (!modal) {
+        return false;
+    }
+    int count = rml_element_query_selector_all(modal, "*", NULL, 0), kept = 0,
+        at = -1;
+    rml_element **stops = xmalloc((size_t)(count + 1) * sizeof *stops);
+    rml_element_query_selector_all(modal, "*", stops, count);
+    for (int i = 0; i < count; i++) {
+        if (tabbable(stops[i])) {
+            at = stops[i] == e->target ? kept : at;
+            stops[kept++] = stops[i];
+        }
+    }
+    int step = e->modifiers & RML_KM_SHIFT ? -1 : 1;
+    int next = at < 0 ? (step > 0 ? 0 : kept - 1) : ((at + step) % kept + kept) % kept;
+    if (kept) {
+        rml_element_focus(stops[next], true);
+        rml_element_scroll_into_view(stops[next], RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+    }
+    free(stops);
+    rml_event_stop_propagation(e);
+    return true;
+}
+
 static void keydown(kit *k, const rml_event *e, node *n)
 {
     k->keyboard_edit = true;
     if (k->drag.active && e->key == RML_KEY_ESCAPE) {
         drag_cancel(k);
         rml_event_stop_propagation(e);
+        return;
+    }
+    if (trap_focus(k, e)) {
         return;
     }
     /* Hosted content handles its own keys, and RmlUi navigates it. */

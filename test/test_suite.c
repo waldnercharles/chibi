@@ -94,6 +94,9 @@ void test_ui_designer();
 /* ---------- Authored status bar (workstream J) ---------- */
 void test_kit_slot();
 
+/* ---------- Wave 2 follow-ups (workstream P) ---------- */
+void test_studio_zoom();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -248,6 +251,8 @@ TEST_CASE(all_checks)
     test_kit_slot();
     /* Visual designer (workstream H). */
     test_ui_designer();
+    /* ---------- Wave 2 follow-ups (workstream P) ---------- */
+    test_studio_zoom();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -953,6 +958,15 @@ int main(int argc, char **argv)
     /* ---------- Authored status bar (workstream J) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--kit-slot")) {
         test_kit_slot();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Wave 2 follow-ups (workstream P) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-followups")) {
+        test_game_ui_presenter();
+        test_kit_host();
+        test_studio_settings();
+        test_studio_zoom();
+        test_automation_search();
         return fails ? 1 : 0;
     }
     pu_run_test("all_checks", all_checks);

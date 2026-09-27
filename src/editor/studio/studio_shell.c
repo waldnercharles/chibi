@@ -3,7 +3,9 @@
 #include "support/array.h"
 #include "support/text_file.h"
 
+#include <assert.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -412,22 +414,34 @@ void studio_reset_layout(studio *s)
     memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
 }
 
-/* UI Scale's steps, as browsers step a page's zoom, and the menus' choices. */
-static const float UI_ZOOMS[] = { 0.5f, 0.67f, 0.75f, 0.8f,  0.9f, 1,
-                                  1.1f, 1.25f, 1.5f,  1.75f, 2 };
+/* The menus' UI Scale choices. */
 static const float UI_SCALES[] = { 0.5f, 0.75f, 1, 1.25f, 1.5f, 2 };
 enum
 {
-    UI_ZOOM_COUNT = sizeof UI_ZOOMS / sizeof *UI_ZOOMS,
     UI_SCALE_COUNT = sizeof UI_SCALES / sizeof *UI_SCALES,
 };
 
+/* The settings table's UI Scale row, whose presets are its steps. */
+static const studio_setting *ui_scale_setting()
+{
+    for (int i = 0; i < studio_setting_count; i++) {
+        if (studio_settings[i].offset == offsetof(studio_prefs, ui_scale)) {
+            return &studio_settings[i];
+        }
+    }
+    assert(!"the settings table has UI Scale");
+    return NULL;
+}
+
 void studio_zoom(studio *s, int step)
 {
-    float scale = s->prefs.ui_scale, next = step ? scale : 1;
+    const studio_setting *setting = ui_scale_setting();
+    int count = setting->choice_count;
+    float scale = s->prefs.ui_scale, next = step ? scale : setting->fallback;
     /* The last match is the nearest step: up from the top, down from the bottom. */
-    for (int i = 0; i < UI_ZOOM_COUNT; i++) {
-        float up = UI_ZOOMS[UI_ZOOM_COUNT - 1 - i], down = UI_ZOOMS[i];
+    for (int i = 0; i < count; i++) {
+        float up = strtof(setting->choices[count - 1 - i].value, NULL),
+              down = strtof(setting->choices[i].value, NULL);
         if (step > 0 && up > scale + 0.001f) {
             next = up;
         }
@@ -694,14 +708,16 @@ static void transport(studio *s)
     kit_pop(k);
 }
 
-/* Settings is an authored dialog in the Studio project. */
+/* Settings is an authored dialog in the Studio project, which the
+ * `settings` command opens. */
 static void settings(studio *s)
 {
-    kit_button_desc d = { .icon = KIT_ICON_SETTINGS,
-                          .tip = "Settings",
-                          .shortcut = studio_chord(s, "Mod+,") };
+    studio_command_info command = studio_command_describe(s, STUDIO_COMMAND_SETTINGS);
+    kit_button_desc d = { .icon = command.icon,
+                          .tip = command.label,
+                          .shortcut = command.shortcut };
     if (kit_button(s->kit, "settings", &d)) {
-        studio_ui_show(s, "Settings");
+        studio_command_run(s, STUDIO_COMMAND_SETTINGS);
     }
     studio_ui_modal(s, "Settings");
 }
@@ -1205,8 +1221,10 @@ void studio_shortcuts(studio *s)
     studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
                                               : STUDIO_EDITOR_COUNT;
     /* A game playing in the focused viewport owns keys without a modifier,
-       such as Space for a dash. */
-    bool gameplay = engine_viewport_focused(s->viewport);
+       such as Space for a dash. The Canvas preview hears keys too, but its
+       events only reach its Actions log, so Studio keeps them there, as the
+       designer's keys need. */
+    bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
     for (int i = 0; i < acount(s->keys); i++) {
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);

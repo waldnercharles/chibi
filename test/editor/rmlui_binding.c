@@ -46,8 +46,8 @@ static bool replaces_style_sheet(rml_context *context)
     );
     assert(doc);
     rml_element *a = rml_element_by_id(doc, "a");
-    bool set = rml_document_set_style_sheet(doc, "#a { color: #ff0000; }\n#a { color: #00ff00; }\n");
-    bool empty = rml_document_set_style_sheet(doc, "");
+    bool set = rml_document_set_named_style_sheet(doc, "test", "#a { color: #ff0000; }\n#a { color: #00ff00; }\n");
+    bool empty = rml_document_set_named_style_sheet(doc, "test", "");
     rml_context_update(context);
     rml_color c = rml_element_color(a);
     rml_document_close(doc);

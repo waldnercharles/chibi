@@ -335,7 +335,8 @@ extern "C"
     typedef struct rml_element rml_element;
     rml_element *kit_host(kit *k, const char *key, const char *cls);
     /* A host that covers the window above the editor and takes the pointer, for
-     * hosted modal content such as a dialog. */
+     * hosted modal content such as a dialog. While it shows, Tab and Shift+Tab
+     * move the focus through its content only (Base UI's Dialog). */
     rml_element *kit_modal_host(kit *k, const char *key);
     /* Adds `rcss` after the kit's stylesheets under `key`, replacing what the key
      * held; NULL removes it. Hosted content installs its scoped RCSS here. */

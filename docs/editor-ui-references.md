@@ -51,7 +51,9 @@ after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
 shortcut and an optional description that wraps; in a zoomed canvas it keeps
 its size on screen. Number fields repeat held
 steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press
-and return focus to their trigger. `docs/prototypes/studio/kit.html` lists every
+and return focus to their trigger. A modal host (`kit_modal_host`) traps the
+focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
+elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
 control's contract.
 
 ### cmdk

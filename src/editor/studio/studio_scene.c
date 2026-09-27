@@ -215,8 +215,10 @@ void studio_scene_body(studio *s, int area)
     kit_pop(k);
     engine_viewport_view view;
     engine_viewport_get_view(s->viewport, &view);
-    /* Only once the surface is laid out: a placeholder value would roll on startup. */
-    if (s->surface.rect.w > 0) {
+    /* Only once the surface is laid out and the scene has drawn: its first
+       draw restores or fits the camera after this readout is emitted, so an
+       earlier value would be the reset camera's, rolling to the real one. */
+    if (s->surface.rect.w > 0 && scene->camera_target >= 0) {
         double zoom = roundf(s->surface.rect.w / fmaxf(view.width, 1) * 100);
         kit_number_flow(
             k,

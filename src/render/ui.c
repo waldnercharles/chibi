@@ -486,23 +486,39 @@ static void show_system(ui_data *d)
     }
 }
 
+/* The key `shown` holds `value` under, or NULL. */
+static const char *shown_key(yyjson_mut_val *shown, const yyjson_mut_val *value)
+{
+    yyjson_mut_val *key;
+    yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
+    while ((key = yyjson_mut_obj_iter_next(&iter))) {
+        if (yyjson_mut_obj_iter_get_val(key) == value) {
+            return yyjson_mut_get_str(key);
+        }
+    }
+    return NULL;
+}
+
+/* Saves in `save` the shown keys bindings changed, and only those: a key the
+ * save changed since it was shown keeps the save's value. */
+static void save_written(ui_data *d, yyjson_mut_val *shown, game_save *save)
+{
+    yyjson_mut_val *value;
+    while (rml_data_model_take_written(d->model, &value)) {
+        char number[32];
+        const char *key = save && save == d->save ? shown_key(shown, value) : NULL;
+        const char *text = key ? saved_text(value, number, sizeof number) : NULL;
+        if (text) {
+            game_save_set(save, key, text);
+        }
+    }
+}
+
 void ui_data_sync(ui_data *d, game_save *save)
 {
     show_system(d);
     yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
-    uint64_t writes = rml_data_model_writes(d->model);
-    if (save && save == d->save && writes != d->writes_seen) {
-        yyjson_mut_val *key;
-        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
-        while ((key = yyjson_mut_obj_iter_next(&iter))) {
-            char number[32];
-            const char *text = saved_text(yyjson_mut_obj_iter_get_val(key), number, sizeof number);
-            if (text) {
-                game_save_set(save, yyjson_mut_get_str(key), text);
-            }
-        }
-    }
-    d->writes_seen = writes;
+    save_written(d, shown, save);
     uint64_t revision = save ? game_save_revision(save) : 0;
     if (save == d->save && revision == d->save_seen) {
         return;
@@ -604,8 +620,11 @@ struct render_ui
     ui_page page;
     ui_data data;
     ui_view *views;
-    ui_view overlay; /* its entity is unused */
-    char overlay_state[32];
+    ui_view overlay;         /* its entity is unused */
+    char overlay_name[128];  /* the asset the host asked for, "" for none */
+    char overlay_wanted[32]; /* the state it asked for */
+    bool overlay_shown;      /* whether it asked for a state, or to hide */
+    char overlay_state[32];  /* the state the overlay's root shows */
     char overlay_event[128];
     char sheet[32]; /* the name its style sheet reports (ui_style.h) */
     bool restyle;   /* a mount's RCSS changed or a mount closed */
@@ -781,21 +800,35 @@ static void on_emit(void *user, const rml_event *event, const char *name)
 
 void render_ui_set_overlay(render_ui *ui, const char *name, const char *state)
 {
+    snprintf(ui->overlay_name, sizeof ui->overlay_name, "%s", name);
+    snprintf(ui->overlay_wanted, sizeof ui->overlay_wanted, "%s", state ? state : "");
+    ui->overlay_shown = state != NULL;
+}
+
+/* Shows the overlay the host asked for, once the page is loaded: RmlUi keeps
+ * the data views of elements removed before its next update, and warns about
+ * each at every removal after, so an overlay installed before a page load
+ * closed it would leave them behind. */
+static void show_overlay(render_ui *ui)
+{
     ui_view *view = &ui->overlay;
-    if (view->mount && strcmp(ui_mount_name(view->mount), name) != 0) {
+    if (!ui->overlay_name[0]) {
+        return;
+    }
+    if (view->mount && strcmp(ui_mount_name(view->mount), ui->overlay_name) != 0) {
         close_view(ui, view);
     }
     if (!view->mount) {
-        open_view(ui, view, name, OVERLAY_ORDER);
+        open_view(ui, view, ui->overlay_name, OVERLAY_ORDER);
         ui->overlay_state[0] = '\0';
     }
-    if (state) {
+    if (ui->overlay_shown) {
         ui->restyle |= ui_mount_sync(view->mount, view->root, ui->listener, ui->time);
     }
-    rml_element_set_property(view->root, "display", state ? "block" : "none");
-    if (state && strcmp(state, ui->overlay_state) != 0) {
-        snprintf(ui->overlay_state, sizeof ui->overlay_state, "%s", state);
-        rml_element_set_class_names(view->root, state);
+    rml_element_set_property(view->root, "display", ui->overlay_shown ? "block" : "none");
+    if (ui->overlay_shown && strcmp(ui->overlay_wanted, ui->overlay_state) != 0) {
+        snprintf(ui->overlay_state, sizeof ui->overlay_state, "%s", ui->overlay_wanted);
+        rml_element_set_class_names(view->root, ui->overlay_wanted);
     }
 }
 
@@ -965,6 +998,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         ui->scale = (float)height / UI_REFERENCE_HEIGHT;
         rml_backend_resize_pixels(ui->backend, width, height, ui->scale);
     }
+    show_overlay(ui);
     for (int i = 0; i < acount(ui->views); i++) {
         ui->views[i].seen = false;
     }

@@ -363,6 +363,27 @@ static int area_showing(const studio *s, studio_editor editor)
     return -1;
 }
 
+/* The most keys a frame passes to the Scene's game documents. */
+#define GAME_KEYS_MAX 16
+
+/* This frame's key presses without the primary modifier, which Studio's
+ * shortcuts keep, as input for the game documents in the Scene area. */
+static int game_keys(const studio *s, rml_input *keys)
+{
+    int count = 0;
+    for (int i = 0; i < acount(s->keys) && count < GAME_KEYS_MAX; i++) {
+        rml_input_key key = input_key(s->keys[i].key);
+        if (key != RML_INPUT_KEY_UNKNOWN && !studio_primary(s, s->keys[i].mod)) {
+            keys[count++] = (rml_input){
+                .type = RML_INPUT_KEY_PRESS,
+                .key = key,
+                .modifiers = rml_key_modifiers(s, s->keys[i].mod)
+            };
+        }
+    }
+    return count;
+}
+
 static void draw_viewport(studio *s)
 {
     int area = area_showing(s, STUDIO_EDITOR_SCENE);
@@ -385,6 +406,9 @@ static void draw_viewport(studio *s)
         .alt = (s->mods & SDL_KMOD_ALT) != 0,
         .escape = studio_key_pressed(s, SDLK_ESCAPE) && !kit_wants_keyboard(s->kit),
     };
+    rml_input keys[GAME_KEYS_MAX];
+    input.keys = keys;
+    input.key_count = game_keys(s, keys);
     snprintf(input.dropped_prototype, sizeof input.dropped_prototype, "%s", s->dropped_prototype);
     s->dropped_prototype[0] = '\0';
     for (int b = 0; b < 3; b++) {

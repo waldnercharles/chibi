@@ -99,6 +99,14 @@ void engine_viewport_set_host_input(engine_viewport *viewport, const engine_view
     viewport->host_delta = (CF_V2){ input->x - viewport->host_input.x,
                                     input->y - viewport->host_input.y };
     viewport->host_input = *input;
+    /* The canvas takes the image's shape now, so the camera frames it before
+       the draw, as a fit does. */
+    float resolution = fmaxf(input->resolution, 1);
+    engine_viewport_request_resize(
+        viewport,
+        (int)(input->width * resolution),
+        (int)(input->height * resolution)
+    );
 }
 
 uint64_t engine_viewport_texture(const engine_viewport *viewport)
@@ -411,6 +419,15 @@ static void ui_pointer(
     viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
 }
 
+/* Sends the host's keys to the game documents while the host's keyboard is
+   the image's and `active`. */
+static void ui_keys(engine_viewport *viewport, const engine_viewport_host_input *in, bool active)
+{
+    for (int i = 0; viewport->ui && active && in->focused && i < in->key_count; i++) {
+        render_ui_input(viewport->ui, &in->keys[i]);
+    }
+}
+
 static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, bool playing)
 {
     CF_V2 size = io->size;
@@ -569,7 +586,6 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
         cancel_viewport_pointer(viewport);
         return 0;
     }
-    engine_viewport_request_resize(viewport, width, height);
     if (viewport->stable_resize_frames >= 2 && commit_resize(viewport) != 0) {
         return -1;
     }
@@ -583,6 +599,7 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
         in->released[0],
         controls->playing
     );
+    ui_keys(viewport, in, controls->playing);
     viewport_io io = host_io(viewport);
     bool navigating = navigate_viewport(viewport, &io, controls->playing);
     capture_viewport_pointer(viewport, &io, navigating || viewport->ui_capture);

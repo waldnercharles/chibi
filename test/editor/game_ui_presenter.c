@@ -3,7 +3,9 @@
 #include "render/ui.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
+#include "support/array.h"
 #include "support/text_file.h"
+#include "support/text_overlay.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -111,6 +113,60 @@ static void shipped_documents()
     }
     test_check(ok, "every shipped ui asset and widget loads with its bindings");
     ecs_world_free(world);
+}
+
+/* How many of the warnings kept since rml_backend_keep_warnings are RmlUi's
+ * about a data view whose element was destroyed. */
+static int destroyed_views()
+{
+    char **warnings = rml_backend_take_warnings();
+    int count = 0;
+    for (int i = 0; i < acount(warnings); i++) {
+        count += strstr(warnings[i], "was it destroyed") != NULL;
+        free(warnings[i]);
+    }
+    afree(warnings);
+    return count;
+}
+
+/* An overlay with bindings shown on a page from its first frame, as the
+ * Canvas preview shows an asset, leaves RmlUi no view of an element it
+ * removed, through edits to the asset and the page: the page loads before
+ * the overlay installs. */
+static void overlay_on_page(const char *root)
+{
+    char page[96], bound[96];
+    snprintf(page, sizeof page, "%s/ui/Shell.yaml", root);
+    snprintf(bound, sizeof bound, "%s/ui/Bound.yaml", root);
+    write_file(page, "rml: '<body><slot/></body>'\n");
+    write_file(bound, "rml: '<div data-class-live=\"save.live\">{{ save.label }}</div>'\n");
+    ecs_world *world = ecs_world_new();
+    render_ui *ui = render_ui_new(root);
+    ui_world w = { .ecs = world, .page = "Shell" };
+    rml_backend_keep_warnings();
+    for (int i = 0; i < 3; i++) {
+        render_ui_set_overlay(ui, "Bound", "dark");
+        render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    }
+    int first = destroyed_views();
+    rml_backend_keep_warnings();
+    text_overlay_set(bound, "rml: '<p data-class-live=\"save.live\">{{ save.label }}</p>'\n");
+    text_overlay_set(page, "rml: '<body class=\"edited\"><slot/></body>'\n");
+    for (int i = 0; i < 3; i++) {
+        render_ui_set_overlay(ui, "Bound", "dark");
+        render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    }
+    test_check(
+        !first && !destroyed_views() && !render_ui_error(ui)[0],
+        "an overlay shown on a page and reinstalled after edits leaves no "
+        "data view of a removed element"
+    );
+    text_overlay_set(bound, NULL);
+    text_overlay_set(page, NULL);
+    render_ui_free(ui);
+    ecs_world_free(world);
+    unlink(page);
+    unlink(bound);
 }
 
 void test_game_ui_presenter()
@@ -296,6 +352,15 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     const char *volume = game_save_get(settings, "volume");
     test_check(volume && !strcmp(volume, "loud"), "a radio bound to a key nothing saved yet saves its value when chosen");
+    game_save_set(settings, "volume", "quiet");
+    click(ui, 20, 20);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    test_check(
+        !strcmp(game_save_get(settings, "sound"), "true") &&
+            !strcmp(game_save_get(settings, "volume"), "quiet"),
+        "a binding saves only the key it changed, so a key saved in the same "
+        "frame keeps its value"
+    );
     unlink(options);
 
     char keys[96];
@@ -371,6 +436,7 @@ void test_game_ui_presenter()
     );
     w.revealed = 0;
     unlink(panel);
+    overlay_on_page(root);
 
     render_ui_free(ui);
     game_live_world_free(live);

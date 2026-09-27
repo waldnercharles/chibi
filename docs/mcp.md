@@ -429,7 +429,9 @@ with every word:
   "Event", "event_name": "Extract", "description": "Sent when the player
   clicks #extract in Bank."}`. The pause menu's events go to the player shell
   and are not listed. A UI query such as `button` that finds no event suggests authoring
-  one in the ui asset.
+  one in the ui asset. Pass the behavior you are editing as `behavior` to
+  list only the events that reach it: those of the `GameUi` documents on the
+  prototypes and scene objects that attach it, as Studio's Add menu does.
 
 To extend a graph from a pin, pass its type as `wire_from` (an output you
 will wire from) or `wire_to` (an input you will wire into), written as pins

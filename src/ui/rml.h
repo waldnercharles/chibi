@@ -378,11 +378,6 @@ extern "C"
     );
     void rml_document_close(rml_element *document);
     void rml_document_update(rml_element *document);
-    /* Replaces the document's style sheets with `rcss`; false, changing
-     * nothing, when RmlUi reads no style sheet from it. */
-    bool rml_document_set_style_sheet(rml_element *document, const char *rcss);
-    /* Adds `rcss` after the document's style sheets; false as above. */
-    bool rml_document_add_style_sheet(rml_element *document, const char *rcss);
 
     /* ---------- Elements ---------- */
 
@@ -531,8 +526,9 @@ extern "C"
 
     /* ---------- UI source maps (workstream A) ---------- */
 
-    /* As rml_document_set_style_sheet and rml_document_add_style_sheet, with
-     * the sheet named `name`: RmlUi reports the name as the path of each
+    /* Replaces the document's style sheets with `rcss`, or adds it after
+     * them; false, changing nothing, when RmlUi reads no style sheet from it.
+     * The sheet is named `name`: RmlUi reports the name as the path of each
      * property's PropertySource, with the rule's 1-based line in `rcss`
      * (support/ui_style.h). The name is a plain file name, without '/', ':'
      * or '|', so relative image paths resolve as before. */
@@ -662,6 +658,12 @@ extern "C"
     /* Changes each time rml_release_render_managers releases the font
      * resources: face handles from before are gone. */
     unsigned rml_font_generation();
+
+    /* ---------- Wave 2 follow-ups (workstream P) ---------- */
+
+    /* Takes the oldest value a binding changed since it was last taken, each
+     * value once; false when there is none. Values stay in the model's doc. */
+    bool rml_data_model_take_written(rml_data_model *model, yyjson_mut_val **value);
 
 #ifdef __cplusplus
 }

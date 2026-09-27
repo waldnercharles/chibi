@@ -581,30 +581,12 @@ static void apply_position(studio_prefs *prefs, const studio_setting *s, yyjson_
     studio_setting_parse(prefs, s, text);
 }
 
-/* Shows a changed setting's saved key in `save` at once, as ui_data_sync
- * would next frame. It saves what `save` shows whenever a binding writes,
- * before it shows newer values, so the next write would restore the old. */
-static void show_saved(yyjson_mut_doc *doc, const studio_setting *s, const char *text)
-{
-    yyjson_mut_val *save = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "save");
-    yyjson_mut_val *value = yyjson_mut_obj_get(save, s->save);
-    bool on = !strcmp(text, "true");
-    if (!value) {
-        return;
-    }
-    if (on || !strcmp(text, "false")) {
-        yyjson_mut_set_bool(value, on);
-        return;
-    }
-    ui_data_set_text(doc, value, text);
-}
-
 /* Applies each row whose value a binding changed, or whose slider moved. An
  * invalid value is dropped, and the row shows the setting again. */
-static void apply_rows(studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *rows)
+static void apply_rows(studio_settings_view *view, yyjson_mut_val *rows)
 {
     for (int i = 0; i < studio_setting_count; i++) {
-        char buffer[32], text[32], applied[32];
+        char buffer[32], text[32];
         const studio_setting *s = &studio_settings[i];
         yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)i);
         const char *value = bound_text(row, "value", buffer, sizeof buffer);
@@ -613,10 +595,6 @@ static void apply_rows(studio_settings_view *view, yyjson_mut_doc *doc, yyjson_m
             studio_setting_parse(view->prefs, s, value);
         } else if (ranged(s)) {
             apply_position(view->prefs, s, row);
-        }
-        studio_setting_text(view->prefs, s, applied, sizeof applied);
-        if (strcmp(applied, text) != 0) {
-            show_saved(doc, s, applied);
         }
     }
     char buffer[32];
@@ -840,7 +818,7 @@ bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool 
     if (built) {
         build_rows(view, doc, rows);
     } else if (wrote) {
-        apply_rows(view, doc, rows);
+        apply_rows(view, rows);
     }
     bool changed = show_values(view, doc, rows);
     changed |= put_text(doc, page, "project", view->project);

@@ -11,8 +11,11 @@
 #include "support/text_overlay.h"
 #include "test/suite_internal.h"
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_keyboard.h>
 #include <assert.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -376,6 +379,133 @@ static void status_bar_follows_studio()
     fixture_free(&f);
 }
 
+/* ---------- Wave 2 follow-ups (workstream P) ---------- */
+
+static void key_event(SDL_Scancode key, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
+    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.key.scancode = key;
+    event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
+    event.key.down = down;
+    assert(SDL_PushEvent(&event));
+}
+
+static bool logged_last(const studio *s, const char *event)
+{
+    const studio_canvas *c = s->canvas;
+    return acount(c->actions) &&
+           !strcmp(c->actions[acount(c->actions) - 1].event, event);
+}
+
+/* The Canvas preview takes the keys typed while its area has the keyboard,
+   so the asset's data-keys bindings send their events, and not while
+   another area has it. */
+static void preview_hears_keys()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    text_overlay_set(
+        BANK,
+        "rml: |\n  <div id=\"extract\" autofocus "
+        "data-keys=\"C:Close\">Extract</div>\n"
+        "rcss: |\n  #extract { display: block; height: 100%; tab-index: auto; "
+        "}\n"
+    );
+    frames(&f, 3);
+    studio_preview_ui(s, "Bank");
+    frames(&f, 8);
+    s->focus_area = STUDIO_AREA_BOTTOM;
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    frames(&f, 2);
+    bool elsewhere = !logged_last(s, "Close");
+    s->focus_area = STUDIO_AREA_TOP;
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    frames(&f, 2);
+    bool heard = logged_last(s, "Close");
+    /* Studio keeps its keys there: Space still plays the scene. */
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    frames(&f, 2);
+    bool shortcut = app_scene_authoring_runtime_state(f.scene).playing;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    test_check(elsewhere && heard && shortcut, "the focused Canvas preview takes keys, so data-keys bindings fire, and Studio keeps its shortcuts");
+    studio_preview_ui(s, NULL);
+    frames(&f, 3);
+    game_entities *entities = f.scene->live->entities;
+    int before = game_entities_pending_events(entities);
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    frames(&f, 2);
+    bool editing = game_entities_pending_events(entities) == before;
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 3);
+    before = game_entities_pending_events(entities);
+    key_event(SDL_SCANCODE_C, true);
+    key_event(SDL_SCANCODE_C, false);
+    /* The key reaches the document, whose activation reaches Vault a frame
+       later, before the next scene frame runs it. */
+    frames(&f, 2);
+    bool playing = game_entities_pending_events(entities) == before + 1;
+    test_check(editing && playing, "the focused Scene's game documents take keys while the scene plays");
+    text_overlay_set(BANK, NULL);
+    fixture_free(&f);
+}
+
+/* The first element in Studio's documents that `selector` matches. */
+static rml_element *studio_element(studio *s, const char *selector)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *found = NULL;
+    for (int i = 0; !found && i < rml_context_document_count(context); i++) {
+        found = rml_element_query_selector(rml_context_document(context, i), selector);
+    }
+    return found;
+}
+
+/* Whether the Scene's last draw framed the camera it holds now, as the
+   pointer it measured shows. */
+static bool drew_camera(const studio_fixture *f)
+{
+    engine_viewport_camera camera;
+    engine_viewport_pointer pointer;
+    engine_viewport_get_camera(f->viewport, &camera);
+    engine_viewport_get_pointer(f->viewport, &pointer);
+    float width = f->studio->surface.rect.w * f->studio->prefs.ui_scale;
+    return fabsf(pointer.world_per_pixel * width - camera.span_width) <
+           0.01f * camera.span_width;
+}
+
+/* The Scene draws the camera its first draw fits to the Vault, which the
+   reset camera does not frame, and its zoom readout shows nothing before
+   then and that camera's zoom after, so it never rolls from the reset
+   camera's. */
+static void readout_follows_camera()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    bool shown = false, current = true, drawn = true;
+    for (int i = 0; i < 6; i++) {
+        frames(&f, 1);
+        drawn &= f.scene->camera_target < 0 || drew_camera(&f);
+        rml_element *readout = studio_element(s, ".readout");
+        if (!readout) {
+            continue;
+        }
+        engine_viewport_view view;
+        engine_viewport_get_view(f.viewport, &view);
+        char value[32], expected[32];
+        rml_element_attribute(readout, "data-value", value, sizeof value);
+        snprintf(expected, sizeof expected, "%d%%", (int)roundf(s->surface.rect.w / view.width * 100));
+        current &= !strcmp(value, expected);
+        shown = true;
+    }
+    test_check(shown && current && drawn, "the Scene draws the camera it fits from its first frame, and its zoom readout shows that camera");
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -402,6 +532,9 @@ int studio_documents_run(const char *program)
     status_bar_follows_studio();
     /* Workstream I: code intelligence in the Text Editor. */
     test_code_intelligence_studio();
+    /* Wave 2 follow-ups (workstream P) */
+    preview_hears_keys();
+    readout_follows_camera();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

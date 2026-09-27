@@ -15,6 +15,7 @@
 #include <SDL3/SDL_keyboard.h>
 #include <assert.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -446,6 +447,43 @@ static void preview_hears_keys()
     fixture_free(&f);
 }
 
+/* The first element in Studio's documents that `selector` matches. */
+static rml_element *studio_element(studio *s, const char *selector)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *found = NULL;
+    for (int i = 0; !found && i < rml_context_document_count(context); i++) {
+        found = rml_element_query_selector(rml_context_document(context, i), selector);
+    }
+    return found;
+}
+
+/* The Scene's zoom readout shows the camera the scene draws: nothing before
+   the first draw fits it to the Vault, which the reset camera does not frame,
+   then its zoom, so it never rolls from the reset camera's. */
+static void readout_follows_camera()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    bool shown = false, current = true;
+    for (int i = 0; i < 6; i++) {
+        frames(&f, 1);
+        rml_element *readout = studio_element(s, ".readout");
+        if (!readout) {
+            continue;
+        }
+        engine_viewport_view view;
+        engine_viewport_get_view(f.viewport, &view);
+        char value[32], expected[32];
+        rml_element_attribute(readout, "data-value", value, sizeof value);
+        snprintf(expected, sizeof expected, "%d%%", (int)roundf(s->surface.rect.w / view.width * 100));
+        current &= !strcmp(value, expected);
+        shown = true;
+    }
+    test_check(shown && current, "the Scene's zoom readout shows the camera the scene draws, from its first value");
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -474,6 +512,7 @@ int studio_documents_run(const char *program)
     test_code_intelligence_studio();
     /* Wave 2 follow-ups (workstream P) */
     preview_hears_keys();
+    readout_follows_camera();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

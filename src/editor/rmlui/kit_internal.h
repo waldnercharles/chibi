@@ -17,9 +17,9 @@
  *   carries, and every lookup compares it (path_node, popup_find). A popup is
  *   heap allocated, so pointers to it stay valid; spring values are inline and
  *   move on insertion. No popup loop depends on key order.
- * - Owned pointers (node children, flow, morph and chart; exiting nodes; roots,
- *   popups) are freed only by node_free and kit_destroy; update them with any
- *   new owned field.
+ * - Owned pointers (node children and chart; exiting nodes; roots, popups)
+ *   are freed only by node_free and kit_destroy; update them with any new
+ *   owned field.
  * - Strings for one frame (frame_format, kit_string, kit_classes) are freed by
  *   kit_end. */
 #ifndef CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
@@ -29,6 +29,7 @@
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/file_watch.h"
+#include "ui/motion.h"
 #include "ui/rml.h"
 
 #include <stdbool.h>
@@ -137,65 +138,6 @@ typedef struct widget
         *swatch_el, *about_el;
 } widget;
 
-/* Motion (kit_motion.c). A spring's state along one axis, as displacement
- * from its target; see spring_step. */
-typedef struct spring
-{
-    double x, v;
-} spring;
-
-typedef struct spring_params
-{
-    double stiffness, damping, mass;
-} spring_params;
-
-/* Text in place (kit_text.c). A NumberFlow wheel position is in cells of a
- * 20-cell strip (0-9 twice), a spring around the target cell. */
-typedef struct flow_digit
-{
-    rml_element *col, *strip;
-    int place; /* units 0, tens 1, tenths -1 */
-    double target;
-    spring pos;
-    double appear; /* 0 hidden to 1 shown */
-    bool leaving;
-} flow_digit;
-
-typedef struct flow_state
-{
-    bool init, grouping;
-    double value;
-    char *text, *prefix, *suffix;
-    flow_digit *digits;
-    rml_element **symbols;
-    float digit_w;
-} flow_state;
-
-typedef enum morph_phase
-{
-    MORPH_STAY,
-    MORPH_ENTER,
-    MORPH_LEAVE,
-} morph_phase;
-
-typedef struct morph_seg
-{
-    char *id;
-    rml_element *el;
-    morph_phase state;
-    float from_x, from_y, dx, dy;
-} morph_seg;
-
-typedef struct morph_state
-{
-    bool init, measure;
-    char *text;
-    morph_seg *segs;
-    rml_element *box;
-    double start; /* -1 while at rest */
-    float from_w, to_w;
-} morph_state;
-
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart
  * element's user data owns its frame. */
 typedef struct chart_series
@@ -242,8 +184,6 @@ struct node
     bool layout_known;
     kit_rect layout_rect;
     spring layout_x, layout_y;
-    flow_state *flow;   /* owned, NULL until used */
-    morph_state *morph; /* owned, NULL until used */
     chart_state *chart; /* owned, NULL until used */
     char *drop_type; /* accepted drag type, set each frame by kit_drop_target */
     bool hosted;     /* kit_host: its children are mounted content */
@@ -368,8 +308,6 @@ struct kit
     exiting *exiting;
     node **layout_nodes;
     CF_MAP(spring_value) springs; /* keyed by str_hash(key) */
-    node **text_motion;           /* NumberFlow and Torph in flight */
-    bool layout_pass;             /* measure layout before this frame renders */
     drag_state drag;
     toast *toasts;
     CF_MAP(uint64_t) toast_actions; /* toast id -> frame the action was pressed */
@@ -447,22 +385,14 @@ popup *popup_at(kit *k, const char *key);
  * handlers below. Returns KIT_MOD_* bits. */
 unsigned event_modifiers(const rml_event *e);
 
-/* ---------- Motion (kit_motion.c) ---------- */
+/* ---------- Motion (kit_motion.c; springs in ui/motion.h) ---------- */
 
-void spring_step(spring *s, spring_params p, double dt);
-/* Motion's parameters for a visual duration and bounce. */
-spring_params spring_for(double visual_duration, double bounce);
 /* Takes the node: removes its element now, or keeps a presence node until its
  * exit transitions end. */
 void retire(kit *k, node *n);
 void presence(kit *k, node *n);
 void motion_frame(kit *k);
 void forget_motion(kit *k, node *n);
-
-/* ---------- Text in place (kit_text.c) ---------- */
-
-void text_frame(kit *k, double dt);
-void morph_label(kit *k, node *n, rml_element *box, const char *text);
 
 /* ---------- Toasts (kit_toast.c) ---------- */
 

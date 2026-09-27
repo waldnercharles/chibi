@@ -34,10 +34,12 @@ function(chibi_rmlui_dependencies)
     # few tokens at runtime; HTML's radio groups, which need a name; Vue's
     # bindings, whose v-model leaves an input being edited alone and has a
     # lazy form, and whose empty style values unset; CSS's anonymous flex
-    # items, so text inside a flex container shows; and, as in browsers,
-    # setting a style to the value it holds lays nothing out.
+    # items, so text inside a flex container shows; as in browsers,
+    # setting a style to the value it holds lays nothing out; and a handler
+    # for data-if, so presence keeps a leaving element shown while its exit
+    # transitions run (src/ui/motion.c), as the web's exit animations do.
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler)
         list(APPEND patches "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})
@@ -58,6 +60,10 @@ chibi_rmlui_dependencies()
 add_library(chibi_ui STATIC
     src/ui/rml.cpp
     src/ui/rml_backend.c
+    # Motion and the native elements authored UI uses: <number-flow>,
+    # <morph-text> and presence for data-if.
+    src/ui/motion.c
+    src/ui/text_motion.c
     # The embedded faces, loaded by the editor kit and game UI alike.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
     ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT})

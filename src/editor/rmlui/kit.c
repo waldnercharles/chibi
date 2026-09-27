@@ -364,32 +364,6 @@ static void widget_free(widget *w)
     strings_free(w->labels);
 }
 
-static void flow_free(flow_state *f)
-{
-    if (!f) {
-        return;
-    }
-    free(f->text);
-    free(f->prefix);
-    free(f->suffix);
-    afree(f->digits);
-    afree(f->symbols);
-    free(f);
-}
-
-static void morph_free(morph_state *m)
-{
-    if (!m) {
-        return;
-    }
-    free(m->text);
-    for (int i = 0; i < acount(m->segs); i++) {
-        free(m->segs[i].id);
-    }
-    afree(m->segs);
-    free(m);
-}
-
 static void chart_free(chart_state *c)
 {
     if (!c) {
@@ -414,8 +388,6 @@ void node_free(node *n)
     pairs_free(n->attrs);
     pairs_free(n->styles);
     widget_free(&n->w);
-    flow_free(n->flow);
-    morph_free(n->morph);
     chart_free(n->chart);
     free(n);
 }
@@ -1151,7 +1123,6 @@ static void kit_free(kit *k)
     afree(k->emitting);
     afree(k->entering);
     afree(k->layout_nodes);
-    afree(k->text_motion);
     afree(k->styles);
     free(k->sheet);
     free(k->theme);

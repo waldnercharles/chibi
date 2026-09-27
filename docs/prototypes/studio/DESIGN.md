@@ -54,7 +54,7 @@ Required native work:
 
 1. **Host.** A full-window RmlUi document per workspace, with no ImGui container windows. Popups go in one overlay layer. The backend needs `SetMouseCursor` for scrubbing and splitters, relative-mouse mode for pointer lock, and the Symbols font loaded as a fallback face.
 2. **Controllers.** C++ controllers implement the kit contracts: Layers/Positioner, Menu/Menubar/ContextMenu, Tooltip, NumberField, Select, ToggleGroup, Checkbox, Collapsible, Command (a `command-score` port), Splitter and Tree. They mutate only view state and emit C actions.
-3. **Custom elements.** `<viewport>` shows the scene render target as a callback texture. `<graph-wires>` emits Bezier geometry. The color plane uses the vertex-gradient decorators, which need no shaders.
+3. **Custom elements.** `<viewport>` shows the scene render target as a callback texture. `<graph-wires>` emits Bezier geometry. The color plane uses the vertex-gradient decorators, which need no shaders. `<number-flow>` and `<morph-text>`, with `presence` on `data-if` elements, carry NumberFlow, Torph and Motion's presence into authored UI, the editor's and games' (`src/ui/motion.h`).
 4. **Model boundary.** Selection, values, overrides, history, dirty state and playback stay in the C authoring layer. The view syncs from it and never owns it.
 
 ## Migration plan

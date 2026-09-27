@@ -7,6 +7,7 @@
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/motion.h"
 #include "ui/rml.h"
 
 #include <assert.h>
@@ -631,6 +632,8 @@ static bool initialize_rml()
             faces[i].fallback
         );
     }
+    /* Workstream N: the native elements every document may use. */
+    motion_register();
     return true;
 }
 
@@ -738,6 +741,7 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     }
     driven = backend;
     rml_context_update(backend->context);
+    presence_settle(backend->context);
     driven = NULL;
 }
 

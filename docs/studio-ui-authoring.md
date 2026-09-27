@@ -78,6 +78,7 @@ These are on `main` and used by more than one workstream.
 | UI problems (Q) | `studio_code_problems`, `studio_code_project_problems` in `studio_internal.h` | Output's Problems rows for the shown UI document, and in Project every ui asset and stylesheet with open documents' unsaved text; each opens its place (`ui_code_place`) |
 | Back and Forward (Q) | `studio_nav_jump`, `studio_nav_can_step`, `studio_nav_step` in `studio_internal.h` (`studio_graph_nav.c`) | One history over the graphs visited and the Text Editor's Go to Definition jumps: a jump records the place it leaves and the one it lands on |
 | UI completion in the MCP (Q) | `inspectUi`'s `complete` (`automation_ui_complete` in `src/automation/ui_edit.h`) | `ui_source_complete`'s items at a file line and column, as the Text Editor offers them |
+| Native motion elements (N) | `src/ui/motion.h` (`motion.c`, `text_motion.c`) | `<number-flow data-attr-value="expr" precision grouping prefix suffix/>`, `<morph-text>{{ expr }}</morph-text>`, and `presence` on a `data-if` element, registered for every RmlUi context by the backend. `kit_number_flow`, `kit_morph` and `kit_button_desc.morph` emit the same elements. Each follows the context's `reduced-motion` theme; presence keeps a leaving element until its transitions end through RmlUi's data-if handler (`rml_set_data_if_handler`) and `presence_settle`, which `rml_backend_update` runs |
 
 ## Workstreams
 

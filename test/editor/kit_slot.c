@@ -269,6 +269,24 @@ static bool text_is(rml_element *el, const char *text)
     return !strcmp(rml, text);
 }
 
+/* A native element's text: <number-flow> and <morph-text> label theirs. */
+static bool label_is(rml_element *el, const char *text)
+{
+    char label[64] = "";
+    if (el) {
+        rml_element_attribute(el, "aria-label", label, sizeof label);
+    }
+    return !strcmp(label, text);
+}
+
+/* The status bar's counts: selected, then objects. */
+static bool counts_are(slot_fixture *f, const char *selected, const char *objects)
+{
+    rml_element *flows[2];
+    return rml_element_query_selector_all(f->host, ".count number-flow", flows, 2) == 2 &&
+           label_is(flows[0], selected) && label_is(flows[1], objects);
+}
+
 static bool state_is(rml_element *el, const char *state)
 {
     char value[16] = "";
@@ -326,17 +344,18 @@ static void status_checks()
     char kbd[32] = "";
     rml_element_attribute(toggles[0], "data-kbd", kbd, sizeof kbd);
     rml_element *bar = rml_element_query_selector(f.host, ".statusbar");
+    rml_element *report = rml_element_query_selector(f.host, ".report");
     test_check(
         shown && same && !ui_mount_error(f.mount)[0] && hint_count == 2 &&
             text_is(rml_element_query_selector(hints[0], ".label"), "Select") &&
             text_is(rml_element_query_selector(hints[1], ".kbd-key"), "F") &&
             !rml_element_is_visible(rml_element_query_selector(hints[1], ".icon"), false) &&
-            rml_element_is_class_set(rml_element_query_selector(f.host, ".report"), "shown") &&
+            rml_element_is_visible(report, false) &&
+            label_is(rml_element_query_selector(report, "morph-text"), "Saved") &&
             toggle_count == 3 && state_is(toggles[0], "on") &&
             state_is(toggles[1], "off") && !strcmp(kbd, ASSETS_KEY "A") &&
             text_is(rml_element_query_selector(toggles[1], ".label"), "toggleOutput") &&
-            text_is(rml_element_query_selector(f.host, ".count"), "Objects 1/12") &&
-            count(&f, "#ui-scale .ui-scale") == 1 &&
+            counts_are(&f, "1", "12") && count(&f, "#ui-scale .ui-scale") == 1 &&
             rml_element_box_size(bar, RML_BOX_BORDER).y == 24,
         "the authored status bar shows the editor and commands variables, "
         "with UI Scale in its native slot"
@@ -360,9 +379,10 @@ static void status_checks()
     status_frames(&f, 2);
     test_check(
         count(&f, "[data-ui=KeyHint]") == 1 &&
-            !rml_element_is_class_set(rml_element_query_selector(f.host, ".report"), "shown") &&
-            text_is(rml_element_query_selector(f.host, ".count"), "Objects 0/12"),
-        "the status bar follows the editor variable as it changes"
+            rml_element_has_attribute(report, "data-ending-style") &&
+            counts_are(&f, "0", "12"),
+        "the status bar follows the editor variable as it changes: the report "
+        "leaves and the counts roll"
     );
     close_fixture(&f);
 }

@@ -22,9 +22,9 @@ the earlier library catalog from the Codex RmlUi branch.
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
 | [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
-| [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout`, springs in `kit_motion.c` | Done |
-| [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | `kit_number_flow` (`kit_text.c`) | Done |
-| [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | `kit_morph`, `kit_button_desc.morph` | Done; place-value numbers open |
+| [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout` (`kit_motion.c`); springs in `src/ui/motion.c`. Authored UI, the editor's and games': `presence` on a `data-if` element | Done |
+| [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
+| [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | The native `<morph-text>` element (`src/ui/text_motion.c`), which `kit_morph` and `kit_button_desc.morph` emit | Done; place-value numbers open |
 | [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
 | [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list` (`kit_list.c`), fixed row height | Done; measured heights open |
 | [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.c`); the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a kit keyboard sensor for other lists and auto-scroll open |
@@ -102,6 +102,7 @@ control's contract.
 - Kit:
   - `kit_presence` uses the RCSS transitions declared for `data-starting-style` and `data-ending-style`.
   - `kit_layout` uses a 0.35 s critically damped spring.
+- Authored UI: `presence` on a `data-if` element does what `kit_presence` does, as the web's `@starting-style` and exit animations do. The element shows with `data-starting-style` and no transition for one frame. When `data-if` hides it, it keeps its display with `data-ending-style` and no pointer events until its transitions end. Showing it while it leaves turns it back. A binding's first evaluation, Reduce Motion and elements without `presence` show and hide at once (`src/ui/motion.c`, over `cmake/patches/rmlui-data-if-handler.patch`).
   - Studio motion tokens: press 110 ms, popovers 140 ms in and 100 ms out, drawers 200 ms in and 100 ms out.
 
 ### NumberFlow
@@ -114,6 +115,7 @@ control's contract.
   - under reduced motion
   - when the value is hidden
   - on continuously changing values; clocks and live readouts stay static tabular text.
+- Authored UI: `<number-flow data-attr-value="expr" precision="1" grouping="" prefix="$" suffix="%"/>`. Its `aria-label` is the text it shows, as NumberFlow's is; a value that is not a number shows nothing. It lays itself out, so a theme sets only its face and line height.
 
 ### Torph
 
@@ -125,6 +127,7 @@ control's contract.
   - Entering segments start at 0.95 and fade in over 50%, after a 25% delay.
 - The container's size transitions from the old size.
 - Use it for labels that change in place: button labels, status, the transport target. Never use it on text being edited.
+- Authored UI: `<morph-text>{{ expr }}</morph-text>` morphs its text content, with white space collapsed as HTML shows it. It lays out the new text hidden for one frame before it moves, so no layout pass runs twice. It is an inline-block that sizes to its text, and its `aria-label` is its text.
 
 ### Sonner
 

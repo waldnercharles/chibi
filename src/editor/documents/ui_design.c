@@ -659,8 +659,8 @@ bool ui_design_extract_class(ui_buffer *b, int element, const char *name, char *
 
 bool ui_design_container(const ui_source *source, int element)
 {
-    static const char *const EMPTY[] = { "input", "img",      "br",
-                                         "hr",    "progress", "slot" };
+    static const char *const EMPTY[] = { "input",    "img",  "br",         "hr",
+                                         "progress", "slot", "number-flow" };
     for (size_t i = 0; i < sizeof EMPTY / sizeof *EMPTY; i++) {
         if (!strcmp(source->elements[element].tag, EMPTY[i])) {
             return false;

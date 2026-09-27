@@ -97,6 +97,9 @@ void test_kit_slot();
 /* ---------- Wave 2 follow-ups (workstream P) ---------- */
 void test_studio_zoom();
 
+/* ---------- Native elements for authored UI (workstream N) ---------- */
+void test_ui_motion();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -253,6 +256,8 @@ TEST_CASE(all_checks)
     test_ui_designer();
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     test_studio_zoom();
+    /* ---------- Native elements for authored UI (workstream N) ---------- */
+    test_ui_motion();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -967,6 +972,13 @@ int main(int argc, char **argv)
         test_studio_settings();
         test_studio_zoom();
         test_automation_search();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Native elements for authored UI (workstream N) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-motion")) {
+        test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
+        test_ui_motion();
+        test_kit_slot();
         return fails ? 1 : 0;
     }
     pu_run_test("all_checks", all_checks);

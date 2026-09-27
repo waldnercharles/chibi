@@ -15,16 +15,19 @@
 #include <strings.h>
 #include <sys/stat.h>
 
-/* RmlUi's elements, with the widget and slot elements ui assets add. */
+/* RmlUi's elements, with the widget and slot elements ui assets add and
+ * the native elements of ui/motion.h. */
 static const char *const TAGS[] = {
-    "button", "br",     "col",    "colgroup", "div",      "h1",     "h2",
-    "h3",     "handle", "hr",     "img",      "input",    "label",  "li",
-    "ol",     "option", "p",      "panel",    "progress", "select", "slot",
-    "span",   "tab",    "tabset", "table",    "tbody",    "td",     "textarea",
-    "tfoot",  "thead",  "tr",     "ul",       "use",      NULL,
+    "button", "br",     "col",        "colgroup",    "div",  "h1",
+    "h2",     "h3",     "handle",     "hr",          "img",  "input",
+    "label",  "li",     "morph-text", "number-flow", "ol",   "option",
+    "p",      "panel",  "progress",   "select",      "slot", "span",
+    "tab",    "tabset", "table",      "tbody",       "td",   "textarea",
+    "tfoot",  "thead",  "tr",         "ul",          "use",  NULL,
 };
 
-/* HTML's attributes RmlUi reads, its data bindings, and the ui asset's own. */
+/* HTML's attributes RmlUi reads, its data bindings, the ui asset's own, and
+ * the native elements' and presence's. */
 static const char *const ATTRIBUTES[] = {
     "attrs",
     "autofocus",
@@ -57,18 +60,23 @@ static const char *const ATTRIBUTES[] = {
     "data-visible",
     "disabled",
     "for",
+    "grouping",
     "id",
     "max",
     "maxlength",
     "min",
     "name",
     "placeholder",
+    "precision",
+    "prefix",
+    "presence",
     "rows",
     "selected",
     "size",
     "src",
     "step",
     "style",
+    "suffix",
     "type",
     "value",
     NULL,

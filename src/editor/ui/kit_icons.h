@@ -135,6 +135,9 @@ enum
     KIT_ICON_SLOT = 0xf1294,     /* nf-md-tray */
     KIT_ICON_WRAP = 0xf0f82,     /* nf-md-select_group */
     KIT_ICON_BINDING = 0xf0339,  /* nf-md-link_variant */
+
+    /* Native elements for authored UI (workstream N). */
+    KIT_ICON_NUMBER = 0xf0199, /* nf-md-counter */
 };
 
 #endif

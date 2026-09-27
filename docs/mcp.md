@@ -868,6 +868,18 @@ sets it on Enter or blur, as Vue's `v-model.lazy`),
 binding sets it, and changes stay pending until a behavior commits the save.
 As in HTML, radios group only by `name`.
 
+Native elements animate changes, as Unity's UI Toolkit ships built-in
+controls, in games and in Studio alike (`src/ui/motion.h`):
+`<number-flow data-attr-value="save.score" precision="1" grouping="" prefix="$" suffix="%"/>`
+rolls its digits to each new value (NumberFlow); `<morph-text>{{ save.status }}</morph-text>`
+morphs to new text, kept letters sliding and the rest fading (Torph); and
+`presence` on a `data-if` element shows it with `data-starting-style` for one
+frame and, when it hides, keeps it with `data-ending-style` until the
+transitions its RCSS declares end, as the web's `@starting-style` and exit
+animations do: `.toast { transition: opacity 0.2s; }` with
+`.toast[data-starting-style], .toast[data-ending-style] { opacity: 0; }`.
+All three change at once under the `reduced-motion` theme and while hidden.
+
 The player shows `content/ui/PauseMenu.yaml` while paused. Its `body` has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
 events control the session.

@@ -148,6 +148,8 @@ static const tag_icon TAG_ICONS[] = {
     { "h1", KIT_ICON_TEXT },
     { "h2", KIT_ICON_TEXT },
     { "h3", KIT_ICON_TEXT },
+    { "morph-text", KIT_ICON_TEXT },
+    { "number-flow", KIT_ICON_NUMBER },
 };
 
 /* An input by its type: a checkbox or radio toggles, a range slides. */

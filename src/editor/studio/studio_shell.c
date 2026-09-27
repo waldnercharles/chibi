@@ -1220,11 +1220,11 @@ void studio_shortcuts(studio *s)
 {
     studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
                                               : STUDIO_EDITOR_COUNT;
-    /* A game playing in the focused viewport, or the focused Canvas preview,
-       owns keys without a modifier, such as Space for a dash. */
-    bool gameplay = engine_viewport_focused(
-        studio_previewed_ui(s) && s->canvas ? s->canvas->viewport : s->viewport
-    );
+    /* A game playing in the focused viewport owns keys without a modifier,
+       such as Space for a dash. The Canvas preview hears keys too, but its
+       events only reach its Actions log, so Studio keeps them there, as the
+       designer's keys need. */
+    bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
     for (int i = 0; i < acount(s->keys); i++) {
         SDL_Keycode key = s->keys[i].key;
         bool mod = studio_primary(s, s->keys[i].mod);

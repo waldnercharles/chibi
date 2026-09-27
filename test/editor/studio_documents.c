@@ -424,7 +424,14 @@ static void preview_hears_keys()
     key_event(SDL_SCANCODE_C, true);
     key_event(SDL_SCANCODE_C, false);
     frames(&f, 2);
-    test_check(elsewhere && logged_last(s, "Close"), "the focused Canvas preview takes keys, so data-keys bindings fire");
+    bool heard = logged_last(s, "Close");
+    /* Studio keeps its keys there: Space still plays the scene. */
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    frames(&f, 2);
+    bool shortcut = app_scene_authoring_runtime_state(f.scene).playing;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    test_check(elsewhere && heard && shortcut, "the focused Canvas preview takes keys, so data-keys bindings fire, and Studio keeps its shortcuts");
     studio_preview_ui(s, NULL);
     frames(&f, 3);
     game_entities *entities = f.scene->live->entities;

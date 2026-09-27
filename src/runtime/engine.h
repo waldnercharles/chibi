@@ -113,9 +113,10 @@ typedef struct engine_viewport_host_input
     bool alt;
     bool escape;
     char dropped_prototype[256];
-    /* Keys the host passes on, kept until its engine_viewport_draw: while
-       `focused` and the game plays, its documents take them, so their
-       data-keys bindings hear them. */
+    /* Key presses and typed text the host passes on, in order, kept until
+       its engine_viewport_draw: while `focused` and the game plays, its
+       documents take them, so their data-keys bindings and text fields
+       hear them. */
     const rml_input *keys;
     int key_count;
 } engine_viewport_host_input;
@@ -155,9 +156,16 @@ void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, co
 render_ui *engine_viewport_ui(const engine_viewport *viewport);
 /* Whether the documents took the pointer in the last draw. */
 bool engine_viewport_ui_capture(const engine_viewport *viewport);
+/* Whether the documents had the keyboard in the last draw with a text field
+ * focused: typed letters are the field's, not gameplay's or a shortcut's. */
+bool engine_viewport_ui_typing(const engine_viewport *viewport);
 /* Replays this frame's ImGui pointer over the last engine_viewport_image
  * into the documents when `active`. */
 void engine_viewport_ui_input(engine_viewport *viewport, bool active);
+/* Replays this frame's ImGui key presses and Cute's typed text into the
+ * documents when `active`, so data-keys bindings and text fields hear them.
+ * The typed text is taken either way. */
+void engine_viewport_ui_keys(engine_viewport *viewport, bool active);
 
 /* ENG-3: whether the scene area held the keyboard as of the last draw. */
 int engine_viewport_focused(const engine_viewport *viewport);

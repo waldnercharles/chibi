@@ -608,6 +608,73 @@ static void chrome_follows_studio()
     fixture_free(&f);
 }
 
+/* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+
+static void text_event(const char *text)
+{
+    SDL_Event event = { .type = SDL_EVENT_TEXT_INPUT };
+    event.text.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.text.text = text;
+    assert(SDL_PushEvent(&event));
+}
+
+/* The value of the focused element in the Scene's game documents. */
+static void game_field(studio_fixture *f, char *value, size_t size)
+{
+    rml_context *context = render_ui_context(engine_viewport_ui(f->viewport));
+    rml_element *focus = rml_context_focus_element(context);
+    value[0] = '\0';
+    if (focus) {
+        rml_element_value(focus, value, size);
+    }
+}
+
+/* While the scene plays, a focused text field in its game documents takes
+   the text typed in the focused Scene, SDL delivering text for it, and
+   Studio keeps the keys with the primary modifier. */
+static void scene_text_field()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    text_overlay_set(BANK, "rml: <input id=\"name\" type=\"text\" autofocus/>\n");
+    s->focus_area = STUDIO_AREA_TOP;
+    frames(&f, 3);
+    char value[32];
+    text_event("x");
+    frames(&f, 2);
+    game_field(&f, value, sizeof value);
+    bool editing = !value[0] && !engine_viewport_ui_typing(f.viewport);
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 3);
+    bool started = engine_viewport_ui_typing(f.viewport) && s->text_input;
+    key_event(SDL_SCANCODE_A, true);
+    text_event("a");
+    key_event(SDL_SCANCODE_A, false);
+    text_event("b");
+    frames(&f, 2);
+    game_field(&f, value, sizeof value);
+    bool typed = !strcmp(value, "ab");
+    SDL_Event select = { .type = SDL_EVENT_KEY_DOWN };
+    select.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    select.key.scancode = SDL_SCANCODE_A;
+    select.key.key = SDLK_A;
+    select.key.mod = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    select.key.down = true;
+    assert(SDL_PushEvent(&select));
+    frames(&f, 1);
+    bool kept = !acount(s->game_input);
+    key_event(SDL_SCANCODE_A, false);
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(&f, 2);
+    bool stopped = !engine_viewport_ui_typing(f.viewport) && !s->text_input;
+    if (!(editing && started && typed && kept && stopped)) {
+        printf("  %d %d %d '%s' %d %d\n", editing, started, typed, value, kept, stopped);
+    }
+    test_check(editing && started && typed && kept && stopped, "a focused text field in the playing Scene's game UI takes typed text, and Studio keeps its chords");
+    text_overlay_set(BANK, NULL);
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -639,6 +706,8 @@ int studio_documents_run(const char *program)
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */
     chrome_follows_studio();
+    /* arena2d end to end (wave 3, workstream X) */
+    scene_text_field();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

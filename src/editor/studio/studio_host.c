@@ -108,6 +108,17 @@ static int kit_button_index(Uint8 button)
                                        : -1;
 }
 
+/* Records a key press without the primary modifier, which Studio's shortcuts
+ * keep, or typed text, in order, as input for the game documents in the Scene
+ * area. The text stays SDL's, valid until the next frame's events. */
+static void game_input(studio *s, const rml_input *input, const SDL_Event *e)
+{
+    bool key = input->type == RML_INPUT_KEY_PRESS && !studio_primary(s, e->key.mod);
+    if (key || input->type == RML_INPUT_TEXT_INPUT) {
+        apush(s->game_input, *input);
+    }
+}
+
 /* Polled state loses a press and release within one frame; queue events instead. */
 static bool SDLCALL queue_event(void *user, SDL_Event *event)
 {
@@ -190,6 +201,7 @@ static void forward_input(studio *s)
     }
     in->wheel = s->zoom_wheel = s->pinch = 0;
     asetlen(s->keys, 0);
+    asetlen(s->game_input, 0);
     s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
@@ -277,6 +289,7 @@ static void forward_input(studio *s)
         }
         rml_backend_process_input(s->backend, &input);
         apush(s->graph.events, input);
+        game_input(s, &input, e);
     }
     asetlen(s->events, 0);
     SDL_Keymod mod = s->mods;
@@ -330,11 +343,22 @@ static void sync_cursor(studio *s)
     s->cursor_shown = (int)wanted;
 }
 
-/* SDL delivers text only while text input is started; follow RmlUi keyboard focus. */
+/* Whether a text field has focus in the game documents that hear the Scene
+ * area's keys: the Canvas preview's while it shows, else the scene's. */
+static bool game_typing(const studio *s)
+{
+    const studio_canvas *c = studio_previewed_ui(s) ? s->canvas : NULL;
+    engine_viewport *viewport = c ? c->viewport : s->viewport;
+    return viewport && engine_viewport_ui_typing(viewport);
+}
+
+/* SDL delivers text only while text input is started; follow RmlUi keyboard
+ * focus, the game documents' included. */
 static void sync_text_input(studio *s)
 {
     kit_rect caret;
-    bool wants = kit_accepts_text(s->kit) || studio_graph_accepts_text(s);
+    bool wants = kit_accepts_text(s->kit) || studio_graph_accepts_text(s) ||
+                 game_typing(s);
     if (wants != s->text_input) {
         s->text_input = wants;
         if (wants) {
@@ -363,27 +387,6 @@ static int area_showing(const studio *s, studio_editor editor)
     return -1;
 }
 
-/* The most keys a frame passes to the Scene's game documents. */
-#define GAME_KEYS_MAX 16
-
-/* This frame's key presses without the primary modifier, which Studio's
- * shortcuts keep, as input for the game documents in the Scene area. */
-static int game_keys(const studio *s, rml_input *keys)
-{
-    int count = 0;
-    for (int i = 0; i < acount(s->keys) && count < GAME_KEYS_MAX; i++) {
-        rml_input_key key = input_key(s->keys[i].key);
-        if (key != RML_INPUT_KEY_UNKNOWN && !studio_primary(s, s->keys[i].mod)) {
-            keys[count++] = (rml_input){
-                .type = RML_INPUT_KEY_PRESS,
-                .key = key,
-                .modifiers = rml_key_modifiers(s, s->keys[i].mod)
-            };
-        }
-    }
-    return count;
-}
-
 static void draw_viewport(studio *s)
 {
     int area = area_showing(s, STUDIO_EDITOR_SCENE);
@@ -406,9 +409,8 @@ static void draw_viewport(studio *s)
         .alt = (s->mods & SDL_KMOD_ALT) != 0,
         .escape = studio_key_pressed(s, SDLK_ESCAPE) && !kit_wants_keyboard(s->kit),
     };
-    rml_input keys[GAME_KEYS_MAX];
-    input.keys = keys;
-    input.key_count = game_keys(s, keys);
+    input.keys = s->game_input;
+    input.key_count = acount(s->game_input);
     snprintf(input.dropped_prototype, sizeof input.dropped_prototype, "%s", s->dropped_prototype);
     s->dropped_prototype[0] = '\0';
     for (int b = 0; b < 3; b++) {
@@ -563,6 +565,7 @@ void studio_free(studio *s)
     afree(s->members.uses.items);
     afree(s->perf);
     afree(s->keys);
+    afree(s->game_input);
     studio_projects_free(s);
     studio_disk_free(s);
     studio_refactor_free(s);

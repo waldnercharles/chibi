@@ -4,6 +4,7 @@
 #include "render/audio.h"
 #include "render/ui.h"
 #include "runtime/engine.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -44,6 +45,7 @@ struct engine_viewport
     ui_world ui_world; /* no documents while its ecs is NULL */
     render_ui *ui;
     bool ui_capture; /* the documents took the pointer last frame */
+    bool ui_typing;  /* they had the keyboard and a text field had focus */
     engine_viewport_render_fn render;
     void *render_user;
 };
@@ -138,6 +140,11 @@ render_ui *engine_viewport_ui(const engine_viewport *viewport)
 bool engine_viewport_ui_capture(const engine_viewport *viewport)
 {
     return viewport->ui_capture;
+}
+
+bool engine_viewport_ui_typing(const engine_viewport *viewport)
+{
+    return viewport->ui_typing;
 }
 
 static CF_Canvas viewport_canvas(int width, int height)
@@ -419,13 +426,15 @@ static void ui_pointer(
     viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
 }
 
-/* Sends the host's keys to the game documents while the host's keyboard is
-   the image's and `active`. */
+/* Sends the host's keys and text to the game documents while the host's
+   keyboard is the image's and `active`. */
 static void ui_keys(engine_viewport *viewport, const engine_viewport_host_input *in, bool active)
 {
-    for (int i = 0; viewport->ui && active && in->focused && i < in->key_count; i++) {
+    bool keyboard = viewport->ui && active && in->focused;
+    for (int i = 0; keyboard && i < in->key_count; i++) {
         render_ui_input(viewport->ui, &in->keys[i]);
     }
+    viewport->ui_typing = keyboard && render_ui_wants_text(viewport->ui);
 }
 
 static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, bool playing)
@@ -571,6 +580,115 @@ void engine_viewport_ui_input(engine_viewport *viewport, bool active)
     CF_V2 size = viewport->image_size;
     bool inside = at.x >= 0 && at.y >= 0 && at.x < size.x && at.y < size.y;
     ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], active);
+}
+
+/* The keys game documents bind with data-keys or edit text with, besides
+   letters and digits. */
+static const struct
+{
+    ImGuiKey imgui;
+    rml_input_key rml;
+} UI_KEYS[] = {
+    { ImGuiKey_Space, RML_INPUT_KEY_SPACE },
+    { ImGuiKey_Enter, RML_INPUT_KEY_ENTER },
+    { ImGuiKey_KeypadEnter, RML_INPUT_KEY_NUMPAD_ENTER },
+    { ImGuiKey_Escape, RML_INPUT_KEY_ESCAPE },
+    { ImGuiKey_Tab, RML_INPUT_KEY_TAB },
+    { ImGuiKey_Backspace, RML_INPUT_KEY_BACKSPACE },
+    { ImGuiKey_Delete, RML_INPUT_KEY_DELETE },
+    { ImGuiKey_LeftArrow, RML_INPUT_KEY_LEFT },
+    { ImGuiKey_RightArrow, RML_INPUT_KEY_RIGHT },
+    { ImGuiKey_UpArrow, RML_INPUT_KEY_UP },
+    { ImGuiKey_DownArrow, RML_INPUT_KEY_DOWN },
+    { ImGuiKey_Home, RML_INPUT_KEY_HOME },
+    { ImGuiKey_End, RML_INPUT_KEY_END },
+    { ImGuiKey_PageUp, RML_INPUT_KEY_PAGE_UP },
+    { ImGuiKey_PageDown, RML_INPUT_KEY_PAGE_DOWN },
+};
+
+static rml_input_key ui_key(ImGuiKey key)
+{
+    if (key >= ImGuiKey_A && key <= ImGuiKey_Z) {
+        return (rml_input_key)(RML_INPUT_KEY_A + (key - ImGuiKey_A));
+    }
+    if (key >= ImGuiKey_0 && key <= ImGuiKey_9) {
+        return (rml_input_key)(RML_INPUT_KEY_0 + (key - ImGuiKey_0));
+    }
+    for (size_t i = 0; i < sizeof UI_KEYS / sizeof *UI_KEYS; i++) {
+        if (UI_KEYS[i].imgui == key) {
+            return UI_KEYS[i].rml;
+        }
+    }
+    return RML_INPUT_KEY_UNKNOWN;
+}
+
+/* ImGui's modifiers as RmlUi's. On macOS Command edits text (select all,
+   copy, paste) where RmlUi expects Control, so the two trade places. */
+static unsigned ui_modifiers(const ImGuiIO *io)
+{
+#ifdef __APPLE__
+    bool control = io->KeySuper, meta = io->KeyCtrl;
+#else
+    bool control = io->KeyCtrl, meta = io->KeySuper;
+#endif
+    return (control ? RML_INPUT_MOD_CONTROL : 0u) |
+           (io->KeyShift ? RML_INPUT_MOD_SHIFT : 0u) |
+           (io->KeyAlt ? RML_INPUT_MOD_ALT : 0u) | (meta ? RML_INPUT_MOD_META : 0u);
+}
+
+/* Appends code point `c` to `text` as UTF-8. */
+static void append_utf8(char **text, unsigned c)
+{
+    static const unsigned char LEAD[] = { 0x00, 0xC0, 0xE0, 0xF0 };
+    int extra = c < 0x80 ? 0 : c < 0x800 ? 1 : c < 0x10000 ? 2 : 3;
+    apush(*text, (char)(LEAD[extra] | c >> (6 * extra)));
+    for (int i = extra - 1; i >= 0; i--) {
+        apush(*text, (char)(0x80 | (c >> (6 * i) & 0x3F)));
+    }
+}
+
+/* This frame's typed text, taken from Cute's buffer, as an array without a
+   terminator; NULL when there is none. The buffer is read in order: its pop
+   takes the last code point. */
+static char *typed_text()
+{
+    char *text = NULL;
+    CF_InputTextBuffer buffer;
+    cf_input_text_get_buffer(&buffer);
+    for (int i = 0; i < buffer.len; i++) {
+        append_utf8(&text, (unsigned)buffer.codepoints[i]);
+    }
+    cf_input_text_clear();
+    return text;
+}
+
+void engine_viewport_ui_keys(engine_viewport *viewport, bool active)
+{
+    ImGuiIO *io = ImGui_GetIO();
+    char *text = typed_text();
+    bool keyboard = viewport->ui && active;
+    unsigned modifiers = ui_modifiers(io);
+    for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; keyboard && key < ImGuiKey_NamedKey_END;
+         key++) {
+        rml_input_key rml = ui_key(key);
+        if (rml != RML_INPUT_KEY_UNKNOWN && ImGui_IsKeyPressedEx(key, true)) {
+            render_ui_input(
+                viewport->ui,
+                &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = rml, .modifiers = modifiers }
+            );
+        }
+    }
+    if (keyboard && text) {
+        render_ui_input(
+            viewport->ui,
+            &(rml_input){ .type = RML_INPUT_TEXT_INPUT,
+                          .modifiers = modifiers,
+                          .text = text,
+                          .text_size = (size_t)acount(text) }
+        );
+    }
+    afree(text);
+    viewport->ui_typing = keyboard && render_ui_wants_text(viewport->ui);
 }
 
 int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_controls *controls)

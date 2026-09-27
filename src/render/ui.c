@@ -857,6 +857,19 @@ unsigned render_ui_input(render_ui *ui, const rml_input *input)
     return rml_backend_process_input(ui->backend, &scaled);
 }
 
+bool render_ui_wants_text(const render_ui *ui)
+{
+    rml_element *focus = rml_context_focus_element(rml_backend_context(ui->backend));
+    if (!focus) {
+        return false;
+    }
+    const char *tag = rml_element_tag_name(focus);
+    char type[16] = "";
+    rml_element_attribute(focus, "type", type, sizeof type);
+    bool field = !type[0] || !strcmp(type, "text") || !strcmp(type, "password");
+    return !strcmp(tag, "textarea") || (!strcmp(tag, "input") && field);
+}
+
 /* Sends each view's activations to its entity, an input's value first. */
 static void send_activations(render_ui *ui, const ui_world *world)
 {

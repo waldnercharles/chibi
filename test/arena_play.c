@@ -13,8 +13,10 @@
 #include "render/arena_visual.h"
 #include "render/scene_renderer.h"
 #include "render/screenshot.h"
+#include "render/ui.h"
 #include "runtime/generated.h"
 #include "support/text_file.h"
+#include "support/text_overlay.h"
 #include "support/xalloc.h"
 #include "test/physics_executor.h"
 
@@ -815,6 +817,91 @@ static void standalone_play(arena_fixture *f)
     puts("standalone game PASS: Surface rendering, mouse aim, held mouse/Space cadence and release, window focus loss, Escape pause/release, paused time, Enter resume, authored restart and quit");
 }
 
+/* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+
+static void text_event(const char *text)
+{
+    SDL_Event event = { .type = SDL_EVENT_TEXT_INPUT };
+    event.text.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.text.text = text;
+    assert(SDL_PushEvent(&event));
+}
+
+/* Whether an activation reached the game's entities within a few frames of
+   `before` events pending: a key reaches ImGui a frame after SDL has it, and
+   its activation reaches the entity at the next document update. */
+static bool activated(arena_fixture *f, app_game_presentation *game, int before)
+{
+    bool seen = false;
+    for (int i = 0; i < 4; i++) {
+        assert(standalone_frame(f, game) == 0);
+        seen |= game_entities_pending_events(f->live->entities) > before;
+    }
+    return seen;
+}
+
+/* The standalone player gives its game documents the keyboard while the
+   game plays: a data-keys binding hears its key, and a focused text field
+   takes typed text and the letters the player's shortcuts and gameplay
+   would, while Escape still pauses. */
+static void standalone_ui_keys(arena_fixture *f)
+{
+    char path[1024];
+    snprintf(path, sizeof path, "%s/ui/KeyProbe.yaml", f->scene->content_root);
+    text_overlay_set(
+        path,
+        "rml: |\n"
+        "  <div id=\"probe\" autofocus data-keys=\"K:Knock\">\n"
+        "    <input id=\"name\" type=\"text\"/>\n"
+        "  </div>\n"
+        "rcss: '#probe { display: block; tab-index: auto; }'\n"
+    );
+    app_game_presentation *game = app_game_presentation_new(f->scene, f->viewport, true);
+    assert(game);
+    window_focus_event(true);
+    ecs_entity player = f->scene->actors[player_index(f)].entity;
+    assert(GAME_GameUi_add(f->world, player, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    *GAME_GameUi_get(f->world, player) = (GameUi){ .document = "KeyProbe" };
+    bool quiet = !activated(f, game, game_entities_pending_events(f->live->entities));
+    key_event(SDL_SCANCODE_K, true);
+    key_event(SDL_SCANCODE_K, false);
+    bool knocked = activated(f, game, game_entities_pending_events(f->live->entities));
+    assert(quiet && knocked);
+
+    game_ui_focus(engine_ui(f->runtime), ecs_entity_to_u64(player), "#name");
+    for (int i = 0; i < 2; i++) {
+        assert(standalone_frame(f, game) == 0);
+    }
+    render_ui *ui = engine_viewport_ui(f->viewport);
+    bool typing = engine_viewport_ui_typing(f->viewport) && render_ui_wants_text(ui);
+    key_event(SDL_SCANCODE_R, true);
+    text_event("r");
+    key_event(SDL_SCANCODE_R, false);
+    key_event(SDL_SCANCODE_D, true);
+    text_event("d");
+    for (int i = 0; i < 3; i++) {
+        assert(standalone_frame(f, game) == 0);
+    }
+    rml_element *focus = rml_context_focus_element(render_ui_context(ui));
+    char value[16] = "";
+    rml_element_value(focus, value, sizeof value);
+    bool kept = ecs_entity_is_alive(f->world, player) &&
+                app_scene_authoring_runtime_state(f->scene).playing &&
+                GAME_GameInput_get_const(f->world, player)->move.x == 0;
+    key_event(SDL_SCANCODE_D, false);
+    assert(standalone_key(f, game, SDL_SCANCODE_ESCAPE, true) == 0);
+    bool paused = !app_scene_authoring_runtime_state(f->scene).playing;
+    assert(standalone_key(f, game, SDL_SCANCODE_ESCAPE, false) == 0);
+    if (!(typing && !strcmp(value, "rd") && kept && paused)) {
+        fprintf(stderr, "typing %d value '%s' kept %d paused %d\n", typing, value, kept, paused);
+    }
+    assert(typing && !strcmp(value, "rd") && kept && paused);
+    app_game_presentation_free(game);
+    text_overlay_set(path, NULL);
+    puts("standalone game UI keys PASS: data-keys while playing, a focused text field takes typed text, R and movement, Escape still pauses");
+}
+
 static bool review_target(arena_fixture *f, GameTransform *player, GameTransform *target)
 {
     ecs_component_id required[] = { GAME_COMPONENT_GameInput.id,
@@ -1439,6 +1526,8 @@ int arena_play_run(const char *program)
     assert(projectiles(&f) == 0);
     assert(f.scene->perspective);
     standalone_play(&f);
+    /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+    standalone_ui_keys(&f);
 cleanup:
     fixture_free(&f);
     arena_app_stop();

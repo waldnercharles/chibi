@@ -695,6 +695,8 @@ struct studio
     /* Workstream Q: Problems ▸ Project's ui problems as of its last check
        (studio_code_project_problems). */
     struct studio_ui_problem *ui_project_problems; /* array */
+    /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+    rml_input *game_input; /* keys pressed and text typed this frame, for the Scene's game UI */
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than

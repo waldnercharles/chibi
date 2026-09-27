@@ -802,7 +802,9 @@ extraction policy.
 RCSS `dp` units scale with the view height, 720 pixels being one pixel per
 `dp`; `GameUi.order` stacks documents. UI events carry no payload, like action
 events: each button emits its event with `data-event-click="emit('Name')"`,
-and a behavior reads an input's value with `Get UI Value`. Behavior graphs own rules, text and history. While the pointer
+and a behavior reads an input's value with `Get UI Value`, or the number
+`emit('Name', value)` passes from an element with an id, as in a list's
+`emit('Buy', i)`. Behavior graphs own rules, text and history. While the pointer
 is over an interactive element, it does not reach gameplay.
 
 A ui asset reuses another as a widget with `<use ui="Meter" id="hull"/>`: a

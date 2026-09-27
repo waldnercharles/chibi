@@ -126,10 +126,17 @@ static bool lays_out_flex_text(rml_context *context)
 
 static char emitted[32];
 
-static void on_emit(void *user, const rml_event *event, const char *name)
+static void on_emit(void *, const rml_event *event, const char *name, const char *value)
 {
-    (void)user;
-    snprintf(emitted, sizeof emitted, "%s:%s", rml_element_id(event->current), name);
+    snprintf(
+        emitted,
+        sizeof emitted,
+        "%s:%s%s%s",
+        rml_element_id(event->current),
+        name,
+        value ? "=" : "",
+        value ? value : ""
+    );
 }
 
 static bool text_is(rml_element *doc, const char *id, const char *text)
@@ -140,8 +147,8 @@ static bool text_is(rml_element *doc, const char *id, const char *text)
 }
 
 /* A data model over JSON: text and lists follow it, a missing member reads
- * empty, bindings write back, a lazy one on blur, and emit('Name') reaches
- * the host. */
+ * empty, bindings write back, a lazy one on blur, and emit('Name') and
+ * emit('Name', value) reach the host. */
 static bool binds_data(rml_context *context)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -161,7 +168,10 @@ static bool binds_data(rml_context *context)
         "<div id=\"label\">{{ flags.label }}</div>"
         "<input id=\"on\" type=\"checkbox\" data-checked=\"flags.on\"/>"
         "<input id=\"lazy\" type=\"text\" data-value-lazy=\"title\"/>"
-        "<div id=\"go\" data-event-click=\"emit('Go')\"/></body></rml>",
+        "<div id=\"go\" data-event-click=\"emit('Go')\"/>"
+        "<div id=\"pick\" data-for=\"row, i : rows\" "
+        "data-event-click=\"emit('Pick', i)\"/>"
+        "</body></rml>",
         "[memory]"
     );
     assert(doc);
@@ -176,6 +186,11 @@ static bool binds_data(rml_context *context)
     bool wrote = rml_data_model_writes(model) == 1 &&
                  yyjson_mut_get_bool(yyjson_mut_obj_get(flags, "on"));
     rml_element_click(rml_element_by_id(doc, "go"));
+    bool went = !strcmp(emitted, "go:Go");
+    rml_element *picks[3];
+    rml_element_query_selector_all(doc, "#pick", picks, 3);
+    rml_element_click(picks[1]);
+    bool picked = !strcmp(emitted, "pick:Pick=1");
     rml_element *lazy = rml_element_by_id(doc, "lazy");
     rml_element_focus(lazy, false);
     rml_element_set_value(lazy, "Theme");
@@ -186,7 +201,7 @@ static bool binds_data(rml_context *context)
     rml_context_update(context);
     rml_data_model_destroy(model);
     yyjson_mut_doc_free(json);
-    return shown && listed && wrote && !strcmp(emitted, "go:Go") && held && committed;
+    return shown && listed && wrote && went && picked && held && committed;
 }
 
 bool test_rmlui_binding()

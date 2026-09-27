@@ -471,9 +471,11 @@ extern "C"
 
     /* ---------- Data models ---------- */
 
-    /* An expression's emit('Name'): `event` is the one whose data-event-*
-     * binding ran it, and its current element holds that binding. */
-    typedef void (*rml_emit_fn)(void *user, const rml_event *event, const char *name);
+    /* An expression's emit('Name') or emit('Name', value), as Vue's $emit
+     * passes an argument: `event` is the one whose data-event-* binding ran
+     * it, and its current element holds that binding; `value` is the second
+     * argument as text, or NULL without one. */
+    typedef void (*rml_emit_fn)(void *user, const rml_event *event, const char *name, const char *value);
 
     /* The data model `name` in `context`, for RmlUi's data bindings ({{ }},
      * data-for, data-value, data-checked, data-event-*, ...). Its variables
@@ -482,7 +484,8 @@ extern "C"
      * which bindings may overwrite. As in JavaScript, a name no variable has
      * reads as empty, and a missing member reads as null until set. The
      * doc must outlive the model and keep each variable's value in place,
-     * changing its contents instead. Expressions may call emit('Name'). */
+     * changing its contents instead. Expressions may call emit('Name') and
+     * emit('Name', value). */
     rml_data_model *rml_data_model_create(
         rml_context *context,
         const char *name,

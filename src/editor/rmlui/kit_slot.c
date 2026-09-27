@@ -167,10 +167,13 @@ void free_slots(kit *k)
 
 /* ---------- Chrome hosts ---------- */
 
+/* Kit content in the host's slots keeps focus, as a field there takes
+ * typing; only authored content's nearest node is the host. */
 void kit_release_focus(kit *k, rml_element *host)
 {
     rml_element *focus = rml_context_focus_element(k->context);
-    if (focus && within(focus, host)) {
+    node *n = focus ? node_for(k, focus) : NULL;
+    if (n && n->el == host) {
         rml_element_focus(rml_element_parent(host), false);
     }
 }

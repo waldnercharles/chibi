@@ -287,15 +287,18 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
     }
 }
 
-void ui_mount_emit(ui_mount *m, rml_element *element, const char *event)
+void ui_mount_emit(ui_mount *m, rml_element *element, const char *event, const char *value)
 {
     assert(ui_mount_holds(m, element));
     ui_activation a = { 0 };
     snprintf(a.event, sizeof a.event, "%s", event);
     snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
-    char value[64];
-    if (!strcmp(rml_element_tag_name(element), "input") &&
-        rml_element_value(element, value, sizeof value) > 0) {
+    char input[64];
+    if (!value && !strcmp(rml_element_tag_name(element), "input") &&
+        rml_element_value(element, input, sizeof input) > 0) {
+        value = input;
+    }
+    if (value) {
         char *end;
         a.value = strtof(value, &end);
         a.has_value = end != value;
@@ -635,7 +638,7 @@ struct render_ui
 };
 
 static void on_event(void *user, const rml_event *event);
-static void on_emit(void *user, const rml_event *event, const char *name);
+static void on_emit(void *user, const rml_event *event, const char *name, const char *value);
 
 /* Removes the view's root, which detaches the listener, then its mount. */
 static void close_view(render_ui *ui, ui_view *view)
@@ -790,11 +793,11 @@ static void on_event(void *user, const rml_event *event)
     }
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name)
+static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
 {
     ui_mount *m = mount_holding(user, event->current);
     if (m) {
-        ui_mount_emit(m, event->current, name);
+        ui_mount_emit(m, event->current, name, value);
     }
 }
 

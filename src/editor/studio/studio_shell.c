@@ -481,10 +481,10 @@ static void project_menu_items(studio *s)
 }
 #endif
 
+/* The menubar, native in the top bar's #menubar slot. */
 static void menus(studio *s)
 {
     kit *k = s->kit;
-    kit_push(k, "menus", "nav", "menus");
     if (kit_menubar_trigger(k, "file", "File")) {
         studio_command_item(s, STUDIO_COMMAND_SEARCH);
         studio_projects_menu(s);
@@ -542,8 +542,9 @@ static void menus(studio *s)
         studio_debug_menu(s);
         kit_popup_end(k);
     }
-    kit_pop(k);
 }
+
+/* ---------- Document tabs ---------- */
 
 static uint32_t tab_icon(const scene_document_tab *tab)
 {
@@ -558,57 +559,44 @@ static uint32_t tab_icon(const scene_document_tab *tab)
     return KIT_ICON_FILE;
 }
 
-static void document_tabs(studio *s)
+bool studio_tab_closes(const studio *s, int tab)
 {
-    kit *k = s->kit;
-    app_scene_authoring *scene = s->scene;
-    int closing = -1;
-    kit_push(k, "docs", "nav", "doc-tabs");
-    for (int i = 0; i < acount(scene->tabs); i++) {
-        const scene_document_tab *tab = &scene->tabs[i];
-        bool active = i == scene->active_tab;
-        bool dirty = scene_tabs_dirty(scene, tab);
-        uint32_t icon = tab_icon(tab);
-        char key[24];
-        snprintf(key, sizeof key, "t%d", i);
-        kit_push(k, key, "button", "btn doc-tab");
-        if (active) {
-            kit_attr(k, "data-state", "on");
-        } else {
-            kit_flag(k, "data-state", false);
-        }
-        kit_tip(k, tab->path, NULL, NULL);
-        kit_icon(k, "icon", NULL, icon);
-        kit_label(k, "label", "label", tab->label ? tab->label : "Untitled");
-        if (dirty) {
-            kit_leaf(k, "dirty", NULL, "dirty-dot");
-        }
-        /* UI documents close; other documents stay for the session. */
-        kit_button_desc close = { .icon = KIT_ICON_CLOSE,
-                                  .size = KIT_SM,
-                                  .cls = "doc-close",
-                                  .tip = "Close" };
-        if (tab->kind == APP_EDITOR_DOCUMENT_UI && kit_button(k, "close", &close)) {
-            closing = i;
-        }
-        kit_pop(k);
-        if (kit_item_clicked(k) && !active) {
-            finish_transform_edit(scene, false);
-            scene_tabs_activate(scene, i);
-        }
-    }
-    kit_pop(k);
-    if (closing >= 0) {
-        studio_code_close(s, closing);
-    }
+    return tab >= 0 && tab < acount(s->scene->tabs) &&
+           s->scene->tabs[tab].kind == APP_EDITOR_DOCUMENT_UI;
 }
 
+/* The top bar's TopBar lists these from `editor.tabs`; a tab runs
+   selectTab and its close button closeTab, with the tab's index. */
+studio_tab_view *studio_document_tabs(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    studio_tab_view *tabs = NULL;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        const scene_document_tab *tab = &scene->tabs[i];
+        studio_tab_view shown = {
+            .label = tab->label ? tab->label : "Untitled",
+            .path = tab->path ? tab->path : "",
+            .icon = tab_icon(tab),
+            .dirty = scene_tabs_dirty(scene, tab),
+            .active = i == scene->active_tab,
+            .closable = studio_tab_closes(s, i),
+        };
+        apush(tabs, shown);
+    }
+    return tabs;
+}
+
+/* ---------- Top bar ---------- */
+
 /* What Play runs: the scene, or a preview of the selected prototype. Fixed
-   while a session runs; the label morphs when the target changes. */
-static void runtime_target(studio *s, app_runtime_state runtime, bool session)
+   while a session runs; the label morphs when the target changes. Native in
+   the top bar's #play-target slot. */
+static void runtime_target(studio *s)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
+    app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
+    bool session = runtime_session(scene);
     scene_prototype_asset *previewed = prototype_at(scene, scene->runtime_preview_prototype);
     /* The open prototype document, else the selected object's prototype. */
     scene_actor *actor = selected_actor(scene);
@@ -668,82 +656,34 @@ static void runtime_target(studio *s, app_runtime_state runtime, bool session)
     }
 }
 
-static void transport(studio *s)
-{
-    kit *k = s->kit;
-    app_runtime_state runtime = app_scene_authoring_runtime_state(s->scene);
-    bool session = runtime_session(s->scene);
-    kit_push(k, "transport", NULL, "transport");
-    runtime_target(s, runtime, session);
-    kit_push(k, "group", NULL, "group");
-    /* A run paused at a breakpoint trades Pause for Resume and the frame step
-       for the debugger's steps (Unreal). */
-    bool paused = s->pause.active;
-    kit_button_desc play = {
-        .icon = paused          ? KIT_ICON_CONTINUE
-              : runtime.playing ? KIT_ICON_PAUSE
-                                : KIT_ICON_PLAY,
-        .tip = paused          ? "Resume"
-             : runtime.playing ? "Pause"
-                               : "Play",
-        .shortcut = paused ? "F5" : "Space",
-        .flags = runtime.playing && !paused ? KIT_ON : 0,
-    };
-    if (kit_button(k, "play", &play)) {
-        studio_runtime(s, APP_RUNTIME_PLAY);
-    }
-    kit_button_desc stop = { .icon = KIT_ICON_STOP,
-                             .tip = "Stop",
-                             .flags = session ? 0 : KIT_DISABLED };
-    if (kit_button(k, "stop", &stop)) {
-        studio_runtime(s, APP_RUNTIME_STOP);
-    }
-    kit_button_desc step = { .icon = KIT_ICON_STEP, .tip = "Step" };
-    if (paused) {
-        studio_debug_steps(s);
-    } else if (kit_button(k, "step", &step)) {
-        studio_runtime(s, APP_RUNTIME_STEP);
-    }
-    kit_pop(k);
-    kit_pop(k);
-}
-
-/* Settings is an authored dialog in the Studio project, which the
- * `settings` command opens. */
-static void settings(studio *s)
-{
-    studio_command_info command = studio_command_describe(s, STUDIO_COMMAND_SETTINGS);
-    kit_button_desc d = { .icon = command.icon,
-                          .tip = command.label,
-                          .shortcut = command.shortcut };
-    if (kit_button(s->kit, "settings", &d)) {
-        studio_command_run(s, STUDIO_COMMAND_SETTINGS);
-    }
-    studio_ui_modal(s, "Settings");
-}
-
+/* The top bar is authored: projects/studio's TopBar binds `editor` and
+   `commands` (studio_sources.c) for its document tabs, transport, gear and
+   search, which run commands. The menubar, the play target's menu and a
+   paused run's steps stay native in its slots; a run paused at a breakpoint
+   trades the frame step for the debugger's steps (Unreal). A click leaves
+   the keyboard to the areas. */
 static void topbar(studio *s)
 {
     kit *k = s->kit;
-    kit_push(k, "topbar", "header", "topbar");
-    kit_push(k, "brand", NULL, "brand");
-    kit_leaf(k, "mark", NULL, "mark");
-    kit_pop(k);
-    menus(s);
-    kit_leaf(k, "sep", NULL, "sep");
-    document_tabs(s);
-    kit_leaf(k, "spacer", NULL, "spacer");
-    transport(s);
-    kit_leaf(k, "spacer2", NULL, "spacer");
-    settings(s);
-    kit_button_desc search = { .label = "Search",
-                               .icon = KIT_ICON_SEARCH,
-                               .cls = "search-trigger",
-                               .shortcut = studio_chord(s, "Mod+K") };
-    if (kit_button(k, "search", &search)) {
-        kit_command_open(k, "Search objects, assets and commands");
+    /* The gear's Settings page is an authored dialog. */
+    studio_ui_modal(s, "Settings");
+    rml_element *host = studio_ui_panel(s, "topbar", "TopBar");
+    if (!host) {
+        return;
     }
-    kit_pop(k);
+    kit_release_focus(k, host);
+    if (kit_slot_begin(k, "menus", host, "#menubar")) {
+        menus(s);
+        kit_slot_end(k);
+    }
+    if (kit_slot_begin(k, "target", host, "#play-target")) {
+        runtime_target(s);
+        kit_slot_end(k);
+    }
+    if (s->pause.active && kit_slot_begin(k, "steps", host, "#debug-steps")) {
+        studio_debug_steps(s);
+        kit_slot_end(k);
+    }
 }
 
 /* ---------- Areas ---------- */
@@ -829,19 +769,10 @@ static void editor_type_menu(studio *s, int area)
     }
 }
 
-static void area(studio *s, int index, const char *key, float size, bool fill)
+/* The editor's own header controls. */
+static void editor_header(studio *s, int index)
 {
-    kit *k = s->kit;
-    studio_editor editor = s->prefs.editors[index];
-    kit_push(k, key, NULL, KIT_CX(k, "area", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }));
-    if (!fill) {
-        char height[32];
-        dp(height, sizeof height, size);
-        kit_style(k, "height", height);
-    }
-    kit_push(k, "head", "header", "area-head");
-    editor_type_menu(s, index);
-    switch (editor) {
+    switch (s->prefs.editors[index]) {
         case STUDIO_EDITOR_SCENE: studio_scene_header(s, index); break;
         case STUDIO_EDITOR_BEHAVIOR: studio_behavior_header(s, index); break;
         case STUDIO_EDITOR_OUTLINER: studio_outliner_header(s, index); break;
@@ -856,19 +787,46 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
         case STUDIO_EDITOR_CODE: studio_code_header(s, index); break;
         case STUDIO_EDITOR_PANEL:
-            kit_label(k, "title", NULL, s->prefs.panels[index]);
+            kit_label(s->kit, "title", NULL, s->prefs.panels[index]);
             break;
         default: break;
     }
-    if (index == STUDIO_AREA_DRAWER) {
-        kit_button_desc close = { .icon = KIT_ICON_CLOSE,
-                                  .tip = "Close",
-                                  .cls = "drawer-close" };
-        if (kit_button(k, "close", &close)) {
-            s->prefs.drawer_open = false;
-        }
+}
+
+/* The area header is authored: projects/studio's AreaHeader, one per area,
+   binds its `area` (studio_sources.c) to maximize it and to close the
+   drawer. The editor type menu and the editor's own controls stay native in
+   its slots, where a field keeps the keyboard; a click elsewhere leaves it
+   to the areas. */
+static void area_header(studio *s, int index)
+{
+    kit *k = s->kit;
+    rml_element *host = studio_ui_area_header(s, index, "AreaHeader");
+    if (!host) {
+        return;
     }
-    kit_pop(k);
+    kit_release_focus(k, host);
+    if (kit_slot_begin(k, "type", host, "#editor-type")) {
+        editor_type_menu(s, index);
+        kit_slot_end(k);
+    }
+    if (kit_slot_begin(k, "controls", host, "#controls")) {
+        editor_header(s, index);
+        kit_slot_end(k);
+    }
+}
+
+static void area(studio *s, int index, const char *key, float size, bool fill)
+{
+    kit *k = s->kit;
+    studio_editor editor = s->prefs.editors[index];
+    kit_push(k, key, NULL, KIT_CX(k, "area", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }));
+    if (!fill) {
+        char height[32];
+        dp(height, sizeof height, size);
+        kit_style(k, "height", height);
+    }
+    area_header(s, index);
     kit_push(k, "body", NULL, "area-body");
     switch (editor) {
         case STUDIO_EDITOR_SCENE: studio_scene_body(s, index); break;
@@ -1034,8 +992,14 @@ static void palette(studio *s)
     }
     app_scene_authoring *scene = s->scene;
     kit_command_item *items = NULL;
+    studio_command *commands = NULL;
     for (int c = STUDIO_COMMAND_SEARCH + 1; c < STUDIO_COMMAND_COUNT; c++) {
         studio_command_info info = studio_command_describe(s, (studio_command)c);
+        /* A command that needs a tab has none here. */
+        if (info.indexed) {
+            continue;
+        }
+        apush(commands, (studio_command)c);
         apush(
             items,
             ((
@@ -1086,7 +1050,7 @@ static void palette(studio *s)
     }
     int chosen = kit_command(s->kit, items, acount(items));
     if (chosen >= 0 && chosen < objects) {
-        studio_command_run(s, (studio_command)(STUDIO_COMMAND_SEARCH + 1 + chosen));
+        studio_command_run(s, commands[chosen]);
     } else if (chosen >= objects && chosen < assets) {
         finish_transform_edit(scene, false);
         select_instance(scene, chosen - objects);
@@ -1111,6 +1075,7 @@ static void palette(studio *s)
         }
     }
     afree(items);
+    afree(commands);
 }
 
 /* ---------- Frame ---------- */

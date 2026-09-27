@@ -1,7 +1,7 @@
 rml: |
   <div class="inspector" data-class-wide="inspector.wide">
     <div class="toolbar">
-      <button class="btn sm pick" data-attr-data-state="inspector.picking ? 'on' : 'off'" data-event-click="emit('studio.inspect-element')"><span class="icon sm">&#xf01bf;</span><span class="label">Pick</span></button>
+      <button class="btn sm pick" data-attr-data-state="inspector.picking ? 'on' : 'off'" data-event-click="emit('studio.inspectElement')"><span class="icon sm">&#xf01bf;</span><span class="label">Pick</span></button>
       <span class="kbd">{{ inspector.shortcut }}</span>
       <div class="segmented targets">
         <span class="seg" data-class-on="inspector.target == 'studio'" data-event-click="inspector.target = 'studio'">Studio</span>

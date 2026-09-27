@@ -35,7 +35,7 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   - `file_watch_changed` sees each change at once.
 
   So panels, the Scene view and page themes update without a new API. The `code_apply_live` preference chooses between live and on-save.
-- **Commands are one table.** `studio_commands.c` feeds menus, the palette, shortcuts and authored UI, where `emit('studio.<id>')` runs a command.
+- **Commands are one table.** `studio_commands.c` feeds menus, the palette, shortcuts and authored UI, where `emit('studio.<id>')` runs a command, `emit('studio.<id>', index)` runs it on a tab or an area, as VS Code's commands take arguments, and `commands.<id>` binds its state. Ids are camelCase, so both name it the same.
 - **Authored UI hosts native content through slots**, as Unity's IMGUIContainer does. The graph canvas, the viewport, virtual-list bodies, menus, popups and the palette stay native.
 
 ## Contracts
@@ -65,8 +65,11 @@ These are on `main` and used by more than one workstream.
 | UI check | `ui_check(content_root, name, text, …)` in `src/render/ui_check.h` (B) | Every RmlUi warning of a ui asset, at the line of its rml or rcss block, or of the import or widget that wrote it |
 | RCSS properties | `ui_check_property_names` in `src/render/ui_check.h` (B), over `rml_property_name` and `rml_shorthand_name` in `src/ui/rml.h` | What `ui_source_project.properties` takes |
 | Native slots | `kit_slot_begin(k, key, host, selector)` and `kit_slot_end` in `src/editor/ui/kit.h` (`kit_slot.c`, J) | Kit content inside a `kit_host`'s authored content, as Unity's IMGUIContainer: the element the selector finds is marked `data-kit-slot="<key>"` and found again every frame, so a reinstalled mount or a recreated data-for item gets its content anew; a slot not begun in a frame loses it. Its path is the host's and the key |
-| Chrome focus | `kit_release_focus(k, host)` (J) | RmlUi focuses what is clicked; authored chrome calls it every frame so Studio's shortcuts keep working |
-| Status data | `editor` (`studio_status_add`, `studio_status_show` in `studio_internal.h`; `studio_sources.c`, J) | What projects/studio's `StatusBar` binds: `hints` ({icon, key, label}), `report`, `reporting`, `assets`, `output`, `performance`, `assetsKey`, `outputKey`, `scene`, `selection`, `objects`, `playing` |
+| Chrome focus | `kit_release_focus(k, host)` (J) | RmlUi focuses what is clicked; authored chrome calls it every frame so Studio's shortcuts keep working. Kit content in the host's slots keeps focus, so a header's filter field takes typing |
+| Chrome data | `editor` (`studio_status_add`, `studio_status_show` in `studio_internal.h`; `studio_sources.c`, J, T) | What projects/studio's `StatusBar`, `TopBar` and `AreaHeader` bind: `hints` ({icon, key, label}), `report`, `reporting`, `scene`, `selection`, `objects`, `playing`, `paused` (at a breakpoint), `tabs` ({label, path, icon, dirty, active, closable}) and `areas` ({index, drawer, maximized}; each `AreaHeader` binds its own as `area` through `data-alias-area`) |
+| Commands data (T) | `commands` (`studio_commands_add`, `studio_commands_show` in `studio_internal.h`; `studio_sources.c`) | Each command's state by id: `label`, `menu`, `shortcut`, `icon` (the glyph), `enabled` and `checked`, as `data-attrif-data-disabled="!commands.stop.enabled"` |
+| Emit with a value (T) | `rml_emit_fn` in `src/ui/rml.h`, `ui_mount_emit` in `src/render/ui.h` | `emit('Name', value)` records `value` as the activation's value, as an input's change does. Studio runs `emit('studio.<id>', index)` with `studio_command_run_with`: `selectTab` and `closeTab` take a tab's index, `maximize` an area's |
+| Area headers (T) | `studio_ui_area_header(s, area, name)` in `studio_internal.h` | A mount of `AreaHeader` per area, whose root binds `area` to `editor.areas[area]`; the editor type menu and the editor's controls stay native in its `#editor-type` and `#controls` slots |
 | Designer edits (H) | `ui_design_*` in `src/editor/documents/ui_design.h` | The visual designer's changes to a `ui_buffer`: move, insert, duplicate, wrap, delete, attributes, classes, inline style, text and a rule's declaration values, each one undo step (a scrub's changes join one). Structural changes return the element to select. Q added a rule's declarations (`ui_design_add_declaration`, `ui_design_remove_declaration`), Extract to Class (`ui_design_extract_class`, one step over both parts through `ui_buffer_join_edit`) and the keyboard sensor's places (`ui_design_slots`) |
 | Designer selection (H) | `studio_designer_shown` and `studio_designer_shown_source` in `studio_internal.h`; `ui_design_child_on_line`, `ui_design_element_at` | Map a shown element to the outline index it was written as, and back, by its `data-src` line and its place among its parent's children on that line; a cursor offset to the element it selects |
 | Typing composes (Q) | `ui_code_record(b, part, editor, base, …)` in `ui_code.h` | Typing records what changed from `base`, the text the code editor and its part last shared (`studio_code_editor.synced`), into the part as it stands, so a designer edit made in the same frame composes with it; where both changed the same bytes, the typing stands |
@@ -109,7 +112,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 
 ### Wave 3
 
-- Top bar, document tabs, transport and area headers become authored layouts.
+- Top bar, document tabs, transport and area headers become authored layouts (T): `TopBar` and an `AreaHeader` per area, with the menubar, the play target's menu, a paused run's steps, the editor type menus and the editors' own controls native in their slots.
 - End to end on arena2d: New Widget → edit → `<use ui>` in a HUD → pick it in Play → handle its event in a graph.
 
 | | Workstream | Owns |

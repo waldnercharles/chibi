@@ -1087,7 +1087,9 @@ rml_data_model *rml_data_model_create(
         "emit",
         [emit, user](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &arguments) {
             rml_event e = convert(event);
-            emit(user, &e, arguments.empty() ? "" : arguments[0].Get<Rml::String>().c_str());
+            Rml::String name = arguments.empty() ? "" : arguments[0].Get<Rml::String>();
+            Rml::String value = arguments.size() > 1 ? arguments[1].Get<Rml::String>() : "";
+            emit(user, &e, name.c_str(), arguments.size() > 1 ? value.c_str() : nullptr);
         }
     );
     return model;

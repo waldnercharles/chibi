@@ -76,7 +76,8 @@ void ui_data_free(ui_data *data);
 typedef struct ui_mount ui_mount;
 
 /* An activation: the event emitted or bound to a key, the id of the element
- * whose binding sent it ("" when it has none), and an input's value. */
+ * whose binding sent it ("" when it has none), and its value: emit's second
+ * argument, or an input's. */
 typedef struct ui_activation
 {
     char event[128];
@@ -106,8 +107,9 @@ bool ui_mount_holds(const ui_mount *mount, rml_element *element);
  * focuses its first autofocus element. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
 /* Records `event` as emitted by the binding on `element`, which the mount
- * holds; an input's value comes with it. */
-void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event);
+ * holds, with `value`, emit's second argument, as its value, or else an
+ * input's; NULL for none. */
+void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event, const char *value);
 /* Takes the oldest activation; false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */

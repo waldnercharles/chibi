@@ -769,29 +769,6 @@ void rml_document_update(rml_element *d)
     document(d)->UpdateDocument();
 }
 
-bool rml_document_set_style_sheet(rml_element *d, const char *rcss)
-{
-    Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString(rcss);
-    if (!sheet) {
-        return false;
-    }
-    document(d)->SetStyleSheetContainer(sheet);
-    return true;
-}
-
-bool rml_document_add_style_sheet(rml_element *d, const char *rcss)
-{
-    Rml::SharedPtr<Rml::StyleSheetContainer> added = Rml::Factory::InstanceStyleSheetString(rcss);
-    if (!added) {
-        return false;
-    }
-    const Rml::StyleSheetContainer *current = document(d)->GetStyleSheetContainer();
-    document(d)->SetStyleSheetContainer(
-        current ? current->CombineStyleSheetContainer(*added) : added
-    );
-    return true;
-}
-
 /* ---------- Elements ---------- */
 
 rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before)

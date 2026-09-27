@@ -283,7 +283,7 @@ static void check_style(rml_context *context, const ui_document *document, ui_ch
 {
     rml_element *sheet = rml_context_load_document_from_memory(context, "<rml><head></head><body/></rml>", "style");
     rml_backend_keep_warnings();
-    rml_document_set_style_sheet(sheet, document->rcss);
+    rml_document_set_named_style_sheet(sheet, "style", document->rcss);
     char **warnings = joined_warnings(rml_backend_take_warnings());
     const rcss_map *map = &document->map;
     for (int i = 0; i < acount(warnings); i++) {

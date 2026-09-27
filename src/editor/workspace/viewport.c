@@ -664,11 +664,11 @@ static char *typed_text()
 
 void engine_viewport_ui_keys(engine_viewport *viewport, bool active)
 {
+    assert(viewport->ui);
     ImGuiIO *io = ImGui_GetIO();
     char *text = typed_text();
-    bool keyboard = viewport->ui && active;
     unsigned modifiers = ui_modifiers(io);
-    for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; keyboard && key < ImGuiKey_NamedKey_END;
+    for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; active && key < ImGuiKey_NamedKey_END;
          key++) {
         rml_input_key rml = ui_key(key);
         if (rml != RML_INPUT_KEY_UNKNOWN && ImGui_IsKeyPressedEx(key, true)) {
@@ -678,7 +678,7 @@ void engine_viewport_ui_keys(engine_viewport *viewport, bool active)
             );
         }
     }
-    if (keyboard && text) {
+    if (active && text) {
         render_ui_input(
             viewport->ui,
             &(rml_input){ .type = RML_INPUT_TEXT_INPUT,
@@ -688,7 +688,7 @@ void engine_viewport_ui_keys(engine_viewport *viewport, bool active)
         );
     }
     afree(text);
-    viewport->ui_typing = keyboard && render_ui_wants_text(viewport->ui);
+    viewport->ui_typing = active && render_ui_wants_text(viewport->ui);
 }
 
 int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_controls *controls)

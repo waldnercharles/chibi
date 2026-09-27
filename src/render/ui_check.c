@@ -24,7 +24,9 @@ static const char
 /* What RmlUi calls the markup's document in its messages. */
 #define MARKUP_URL "markup"
 
-static void ignore_emit(void *, const rml_event *, const char *) {}
+static void ignore_emit(void *, const rml_event *, const char *, const char *)
+{
+}
 
 /* The line a message names: "...:12..." or "on line 12". */
 static int named_line(const char *text)

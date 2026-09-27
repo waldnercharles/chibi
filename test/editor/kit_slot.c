@@ -34,9 +34,9 @@ static void on_event(void *user, const rml_event *event)
     ui_mount_listen(user, event);
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name)
+static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
 {
-    ui_mount_emit(user, event->current, name);
+    ui_mount_emit(user, event->current, name, value);
 }
 
 /* A Studio kit whose host shows ui asset `name` under `root`, bound to

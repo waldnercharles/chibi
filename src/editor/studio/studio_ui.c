@@ -70,11 +70,11 @@ static void on_event(void *user, const rml_event *event)
     }
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name)
+static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
 {
     ui_mount *m = mount_holding(user, event->current);
     if (m) {
-        ui_mount_emit(m, event->current, name);
+        ui_mount_emit(m, event->current, name, value);
     }
 }
 

@@ -1326,7 +1326,7 @@ typedef struct hint_list
 
 /* The key hints of the editor under the pointer; keys in studio_chord
  * notation. */
-static hint_list editor_hints(const studio *s)
+static hint_list editor_hints(studio *s)
 {
     static const studio_hint SCENE[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                          { KIT_ICON_PAN, NULL, "Pan (middle)" },
@@ -1338,6 +1338,11 @@ static hint_list editor_hints(const studio *s)
     static const studio_hint OUTLINER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                             { 0, "F", "Frame" },
                                             { 0, "X", "Delete" } };
+    /* Visual designer (workstream H): the Outliner as a UI document's Hierarchy. */
+    static const studio_hint HIERARCHY[] = { { KIT_ICON_MOUSE, NULL, "Select" },
+                                             { KIT_ICON_MOVE, NULL, "Drag to move" },
+                                             { 0, "Shift+D", "Duplicate" },
+                                             { 0, "X", "Delete" } };
     static const studio_hint MEMBERS[] = { { KIT_ICON_MOUSE, NULL, "Drag to graph" },
                                            { 0, "Alt", "Set" },
                                            { 0, "F2", "Rename" },
@@ -1353,7 +1358,9 @@ static hint_list editor_hints(const studio *s)
     switch (editor) {
         case STUDIO_EDITOR_SCENE: return HINT_LIST(SCENE);
         case STUDIO_EDITOR_PROPERTIES: return HINT_LIST(PROPERTIES);
-        case STUDIO_EDITOR_OUTLINER: return HINT_LIST(OUTLINER);
+        case STUDIO_EDITOR_OUTLINER:
+            return studio_designer_active(s) ? HINT_LIST(HIERARCHY)
+                                             : HINT_LIST(OUTLINER);
         case STUDIO_EDITOR_MEMBERS: return HINT_LIST(MEMBERS);
         case STUDIO_EDITOR_BEHAVIOR:
             return s->graph.gesture == STUDIO_GRAPH_MOVE ? HINT_LIST(MOVING)

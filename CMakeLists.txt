@@ -655,6 +655,7 @@ chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGE
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
+    test/automation_preview.c
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
@@ -724,6 +725,8 @@ add_executable(test_suite
     test/material.c
     test/wave.c
     test/radiance.c
+    test/material_sampling.c
+    test/radiance_history.c
     test/radiance_intervals.c
     test/interior_border.c
     test/png_encoding.c
@@ -876,7 +879,7 @@ endif()
 
 # The same material/field/schedule contracts run natively and in Web bytecode.
 add_executable(material_engine_smoke test/material_engine_smoke.c
-    test/runtime/materials.c test/runtime/reference_cave.c test/runtime/fields.c
+    test/runtime/materials.c test/runtime/material_reactions.c test/runtime/reference_cave.c test/runtime/fields.c
     test/runtime/system_schedule.c ${APP_REGISTRY})
 target_include_directories(material_engine_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(material_engine_smoke PRIVATE engine runtime_support)

@@ -25,7 +25,8 @@ enum
  * extent must conservatively include AA, deformation and metaball expansion.
  * wobble = amplitude, angular frequency, temporal frequency, sort key.
  * pluck = amplitude, origin, age, speed. time[0] is simulation time;
- * remaining padding is reserved. Equal sort keys retain caller order. */
+ * remaining values are reserved by the raster. Equal sort keys retain caller
+ * order. */
 typedef struct
 {
     float inv_rot[4], pos[2], extent[2];
@@ -56,7 +57,7 @@ typedef struct
      * w = gloss (one minus roughness). Liquids: xy = surface normal, negative
      * z = refraction strength, w = surface confidence. */
     CF_Texture scene, emission, absorption, albedo, normal;
-    /* x = material height (world units) times coverage, y = coverage. */
+    /* RG16F: x = material height (world units) times coverage, y = coverage. */
     CF_Texture relief;
 } render_material_textures;
 

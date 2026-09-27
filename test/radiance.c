@@ -307,6 +307,111 @@ static double receiver_light(const CF_Pixel *pixels)
     return sum / (24 * 16);
 }
 
+/* Coarse diffuse reconstruction must retain a subpixel emitter, respect a
+ * thin opaque boundary, and resize in both split-luminance modes. */
+static bool reconstruction_sampling(render_material_raster *raster)
+{
+    render_material_entity spark = emitter();
+    spark.radius = .8f;
+    spark.extent[0] = spark.extent[1] = 2;
+    spark.border_thickness = .5f;
+    spark.emission[1] = .4f;
+    spark.border_emission[0] = .5f;
+    render_material_entity thin_wall = wall_with(1, .8f);
+    thin_wall.points[0] = .8f;
+    thin_wall.extent[0] = 1.8f;
+    render_material_entity receiver = wall_with(0, .8f);
+    receiver.pos[0] = 28;
+    receiver.points[0] = 8;
+    receiver.extent[0] = 9;
+
+    render_radiance *radiance = render_radiance_new();
+    CF_Canvas full_canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    CF_Canvas small_canvas = cf_make_canvas(cf_canvas_defaults(64, 64));
+    bool ok = radiance && full_canvas.id && small_canvas.id &&
+              render_material_raster_resize(raster, SIDE, SIDE);
+    float reference_open = 0;
+    for (int mode = 0; mode <= 1 && ok; mode++) {
+        for (int reconstruction = 0; reconstruction <= 1 && ok; reconstruction++) {
+            if (mode && !reconstruction) {
+                continue;
+            }
+            GameHRC2D lighting = game_hrc2d_defaults();
+            lighting.adaptive = false;
+            lighting.feedback = false;
+            lighting.fog = 0;
+            lighting.scale = .5f;
+            lighting.reconstruction_scale = reconstruction ? .5f : 1;
+            lighting.luminance_scale = .5f;
+            lighting.luminance_mode = mode;
+            ok = render_radiance_set_lighting(radiance, lighting) &&
+                 render_radiance_resize(radiance, SIDE, SIDE);
+            CF_Pixel open[PIXELS], blocked[PIXELS];
+            if (ok) {
+                render_material_entity entities[] = { spark, receiver };
+                ok = solve(raster, radiance, full_canvas, entities, 2, SIDE, 4, open);
+            }
+            if (ok) {
+                render_material_entity entities[] = { spark, thin_wall, receiver };
+                ok = solve(raster, radiance, full_canvas, entities, 3, SIDE, 4, blocked);
+            }
+            if (!ok) {
+                break;
+            }
+
+            double open_light = receiver_light(open);
+            double blocked_light = receiver_light(blocked);
+            if (!mode && !reconstruction) {
+                reference_open = (float)open_light;
+            }
+            printf(
+                "radiance reconstruction mode=%d scale=%.1f: open %.3f blocked "
+                "%.3f\n",
+                mode,
+                lighting.reconstruction_scale,
+                open_light,
+                blocked_light
+            );
+            ok = open_light > 0.01 && blocked_light < open_light * .98;
+            if (reconstruction) {
+                ok &= open_light > reference_open * .2 &&
+                      open_light < reference_open * 4;
+            }
+        }
+    }
+    if (ok) {
+        GameHRC2D lighting = game_hrc2d_defaults();
+        lighting.adaptive = false;
+        lighting.feedback = false;
+        lighting.fog = 0;
+        lighting.scale = .5f;
+        lighting.reconstruction_scale = .5f;
+        lighting.luminance_scale = .5f;
+        lighting.luminance_mode = 1;
+        CF_Pixel small_pixels[64 * 64];
+        render_material_entity small_entities[] = { spark, receiver };
+        ok = render_radiance_set_lighting(radiance, lighting) &&
+             render_material_raster_resize(raster, 64, 64) &&
+             render_radiance_resize(radiance, 64, 64) &&
+             solve(raster, radiance, small_canvas, small_entities, 2, 64, 2, small_pixels) &&
+             small_pixels[32 * 64 + 60].colors.g > 0.01f;
+    }
+    if (small_canvas.id) {
+        cf_destroy_canvas(small_canvas);
+    }
+    if (full_canvas.id) {
+        cf_destroy_canvas(full_canvas);
+    }
+    if (radiance) {
+        render_radiance_free(radiance);
+    }
+    render_material_raster_resize(raster, SIDE, SIDE);
+    if (!ok) {
+        fprintf(stderr, "HRC reduced reconstruction lost source light or crossed an occluder\n");
+    }
+    return ok;
+}
+
 static bool split_luminance_bounce(render_material_raster *raster)
 {
     render_radiance *full = render_radiance_new();
@@ -1271,6 +1376,50 @@ static bool solve_moving(
     return read_pixels(canvas, pixels, PIXELS);
 }
 
+/* A zoom changes the world-space size of every work pixel while leaving the
+ * raster dimensions fixed. Capture the first zoomed frame, when split
+ * transport would otherwise try to reuse three quarters of the old frusta. */
+static bool solve_zoom_transition(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    CF_Pixel *pixels
+)
+{
+    render_radiance_reset(radiance);
+    for (int frame = 0; frame < 2; frame++) {
+        float size = frame == 0 ? SIDE : SIDE * .8f;
+        render_view_2d view = { .min_x = -size * .5f,
+                                .max_y = size * .5f,
+                                .width = size,
+                                .height = size,
+                                .crop_max_u = 1,
+                                .crop_max_v = 1 };
+        cf_app_update(NULL);
+        if (!render_material_raster_draw(raster, entities, count, view)) {
+            cf_app_draw_onto_screen(false);
+            return false;
+        }
+        render_material_textures textures = render_material_raster_textures(raster);
+        render_radiance_inputs inputs = { textures.scene,
+                                          textures.emission,
+                                          textures.absorption,
+                                          textures.albedo,
+                                          textures.normal };
+        cf_draw_push();
+        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+        bool ok = render_radiance_draw(radiance, inputs, view, canvas);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(false);
+        if (!ok) {
+            return false;
+        }
+    }
+    return read_pixels(canvas, pixels, PIXELS);
+}
+
 static double mean_difference(const CF_Pixel *a, const CF_Pixel *b)
 {
     double sum = 0;
@@ -1308,8 +1457,248 @@ static bool split_transport(render_material_raster *raster, CF_Canvas canvas)
             render_radiance_free(radiance);
         }
     }
+    if (ok) {
+        render_material_entity entities[] = { emitter(), wall_with(.2f, .8f) };
+        static CF_Pixel full[PIXELS], split[PIXELS];
+        render_radiance *radiance = render_radiance_new();
+        GameHRC2D lighting = game_hrc2d_defaults();
+        lighting.adaptive = false;
+        lighting.fog = 0;
+        lighting.scale = 1;
+        lighting.split_frames = 1;
+        bool zoom_ok = radiance && render_radiance_set_lighting(radiance, lighting) &&
+                       render_radiance_resize(radiance, SIDE, SIDE) &&
+                       solve_zoom_transition(raster, radiance, canvas, entities, 2, full);
+        lighting.split_frames = 4;
+        zoom_ok = zoom_ok && render_radiance_set_lighting(radiance, lighting) &&
+                  solve_zoom_transition(raster, radiance, canvas, entities, 2, split);
+        double difference = zoom_ok ? mean_difference(full, split) : 0;
+        zoom_ok = zoom_ok && difference < .1;
+        if (radiance) {
+            render_radiance_free(radiance);
+        }
+        if (!zoom_ok) {
+            fprintf(stderr, "HRC split transport must refresh after a zoom\n");
+            ok = false;
+        }
+    }
     if (!ok) {
         fprintf(stderr, "HRC split transport must match a full solve\n");
+    }
+    return ok;
+}
+
+static bool view_crop_matches(
+    const render_view_2d_frame *frame,
+    float center_x,
+    float center_y,
+    float width,
+    float height
+)
+{
+    const render_view_2d *view = &frame->view;
+    return fabsf(view->min_x + view->width * view->crop_min_u - (center_x - width * .5f)) <
+               1e-4f &&
+           fabsf(view->min_x + view->width * view->crop_max_u - (center_x + width * .5f)) <
+               1e-4f &&
+           fabsf(view->max_y - view->height * view->crop_min_v - (center_y + height * .5f)) <
+               1e-4f &&
+           fabsf(view->max_y - view->height * view->crop_max_v - (center_y - height * .5f)) <
+               1e-4f;
+}
+
+typedef struct
+{
+    float center_x, center_y, width, height, margin, scale, min_scale;
+    int output_width, output_height, max_raster_size;
+} view_grid_case;
+
+static bool view_grid_make(view_grid_case input, render_view_2d_frame *frame)
+{
+    render_view_2d_camera camera = {
+        .min_x = input.center_x - input.width * .5f,
+        .max_y = input.center_y + input.height * .5f,
+        .width = input.width,
+        .height = input.height,
+        .output_width = input.output_width,
+        .output_height = input.output_height,
+    };
+    render_view_2d_settings settings = {
+        .margin = input.margin,
+        .work_scale = input.scale,
+        .min_work_scale = input.min_scale,
+        .max_raster_size = input.max_raster_size,
+    };
+    return render_view_2d_world_margin(camera, settings, frame);
+}
+
+static bool view_grid()
+{
+    render_view_2d_frame a = { 0 }, wide = { 0 }, capped = { 0 }, edge = { 0 },
+                         adaptive = { 0 }, distant = { 0 }, zero_margin = { 0 };
+    bool ok = view_grid_make(
+                  (view_grid_case){
+                      .center_x = .25f,
+                      .center_y = .35f,
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &a
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .center_x = -12,
+                      .center_y = 20,
+                      .width = 1024,
+                      .height = 4000,
+                      .output_width = 1280,
+                      .output_height = 4000,
+                      .margin = 30,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &wide
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 3840,
+                      .output_height = 2160,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &capped
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 4096,
+                      .output_height = 1080,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &edge
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .center_x = .25f,
+                      .center_y = .35f,
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .margin = 64,
+                      .scale = .9f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &adaptive
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .center_x = 1000000.25f,
+                      .center_y = -1000000.5f,
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &distant
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .scale = 1,
+                      .min_scale = 1,
+                      .max_raster_size = 4096,
+                  },
+                  &zero_margin
+              );
+    ok &= adaptive.raster_width == a.raster_width &&
+          adaptive.raster_height == a.raster_height;
+    for (int i = 0; i < 128 && ok; i++) {
+        float center_x = -5 + i * .13f;
+        float center_y = 4 - i * .09f;
+        render_view_2d_frame moving;
+        ok = view_grid_make(
+                 (view_grid_case){
+                     .center_x = center_x,
+                     .center_y = center_y,
+                     .width = 960,
+                     .height = 540,
+                     .output_width = 960,
+                     .output_height = 540,
+                     .margin = 64,
+                     .scale = .5f,
+                     .min_scale = .1f,
+                     .max_raster_size = 4096,
+                 },
+                 &moving
+             ) &&
+             moving.raster_width == a.raster_width &&
+             moving.raster_height == a.raster_height;
+        if (!ok) {
+            break;
+        }
+        const render_view_2d *view = &moving.view;
+        float left = view->min_x + view->width * view->crop_min_u;
+        float right = view->min_x + view->width * view->crop_max_u;
+        float top = view->max_y - view->height * view->crop_min_v;
+        float bottom = view->max_y - view->height * view->crop_max_v;
+        float cell_x = view->width / ceilf(moving.raster_width * .5f);
+        float cell_y = view->height / ceilf(moving.raster_height * .5f);
+        ok &= fabsf(left - (center_x - 480)) < 1e-4f &&
+              fabsf(right - (center_x + 480)) < 1e-4f &&
+              fabsf(top - (center_y + 270)) < 1e-4f &&
+              fabsf(bottom - (center_y - 270)) < 1e-4f &&
+              fabsf(view->min_x / cell_x - roundf(view->min_x / cell_x)) < 1e-4f &&
+              fabsf(view->max_y / cell_y - roundf(view->max_y / cell_y)) < 1e-4f;
+    }
+    ok &= wide.raster_width <= 4096 && wide.raster_height <= 4096 &&
+          capped.raster_width <= 4096 && capped.raster_height <= 4096 &&
+          capped.margin_x < 64 && capped.margin_y == 64 &&
+          edge.raster_width == 4096 && edge.margin_x == 0 &&
+          !edge.grid_aligned && view_crop_matches(&wide, -12, 20, 1024, 4000) &&
+          view_crop_matches(&capped, 0, 0, 960, 540) &&
+          view_crop_matches(&edge, 0, 0, 960, 540) &&
+          view_crop_matches(&distant, 1000000.25f, -1000000.5f, 960, 540) &&
+          zero_margin.margin_x == 0 && zero_margin.margin_y == 0 &&
+          zero_margin.grid_aligned;
+    render_view_2d_frame too_wide;
+    ok &= !view_grid_make(
+        (view_grid_case){
+            .width = 1,
+            .height = 300,
+            .output_width = 4097,
+            .output_height = 300,
+            .scale = .5f,
+            .min_scale = .1f,
+            .max_raster_size = 4096,
+        },
+        &too_wide
+    );
+    if (!ok) {
+        fprintf(stderr, "HRC world margin must preserve its grid, crop, aspect and 4K bound\n");
     }
     return ok;
 }
@@ -1317,10 +1706,12 @@ static bool split_transport(render_material_raster *raster, CF_Canvas canvas)
 int test_radiance()
 {
     extern bool test_radiance_intervals();
+    extern bool test_radiance_history();
+    extern bool test_material_sampling();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    bool ok = raster && radiance && canvas.id && packed_fluence();
+    bool ok = raster && radiance && canvas.id && view_grid() && packed_fluence();
     if (!ok) {
         fprintf(
             stderr,
@@ -1519,7 +1910,10 @@ int test_radiance()
     ok &= split_transport(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);
     ok &= reflection_pixels();
+    ok &= reconstruction_sampling(raster);
     ok &= test_radiance_intervals();
+    ok &= test_radiance_history();
+    ok &= test_material_sampling();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }

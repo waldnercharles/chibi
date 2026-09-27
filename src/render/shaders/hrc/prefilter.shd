@@ -32,7 +32,12 @@ layout(set = 2, binding = 0) uniform Params
 	int u_work_w;
 	int u_work_h;
 	int u_luminance_only;
+	vec2 u_history_offset;
+	int u_history_valid;
+	vec4 u_crop_uv;
 };
+
+#include "hrc/hrc_domain.shd"
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -44,26 +49,8 @@ vec3 transport_color(vec3 value)
 
 vec3 emission_sample(ivec2 p, int lod)
 {
-	vec3 value = texelFetch(u_emission, p, lod).rgb;
-	#ifdef HRC_LUMINANCE
-	return vec3(dot(value, vec3(0.2126, 0.7152, 0.0722)));
-	#else
-	return transport_color(value);
-	#endif
-}
-
-vec3 bounce_sample(ivec2 p, int lod)
-{
-	#ifdef HRC_LUMINANCE
-	return vec3(texelFetch(u_bounce, p, lod).r);
-	#else
-	return transport_color(texelFetch(u_bounce, p, lod).rgb);
-	#endif
-}
-
-vec3 emission_sample_lod(vec2 uv, float lod)
-{
-	vec3 value = textureLod(u_emission, uv, lod).rgb;
+	vec2 uv = (vec2(p) + 0.5) / vec2(textureSize(u_emission, lod));
+	vec3 value = texelFetch(u_emission, p, lod).rgb * hrc_emission_weight(uv, u_crop_uv);
 	#ifdef HRC_LUMINANCE
 	return vec3(dot(value, vec3(0.2126, 0.7152, 0.0722)));
 	#else
@@ -73,6 +60,9 @@ vec3 emission_sample_lod(vec2 uv, float lod)
 
 vec3 bounce_sample_lod(vec2 uv, float lod)
 {
+	uv += u_history_offset;
+	if (u_history_valid == 0 || any(lessThan(uv, vec2(0.0))) ||
+	    any(greaterThanEqual(uv, vec2(1.0)))) return vec3(0.0);
 	#ifdef HRC_LUMINANCE
 	return vec3(textureLod(u_bounce, uv, lod).r);
 	#else
@@ -80,16 +70,28 @@ vec3 bounce_sample_lod(vec2 uv, float lod)
 	#endif
 }
 
+vec3 emission_sample_lod(vec2 uv, float lod)
+{
+	vec3 value = textureLod(u_emission, uv, lod).rgb * hrc_emission_weight(uv, u_crop_uv);
+	#ifdef HRC_LUMINANCE
+	return vec3(dot(value, vec3(0.2126, 0.7152, 0.0722)));
+	#else
+	return transport_color(value);
+	#endif
+}
+
 void main()
 {
 	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
 	if (gid.x >= u_work_w || gid.y >= u_work_h) return;
+	vec2 bounce_ratio = vec2(textureSize(u_bounce, 0)) / vec2(u_work_w, u_work_h);
+	float bounce_lod = max(ceil(log2(max(bounce_ratio.x, bounce_ratio.y))), 0.0);
 
 	// At an exact 2x reduction the generated mip already is the required
 	// arithmetic 2x2 reduction. Avoid four filtered reads per input texture.
 	if (u_canvas_w == u_work_w * 2 && u_canvas_h == u_work_h * 2) {
 		vec3 emission = emission_sample(gid, 1);
-		vec3 bounce = bounce_sample(gid, 1);
+		vec3 bounce = bounce_sample_lod((vec2(gid) + 0.5) / vec2(u_work_w, u_work_h), bounce_lod);
 		float tau = dot(texelFetch(u_transmittance, gid, 1).rgb, vec3(1.0 / 3.0));
 		#ifdef HRC_LUMINANCE
 		imageStore(u_emission_out, gid, vec4(emission.r, 0, 0, 0));
@@ -142,7 +144,7 @@ void main()
 				float py = float(y0 + dy) + 0.5;
 				vec2 uv = vec2(px, py) / vec2(u_canvas_w, u_canvas_h);
 				emission_sum += emission_sample_lod(uv, emission_lod);
-				bounce_sum += bounce_sample_lod(uv, emission_lod);
+				bounce_sum += bounce_sample_lod(uv, bounce_lod);
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 			}
 		}
@@ -162,7 +164,7 @@ void main()
 				float w = exp(-(ddx * ddx * inv2s2_x + ddy * ddy * inv2s2_y));
 
 				emission_sum += emission_sample_lod(uv, emission_lod) * w;
-				bounce_sum += bounce_sample_lod(uv, emission_lod) * w;
+				bounce_sum += bounce_sample_lod(uv, bounce_lod) * w;
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 				weight_sum += w;
 			}

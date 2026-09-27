@@ -225,7 +225,10 @@ static void boundaries(
                                       fabsf(ly) <= o.half_size.y + skin;
                 if (inside) {
                     grid->cells[at].solid = true;
-                    grid->cells[at].boundary = b.velocity;
+                    grid->cells[at].boundary = (fluid_vec){
+                        b.velocity.x - b.angular_velocity * dy,
+                        b.velocity.y + b.angular_velocity * dx
+                    };
                 }
             }
         }

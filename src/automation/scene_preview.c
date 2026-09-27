@@ -419,6 +419,8 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         }
         yyjson_mut_val *performance = yyjson_mut_obj_add_obj(response, result, "performance");
         bool instrumented = capture_path != NULL || options.pass_timing || frames_path;
+        const char *metal_hud = getenv("MTL_HUD_ENABLED");
+        instrumented |= metal_hud && !strcmp(metal_hud, "1");
 #ifdef CHIBI_ENABLE_TRACY
         instrumented = true;
 #endif

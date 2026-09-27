@@ -19,10 +19,12 @@
 #define HRC_MAX_TRACE_LEVELS 5
 #define HRC_MAX_CASCADES 16
 #define HRC_INTERVAL_BYTES 8
+#define HRC_LUMINANCE_INTERVAL_BYTES 4
 #define HRC_FLUENCE_BYTES 4
 struct render_radiance
 {
-    int canvas_w, canvas_h, work_w, work_h, world_w, world_h, N, trace_cutoff;
+    int canvas_w, canvas_h, radiance_w, radiance_h, work_w, work_h, world_w,
+        world_h, N, trace_cutoff;
     float falloff, bounce_intensity, bounce_hysteresis, radiance_hysteresis;
     int upscale_mode, radiance_ping, frame_count;
     CF_Aabb screen;
@@ -35,7 +37,7 @@ struct render_radiance
     bool child_luminance_reuse;
     bool work_resources_ready;
     struct render_radiance *luminance;
-    float scale;
+    float scale, reconstruction_scale;
     int trace_levels;
     bool feedback;
     double frame_average;
@@ -57,6 +59,9 @@ struct render_radiance
     /* This frame's view: top-left corner and width in world units. */
     CF_V2 view_corner;
     float view_width;
+    render_view_2d history_view;
+    CF_V2 history_offset;
+    bool has_history, history_valid;
     CF_StorageBuffer frustum[4], merge_weights[HRC_MAX_CASCADES];
     CF_ComputeShader trace_shd, extend_shd, merge_shd, gather_shd, blur_shd,
         blur_luminance_rgb_shd, prefilter_shd, surface_seed_shd, surface_blur_shd;
@@ -262,7 +267,9 @@ static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
             }
         }
 
-        hrc->t_buf[i] = s_make_ssbo(max_t_count * HRC_INTERVAL_BYTES);
+        int interval_bytes = hrc->luminance_only ? HRC_LUMINANCE_INTERVAL_BYTES
+                                                 : HRC_INTERVAL_BYTES;
+        hrc->t_buf[i] = s_make_ssbo(max_t_count * interval_bytes);
         if (hrc->t_buf[i].id == 0) {
             goto fail;
         }
@@ -418,6 +425,42 @@ static void s_dispatch_merge(HRC *hrc, int rot_w, int rot_h, int level, CF_Stora
     cf_dispatch_compute(hrc->merge_shd, mat, d);
 }
 
+static void s_begin_view(HRC *hrc, render_view_2d view)
+{
+    bool same_domain = hrc->has_history && hrc->history_view.width == view.width &&
+                       hrc->history_view.height == view.height;
+    if (hrc->has_history && !same_domain) {
+        hrc->frusta_solved = false;
+    }
+    hrc->history_valid = same_domain;
+    hrc->history_offset = hrc->history_valid
+                            ? (CF_V2){ (view.min_x - hrc->history_view.min_x) / view.width,
+                                       (hrc->history_view.max_y - view.max_y) / view.height }
+                            : (CF_V2){ 0 };
+    hrc->history_view = view;
+    hrc->has_history = true;
+}
+
+static void s_history_uniforms(HRC *hrc)
+{
+    int valid = hrc->history_valid;
+    cf_material_set_uniform_cs(
+        hrc->compute_material,
+        "u_history_offset",
+        &hrc->history_offset,
+        CF_UNIFORM_TYPE_FLOAT2,
+        1
+    );
+    cf_material_set_uniform_cs(hrc->compute_material, "u_history_valid", &valid, CF_UNIFORM_TYPE_INT, 1);
+}
+
+static void s_domain_uniforms(HRC *hrc)
+{
+    render_view_2d view = hrc->history_view;
+    float crop[] = { view.crop_min_u, view.crop_min_v, view.crop_max_u, view.crop_max_v };
+    cf_material_set_uniform_cs(hrc->compute_material, "u_crop_uv", crop, CF_UNIFORM_TYPE_FLOAT4, 1);
+}
+
 static void s_dispatch_prefilter(HRC *hrc)
 {
     CF_Material mat = hrc->compute_material;
@@ -425,6 +468,8 @@ static void s_dispatch_prefilter(HRC *hrc)
     cf_material_set_texture_cs(mat, "u_emission", hrc->emission);
     cf_material_set_texture_cs(mat, "u_transmittance", hrc->transmittance);
     cf_material_set_texture_cs(mat, "u_bounce", cf_canvas_get_target(hrc->bounce_canvas));
+    s_history_uniforms(hrc);
+    s_domain_uniforms(hrc);
 
     int params[4] = { hrc->canvas_w, hrc->canvas_h, hrc->work_w, hrc->work_h };
     cf_material_set_uniform_cs(mat, "u_canvas_w", params + 0, CF_UNIFORM_TYPE_INT, 1);
@@ -450,6 +495,8 @@ static void s_dispatch_prefilter(HRC *hrc)
 static void s_dispatch_gather(HRC *hrc)
 {
     CF_Material mat = hrc->compute_material;
+    s_history_uniforms(hrc);
+    s_domain_uniforms(hrc);
 
     cf_material_set_texture_cs(mat, "u_emission", hrc->emission);
     cf_material_set_texture_cs(mat, "u_transmittance", hrc->transmittance);
@@ -484,8 +531,8 @@ static void s_dispatch_gather(HRC *hrc)
     cf_material_set_uniform_cs(mat, "u_luminance_only", &luminance_only, CF_UNIFORM_TYPE_INT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
-        s_ceil_div(hrc->canvas_w, HRC_WG),
-        s_ceil_div(hrc->canvas_h, HRC_WG),
+        s_ceil_div(hrc->radiance_w, HRC_WG),
+        s_ceil_div(hrc->radiance_h, HRC_WG),
         1
     );
     CF_StorageBuffer ro[4] = { hrc->frustum[0],
@@ -505,6 +552,7 @@ static void s_dispatch_gather(HRC *hrc)
 static void s_dispatch_blur(HRC *hrc)
 {
     CF_Material mat = hrc->compute_material;
+    s_history_uniforms(hrc);
     int prev = hrc->radiance_ping;
     int curr = 1 - prev;
 
@@ -512,7 +560,7 @@ static void s_dispatch_blur(HRC *hrc)
     cf_material_set_texture_cs(mat, "u_transmittance", hrc->transmittance);
     cf_material_set_texture_cs(mat, "u_prev_radiance", hrc->radiance_tex[prev]);
 
-    float texel_size[2] = { 1.0f / hrc->canvas_w, 1.0f / hrc->canvas_h };
+    float texel_size[2] = { 1.0f / hrc->radiance_w, 1.0f / hrc->radiance_h };
     float threshold = 0.1f;
     float hysteresis = hrc->radiance_hysteresis;
     if (hysteresis < 0.01f) {
@@ -526,8 +574,8 @@ static void s_dispatch_blur(HRC *hrc)
     cf_material_set_uniform_cs(mat, "u_hysteresis", &hysteresis, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
-        s_ceil_div(hrc->canvas_w, HRC_WG),
-        s_ceil_div(hrc->canvas_h, HRC_WG),
+        s_ceil_div(hrc->radiance_w, HRC_WG),
+        s_ceil_div(hrc->radiance_h, HRC_WG),
         1
     );
     CF_Texture rw_tex[1] = { hrc->radiance_tex[curr] };
@@ -541,6 +589,7 @@ static void s_dispatch_blur(HRC *hrc)
 static void s_dispatch_luminance_blur_from_rgb(HRC *hrc, CF_Texture radiance_source)
 {
     CF_Material mat = hrc->compute_material;
+    s_history_uniforms(hrc);
 
     int prev = hrc->radiance_ping;
     int curr = 1 - prev;
@@ -549,7 +598,7 @@ static void s_dispatch_luminance_blur_from_rgb(HRC *hrc, CF_Texture radiance_sou
     cf_material_set_texture_cs(mat, "u_transmittance", hrc->transmittance);
     cf_material_set_texture_cs(mat, "u_prev_radiance", hrc->radiance_tex[prev]);
 
-    float texel_size[2] = { 1.0f / hrc->canvas_w, 1.0f / hrc->canvas_h };
+    float texel_size[2] = { 1.0f / hrc->radiance_w, 1.0f / hrc->radiance_h };
     float threshold = 0.1f;
     float hysteresis = hrc->radiance_hysteresis;
     if (hysteresis < 0.01f) {
@@ -563,8 +612,8 @@ static void s_dispatch_luminance_blur_from_rgb(HRC *hrc, CF_Texture radiance_sou
     cf_material_set_uniform_cs(mat, "u_hysteresis", &hysteresis, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
-        s_ceil_div(hrc->canvas_w, HRC_WG),
-        s_ceil_div(hrc->canvas_h, HRC_WG),
+        s_ceil_div(hrc->radiance_w, HRC_WG),
+        s_ceil_div(hrc->radiance_h, HRC_WG),
         1
     );
     CF_Texture rw_tex[1] = { hrc->radiance_tex[curr] };
@@ -716,7 +765,15 @@ static void s_solve_merge(HRC *hrc, int j, int N)
 
 static void s_render_bounce(HRC *hrc, CF_Texture radiance_source)
 {
+    if (!hrc->feedback) {
+        return;
+    }
     float hysteresis = hrc->bounce_hysteresis;
+    /* Transport samples the old bounce in world coordinates. Fixed-function
+     * blending cannot move its destination, so replace it when the view moves. */
+    if (!hrc->history_valid || hrc->history_offset.x || hrc->history_offset.y) {
+        hysteresis = 1;
+    }
     if (hysteresis < 0.01f) {
         hysteresis = 0.01f;
     }
@@ -770,6 +827,7 @@ static void destroy_images(HRC *hrc)
         *textures[i] = (CF_Texture){ 0 };
     }
     hrc->canvas_w = hrc->canvas_h = 0;
+    hrc->radiance_w = hrc->radiance_h = 0;
 }
 
 static render_radiance *s_new(bool luminance_only)
@@ -781,9 +839,15 @@ static render_radiance *s_new(bool luminance_only)
     memset(hrc, 0, sizeof *hrc);
     hrc->luminance_only = luminance_only;
     hrc->compute_material = cf_make_material();
-    hrc->trace_shd = cf_make_compute_shader("hrc/trace.shd");
-    hrc->extend_shd = cf_make_compute_shader("hrc/extend.shd");
-    hrc->merge_shd = cf_make_compute_shader("hrc/merge.shd");
+    hrc->trace_shd = cf_make_compute_shader(
+        luminance_only ? "hrc/trace_luminance.shd" : "hrc/trace.shd"
+    );
+    hrc->extend_shd = cf_make_compute_shader(
+        luminance_only ? "hrc/extend_luminance.shd" : "hrc/extend.shd"
+    );
+    hrc->merge_shd = cf_make_compute_shader(
+        luminance_only ? "hrc/merge_luminance.shd" : "hrc/merge.shd"
+    );
     hrc->gather_shd = cf_make_compute_shader(
         luminance_only ? "hrc/gather_luminance.shd" : "hrc/gather.shd"
     );
@@ -808,6 +872,7 @@ static render_radiance *s_new(bool luminance_only)
         cf_texture_update(hrc->black, &black, sizeof black);
     }
     hrc->scale = .5f;
+    hrc->reconstruction_scale = 1;
     hrc->trace_levels = 3;
     hrc->feedback = true;
     hrc->falloff = hrc->bounce_intensity = 1;
@@ -874,11 +939,12 @@ void render_radiance_reset(render_radiance *hrc)
     }
     hrc->frame_count = 0;
     hrc->radiance_ping = 0;
+    hrc->has_history = hrc->history_valid = false;
     hrc->frusta_solved = false;
     if (!hrc->canvas_w) {
         return;
     }
-    int bytes = hrc->canvas_w * hrc->canvas_h * (hrc->luminance_only ? 2 : 8);
+    int bytes = hrc->radiance_w * hrc->radiance_h * (hrc->luminance_only ? 2 : 8);
     void *zero = xmalloc((size_t)bytes);
     memset(zero, 0, (size_t)bytes);
     for (int i = 0; i < 2; i++) {
@@ -897,40 +963,57 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     if (width < 2 || height < 2 || width > 4096 || height > 4096) {
         return false;
     }
+    int radiance_w = (int)fmaxf(2, ceilf(width * hrc->reconstruction_scale));
+    int radiance_h = (int)fmaxf(2, ceilf(height * hrc->reconstruction_scale));
     bool luminance_ready = !hrc->luminance ||
                            (hrc->luminance->canvas_w == width &&
                             hrc->luminance->canvas_h == height &&
+                            hrc->luminance->radiance_w == radiance_w &&
+                            hrc->luminance->radiance_h == radiance_h &&
                             hrc->luminance->work_w ==
                                 (int)ceilf(width * hrc->luminance->scale) &&
                             hrc->luminance->work_h ==
                                 (int)ceilf(height * hrc->luminance->scale));
     if (hrc->canvas_w == width && hrc->canvas_h == height &&
+        hrc->radiance_w == radiance_w && hrc->radiance_h == radiance_h &&
         hrc->work_w == (int)ceilf(width * hrc->scale) &&
         hrc->work_h == (int)ceilf(height * hrc->scale) && luminance_ready &&
         hrc->work_resources_ready == !hrc->luminance_reuse) {
         return true;
     }
-    bool images_changed = hrc->canvas_w != width || hrc->canvas_h != height;
+    bool images_changed = hrc->canvas_w != width || hrc->canvas_h != height ||
+                          hrc->radiance_w != radiance_w ||
+                          hrc->radiance_h != radiance_h;
     bool ok = true;
     if (images_changed) {
         destroy_images(hrc);
         CF_PixelFormat radiance_format = hrc->luminance_only
                                            ? CF_PIXEL_FORMAT_R16_FLOAT
                                            : CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
-        hrc->bounce_canvas = s_make_canvas(width, height, true, radiance_format);
+        hrc->bounce_canvas = s_make_canvas(radiance_w, radiance_h, true, radiance_format);
         CF_Texture *textures[] = { &hrc->radiance_tex[0],
                                    &hrc->radiance_tex[1],
                                    &hrc->radiance_raw_tex,
                                    &hrc->radiance_bounce_tex };
         for (int i = 0; i < 4; i++) {
-            *textures[i] = s_make_compute_texture(width, height, CF_FILTER_NEAREST, radiance_format);
+            *textures[i] = s_make_compute_texture(
+                radiance_w,
+                radiance_h,
+                i < 2 ? CF_FILTER_LINEAR : CF_FILTER_NEAREST,
+                radiance_format
+            );
         }
         ok = hrc->bounce_canvas.id != 0;
         for (int i = 0; i < 4; i++) {
             ok = ok && textures[i]->id != 0;
         }
         if (!hrc->luminance_only) {
-            hrc->radiance_dirs_tex = s_make_compute_texture(width, height, CF_FILTER_NEAREST, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
+            hrc->radiance_dirs_tex = s_make_compute_texture(
+                radiance_w,
+                radiance_h,
+                CF_FILTER_LINEAR,
+                CF_PIXEL_FORMAT_R16G16B16A16_FLOAT
+            );
             ok = ok && hrc->radiance_dirs_tex.id != 0;
         }
     }
@@ -950,6 +1033,8 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     }
     hrc->canvas_w = width;
     hrc->canvas_h = height;
+    hrc->radiance_w = radiance_w;
+    hrc->radiance_h = radiance_h;
     if (hrc->luminance && !render_radiance_resize(hrc->luminance, width, height)) {
         s_destroy_work_resources(hrc);
         destroy_images(hrc);
@@ -1004,6 +1089,8 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
 {
     assert(radiance);
     const float values[] = { lighting.scale,
+                             lighting.reconstruction_scale,
+                             lighting.lighting_margin,
                              lighting.luminance_scale,
                              lighting.min_scale,
                              lighting.max_scale,
@@ -1029,7 +1116,9 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
             return false;
         }
     }
-    if (lighting.luminance_mode < 0 || lighting.luminance_mode > 1) {
+    if (lighting.reconstruction_scale < .5f ||
+        lighting.reconstruction_scale > 1 || lighting.lighting_margin > 256 ||
+        lighting.luminance_mode < 0 || lighting.luminance_mode > 1) {
         return false;
     }
     if (lighting.min_scale < .1f || lighting.max_scale > 1 ||
@@ -1051,6 +1140,9 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
     }
     bool luminance_reuse = radiance->luminance_only && lighting.luminance_mode == 1;
     bool reuse_changed = radiance->luminance_reuse != luminance_reuse;
+    bool reconstruction_changed = radiance->reconstruction_scale !=
+                                  lighting.reconstruction_scale;
+    radiance->reconstruction_scale = lighting.reconstruction_scale;
     render_radiance_settings settings = {
         .scale = radiance->authored_lighting && lighting.adaptive &&
                          lighting.scale == radiance->lighting.scale
@@ -1063,6 +1155,10 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
         .feedback = lighting.feedback
     };
     if (!render_radiance_set_settings(radiance, settings)) {
+        return false;
+    }
+    if (reconstruction_changed && radiance->canvas_w &&
+        !render_radiance_resize(radiance, radiance->canvas_w, radiance->canvas_h)) {
         return false;
     }
     radiance->falloff = lighting.falloff;
@@ -1117,6 +1213,7 @@ static bool s_dispatch_luminance_from_parent(
     if (!luminance->canvas_w || !parent->radiance_tex[parent->radiance_ping].id) {
         return false;
     }
+    s_begin_view(luminance, view);
     luminance->screen = (CF_Aabb){
         .min = { view.min_x + view.width * view.crop_min_u,
                  view.max_y - view.height * view.crop_max_v },
@@ -1173,6 +1270,7 @@ static bool s_dispatch_transport(HRC *hrc, render_radiance_inputs inputs, render
     if (!hrc->canvas_w) {
         return false;
     }
+    s_begin_view(hrc, view);
     hrc->screen = (CF_Aabb){ .min = { view.min_x + view.width * view.crop_min_u,
                                       view.max_y - view.height * view.crop_max_v },
                              .max = { view.min_x + view.width * view.crop_max_u,
@@ -1199,17 +1297,19 @@ static bool s_dispatch_transport(HRC *hrc, render_radiance_inputs inputs, render
         cf_push_gpu_label("Trace");
         s_solve_trace(hrc, q, hrc->N);
         cf_pop_gpu_label();
+        render_gpu_timing_mark("HRC trace");
         cf_push_gpu_label("Extend");
         s_solve_extend(hrc, q, hrc->N);
         cf_pop_gpu_label();
+        render_gpu_timing_mark("HRC extend");
         cf_push_gpu_label("Merge");
         s_solve_merge(hrc, q, hrc->N);
         cf_pop_gpu_label();
+        render_gpu_timing_mark("HRC merge");
         cf_pop_gpu_label();
     }
     hrc->frusta_solved = true;
     hrc->split_phase = (hrc->split_phase + 1) & 3;
-    render_gpu_timing_mark("HRC cascades");
     s_push_hrc_label(hrc, "gather");
     s_dispatch_gather(hrc);
     cf_pop_gpu_label();
@@ -1286,6 +1386,8 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_texture("relief_tex", inputs.relief.id ? inputs.relief : hrc->black);
     float world_per_px = view.width / (float)hrc->canvas_w;
     cf_draw_set_uniform("world_per_px", &world_per_px, CF_UNIFORM_TYPE_FLOAT, 1);
+    float reconstruction_threshold = lighting.upscale_threshold;
+    cf_draw_set_uniform("reconstruction_threshold", &reconstruction_threshold, CF_UNIFORM_TYPE_FLOAT, 1);
     float surface_params[4] = { surface_sigma > 0,
                                 lighting.surface_relief,
                                 lighting.surface_bevel,

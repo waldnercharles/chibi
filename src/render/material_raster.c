@@ -32,18 +32,18 @@ typedef struct
 
 struct render_material_raster
 {
-    CF_ComputeShader bin;
     render_programs *programs;
     material_batch *batches;
     char error[256];
     CF_Material material;
-    CF_StorageBuffer entities, counts, indices, parameters;
+    CF_StorageBuffer entities, offsets, indices, parameters;
     unsigned char *entity_data;
     float *parameter_data;
+    uint32_t *tile_offsets, *tile_cursor, *tile_indices;
     /* scene, emission, absorption, albedo, normal, relief */
     CF_Texture textures[6];
     render_material_entity *sorted;
-    int width, height, tiles, capacity;
+    int width, height, tiles, capacity, index_capacity;
 };
 
 static void free_targets(render_material_raster *r)
@@ -54,8 +54,8 @@ static void free_targets(render_material_raster *r)
         }
         r->textures[i] = (CF_Texture){ 0 };
     }
-    if (r->counts.id) {
-        cf_destroy_storage_buffer(r->counts);
+    if (r->offsets.id) {
+        cf_destroy_storage_buffer(r->offsets);
     }
     if (r->indices.id) {
         cf_destroy_storage_buffer(r->indices);
@@ -66,17 +66,16 @@ static void free_targets(render_material_raster *r)
     if (r->parameters.id) {
         cf_destroy_storage_buffer(r->parameters);
     }
-    r->counts = r->indices = r->entities = r->parameters = (CF_StorageBuffer){ 0 };
-    r->width = r->height = r->tiles = r->capacity = 0;
+    r->offsets = r->indices = r->entities = r->parameters = (CF_StorageBuffer){ 0 };
+    r->width = r->height = r->tiles = r->capacity = r->index_capacity = 0;
 }
 
 render_material_raster *render_material_raster_new()
 {
     render_material_raster *r = xcalloc(1, sizeof *r);
-    r->bin = cf_make_compute_shader("hrc/entity_bin.shd");
     r->programs = render_programs_new(RENDER_PROGRAM_COMPUTE);
     r->material = cf_make_material();
-    if (!r->bin.id || !r->material.id) {
+    if (!r->material.id) {
         render_material_raster_free(r);
         return NULL;
     }
@@ -89,15 +88,15 @@ void render_material_raster_free(render_material_raster *r)
         return;
     }
     free_targets(r);
-    if (r->bin.id) {
-        cf_destroy_compute_shader(r->bin);
-    }
     render_programs_free(r->programs);
     afree(r->batches);
     if (r->material.id) {
         cf_destroy_material(r->material);
     }
     afree(r->sorted);
+    afree(r->tile_offsets);
+    afree(r->tile_cursor);
+    afree(r->tile_indices);
     free(r->entity_data);
     free(r->parameter_data);
     free(r);
@@ -106,7 +105,6 @@ void render_material_raster_free(render_material_raster *r)
 static CF_StorageBuffer buffer(int bytes)
 {
     CF_StorageBufferParams params = cf_storage_buffer_defaults(bytes);
-    params.compute_writable = true;
     return cf_make_storage_buffer(params);
 }
 
@@ -122,7 +120,8 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
     free_targets(r);
     for (int i = 0; i < 6; i++) {
         CF_TextureParams params = cf_texture_defaults(width, height);
-        params.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+        params.pixel_format = i == 5 ? CF_PIXEL_FORMAT_R16G16_FLOAT
+                                     : CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT |
                        CF_TEXTURE_USAGE_COLOR_TARGET_BIT |
                        CF_TEXTURE_USAGE_COMPUTE_STORAGE_READ_BIT |
@@ -137,8 +136,8 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
         }
     }
     r->tiles = ((width + 15) / 16) * ((height + 15) / 16);
-    r->counts = buffer(r->tiles * (int)sizeof(uint32_t));
-    if (!r->counts.id) {
+    r->offsets = buffer((r->tiles + 1) * (int)sizeof(uint32_t));
+    if (!r->offsets.id) {
         free_targets(r);
         return false;
     }
@@ -147,7 +146,7 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
     return true;
 }
 
-static bool reserve(render_material_raster *r, int count)
+static bool reserve_entities(render_material_raster *r, int count)
 {
     if (count <= r->capacity) {
         return true;
@@ -160,30 +159,22 @@ static bool reserve(render_material_raster *r, int count)
         capacity *= 2;
     }
     count = capacity;
-    size_t index_bytes = (size_t)r->tiles * count * sizeof(uint32_t);
-    if (index_bytes > INT_MAX || count > INT_MAX / (int)sizeof(render_material_entity)) {
+    if (count > INT_MAX / (int)sizeof(render_material_entity) || count > INT_MAX / 1024) {
         return false;
     }
     CF_StorageBuffer entities = buffer(count * GPU_ENTITY_BYTES);
     CF_StorageBuffer parameters = buffer(count * 1024);
-    CF_StorageBuffer indices = buffer((int)index_bytes);
-    if (!entities.id || !indices.id || !parameters.id) {
+    if (!entities.id || !parameters.id) {
         if (parameters.id) {
             cf_destroy_storage_buffer(parameters);
         }
         if (entities.id) {
             cf_destroy_storage_buffer(entities);
         }
-        if (indices.id) {
-            cf_destroy_storage_buffer(indices);
-        }
         return false;
     }
     if (r->entities.id) {
         cf_destroy_storage_buffer(r->entities);
-    }
-    if (r->indices.id) {
-        cf_destroy_storage_buffer(r->indices);
     }
     if (r->parameters.id) {
         cf_destroy_storage_buffer(r->parameters);
@@ -192,9 +183,197 @@ static bool reserve(render_material_raster *r, int count)
     r->entity_data = xrealloc(r->entity_data, (size_t)count * GPU_ENTITY_BYTES);
     r->parameter_data = xrealloc(r->parameter_data, (size_t)count * 1024);
     r->entities = entities;
-    r->indices = indices;
     r->capacity = count;
     return true;
+}
+
+static bool reserve_indices(render_material_raster *r, int count)
+{
+    if (count < 1) {
+        count = 1;
+    }
+    if (count <= r->index_capacity) {
+        return true;
+    }
+    const int max_capacity = INT_MAX / (int)sizeof(uint32_t);
+    if (count > max_capacity) {
+        return false;
+    }
+    int capacity = r->index_capacity ? r->index_capacity : 256;
+    while (capacity < count) {
+        if (capacity > max_capacity / 2) {
+            capacity = count;
+            break;
+        }
+        capacity *= 2;
+    }
+    CF_StorageBuffer indices = buffer(capacity * (int)sizeof(uint32_t));
+    if (!indices.id) {
+        return false;
+    }
+    if (r->indices.id) {
+        cf_destroy_storage_buffer(r->indices);
+    }
+    r->indices = indices;
+    r->index_capacity = capacity;
+    return true;
+}
+
+typedef struct
+{
+    int x0, y0, x1, y1;
+} tile_rect;
+
+static bool tile_axis_range(float low, float high, int tiles, int *first, int *last)
+{
+    float extent = (float)(tiles * 16);
+    if (high < 0 || low > extent) {
+        return false;
+    }
+    if (isnan(low) || isnan(high)) {
+        *first = 0;
+        *last = tiles - 1;
+        return true;
+    }
+    *first = low <= 0 ? 0 : (int)ceilf(low / 16.0f) - 1;
+    *last = high >= extent ? tiles - 1 : (int)floorf(high / 16.0f);
+    *first = *first < 0 ? 0 : *first;
+    *last = *last >= tiles ? tiles - 1 : *last;
+    return *first <= *last;
+}
+
+static bool entity_tile_rect(
+    const render_material_entity *entity,
+    render_material_view view,
+    float px,
+    float py,
+    float pad,
+    int tiles_x,
+    int tiles_y,
+    tile_rect *rect
+)
+{
+    float center_x = (entity->pos[0] - view.min_x) * px;
+    float center_y = (view.max_y - entity->pos[1]) * py;
+    float extent_x = (entity->extent[0] + pad) * px;
+    float extent_y = (entity->extent[1] + pad) * py;
+    return tile_axis_range(center_x - extent_x, center_x + extent_x, tiles_x, &rect->x0, &rect->x1) &&
+           tile_axis_range(center_y - extent_y, center_y + extent_y, tiles_y, &rect->y0, &rect->y1);
+}
+
+static float circle_filter_half_width(float aa, float px, float py)
+{
+    float max_pixel = fmaxf(px, py);
+    return fmaxf(1.5f * max_pixel, fmaxf(0, aa) * 0.5f);
+}
+
+static bool circle_emission_filterable(const render_material_entity *entity)
+{
+    return entity->shape_type == RENDER_SHAPE_CIRCLE && entity->thickness <= 0 &&
+           entity->border_thickness <= 0 && entity->reserved[0] <= 0 &&
+           entity->reserved[1] <= 0 && entity->metaball_group == 0 &&
+           entity->wobble[0] == 0 && entity->pluck[0] == 0 &&
+           (entity->emission[0] != 0 || entity->emission[1] != 0 ||
+            entity->emission[2] != 0);
+}
+
+static bool bin_entities(
+    render_material_raster *r,
+    render_material_view view,
+    int tiles_x,
+    int tiles_y,
+    float px,
+    float py
+)
+{
+    asetlen(r->tile_offsets, r->tiles + 1);
+    memset(r->tile_offsets, 0, (size_t)(r->tiles + 1) * sizeof *r->tile_offsets);
+
+    for (int i = 0; i < acount(r->sorted); i++) {
+        tile_rect rect;
+        const render_material_entity *entity = &r->sorted[i];
+        float pad = circle_emission_filterable(entity)
+                      ? circle_filter_half_width(entity->aa, view.width / r->width, view.height / r->height)
+                      : 0;
+        if (!entity_tile_rect(entity, view, px, py, pad, tiles_x, tiles_y, &rect)) {
+            continue;
+        }
+        for (int y = rect.y0; y <= rect.y1; y++) {
+            for (int x = rect.x0; x <= rect.x1; x++) {
+                r->tile_offsets[y * tiles_x + x + 1]++;
+            }
+        }
+    }
+
+    uint64_t total = 0;
+    for (int tile = 0; tile < r->tiles; tile++) {
+        total += r->tile_offsets[tile + 1];
+        if (total > (uint64_t)(INT_MAX / (int)sizeof(uint32_t))) {
+            snprintf(r->error, sizeof r->error, "Material tile list exceeds storage-buffer limit");
+            return false;
+        }
+        r->tile_offsets[tile + 1] = (uint32_t)total;
+    }
+
+    asetlen(r->tile_cursor, r->tiles);
+    memcpy(r->tile_cursor, r->tile_offsets, (size_t)r->tiles * sizeof *r->tile_cursor);
+    asetlen(r->tile_indices, (int)total);
+    for (int i = 0; i < acount(r->sorted); i++) {
+        tile_rect rect;
+        const render_material_entity *entity = &r->sorted[i];
+        float pad = circle_emission_filterable(entity)
+                      ? circle_filter_half_width(entity->aa, view.width / r->width, view.height / r->height)
+                      : 0;
+        if (!entity_tile_rect(entity, view, px, py, pad, tiles_x, tiles_y, &rect)) {
+            continue;
+        }
+        for (int y = rect.y0; y <= rect.y1; y++) {
+            for (int x = rect.x0; x <= rect.x1; x++) {
+                int tile = y * tiles_x + x;
+                r->tile_indices[r->tile_cursor[tile]++] = (uint32_t)i;
+            }
+        }
+    }
+    return true;
+}
+
+static float circle_filter_scale(float radius, float half_width)
+{
+    float r2 = radius * radius;
+    if (radius <= 0) {
+        return 0;
+    }
+    if (half_width <= 0) {
+        return 1;
+    }
+    if (radius >= half_width) {
+        return r2 / (r2 + 0.2f * half_width * half_width);
+    }
+
+    /* Integrate the symmetric smoothstep over a disk whose radius is below the
+     * filter half-width; clipping the inner ramp changes the support polynomial. */
+    float q = radius / half_width;
+    float q2 = q * q;
+    float q3 = q2 * q;
+    float q5 = q3 * q2;
+    float support = 2.0f * half_width * half_width *
+                    (3.0f * q / 16.0f + 1.0f / 20.0f + q2 / 4.0f + q3 / 8.0f - q5 / 80.0f);
+    return r2 / support;
+}
+
+static float entity_emission_scale(
+    const render_material_entity *entity,
+    render_material_view view,
+    int width,
+    int height
+)
+{
+    if (!circle_emission_filterable(entity) || !isfinite(entity->radius) ||
+        entity->radius <= 0) {
+        return 1;
+    }
+    float half_width = circle_filter_half_width(entity->aa, view.width / width, view.height / height);
+    return circle_filter_scale(entity->radius, half_width);
 }
 
 static int compare(const void *a, const void *b)
@@ -311,7 +490,7 @@ bool render_material_raster_draw(
             return false;
         }
     }
-    if (!reserve(r, count ? count : 1)) {
+    if (!reserve_entities(r, count ? count : 1)) {
         return false;
     }
     asetlen(r->sorted, count);
@@ -321,6 +500,9 @@ bool render_material_raster_draw(
     }
     if (count) {
         qsort(r->sorted, (size_t)count, sizeof *r->sorted, compare);
+    }
+    for (int i = 0; i < count; i++) {
+        r->sorted[i].time[2] = entity_emission_scale(&r->sorted[i], view, r->width, r->height);
     }
     if (!prepare_batches(r)) {
         return false;
@@ -336,7 +518,18 @@ bool render_material_raster_draw(
     int tx = (r->width + 15) / 16, ty = (r->height + 15) / 16;
     float units[2] = { view.width / r->width, view.height / r->height };
     float pixels[2] = { r->width / view.width, r->height / view.height };
-    uniform(r, "u_entity_count", &count, CF_UNIFORM_TYPE_INT, 1);
+    if (!bin_entities(r, view, tx, ty, pixels[0], pixels[1]) ||
+        !reserve_indices(r, acount(r->tile_indices))) {
+        return false;
+    }
+    cf_update_storage_buffer(r->offsets, r->tile_offsets, (r->tiles + 1) * (int)sizeof(uint32_t));
+    if (acount(r->tile_indices)) {
+        cf_update_storage_buffer(
+            r->indices,
+            r->tile_indices,
+            acount(r->tile_indices) * (int)sizeof(uint32_t)
+        );
+    }
     uniform(r, "u_world_min_x", &view.min_x, CF_UNIFORM_TYPE_FLOAT, 1);
     uniform(r, "u_world_max_y", &view.max_y, CF_UNIFORM_TYPE_FLOAT, 1);
     uniform(r, "u_px_per_unit", pixels, CF_UNIFORM_TYPE_FLOAT, 2);
@@ -345,18 +538,8 @@ bool render_material_raster_draw(
     uniform(r, "u_tiles_y", &ty, CF_UNIFORM_TYPE_INT, 1);
     uniform(r, "u_canvas_w", &r->width, CF_UNIFORM_TYPE_INT, 1);
     uniform(r, "u_canvas_h", &r->height, CF_UNIFORM_TYPE_INT, 1);
-    uniform(r, "u_max_per_tile", &r->capacity, CF_UNIFORM_TYPE_INT, 1);
-    CF_StorageBuffer bins[] = { r->counts, r->indices };
-    CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults((r->tiles + 63) / 64, 1, 1);
-    dispatch.ro_buffers = &r->entities;
-    dispatch.ro_buffer_count = 1;
-    dispatch.rw_buffers = bins;
-    dispatch.rw_buffer_count = 2;
-    cf_push_gpu_label("Material tile binning");
-    cf_dispatch_compute(r->bin, r->material, dispatch);
-    cf_pop_gpu_label();
-    CF_StorageBuffer inputs[] = { r->entities, r->counts, r->indices, r->parameters };
-    dispatch = cf_compute_dispatch_defaults(tx, ty, 1);
+    CF_StorageBuffer inputs[] = { r->entities, r->offsets, r->indices, r->parameters };
+    CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(tx, ty, 1);
     dispatch.ro_buffers = inputs;
     dispatch.ro_buffer_count = 4;
     dispatch.rw_textures = r->textures;

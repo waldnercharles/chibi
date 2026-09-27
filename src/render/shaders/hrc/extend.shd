@@ -10,8 +10,10 @@
 //   height = world_h
 //   index  = y * width + probe_x * directions + k
 
-layout(std430, set = 0, binding = 0) readonly  buffer PrevBuf { uvec2 data[]; } u_prev;
-layout(std430, set = 1, binding = 0) writeonly buffer CurrBuf { uvec2 data[]; } u_curr;
+#include "hrc_common.shd"
+
+layout(std430, set = 0, binding = 0) readonly  buffer PrevBuf { HRC_INTERVAL_STORAGE data[]; } u_prev;
+layout(std430, set = 1, binding = 0) writeonly buffer CurrBuf { HRC_INTERVAL_STORAGE data[]; } u_curr;
 
 layout(set = 2, binding = 0) uniform Params
 {
@@ -23,8 +25,6 @@ layout(set = 2, binding = 0) uniform Params
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-
-#include "hrc_common.shd"
 
 Interval merge(Interval a, Interval b)
 {

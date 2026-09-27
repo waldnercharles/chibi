@@ -1,4 +1,5 @@
 #include "diagnostics/tracy.h"
+#include "render/particles.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/material_ecs.h"
 #include "support/array.h"
@@ -6,6 +7,11 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+
+enum
+{
+    FLUID_CONTACT_PARTICLE_LIMIT = 256
+};
 
 bool game_materials_emit(game_materials *materials, fluid_particle particle)
 {
@@ -68,6 +74,34 @@ const char *material_ecs_configure_fluid(game_materials *materials)
         return "Gas flow requires cell size 0 or 2..64, vorticity 0..10 and "
                "drag 0..10";
     }
+    float response_values[] = {
+        settings.gas_wake_speed,         settings.gas_wake_strength,
+        settings.gas_wake_lifetime,      settings.liquid_splash_speed,
+        settings.liquid_splash_strength, settings.liquid_splash_lifetime
+    };
+    for (int i = 0; i < (int)(sizeof response_values / sizeof *response_values); i++) {
+        if (!isfinite(response_values[i])) {
+            return "Fluid contact responses require finite speed, strength and "
+                   "lifetime";
+        }
+    }
+    if (settings.gas_wake_speed < 0 || settings.gas_wake_speed > 1000 ||
+        settings.gas_wake_strength < 0 || settings.gas_wake_strength > 10 ||
+        settings.gas_wake_lifetime < 0 || settings.gas_wake_lifetime > 3 ||
+        settings.gas_wake_count < 0 || settings.gas_wake_count > 8 ||
+        settings.liquid_splash_speed < 0 || settings.liquid_splash_speed > 1000 ||
+        settings.liquid_splash_strength < 0 || settings.liquid_splash_strength > 10 ||
+        settings.liquid_splash_lifetime < 0 || settings.liquid_splash_lifetime > 3 ||
+        settings.liquid_splash_count < 0 || settings.liquid_splash_count > 8 ||
+        (settings.gas_wake_count && (!settings.gas_wake_speed || !settings.gas_wake_strength ||
+                                     !settings.gas_wake_lifetime)) ||
+        (settings.liquid_splash_count &&
+         (!settings.liquid_splash_speed || !settings.liquid_splash_strength ||
+          !settings.liquid_splash_lifetime))) {
+        return "Fluid contact responses need speed 0..1000, strength 0..10, "
+               "lifetime 0..3 and count 0..8; enabled responses need all "
+               "positive values";
+    }
     materials->settings = settings;
     GameCombustion r = materials->combustion;
     if (reactive &&
@@ -96,6 +130,12 @@ const char *material_ecs_configure_fluid(game_materials *materials)
         (fluid_flow_settings){ settings.gas_cell_size,
                                settings.gas_vorticity,
                                settings.gas_drag }
+    );
+    material_fluid_set_contact_settings(
+        materials->fluid,
+        (fluid_contact_settings){
+            settings.gas_wake_count ? settings.gas_wake_speed : 0,
+            settings.liquid_splash_count ? settings.liquid_splash_speed : 0 }
     );
     material_fluid_set_reaction(
         materials->fluid,
@@ -376,6 +416,90 @@ static void blasts(
     }
 }
 
+static float clamp01(float value)
+{
+    return fminf(1, fmaxf(0, value));
+}
+
+static unsigned contact_alpha(unsigned color, float factor)
+{
+    unsigned alpha = color & 255u;
+    return (color & 0xffffff00u) | (unsigned)(alpha * clamp01(factor) + .5f);
+}
+
+static int contact_count(int maximum, float intensity)
+{
+    if (maximum <= 0 || intensity <= 0) {
+        return 0;
+    }
+    int count = (int)ceilf(maximum * intensity);
+    return count > maximum ? maximum : count;
+}
+
+static void emit_contact_effects(game_materials *materials)
+{
+    if (!materials->particles) {
+        return;
+    }
+    int count;
+    const fluid_contact *contacts = material_fluid_contacts(materials->fluid, &count);
+    MaterialFluidWorld settings = materials->settings;
+    int emitted = 0;
+    for (int i = 0; i < count; i++) {
+        if (emitted >= FLUID_CONTACT_PARTICLE_LIMIT) {
+            break;
+        }
+        fluid_contact contact = contacts[i];
+        bool gas = contact.kind == FLUID_GAS;
+        float threshold = gas ? settings.gas_wake_speed : settings.liquid_splash_speed;
+        float strength = gas ? settings.gas_wake_strength
+                             : settings.liquid_splash_strength;
+        float lifetime = gas ? settings.gas_wake_lifetime
+                             : settings.liquid_splash_lifetime;
+        int maximum = gas ? settings.gas_wake_count : settings.liquid_splash_count;
+        if (threshold <= 0 || !maximum) {
+            continue;
+        }
+        float impact = clamp01((contact.closing_speed / threshold - 1) * .5f);
+        float impulse = clamp01(contact.impulse / (contact.mass * threshold * 2));
+        float density = sqrtf(clamp01(contact.contacts / 4.f));
+        float intensity = clamp01(impact * impulse * density * strength);
+        int particles = contact_count(maximum, intensity);
+        if (!particles) {
+            continue;
+        }
+        float speed = contact.closing_speed * strength;
+        game_particle_spray spray = {
+            .position = { contact.point.x, contact.point.y },
+            .direction = { contact.normal.x, contact.normal.y },
+            .count = particles,
+            .color = gas ? contact_alpha(contact.color, .55f) : contact.color,
+            .end_color = contact_alpha(contact.color, 0),
+            .speed_min = speed * (gas ? .04f : .12f),
+            .speed_max = speed * (gas ? .2f : .5f),
+            .lifetime_min = lifetime * .7f,
+            .lifetime_max = lifetime,
+            .size_min = gas ? 3.f : 1.4f,
+            .size_max = gas ? 6.f : 3.2f,
+            .spread = gas ? 1.8f : 1.1f,
+            .drag_min = gas ? 1.5f : .25f,
+            .drag_max = gas ? 3.f : .8f,
+            .emission_min = 0,
+            .emission_max = fminf(10, contact.emission),
+            .size_exponent = .8f,
+            .emission_exponent = 1,
+            .stretch = gas ? 0 : .004f,
+            .antialias = 1.5f,
+            .shape = GAME_PARTICLE_ROUND,
+        };
+        spray.count = spray.count < FLUID_CONTACT_PARTICLE_LIMIT - emitted
+                        ? spray.count
+                        : FLUID_CONTACT_PARTICLE_LIMIT - emitted;
+        int emitted_now = game_particles_emit_directed(materials->particles, &spray);
+        emitted += emitted_now > 0 ? emitted_now : 0;
+    }
+}
+
 void material_ecs_tick_fluid(
     game_materials *materials,
     float delta,
@@ -412,6 +536,9 @@ void material_ecs_tick_fluid(
         obstacle_count
     );
     game_task_pool_end(materials->pool);
+    CHIBI_TRACE_ZONE_BEGIN(contact_zone, "Fluid contact effects");
+    emit_contact_effects(materials);
+    CHIBI_TRACE_ZONE_END(contact_zone);
     CHIBI_TRACE_ZONE_BEGIN(blast_zone, "Material blast effects");
     blasts(materials, bodies, body_count, obstacles, obstacle_count);
     CHIBI_TRACE_ZONE_END(blast_zone);

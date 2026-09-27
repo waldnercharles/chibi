@@ -959,8 +959,10 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
             const GameHRC2D *source = GAME_GameHRC2D_get_const(world, entity);
             if (found || !isfinite(source->ambient) || !isfinite(source->intensity) ||
                 !isfinite(source->fog) || !isfinite(source->shadow_floor) ||
-                !isfinite(source->luminance_scale) || source->ambient < 0 ||
+                !isfinite(source->luminance_scale) ||
+                !isfinite(source->lighting_margin) || source->ambient < 0 ||
                 source->intensity < 0 || source->fog < 0 || source->shadow_floor < 0 ||
+                source->lighting_margin < 0 || source->lighting_margin > 256 ||
                 source->luminance_scale < 0 || source->luminance_scale > 1 ||
                 source->ambient > 100 || source->intensity > 100 ||
                 source->fog > 100 || source->shadow_floor > 100) {
@@ -1096,7 +1098,6 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    const int pad_pixels = 16;
     if (!renderer->raster) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
@@ -1123,8 +1124,28 @@ bool app_scene_renderer_draw(
             renderer->time
         );
     }
-    int raster_width = width + 2 * pad_pixels;
-    int raster_height = height + 2 * pad_pixels;
+    render_view_2d_frame frame;
+    float work_scale = render_radiance_get_settings(renderer->radiance).scale;
+    render_view_2d_camera camera_view = {
+        .min_x = camera.center_x - camera.span_width * .5f,
+        .max_y = camera.center_y + camera.span_height * .5f,
+        .width = camera.span_width,
+        .height = camera.span_height,
+        .output_width = width,
+        .output_height = height,
+    };
+    render_view_2d_settings padding = {
+        .margin = renderer->lighting.lighting_margin,
+        .work_scale = work_scale,
+        .min_work_scale = renderer->lighting.min_scale,
+        .max_raster_size = 4096,
+    };
+    if (!render_view_2d_world_margin(camera_view, padding, &frame)) {
+        snprintf(renderer->error, sizeof renderer->error, "HRC view cannot fit within the 4096-pixel raster limit");
+        return false;
+    }
+    int raster_width = frame.raster_width;
+    int raster_height = frame.raster_height;
     if (renderer->width != width || renderer->height != height ||
         renderer->raster_width != raster_width ||
         renderer->raster_height != raster_height) {
@@ -1151,7 +1172,7 @@ bool app_scene_renderer_draw(
     }
     renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                          0.5f;
-    render_material_view view = padded_view(&camera, width, height, pad_pixels);
+    render_material_view view = frame.view;
     CHIBI_TRACE_ZONE_BEGIN(collect_zone, "Material collect");
     collect(renderer, world, particles, runtime, view);
     CHIBI_TRACE_ZONE_END(collect_zone);

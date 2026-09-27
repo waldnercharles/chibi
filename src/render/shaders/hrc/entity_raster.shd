@@ -22,7 +22,6 @@ void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[
  for(int i=0;i<8;i++) result[i]=vec4(0);
 }
 layout(set = 2, binding = 0) uniform Params {
-    int u_entity_count;
     float u_world_min_x;
     float u_world_max_y;
     vec2 u_unit_per_px;
@@ -30,7 +29,6 @@ layout(set = 2, binding = 0) uniform Params {
     int u_tiles_y;
     int u_canvas_w;
     int u_canvas_h;
-    int u_max_per_tile;
     int u_first_entity;
     int u_last_entity;
     int u_metaball_group;
@@ -42,8 +40,8 @@ layout(set = 0, binding = SG_ENTITY_BINDING) readonly buffer EntityBuf {
     Entity entities[];
 };
 
-layout(set = 0, binding = SG_COUNTS_BINDING) readonly buffer TileCounts {
-    uint tile_counts[];
+layout(set = 0, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets {
+    uint tile_offsets[];
 };
 
 layout(set = 0, binding = SG_INDICES_BINDING) readonly buffer TileEntities {
@@ -51,16 +49,16 @@ layout(set = 0, binding = SG_INDICES_BINDING) readonly buffer TileEntities {
 };
 
 layout(set = 0, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
-
 layout(set = 1, binding = 0, rgba16f) uniform image2D u_scene;
 layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
 layout(set = 1, binding = 2, rgba16f) uniform image2D u_absorption;
 layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
 layout(set = 1, binding = 4, rgba16f) uniform image2D u_normal;
 // Relief: x = height times coverage (world units), y = coverage.
-layout(set = 1, binding = 5, rgba16f) uniform image2D u_relief;
+layout(set = 1, binding = 5, rg16f) uniform image2D u_relief;
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+shared uint tile_has_batch_entity;
 
 // Tile lists are already ordered by stable CPU sort and deterministic binning.
 
@@ -211,9 +209,37 @@ float evaluate_sdf(vec2 local_p, Entity e)
 
 vec4 unpack_color(vec4 p) { return p; }
 
+float circle_emission_half_width(Entity e)
+{
+    float max_pixel = max(u_unit_per_px.x, u_unit_per_px.y);
+    return max(1.5 * max_pixel, max(e.aa, 0.0) * 0.5);
+}
+
+float circle_emission_coverage(float sdf, float half_width)
+{
+    return 1.0 - smoothstep(-half_width, half_width, sdf);
+}
+
 void main()
 {
     ivec2 tile_id = ivec2(gl_WorkGroupID.xy);
+    uint tile_idx = uint(tile_id.y * u_tiles_x + tile_id.x);
+    uint tile_begin = tile_offsets[tile_idx];
+    uint tile_end = tile_offsets[tile_idx + 1u];
+    if (gl_LocalInvocationIndex == 0u) {
+        tile_has_batch_entity = u_accumulate == 0 ? 1u : 0u;
+        for (uint i = tile_begin; i < tile_end && tile_has_batch_entity == 0u; i++) {
+            uint eidx = tile_entities[i];
+            if (eidx < uint(u_first_entity) || eidx >= uint(u_last_entity)) continue;
+            if (entities[eidx].metaball_group == uint(u_metaball_group)) {
+                tile_has_batch_entity = 1u;
+            }
+        }
+    }
+    // Every lane, including lanes in partial edge tiles, reaches this barrier.
+    barrier();
+    if (tile_has_batch_entity == 0u) return;
+
     ivec2 local_id = ivec2(gl_LocalInvocationID.xy);
     ivec2 pixel = tile_id * 16 + local_id;
 
@@ -227,9 +253,8 @@ void main()
     );
 
     // Tile entity list.
-    uint tile_idx = uint(tile_id.y * u_tiles_x + tile_id.x);
-    uint total = min(tile_counts[tile_idx], uint(u_max_per_tile));
-    uint base = tile_idx * uint(u_max_per_tile);
+    uint total = tile_end - tile_begin;
+    uint base = tile_begin;
 
     // Accumulators (initialized to canvas clear colors).
     vec4 scene_acc = u_accumulate != 0 ? imageLoad(u_scene, pixel) : vec4(0, 0, 0, 0);
@@ -273,7 +298,6 @@ void main()
         mb_active[g] = false;
     }
 
-    // No workgroup barriers: partial edge tiles may safely return above.
     for (uint i = 0u; i < total; i++) {
         uint eidx = tile_entities[base + i];
         if (eidx < uint(u_first_entity) || eidx >= uint(u_last_entity)) continue;
@@ -341,8 +365,18 @@ void main()
             sdf = graph_output[0].x;
         }
         float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
+        bool filtered_circle_emission = e.shape_type == SHAPE_CIRCLE &&
+                                        e.thickness <= 0.0 && e.border_thickness <= 0.0 &&
+                                        e.reserved0 <= 0.0 && e.reserved1 <= 0.0 &&
+                                        e.metaball_group == 0u && e.wobble_pad.x == 0.0 &&
+                                        e.pluck_data.x == 0.0;
+        bool may_emit = any(notEqual(e.emission.rgb, vec3(0.0)));
+        float emission_half_width = filtered_circle_emission
+                                      ? circle_emission_half_width(e)
+                                      : aa;
         // Uncovered pixels need no material; metaballs still blend beyond their edge.
-        if (e.metaball_group == 0u && sdf >= aa) continue;
+        if (e.metaball_group == 0u && sdf >= aa &&
+            (!filtered_circle_emission || !may_emit || sdf >= emission_half_width)) continue;
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
         if (e.reserved0 > 0.0) {
@@ -426,7 +460,8 @@ void main()
             relief_acc.xy = mix(relief_acc.xy, vec2(height, 1.0), cover);
 
             // Emission.
-            vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= fill_coverage;
+            vec4 em = unpack_color(e.emission); em.rgb *= em.a;
+            em *= fill_coverage;
             vec4 bem = unpack_color(e.border_emission); bem.rgb *= bem.a; bem *= border_coverage;
             emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
 
@@ -444,14 +479,19 @@ void main()
         } else {
             // No border: original path.
             float coverage = 1.0 - smoothstep(0.0, aa, sdf);
-            if (coverage <= 0.0) continue;
+            float emission_coverage = filtered_circle_emission
+                                        ? circle_emission_coverage(sdf, emission_half_width)
+                                        : coverage;
+            if (coverage <= 0.0 && emission_coverage <= 0.0) continue;
 
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= coverage;
             scene_acc = alpha_over(sc, scene_acc);
             normal_acc = mix(normal_acc, surface, sc.a);
             relief_acc.xy = mix(relief_acc.xy, vec2(height, 1.0), sc.a);
 
-            vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= coverage;
+            vec4 em = unpack_color(e.emission); em.rgb *= em.a;
+            em.rgb *= e.simulation_time.z;
+            em *= emission_coverage;
             emission_acc = alpha_over(em, emission_acc);
 
             vec4 tr = unpack_color(e.absorption); tr *= coverage;

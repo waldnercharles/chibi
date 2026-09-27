@@ -20,8 +20,9 @@ python3 tools/benchmark_neon_materials.py --scenario all --mode live --scale .5 
 The first command measures all five scenarios in live and frozen modes at HRC
 scales 0.5 and 1.0. Use a fresh output directory for each experiment. Runs are
 sequential; do not run another benchmark, build, or game alongside them.
-`--repeat 3` records independent repetitions. `--trace-levels 3` compares the
-older tracing configuration. The default is one directly traced level.
+`--repeat 3` records independent repetitions. The default directly traces the
+first three cascades, matching Sandbox. Use `--trace-levels 1` to compare the
+one-level tracing configuration.
 
 | Scenario | Workload |
 | --- | --- |

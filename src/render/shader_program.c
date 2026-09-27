@@ -80,10 +80,10 @@ static bool compile(render_programs *programs, program *entry)
                                "sg_ramp_data[SG_RAMP_COUNT]; };\n"
                          : compute
                              ? "layout(set=2,binding=0) uniform Params { "
-                               "int u_entity_count; float u_world_min_x; "
+                               "float u_world_min_x; "
                                "float u_world_max_y; vec2 u_unit_per_px; "
                                "int u_tiles_x; int u_tiles_y; int u_canvas_w; "
-                               "int u_canvas_h; int u_max_per_tile; "
+                               "int u_canvas_h; "
                                "int u_first_entity; int u_last_entity; "
                                "int u_metaball_group; int u_accumulate; "
                                "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"

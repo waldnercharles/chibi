@@ -10,8 +10,10 @@
 //   T: width = ceil(world_w / 2^n) * (2^n + 1), height = world_h
 //   R: width = ceil(world_w / 2^n) * 2^n,       height = world_h
 
-layout(std430, set = 0, binding = 0) readonly  buffer TCurr { uvec2 data[]; } u_t_curr;
-layout(std430, set = 0, binding = 1) readonly  buffer TNext { uvec2 data[]; } u_t_next;
+#include "hrc_common.shd"
+
+layout(std430, set = 0, binding = 0) readonly  buffer TCurr { HRC_INTERVAL_STORAGE data[]; } u_t_curr;
+layout(std430, set = 0, binding = 1) readonly  buffer TNext { HRC_INTERVAL_STORAGE data[]; } u_t_next;
 layout(std430, set = 0, binding = 2) readonly  buffer RPrevRad { uint data[]; } u_r_prev_rad;
 layout(std430, set = 0, binding = 3) readonly  buffer Weights { vec2 data[]; } u_weights;
 layout(std430, set = 1, binding = 0) writeonly buffer RCurrRad { uint data[]; } u_r_curr_rad;
@@ -30,8 +32,6 @@ layout(set = 2, binding = 0) uniform Params
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-
-#include "hrc_common.shd"
 
 vec3 merge_r(Interval near, vec3 far_rad)
 {

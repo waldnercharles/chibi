@@ -87,6 +87,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
     float gas_cell_size;
     float gas_vorticity;
     float gas_drag;
+    /* Optional transient visual responses to fast fluid/body contacts. Zero
+     * count disables that response; particles never add matter to the solver. */
+    float gas_wake_speed; /* Minimum normal closing speed, world units/sec. */
+    float gas_wake_strength; /* Scales puff speed and response intensity. */
+    int gas_wake_count;      /* Maximum visual particles per body/patch/tick. */
+    float gas_wake_lifetime; /* Maximum visual particle lifetime, seconds. */
+    float liquid_splash_speed; /* Minimum normal closing speed, world units/sec. */
+    float liquid_splash_strength; /* Scales droplet speed and response intensity. */
+    int liquid_splash_count; /* Maximum visual particles per body/patch/tick. */
+    float liquid_splash_lifetime; /* Maximum visual particle lifetime, seconds. */
 }
 MaterialFluidWorld;
 
@@ -766,6 +776,9 @@ GameStarfield2D;
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     float scale;
+    /* Fraction of the canvas used to reconstruct received diffuse light.
+     * Material rasterization and the final composite stay full resolution. */
+    float reconstruction_scale;
     /* Optional higher-resolution monochrome transport for split-scale HRC. */
     float luminance_scale;
     /* 0: independent monochrome transport, 1: derive luminance from RGB gather. */
@@ -780,7 +793,11 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float fog;
     float shadow_floor;
     float falloff;
+    /* World-space raster guard around the camera for nearby light transport. */
+    float lighting_margin;
     float bounce_intensity;
+    /* Current-frame weights: 1 disables temporal smoothing, not bounce.
+     * Lower values retain more history. Camera movement resets bounce blending. */
     float bounce_hysteresis;
     float radiance_hysteresis;
     int upscale_mode;
@@ -816,6 +833,7 @@ GameHRC2D;
 static inline GameHRC2D game_hrc2d_defaults()
 {
     return (GameHRC2D){ .scale = .976883f,
+                        .reconstruction_scale = 1,
                         .luminance_scale = 0,
                         .luminance_mode = 0,
                         .min_scale = .1f,
@@ -826,6 +844,7 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .intensity = 7.5f,
                         .fog = 1,
                         .falloff = 1,
+                        .lighting_margin = 64,
                         .bounce_intensity = 1,
                         .bounce_hysteresis = .8f,
                         .radiance_hysteresis = .8f,

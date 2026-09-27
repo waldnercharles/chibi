@@ -23,8 +23,8 @@ typedef struct
 /* Requires a current Cute context and shader directory containing the hrc shader subdirectory. */
 render_radiance *render_radiance_new();
 void render_radiance_free(render_radiance *radiance);
-/* Full-resolution materials/composite with a fractional-resolution radiance work grid.
- * Resize resets temporal history. */
+/* Full-resolution materials/composite with independently scaled transport and
+ * diffuse reconstruction grids. Resize resets temporal history. */
 bool render_radiance_resize(render_radiance *radiance, int width, int height);
 void render_radiance_reset(render_radiance *radiance);
 render_radiance_settings render_radiance_get_settings(const render_radiance *radiance);

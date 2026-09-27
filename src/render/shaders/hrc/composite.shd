@@ -29,11 +29,82 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     vec4 surface_map;
     int linear_output;
     float world_per_px;
+    float reconstruction_threshold;
 };
 
 #include "color.shd"
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+float reconstruction_transmittance(ivec2 p, ivec2 sample_size, ivec2 full_size)
+{
+    vec2 uv = (vec2(p) + 0.5) / vec2(sample_size);
+    ivec2 absorption_p = clamp(ivec2(uv * vec2(full_size)), ivec2(0), full_size - 1);
+    float tau = dot(texelFetch(absorption_tex, absorption_p, 0).rgb, vec3(1.0 / 3.0));
+    return exp(-max(tau, 0.0));
+}
+
+vec4 reconstruction_weights(vec2 uv, ivec2 sample_size, ivec2 full_size,
+                            out ivec2 p00, out ivec2 p10,
+                            out ivec2 p01, out ivec2 p11)
+{
+    vec2 grid = uv * vec2(sample_size) - 0.5;
+    ivec2 base = ivec2(floor(grid));
+    vec2 f = fract(grid);
+    ivec2 last = sample_size - 1;
+    p00 = clamp(base, ivec2(0), last);
+    p10 = clamp(base + ivec2(1, 0), ivec2(0), last);
+    p01 = clamp(base + ivec2(0, 1), ivec2(0), last);
+    p11 = clamp(base + ivec2(1, 1), ivec2(0), last);
+
+    ivec2 center = clamp(ivec2(uv * vec2(full_size)), ivec2(0), full_size - 1);
+    float target = exp(-max(dot(texelFetch(absorption_tex, center, 0).rgb,
+                                vec3(1.0 / 3.0)), 0.0));
+    float t00 = reconstruction_transmittance(p00, sample_size, full_size) - target;
+    float t10 = reconstruction_transmittance(p10, sample_size, full_size) - target;
+    float t01 = reconstruction_transmittance(p01, sample_size, full_size) - target;
+    float t11 = reconstruction_transmittance(p11, sample_size, full_size) - target;
+    float sigma = max(reconstruction_threshold, 0.02);
+    float sigma2 = 2.0 * sigma * sigma;
+    return vec4((1.0 - f.x) * (1.0 - f.y) * exp(-(t00 * t00) / sigma2),
+                f.x * (1.0 - f.y) * exp(-(t10 * t10) / sigma2),
+                (1.0 - f.x) * f.y * exp(-(t01 * t01) / sigma2),
+                f.x * f.y * exp(-(t11 * t11) / sigma2));
+}
+
+vec3 sample_fluence(vec2 uv)
+{
+    ivec2 sample_size = textureSize(fluence_tex, 0);
+    ivec2 full_size = textureSize(absorption_tex, 0);
+    if (all(equal(sample_size, full_size))) return texture(fluence_tex, uv).rgb;
+
+    ivec2 p00, p10, p01, p11;
+    vec4 weights = reconstruction_weights(uv, sample_size, full_size, p00, p10, p01, p11);
+    float total = dot(weights, vec4(1));
+    if (total <= 1e-6) return vec3(0);
+    vec3 sum = texelFetch(fluence_tex, p00, 0).rgb * weights.x +
+               texelFetch(fluence_tex, p10, 0).rgb * weights.y +
+               texelFetch(fluence_tex, p01, 0).rgb * weights.z +
+               texelFetch(fluence_tex, p11, 0).rgb * weights.w;
+    return max(sum / total, vec3(0));
+}
+
+float sample_luminance(vec2 uv)
+{
+    ivec2 sample_size = textureSize(luminance_tex, 0);
+    ivec2 full_size = textureSize(absorption_tex, 0);
+    if (all(equal(sample_size, full_size))) return texture(luminance_tex, uv).r;
+
+    ivec2 p00, p10, p01, p11;
+    vec4 weights = reconstruction_weights(uv, sample_size, full_size, p00, p10, p01, p11);
+    float total = dot(weights, vec4(1));
+    if (total <= 1e-6) return 0.0;
+    float sum = texelFetch(luminance_tex, p00, 0).r * weights.x +
+                texelFetch(luminance_tex, p10, 0).r * weights.y +
+                texelFetch(luminance_tex, p01, 0).r * weights.z +
+                texelFetch(luminance_tex, p11, 0).r * weights.w;
+    return max(sum / total, 0.0);
+}
 
 // GGX distribution, height-correlated Smith visibility and Schlick Fresnel for
 // a dielectric, viewed straight down the camera axis.
@@ -60,7 +131,7 @@ vec4 shader(vec4 color, ShaderParams params)
     vec3 emission = texture(emission_tex, source_uv).rgb;
     vec3 absorption = texture(absorption_tex, source_uv).rgb;
     vec3 albedo = texture(albedo_tex, source_uv).rgb;
-    vec3 fluence = max(texture(fluence_tex, source_uv).rgb, vec3(0.0));
+    vec3 fluence = sample_fluence(source_uv);
     vec4 normal = texture(normal_tex, source_uv);
 
     int mode = int(debug_view + 0.5);
@@ -76,9 +147,9 @@ vec4 shader(vec4 color, ShaderParams params)
     vec2 pixel_uv = 1.0 / vec2(textureSize(normal_tex, 0));
     vec2 distortion = normal.z < 0.0 ? normal.xy * (-normal.z) * pixel_uv : vec2(0);
     vec2 fluence_uv = source_uv + distortion;
-    if (normal.z < 0.0) fluence = max(texture(fluence_tex, fluence_uv).rgb, vec3(0));
+    if (normal.z < 0.0) fluence = sample_fluence(fluence_uv);
     if (split_lighting != 0) {
-        float Y = texture(luminance_tex, fluence_uv).r;
+        float Y = sample_luminance(fluence_uv);
         float coarseY = dot(fluence, LUMA);
         fluence = coarseY > 1e-8 ? fluence * (Y / coarseY) : vec3(Y);
     }
@@ -90,10 +161,10 @@ vec4 shader(vec4 color, ShaderParams params)
     if (normal.z < 0.0) {
         // Liquid edges brighten from light received just outside them.
         vec2 reach = 8.0 * pixel_uv;
-        vec3 outside = .25 * (texture(fluence_tex, source_uv + vec2(reach.x, 0)).rgb +
-                              texture(fluence_tex, source_uv - vec2(reach.x, 0)).rgb +
-                              texture(fluence_tex, source_uv + vec2(0, reach.y)).rgb +
-                              texture(fluence_tex, source_uv - vec2(0, reach.y)).rgb);
+        vec3 outside = .25 * (sample_fluence(source_uv + vec2(reach.x, 0)) +
+                              sample_fluence(source_uv - vec2(reach.x, 0)) +
+                              sample_fluence(source_uv + vec2(0, reach.y)) +
+                              sample_fluence(source_uv - vec2(0, reach.y)));
         incident += outside * normal.a * 2.0 * intensity;
     }
 

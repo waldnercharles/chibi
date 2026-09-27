@@ -29,7 +29,7 @@ def fingerprint(path):
     return digest.hexdigest()
 
 
-def prepare(build, output, fixture, scale, trace_levels):
+def prepare(build, output, fixture, scale, trace_levels, reconstruction_scale, lighting_margin):
     project = output / 'project'
     shutil.copytree(PROJECT, project, ignore=shutil.ignore_patterns('.chibi', 'build'))
     runner = Runner(build, output, project)
@@ -38,7 +38,9 @@ def prepare(build, output, fixture, scale, trace_levels):
         expected_hash=asset['hash'], operations=[
             dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
             dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
-            dict(op='set_field', component='GameHRC2D', field='trace_levels', value=trace_levels)]))
+            dict(op='set_field', component='GameHRC2D', field='trace_levels', value=trace_levels),
+            dict(op='set_field', component='GameHRC2D', field='reconstruction_scale', value=reconstruction_scale),
+            dict(op='set_field', component='GameHRC2D', field='lighting_margin', value=lighting_margin)]))
     runner.author('validateAsset', dict(kind='prototype', name='HRC'))
     if fixture['operations']:
         asset = runner.author('readAsset', dict(kind='scene', name='Sandbox'))
@@ -94,7 +96,8 @@ def run_case(args, name, mode, scale, repeat, provenance):
     output = args.output / f'{name}-{mode}-{scale:g}-{repeat}'
     output.mkdir(parents=True, exist_ok=False)
     fixture = scenario(name)
-    runner = prepare(args.build, output, fixture, scale, args.trace_levels)
+    runner = prepare(args.build, output, fixture, scale, args.trace_levels,
+        args.reconstruction_scale, args.lighting_margin)
     frozen = mode == 'frozen'
     initial_frames = fixture['frames'] + (args.render_frames if frozen else 0)
     final_frames = initial_frames + (0 if frozen else args.render_frames)
@@ -110,6 +113,7 @@ def run_case(args, name, mode, scale, repeat, provenance):
     command = replay_files(output, binary, runner.project, request, environment)
     manifest = dict(provenance, project_sha256=fingerprint(runner.project), scenario=name,
         fixture=fixture, mode=mode, scale=scale, trace_levels=args.trace_levels,
+        reconstruction_scale=args.reconstruction_scale, lighting_margin=args.lighting_margin,
         adaptive=False, width=args.width, height=args.height)
     write_json(output / 'manifest.json', manifest)
     if args.prepare_only:
@@ -134,12 +138,14 @@ def run_case(args, name, mode, scale, repeat, provenance):
     assert performance['samples'] == args.render_frames - 16
     (output / 'frame.png').write_bytes(base64.b64decode(result['preview']['data']))
     report = dict(scenario=name, mode=mode, scale=scale, repeat=repeat,
-        trace_levels=args.trace_levels, adaptive=False, width=args.width, height=args.height,
+        trace_levels=args.trace_levels, reconstruction_scale=args.reconstruction_scale,
+        lighting_margin=args.lighting_margin, adaptive=False, width=args.width, height=args.height,
         purpose='metal-capture' if args.metal_capture else 'tracy-capture' if args.tracy_capture else 'benchmark',
         backend=result['backend'], initial_state=before, final_state=after, performance=performance,
         directory=output.name, manifest='manifest.json', capture=result.get('metal_capture'))
     write_json(output / 'report.json', report)
-    print(f"{name:12} {mode:6} scale={scale:g}: median {performance['median_ms']:.2f} ms, "
+    print(f"{name:12} {mode:6} scale={scale:g} reconstruction={args.reconstruction_scale:g} "
+        f"margin={args.lighting_margin:g}: median {performance['median_ms']:.2f} ms, "
         f"p95 {performance['p95_ms']:.2f} ms; material {after['materials']['hash']}", flush=True)
     return report
 
@@ -191,13 +197,14 @@ def summary(output, reports):
     write_json(output / 'summary.json', reports)
     lines = ['# NeonSwarm benchmark results', '',
         'Frame work includes GPU completion and excludes pacing. Render/present is host elapsed time, not GPU pass time.', '',
-        '| Scenario | Mode | HRC scale | Median ms | p95 ms | Simulation mean ms | Render/present mean ms |',
-        '| --- | --- | --- | --- | --- | --- | --- |']
+        '| Scenario | Mode | HRC scale | Reconstruction scale | Margin | Median ms | p95 ms | Simulation mean ms | Render/present mean ms |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for r in reports:
         if 'performance' not in r:
             continue
         p = r['performance']
-        lines.append(f"| {r['scenario']} | {r['mode']} | {r['scale']:g} | {p['median_ms']:.2f} | {p['p95_ms']:.2f} | "
+        lines.append(f"| {r['scenario']} | {r['mode']} | {r['scale']:g} | {r['reconstruction_scale']:g} | "
+            f"{r['lighting_margin']:g} | {p['median_ms']:.2f} | {p['p95_ms']:.2f} | "
             f"{p['simulation_average_ms']:.2f} | {p['render_average_ms']:.2f} |")
     if any(r.get('purpose', 'benchmark') != 'benchmark' or r.get('performance', {}).get('instrumented') for r in reports):
         lines += ['', '**Instrumented capture run. Its timings are not benchmark results.**']
@@ -215,7 +222,9 @@ def main():
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
     parser.add_argument('--scale', type=float, nargs='+', default=[.5, 1])
-    parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=1)
+    parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=3)
+    parser.add_argument('--reconstruction-scale', type=float, default=1)
+    parser.add_argument('--lighting-margin', type=float, default=64)
     parser.add_argument('--render-frames', type=int, default=180)
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--prepare-only', action='store_true')
@@ -227,6 +236,8 @@ def main():
         return
     if not args.output or args.allow_renderer_changes:
         parser.error('Use --output for a new run; --allow-renderer-changes requires --replay')
+    if not .5 <= args.reconstruction_scale <= 1 or not 0 <= args.lighting_margin <= 256:
+        parser.error('Reconstruction scale must be 0.5–1; lighting margin must be 0–256')
     if not 17 <= args.render_frames <= 1200 or args.repeat < 1:
         parser.error('Use 17..1200 render frames and a positive repeat count')
     if any(not .1 <= scale <= 1 for scale in args.scale) or len(set(args.scale)) != len(args.scale):

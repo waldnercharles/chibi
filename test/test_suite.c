@@ -25,6 +25,7 @@ void test_automation_prototype_edit();
 void test_automation_scene_edit();
 void test_automation_asset_write();
 void test_automation_refactor();
+void test_automation_preview_registration();
 
 int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
@@ -41,6 +42,7 @@ void test_shader_image_cpu();
 void test_png_encoding();
 void test_physics();
 void test_materials();
+void test_material_reactions();
 void test_fields();
 void test_system_schedule();
 int bench_fields();
@@ -90,6 +92,7 @@ TEST_CASE(all_checks)
     test_automation_scene_edit();
     test_automation_asset_write();
     test_automation_refactor();
+    test_automation_preview_registration();
     run_content_catalog_checks();
     test_reference_index();
     test_refactor();
@@ -132,6 +135,7 @@ TEST_CASE(all_checks)
     test_combat();
     test_physics();
     test_materials();
+    test_material_reactions();
     test_fields();
     test_system_schedule();
     test_game_capabilities();
@@ -796,6 +800,7 @@ int main(int argc, char **argv)
         test_automation_scene_edit();
         test_automation_asset_write();
         test_automation_refactor();
+        test_automation_preview_registration();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {
@@ -839,6 +844,7 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--materials") == 0) {
         test_materials();
+        test_material_reactions();
         test_fields();
         test_system_schedule();
         return fails ? 1 : 0;

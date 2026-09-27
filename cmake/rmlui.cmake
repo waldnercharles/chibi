@@ -88,6 +88,8 @@ add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit_wires.c
     # The UI Inspector's overlay and element paths.
     src/editor/rmlui/kit_inspect.c
+    # Native slots: kit content inside authored markup.
+    src/editor/rmlui/kit_slot.c
     # kit_wires.c draws through it, so it links with the kit.
     src/editor/ui/kit_wire_shape.c)
 target_include_directories(chibi_rmlui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

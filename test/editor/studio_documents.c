@@ -299,6 +299,80 @@ static void ui_wiring_checks()
     preview_follows_document();
 }
 
+/* ---------- Authored status bar (workstream J) ---------- */
+
+static rml_element *status_bar(studio *s)
+{
+    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
+    return rml_element_query_selector(doc, "[data-ui=StatusBar]");
+}
+
+/* The shown labels of the status bar's key hints, joined by '|'. */
+static void status_hints(studio *s, char *out, size_t size)
+{
+    rml_element *labels[8];
+    int count = rml_element_query_selector_all(status_bar(s), "[data-ui=KeyHint] .label", labels, 8);
+    out[0] = '\0';
+    for (int i = 0; i < count && i < 8; i++) {
+        char text[64] = "";
+        rml_element_inner_rml(labels[i], text, sizeof text);
+        size_t used = strlen(out);
+        snprintf(out + used, size - used, "%s%s", used ? "|" : "", text);
+    }
+}
+
+static bool toggle_on(studio *s)
+{
+    char state[8] = "";
+    rml_element *assets = rml_element_query_selector(status_bar(s), ".toggle-drawer");
+    rml_element_attribute(assets, "data-state", state, sizeof state);
+    return !strcmp(state, "on");
+}
+
+/* Studio shows the authored status bar over its own state: the hovered
+   area's hints, the last report, a drawer toggle that runs its command, and
+   UI Scale native in its slot. */
+static void status_bar_follows_studio()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    frames(&f, 3);
+    kit_rect area = s->areas[STUDIO_AREA_TOP].rect;
+    s->in.mouse_x = area.x + area.w / 2;
+    s->in.mouse_y = area.y + area.h / 2;
+    frames(&f, 2);
+    char scene[256], elsewhere[256];
+    status_hints(s, scene, sizeof scene);
+    s->in.mouse_x = s->in.mouse_y = 1;
+    frames(&f, 2);
+    status_hints(s, elsewhere, sizeof elsewhere);
+    bool hints = !strcmp(scene, "Select|Pan (middle)|Frame") &&
+                 !strcmp(elsewhere, "Select|Search");
+
+    studio_report(s, "Saved");
+    frames(&f, 2);
+    rml_element *report = rml_element_query_selector(status_bar(s), ".report");
+    bool reported = rml_element_is_class_set(report, "shown");
+    s->status_time = s->time - 4;
+    frames(&f, 2);
+    reported &= !rml_element_is_class_set(report, "shown");
+
+    int before = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_ASSETS);
+    bool shown_before = toggle_on(s) == (before == 1);
+    rml_element_click(rml_element_query_selector(status_bar(s), ".toggle-drawer"));
+    frames(&f, 2);
+    int after = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_ASSETS);
+    bool toggled = shown_before && after != before && toggle_on(s) == (after == 1);
+
+    kit_rect scale;
+    bool native = kit_find(s->kit, "app/status/scale/scale", &scale);
+    if (!(hints && reported && toggled && native)) {
+        printf("  %d %d %d %d: %s / %s\n", hints, reported, toggled, native, scene, elsewhere);
+    }
+    test_check(hints && reported && toggled && native, "Studio's authored status bar follows the hovered area and reports, runs its drawer toggles' commands and hosts UI Scale natively");
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -321,6 +395,8 @@ int studio_documents_run(const char *program)
     test_ui_document_tabs();
     /* UI wiring (workstream K) */
     ui_wiring_checks();
+    /* Authored status bar (workstream J) */
+    status_bar_follows_studio();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

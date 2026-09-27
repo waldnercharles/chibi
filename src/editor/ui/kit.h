@@ -638,6 +638,24 @@ extern "C"
     } kit_code_desc;
     kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_code_desc *desc);
 
+    /* ---------- Native slots (kit_slot.c, workstream J) ---------- */
+
+    /* Kit content inside a kit_host's authored content, as Unity's
+     * IMGUIContainer: begin adopts the element `selector` finds in `host`
+     * and returns true while there is one; emit into it as into kit_push's
+     * box, then call kit_slot_end. Its path is the host's and `key`. The
+     * element is marked data-kit-slot="<key>" and found again every frame,
+     * so when the content replaces it (a mount reloading its asset, data-for
+     * recreating an item) the slot builds anew in the new element. A slot
+     * not begun in a frame loses its content. Name one element, as an id
+     * does; its own children stay, before the kit's. */
+    bool kit_slot_begin(kit *k, const char *key, rml_element *host, const char *selector);
+    void kit_slot_end(kit *k);
+    /* Moves keyboard focus out of `host` when it is inside: RmlUi focuses
+     * what is clicked, and chrome such as the status bar leaves the keyboard
+     * to the editor's shortcuts. */
+    void kit_release_focus(kit *k, rml_element *host);
+
 #ifdef __cplusplus
 }
 #endif

@@ -678,7 +678,7 @@ typedef struct studio_sources
     uint64_t writes_seen;
 } studio_sources;
 
-/* Adds the `world` and `theme` variables to a data model's JSON. */
+/* Adds the variables authored panels bind to a data model's JSON. */
 void studio_sources_add(yyjson_mut_doc *doc);
 /* Applies what bindings changed, then shows the current values. */
 void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
@@ -693,8 +693,9 @@ studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *e
 void studio_ui_free(studio_ui *ui);
 /* Steps the panels' behaviors and shares preferences; call after input. */
 void studio_ui_frame(studio *s);
-/* Shows the Studio scene entity `name`'s GameUi document in a kit host. */
-void studio_ui_panel(studio *s, const char *key, const char *name);
+/* Shows the Studio scene entity `name`'s GameUi document in a kit host;
+ * returns the host, for native slots, or NULL when it shows none. */
+rml_element *studio_ui_panel(studio *s, const char *key, const char *name);
 /* The Studio scene's panels, each an editor type an area can show. */
 int studio_ui_panel_count(const studio *s);
 const char *studio_ui_panel_name(const studio *s, int index);
@@ -1347,5 +1348,39 @@ void studio_settings_add(yyjson_mut_doc *doc);
 /* Applies what the page's bindings changed to `view` when `wrote`, then shows
  * it; true when the page changed. */
 bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool wrote);
+
+/* ---------- Authored status bar (workstream J) ---------- */
+
+/* A key hint, as Blender's status bar shows them: a mouse icon or a key, and
+ * what it does. */
+typedef struct studio_hint
+{
+    uint32_t icon;   /* a kit icon, or 0 for the key */
+    const char *key; /* in the platform's notation */
+    const char *label;
+} studio_hint;
+
+#define STUDIO_HINT_MAX 4
+
+/* What the status bar shows: Studio's `editor` variable (studio_sources.c),
+ * which projects/studio's StatusBar binds. */
+typedef struct studio_status
+{
+    studio_hint hints[STUDIO_HINT_MAX]; /* the editor's under the pointer */
+    int hint_count;
+    const char *report; /* the last operation */
+    bool reporting;     /* while the report shows, three seconds */
+    bool assets, output, performance;    /* the drawer shows that editor */
+    const char *assets_key, *output_key; /* the drawer toggles' shortcuts */
+    const char *scene;                   /* the scene's title */
+    const char *selection;               /* the selected object, "" for none */
+    int objects;
+    bool playing;
+} studio_status;
+
+/* Adds the `editor` variable to a data model's JSON. */
+void studio_status_add(yyjson_mut_doc *doc);
+/* Shows `status` in it; true when anything changed. */
+bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status);
 
 #endif

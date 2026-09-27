@@ -59,6 +59,9 @@ These are on `main` and used by more than one workstream.
 | UI language service | `src/assets/ui_source.h` (B) | Parses a ui asset's file (or a `.rcss` file) with tree-sitter: spans, outline, diagnostics, completion, symbols and references, and edits as `text_edit`s on the file. Positions are file byte offsets |
 | UI check | `ui_check(content_root, name, text, …)` in `src/render/ui_check.h` (B) | Every RmlUi warning of a ui asset, at the line of its rml or rcss block, or of the import or widget that wrote it |
 | RCSS properties | `ui_check_property_names` in `src/render/ui_check.h` (B), over `rml_property_name` and `rml_shorthand_name` in `src/ui/rml.h` | What `ui_source_project.properties` takes |
+| Native slots | `kit_slot_begin(k, key, host, selector)` and `kit_slot_end` in `src/editor/ui/kit.h` (`kit_slot.c`, J) | Kit content inside a `kit_host`'s authored content, as Unity's IMGUIContainer: the element the selector finds is marked `data-kit-slot="<key>"` and found again every frame, so a reinstalled mount or a recreated data-for item gets its content anew; a slot not begun in a frame loses it. Its path is the host's and the key |
+| Chrome focus | `kit_release_focus(k, host)` (J) | RmlUi focuses what is clicked; authored chrome calls it every frame so Studio's shortcuts keep working |
+| Status data | `editor` (`studio_status_add`, `studio_status_show` in `studio_internal.h`; `studio_sources.c`, J) | What projects/studio's `StatusBar` binds: `hints` ({icon, key, label}), `report`, `reporting`, `assets`, `output`, `performance`, `assetsKey`, `outputKey`, `scene`, `selection`, `objects`, `playing` |
 
 ## Workstreams
 

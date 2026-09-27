@@ -377,6 +377,7 @@ struct kit
     double toast_time;
     float front_height;
     bool toasts_expanded;
+    node **slots; /* owned: native slots (kit_slot.c), outer ones first */
 };
 
 /* ---------- Core (kit.c) ---------- */
@@ -423,6 +424,7 @@ rml_element *raw_icon(rml_element *parent, const char *cls, uint32_t cp);
 
 /* Keyed emission. node_free frees a node, its children and everything they
  * own, never their elements. */
+node *node_new(node_kind kind);
 void node_free(node *n);
 void unmap(kit *k, node *n);
 node *emit_in(kit *k, node *parent, const char *key, node_kind kind, const char *tag, const char *cls);
@@ -529,6 +531,15 @@ bool command_key(kit *k, const rml_event *e);
 bool command_change(kit *k, rml_element *target);
 void command_click(kit *k, node *n);
 void command_hover(kit *k, node *n);
+
+/* ---------- Native slots (kit_slot.c) ---------- */
+
+/* Drops the slots whose adopted element left its host; call before input
+ * or emission reads their nodes. Touches no element of a dropped slot. */
+void check_slots(kit *k);
+/* Drops the slots this frame did not begin. */
+void end_slots(kit *k);
+void free_slots(kit *k);
 
 /* ---------- Code editor (kit_code.c) ---------- */
 

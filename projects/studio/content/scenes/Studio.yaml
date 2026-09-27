@@ -10,3 +10,4 @@ entities:
 - {name: Data, prototype: Data}
 - {name: Theme, prototype: Theme}
 - {name: Inspector, prototype: Inspector}
+- {name: StatusBar, prototype: StatusBar}

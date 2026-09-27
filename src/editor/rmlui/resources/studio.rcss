@@ -59,27 +59,6 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 /* Drawer: the collapsible bottom area of the main column. */
 .area.drawer { flex: 0 0 auto; }
 .area-head .drawer-close { margin-left: 2dp; }
-.statusbar .drawers { display: flex; align-items: center; gap: 2dp; }
-.statusbar .toggle-drawer { color: var(--faint-foreground); }
-.statusbar .toggle-drawer .icon { font-size: 12dp; width: 14dp; }
-.statusbar .ui-scale { flex-shrink: 0; color: var(--faint-foreground); font-family: InterNumeric; }
-.statusbar .toggle-drawer[data-state=on] { background-color: transparent; color: var(--foreground); }
-.statusbar .toggle-drawer[data-state=on] .icon { color: var(--primary-text); }
-
-/* Status bar. */
-.statusbar { height: 24dp; flex: 0 0 auto; display: flex; align-items: center; gap: 14dp; padding: 0dp 10dp; background-color: var(--muted); border-top: 1dp var(--edge); color: var(--muted-foreground); font-size: 11dp; white-space: nowrap; }
-/* Hints give way first when the window narrows. */
-.statusbar .hints { display: flex; align-items: center; gap: 12dp; flex: 0 1 auto; min-width: 0dp; overflow: hidden; }
-.statusbar .drawers, .statusbar .stats { flex-shrink: 0; }
-.statusbar .hint { display: flex; align-items: center; gap: 4dp; }
-.statusbar .hint .icon { font-size: 13dp; width: 14dp; color: var(--faint-foreground); }
-.statusbar .hint .kbd-key { height: 16dp; min-width: 16dp; }
-.statusbar .report { display: flex; align-items: center; gap: 6dp; color: var(--foreground); opacity: 1; transition: opacity 0.2s cubic-out; }
-.statusbar .report[data-starting-style], .statusbar .report[data-ending-style] { opacity: 0; }
-.statusbar .report .icon { color: var(--success); font-size: 12dp; }
-.statusbar .stats { display: flex; gap: 10dp; color: var(--faint-foreground); font-family: InterNumeric; }
-.statusbar .stats .strong { color: var(--muted-foreground); }
-.statusbar .count { display: block; white-space: nowrap; line-height: 16dp; }
 
 /* Scene viewport. */
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: var(--viewport); }

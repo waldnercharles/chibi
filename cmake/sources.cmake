@@ -306,6 +306,9 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_pick.c
 )
 
+# Code intelligence in the Text Editor (workstream I).
+list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_code.c)
+
 # ---------- Settings (workstream F) ----------
 list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_settings.c)
 

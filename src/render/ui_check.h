@@ -47,6 +47,22 @@ bool ui_check(
 );
 void ui_check_messages_free(ui_check_message *messages);
 
+/* Workstream I: ui_check in `context`, a scratch context the caller keeps
+ * (rml_backend_context), which a check leaves empty. ui_check makes a backend
+ * for each check; destroying one releases every context's font resources
+ * (rml_release_render_managers), which a host showing documents would rather
+ * keep. */
+typedef struct rml_context rml_context;
+bool ui_check_in(
+    rml_context *context,
+    const char *content_root,
+    const char *name,
+    const char *text,
+    ui_check_message **messages,
+    char *error,
+    size_t error_size
+);
+
 /* Appends a copy of the name of each property and shorthand RCSS takes, as
  * RmlUi registers them, to `names` (support/array.h); a ui_source_project's
  * `properties`. RmlUi must be initialized. */

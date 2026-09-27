@@ -83,6 +83,8 @@ void test_ui_pages();
 void test_ui_wiring();
 /* Workstream C: the code editor. */
 bool test_kit_code();
+/* Workstream I: code intelligence in the Text Editor. */
+void test_code_intelligence();
 
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
@@ -238,6 +240,8 @@ TEST_CASE(all_checks)
     test_ui_wiring();
     /* Workstream C: the code editor. */
     test_check(test_kit_code(), "Code editor: standard and Vim keys, text_edits with undo, :w, host chords, completions and cached rendering");
+    /* Workstream I: code intelligence in the Text Editor. */
+    test_code_intelligence();
     /* ---------- Settings (workstream F) ---------- */
     test_studio_settings();
     /* ---------- Authored status bar (workstream J) ---------- */
@@ -855,6 +859,11 @@ int main(int argc, char **argv)
     /* Workstream C: the code editor alone. */
     if (argc > 1 && strcmp(argv[1], "--kit-code") == 0) {
         return test_kit_code() ? 0 : 1;
+    }
+    /* Workstream I: code intelligence in the Text Editor. */
+    if (argc > 1 && strcmp(argv[1], "--code-intelligence") == 0) {
+        test_code_intelligence();
+        return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-render") == 0) {
         return rmlui_render_run(program_name, false);

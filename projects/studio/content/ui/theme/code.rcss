@@ -9,6 +9,24 @@
 .tok-error { color: var(--destructive); }
 .tok-warning { color: var(--warning); }
 
+/* Refined ui tokens (ui_source_kind_class): a span's second class overrides
+   its first, so these follow the base classes. After VS Code's Light+ and
+   Dark+. */
+body {
+    --tok-tag: #800000; --tok-attribute: #e50000; --tok-selector: #800000;
+    --tok-property: #e50000; --tok-variable: #001080; --tok-binding: #795e26;
+}
+.dark {
+    --tok-tag: #569cd6; --tok-attribute: #9cdcfe; --tok-selector: #d7ba7d;
+    --tok-property: #9cdcfe; --tok-variable: #4fc1ff; --tok-binding: #dcdcaa;
+}
+.tok-tag { color: var(--tok-tag); }
+.tok-attribute { color: var(--tok-attribute); }
+.tok-selector { color: var(--tok-selector); }
+.tok-property { color: var(--tok-property); }
+.tok-variable { color: var(--tok-variable); }
+.tok-binding { color: var(--tok-binding); }
+
 /* The code editor (kit_code). Zep draws it; each hidden swatch hands one of
    its roles the color set here, and the tok-* classes above color the tokens. */
 kit-code {
@@ -40,7 +58,7 @@ kit-code .zep-info { color: var(--primary); }
 .code-completions {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
     border-radius: var(--r-lg); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
-    font-family: "JetBrains Mono"; font-size: 12dp;
+    font-family: "JetBrains Mono"; font-size: 12dp; max-height: 272dp; overflow-y: auto;
 }
 .code-completion {
     display: flex; align-items: center; gap: 12dp; height: var(--h); padding: 0dp 6dp; border-radius: var(--r);
@@ -49,3 +67,33 @@ kit-code .zep-info { color: var(--primary); }
 .code-completion .detail { margin-left: auto; font-family: Inter; color: var(--muted-foreground); }
 .code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
 .code-completion[data-highlighted] .detail { color: #ffffffcc; }
+
+/* The hover card: the diagnostics of the line under the resting pointer, then
+   what the pointer rests on. It lives in the overlay layer, so it never clips
+   at the editor's edge, and fades as the kit's tooltips do. */
+.code-hover {
+    position: absolute; pointer-events: none; display: block; z-index: 30; max-width: 520dp;
+    background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
+    padding: 6dp 8dp; color: var(--foreground); font-size: 12dp; line-height: 17dp;
+}
+.code-hover { opacity: 1; transition: opacity 0.1s cubic-out; }
+.code-hover[data-starting-style], .code-hover[data-ending-style] { opacity: 0; }
+.code-hover-problem { display: flex; align-items: flex-start; gap: 6dp; }
+.code-hover-problem + .code-hover-problem { margin-top: 4dp; }
+.code-hover-problem .icon { flex: 0 0 auto; line-height: 17dp; color: var(--primary); }
+.code-hover-problem[data-severity="error"] .icon { color: var(--destructive); }
+.code-hover-problem[data-severity="warning"] .icon { color: var(--warning); }
+.code-hover-problem .message { flex: 1 1 auto; white-space: normal; }
+.code-hover-title { display: block; font-family: "JetBrains Mono"; white-space: nowrap; }
+.code-hover-problem + .code-hover-title { margin-top: 6dp; padding-top: 6dp; border-top: 1dp var(--line); }
+.code-hover-line { display: block; font-family: "JetBrains Mono"; font-size: 11dp; color: var(--muted-foreground); white-space: nowrap; }
+
+/* The Text Editor's header: Vim's mode, and the count of problems, which
+   steps to the next. */
+.code-mode {
+    flex: 0 0 auto; margin-right: 4dp; padding: 0dp 5dp; border: 1dp var(--line); border-radius: var(--r);
+    font-family: "JetBrains Mono"; font-size: 10dp; line-height: 16dp; color: var(--muted-foreground);
+}
+.code-problems .icon { color: var(--warning); }
+.code-problems.errors .icon { color: var(--destructive); }
+

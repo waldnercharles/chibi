@@ -3,6 +3,7 @@
 
 #include "assets/ui_source.h"
 #include "editor/documents/component_presentation.h"
+#include "editor/documents/ui_code.h"
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
 #include "editor/ui/kit_icons.h"
@@ -90,6 +91,7 @@ typedef struct
     bool code_vim;        /* the Text Editor edits with Vim's keys */
     float code_font_size; /* the Text Editor's font size, in dp */
     bool code_apply_live; /* UI edits apply as typed, not when saved */
+    bool code_wrap; /* Workstream I: long lines wrap; off, they scroll sideways */
 } studio_prefs;
 
 typedef struct
@@ -197,6 +199,9 @@ typedef struct
     char place[160];            /* graph or object */
     bool object;                /* place names a scene object */
     const char *use;            /* Call, Read, Handles... */
+    /* Workstream I: a place in a UI document the Text Editor opens; its
+       path is empty for other references. */
+    ui_code_place ui;
 } studio_reference;
 
 /* What Output's Calls view traces (studio_calls.c): a function by its asset
@@ -460,6 +465,15 @@ typedef struct
     char *name;
 } studio_project;
 
+/* Workstream I: the code editor of one open document part, which keeps its
+ * cursor, scroll and Vim state while another part shows. */
+typedef struct
+{
+    char path[1024];
+    ui_part part;
+    kit_code_editor *editor;
+} studio_code_editor;
+
 /* UI documents (workstream D). The Text Editor (studio_code.c) shows the
  * active UI document and keeps the last one while a document of another kind
  * is active. */
@@ -472,15 +486,42 @@ typedef struct
     char overwrite[1024]; /* that file */
     int close_toast;      /* confirms closing a document with unsaved edits */
     char close[1024];     /* that document */
-    /* Workstream C: the code editor (kit_code) over the shown part, and the
-       document and part it holds. */
+    /* Workstream I: a code editor (kit_code) per open document part, and
+       the one shown with the document and part it holds (the designer
+       follows its cursor). */
+    studio_code_editor *editors; /* array */
     kit_code_editor *editor;
     char editor_path[1024];
     ui_part editor_part;
-    /* The editor's text parsed as its part (assets/ui_source.h), and the
-       spans that highlight it. */
+    int reveal_offset; /* a byte of the part to reveal instead, or -1 */
+    /* The shown part's text parsed (assets/ui_source.h), the spans that
+       highlight it, and each part's problems as markers (ui_code_markers). */
     ui_source *source;
-    kit_code_span *spans; /* array */
+    kit_code_span *spans;                    /* array */
+    kit_code_marker *markers[UI_PART_COUNT]; /* arrays */
+    /* RmlUi's check of the shown document (ui_code_check) in a scratch
+       context kept for it, made once its text has rested: the revision
+       checked, and when the next is due. */
+    rml_backend *checker;
+    ui_check_message *checked; /* array */
+    char check_failure[256];
+    char checked_path[1024];
+    unsigned checked_revision, check_seen;
+    double check_due;
+    bool markers_stale;
+    /* The project around the shown document, for completion and navigation
+       (ui_code_scan), and when it was scanned. */
+    ui_source_project project;
+    char project_root[1024];
+    double project_time;
+    /* Completion while it runs, at the cursor. */
+    bool completing;
+    ui_code_completions completions;
+    /* The description of the byte the pointer rests on. */
+    char *hover;
+    int hover_at;
+    const ui_source *hover_source;
+    bool replayed; /* Undo or Redo from the editor changed the text */
 } studio_code;
 
 /* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
@@ -1030,6 +1071,9 @@ void studio_code_save(studio *s);
 void studio_code_close(studio *s, int tab);
 /* Workstream C: frees the Text Editor's code editor. */
 void studio_code_free(studio *s);
+/* Workstream I: opens a place in a UI document's part, as Go to Definition
+ * and Find References rows do; false when it cannot be opened. */
+bool studio_code_open_place(studio *s, const ui_code_place *place);
 /* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
 void studio_new_ui_button(studio *s);
 

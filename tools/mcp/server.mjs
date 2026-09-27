@@ -793,6 +793,24 @@ function buildToolDefinitions() {
     required: ["kind", "name"],
     additionalProperties: false,
   };
+  const inspectUiArguments = {
+    type: "object",
+    properties: {
+      ...uiArguments.properties,
+      complete: {
+        type: "object",
+        properties: {
+          line: { type: "integer", minimum: 1, description: "1-based line of the asset's file." },
+          column: { type: "integer", minimum: 1, description: "1-based column, in bytes." },
+        },
+        required: ["line", "column"],
+        additionalProperties: false,
+        description: "Also return the completions Studio's Text Editor offers at this position: tags, attributes, widgets, classes, properties, custom properties and save keys.",
+      },
+    },
+    required: ["kind", "name"],
+    additionalProperties: false,
+  };
   const uiElement = {
     oneOf: [{ type: "integer", minimum: 0 }, { type: "string" }],
     description: "An element: its inspectUi index, or a selector exactly one element matches, as #resume or use.card.",
@@ -925,8 +943,8 @@ function buildToolDefinitions() {
     {
       name: "inspectUi",
       operation: "inspect_ui",
-      description: "Read a ui asset's outline, props, events, slots, widgets, tokens and syntax errors.",
-      inputSchema: uiArguments,
+      description: "Read a ui asset's outline, props, events, slots, widgets, tokens and syntax errors; with complete, the completions at a position.",
+      inputSchema: inspectUiArguments,
       outputSchema,
     },
     {

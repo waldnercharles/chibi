@@ -303,6 +303,10 @@ const searchNodesDefinition = {
       type: "boolean",
       description: "Include input and output pins as \"name: type\"; defaults to true.",
     },
+    behavior: {
+      type: "string",
+      description: "The behavior being edited. Offers only the UI events of the GameUi documents on the prototypes and scene objects that attach it, the events that can reach it.",
+    },
   }),
   outputSchema: { type: "object", additionalProperties: true },
 };

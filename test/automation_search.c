@@ -414,6 +414,65 @@ static void ui_events()
     rmdir(root);
 }
 
+/* Given the behavior being edited, searchNodes offers only the events of
+ * the ui documents on what attaches it, which are the ones that reach it. */
+static void behavior_ui_events()
+{
+    char root[] = "/tmp/chibi-behavior-events-XXXXXX";
+    assert(mkdtemp(root));
+    static const char *const FOLDERS[] = { "content",
+                                           "content/ui",
+                                           "content/prototypes",
+                                           "content/behaviors" };
+    static const char *const FILES[][2] = {
+        { "content/ui/Hud.yaml", "rml: '<div data-event-click=\"emit(''Go'')\">Go</div>'\n" },
+        { "content/ui/Shop.yaml",
+          "rml: '<div data-event-click=\"emit(''Buy'')\">Buy</div>'\n" },
+        { "content/prototypes/Hero.yaml", "name: Hero\ncomponents:\n  GAME.GameUi: {document: Hud}\nbehaviors: [Player]\n" },
+        { "content/behaviors/Player.yaml", "version: 3\nname: Player\nid_counter: 1\nowner_type: ecs.entity\ngraphs: []\n" },
+    };
+    char path[256], version[64];
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    snprintf(version, sizeof version, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    write_text(path, version);
+    for (size_t i = 0; i < sizeof FOLDERS / sizeof *FOLDERS; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, FOLDERS[i]);
+        assert(!mkdir(path, 0755));
+    }
+    for (size_t i = 0; i < sizeof FILES / sizeof *FILES; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, FILES[i][0]);
+        write_text(path, FILES[i][1]);
+    }
+    size_t bytes;
+    char *go = search_in(root, "\"query\":\"go\",\"behavior\":\"Player\"", &bytes);
+    char *buy = search_in(root, "\"query\":\"buy\",\"behavior\":\"Player\"", &bytes);
+    char *every = search_in(root, "\"query\":\"buy\"", &bytes);
+    char *missing = search_in(root, "\"query\":\"go\",\"behavior\":\"Nobody\"", &bytes);
+    test_check(
+        go && strstr(go, "\"event_name\":\"Go\"") && buy &&
+            !strstr(buy, "\"event_name\":\"Buy\"") && every &&
+            strstr(every, "\"event_name\":\"Buy\"") && missing &&
+            strstr(missing, "no behavior named Nobody"),
+        "searchNodes offers a behavior only the UI events of the documents on "
+        "what attaches it"
+    );
+    free(go);
+    free(buy);
+    free(every);
+    free(missing);
+    for (int i = (int)(sizeof FILES / sizeof *FILES) - 1; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, FILES[i][0]);
+        unlink(path);
+    }
+    for (int i = (int)(sizeof FOLDERS / sizeof *FOLDERS) - 1; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, FOLDERS[i]);
+        rmdir(path);
+    }
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    unlink(path);
+    rmdir(root);
+}
+
 /* Responses stay small enough to read whole: the vocabulary outline, and a
  * page of results with pins. */
 static void response_budgets()
@@ -492,5 +551,6 @@ void test_automation_search()
     system_offers();
     inspected_pins();
     ui_events();
+    behavior_ui_events();
     response_budgets();
 }

@@ -966,6 +966,7 @@ int main(int argc, char **argv)
         test_kit_host();
         test_studio_settings();
         test_studio_zoom();
+        test_automation_search();
         return fails ? 1 : 0;
     }
     pu_run_test("all_checks", all_checks);

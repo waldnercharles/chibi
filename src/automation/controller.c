@@ -320,6 +320,7 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "limit", "integer", false, "Page size, default 10, maximum 50." },
     { "offset", "integer", false, "Zero-based page offset." },
     { "include_pins", "boolean", false, "Include typed pins, default true." },
+    { "behavior", "string", false, "A behavior asset's name: offer only the UI events of the GameUi documents on the prototypes and scene objects that attach it." },
 };
 static const contract_field CONTRACT_DESCRIBE_COMPONENTS[] = {
     { "names", "string[]", false, "Optional component names or stable keys; omit to describe every reflected component." },
@@ -7803,22 +7804,75 @@ static bool defined_event(const project_events *events, const char *name)
     return graph_event_host_name(name);
 }
 
-/* Adds the events the project's ui documents send; the pause menu's go to
- * the player shell. An invalid document offers none until it validates. */
-static int load_ui_events(const char *root, project_events *events, char *error, size_t error_size)
+/* The names of the ui documents whose events reach `behavior`: the GameUi
+ * documents on what attaches it (reference_index_attached_documents). They
+ * live as long as the catalog snapshot. */
+static int attached_ui_documents(
+    const char *root,
+    const char *behavior,
+    const char ***names,
+    char *error,
+    size_t error_size
+)
 {
-    asset_entry *entries = NULL;
-    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+    catalog_asset *assets;
+    uint64_t revision, content_hash;
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, error_size)) {
         return CHIBI_AUTOMATION_IO_ERROR;
     }
+    const reference_index *index = CATALOG_SNAPSHOT.references;
+    int at = reference_index_find_name(index, REFERENCE_ASSET_BEHAVIOR, behavior);
+    if (at < 0 || reference_index_asset_at(index, at)->unresolved) {
+        snprintf(error, error_size, "no behavior named %s", behavior);
+        return CHIBI_AUTOMATION_NOT_FOUND;
+    }
+    int *documents = NULL;
+    reference_index_attached_documents(index, at, &documents);
+    for (int i = 0; i < acount(documents); i++) {
+        apush(*names, reference_index_asset_at(index, documents[i])->name);
+    }
+    afree(documents);
+    return CHIBI_AUTOMATION_OK;
+}
+
+static bool among_names(const char **names, const char *name)
+{
+    for (int i = 0; i < acount(names); i++) {
+        if (!strcmp(names[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Adds the events the project's ui documents send, or with a `behavior`
+ * those of the documents that reach it; the pause menu's go to the player
+ * shell. An invalid document offers none until it validates. */
+static int load_ui_events(
+    const char *root,
+    const char *behavior,
+    project_events *events,
+    char *error,
+    size_t error_size
+)
+{
+    const char **reached = NULL;
+    int status = behavior
+                   ? attached_ui_documents(root, behavior, &reached, error, error_size)
+                   : CHIBI_AUTOMATION_OK;
+    asset_entry *entries = NULL;
+    if (status == CHIBI_AUTOMATION_OK &&
+        enumerate_assets(root, &entries, error, error_size) != 0) {
+        status = CHIBI_AUTOMATION_IO_ERROR;
+    }
     const asset_family *family = family_by_kind("ui");
-    int status = CHIBI_AUTOMATION_OK;
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
         char document[256], path[1024];
         const char *filename = entries[i].filename;
         int length = (int)(strlen(filename) - strlen(ASSET_EXTENSION));
         snprintf(document, sizeof document, "%.*s", length, filename);
-        if (entries[i].family != family || !strcmp(document, UI_DOCUMENT_PAUSE_MENU)) {
+        if (entries[i].family != family || !strcmp(document, UI_DOCUMENT_PAUSE_MENU) ||
+            (behavior && !among_names(reached, document))) {
             continue;
         }
         snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
@@ -7838,6 +7892,7 @@ static int load_ui_events(const char *root, project_events *events, char *error,
         free(text);
     }
     free_asset_entries(entries);
+    afree(reached);
     return status;
 }
 
@@ -7847,7 +7902,13 @@ static void free_project_events(project_events *events)
     ui_events_free(events->ui);
 }
 
-static int load_project_events(const char *root, project_events *events, char *error, size_t error_size)
+static int load_project_events(
+    const char *root,
+    const char *behavior,
+    project_events *events,
+    char *error,
+    size_t error_size
+)
 {
     int status = load_behavior_family_assets(
         root,
@@ -7857,7 +7918,7 @@ static int load_project_events(const char *root, project_events *events, char *e
         error_size
     );
     return status == CHIBI_AUTOMATION_OK
-             ? load_ui_events(root, events, error, error_size)
+             ? load_ui_events(root, behavior, events, error, error_size)
              : status;
 }
 
@@ -8436,6 +8497,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
     const char *wire_from_text = request_string(request, "wire_from");
     const char *wire_to_text = request_string(request, "wire_to");
+    const char *behavior = request_string(request, "behavior");
     pin_spec wire_from, wire_to;
     if ((wire_from_text && !wire_pin(wire_from_text, &wire_from)) ||
         (wire_to_text && !wire_pin(wire_to_text, &wire_to)) ||
@@ -8465,14 +8527,15 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
           yyjson_get_sint(offset_value) > 100000)) ||
         (pins_value && !yyjson_is_bool(pins_value)) ||
         (filter.pure && !yyjson_is_bool(filter.pure)) ||
-        (query && strlen(query) > 256)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page or include_pins");
+        (query && strlen(query) > 256) ||
+        (yyjson_obj_get(request, "behavior") && (!behavior || !behavior[0]))) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page, include_pins or behavior");
         return -1;
     }
     project_events events = { 0 };
     char error[256] = "";
     int status = behavior_vocabulary(domain)
-                   ? load_project_events(root, &events, error, sizeof error)
+                   ? load_project_events(root, behavior, &events, error, sizeof error)
                    : CHIBI_AUTOMATION_OK;
     if (status != CHIBI_AUTOMATION_OK) {
         free_project_events(&events);

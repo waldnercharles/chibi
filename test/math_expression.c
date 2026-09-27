@@ -1329,6 +1329,29 @@ static void editor_rewire()
     editor_free(e);
 }
 
+/* A double result wired into a float input stays the type its body returns,
+   as Studio and the MCP refresh an expression after a wire, so the call
+   never reads the body's double as a float. */
+static void double_result_feeds_float()
+{
+    behavior_asset *asset = behavior_asset_new("Result into float");
+    graph *g = asset->graph;
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, g, "length(vec2(3, 4))", &error);
+    node *sink = graph_add_node(g, registry_node_by_name("Set UI Value"));
+    assert(call && sink && sink->input_pins[3].type == PIN_F32);
+    assert(graph_connect_data(g, call, 0, sink, 3) == 0);
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    const graph *body = behavior_asset_find_graph(asset, call->reference_id);
+    const node *ret = graph_node_by_id(body, body->return_id);
+    node *source = NULL;
+    int source_pin = -1;
+    bool wired = graph_input_source(g, sink, 3, &source, &source_pin) && source == call;
+    assert(wired && call->output_pins[0].type == ret->input_pins[0].type);
+    assert(call->output_pins[0].type == PIN_F64 && evaluate(asset, call) == 5);
+    behavior_asset_free(asset);
+}
+
 static void editor_history()
 {
     editor *e = editor_new(behavior_asset_new("Expression history"));
@@ -1886,6 +1909,8 @@ void test_math_expression()
     expression_source_names();
     expression_title();
     editor_delete_expression();
+    /* arena2d end to end (wave 3, workstream X) */
+    double_result_feeds_float();
     expect("negate(3) + negate(-2)", -1);
     expect("1 + 2 * 3", 7);
     expect("(1 + 2) * 3", 9);

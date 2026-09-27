@@ -155,8 +155,9 @@ void render_ui_free(render_ui *ui);
  * in the model under `#id` for Get UI Value. */
 void render_ui_update(render_ui *ui, const ui_world *world, int width, int height, double dt);
 /* Shows the host's ui asset `name` above the world's documents with `state`
- * as its root's class, or hides it when `state` is NULL. Its activations wait
- * for render_ui_take_overlay_event instead of reaching the world. */
+ * as its root's class, or hides it when `state` is NULL, from the next
+ * render_ui_update. Its activations wait for render_ui_take_overlay_event
+ * instead of reaching the world. */
 void render_ui_set_overlay(render_ui *ui, const char *name, const char *state);
 /* Takes the overlay's last activated event name; false when there is none. */
 bool render_ui_take_overlay_event(render_ui *ui, char *name, size_t size);

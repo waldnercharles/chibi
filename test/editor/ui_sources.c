@@ -236,7 +236,7 @@ void test_ui_sources()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameUi_get(world, entity) = (GameUi){ .document = "Menu" };
     ui_world w = { .ecs = world, .page = "Page" };
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     game_ui_sources(ui, &w);
     overlay_remount(ui, &w, root);
     render_ui_free(ui);

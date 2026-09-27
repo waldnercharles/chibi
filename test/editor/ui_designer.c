@@ -600,7 +600,7 @@ static void shown_maps(const char *folder)
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     ui_world w = { .ecs = world };
-    render_ui *shown = render_ui_new(folder);
+    render_ui *shown = render_ui_new(folder, NULL);
     render_ui_set_overlay(shown, "Card", "dark");
     render_ui_update(shown, &w, 1280, 720, 1.0 / 60);
     rml_context *context = render_ui_context(shown);

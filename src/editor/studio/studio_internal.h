@@ -775,12 +775,16 @@ typedef struct studio_sources
     ui_page page;            /* the open scene's root document */
     studio_token *tokens;    /* in the order `theme` lists its rows */
     uint64_t writes_seen;
+    int inspected; /* the Inspector model's revision `inspector` shows */
 } studio_sources;
 
-/* Adds the variables authored panels bind to a data model's JSON. */
-void studio_sources_add(yyjson_mut_doc *doc);
+/* A data model's JSON with the variables authored panels bind. */
+yyjson_mut_doc *studio_sources_new();
 /* Applies what bindings changed, then shows the current values. */
 void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
+/* Shows the current values in a preview's model, applying nothing its
+ * bindings write (studio_canvas.c). */
+void studio_sources_show(studio *s, studio_sources *sources, ui_data *data);
 void studio_sources_free(studio_sources *sources);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
@@ -1225,7 +1229,7 @@ typedef struct studio_inspect_model
     bool picking;
     bool wide;         /* its area is wider than tall: panes side by side */
     char shortcut[32]; /* Inspect Element's, in the platform's notation */
-    bool changed;      /* since the last read */
+    int revision;      /* counts the syncs that changed it */
     studio_inspect_row *rows;
     bool more; /* rows stopped at their limit */
     bool selection;
@@ -1271,6 +1275,9 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key);
 /* Applies what the panel asked and reads what it shows; NULL while neither
  * an area shows the panel nor a pick is on. */
 const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_input *input);
+/* The model the last sync read, whose strings last until its revision
+ * changes; NULL before the Inspector opens. */
+const studio_inspect_model *studio_inspect_shown(const studio *s);
 /* After studio_emit: the pick overlay and the highlight. */
 void studio_inspect_emit(studio *s);
 /* ---------- UI wiring (workstream K) ---------- */
@@ -1365,6 +1372,7 @@ typedef struct studio_canvas
     engine_viewport *viewport; /* its frame and documents */
     ecs_world *world;          /* empty: only the preview shows */
     game_save *save;           /* what its bindings set */
+    studio_sources sources; /* Studio's data, which it shows with the Studio project open */
     studio_canvas_action *actions;
 } studio_canvas;
 

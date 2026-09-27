@@ -239,10 +239,7 @@ studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *e
         ui->default_page = xstrdup(project.ui);
     }
     chibi_project_free(&project);
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
-    studio_sources_add(doc);
-    ui_data_init(&ui->data, context, doc, on_emit, ui);
+    ui_data_init(&ui->data, context, studio_sources_new(), on_emit, ui);
     size_t length = strlen(project_root) + sizeof "/content";
     ui->content_root = xmalloc(length);
     snprintf(ui->content_root, length, "%s/content", project_root);

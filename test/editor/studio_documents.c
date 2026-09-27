@@ -40,8 +40,9 @@ typedef struct
     double time;
 } studio_fixture;
 
-/* Studio over the fixture project's scene `scene` with `behavior` open. */
-static studio_fixture fixture_open(const char *scene, const char *behavior)
+/* Studio over scene `scene` of the project at `project` with `behavior`
+   open. */
+static studio_fixture fixture_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = { .world = ecs_world_new() };
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -63,7 +64,9 @@ static studio_fixture fixture_open(const char *scene, const char *behavior)
         NULL,
         f.runtime
     );
-    assert(app_scene_authoring_set_content_root(f.scene, PROJECT "/content") == 0);
+    char content[PATH_MAX];
+    snprintf(content, sizeof content, "%s/content", project);
+    assert(app_scene_authoring_set_content_root(f.scene, content) == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_load(f.scene, scene) == 0);
     assert(app_scene_authoring_open_behavior(f.scene, behavior) == 0);
@@ -72,7 +75,7 @@ static studio_fixture fixture_open(const char *scene, const char *behavior)
 
 static studio_fixture fixture_new()
 {
-    studio_fixture f = fixture_open(PROJECT "/content/scenes/Main.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.yaml", "Weapons");
     assert(editor_open_graph(f.graph, FUNCTION_GRAPH) == 0);
     f.studio = studio_new(f.scene, f.viewport, PROJECT);
     studio_maximize_graph(f.studio);
@@ -135,17 +138,23 @@ void test_code_intelligence_studio();
 #define BANK PROJECT "/content/ui/Bank.rml"
 #define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
-/* Studio over the Vault scene, whose Vault shows the Bank document and
-   attaches Teller, with the Scene filling the workspace. Preferences stay as
-   saved. */
-static studio_fixture vault_open()
+/* Studio over `project`'s scene `scene` with `behavior` open and the Scene
+   filling the workspace. Preferences stay as saved. */
+static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
-    studio_fixture f = fixture_open(VAULT, "Teller");
-    f.studio = studio_new(f.scene, f.viewport, PROJECT);
+    studio_fixture f = fixture_open(project, scene, behavior);
+    f.studio = studio_new(f.scene, f.viewport, project);
     f.studio->prefs.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
     f.studio->applied.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
     f.studio->maximized = STUDIO_AREA_TOP;
     return f;
+}
+
+/* Studio over the Vault scene, whose Vault shows the Bank document and
+   attaches Teller. */
+static studio_fixture vault_open()
+{
+    return scene_open(PROJECT, VAULT, "Teller");
 }
 
 static void frames(studio_fixture *f, int count)
@@ -298,12 +307,93 @@ static void preview_follows_document()
     fixture_free(&f);
 }
 
+static bool logged_last(const studio *s, const char *event)
+{
+    const studio_canvas *c = s->canvas;
+    return acount(c->actions) &&
+           !strcmp(c->actions[acount(c->actions) - 1].event, event);
+}
+
+/* The elements of the Canvas's asset that `selector` matches, up to 8. */
+static int canvas_elements(studio *s, const char *selector, rml_element **found)
+{
+    char query[192];
+    snprintf(query, sizeof query, "[data-ui=%s] %s", s->canvas->asset, selector);
+    rml_context *context = render_ui_context(engine_viewport_ui(s->canvas->viewport));
+    return rml_element_query_selector_all(rml_context_document(context, 0), query, found, 8);
+}
+
+/* The variables the Canvas's documents bind. */
+static yyjson_mut_val *canvas_variables(studio *s)
+{
+    render_ui *ui = engine_viewport_ui(s->canvas->viewport);
+    return yyjson_mut_doc_get_root(render_ui_data(ui)->doc);
+}
+
+/* Studio over the Studio project's scene, whose root document is its
+   manifest's, as the application opens it. */
+static studio_fixture studio_project_open()
+{
+    static char root[PATH_MAX];
+    char scene[PATH_MAX + 32];
+    assert(realpath("projects/studio", root));
+    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.yaml", root);
+    studio_fixture f = scene_open(root, scene, "Dismiss");
+    app_scene_authoring_set_default_ui(f.scene, "StudioShell");
+    return f;
+}
+
+/* With the Studio project open, its ui assets are Studio's chrome, so the
+   Canvas previews them over Studio's own data: TopBar lists the document
+   tabs and labels its commands, whose studio.* events only reach the
+   Actions log. A game's preview binds only save and system. */
+static void preview_binds_studio_data()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_preview_ui(s, "TopBar");
+    frames(&f, 8);
+    rml_element *found[8];
+    /* Besides data-for's template. */
+    int tabs = canvas_elements(s, ".doc-tab", found) - 1;
+    bool listed = s->own_project && tabs > 0 && tabs == acount(f.scene->tabs);
+    char label[64] = "";
+    if (canvas_elements(s, ".search-trigger .label", found) == 1) {
+        rml_element_inner_rml(found[0], label, sizeof label);
+    }
+    bool labeled = !strcmp(
+        label,
+        studio_command_describe(s, STUDIO_COMMAND_SEARCH).label
+    );
+    canvas_elements(s, ".search-trigger", found);
+    rml_element_click(found[0]);
+    frames(&f, 2);
+    bool logged = logged_last(s, "studio.search") && !kit_command_is_open(s->kit);
+    fixture_free(&f);
+
+    f = vault_open();
+    frames(&f, 3);
+    studio_preview_ui(f.studio, "Bank");
+    frames(&f, 3);
+    yyjson_mut_val *variables = canvas_variables(f.studio);
+    bool game = yyjson_mut_obj_size(variables) == 2 &&
+                yyjson_mut_obj_get(variables, "save") &&
+                yyjson_mut_obj_get(variables, "system");
+    if (!(listed && labeled && logged && game)) {
+        printf("  %d %d %d %d: %d tabs, '%s'\n", listed, labeled, logged, game, tabs, label);
+    }
+    test_check(listed && labeled && logged && game, "a Studio-project Canvas preview binds Studio's data and only logs its commands; a game's binds save and system");
+    fixture_free(&f);
+}
+
 static void ui_wiring_checks()
 {
     ui_errors_recorded();
     ui_events_offered();
     preview_logs_actions();
     preview_follows_document();
+    preview_binds_studio_data();
 }
 
 /* ---------- Authored status bar (workstream J) ---------- */
@@ -393,13 +483,6 @@ static void key_event(SDL_Scancode key, bool down)
     event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
     event.key.down = down;
     assert(SDL_PushEvent(&event));
-}
-
-static bool logged_last(const studio *s, const char *event)
-{
-    const studio_canvas *c = s->canvas;
-    return acount(c->actions) &&
-           !strcmp(c->actions[acount(c->actions) - 1].event, event);
 }
 
 /* The Canvas preview takes the keys typed while its area has the keyboard,

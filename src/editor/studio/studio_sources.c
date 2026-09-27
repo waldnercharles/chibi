@@ -7,7 +7,8 @@
  * each command's state (the last sections). A panel's
  * edits apply back: a saved key to the save, a theme value to its file,
  * which restyles everything the page styles, and a setting to the
- * preferences. */
+ * preferences. A preview of Studio's own ui assets shows the same data and
+ * applies nothing. */
 #include "assets/project.h"
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
@@ -25,13 +26,16 @@
 #include <string.h>
 
 static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root);
-static void sync_inspector(studio *s, ui_data *data);
+static void sync_inspector(studio *s, studio_sources *src, ui_data *data);
+static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m);
 static void sync_editor(studio *s, ui_data *data);
 static void sync_commands(studio *s, ui_data *data);
 
-void studio_sources_add(yyjson_mut_doc *doc)
+yyjson_mut_doc *studio_sources_new()
 {
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_val *world = yyjson_mut_obj_add_obj(doc, root, "world");
     yyjson_mut_obj_add_str(doc, world, "title", "");
     yyjson_mut_obj_add_arr(doc, world, "saved");
@@ -40,6 +44,7 @@ void studio_sources_add(yyjson_mut_doc *doc)
     studio_settings_add(doc);
     studio_status_add(doc);
     studio_commands_add(doc);
+    return doc;
 }
 
 static yyjson_mut_val *variable(ui_data *data, const char *name)
@@ -926,17 +931,30 @@ static void sync_settings(studio *s, ui_data *data, bool wrote)
     afree(view.documents);
 }
 
+/* Shows the current values, applying first what bindings wrote when
+   `wrote`. */
+static void sync_values(studio *s, studio_sources *src, ui_data *data, bool wrote)
+{
+    sync_world(s, src, data, wrote);
+    sync_theme(s, src, data, wrote);
+    sync_settings(s, data, wrote);
+    sync_editor(s, data);
+    sync_commands(s, data);
+}
+
 void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
 {
     uint64_t writes = rml_data_model_writes(data->model);
     bool wrote = writes != src->writes_seen;
     src->writes_seen = writes;
-    sync_world(s, src, data, wrote);
-    sync_theme(s, src, data, wrote);
-    sync_inspector(s, data);
-    sync_settings(s, data, wrote);
-    sync_editor(s, data);
-    sync_commands(s, data);
+    sync_inspector(s, src, data);
+    sync_values(s, src, data, wrote);
+}
+
+void studio_sources_show(studio *s, studio_sources *src, ui_data *data)
+{
+    show_inspector_model(src, data, studio_inspect_shown(s));
+    sync_values(s, src, data, false);
 }
 
 void studio_sources_free(studio_sources *src)
@@ -1216,15 +1234,22 @@ static void show_inspector(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio
     show_pairs(doc, in, "attributes", m->attributes);
 }
 
-static void sync_inspector(studio *s, ui_data *data)
+/* Shows `m` when its revision is not the one shown, as its strings may
+   have moved since. */
+static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m)
 {
-    yyjson_mut_val *in = variable(data, "inspector");
-    studio_inspect_input input = inspector_input(in);
-    const studio_inspect_model *m = studio_inspect_sync(s, &input);
-    if (m && m->changed) {
-        show_inspector(data->doc, in, m);
-        rml_data_model_dirty(data->model, "inspector");
+    if (!m || m->revision == src->inspected) {
+        return;
     }
+    src->inspected = m->revision;
+    show_inspector(data->doc, variable(data, "inspector"), m);
+    rml_data_model_dirty(data->model, "inspector");
+}
+
+static void sync_inspector(studio *s, studio_sources *src, ui_data *data)
+{
+    studio_inspect_input input = inspector_input(variable(data, "inspector"));
+    show_inspector_model(src, data, studio_inspect_sync(s, &input));
 }
 
 /* ---------- Editor (workstreams J and T) ---------- */

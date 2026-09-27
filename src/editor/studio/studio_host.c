@@ -496,8 +496,11 @@ static int area_showing(const studio *s, studio_editor editor)
 
 static void draw_viewport(studio *s)
 {
-    /* The guest's own Scene area draws the scene. */
+    /* The guest's own Scene area draws the scene, resizing its target: the
+       texture this Studio showed last is gone by the time it shows the
+       scene again, so it names none until it draws. */
     if (s->guest) {
+        rml_backend_set_texture(s->backend, "viewport", 0);
         return;
     }
     int area = area_showing(s, STUDIO_EDITOR_SCENE);

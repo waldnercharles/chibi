@@ -497,18 +497,6 @@ extern "C"
     void kit_set_theme(kit *k, const char *name, bool active);
     void kit_set_body_class(kit *k, const char *name, bool on);
 
-    /* ---------- UI documents (workstream D) ---------- */
-
-    /* A text area filling its parent that edits source until kit_code lands:
-     * Enter breaks the line, Tab indents, Escape leaves the field, and every
-     * change reports at once. Returns the text, kept until kit_end, on the
-     * frame the user changed it; else NULL. A different `text` replaces the
-     * field's, as undo does. */
-    const char *kit_code_area(kit *k, const char *key, const char *text);
-    /* Focuses the text field emitted last and selects bytes [start, end) of
-     * its text, scrolling them into view. */
-    void kit_text_select(kit *k, int start, int end);
-
     /* ---------- UI Inspector (kit_inspect.c) ---------- */
 
     /* An element's boxes in the kit's logical pixels, outermost first. An
@@ -551,6 +539,104 @@ extern "C"
         unsigned flags; /* KIT_READONLY, KIT_DISABLED, KIT_INVALID */
     } kit_picker_desc;
     bool kit_picker(kit *k, const char *key, const kit_picker_desc *desc);
+
+    /* ---------- Code editor (kit_code.c, workstream C) ---------- */
+
+    /* A code editor over one text buffer: Zep (src/editor/text/zep_bridge.h)
+     * with Vim or standard keys, drawn through RmlUi in JetBrains Mono. The
+     * editor object keeps the text, the cursor and one undo history for as
+     * long as the caller keeps it, apart from any element; kit_code shows it
+     * for a frame, as VS Code's editor shows a model. Positions are byte
+     * offsets into kit_code_text, which keeps '\n' line ends only. */
+    typedef struct kit_code_editor kit_code_editor;
+    kit_code_editor *kit_code_editor_create(const char *text);
+    void kit_code_editor_destroy(kit_code_editor *e);
+    /* Replaces the text and forgets the history, as reloading a file does. */
+    void kit_code_set_text(kit_code_editor *e, const char *text);
+    /* The current text; valid until the next change. */
+    const char *kit_code_text(kit_code_editor *e, size_t *length);
+    /* Applies text_edits (support/text_edit.h: byte ranges into the current
+     * text, in any order) as one undo step; the cursor keeps its place in
+     * the text around them. */
+    typedef struct text_edit text_edit;
+    void kit_code_apply(kit_code_editor *e, const text_edit *edits, int count);
+    void kit_code_undo(kit_code_editor *e);
+    void kit_code_redo(kit_code_editor *e);
+    int kit_code_cursor(const kit_code_editor *e);
+    void kit_code_set_cursor(kit_code_editor *e, int byte);
+
+    /* Events since the last kit_code for this editor. */
+    enum
+    {
+        KIT_CODE_CHANGED = 1 << 0,   /* the text changed */
+        KIT_CODE_SAVED = 1 << 1,     /* :w, :wq or :x */
+        KIT_CODE_CURSOR = 1 << 2,    /* the cursor moved */
+        KIT_CODE_CHORD = 1 << 3,     /* a shortcut for the host: see chord */
+        KIT_CODE_COMPLETED = 1 << 4, /* a completion was inserted: completion */
+        KIT_CODE_DISMISSED = 1 << 5, /* Escape closed the completions */
+    };
+    typedef struct kit_code_result
+    {
+        unsigned events;
+        /* A chord with the primary modifier the editor leaves to the host,
+         * in studio_chord notation ("Mod+S", "Mod+Shift+A"): Save, Search,
+         * UI Scale and the drawers always, anything the standard keys do not
+         * edit with, and on a Mac every Command chord in Vim but Z and V. */
+        char chord[32];
+        int completion; /* the accepted item, or -1 */
+        bool focused;   /* the editor holds the keyboard */
+    } kit_code_result;
+
+    typedef enum kit_code_severity
+    {
+        KIT_CODE_ERROR,
+        KIT_CODE_WARNING,
+        KIT_CODE_INFO,
+    } kit_code_severity;
+    /* A diagnostic: a gutter mark and an underlined line whose message shows
+     * when the pointer rests on the line. */
+    typedef struct kit_code_marker
+    {
+        int line; /* 1-based */
+        kit_code_severity severity;
+        const char *message;
+    } kit_code_marker;
+    /* Highlighting, as Shiki's tokens carry classes: bytes [start, end)
+     * draw in the color the theme gives `cls`, tok-* classes such as
+     * ui_source_kind_class's "tok-keyword tok-tag". */
+    typedef struct kit_code_span
+    {
+        int start, end;
+        const char *cls;
+    } kit_code_span;
+    /* A completion item: accepting it replaces the bytes from the desc's
+     * completion_start to the cursor with insert (label when NULL). */
+    typedef struct kit_code_completion
+    {
+        const char *label;
+        const char *detail;
+        const char *insert;
+    } kit_code_completion;
+    typedef struct kit_code_desc
+    {
+        const char *cls;
+        bool vim;        /* studio_prefs.code_vim */
+        float font_size; /* dp; studio_prefs.code_font_size, 0 means 13 */
+        /* The host trades Control and Command in RmlUi's key events on a
+         * Mac (studio_host.c), so primary chords read as Control; the
+         * editor trades them back so Vim sees the physical Control key. */
+        bool mac;
+        const kit_code_span *spans; /* in order, not overlapping */
+        int span_count;
+        const kit_code_marker *markers;
+        int marker_count;
+        /* Shown under the cursor while there are any and the editor has
+         * focus; Up and Down choose, Enter or Tab accepts, Escape dismisses. */
+        const kit_code_completion *completions;
+        int completion_count;
+        int completion_start;
+    } kit_code_desc;
+    kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_code_desc *desc);
 
 #ifdef __cplusplus
 }

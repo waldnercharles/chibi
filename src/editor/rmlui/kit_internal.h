@@ -70,6 +70,7 @@ typedef enum node_kind
     KIND_COMMAND,
     KIND_COMMAND_ITEM,
     KIND_LIST,
+    KIND_CODE, /* kit_code: takes keys and text while focused */
 } node_kind;
 
 /* Interaction recorded on a node during input, cleared by kit_end. */
@@ -112,7 +113,6 @@ typedef struct widget
     bool suppress_click;
     bool focused;
     bool area; /* a text field over several lines */
-    bool code; /* a code area: keys type rather than commit (kit_code_area) */
     double value;
     double start;
     double pending_value;
@@ -529,5 +529,11 @@ bool command_key(kit *k, const rml_event *e);
 bool command_change(kit *k, rml_element *target);
 void command_click(kit *k, node *n);
 void command_hover(kit *k, node *n);
+
+/* ---------- Code editor (kit_code.c) ---------- */
+
+void register_code_element();
+/* The cursor's cell in logical pixels, for the IME. */
+kit_rect code_caret(const kit *k, node *n);
 
 #endif

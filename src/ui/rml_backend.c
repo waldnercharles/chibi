@@ -29,6 +29,9 @@ extern const size_t editor_ui_semibold_font_size;
 extern const size_t editor_ui_numeric_font_size;
 extern const size_t editor_ui_bold_font_size;
 extern const size_t editor_nerd_symbols_font_size;
+/* Workstream C: the code editor's face. */
+extern const unsigned char editor_code_font[];
+extern const size_t editor_code_font_size;
 
 static const char vertex_shader
     [] = "layout (location = 0) in vec2 in_position;\n"
@@ -615,6 +618,8 @@ static bool initialize_rml()
         { editor_ui_bold_font, editor_ui_bold_font_size, "Inter", 700 },
         { editor_ui_numeric_font, editor_ui_numeric_font_size, "InterNumeric", 400 },
         { editor_nerd_symbols_font, editor_nerd_symbols_font_size, "Symbols", 400 },
+        /* Workstream C: kit_code's face. */
+        { editor_code_font, editor_code_font_size, "JetBrains Mono", 400 },
     };
     for (size_t i = 0; i < sizeof faces / sizeof *faces; i++) {
         rml_load_font_face(

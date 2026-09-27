@@ -37,7 +37,7 @@ struct ui_source_tree
 {
     block_map *maps; /* parallel to ui_source.blocks */
     int *lines;      /* each line's first byte */
-    bool stylesheet; /* the text is a whole .rcss file */
+    bool whole;      /* the text is one block: a .rcss file or a part */
 };
 
 const block_map *ui_source_map(const ui_source *source, ui_source_language language);

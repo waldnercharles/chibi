@@ -542,6 +542,7 @@ void studio_free(studio *s)
     editor_set_retained_keyboard(false);
     studio_graph_free(s);
     component_presentation_free(&s->presentation.hints);
+    studio_code_free(s);
     kit_destroy(s->kit);
     studio_ui_free(s->ui);
     /* After the panels' data, which shows the Inspector's strings. */

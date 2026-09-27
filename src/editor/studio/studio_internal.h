@@ -1,6 +1,7 @@
 #ifndef CHIBI_EDITOR_STUDIO_INTERNAL_H
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
+#include "assets/ui_source.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/studio/studio.h"
 #include "editor/ui/kit.h"
@@ -471,6 +472,15 @@ typedef struct
     char overwrite[1024]; /* that file */
     int close_toast;      /* confirms closing a document with unsaved edits */
     char close[1024];     /* that document */
+    /* Workstream C: the code editor (kit_code) over the shown part, and the
+       document and part it holds. */
+    kit_code_editor *editor;
+    char editor_path[1024];
+    ui_part editor_part;
+    /* The editor's text parsed as its part (assets/ui_source.h), and the
+       spans that highlight it. */
+    ui_source *source;
+    kit_code_span *spans; /* array */
 } studio_code;
 
 /* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
@@ -1015,6 +1025,8 @@ ui_buffer *studio_ui_buffer(studio *s);
 void studio_code_save(studio *s);
 /* Closes a UI document's tab, asking first when it has unsaved edits. */
 void studio_code_close(studio *s, int tab);
+/* Workstream C: frees the Text Editor's code editor. */
+void studio_code_free(studio *s);
 /* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
 void studio_new_ui_button(studio *s);
 

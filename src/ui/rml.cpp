@@ -1344,3 +1344,94 @@ size_t rml_element_text(const rml_element *e, char *buffer, size_t size)
     assert(text);
     return copy(text->GetText(), buffer, size);
 }
+
+/* ---------- Text drawn by a custom element (workstream C, kit_code) ---------- */
+
+struct rml_text
+{
+    Rml::Vector<std::pair<Rml::Geometry, Rml::Texture>> meshes;
+};
+
+rml_font_metrics rml_font_face_metrics(uintptr_t face)
+{
+    const Rml::FontMetrics &m = Rml::GetFontEngineInterface()->GetFontMetrics(face);
+    return { m.ascent, m.descent, m.line_spacing };
+}
+
+int rml_font_version(uintptr_t face)
+{
+    return Rml::GetFontEngineInterface()->GetVersion(face);
+}
+
+int rml_font_string_width_n(uintptr_t face, const char *text, size_t size)
+{
+    static const Rml::String language;
+    Rml::TextShapingContext shaping{ language };
+    return Rml::GetFontEngineInterface()->GetStringWidth(face, Rml::StringView(text, text + size), shaping);
+}
+
+rml_text *rml_text_create(rml_render_manager *manager, uintptr_t face, const char *text, size_t size, rml_color color)
+{
+    static const Rml::String language;
+    Rml::TextShapingContext shaping{ language };
+    Rml::FontEngineInterface *fonts = Rml::GetFontEngineInterface();
+    Rml::RenderManager *render = unwrap<Rml::RenderManager>(manager);
+    Rml::TexturedMeshList list;
+    fonts->GenerateString(
+        *render,
+        face,
+        fonts->PrepareFontEffects(face, {}),
+        Rml::StringView(text, text + size),
+        { 0, 0 },
+        Rml::ColourbPremultiplied(color.r, color.g, color.b, color.a),
+        1,
+        shaping,
+        list
+    );
+    auto *out = new rml_text;
+    for (Rml::TexturedMesh &mesh : list) {
+        out->meshes.emplace_back(render->MakeGeometry(std::move(mesh.mesh)), mesh.texture);
+    }
+    return out;
+}
+
+void rml_text_render(const rml_text *text, rml_vec2 translation)
+{
+    for (const auto &[geometry, texture] : text->meshes) {
+        geometry.Render({ translation.x, translation.y }, texture);
+    }
+}
+
+void rml_text_destroy(rml_text *text)
+{
+    delete text;
+}
+
+bool rml_render_scissor(const rml_render_manager *manager, rml_rect *region)
+{
+    Rml::Rectanglei r = unwrap<Rml::RenderManager>(manager)->GetScissorRegion();
+    *region = { r.Left(), r.Top(), r.Width(), r.Height() };
+    return r.Valid();
+}
+
+void rml_render_set_scissor(rml_render_manager *manager, const rml_rect *region)
+{
+    Rml::RenderManager *render = unwrap<Rml::RenderManager>(manager);
+    if (!region) {
+        render->DisableScissorRegion();
+        return;
+    }
+    render->SetScissorRegion(Rml::Rectanglei::FromPositionSize({ region->x, region->y }, { region->width, region->height }));
+}
+
+size_t rml_event_text(const rml_event *event, char *buffer, size_t size)
+{
+    auto *e = static_cast<Rml::Event *>(event->native);
+    return copy(e->GetParameter<Rml::String>("text", Rml::String()), buffer, size);
+}
+
+rml_vec2 rml_event_wheel(const rml_event *event)
+{
+    auto *e = static_cast<Rml::Event *>(event->native);
+    return { e->GetParameter<float>("wheel_delta_x", 0), e->GetParameter<float>("wheel_delta_y", 0) };
+}

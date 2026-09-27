@@ -1,0 +1,494 @@
+/* kit_code without a GPU: typing with the standard keys, a table of Vim
+ * commands, text_edits and their undo, :w, chords for the host, completions,
+ * and renders through a renderer that only counts what it is handed. */
+#include "editor/ui/kit.h"
+#include "support/text_edit.h"
+#include "test/suite_internal.h"
+#include "ui/rml.h"
+#include "ui/rml_backend.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct counts
+{
+    int compiled, rendered, textured, textures;
+    bool red, green; /* a mesh was drawn in #ff0000 or #00ff00 */
+} counts;
+
+static bool same(rml_color a, rml_color b)
+{
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+static uintptr_t compile_geometry(void *user, rml_mesh mesh)
+{
+    counts *c = user;
+    for (size_t i = 0; i < mesh.vertex_count; i++) {
+        c->red |= same(mesh.vertices[i].color, (rml_color){ 255, 0, 0, 255 });
+        c->green |= same(mesh.vertices[i].color, (rml_color){ 0, 255, 0, 255 });
+    }
+    return (uintptr_t)++c->compiled;
+}
+
+static void render_geometry(void *user, uintptr_t, rml_vec2, uintptr_t texture)
+{
+    counts *c = user;
+    c->rendered++;
+    c->textured += texture != 0;
+}
+
+static void release_geometry(void *, uintptr_t) {}
+
+static uintptr_t load_texture(void *, const char *, int *width, int *height)
+{
+    *width = *height = 1;
+    return 1;
+}
+
+static uintptr_t generate_texture(void *user, const uint8_t *, int, int)
+{
+    counts *c = user;
+    return (uintptr_t)++c->textures;
+}
+
+static void release_texture(void *, uintptr_t) {}
+static void enable_scissor(void *, bool) {}
+static void set_scissor(void *, rml_rect) {}
+static void set_transform(void *, const float *) {}
+
+static const rml_render_interface COUNTING = {
+    compile_geometry, render_geometry,  release_geometry,
+    load_texture,     generate_texture, release_texture,
+    enable_scissor,   set_scissor,      set_transform,
+};
+
+#define CONTEXT "kit_code test"
+
+typedef struct fixture
+{
+    rml_backend *backend; /* starts RmlUi and loads the faces */
+    rml_renderer *renderer;
+    rml_context *context;
+    counts counts;
+    kit *k;
+    kit_frame_input in;
+    kit_code_editor *e;
+    kit_code_desc desc;
+    bool focus;
+    unsigned events; /* since the fixture last cleared them */
+    char chord[32];
+    int completion;
+} fixture;
+
+static void frame(fixture *f)
+{
+    kit_begin(f->k, &f->in);
+    kit_root(f->k, "app");
+    kit_code_result r = kit_code(f->k, "code", f->e, &f->desc);
+    kit_style(f->k, "width", "480dp");
+    kit_style(f->k, "height", "240dp");
+    if (f->focus) {
+        kit_focus(f->k);
+        f->focus = false;
+    }
+    kit_end(f->k);
+    rml_context_update(f->context);
+    rml_context_render(f->context);
+    f->in.time += 1.0 / 60.0;
+    f->events |= r.events;
+    if (r.events & KIT_CODE_CHORD) {
+        snprintf(f->chord, sizeof f->chord, "%s", r.chord);
+    }
+    if (r.events & KIT_CODE_COMPLETED) {
+        f->completion = r.completion;
+    }
+}
+
+static void settle(fixture *f)
+{
+    for (int i = 0; i < 3; i++) {
+        frame(f);
+    }
+}
+
+static void clear_events(fixture *f)
+{
+    frame(f);
+    f->events = 0;
+    f->chord[0] = '\0';
+    f->completion = -1;
+}
+
+static void press(fixture *f, rml_key key, unsigned modifiers)
+{
+    rml_context_process_key_down(f->context, key, modifiers);
+    rml_context_process_key_up(f->context, key, modifiers);
+}
+
+static void type(fixture *f, const char *text)
+{
+    rml_context_process_text_input(f->context, text, strlen(text));
+}
+
+/* Keys in Vim's notation: characters as text, and <Esc>, <CR>, <BS>, <Tab>
+   and <C-x> (Control and a letter) as keys. */
+static void keys(fixture *f, const char *sequence)
+{
+    for (const char *s = sequence; *s;) {
+        if (*s != '<') {
+            type(f, (char[]){ *s, 0 });
+            s++;
+            continue;
+        }
+        const char *end = strchr(s, '>');
+        size_t length = (size_t)(end - s - 1);
+        const char *name = s + 1;
+        if (!strncmp(name, "Esc", length)) {
+            press(f, RML_KEY_ESCAPE, 0);
+        } else if (!strncmp(name, "CR", length)) {
+            press(f, RML_KEY_RETURN, 0);
+        } else if (!strncmp(name, "BS", length)) {
+            press(f, RML_KEY_BACK, 0);
+        } else if (!strncmp(name, "Tab", length)) {
+            press(f, RML_KEY_TAB, 0);
+        } else if (length == 3 && name[0] == 'C' && name[1] == '-') {
+            press(f, (rml_key)(RML_KEY_A + (name[2] - 'a')), RML_KM_CTRL);
+        }
+        s = end + 1;
+    }
+}
+
+static const char *text(fixture *f)
+{
+    return kit_code_text(f->e, NULL);
+}
+
+static bool check(bool ok, const char *what)
+{
+    if (!ok) {
+        fprintf(stderr, "  kit_code: %s\n", what);
+    }
+    return ok;
+}
+
+/* A Vim command on a fresh buffer, cursor at the start. */
+typedef struct vim_case
+{
+    const char *name, *text, *keys, *expected;
+} vim_case;
+
+static const vim_case VIM_CASES[] = {
+    /* Motions. */
+    { "w moves to the next word", "one two", "wx", "one wo" },
+    { "e moves to the word's end", "one two", "ex", "on two" },
+    { "$ and 0 reach the line's ends", "one two", "$x0x", "ne tw" },
+    { "b moves back a word", "one two", "$bx", "one wo" },
+    { "j moves down a line", "ab\ncd", "jx", "ab\nd" },
+    { "G and gg reach the last and first lines", "a\nb\nc", "Gxggx", "\nb\n" },
+    { "f finds a character", "one two", "ftx", "one wo" },
+    /* Operators. */
+    { "dw deletes a word", "one two three", "dw", "two three" },
+    { "dd deletes a line", "one\ntwo", "dd", "two" },
+    { "cw changes a word", "one two three", "cwabc<Esc>", "abc two three" },
+    { "yy and p copy a line", "one\ntwo", "yyp", "one\none\ntwo" },
+    { "r replaces a character", "one", "lrx", "oxe" },
+    { "J joins lines", "one\ntwo", "J", "one two" },
+    { "D deletes to the line's end", "one two", "wD", "one " },
+    { "o opens a line below", "one", "otwo<Esc>", "one\ntwo" },
+    /* Counts. */
+    { "3x deletes three characters", "four two", "3x", "r two" },
+    { "2dw deletes two words", "one two three", "2dw", "three" },
+    { "d2w deletes two words", "one two three", "d2w", "three" },
+    { "2dd deletes two lines", "a\nb\nc", "2dd", "c" },
+    /* Text objects. */
+    { "diw deletes the inner word", "one two three", "ldiw", " two three" },
+    { "ciw changes the inner word", "one two three", "ciwabc<Esc>", "abc two three" },
+    { "daw deletes a word and its space", "(one) two three", "llllldaw", "(one) three" },
+    { "ci( changes inside parentheses", "f(a, b)", "llci(x<Esc>", "f(x)" },
+    /* Undo, redo and repeat. */
+    { "u undoes", "one two", "dwu", "one two" },
+    { "Ctrl+R redoes", "one two", "dwu<C-r>", "two" },
+    { ". repeats the last change", "one two three four", "daw..", "four" },
+    { "insert mode types text", "one three", "wiTwo <Esc>", "one Two three" },
+};
+
+static bool vim_cases(fixture *f)
+{
+    bool ok = true;
+    f->desc.vim = true;
+    for (size_t i = 0; i < sizeof VIM_CASES / sizeof *VIM_CASES; i++) {
+        const vim_case *c = &VIM_CASES[i];
+        kit_code_set_text(f->e, c->text);
+        frame(f);
+        press(f, RML_KEY_ESCAPE, 0);
+        keys(f, c->keys);
+        frame(f);
+        if (strcmp(text(f), c->expected) != 0) {
+            fprintf(stderr, "  kit_code vim: %s: \"%s\", expected \"%s\"\n", c->name, text(f), c->expected);
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+static bool standard_keys(fixture *f)
+{
+    bool ok = true;
+    f->desc.vim = false;
+    kit_code_set_text(f->e, "hello\nworld");
+    clear_events(f);
+    type(f, "abc");
+    press(f, RML_KEY_RETURN, 0);
+    frame(f);
+    ok &= check(!strcmp(text(f), "abc\nhello\nworld"), "the standard keys type and break lines");
+    ok &= check((f->events & KIT_CODE_CHANGED) && (f->events & KIT_CODE_CURSOR), "typing reports changes and cursor moves");
+    ok &= check(kit_code_cursor(f->e) == 4, "the cursor follows the typing");
+    press(f, RML_KEY_BACK, 0);
+    press(f, RML_KEY_TAB, 0);
+    frame(f);
+    ok &= check(
+        !strncmp(text(f), "abc", 3) && strlen(text(f)) > strlen("abchello\nworld"),
+        "Tab types instead of moving focus"
+    );
+    kit_rect caret;
+    ok &= check(
+        kit_wants_keyboard(f->k) && kit_wants_text(f->k, &caret) && caret.h > 0,
+        "the editor keeps the keyboard and places the IME at its cursor"
+    );
+    press(f, RML_KEY_Z, RML_KM_CTRL);
+    press(f, RML_KEY_Z, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!strcmp(text(f), "abc\nhello\nworld"), "the primary modifier and Z undo");
+    clear_events(f);
+    press(f, RML_KEY_S, RML_KM_CTRL);
+    frame(f);
+    ok &= check((f->events & KIT_CODE_CHORD) && !strcmp(f->chord, "Mod+S"), "Save goes back to the host");
+    ok &= check(!strcmp(text(f), "abc\nhello\nworld"), "a host chord leaves the text alone");
+    return ok;
+}
+
+static bool mac_keys(fixture *f)
+{
+    bool ok = true;
+    f->desc.vim = true;
+    f->desc.mac = true;
+    kit_code_set_text(f->e, "one two");
+    frame(f);
+    press(f, RML_KEY_ESCAPE, 0);
+    keys(f, "dwu");
+    /* Studio trades them, so a physical Control reads as Meta. */
+    press(f, RML_KEY_R, RML_KM_META);
+    frame(f);
+    ok &= check(!strcmp(text(f), "two"), "Vim reads the physical Control on a Mac");
+    clear_events(f);
+    press(f, RML_KEY_LMETA, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!(f->events & KIT_CODE_CHORD), "Command alone is no chord");
+    press(f, RML_KEY_K, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!strcmp(f->chord, "Mod+K"), "Command chords in Vim go to the host on a Mac");
+    /* Zep's own Control+P would open a search window. */
+    press(f, RML_KEY_P, RML_KM_META);
+    press(f, RML_KEY_Z, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!strcmp(text(f), "one two"), "Command+Z undoes in Vim on a Mac");
+    keys(f, "x");
+    frame(f);
+    ok &= check(!strcmp(text(f), "ne two"), "Control+P leaves Vim in the editor's window");
+    f->desc.mac = false;
+    return ok;
+}
+
+static bool edits(fixture *f)
+{
+    bool ok = true;
+    const char *original = "<div class=\"a\">\n  <p>hi</p>\n</div>\n";
+    kit_code_set_text(f->e, original);
+    kit_code_set_cursor(f->e, 22); /* inside "hi" */
+    clear_events(f);
+    const char *comment = "<!-- x -->\n";
+    text_edit changes[] = {
+        { 12, 13, "b" },
+        { 21, 23, "hello" },
+        { 0, 0, comment },
+    };
+    char *expected = text_edits_apply(original, changes, 3);
+    kit_code_apply(f->e, changes, 3);
+    frame(f);
+    ok &= check(!strcmp(text(f), expected), "text_edits apply as the contract applies them");
+    ok &= check(!(f->events & KIT_CODE_CHANGED), "the caller's edits report no change");
+    ok &= check(kit_code_cursor(f->e) == (int)strlen(comment) + 21 + 5, "a cursor inside a replacement lands after it");
+    kit_code_undo(f->e);
+    frame(f);
+    ok &= check(!strcmp(text(f), original), "one undo takes back every edit");
+    kit_code_redo(f->e);
+    frame(f);
+    ok &= check(!strcmp(text(f), expected), "redo applies them again");
+    free(expected);
+    return ok;
+}
+
+static bool commands(fixture *f)
+{
+    bool ok = true;
+    f->desc.vim = true;
+    kit_code_set_text(f->e, "one\ntwo\nthree\n");
+    frame(f);
+    press(f, RML_KEY_ESCAPE, 0);
+    clear_events(f);
+    keys(f, ":w<CR>");
+    frame(f);
+    ok &= check(f->events & KIT_CODE_SAVED, ":w saves through the host");
+    keys(f, ":3<CR>");
+    frame(f);
+    ok &= check(kit_code_cursor(f->e) == 8, ":3 goes to the third line");
+    keys(f, ":e other<CR>");
+    frame(f);
+    ok &= check(!strcmp(text(f), "one\ntwo\nthree\n"), "commands that open files do nothing");
+    return ok;
+}
+
+static bool completions(fixture *f)
+{
+    bool ok = true;
+    f->desc.vim = false;
+    kit_code_set_text(f->e, "");
+    frame(f);
+    type(f, "wo");
+    frame(f);
+    const kit_code_completion items[] = {
+        { "word", "noun", NULL },
+        { "world", "noun", "world()" },
+    };
+    f->desc.completions = items;
+    f->desc.completion_count = 2;
+    f->desc.completion_start = 0;
+    clear_events(f);
+    kit_rect list;
+    ok &= check(kit_find(f->k, "layer/@code:app/code", &list), "completions show under the cursor");
+    press(f, RML_KEY_DOWN, 0);
+    press(f, RML_KEY_RETURN, 0);
+    frame(f);
+    ok &= check(!strcmp(text(f), "world()") && f->completion == 1, "Down and Enter accept the second item");
+    ok &= check(f->events & KIT_CODE_COMPLETED, "accepting reports the completion");
+    f->desc.completions = NULL;
+    f->desc.completion_count = 0;
+    frame(f);
+    ok &= check(!kit_find(f->k, "layer/@code:app/code", &list), "no items, no list");
+    return ok;
+}
+
+static bool rendering(fixture *f)
+{
+    bool ok = true;
+    enum
+    {
+        LINES = 200,
+        LINE = 48,
+    };
+    char *lines = calloc(LINES, LINE);
+    for (int i = 0, at = 0; i < LINES; i++) {
+        at += snprintf(
+            lines + at,
+            (size_t)(LINES * LINE - at),
+            "line %d <span class=\"x\">%d</span>\n",
+            i,
+            i * i
+        );
+    }
+    kit_code_set_text(f->e, lines);
+    free(lines);
+    /* A span takes its class's color; a second class refines the first. */
+    kit_style_sheet(f->k, "spans", "kit-code .tok-test { color: #ff0000; } kit-code .tok-refined { color: #00ff00; }");
+    const kit_code_span spans[] = { { 0, 4, "tok-test" },
+                                    { 5, 6, "tok-test tok-refined" } };
+    const kit_code_marker markers[] = { { 2, KIT_CODE_ERROR, "unclosed tag" } };
+    f->desc.spans = spans;
+    f->desc.span_count = 2;
+    f->desc.markers = markers;
+    f->desc.marker_count = 1;
+    f->counts.rendered = f->counts.textured = 0;
+    settle(f);
+    ok &= check(f->counts.red, "a span draws in its class's color");
+    ok &= check(f->counts.green, "a span's second class refines its color");
+    ok &= check(f->counts.rendered > f->counts.textured, "rendering draws rectangles");
+    ok &= check(f->counts.textured > 0 && f->counts.textures > 0, "text draws from the face's glyph textures");
+    kit_blur(f->k);
+    settle(f);
+    int compiled = f->counts.compiled;
+    frame(f);
+    ok &= check(f->counts.compiled == compiled, "an unchanged frame reuses its meshes");
+    kit_rect code;
+    ok &= check(kit_find(f->k, "app/code", &code), "the editor is laid out");
+    rml_context_process_mouse_move(
+        f->context,
+        (int)(code.x + code.w / 2),
+        (int)(code.y + code.h / 2),
+        0
+    );
+    rml_context_process_mouse_wheel(f->context, (rml_vec2){ 0, 10 }, 0);
+    settle(f);
+    ok &= check(kit_code_cursor(f->e) > 0, "the wheel scrolls, keeping the cursor in view");
+    int before = kit_code_cursor(f->e);
+    /* A press in the same frame as the move that reached it. */
+    int x = (int)(code.x + code.w / 2), y = (int)(code.y + code.h / 3);
+    rml_context_process_mouse_move(f->context, x, y, 0);
+    rml_context_process_mouse_button_down(f->context, 0, 0);
+    rml_context_process_mouse_button_up(f->context, 0, 0);
+    settle(f);
+    ok &= check(kit_code_cursor(f->e) != before, "a click places the cursor");
+    /* Dragging selects, and Backspace deletes the selection. */
+    size_t length;
+    kit_code_text(f->e, &length);
+    rml_context_process_mouse_move(f->context, x, y, 0);
+    rml_context_process_mouse_button_down(f->context, 0, 0);
+    for (int step = 1; step <= 4; step++) {
+        rml_context_process_mouse_move(f->context, x + step * 12, y, 0);
+        frame(f);
+    }
+    rml_context_process_mouse_button_up(f->context, 0, 0);
+    press(f, RML_KEY_BACK, 0);
+    frame(f);
+    size_t after;
+    kit_code_text(f->e, &after);
+    ok &= check(after + 3 < length, "dragging selects text");
+    f->desc.spans = NULL;
+    f->desc.span_count = 0;
+    kit_style_sheet(f->k, "spans", NULL);
+    f->desc.markers = NULL;
+    f->desc.marker_count = 0;
+    return ok;
+}
+
+bool test_kit_code()
+{
+    fixture f = { .completion = -1 };
+    f.backend = rml_backend_create(64, 64, 1);
+    f.renderer = rml_renderer_create(&COUNTING, &f.counts);
+    f.context = rml_create_context(CONTEXT, 800, 600, f.renderer);
+    f.k = test_kit_create(f.context, "studio.rml");
+    f.in = (kit_frame_input){ .dp_ratio = 1, .width = 800, .height = 600 };
+    f.e = kit_code_editor_create("hello\nworld");
+    bool ok = check(!strcmp(text(&f), "hello\nworld"), "an editor starts with its text");
+    f.focus = true;
+    settle(&f);
+    ok &= check(kit_wants_keyboard(f.k), "a focused editor takes the keyboard");
+    ok &= standard_keys(&f);
+    ok &= vim_cases(&f);
+    ok &= mac_keys(&f);
+    ok &= edits(&f);
+    ok &= commands(&f);
+    ok &= completions(&f);
+    ok &= rendering(&f);
+    /* The element outlives its editor until the next frame drops it. */
+    kit_code_editor_destroy(f.e);
+    rml_context_render(f.context);
+    kit_destroy(f.k);
+    rml_remove_context(CONTEXT);
+    rml_release_render_managers();
+    rml_renderer_destroy(f.renderer);
+    rml_backend_destroy(f.backend);
+    return ok;
+}

@@ -362,9 +362,9 @@ static void locate_blocks(ui_source *source)
     }
 }
 
-static void add_stylesheet(ui_source *source)
+static void add_whole(ui_source *source, ui_source_language language)
 {
-    block_map m = { .language = UI_SOURCE_RCSS, .style = SCALAR_LITERAL };
+    block_map m = { .language = language, .style = SCALAR_LITERAL };
     int length = (int)strlen(source->text);
     for (int i = 0; i < length; i++) {
         map_push(&m, source->text[i], i);
@@ -791,9 +791,9 @@ static int span_order(const void *a, const void *b)
     return (x->start > y->start) - (x->start < y->start);
 }
 
-static void paint_block(ui_source *source, const block_map *m, bool stylesheet)
+static void paint_block(ui_source *source, const block_map *m, bool whole)
 {
-    if (!stylesheet) {
+    if (!whole) {
         paint_block_key(source, m);
     }
     if (m->style == SCALAR_OTHER) {
@@ -1146,7 +1146,7 @@ static void diagnose_asset(ui_source *source)
 
 /* ---------- Parse ---------- */
 
-static void parse_block(ui_source *source, block_map *m, bool stylesheet)
+static void parse_block(ui_source *source, block_map *m, bool whole)
 {
     TSParser *parser = ts_parser_new();
     ts_parser_set_language(parser, m->language == UI_SOURCE_RML ? tree_sitter_html() : tree_sitter_css());
@@ -1161,30 +1161,48 @@ static void parse_block(ui_source *source, block_map *m, bool stylesheet)
     } else {
         outline_rcss(source, m, root, -1);
     }
-    paint_block(source, m, stylesheet);
+    paint_block(source, m, whole);
     diagnose(source, m, root);
 }
 
-ui_source *ui_source_parse(const char *text, bool stylesheet)
+static ui_source *source_create(const char *text, bool whole)
 {
     ui_source *source = xcalloc(1, sizeof *source);
     source->text = xstrdup(text);
     source->trees = xcalloc(1, sizeof *source->trees);
     source->trees->lines = line_starts(source->text);
-    source->trees->stylesheet = stylesheet;
-    if (stylesheet) {
-        add_stylesheet(source);
-    } else {
-        locate_blocks(source);
-    }
+    source->trees->whole = whole;
+    return source;
+}
+
+static ui_source *parse_blocks(ui_source *source)
+{
+    bool whole = source->trees->whole;
     for (int i = 0; i < acount(source->trees->maps); i++) {
-        parse_block(source, &source->trees->maps[i], stylesheet);
+        parse_block(source, &source->trees->maps[i], whole);
     }
     qsort(source->spans, (size_t)acount(source->spans), sizeof *source->spans, span_order);
-    if (!stylesheet && !acount(source->diagnostics)) {
+    if (!whole && !acount(source->diagnostics)) {
         diagnose_asset(source);
     }
     return source;
+}
+
+ui_source *ui_source_parse(const char *text, bool stylesheet)
+{
+    if (stylesheet) {
+        return ui_source_parse_block(text, UI_SOURCE_RCSS);
+    }
+    ui_source *source = source_create(text, false);
+    locate_blocks(source);
+    return parse_blocks(source);
+}
+
+ui_source *ui_source_parse_block(const char *text, ui_source_language language)
+{
+    ui_source *source = source_create(text, true);
+    add_whole(source, language);
+    return parse_blocks(source);
 }
 
 static void free_element(ui_source_element *e)

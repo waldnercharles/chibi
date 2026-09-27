@@ -13,7 +13,6 @@
 #include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "test/suite_internal.h"
-#include "ui/rml.h"
 #include "ui/rml_backend.h"
 
 #include <assert.h>
@@ -358,75 +357,6 @@ static void new_assets(const char *folder)
     }
 }
 
-/* ---------- The Text Editor's code area ---------- */
-
-kit *test_kit_create(void *context, const char *document);
-
-/* One kit frame showing `text` in a code area; returns what the user typed. */
-static const char *code_frame(
-    rml_backend *backend,
-    kit *k,
-    kit_frame_input *in,
-    const char *text,
-    char *typed,
-    size_t size
-)
-{
-    kit_begin(k, in);
-    kit_root(k, "app");
-    const char *changed = kit_code_area(k, "code", text);
-    snprintf(typed, size, "%s", changed ? changed : "");
-    kit_end(k);
-    rml_backend_update(backend, 1.0 / 60.0);
-    in->time += 1.0 / 60.0;
-    return changed ? typed : NULL;
-}
-
-static void press(rml_backend *backend, rml_input_key key)
-{
-    rml_backend_process_input(backend, &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = key });
-    rml_backend_process_input(backend, &(rml_input){ .type = RML_INPUT_KEY_RELEASE, .key = key });
-}
-
-static void code_area()
-{
-    rml_backend *backend = rml_backend_create(640, 480, 1);
-    kit *k = test_kit_create(rml_backend_context(backend), "studio.rml");
-    kit_frame_input in = { .dp_ratio = 1, .width = 640, .height = 480 };
-    char typed[256];
-    code_frame(backend, k, &in, "ab", typed, sizeof typed);
-    kit_begin(k, &in);
-    kit_root(k, "app");
-    kit_code_area(k, "code", "ab");
-    kit_text_select(k, 1, 1);
-    kit_end(k);
-    rml_backend_update(backend, 1.0 / 60.0);
-    press(backend, RML_INPUT_KEY_ENTER);
-    bool line = code_frame(backend, k, &in, "ab", typed, sizeof typed) &&
-                !strcmp(typed, "a\nb");
-    press(backend, RML_INPUT_KEY_TAB);
-    bool indent = code_frame(backend, k, &in, "a\nb", typed, sizeof typed) &&
-                  !strcmp(typed, "a\n  b");
-    test_check(line && indent, "the code area types Enter as a line break and Tab as an indent");
-    test_check(!code_frame(backend, k, &in, "a\n  b", typed, sizeof typed), "an unchanged code area reports nothing");
-    code_frame(backend, k, &in, "undone", typed, sizeof typed);
-    rml_element *focus = rml_context_focus_element(rml_backend_context(backend));
-    char shown[64] = "";
-    if (focus) {
-        rml_element_value(focus, shown, sizeof shown);
-    }
-    press(backend, RML_INPUT_KEY_ESCAPE);
-    code_frame(backend, k, &in, "undone", typed, sizeof typed);
-    test_check(
-        !strcmp(shown, "undone") &&
-            rml_context_focus_element(rml_backend_context(backend)) != focus,
-        "new text replaces the code area's, and Escape leaves it keeping its "
-        "text"
-    );
-    kit_destroy(k);
-    rml_backend_destroy(backend);
-}
-
 void test_ui_documents()
 {
     char folder[PATH_MAX];
@@ -439,7 +369,6 @@ void test_ui_documents()
     stylesheets(folder);
     checkpoints(folder);
     new_assets(folder);
-    code_area();
     text_overlay_clear();
     remove_folder(folder);
 }
@@ -688,6 +617,30 @@ static void text_editor(const char *folder)
     );
     frames(&f, 4);
     test_check(!s->code.reveal, "the Text Editor selects the line once it is laid out");
+    /* Workstream C: the code editor over the part types into the buffer and
+       follows edits made elsewhere. */
+    kit_code_editor *e = s->code.editor;
+    test_check(e && !strcmp(kit_code_text(e, NULL), ui_buffer_text(b, UI_PART_RCSS)), "the code editor shows the part");
+    s->prefs.code_vim = false;
+    frames(&f, 1);
+    rml_backend_process_input(
+        s->backend,
+        &(rml_input){ .type = RML_INPUT_TEXT_INPUT, .text = "x", .text_size = 1 }
+    );
+    frames(&f, 1);
+    test_check(strstr(ui_buffer_text(b, UI_PART_RCSS), "\nx") != NULL, "typing at the revealed line reaches the buffer");
+    ui_buffer_edit(b, UI_PART_RCSS, &(text_edit){ 0, 0, "/* top */\n" }, 1);
+    frames(&f, 1);
+    test_check(!strcmp(kit_code_text(e, NULL), ui_buffer_text(b, UI_PART_RCSS)), "the code editor follows an edit made elsewhere");
+    frames(&f, 1);
+    const char *text = kit_code_text(e, NULL);
+    bool selector = false;
+    for (int i = 0; i < acount(s->code.spans); i++) {
+        const kit_code_span *span = &s->code.spans[i];
+        selector |= !strcmp(span->cls, "tok-keyword tok-selector") &&
+                    !strncmp(text + span->start, ".panel", 6);
+    }
+    test_check(selector, "the code editor highlights the part as ui_source parses it");
     fixture_free(&f);
 }
 

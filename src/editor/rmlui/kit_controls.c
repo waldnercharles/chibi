@@ -368,7 +368,7 @@ bool kit_button(kit *k, const char *key, const kit_button_desc *d)
     widget *w = &n->w;
     if (!w->label_el) {
         w->icon_el = raw_icon(n->el, "", 0);
-        w->label_el = raw(n->el, "span", "label", NULL);
+        w->label_el = raw(n->el, d->morph ? "morph-text" : "span", "label", NULL);
     }
     if (w->icon != d->icon) {
         w->icon = d->icon;
@@ -378,8 +378,10 @@ bool kit_button(kit *k, const char *key, const kit_button_desc *d)
         rml_element_set_property(w->icon_el, "display", d->icon ? "inline-block" : "none");
     }
     if (str_set(&w->label, d->label)) {
-        if (d->morph) {
-            morph_label(k, n, w->label_el, w->label);
+        bool morph = !strcmp(rml_element_tag_name(w->label_el), "morph-text");
+        assert(morph == d->morph);
+        if (morph) {
+            morph_text_set(w->label_el, w->label);
         } else {
             set_inner_text(w->label_el, w->label);
         }

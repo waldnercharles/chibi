@@ -287,13 +287,16 @@ extern "C"
         void (*set_transform)(void *user, const float *transform);
     } rml_render_interface;
 
-    /* A custom element's Element overrides. render is required; resize and
-     * release may be NULL. release runs when the element is destroyed. */
+    /* A custom element's Element overrides; any may be NULL. release runs
+     * when the element is destroyed. update runs at the start of each
+     * context update, before the element's style and its children's are
+     * computed, so what it sets shows in that frame (workstream N). */
     typedef struct rml_element_hooks
     {
         void (*render)(rml_element *element, void *user);
         void (*resize)(rml_element *element, void *user);
         void (*release)(void *user);
+        void (*update)(rml_element *element, void *user);
     } rml_element_hooks;
 
     /* Event and the parameters the editor reads. Valid during the callback. */
@@ -667,6 +670,32 @@ extern "C"
     /* Takes the oldest value a binding changed since it was last taken, each
      * value once; false when there is none. Values stay in the model's doc. */
     bool rml_data_model_take_written(rml_data_model *model, yyjson_mut_val **value);
+
+    /* ---------- Native elements for authored UI (workstream N) ---------- */
+
+    /* The system interface's clock, in seconds: what transitions follow. */
+    double rml_elapsed_time();
+    /* Asks for the context's next update within `delay` seconds, as an
+     * element that animates does. */
+    void rml_context_request_next_update(rml_context *context, double delay);
+    bool rml_context_theme_active(const rml_context *context, const char *name);
+    /* Sets a text node's text; the element's tag must be "#text". */
+    void rml_element_set_text(rml_element *element, const char *text);
+
+    /* An element that may be destroyed while held: the ref reads NULL once
+     * it is. */
+    typedef struct rml_element_ref rml_element_ref;
+    rml_element_ref *rml_element_ref_create(rml_element *element);
+    rml_element *rml_element_ref_get(const rml_element_ref *ref);
+    void rml_element_ref_destroy(rml_element_ref *ref);
+
+    /* Handles every data-if binding's change of whether its element shows,
+     * in place of setting or removing its inline display: none; `first`
+     * marks a binding's first evaluation. Returning false leaves the change
+     * to the binding (cmake/patches/rmlui-data-if-handler.patch). NULL
+     * removes the handler. */
+    typedef bool (*rml_data_if_fn)(rml_element *element, bool show, bool first);
+    void rml_set_data_if_handler(rml_data_if_fn fn);
 
 #ifdef __cplusplus
 }

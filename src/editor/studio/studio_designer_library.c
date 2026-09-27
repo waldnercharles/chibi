@@ -25,6 +25,9 @@ static const library_element ELEMENTS[] = {
     { "Slider", KIT_ICON_SLIDER, "<input type=\"range\"/>" },
     { "Image", KIT_ICON_IMAGE, "<img src=\"\"/>" },
     { "Progress", KIT_ICON_PROGRESS, "<progress value=\"0.5\"/>" },
+    /* Native elements for authored UI (workstream N; ui/motion.h). */
+    { "Number Flow", KIT_ICON_NUMBER, "<number-flow value=\"0\"/>" },
+    { "Morph Text", KIT_ICON_TEXT, "<morph-text>Text</morph-text>" },
 };
 
 enum

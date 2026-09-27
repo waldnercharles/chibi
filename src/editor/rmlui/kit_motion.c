@@ -5,108 +5,17 @@
  *   transitions RCSS declares for it finish. Styling stays in RCSS.
  * - Layout: a node marked with kit_layout animates changes to its position
  *   within its parent with a spring (FLIP), keeping velocity when retargeted.
- * - Springs: analytic damped oscillators, parameterized like Motion by visual
- *   duration and bounce. Reduced motion settles every animation immediately. */
+ * - Springs (kit_spring, over ui/motion.h's): values that ease toward a
+ *   target. Reduced motion settles every animation immediately. */
 #include "editor/rmlui/kit_internal.h"
 #include "support/math.h"
-#include "support/xalloc.h"
 
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ---------- Springs ---------- */
-
-spring_params spring_for(double visual_duration, double bounce)
-{
-    double root = 2 * M_PI / (visual_duration * 1.2);
-    double stiffness = root * root;
-    return (spring_params){
-        .stiffness = stiffness,
-        .damping = 2 * math_clamp(1 - bounce, 0.05, 1.0) * sqrt(stiffness),
-        .mass = 1,
-    };
-}
-
-static spring underdamped(spring s, double w0, double zeta, double dt)
-{
-    double a = zeta * w0, wd = w0 * sqrt(1 - zeta * zeta);
-    double e = exp(-a * dt), c = cos(wd * dt), n = sin(wd * dt);
-    return (spring){
-        e * (s.x * c + (s.v + a * s.x) / wd * n),
-        e * (s.v * c - (a * s.v + w0 * w0 * s.x) / wd * n),
-    };
-}
-
-static spring critically_damped(spring s, double w0, double dt)
-{
-    double e = exp(-w0 * dt);
-    return (spring){
-        e * (s.x + (s.v + w0 * s.x) * dt),
-        e * (s.v - w0 * (s.v + w0 * s.x) * dt),
-    };
-}
-
-static spring overdamped(spring s, double w0, double zeta, double dt)
-{
-    double root = sqrt(zeta * zeta - 1);
-    double r1 = -w0 * (zeta - root), r2 = -w0 * (zeta + root);
-    double c2 = (s.v - r1 * s.x) / (r2 - r1), c1 = s.x - c2;
-    double e1 = exp(r1 * dt), e2 = exp(r2 * dt);
-    return (spring){ c1 * e1 + c2 * e2, r1 * c1 * e1 + r2 * c2 * e2 };
-}
-
-static spring spring_solve(spring s, spring_params p, double dt)
-{
-    double w0 = sqrt(p.stiffness / p.mass);
-    double zeta = p.damping / (2 * sqrt(p.stiffness * p.mass));
-    if (zeta < 1) {
-        return underdamped(s, w0, zeta, dt);
-    }
-    if (zeta == 1) {
-        return critically_damped(s, w0, dt);
-    }
-    return overdamped(s, w0, zeta, dt);
-}
-
-/* Exact solution of m x'' + c x' + k x = 0 over dt, so frame rate never
- * changes the path. */
-static bool spring_resting(spring s)
-{
-    return fabs(s.x) < 0.05 && fabs(s.v) < 0.5;
-}
-
-void spring_step(spring *s, spring_params p, double dt)
-{
-    if (dt <= 0) {
-        return;
-    }
-    *s = spring_solve(*s, p, dt);
-    if (spring_resting(*s)) {
-        *s = (spring){ 0 };
-    }
-}
-
 /* ---------- Presence ---------- */
-
-/* The longest transition RCSS declares for the element, including delay. */
-static double exit_duration(const rml_element *el)
-{
-    int count = rml_element_transitions(el, NULL, 0);
-    if (!count) {
-        return 0;
-    }
-    rml_transition *list = xmalloc((size_t)count * sizeof *list);
-    rml_element_transitions(el, list, count);
-    double longest = 0;
-    for (int i = 0; i < count; i++) {
-        longest = math_max((double)(list[i].duration + list[i].delay), longest);
-    }
-    free(list);
-    return longest;
-}
 
 /* Drop exiting nodes whose elements are about to go with an ancestor. */
 static void release_exiting_within(kit *k, rml_element *ancestor)
@@ -136,7 +45,8 @@ void retire(kit *k, node *n)
 {
     unmap(k, n);
     rml_element *el = n->el;
-    double duration = n->presence && !k->reduced_motion ? exit_duration(el) : 0;
+    double duration = n->presence && !k->reduced_motion ? motion_transition_time(el)
+                                                        : 0;
     if (duration <= 0 || !rml_element_parent(el)) {
         remove_element(k, el);
         node_free(n);
@@ -168,9 +78,6 @@ void forget_motion(kit *k, node *n)
     }
     if (n->layout) {
         nodes_remove(k->layout_nodes, n);
-    }
-    if (n->flow || n->morph) {
-        nodes_remove(k->text_motion, n);
     }
 }
 
@@ -277,14 +184,11 @@ void motion_frame(kit *k)
     k->motion_time = now;
     settle_entering(k);
     finish_exits(k, now);
-    if (!acount(k->layout_nodes) && !k->layout_pass) {
-        text_frame(k, dt);
+    if (!acount(k->layout_nodes)) {
         return;
     }
     /* FLIP: measure this frame's layout before it renders. */
     rml_document_update(k->doc);
-    k->layout_pass = false;
-    text_frame(k, dt);
     spring_params p = spring_for(0.35, 0);
     for (int i = 0; i < acount(k->layout_nodes); i++) {
         layout_step(k, k->layout_nodes[i], p, dt);

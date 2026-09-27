@@ -497,7 +497,7 @@ static void readout_follows_camera()
         engine_viewport_view view;
         engine_viewport_get_view(f.viewport, &view);
         char value[32], expected[32];
-        rml_element_attribute(readout, "data-value", value, sizeof value);
+        rml_element_attribute(readout, "aria-label", value, sizeof value);
         snprintf(expected, sizeof expected, "%d%%", (int)roundf(s->surface.rect.w / view.width * 100));
         current &= !strcmp(value, expected);
         shown = true;

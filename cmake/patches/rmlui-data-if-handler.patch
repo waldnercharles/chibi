@@ -1,0 +1,60 @@
+diff --git a/Include/RmlUi/Core/Core.h b/Include/RmlUi/Core/Core.h
+--- a/Include/RmlUi/Core/Core.h
++++ b/Include/RmlUi/Core/Core.h
+@@ -171,4 +171,11 @@
+ /// @note Also releases font resources, which invalidates all existing FontFaceHandles returned from the font engine.
+ RMLUICORE_API void ReleaseRenderManagers();
+ 
++/// Handles a data-if binding's change of whether its element shows, in place of the binding setting or removing
++/// 'display: none', so an application can keep a leaving element shown while its exit transitions run. 'first' marks
++/// the binding's first evaluation. Returns false to leave the change to the binding.
++using DataIfHandler = bool (*)(Element* element, bool show, bool first);
++/// Sets the handler for every data-if binding, or none with nullptr.
++RMLUICORE_API void SetDataIfHandler(DataIfHandler handler);
++
+ } // namespace Rml
+diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -248,6 +248,13 @@
+ 	return result;
+ }
+ 
++static DataIfHandler data_if_handler = nullptr;
++
++void SetDataIfHandler(DataIfHandler handler)
++{
++	data_if_handler = handler;
++}
++
+ DataViewIf::DataViewIf(Element* element) : DataViewCommon(element) {}
+ 
+ bool DataViewIf::Update(DataModel& model)
+@@ -260,9 +267,13 @@
+ 	if (element && GetExpression().Run(expr_interface, variant))
+ 	{
+ 		const bool value = variant.Get<bool>();
++		const bool first = !evaluated;
++		evaluated = true;
+ 		const bool is_visible = (element->GetLocalStyleProperties().count(PropertyId::Display) == 0);
+ 		if (is_visible != value)
+ 		{
++			if (data_if_handler && data_if_handler(element, value, first))
++				return true;
+ 			if (value)
+ 				element->RemoveProperty(PropertyId::Display);
+ 			else
+diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
+--- a/Source/Core/DataViewDefault.h
++++ b/Source/Core/DataViewDefault.h
+@@ -93,6 +93,10 @@
+ 	DataViewIf(Element* element);
+ 
+ 	bool Update(DataModel& model) override;
++
++private:
++	// Whether the binding has run, so the data-if handler can tell its first evaluation.
++	bool evaluated = false;
+ };
+ 
+ class DataViewVisible final : public DataViewCommon {

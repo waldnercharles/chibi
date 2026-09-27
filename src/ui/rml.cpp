@@ -432,12 +432,24 @@ public:
     void *user = nullptr;
 
 protected:
-    void OnRender() override { hooks->render(wrap(this), user); }
+    void OnRender() override
+    {
+        if (hooks->render) {
+            hooks->render(wrap(this), user);
+        }
+    }
 
     void OnResize() override
     {
         if (hooks->resize) {
             hooks->resize(wrap(this), user);
+        }
+    }
+
+    void OnUpdate() override
+    {
+        if (hooks->update) {
+            hooks->update(wrap(this), user);
         }
     }
 
@@ -1457,4 +1469,61 @@ bool rml_data_model_take_written(rml_data_model *model, yyjson_mut_val **value)
     *value = written.front();
     written.erase(written.begin());
     return true;
+}
+
+/* ---------- Native elements for authored UI (workstream N) ---------- */
+
+double rml_elapsed_time()
+{
+    return Rml::GetSystemInterface()->GetElapsedTime();
+}
+
+void rml_context_request_next_update(rml_context *c, double delay)
+{
+    context(c)->RequestNextUpdate(delay);
+}
+
+bool rml_context_theme_active(const rml_context *c, const char *name)
+{
+    return context(c)->IsThemeActive(name);
+}
+
+void rml_element_set_text(rml_element *e, const char *text)
+{
+    auto *node = dynamic_cast<Rml::ElementText *>(element(e));
+    assert(node);
+    node->SetText(text);
+}
+
+struct rml_element_ref
+{
+    Rml::ObserverPtr<Rml::Element> element;
+};
+
+rml_element_ref *rml_element_ref_create(rml_element *e)
+{
+    return new rml_element_ref{ element(e)->GetObserverPtr() };
+}
+
+rml_element *rml_element_ref_get(const rml_element_ref *ref)
+{
+    return wrap(ref->element.get());
+}
+
+void rml_element_ref_destroy(rml_element_ref *ref)
+{
+    delete ref;
+}
+
+static rml_data_if_fn data_if_fn;
+
+static bool data_if(Rml::Element *e, bool show, bool first)
+{
+    return data_if_fn(wrap(e), show, first);
+}
+
+void rml_set_data_if_handler(rml_data_if_fn fn)
+{
+    data_if_fn = fn;
+    Rml::SetDataIfHandler(fn ? data_if : nullptr);
 }

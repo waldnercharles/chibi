@@ -161,6 +161,17 @@ const studio_setting studio_settings[] = {
       .type = STUDIO_SETTING_BOOL,
       FIELD(code_apply_live),
       .fallback = 1 },
+    /* Workstream I */
+    { .key = "code.wrap",
+      .save = "codeWrap",
+      .category = STUDIO_SETTINGS_TEXT,
+      .label = "Word Wrap",
+      .description = "Long lines wrap at the Text Editor's edge. Off, they "
+                     "run on and scroll sideways.",
+      .keywords = "wrap lines horizontal scroll long",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(code_wrap),
+      .fallback = 1 },
 };
 const int studio_setting_count = sizeof studio_settings / sizeof *studio_settings;
 

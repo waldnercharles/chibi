@@ -830,6 +830,10 @@ int automation_ui_references(
     add_locations(doc, yyjson_mut_obj_add_arr(doc, result, "definitions"), found, true, prefix);
     add_locations(doc, yyjson_mut_obj_add_arr(doc, result, "uses"), found, false, prefix);
     yyjson_mut_obj_add_int(doc, result, "total", acount(found));
+    /* Workstream I: what Studio's Text Editor shows on hover. */
+    char *description = ui_source_describe(&project, &symbol);
+    yyjson_mut_obj_add_strcpy(doc, result, "description", description);
+    free(description);
     ui_source_locations_free(found);
     ui_source_project_free(&project);
     return CHIBI_AUTOMATION_OK;

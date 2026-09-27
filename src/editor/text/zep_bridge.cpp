@@ -270,6 +270,35 @@ private:
     const zep_host *host;
 };
 
+/* A mode whose undo and redo go to the host first. */
+template <class Mode>
+class HostHistory final : public Mode
+{
+public:
+    HostHistory(Zep::ZepEditor &editor, const zep_host *host)
+      : Mode(editor)
+      , host(host)
+    {
+    }
+
+    void Undo() override
+    {
+        if (!host->history(host->user, false)) {
+            Mode::Undo();
+        }
+    }
+
+    void Redo() override
+    {
+        if (!host->history(host->user, true)) {
+            Mode::Redo();
+        }
+    }
+
+private:
+    const zep_host *host;
+};
+
 /* Forwards the editor's messages about its buffer to the host. */
 class Client final : public Zep::ZepComponent
 {
@@ -329,6 +358,13 @@ struct zep_editor
       , buffer(editor.InitWithText("", ""))
     {
         buffer->SetSyntax(std::make_shared<Syntax>(*buffer, host));
+        /* The host's modes replace Zep's, each while the other is current:
+           switching modes reads the current one's window. */
+        editor.RegisterGlobalMode(
+            std::make_shared<HostHistory<Zep::ZepMode_Standard>>(editor, host)
+        );
+        editor.SetGlobalMode(Zep::ZepMode_Standard::StaticName());
+        editor.RegisterGlobalMode(std::make_shared<HostHistory<Zep::ZepMode_Vim>>(editor, host));
     }
 
     Zep::ZepMode &mode() const { return *buffer->GetMode(); }
@@ -405,12 +441,12 @@ void zep_replace(zep_editor *z, long start, long end, const char *text)
 
 void zep_undo(zep_editor *z)
 {
-    z->mode().Undo();
+    z->mode().Zep::ZepMode::Undo();
 }
 
 void zep_redo(zep_editor *z)
 {
-    z->mode().Redo();
+    z->mode().Zep::ZepMode::Redo();
 }
 
 long zep_cursor(const zep_editor *z)
@@ -515,6 +551,30 @@ void zep_set_focused(zep_editor *z, bool focused)
 void zep_render(zep_editor *z)
 {
     z->editor.Display();
+}
+
+long zep_hover_byte(const zep_editor *z)
+{
+    Zep::GlyphIterator at = z->window().GetMouseBufferLocation();
+    return at.Valid() ? at.Index() : -1;
+}
+
+void zep_set_text_offset_x(zep_editor *z, float offset)
+{
+    z->window().SetTextOffsetX(offset);
+}
+
+void zep_text_region_x(const zep_editor *z, float *left, float *right)
+{
+    Zep::NVec2f x = z->window().GetTextRegionX();
+    *left = x.x;
+    *right = x.y;
+}
+
+void zep_hide_idle_command_line(zep_editor *z, bool hide)
+{
+    z->editor.GetConfig().autoHideCommandRegion = hide;
+    z->editor.UpdateSize();
 }
 
 void zep_add_marker(zep_editor *z, long start, long end, unsigned display, zep_color color, const char *message)

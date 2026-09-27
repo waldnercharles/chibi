@@ -122,6 +122,9 @@ static void reload_keeps_viewed_graph_saved()
 
 /* UI documents as tabs and in the Text Editor (test/editor/ui_documents.c). */
 void test_ui_document_tabs();
+/* Workstream I: the Text Editor's code intelligence
+   (test/editor/code_intelligence_studio.c). */
+void test_code_intelligence_studio();
 
 /* ---------- UI wiring (workstream K) ---------- */
 
@@ -397,6 +400,8 @@ int studio_documents_run(const char *program)
     ui_wiring_checks();
     /* Authored status bar (workstream J) */
     status_bar_follows_studio();
+    /* Workstream I: code intelligence in the Text Editor. */
+    test_code_intelligence_studio();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

@@ -38,7 +38,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
 | [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): the status bar's UI Scale | Done |
 | [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; `kit_drag_source`/`kit_drop_target` for the tree, `kit_highlight` for the Canvas outlines | Done; keyboard reordering and resize handles in the Canvas open |
-| [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h` | Partial; highlighting, diagnostics and completion items come from the caller |
+| [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion, hover | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h`; the Text Editor's language glue in `editor/documents/ui_code.h` | Done; highlighting, diagnostics, completion items and hover text come from the caller |
 
 ## Contracts
 
@@ -249,14 +249,19 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 `kit_code.c` routes input and draws.
 
 - The editor object keeps the text, cursor and undo history; `kit_code` shows it for a frame. Edits from elsewhere arrive as `text_edit`s through `kit_code_apply`, one undo step.
+- A caller whose document keeps the history sets `desc.history`: the undo keys (the primary modifier and Z or Y, Vim's `u` and Control+R) report `KIT_CODE_UNDO` and `KIT_CODE_REDO` and change nothing, and the editor keeps no history of its own. The Text Editor steps the UI document's buffer then, as Studio's Undo does, so there is one history (`ui_code_record`, `ui_code_replay`, `ui_code_follow`).
 - Keys:
   - Vim reads the physical Control key; the standard keys read the primary modifier (Command on a Mac), with Option and Command arrows moving by words and to line ends there.
-  - Save, Search, UI Scale and the drawers go back to the host as `kit_code_result.chord`, as do primary chords the standard keys do not edit with, and every Command chord in Vim on a Mac except Z (undo) and V (paste).
+  - Save, Search, Settings (`Mod+,`), UI Scale and the drawers go back to the host as `kit_code_result.chord`, as do primary chords the standard keys do not edit with, and every Command chord in Vim on a Mac except Z (undo), V (paste), and C and X, which copy and cut the selection.
+  - F12 reports `KIT_CODE_DEFINITION`, Shift+F12 `KIT_CODE_REFERENCES` and Control+Space `KIT_CODE_SUGGEST`, as in VS Code; Vim takes Control+[ for Escape.
   - Tab types; keys never reach RmlUi's focus navigation.
-  - `:w`, `:wq` and `:x` report `KIT_CODE_SAVED`; `:<line>` moves there; commands that would open files or windows do nothing.
-- A press places the cursor and dragging selects; the wheel scrolls by three lines a notch.
-- Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes.
-- Diagnostics mark the gutter and underline their line; the message shows while the pointer rests on it.
+  - `:w`, `:wq` and `:x` report `KIT_CODE_SAVED`; `:<line>` moves there; commands that would open files or windows do nothing. The command and status lines take no room until an ex command starts.
+- A press places the cursor and dragging selects; a double click selects the word, names with `-` whole; a press with the primary modifier reports `KIT_CODE_DEFINITION` there. The wheel scrolls by three lines a notch.
+- With `desc.no_wrap`, lines run on past the edge: the view scrolls sideways to keep the cursor in view, and with the wheel's sideways turn.
+- Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes. The list scrolls to its choice.
+- Diagnostics mark the gutter and underline their line.
+- Hover: once the pointer rests on a glyph for the tooltips' delay, `kit_code_hover` names its byte, and the caller describes it in `desc.hover` (a title line, then detail lines). A card in the overlay layer shows that under the pointer, after the diagnostics of its line, so it never clips at the editor's edge. A key or a press hides it until the pointer moves.
+- After RmlUi releases its font resources (`rml_font_generation`), as destroying a backend does, the editor fetches its face again.
 - Text is JetBrains Mono through RmlUi's font engine, a mesh per run of one color, cached until a render no longer draws it. Colors come from `theme/code.rcss`.
 - Highlighting spans carry classes, as Shiki's tokens do: a span draws in the color the theme gives its `tok-*` classes, so a refining class such as `tok-tag` can override its base (`tok-keyword`). The Text Editor takes its spans from `ui_source`.
 - The browser hands pasted text only to a `paste` event, which a Command+V the canvas lets through raises; the web build keeps it for the paste a frame later.

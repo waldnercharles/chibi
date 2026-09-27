@@ -25,14 +25,19 @@ endif()
 # wrapped line numbers only its first row. Two Vim fixes: undo and redo read
 # the command they pop by value, where Zep kept a reference into the stack past
 # the pop, and ciw and ciW change the inner word, which "ci<.>" (change inside
-# a pair) shadowed.
+# a pair) shadowed. For the host's view (workstream I): the glyph under the
+# resting pointer, for hover; a horizontal offset for lines that do not wrap;
+# and no command line or airline while the command line is empty. A marker
+# that removes itself when text is typed inside it lives until it is done.
 chibi_apply_patches("${zep_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-wheel-scroll.patch"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-cursor-info.patch"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-select-range.patch"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-wrapped-line-numbers.patch"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-undo-pop.patch"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-change-inner-word.patch")
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-change-inner-word.patch"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-host-view.patch"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/zep-marker-self-clear.patch")
 
 set(ZEP_SOURCES "")
 foreach(name buffer commands display editor filesystem glyph_iterator indexer keymap

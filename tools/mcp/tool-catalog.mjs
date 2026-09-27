@@ -252,7 +252,7 @@ const entries = [
     operation: "find_references",
     adapter: "native",
     title: "Find references",
-    description: "Find where a symbol is defined and every use of it across the project, each labeled by role (read, write, call, argument, send, handle, spawn, attach, bind, use) with its asset, graph, node and pin or scene object and component field, plus counts per role. Select an asset {kind, name}; with graph or graph_id a function or macro, or with variable, parameter or local that member; or an event; or a component and field; or a ui_class, token (--name) or save_key, listed by file and line. Call it before editing to see what an edit affects.",
+    description: "Find where a symbol is defined and every use of it across the project, each labeled by role (read, write, call, argument, send, handle, spawn, attach, bind, use) with its asset, graph, node and pin or scene object and component field, plus counts per role. Select an asset {kind, name}; with graph or graph_id a function or macro, or with variable, parameter or local that member; or an event; or a component and field; or a ui_class, token (--name) or save_key, listed by file and line with a description. Call it before editing to see what an edit affects.",
     intentTerms: ["find", "references"],
     candidates: ["findReferences", "findUsages", "getReferences"],
     legacyName: "find_references",

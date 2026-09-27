@@ -64,9 +64,13 @@ extern "C"
         RML_INPUT_KEY_X = 35,
         RML_INPUT_KEY_Y = 36,
         RML_INPUT_KEY_Z = 37,
+        RML_INPUT_KEY_OEM_1 = 38, /* ; */
         RML_INPUT_KEY_OEM_PLUS = 39,
+        RML_INPUT_KEY_OEM_COMMA = 40,
         RML_INPUT_KEY_OEM_MINUS = 41,
         RML_INPUT_KEY_OEM_PERIOD = 42,
+        RML_INPUT_KEY_OEM_4 = 45, /* [ */
+        RML_INPUT_KEY_OEM_6 = 47, /* ] */
         RML_INPUT_KEY_NUMPAD_ENTER = 61,
         RML_INPUT_KEY_SUBTRACT = 65,
         RML_INPUT_KEY_BACKSPACE = 69,

@@ -176,7 +176,8 @@ graph, node, pin and role. Both select a symbol by name:
   `{"token": "--primary"}` or `{"save_key": "theme"}`. The result lists the
   `definitions` (the selectors that style the class, the declarations of the
   custom property) and the `uses`, each by `path`, `line` and `column`, across
-  `content/ui` and its stylesheets.
+  `content/ui` and its stylesheets, and a `description`: what Studio's Text
+  Editor shows when the pointer rests on the name.
 - A component or one of its fields: `{"component": "GameHealth"}` or
   `{"component": "GameHealth", "field": "current"}`.
 

@@ -546,8 +546,10 @@ extern "C"
      * with Vim or standard keys, drawn through RmlUi in JetBrains Mono. The
      * editor object keeps the text, the cursor and one undo history for as
      * long as the caller keeps it, apart from any element; kit_code shows it
-     * for a frame, as VS Code's editor shows a model. Positions are byte
-     * offsets into kit_code_text, which keeps '\n' line ends only. */
+     * for a frame, as VS Code's editor shows a model. A caller whose document
+     * keeps its own history takes the undo keys instead (desc.history).
+     * Positions are byte offsets into kit_code_text, which keeps '\n' line
+     * ends only. */
     typedef struct kit_code_editor kit_code_editor;
     kit_code_editor *kit_code_editor_create(const char *text);
     void kit_code_editor_destroy(kit_code_editor *e);
@@ -560,10 +562,17 @@ extern "C"
      * the text around them. */
     typedef struct text_edit text_edit;
     void kit_code_apply(kit_code_editor *e, const text_edit *edits, int count);
+    /* The editor's own history. */
     void kit_code_undo(kit_code_editor *e);
     void kit_code_redo(kit_code_editor *e);
     int kit_code_cursor(const kit_code_editor *e);
     void kit_code_set_cursor(kit_code_editor *e, int byte);
+    /* The byte whose glyph the pointer has rested on, or -1: what the next
+     * frame's desc.hover describes. */
+    int kit_code_hover(const kit_code_editor *e);
+    /* Vim's mode as its status line names it ("NORMAL", "INSERT",
+     * "VISUAL"), or NULL with the standard keys. */
+    const char *kit_code_mode(const kit_code_editor *e);
 
     /* Events since the last kit_code for this editor. */
     enum
@@ -574,6 +583,16 @@ extern "C"
         KIT_CODE_CHORD = 1 << 3,     /* a shortcut for the host: see chord */
         KIT_CODE_COMPLETED = 1 << 4, /* a completion was inserted: completion */
         KIT_CODE_DISMISSED = 1 << 5, /* Escape closed the completions */
+        /* With desc.history: undo or redo was asked for (the primary
+         * modifier and Z or Y, Vim's u and Control+R) and nothing changed. */
+        KIT_CODE_UNDO = 1 << 6,
+        KIT_CODE_REDO = 1 << 7,
+        /* Go to Definition (F12, or a primary click, which places the
+         * cursor first) and Find References (Shift+F12), at the cursor. */
+        KIT_CODE_DEFINITION = 1 << 8,
+        KIT_CODE_REFERENCES = 1 << 9,
+        /* Control+Space: complete at the cursor. */
+        KIT_CODE_SUGGEST = 1 << 10,
     };
     typedef struct kit_code_result
     {
@@ -594,7 +613,7 @@ extern "C"
         KIT_CODE_INFO,
     } kit_code_severity;
     /* A diagnostic: a gutter mark and an underlined line whose message shows
-     * when the pointer rests on the line. */
+     * in the hover card when the pointer rests on the line. */
     typedef struct kit_code_marker
     {
         int line; /* 1-based */
@@ -635,6 +654,16 @@ extern "C"
         const kit_code_completion *completions;
         int completion_count;
         int completion_start;
+        /* The caller keeps the undo history: the undo keys report
+         * KIT_CODE_UNDO and KIT_CODE_REDO, and the editor keeps none. */
+        bool history;
+        /* Lines run on past the right edge, which scrolls to the cursor and
+         * with the wheel sideways, instead of wrapping. */
+        bool no_wrap;
+        /* What the byte kit_code_hover names is: a title line, then detail
+         * lines. It shows in a card under the pointer, after the diagnostics
+         * of its line. */
+        const char *hover;
     } kit_code_desc;
     kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_code_desc *desc);
 

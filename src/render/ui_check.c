@@ -353,14 +353,28 @@ bool ui_check(
     size_t error_size
 )
 {
+    rml_backend *backend = rml_backend_create(1280, 720, 1);
+    bool ok = ui_check_in(rml_backend_context(backend), content_root, name, text, messages, error, error_size);
+    rml_backend_destroy(backend);
+    return ok;
+}
+
+bool ui_check_in(
+    rml_context *context,
+    const char *content_root,
+    const char *name,
+    const char *text,
+    ui_check_message **messages,
+    char *error,
+    size_t error_size
+)
+{
     char directory[1024];
     snprintf(directory, sizeof directory, "%s/ui", content_root);
     ui_document document = { 0 };
     if (!ui_document_read(text, directory, NULL, &document, error, error_size)) {
         return false;
     }
-    rml_backend *backend = rml_backend_create(1280, 720, 1);
-    rml_context *context = rml_backend_context(backend);
     ui_data data;
     ui_data_init(&data, context, NULL, ignore_emit, NULL);
     char **shown = check_markup(context, &document, messages);
@@ -370,7 +384,6 @@ bool ui_check(
               check_widgets(context, &document, name, directory, shown, messages, error, error_size);
     free_names(shown);
     ui_data_free(&data);
-    rml_backend_destroy(backend);
     ui_document_free(&document);
     return ok;
 }

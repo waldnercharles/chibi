@@ -2,17 +2,42 @@
  * RCSS, or a stylesheet's RCSS. It follows the active UI document and keeps
  * the last one while a document of another kind is active; focusing its text
  * makes it active again, so Save and Undo follow it. Edits apply across Studio
- * as they are typed (the code_apply_live preference), or when saved. */
+ * as they are typed (the code_apply_live preference), or when saved.
+ *
+ * Code intelligence (ui_code.h), after VS Code's editor: syntax errors as the
+ * part parses and RmlUi's warnings once its text rests, as gutter markers and
+ * a count in the header that steps through them; completion as you type and
+ * on Control+Space; a card describing what the pointer rests on; Go to
+ * Definition (F12 or a primary click) and Find References (Shift+F12) into
+ * Output's Find view.
+ *
+ * One history: the document's buffer (ui_buffer.h) keeps it and the code
+ * editors keep none. Typing reaches the buffer as typed text, an accepted
+ * completion as a step of its own, and the undo keys (Z with the primary
+ * modifier, Vim's u and Control+R) step the buffer as Studio's Undo does.
+ * Whatever changes the buffer comes back to the editor as an edit, so its
+ * cursor keeps its place; after an undo it lands on the change. Each open
+ * document part keeps its own code editor, with its cursor, scroll and Vim
+ * state. */
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Frames before a revealed line is laid out and can scroll into view. */
 #define REVEAL_FRAMES 2
+/* Seconds text rests before RmlUi checks it. */
+#define CHECK_DELAY 0.3
+/* Seconds a scan of the project serves before completion, hover and
+   navigation scan again. */
+#define PROJECT_STALE 2.0
+/* Characters that start completion when typed, as '<' starts a tag. */
+#define COMPLETION_TRIGGERS "<.\"("
 
 static const char *const PART_LABELS[UI_PART_COUNT] = { "RML", "RCSS" };
 static const char *const APPLY_LABELS[] = { "Live", "On Save" };
@@ -134,6 +159,113 @@ static void toast_actions(studio *s)
     }
 }
 
+static int line_offset(const char *text, int line)
+{
+    int at = 0;
+    for (int n = 1; n < line && text[at]; n++) {
+        at += (int)strcspn(text + at, "\n");
+        at += text[at] == '\n';
+    }
+    return at;
+}
+
+/* ---------- Code editors ---------- */
+
+/* The code editor of the tab's shown part, made on first show. */
+static studio_code_editor *part_editor(studio *s, const scene_document_tab *tab)
+{
+    studio_code *c = &s->code;
+    const ui_buffer *b = tab->ui;
+    for (int i = 0; i < acount(c->editors); i++) {
+        if (!strcmp(c->editors[i].path, tab->path) && c->editors[i].part == b->part) {
+            return &c->editors[i];
+        }
+    }
+    studio_code_editor made = {
+        .part = b->part,
+        .editor = kit_code_editor_create(ui_buffer_text(b, b->part))
+    };
+    snprintf(made.path, sizeof made.path, "%s", tab->path);
+    apush(c->editors, made);
+    return &alast(c->editors);
+}
+
+/* Drops the editors of documents that closed. */
+static void prune_editors(studio *s)
+{
+    studio_code *c = &s->code;
+    for (int i = acount(c->editors) - 1; i >= 0; i--) {
+        if (ui_tab(s, c->editors[i].path)) {
+            continue;
+        }
+        if (c->editor == c->editors[i].editor) {
+            c->editor = NULL;
+        }
+        kit_code_editor_destroy(c->editors[i].editor);
+        adel(c->editors, i);
+    }
+}
+
+void studio_code_free(studio *s)
+{
+    studio_code *c = &s->code;
+    for (int i = 0; i < acount(c->editors); i++) {
+        kit_code_editor_destroy(c->editors[i].editor);
+    }
+    afree(c->editors);
+    c->editor = NULL;
+    ui_source_free(c->source);
+    c->source = NULL;
+    afree(c->spans);
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        ui_code_markers_free(c->markers[p]);
+    }
+    ui_check_messages_free(c->checked);
+    rml_backend_destroy(c->checker);
+    ui_source_project_free(&c->project);
+    ui_code_completions_free(&c->completions);
+    free(c->hover);
+}
+
+/* ---------- Checking ---------- */
+
+/* RmlUi checks the shown document once its text has rested. */
+static void check_shown(studio *s)
+{
+    studio_code *c = &s->code;
+    scene_document_tab *tab = shown(s);
+    if (!tab) {
+        return;
+    }
+    ui_buffer *b = tab->ui;
+    if (!strcmp(c->checked_path, tab->path) && c->checked_revision == b->revision) {
+        return;
+    }
+    if (b->revision != c->check_seen) {
+        c->check_seen = b->revision;
+        c->check_due = s->time + CHECK_DELAY;
+    }
+    if (s->time < c->check_due) {
+        return;
+    }
+    if (!c->checker) {
+        c->checker = rml_backend_create(1280, 720, 1);
+    }
+    ui_check_messages_free(c->checked);
+    c->checked = NULL;
+    c->check_failure[0] = '\0';
+    ui_code_check(
+        b,
+        rml_backend_context(c->checker),
+        &c->checked,
+        c->check_failure,
+        sizeof c->check_failure
+    );
+    snprintf(c->checked_path, sizeof c->checked_path, "%s", tab->path);
+    c->checked_revision = b->revision;
+    c->markers_stale = true;
+}
+
 void studio_code_frame(studio *s)
 {
     bool applied = false;
@@ -152,6 +284,8 @@ void studio_code_frame(studio *s)
         snprintf(s->code.path, sizeof s->code.path, "%s", active->path);
         studio_show_editor(s, STUDIO_EDITOR_CODE);
     }
+    prune_editors(s);
+    check_shown(s);
     toast_actions(s);
 }
 
@@ -167,6 +301,7 @@ bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line)
     ui_buffer *b = studio_ui_buffer(s);
     b->part = ui_buffer_text(b, part) ? part : UI_PART_RCSS;
     s->code.reveal = line;
+    s->code.reveal_offset = -1;
     s->code.reveal_wait = REVEAL_FRAMES;
     studio_show_editor(s, STUDIO_EDITOR_CODE);
     return true;
@@ -175,6 +310,15 @@ bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line)
 bool studio_open_ui_source(studio *s, const char *path, int line)
 {
     return studio_open_ui_part(s, path, UI_PART_RML, line);
+}
+
+bool studio_code_open_place(studio *s, const ui_code_place *place)
+{
+    if (!studio_open_ui_part(s, place->path, place->part, place->line)) {
+        return false;
+    }
+    s->code.reveal_offset = place->offset;
+    return true;
 }
 
 /* ---------- Header ---------- */
@@ -205,6 +349,75 @@ static void problem_chip(kit *k, const ui_buffer *b)
     kit_pop(k);
 }
 
+/* The first problem of a part after `line`, or 0. */
+static int problem_after(const kit_code_marker *markers, int line)
+{
+    for (int i = 0; i < acount(markers); i++) {
+        if (markers[i].line > line) {
+            return markers[i].line;
+        }
+    }
+    return 0;
+}
+
+/* The next problem after the cursor's line, then the other part's first,
+   wrapping to the first. */
+static void next_problem(studio *s, ui_buffer *b)
+{
+    studio_code *c = &s->code;
+    kit_code_editor *e = c->editor;
+    ui_part other = b->part == UI_PART_RML ? UI_PART_RCSS : UI_PART_RML;
+    const char *text = kit_code_text(e, NULL);
+    int cursor = kit_code_cursor(e), line = 1;
+    for (int i = 0; i < cursor && text[i]; i++) {
+        line += text[i] == '\n';
+    }
+    int next = problem_after(c->markers[b->part], line);
+    if (!next && acount(c->markers[other])) {
+        b->part = other;
+        next = c->markers[other][0].line;
+    }
+    s->code.reveal = next ? next : problem_after(c->markers[b->part], 0);
+    s->code.reveal_offset = -1;
+    s->code.reveal_wait = next && b->part == other ? REVEAL_FRAMES : 0;
+}
+
+/* The document's problems: a count that steps to the next. */
+static void problems_button(studio *s, ui_buffer *b)
+{
+    const studio_code *c = &s->code;
+    int errors = 0, count = 0;
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        for (int i = 0; i < acount(c->markers[p]); i++) {
+            errors += c->markers[p][i].severity == KIT_CODE_ERROR;
+            count++;
+        }
+    }
+    if (!count || !c->editor) {
+        return;
+    }
+    char label[16], tip[64];
+    snprintf(label, sizeof label, "%d", count);
+    snprintf(
+        tip,
+        sizeof tip,
+        "%d %s, %d %s \xc2\xb7 Next problem",
+        errors,
+        errors == 1 ? "error" : "errors",
+        count - errors,
+        count - errors == 1 ? "warning" : "warnings"
+    );
+    kit_button_desc button = { .label = label,
+                               .icon = errors ? KIT_ICON_ERROR : KIT_ICON_WARNING,
+                               .size = KIT_SM,
+                               .cls = errors ? "code-problems errors" : "code-problems",
+                               .morph = true,
+                               .tip = tip };
+    if (kit_button(s->kit, "problems", &button)) {
+        next_problem(s, b);
+    }
+}
+
 void studio_code_header(studio *s, int)
 {
     kit *k = s->kit;
@@ -224,80 +437,65 @@ void studio_code_header(studio *s, int)
     }
     file_label(s, tab);
     kit_leaf(k, "spacer", NULL, "spacer");
+    const char *mode = s->code.editor ? kit_code_mode(s->code.editor) : NULL;
+    if (mode) {
+        kit_label(k, "mode", "code-mode", mode);
+        kit_tip(k, "Vim mode", NULL, NULL);
+    }
+    problems_button(s, b);
     problem_chip(k, b);
-    int mode = s->prefs.code_apply_live ? 0 : 1;
+    int apply = s->prefs.code_apply_live ? 0 : 1;
     kit_push(k, "apply", NULL, "code-apply");
-    if (kit_toggle_group(k, "mode", &mode, APPLY_LABELS, 2, 0)) {
-        s->prefs.code_apply_live = mode == 0;
+    if (kit_toggle_group(k, "mode", &apply, APPLY_LABELS, 2, 0)) {
+        s->prefs.code_apply_live = apply == 0;
     }
     kit_tip(k, "Apply edits", NULL, "Live applies each valid edit as you type; On Save waits for the file");
     kit_pop(k);
 }
 
-/* ---------- Body ---------- */
-
-/* The one edit that turns the editor's text into `text`: the bytes between
- * their common start and end. */
-static void follow_text(kit_code_editor *e, const char *text)
+/* The editor shows its part as the buffer holds it; after an undo or redo
+   from the editor, its cursor lands on the change. */
+static void follow_text(studio_code *c, kit_code_editor *e, const char *text)
 {
-    size_t length, target = strlen(text);
-    const char *shown = kit_code_text(e, &length);
-    if (length == target && !memcmp(shown, text, length)) {
-        return;
+    if (ui_code_follow(e, text, c->replayed)) {
+        c->replayed = false;
     }
-    size_t start = 0, end = 0;
-    while (start < length && start < target && shown[start] == text[start]) {
-        start++;
-    }
-    while (end < length - start && end < target - start &&
-           shown[length - 1 - end] == text[target - 1 - end]) {
-        end++;
-    }
-    char *insert = xmalloc(target - start - end + 1);
-    memcpy(insert, text + start, target - start - end);
-    insert[target - start - end] = '\0';
-    kit_code_apply(e, &(text_edit){ (int)start, (int)(length - end), insert }, 1);
-    free(insert);
 }
 
-/* The code editor over the shown part. The buffer keeps the text and its
- * history: typing reaches it as typed text, and a change made elsewhere (the
- * designer, the MCP, Studio's Undo, a reload) comes back to the editor as an
- * edit, so the cursor keeps its place. Another document or part starts over. */
-static kit_code_editor *part_editor(studio *s, const scene_document_tab *tab)
+/* ---------- Language ---------- */
+
+/* The scan of the project around `path`, made again once stale; `keep`
+   serves the last scan of the same project however old, as completion does
+   between keystrokes. */
+static const ui_source_project *project(studio *s, const char *path, bool keep)
 {
     studio_code *c = &s->code;
-    const ui_buffer *b = tab->ui;
-    const char *text = ui_buffer_text(b, b->part);
-    if (!c->editor) {
-        c->editor = kit_code_editor_create(text);
+    char root[1024];
+    if (!ui_code_content_root(path, root, sizeof root)) {
+        root[0] = '\0';
     }
-    if (strcmp(c->editor_path, tab->path) || c->editor_part != b->part) {
-        snprintf(c->editor_path, sizeof c->editor_path, "%s", tab->path);
-        c->editor_part = b->part;
-        kit_code_set_text(c->editor, text);
+    bool fresh = !strcmp(root, c->project_root) &&
+                 (keep || s->time - c->project_time < PROJECT_STALE);
+    if (!fresh) {
+        ui_source_project_free(&c->project);
+        if (root[0]) {
+            ui_code_scan(&c->project, root);
+        }
+        snprintf(c->project_root, sizeof c->project_root, "%s", root);
+        c->project_time = s->time;
     }
-    return c->editor;
+    return &c->project;
 }
 
-void studio_code_free(studio *s)
+/* Parses the editor's text as its part's language when either changed, and
+   highlights it with the parse's spans; true when it parsed. */
+static bool parse_part(studio_code *c, kit_code_editor *e, ui_part part)
 {
-    kit_code_editor_destroy(s->code.editor);
-    s->code.editor = NULL;
-    ui_source_free(s->code.source);
-    s->code.source = NULL;
-    afree(s->code.spans);
-}
-
-/* Parses the editor's text as the part's language when either changed, and
- * highlights it with the parse's spans. */
-static void parse_part(studio_code *c, kit_code_editor *e, ui_part part)
-{
-    ui_source_language language = part == UI_PART_RML ? UI_SOURCE_RML : UI_SOURCE_RCSS;
+    ui_source_language language = ui_code_language(part);
     const char *text = kit_code_text(e, NULL);
     if (c->source && c->source->blocks[0].language == language &&
         !strcmp(c->source->text, text)) {
-        return;
+        return false;
     }
     ui_source_free(c->source);
     c->source = ui_source_parse_block(text, language);
@@ -309,32 +507,180 @@ static void parse_part(studio_code *c, kit_code_editor *e, ui_part part)
             apush(c->spans, ((kit_code_span){ span->start, span->end, cls }));
         }
     }
+    return true;
 }
 
-static int line_offset(const char *text, int line)
+/* Each part's problems: its syntax errors and, for the document RmlUi last
+   checked, RmlUi's warnings about the part. The shown part is the editor's
+   text, parsed; the other, the buffer's. */
+static void mark_problems(studio_code *c, const scene_document_tab *tab, ui_part shown)
 {
-    int at = 0;
-    for (int n = 1; n < line && text[at]; n++) {
-        at += (int)strcspn(text + at, "\n");
-        at += text[at] == '\n';
+    bool checked = !strcmp(c->checked_path, tab->path);
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        const char *text = ui_buffer_text(tab->ui, (ui_part)p);
+        ui_source *other = p != (int)shown && text
+                             ? ui_source_parse_block(text, ui_code_language((ui_part)p))
+                             : NULL;
+        ui_code_markers_free(c->markers[p]);
+        c->markers[p] = NULL;
+        if (p == (int)shown || other) {
+            ui_code_markers(
+                p == (int)shown ? c->source : other,
+                (ui_part)p,
+                checked ? c->checked : NULL,
+                checked ? c->check_failure : NULL,
+                &c->markers[p]
+            );
+        }
+        ui_source_free(other);
     }
-    return at;
+    c->markers_stale = false;
 }
 
-/* Puts the cursor on the line studio_open_ui_part asked for, once laid out,
- * and focuses the editor. Call right after it. */
+/* What the pointer rests on, described once per place. */
+static void describe_hover(studio *s, const ui_buffer *b, kit_code_editor *e)
+{
+    studio_code *c = &s->code;
+    int at = kit_code_hover(e);
+    if (at == c->hover_at && c->source == c->hover_source) {
+        return;
+    }
+    free(c->hover);
+    c->hover = at >= 0 ? ui_code_hover(c->source, at, project(s, b->path, false))
+                       : NULL;
+    c->hover_at = at;
+    c->hover_source = c->source;
+}
+
+/* Parse, problems and hover for the part the editor shows. */
+static void understand(studio *s, const scene_document_tab *tab, kit_code_editor *e, ui_part part)
+{
+    studio_code *c = &s->code;
+    if (parse_part(c, e, part) || c->markers_stale) {
+        mark_problems(c, tab, part);
+    }
+    describe_hover(s, tab->ui, e);
+}
+
+/* The completions at the cursor; the list closes where there are none, or
+   where nothing was typed that asked for them. */
+static void complete(studio *s, const ui_buffer *b, kit_code_editor *e, ui_part part, bool asked)
+{
+    studio_code *c = &s->code;
+    parse_part(c, e, part);
+    ui_code_completions_free(&c->completions);
+    int cursor = kit_code_cursor(e);
+    ui_code_complete(c->source, cursor, project(s, b->path, !asked), &c->completions);
+    int typed = cursor - c->completions.start, count = acount(c->completions.items);
+    bool done = count == 1 && (int)strlen(c->completions.items[0].label) == typed &&
+                !strncmp(
+                    c->source->text + c->completions.start,
+                    c->completions.items[0].label,
+                    (size_t)typed
+                );
+    c->completing = count > 0 && (asked || typed > 0) && !done;
+}
+
+/* A typed character that starts completion: a word's first, or a trigger. */
+static bool starts_completion(const char *text, ui_code_change d)
+{
+    if (d.end != d.start || d.inserted != 1) {
+        return false;
+    }
+    char typed = text[d.start];
+    return isalnum((unsigned char)typed) || typed == '-' ||
+           strchr(COMPLETION_TRIGGERS, typed);
+}
+
+/* ---------- Navigation ---------- */
+
+static void go_to_definition(studio *s, const ui_buffer *b, kit_code_editor *e)
+{
+    studio_code *c = &s->code;
+    int at = kit_code_cursor(e);
+    ui_code_place place;
+    if (ui_code_definition(b, c->source, at, project(s, b->path, false), &place)) {
+        studio_code_open_place(s, &place);
+        return;
+    }
+    bool named = ui_source_symbol_at(c->source, at).kind != UI_SYMBOL_NONE;
+    studio_report(s, named ? "No other definition" : "No symbol to go to here");
+}
+
+static const char *symbol_title(const ui_source_symbol *symbol, char *out, size_t size)
+{
+    static const char *const KINDS[] = {
+        [UI_SYMBOL_NONE] = "",          [UI_SYMBOL_WIDGET] = "Widget ",
+        [UI_SYMBOL_VARIABLE] = "",      [UI_SYMBOL_CLASS] = "Class .",
+        [UI_SYMBOL_SAVE_KEY] = "save.",
+    };
+    snprintf(out, size, "%s%s", KINDS[symbol->kind], symbol->name);
+    return out;
+}
+
+/* A Find row for a place: its file, part and line. */
+static studio_reference place_row(const ui_code_place *place)
+{
+    studio_reference row = { .kind = REFERENCE_ASSET_UI,
+                             .use = place->definition ? "Define" : "Use",
+                             .ui = *place };
+    snprintf(row.asset, sizeof row.asset, "%s", content_basename(place->path));
+    bool stylesheet = strstr(place->path, ".rcss") != NULL;
+    snprintf(
+        row.place,
+        sizeof row.place,
+        "%s%sline %d",
+        stylesheet ? "" : PART_LABELS[place->part],
+        stylesheet ? "" : " ",
+        place->line
+    );
+    return row;
+}
+
+static void find_references(studio *s, const ui_buffer *b, kit_code_editor *e)
+{
+    studio_code *c = &s->code;
+    ui_code_place *places = NULL;
+    ui_source_symbol symbol = ui_code_places(
+        b,
+        c->source,
+        kit_code_cursor(e),
+        project(s, b->path, false),
+        &places
+    );
+    if (symbol.kind == UI_SYMBOL_NONE) {
+        studio_report(s, "No symbol to find here");
+        return;
+    }
+    asetlen(s->references, 0);
+    for (int i = 0; i < acount(places); i++) {
+        apush(s->references, place_row(&places[i]));
+    }
+    afree(places);
+    symbol_title(&symbol, s->references_title, sizeof s->references_title);
+    studio_output_find(s);
+}
+
+/* ---------- Body ---------- */
+
+/* Puts the cursor where studio_open_ui_part or a place asked, once laid
+   out, and focuses the editor. Call right after kit_code. */
 static void reveal(studio *s, kit_code_editor *e, const ui_buffer *b)
 {
     if (!s->code.reveal || s->code.reveal_wait-- > 0) {
         return;
     }
-    kit_code_set_cursor(e, line_offset(ui_buffer_text(b, b->part), s->code.reveal));
+    const char *text = ui_buffer_text(b, b->part);
+    int at = s->code.reveal_offset >= 0 ? s->code.reveal_offset
+                                        : line_offset(text, s->code.reveal);
+    kit_code_set_cursor(e, math_min(at, (int)strlen(text)));
     kit_focus(s->kit);
     s->code.reveal = 0;
+    s->code.reveal_offset = -1;
 }
 
 /* A chord the editor leaves to Studio runs the command it names, as the
- * shortcuts would if typing had not turned them off. */
+   shortcuts would if typing had not turned them off. */
 static void run_chord(studio *s, const char *chord)
 {
     const char *shown = studio_chord(s, chord);
@@ -351,6 +697,74 @@ static void run_chord(studio *s, const char *chord)
     }
 }
 
+/* The editor's text into the buffer, the undo keys through it, and the
+   buffer back to the editor: one history. Returns what typing changed. */
+static ui_code_change take_edits(studio *s, ui_buffer *b, kit_code_editor *e, ui_part part, unsigned events)
+{
+    studio_code *c = &s->code;
+    c->replayed = false;
+    bool completed = events & KIT_CODE_COMPLETED;
+    ui_code_change typed = { 0 };
+    if (events & (KIT_CODE_CHANGED | KIT_CODE_COMPLETED)) {
+        typed = ui_code_record(b, part, e, s->time, completed);
+    }
+    bool redo = events & KIT_CODE_REDO;
+    if ((events & (KIT_CODE_UNDO | KIT_CODE_REDO)) && ui_code_replay(b, redo)) {
+        c->replayed = true;
+        studio_report(s, redo ? "Redo" : "Undo");
+    }
+    follow_text(c, e, ui_buffer_text(b, part));
+    return typed;
+}
+
+/* Completion starts where typing or Control+Space asks, follows the text
+   and the cursor while it runs, and ends with an accepted item, Escape or
+   an undo. */
+static void follow_completion(
+    studio *s,
+    const ui_buffer *b,
+    kit_code_editor *e,
+    ui_part part,
+    unsigned events,
+    ui_code_change typed
+)
+{
+    studio_code *c = &s->code;
+    bool typing = (events & KIT_CODE_CHANGED) && !(events & KIT_CODE_COMPLETED);
+    bool asked = (events & KIT_CODE_SUGGEST) ||
+                 (typing && starts_completion(kit_code_text(e, NULL), typed));
+    if (events &
+        (KIT_CODE_COMPLETED | KIT_CODE_DISMISSED | KIT_CODE_UNDO | KIT_CODE_REDO)) {
+        c->completing = false;
+    } else if (asked || (c->completing && (events & (KIT_CODE_CHANGED | KIT_CODE_CURSOR)))) {
+        complete(s, b, e, part, asked);
+    }
+}
+
+static void respond(studio *s, scene_document_tab *tab, kit_code_editor *e, ui_part part, const kit_code_result *r)
+{
+    ui_buffer *b = tab->ui;
+    unsigned events = r->events;
+    /* Its text in focus makes the document active, so Save and Undo reach it. */
+    if ((r->focused || (events & KIT_CODE_CHANGED)) && tab != active_ui(s)) {
+        scene_tabs_activate(s->scene, (int)(tab - s->scene->tabs));
+    }
+    ui_code_change typed = take_edits(s, b, e, part, events);
+    follow_completion(s, b, e, part, events, typed);
+    if (events & KIT_CODE_SAVED) {
+        studio_save(s);
+    }
+    if (events & KIT_CODE_CHORD) {
+        run_chord(s, r->chord);
+    }
+    if (events & KIT_CODE_DEFINITION) {
+        go_to_definition(s, b, e);
+    }
+    if (events & KIT_CODE_REFERENCES) {
+        find_references(s, b, e);
+    }
+}
+
 static void empty_state(kit *k)
 {
     kit_push(k, "empty", NULL, "pending-editor");
@@ -362,39 +776,44 @@ static void empty_state(kit *k)
 void studio_code_body(studio *s, int)
 {
     kit *k = s->kit;
+    studio_code *c = &s->code;
     scene_document_tab *tab = shown(s);
     if (!tab) {
+        c->editor = NULL;
         empty_state(k);
         return;
     }
     ui_buffer *b = tab->ui;
     kit_push(k, "code", NULL, "code-editor");
-    kit_code_editor *e = part_editor(s, tab);
-    parse_part(&s->code, e, b->part);
+    ui_part part = b->part;
+    kit_code_editor *e = part_editor(s, tab)->editor;
+    /* An editor coming into view catches up with its part; the one in view
+       may hold typing that kit_code has yet to report. */
+    if (e != c->editor) {
+        follow_text(c, e, ui_buffer_text(b, part));
+        c->editor = e;
+        snprintf(c->editor_path, sizeof c->editor_path, "%s", tab->path);
+        c->editor_part = part;
+    }
+    understand(s, tab, e, part);
     kit_code_desc desc = {
         .vim = s->prefs.code_vim,
         .font_size = s->prefs.code_font_size,
         .mac = s->mac,
-        .spans = s->code.spans,
-        .span_count = acount(s->code.spans),
+        .spans = c->spans,
+        .span_count = acount(c->spans),
+        .markers = c->markers[part],
+        .marker_count = acount(c->markers[part]),
+        .completions = c->completing ? c->completions.items : NULL,
+        .completion_count = c->completing ? acount(c->completions.items) : 0,
+        .completion_start = c->completions.start,
+        .history = true,
+        .no_wrap = !s->prefs.code_wrap,
+        .hover = c->hover,
     };
     kit_code_result r = kit_code(k, "text", e, &desc);
     reveal(s, e, b);
-    /* Its text in focus makes the document active, so Save and Undo reach it. */
-    bool typed = r.events & KIT_CODE_CHANGED;
-    if ((r.focused || typed) && tab != active_ui(s)) {
-        scene_tabs_activate(s->scene, (int)(tab - s->scene->tabs));
-    }
-    if (typed) {
-        ui_buffer_type(b, b->part, kit_code_text(e, NULL), s->time);
-    }
-    follow_text(e, ui_buffer_text(b, b->part));
-    if (r.events & KIT_CODE_SAVED) {
-        studio_save(s);
-    }
-    if (r.events & KIT_CODE_CHORD) {
-        run_chord(s, r.chord);
-    }
+    respond(s, tab, e, part, &r);
     if (b->error[0]) {
         kit_push(k, "status", NULL, "code-status");
         kit_icon(k, "icon", NULL, KIT_ICON_ERROR);

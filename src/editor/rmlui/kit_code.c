@@ -16,16 +16,22 @@
  * - Input: the element takes keys, text, the pointer and focus, and stops
  *   each key so RmlUi's Tab navigation never sees it. Vim reads the physical
  *   Control key; the standard keys read the primary modifier (Command on a
- *   Mac). Chords the editor does not take go back to the host.
+ *   Mac). Chords the editor does not take go back to the host, as do undo
+ *   and redo when the host keeps the history.
+ * - Hover: once the pointer rests on a glyph, the host describes it; a card
+ *   in the overlay layer shows that with the diagnostics of its line, so it
+ *   never clips at the editor's edge.
  * - Clipboard: Cute's (SDL's). A browser hands pasted text only to a paste
  *   event, so the web build keeps the latest for a paste right after it. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/text/zep_bridge.h"
+#include "editor/ui/kit_icons.h"
 #include "support/math.h"
 #include "support/text_edit.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +47,12 @@
 /* Spaces a run spans to join glyphs a blank separates. */
 #define RUN_GAP_CELLS 16
 #define NO_KEY UINT32_MAX
+/* Seconds the pointer rests before the hover card, as the kit's tooltips. */
+#define HOVER_DELAY TOOLTIP_DELAY
+/* Cells kept between the cursor and a side edge while lines scroll sideways. */
+#define SCROLL_MARGIN_CELLS 4
+/* Cells a notch of the wheel scrolls sideways. */
+#define WHEEL_CELLS 6
 
 typedef struct text_run
 {
@@ -142,12 +154,21 @@ typedef struct code_view
     uint64_t render;
     uintptr_t face;
     int face_version;
+    unsigned font_generation;
 } code_view;
 
 typedef struct completion
 {
     char *label, *insert;
 } completion;
+
+/* A diagnostic kept for the hover card. */
+typedef struct mark
+{
+    int line;
+    kit_code_severity severity;
+    char *message;
+} mark;
 
 struct kit_code_editor
 {
@@ -161,23 +182,38 @@ struct kit_code_editor
     long cursor;
     bool focused;
     bool vim, mac;
-    /* The face at the size and pixel ratio last shown. */
+    /* The face at the size and pixel ratio last shown, and the font
+       generation it is from (rml_font_generation). */
     int font_pixels;
+    unsigned font_generation;
     uintptr_t face;
     float ascent, line, advance;
     code_span *spans;   /* array */
     uint64_t span_hash; /* of the spans shown; 0 before the view maps them */
     uint64_t markers;   /* hash of the markers shown */
+    mark *marks;        /* array: the markers shown */
     completion *completions; /* array */
     uint64_t completion_hash;
     int completion_start, selected;
+    int shown_selected; /* the item last scrolled into view */
+    bool host_history;  /* undo keys report to the host */
+    bool no_wrap;
+    float scroll_x; /* lines scrolled left, pixels */
+    long followed;  /* the cursor last scrolled into view sideways */
+    /* The pointer: where it last moved, in the context's pixels, and since
+       when it rests there. A key or a press hides the card until it moves. */
+    bool pointer_in, pointer_moved, hover_blocked;
+    float pointer_x, pointer_y;
+    double rest_since;
+    int hover; /* the byte under the resting pointer, or -1 */
 };
 
 static const rml_event_id VIEW_EVENTS[] = {
     RML_EVENT_KEYDOWN,   RML_EVENT_KEYUP,   RML_EVENT_TEXTINPUT,
     RML_EVENT_MOUSEDOWN, RML_EVENT_MOUSEUP, RML_EVENT_MOUSEMOVE,
     RML_EVENT_DRAG,      RML_EVENT_DRAGEND, RML_EVENT_MOUSESCROLL,
-    RML_EVENT_FOCUS,     RML_EVENT_BLUR,
+    RML_EVENT_FOCUS,     RML_EVENT_BLUR,    RML_EVENT_DBLCLICK,
+    RML_EVENT_MOUSEOUT,
 };
 
 #define VIEW_EVENT_COUNT (sizeof VIEW_EVENTS / sizeof *VIEW_EVENTS)
@@ -379,11 +415,34 @@ static void on_draw_text(void *user, float x, float y, zep_rgba color, const cha
     run->cells += gap + codepoints(text, size);
 }
 
+/* The face at `pixels`, and its metrics. */
+static void load_face(kit_code_editor *e, int pixels)
+{
+    e->font_pixels = pixels;
+    e->font_generation = rml_font_generation();
+    e->face = rml_font_face(CODE_FAMILY, RML_FONT_NORMAL, 400, pixels);
+    assert(e->face);
+    rml_font_metrics metrics = rml_font_face_metrics(e->face);
+    e->ascent = roundf(metrics.ascent);
+    e->line = ceilf(metrics.ascent + metrics.descent);
+    e->advance = (float)rml_font_string_width_n(e->face, "M", 1);
+}
+
+/* The face, again after RmlUi released its font resources, as destroying a
+   backend does: a handle from before is gone. 0 before the first frame. */
+static uintptr_t face_of(kit_code_editor *e)
+{
+    if (e->face && e->font_generation != rml_font_generation()) {
+        load_face(e, e->font_pixels);
+    }
+    return e->face;
+}
+
 static void on_text_size(void *user, const char *text, size_t size, float *width, float *height)
 {
     kit_code_editor *e = user;
     /* Before the first frame chooses a face, a nominal monospace cell. */
-    if (!e->face) {
+    if (!face_of(e)) {
         *width = 8.0f * (float)codepoints(text, size);
         *height = 16;
         return;
@@ -403,6 +462,8 @@ static void on_changed(void *user, zep_change change, long, long)
     free(e->text);
     e->text = NULL;
     e->result.events |= e->quiet ? 0 : KIT_CODE_CHANGED;
+    /* Zep drops a marker text is typed inside, and markers are lines. */
+    e->markers = 0;
 }
 
 static bool command_is(const char *name, size_t length, const char *const *names)
@@ -484,6 +545,17 @@ static char *on_get_clipboard(void *)
     return copy;
 }
 
+/* With the host keeping the history, undo and redo report to it. */
+static bool on_history(void *user, bool redo)
+{
+    kit_code_editor *e = user;
+    if (!e->host_history) {
+        return false;
+    }
+    e->result.events |= redo ? KIT_CODE_REDO : KIT_CODE_UNDO;
+    return true;
+}
+
 static bool on_syntax(void *user, long byte, zep_rgba *color)
 {
     const kit_code_editor *e = user;
@@ -520,8 +592,10 @@ kit_code_editor *kit_code_editor_create(const char *text)
         .set_clipboard = on_set_clipboard,
         .get_clipboard = on_get_clipboard,
         .syntax = on_syntax,
+        .history = on_history,
     };
     e->zep = zep_create(&e->host);
+    zep_hide_idle_command_line(e->zep, true);
     /* Zep's scrollbar draws square step buttons; the wheel and keys scroll. */
     zep_set_window_flags(
         e->zep,
@@ -529,6 +603,8 @@ kit_code_editor *kit_code_editor_create(const char *text)
     );
     zep_set_vim(e->zep, false);
     e->result.completion = -1;
+    e->hover = -1;
+    e->shown_selected = -1;
     kit_code_set_text(e, text);
     return e;
 }
@@ -542,6 +618,14 @@ static void completions_free(kit_code_editor *e)
     afree(e->completions);
 }
 
+static void marks_free(kit_code_editor *e)
+{
+    for (int i = 0; i < acount(e->marks); i++) {
+        free(e->marks[i].message);
+    }
+    afree(e->marks);
+}
+
 void kit_code_editor_destroy(kit_code_editor *e)
 {
     if (!e) {
@@ -552,6 +636,7 @@ void kit_code_editor_destroy(kit_code_editor *e)
     }
     zep_destroy(e->zep);
     completions_free(e);
+    marks_free(e);
     afree(e->spans);
     free(e->text);
     free(e);
@@ -676,6 +761,26 @@ void kit_code_set_cursor(kit_code_editor *e, int byte)
     e->cursor = zep_cursor(e->zep);
 }
 
+int kit_code_hover(const kit_code_editor *e)
+{
+    return e->hover;
+}
+
+const char *kit_code_mode(const kit_code_editor *e)
+{
+    if (!e->vim) {
+        return NULL;
+    }
+    switch (zep_current_mode(e->zep)) {
+        case ZEP_MODE_INSERT: return "INSERT";
+        case ZEP_MODE_VISUAL: return "VISUAL";
+        case ZEP_MODE_EX: return "COMMAND";
+        case ZEP_MODE_NONE:
+        case ZEP_MODE_NORMAL: break;
+    }
+    return "NORMAL";
+}
+
 /* ---------- Keys ---------- */
 
 static uint32_t special_key(rml_key key)
@@ -711,25 +816,30 @@ static uint32_t chord_char(rml_key key)
     if (key >= RML_KEY_0 && key <= RML_KEY_9) {
         return '0' + (uint32_t)(key - RML_KEY_0);
     }
-    switch (key) {
+    switch ((int)key) {
         case RML_KEY_SPACE: return ' ';
         case RML_KEY_OEM_MINUS:
         case RML_KEY_SUBTRACT: return '-';
         case RML_KEY_OEM_PLUS: return '=';
         case RML_KEY_OEM_PERIOD: return '.';
+        case RML_KEY_OEM_COMMA: return ',';
+        case RML_KEY_OEM_1: return ';';
+        case RML_KEY_OEM_4: return '[';
+        case RML_KEY_OEM_6: return ']';
         default: return NO_KEY;
     }
 }
 
-/* Studio's own chords, which always go back to it: Save, Search, UI Scale
-   and the Assets and Output drawers. */
+/* Studio's own chords, which always go back to it: Save, Search, Settings,
+   UI Scale and the Assets and Output drawers. */
 static bool host_key(rml_key key, bool shift)
 {
-    switch (key) {
+    switch ((int)key) {
         case RML_KEY_S:
         case RML_KEY_P:
         case RML_KEY_K:
         case RML_KEY_0:
+        case RML_KEY_OEM_COMMA:
         case RML_KEY_OEM_PLUS:
         case RML_KEY_OEM_MINUS:
         case RML_KEY_SUBTRACT: return true;
@@ -818,23 +928,36 @@ static void paste(kit_code_editor *e)
     free(text);
 }
 
-/* Command in Vim on a Mac: Z undoes and V pastes, as in VS Code's Vim;
-   the rest belong to the host. */
+/* Undo or redo: the host's history when it keeps one, else Zep's. */
+static void undo_key(kit_code_editor *e, bool redo)
+{
+    if (on_history(e, redo)) {
+        return;
+    }
+    if (redo) {
+        zep_redo(e->zep);
+    } else {
+        zep_undo(e->zep);
+    }
+}
+
+/* Command in Vim on a Mac: Z undoes, V pastes, and C and X copy and cut
+   the selection (Vim's y and d, which write the clipboard), as in VS Code's
+   Vim; the rest belong to the host. */
 static void mac_command(kit_code_editor *e, rml_key key, keys m)
 {
-    if (key == RML_KEY_Z && m.shift) {
-        zep_redo(e->zep);
-        return;
+    bool selected = zep_current_mode(e->zep) == ZEP_MODE_VISUAL;
+    switch (key) {
+        case RML_KEY_Z: undo_key(e, m.shift); return;
+        case RML_KEY_V: paste(e); return;
+        case RML_KEY_C:
+        case RML_KEY_X:
+            if (selected) {
+                zep_press_key(e->zep, key == RML_KEY_C ? 'y' : 'd', 0);
+            }
+            return;
+        default: report_chord(e, key, m); return;
     }
-    if (key == RML_KEY_Z) {
-        zep_undo(e->zep);
-        return;
-    }
-    if (key == RML_KEY_V) {
-        paste(e);
-        return;
-    }
-    report_chord(e, key, m);
 }
 
 /* The standard keys on a Mac move by words with Option and to the ends of a
@@ -886,11 +1009,42 @@ static bool modifier_key(rml_key key)
            key == RML_KEY_LMETA || key == RML_KEY_RMETA;
 }
 
+/* A key or a press hides the hover card until the pointer moves again,
+   whatever moves came before it. */
+static void block_hover(kit_code_editor *e)
+{
+    e->hover_blocked = true;
+    e->pointer_moved = false;
+}
+
+/* Go to Definition (F12), Find References (Shift+F12) and completion
+   (Control+Space) ask the host. */
+static bool host_request(kit_code_editor *e, rml_key key, keys m)
+{
+    unsigned event = 0;
+    if (key == RML_KEY_F12 && !m.primary && !m.alt) {
+        event = m.shift ? KIT_CODE_REFERENCES : KIT_CODE_DEFINITION;
+    } else if (key == RML_KEY_SPACE && m.ctrl && !m.shift && !m.alt) {
+        event = KIT_CODE_SUGGEST;
+    }
+    e->result.events |= event;
+    return event != 0;
+}
+
 static void key_down(kit_code_editor *e, const rml_event *event)
 {
     keys m = read_keys(e, event->modifiers);
     rml_key key = event->key;
-    if (modifier_key(key) || completion_key(e, key)) {
+    if (modifier_key(key)) {
+        return;
+    }
+    block_hover(e);
+    if (completion_key(e, key) || host_request(e, key, m)) {
+        return;
+    }
+    /* Vim takes Control+[ for Escape, as terminals send it. */
+    if (e->vim && m.ctrl && (int)key == RML_KEY_OEM_4) {
+        zep_press_key(e->zep, ZEP_KEY_ESCAPE, 0);
         return;
     }
     if (m.primary && (host_key(key, m.shift) || (!e->vim && !standard_key(key)))) {
@@ -1000,6 +1154,92 @@ static void drag(code_view *v, rml_vec2 at)
     zep_select(z, v->anchor, zep_cursor(z));
 }
 
+static bool word_char(char c)
+{
+    return isalnum((unsigned char)c) || c == '_' || c == '-';
+}
+
+/* A double click selects the word under the cursor, names with '-' in them
+   whole, as RCSS and RML spell them. */
+static void select_word(code_view *v)
+{
+    kit_code_editor *e = v->editor;
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    long start = zep_cursor(e->zep), end = start;
+    if ((size_t)start >= length || !word_char(text[start])) {
+        return;
+    }
+    while (start > 0 && word_char(text[start - 1])) {
+        start--;
+    }
+    while ((size_t)end < length && word_char(text[end])) {
+        end++;
+    }
+    /* Vim's selection holds the glyph under its cursor; the standard keys'
+       ends before it. */
+    zep_select(e->zep, start, e->vim ? end - 1 : end);
+    v->dragging = false;
+}
+
+/* A press with the primary modifier (Command on a Mac; pointer events keep
+   the keys as pressed) goes to the definition under it. */
+static bool primary_click(const kit_code_editor *e, const rml_event *event)
+{
+    return event->button == 0 &&
+           (event->modifiers & (e->mac ? RML_KM_META : RML_KM_CTRL));
+}
+
+static float longest_line(kit_code_editor *e)
+{
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    int longest = 0;
+    for (size_t at = 0; at < length;) {
+        const char *end = memchr(text + at, '\n', length - at);
+        size_t size = end ? (size_t)(end - text) - at : length - at;
+        longest = math_max(longest, codepoints(text + at, size));
+        at += size + 1;
+    }
+    return (float)longest * e->advance;
+}
+
+/* Lines that do not wrap scroll sideways, as far as the longest line and a
+   margin reach. */
+static void scroll_sideways(code_view *v, float cells)
+{
+    kit_code_editor *e = v->editor;
+    if (!e->no_wrap || !v->rendered) {
+        return;
+    }
+    float left, right;
+    zep_text_region_x(e->zep, &left, &right);
+    float most = longest_line(e) + SCROLL_MARGIN_CELLS * e->advance - (right - left);
+    e->scroll_x = math_clamp(e->scroll_x + cells * e->advance, 0.0f, math_max(most, 0.0f));
+    zep_set_text_offset_x(e->zep, e->scroll_x);
+}
+
+static void wheel(code_view *v, const rml_event *event, rml_vec2 at)
+{
+    rml_vec2 delta = rml_event_wheel(event);
+    if (delta.y) {
+        zep_mouse_wheel(v->editor->zep, at.x, at.y, -delta.y);
+    }
+    if (delta.x) {
+        scroll_sideways(v, delta.x * WHEEL_CELLS);
+    }
+}
+
+/* Where the pointer is, for the hover card: it rests once it stops moving. */
+static void track_pointer(kit_code_editor *e, const rml_event *event)
+{
+    bool moved = event->mouse_x != e->pointer_x || event->mouse_y != e->pointer_y;
+    e->pointer_moved |= moved || !e->pointer_in;
+    e->pointer_in = true;
+    e->pointer_x = event->mouse_x;
+    e->pointer_y = event->mouse_y;
+}
+
 static void on_view_event(void *user, const rml_event *event)
 {
     code_view *v = user;
@@ -1011,17 +1251,27 @@ static void on_view_event(void *user, const rml_event *event)
     switch (event->id) {
         case RML_EVENT_KEYDOWN: key_down(e, event); break;
         case RML_EVENT_TEXTINPUT: event_text(e, event); break;
-        case RML_EVENT_MOUSEDOWN: press(v, at, event->button); break;
+        case RML_EVENT_MOUSEDOWN:
+            block_hover(e);
+            press(v, at, event->button);
+            if (primary_click(e, event)) {
+                v->dragging = false;
+                e->result.events |= KIT_CODE_DEFINITION;
+            }
+            break;
+        case RML_EVENT_DBLCLICK: select_word(v); break;
         case RML_EVENT_MOUSEUP:
             v->dragging = false;
             zep_mouse_up(e->zep, at.x, at.y, zep_button(event->button));
             break;
         case RML_EVENT_DRAGEND: v->dragging = false; break;
-        case RML_EVENT_MOUSEMOVE: zep_mouse_move(e->zep, at.x, at.y); break;
-        case RML_EVENT_DRAG: drag(v, at); break;
-        case RML_EVENT_MOUSESCROLL:
-            zep_mouse_wheel(e->zep, at.x, at.y, -rml_event_wheel(event).y);
+        case RML_EVENT_MOUSEMOVE:
+            track_pointer(e, event);
+            zep_mouse_move(e->zep, at.x, at.y);
             break;
+        case RML_EVENT_MOUSEOUT: e->pointer_in = event->target != v->el; break;
+        case RML_EVENT_DRAG: drag(v, at); break;
+        case RML_EVENT_MOUSESCROLL: wheel(v, event, at); break;
         case RML_EVENT_FOCUS:
         case RML_EVENT_BLUR:
             e->focused = event->id == RML_EVENT_FOCUS;
@@ -1200,14 +1450,41 @@ static rml_rect element_scissor(code_view *v, rml_render_manager *manager, rml_v
     return rml_render_scissor(manager, &current) ? intersect(current, own) : own;
 }
 
+/* Text meshes follow the face's glyph textures, which a new face or
+   generation replaces. */
 static void sync_face(code_view *v)
 {
-    uintptr_t face = v->editor->face;
+    uintptr_t face = face_of(v->editor);
     int version = rml_font_version(face);
-    if (face != v->face || version != v->face_version) {
+    unsigned generation = rml_font_generation();
+    if (face != v->face || version != v->face_version ||
+        generation != v->font_generation) {
         texts_clear(v);
         v->face = face;
         v->face_version = version;
+        v->font_generation = generation;
+    }
+}
+
+/* Lines that do not wrap scroll sideways to keep a moved cursor in view,
+   by its cell as last laid out. */
+static void follow_cursor(code_view *v)
+{
+    kit_code_editor *e = v->editor;
+    long cursor = zep_cursor(e->zep);
+    if (!e->no_wrap || !v->rendered || cursor == e->followed) {
+        return;
+    }
+    e->followed = cursor;
+    float left, right, x, y, w, h;
+    zep_text_region_x(e->zep, &left, &right);
+    zep_cursor_rect(e->zep, &x, &y, &w, &h);
+    float margin = math_min(SCROLL_MARGIN_CELLS * e->advance, (right - left) / 4);
+    float cells = x < left + margin      ? (x - left - margin) / e->advance
+                : x + w > right - margin ? (x + w - right + margin) / e->advance
+                                         : 0;
+    if (cells) {
+        scroll_sideways(v, cells);
     }
 }
 
@@ -1229,6 +1506,7 @@ static void view_render(rml_element *el, void *user)
         v->height = size.y;
         zep_set_region(e->zep, 0, 0, size.x, size.y);
     }
+    follow_cursor(v);
     sync_face(v);
     v->render++;
     v->clipped = false;
@@ -1316,6 +1594,22 @@ static void sync_colors(code_view *v)
     v->colored = true;
 }
 
+static void set_wrap(kit_code_editor *e, bool no_wrap)
+{
+    if (no_wrap == e->no_wrap) {
+        return;
+    }
+    e->no_wrap = no_wrap;
+    e->scroll_x = 0;
+    e->followed = -1;
+    zep_set_text_offset_x(e->zep, 0);
+    zep_set_window_flags(
+        e->zep,
+        ZEP_WINDOW_LINE_NUMBERS | ZEP_WINDOW_INDICATORS |
+            ZEP_WINDOW_HIDE_SCROLLBAR | (no_wrap ? 0u : (unsigned)ZEP_WINDOW_WRAP)
+    );
+}
+
 static void configure(kit *k, kit_code_editor *e, const kit_code_desc *d)
 {
     if (d->vim != e->vim) {
@@ -1323,20 +1617,21 @@ static void configure(kit *k, kit_code_editor *e, const kit_code_desc *d)
         zep_set_vim(e->zep, e->vim);
     }
     e->mac = d->mac;
+    e->host_history = d->history;
+    /* Zep's own history would only grow while the host keeps one. */
+    if (e->host_history) {
+        zep_clear_history(e->zep);
+    }
+    set_wrap(e, d->no_wrap);
     float ratio = dp(k);
     float size = d->font_size > 0 ? d->font_size : CODE_FONT_SIZE;
     /* RmlUi draws faces at whole pixel sizes. */
     int pixels = math_max(1, (int)(size * ratio));
     if (pixels == e->font_pixels) {
+        face_of(e);
         return;
     }
-    e->font_pixels = pixels;
-    e->face = rml_font_face(CODE_FAMILY, RML_FONT_NORMAL, 400, pixels);
-    assert(e->face);
-    rml_font_metrics metrics = rml_font_face_metrics(e->face);
-    e->ascent = roundf(metrics.ascent);
-    e->line = ceilf(metrics.ascent + metrics.descent);
-    e->advance = (float)rml_font_string_width_n(e->face, "M", 1);
+    load_face(e, pixels);
     zep_set_pixel_scale(e->zep, ratio);
     zep_set_font_height(e->zep, (int)e->line);
 }
@@ -1406,8 +1701,8 @@ static zep_color severity_role(kit_code_severity severity)
     return ZEP_COLOR_INFO;
 }
 
-/* Diagnostics: a gutter mark and an underline over the line, with its
-   message when the pointer rests there. */
+/* Diagnostics: a gutter mark and an underline over the line; the hover card
+   shows the message. */
 static void diagnose(kit_code_editor *e, const kit_code_desc *d)
 {
     uint64_t hash = markers_hash(d);
@@ -1416,22 +1711,22 @@ static void diagnose(kit_code_editor *e, const kit_code_desc *d)
     }
     e->markers = hash;
     zep_clear_markers(e->zep);
+    marks_free(e);
     size_t length;
     const char *text = kit_code_text(e, &length);
     for (int i = 0; i < d->marker_count; i++) {
         const kit_code_marker *m = &d->markers[i];
         long start = line_start(text, length, m->line);
         long end = line_start(text, length, m->line + 1);
-        unsigned display = ZEP_MARK_UNDERLINE | ZEP_MARK_INDICATOR |
-                           ZEP_MARK_TOOLTIP_AT_LINE;
         zep_add_marker(
             e->zep,
             start,
             math_max(end, start + 1),
-            display,
+            ZEP_MARK_UNDERLINE | ZEP_MARK_INDICATOR,
             severity_role(m->severity),
             m->message ? m->message : ""
         );
+        apush(e->marks, ((mark){ m->line, m->severity, xstrdup(m->message ? m->message : "") }));
     }
 }
 
@@ -1479,6 +1774,7 @@ static void take_completions(kit_code_editor *e, const kit_code_desc *d)
         );
     }
     e->selected = 0;
+    e->shown_selected = -1;
 }
 
 /* Whether focus is in the completion list, as a press on an item puts it. */
@@ -1514,10 +1810,129 @@ static void show_completions(kit *k, node *n, kit_code_editor *e, const kit_code
         accepted = kit_item_clicked(k) ? i : accepted;
     }
     pop_node(k);
+    if (e->selected != e->shown_selected) {
+        node *chosen = path_node(k, frame_format(k, "layer/%s/i%d", key, e->selected));
+        if (chosen) {
+            rml_element_scroll_into_view(chosen->el, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        }
+        e->shown_selected = e->selected;
+    }
     if (accepted >= 0) {
         accept_completion(e, accepted);
         rml_element_focus(n->el, false);
     }
+}
+
+/* The byte under the pointer once it has rested there, for the next frame;
+   a key or a press hides it until the pointer moves. */
+static void update_hover(kit *k, kit_code_editor *e)
+{
+    if (e->pointer_moved) {
+        e->pointer_moved = false;
+        e->hover_blocked = false;
+        e->rest_since = k->in.time;
+    }
+    bool rested = e->pointer_in && !e->hover_blocked && e->view &&
+                  e->view->rendered && k->in.time - e->rest_since >= HOVER_DELAY;
+    e->hover = rested ? (int)zep_hover_byte(e->zep) : -1;
+}
+
+/* The 1-based line of a byte. */
+static int line_of(kit_code_editor *e, int byte)
+{
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    int line = 1;
+    for (int i = 0; i < byte && (size_t)i < length; i++) {
+        line += text[i] == '\n';
+    }
+    return line;
+}
+
+static uint32_t severity_icon(kit_code_severity severity)
+{
+    switch (severity) {
+        case KIT_CODE_ERROR: return KIT_ICON_ERROR;
+        case KIT_CODE_WARNING: return KIT_ICON_WARNING;
+        case KIT_CODE_INFO: return KIT_ICON_INFO;
+    }
+    return KIT_ICON_INFO;
+}
+
+static const char *severity_name(kit_code_severity severity)
+{
+    switch (severity) {
+        case KIT_CODE_ERROR: return "error";
+        case KIT_CODE_WARNING: return "warning";
+        case KIT_CODE_INFO: return "info";
+    }
+    return "info";
+}
+
+static bool line_marked(const kit_code_editor *e, int line)
+{
+    for (int i = 0; i < acount(e->marks); i++) {
+        if (e->marks[i].line == line) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The card's rows: the diagnostics of the hovered line, then the host's
+   title and detail lines. */
+static void hover_rows(kit *k, const kit_code_editor *e, int line, const char *hover)
+{
+    for (int i = 0; i < acount(e->marks); i++) {
+        const mark *m = &e->marks[i];
+        if (m->line != line) {
+            continue;
+        }
+        kit_push(k, frame_format(k, "m%d", i), NULL, "code-hover-problem");
+        kit_attr(k, "data-severity", severity_name(m->severity));
+        kit_icon(k, "icon", NULL, severity_icon(m->severity));
+        kit_label(k, "message", "message", m->message);
+        kit_pop(k);
+    }
+    for (int i = 0; hover && *hover; i++) {
+        size_t size = strcspn(hover, "\n");
+        const char *text = frame_format(k, "%.*s", (int)size, hover);
+        kit_label(k, frame_format(k, "h%d", i), i == 0 ? "code-hover-title" : "code-hover-line", text);
+        hover += size + (hover[size] == '\n');
+    }
+}
+
+/* Under the pointer's line, or above it where the window ends; never past a
+   side. */
+static void place_hover(kit *k, const kit_code_editor *e, node *card)
+{
+    float s = dp(k), edge = 4;
+    kit_rect size = element_rect(k, card->el);
+    float x = e->pointer_x / s - 8, line = e->line / s;
+    float y = e->pointer_y / s + line;
+    if (y + size.h > k->in.height - edge) {
+        y = e->pointer_y / s - line - size.h;
+    }
+    x = math_clamp(x, edge, math_max(edge, k->in.width - size.w - edge));
+    kit_style(k, "left", frame_format(k, "%.1fdp", x));
+    kit_style(k, "top", frame_format(k, "%.1fdp", math_max(edge, y)));
+}
+
+/* The card for the byte the caller described, while the pointer rests. */
+static void show_hover(kit *k, node *n, kit_code_editor *e, const kit_code_desc *d)
+{
+    bool resting = e->hover >= 0 && e->pointer_in && !e->pointer_moved &&
+                   !e->hover_blocked;
+    int line = resting ? line_of(e, e->hover) : 0;
+    if (!resting || (!(d->hover && d->hover[0]) && !line_marked(e, line))) {
+        return;
+    }
+    node *card = emit_in(k, k->layer, frame_format(k, "@hover:%s", n->path), KIND_BOX, "div", "code-hover");
+    kit_presence(k);
+    place_hover(k, e, card);
+    push_node(k, card);
+    hover_rows(k, e, line, d->hover);
+    pop_node(k);
 }
 
 kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_code_desc *d)
@@ -1531,6 +1946,8 @@ kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_
     diagnose(e, d);
     take_completions(e, d);
     show_completions(k, n, e, d);
+    show_hover(k, n, e, d);
+    update_hover(k, e);
     k->last = n;
     kit_code_result result = e->result;
     result.focused = e->focused;

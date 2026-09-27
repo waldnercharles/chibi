@@ -236,6 +236,11 @@ static bool matches(const studio_reference *row, const char *filter)
    A node reference reveals its node, and a scene's its object. */
 void studio_open_reference(studio *s, const studio_reference *row)
 {
+    /* Workstream I: a place in a UI document opens in the Text Editor. */
+    if (row->ui.path[0]) {
+        studio_code_open_place(s, &row->ui);
+        return;
+    }
     app_scene_authoring *scene = s->scene;
     bool open = scene->graph_document_id &&
                 !strcmp(scene->graph_document_id, row->asset) &&

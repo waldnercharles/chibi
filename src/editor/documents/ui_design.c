@@ -20,7 +20,7 @@ ui_source *ui_design_parse(const ui_buffer *b, ui_part part)
 {
     const char *text = ui_buffer_text(b, part);
     assert(text);
-    return ui_source_parse_block(text, part == UI_PART_RML ? UI_SOURCE_RML : UI_SOURCE_RCSS);
+    return ui_source_parse(text, part == UI_PART_RML ? UI_SOURCE_RML : UI_SOURCE_RCSS);
 }
 
 static bool holds(const ui_source *source, int ancestor, int element)
@@ -217,7 +217,7 @@ int ui_design_wrap(ui_buffer *b, int element, const char *tag, char *error, size
     if (!ok) {
         return -1;
     }
-    source = ui_source_parse_block(text, UI_SOURCE_RML);
+    source = ui_source_parse(text, UI_SOURCE_RML);
     free(text);
     edits = NULL;
     ok = ui_source_move_element(source, element + 1, element, UI_SOURCE_INSIDE, &edits, error, size);
@@ -603,7 +603,7 @@ static char *classed_markup(const ui_source *rml, int element, const char *name,
     }
     char *unstyled = text_edits_apply(rml->text, edits, acount(edits));
     ui_source_edits_free(edits);
-    ui_source *next = ui_source_parse_block(unstyled, UI_SOURCE_RML);
+    ui_source *next = ui_source_parse(unstyled, UI_SOURCE_RML);
     free(unstyled);
     edits = NULL;
     bool ok = ui_source_add_class(next, element, name, &edits, error, size);

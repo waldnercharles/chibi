@@ -8,11 +8,12 @@
 #include <stdint.h>
 #include <yyjson.h>
 
-/* The text of a UI document open for editing: a ui asset's RML and RCSS, or
- * a stylesheet's RCSS. Studio's Text Editor, the designer and the MCP change
- * it through text_edits; the buffer keeps the undo history and whether the
- * text reads as its file would. Published, the text stands in for the file
- * (support/text_overlay.h), so everything that reads the file sees it. */
+/* The text of a UI document open for editing: a ui asset's RML (its .rml
+ * file) and RCSS (the .rcss beside it), or a stylesheet's RCSS. Studio's
+ * Text Editor and the designer change it through text_edits; the buffer
+ * keeps the undo history and whether the text reads as its files would.
+ * Published, the text stands in for the files (support/text_overlay.h), so
+ * everything that reads them sees it. */
 typedef enum ui_part
 {
     UI_PART_RML,
@@ -29,12 +30,13 @@ typedef struct ui_buffer_step
 
 typedef struct ui_buffer
 {
-    char *path;                 /* absolute */
-    bool stylesheet;            /* an .rcss file, whose text is its RCSS part */
+    char *path;      /* absolute: the .rml, or a stylesheet's .rcss */
+    bool stylesheet; /* an .rcss file alone, whose text is its RCSS part */
+    char *files[UI_PART_COUNT]; /* each part's file; a stylesheet's RML has none */
     char *parts[UI_PART_COUNT]; /* a stylesheet's RML part is NULL */
     char *saved[UI_PART_COUNT]; /* as last loaded or saved */
-    uint64_t disk;              /* the file's hash as last loaded or saved */
-    uint64_t disk_seen;         /* its hash when last polled */
+    uint64_t disk;              /* the files' hash as last loaded or saved */
+    uint64_t disk_seen;         /* their hash when last polled */
     double disk_due;            /* the next poll, in seconds */
     ui_part part;               /* the part the Text Editor shows */
     ui_buffer_step *undo, *redo;
@@ -43,14 +45,21 @@ typedef struct ui_buffer
     unsigned seen;     /* the revision ui_buffer_update last saw */
     double seen_time;  /* when it saw it */
     unsigned checked;  /* the revision `error` describes */
-    bool published;    /* the text stands in for the file */
+    bool published;    /* the text stands in for the files */
     char error[256];   /* why the text does not read; empty when it does */
 } ui_buffer;
 
-/* Reads the file at `path`, a ui asset (.yaml) or a stylesheet (.rcss);
- * NULL with why in `error`. */
+/* The owned path of the document a ui file belongs to: a ui asset's .rcss
+ * belongs to the .rml beside it; any other file is its own. */
+char *ui_buffer_document(const char *path);
+/* The owned path of the file holding `part` of the document at `path` (see
+ * ui_buffer_document); NULL for a stylesheet's RML. */
+char *ui_buffer_part_file(const char *path, ui_part part);
+
+/* Reads the document at `path`, a ui asset's .rml with the .rcss beside it
+ * when there is one, or a stylesheet's .rcss; NULL with why in `error`. */
 ui_buffer *ui_buffer_open(const char *path, char *error, size_t size);
-/* Frees the buffer; the file reads from disk again. */
+/* Frees the buffer; the files read from disk again. */
 void ui_buffer_free(ui_buffer *b);
 /* A part's text; NULL for a stylesheet's RML. */
 const char *ui_buffer_text(const ui_buffer *b, ui_part part);
@@ -68,30 +77,33 @@ bool ui_buffer_can_redo(const ui_buffer *b);
 /* Steps through the history; the Text Editor turns to the part changed. */
 void ui_buffer_undo(ui_buffer *b);
 void ui_buffer_redo(ui_buffer *b);
-/* The text differs from the file as last loaded or saved. */
+/* The text differs from the files as last loaded or saved. */
 bool ui_buffer_dirty(const ui_buffer *b);
+/* Whether what reads the files sees the text as it is: each part stands in
+ * for its file, or equals it as last loaded or saved. */
+bool ui_buffer_shown(const ui_buffer *b);
 
-/* Owned file text: canonical YAML for a ui asset (as `chibi_ctl --format`
- * writes it), the RCSS of a stylesheet. */
-char *ui_buffer_compose(const ui_buffer *b);
-/* Whether the file text reads as a ui asset (ui_document_read) or a
- * stylesheet (rcss_expand), with why not in `error`. */
+/* Whether the text reads as a ui asset (ui_document_read) or a stylesheet
+ * (rcss_expand), with why not in `error`. */
 bool ui_buffer_check(ui_buffer *b);
 /* Once a change has rested for UI_BUFFER_SETTLE seconds, checks the text and,
  * with `live`, publishes it when it reads, so an invalid edit keeps the last
- * valid text everywhere. Without `live` the file stands. True when what
- * stands in for the file changed. */
+ * valid text everywhere. Without `live` the files stand. True when what
+ * stands in for the files changed. */
 #define UI_BUFFER_SETTLE 0.15
 bool ui_buffer_update(ui_buffer *b, double now, bool live);
 
-/* The file on disk is the one loaded or last saved. */
+/* The files on disk are the ones loaded or last saved. */
 bool ui_buffer_on_disk(const ui_buffer *b);
-/* Another program changed the file since the last poll; polls at most once a
- * second. */
+/* Another program changed the files since the last poll; polls at most once
+ * a second. */
 bool ui_buffer_poll_disk(ui_buffer *b, double now);
-/* Records `text`, from ui_buffer_compose, as written to the file. */
-void ui_buffer_saved(ui_buffer *b, const char *text);
-/* Replaces the text with the file's, discarding edits and history; false
+/* Whether saving writes `part`'s file: it has one, and it exists or the
+ * part holds text. */
+bool ui_buffer_saves(const ui_buffer *b, ui_part part);
+/* Records the parts as written to their files. */
+void ui_buffer_saved(ui_buffer *b);
+/* Replaces the text with the files', discarding edits and history; false
  * with why in `error`, keeping the text. */
 bool ui_buffer_reload(ui_buffer *b, char *error, size_t size);
 
@@ -110,10 +122,11 @@ typedef enum ui_new_kind
     UI_NEW_KIND_COUNT,
 } ui_new_kind;
 
-/* The owned path of a new `kind` named `name` in `folder`, the project's ui
- * assets; NULL with why in `error` when the name is invalid or taken. */
+/* The owned document path (see ui_buffer_document) of a new `kind` named
+ * `name` in `folder`, the project's ui assets; NULL with why in `error` when
+ * the name is invalid or one of its files exists. */
 char *ui_buffer_new_path(const char *folder, ui_new_kind kind, const char *name, char *error, size_t size);
-/* The owned file text a new `kind` starts with. */
-char *ui_buffer_template(ui_new_kind kind);
+/* The text a new `kind`'s `part` starts with; NULL when it has no file. */
+const char *ui_buffer_template(ui_new_kind kind, ui_part part);
 
 #endif

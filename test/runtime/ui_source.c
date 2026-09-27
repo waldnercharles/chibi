@@ -1,5 +1,5 @@
 /* The ui language service: highlighting, outline, diagnostics, completion,
- * references and edits of ui assets. */
+ * references and edits of ui markup and styles. */
 #include "assets/ui_source.h"
 
 #include "support/array.h"
@@ -12,19 +12,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static const char SAMPLE
-    [] = "rml: |\n"
-         "  <div id=\"panel\" class=\"card wide\">\n"
-         "    <span data-if=\"save.sound\">{{ save.name }}</span>\n"
-         "    <use ui=\"MenuButton\" data-event-click=\"emit('Resume')\"/>\n"
-         "  </div>\n"
-         "rcss: |\n"
-         "  // tokens\n"
-         "  .card {\n"
-         "    color: var(--primary);\n"
-         "    &:hover { opacity: 0.5; }\n"
-         "    .dark & { width: 10dp; }\n"
-         "  }\n";
+static const char SAMPLE_RML
+    [] = "<div id=\"panel\" class=\"card wide\">\n"
+         "  <span data-if=\"save.sound\">{{ save.name }}</span>\n"
+         "  <use ui=\"MenuButton\" data-event-click=\"emit('Resume')\"/>\n"
+         "</div>\n";
+static const char SAMPLE_RCSS[] = "// tokens\n"
+                                  ".card {\n"
+                                  "  color: var(--primary);\n"
+                                  "  &:hover { opacity: 0.5; }\n"
+                                  "  .dark & { width: 10dp; }\n"
+                                  "}\n";
 
 static const char *const KIND_NAMES[UI_SOURCE_KIND_COUNT] = {
     "text",     "number",   "string",   "keyword", "name", "path",
@@ -63,26 +61,38 @@ static bool slice_is(const ui_source *s, int start, int end, const char *expecte
            !strncmp(s->text + start, expected, (size_t)(end - start));
 }
 
+/* The spans of `text` parsed as `language` match `expected`. */
+static bool highlights(const char *text, ui_source_language language, const char *expected)
+{
+    ui_source *s = ui_source_parse(text, language);
+    char *spans = spans_text(s);
+    bool ok = !strcmp(spans, expected);
+    if (!ok) {
+        printf("  spans: %s\n", spans);
+    }
+    free(spans);
+    ui_source_free(s);
+    return ok;
+}
+
 static void highlighting()
 {
-    ui_source *s = ui_source_parse(
-        "rml: '<p class=\"a\" style=\"width: 2dp\">{{ save.x + 1 }}</p>'\n"
-        "rcss: '.a { color: #fff; } /* c */'\n",
-        false
-    );
-    char *text = spans_text(s);
-    const char *expected =
-        "name:rml punct:: punct:< tag:p attribute:class punct:= string:\" "
-        "string:a string:\" attribute:style punct:= string:\" property:width "
-        "punct:: number:2dp string:\" punct:> punct:{{ binding:save punct:. "
-        "binding:x punct:+ number:1 punct:}} punct:</ tag:p punct:> "
-        "name:rcss punct:: selector:. selector:a punct:{ property:color "
-        "punct:: "
-        "number:#fff punct:; punct:} comment:/* c */";
-    bool ok = !strcmp(text, expected);
-    if (!ok) {
-        printf("  spans: %s\n", text);
-    }
+    bool ok = highlights(
+                  "<p class=\"a\" style=\"width: 2dp\">{{ save.x + 1 }}</p>\n",
+                  UI_SOURCE_RML,
+                  "punct:< tag:p attribute:class punct:= string:\" "
+                  "string:a string:\" attribute:style punct:= string:\" "
+                  "property:width "
+                  "punct:: number:2dp string:\" punct:> punct:{{ binding:save "
+                  "punct:. "
+                  "binding:x punct:+ number:1 punct:}} punct:</ tag:p punct:>"
+              ) &&
+              highlights(
+                  ".a { color: #fff; } /* c */\n",
+                  UI_SOURCE_RCSS,
+                  "selector:. selector:a punct:{ property:color punct:: "
+                  "number:#fff punct:; punct:} comment:/* c */"
+              );
     test_check(ok, "ui source highlights RML tags, attributes, bindings and inline style, and RCSS, in file offsets");
     test_check(
         !strcmp(ui_source_kind_class(UI_SOURCE_TAG), "tok-keyword tok-tag") &&
@@ -90,34 +100,35 @@ static void highlighting()
             !ui_source_kind_class(UI_SOURCE_TEXT),
         "ui source spans name highlight.c's tok-* classes and their own"
     );
-    free(text);
-    ui_source_free(s);
 
-    s = ui_source_parse(SAMPLE, false);
-    text = spans_text(s);
-    ok = strstr(text, "comment:// tokens") &&
-         strstr(text, "keyword:& keyword:: keyword:hover") &&
-         strstr(text, "variable:--primary") &&
-         strstr(text, "name:emit punct:( string:'Resume'") &&
-         strstr(text, "selector:. selector:dark keyword:&");
+    ui_source *markup = ui_source_parse(SAMPLE_RML, UI_SOURCE_RML);
+    ui_source *styles = ui_source_parse(SAMPLE_RCSS, UI_SOURCE_RCSS);
+    char *rml = spans_text(markup), *rcss = spans_text(styles);
+    ok = strstr(rcss, "comment:// tokens") &&
+         strstr(rcss, "keyword:& keyword:: keyword:hover") &&
+         strstr(rcss, "variable:--primary") &&
+         strstr(rml, "name:emit punct:( string:'Resume'") &&
+         strstr(rcss, "selector:. selector:dark keyword:&");
     if (!ok) {
-        printf("  spans: %s\n", text);
+        printf("  spans: %s\n  %s\n", rml, rcss);
     }
-    test_check(ok, "ui source highlights literal blocks: line comments, nesting, var() and emit()");
-    free(text);
-    ui_source_free(s);
+    test_check(ok, "ui source highlights line comments, nesting, var() and emit()");
+    free(rml);
+    free(rcss);
+    ui_source_free(styles);
+    ui_source_free(markup);
 }
 
 static void outline()
 {
-    ui_source *s = ui_source_parse(SAMPLE, false);
+    ui_source *s = ui_source_parse(SAMPLE_RML, UI_SOURCE_RML);
     const ui_source_element *e = s->elements;
     bool elements = acount(s->elements) == 3 && !strcmp(e[0].tag, "div") &&
                     !strcmp(e[0].id, "panel") &&
                     !strcmp(e[0].classes, "card wide") && e[0].parent == -1 &&
-                    e[0].line == 2 && !strcmp(e[1].tag, "span") &&
-                    e[1].parent == 0 && e[1].line == 3 && !strcmp(e[2].tag, "use") &&
-                    e[2].self_closing && e[2].parent == 0 && e[2].line == 4;
+                    e[0].line == 1 && !strcmp(e[1].tag, "span") &&
+                    e[1].parent == 0 && e[1].line == 2 && !strcmp(e[2].tag, "use") &&
+                    e[2].self_closing && e[2].parent == 0 && e[2].line == 3;
     bool ranges = elements &&
                   slice_is(s, e[1].start, e[1].end, "<span data-if=\"save.sound\">{{ save.name }}</span>") &&
                   slice_is(s, e[1].start, e[1].open_end, "<span data-if=\"save.sound\">") &&
@@ -131,12 +142,24 @@ static void outline()
     test_check(value && !strcmp(value, "save.sound"), "ui source reads an attribute's value");
     free(value);
 
+    int div = ui_source_element_at(s, e[1].start + 3);
+    test_check(div == 1 && ui_source_element_at(s, e[0].start + 1) == 0, "ui source finds the innermost element at an offset");
+    int line, column;
+    ui_source_position(s, e[1].start, &line, &column);
+    test_check(
+        line == 2 && column == 3 && ui_source_offset(s, 2, 3) == e[1].start,
+        "ui source converts offsets to lines and columns and back"
+    );
+    test_check(!acount(s->diagnostics), "valid markup has no diagnostics");
+    ui_source_free(s);
+
+    s = ui_source_parse(SAMPLE_RCSS, UI_SOURCE_RCSS);
     const ui_source_rule *r = s->rules;
     bool rules = acount(s->rules) == 3 && !strcmp(r[0].selector, ".card") &&
-                 r[0].parent == -1 && r[0].line == 8 &&
+                 r[0].parent == -1 && r[0].line == 2 &&
                  !strcmp(r[1].selector, "&:hover") && r[1].parent == 0 &&
                  !strcmp(r[2].selector, ".dark &") && r[2].parent == 0 &&
-                 r[2].line == 11 && acount(r[0].declarations) == 1 &&
+                 r[2].line == 5 && acount(r[0].declarations) == 1 &&
                  slice_is(
                      s,
                      r[0].declarations[0].property_start,
@@ -151,70 +174,52 @@ static void outline()
                  ) &&
                  slice_is(s, r[1].start, r[1].end, "&:hover { opacity: 0.5; }");
     test_check(rules, "ui source outlines nested rules with selectors, declarations and ranges");
-    int div = ui_source_element_at(s, e[1].start + 3);
-    test_check(div == 1 && ui_source_element_at(s, e[0].start + 1) == 0, "ui source finds the innermost element at an offset");
-    test_check(!acount(s->diagnostics), "a valid ui asset has no diagnostics, Sass nesting included");
-    int line, column;
-    ui_source_position(s, e[1].start, &line, &column);
-    test_check(
-        line == 3 && column == 5 && ui_source_offset(s, 3, 5) == e[1].start,
-        "ui source converts offsets to lines and columns and back"
-    );
+    test_check(!acount(s->diagnostics), "valid styles have no diagnostics, Sass nesting included");
     ui_source_free(s);
 
-    s = ui_source_parse(":root { --x: 1dp; }\n.a { width: var(--x); }\n", true);
+    s = ui_source_parse(":root { --x: 1dp; }\n.a { width: var(--x); }\n", UI_SOURCE_RCSS);
     test_check(
-        acount(s->rules) == 2 && acount(s->blocks) == 1 &&
-            s->blocks[0].language == UI_SOURCE_RCSS && !acount(s->diagnostics),
+        acount(s->rules) == 2 && s->language == UI_SOURCE_RCSS && !acount(s->diagnostics),
         "ui source parses a whole stylesheet"
-    );
-    ui_source_free(s);
-
-    /* The Text Editor shows an asset's rml value alone (workstream C). */
-    s = ui_source_parse_block("<div class=\"a\">\n  <p/>\n</div>\n", UI_SOURCE_RML);
-    test_check(
-        acount(s->elements) == 2 && s->elements[1].start == 18 &&
-            acount(s->spans) && s->spans[0].start == 0 && !acount(s->diagnostics),
-        "ui source parses markup alone, its offsets into the text"
     );
     ui_source_free(s);
 }
 
-static void diagnostics()
+/* The diagnostics of `text` as "line:column message", joined by "; ". */
+static bool diagnoses(const char *text, ui_source_language language, const char *expected)
 {
-    ui_source *s = ui_source_parse(
-        "rml: |\n"
-        "  <div>\n"
-        "    <span>x</div>\n"
-        "  </span>\n"
-        "rcss: |\n"
-        "  .a { color: red; }\n"
-        "  .b { color: ; \n",
-        false
-    );
-    static const char *const EXPECTED[] = {
-        "3:5 <span> is not closed",
-        "4:3 </span> closes no open element",
-        "7:3 unexpected \".b { color: ;\"",
-    };
-    bool ok = acount(s->diagnostics) == 3;
+    ui_source *s = ui_source_parse(text, language);
+    char got[512] = "";
+    size_t used = 0;
     for (int i = 0; i < acount(s->diagnostics); i++) {
         const ui_source_diagnostic *d = &s->diagnostics[i];
-        char got[256];
-        snprintf(got, sizeof got, "%d:%d %s", d->line, d->column, d->message);
-        if (i >= 3 || strcmp(got, EXPECTED[i])) {
-            printf("  diagnostic %s\n", got);
-            ok = false;
-        }
+        used += (size_t)snprintf(
+            got + used,
+            sizeof got - used,
+            "%s%d:%d %s",
+            i ? "; " : "",
+            d->line,
+            d->column,
+            d->message
+        );
     }
-    test_check(ok, "ui source reports markup and style syntax errors at their file lines");
+    bool ok = !strcmp(got, expected);
+    if (!ok) {
+        printf("  diagnostics %s\n", got);
+    }
     ui_source_free(s);
+    return ok;
+}
 
-    s = ui_source_parse("rml: '<div/>'\nstyle: dark\n", false);
-    ok = acount(s->diagnostics) == 1 &&
-         strstr(s->diagnostics[0].message, "unknown key style");
-    test_check(ok, "ui source reports what ui_document_read rejects");
-    ui_source_free(s);
+static void diagnostics()
+{
+    bool ok = diagnoses(
+                  "<div>\n  <span>x</div>\n</span>\n",
+                  UI_SOURCE_RML,
+                  "2:3 <span> is not closed; 3:1 </span> closes no open element"
+              ) &&
+              diagnoses(".a { color: red; }\n.b { color: ; \n", UI_SOURCE_RCSS, "2:1 unexpected \".b { color: ;\"");
+    test_check(ok, "ui source reports markup and style syntax errors at their lines");
 }
 
 static ui_source_project sample_project()
@@ -241,13 +246,19 @@ static ui_source_project sample_project()
 
 /* The labels completion offers where `text` has its '^', joined by spaces,
  * and the word it replaces. */
-static void complete_at(const char *marked, bool stylesheet, const ui_source_project *p, char *out, size_t size)
+static void complete_at(
+    const char *marked,
+    ui_source_language language,
+    const ui_source_project *p,
+    char *out,
+    size_t size
+)
 {
     const char *bar = strchr(marked, '^');
     assert(bar);
     char text[512];
     snprintf(text, sizeof text, "%.*s%s", (int)(bar - marked), marked, bar + 1);
-    ui_source *s = ui_source_parse(text, stylesheet);
+    ui_source *s = ui_source_parse(text, language);
     ui_source_completions c;
     ui_source_complete(s, (int)(bar - marked), p, &c);
     size_t used = (size_t)snprintf(out, size, "[%.*s]", c.end - c.start, text + c.start);
@@ -264,30 +275,30 @@ static void completion()
     static const struct
     {
         const char *text;
-        bool stylesheet;
+        ui_source_language language;
         const char *expected;
     } cases[] = {
-        { "rml: |\n  <sp^", false, "[sp] span" },
-        { "rml: |\n  <div data-i^", false, "[data-i] data-if" },
-        { "rml: |\n  <div data-ev^", false, "[data-ev] data-event-blur data-event-change data-event-click data-event-dblclick data-event-focus data-event-keydown data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit" },
-        { "rml: |\n  <use u^", false, "[u] ui" },
-        { "rml: |\n  <use ui=\"Menu^\"/>", false, "[Menu] MenuButton MenuCheck" },
-        { "rml: |\n  <div class=\"card w^\">", false, "[w] wide" },
-        { "rml: |\n  <div data-class-t^", false, "[t] title" },
-        { "rml: |\n  <div data-if=\"save.th^\">", false, "[th] theme" },
-        { "rml: |\n  <p>{{ save.^", false, "[] name sound theme" },
-        { "rml: |\n  <div style=\"wi^\">", false, "[wi] width" },
-        { "rml: |\n  <div style=\"color: var(--m^\">", false, "[--m] --muted" },
-        { "rml: <p/>\nrcss: |\n  .ca^ { }", false, "[ca] card" },
-        { "rml: <p/>\nrcss: |\n  .a {\n    op^\n  }", false, "[op] opacity" },
-        { "rml: <p/>\nrcss: |\n  .a { color: var(--p^) }", false, "[--p] --primary" },
-        { ".a { &:hover { he^ } }", true, "[he] height" },
-        { "sp^ { }", true, "[sp] span" },
+        { "<sp^", UI_SOURCE_RML, "[sp] span" },
+        { "<div data-i^", UI_SOURCE_RML, "[data-i] data-if" },
+        { "<div data-ev^", UI_SOURCE_RML, "[data-ev] data-event-blur data-event-change data-event-click data-event-dblclick data-event-focus data-event-keydown data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit" },
+        { "<use u^", UI_SOURCE_RML, "[u] ui" },
+        { "<use ui=\"Menu^\"/>", UI_SOURCE_RML, "[Menu] MenuButton MenuCheck" },
+        { "<div class=\"card w^\">", UI_SOURCE_RML, "[w] wide" },
+        { "<div data-class-t^", UI_SOURCE_RML, "[t] title" },
+        { "<div data-if=\"save.th^\">", UI_SOURCE_RML, "[th] theme" },
+        { "<p>{{ save.^", UI_SOURCE_RML, "[] name sound theme" },
+        { "<div style=\"wi^\">", UI_SOURCE_RML, "[wi] width" },
+        { "<div style=\"color: var(--m^\">", UI_SOURCE_RML, "[--m] --muted" },
+        { ".ca^ { }", UI_SOURCE_RCSS, "[ca] card" },
+        { ".a {\n  op^\n}", UI_SOURCE_RCSS, "[op] opacity" },
+        { ".a { color: var(--p^) }", UI_SOURCE_RCSS, "[--p] --primary" },
+        { ".a { &:hover { he^ } }", UI_SOURCE_RCSS, "[he] height" },
+        { "sp^ { }", UI_SOURCE_RCSS, "[sp] span" },
     };
     bool ok = true;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         char got[512];
-        complete_at(cases[i].text, cases[i].stylesheet, &p, got, sizeof got);
+        complete_at(cases[i].text, cases[i].language, &p, got, sizeof got);
         if (strcmp(got, cases[i].expected)) {
             printf(
                 "  completing %s\n    got      %s\n    expected %s\n",
@@ -319,13 +330,11 @@ static bool expect_text(const char *label, const char *got, const char *expected
     return ok;
 }
 
-static const char EDIT_SAMPLE[] = "rml: |\n"
-                                  "  <div id=\"panel\" class=\"card\">\n"
-                                  "    <span>A</span>\n"
-                                  "    <img src=\"a.png\"/>\n"
-                                  "  </div>\n"
-                                  "  <p>Tail</p>\n"
-                                  "rcss: '.card { width: 1dp; }'\n";
+static const char EDIT_SAMPLE[] = "<div id=\"panel\" class=\"card\">\n"
+                                  "  <span>A</span>\n"
+                                  "  <img src=\"a.png\"/>\n"
+                                  "</div>\n"
+                                  "<p>Tail</p>\n";
 
 typedef enum
 {
@@ -379,26 +388,25 @@ static bool apply_case(ui_source *s, edit_case which, text_edit **edits)
  * removed, and elements that share their line. */
 static void inline_edits()
 {
-    static const char SAMPLE_LINE[] = "rml: |\n"
-                                      "  <p class=\"a b c\" style=\"width: "
+    static const char SAMPLE_LINE[] = "<p class=\"a b c\" style=\"width: "
                                       "1dp; height: 2dp;\">Text<b>x</b></p>\n"
-                                      "  <hr/>\n";
+                                      "<hr/>\n";
     static const struct
     {
         const char *label;
         const char *expected;
     } cases[] = {
-        { "remove a middle class", "  <p class=\"a c\" style=\"width: 1dp; height: 2dp;\">Text<b>x</b></p>\n  <hr/>\n" },
-        { "replace a style property", "  <p class=\"a b c\" style=\"width: 3dp; height: 2dp;\">Text<b>x</b></p>\n  <hr/>\n" },
-        { "remove the last style property", "  <p class=\"a b c\" style=\"width: 1dp;\">Text<b>x</b></p>\n  <hr/>\n" },
-        { "remove the first style property", "  <p class=\"a b c\" style=\"height: 2dp;\">Text<b>x</b></p>\n  <hr/>\n" },
-        { "insert a child before an inline close tag", "  <p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text<b>x</b><i/></p>\n  <hr/>\n" },
-        { "delete an element that shares its line", "  <p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text</p>\n  <hr/>\n" },
-        { "move an element after one on its own line", "  <p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text</p>\n  <hr/>\n  <b>x</b>\n" },
+        { "remove a middle class", "<p class=\"a c\" style=\"width: 1dp; height: 2dp;\">Text<b>x</b></p>\n<hr/>\n" },
+        { "replace a style property", "<p class=\"a b c\" style=\"width: 3dp; height: 2dp;\">Text<b>x</b></p>\n<hr/>\n" },
+        { "remove the last style property", "<p class=\"a b c\" style=\"width: 1dp;\">Text<b>x</b></p>\n<hr/>\n" },
+        { "remove the first style property", "<p class=\"a b c\" style=\"height: 2dp;\">Text<b>x</b></p>\n<hr/>\n" },
+        { "insert a child before an inline close tag", "<p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text<b>x</b><i/></p>\n<hr/>\n" },
+        { "delete an element that shares its line", "<p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text</p>\n<hr/>\n" },
+        { "move an element after one on its own line", "<p class=\"a b c\" style=\"width: 1dp; height: 2dp;\">Text</p>\n<hr/>\n<b>x</b>\n" },
     };
     bool ok = true;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        ui_source *s = ui_source_parse(SAMPLE_LINE, false);
+        ui_source *s = ui_source_parse(SAMPLE_LINE, UI_SOURCE_RML);
         text_edit *list = NULL;
         char error[160];
         bool applied = i == 0
@@ -415,17 +423,14 @@ static void inline_edits()
                          ? ui_source_delete_element(s, 1, &list, error, sizeof error)
                          : ui_source_move_element(s, 1, 2, UI_SOURCE_AFTER, &list, error, sizeof error);
         char *text = applied ? edited(SAMPLE_LINE, list) : NULL;
-        char expected[512];
-        snprintf(expected, sizeof expected, "rml: |\n%s", cases[i].expected);
-        ok &= expect_text(cases[i].label, text, expected);
+        ok &= expect_text(cases[i].label, text, cases[i].expected);
         free(text);
         ui_source_free(s);
     }
     test_check(ok, "ui source edits classes, style declarations and elements that share a line");
 }
 
-/* Blocks whose last line has no line break, whose inline scalar carries a
- * comment, or which are empty. */
+/* Markup whose last line has no line break, or which is empty. */
 static void edge_edits()
 {
     static const struct
@@ -433,26 +438,19 @@ static void edge_edits()
         const char *label, *text, *expected;
         bool move;
     } cases[] = {
-        { "append to a block without a final line break",
-          "rml: |\n  <div>\n    <p/>\n  </div>",
-          "rml: |\n  <div>\n    <p/>\n  </div>\n  <span/>",
+        { "append to markup without a final line break",
+          "<div>\n  <p/>\n</div>",
+          "<div>\n  <p/>\n</div>\n<span/>",
           false },
         { "move after an element on the last line",
-          "rml: |\n  <div>\n    <p/>\n  </div>",
-          "rml: |\n  <div>\n  </div>\n  <p/>",
+          "<div>\n  <p/>\n</div>",
+          "<div>\n</div>\n<p/>",
           true },
-        { "rewrite an inline block and drop its comment",
-          "rml: <div/> # note\n",
-          "rml: |-\n  <div/>\n  <span/>\n",
-          false },
-        { "fill an empty block",
-          "rml: |\nrcss: 'b { }'\n",
-          "rml: |\n  <span/>\nrcss: 'b { }'\n",
-          false },
+        { "fill empty markup", "", "<span/>\n", false },
     };
     bool ok = true;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        ui_source *s = ui_source_parse(cases[i].text, false);
+        ui_source *s = ui_source_parse(cases[i].text, UI_SOURCE_RML);
         text_edit *list = NULL;
         char error[160];
         bool applied = cases[i].move
@@ -463,7 +461,7 @@ static void edge_edits()
         free(text);
         ui_source_free(s);
     }
-    test_check(ok, "ui source edits blocks without a final line break, with a comment, or empty");
+    test_check(ok, "ui source edits markup without a final line break, or empty");
 }
 
 static void edits()
@@ -472,72 +470,41 @@ static void edits()
     {
         edit_case which;
         const char *label;
-        const char *expected_rml;
+        const char *expected;
     } cases[] = {
-        { SET_ATTRIBUTE, "set a new attribute", "  <div id=\"panel\" class=\"card\">\n    <span data-if=\"save.sound\">A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { REPLACE_ATTRIBUTE, "replace an attribute", "  <div id=\"main &quot;box&quot;\" class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { REMOVE_ATTRIBUTE, "remove an attribute", "  <div class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { ADD_CLASS, "add a class", "  <div id=\"panel\" class=\"card wide\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { REMOVE_CLASS, "remove the last class", "  <div id=\"panel\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { SET_STYLE, "set a style property", "  <div id=\"panel\" class=\"card\">\n    <span style=\"width: 4dp;\">A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { INSERT_CHILD, "insert a last child", "  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n    <p>New</p>\n  </div>\n  <p>Tail</p>\n" },
-        { OPEN_ELEMENT, "insert into a self-closing element", "  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\">\n      <span/>\n    </img>\n  </div>\n  <p>Tail</p>\n" },
-        { INSERT_BEFORE, "insert before an element", "  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <hr/>\n  <p>Tail</p>\n" },
-        { INSERT_AFTER, "insert multi-line markup after an element", "  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n    <div>\n      <b/>\n    </div>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\n" },
-        { MOVE, "move an element into another", "  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n    <p>Tail</p>\n  </div>\n" },
-        { DELETE, "delete an element", "  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n  </div>\n  <p>Tail</p>\n" },
+        { SET_ATTRIBUTE, "set a new attribute", "<div id=\"panel\" class=\"card\">\n  <span data-if=\"save.sound\">A</span>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { REPLACE_ATTRIBUTE, "replace an attribute", "<div id=\"main &quot;box&quot;\" class=\"card\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { REMOVE_ATTRIBUTE, "remove an attribute", "<div class=\"card\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { ADD_CLASS, "add a class", "<div id=\"panel\" class=\"card wide\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { REMOVE_CLASS, "remove the last class", "<div id=\"panel\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { SET_STYLE, "set a style property", "<div id=\"panel\" class=\"card\">\n  <span style=\"width: 4dp;\">A</span>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { INSERT_CHILD, "insert a last child", "<div id=\"panel\" class=\"card\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n  <p>New</p>\n</div>\n<p>Tail</p>\n" },
+        { OPEN_ELEMENT, "insert into a self-closing element", "<div id=\"panel\" class=\"card\">\n  <span>A</span>\n  <img src=\"a.png\">\n    <span/>\n  </img>\n</div>\n<p>Tail</p>\n" },
+        { INSERT_BEFORE, "insert before an element", "<div id=\"panel\" class=\"card\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n</div>\n<hr/>\n<p>Tail</p>\n" },
+        { INSERT_AFTER,
+          "insert multi-line markup after an element",
+          "<div id=\"panel\" class=\"card\">\n  <span>A</span>\n  <div>\n    "
+          "<b/>\n  </div>\n  <img src=\"a.png\"/>\n</div>\n<p>Tail</p>\n" },
+        { MOVE, "move an element into another", "<div id=\"panel\" class=\"card\">\n  <span>A</span>\n  <img src=\"a.png\"/>\n  <p>Tail</p>\n</div>\n" },
+        { DELETE, "delete an element", "<div id=\"panel\" class=\"card\">\n  <span>A</span>\n</div>\n<p>Tail</p>\n" },
     };
     bool ok = true;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        ui_source *s = ui_source_parse(EDIT_SAMPLE, false);
+        ui_source *s = ui_source_parse(EDIT_SAMPLE, UI_SOURCE_RML);
         text_edit *list = NULL;
         bool applied = apply_case(s, cases[i].which, &list);
         char *text = applied ? edited(EDIT_SAMPLE, list) : NULL;
-        char expected[1024];
-        snprintf(
-            expected,
-            sizeof expected,
-            "rml: |\n%srcss: '.card { width: 1dp; }'\n",
-            cases[i].expected_rml
-        );
-        ok &= expect_text(cases[i].label, text, expected);
+        ok &= expect_text(cases[i].label, text, cases[i].expected);
         free(text);
         ui_source_free(s);
     }
-    test_check(ok, "ui source edits attributes, classes, inline style and elements, keeping the block's indentation");
+    test_check(ok, "ui source edits attributes, classes, inline style and elements, keeping the markup's indentation");
     inline_edits();
     edge_edits();
 
-    ui_source *s = ui_source_parse(EDIT_SAMPLE, false);
+    ui_source *s = ui_source_parse(EDIT_SAMPLE, UI_SOURCE_RML);
     text_edit *list = NULL;
-    ui_source_set_block(s, UI_SOURCE_RCSS, ".card {\n  width: 2dp;\n}\n", &list);
-    char *text = edited(EDIT_SAMPLE, list);
-    ok = expect_text("set a block", text, "rml: |\n  <div id=\"panel\" class=\"card\">\n    <span>A</span>\n    <img src=\"a.png\"/>\n  </div>\n  <p>Tail</p>\nrcss: |\n  .card {\n    width: 2dp;\n  }\n");
-    free(text);
-    ui_source_free(s);
-
-    const char inline_rml[] = "rml: <div id=\"a\"><p/></div>\n";
-    s = ui_source_parse(inline_rml, false);
-    list = NULL;
     char error[160];
-    ui_source_insert_element(s, 1, UI_SOURCE_AFTER, "<b/>", &list, error, sizeof error);
-    text = edited(inline_rml, list);
-    ok &= expect_text("edit an inline block", text, "rml: <div id=\"a\"><p/><b/></div>\n");
-    free(text);
-    ui_source_free(s);
-
-    s = ui_source_parse(inline_rml, false);
-    list = NULL;
-    ui_source_insert_element(s, -1, UI_SOURCE_INSIDE, "<b/>", &list, error, sizeof error);
-    ui_source_set_block(s, UI_SOURCE_RCSS, "b { color: red; }", &list);
-    text = edited(inline_rml, list);
-    ok &= expect_text("grow an inline block into a literal one", text, "rml: |-\n  <div id=\"a\"><p/></div>\n  <b/>\nrcss: 'b { color: red; }'\n");
-    free(text);
-    ui_source_free(s);
-    test_check(ok, "ui source replaces whole blocks and rewrites inline scalars as the asset writer does");
-
-    s = ui_source_parse(EDIT_SAMPLE, false);
-    list = NULL;
     bool refused = !ui_source_move_element(s, 0, 1, UI_SOURCE_INSIDE, &list, error, sizeof error) &&
                    strstr(error, "itself") && !list &&
                    !ui_source_remove_class(s, 0, "missing", &list, error, sizeof error) &&
@@ -564,37 +531,34 @@ static void references()
     assert(!mkdir(path, 0700));
     snprintf(path, sizeof path, "%s/theme/tokens.rcss", folder);
     write_file(path, ":root { --primary: #fff; }\n.card { color: var(--primary); }\n");
-    snprintf(path, sizeof path, "%s/Button.yaml", folder);
-    write_file(path, "rml: <button class=\"card\"><slot/></button>\n");
-    snprintf(path, sizeof path, "%s/Menu.yaml", folder);
-    write_file(
-        path,
-        "rml: |\n"
-        "  <div class=\"card\" data-if=\"save.open\">\n"
-        "    <use ui=\"Button\">Go</use>\n"
-        "  </div>\n"
-        "rcss: '.card { border-color: var(--primary); }'\n"
-    );
+    snprintf(path, sizeof path, "%s/Button.rml", folder);
+    write_file(path, "<button class=\"card\"><slot/></button>\n");
+    static const char
+        MENU_RML[] = "<div class=\"card\" data-if=\"save.open\">\n"
+                     "  <use ui=\"Button\">Go</use>\n"
+                     "</div>\n";
+    static const char MENU_RCSS[] = ".card { border-color: var(--primary); }\n";
+    snprintf(path, sizeof path, "%s/Menu.rml", folder);
+    write_file(path, MENU_RML);
+    snprintf(path, sizeof path, "%s/Menu.rcss", folder);
+    write_file(path, MENU_RCSS);
     ui_source_project p = { 0 };
     ui_source_project_scan(&p, root);
-    bool scanned = acount(p.files) == 3 && acount(p.widgets) == 2 &&
+    bool scanned = acount(p.files) == 4 && acount(p.widgets) == 2 &&
                    !strcmp(p.widgets[0], "Button") && acount(p.classes) == 1 &&
                    !strcmp(p.classes[0], "card") && acount(p.variables) == 1 &&
                    !strcmp(p.variables[0], "--primary") &&
                    acount(p.save_keys) == 1 && !strcmp(p.save_keys[0], "open");
     test_check(scanned, "ui source learns a project's widgets, classes, custom properties and save keys");
 
-    char *text = NULL;
-    snprintf(path, sizeof path, "%s/Menu.yaml", folder);
-    FILE *file = fopen(path, "rb");
-    char buffer[512] = { 0 };
-    fread(buffer, 1, sizeof buffer - 1, file);
-    fclose(file);
-    text = buffer;
-    ui_source *s = ui_source_parse(text, false);
-    ui_source_symbol widget = ui_source_symbol_at(s, (int)(strstr(text, "Button") - text) + 2);
-    ui_source_symbol card = ui_source_symbol_at(s, (int)(strstr(text, "card") - text));
-    ui_source_symbol primary = ui_source_symbol_at(s, (int)(strstr(text, "--primary") - text) + 3);
+    ui_source *s = ui_source_parse(MENU_RML, UI_SOURCE_RML);
+    ui_source *styles = ui_source_parse(MENU_RCSS, UI_SOURCE_RCSS);
+    ui_source_symbol widget = ui_source_symbol_at(s, (int)(strstr(MENU_RML, "Button") - MENU_RML) + 2);
+    ui_source_symbol card = ui_source_symbol_at(s, (int)(strstr(MENU_RML, "card") - MENU_RML));
+    ui_source_symbol primary = ui_source_symbol_at(
+        styles,
+        (int)(strstr(MENU_RCSS, "--primary") - MENU_RCSS) + 3
+    );
     bool symbols = widget.kind == UI_SYMBOL_WIDGET &&
                    !strcmp(widget.name, "Button") &&
                    card.kind == UI_SYMBOL_CLASS && !strcmp(card.name, "card") &&
@@ -605,8 +569,8 @@ static void references()
     ui_source_location *found = NULL;
     ui_source_references(&p, &widget, &found);
     bool widgets = acount(found) == 2 && found[0].definition &&
-                   strstr(found[0].path, "Button.yaml") && !found[1].definition &&
-                   strstr(found[1].path, "Menu.yaml") && found[1].line == 3;
+                   strstr(found[0].path, "Button.rml") && !found[1].definition &&
+                   strstr(found[1].path, "Menu.rml") && found[1].line == 2;
     ui_source_locations_free(found);
     found = NULL;
     ui_source_references(&p, &primary, &found);
@@ -623,6 +587,7 @@ static void references()
     bool classes = acount(found) == 4 && definitions == 2 && found[0].definition;
     ui_source_locations_free(found);
     test_check(widgets && variables && classes, "ui source lists a symbol's definitions, then its references, across the project");
+    ui_source_free(styles);
     ui_source_free(s);
     ui_source_project_free(&p);
     char command[160];
@@ -630,7 +595,7 @@ static void references()
     assert(system(command) == 0);
 }
 
-/* Every shipped ui asset and stylesheet parses without a diagnostic. */
+/* Every shipped ui file parses without a diagnostic. */
 static void shipped()
 {
     static const char *const CONTENT[] = { "content",
@@ -651,7 +616,7 @@ static void shipped()
             char *text = calloc(1, (size_t)size + 1);
             fread(text, 1, (size_t)size, file);
             fclose(file);
-            ui_source *s = ui_source_parse(text, !p.files[i].name);
+            ui_source *s = ui_source_parse(text, p.files[i].name ? UI_SOURCE_RML : UI_SOURCE_RCSS);
             for (int d = 0; d < acount(s->diagnostics); d++) {
                 printf(
                     "  %s:%d:%d: %s\n",
@@ -668,7 +633,7 @@ static void shipped()
         }
         ui_source_project_free(&p);
     }
-    test_check(ok && files > 30, "every shipped ui asset and stylesheet parses without a syntax error");
+    test_check(ok && files > 60, "every shipped ui asset's markup and styles, and stylesheet, parses without a syntax error");
 }
 
 void test_ui_source()

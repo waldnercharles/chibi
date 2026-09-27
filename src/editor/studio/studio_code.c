@@ -321,7 +321,10 @@ bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line)
 
 bool studio_open_ui_source(studio *s, const char *path, int line)
 {
-    return studio_open_ui_part(s, path, UI_PART_RML, line);
+    size_t length = strlen(path), extension = strlen(UI_STYLE_EXTENSION);
+    bool styles = length > extension &&
+                  !strcmp(path + length - extension, UI_STYLE_EXTENSION);
+    return studio_open_ui_part(s, path, styles ? UI_PART_RCSS : UI_PART_RML, line);
 }
 
 bool studio_code_open_place(studio *s, const ui_code_place *place)
@@ -349,7 +352,7 @@ static void add_problems(
         if (!text) {
             continue;
         }
-        ui_source *source = ui_source_parse_block(text, ui_code_language((ui_part)p));
+        ui_source *source = ui_source_parse(text, ui_code_language((ui_part)p));
         kit_code_marker *markers = NULL;
         ui_code_markers(source, (ui_part)p, messages, failure, &markers);
         for (int i = 0; i < acount(markers); i++) {
@@ -440,7 +443,12 @@ void studio_code_project_problems(studio *s, studio_ui_problem **out)
         ui_source_project_scan(&project, root);
     }
     for (int i = 0; i < acount(project.files); i++) {
-        file_problems(s, project.files[i].path, out);
+        /* A ui asset's .rcss is a part of the document its .rml opens. */
+        char *document = ui_buffer_document(project.files[i].path);
+        if (!strcmp(document, project.files[i].path)) {
+            file_problems(s, document, out);
+        }
+        free(document);
     }
     for (int i = 0; i < acount(s->scene->tabs); i++) {
         const scene_document_tab *tab = &s->scene->tabs[i];
@@ -453,13 +461,15 @@ void studio_code_project_problems(studio *s, studio_ui_problem **out)
 
 /* ---------- Header ---------- */
 
+/* The shown part's file. */
 static void file_label(studio *s, const scene_document_tab *tab)
 {
     kit *k = s->kit;
+    const char *file = tab->ui->files[tab->ui->part];
     kit_push(k, "file", NULL, "code-file");
     kit_icon(k, "icon", NULL, tab->ui->stylesheet ? KIT_ICON_FILE : KIT_ICON_LAYOUT);
-    kit_label(k, "name", "name", content_basename(tab->path));
-    kit_tip(k, tab->path, NULL, NULL);
+    kit_label(k, "name", "name", content_basename(file));
+    kit_tip(k, file, NULL, NULL);
     if (ui_buffer_dirty(tab->ui)) {
         kit_leaf(k, "dirty", NULL, "dirty-dot");
         kit_tip(k, "Unsaved", studio_chord(s, "Mod+S"), NULL);
@@ -654,12 +664,11 @@ static bool parse_part(studio_code *c, kit_code_editor *e, ui_part part)
 {
     ui_source_language language = ui_code_language(part);
     const char *text = kit_code_text(e, NULL);
-    if (c->source && c->source->blocks[0].language == language &&
-        !strcmp(c->source->text, text)) {
+    if (c->source && c->source->language == language && !strcmp(c->source->text, text)) {
         return false;
     }
     ui_source_free(c->source);
-    c->source = ui_source_parse_block(text, language);
+    c->source = ui_source_parse(text, language);
     asetlen(c->spans, 0);
     for (int i = 0; i < acount(c->source->spans); i++) {
         const ui_source_span *span = &c->source->spans[i];
@@ -680,7 +689,7 @@ static void mark_problems(studio_code *c, const scene_document_tab *tab, ui_part
     for (int p = 0; p < UI_PART_COUNT; p++) {
         const char *text = ui_buffer_text(tab->ui, (ui_part)p);
         ui_source *other = p != (int)shown && text
-                             ? ui_source_parse_block(text, ui_code_language((ui_part)p))
+                             ? ui_source_parse(text, ui_code_language((ui_part)p))
                              : NULL;
         ui_code_markers_free(c->markers[p]);
         c->markers[p] = NULL;
@@ -787,22 +796,16 @@ static const char *symbol_title(const ui_source_symbol *symbol, char *out, size_
     return out;
 }
 
-/* A Find row for a place: its file, part and line. */
+/* A Find row for a place: its file and line. */
 static studio_reference place_row(const ui_code_place *place)
 {
     studio_reference row = { .kind = REFERENCE_ASSET_UI,
                              .use = place->definition ? "Define" : "Use",
                              .ui = *place };
-    snprintf(row.asset, sizeof row.asset, "%s", content_basename(place->path));
-    bool stylesheet = strstr(place->path, ".rcss") != NULL;
-    snprintf(
-        row.place,
-        sizeof row.place,
-        "%s%sline %d",
-        stylesheet ? "" : PART_LABELS[place->part],
-        stylesheet ? "" : " ",
-        place->line
-    );
+    char *file = ui_buffer_part_file(place->path, place->part);
+    snprintf(row.asset, sizeof row.asset, "%s", content_basename(file));
+    snprintf(row.place, sizeof row.place, "line %d", place->line);
+    free(file);
     return row;
 }
 

@@ -6,15 +6,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* A language service for ui assets, as a language server serves an editor:
+/* A language service for ui files, as a language server serves an editor:
  * Studio's Text Editor and designer and the MCP read and change ui assets
- * through it. tree-sitter parses an asset's `rml` block with the HTML grammar
- * and its `rcss` block with the CSS grammar.
+ * through it. tree-sitter parses markup (.rml) with the HTML grammar and
+ * styles (.rcss) with the CSS grammar.
  *
- * It reads a ui asset's YAML file, or a stylesheet (.rcss) whole. Every
- * position is a byte offset into that text, and every edit a text_edit on
- * it, so results apply to the file as written and keep its formatting. Lines
- * and columns are 1-based. Arrays are support/array.h arrays the source owns.
+ * It reads one file's text whole. Every position is a byte offset into that
+ * text, and every edit a text_edit on it, so results apply to the file as
+ * written and keep its formatting. Lines and columns are 1-based. Arrays are
+ * support/array.h arrays the source owns.
  */
 
 typedef enum
@@ -22,15 +22,6 @@ typedef enum
     UI_SOURCE_RML,
     UI_SOURCE_RCSS,
 } ui_source_language;
-
-/* A block of markup or style: an asset's rml or rcss value, or a whole
- * stylesheet. */
-typedef struct ui_source_block
-{
-    ui_source_language language;
-    int start, end; /* the value's bytes in the text */
-    int line;       /* of its first byte */
-} ui_source_block;
 
 /* What a span of text is, for highlighting. The first ten are
  * highlight_token's (editor/ui/highlight.h), in its order; the rest refine
@@ -119,20 +110,16 @@ typedef struct ui_source_tree ui_source_tree;
 typedef struct ui_source
 {
     char *text;
-    ui_source_block *blocks;
+    ui_source_language language;
     ui_source_span *spans;             /* in order, not overlapping */
-    ui_source_element *elements;       /* of the rml block */
-    ui_source_rule *rules;             /* of the rcss block */
+    ui_source_element *elements;       /* of markup */
+    ui_source_rule *rules;             /* of styles */
     ui_source_diagnostic *diagnostics; /* syntax errors, in order */
     ui_source_tree *trees;             /* the parse, private */
 } ui_source;
 
-/* Parses a ui asset's file text, or with `stylesheet` a whole .rcss file.
- * Text YAML cannot read still yields what its rml: and rcss: keys hold. */
-ui_source *ui_source_parse(const char *text, bool stylesheet);
-/* Parses `text` whole as one block, as the Text Editor shows an asset's rml
- * or rcss value alone; a stylesheet is one RCSS block. */
-ui_source *ui_source_parse_block(const char *text, ui_source_language language);
+/* Parses a file's text as markup or styles. */
+ui_source *ui_source_parse(const char *text, ui_source_language language);
 void ui_source_free(ui_source *source);
 
 /* The 1-based line and column of a byte offset, and back; an offset past
@@ -140,8 +127,6 @@ void ui_source_free(ui_source *source);
 void ui_source_position(const ui_source *source, int offset, int *line, int *column);
 int ui_source_offset(const ui_source *source, int line, int column);
 
-/* The block holding `offset`, or NULL. */
-const ui_source_block *ui_source_block_at(const ui_source *source, int offset);
 /* The innermost element whose range holds `offset`, or -1. */
 int ui_source_element_at(const ui_source *source, int offset);
 /* An element attribute's value as the markup means it, owned; NULL when the
@@ -157,7 +142,7 @@ bool ui_source_is_binding(const char *name, int length);
 typedef struct ui_source_file
 {
     char *path;
-    char *name; /* a ui asset's name; NULL for a stylesheet */
+    char *name; /* the asset a .rml file is; NULL for a .rcss file */
 } ui_source_file;
 
 /* What the project around a document offers it. ui_source_project_scan
@@ -166,7 +151,7 @@ typedef struct ui_source_file
  * unique. */
 typedef struct ui_source_project
 {
-    ui_source_file *files; /* ui assets, then stylesheets */
+    ui_source_file *files; /* markup, then styles */
     char **widgets;        /* ui asset names */
     char **classes;        /* in selectors and class attributes */
     char **variables;      /* custom properties, with their -- */
@@ -174,7 +159,7 @@ typedef struct ui_source_project
     char **save_keys;      /* names bindings read after save. */
 } ui_source_project;
 
-/* Reads the ui assets and stylesheets under `content_root`/ui, through
+/* Reads the markup and styles under `content_root`/ui, through
  * text_file_read so unsaved text counts. */
 void ui_source_project_scan(ui_source_project *project, const char *content_root);
 /* Adds `name` to a sorted, unique list, copying it. */
@@ -240,7 +225,7 @@ typedef struct ui_source_symbol
     bool definition; /* a --name declaration, or a class in a selector */
 } ui_source_symbol;
 
-/* Appends each symbol the source names, block by block in order. */
+/* Appends each symbol the source names, in order. */
 void ui_source_symbols(const ui_source *source, ui_source_symbol **symbols);
 /* The symbol at `offset`; kind NONE when none is there. */
 ui_source_symbol ui_source_symbol_at(const ui_source *source, int offset);
@@ -274,11 +259,11 @@ typedef enum
     UI_SOURCE_AFTER,
 } ui_source_place;
 
-/* Each operation names elements by their index in `elements`, and appends
- * the edits that make its change to `edits` (support/array.h), their texts
- * owned by the array until ui_source_edits_free. New lines take the
- * indentation of the lines around them; a block written on one line is
- * written again whole, as the asset writer writes it. Returns false with a message in `error` and appends nothing when the
+/* Each operation changes markup, naming elements by their index in
+ * `elements`, and appends the edits that make its change to `edits`
+ * (support/array.h), their texts owned by the array until
+ * ui_source_edits_free. New lines take the indentation of the lines around
+ * them. Returns false with a message in `error` and appends nothing when the
  * change cannot be made. Edits of one call never overlap, but edits of
  * separate calls may: apply them, then parse again, between calls. */
 bool ui_source_set_attribute(
@@ -349,13 +334,6 @@ bool ui_source_delete_element(
     text_edit **edits,
     char *error,
     size_t error_size
-);
-/* Replaces a block's whole value, adding the block when there is none. */
-void ui_source_set_block(
-    const ui_source *source,
-    ui_source_language language,
-    const char *value,
-    text_edit **edits
 );
 void ui_source_edits_free(text_edit *edits);
 

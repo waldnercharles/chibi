@@ -312,7 +312,7 @@ static void ui_problem_row(studio *s)
     char asset[128] = "", place[160] = "Game UI";
     const char *message = s->ui_error;
     if (studio_ui_error_asset(s->ui_error, asset, sizeof asset)) {
-        snprintf(place, sizeof place, "ui/%s.yaml", asset);
+        snprintf(place, sizeof place, "ui/%s" UI_MARKUP_EXTENSION, asset);
         message += strlen(place) + (s->ui_error[strlen(place)] == ' ');
     }
     located_row_begin(k, "ui", KIT_TOAST_ERROR, place, message);
@@ -340,28 +340,19 @@ static int *document_rows(studio *s, const studio_ui_problem *rows)
     return shown;
 }
 
-/* "Name.yaml › RCSS line 4", or a stylesheet's "theme/base.rcss line 2",
-   and the row opening it in the Text Editor. */
+/* "ui/Name.rcss line 4", and the row opening it in the Text Editor. */
 static void document_row(studio *s, const studio_ui_problem *p, int index)
 {
     kit *k = s->kit;
-    static const char *const PARTS[] = { "RML", "RCSS" };
-    const char *root = s->scene->content_root, *path = p->at.path;
+    const char *root = s->scene->content_root;
+    char *path = ui_buffer_part_file(p->at.path, p->at.part);
     size_t length = strlen(root);
     const char *name = !strncmp(path, root, length) && path[length] == '/'
                          ? path + length + 1
                          : path;
-    bool stylesheet = strstr(name, ".rcss") != NULL;
     char key[24], place[1200];
-    snprintf(
-        place,
-        sizeof place,
-        "%s%s%s line %d",
-        name,
-        stylesheet ? "" : " \xe2\x80\xba ",
-        stylesheet ? "" : PARTS[p->at.part],
-        p->at.line
-    );
+    snprintf(place, sizeof place, "%s line %d", name, p->at.line);
+    free(path);
     snprintf(key, sizeof key, "u%d", index);
     located_row_begin(k, key, p->error ? KIT_TOAST_ERROR : KIT_TOAST_WARNING, place, p->message);
     kit_pop(k);

@@ -365,22 +365,22 @@ static void ui_events()
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(ui, sizeof ui, "%s/content/ui", root);
-    snprintf(hud, sizeof hud, "%s/Hud.yaml", ui);
-    snprintf(pause, sizeof pause, "%s/PauseMenu.yaml", ui);
+    snprintf(hud, sizeof hud, "%s/Hud.rml", ui);
+    snprintf(pause, sizeof pause, "%s/PauseMenu.rml", ui);
     assert(!mkdir(content, 0755) && !mkdir(ui, 0755));
     char version[64];
     snprintf(version, sizeof version, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
     write_text(manifest, version);
     write_text(
         hud,
-        "rml: '<div class=\"button\" id=\"go\" "
-        "data-event-click=\"emit(''Go'')\">Go</div>"
+        "<div class=\"button\" id=\"go\" "
+        "data-event-click=\"emit('Go')\">Go</div>"
         "<input type=\"range\" id=\"volume\" "
-        "data-event-change=\"emit(''Volume'')\"/>"
+        "data-event-change=\"emit('Volume')\"/>"
         "<div class=\"menu wide\" data-keys=\"Enter:Choose Space:Choose\"/>"
-        "<div data-event-click=\"emit(''Tick'')\"/>'\n"
+        "<div data-event-click=\"emit('Tick')\"/>\n"
     );
-    write_text(pause, "rml: '<div data-event-click=\"emit(''Resume'')\">Resume</div>'\n");
+    write_text(pause, "<div data-event-click=\"emit('Resume')\">Resume</div>\n");
     size_t bytes;
     char *outline = search_in(root, "\"domain\":\"behavior\"", &bytes);
     char *go = search_in(root, "\"query\":\"go\",\"limit\":1", &bytes);
@@ -425,9 +425,8 @@ static void behavior_ui_events()
                                            "content/prototypes",
                                            "content/behaviors" };
     static const char *const FILES[][2] = {
-        { "content/ui/Hud.yaml", "rml: '<div data-event-click=\"emit(''Go'')\">Go</div>'\n" },
-        { "content/ui/Shop.yaml",
-          "rml: '<div data-event-click=\"emit(''Buy'')\">Buy</div>'\n" },
+        { "content/ui/Hud.rml", "<div data-event-click=\"emit('Go')\">Go</div>\n" },
+        { "content/ui/Shop.rml", "<div data-event-click=\"emit('Buy')\">Buy</div>\n" },
         { "content/prototypes/Hero.yaml", "name: Hero\ncomponents:\n  GAME.GameUi: {document: Hud}\nbehaviors: [Player]\n" },
         { "content/behaviors/Player.yaml", "version: 3\nname: Player\nid_counter: 1\nowner_type: ecs.entity\ngraphs: []\n" },
     };

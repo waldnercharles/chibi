@@ -132,7 +132,8 @@ void test_code_intelligence_studio();
 /* ---------- UI wiring (workstream K) ---------- */
 
 #define VAULT PROJECT "/content/scenes/Vault.yaml"
-#define BANK PROJECT "/content/ui/Bank.yaml"
+#define BANK PROJECT "/content/ui/Bank.rml"
+#define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
 /* Studio over the Vault scene, whose Vault shows the Bank document and
    attaches Teller, with the Scene filling the workspace. Preferences stay as
@@ -161,7 +162,7 @@ static int bank_errors(const studio *s)
     int count = 0;
     for (int i = 0; i < acount(s->records); i++) {
         count += s->records[i].kind == KIT_TOAST_ERROR &&
-                 strstr(s->records[i].text, "ui/Bank.yaml") != NULL;
+                 strstr(s->records[i].text, "ui/Bank.rml") != NULL;
     }
     return count;
 }
@@ -174,12 +175,12 @@ static void ui_errors_recorded()
     studio *s = f.studio;
     frames(&f, 3);
     bool clean = !s->ui_error[0];
-    text_overlay_set(BANK, "rml: [\n");
+    text_overlay_set(BANK, "");
     frames(&f, 3);
-    bool shown = strstr(s->ui_error, "ui/Bank.yaml") != NULL && bank_errors(s) == 1;
+    bool shown = strstr(s->ui_error, "ui/Bank.rml") != NULL && bank_errors(s) == 1;
     frames(&f, 3);
     bool once = bank_errors(s) == 1;
-    text_overlay_set(BANK, "rcss: 4\n");
+    text_overlay_set(BANK, "<div><body/></div>\n");
     frames(&f, 3);
     bool changed = bank_errors(s) == 2;
     text_overlay_set(BANK, NULL);
@@ -408,13 +409,8 @@ static void preview_hears_keys()
 {
     studio_fixture f = vault_open();
     studio *s = f.studio;
-    text_overlay_set(
-        BANK,
-        "rml: |\n  <div id=\"extract\" autofocus "
-        "data-keys=\"C:Close\">Extract</div>\n"
-        "rcss: |\n  #extract { display: block; height: 100%; tab-index: auto; "
-        "}\n"
-    );
+    text_overlay_set(BANK, "<div id=\"extract\" autofocus data-keys=\"C:Close\">Extract</div>\n");
+    text_overlay_set(BANK_STYLES, "#extract { display: block; height: 100%; tab-index: auto; }\n");
     frames(&f, 3);
     studio_preview_ui(s, "Bank");
     frames(&f, 8);
@@ -454,6 +450,7 @@ static void preview_hears_keys()
     bool playing = game_entities_pending_events(entities) == before + 1;
     test_check(editing && playing, "the focused Scene's game documents take keys while the scene plays");
     text_overlay_set(BANK, NULL);
+    text_overlay_set(BANK_STYLES, NULL);
     fixture_free(&f);
 }
 
@@ -636,7 +633,7 @@ static void scene_text_field()
 {
     studio_fixture f = vault_open();
     studio *s = f.studio;
-    text_overlay_set(BANK, "rml: <input id=\"name\" type=\"text\" autofocus/>\n");
+    text_overlay_set(BANK, "<input id=\"name\" type=\"text\" autofocus/>\n");
     s->focus_area = STUDIO_AREA_TOP;
     frames(&f, 3);
     char value[32];

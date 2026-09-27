@@ -164,9 +164,9 @@ void run_content_catalog_checks()
     static const char *const shapes[] = { "PhaseWardenShape.yaml" };
     valid &= folder_matches("content", "shapes", shapes, (int)(sizeof shapes / sizeof *shapes));
     valid &= folder_matches("content", "textures", NULL, 0);
-    static const char *const ui[] = { "BloomCircuit.yaml",
-                                      "OrbitPinball.yaml",
-                                      "PauseMenu.yaml" };
+    static const char *const ui[] = { "BloomCircuit.rml", "BloomCircuit.rcss",
+                                      "OrbitPinball.rml", "OrbitPinball.rcss",
+                                      "PauseMenu.rml",    "PauseMenu.rcss" };
     valid &= folder_matches("content", "ui", ui, (int)(sizeof ui / sizeof *ui));
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
@@ -287,10 +287,10 @@ void run_content_catalog_checks()
     );
     valid &= folder_matches(arena2d_root, "shapes", NULL, 0);
     valid &= folder_matches(arena2d_root, "textures", NULL, 0);
-    static const char *const arena2d_ui[] = { "HUD.yaml",
-                                              "MenuButton.yaml",
-                                              "Meter.yaml",
-                                              "PauseMenu.yaml" };
+    static const char *const arena2d_ui[] = {
+        "HUD.rml",   "HUD.rcss",   "MenuButton.rml", "MenuButton.rcss",
+        "Meter.rml", "Meter.rcss", "PauseMenu.rml",  "PauseMenu.rcss"
+    };
     valid &= folder_matches(arena2d_root, "ui", arena2d_ui, (int)(sizeof arena2d_ui / sizeof *arena2d_ui));
     test_check(valid, "Arena2D project catalog is isolated from Arena3D assets");
 

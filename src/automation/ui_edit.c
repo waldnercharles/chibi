@@ -15,8 +15,6 @@
 #include <string.h>
 #include <yyjson.h>
 
-static const char *const BLOCK_NAMES[] = { "rml", "rcss" };
-
 static int failf(char *error, size_t size, int status, const char *format, ...)
 {
     va_list args;
@@ -28,13 +26,13 @@ static int failf(char *error, size_t size, int status, const char *format, ...)
 
 /* ---------- Validation ---------- */
 
+/* A diagnostic at a line of the file `path`, content-relative; line 0 when
+ * it names no line. */
 typedef struct diagnostic
 {
     const char *rule;
-    const char *block;  /* NULL outside the blocks */
-    const char *source; /* a widget or import the line is in, or NULL */
-    int block_line;     /* in `source` when set; 0 when unknown */
-    int line, column;   /* in the file; 0 when unknown */
+    const char *path;
+    int line, column;
     const char *message;
 } diagnostic;
 
@@ -44,42 +42,33 @@ static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const dia
     yyjson_mut_obj_add_str(doc, object, "severity", "error");
     yyjson_mut_obj_add_str(doc, object, "rule_name", d->rule);
     yyjson_mut_obj_add_strcpy(doc, object, "message", d->message);
-    if (d->block) {
-        yyjson_mut_obj_add_str(doc, object, "block", d->block);
-    }
-    if (d->source) {
-        yyjson_mut_obj_add_strcpy(doc, object, "source", d->source);
-    }
-    if (d->block_line) {
-        yyjson_mut_obj_add_int(doc, object, "block_line", d->block_line);
-    }
+    yyjson_mut_obj_add_strcpy(doc, object, "path", d->path);
     if (d->line) {
         yyjson_mut_obj_add_int(doc, object, "line", d->line);
         yyjson_mut_obj_add_int(doc, object, "column", d->column);
     }
 }
 
-static const ui_source_block *block_of(const ui_source *source, ui_source_language language)
+/* "content/ui/<name><extension>". */
+static void asset_file(const char *name, const char *extension, char *out, size_t size)
 {
-    for (int i = 0; i < acount(source->blocks); i++) {
-        if (source->blocks[i].language == language) {
-            return &source->blocks[i];
-        }
-    }
-    return NULL;
+    snprintf(out, size, "content/ui/%s%s", name, extension);
 }
 
-static int syntax_diagnostics(const ui_source *source, yyjson_mut_doc *doc, yyjson_mut_val *diagnostics)
+static int syntax_diagnostics(
+    const ui_source *source,
+    const char *path,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
 {
     for (int i = 0; i < acount(source->diagnostics); i++) {
         const ui_source_diagnostic *d = &source->diagnostics[i];
-        const ui_source_block *block = ui_source_block_at(source, d->start);
         add_diagnostic(
             doc,
             diagnostics,
-            &(diagnostic){ .rule = block ? "SYNTAX" : "LOAD",
-                           .block = block ? BLOCK_NAMES[block->language] : NULL,
-                           .block_line = block ? d->line - block->line + 1 : 0,
+            &(diagnostic){ .rule = "SYNTAX",
+                           .path = path,
                            .line = d->line,
                            .column = d->column,
                            .message = d->message }
@@ -88,56 +77,83 @@ static int syntax_diagnostics(const ui_source *source, yyjson_mut_doc *doc, yyjs
     return acount(source->diagnostics);
 }
 
-/* A block line's file line, when the block's lines are the file's. */
-static int file_line(const ui_source *source, ui_source_language language, int block_line)
+/* The syntax errors of the asset's markup and styles. */
+static int asset_syntax(
+    const char *name,
+    const char *rml,
+    const char *rcss,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
 {
-    const ui_source_block *block = block_of(source, language);
-    if (!block || !block_line) {
-        return 0;
+    char path[512];
+    asset_file(name, UI_MARKUP_EXTENSION, path, sizeof path);
+    ui_source *markup = ui_source_parse(rml, UI_SOURCE_RML);
+    int errors = syntax_diagnostics(markup, path, doc, diagnostics);
+    ui_source_free(markup);
+    if (rcss) {
+        asset_file(name, UI_STYLE_EXTENSION, path, sizeof path);
+        ui_source *styles = ui_source_parse(rcss, UI_SOURCE_RCSS);
+        errors += syntax_diagnostics(styles, path, doc, diagnostics);
+        ui_source_free(styles);
     }
-    int end_line, column;
-    ui_source_position(source, block->end, &end_line, &column);
-    return end_line > block->line ? block->line + block_line - 1 : block->line;
+    return errors;
+}
+
+/* The file a check message is in, content-relative. */
+static void message_file(
+    const char *content_root,
+    const char *name,
+    const ui_check_message *m,
+    char *out,
+    size_t size
+)
+{
+    size_t root = strlen(content_root);
+    if (m->part == UI_CHECK_WIDGETS) {
+        asset_file(m->source ? m->source : name, UI_MARKUP_EXTENSION, out, size);
+    } else if (!m->source) {
+        asset_file(name, m->part == UI_CHECK_RML ? UI_MARKUP_EXTENSION : UI_STYLE_EXTENSION, out, size);
+    } else if (!strncmp(m->source, content_root, root) && m->source[root] == '/') {
+        snprintf(out, size, "content%s", m->source + root);
+    } else {
+        snprintf(out, size, "%s", m->source);
+    }
 }
 
 int automation_ui_validate(
     const char *content_root,
     const char *name,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     yyjson_mut_doc *doc,
     yyjson_mut_val *diagnostics
 )
 {
-    static const char *const PARTS[] = { "rml", "rcss", "widgets" };
-    ui_source *source = ui_source_parse(text, false);
-    int errors = syntax_diagnostics(source, doc, diagnostics);
+    int errors = asset_syntax(name, rml, rcss, doc, diagnostics);
     ui_check_message *messages = NULL;
-    char error[256];
-    if (!errors && !ui_check(content_root, name, text, &messages, error, sizeof error)) {
-        add_diagnostic(doc, diagnostics, &(diagnostic){ .rule = "LOAD", .message = error });
+    char error[256], path[1024];
+    if (!errors &&
+        !ui_check(content_root, name, rml, rcss, &messages, error, sizeof error)) {
+        asset_file(name, UI_MARKUP_EXTENSION, path, sizeof path);
+        add_diagnostic(doc, diagnostics, &(diagnostic){ .rule = "LOAD", .path = path, .message = error });
         errors++;
     }
     for (int i = 0; i < acount(messages); i++) {
         const ui_check_message *m = &messages[i];
-        bool own = !m->source && m->part != UI_CHECK_WIDGETS;
-        ui_source_language block = m->part == UI_CHECK_RML ? UI_SOURCE_RML
-                                                           : UI_SOURCE_RCSS;
-        int line = own ? file_line(source, block, m->line) : 0;
+        message_file(content_root, name, m, path, sizeof path);
         add_diagnostic(
             doc,
             diagnostics,
             &(diagnostic){ .rule = "RMLUI",
-                           .block = PARTS[m->part],
-                           .source = m->source,
-                           .block_line = m->line,
-                           .line = line,
-                           .column = line ? 1 : 0,
+                           .path = path,
+                           .line = m->line,
+                           .column = m->line ? 1 : 0,
                            .message = m->text }
         );
     }
     errors += acount(messages);
     ui_check_messages_free(messages);
-    ui_source_free(source);
     return errors;
 }
 
@@ -247,9 +263,7 @@ static char **props(const ui_source *source)
             free(name);
         }
     }
-    const ui_source_block *block = block_of(source, UI_SOURCE_RML);
-    char *markup = block ? slice(source, block->start, block->end) : xstrdup("");
-    for (const char *p = markup; (p = strstr(p, "{{"));) {
+    for (const char *p = source->text; (p = strstr(p, "{{"));) {
         const char *close = strstr(p, "}}");
         if (!close) {
             break;
@@ -260,7 +274,6 @@ static char **props(const ui_source *source)
         free(expression);
         p = close + 2;
     }
-    free(markup);
     char **out = NULL;
     for (int i = 0; i < acount(roots); i++) {
         bool model = !strcmp(roots[i], "save") || !strcmp(roots[i], "system") ||
@@ -365,16 +378,11 @@ static void add_widgets_and_slots(yyjson_mut_doc *doc, yyjson_mut_val *result, c
     }
 }
 
-static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *result, const char *text)
+static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *result, const char *rml)
 {
     yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, result, "events");
-    ui_document document = { 0 };
-    char error[160];
-    if (!ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
-        return;
-    }
     ui_document_event *events = NULL;
-    ui_document_events(document.rml, &events);
+    ui_document_events(rml, &events);
     for (int i = 0; i < acount(events); i++) {
         yyjson_mut_val *event = yyjson_mut_arr_add_obj(doc, array);
         yyjson_mut_obj_add_strcpy(doc, event, "name", events[i].name);
@@ -385,14 +393,22 @@ static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *result, const char *
         yyjson_mut_obj_add_bool(doc, event, "input", events[i].input);
     }
     ui_document_events_free(events);
-    ui_document_free(&document);
 }
 
-/* The custom properties, classes and save keys the asset names. */
-static void add_symbols(yyjson_mut_doc *doc, yyjson_mut_val *result, const ui_source *source)
+/* The custom properties, classes and save keys the asset's markup and
+ * styles name. */
+static void add_symbols(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    const ui_source *markup,
+    const ui_source *styles
+)
 {
     ui_source_symbol *symbols = NULL;
-    ui_source_symbols(source, &symbols);
+    ui_source_symbols(markup, &symbols);
+    if (styles) {
+        ui_source_symbols(styles, &symbols);
+    }
     char **tokens = NULL, **declared = NULL, **classes = NULL, **styled = NULL,
          **keys = NULL;
     for (int i = 0; i < acount(symbols); i++) {
@@ -420,37 +436,34 @@ static void add_symbols(yyjson_mut_doc *doc, yyjson_mut_val *result, const ui_so
     free_names(keys);
 }
 
-void automation_ui_inspect(const char *text, yyjson_mut_doc *doc, yyjson_mut_val *result)
+void automation_ui_inspect(
+    const char *name,
+    const char *rml,
+    const char *rcss,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result
+)
 {
-    ui_source *source = ui_source_parse(text, false);
-    yyjson_mut_val *blocks = yyjson_mut_obj_add_arr(doc, result, "blocks");
-    for (int i = 0; i < acount(source->blocks); i++) {
-        yyjson_mut_val *block = yyjson_mut_arr_add_obj(doc, blocks);
-        yyjson_mut_obj_add_str(
-            doc,
-            block,
-            "block",
-            BLOCK_NAMES[source->blocks[i].language]
-        );
-        yyjson_mut_obj_add_int(doc, block, "line", source->blocks[i].line);
-    }
+    ui_source *markup = ui_source_parse(rml, UI_SOURCE_RML);
+    ui_source *styles = rcss ? ui_source_parse(rcss, UI_SOURCE_RCSS) : NULL;
     yyjson_mut_val *elements = yyjson_mut_obj_add_arr(doc, result, "elements");
-    for (int i = 0; i < acount(source->elements); i++) {
-        add_element(doc, elements, source, i);
+    for (int i = 0; i < acount(markup->elements); i++) {
+        add_element(doc, elements, markup, i);
     }
     yyjson_mut_val *rules = yyjson_mut_obj_add_arr(doc, result, "rules");
-    for (int i = 0; i < acount(source->rules); i++) {
-        add_rule(doc, rules, source, &source->rules[i]);
+    for (int i = 0; styles && i < acount(styles->rules); i++) {
+        add_rule(doc, rules, styles, &styles->rules[i]);
     }
-    char **read = props(source);
+    char **read = props(markup);
     add_names(doc, result, "props", read);
     free_names(read);
-    add_events(doc, result, text);
-    add_widgets_and_slots(doc, result, source);
-    add_symbols(doc, result, source);
+    add_events(doc, result, rml);
+    add_widgets_and_slots(doc, result, markup);
+    add_symbols(doc, result, markup, styles);
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, result, "diagnostics");
-    syntax_diagnostics(source, doc, diagnostics);
-    ui_source_free(source);
+    asset_syntax(name, rml, rcss, doc, diagnostics);
+    ui_source_free(styles);
+    ui_source_free(markup);
 }
 
 /* ---------- References ---------- */
@@ -592,7 +605,8 @@ static void add_position(
 
 int automation_ui_complete(
     const char *content_root,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     yyjson_val *at,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
@@ -602,11 +616,15 @@ int automation_ui_complete(
 {
     yyjson_val *line = yyjson_obj_get(at, "line"),
                *column = yyjson_obj_get(at, "column");
+    const char *file = yyjson_get_str(yyjson_obj_get(at, "file"));
+    bool styles = file && !strcmp(file, "rcss");
     if (!yyjson_is_obj(at) || !yyjson_is_int(line) || !yyjson_is_int(column) ||
-        yyjson_get_int(line) < 1 || yyjson_get_int(column) < 1) {
-        return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "complete takes a 1-based line and column");
+        yyjson_get_int(line) < 1 || yyjson_get_int(column) < 1 ||
+        (file && !styles && strcmp(file, "rml"))) {
+        return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "complete takes a 1-based line and column, and file rml or rcss");
     }
-    ui_source *source = ui_source_parse(text, false);
+    ui_source *source = styles ? ui_source_parse(rcss ? rcss : "", UI_SOURCE_RCSS)
+                               : ui_source_parse(rml, UI_SOURCE_RML);
     int offset = ui_source_offset(source, yyjson_get_int(line), yyjson_get_int(column));
     ui_source_project project = { 0 };
     scan_project(&project, content_root);

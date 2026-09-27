@@ -1,7 +1,0 @@
-rml: |
-  <div id="goal">BLOOM CIRCUIT / Collect all 8 / WASD move / Dodge red</div>
-rcss: |
-  #goal {
-    position: absolute; left: 50%; top: 100dp; width: 620dp; margin-left: -310dp;
-    line-height: 48dp; font-size: 20dp; text-align: center; white-space: pre; color: #ffffff;
-  }

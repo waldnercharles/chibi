@@ -32,7 +32,7 @@
 #define INDENT_ROOT 4
 /* Frames the picked row has to appear in the panel before it scrolls to it. */
 #define REVEAL_FRAMES 3
-/* The panel's tree (ui/Inspector.yaml), and how it marks the selected row. */
+/* The panel's tree (ui/Inspector.rml), and how it marks the selected row. */
 #define TREE_CLASS "inspect-tree"
 #define SELECTED_ROW "." TREE_CLASS " .selected"
 
@@ -487,16 +487,9 @@ static bool same_rule(const declared *a, const declared *b)
            !strcmp(a->rule, b->rule);
 }
 
-static bool ends_with(const char *text, const char *suffix)
-{
-    size_t n = strlen(text), m = strlen(suffix);
-    return n >= m && !strcmp(text + n - m, suffix);
-}
-
 /* The file and line a rule was written at, which ui_style_origin maps from
  * the sheet RmlUi names and the rule's line in it; else the line in the
- * sheet, as for a host's built-in style. A ui asset's rcss block numbers
- * its own lines. */
+ * sheet, as for a host's built-in style. */
 static void describe_origin(studio_inspect_style *s, const declared *d)
 {
     int line = d->line;
@@ -504,15 +497,7 @@ static void describe_origin(studio_inspect_style *s, const declared *d)
     s->line = line;
     const char *base = strrchr(s->file, '/');
     base = s->linked ? (base ? base + 1 : s->file) : "";
-    snprintf(
-        s->origin,
-        sizeof s->origin,
-        !s->linked                    ? "%sline %d"
-        : ends_with(s->file, ".yaml") ? "%s rcss:%d"
-                                      : "%s:%d",
-        base,
-        line
-    );
+    snprintf(s->origin, sizeof s->origin, s->linked ? "%s:%d" : "%sline %d", base, line);
 }
 
 /* Headings and declarations for `list`, sorted. */
@@ -962,9 +947,9 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key)
     return true;
 }
 
-/* In the Text Editor at a line of the part: a ui asset's rml block, whose
- * lines data-src names, or its rcss block, whose lines a rule's origin
- * names; a stylesheet has only its RCSS. */
+/* In the Text Editor at a line of the part: a ui asset's .rml, whose lines
+ * data-src names, or its .rcss, whose lines a rule's origin names; a
+ * stylesheet has only its RCSS. */
 static void open_source(studio *s, const char *path, ui_part part, int line)
 {
     bool opened = part == UI_PART_RCSS ? studio_open_ui_part(s, path, part, line)
@@ -997,7 +982,7 @@ static void edit_source(studio *s, const studio_inspect *in)
     snprintf(
         path,
         sizeof path,
-        "%s/ui/%.*s.yaml",
+        "%s/ui/%.*s" UI_MARKUP_EXTENSION,
         in->target == STUDIO_INSPECT_GAME ? s->scene->content_root
                                           : STUDIO_PROJECT "/content",
         asset,

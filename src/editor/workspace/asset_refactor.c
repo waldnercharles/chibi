@@ -1,6 +1,7 @@
 #include "editor/workspace/asset_refactor.h"
 
 #include "assets/refactor.h"
+#include "editor/documents/ui_buffer.h"
 #include "editor/workspace/scene_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -128,14 +129,15 @@ static char **saved_texts(app_scene_authoring *scene)
     return texts;
 }
 
-/* A sibling of `path` named `name`. */
+/* A sibling of `path` named `name`, with its extension. */
 static char *renamed_path(const char *path, const char *name)
 {
     const char *slash = strrchr(path, '/');
+    const char *extension = strrchr(path, '.');
     int folder = slash ? (int)(slash - path + 1) : 0;
-    size_t size = (size_t)folder + strlen(name) + sizeof ".yaml";
+    size_t size = (size_t)folder + strlen(name) + strlen(extension) + 1;
     char *out = xmalloc(size);
-    snprintf(out, size, "%.*s%s.yaml", folder, path, name);
+    snprintf(out, size, "%.*s%s%s", folder, path, name, extension);
     return out;
 }
 
@@ -146,6 +148,28 @@ static int changes_in(const refactor_edit *edit)
         count += edit->references[i]->role != REFERENCE_DEFINE;
     }
     return count;
+}
+
+/* A ui asset's styles, which follow its markup when a plan renames or
+   deletes it. */
+static void add_styles(app_refactor *out, const reference_asset *asset, const refactor_edit *edit)
+{
+    char *from = ui_buffer_part_file(asset->path, UI_PART_RCSS);
+    char *text = read_scene_file(from);
+    if (!text) {
+        free(from);
+        return;
+    }
+    refactor_file file = {
+        .kind = (int)asset->kind,
+        .name = xstrdup(content_basename(from)),
+        .from = from,
+        .to = edit->name ? renamed_path(from, edit->name) : NULL,
+        .text = edit->name ? xstrdup(text) : NULL,
+        .before = text,
+    };
+    file.renamed = file.to ? xstrdup(content_basename(file.to)) : NULL;
+    apush(out->files, file);
 }
 
 static app_refactor *files_of(const reference_index *index, char *const *texts, const refactor_plan *plan)
@@ -168,6 +192,9 @@ static app_refactor *files_of(const reference_index *index, char *const *texts, 
             .changes = changes_in(edit),
         };
         apush(out->files, file);
+        if (asset->kind == REFERENCE_ASSET_UI && (edit->name || !edit->text)) {
+            add_styles(out, asset, edit);
+        }
     }
     return out;
 }

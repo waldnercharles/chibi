@@ -29,10 +29,9 @@
  * ui_mount records its scoped RCSS as "mount <asset path>", and each ui_page
  * its RCSS as "page <asset path>".
  *
- * A path is an imported stylesheet's, or a ui asset's for the lines of its
- * own `rcss` block, numbered from the block's first line as data-src
- * numbers the `rml` block's (ui_document_expand). One registry serves the
- * process; use it from the thread that runs the UI. */
+ * A path is an imported stylesheet's, or a ui asset's .rcss file for its
+ * own lines, as data-src names its .rml file's (ui_document_expand). One
+ * registry serves the process; use it from the thread that runs the UI. */
 
 /* Records `rcss` as sheet `sheet`'s text, with `map` tracing its lines (NULL
  * for none), replacing what the sheet held; a NULL rcss forgets the sheet.

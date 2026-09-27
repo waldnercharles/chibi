@@ -87,9 +87,9 @@ const char *ui_mount_error(const ui_mount *m)
     return m->error;
 }
 
-static void asset_path(const ui_mount *m, const char *name, char *path, size_t size)
+static void ui_folder(const char *content_root, char *directory, size_t size)
 {
-    snprintf(path, size, "%s/ui/%s.yaml", m->content_root, name);
+    snprintf(directory, size, "%s/ui", content_root);
 }
 
 /* Records RCSS a host will install as `kind` `path`, so the host finds where
@@ -124,13 +124,14 @@ static void watch_paths(file_watch **watches, char **paths, double time)
     afree(paths);
 }
 
-/* The widgets' files, then the stylesheets, taking both lists. */
-static char **used_files(const ui_mount *m, char **widgets, char **imports)
+/* The asset's styles, its widgets' files, then the stylesheets, taking both
+ * lists. A file is watched while missing, so adding it counts. */
+static char **used_files(const char *directory, const char *name, char **widgets, char **imports)
 {
+    apush(imports, ui_document_path(directory, name, true));
     for (int i = 0; i < acount(widgets); i++) {
-        char path[1024];
-        asset_path(m, widgets[i], path, sizeof path);
-        apush(imports, xstrdup(path));
+        apush(imports, ui_document_path(directory, widgets[i], false));
+        apush(imports, ui_document_path(directory, widgets[i], true));
         free(widgets[i]);
     }
     afree(widgets);
@@ -141,19 +142,17 @@ static char **used_files(const ui_mount *m, char **widgets, char **imports)
  * replaced the markup and RCSS. An invalid edit keeps the last valid ones. */
 static bool read_asset(ui_mount *m, double time)
 {
-    char path[1024], directory[1024];
-    asset_path(m, m->name, path, sizeof path);
+    char directory[1024];
+    ui_folder(m->content_root, directory, sizeof directory);
+    char *path = ui_document_path(directory, m->name, false);
     bool asset = file_watch_changed(&m->watch, path, time);
     if (!files_changed(m->uses, time) && !asset) {
+        free(path);
         return false;
     }
-    snprintf(directory, sizeof directory, "%s/ui", m->content_root);
-    char *text = text_file_read(path);
-    char error[200] = "is missing", **imports = NULL, **widgets = NULL;
+    char error[200], **imports = NULL, **widgets = NULL;
     ui_document source = { 0 };
-    bool read = text &&
-                ui_document_read(text, directory, &imports, &source, error, sizeof error);
-    free(text);
+    bool read = ui_document_load(directory, m->name, &imports, &source, error, sizeof error);
     if (read && source.body) {
         snprintf(error, sizeof error, "has a <body>, which only a scene's root document has");
         read = false;
@@ -161,10 +160,11 @@ static bool read_asset(ui_mount *m, double time)
     if (read) {
         read = ui_document_expand(&source, m->name, directory, true, &widgets, error, sizeof error);
     }
-    watch_paths(&m->uses, used_files(m, widgets, imports), time);
+    watch_paths(&m->uses, used_files(directory, m->name, widgets, imports), time);
     if (!read) {
         ui_document_free(&source);
-        snprintf(m->error, sizeof m->error, "ui/%s.yaml %s", m->name, error);
+        snprintf(m->error, sizeof m->error, "ui/%s" UI_MARKUP_EXTENSION " %s", m->name, error);
+        free(path);
         return false;
     }
     m->error[0] = '\0';
@@ -176,6 +176,7 @@ static bool read_asset(ui_mount *m, double time)
     m->map = source.map;
     m->installed = false;
     record_style("mount", path, m->style, &m->map);
+    free(path);
     return true;
 }
 
@@ -195,7 +196,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         rml_element_set_inner_rml(root, m->markup);
         const char *warning = rml_backend_take_warning();
         if (warning[0]) {
-            snprintf(m->error, sizeof m->error, "ui/%s.yaml %s", m->name, warning);
+            snprintf(m->error, sizeof m->error, "ui/%s" UI_MARKUP_EXTENSION " %s", m->name, warning);
         }
         m->installed = true;
         m->applied = 0;
@@ -551,31 +552,35 @@ bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double
     if (!name[0]) {
         return renamed;
     }
-    char path[1024], directory[1024];
-    snprintf(path, sizeof path, "%s/ui/%s.yaml", content_root, name);
+    char directory[1024];
+    ui_folder(content_root, directory, sizeof directory);
+    char *path = ui_document_path(directory, name, false);
     bool changed = file_watch_changed(&p->asset, path, time);
     if (!files_changed(p->imports, time) && !changed && !renamed) {
+        free(path);
         return false;
     }
-    snprintf(directory, sizeof directory, "%s/ui", content_root);
-    char *text = text_file_read(path);
-    char error[200] = "is missing", **imports = NULL;
+    char error[200], **imports = NULL;
     ui_document next = { 0 };
-    bool read = text &&
-                ui_document_read(text, directory, &imports, &next, error, sizeof error);
-    free(text);
-    /* Every file it reached, so fixing a broken import retries. */
+    bool read = ui_document_load(directory, name, &imports, &next, error, sizeof error);
+    /* Its styles and every file they reached, so adding the styles or
+       fixing a broken import retries. */
+    apush(imports, ui_document_path(directory, name, true));
     watch_paths(&p->imports, imports, time);
     if (!read) {
         ui_document_free(&next);
-        snprintf(p->error, sizeof p->error, "ui/%s.yaml %s", name, error);
+        snprintf(p->error, sizeof p->error, "ui/%s" UI_MARKUP_EXTENSION " %s", name, error);
+        free(path);
         return renamed;
     }
-    rcss_map_own(&next.map, path);
+    char *styles = ui_document_path(directory, name, true);
+    rcss_map_own(&next.map, styles);
+    free(styles);
     ui_document_free(&p->document);
     p->document = next;
     p->error[0] = '\0';
     record_style("page", path, p->document.rcss, &p->document.map);
+    free(path);
     return true;
 }
 
@@ -701,7 +706,7 @@ static void load_page(render_ui *ui)
         snprintf(
             ui->page.error,
             sizeof ui->page.error,
-            "ui/%s.yaml %s",
+            "ui/%s" UI_MARKUP_EXTENSION " %s",
             ui->page.name,
             warning
         );

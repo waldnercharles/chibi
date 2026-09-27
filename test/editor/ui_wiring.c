@@ -28,10 +28,10 @@ static bool names_are(const char **names, const char *const *expected, int count
 static void picker_choices()
 {
     reference_index *index = reference_index_new();
-    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Settings", "content/ui/Settings.yaml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Settings", "content/ui/Settings.rml", NULL);
     reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, "Vault", "content/prototypes/Vault.yaml", NULL);
-    reference_index_add_asset(index, REFERENCE_ASSET_UI, "bank", "content/ui/bank.yaml", NULL);
-    int widgets = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Widgets", "content/ui/Widgets.yaml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_UI, "bank", "content/ui/bank.rml", NULL);
+    int widgets = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Widgets", "content/ui/Widgets.rml", NULL);
     reference_index_add_ui(index, widgets, "<use ui=\"Missing\"/>");
     reference_index_add_asset(index, REFERENCE_ASSET_UI, "base.rcss", "content/ui/theme/base.rcss", NULL);
     static const char *const UI[] = { "bank", "Settings", "Widgets" };
@@ -125,9 +125,9 @@ static void attached_documents()
     );
     assert(vault && sign);
     reference_index *index = reference_index_new();
-    int bank = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Bank", "content/ui/Bank.yaml", NULL);
-    int desk = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Desk", "content/ui/Desk.yaml", NULL);
-    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Notice", "content/ui/Notice.yaml", NULL);
+    int bank = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Bank", "content/ui/Bank.rml", NULL);
+    int desk = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Desk", "content/ui/Desk.rml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Notice", "content/ui/Notice.rml", NULL);
     int teller = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Teller", "content/behaviors/Teller.yaml", NULL);
     int prototype = reference_index_add_asset(
         index,

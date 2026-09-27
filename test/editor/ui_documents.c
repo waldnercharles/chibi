@@ -1,6 +1,6 @@
 /* UI documents: a ui asset's or stylesheet's text open for editing, its undo
- * history, live apply through overlays, canonical saves and disk conflicts;
- * then as Studio document tabs and in the Text Editor. */
+ * history, live apply through overlays, saves and disk conflicts; then as
+ * Studio document tabs and in the Text Editor. */
 #include "assets/ui_document.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
@@ -8,7 +8,6 @@
 #include "platform/cute.h"
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
-#include "support/asset_text.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/text_overlay.h"
@@ -27,14 +26,11 @@
 #define SETTLE (UI_BUFFER_SETTLE + 0.01)
 #define FRAME_SECONDS (1.0 / 60.0)
 
-/* A ui asset as a person might write it: a comment, four-space blocks. */
-static const char *const WRITTEN = "# the pause panel\n"
-                                   "rml: |\n"
-                                   "    <div class=\"panel\">Hello</div>\n"
-                                   "\n"
-                                   "rcss: |\n"
-                                   "    .panel { color: #fff; }\n";
-static const char *const RML = "<div class=\"panel\">Hello</div>\n";
+/* A ui asset as a person might write it: a comment, four-space indents. */
+static const char *const RML = "<!-- the pause panel -->\n"
+                               "<div class=\"panel\">\n"
+                               "    Hello\n"
+                               "</div>\n";
 static const char *const RCSS = ".panel { color: #fff; }\n";
 
 static void write_text(const char *path, const char *text)
@@ -73,13 +69,15 @@ static void join(char *out, size_t size, const char *folder, const char *name)
     snprintf(out, size, "%s/%s", folder, name);
 }
 
-static bool canonical(const char *text)
+/* Writes ui asset `name` as RML and RCSS; its markup's path in `path` and
+ * its styles' in `styles`, when not NULL. */
+static void write_asset(const char *folder, const char *name, char *path, char *styles)
 {
-    char error[128];
-    char *formatted = asset_text_to_disk(text, error, sizeof error);
-    bool same = formatted && !strcmp(formatted, text);
-    free(formatted);
-    return same;
+    test_write_ui(folder, name, RML, RCSS);
+    snprintf(path, PATH_MAX, "%s/%s.rml", folder, name);
+    if (styles) {
+        snprintf(styles, PATH_MAX, "%s/%s.rcss", folder, name);
+    }
 }
 
 static bool overlay_is(const char *path, const char *text)
@@ -92,14 +90,15 @@ static bool overlay_is(const char *path, const char *text)
 
 static void opens_parts(const char *folder)
 {
-    char path[PATH_MAX], error[256];
-    join(path, sizeof path, folder, "Pause.yaml");
-    write_text(path, WRITTEN);
+    char path[PATH_MAX], styles[PATH_MAX], error[256];
+    write_asset(folder, "Pause", path, styles);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
     test_check(
         b && !strcmp(ui_buffer_text(b, UI_PART_RML), RML) &&
-            !strcmp(ui_buffer_text(b, UI_PART_RCSS), RCSS),
-        "a ui asset opens as its RML and RCSS parts"
+            !strcmp(ui_buffer_text(b, UI_PART_RCSS), RCSS) &&
+            !strcmp(b->files[UI_PART_RML], path) &&
+            !strcmp(b->files[UI_PART_RCSS], styles),
+        "a ui asset opens as its .rml and .rcss parts"
     );
     test_check(
         !ui_buffer_dirty(b) && !ui_buffer_can_undo(b) &&
@@ -107,14 +106,27 @@ static void opens_parts(const char *folder)
         "an opened ui asset is clean, valid and shows its RML"
     );
     ui_buffer_free(b);
-    join(path, sizeof path, folder, "List.yaml");
-    write_text(path, "- not a mapping\n");
+    char *document = ui_buffer_document(styles);
+    test_check(!strcmp(document, path), "a ui asset's .rcss belongs to the document its .rml is");
+    free(document);
+    join(path, sizeof path, folder, "Missing.rml");
     test_check(
-        !ui_buffer_open(path, error, sizeof error) && strstr(error, "mapping"),
-        "a file that is not a ui asset does not open"
+        !ui_buffer_open(path, error, sizeof error) && strstr(error, "cannot read"),
+        "a ui asset without its .rml does not open"
     );
-    join(path, sizeof path, folder, "Markless.yaml");
-    write_text(path, "rcss: \".a { color: red; }\"\n");
+    test_write_ui(folder, "Bare", "<p/>\n", NULL);
+    join(path, sizeof path, folder, "Bare.rml");
+    b = ui_buffer_open(path, error, sizeof error);
+    test_check(
+        b && !strcmp(ui_buffer_text(b, UI_PART_RCSS), "") && !b->error[0] &&
+            !ui_buffer_saves(b, UI_PART_RCSS),
+        "a ui asset without a .rcss opens with empty styles it does not save"
+    );
+    ui_buffer_type(b, UI_PART_RCSS, "p { color: red; }\n", 1);
+    test_check(ui_buffer_saves(b, UI_PART_RCSS), "styles typed into it save to a new .rcss");
+    ui_buffer_free(b);
+    test_write_ui(folder, "Markless", "", NULL);
+    join(path, sizeof path, folder, "Markless.rml");
     b = ui_buffer_open(path, error, sizeof error);
     test_check(
         b && !strcmp(ui_buffer_text(b, UI_PART_RML), "") && strstr(b->error, "rml"),
@@ -126,8 +138,7 @@ static void opens_parts(const char *folder)
 static void edits_and_history(const char *folder)
 {
     char path[PATH_MAX], error[256];
-    join(path, sizeof path, folder, "History.yaml");
-    write_text(path, WRITTEN);
+    write_asset(folder, "History", path, NULL);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
     ui_buffer_type(b, UI_PART_RCSS, ".panel { color: #f00; }\n", 1);
     ui_buffer_type(b, UI_PART_RCSS, ".panel { color: #f80; }\n", 1.5);
@@ -141,7 +152,7 @@ static void edits_and_history(const char *folder)
     ui_buffer_edit(b, UI_PART_RML, &edit, 1);
     test_check(
         acount(b->undo) == 3 && b->part == UI_PART_RML &&
-            !strncmp(ui_buffer_text(b, UI_PART_RML), "<!-- top --><div", 16),
+            !strncmp(ui_buffer_text(b, UI_PART_RML), "<!-- top --><!--", 16),
         "a text edit applies as its own undo step"
     );
     ui_buffer_undo(b);
@@ -152,7 +163,7 @@ static void edits_and_history(const char *folder)
         "undo restores the text and turns to the part it changed"
     );
     ui_buffer_undo(b);
-    test_check(!ui_buffer_dirty(b) && !ui_buffer_can_undo(b), "undoing every step leaves the file's text");
+    test_check(!ui_buffer_dirty(b) && !ui_buffer_can_undo(b), "undoing every step leaves the files' text");
     ui_buffer_redo(b);
     test_check(
         ui_buffer_dirty(b) && ui_buffer_can_redo(b) &&
@@ -166,105 +177,114 @@ static void edits_and_history(const char *folder)
 
 static void live_apply(const char *folder)
 {
-    char path[PATH_MAX], error[256];
-    join(path, sizeof path, folder, "Live.yaml");
-    write_text(path, WRITTEN);
+    char path[PATH_MAX], styles[PATH_MAX], error[256];
+    write_asset(folder, "Live", path, styles);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
-    test_check(!ui_buffer_update(b, 0, true) && overlay_is(path, NULL), "an unchanged document leaves its file");
-    ui_buffer_type(b, UI_PART_RCSS, ".panel { color: #f00; }\n", 1);
+    test_check(
+        !ui_buffer_update(b, 0, true) && overlay_is(path, NULL) &&
+            overlay_is(styles, NULL),
+        "an unchanged document leaves its files"
+    );
+    const char *good = ".panel { color: #f00; }\n";
+    ui_buffer_type(b, UI_PART_RCSS, good, 1);
     ui_buffer_update(b, 1, true);
-    test_check(overlay_is(path, NULL), "an edit waits to settle before it applies");
+    test_check(overlay_is(styles, NULL), "an edit waits to settle before it applies");
     test_check(ui_buffer_update(b, 1 + SETTLE, true), "a settled edit applies");
-    char *good = ui_buffer_compose(b);
-    char *read = text_file_read(path);
-    test_check(overlay_is(path, good) && !strcmp(read, good), "the file reads as the edited text");
+    char *read = text_file_read(styles);
+    test_check(
+        overlay_is(styles, good) && !strcmp(read, good) && overlay_is(path, RML),
+        "each file reads as its part's text"
+    );
     free(read);
     text_edit brace = { 0, 0, "}" };
     ui_buffer_edit(b, UI_PART_RCSS, &brace, 1);
     ui_buffer_update(b, 2, true);
     test_check(
-        !ui_buffer_update(b, 2 + SETTLE, true) && overlay_is(path, good) &&
+        !ui_buffer_update(b, 2 + SETTLE, true) && overlay_is(styles, good) &&
             strstr(b->error, "}"),
         "an invalid edit keeps the last valid text and says why"
     );
     ui_buffer_undo(b);
     ui_buffer_update(b, 3, true);
     test_check(
-        ui_buffer_update(b, 3 + SETTLE, true) && overlay_is(path, good) && !b->error[0],
+        ui_buffer_update(b, 3 + SETTLE, true) && overlay_is(styles, good) &&
+            !b->error[0],
         "undoing the invalid edit applies the valid text again"
     );
-    test_check(ui_buffer_update(b, 4, false) && overlay_is(path, NULL), "applying on save lets the file stand");
-    test_check(ui_buffer_update(b, 5, true) && overlay_is(path, good), "applying live again publishes the edits");
+    test_check(
+        ui_buffer_update(b, 4, false) && overlay_is(styles, NULL) &&
+            overlay_is(path, NULL),
+        "applying on save lets the files stand"
+    );
+    test_check(ui_buffer_update(b, 5, true) && overlay_is(styles, good), "applying live again publishes the edits");
     ui_buffer_undo(b);
     ui_buffer_update(b, 6, true);
-    test_check(ui_buffer_update(b, 6 + SETTLE, true) && overlay_is(path, NULL), "text back to the file's lets the file stand");
+    test_check(ui_buffer_update(b, 6 + SETTLE, true) && overlay_is(styles, NULL), "text back to the files' lets them stand");
     ui_buffer_redo(b);
     ui_buffer_update(b, 7, true);
     ui_buffer_update(b, 7 + SETTLE, true);
     ui_buffer_free(b);
-    test_check(overlay_is(path, NULL), "closing a document removes its overlay");
-    free(good);
+    test_check(overlay_is(styles, NULL) && overlay_is(path, NULL), "closing a document removes its overlays");
 }
 
-static void saves_canonical_yaml(const char *folder)
+/* Saves each part's file as Studio's Save does. */
+static void save(ui_buffer *b)
 {
-    char path[PATH_MAX], error[256];
-    join(path, sizeof path, folder, "Saved.yaml");
-    write_text(path, WRITTEN);
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        if (ui_buffer_saves(b, (ui_part)p)) {
+            write_text(b->files[p], b->parts[p]);
+        }
+    }
+    ui_buffer_saved(b);
+}
+
+static void saves_as_written(const char *folder)
+{
+    char path[PATH_MAX], styles[PATH_MAX], error[256];
+    write_asset(folder, "Saved", path, styles);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
-    ui_buffer_type(b, UI_PART_RCSS, ".panel { color: #f00; }\n.title { margin: 2dp; }\n", 1);
+    const char *typed = ".panel { color: #f00; }\n.title { margin: 2dp; }\n";
+    ui_buffer_type(b, UI_PART_RCSS, typed, 1);
     ui_buffer_update(b, 1 + SETTLE, true);
-    char *text = ui_buffer_compose(b);
-    test_check(ui_buffer_on_disk(b), "a file nobody changed is the one loaded");
-    write_text(path, text);
-    ui_buffer_saved(b, text);
+    test_check(ui_buffer_on_disk(b), "files nobody changed are the ones loaded");
+    save(b);
     test_check(
-        !ui_buffer_dirty(b) && overlay_is(path, NULL) && ui_buffer_on_disk(b) &&
-            !ui_buffer_poll_disk(b, 0),
-        "a saved document is clean, its overlay gone, and its own save no "
+        !ui_buffer_dirty(b) && overlay_is(styles, NULL) &&
+            ui_buffer_on_disk(b) && !ui_buffer_poll_disk(b, 0),
+        "a saved document is clean, its overlays gone, and its own save no "
         "change on disk"
     );
-    char *written = read_text(path);
-    test_check(
-        canonical(written) && !strncmp(written, "rml: |\n  <div", 13) &&
-            !strstr(written, "pause panel"),
-        "saving writes canonical YAML"
-    );
-    ui_buffer *again = ui_buffer_open(path, error, sizeof error);
-    test_check(
-        again && !strcmp(ui_buffer_text(again, UI_PART_RCSS), ui_buffer_text(b, UI_PART_RCSS)) &&
-            !strcmp(ui_buffer_text(again, UI_PART_RML), RML),
-        "a saved ui asset reads back as the text saved"
-    );
-    ui_buffer_free(again);
+    char *markup = read_text(path), *written = read_text(styles);
+    test_check(!strcmp(markup, RML) && !strcmp(written, typed), "saving writes each part as written, comments and all");
     ui_buffer_undo(b);
     test_check(ui_buffer_dirty(b), "undo past a save makes the document dirty");
     ui_buffer_redo(b);
     test_check(!ui_buffer_dirty(b), "redo back to the save makes it clean");
     free(written);
-    free(text);
+    free(markup);
     ui_buffer_free(b);
 }
 
 static void follows_disk(const char *folder)
 {
-    char path[PATH_MAX], error[256];
-    join(path, sizeof path, folder, "Disk.yaml");
-    write_text(path, WRITTEN);
+    char path[PATH_MAX], styles[PATH_MAX], error[256];
+    write_asset(folder, "Disk", path, styles);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
-    test_check(!ui_buffer_poll_disk(b, 0), "an unchanged file is no change");
-    write_text(path, "rml: <div>Theirs</div>\n");
-    test_check(!ui_buffer_on_disk(b), "another program's write leaves the file not the one loaded");
+    test_check(!ui_buffer_poll_disk(b, 0), "unchanged files are no change");
+    write_text(path, "<div>Theirs</div>\n");
+    test_check(!ui_buffer_on_disk(b), "another program's write leaves the files not the ones loaded");
     test_check(!ui_buffer_poll_disk(b, 0.5), "the disk is polled at most once a second");
     test_check(ui_buffer_poll_disk(b, 1) && !ui_buffer_poll_disk(b, 2), "a change on disk reports once");
     ui_buffer_type(b, UI_PART_RML, "<div>Mine</div>\n", 3);
     test_check(
         ui_buffer_reload(b, error, sizeof error) && !ui_buffer_dirty(b) &&
             !ui_buffer_can_undo(b) &&
-            !strcmp(ui_buffer_text(b, UI_PART_RML), "<div>Theirs</div>") &&
+            !strcmp(ui_buffer_text(b, UI_PART_RML), "<div>Theirs</div>\n") &&
             ui_buffer_on_disk(b),
-        "reload takes the file's text and drops the edits and history"
+        "reload takes the files' text and drops the edits and history"
     );
+    write_text(styles, ".panel { color: #000; }\n");
+    test_check(!ui_buffer_on_disk(b) && ui_buffer_poll_disk(b, 3), "a write to the styles changes the document on disk");
     ui_buffer_free(b);
 }
 
@@ -275,12 +295,13 @@ static void stylesheets(const char *folder)
     write_text(path, ".a { color: red; }\n");
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
     test_check(
-        b && b->stylesheet && !ui_buffer_text(b, UI_PART_RML) && b->part == UI_PART_RCSS,
-        "a stylesheet opens as its one RCSS part"
+        b && b->stylesheet && !ui_buffer_text(b, UI_PART_RML) && b->part == UI_PART_RCSS &&
+            !b->files[UI_PART_RML] && !strcmp(b->files[UI_PART_RCSS], path),
+        "a stylesheet opens as its one RCSS part, its file"
     );
-    char *text = ui_buffer_compose(b);
-    test_check(!strcmp(text, ".a { color: red; }\n"), "a stylesheet's file is its text");
-    free(text);
+    char *document = ui_buffer_document(path);
+    test_check(!strcmp(document, path), "a stylesheet with no .rml beside it is its own document");
+    free(document);
     ui_buffer_type(b, UI_PART_RCSS, ".a { color: red; }}\n", 1);
     ui_buffer_update(b, 1, true);
     test_check(
@@ -294,8 +315,7 @@ static void stylesheets(const char *folder)
 static void checkpoints(const char *folder)
 {
     char path[PATH_MAX], error[256];
-    join(path, sizeof path, folder, "Checkpoint.yaml");
-    write_text(path, WRITTEN);
+    write_asset(folder, "Checkpoint", path, NULL);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
     ui_buffer_type(b, UI_PART_RCSS, ".panel { color: #f00; }\n", 1);
     ui_buffer_type(b, UI_PART_RML, "<div>Two</div>\n", 3);
@@ -308,6 +328,7 @@ static void checkpoints(const char *folder)
     ui_buffer *restored = ui_buffer_restore(yyjson_doc_get_root(read));
     test_check(
         restored && !strcmp(restored->path, b->path) &&
+            !strcmp(restored->files[UI_PART_RCSS], b->files[UI_PART_RCSS]) &&
             !strcmp(ui_buffer_text(restored, UI_PART_RCSS), ui_buffer_text(b, UI_PART_RCSS)) &&
             ui_buffer_dirty(restored) && restored->part == b->part &&
             acount(restored->undo) == 1 && acount(restored->redo) == 1,
@@ -337,11 +358,21 @@ static void new_assets(const char *folder)
         snprintf(name, sizeof name, "Fresh_%d", kind);
         char *path = ui_buffer_new_path(folder, (ui_new_kind)kind, name, error, sizeof error);
         assert(path);
-        char *text = ui_buffer_template((ui_new_kind)kind);
-        write_text(path, text);
+        for (int p = 0; p < UI_PART_COUNT; p++) {
+            const char *text = ui_buffer_template((ui_new_kind)kind, (ui_part)p);
+            char *file = text ? ui_buffer_part_file(path, (ui_part)p) : NULL;
+            if (file) {
+                write_text(file, text);
+            }
+            free(file);
+        }
         ui_buffer *b = ui_buffer_open(path, error, sizeof error);
         test_check(b && !b->error[0], "a new UI widget, document or stylesheet reads");
-        test_check(kind == UI_NEW_STYLESHEET || canonical(text), "a new ui asset is canonical YAML");
+        test_check(
+            (kind == UI_NEW_STYLESHEET) ==
+                !ui_buffer_template((ui_new_kind)kind, UI_PART_RML),
+            "a new widget or document has markup, a stylesheet only styles"
+        );
         test_check(
             kind != UI_NEW_WIDGET || strstr(ui_buffer_text(b, UI_PART_RML), "<slot/>"),
             "a new widget has a slot for its use's content"
@@ -352,9 +383,16 @@ static void new_assets(const char *folder)
             "a new asset's name must not be taken"
         );
         ui_buffer_free(b);
-        free(text);
         free(path);
     }
+    char styles[PATH_MAX];
+    join(styles, sizeof styles, folder, "Taken.rcss");
+    write_text(styles, "p {}\n");
+    test_check(
+        !ui_buffer_new_path(folder, UI_NEW_WIDGET, "Taken", error, sizeof error) &&
+            strstr(error, "Taken.rcss already exists"),
+        "a new widget's name must not be a stylesheet's either"
+    );
 }
 
 void test_ui_documents()
@@ -364,7 +402,7 @@ void test_ui_documents()
     opens_parts(folder);
     edits_and_history(folder);
     live_apply(folder);
-    saves_canonical_yaml(folder);
+    saves_as_written(folder);
     follows_disk(folder);
     stylesheets(folder);
     checkpoints(folder);
@@ -453,11 +491,10 @@ static void document_tabs(const char *folder)
 {
     tabs_fixture f = fixture_new(false);
     app_scene_authoring *scene = f.scene;
-    char path[PATH_MAX], spelled[PATH_MAX];
-    join(path, sizeof path, folder, "Tab.yaml");
-    write_text(path, WRITTEN);
+    char path[PATH_MAX], styles[PATH_MAX], spelled[PATH_MAX];
+    write_asset(folder, "Tab", path, styles);
     /* Another project's asset, however its path is spelled. */
-    snprintf(spelled, sizeof spelled, "%s/../%s/Tab.yaml", folder, strrchr(folder, '/') + 1);
+    snprintf(spelled, sizeof spelled, "%s/../%s/Tab.rml", folder, strrchr(folder, '/') + 1);
     int tabs = acount(scene->tabs);
     test_check(
         scene_tabs_open_ui(scene, spelled) == 0 &&
@@ -467,8 +504,9 @@ static void document_tabs(const char *folder)
         "a ui asset opens as the active document, keyed by its absolute path"
     );
     test_check(
-        scene_tabs_open_ui(scene, path) == 0 && acount(scene->tabs) == tabs + 1,
-        "opening an open ui asset activates its tab"
+        scene_tabs_open_ui(scene, path) == 0 &&
+            scene_tabs_open_ui(scene, styles) == 0 && acount(scene->tabs) == tabs + 1,
+        "opening an open ui asset, by its .rml or its .rcss, activates its tab"
     );
     scene_document_tab *tab = active(scene);
     ui_buffer_type(tab->ui, UI_PART_RCSS, ".panel { color: #0f0; }\n", 1);
@@ -487,10 +525,10 @@ static void document_tabs(const char *folder)
     );
     tab = active(scene);
     test_check(save_active_document(scene) == 0 && !scene_tabs_dirty(scene, tab), "Save writes the active ui document");
-    char *saved = read_text(path);
-    test_check(canonical(saved) && strstr(saved, "#0f0"), "the saved ui asset is canonical YAML with the edit");
+    char *saved = read_text(styles);
+    test_check(!strcmp(saved, ".panel { color: #0f0; }\n"), "the saved ui asset's .rcss holds the edit");
     free(saved);
-    write_text(path, "rml: <div>Theirs</div>\n");
+    write_text(path, "<div>Theirs</div>\n");
     ui_buffer_type(tab->ui, UI_PART_RML, "<div>Mine</div>\n", 5);
     test_check(
         save_active_document(scene) != 0 &&
@@ -507,15 +545,15 @@ static void document_tabs(const char *folder)
     test_check(
         app_scene_authoring_reload_path(scene, path) == APP_DISK_RELOADED &&
             !scene_tabs_dirty(scene, tab) &&
-            !strcmp(ui_buffer_text(tab->ui, UI_PART_RML), "<div>Theirs</div>"),
-        "Reload replaces the edits with the file"
+            !strcmp(ui_buffer_text(tab->ui, UI_PART_RML), "<div>Theirs</div>\n"),
+        "Reload replaces the edits with the files"
     );
-    write_text(path, "rml: <div>Again</div>\n");
+    write_text(path, "<div>Again</div>\n");
     changes = app_scene_authoring_sync_disk(scene, 200);
     test_check(
         acount(changes) == 1 && changes[0].result == APP_DISK_RELOADED &&
-            !strcmp(ui_buffer_text(tab->ui, UI_PART_RML), "<div>Again</div>"),
-        "a clean ui document follows its file"
+            !strcmp(ui_buffer_text(tab->ui, UI_PART_RML), "<div>Again</div>\n"),
+        "a clean ui document follows its files"
     );
     app_disk_changes_free(changes);
     ui_buffer_type(tab->ui, UI_PART_RML, "<div>Live</div>\n", 300);
@@ -538,8 +576,7 @@ static void opens_from_index(const char *folder)
     join(content, sizeof content, folder, "content");
     join(ui, sizeof ui, content, "ui");
     assert(mkdir(content, 0777) == 0 && mkdir(ui, 0777) == 0);
-    join(path, sizeof path, ui, "Indexed.yaml");
-    write_text(path, WRITTEN);
+    write_asset(ui, "Indexed", path, NULL);
     assert(app_scene_authoring_set_content_root(f.scene, content) == 0);
     app_scene_authoring_refresh_asset_index(f.scene);
     const reference_index *index = app_scene_authoring_asset_index(f.scene);
@@ -547,7 +584,7 @@ static void opens_from_index(const char *folder)
     test_check(
         asset >= 0 && app_scene_authoring_open_asset(f.scene, asset) == 0 &&
             active(f.scene)->kind == APP_EDITOR_DOCUMENT_UI &&
-            !strcmp(content_basename(active(f.scene)->path), "Indexed.yaml"),
+            !strcmp(content_basename(active(f.scene)->path), "Indexed.rml"),
         "Assets, the palette and Go to Definition open a ui asset as a document"
     );
     fixture_free(&f);
@@ -557,8 +594,7 @@ static void checkpoint_roundtrip(const char *folder)
 {
     tabs_fixture f = fixture_new(false);
     char path[PATH_MAX];
-    join(path, sizeof path, folder, "Held.yaml");
-    write_text(path, WRITTEN);
+    write_asset(folder, "Held", path, NULL);
     assert(scene_tabs_open_ui(f.scene, path) == 0);
     ui_buffer_type(active(f.scene)->ui, UI_PART_RCSS, ".panel { color: #abc; }\n", 1);
     char *json = app_scene_authoring_checkpoint(f.scene);
@@ -581,9 +617,8 @@ static void text_editor(const char *folder)
 {
     tabs_fixture f = fixture_new(true);
     studio *s = f.studio;
-    char path[PATH_MAX];
-    join(path, sizeof path, folder, "Edited.yaml");
-    write_text(path, WRITTEN);
+    char path[PATH_MAX], styles[PATH_MAX];
+    write_asset(folder, "Edited", path, styles);
     s->prefs.code_apply_live = true;
     test_check(studio_open_ui_source(s, path, 1), "Edit Source opens a ui asset's RML");
     frames(&f, 3);
@@ -596,24 +631,27 @@ static void text_editor(const char *folder)
     ui_buffer *b = studio_ui_buffer(s);
     ui_buffer_type(b, UI_PART_RCSS, ".panel { color: #123; }\n", s->time);
     frames(&f, 1);
-    test_check(!text_overlay_text(path), "an edit applies once it settles");
+    test_check(!text_overlay_text(styles), "an edit applies once it settles");
     frames(&f, 15);
-    test_check(text_overlay_text(path) && strstr(text_overlay_text(path), "#123"), "a settled edit applies live across Studio");
+    test_check(
+        text_overlay_text(styles) && strstr(text_overlay_text(styles), "#123"),
+        "a settled edit applies live across Studio"
+    );
     studio_history(s, false);
     test_check(!ui_buffer_dirty(b), "Undo steps the active ui document");
     studio_history(s, true);
     s->prefs.code_apply_live = false;
     frames(&f, 2);
-    test_check(!text_overlay_text(path), "On Save leaves the file standing");
+    test_check(!text_overlay_text(styles), "On Save leaves the files standing");
     studio_save(s);
     frames(&f, 1);
-    char *saved = read_text(path);
-    test_check(!ui_buffer_dirty(b) && strstr(saved, "#123") && canonical(saved), "Save writes the text as canonical YAML");
+    char *saved = read_text(styles);
+    test_check(!ui_buffer_dirty(b) && !strcmp(saved, ".panel { color: #123; }\n"), "Save writes each part's file as written");
     free(saved);
     test_check(
-        studio_open_ui_part(s, path, UI_PART_RCSS, 2) &&
+        studio_open_ui_part(s, styles, UI_PART_RCSS, 2) && studio_ui_buffer(s) == b &&
             b->part == UI_PART_RCSS && s->code.reveal == 2,
-        "a style origin opens its line of the rcss block"
+        "a style origin opens its line of the document's .rcss"
     );
     frames(&f, 4);
     test_check(!s->code.reveal, "the Text Editor selects the line once it is laid out");

@@ -846,16 +846,16 @@ static bool activated(arena_fixture *f, app_game_presentation *game, int before)
    would, while Escape still pauses. */
 static void standalone_ui_keys(arena_fixture *f)
 {
-    char path[1024];
-    snprintf(path, sizeof path, "%s/ui/KeyProbe.yaml", f->scene->content_root);
+    char path[1024], styles[1024];
+    snprintf(path, sizeof path, "%s/ui/KeyProbe.rml", f->scene->content_root);
+    snprintf(styles, sizeof styles, "%s/ui/KeyProbe.rcss", f->scene->content_root);
     text_overlay_set(
         path,
-        "rml: |\n"
-        "  <div id=\"probe\" autofocus data-keys=\"K:Knock\">\n"
-        "    <input id=\"name\" type=\"text\"/>\n"
-        "  </div>\n"
-        "rcss: '#probe { display: block; tab-index: auto; }'\n"
+        "<div id=\"probe\" autofocus data-keys=\"K:Knock\">\n"
+        "  <input id=\"name\" type=\"text\"/>\n"
+        "</div>\n"
     );
+    text_overlay_set(styles, "#probe { display: block; tab-index: auto; }\n");
     app_game_presentation *game = app_game_presentation_new(f->scene, f->viewport, true);
     assert(game);
     window_focus_event(true);
@@ -899,6 +899,7 @@ static void standalone_ui_keys(arena_fixture *f)
     assert(typing && !strcmp(value, "rd") && kept && paused);
     app_game_presentation_free(game);
     text_overlay_set(path, NULL);
+    text_overlay_set(styles, NULL);
     puts("standalone game UI keys PASS: data-keys while playing, a focused text field takes typed text, R and movement, Escape still pauses");
 }
 

@@ -1,0 +1,6 @@
+<header class="area-head" data-class-maximized="area.maximized">
+  <div id="editor-type"/>
+  <div id="controls"/>
+  <button class="btn icon-only maximize" data-attr-data-tip="area.maximized ? 'Restore Area' : commands.maximize.label" data-attr-data-kbd="commands.maximize.shortcut" data-event-click="emit('studio.maximize', area.index)"><span class="icon" data-if="!area.maximized">&#xeb4c;</span><span class="icon" data-if="area.maximized">&#xeb4d;</span></button>
+  <button class="btn icon-only close" data-if="area.drawer" data-attr-data-tip="commands.closeDrawer.label" data-event-click="emit('studio.closeDrawer')"><span class="icon">&#xea76;</span></button>
+</header>

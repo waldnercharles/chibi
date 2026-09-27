@@ -1,0 +1,6 @@
+body { display: flex; flex: 1 1 0dp; }
+.swatched .swatch {
+  flex: 0 0 auto; width: 14dp; height: 14dp; margin-left: 4dp;
+  border-radius: 3dp; border: 1dp var(--border);
+}
+.swatched input.value { padding-left: 5dp; }

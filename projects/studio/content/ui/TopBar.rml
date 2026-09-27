@@ -1,0 +1,24 @@
+<header class="topbar">
+  <div class="brand"><div class="mark"/></div>
+  <nav id="menubar" class="menus"/>
+  <div class="sep"/>
+  <nav class="doc-tabs">
+    <div class="btn doc-tab" data-for="tab, i : editor.tabs" data-attr-data-state="tab.active ? 'on' : 'off'">
+      <span class="face" data-attr-data-tip="tab.path != '' ? tab.path : tab.label" data-event-click="emit('studio.selectTab', i)"><span class="icon">{{ tab.icon }}</span><span class="label">{{ tab.label }}</span><span class="dirty-dot" data-if="tab.dirty"/></span>
+      <button class="btn sm icon-only doc-close" data-if="tab.closable" data-attr-data-tip="commands.closeTab.label" data-event-click="emit('studio.closeTab', i)"><span class="icon">&#xea76;</span></button>
+    </div>
+  </nav>
+  <div class="spacer"/>
+  <div class="transport">
+    <div id="play-target"/>
+    <div class="group">
+      <button class="btn icon-only" data-attr-data-tip="commands.play.label" data-attr-data-kbd="commands.play.shortcut" data-attr-data-state="editor.playing && !editor.paused ? 'on' : 'off'" data-event-click="emit('studio.play')"><span class="icon">{{ commands.play.icon }}</span></button>
+      <button class="btn icon-only" data-attr-data-tip="commands.stop.label" data-attrif-data-disabled="!commands.stop.enabled" data-event-click="emit('studio.stop')"><span class="icon">{{ commands.stop.icon }}</span></button>
+      <button class="btn icon-only" data-if="!editor.paused" data-attr-data-tip="commands.step.label" data-event-click="emit('studio.step')"><span class="icon">{{ commands.step.icon }}</span></button>
+      <div id="debug-steps"/>
+    </div>
+  </div>
+  <div class="spacer"/>
+  <button class="btn icon-only" data-attr-data-tip="commands.settings.label" data-attr-data-kbd="commands.settings.shortcut" data-event-click="emit('studio.settings')"><span class="icon">{{ commands.settings.icon }}</span></button>
+  <button class="btn search-trigger" data-event-click="emit('studio.search')"><span class="icon">{{ commands.search.icon }}</span><span class="label">{{ commands.search.label }}</span><span class="kbd">{{ commands.search.shortcut }}</span></button>
+</header>

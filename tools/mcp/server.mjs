@@ -22,7 +22,7 @@ const serverVersion = "0.2.0";
 const serverInstructions = [
   "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
   "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, inspectUi, describeComponents, or getProjectStatus.",
-  "2. Build with buildGraph, buildPrototype, or buildScene. Write UI documents (content/ui/<Name>.yaml, RML and RCSS) directly as files. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
+  "2. Build with buildGraph, buildPrototype, or buildScene. Write UI documents directly as files: content/ui/<Name>.rml, its markup, and content/ui/<Name>.rcss, its styles. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
   "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
   "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
@@ -788,7 +788,7 @@ function buildToolDefinitions() {
     type: "object",
     properties: {
       kind: { type: "string", enum: ["ui"], description: "Always ui." },
-      name: { type: "string", description: "UI asset name without the .yaml suffix." },
+      name: { type: "string", description: "UI asset name without the .rml suffix." },
     },
     required: ["kind", "name"],
     additionalProperties: false,
@@ -800,8 +800,9 @@ function buildToolDefinitions() {
       complete: {
         type: "object",
         properties: {
-          line: { type: "integer", minimum: 1, description: "1-based line of the asset's file." },
+          line: { type: "integer", minimum: 1, description: "1-based line of the file." },
           column: { type: "integer", minimum: 1, description: "1-based column, in bytes." },
+          file: { type: "string", enum: ["rml", "rcss"], description: "The asset's markup (default) or its styles." },
         },
         required: ["line", "column"],
         additionalProperties: false,
@@ -1187,7 +1188,7 @@ function uiEventSteps(response, args) {
     return [];
   }
   return [
-    "To react to a click or key, give the element a data-event (or data-keys) in content/ui/<Name>.yaml (kind ui), run build/chibi_ctl --project-root <root> --format, call validateAsset, then handle it with an Event node of that event_name.",
+    "To react to a click or key, give the element a data-event (or data-keys) in content/ui/<Name>.rml (kind ui), call validateAsset, then handle it with an Event node of that event_name.",
   ];
 }
 

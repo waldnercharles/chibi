@@ -1084,14 +1084,14 @@ static void declaration_row(details *x, int rule, int index)
     }
 }
 
-/* A rule by its selector, its line opening it in the Text Editor. */
+/* A rule by its selector, its file and line opening it in the Text Editor. */
 static void rule_panel(details *x, int rule)
 {
     kit *k = x->s->kit;
     const ui_source_rule *r = &x->d->rcss->rules[rule];
-    char key[16], origin[32];
+    char key[16], origin[160];
     snprintf(key, sizeof key, "rule%d", rule);
-    snprintf(origin, sizeof origin, "rcss:%d", r->line);
+    snprintf(origin, sizeof origin, "%s:%d", content_basename(x->b->files[UI_PART_RCSS]), r->line);
     if (kit_panel_begin(k, key, r->selector, NULL, true)) {
         kit_push(k, "origin", NULL, "designer-origin");
         if (r->parent >= 0) {

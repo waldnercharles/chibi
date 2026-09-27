@@ -17,8 +17,8 @@ typedef enum
 } ui_check_part;
 
 /* A warning at the line that wrote what it is about: a line of the checked
- * asset's rml or rcss block (the part says which), or, with a `source`, of
- * an imported stylesheet's file (RCSS) or a widget's rml block (WIDGETS). */
+ * asset's .rml or .rcss file (the part says which), or, with a `source`, of
+ * an imported stylesheet's file (RCSS) or a widget's .rml file (WIDGETS). */
 typedef struct ui_check_message
 {
     ui_check_part part;
@@ -27,20 +27,21 @@ typedef struct ui_check_message
     char *text;   /* as RmlUi logged it, its document's line made this one */
 } ui_check_message;
 
-/* Checks ui asset `name` whose file text is `text`: its markup alone; its
- * RCSS, whose warnings the RCSS's source map (support/rcss.h) places in its
- * block or an import; and, when it uses widgets, the markup a GameUi shows,
- * which reports only what the markup alone did not, at the data-src of the
- * element concerned (ui_document_expand).
- * Widgets and @imports resolve in `content_root`/ui through text_file_read,
- * so unsaved text counts. Appends each warning to `messages`
+/* Checks ui asset `name` whose markup is `rml` and styles `rcss` (NULL for
+ * none): its markup alone; its RCSS, whose warnings the RCSS's source map
+ * (support/rcss.h) places in its file or an import; and, when it uses
+ * widgets, the markup a GameUi shows, which reports only what the markup
+ * alone did not, at the data-src of the element concerned
+ * (ui_document_expand). Widgets and @imports resolve in `content_root`/ui
+ * through text_file_read, so unsaved text counts. Appends each warning to `messages`
  * (support/array.h). Returns false with a message in `error` when the asset
  * cannot be read or a widget cannot be expanded. Initializes RmlUi when no
  * backend has. */
 bool ui_check(
     const char *content_root,
     const char *name,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     ui_check_message **messages,
     char *error,
     size_t error_size
@@ -57,7 +58,8 @@ bool ui_check_in(
     rml_context *context,
     const char *content_root,
     const char *name,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     ui_check_message **messages,
     char *error,
     size_t error_size

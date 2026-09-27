@@ -1,0 +1,7 @@
+.gallery { display: block; width: 240dp; }
+.sample { display: flex; align-items: center; gap: 8dp; padding: 2dp 6dp 8dp; color: var(--foreground); }
+// Presence: in from its starting style, out through its ending style.
+.shown {
+  transition: opacity 0.14s cubic-out;
+  &[data-starting-style], &[data-ending-style] { opacity: 0; }
+}

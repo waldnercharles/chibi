@@ -64,7 +64,7 @@ void ui_data_free(ui_data *data);
 
 /* ---------- Mounts ---------- */
 
-/* One ui asset shown inside a host element: content/ui/<name>.yaml expanded
+/* One ui asset shown inside a host element: content/ui/<name>.rml expanded
  * with its widgets, re-read within a second of an edit to either, keeping the
  * last valid version. The host element gets data-ui="<name>" and binds the
  * context's UI_DATA_MODEL, and the mount's RCSS is scoped to it; the host
@@ -129,7 +129,7 @@ typedef struct ui_page
 {
     char name[128]; /* the ui asset shown; "" for none */
     file_watch asset;
-    file_watch *imports;  /* the stylesheets its RCSS imports */
+    file_watch *imports;  /* its .rcss and the stylesheets that imports */
     ui_document document; /* its last valid version, RCSS unscoped */
     char error[256]; /* why the asset is not the version shown; "" when it is */
 } ui_page;

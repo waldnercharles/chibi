@@ -144,19 +144,16 @@ static void press(host_fixture *f, rml_input_key key)
 
 static void popup_navigation(const char *root)
 {
-    char path[128];
-    snprintf(path, sizeof path, "%s/ui/Menu.yaml", root);
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(
-        "rml: <div data-keys=\"Enter:Choose Down:Next\"><div class=\"row\" "
-        "id=\"a\" "
+    char folder[128];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    test_write_ui(
+        folder,
+        "Menu",
+        "<div data-keys=\"Enter:Choose Down:Next\"><div class=\"row\" id=\"a\" "
         "autofocus>A</div><div class=\"row\" id=\"b\"><input type=\"radio\" "
-        "id=\"pick\"/>B</div></div>\n"
-        "rcss: '.row { display: block; height: 20dp; tab-index: auto; }'\n",
-        file
+        "id=\"pick\"/>B</div></div>\n",
+        ".row { display: block; height: 20dp; tab-index: auto; }\n"
     );
-    fclose(file);
     host_fixture f = { .host_key = "menu-host" };
     open_fixture(&f, root, "Menu");
     popup_frame(&f, true);
@@ -191,23 +188,22 @@ static void popup_navigation(const char *root)
     );
     game_ui_free(model);
     close_fixture(&f);
-    unlink(path);
+    test_remove_ui(folder, "Menu");
 }
 
 /* As in HTML, radios without a name form no group. */
 static void option_groups(const char *root)
 {
-    char path[128];
-    snprintf(path, sizeof path, "%s/ui/Groups.yaml", root);
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(
-        "rml: <input type=\"radio\" id=\"x\" data-checked=\"save.first\" "
+    char folder[128];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    test_write_ui(
+        folder,
+        "Groups",
+        "<input type=\"radio\" id=\"x\" data-checked=\"save.first\" "
         "value=\"x\"/><input "
         "type=\"radio\" id=\"y\" data-checked=\"save.second\" value=\"y\"/>\n",
-        file
+        NULL
     );
-    fclose(file);
     host_fixture f = { .host_key = "groups" };
     open_fixture(&f, root, "Groups");
     game_save *save = game_save_new();
@@ -224,7 +220,7 @@ static void option_groups(const char *root)
     );
     close_fixture(&f);
     game_save_free(save);
-    unlink(path);
+    test_remove_ui(folder, "Groups");
 }
 
 /* A field of the editor's, then a modal dialog hosting the asset. */
@@ -258,16 +254,9 @@ static void press_tab(host_fixture *f, bool shift)
  * editor's behind it; from the editor, Tab enters the modal. */
 static void modal_focus(const char *root)
 {
-    char path[128];
-    snprintf(path, sizeof path, "%s/ui/Dialog.yaml", root);
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(
-        "rml: <input type=\"text\" id=\"a\" autofocus/><input type=\"text\" "
-        "id=\"b\"/>\n",
-        file
-    );
-    fclose(file);
+    char folder[128];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    test_write_ui(folder, "Dialog", "<input type=\"text\" id=\"a\" autofocus/><input type=\"text\" id=\"b\"/>\n", NULL);
     host_fixture f = { .host_key = "dialog" };
     open_fixture(&f, root, "Dialog");
     for (int i = 0; i < 3; i++) {
@@ -289,25 +278,16 @@ static void modal_focus(const char *root)
         "Tab from the editor enters it"
     );
     close_fixture(&f);
-    unlink(path);
+    test_remove_ui(folder, "Dialog");
 }
 
 void test_kit_host()
 {
-    char root[] = "/tmp/chibi-kit-host-XXXXXX", folder[64], path[96];
+    char root[] = "/tmp/chibi-kit-host-XXXXXX", folder[64];
     assert(mkdtemp(root));
     snprintf(folder, sizeof folder, "%s/ui", root);
     assert(mkdir(folder, 0700) == 0);
-    snprintf(path, sizeof path, "%s/Panel.yaml", folder);
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(
-        "rml: <div class=\"button\" id=\"go\" "
-        "data-event-click=\"emit('Go')\">Go</div>\n"
-        "rcss: '.button { display: block; height: 50dp; }'\n",
-        file
-    );
-    fclose(file);
+    test_write_ui(folder, "Panel", "<div class=\"button\" id=\"go\" data-event-click=\"emit('Go')\">Go</div>\n", ".button { display: block; height: 50dp; }\n");
 
     host_fixture f = { .host_key = "panel" };
     open_fixture(&f, root, "Panel");
@@ -337,7 +317,7 @@ void test_kit_host()
     test_check(height_of(f.host, "#go") == 50, "a mount follows its host to a new element");
 
     close_fixture(&f);
-    unlink(path);
+    test_remove_ui(folder, "Panel");
     popup_navigation(root);
     option_groups(root);
     modal_focus(root);

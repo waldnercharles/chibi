@@ -57,11 +57,11 @@ function request(name, args, expectError = false) {
 // The whole structured response of the last request, for its error code.
 let lastResponse;
 
-// UI documents are written as files, RML and RCSS in YAML blocks; the events
-// they emit reach behaviors.
+// UI documents are written as files, markup in <Name>.rml and styles in
+// <Name>.rcss; the events they emit reach behaviors.
 function writeUi(name, rml, rcss) {
-  const block = (key, text) => `${key}: |\n${text.replace(/\n$/, "").split("\n").map(line => `  ${line}`).join("\n")}\n`;
-  writeFileSync(join(project, "content/ui", `${name}.yaml`), block("rml", rml) + (rcss ? block("rcss", rcss) : ""));
+  writeFileSync(join(project, "content/ui", `${name}.rml`), rml);
+  if (rcss) writeFileSync(join(project, "content/ui", `${name}.rcss`), rcss);
 }
 
 function createUi(name, rml, rcss) {
@@ -77,8 +77,8 @@ function uiDocuments() {
   const panel = request("inspectUi", { kind: "ui", name: "Panel" });
   assert.deepEqual(panel.elements.map(item => item.tag), ["div", "span"]);
   assert.deepEqual(panel.tokens, ["--accent"]);
-  const completing = request("inspectUi", { kind: "ui", name: "Panel", complete: { line: 6, column: 5 } });
-  assert.deepEqual(completing.completion.from, { line: 6, column: 4 });
+  const completing = request("inspectUi", { kind: "ui", name: "Panel", complete: { line: 1, column: 3, file: "rcss" } });
+  assert.deepEqual(completing.completion.from, { line: 1, column: 2 });
   assert.ok(completing.completion.items.some(item => item.label === "title" && item.kind === "class"),
     "inspectUi completes the classes Studio's Text Editor offers");
   const rack = request("inspectUi", { kind: "ui", name: "Rack" });
@@ -92,17 +92,17 @@ function uiDocuments() {
   ].join("\n"), ".title { color: var(--accent); }\n");
   const title = request("findReferences", { ui_class: "title" });
   assert.deepEqual([title.definitions, title.uses].map(list => list.map(item => [item.path, item.line])),
-    [[["content/ui/Panel.yaml", 7]], [["content/ui/Panel.yaml", 3]]]);
-  assert.ok(title.description.startsWith("Class .title\nui/Panel.yaml:7"), title.description);
-  assert.deepEqual(request("findReferences", { token: "--accent" }).uses.map(item => item.line), [7]);
-  assert.deepEqual(request("findReferences", { save_key: "hull" }).uses.map(item => item.line), [4]);
+    [[["content/ui/Panel.rcss", 1]], [["content/ui/Panel.rml", 2]]]);
+  assert.ok(title.description.startsWith("Class .title\nui/Panel.rcss:1"), title.description);
+  assert.deepEqual(request("findReferences", { token: "--accent" }).uses.map(item => item.line), [1]);
+  assert.deepEqual(request("findReferences", { save_key: "hull" }).uses.map(item => item.line), [3]);
   writeUi("Broken", "<div>\n  <span>Hull</span>\n  <p data-if=\"hull +\">x</p>\n</div>\n");
   const broken = request("validateAsset", { kind: "ui", name: "Broken" }, true);
-  assert.ok(broken.diagnostics.some(item => item.rule_name === "RMLUI" && item.block === "rml" && item.line === 4),
-    "validateAsset must refuse a binding RmlUi rejects, at its line");
-  writeFileSync(join(project, "content/ui/Unclosed.yaml"), "rml: |\n  <div>\n    <span>x</div>\n");
+  assert.ok(broken.diagnostics.some(item => item.rule_name === "RMLUI" && item.path === "content/ui/Broken.rml" && item.line === 3),
+    "validateAsset must refuse a binding RmlUi rejects, at its file and line");
+  writeUi("Unclosed", "<div>\n  <span>x</div>\n");
   const unclosed = request("validateAsset", { kind: "ui", name: "Unclosed" }, true);
-  assert.deepEqual(unclosed.diagnostics.map(item => [item.rule_name, item.line]), [["SYNTAX", 3]]);
+  assert.deepEqual(unclosed.diagnostics.map(item => [item.rule_name, item.path, item.line]), [["SYNTAX", "content/ui/Unclosed.rml", 2]]);
 }
 
 function create(kind, name, operations, extra = {}) {

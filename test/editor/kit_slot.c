@@ -139,22 +139,19 @@ static void set_items(slot_fixture *f, int size)
 }
 
 /* Bar, then the same markup edited. */
-static const char
-    BAR[] = "rml: |\n  <div class=\"bar\"><span id=\"slot\"/><div "
-            "class=\"item\" data-for=\"item : items\"><span "
-            "class=\"cell\"/></div></div>\n";
-static const char EDITED[] = "rml: |\n  <div class=\"bar edited\"><span "
+static const char BAR[] = "<div class=\"bar\"><span id=\"slot\"/><div "
+                          "class=\"item\" data-for=\"item : items\"><span "
+                          "class=\"cell\"/></div></div>\n";
+static const char EDITED[] = "<div class=\"bar edited\"><span "
                              "id=\"slot\"/><div class=\"item\" data-for=\"item "
                              ": items\"><span class=\"cell\"/></div></div>\n";
 
 static void slot_checks(const char *root)
 {
-    char path[128];
-    snprintf(path, sizeof path, "%s/ui/Bar.yaml", root);
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(BAR, file);
-    fclose(file);
+    char folder[128], path[160];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    snprintf(path, sizeof path, "%s/Bar.rml", folder);
+    test_write_ui(folder, "Bar", BAR, NULL);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *top = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, top);
@@ -234,7 +231,7 @@ static void slot_checks(const char *root)
     );
     close_fixture(&f);
     text_overlay_set(path, NULL);
-    unlink(path);
+    test_remove_ui(folder, "Bar");
 }
 
 /* ---------- The authored status bar ---------- */
@@ -430,7 +427,7 @@ static bool emitted_once(slot_fixture *f, const char *event, int value)
 static const studio_tab_view TABS[] = {
     { "Sandbox", "scenes/Sandbox.yaml", KIT_ICON_SCENE, false, false, false },
     { "Player", "prototypes/Player.yaml", KIT_ICON_PROTOTYPE, true, true, false },
-    { "Hud", "ui/Hud.yaml", KIT_ICON_LAYOUT, false, false, true },
+    { "Hud", "ui/Hud.rml", KIT_ICON_LAYOUT, false, false, true },
 };
 
 /* The top bar lists `editor.tabs` with their state, runs a tab's commands

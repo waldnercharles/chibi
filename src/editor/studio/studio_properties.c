@@ -584,7 +584,29 @@ static void component_panel(studio *s, scene_actor *actor, const ecs_component_d
     kit_panel_end(k);
 }
 
-static void identity(studio *s, scene_actor *actor)
+/* The name edits in place, as Unity's Inspector names an object: Enter or
+   leaving the field renames it, Escape keeps the name. */
+static void name_field(studio *s, scene_actor *actor, bool locked)
+{
+    kit *k = s->kit;
+    uint64_t entity = ecs_entity_to_u64(actor->entity);
+    char name[256];
+    snprintf(name, sizeof name, "%s", actor->name);
+    kit_push(k, "name", NULL, "name-field");
+    bool committed = kit_text_field(k, "field", name, sizeof name, NULL, locked ? KIT_READONLY : 0);
+    kit_tip(k, "Name", studio_chord(s, "F2"), NULL);
+    /* Rename (F2) focuses it while no area shows the Outliner. */
+    if (s->rename.entity == entity && !s->rename.outliner) {
+        kit_focus(k);
+        s->rename.entity = 0;
+    }
+    kit_pop(k);
+    if (committed && !locked) {
+        studio_rename_commit(s, entity, name);
+    }
+}
+
+static void identity(studio *s, scene_actor *actor, bool locked)
 {
     kit *k = s->kit;
     kit_push(k, "identity", NULL, "identity");
@@ -592,7 +614,7 @@ static void identity(studio *s, scene_actor *actor)
     kit_icon(k, "icon", NULL, studio_prototype_icon(s, actor->prototype_name));
     kit_pop(k);
     kit_push(k, "who", NULL, "who");
-    kit_label(k, "name", "title", actor->name);
+    name_field(s, actor, locked);
     kit_push(k, "lineage", NULL, "lineage");
     kit_label(k, "of", NULL, "Instance of");
     kit_button_desc prototype = { .label = actor->prototype_name,
@@ -843,6 +865,176 @@ static void prototype_row(
     }
 }
 
+/* ---------- Add and remove prototype components ---------- */
+
+#define COMPONENT_MENU "component-menu"
+
+void studio_add_component_open(studio *s)
+{
+    s->components.open = true;
+    snprintf(
+        s->components.prototype,
+        sizeof s->components.prototype,
+        "%s",
+        selected_prototype(s->scene)->prototype->name
+    );
+    kit_command_open(s->kit, "Search components");
+}
+
+static void add_component(studio *s, const char *prototype, const ecs_component_desc *desc)
+{
+    if (!studio_editable(s)) {
+        return;
+    }
+    if (app_scene_authoring_add_prototype_component(s->scene, prototype, desc->name) != 0) {
+        studio_error(s, "Could not add component", s->scene->prototype_message);
+        return;
+    }
+    char label[128], report[320];
+    editor_component_label(desc->name, label, sizeof label);
+    snprintf(report, sizeof report, "Added %s to %s", label, prototype);
+    studio_report(s, report);
+    /* Its panel shows, open, as Unity adds a component. */
+    s->tab = tab_of(s, desc);
+    snprintf(s->components.added, sizeof s->components.added, "%s", desc->name);
+}
+
+/* A component the prototype lacks, as the command surface lists it. */
+typedef struct
+{
+    int order; /* its tab's, the current tab's first */
+    char label[128];
+    const ecs_component_desc *desc;
+} component_choice;
+
+static int by_tab_and_label(const void *a, const void *b)
+{
+    const component_choice *x = a, *y = b;
+    return x->order != y->order ? x->order - y->order : strcmp(x->label, y->label);
+}
+
+bool studio_component_palette(studio *s)
+{
+    if (!s->components.open) {
+        return false;
+    }
+    if (!kit_command_is_open(s->kit)) {
+        s->components.open = false;
+        return false;
+    }
+    app_scene_authoring *scene = s->scene;
+    scene_prototype_asset *asset = find_prototype(scene, s->components.prototype);
+    int current = s->tab >= STUDIO_TAB_OBJECT && s->tab <= STUDIO_TAB_GAMEPLAY
+                    ? s->tab - STUDIO_TAB_OBJECT
+                    : 0;
+    component_choice *choices = NULL;
+    for (int i = 0; asset && i < scene->registry.component_count; i++) {
+        const ecs_component_desc *desc = scene->registry.components[i];
+        if (prototype_has_component_id(asset->prototype, desc->id)) {
+            continue;
+        }
+        component_choice choice = {
+            .order = (tab_of(s, desc) - STUDIO_TAB_OBJECT - current + COMPONENT_TAB_COUNT) %
+                     COMPONENT_TAB_COUNT,
+            .desc = desc,
+        };
+        editor_component_label(desc->name, choice.label, sizeof choice.label);
+        apush(choices, choice);
+    }
+    if (acount(choices)) {
+        qsort(choices, (size_t)acount(choices), sizeof *choices, by_tab_and_label);
+    }
+    kit_command_item *items = NULL;
+    for (int i = 0; i < acount(choices); i++) {
+        studio_tab tab = tab_of(s, choices[i].desc);
+        apush(
+            items,
+            ((kit_command_item){ .label = choices[i].label,
+                                 .group = tab_label(tab),
+                                 .keywords = choices[i].desc->name,
+                                 .icon = TAB_ICONS[tab] })
+        );
+    }
+    int chosen = kit_command(s->kit, items, acount(items));
+    if (chosen >= 0) {
+        s->components.open = false;
+        add_component(s, s->components.prototype, choices[chosen].desc);
+    }
+    afree(items);
+    afree(choices);
+    return true;
+}
+
+/* Destructive edits offer Undo in a toast while they are still the latest
+   edit, as Delete does. */
+static void remove_component(studio *s, scene_prototype_asset *asset)
+{
+    const char *name = s->components.menu;
+    char label[128], title[320];
+    editor_component_label(name, label, sizeof label);
+    snprintf(title, sizeof title, "Removed %s from %s", label, asset->prototype->name);
+    if (app_scene_authoring_remove_prototype_component(
+            s->scene,
+            asset->prototype->name,
+            name
+        ) != 0) {
+        studio_error(s, "Could not remove component", s->scene->prototype_message);
+        return;
+    }
+    kit_toast_dismiss(s->kit, s->components.toast);
+    s->components.toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .title = title, .action = "Undo", .duration = 6 }
+    );
+    s->components.step = alast(asset->undo);
+    studio_record(s, KIT_TOAST_DEFAULT, title);
+}
+
+void studio_component_toast(studio *s)
+{
+    int toast = s->components.toast;
+    if (!toast) {
+        return;
+    }
+    scene_prototype_asset *asset = s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE
+                                     ? selected_prototype(s->scene)
+                                     : NULL;
+    bool current = asset && acount(asset->undo) &&
+                   alast(asset->undo) == s->components.step;
+    if (kit_toast_action(s->kit, toast)) {
+        s->components.toast = 0;
+        if (current && studio_editable(s) && prototype_undo(s->scene) == 0) {
+            studio_report(s, "Undo");
+        }
+        return;
+    }
+    if (!current) {
+        kit_toast_dismiss(s->kit, toast);
+        s->components.toast = 0;
+    }
+}
+
+/* A component panel's menu: its header's button or a right press there. */
+static void component_menu(studio *s, scene_prototype_asset *asset, bool locked)
+{
+    kit *k = s->kit;
+    if (!kit_popup_begin(k, COMPONENT_MENU, "menu")) {
+        return;
+    }
+    char title[128];
+    editor_component_label(s->components.menu, title, sizeof title);
+    kit_menu_group(k, "group", title);
+    kit_menu_item_desc remove = { .label = "Remove Component",
+                                  .icon = KIT_ICON_TRASH,
+                                  .checked = -1,
+                                  .disabled = locked };
+    if (kit_menu_item(k, "remove", &remove)) {
+        remove_component(s, asset);
+    }
+    kit_popup_end(k);
+}
+
 static void prototype_properties(studio *s, scene_prototype_asset *asset, bool locked)
 {
     kit *k = s->kit;
@@ -854,11 +1046,13 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
                          strcmp(s->scene->actors[i].prototype_name, prototype->name) == 0;
         }
         char lineage[64];
+        int components = acount(prototype->components);
         snprintf(
             lineage,
             sizeof lineage,
-            "%d components \xc2\xb7 %d %s",
-            acount(prototype->components),
+            "%d %s \xc2\xb7 %d %s",
+            components,
+            components == 1 ? "component" : "components",
             instances,
             instances == 1 ? "instance" : "instances"
         );
@@ -893,7 +1087,8 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
         }
         bool default_open = desc->id == GAME_COMPONENT_GameTransform.id ||
                             desc->id == GAME_COMPONENT_GameAppearance.id ||
-                            desc->id == GAME_COMPONENT_GameOrientation.id;
+                            desc->id == GAME_COMPONENT_GameOrientation.id ||
+                            !strcmp(desc->name, s->components.added);
         if (kit_panel_begin(k, short_name(desc->name), title, NULL, default_open || s->property_search[0])) {
             for (int f = 0; f < desc->type->field_count; f++) {
                 if (property_field_visible(
@@ -906,7 +1101,21 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
             }
         }
         kit_panel_end(k);
+        if (kit_panel_menu(k)) {
+            snprintf(s->components.menu, sizeof s->components.menu, "%s", desc->name);
+            kit_popup_open_at(k, COMPONENT_MENU, s->in.mouse_x, s->in.mouse_y);
+        }
     }
+    kit_push(k, "add", NULL, "add-row");
+    kit_button_desc add = { .label = "Add Component",
+                            .icon = KIT_ICON_ADD,
+                            .variant = KIT_SUBTLE,
+                            .flags = locked ? KIT_DISABLED : 0 };
+    if (kit_button(k, "component", &add)) {
+        studio_command_run(s, STUDIO_COMMAND_ADD_COMPONENT);
+    }
+    kit_pop(k);
+    component_menu(s, asset, locked);
 }
 
 void studio_properties_body(studio *s, int area)
@@ -1000,7 +1209,7 @@ void studio_properties_body(studio *s, int area)
         kit_label(k, "empty", "prop-empty", "No selection");
     } else {
         if (s->tab == STUDIO_TAB_OBJECT) {
-            identity(s, actor);
+            identity(s, actor, locked);
         }
         if (s->tab == STUDIO_TAB_BEHAVIORS) {
             behaviors_panel(s, actor, locked);

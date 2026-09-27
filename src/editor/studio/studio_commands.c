@@ -68,6 +68,14 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_SELECT_TAB] = { "selectTab", "Select Tab", NULL, NULL, "document switch", KIT_ICON_FILE, true },
     [STUDIO_COMMAND_CLOSE_TAB] = { "closeTab", "Close Tab", NULL, NULL, "document", KIT_ICON_CLOSE },
     [STUDIO_COMMAND_CLOSE_DRAWER] = { "closeDrawer", "Close Drawer", NULL, NULL, "hide panel", KIT_ICON_CLOSE },
+    /* Rename objects and prototype components */
+    [STUDIO_COMMAND_RENAME] = { "rename", "Rename", NULL, "F2", "name object", KIT_ICON_EDIT },
+    [STUDIO_COMMAND_ADD_COMPONENT] = { "addComponent",
+                                       "Add Component\xe2\x80\xa6",
+                                       NULL,
+                                       NULL,
+                                       "prototype attach",
+                                       KIT_ICON_ADD },
 };
 
 studio_command_info studio_command_describe(studio *s, studio_command command)
@@ -167,6 +175,13 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_ZOOM_RESET: return s->prefs.ui_scale != 1;
         case STUDIO_COMMAND_STOP: return runtime_session(s->scene);
         case STUDIO_COMMAND_STEP: return !s->pause.active;
+        /* Rename objects and prototype components */
+        case STUDIO_COMMAND_RENAME:
+            return editable && selection && !studio_designer_active(s);
+        case STUDIO_COMMAND_ADD_COMPONENT:
+            return editable &&
+                   s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
+                   selected_prototype(s->scene);
         default: return true;
     }
 }
@@ -252,6 +267,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             studio_code_close(s, tab_at(s, argument));
             break;
         case STUDIO_COMMAND_CLOSE_DRAWER: s->prefs.drawer_open = false; break;
+        /* Rename objects and prototype components */
+        case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
+        case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }

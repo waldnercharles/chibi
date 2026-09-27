@@ -115,6 +115,8 @@ Behavior changed from the ImGui editor:
 
   Selecting in any of them, or moving the Text Editor's cursor, selects in all, and the Text Editor's cursor moves to the selection. Every change is one text edit of the document and one undo step; a scrub or a color session is one step.
 - The Add menu offers the events that the GameUi documents on whatever attaches the open behavior send, described by what the player does ("Sent when the player clicks #extract in Bank").
+- Objects rename in place, as in Blender and Unity: F2 over the Outliner or the Scene, a double-click on an Outliner row, Rename in the row's menu or the Object menu, or the name at the top of Properties' Object tab, which is a field. Enter or leaving the field renames as one Undo step and Escape keeps the name; a name another object has is refused with a toast. Nothing references an object by its name, so nothing else changes. F still frames a row.
+- A prototype's Properties ends with Add Component, which searches the components it lacks on the command surface, grouped by the tab each shows in (Unity's Add Component); the added component's panel opens. A component panel's menu, the header's ⋯ while hovered or a right press on the header (Unity's component menu, Blender's modifier menu), removes it with Undo in a toast. Each is one step of the prototype's Undo, and its instances follow; an instance's values for a removed component come back with it.
 
 ## Decisions
 

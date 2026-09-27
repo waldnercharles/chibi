@@ -977,6 +977,20 @@ static uint32_t mac_motion(const kit_code_editor *e, rml_key key, keys *m)
     return special_key(key);
 }
 
+/* Command+Up and Down on a Mac, Control+Home and End elsewhere, go to the
+   start and the end of the text, as text fields do; -1 for other keys. */
+static long document_edge(kit_code_editor *e, rml_key key, keys m)
+{
+    bool up = e->mac ? m.primary && key == RML_KEY_UP : m.ctrl && key == RML_KEY_HOME;
+    bool down = e->mac ? m.primary && key == RML_KEY_DOWN : m.ctrl && key == RML_KEY_END;
+    if (e->vim || m.shift || !(up || down)) {
+        return -1;
+    }
+    size_t length;
+    kit_code_text(e, &length);
+    return up ? 0 : (long)length;
+}
+
 static void accept_completion(kit_code_editor *e, int index);
 
 /* Up, Down, Enter, Tab and Escape choose among shown completions. */
@@ -1047,6 +1061,11 @@ static void key_down(kit_code_editor *e, const rml_event *event)
         zep_press_key(e->zep, ZEP_KEY_ESCAPE, 0);
         return;
     }
+    long edge = document_edge(e, key, m);
+    if (edge >= 0) {
+        zep_set_cursor(e->zep, edge);
+        return;
+    }
     if (m.primary && (host_key(key, m.shift) || (!e->vim && !standard_key(key)))) {
         report_chord(e, key, m);
         return;
@@ -1073,6 +1092,13 @@ static void key_down(kit_code_editor *e, const rml_event *event)
    mode inserts. */
 static void text_input(kit_code_editor *e, const char *text)
 {
+    /* Typing over a selection replaces it, as in a text field; Zep's
+       standard mode would drop the keys. */
+    long start, end;
+    if (!e->vim && zep_selection(e->zep, &start, &end)) {
+        apply(e, &(text_edit){ (int)start, (int)end, "" }, 1, start);
+        zep_select(e->zep, start, start);
+    }
     for (const char *c = text; *c;) {
         unsigned char lead = (unsigned char)*c;
         int length = utf8_length(lead);

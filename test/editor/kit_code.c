@@ -266,6 +266,22 @@ static bool standard_keys(fixture *f)
     frame(f);
     ok &= check((f->events & KIT_CODE_CHORD) && !strcmp(f->chord, "Mod+S"), "Save goes back to the host");
     ok &= check(!strcmp(text(f), "abc\nhello\nworld"), "a host chord leaves the text alone");
+    kit_code_set_text(f->e, "top: 1;");
+    frame(f);
+    press(f, RML_KEY_RIGHT, RML_KM_SHIFT);
+    press(f, RML_KEY_RIGHT, RML_KM_SHIFT);
+    press(f, RML_KEY_RIGHT, RML_KM_SHIFT);
+    type(f, "bottom");
+    frame(f);
+    ok &= check(!strcmp(text(f), "bottom: 1;"), "typing replaces the selection, as in a text field");
+    kit_code_set_text(f->e, "one\ntwo\nthree");
+    frame(f);
+    press(f, RML_KEY_END, RML_KM_CTRL);
+    frame(f);
+    ok &= check(kit_code_cursor(f->e) == (long)strlen("one\ntwo\nthree"), "Control+End goes to the end of the text");
+    press(f, RML_KEY_HOME, RML_KM_CTRL);
+    frame(f);
+    ok &= check(kit_code_cursor(f->e) == 0, "Control+Home goes to its start");
     return ok;
 }
 

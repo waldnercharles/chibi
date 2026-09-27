@@ -48,6 +48,10 @@ body:not(.dark) .viewport {
 .viewport .toolshelf .btn[data-state=on] .icon { color: var(--primary-foreground); }
 .viewport .view-label { position: absolute; left: 50dp; top: 10dp; color: var(--foreground); font-size: 11dp; pointer-events: none; }
 .viewport .view-label .dim { display: block; }
+/* They leave the game's view to its HUD while a session runs. */
+.viewport .toolshelf, .viewport .view-label { opacity: 1; transition: opacity 0.14s cubic-out; }
+.viewport .toolshelf[data-starting-style], .viewport .toolshelf[data-ending-style],
+.viewport .view-label[data-starting-style], .viewport .view-label[data-ending-style] { opacity: 0; }
 .viewport .readout { position: absolute; right: 10dp; bottom: 8dp; color: var(--faint-foreground); font-size: 11dp; font-family: InterNumeric; pointer-events: none; }
 .viewport .live-badge { position: absolute; left: 50dp; bottom: 10dp; }
 .viewport .notice { position: absolute; left: 12dp; right: 12dp; bottom: 36dp; padding: 6dp 8dp; border-radius: var(--r); background-color: var(--notice); color: var(--notice-fg); white-space: normal; }

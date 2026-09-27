@@ -271,6 +271,8 @@ try {
     inputs: [{ ui: [fit] }] });
   assert.equal(field(fitted, "slot", "GameHealth", "current"), 2);
   assert.equal(fitted.sound_cues, 1, "a successful refit produces its authored sound cue");
+  assert.deepEqual(fitted.ui.filter(item => item.element === "#slot").map(({ text, value }) => ({ text, value })),
+    [{ text: "Ricochet fitted", value: 2 }], "a snapshot shows what behaviors set on the ui document");
   const undone = request("captureRuntimeSnapshot", { kind: "scene", name: "Refit", frames: 72000,
     input_timeline: [{ frame: 0, input: { ui: [fit] } },
       { frame: 71999, input: { events: [{ target: "slot", name: "Undo" }] } }] });

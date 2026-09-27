@@ -2471,6 +2471,11 @@ static void retype_result(graph *caller, node *call, int output, const pin_spec 
     }
     int rc = graph_set_pin_type(caller, call, 1, output, source->type, source->type_name);
     assert(rc == 0);
+    /* The body fixes the result's type: rewiring its consumers must not
+       resolve the generic result to theirs again, or the call would read a
+       value of one type as another. */
+    unsigned flags = call->output_pins[output].flags;
+    call->output_pins[output].flags &= ~PIN_FLAG_WILDCARD;
     for (int i = 0; i < acount(consumers); i += 2) {
         node *to = graph_node_by_id(caller, consumers[i]);
         int pin = -1;
@@ -2485,6 +2490,7 @@ static void retype_result(graph *caller, node *call, int output, const pin_spec 
             assert(rc == 0);
         }
     }
+    call->output_pins[output].flags = flags;
     (void)rc;
     afree(consumers);
 }

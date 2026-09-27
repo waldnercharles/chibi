@@ -100,6 +100,9 @@ void test_studio_zoom();
 /* ---------- Native elements for authored UI (workstream N) ---------- */
 void test_ui_motion();
 
+/* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+void test_arena_hud();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -258,6 +261,8 @@ TEST_CASE(all_checks)
     test_studio_zoom();
     /* ---------- Native elements for authored UI (workstream N) ---------- */
     test_ui_motion();
+    /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+    test_arena_hud();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -979,6 +984,11 @@ int main(int argc, char **argv)
         test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
         test_ui_motion();
         test_kit_slot();
+        return fails ? 1 : 0;
+    }
+    /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--arena-hud")) {
+        test_arena_hud();
         return fails ? 1 : 0;
     }
     pu_run_test("all_checks", all_checks);

@@ -32,6 +32,7 @@ struct app_game_presentation
     double showcase_last_time;
     bool showcase_time_started;
     char ui_error[256]; /* the last UI asset error reported */
+    bool text_input; /* SDL delivers typed text for a focused game text field */
 };
 
 static render_arena_camera game_camera(const app_game_presentation *game)
@@ -156,6 +157,9 @@ app_game_presentation *app_game_presentation_new(
 void app_game_presentation_free(app_game_presentation *game)
 {
     if (game) {
+        if (game->text_input) {
+            cf_input_disable_ime();
+        }
         engine_viewport_clear_arena_camera(game->viewport);
         engine_viewport_set_render_callback(game->viewport, NULL, NULL);
         render_audio_free(game->audio);
@@ -247,6 +251,22 @@ static int menu_command(app_game_presentation *game, int status)
     return 0;
 }
 
+/* SDL delivers typed text only while text input is started: follow the
+   game documents' focus, as a browser does a field's. */
+static void sync_text_input(app_game_presentation *game)
+{
+    bool wants = engine_viewport_ui_typing(game->viewport);
+    if (wants == game->text_input) {
+        return;
+    }
+    game->text_input = wants;
+    if (wants) {
+        cf_input_enable_ime();
+        return;
+    }
+    cf_input_disable_ime();
+}
+
 /* Prints a UI asset error once when it appears. */
 static void report_ui_error(app_game_presentation *game)
 {
@@ -278,13 +298,16 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         playing = false;
     }
     bool focused = !game->interactive || cf_app_has_focus();
+    /* A focused game text field takes the letters the shortcuts use; Escape
+       still pauses. */
+    bool typing = playing && engine_viewport_ui_typing(game->viewport);
     if ((playing && ImGui_IsKeyPressed(ImGuiKey_Escape)) || (playing && !focused)) {
         if (command(game, APP_RUNTIME_PAUSE) != 0) {
             return -1;
         }
         playing = false;
     }
-    if (focused && ImGui_IsKeyPressed(ImGuiKey_R)) {
+    if (focused && !typing && ImGui_IsKeyPressed(ImGuiKey_R)) {
         if (command(game, APP_RUNTIME_RESTART) != 0) {
             return -1;
         }
@@ -319,7 +342,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     engine_set_focus(game->scene->runtime, playing && focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
     CF_V2 target;
     bool mouse = mouse_target(game, &target);
-    bool ui_capture = engine_viewport_ui_capture(game->viewport);
+    bool ui_capture = engine_viewport_ui_capture(game->viewport) || typing;
     app_gameplay_sample(game->scene, playing && focused && !ui_capture, mouse ? &target : NULL);
     if (engine_frame(game->scene->runtime, now) != FLOW_OK) {
         fprintf(stderr, "Game frame failed: %s\n", engine_error(game->scene->runtime));
@@ -363,6 +386,8 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         );
     }
     engine_viewport_ui_input(game->viewport, focused);
+    engine_viewport_ui_keys(game->viewport, playing && focused);
+    sync_text_input(game);
     report_ui_error(game);
     ImGui_End();
     ImGui_PopStyleVarEx(3);

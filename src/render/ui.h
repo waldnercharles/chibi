@@ -166,6 +166,10 @@ bool render_ui_take_overlay_event(render_ui *ui, char *name, size_t size);
 /* Pointer and key input in canvas pixels. Returns what the documents
  * consumed, as RML_INPUT_CAPTURE_* flags. */
 unsigned render_ui_input(render_ui *ui, const rml_input *input);
+/* Whether the focused element takes typed text, as a text input or a
+ * textarea does. While one does, a host sends it the letters it would
+ * otherwise act on itself, as a browser gives them to a focused field. */
+bool render_ui_wants_text(const render_ui *ui);
 /* Draws the documents over `target` without clearing it. */
 void render_ui_composite(render_ui *ui, CF_Canvas target);
 /* The first mount's error, or "" when every shown asset loaded. */

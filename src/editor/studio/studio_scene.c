@@ -174,20 +174,12 @@ static void crop_view(studio *s)
     kit_attr(s->kit, "rect", crop);
 }
 
-void studio_scene_body(studio *s, int area)
+/* The Scene's tool shelf and the label naming its view and selection. */
+static void view_overlay(studio *s)
 {
-    (void)area;
-    if (canvas_body(s)) {
-        return;
-    }
     kit *k = s->kit;
-    app_scene_authoring *scene = s->scene;
-    kit_push(k, "viewport", NULL, "viewport");
-    kit_surface(k, "surface", "surface", "viewport", &s->surface);
-    crop_view(s);
-    /* A prototype dropped here is placed under the pointer by the viewport. */
-    kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
     kit_push(k, "tools", NULL, "toolshelf");
+    kit_presence(k);
     kit_button_desc select = { .icon = KIT_ICON_SELECT, .tip = "Select", .flags = KIT_ON };
     kit_button(k, "select", &select);
     kit_tip(k, "Select", NULL, NULL);
@@ -201,18 +193,40 @@ void studio_scene_body(studio *s, int area)
     kit_attr(k, "data-tip-side", "right");
     kit_pop(k);
     kit_push(k, "label", NULL, "view-label");
+    kit_presence(k);
     kit_label(k, "mode", NULL, "Top orthographic");
     char title[128], context[256];
-    scene_actor *actor = selected_actor(scene);
+    scene_actor *actor = selected_actor(s->scene);
     snprintf(
         context,
         sizeof context,
         "(%s) %s",
-        studio_scene_title(scene, title, sizeof title),
+        studio_scene_title(s->scene, title, sizeof title),
         actor ? actor->name : "-"
     );
     kit_label(k, "context", "dim", context);
     kit_pop(k);
+}
+
+void studio_scene_body(studio *s, int area)
+{
+    (void)area;
+    if (canvas_body(s)) {
+        return;
+    }
+    kit *k = s->kit;
+    app_scene_authoring *scene = s->scene;
+    kit_push(k, "viewport", NULL, "viewport");
+    kit_surface(k, "surface", "surface", "viewport", &s->surface);
+    crop_view(s);
+    /* A prototype dropped here is placed under the pointer by the viewport. */
+    kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
+    /* While a session runs the Scene is the game's view, so its tools and
+       label leave the top-left corner to the game's HUD. */
+    bool session = runtime_session(scene);
+    if (!session) {
+        view_overlay(s);
+    }
     engine_viewport_view view;
     engine_viewport_get_view(s->viewport, &view);
     /* Only once the surface is laid out and the scene has drawn: its first
@@ -228,7 +242,7 @@ void studio_scene_body(studio *s, int area)
             &(kit_number_flow_desc){ .grouping = true, .suffix = "%" }
         );
     }
-    if (runtime_session(scene)) {
+    if (session) {
         kit_label(k, "live", "badge accent live-badge", "Live");
     }
     /* The renderer's error first, then the game UI's (render_ui_error). */

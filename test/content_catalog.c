@@ -174,6 +174,7 @@ void run_content_catalog_checks()
         "BoostEmitter.yaml",
         "CameraFollow.yaml",
         "CutMaterial.yaml",
+        "HudDisplay.yaml",
         "HullDamage.yaml",
         "MaterialImpactHealth.yaml",
         "Movement.yaml",
@@ -210,6 +211,7 @@ void run_content_catalog_checks()
         "HardRock.yaml",
         "HRC.yaml",
         "HitEmitter.yaml",
+        "HUD.yaml",
         "Liquid.yaml",
         "MovementEmitter.yaml",
         "MaterialSpecimen.yaml",
@@ -285,8 +287,11 @@ void run_content_catalog_checks()
     );
     valid &= folder_matches(arena2d_root, "shapes", NULL, 0);
     valid &= folder_matches(arena2d_root, "textures", NULL, 0);
-    static const char *const arena2d_ui[] = { "MenuButton.yaml", "PauseMenu.yaml" };
-    valid &= folder_matches(arena2d_root, "ui", arena2d_ui, 2);
+    static const char *const arena2d_ui[] = { "HUD.yaml",
+                                              "MenuButton.yaml",
+                                              "Meter.yaml",
+                                              "PauseMenu.yaml" };
+    valid &= folder_matches(arena2d_root, "ui", arena2d_ui, (int)(sizeof arena2d_ui / sizeof *arena2d_ui));
     test_check(valid, "Arena2D project catalog is isolated from Arena3D assets");
 
     char error[256] = { 0 };

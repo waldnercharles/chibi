@@ -37,7 +37,9 @@ void app_gameplay_input(app_scene_authoring *scene, engine *runtime, engine_view
 {
     bool focused = engine_viewport_focused(viewport) &&
                    !app_input_pressed(APP_INPUT_ESCAPE);
-    bool accepts_input = focused && !editor_host_captures_keyboard();
+    /* A focused game text field takes the letters gameplay would. */
+    bool accepts_input = focused && !editor_host_captures_keyboard() &&
+                         !engine_viewport_ui_typing(viewport);
     if (!accepts_input) {
         app_gameplay_sample(scene, false, NULL);
     }

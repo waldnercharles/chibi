@@ -116,6 +116,8 @@ body:not(.dark) .viewport {
 .prop .chip { display: block; height: 18dp; padding: 0dp 6dp; border-radius: 3dp; background-color: var(--field-edit); color: #c6b8ea; font-size: 11dp; line-height: 18dp; white-space: nowrap; overflow: hidden; }
 
 /* Editors without content yet. */
+/* An empty graph's hint, over the canvas's middle; the canvas keeps the pointer. */
+.graph-empty { position: absolute; left: 0dp; right: 0dp; top: 50%; text-align: center; color: var(--faint-foreground); pointer-events: none; }
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--faint-foreground); background-color: var(--canvas); }
 
 /* Output. */

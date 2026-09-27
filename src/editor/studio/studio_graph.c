@@ -806,6 +806,15 @@ void studio_behavior_header(studio *s, int area)
     }
 }
 
+static int visible_nodes(graph *gr)
+{
+    int count = 0;
+    for (int i = 0; i < acount(gr->nodes); i++) {
+        count += sg_node_visible(gr, gr->nodes[i]);
+    }
+    return count;
+}
+
 void studio_behavior_body(studio *s, int area)
 {
     kit *k = s->kit;
@@ -820,6 +829,12 @@ void studio_behavior_body(studio *s, int area)
     }
     g->area = area;
     kit_surface(k, "graph", "graph-surface", "graph", &g->surface);
+    /* An empty graph says how to begin, where a node will go. */
+    if (!visible_nodes(sg_active_graph(s))) {
+        char hint[96];
+        snprintf(hint, sizeof hint, "Add a node with %s or a right click", studio_chord(s, "Shift+A"));
+        kit_label(k, "empty", "graph-empty", hint);
+    }
     studio_members_drop(s);
     studio_debug_call_stack(s);
     sg_find_panel(s);

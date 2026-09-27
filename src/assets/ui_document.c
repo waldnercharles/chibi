@@ -18,6 +18,20 @@ static const char *const DOCUMENT_TAGS[] = { "<rml", "<head", "<body" };
 
 static const char *tag_end(const char *p);
 
+/* Whether `rml` opens the element `tag` ("<head"), by its whole name, so a
+   <header> is not a <head>. */
+static bool holds_tag(const char *rml, const char *tag)
+{
+    size_t length = strlen(tag);
+    for (const char *at = strstr(rml, tag); at; at = strstr(at + 1, tag)) {
+        char next = at[length];
+        if (next == '>' || next == '/' || isspace((unsigned char)next)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* The line breaks in [p, end). */
 static int breaks(const char *p, const char *end)
 {
@@ -113,7 +127,7 @@ static bool read_root(
         return false;
     }
     for (size_t i = 0; i < sizeof DOCUMENT_TAGS / sizeof *DOCUMENT_TAGS; i++) {
-        if (strstr(out->rml, DOCUMENT_TAGS[i])) {
+        if (holds_tag(out->rml, DOCUMENT_TAGS[i])) {
             return fail(error, error_size, "rml holds body markup; remove %s>", DOCUMENT_TAGS[i]);
         }
     }

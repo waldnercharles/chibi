@@ -64,6 +64,11 @@ static void rejected_documents()
         bool ok = ui_document_read(cases[i].yaml, NULL, NULL, &d, error, sizeof error);
         test_check(!ok && strstr(error, cases[i].error) && !d.rml, cases[i].error);
     }
+    ui_document d = { 0 };
+    char error[256] = { 0 };
+    bool ok = ui_document_read("rml: '<header><nav/></header>'", NULL, NULL, &d, error, sizeof error);
+    test_check(ok, "a <header> is markup, not the document's <head>");
+    ui_document_free(&d);
 }
 
 /* A scene's root document may wrap its markup in <body ...>, and its RCSS

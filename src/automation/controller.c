@@ -6339,19 +6339,11 @@ int chibi_automation_preview(
     chibi_preview_run *run = xcalloc(1, sizeof *run);
     run->request = doc;
     scenario_context *context = &run->context;
+    /* Preparing registers the shader libraries, materials and shapes the
+       renderer draws with, as every scenario shares them. */
     int status = !strcmp(kind, "scene")
                    ? prepare_scene_scenario(root, name, context, error, error_size)
                    : prepare_scenario(root, name, context, error, error_size);
-    const char *families[] = { "shader-library", "material", "shape" };
-    for (int i = 0; status == CHIBI_AUTOMATION_OK && i < 3; i++) {
-        behavior_asset **assets = NULL;
-        status = load_behavior_family_assets(root, family_by_kind(families[i]), &assets, error, error_size);
-        if (status == CHIBI_AUTOMATION_OK &&
-            register_preview_assets(context->preview, assets, error, error_size)) {
-            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
-        free_behavior_assets(assets);
-    }
     if (status == CHIBI_AUTOMATION_OK) {
         uint64_t rendered = yyjson_get_uint(yyjson_obj_get(value, "render_frames"));
         uint64_t total = frames +

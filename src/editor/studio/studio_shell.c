@@ -550,6 +550,7 @@ static void menus(studio *s)
             kit_submenu_end(k);
         }
         studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
+        studio_command_item(s, STUDIO_COMMAND_RENAME);
         studio_command_item(s, STUDIO_COMMAND_DELETE);
         kit_menu_separator(k, "s1");
         studio_command_item(s, STUDIO_COMMAND_OPEN_PROTOTYPE);
@@ -1008,7 +1009,8 @@ static void statusbar(studio *s)
 static void palette(studio *s)
 {
     if (studio_graph_palette(s) || studio_member_palette(s) ||
-        studio_pick_palette(s) || !kit_command_is_open(s->kit)) {
+        studio_pick_palette(s) || studio_component_palette(s) ||
+        !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1158,6 +1160,7 @@ void studio_emit(studio *s)
     studio_rewire_toast(s);
     studio_members_toast(s);
     studio_refactor_frame(s);
+    studio_component_toast(s);
 }
 
 /* Up and Down walk the Outliner's visible rows (Blender). */
@@ -1262,6 +1265,8 @@ void studio_shortcuts(studio *s)
             studio_delete(s);
         } else if (!mod && editor == STUDIO_EDITOR_OUTLINER && (key == SDLK_UP || key == SDLK_DOWN)) {
             step_selection(s, key == SDLK_DOWN ? 1 : -1);
+        } else if (!mod && key == SDLK_F2 && (editor == STUDIO_EDITOR_OUTLINER || editor == STUDIO_EDITOR_SCENE)) {
+            studio_command_run(s, STUDIO_COMMAND_RENAME);
         }
     }
 }

@@ -219,6 +219,11 @@ extern "C"
     /* Containers. */
     bool kit_panel_begin(kit *k, const char *key, const char *title, const char *badge, bool default_open);
     void kit_panel_end(kit *k);
+    /* After kit_panel_end: the panel's header shows a menu button while it is
+     * hovered, as Unity's component header and Blender's modifier panels offer
+     * their operations. True on the frame the button is pressed or the header
+     * right-pressed; open the panel's menu at the pointer. */
+    bool kit_panel_menu(kit *k);
     void kit_prop_begin(kit *k, const char *key, const char *label);
     void kit_prop_end(kit *k);
 

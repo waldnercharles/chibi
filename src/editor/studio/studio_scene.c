@@ -318,6 +318,103 @@ void studio_outliner_header(studio *s, int area)
     }
 }
 
+/* ---------- Rename ---------- */
+
+static scene_actor *actor_of(studio *s, uint64_t entity)
+{
+    for (int i = 0; i < acount(s->scene->actors); i++) {
+        if (ecs_entity_to_u64(s->scene->actors[i].entity) == entity) {
+            return &s->scene->actors[i];
+        }
+    }
+    return NULL;
+}
+
+static bool editor_shown(const studio *s, studio_editor editor)
+{
+    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
+        bool shown = (s->maximized < 0 || s->maximized == area) &&
+                     (area != STUDIO_AREA_DRAWER || s->prefs.drawer_open);
+        if (shown && s->prefs.editors[area] == editor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void studio_rename_object(studio *s)
+{
+    scene_actor *actor = selected_actor(s->scene);
+    bool outliner = editor_shown(s, STUDIO_EDITOR_OUTLINER);
+    s->rename.entity = ecs_entity_to_u64(actor->entity);
+    s->rename.outliner = outliner;
+    s->rename.focus = true;
+    snprintf(s->rename.name, sizeof s->rename.name, "%s", actor->name);
+    if (!outliner) {
+        s->tab = STUDIO_TAB_OBJECT;
+        studio_show_editor(s, STUDIO_EDITOR_PROPERTIES);
+        return;
+    }
+    /* Its row shows, scrolled into view. */
+    s->outliner_collapsed = false;
+    s->outliner_reveal = true;
+    if (!studio_matches(s->outliner_filter, actor->name) &&
+        !studio_matches(s->outliner_filter, actor->prototype_name)) {
+        s->outliner_filter[0] = '\0';
+    }
+}
+
+void studio_rename_commit(studio *s, uint64_t entity, const char *name)
+{
+    scene_actor *actor = actor_of(s, entity);
+    if (!actor || !studio_editable(s) || !strcmp(actor->name, name)) {
+        return;
+    }
+    char report[544];
+    snprintf(report, sizeof report, "Renamed %s to %s", actor->name, name);
+    finish_transform_edit(s->scene, false);
+    if (app_scene_authoring_rename_instance(s->scene, actor->entity, name) != 0) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Can't rename",
+                               .description = s->scene->message }
+        );
+        return;
+    }
+    studio_report(s, report);
+}
+
+/* The name as a field in the row's place (Blender's F2): Enter or leaving
+   the field renames, Escape keeps the name. */
+static void rename_row(studio *s, const scene_actor *actor)
+{
+    kit *k = s->kit;
+    char key[32];
+    snprintf(key, sizeof key, "rename%llu", (unsigned long long)s->rename.entity);
+    kit_push(k, key, NULL, "tree-row object-rename");
+    /* Where a row at depth 1 shows its icon, past the twisty's room. */
+    kit_style(k, "padding-left", "38dp");
+    kit_icon(k, "icon", NULL, studio_prototype_icon(s, actor->prototype_name));
+    bool committed = kit_text_field(k, "name", s->rename.name, sizeof s->rename.name, NULL, 0);
+    bool focus = s->rename.focus;
+    if (focus) {
+        kit_focus(k);
+        s->rename.focus = false;
+    }
+    bool left = !focus && !kit_item_active(k);
+    kit_pop(k);
+    if (!committed && !left) {
+        return;
+    }
+    uint64_t entity = s->rename.entity;
+    s->rename.entity = 0;
+    if (committed) {
+        studio_rename_commit(s, entity, s->rename.name);
+    }
+}
+
 /* Actors shown by the Outliner filter, in scene order. The caller frees the array. */
 int *studio_outliner_rows(studio *s)
 {
@@ -386,6 +483,10 @@ void studio_outliner_body(studio *s, int area)
             "e%llu",
             (unsigned long long)ecs_entity_to_u64(actor->entity)
         );
+        if (s->rename.outliner && s->rename.entity == ecs_entity_to_u64(actor->entity)) {
+            rename_row(s, actor);
+            continue;
+        }
         char **names = instance_behavior_names(scene, actor->entity);
         if (acount(names)) {
             snprintf(behaviors, sizeof behaviors, "%d", acount(names));
@@ -428,7 +529,7 @@ void studio_outliner_body(studio *s, int area)
             select_instance(scene, i);
         }
         if (events & KIT_ROW_DOUBLE_CLICK) {
-            studio_frame_selection(s);
+            studio_command_run(s, STUDIO_COMMAND_RENAME);
         }
         if (events & KIT_ROW_CONTEXT) {
             kit_popup_open_at(k, menu_key, s->in.mouse_x, s->in.mouse_y);
@@ -458,6 +559,7 @@ void studio_outliner_body(studio *s, int area)
         if (kit_menu_item(k, "duplicate", &duplicate)) {
             studio_duplicate(s);
         }
+        studio_command_item(s, STUDIO_COMMAND_RENAME);
         kit_menu_item_desc prototype = { .label = "Open Prototype",
                                          .icon = KIT_ICON_PROTOTYPE,
                                          .checked = -1,

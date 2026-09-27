@@ -1,12 +1,17 @@
+#include "assets/scene_document.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_text.h"
+#include "support/text_file.h"
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Undo and Redo for the open document, as Studio's Edit menu applies them. */
 static int history(app_scene_authoring *scene, bool redo)
@@ -209,6 +214,166 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
     puts("prototype fields PASS: vector Undo/Redo and owned text reach instances");
 }
 
+/* The file at `path`, which `canonical` turns into the text
+   chibi_ctl --format writes for its JSON. */
+static char *saved_canonically(const char *path, char *(*canonical)(const char *json))
+{
+    char *text = text_file_read(path);
+    assert(text);
+    char *json = canonical(text);
+    char error[256];
+    char *disk = asset_text_to_disk(json, error, sizeof error);
+    assert(disk && !strcmp(disk, text));
+    free(json);
+    free(disk);
+    return text;
+}
+
+static char *canonical_scene(const char *text)
+{
+    char error[256];
+    game_scene_document *document = game_scene_document_load(text, error, sizeof error);
+    assert(document);
+    char *json = game_scene_document_save(document);
+    game_scene_document_free(document);
+    return json;
+}
+
+static char *canonical_prototype(const char *text)
+{
+    game_prototype_registry registry = app_component_registry();
+    char error[256];
+    game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
+    assert(prototype);
+    char *json = game_prototype_save(prototype);
+    game_prototype_free(prototype);
+    return json;
+}
+
+static const char *actor_name(app_scene_authoring *scene, ecs_entity entity)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            return scene->actors[i].name;
+        }
+    }
+    return NULL;
+}
+
+/* A rename is one Scene Undo step, refuses a name in use or an empty one,
+   survives a history checkpoint, and saves as the entity's name. */
+static void rename_instance(app_scene_authoring *scene, const char *folder)
+{
+    assert(app_scene_authoring_add_instance(scene, "First") == 0);
+    ecs_entity other = app_scene_authoring_runtime_state(scene).selected_entity;
+    assert(app_scene_authoring_add_instance(scene, "First") == 0);
+    ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    char *before = strdup(actor_name(scene, entity));
+    scene->scene_dirty = false;
+    assert(app_scene_authoring_rename_instance(scene, entity, "Hero") == 0);
+    assert(!strcmp(actor_name(scene, entity), "Hero") && scene->scene_dirty);
+    assert(app_scene_authoring_rename_instance(scene, other, "Hero") == -1);
+    assert(strstr(scene->message, "Hero") && strcmp(actor_name(scene, other), "Hero"));
+    assert(app_scene_authoring_rename_instance(scene, other, "") == -1);
+    /* The same name changes nothing and records nothing. */
+    assert(app_scene_authoring_rename_instance(scene, entity, "Hero") == 0);
+    uint64_t id = ecs_entity_to_u64(entity);
+    char *checkpoint = scene_history_checkpoint(scene->history);
+    scene_history *restored = scene_history_new();
+    assert(scene_history_restore_checkpoint(restored, checkpoint, &id, &id, 1));
+    ecs_entity at;
+    const char *undone = scene_history_peek_rename(restored, false, &at);
+    assert(undone && !strcmp(undone, before) && ecs_entity_to_u64(at) == id);
+    scene_history_free(restored);
+    free(checkpoint);
+    assert(history(scene, false) == 0);
+    assert(!strcmp(actor_name(scene, entity), before));
+    assert(history(scene, true) == 0);
+    assert(!strcmp(actor_name(scene, entity), "Hero"));
+    char path[1024];
+    snprintf(path, sizeof path, "%s/Renamed.yaml", folder);
+    assert(app_scene_authoring_save(scene, path) == 0);
+    char *text = saved_canonically(path, canonical_scene);
+    assert(strstr(text, "name: Hero"));
+    free(text);
+    free(before);
+    puts("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves");
+}
+
+/* Whether the object keeps its values of a component its prototype lost. */
+static bool retains(app_scene_authoring *scene, ecs_entity entity, const char *component)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        const scene_actor *actor = &scene->actors[i];
+        for (int j = 0; ecs_entity_to_u64(actor->entity) == ecs_entity_to_u64(entity) &&
+                        j < acount(actor->retained);
+             j++) {
+            if (!strcmp(actor->retained[j].name, component)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool has_component(app_scene_authoring *scene, const char *prototype, ecs_component_id id)
+{
+    return prototype_has_component_id(find_prototype(scene, prototype)->prototype, id);
+}
+
+/* Adding and removing a prototype's component is one step of its Undo each;
+   an instance's override of a removed component returns with it, and the
+   prototype saves in canonical form. */
+static void prototype_component_removal(app_scene_authoring *scene, ecs_world *world, const char *folder)
+{
+    assert(
+        app_scene_authoring_register_prototype(
+            scene,
+            "{\"version\":1,\"name\":\"Removable\",\"components\":{"
+            "\"GameTransform\":{\"x\":0,\"y\":0},\"GameHealth\":{"
+            "\"current\":73,\"maximum\":100}},\"behaviors\":[]}",
+            NULL
+        ) == 0
+    );
+    assert(app_scene_authoring_add_instance(scene, "Removable") == 0);
+    ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    GAME_GameHealth_get(world, entity)->current = 42;
+    scene_prototype_asset *asset = find_prototype(scene, "Removable");
+    int steps = acount(asset->undo);
+    assert(app_scene_authoring_add_prototype_component(scene, "Removable", "GameHealth") == -1);
+    assert(app_scene_authoring_remove_prototype_component(scene, "Removable", "GameAim") == -1);
+    assert(acount(asset->undo) == steps);
+    assert(app_scene_authoring_remove_prototype_component(scene, "Removable", "GameHealth") == 0);
+    assert(acount(asset->undo) == steps + 1 && asset->dirty);
+    assert(!has_component(scene, "Removable", GAME_COMPONENT_GameHealth.id));
+    assert(!GAME_GameHealth_has(world, entity) && retains(scene, entity, "GameHealth"));
+    assert(app_scene_authoring_add_prototype_component(scene, "Removable", "GameAim") == 0);
+    assert(acount(asset->undo) == steps + 2 && GAME_GameAim_has(world, entity));
+    assert(app_scene_authoring_open_prototype(scene, "Removable") == 0);
+    assert(history(scene, false) == 0);
+    /* The prototype's own values leave nothing behind in the scene. */
+    assert(!GAME_GameAim_has(world, entity) && !retains(scene, entity, "GameAim"));
+    assert(history(scene, false) == 0);
+    assert(has_component(scene, "Removable", GAME_COMPONENT_GameHealth.id));
+    assert(GAME_GameHealth_get_const(world, entity)->current == 42);
+    assert(!retains(scene, entity, "GameHealth"));
+    assert(history(scene, true) == 0);
+    assert(!GAME_GameHealth_has(world, entity));
+    char path[1024];
+    snprintf(path, sizeof path, "%s/Removable.yaml", folder);
+    assert(app_scene_authoring_save_prototype(scene, "Removable", path) == 0);
+    char *text = saved_canonically(path, canonical_prototype);
+    assert(!strstr(text, "GameHealth") && strstr(text, "GameTransform"));
+    free(text);
+    assert(history(scene, true) == 0);
+    assert(GAME_GameAim_has(world, entity));
+    assert(app_scene_authoring_save_prototype(scene, "Removable", path) == 0);
+    text = saved_canonically(path, canonical_prototype);
+    assert(strstr(text, "GameAim"));
+    free(text);
+    puts("prototype component removal PASS: add and remove are one Undo step each, instances keep their overrides, and the prototype saves canonically");
+}
+
 void test_scene_instances()
 {
     ecs_world *world = ecs_world_new();
@@ -235,6 +400,16 @@ void test_scene_instances()
     prototype_spawn_refresh(scene, live, world);
     duplicate_instance_preserves_edits(scene, world);
     prototype_vectors_and_text(scene, world);
+    char folder[] = "/tmp/chibi-scene-instances-XXXXXX";
+    assert(mkdtemp(folder));
+    rename_instance(scene, folder);
+    prototype_component_removal(scene, world, folder);
+    char path[1024];
+    snprintf(path, sizeof path, "%s/Renamed.yaml", folder);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/Removable.yaml", folder);
+    unlink(path);
+    rmdir(folder);
     app_scene_authoring_free(scene);
     engine_free(runtime);
     game_live_world_free(live);

@@ -134,7 +134,7 @@ typedef struct widget
     float body_height, body_top; /* list: the content sizing applied, in dp */
     rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
         *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el,
-        *swatch_el, *about_el;
+        *swatch_el, *about_el, *menu_el;
 } widget;
 
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart

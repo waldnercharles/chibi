@@ -75,6 +75,13 @@ body:not(.dark) .viewport {
 .identity .glyph .icon { font-size: 16dp; color: var(--foreground); }
 .identity .who { flex: 1 1 0dp; display: flex; flex-direction: column; gap: 3dp; }
 .identity .who .title { font-size: 13dp; font-weight: 600; }
+/* The name, a field that reads as the title until hovered or edited (Unity's Inspector). */
+.identity .name-field { display: flex; margin-left: -8dp; }
+.identity .name-field .field.text { height: 20dp; background-color: transparent; }
+.identity .name-field .field.text:hover { background-color: var(--input-hover); }
+.identity .name-field .field.text[data-editing] { background-color: var(--field-edit); border-color: var(--ring); }
+.identity .name-field .field[data-readonly] { border-color: transparent; }
+.identity .name-field input.value { font-size: 13dp; font-weight: 600; }
 .identity .lineage { display: flex; align-items: center; gap: 4dp; color: var(--faint-foreground); font-size: 11dp; white-space: nowrap; }
 .identity .lineage .btn { height: 16dp; padding: 0dp 3dp; font-size: 11dp; color: var(--muted-foreground); gap: 3dp; }
 .identity .lineage .btn .icon { font-size: 10dp; width: 11dp; }
@@ -186,7 +193,7 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 /* A member's use count, which lists its uses in Find. */
 .tree-row .member-uses { height: 18dp; min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--faint-foreground); font-family: InterNumeric; }
 .tree-row .member-uses[data-unused] { color: var(--disabled-foreground); }
-.member-rename .field { height: 20dp; margin-right: 4dp; }
+.member-rename .field, .object-rename .field { height: 20dp; margin-right: 4dp; }
 /* Rename and safe delete: the new name, then the assets it rewrites or the
    uses a delete leaves, as rows shaped like the menu's items. */
 .popup.refactor { width: 300dp; }

@@ -1364,6 +1364,7 @@ static hint_list editor_hints(studio *s)
                                               { 0, "Ctrl", "Snap" } };
     static const studio_hint OUTLINER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                             { 0, "F", "Frame" },
+                                            { 0, "F2", "Rename" },
                                             { 0, "X", "Delete" } };
     /* Visual designer (workstream H): the Outliner as a UI document's Hierarchy. */
     static const studio_hint HIERARCHY[] = { { KIT_ICON_MOUSE, NULL, "Select" },

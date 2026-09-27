@@ -715,6 +715,23 @@ struct studio
     bool guest_keys;  /* a press in the guest gave it the keyboard */
     bool guest_capture; /* a button pressed in the guest is held */
     bool typing;        /* a field or the graph had the keyboard last frame */
+    /* ---------- Rename objects and prototype components ---------- */
+    struct
+    {
+        uint64_t entity; /* the object renamed in place, or 0 */
+        bool outliner; /* in its Outliner row, else in Properties' name field */
+        bool focus;    /* focus the field on its next frame */
+        char name[256];
+    } rename;
+    struct
+    {
+        bool open; /* the command surface adds a component to `prototype` */
+        char prototype[128];
+        char added[128];  /* the component added last, whose panel opens */
+        char menu[128];   /* the component whose panel menu is open */
+        int toast;        /* offers Undo after Remove Component */
+        const char *step; /* the removal's undo snapshot; never dereferenced */
+    } components;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1051,6 +1068,9 @@ typedef enum
     STUDIO_COMMAND_SELECT_TAB,
     STUDIO_COMMAND_CLOSE_TAB,
     STUDIO_COMMAND_CLOSE_DRAWER,
+    /* Rename objects and prototype components */
+    STUDIO_COMMAND_RENAME,
+    STUDIO_COMMAND_ADD_COMPONENT,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -1598,5 +1618,22 @@ studio_tab_view *studio_document_tabs(studio *s);
  * (data-alias-area), as a prop. Returns the host, or NULL when the panel
  * has no document. */
 rml_element *studio_ui_area_header(studio *s, int area, const char *name);
+
+/* ---------- Rename objects and prototype components ---------- */
+
+/* Renames the selected object in place, as Blender's F2 and Unity's
+ * Inspector name do: in its Outliner row while an area shows the Outliner,
+ * else in Properties' name field. */
+void studio_rename_object(studio *s);
+/* Names the object `entity` authors, as one Undo step; a refused name
+ * toasts why. */
+void studio_rename_commit(studio *s, uint64_t entity, const char *name);
+/* Add Component (Unity's Inspector): the command surface lists the
+ * components the open prototype lacks, by the Properties tab each shows in. */
+void studio_add_component_open(studio *s);
+/* Its items while it is open. */
+bool studio_component_palette(studio *s);
+/* Runs the Undo a Remove Component toast offers; call every frame. */
+void studio_component_toast(studio *s);
 
 #endif

@@ -633,6 +633,8 @@ struct studio
         bool read; /* events holds them while the Add menu is open */
         struct ui_event *events; /* studio_behavior_ui_events */
     } add_menu;
+    /* Visual designer (workstream H): NULL until a UI document is active. */
+    struct studio_designer *designer;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1382,5 +1384,44 @@ typedef struct studio_status
 void studio_status_add(yyjson_mut_doc *doc);
 /* Shows `status` in it; true when anything changed. */
 bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status);
+
+/* ---------- Visual designer (workstream H, studio_designer*.c) ---------- */
+
+/* While a ui asset's UI document is active, the areas follow it, as Unity's
+ * UI Builder and Unreal's UMG Designer arrange theirs: the Outliner shows its
+ * Hierarchy, Properties its Details and Assets its Library, beside its Canvas
+ * in the Scene area (studio_canvas.c) and its source in the Text Editor. Each
+ * change is a text edit of the document (editor/documents/ui_design.h), and
+ * selecting in the Hierarchy, in the Canvas or with the Text Editor's cursor
+ * selects in all of them. */
+typedef struct studio_designer studio_designer;
+
+/* Whether the areas follow a UI document: the active one has markup. */
+bool studio_designer_active(studio *s);
+void studio_designer_hierarchy_header(studio *s, int area);
+void studio_designer_hierarchy(studio *s, int area);
+void studio_designer_details_header(studio *s, int area);
+void studio_designer_details(studio *s, int area);
+void studio_designer_library_header(studio *s, int area);
+void studio_designer_library(studio *s, int area);
+/* After the areas: follows the Text Editor's cursor, and outlines, picks and
+ * takes Library drops in the Canvas. */
+void studio_designer_frame(studio *s);
+/* Keys over the Hierarchy or the Canvas: X or Delete deletes, Shift D
+ * duplicates, and in the Hierarchy the arrows walk and fold. True when one
+ * was taken. */
+bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_Keymod mod);
+void studio_designer_free(studio *s);
+/* The element of `rml`, the markup of ui asset `asset`, that the shown
+ * `element` of `context`, or its nearest ancestor the asset wrote, was
+ * written as, by the lines data-src names; -1 for none. */
+int studio_designer_shown_source(
+    rml_context *context,
+    const ui_source *rml,
+    const char *asset,
+    rml_element *element
+);
+/* The first shown element of `context` written as element `source`, or NULL. */
+rml_element *studio_designer_shown(rml_context *context, const ui_source *rml, const char *asset, int source);
 
 #endif

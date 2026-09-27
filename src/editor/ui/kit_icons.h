@@ -121,6 +121,20 @@ enum
     KIT_ICON_DISTRIBUTE_Y = 0xf11cc, /* nf-md-distribute_vertical_center */
     KIT_ICON_UNFOLD = 0xeb73,        /* nf-cod-unfold */
     KIT_ICON_REFRESH = 0xeb37,       /* nf-cod-refresh */
+
+    /* Visual designer (workstream H): UI elements by kind. */
+    KIT_ICON_ELEMENT = 0xf0763,  /* nf-md-square_outline */
+    KIT_ICON_TEXT = 0xf0284,     /* nf-md-format_text */
+    KIT_ICON_BUTTON = 0xf12a8,   /* nf-md-gesture_tap_button */
+    KIT_ICON_INPUT = 0xf060e,    /* nf-md-form_textbox */
+    KIT_ICON_CHECKBOX = 0xf0a1a, /* nf-md-toggle_switch_outline */
+    KIT_ICON_SLIDER = 0xf0444,   /* nf-md-ray_start_end */
+    KIT_ICON_IMAGE = 0xf0976,    /* nf-md-image_outline */
+    KIT_ICON_PROGRESS = 0xf029a, /* nf-md-gauge */
+    KIT_ICON_WIDGET = 0xf072c,   /* nf-md-widgets */
+    KIT_ICON_SLOT = 0xf1294,     /* nf-md-tray */
+    KIT_ICON_WRAP = 0xf0f82,     /* nf-md-select_group */
+    KIT_ICON_BINDING = 0xf0339,  /* nf-md-link_variant */
 };
 
 #endif

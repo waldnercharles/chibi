@@ -37,6 +37,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
 | [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): the status bar's UI Scale | Done |
+| [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; `kit_drag_source`/`kit_drop_target` for the tree, `kit_highlight` for the Canvas outlines | Done; keyboard reordering and resize handles in the Canvas open |
 | [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h` | Partial; highlighting, diagnostics and completion items come from the caller |
 
 ## Contracts
@@ -233,6 +234,14 @@ control's contract.
 - The kit marks the element it adopts, `data-kit-slot="<key>"`, and finds it again before input and emission. Authored content is rebuilt behind the kit's back (a mount reloading its asset, data-for recreating an item), and RmlUi's pools give a new element the old one's address, so the mark, not the address, tells them apart. A slot whose element is gone drops its nodes without touching their elements and builds anew in the new one.
 - A slot not begun in a frame loses its content, as any kit item does.
 - Popups, menus and tooltips a slot opens live in the kit's layer, as elsewhere.
+
+### Unity UI Builder and UMG Designer
+
+- Text stays the source of truth: every designer change is a `text_edit` of the document through `ui_source`, one undo step shared with the Text Editor. A scrub or a picker session joins one step.
+- Hierarchy rows follow dnd-kit's sortable tree: the top and bottom quarters of a row drop before and after it, its middle inside it; an element that holds no elements takes halves. The dragged row's target shows as a line or a filled row.
+- The Canvas outlines the element under the pointer, and the selection with its name and size in dp, as UMG labels its selected widget; a click there selects, and a Library drop goes into the element under the pointer.
+- Selection is shared: the Hierarchy, the Canvas and the Text Editor's cursor select the same element, found through `data-src` lines.
+- Details shows the rules that match the selection's tag, id and classes, pseudo classes included; their values edit in place.
 
 ### Zep (kit_code)
 

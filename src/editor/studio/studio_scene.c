@@ -242,6 +242,11 @@ void studio_scene_body(studio *s, int area)
 
 void studio_outliner_header(studio *s, int area)
 {
+    /* Visual designer (workstream H): a UI document's Hierarchy. */
+    if (studio_designer_active(s)) {
+        studio_designer_hierarchy_header(s, area);
+        return;
+    }
     kit *k = s->kit;
     kit_search(k, "filter", s->outliner_filter, sizeof s->outliner_filter, "Filter");
     char key[24];
@@ -288,6 +293,11 @@ int *studio_outliner_rows(studio *s)
 
 void studio_outliner_body(studio *s, int area)
 {
+    /* Visual designer (workstream H): a UI document's Hierarchy. */
+    if (studio_designer_active(s)) {
+        studio_designer_hierarchy(s, area);
+        return;
+    }
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     int *rows = studio_outliner_rows(s);

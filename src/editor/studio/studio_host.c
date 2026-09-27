@@ -543,6 +543,8 @@ void studio_free(studio *s)
     studio_graph_free(s);
     component_presentation_free(&s->presentation.hints);
     studio_code_free(s);
+    /* Visual designer (workstream H). */
+    studio_designer_free(s);
     kit_destroy(s->kit);
     studio_ui_free(s->ui);
     /* After the panels' data, which shows the Inspector's strings. */

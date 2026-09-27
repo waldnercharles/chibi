@@ -128,10 +128,15 @@ static bool canvas_body(studio *s);
 
 void studio_scene_header(studio *s, int area)
 {
+    kit *k = s->kit;
+    if (s->guest) {
+        kit_label(k, "guest", NULL, "Studio");
+        kit_label(k, "working", "dim", "Running this project's working copy");
+        return;
+    }
     if (canvas_header(s, area)) {
         return;
     }
-    kit *k = s->kit;
     char key[24];
     snprintf(key, sizeof key, "view:%d", area);
     kit_button_desc view = { .label = "View", .cls = "menu-btn" };
@@ -211,10 +216,18 @@ static void view_overlay(studio *s)
 void studio_scene_body(studio *s, int area)
 {
     (void)area;
+    kit *k = s->kit;
+    /* A guest Studio fills the area as the Studio project's game, whatever
+       document is active. */
+    if (s->guest) {
+        kit_push(k, "viewport", NULL, "viewport");
+        kit_surface(k, "guest", "surface", "guest", &s->surface);
+        kit_pop(k);
+        return;
+    }
     if (canvas_body(s)) {
         return;
     }
-    kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);

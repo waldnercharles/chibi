@@ -168,7 +168,7 @@ static float to_dp(const studio *s, float points)
 
 bool studio_active(const studio *s)
 {
-    return s->time < s->active_until ||
+    return s->time < s->active_until || s->guest != NULL ||
            (app_scene_authoring_runtime_state(s->scene).playing && !s->pause.active);
 }
 
@@ -190,6 +190,95 @@ double studio_idle_time(studio *s)
     return s->graph.kit ? fmin(idle, kit_idle_time(s->graph.kit)) : idle;
 }
 
+/* ---------- Studio in Studio ---------- */
+
+/* The guest's window: the Scene area's surface, in the host's window points. */
+static kit_rect guest_window(const studio *s)
+{
+    float ui = s->prefs.ui_scale;
+    kit_rect r = s->surface.rect;
+    return (kit_rect){ r.x * ui, r.y * ui, r.w * ui, r.h * ui };
+}
+
+static bool window_contains(kit_rect r, float x, float y)
+{
+    return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+/* Keys follow the pointer, as Blender's areas take them, unless a host field
+ * has the keyboard; a press in the guest keeps them there until a press
+ * elsewhere. */
+static bool guest_has_keys(const studio *s)
+{
+    return s->guest_keys || (s->guest_hover && !s->typing);
+}
+
+/* A pointer event at (x, y) in window points reaches the guest while it is
+ * over the guest, uncovered by the host's popups, or while a press there is
+ * held; the guest hears it in its own window's points. */
+static void guest_pointer(studio *s, SDL_Event *moved, float *x, float *y)
+{
+    kit_rect w = guest_window(s);
+    bool inside = window_contains(w, *x, *y) && s->surface.hovered;
+    bool press = moved->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+    if (press) {
+        s->guest_keys = inside;
+        s->guest_capture = inside;
+    }
+    bool reach = inside || s->guest_capture;
+    if (moved->type == SDL_EVENT_MOUSE_BUTTON_UP) {
+        s->guest_capture = false;
+    }
+    if (!reach && s->guest_hover) {
+        apush(s->guest->events, ((SDL_Event){ .type = SDL_EVENT_WINDOW_MOUSE_LEAVE }));
+    }
+    s->guest_hover = reach;
+    if (!reach) {
+        return;
+    }
+    *x -= w.x;
+    *y -= w.y;
+    apush(s->guest->events, *moved);
+}
+
+static bool guest_keys(studio *s, const SDL_Event *e)
+{
+    if (!guest_has_keys(s)) {
+        return false;
+    }
+    apush(s->guest->events, *e);
+    return true;
+}
+
+/* Hands the guest what is its; true when the host must not handle the event. */
+static bool to_guest(studio *s, const SDL_Event *e)
+{
+    SDL_Event moved = *e;
+    switch (e->type) {
+        case SDL_EVENT_MOUSE_MOTION:
+            guest_pointer(s, &moved, &moved.motion.x, &moved.motion.y);
+            return false;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            guest_pointer(s, &moved, &moved.button.x, &moved.button.y);
+            return false;
+        case SDL_EVENT_MOUSE_WHEEL:
+            guest_pointer(s, &moved, &moved.wheel.mouse_x, &moved.wheel.mouse_y);
+            return false;
+        case SDL_EVENT_PINCH_UPDATE:
+            if (s->guest_hover) {
+                apush(s->guest->events, *e);
+            }
+            return s->guest_hover;
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP:
+            s->guest->mods = e->key.mod;
+            return guest_keys(s, e);
+        case SDL_EVENT_TEXT_INPUT: return guest_keys(s, e);
+        default: return false;
+    }
+}
+
 static void forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
@@ -205,6 +294,9 @@ static void forward_input(studio *s)
     s->nav_button = 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
+        if (s->guest && to_guest(s, e)) {
+            continue;
+        }
         /* The Inspector's pick keys reach no document. */
         if (e->type == SDL_EVENT_KEY_DOWN && studio_inspect_key(s, &e->key)) {
             continue;
@@ -301,6 +393,18 @@ static void forward_input(studio *s)
     cf_input_text_clear();
 }
 
+/* The cursor the element under the pointer asks for, the guest's over it. */
+static const char *cursor_name(studio *s)
+{
+    if (s->guest && s->guest_hover) {
+        return cursor_name(s->guest);
+    }
+    const char *graph = studio_graph_cursor(s);
+    return kit_dragging(s->kit, NULL) ? "move"
+         : graph                      ? graph
+                                      : rml_backend_cursor(s->backend);
+}
+
 /* RCSS `cursor` names to system cursors: resize on splitters and scrubbed
    fields, text in inputs, a crosshair in the color plane. */
 static void sync_cursor(studio *s)
@@ -323,10 +427,7 @@ static void sync_cursor(studio *s)
         { "grab", SDL_SYSTEM_CURSOR_MOVE },
         { "not-allowed", SDL_SYSTEM_CURSOR_NOT_ALLOWED },
     };
-    const char *graph = studio_graph_cursor(s);
-    const char *name = kit_dragging(s->kit, NULL) ? "move"
-                     : graph ? graph
-                             : rml_backend_cursor(s->backend);
+    const char *name = cursor_name(s);
     SDL_SystemCursor wanted = SDL_SYSTEM_CURSOR_DEFAULT;
     for (size_t i = 0; name && i < sizeof names / sizeof *names; i++) {
         if (strcmp(names[i].name, name) == 0) {
@@ -352,13 +453,19 @@ static bool game_typing(const studio *s)
     return viewport && engine_viewport_ui_typing(viewport);
 }
 
+static bool accepts_text(studio *s)
+{
+    return kit_accepts_text(s->kit) || studio_graph_accepts_text(s) ||
+           game_typing(s);
+}
+
 /* SDL delivers text only while text input is started; follow RmlUi keyboard
- * focus, the game documents' included. */
+ * focus, the game documents' and a guest's with the keyboard included. */
 static void sync_text_input(studio *s)
 {
     kit_rect caret;
-    bool wants = kit_accepts_text(s->kit) || studio_graph_accepts_text(s) ||
-                 game_typing(s);
+    bool wants = accepts_text(s) ||
+                 (s->guest && guest_has_keys(s) && accepts_text(s->guest));
     if (wants != s->text_input) {
         s->text_input = wants;
         if (wants) {
@@ -389,6 +496,10 @@ static int area_showing(const studio *s, studio_editor editor)
 
 static void draw_viewport(studio *s)
 {
+    /* The guest's own Scene area draws the scene. */
+    if (s->guest) {
+        return;
+    }
     int area = area_showing(s, STUDIO_EDITOR_SCENE);
     if (area < 0 || s->surface.rect.w <= 0 || s->surface.rect.h <= 0) {
         engine_viewport_set_host_input(s->viewport, NULL);
@@ -461,7 +572,8 @@ static void apply_prefs(studio *s, bool initial)
         s->applied = *p;
         s->prefs_changed_at = s->time;
     }
-    if (s->prefs_changed_at > 0 && s->time - s->prefs_changed_at >= 0.5) {
+    /* A guest's preferences are its own and last while it runs. */
+    if (!s->hosted && s->prefs_changed_at > 0 && s->time - s->prefs_changed_at >= 0.5) {
         studio_prefs_save(p);
         s->prefs_changed_at = 0;
     }
@@ -471,7 +583,7 @@ static void apply_prefs(studio *s, bool initial)
  * so their settings are these preferences, as the editor's panels' are. */
 static void share_project_prefs(studio *s)
 {
-    if (!s->own_project) {
+    if (!s->own_project || s->hosted) {
         return;
     }
     game_behavior_world *previews = game_prototype_preview_behaviors(s->scene->prototype_preview);
@@ -499,12 +611,20 @@ static void sync_theme(studio *s)
     }
 }
 
-studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const char *project_root)
+/* A Studio over the scene authoring: the window's, or with `host` a guest
+ * that starts from the host's preferences. */
+static studio *create(
+    app_scene_authoring *scene,
+    engine_viewport *viewport,
+    const char *project_root,
+    const studio *host
+)
 {
     studio *s = xcalloc(1, sizeof *s);
     s->scene = scene;
     s->viewport = viewport;
     s->project_root = project_root;
+    s->hosted = host != NULL;
     char studio_root[PATH_MAX];
     s->own_project = realpath(STUDIO_PROJECT, studio_root) &&
                      !strcmp(studio_root, project_root);
@@ -512,7 +632,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     assert(s->backend);
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
-    s->prefs = studio_prefs_load();
+    s->prefs = host ? host->prefs : studio_prefs_load();
     char error[256];
     s->ui = studio_ui_new(rml_backend_context(s->backend), STUDIO_PROJECT, error, sizeof error);
     sync_theme(s);
@@ -522,7 +642,6 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
     s->mac = studio_detect_mac();
     apply_prefs(s, true);
-    studio_projects_load(s);
     s->mods = SDL_GetModState();
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
@@ -532,17 +651,55 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;
+    s->in.mouse_x = s->in.mouse_y = -1e9f;
+    return s;
+}
+
+studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const char *project_root)
+{
+    studio *s = create(scene, viewport, project_root, NULL);
+    /* A guest opens no project: the window's Studio owns the workspace. */
+    studio_projects_load(s);
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
     SDL_AddEventWatch(queue_event, s);
     return s;
 }
 
-void studio_free(studio *s)
+void studio_guest_start(studio *s)
 {
-    if (!s) {
+    s->guest_request = 1;
+}
+
+void studio_guest_stop(studio *s)
+{
+    s->guest_request = -1;
+}
+
+/* Starts or stops the guest between frames, never while either one's
+ * documents are being emitted or drawn. */
+static void guest_requests(studio *s)
+{
+    int request = s->guest_request;
+    s->guest_request = 0;
+    if (request > 0 && !s->guest) {
+        s->guest = create(s->scene, s->viewport, s->project_root, s);
+        /* The host already reported the authoring's last message. */
+        snprintf(s->guest->seen_message, sizeof s->guest->seen_message, "%s", s->seen_message);
         return;
     }
+    if (request < 0 && s->guest) {
+        rml_backend_set_texture(s->backend, "guest", 0);
+        studio_free(s->guest);
+        s->guest = NULL;
+        s->guest_hover = s->guest_keys = s->guest_capture = false;
+    }
+}
+
+/* What the window's Studio holds of the window: its event watch, IME,
+   cursor and saved preferences. A guest holds none of it. */
+static void release_window(studio *s)
+{
     if (s->text_input) {
         cf_input_disable_ime();
     }
@@ -555,6 +712,18 @@ void studio_free(studio *s)
         if (s->cursors[i]) {
             SDL_DestroyCursor(s->cursors[i]);
         }
+    }
+    editor_set_retained_keyboard(false);
+}
+
+void studio_free(studio *s)
+{
+    if (!s) {
+        return;
+    }
+    studio_free(s->guest);
+    if (!s->hosted) {
+        release_window(s);
     }
     afree(s->events);
     afree(s->records);
@@ -572,7 +741,6 @@ void studio_free(studio *s)
     studio_canvas_free(s);
     studio_add_menu_close(s);
     engine_viewport_set_host_input(s->viewport, NULL);
-    editor_set_retained_keyboard(false);
     studio_graph_free(s);
     component_presentation_free(&s->presentation.hints);
     studio_code_free(s);
@@ -587,19 +755,22 @@ void studio_free(studio *s)
     free(s);
 }
 
-void studio_frame(studio *s, double delta_seconds)
+/* One frame of a Studio in a window of `width` by `height` points: the
+ * window's, or a guest's in its host's Scene area. */
+static void run(studio *s, double delta_seconds, float width, float height)
 {
-    int width = cf_app_get_width(), height = cf_app_get_height();
     float scale = cf_app_get_pixel_scale(), ratio = studio_pixel_ratio(s);
     rml_backend_resize_pixels(s->backend, (int)lroundf(width * scale), (int)lroundf(height * scale), ratio);
     s->time += delta_seconds;
     s->in.time = s->time;
     s->in.dp_ratio = ratio;
-    s->in.width = to_dp(s, (float)width);
-    s->in.height = to_dp(s, (float)height);
+    s->in.width = to_dp(s, width);
+    s->in.height = to_dp(s, height);
     forward_input(s);
     studio_performance_sample(s, delta_seconds);
-    app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
+    if (!s->hosted) {
+        app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
+    }
     sync_theme(s);
     studio_ui_frame(s);
     share_project_prefs(s);
@@ -608,17 +779,32 @@ void studio_frame(studio *s, double delta_seconds)
     studio_emit(s);
     studio_inspect_emit(s);
     kit_end(s->kit);
-    bool typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
-    if (!typing) {
+    s->typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
+    if (!s->typing) {
         studio_shortcuts(s);
     }
-    editor_set_retained_keyboard(typing);
     apply_prefs(s, false);
     draw_viewport(s);
+    if (s->guest) {
+        kit_rect window = guest_window(s);
+        run(s->guest, delta_seconds, fmaxf(window.w, 1), fmaxf(window.h, 1));
+        rml_backend_set_texture(
+            s->backend,
+            "guest",
+            rml_backend_texture(s->guest->backend)
+        );
+    }
     studio_graph_frame(s, delta_seconds);
-    sync_text_input(s);
-    sync_cursor(s);
     rml_backend_update(s->backend, delta_seconds);
     rml_backend_render(s->backend);
+}
+
+void studio_frame(studio *s, double delta_seconds)
+{
+    guest_requests(s);
+    run(s, delta_seconds, (float)cf_app_get_width(), (float)cf_app_get_height());
+    editor_set_retained_keyboard(s->typing || (s->guest && s->guest->typing));
+    sync_text_input(s);
+    sync_cursor(s);
     rml_backend_present(s->backend);
 }

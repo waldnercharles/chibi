@@ -90,6 +90,8 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
                 info.label = info.menu = "Resume";
                 info.icon = KIT_ICON_CONTINUE;
                 info.shortcut = "F5";
+            } else if (s->guest) {
+                info.label = info.menu = "Stop Studio";
             } else if (app_scene_authoring_runtime_state(s->scene).playing) {
                 info.label = info.menu = "Pause";
                 info.icon = KIT_ICON_PAUSE;
@@ -165,8 +167,11 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_ZOOM_OUT:
             return s->prefs.ui_scale > STUDIO_UI_SCALE_MIN;
         case STUDIO_COMMAND_ZOOM_RESET: return s->prefs.ui_scale != 1;
-        case STUDIO_COMMAND_STOP: return runtime_session(s->scene);
-        case STUDIO_COMMAND_STEP: return !s->pause.active;
+        /* A guest Studio runs no scene of its own. */
+        case STUDIO_COMMAND_PLAY: return !s->hosted;
+        case STUDIO_COMMAND_STOP: return !s->hosted && studio_session(s);
+        case STUDIO_COMMAND_STEP:
+            return !s->hosted && !s->guest && !s->pause.active;
         default: return true;
     }
 }

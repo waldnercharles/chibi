@@ -5,6 +5,8 @@
    #debug-steps slots, Settings and Search. Each button runs its command
    with emit('studio.<id>'), and a tab's with the tab's index. */
 body { flex: 0 0 auto; }
+// The transport stays clear of the tabs as the window narrows.
+.spacer { min-width: 12dp; }
 .topbar {
   height: 30dp; display: flex; align-items: center; gap: 2dp; padding: 0dp 6dp;
   background-color: var(--muted); border-bottom: 1dp var(--edge);

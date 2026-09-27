@@ -1407,7 +1407,7 @@ static void sync_editor(studio *s, ui_data *data)
         .scene = studio_scene_title(s->scene, title, sizeof title),
         .selection = actor ? actor->name : "",
         .objects = acount(s->scene->actors),
-        .playing = app_scene_authoring_runtime_state(s->scene).playing,
+        .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,
         .paused = s->pause.active,
         .tabs = tabs,
         .tab_count = acount(tabs),

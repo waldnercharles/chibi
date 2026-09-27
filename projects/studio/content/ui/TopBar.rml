@@ -12,9 +12,9 @@
   <div class="transport">
     <div id="play-target"/>
     <div class="group">
-      <button class="btn icon-only" data-attr-data-tip="commands.play.label" data-attr-data-kbd="commands.play.shortcut" data-attr-data-state="editor.playing && !editor.paused ? 'on' : 'off'" data-event-click="emit('studio.play')"><span class="icon">{{ commands.play.icon }}</span></button>
+      <button class="btn icon-only" data-attr-data-tip="commands.play.label" data-attr-data-kbd="commands.play.shortcut" data-attr-data-state="editor.playing && !editor.paused ? 'on' : 'off'" data-event-click="emit('studio.play')" data-attrif-data-disabled="!commands.play.enabled"><span class="icon">{{ commands.play.icon }}</span></button>
       <button class="btn icon-only" data-attr-data-tip="commands.stop.label" data-attrif-data-disabled="!commands.stop.enabled" data-event-click="emit('studio.stop')"><span class="icon">{{ commands.stop.icon }}</span></button>
-      <button class="btn icon-only" data-if="!editor.paused" data-attr-data-tip="commands.step.label" data-event-click="emit('studio.step')"><span class="icon">{{ commands.step.icon }}</span></button>
+      <button class="btn icon-only" data-if="!editor.paused" data-attr-data-tip="commands.step.label" data-event-click="emit('studio.step')" data-attrif-data-disabled="!commands.step.enabled"><span class="icon">{{ commands.step.icon }}</span></button>
       <div id="debug-steps"/>
     </div>
   </div>

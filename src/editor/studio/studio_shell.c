@@ -266,6 +266,19 @@ void studio_history(studio *s, bool redo)
     document_history(s, redo);
 }
 
+bool studio_session(const studio *s)
+{
+    return runtime_session(s->scene) || s->guest != NULL;
+}
+
+/* The Studio project's game is Studio: Play there runs a guest Studio in
+   the Scene area, and Play again or Stop ends it, as Unity's Play toggles. */
+static bool runs_guest(const studio *s, app_runtime_state state)
+{
+    return s->own_project && state.target == APP_RUNTIME_SCENE &&
+           !state.playing && !runtime_session(s->scene);
+}
+
 void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
@@ -274,6 +287,14 @@ void studio_runtime(studio *s, app_runtime_command command)
     }
     finish_transform_edit(s->scene, false);
     app_runtime_state state = app_scene_authoring_runtime_state(s->scene);
+    if (s->guest && command != APP_RUNTIME_STEP) {
+        studio_guest_stop(s);
+        return;
+    }
+    if (command == APP_RUNTIME_PLAY && runs_guest(s, state)) {
+        studio_guest_start(s);
+        return;
+    }
     if (command == APP_RUNTIME_PLAY && state.playing) {
         command = APP_RUNTIME_PAUSE;
     }
@@ -596,7 +617,7 @@ static void runtime_target(studio *s)
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
-    bool session = runtime_session(scene);
+    bool session = studio_session(s);
     scene_prototype_asset *previewed = prototype_at(scene, scene->runtime_preview_prototype);
     /* The open prototype document, else the selected object's prototype. */
     scene_actor *actor = selected_actor(scene);

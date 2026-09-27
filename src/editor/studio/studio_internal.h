@@ -697,6 +697,14 @@ struct studio
     struct studio_ui_problem *ui_project_problems; /* array */
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     rml_input *game_input; /* keys pressed and text typed this frame, for the Scene's game UI */
+    /* ---------- Studio in Studio (studio_host.c) ---------- */
+    struct studio *guest; /* the Studio Play runs in the Scene area, or NULL */
+    int guest_request; /* 1 starts the guest, -1 stops it, at the next frame */
+    bool hosted;      /* a guest: its host feeds it input and shows its frame */
+    bool guest_hover; /* the pointer is over the guest */
+    bool guest_keys;  /* a press in the guest gave it the keyboard */
+    bool guest_capture; /* a button pressed in the guest is held */
+    bool typing;        /* a field or the graph had the keyboard last frame */
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1067,6 +1075,13 @@ bool studio_command_item(studio *s, studio_command command);
 void studio_save(studio *s);
 void studio_history(studio *s, bool redo);
 void studio_runtime(studio *s, app_runtime_command command);
+/* A scene run, a preview or a guest Studio is running. */
+bool studio_session(const studio *s);
+/* Play in the Studio project runs Studio itself, as the project's game: a
+ * guest Studio in the Scene area, built from the project's working copy and
+ * editing the same scene authoring. Both take effect at the next frame. */
+void studio_guest_start(studio *s);
+void studio_guest_stop(studio *s);
 bool studio_can_replay(studio *s, bool redo);
 /* The active document has unsaved edits. */
 bool studio_active_dirty(studio *s);

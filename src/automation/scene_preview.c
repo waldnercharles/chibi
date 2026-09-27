@@ -189,6 +189,11 @@ static bool render_scene(
         double start = seconds();
         CHIBI_TRACE_ZONE_BEGIN(window_zone, "Preview window update");
         cf_app_update(NULL);
+        /* Window DPI events can recreate the app canvas at display resolution.
+         * A preview request specifies pixels, including per-frame readbacks. */
+        if (cf_app_get_canvas_width() != width || cf_app_get_canvas_height() != height) {
+            cf_app_set_canvas_size(width, height);
+        }
         CHIBI_TRACE_ZONE_END(window_zone);
         double simulation_start = seconds();
         bool advance = render_frames > 2 && i >= warmup && !options->frozen;

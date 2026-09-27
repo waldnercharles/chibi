@@ -36,6 +36,9 @@ struct render_radiance
     bool luminance_reuse;
     bool child_luminance_reuse;
     bool work_resources_ready;
+    bool compact_intervals;
+    bool compact_t0, compact_t1;
+    bool allocated_compact_t0, allocated_compact_t1;
     struct render_radiance *luminance;
     float scale, reconstruction_scale;
     int trace_levels;
@@ -88,6 +91,31 @@ static int s_probe_count(int width, int level)
 static int s_t_width(int width, int level)
 {
     return s_probe_count(width, level) * ((1 << level) + 1);
+}
+
+static int s_t_storage_width(const HRC *hrc, int width, int level)
+{
+    int probes = s_probe_count(width, level);
+    if (level == 0 && hrc->compact_t0) {
+        return (probes / 2) * 2;
+    }
+    if (level == 1 && hrc->compact_t1) {
+        return (probes / 2) * 5 + (probes % 2) * 2;
+    }
+    return probes * ((1 << level) + 1);
+}
+
+static int s_cascade_count(int work_w, int work_h)
+{
+    int span = work_w > work_h ? work_w : work_h;
+    return cf_min((int)ceil(log2((double)span)), HRC_MAX_CASCADES - 1);
+}
+
+static void s_compact_interval_levels(const HRC *hrc, int N, bool *compact_t0, bool *compact_t1)
+{
+    int cutoff = hrc->trace_levels < N ? hrc->trace_levels : N;
+    *compact_t0 = hrc->compact_intervals && N >= 2 && cutoff >= 2;
+    *compact_t1 = hrc->compact_intervals && N >= 3 && cutoff >= 3;
 }
 
 static int s_r_width(int width, int level)
@@ -175,6 +203,7 @@ static void s_destroy_work_resources(HRC *hrc)
 {
     hrc->work_resources_ready = false;
     hrc->capacity_w = hrc->capacity_h = 0;
+    hrc->allocated_compact_t0 = hrc->allocated_compact_t1 = false;
     if (hrc->emission_filtered.id) {
         cf_destroy_texture(hrc->emission_filtered);
     }
@@ -217,7 +246,12 @@ static void s_destroy_work_resources(HRC *hrc)
 
 static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
 {
-    bool reuse = work_w <= hrc->capacity_w && work_h <= hrc->capacity_h;
+    int N = s_cascade_count(work_w, work_h);
+    bool compact_t0, compact_t1;
+    s_compact_interval_levels(hrc, N, &compact_t0, &compact_t1);
+    bool reuse = work_w <= hrc->capacity_w && work_h <= hrc->capacity_h &&
+                 compact_t0 == hrc->allocated_compact_t0 &&
+                 compact_t1 == hrc->allocated_compact_t1;
     if (!reuse) {
         s_destroy_work_resources(hrc);
         CF_PixelFormat radiance_format = hrc->luminance_only
@@ -235,10 +269,10 @@ static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
     hrc->world_w = work_w;
     hrc->world_h = work_h;
     hrc->frusta_solved = false;
-    int span = work_w > work_h ? work_w : work_h;
-    int ideal_N = ceil(log2(span));
-    hrc->N = cf_min(ideal_N, HRC_MAX_CASCADES - 1);
+    hrc->N = N;
     hrc->trace_cutoff = s_trace_cutoff(hrc);
+    hrc->compact_t0 = compact_t0;
+    hrc->compact_t1 = compact_t1;
     if (reuse) {
         hrc->work_w = work_w;
         hrc->work_h = work_h;
@@ -255,7 +289,7 @@ static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
         for (int o = 0; o < 2; ++o) {
             int rot_w = rot_w_options[o];
             int rot_h = rot_h_options[o];
-            int t_w = s_t_width(rot_w, i);
+            int t_w = s_t_storage_width(hrc, rot_w, i);
             int t_count = t_w * rot_h;
             if (t_count > max_t_count) {
                 max_t_count = t_count;
@@ -316,6 +350,8 @@ static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
 
     hrc->work_w = hrc->capacity_w = work_w;
     hrc->work_h = hrc->capacity_h = work_h;
+    hrc->allocated_compact_t0 = hrc->compact_t0;
+    hrc->allocated_compact_t1 = hrc->compact_t1;
     hrc->work_resources_ready = true;
     return true;
 
@@ -330,6 +366,10 @@ static void s_dispatch_trace(HRC *hrc, int quadrant, int level)
     CF_Material mat = hrc->compute_material;
     int rot_w = s_rot_world_w(hrc, quadrant);
     int rot_h = s_rot_world_h(hrc, quadrant);
+    int storage_w = s_t_storage_width(hrc, rot_w, level);
+    int compact_mode = level == 0 && hrc->compact_t0 ? 1
+                     : level == 1 && hrc->compact_t1 ? 2
+                                                     : 0;
 
     cf_material_set_texture_cs(mat, "u_emission", hrc->emission_filtered);
     cf_material_set_texture_cs(mat, "u_transmittance", hrc->transmittance_filtered);
@@ -342,6 +382,8 @@ static void s_dispatch_trace(HRC *hrc, int quadrant, int level)
     cf_material_set_uniform_cs(mat, "u_world_h", params + 3, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_work_w", params + 4, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_work_h", params + 5, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_cs(mat, "u_storage_w", &storage_w, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_cs(mat, "u_compact_mode", &compact_mode, CF_UNIFORM_TYPE_INT, 1);
     float step_scale = (float)hrc->canvas_w / (float)hrc->work_w;
     cf_material_set_uniform_cs(mat, "u_step_scale", &step_scale, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
@@ -349,7 +391,7 @@ static void s_dispatch_trace(HRC *hrc, int quadrant, int level)
     cf_material_set_uniform_cs(mat, "u_luminance_only", &luminance_only, CF_UNIFORM_TYPE_INT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
-        s_ceil_div(s_t_width(rot_w, level), HRC_WG),
+        s_ceil_div(storage_w, HRC_WG),
         s_ceil_div(rot_h, HRC_WG),
         1
     );
@@ -389,8 +431,8 @@ static void s_dispatch_extend(HRC *hrc, int rot_w, int rot_h, int level)
 static void s_dispatch_merge(HRC *hrc, int rot_w, int rot_h, int level, CF_StorageBuffer r_prev, CF_StorageBuffer r_curr)
 {
     CF_Material mat = hrc->compute_material;
-    int t_curr_w = s_t_width(rot_w, level);
-    int t_next_w = s_t_width(rot_w, level + 1);
+    int t_curr_w = s_t_storage_width(hrc, rot_w, level);
+    int t_next_w = s_t_storage_width(hrc, rot_w, level + 1);
     int r_prev_w = s_r_width(rot_w, level + 1);
     int r_curr_w = s_r_width(rot_w, level);
 
@@ -404,6 +446,10 @@ static void s_dispatch_merge(HRC *hrc, int rot_w, int rot_h, int level, CF_Stora
     cf_material_set_uniform_cs(mat, "u_r_prev_w", params + 5, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_r_curr_w", params + 6, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_cascade_count", &hrc->N, CF_UNIFORM_TYPE_INT, 1);
+    int compact_t0 = hrc->compact_t0;
+    int compact_t1 = hrc->compact_t1;
+    cf_material_set_uniform_cs(mat, "u_compact_t0", &compact_t0, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_cs(mat, "u_compact_t1", &compact_t1, CF_UNIFORM_TYPE_INT, 1);
     float ww = (float)hrc->work_w, wh = (float)hrc->work_h;
     float diag = sqrtf(ww * ww + wh * wh);
     float falloff = diag > 0 ? hrc->falloff * 2.0f / diag : 0.0f;
@@ -838,6 +884,8 @@ static render_radiance *s_new(bool luminance_only)
     HRC *hrc = xmalloc(sizeof *hrc);
     memset(hrc, 0, sizeof *hrc);
     hrc->luminance_only = luminance_only;
+    const char *compact_intervals = getenv("CHIBI_HRC_COMPACT_INTERVALS");
+    hrc->compact_intervals = compact_intervals && !strcmp(compact_intervals, "1");
     hrc->compute_material = cf_make_material();
     hrc->trace_shd = cf_make_compute_shader(
         luminance_only ? "hrc/trace_luminance.shd" : "hrc/trace.shd"
@@ -965,6 +1013,13 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     }
     int radiance_w = (int)fmaxf(2, ceilf(width * hrc->reconstruction_scale));
     int radiance_h = (int)fmaxf(2, ceilf(height * hrc->reconstruction_scale));
+    int work_w = (int)fmaxf(2, ceilf(width * hrc->scale));
+    int work_h = (int)fmaxf(2, ceilf(height * hrc->scale));
+    bool compact_t0, compact_t1;
+    s_compact_interval_levels(hrc, s_cascade_count(work_w, work_h), &compact_t0, &compact_t1);
+    bool interval_layout_ready = hrc->luminance_reuse ||
+                                 (compact_t0 == hrc->allocated_compact_t0 &&
+                                  compact_t1 == hrc->allocated_compact_t1);
     bool luminance_ready = !hrc->luminance ||
                            (hrc->luminance->canvas_w == width &&
                             hrc->luminance->canvas_h == height &&
@@ -978,7 +1033,7 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
         hrc->radiance_w == radiance_w && hrc->radiance_h == radiance_h &&
         hrc->work_w == (int)ceilf(width * hrc->scale) &&
         hrc->work_h == (int)ceilf(height * hrc->scale) && luminance_ready &&
-        hrc->work_resources_ready == !hrc->luminance_reuse) {
+        hrc->work_resources_ready == !hrc->luminance_reuse && interval_layout_ready) {
         return true;
     }
     bool images_changed = hrc->canvas_w != width || hrc->canvas_h != height ||
@@ -1017,9 +1072,6 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
             ok = ok && hrc->radiance_dirs_tex.id != 0;
         }
     }
-    float scale = hrc->scale;
-    int work_w = (int)fmaxf(2, ceilf(width * scale));
-    int work_h = (int)fmaxf(2, ceilf(height * scale));
     if (hrc->luminance_reuse) {
         s_destroy_work_resources(hrc);
         hrc->work_w = hrc->world_w = work_w;
@@ -1066,18 +1118,16 @@ bool render_radiance_set_settings(render_radiance *radiance, render_radiance_set
         settings.trace_levels > HRC_MAX_TRACE_LEVELS) {
         return false;
     }
-    bool resized = true;
-    if (radiance->scale != settings.scale) {
-        radiance->scale = settings.scale;
-        if (radiance->canvas_w && radiance->canvas_h) {
-            resized = render_radiance_resize(
-                radiance,
-                radiance->canvas_w,
-                radiance->canvas_h
-            );
-        }
-    }
+    bool scale_changed = radiance->scale != settings.scale;
+    bool trace_changed = radiance->trace_levels != settings.trace_levels;
+    radiance->scale = settings.scale;
     radiance->trace_levels = settings.trace_levels;
+    radiance->trace_cutoff = settings.trace_levels;
+    bool resized = true;
+    if ((scale_changed || (radiance->compact_intervals && trace_changed)) &&
+        radiance->canvas_w && radiance->canvas_h) {
+        resized = render_radiance_resize(radiance, radiance->canvas_w, radiance->canvas_h);
+    }
     if (radiance->feedback != settings.feedback) {
         radiance->feedback = settings.feedback;
         render_radiance_reset(radiance);

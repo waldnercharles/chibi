@@ -116,6 +116,32 @@ def dense_storage(width, height):
                 hierarchy_mib=(intervals * 8 + max_r * 8 + width * height * 16) / 2**20)
 
 
+def compact_storage(width, height, trace_levels=3):
+    """T0/T1 experiment: actual buffer slots and unpadded logical trace work."""
+    dense = dense_storage(width, height)
+    cutoff = min(trace_levels, dense['levels'])
+    saved, traced_dense, traced_compact = 0, 0, 0
+    for level in range(cutoff):
+        counts = []
+        for w, h in [(width, height), (height, width)]:
+            probes = ceil_div(w, 1 << level)
+            row = probes * ((1 << level) + 1)
+            packed = row
+            if level == 0 and cutoff >= 2:
+                packed = probes // 2 * 2
+            if level == 1 and cutoff >= 3:
+                packed = probes // 2 * 5 + probes % 2 * 2
+            counts.append((row * h, packed * h))
+        saved += max(a for a, _ in counts) - max(b for _, b in counts)
+        traced_dense += 2 * sum(a for a, _ in counts)
+        traced_compact += 2 * sum(b for _, b in counts)
+    return dict(width=width, height=height, trace_levels=trace_levels,
+                rgb_saved_mib=saved * 8 / 2**20,
+                scalar_saved_mib=saved * 4 / 2**20,
+                logical_traces_dense=traced_dense,
+                logical_traces_compact=traced_compact)
+
+
 def dependency_audit(width, height, trace_levels):
     """Union of in-bounds reads for every R0 output in one quadrant.
 
@@ -225,6 +251,8 @@ def main():
         'coordinate_preserving_sparse_tree': sparse_tree_counts(),
         'current_hrc_allocations': [dense_storage(w, h) for w, h in
                                     [(966, 546), (1030, 610), (1094, 674), (1024, 631), (1007, 621)]],
+        'compact_interval_allocations': [compact_storage(w, h) for w, h in
+                                         [(1094, 674), (1024, 631)]],
         'current_hrc_dependencies': [dependency_audit(w, h, cutoff) for w, h, cutoff in
                                     [(64, 64, 1), (64, 64, 3), (70, 43, 3), (128, 80, 3)]],
     }

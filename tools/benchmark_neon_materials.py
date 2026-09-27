@@ -105,7 +105,7 @@ def run_case(args, name, mode, scale, repeat, provenance):
     request = dict(contract=1, operation='preview_scene', kind='scene', name='Sandbox',
         frames=initial_frames, render_frames=args.render_frames, freeze_simulation=frozen,
         width=args.width, height=args.height, input_timeline=inputs)
-    environment = {}
+    environment = {'CHIBI_HRC_COMPACT_INTERVALS': '1' if args.compact_intervals else '0'}
     if args.metal_capture:
         request.update(metal_capture=str(output / 'frame.gputrace'), capture_frame=16)
         environment['MTL_CAPTURE_ENABLED'] = '1'
@@ -114,6 +114,7 @@ def run_case(args, name, mode, scale, repeat, provenance):
     manifest = dict(provenance, project_sha256=fingerprint(runner.project), scenario=name,
         fixture=fixture, mode=mode, scale=scale, trace_levels=args.trace_levels,
         reconstruction_scale=args.reconstruction_scale, lighting_margin=args.lighting_margin,
+        compact_intervals=args.compact_intervals,
         adaptive=False, width=args.width, height=args.height)
     write_json(output / 'manifest.json', manifest)
     if args.prepare_only:
@@ -139,6 +140,7 @@ def run_case(args, name, mode, scale, repeat, provenance):
     (output / 'frame.png').write_bytes(base64.b64decode(result['preview']['data']))
     report = dict(scenario=name, mode=mode, scale=scale, repeat=repeat,
         trace_levels=args.trace_levels, reconstruction_scale=args.reconstruction_scale,
+        compact_intervals=args.compact_intervals,
         lighting_margin=args.lighting_margin, adaptive=False, width=args.width, height=args.height,
         purpose='metal-capture' if args.metal_capture else 'tracy-capture' if args.tracy_capture else 'benchmark',
         backend=result['backend'], initial_state=before, final_state=after, performance=performance,
@@ -197,14 +199,14 @@ def summary(output, reports):
     write_json(output / 'summary.json', reports)
     lines = ['# NeonSwarm benchmark results', '',
         'Frame work includes GPU completion and excludes pacing. Render/present is host elapsed time, not GPU pass time.', '',
-        '| Scenario | Mode | HRC scale | Reconstruction scale | Margin | Median ms | p95 ms | Simulation mean ms | Render/present mean ms |',
-        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
+        '| Scenario | Mode | HRC scale | Reconstruction scale | Margin | Compact intervals | Median ms | p95 ms | Simulation mean ms | Render/present mean ms |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for r in reports:
         if 'performance' not in r:
             continue
         p = r['performance']
         lines.append(f"| {r['scenario']} | {r['mode']} | {r['scale']:g} | {r['reconstruction_scale']:g} | "
-            f"{r['lighting_margin']:g} | {p['median_ms']:.2f} | {p['p95_ms']:.2f} | "
+            f"{r['lighting_margin']:g} | {r['compact_intervals']} | {p['median_ms']:.2f} | {p['p95_ms']:.2f} | "
             f"{p['simulation_average_ms']:.2f} | {p['render_average_ms']:.2f} |")
     if any(r.get('purpose', 'benchmark') != 'benchmark' or r.get('performance', {}).get('instrumented') for r in reports):
         lines += ['', '**Instrumented capture run. Its timings are not benchmark results.**']
@@ -223,6 +225,8 @@ def main():
     parser.add_argument('--height', type=int, default=1080)
     parser.add_argument('--scale', type=float, nargs='+', default=[.5, 1])
     parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=3)
+    parser.add_argument('--compact-intervals', action='store_true',
+        help='Use the experimental compact storage for independently traced intervals')
     parser.add_argument('--reconstruction-scale', type=float, default=1)
     parser.add_argument('--lighting-margin', type=float, default=64)
     parser.add_argument('--render-frames', type=int, default=180)

@@ -9,6 +9,7 @@
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "runtime/generated.h"
+#include "support/xalloc.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -279,6 +280,174 @@ static bool solve_scaled(
         }
     }
     return read_pixels(canvas, pixels, size * size);
+}
+
+static int set_compact_interval_env(const char *value)
+{
+#if defined(_WIN32)
+    return _putenv_s("CHIBI_HRC_COMPACT_INTERVALS", value ? value : "");
+#else
+    return value ? setenv("CHIBI_HRC_COMPACT_INTERVALS", value, 1)
+                 : unsetenv("CHIBI_HRC_COMPACT_INTERVALS");
+#endif
+}
+
+static bool render_compact_comparison_frame(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    int width,
+    int height,
+    CF_Pixel *pixels
+)
+{
+    render_radiance_reset(radiance);
+    cf_app_update(NULL);
+    render_view_2d view = { .min_x = -(float)width * .5f,
+                            .max_y = (float)height * .5f,
+                            .width = (float)width,
+                            .height = (float)height,
+                            .crop_min_u = 0,
+                            .crop_min_v = 0,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    if (!render_material_raster_draw(raster, entities, count, view)) {
+        return false;
+    }
+    render_material_textures textures = render_material_raster_textures(raster);
+    render_radiance_inputs inputs = { .scene = textures.scene,
+                                      .emission = textures.emission,
+                                      .absorption = textures.absorption,
+                                      .albedo = textures.albedo,
+                                      .normal = textures.normal,
+                                      .relief = textures.relief };
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, width, height));
+    bool ok = render_radiance_draw(radiance, inputs, view, canvas);
+    cf_draw_pop();
+    cf_app_draw_onto_screen(false);
+    return ok && read_pixels(canvas, pixels, width * height);
+}
+
+static bool compact_intervals_match_production()
+{
+    const char *previous_env = getenv("CHIBI_HRC_COMPACT_INTERVALS");
+    char *saved_env = previous_env ? xstrdup(previous_env) : NULL;
+
+    render_radiance *dense = NULL, *compact = NULL;
+    render_material_raster *raster = render_material_raster_new();
+    CF_Canvas canvas = { 0 };
+    enum
+    {
+        MAX_PIXELS = 71 * 53
+    };
+    CF_Pixel dense_pixels[MAX_PIXELS], compact_pixels[MAX_PIXELS];
+    bool ok = raster && set_compact_interval_env("0") == 0;
+    if (ok) {
+        dense = render_radiance_new();
+        ok = dense != NULL && set_compact_interval_env("1") == 0;
+    }
+    if (ok) {
+        compact = render_radiance_new();
+        ok = compact != NULL;
+    }
+    if (set_compact_interval_env(saved_env) != 0) {
+        ok = false;
+    }
+    free(saved_env);
+
+    render_radiance *renderers[] = { dense, compact };
+    render_material_entity entities[] = { emitter(), wall() };
+    entities[0].pos[0] = -16;
+    const struct
+    {
+        int width, height, trace_levels;
+    } cases[] = { { 71, 53, 1 }, { 71, 53, 2 }, { 71, 53, 3 }, { 71, 53, 5 },
+                  { 71, 53, 3 }, { 71, 53, 1 }, { 53, 37, 3 } };
+    int width = 0, height = 0, canvas_width = 0, canvas_height = 0;
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases) && ok; i++) {
+        width = cases[i].width;
+        height = cases[i].height;
+        for (int r = 0; r < 2 && ok; r++) {
+            render_radiance_settings settings = render_radiance_get_settings(renderers[r]);
+            settings.scale = 1;
+            settings.feedback = false;
+            settings.trace_levels = cases[i].trace_levels;
+            ok = render_radiance_set_settings(renderers[r], settings);
+        }
+        if (ok && (width != canvas_width || height != canvas_height)) {
+            if (canvas.id) {
+                cf_destroy_canvas(canvas);
+            }
+            canvas = cf_make_canvas(cf_canvas_defaults(width, height));
+            ok = canvas.id && render_material_raster_resize(raster, width, height);
+            for (int r = 0; r < 2 && ok; r++) {
+                ok = render_radiance_resize(renderers[r], width, height);
+            }
+            if (ok) {
+                canvas_width = width;
+                canvas_height = height;
+            }
+        }
+        if (ok) {
+            ok = render_compact_comparison_frame(raster, dense, canvas, entities, 2, width, height, dense_pixels) &&
+                 render_compact_comparison_frame(raster, compact, canvas, entities, 2, width, height, compact_pixels);
+        }
+        bool nontrivial = false;
+        for (int p = 0; p < width * height && ok; p++) {
+            CF_Pixel a = dense_pixels[p], b = compact_pixels[p];
+            nontrivial |= a.colors.r > 2 || a.colors.g > 2 || a.colors.b > 2;
+            if (a.colors.r != b.colors.r || a.colors.g != b.colors.g ||
+                a.colors.b != b.colors.b || a.colors.a != b.colors.a) {
+                fprintf(
+                    stderr,
+                    "HRC compact intervals differ at %dx%d cutoff %d pixel %d: "
+                    "%u,%u,%u,%u vs %u,%u,%u,%u\n",
+                    width,
+                    height,
+                    cases[i].trace_levels,
+                    p,
+                    a.colors.r,
+                    a.colors.g,
+                    a.colors.b,
+                    a.colors.a,
+                    b.colors.r,
+                    b.colors.g,
+                    b.colors.b,
+                    b.colors.a
+                );
+                ok = false;
+            }
+        }
+        if (ok && !nontrivial) {
+            fprintf(
+                stderr,
+                "HRC compact interval fixture rendered black at %dx%d cutoff "
+                "%d\n",
+                width,
+                height,
+                cases[i].trace_levels
+            );
+            ok = false;
+        }
+    }
+
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    if (raster) {
+        render_material_raster_free(raster);
+    }
+    if (compact) {
+        render_radiance_free(compact);
+    }
+    if (dense) {
+        render_radiance_free(dense);
+    }
+    printf("HRC compact intervals %s: production trace/merge, cutoff changes and odd resize\n", ok ? "PASS" : "FAIL");
+    return ok;
 }
 
 static bool solve(
@@ -1911,6 +2080,7 @@ int test_radiance()
     ok &= liquid_refraction(raster, radiance, canvas);
     ok &= reflection_pixels();
     ok &= reconstruction_sampling(raster);
+    ok &= compact_intervals_match_production();
     ok &= test_radiance_intervals();
     ok &= test_radiance_history();
     ok &= test_material_sampling();

@@ -6,6 +6,7 @@
 // radiance/optical-depth front-to-back. Stores τ (optical depth) instead of T.
 
 #include "hrc_common.shd"
+#include "hrc_compact.shd"
 
 layout(set = 0, binding = 0) uniform sampler2D u_emission;
 layout(set = 0, binding = 1) uniform sampler2D u_transmittance;
@@ -21,6 +22,8 @@ layout(set = 2, binding = 0) uniform Params
 	int u_world_h;
 	int u_work_w;
 	int u_work_h;
+	int u_storage_w;
+	int u_compact_mode;
 	float u_step_scale;
 	float u_bounce_intensity;
 	int u_luminance_only;
@@ -52,14 +55,12 @@ vec2 rotate_dir(vec2 d, int rot)
 void main()
 {
 	int step = 1 << u_cascade;
-	int directions = step + 1;
-	int cascade_w = (u_world_w + step - 1) / step * directions;
 
 	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
-	if (gid.x >= cascade_w || gid.y >= u_world_h) return;
+	if (gid.x >= u_storage_w || gid.y >= u_world_h) return;
 
-	int probe_x = gid.x / directions;
-	int k = gid.x - probe_x * directions;
+	int probe_x = hrc_compact_probe(gid.x, u_cascade, u_compact_mode);
+	int k = hrc_compact_direction(gid.x, u_cascade, u_compact_mode);
 
 	// Ray endpoints in rotated cascade space.
 	float y_offset = float(2 * k - step);
@@ -103,7 +104,7 @@ void main()
 	ii_lo = ceil(ii_lo);
 
 	if (ii_lo >= ii_hi) {
-		u_out.data[gid.y * cascade_w + gid.x] = f16_store(vec4(0, 0, 0, 0));
+		u_out.data[gid.y * u_storage_w + gid.x] = f16_store(vec4(0, 0, 0, 0));
 		return;
 	}
 
@@ -137,6 +138,6 @@ void main()
 		if (total_trn < eps) break;
 	}
 
-	int out_idx = gid.y * cascade_w + gid.x;
+	int out_idx = gid.y * u_storage_w + gid.x;
 	u_out.data[out_idx] = f16_store(vec4(total_rad, total_tau));
 }

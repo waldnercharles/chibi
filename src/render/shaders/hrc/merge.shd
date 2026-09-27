@@ -11,6 +11,7 @@
 //   R: width = ceil(world_w / 2^n) * 2^n,       height = world_h
 
 #include "hrc_common.shd"
+#include "hrc_compact.shd"
 
 layout(std430, set = 0, binding = 0) readonly  buffer TCurr { HRC_INTERVAL_STORAGE data[]; } u_t_curr;
 layout(std430, set = 0, binding = 1) readonly  buffer TNext { HRC_INTERVAL_STORAGE data[]; } u_t_next;
@@ -29,6 +30,8 @@ layout(set = 2, binding = 0) uniform Params
 	int u_r_curr_w;
 	float u_falloff;
 	int u_cascade_count;
+	int u_compact_t0;
+	int u_compact_t1;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -49,7 +52,7 @@ Interval T_load(int probe_x, int k, int y)
 	if (probe_x < 0 || probe_x >= num_probes || k < 0 || k >= directions || y < 0 || y >= u_world_h) {
 		return Interval(vec3(0.0), 0.0);
 	}
-	int idx = y * u_t_curr_w + probe_x * directions + k;
+	int idx = y * u_t_curr_w + hrc_t_storage_x(n, probe_x, k, u_compact_t0, u_compact_t1);
 	vec4 v = f16_load(u_t_curr.data[idx]);
 	return Interval(v.rgb, v.w);
 }
@@ -63,7 +66,7 @@ Interval T_load_next(int probe_x, int k, int y)
 	if (probe_x < 0 || probe_x >= num_probes || k < 0 || k >= directions || y < 0 || y >= u_world_h) {
 		return Interval(vec3(0.0), 0.0);
 	}
-	int idx = y * u_t_next_w + probe_x * directions + k;
+	int idx = y * u_t_next_w + hrc_t_storage_x(n, probe_x, k, u_compact_t0, u_compact_t1);
 	vec4 v = f16_load(u_t_next.data[idx]);
 	return Interval(v.rgb, v.w);
 }

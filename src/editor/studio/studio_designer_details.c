@@ -4,8 +4,10 @@
  * widget's. A value edits in the control its property's type calls for: a
  * length scrubs with its unit, a color picks, a keyword chooses, and
  * anything else is text. Each commit is a text edit of the document, and a
- * scrub or a picker session is one undo step. With nothing selected,
- * Details lists every rule of the document's RCSS. */
+ * scrub or a picker session is one undo step. A rule's declarations are
+ * added and removed in place, and Extract to Class moves the inline style
+ * into a new rule (workstream Q). With nothing selected, Details lists
+ * every rule of the document's RCSS. */
 #include "editor/studio/studio_designer_internal.h"
 #include "render/ui_check.h"
 #include "support/array.h"
@@ -508,15 +510,26 @@ static void widget_row(details *x, int element)
 
 /* ---------- Add popovers ---------- */
 
+/* What an Add popover adds to: the element, or for a declaration its rule
+ * (workstream Q); Extract to Class names the class the inline style moves
+ * to. */
 typedef enum
 {
     ADD_CLASS,
     ADD_ATTRIBUTE,
     ADD_STYLE,
+    ADD_DECLARATION,
+    ADD_EXTRACT,
 } add_kind;
 
-static const char *const ADD_TITLES[] = { "Add Class", "Add Attribute", "Add Property" };
-static const char *const ADD_HINTS[] = { "Class name", "name=value", "property: value" };
+static const char *const ADD_TITLES[] = {
+    "Add Class",    "Add Attribute",    "Add Property",
+    "Add Property", "Extract to Class",
+};
+static const char *const ADD_HINTS[] = {
+    "Class name",      "name=value",     "property: value",
+    "property: value", "New class name",
+};
 
 /* Attributes RmlUi documents take besides id, class and style. */
 static const char *const ATTRIBUTES[] = {
@@ -584,7 +597,7 @@ static char **suggestions(details *x, int element, add_kind kind)
                 ui_source_list_add(&all, ATTRIBUTES[i]);
             }
         }
-    } else {
+    } else if (kind != ADD_EXTRACT) {
         ui_check_property_names(&all);
     }
     for (int i = 0; i < acount(all); i++) {
@@ -618,29 +631,43 @@ static void split(const char *text, char separator, char *name, size_t name_size
     }
 }
 
-static bool add_value(details *x, int element, add_kind kind, const char *text)
+/* Adds what the popover's text names to `target`: the element, or a
+ * declaration's rule. */
+static bool add_value(details *x, int target, add_kind kind, const char *text)
 {
     char name[128], value[256], error[192] = "";
     bool ok = false;
     switch (kind) {
         case ADD_CLASS:
-            ok = ui_design_class(x->b, element, text, true, error, sizeof error);
+            ok = ui_design_class(x->b, target, text, true, error, sizeof error);
             break;
         case ADD_ATTRIBUTE:
             split(text, '=', name, sizeof name, value, sizeof value);
-            ok = ui_design_set_attribute(x->b, element, name, value, error, sizeof error);
+            ok = ui_design_set_attribute(x->b, target, name, value, error, sizeof error);
             break;
         case ADD_STYLE:
+        case ADD_DECLARATION:
             split(text, ':', name, sizeof name, value, sizeof value);
-            ok = ui_design_set_style(
-                x->b,
-                element,
-                name,
-                value[0] ? value : default_value(name),
-                false,
-                error,
-                sizeof error
-            );
+            ok = kind == ADD_STYLE ? ui_design_set_style(
+                                         x->b,
+                                         target,
+                                         name,
+                                         value[0] ? value : default_value(name),
+                                         false,
+                                         error,
+                                         sizeof error
+                                     )
+                                   : ui_design_add_declaration(
+                                         x->b,
+                                         target,
+                                         name,
+                                         value[0] ? value : default_value(name),
+                                         error,
+                                         sizeof error
+                                     );
+            break;
+        case ADD_EXTRACT:
+            ok = ui_design_extract_class(x->b, target, text, error, sizeof error);
             break;
     }
     edited(x, ok, error, ADD_TITLES[kind]);
@@ -692,12 +719,16 @@ static void add_popover(details *x, int element, add_kind kind, const char *key)
 static void add_button(details *x, int element, add_kind kind, const char *label)
 {
     kit *k = x->s->kit;
-    char key[32];
-    snprintf(key, sizeof key, "designer-add-%d", (int)kind);
-    kit_button_desc add = { .icon = KIT_ICON_ADD,
-                            .label = label,
-                            .size = KIT_SM,
-                            .cls = "designer-add" };
+    char key[40];
+    snprintf(key, sizeof key, "designer-add-%d-%d", (int)kind, element);
+    bool extract = kind == ADD_EXTRACT;
+    kit_button_desc add = {
+        .icon = extract ? KIT_ICON_EXTERNAL : KIT_ICON_ADD,
+        .label = label,
+        .size = KIT_SM,
+        .cls = "designer-add",
+        .tip = extract ? "Move the inline style into a new class rule" : NULL
+    };
     if (kit_button(k, "add", &add)) {
         kit_popup_open(k, key);
         x->d->add.focus = true;
@@ -867,6 +898,9 @@ static void style_panel(details *x, int element)
         }
         kit_push(k, "more", NULL, "designer-more");
         add_button(x, element, ADD_STYLE, "Add Property");
+        if (count) {
+            add_button(x, element, ADD_EXTRACT, "Extract to Class");
+        }
         kit_pop(k);
     }
     kit_panel_end(k);
@@ -1041,7 +1075,13 @@ static void declaration_row(details *x, int rule, int index)
     value_edit e = value_control(k, property, value);
     value_target t = { .element = -1, .rule = rule, .declaration = index, .property = property };
     apply_value(x, &t, &e);
+    bool removed = remove_button(k);
     kit_prop_end(k);
+    if (removed && !x->edited) {
+        char error[192] = "";
+        bool ok = ui_design_remove_declaration(x->b, rule, index, error, sizeof error);
+        edited(x, ok, error, "Could not remove the declaration");
+    }
 }
 
 /* A rule by its selector, its line opening it in the Text Editor. */
@@ -1069,6 +1109,9 @@ static void rule_panel(details *x, int rule)
         for (int i = 0; i < acount(r->declarations); i++) {
             declaration_row(x, rule, i);
         }
+        kit_push(k, "more", NULL, "designer-more");
+        add_button(x, rule, ADD_DECLARATION, "Add Property");
+        kit_pop(k);
     }
     kit_panel_end(k);
 }

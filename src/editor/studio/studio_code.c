@@ -228,6 +228,8 @@ void studio_code_free(studio *s)
     ui_source_project_free(&c->project);
     ui_code_completions_free(&c->completions);
     free(c->hover);
+    afree(c->problems.rows);
+    afree(s->ui_project_problems);
 }
 
 /* ---------- Checking ---------- */
@@ -290,6 +292,12 @@ void studio_code_frame(studio *s)
     prune_editors(s);
     check_shown(s);
     toast_actions(s);
+    /* Mouse buttons 4 and 5 over the Text Editor step Back and Forward. */
+    int over = s->hover_area;
+    if (s->nav_button && over >= 0 && s->prefs.editors[over] == STUDIO_EDITOR_CODE) {
+        studio_nav_step(s, s->nav_button);
+        s->nav_button = 0;
+    }
 }
 
 /* ---------- Opening ---------- */
@@ -322,6 +330,103 @@ bool studio_code_open_place(studio *s, const ui_code_place *place)
     }
     s->code.reveal_offset = place->offset;
     return true;
+}
+
+/* ---------- Problems (workstream Q) ---------- */
+
+/* Each part's markers, as the Text Editor marks them, as Output's rows: a
+   row opens the start of what its marker spans, or its line. */
+static void add_problems(
+    const ui_buffer *b,
+    const ui_check_message *messages,
+    const char *failure,
+    studio_ui_problem **out
+)
+{
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        const char *text = ui_buffer_text(b, (ui_part)p);
+        if (!text) {
+            continue;
+        }
+        ui_source *source = ui_source_parse_block(text, ui_code_language((ui_part)p));
+        kit_code_marker *markers = NULL;
+        ui_code_markers(source, (ui_part)p, messages, failure, &markers);
+        for (int i = 0; i < acount(markers); i++) {
+            const kit_code_marker *m = &markers[i];
+            studio_ui_problem row = { .at = { .part = (ui_part)p,
+                                              .offset = m->end > m->start ? m->start : -1,
+                                              .line = m->line },
+                                      .error = m->severity == KIT_CODE_ERROR };
+            snprintf(row.at.path, sizeof row.at.path, "%s", b->path);
+            snprintf(row.message, sizeof row.message, "%s", m->message);
+            apush(*out, row);
+        }
+        ui_code_markers_free(markers);
+        ui_source_free(source);
+    }
+}
+
+const studio_ui_problem *studio_code_problems(studio *s)
+{
+    studio_code *c = &s->code;
+    scene_document_tab *tab = shown(s);
+    if (!tab) {
+        asetlen(c->problems.rows, 0);
+        c->problems.path[0] = '\0';
+        return c->problems.rows;
+    }
+    bool checked = !strcmp(c->checked_path, tab->path);
+    unsigned check = checked ? c->checked_revision : 0;
+    if (!strcmp(c->problems.path, tab->path) &&
+        c->problems.revision == tab->ui->revision && c->problems.checked == check) {
+        return c->problems.rows;
+    }
+    asetlen(c->problems.rows, 0);
+    add_problems(
+        tab->ui,
+        checked ? c->checked : NULL,
+        checked ? c->check_failure : NULL,
+        &c->problems.rows
+    );
+    snprintf(c->problems.path, sizeof c->problems.path, "%s", tab->path);
+    c->problems.revision = tab->ui->revision;
+    c->problems.checked = check;
+    return c->problems.rows;
+}
+
+/* One file of the project: an open document as it stands, else as read. */
+static void file_problems(studio *s, const char *path, studio_ui_problem **out)
+{
+    scene_document_tab *tab = ui_tab(s, path);
+    char error[256] = "";
+    ui_buffer *b = tab ? tab->ui : ui_buffer_open(path, error, sizeof error);
+    if (!b) {
+        studio_ui_problem row = { .at = { .offset = -1, .line = 1 }, .error = true };
+        snprintf(row.at.path, sizeof row.at.path, "%s", path);
+        snprintf(row.message, sizeof row.message, "%s", error);
+        apush(*out, row);
+        return;
+    }
+    ui_check_message *messages = NULL;
+    ui_code_check(b, rml_backend_context(s->code.checker), &messages, error, sizeof error);
+    add_problems(b, messages, error, out);
+    ui_check_messages_free(messages);
+    if (!tab) {
+        ui_buffer_free(b);
+    }
+}
+
+void studio_code_project_problems(studio *s, studio_ui_problem **out)
+{
+    if (!s->code.checker) {
+        s->code.checker = rml_backend_create(1280, 720, 1);
+    }
+    ui_source_project project = { 0 };
+    ui_source_project_scan(&project, s->scene->content_root);
+    for (int i = 0; i < acount(project.files); i++) {
+        file_problems(s, project.files[i].path, out);
+    }
+    ui_source_project_free(&project);
 }
 
 /* ---------- Header ---------- */
@@ -421,6 +526,31 @@ static void problems_button(studio *s, ui_buffer *b)
     }
 }
 
+/* Back and Forward through the places Go to Definition left and reached,
+   and the graphs visited (studio_nav_step). */
+static void history_buttons(studio *s)
+{
+    kit *k = s->kit;
+    kit_push(k, "history", NULL, "code-history");
+    kit_button_desc back = { .icon = KIT_ICON_BACK,
+                             .size = KIT_SM,
+                             .tip = "Back",
+                             .shortcut = studio_chord(s, "Mod+["),
+                             .flags = studio_nav_can_step(s, -1) ? 0 : KIT_DISABLED };
+    if (kit_button(k, "back", &back)) {
+        studio_nav_step(s, -1);
+    }
+    kit_button_desc forward = { .icon = KIT_ICON_FORWARD,
+                                .size = KIT_SM,
+                                .tip = "Forward",
+                                .shortcut = studio_chord(s, "Mod+]"),
+                                .flags = studio_nav_can_step(s, 1) ? 0 : KIT_DISABLED };
+    if (kit_button(k, "forward", &forward)) {
+        studio_nav_step(s, 1);
+    }
+    kit_pop(k);
+}
+
 void studio_code_header(studio *s, int)
 {
     kit *k = s->kit;
@@ -429,6 +559,7 @@ void studio_code_header(studio *s, int)
         kit_label(k, "title", "dim", "No UI document open");
         return;
     }
+    history_buttons(s);
     ui_buffer *b = tab->ui;
     if (!b->stylesheet) {
         int part = b->part;
@@ -602,13 +733,21 @@ static bool starts_completion(const char *text, ui_code_change d)
 
 /* ---------- Navigation ---------- */
 
+/* A jump records where it left and where it landed, for Back and Forward. */
 static void go_to_definition(studio *s, const ui_buffer *b, kit_code_editor *e)
 {
     studio_code *c = &s->code;
     int at = kit_code_cursor(e);
     ui_code_place place;
     if (ui_code_definition(b, c->source, at, project(s, b->path, false), &place)) {
-        studio_code_open_place(s, &place);
+        ui_code_place from = { .part = b->part, .offset = at, .line = 1 };
+        snprintf(from.path, sizeof from.path, "%s", b->path);
+        for (int i = 0; i < at; i++) {
+            from.line += c->source->text[i] == '\n';
+        }
+        if (studio_code_open_place(s, &place)) {
+            studio_nav_jump(s, &from, &place);
+        }
         return;
     }
     bool named = ui_source_symbol_at(c->source, at).kind != UI_SYMBOL_NONE;
@@ -688,9 +827,14 @@ static void reveal(studio *s, kit_code_editor *e, const ui_buffer *b)
 }
 
 /* A chord the editor leaves to Studio runs the command it names, as the
-   shortcuts would if typing had not turned them off. */
+   shortcuts would if typing had not turned them off; Mod+[ and Mod+] step
+   Back and Forward, as in JetBrains' editors. */
 static void run_chord(studio *s, const char *chord)
 {
+    if (!strcmp(chord, "Mod+[") || !strcmp(chord, "Mod+]")) {
+        studio_nav_step(s, chord[4] == ']' ? 1 : -1);
+        return;
+    }
     const char *shown = studio_chord(s, chord);
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         studio_command_info info = studio_command_describe(s, (studio_command)c);

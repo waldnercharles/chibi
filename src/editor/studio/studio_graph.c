@@ -557,6 +557,7 @@ void studio_graph_free(studio *s)
     afree(g->problems);
     afree(g->find.hits);
     afree(g->visits);
+    afree(g->shown);
     *g = (studio_graph){ 0 };
 }
 

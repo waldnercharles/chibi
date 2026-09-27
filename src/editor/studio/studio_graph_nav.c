@@ -2,7 +2,9 @@
  * the graphs visited and their breadcrumbs, across behaviors, with Alt+Left
  * and Alt+Right or mouse buttons 4 and 5; and a breadcrumb of the behavior
  * and the calls entered to reach the open graph, each of which returns to its
- * graph. */
+ * graph. The Text Editor's Go to Definition joins the same history, as VS
+ * Code's Go Back crosses editors: it records the place it leaves and the
+ * one it lands on (workstream Q). */
 #include "editor/studio/studio_graph_internal.h"
 #include "support/array.h"
 
@@ -29,17 +31,42 @@ static studio_visit here(const studio *s)
 
 static bool same_visit(const studio_visit *a, const studio_visit *b)
 {
+    if (a->kind == APP_EDITOR_DOCUMENT_UI || b->kind == APP_EDITOR_DOCUMENT_UI) {
+        return a->kind == b->kind && !strcmp(a->place.path, b->place.path) &&
+               a->place.part == b->place.part && a->place.offset == b->place.offset;
+    }
     return a->kind == b->kind && a->graph_id == b->graph_id &&
            !strcmp(a->document, b->document);
 }
 
-/* Records the open graph and its breadcrumb when it differs from the current
-   visit, dropping the visits ahead of it (browser history). */
+/* Makes `visit` the current one unless it is, dropping the visits ahead of
+   it (browser history). */
+static void push(studio_graph *g, const studio_visit *visit)
+{
+    if (acount(g->visits) && same_visit(&g->visits[g->visit], visit)) {
+        return;
+    }
+    asetlen(g->visits, acount(g->visits) ? g->visit + 1 : 0);
+    apush(g->visits, *visit);
+    if (acount(g->visits) > VISIT_LIMIT) {
+        adel(g->visits, 0);
+    }
+    g->visit = acount(g->visits) - 1;
+}
+
+static void see(studio_graph *g, const studio_visit *visit)
+{
+    asetlen(g->shown, 0);
+    apush(g->shown, *visit);
+}
+
+/* Records the open graph and its breadcrumb once it differs from the graph
+   last seen, which a Text Editor place does not change. */
 static void track(studio *s)
 {
     studio_graph *g = &s->graph;
     studio_visit visit = here(s);
-    if (acount(g->visits) && same_visit(&g->visits[g->visit], &visit)) {
+    if (acount(g->shown) && same_visit(&g->shown[0], &visit)) {
         return;
     }
     const editor *e = sg_graph_editor(s);
@@ -50,16 +77,15 @@ static void track(studio *s)
         e->graph_callers,
         (size_t)visit.caller_count * sizeof *visit.callers
     );
-    asetlen(g->visits, acount(g->visits) ? g->visit + 1 : 0);
-    apush(g->visits, visit);
-    if (acount(g->visits) > VISIT_LIMIT) {
-        adel(g->visits, 0);
-    }
-    g->visit = acount(g->visits) - 1;
+    see(g, &visit);
+    push(g, &visit);
 }
 
 static bool open_visit(studio *s, const studio_visit *visit)
 {
+    if (visit->kind == APP_EDITOR_DOCUMENT_UI) {
+        return studio_code_open_place(s, &visit->place);
+    }
     app_scene_authoring *scene = s->scene;
     bool open = scene->graph_document_id &&
                 scene->graph_document_kind == (app_editor_document_kind)visit->kind &&
@@ -78,6 +104,7 @@ static bool open_visit(studio *s, const studio_visit *visit)
         return false;
     }
     ed_restore_callers(e, visit->callers, visit->caller_count);
+    see(&s->graph, visit);
     return true;
 }
 
@@ -91,7 +118,9 @@ static bool can_step(const studio *s, int direction)
 static void step(studio *s, int direction)
 {
     studio_graph *g = &s->graph;
-    track(s);
+    if (studio_graph_active(s)) {
+        track(s);
+    }
     int at = g->visit + direction;
     while (at >= 0 && at < acount(g->visits)) {
         if (open_visit(s, &g->visits[at])) {
@@ -104,6 +133,30 @@ static void step(studio *s, int direction)
         }
         at += direction < 0 ? -1 : 0;
     }
+}
+
+/* ---------- The Text Editor's places (workstream Q) ---------- */
+
+void studio_nav_jump(studio *s, const ui_code_place *from, const ui_code_place *to)
+{
+    studio_graph *g = &s->graph;
+    if (studio_graph_active(s)) {
+        track(s);
+    }
+    studio_visit visits[2] = { { .kind = APP_EDITOR_DOCUMENT_UI, .place = *from },
+                               { .kind = APP_EDITOR_DOCUMENT_UI, .place = *to } };
+    push(g, &visits[0]);
+    push(g, &visits[1]);
+}
+
+bool studio_nav_can_step(const studio *s, int direction)
+{
+    return can_step(s, direction);
+}
+
+void studio_nav_step(studio *s, int direction)
+{
+    step(s, direction);
 }
 
 /* Alt+Left and Alt+Right, or mouse buttons 4 and 5, over the Behavior area. */

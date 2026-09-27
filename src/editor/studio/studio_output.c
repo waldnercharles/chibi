@@ -3,7 +3,9 @@
  * editor), as virtualized, highlighted rows. Logs follow new output while
  * scrolled to the bottom; problems and errors open their node. Problems
  * cover the open asset as it compiles live, or every graph asset of the
- * project as of its last check. */
+ * project as of its last check; and UI documents' syntax errors and RmlUi
+ * warnings, the shown one's or every ui asset's and stylesheet's, whose
+ * rows open their place in the Text Editor (workstream Q). */
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/highlight.h"
 #include "editor/workspace/editor_internal.h"
@@ -96,14 +98,18 @@ static void problem_place(const editor *e, const catalog_problem *problem, char 
     snprintf(out, size, "%s \xe2\x80\xba %s \xe2\x80\xba %s", problem->asset->name, name, title);
 }
 
-/* Validates every graph asset of the project, with its unsaved edits. That
-   compiles them all, so it runs only while the project's problems show and
-   something was saved or reloaded since the last check, or on Refresh. */
+/* Validates every graph asset and UI document of the project, with its
+   unsaved edits. That compiles them all, so it runs only while the
+   project's problems show and something was saved or reloaded since the
+   last check, or on Refresh. */
 static void check_project(studio *s)
 {
     const editor *e = s->scene->graph_editor;
-    catalog_problem *found = behavior_catalog_problems(e->asset_catalog, acount(e->asset_catalog));
+    catalog_problem *found = e ? behavior_catalog_problems(e->asset_catalog, acount(e->asset_catalog))
+                               : NULL;
     asetlen(s->project_problems, 0);
+    asetlen(s->ui_project_problems, 0);
+    studio_code_project_problems(s, &s->ui_project_problems);
     for (int i = 0; i < acount(found); i++) {
         studio_problem p = { .at = { .graph_id = found[i].graph_id,
                                      .node_id = found[i].node_id },
@@ -123,14 +129,22 @@ static int ui_problems(const studio *s)
     return s->ui_error[0] != '\0';
 }
 
-static int problem_count(const studio *s)
+/* UI documents' problems in the scope shown. */
+static const studio_ui_problem *document_problems(studio *s)
 {
+    return s->problems_scope == PROBLEMS_PROJECT ? s->ui_project_problems
+                                                 : studio_code_problems(s);
+}
+
+static int problem_count(studio *s)
+{
+    int documents = acount(document_problems(s));
     if (s->problems_scope == PROBLEMS_PROJECT) {
-        return acount(s->project_problems) + ui_problems(s);
+        return acount(s->project_problems) + ui_problems(s) + documents;
     }
     const compile_report *report = problems(s);
     return (report ? report->error_count + report->warning_count : 0) +
-           ui_problems(s);
+           ui_problems(s) + documents;
 }
 
 /* The scope of the Problems view, and Refresh for the project's. */
@@ -154,8 +168,7 @@ void studio_output_header(studio *s, int area)
 {
     (void)area;
     kit *k = s->kit;
-    if (s->problems_scope == PROBLEMS_PROJECT && !s->problems_checked &&
-        s->scene->graph_editor) {
+    if (s->problems_scope == PROBLEMS_PROJECT && !s->problems_checked) {
         check_project(s);
     }
     int count = problem_count(s);
@@ -314,6 +327,49 @@ static void ui_problem_row(studio *s)
     }
 }
 
+/* The rows of UI documents' problems that match the filter. */
+static int *document_rows(studio *s, const studio_ui_problem *rows)
+{
+    int *shown = NULL;
+    for (int i = 0; i < acount(rows); i++) {
+        if (contains(rows[i].message, s->output_filter) ||
+            contains(rows[i].at.path, s->output_filter)) {
+            apush(shown, i);
+        }
+    }
+    return shown;
+}
+
+/* "Name.yaml › RCSS line 4", or a stylesheet's "theme/base.rcss line 2",
+   and the row opening it in the Text Editor. */
+static void document_row(studio *s, const studio_ui_problem *p, int index)
+{
+    kit *k = s->kit;
+    static const char *const PARTS[] = { "RML", "RCSS" };
+    const char *root = s->scene->content_root, *path = p->at.path;
+    size_t length = strlen(root);
+    const char *name = !strncmp(path, root, length) && path[length] == '/'
+                         ? path + length + 1
+                         : path;
+    bool stylesheet = strstr(name, ".rcss") != NULL;
+    char key[24], place[1200];
+    snprintf(
+        place,
+        sizeof place,
+        "%s%s%s line %d",
+        name,
+        stylesheet ? "" : " \xe2\x80\xba ",
+        stylesheet ? "" : PARTS[p->at.part],
+        p->at.line
+    );
+    snprintf(key, sizeof key, "u%d", index);
+    located_row_begin(k, key, p->error ? KIT_TOAST_ERROR : KIT_TOAST_WARNING, place, p->message);
+    kit_pop(k);
+    if (kit_item_clicked(k)) {
+        studio_code_open_place(s, &p->at);
+    }
+}
+
 /* Rows open their asset and reveal the node, like the open asset's. */
 static void project_view(studio *s, float row)
 {
@@ -327,14 +383,25 @@ static void project_view(studio *s, float row)
             apush(shown, i);
         }
     }
+    const studio_ui_problem *documents = s->ui_project_problems;
+    int *listed = document_rows(s, documents);
     int ui = ui_problems(s) && contains(s->ui_error, s->output_filter);
-    kit_list_desc list = { .count = acount(shown) + ui, .row_height = row, .reveal = -1 };
+    int lead = ui + acount(listed);
+    kit_list_desc list = { .count = acount(shown) + lead,
+                           .row_height = row,
+                           .reveal = -1 };
     int first, last;
     kit_list_begin(k, "project", "output-list", &list, &first, &last);
     if (ui && first == 0) {
         ui_problem_row(s);
     }
-    for (int r = first > ui ? first - ui : 0; r <= last - ui && r < acount(shown); r++) {
+    for (int r = first > ui ? first - ui : 0; r <= last - ui && r < acount(listed);
+         r++) {
+        document_row(s, &documents[listed[r]], listed[r]);
+    }
+    for (int r = first > lead ? first - lead : 0;
+         r <= last - lead && r < acount(shown);
+         r++) {
         const studio_problem *p = &s->project_problems[shown[r]];
         char key[24];
         snprintf(key, sizeof key, "q%d", shown[r]);
@@ -345,9 +412,10 @@ static void project_view(studio *s, float row)
         }
     }
     kit_list_end(k);
-    if (!acount(shown) && !ui) {
-        empty(k, total || ui_problems(s) ? "No matches" : "No problems");
+    if (!acount(shown) && !lead) {
+        empty(k, total || ui_problems(s) || acount(documents) ? "No matches" : "No problems");
     }
+    afree(listed);
     afree(shown);
 }
 
@@ -367,14 +435,25 @@ static void problems_view(studio *s, float row)
             apush(shown, i);
         }
     }
+    const studio_ui_problem *documents = studio_code_problems(s);
+    int *listed = document_rows(s, documents);
     int ui = ui_problems(s) && contains(s->ui_error, s->output_filter);
-    kit_list_desc list = { .count = acount(shown) + ui, .row_height = row, .reveal = -1 };
+    int lead = ui + acount(listed);
+    kit_list_desc list = { .count = acount(shown) + lead,
+                           .row_height = row,
+                           .reveal = -1 };
     int first, last;
     kit_list_begin(k, "problems", "output-list", &list, &first, &last);
     if (ui && first == 0) {
         ui_problem_row(s);
     }
-    for (int r = first > ui ? first - ui : 0; r <= last - ui && r < acount(shown); r++) {
+    for (int r = first > ui ? first - ui : 0; r <= last - ui && r < acount(listed);
+         r++) {
+        document_row(s, &documents[listed[r]], listed[r]);
+    }
+    for (int r = first > lead ? first - lead : 0;
+         r <= last - lead && r < acount(shown);
+         r++) {
         const compile_diagnostic *d = &report->items[shown[r]];
         studio_node_ref at = studio_problem_at(s, d);
         char key[24], place[256];
@@ -395,9 +474,10 @@ static void problems_view(studio *s, float row)
         }
     }
     kit_list_end(k);
-    if (!acount(shown) && !ui) {
-        empty(k, total || ui_problems(s) ? "No matches" : "No problems");
+    if (!acount(shown) && !lead) {
+        empty(k, total || ui_problems(s) || acount(documents) ? "No matches" : "No problems");
     }
+    afree(listed);
     afree(shown);
 }
 

@@ -52,6 +52,17 @@ struct studio_designer
         bool focus; /* focus the field on its first frame */
         char text[192];
     } add; /* the field of an Add popover (class, attribute) */
+    /* Workstream Q: a Hierarchy row carried with the keyboard, as dnd-kit's
+       keyboard sensor carries one: the element, the slot it would drop in
+       (an index of ui_design_slots'), and the buffer's revision when it was
+       picked up, since a change to the text puts it down. */
+    struct
+    {
+        bool active;
+        int element;
+        int slot;
+        unsigned revision;
+    } carry;
 };
 
 /* The active UI document with markup and its designer state, parsed as its

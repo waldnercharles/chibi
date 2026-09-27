@@ -230,6 +230,8 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
    apply mode in the header; the part's code editor (kit_code) filling the
    body, and a status line while the text does not read. */
 .code-parts, .code-apply { display: flex; flex: 0 0 auto; }
+/* Workstream Q: Back and Forward through Go to Definition's jumps. */
+.code-history { display: flex; flex: 0 0 auto; align-items: center; gap: 1dp; margin-right: 4dp; }
 .code-parts .segmented, .code-apply .segmented { flex: 0 0 auto; }
 .code-parts .seg, .code-apply .seg { flex: 0 0 auto; }
 .code-file { display: flex; align-items: center; gap: 6dp; padding: 0dp 6dp; flex: 0 1 auto; min-width: 0dp; white-space: nowrap; color: var(--foreground); }
@@ -296,6 +298,8 @@ body.comfortable .canvas-action { height: 24dp; }
 .designer-drop { position: absolute; pointer-events: none; }
 .designer-drop[data-active] { pointer-events: auto; }
 .designer-drop[data-drop-over] { background-color: transparent; }
+/* Workstream Q: where a Canvas drop lands between siblings. */
+.designer-drop-line { position: absolute; pointer-events: none; background-color: var(--primary); border-radius: 1dp; }
 /* Details. */
 .designer-details .prop .remove { flex: 0 0 auto; opacity: 0; transition: opacity 0.11s cubic-out; }
 .designer-details .prop:hover .remove { opacity: 1; }

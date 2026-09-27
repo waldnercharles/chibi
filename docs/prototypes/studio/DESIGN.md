@@ -107,6 +107,13 @@ Behavior changed from the ImGui editor:
 - A field that names an asset, such as `GameUi.document` or the Scene tab's root document, is a select that searches the project's assets of its kind on the command surface, with None and, where a name may be missing, the typed name. A name no asset has shows as invalid.
 - A game UI's error shows in the Scene's notice line and heads Output's Problems; Output records each new error once.
 - While a ui asset's document is active, the Scene area is its Canvas: the asset alone in the Scene area over an empty world, as Storybook shows a story: at a screen size (Fit, Phone, Tablet, Desktop), on a light or dark backdrop, magnified by the view zoom, with an Actions log of the events it emits and what uses it. Its events reach no behavior. Preview UI Asset… in the command palette, Preview in an asset's Assets menu and the Canvas's crumb show any ui asset the same way.
+- The other areas follow a ui asset's document too, as Unity's UI Builder and Unreal's UMG Designer arrange theirs (`studio_designer*.c`):
+  - The Outliner is its Hierarchy: each element as `tag#id.class`, a `<use>` by its widget, with its only text. Rows select, fold (Left and Right), filter and walk (Up and Down). Dragged, a row drops before or after another in its top and bottom quarters and inside it in its middle. Its menu adds, duplicates (⇧D), wraps in a div, opens the source or a widget, and deletes (X), with Undo in a toast.
+  - Properties is its Details: the element's text, widget, id, classes as chips, attributes and bindings (in code), its inline style, and the rules of the document's RCSS that match it, each value in the control its property calls for (lengths scrub with their unit, colors pick, keywords choose, the rest is text). With nothing selected it lists every rule.
+  - Assets is its Library: elements and the project's widgets as tiles, dragged into the Hierarchy or the Canvas, or clicked to add to the selection.
+  - The Canvas outlines the element under the pointer and the selection, labeled with its size, and a click selects there.
+
+  Selecting in any of them, or moving the Text Editor's cursor, selects in all, and the Text Editor's cursor moves to the selection. Every change is one text edit of the document and one undo step; a scrub or a color session is one step.
 - The Add menu offers the events that the GameUi documents on whatever attaches the open behavior send, described by what the player does ("Sent when the player clicks #extract in Bank").
 
 ## Decisions

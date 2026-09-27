@@ -308,3 +308,12 @@ list(APPEND EDITOR_SOURCES
 
 # ---------- Settings (workstream F) ----------
 list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_settings.c)
+
+# Visual designer (workstream H): a UI document's Hierarchy, Details, Library
+# and Canvas selection, each change a text edit of the document.
+list(APPEND EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_design.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_library.c
+)

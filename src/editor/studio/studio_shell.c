@@ -1147,6 +1147,8 @@ void studio_emit(studio *s)
     kit_root(s->kit, "app");
     topbar(s);
     workspace(s);
+    /* Visual designer (workstream H): the Text Editor's cursor and the Canvas. */
+    studio_designer_frame(s);
     statusbar(s);
     palette(s);
     undo_toast(s);
@@ -1238,6 +1240,9 @@ void studio_shortcuts(studio *s)
             editor == STUDIO_EDITOR_MEMBERS &&
             studio_members_key(s, key, s->keys[i].mod)
         ) {
+            continue;
+        } else if (studio_designer_key(s, editor, key, s->keys[i].mod)) {
+            /* Visual designer (workstream H): the Hierarchy's and the Canvas's keys. */
             continue;
         } else if (
             editor == STUDIO_EDITOR_ASSETS &&

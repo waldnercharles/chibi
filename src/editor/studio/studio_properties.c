@@ -74,7 +74,11 @@ static void number_hints(
 
 void studio_properties_header(studio *s, int area)
 {
-    (void)area;
+    /* Visual designer (workstream H): a UI document's Details. */
+    if (studio_designer_active(s)) {
+        studio_designer_details_header(s, area);
+        return;
+    }
     kit_search(s->kit, "search", s->property_search, sizeof s->property_search, "Search properties");
 }
 
@@ -907,7 +911,11 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
 
 void studio_properties_body(studio *s, int area)
 {
-    (void)area;
+    /* Visual designer (workstream H): a UI document's Details. */
+    if (studio_designer_active(s)) {
+        studio_designer_details(s, area);
+        return;
+    }
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     bool prototype_document = app_scene_authoring_document(scene).kind ==

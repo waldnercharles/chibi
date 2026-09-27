@@ -63,7 +63,11 @@ static bool contains(const char *text, const char *filter)
 
 void studio_assets_header(studio *s, int area)
 {
-    (void)area;
+    /* Visual designer (workstream H): a UI document's Library. */
+    if (studio_designer_active(s)) {
+        studio_designer_library_header(s, area);
+        return;
+    }
     kit *k = s->kit;
     const char *kinds[REFERENCE_ASSET_KIND_COUNT + 1] = { "All" };
     for (int i = 0; i < REFERENCE_ASSET_KIND_COUNT; i++) {
@@ -146,6 +150,11 @@ static void asset_menu(studio *s, const char *key)
    it is used, so unused and unresolved assets stand out. One kind is a flat list. */
 void studio_assets_body(studio *s, int area)
 {
+    /* Visual designer (workstream H): a UI document's Library. */
+    if (studio_designer_active(s)) {
+        studio_designer_library(s, area);
+        return;
+    }
     kit *k = s->kit;
     char menu_key[24];
     snprintf(menu_key, sizeof menu_key, "asset:%d", area);

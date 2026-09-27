@@ -86,6 +86,8 @@ bool test_kit_code();
 
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
+/* Visual designer (workstream H). */
+void test_ui_designer();
 
 /* ---------- Authored status bar (workstream J) ---------- */
 void test_kit_slot();
@@ -240,6 +242,8 @@ TEST_CASE(all_checks)
     test_studio_settings();
     /* ---------- Authored status bar (workstream J) ---------- */
     test_kit_slot();
+    /* Visual designer (workstream H). */
+    test_ui_designer();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -842,6 +846,11 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
+    }
+    /* Visual designer (workstream H) alone. */
+    if (argc > 1 && strcmp(argv[1], "--ui-designer") == 0) {
+        test_ui_designer();
+        return fails ? 1 : 0;
     }
     /* Workstream C: the code editor alone. */
     if (argc > 1 && strcmp(argv[1], "--kit-code") == 0) {

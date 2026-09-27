@@ -17,6 +17,8 @@ body { flex: 0 0 auto; }
 }
 .mark { width: 11dp; height: 11dp; border-radius: 3dp; background-color: var(--primary); transform: rotate(45deg); }
 .menus { display: flex; flex: 0 0 auto; }
+// The menus' definitions, which the native menubar draws.
+#menus { display: none; }
 .btn { flex-shrink: 0; }
 .trigger { color: var(--foreground); padding: 0dp 7dp; }
 .sep { width: 1dp; height: 14dp; background-color: var(--border); margin: 0dp 6dp; flex-shrink: 0; }

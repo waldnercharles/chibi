@@ -1,6 +1,60 @@
 <header class="topbar">
   <div class="brand"><div class="mark"/></div>
   <nav id="menubar" class="menus"/>
+  <!-- The menubar's menus, drawn natively in #menubar: each <li command>
+       runs a Studio command by its id, each <li list> is a list Studio
+       fills, a <li label> heads a group and <hr/> separates. -->
+  <div id="menus">
+    <menu label="File">
+      <li command="search"/>
+      <li list="projects"/>
+      <hr/>
+      <li command="save"/>
+      <li command="reload"/>
+      <li list="webProjects"/>
+      <hr/>
+      <li command="settings"/>
+    </menu>
+    <menu label="Edit">
+      <li command="undo"/>
+      <li command="redo"/>
+      <hr/>
+      <li command="duplicate"/>
+      <li command="rename"/>
+      <li command="delete"/>
+    </menu>
+    <menu label="View">
+      <li command="frame"/>
+      <li command="resetCamera"/>
+      <hr/>
+      <li label="Drawers"/>
+      <li command="toggleAssets"/>
+      <li command="toggleOutput"/>
+      <li command="togglePerformance"/>
+      <hr/>
+      <li command="inspectElement"/>
+      <li command="maximize"/>
+      <li command="resetLayout"/>
+      <hr/>
+      <li list="uiScale"/>
+    </menu>
+    <menu label="Object">
+      <li list="add"/>
+      <li command="duplicate"/>
+      <li command="rename"/>
+      <li command="delete"/>
+      <hr/>
+      <li command="openPrototype"/>
+      <li command="addComponent"/>
+    </menu>
+    <menu label="Play">
+      <li command="play"/>
+      <li command="stop"/>
+      <li command="step"/>
+      <hr/>
+      <li list="debugger"/>
+    </menu>
+  </div>
   <div class="sep"/>
   <nav class="doc-tabs">
     <div class="btn doc-tab" data-for="tab, i : editor.tabs" data-attr-data-state="tab.active ? 'on' : 'off'">

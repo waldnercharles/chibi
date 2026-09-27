@@ -94,6 +94,12 @@ static void highlighting()
                   "number:#fff punct:; punct:} comment:/* c */"
               );
     test_check(ok, "ui source highlights RML tags, attributes, bindings and inline style, and RCSS, in file offsets");
+    static const char ATTRIBUTE_IF[] = "data-attrif-data-disabled";
+    test_check(
+        ui_source_is_binding(ATTRIBUTE_IF, (int)strlen(ATTRIBUTE_IF)) &&
+            !ui_source_is_binding("data-tip", (int)strlen("data-tip")),
+        "RmlUi's data-attrif- is a binding and a plain data- attribute is not"
+    );
     test_check(
         !strcmp(ui_source_kind_class(UI_SOURCE_TAG), "tok-keyword tok-tag") &&
             !strcmp(ui_source_kind_class(UI_SOURCE_STRING), "tok-string") &&

@@ -261,9 +261,10 @@ bool ui_source_is_binding(const char *name, int length)
                                          "data-value",   "data-value-lazy",
                                          "data-checked", "data-visible",
                                          "data-rml",     NULL };
-    static const char *const PREFIXES[] = { "data-event-", "data-class-",
-                                            "data-style-", "data-attr-",
-                                            "data-alias-", NULL };
+    static const char *const PREFIXES[] = {
+        "data-event-",  "data-class-", "data-style-", "data-attr-",
+        "data-attrif-", "data-alias-", NULL
+    };
     if (is_word(name, length, EXACT)) {
         return true;
     }

@@ -311,7 +311,9 @@ void test_kit_host()
 
     host_fixture f = { .host_key = "panel" };
     open_fixture(&f, root, "Panel");
-    for (int i = 0; i < 3; i++) {
+    frame(&f);
+    test_check(height_of(f.host, "#go") == 50, "a kit host's content is styled in the frame it first shows");
+    for (int i = 0; i < 2; i++) {
         frame(&f);
     }
     kit_rect own;

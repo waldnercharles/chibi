@@ -1206,6 +1206,12 @@ void kit_begin(kit *k, const kit_frame_input *input)
 
 void kit_end(kit *k)
 {
+    /* Hosted content installs its markup as it is emitted, so the style
+       sheets it added this frame apply before the frame lays out and renders,
+       not a frame after it. */
+    if (k->restyle) {
+        restyle(k);
+    }
     close_root(k);
     close_activated_menus(k);
     toasts_frame(k);

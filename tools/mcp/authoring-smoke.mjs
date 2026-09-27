@@ -315,9 +315,8 @@ try {
   const operationProperties = graphTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
-  assert(tools.length === 32, `public tool catalog has ${tools.length} tools instead of 32`);
-  const uiTool = tools.find((tool) => tool.name === "buildUi");
-  assert(uiTool?.annotations?.destructiveHint === true && uiTool.inputSchema?.properties?.operations?.items?.properties?.op?.enum?.includes("move_element"), "ui authoring tool is missing");
+  assert(tools.length === 31, `public tool catalog has ${tools.length} tools instead of 31`);
+  assert(!tools.some((tool) => tool.name === "buildUi"), "ui documents are written as files, not built");
   assert(tools.find((tool) => tool.name === "inspectUi")?.annotations?.readOnlyHint === true, "ui inspection tool is missing");
   assert(graphTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library,material,shape,shader-library,field,system", "graph kind selector is incomplete");
   assert(graphTool?.title && ["material", "shader", "behavior", "event", "field", "system"].every((term) => graphTool.description.includes(term)), "authoring description does not expose its intent");

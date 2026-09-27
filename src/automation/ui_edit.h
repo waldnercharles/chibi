@@ -25,20 +25,6 @@ int automation_ui_validate(
     yyjson_mut_val *diagnostics
 );
 
-/* buildUi: applies the request's `operations` to the asset's file text
- * `source` in order, each to the text the one before left, and lists each
- * one's edits in `result`. Returns CHIBI_AUTOMATION_OK with the owned new
- * text in `edited`, or another status with a message in `error`. */
-int automation_ui_edit(
-    const char *source,
-    yyjson_val *request,
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *result,
-    char **edited,
-    char *error,
-    size_t error_size
-);
-
 /* inspectUi: the asset's outline, the props its bindings read, the events
  * it emits, its slots, the widgets it uses and the props it passes them, the
  * custom properties, classes and save keys it names, and its syntax

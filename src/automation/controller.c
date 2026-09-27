@@ -487,18 +487,6 @@ static const contract_field CONTRACT_DELETE_SYMBOL[] = {
     { "force", "boolean", false, "Delete while references remain, and list them as dangling." },
 };
 
-/* UI language service (workstream B) */
-static const contract_field CONTRACT_EDIT_UI[] = {
-    { "project_root", "string", false, "Project directory." },
-    { "path", "string", false, "UI asset path below content, or use kind/name." },
-    { "kind", "string", false, "ui." },
-    { "name", "string", false, "UI asset name." },
-    { "create", "boolean", false, "Create a new asset from its operations; one must be set_rml." },
-    { "expected_hash", "string", false, "Required current asset hash when editing." },
-    { "dry_run", "boolean", false, "Validate and return the new text without writing." },
-    { "operations", "array", true, "Edits applied in order, at most 128: set_attribute, remove_attribute, add_class, remove_class, set_style, remove_style, insert_element, move_element, delete_element, set_rml and set_rcss." },
-};
-
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
     { "search_nodes",
       "Find a ranked page of nodes, configured component nodes, and their pins "
@@ -794,18 +782,6 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "references, as one hash-checked change.",
         CONTRACT_DELETE_SYMBOL,
         CONTRACT_FIELD_COUNT(CONTRACT_DELETE_SYMBOL),
-        1,
-        false,
-        false,
-        true,
-    },
-    /* UI language service (workstream B) */
-    {
-        "edit_ui",
-        "Edit a ui asset's markup and styles with text edits that keep its "
-        "formatting; validate before saving.",
-        CONTRACT_EDIT_UI,
-        CONTRACT_FIELD_COUNT(CONTRACT_EDIT_UI),
         1,
         false,
         false,
@@ -9856,12 +9832,10 @@ static int handle_refactor(const char *root, yyjson_val *request, bool rename, r
 
 /* ---------- UI language service (workstream B) ---------- */
 
-/* Loads a ui asset, or checks that a new one can be created; the loaded
- * text is owned by the caller. */
+/* Loads a ui asset; the loaded text is owned by the caller. */
 static int load_ui_source(
     const char *root,
     yyjson_val *request,
-    bool create,
     asset_ref *ref,
     char **source,
     size_t *bytes,
@@ -9877,110 +9851,7 @@ static int load_ui_source(
         }
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    if (!create) {
-        return load_asset(root, request, ref, source, bytes, hash, error, error_size);
-    }
-    if (verify_asset_directory(root, ref->family, error, error_size) < 0) {
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    char *path = asset_full_path(root, ref);
-    struct stat info;
-    bool exists = !lstat(path, &info), unknown = !exists && errno != ENOENT;
-    free(path);
-    *source = xstrdup("");
-    if (exists) {
-        return set_error(error, error_size, "asset already exists"),
-               CHIBI_AUTOMATION_CONFLICT;
-    }
-    if (unknown) {
-        return set_error(error, error_size, "cannot inspect asset destination"),
-               CHIBI_AUTOMATION_IO_ERROR;
-    }
-    return CHIBI_AUTOMATION_OK;
-}
-
-/* buildUi: the edits in order, the result validated as validateAsset does,
- * then written in canonical form unless it is a dry run. */
-static int handle_edit_ui(const char *root, yyjson_val *request, response *result, int *exit_code)
-{
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) ||
-        (!create && (!expected || strlen(expected) != 16))) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
-        return -1;
-    }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 }, *source = NULL, *edited = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = load_ui_source(root, request, create, &ref, &source, &bytes, &before, error, sizeof error);
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (status == CHIBI_AUTOMATION_OK) {
-        add_asset_identity(result->doc, value, &ref, bytes, before);
-        yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    }
-    if (status == CHIBI_AUTOMATION_OK && !create && strcmp(expected, actual)) {
-        status = CHIBI_AUTOMATION_CONFLICT;
-        set_error(error, sizeof error, "asset changed; inspect its current hash and retry");
-    }
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = automation_ui_edit(source, request, result->doc, value, &edited, error, sizeof error);
-    }
-    if (status == CHIBI_AUTOMATION_OK && to_disk_text(&edited, error, sizeof error)) {
-        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
-    if (status == CHIBI_AUTOMATION_OK) {
-        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-        if (validate_ui(root, &ref, edited, result->doc, diagnostics)) {
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            set_error(error, sizeof error, "the edited asset is invalid; see diagnostics");
-        }
-    }
-    if (status == CHIBI_AUTOMATION_OK) {
-        size_t after_bytes = strlen(edited);
-        uint64_t after = automation_content_hash(edited, after_bytes);
-        bool changed = strcmp(source, edited) != 0;
-        yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-        yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-        add_hash_named(result->doc, value, "after_hash", after);
-        yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-        if (dry) {
-            yyjson_mut_obj_add_strcpy(result->doc, value, "text", edited);
-        }
-        if (!dry && changed) {
-            status = automation_asset_publish(
-                root,
-                ref.family->folder,
-                ref.filename,
-                edited,
-                expected,
-                create,
-                error,
-                sizeof error
-            );
-        }
-        if (status == CHIBI_AUTOMATION_OK && !dry) {
-            yyjson_mut_obj_remove_key(value, "published");
-            yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-            yyjson_mut_obj_remove_key(value, "hash");
-            add_hash(result->doc, value, after);
-            yyjson_mut_obj_remove_key(value, "bytes");
-            yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-        }
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-    }
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+    return load_asset(root, request, ref, source, bytes, hash, error, error_size);
 }
 
 static int handle_inspect_ui(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -9989,7 +9860,7 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
     char error[256] = { 0 }, *text = NULL;
     size_t bytes = 0;
     uint64_t hash = 0;
-    int status = load_ui_source(root, request, false, &ref, &text, &bytes, &hash, error, sizeof error);
+    int status = load_ui_source(root, request, &ref, &text, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
@@ -10032,8 +9903,7 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "record_scenario") ||
            !strcmp(operation, "replay_scenario") ||
            !strcmp(operation, "rename_symbol") ||
-           !strcmp(operation, "delete_symbol") ||
-           !strcmp(operation, "edit_ui") || !strcmp(operation, "inspect_ui");
+           !strcmp(operation, "delete_symbol") || !strcmp(operation, "inspect_ui");
 }
 
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -10134,8 +10004,6 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_read_recording(root_value, &result, exit_code);
     } else if (!strcmp(operation, "rename_symbol") || !strcmp(operation, "delete_symbol")) {
         handle_refactor(root, root_value, !strcmp(operation, "rename_symbol"), &result, exit_code);
-    } else if (!strcmp(operation, "edit_ui")) {
-        handle_edit_ui(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_ui")) {
         handle_inspect_ui(root, root_value, &result, exit_code);
     } else {

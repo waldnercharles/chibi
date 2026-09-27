@@ -57,16 +57,21 @@ function request(name, args, expectError = false) {
 // The whole structured response of the last request, for its error code.
 let lastResponse;
 
-// UI documents are authored through buildUi; the events they emit reach behaviors.
-function createUi(name, rml, rcss) {
-  const operations = [{ op: "set_rml", text: rml }, ...(rcss ? [{ op: "set_rcss", text: rcss }] : [])];
-  const created = request("buildUi", { kind: "ui", name, create: true, operations });
-  assert.equal(created.published, true, `buildUi did not create ${name}`);
+// UI documents are written as files, RML and RCSS in YAML blocks; the events
+// they emit reach behaviors.
+function writeUi(name, rml, rcss) {
+  const block = (key, text) => `${key}: |\n${text.replace(/\n$/, "").split("\n").map(line => `  ${line}`).join("\n")}\n`;
+  writeFileSync(join(project, "content/ui", `${name}.yaml`), block("rml", rml) + (rcss ? block("rcss", rcss) : ""));
 }
 
-// A document edited through inspectUi and buildUi keeps its formatting; a
-// stale hash conflicts, and an edit RmlUi or the grammar rejects is refused
-// with its line.
+function createUi(name, rml, rcss) {
+  writeUi(name, rml, rcss);
+  assert.equal(request("validateAsset", { kind: "ui", name }).valid, true, `${name} is invalid`);
+}
+
+// inspectUi reads a document and completes in it; validateAsset refuses what
+// RmlUi or the grammar rejects, at its line; findReferences finds classes,
+// tokens and save keys.
 function uiDocuments() {
   createUi("Panel", "<div id=\"panel\">\n  <span class=\"title\">Hull</span>\n</div>\n", ".title { color: var(--accent); }\n");
   const panel = request("inspectUi", { kind: "ui", name: "Panel" });
@@ -79,41 +84,22 @@ function uiDocuments() {
   const rack = request("inspectUi", { kind: "ui", name: "Rack" });
   assert.deepEqual(rack.widgets.map(item => item.name), ["Slot"]);
   assert.deepEqual(rack.events.map(item => [item.name, item.key]), [["Award", "Enter"]]);
-  const operations = [
-    { op: "insert_element", target: "#panel", markup: "<use ui=\"Slot\" data-alias-label=\"save.hull\"/>" },
-    { op: "add_class", element: "span.title", class: "wide" },
-    { op: "set_style", element: 0, property: "width", value: "200dp" },
-  ];
-  const dry = request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, dry_run: true, operations });
-  assert.equal(dry.published, false);
-  assert.equal(dry.text, [
-    "rml: |",
-    "  <div id=\"panel\" style=\"width: 200dp;\">",
-    "    <span class=\"title wide\">Hull</span>",
-    "    <use ui=\"Slot\" data-alias-label=\"save.hull\"/>",
-    "  </div>",
-    "rcss: |",
-    "  .title { color: var(--accent); }",
-    "",
-  ].join("\n"));
-  const published = request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, operations });
-  assert.equal(published.published, true);
-  assert.equal(published.hash, dry.after_hash);
-  assert.equal(request("validateAsset", { kind: "ui", name: "Panel" }).valid, true);
+  createUi("Panel", [
+    "<div id=\"panel\" style=\"width: 200dp;\">",
+    "  <span class=\"title wide\">Hull</span>",
+    "  <use ui=\"Slot\" data-alias-label=\"save.hull\"/>",
+    "</div>",
+  ].join("\n"), ".title { color: var(--accent); }\n");
   const title = request("findReferences", { ui_class: "title" });
   assert.deepEqual([title.definitions, title.uses].map(list => list.map(item => [item.path, item.line])),
     [[["content/ui/Panel.yaml", 7]], [["content/ui/Panel.yaml", 3]]]);
   assert.ok(title.description.startsWith("Class .title\nui/Panel.yaml:7"), title.description);
   assert.deepEqual(request("findReferences", { token: "--accent" }).uses.map(item => item.line), [7]);
   assert.deepEqual(request("findReferences", { save_key: "hull" }).uses.map(item => item.line), [4]);
-  request("buildUi", { kind: "ui", name: "Panel", expected_hash: panel.hash, operations: [{ op: "delete_element", element: 1 }] }, true);
-  assert.equal(lastResponse.error.code, "asset_conflict");
-  const broken = request("buildUi", { kind: "ui", name: "Panel", expected_hash: published.hash, operations: [
-    { op: "insert_element", target: "span.title", position: "after", markup: "<p data-if=\"hull +\">x</p>" },
-  ] }, true);
-  assert.equal(lastResponse.error.code, "validation_failed");
+  writeUi("Broken", "<div>\n  <span>Hull</span>\n  <p data-if=\"hull +\">x</p>\n</div>\n");
+  const broken = request("validateAsset", { kind: "ui", name: "Broken" }, true);
   assert.ok(broken.diagnostics.some(item => item.rule_name === "RMLUI" && item.block === "rml" && item.line === 4),
-    "buildUi must refuse a binding RmlUi rejects, at its line");
+    "validateAsset must refuse a binding RmlUi rejects, at its line");
   writeFileSync(join(project, "content/ui/Unclosed.yaml"), "rml: |\n  <div>\n    <span>x</div>\n");
   const unclosed = request("validateAsset", { kind: "ui", name: "Unclosed" }, true);
   assert.deepEqual(unclosed.diagnostics.map(item => [item.rule_name, item.line]), [["SYNTAX", 3]]);

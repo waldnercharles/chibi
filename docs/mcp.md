@@ -469,7 +469,7 @@ For example, these `buildGraph` arguments create a material:
 }
 ```
 
-New material and shape assets have an `output` node alias. New shapes start
+New material, shape and field assets have an `output` node alias. New shapes start
 with 32-unit half extents; use `{"op":"set_bounds","value":[32,24]}`
 to set the finite positive half extents that enclose a shape. Other aliases last
 only for the current request; use the stable IDs returned in `result.nodes`

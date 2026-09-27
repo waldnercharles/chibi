@@ -1,5 +1,6 @@
 #include "automation/controller.h"
 
+#include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "assets/refactor.h"
@@ -8986,25 +8987,6 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
     return CHIBI_AUTOMATION_OK;
 }
 
-static char *new_prototype_json(const char *name)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_strcpy(doc, root, "name", name);
-    char identity[32];
-    snprintf(
-        identity,
-        sizeof identity,
-        "prototype-%016llx",
-        (unsigned long long)automation_content_hash(name, strlen(name))
-    );
-    yyjson_mut_obj_add_strcpy(doc, root, "identity", identity);
-    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
-}
-
 static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
 {
     asset_ref ref = { 0 };
@@ -9108,20 +9090,6 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     return status;
 }
 
-static char *new_scene_json(const char *name)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_uint(doc, root, "version", 1);
-    yyjson_mut_obj_add_strcpy(doc, root, "name", name);
-    yyjson_mut_obj_add_str(doc, root, "presentation", "2d");
-    yyjson_mut_obj_add_arr(doc, root, "entities");
-    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
-}
-
 static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     yyjson_val *create_value = yyjson_obj_get(request, "create");
@@ -9185,7 +9153,7 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
     }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
-        source = new_prototype_json(name);
+        source = new_asset_json(NEW_ASSET_PROTOTYPE, name);
         free(name);
     }
     game_prototype_registry registry = {
@@ -9350,7 +9318,7 @@ static int handle_edit_scene(const char *root, yyjson_val *request, response *re
     }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
-        source = new_scene_json(name);
+        source = new_asset_json(NEW_ASSET_SCENE, name);
         free(name);
     }
     char *edited = NULL;

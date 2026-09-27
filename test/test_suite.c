@@ -84,6 +84,9 @@ void test_ui_wiring();
 /* Workstream C: the code editor. */
 bool test_kit_code();
 
+/* ---------- Settings (workstream F) ---------- */
+void test_studio_settings();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -230,6 +233,8 @@ TEST_CASE(all_checks)
     test_ui_wiring();
     /* Workstream C: the code editor. */
     test_check(test_kit_code(), "Code editor: standard and Vim keys, text_edits with undo, :w, host chords, completions and cached rendering");
+    /* ---------- Settings (workstream F) ---------- */
+    test_studio_settings();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -915,6 +920,11 @@ int main(int argc, char **argv)
         test_projectile();
         test_combat();
         test_auto_weapon();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Settings (workstream F) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--studio-settings")) {
+        test_studio_settings();
         return fails ? 1 : 0;
     }
     pu_run_test("all_checks", all_checks);

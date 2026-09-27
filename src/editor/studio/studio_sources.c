@@ -1,17 +1,23 @@
 /* The data Studio's authored panels bind beyond their own world's `save`
  * (render/ui.h): `world`, the saved keys of the world the Scene shows, and
  * `theme`, the custom properties of the stylesheets the open scene's root
- * document imports. A panel's edits apply back: a saved key to the save, and
- * a theme value to its file, which restyles everything the page styles.
- * `inspector` is the UI Inspector's (see its section below). */
+ * document imports; `settings`, the Settings page's preferences; and
+ * `inspector`, the UI Inspector's (see its section below). A panel's
+ * edits apply back: a saved key to the save, a theme value to its file,
+ * which restyles everything the page styles, and a setting to the
+ * preferences. */
+#include "assets/project.h"
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +33,7 @@ void studio_sources_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_arr(doc, world, "saved");
     yyjson_mut_obj_add_arr(doc, yyjson_mut_obj_add_obj(doc, root, "theme"), "sections");
     add_inspector(doc, root);
+    studio_settings_add(doc);
 }
 
 static yyjson_mut_val *variable(ui_data *data, const char *name)
@@ -306,6 +313,635 @@ static void sync_theme(studio *s, studio_sources *src, ui_data *data, bool wrote
     }
 }
 
+/* ---------- Settings ---------- */
+
+/* `settings`, the Settings page: the Editor or Project tab (`scope`), the
+ * category, the search query, the categories with their search counts, and
+ * one row per preference, command and project setting. Rows are built once
+ * and shown or hidden, so the page never rebuilds as the query changes. A
+ * row's value is text, and its control is chosen by which of its `bool`,
+ * `choice` and `range` lists holds an item, as data-if leaves hidden
+ * controls bound. A slider moves `position`, from 0 to 1 in steps of
+ * `tick`: a range input clamps its value when its bounds arrive, so its
+ * bounds stay fixed. */
+
+#define SETTINGS_ROOT_KEY "project.ui"
+#define SETTINGS_ROOT_LABEL "Root Document"
+#define SETTINGS_ROOT_DESCRIPTION                                              \
+    "The ui document every scene's UI shows on unless the scene names its "    \
+    "own. Its stylesheets style the whole page."
+enum
+{
+    SETTINGS_KEYS_MAX = 8, /* keys in one shortcut */
+};
+
+static yyjson_mut_val *settings_page(yyjson_mut_doc *doc)
+{
+    return yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "settings");
+}
+
+static const char *text_of(yyjson_mut_val *object, const char *name)
+{
+    const char *text = yyjson_mut_get_str(yyjson_mut_obj_get(object, name));
+    return text ? text : "";
+}
+
+/* Sets a member to a copy of `text`; true when it changed. */
+static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_str(value) && !strcmp(yyjson_mut_get_str(value), text)) {
+        return false;
+    }
+    ui_data_set_text(doc, value, text);
+    return true;
+}
+
+static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_bool(value) && yyjson_mut_get_bool(value) == on) {
+        return false;
+    }
+    yyjson_mut_set_bool(value, on);
+    return true;
+}
+
+static bool put_number(yyjson_mut_val *object, const char *name, double number)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_num(value) && yyjson_mut_get_num(value) == number) {
+        return false;
+    }
+    yyjson_mut_set_real(value, number);
+    return true;
+}
+
+/* The text a binding left in a row's member: a switch writes a boolean and
+ * a slider a number. */
+static const char *bound_text(yyjson_mut_val *row, const char *name, char *buffer, size_t size)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(row, name);
+    if (yyjson_mut_is_bool(value)) {
+        return yyjson_mut_get_bool(value) ? "true" : "false";
+    }
+    if (yyjson_mut_is_num(value)) {
+        snprintf(buffer, size, "%g", yyjson_mut_get_num(value));
+        return buffer;
+    }
+    return yyjson_mut_is_str(value) ? yyjson_mut_get_str(value) : "";
+}
+
+/* An icon's codepoint as UTF-8; Symbols' glyphs are past U+0800. */
+static void utf8_icon(char out[5], uint32_t c)
+{
+    assert(c >= 0x800);
+    if (c < 0x10000) {
+        out[0] = (char)(0xe0 | (c >> 12));
+        out[1] = (char)(0x80 | ((c >> 6) & 0x3f));
+        out[2] = (char)(0x80 | (c & 0x3f));
+        out[3] = '\0';
+        return;
+    }
+    out[0] = (char)(0xf0 | (c >> 18));
+    out[1] = (char)(0x80 | ((c >> 12) & 0x3f));
+    out[2] = (char)(0x80 | ((c >> 6) & 0x3f));
+    out[3] = (char)(0x80 | (c & 0x3f));
+    out[4] = '\0';
+}
+
+void studio_settings_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *page = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "settings");
+    yyjson_mut_obj_add_str(doc, page, "scope", "editor");
+    yyjson_mut_obj_add_str(doc, page, "category", studio_settings_categories[0].id);
+    yyjson_mut_obj_add_str(doc, page, "query", "");
+    yyjson_mut_obj_add_str(doc, page, "title", studio_settings_categories[0].label);
+    yyjson_mut_obj_add_str(doc, page, "project", "");
+    yyjson_mut_obj_add_real(doc, page, "matches", 0);
+    yyjson_mut_val *categories = yyjson_mut_obj_add_arr(doc, page, "categories");
+    for (int c = 0; c < STUDIO_SETTINGS_CATEGORY_COUNT; c++) {
+        const studio_settings_category_info *info = &studio_settings_categories[c];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, categories);
+        char icon[5];
+        utf8_icon(icon, info->icon);
+        yyjson_mut_obj_add_str(doc, item, "id", info->id);
+        yyjson_mut_obj_add_str(doc, item, "label", info->label);
+        yyjson_mut_obj_add_strcpy(doc, item, "icon", icon);
+        yyjson_mut_obj_add_bool(doc, item, "hidden", info->project);
+        yyjson_mut_obj_add_bool(doc, item, "dim", false);
+        yyjson_mut_obj_add_bool(doc, item, "dot", false);
+        yyjson_mut_obj_add_str(doc, item, "badge", "");
+    }
+    yyjson_mut_obj_add_arr(doc, page, "rows");
+}
+
+/* A row with every member it may show, empty. */
+static yyjson_mut_val *add_row(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *rows,
+    studio_settings_category category,
+    const char *type
+)
+{
+    static const char *const TEXTS[] = { "key",   "label",   "description",
+                                         "value", "default", "position" };
+    static const char *const FLAGS[] = { "shown", "head", "modified" };
+    static const char *const LISTS[] = { "choices", "bool", "choice", "range", "keys" };
+    static const char *const NUMBERS[] = { "min", "max", "step", "tick" };
+    yyjson_mut_val *row = yyjson_mut_arr_add_obj(doc, rows);
+    yyjson_mut_obj_add_str(
+        doc,
+        row,
+        "category",
+        studio_settings_categories[category].id
+    );
+    yyjson_mut_obj_add_str(
+        doc,
+        row,
+        "group",
+        studio_settings_categories[category].label
+    );
+    yyjson_mut_obj_add_str(doc, row, "type", type);
+    for (size_t i = 0; i < sizeof TEXTS / sizeof *TEXTS; i++) {
+        yyjson_mut_obj_add_str(doc, row, TEXTS[i], "");
+    }
+    for (size_t i = 0; i < sizeof FLAGS / sizeof *FLAGS; i++) {
+        yyjson_mut_obj_add_bool(doc, row, FLAGS[i], false);
+    }
+    for (size_t i = 0; i < sizeof LISTS / sizeof *LISTS; i++) {
+        yyjson_mut_obj_add_arr(doc, row, LISTS[i]);
+    }
+    for (size_t i = 0; i < sizeof NUMBERS / sizeof *NUMBERS; i++) {
+        yyjson_mut_obj_add_real(doc, row, NUMBERS[i], 0);
+    }
+    return row;
+}
+
+/* Puts an item in the row's list for `control`, which the page shows it with. */
+static void gate(yyjson_mut_doc *doc, yyjson_mut_val *row, const char *control)
+{
+    yyjson_mut_arr_add_true(doc, yyjson_mut_obj_get(row, control));
+}
+
+/* A number without presets, which a slider sets. */
+static bool ranged(const studio_setting *s)
+{
+    assert(
+        s->type != STUDIO_SETTING_NUMBER || s->choice_count ||
+        (s->max > s->min && s->step > 0)
+    );
+    return s->type == STUDIO_SETTING_NUMBER && !s->choice_count;
+}
+
+static void add_setting(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *rows,
+    const studio_setting *s,
+    const studio_prefs *defaults
+)
+{
+    static const char *const TYPES[] = { [STUDIO_SETTING_BOOL] = "bool",
+                                         [STUDIO_SETTING_CHOICE] = "choice",
+                                         [STUDIO_SETTING_NUMBER] = "number" };
+    yyjson_mut_val *row = add_row(doc, rows, s->category, TYPES[s->type]);
+    yyjson_mut_set_str(yyjson_mut_obj_get(row, "key"), s->key);
+    yyjson_mut_set_str(yyjson_mut_obj_get(row, "label"), s->label);
+    yyjson_mut_set_str(yyjson_mut_obj_get(row, "description"), s->description);
+    char text[32];
+    studio_setting_text(defaults, s, text, sizeof text);
+    put_text(doc, row, "default", text);
+    yyjson_mut_val *choices = yyjson_mut_obj_get(row, "choices");
+    for (int i = 0; i < s->choice_count; i++) {
+        yyjson_mut_val *choice = yyjson_mut_arr_add_obj(doc, choices);
+        yyjson_mut_obj_add_str(doc, choice, "value", s->choices[i].value);
+        yyjson_mut_obj_add_str(doc, choice, "label", s->choices[i].label);
+    }
+    gate(
+        doc,
+        row,
+        s->type == STUDIO_SETTING_BOOL ? "bool"
+        : s->choice_count              ? "choice"
+                                       : "range"
+    );
+    put_number(row, "min", s->min);
+    put_number(row, "max", s->max);
+    put_number(row, "step", s->step);
+    if (ranged(s)) {
+        put_number(row, "tick", s->step / (s->max - s->min));
+    }
+}
+
+static void build_rows(const studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *rows)
+{
+    yyjson_mut_arr_clear(rows);
+    studio_prefs defaults = studio_prefs_default();
+    for (int i = 0; i < studio_setting_count; i++) {
+        add_setting(doc, rows, &studio_settings[i], &defaults);
+    }
+    for (int c = 0; c < view->command_count; c++) {
+        yyjson_mut_val *row = add_row(doc, rows, STUDIO_SETTINGS_KEYBOARD, "shortcut");
+        char text[160];
+        snprintf(text, sizeof text, "command.%s", view->commands[c].id);
+        put_text(doc, row, "key", text);
+        snprintf(text, sizeof text, "studio.%s", view->commands[c].id);
+        put_text(doc, row, "description", text);
+    }
+    yyjson_mut_val *root = add_row(doc, rows, STUDIO_SETTINGS_PROJECT, "asset");
+    yyjson_mut_set_str(yyjson_mut_obj_get(root, "key"), SETTINGS_ROOT_KEY);
+    yyjson_mut_set_str(yyjson_mut_obj_get(root, "label"), SETTINGS_ROOT_LABEL);
+    yyjson_mut_set_str(yyjson_mut_obj_get(root, "description"), SETTINGS_ROOT_DESCRIPTION);
+    gate(doc, root, "choice");
+}
+
+static bool is_document(const studio_settings_view *view, const char *name)
+{
+    for (int i = 0; i < acount(view->documents); i++) {
+        if (!strcmp(view->documents[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A slider's position as the value it stands for, on a step. */
+static void apply_position(studio_prefs *prefs, const studio_setting *s, yyjson_mut_val *row)
+{
+    char buffer[32], text[32], *end;
+    const char *position = bound_text(row, "position", buffer, sizeof buffer);
+    double fraction = strtod(position, &end);
+    if (end == position || *end) {
+        return;
+    }
+    double steps = round(fraction * (s->max - s->min) / s->step);
+    snprintf(text, sizeof text, "%g", s->min + steps * s->step);
+    studio_setting_parse(prefs, s, text);
+}
+
+/* Shows a changed setting's saved key in `save` at once, as ui_data_sync
+ * would next frame. It saves what `save` shows whenever a binding writes,
+ * before it shows newer values, so the next write would restore the old. */
+static void show_saved(yyjson_mut_doc *doc, const studio_setting *s, const char *text)
+{
+    yyjson_mut_val *save = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "save");
+    yyjson_mut_val *value = yyjson_mut_obj_get(save, s->save);
+    bool on = !strcmp(text, "true");
+    if (!value) {
+        return;
+    }
+    if (on || !strcmp(text, "false")) {
+        yyjson_mut_set_bool(value, on);
+        return;
+    }
+    ui_data_set_text(doc, value, text);
+}
+
+/* Applies each row whose value a binding changed, or whose slider moved. An
+ * invalid value is dropped, and the row shows the setting again. */
+static void apply_rows(studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *rows)
+{
+    for (int i = 0; i < studio_setting_count; i++) {
+        char buffer[32], text[32], applied[32];
+        const studio_setting *s = &studio_settings[i];
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)i);
+        const char *value = bound_text(row, "value", buffer, sizeof buffer);
+        studio_setting_text(view->prefs, s, text, sizeof text);
+        if (strcmp(value, text) != 0) {
+            studio_setting_parse(view->prefs, s, value);
+        } else if (ranged(s)) {
+            apply_position(view->prefs, s, row);
+        }
+        studio_setting_text(view->prefs, s, applied, sizeof applied);
+        if (strcmp(applied, text) != 0) {
+            show_saved(doc, s, applied);
+        }
+    }
+    char buffer[32];
+    const char *root = bound_text(yyjson_mut_arr_get_last(rows), "value", buffer, sizeof buffer);
+    if ((!root[0] || is_document(view, root)) && strlen(root) < sizeof view->root) {
+        snprintf(view->root, sizeof view->root, "%s", root);
+    }
+}
+
+/* Shows a shortcut's keys: "⇧⌘Z" as ⇧, ⌘ and Z, "Ctrl+Shift+Z" split at
+ * each '+'. The only characters beyond ASCII are macOS's modifier glyphs. */
+static bool show_keys(yyjson_mut_doc *doc, yyjson_mut_val *keys, const char *shortcut)
+{
+    char parts[SETTINGS_KEYS_MAX][24];
+    int count = 0;
+    const char *at = shortcut;
+    for (; (unsigned char)*at >= 0x80 && count < SETTINGS_KEYS_MAX; at += 3) {
+        snprintf(parts[count++], sizeof parts[0], "%.3s", at);
+    }
+    while (*at == ' ') {
+        at++;
+    }
+    while (*at && count < SETTINGS_KEYS_MAX) {
+        size_t length = at[0] == '+' ? 1 : strcspn(at, "+");
+        snprintf(parts[count++], sizeof parts[0], "%.*s", (int)length, at);
+        at += length + (at[length] == '+');
+    }
+    bool same = (int)yyjson_mut_arr_size(keys) == count;
+    for (int i = 0; same && i < count; i++) {
+        same = !strcmp(yyjson_mut_get_str(yyjson_mut_arr_get(keys, (size_t)i)), parts[i]);
+    }
+    if (same) {
+        return false;
+    }
+    yyjson_mut_arr_clear(keys);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_arr_add_strcpy(doc, keys, parts[i]);
+    }
+    return true;
+}
+
+/* The root document's choices: None, the project's ui documents, and the
+ * current one if the index has not listed it, since a select shows its
+ * first option for a value it lacks. */
+static bool show_root_choices(const studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *choices)
+{
+    const char **names = NULL;
+    apush(names, "");
+    for (int i = 0; i < acount(view->documents); i++) {
+        apush(names, view->documents[i]);
+    }
+    if (view->root[0] && !is_document(view, view->root)) {
+        apush(names, view->root);
+    }
+    bool same = (int)yyjson_mut_arr_size(choices) == acount(names);
+    for (int i = 0; same && i < acount(names); i++) {
+        same = !strcmp(text_of(yyjson_mut_arr_get(choices, (size_t)i), "value"), names[i]);
+    }
+    if (!same) {
+        yyjson_mut_arr_clear(choices);
+        for (int i = 0; i < acount(names); i++) {
+            yyjson_mut_val *choice = yyjson_mut_arr_add_obj(doc, choices);
+            yyjson_mut_obj_add_strcpy(doc, choice, "value", names[i]);
+            yyjson_mut_obj_add_strcpy(doc, choice, "label", names[i][0] ? names[i] : "None");
+        }
+    }
+    afree(names);
+    return !same;
+}
+
+/* Shows each row's value, whether it differs from its default, and a
+ * command's label and keys. */
+static bool show_values(const studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *rows)
+{
+    bool changed = false;
+    for (int i = 0; i < studio_setting_count; i++) {
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)i);
+        const studio_setting *s = &studio_settings[i];
+        char text[32];
+        studio_setting_text(view->prefs, s, text, sizeof text);
+        changed |= put_text(doc, row, "value", text);
+        changed |= put_bool(row, "modified", strcmp(text, text_of(row, "default")) != 0);
+        if (ranged(s)) {
+            float value = studio_setting_get(view->prefs, s);
+            snprintf(text, sizeof text, "%g", (value - s->min) / (s->max - s->min));
+            changed |= put_text(doc, row, "position", text);
+        }
+    }
+    for (int c = 0; c < view->command_count; c++) {
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + c));
+        const char *shortcut = view->commands[c].shortcut ? view->commands[c].shortcut
+                                                          : "";
+        changed |= put_text(doc, row, "label", view->commands[c].label);
+        changed |= put_text(doc, row, "value", shortcut);
+        changed |= show_keys(doc, yyjson_mut_obj_get(row, "keys"), shortcut);
+    }
+    yyjson_mut_val *root = yyjson_mut_arr_get_last(rows);
+    changed |= show_root_choices(view, doc, yyjson_mut_obj_get(root, "choices"));
+    changed |= put_text(doc, root, "value", view->root);
+    changed |= put_bool(root, "modified", view->root[0] != '\0');
+    return changed;
+}
+
+static studio_settings_category row_category(const studio_settings_view *view, int index)
+{
+    if (index < studio_setting_count) {
+        return studio_settings[index].category;
+    }
+    return index < studio_setting_count + view->command_count
+             ? STUDIO_SETTINGS_KEYBOARD
+             : STUDIO_SETTINGS_PROJECT;
+}
+
+static bool row_matches(const studio_settings_view *view, int index, const char *query)
+{
+    if (index < studio_setting_count) {
+        return studio_setting_matches(&studio_settings[index], query);
+    }
+    char text[512];
+    int command = index - studio_setting_count;
+    if (command < view->command_count) {
+        const studio_command_info *c = &view->commands[command];
+        snprintf(
+            text,
+            sizeof text,
+            "%s %s %s Keyboard shortcut",
+            c->label,
+            c->keywords ? c->keywords : "",
+            c->id
+        );
+    } else {
+        snprintf(text, sizeof text, "%s %s General project ui", SETTINGS_ROOT_LABEL, SETTINGS_ROOT_DESCRIPTION);
+    }
+    return studio_settings_match(query, text);
+}
+
+/* The category named `id` under the Project tab or the Editor tab, else the
+ * tab's first. */
+static int category_in(const char *id, bool project)
+{
+    int first = -1;
+    for (int c = STUDIO_SETTINGS_CATEGORY_COUNT - 1; c >= 0; c--) {
+        const studio_settings_category_info *info = &studio_settings_categories[c];
+        if (info->project == project && !strcmp(info->id, id)) {
+            return c;
+        }
+        first = info->project == project ? c : first;
+    }
+    assert(first >= 0);
+    return first;
+}
+
+/* The tab chosen, and a category under it: switching tabs shows its first. */
+static int show_scope(yyjson_mut_doc *doc, yyjson_mut_val *page, bool *changed)
+{
+    bool project = !strcmp(text_of(page, "scope"), "project");
+    int category = category_in(text_of(page, "category"), project);
+    *changed |= put_text(doc, page, "scope", project ? "project" : "editor");
+    *changed |= put_text(
+        doc,
+        page,
+        "category",
+        studio_settings_categories[category].id
+    );
+    *changed |= put_text(
+        doc,
+        page,
+        "title",
+        studio_settings_categories[category].label
+    );
+    return category;
+}
+
+/* Shows the rows of the category, or while searching those of every
+ * category under the tab that match, headed by their category; then each
+ * category's matches and whether it holds a changed setting. */
+static bool show_visible(const studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *page)
+{
+    bool changed = false;
+    int category = show_scope(doc, page, &changed);
+    bool project = studio_settings_categories[category].project;
+    const char *query = text_of(page, "query");
+    bool searching = query[strspn(query, " ")] != '\0';
+    yyjson_mut_val *rows = yyjson_mut_obj_get(page, "rows");
+    int matches[STUDIO_SETTINGS_CATEGORY_COUNT] = { 0 }, shown = 0, last = -1;
+    bool modified[STUDIO_SETTINGS_CATEGORY_COUNT] = { false };
+    for (int i = 0; i < (int)yyjson_mut_arr_size(rows); i++) {
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)i);
+        int c = row_category(view, i);
+        bool show = studio_settings_categories[c].project == project &&
+                    (searching ? row_matches(view, i, query) : c == category);
+        matches[c] += show;
+        modified[c] |= yyjson_mut_get_bool(yyjson_mut_obj_get(row, "modified"));
+        changed |= put_bool(row, "shown", show);
+        changed |= put_bool(row, "head", show && searching && c != last);
+        last = show ? c : last;
+        shown += show;
+    }
+    yyjson_mut_val *categories = yyjson_mut_obj_get(page, "categories");
+    for (int c = 0; c < STUDIO_SETTINGS_CATEGORY_COUNT; c++) {
+        yyjson_mut_val *item = yyjson_mut_arr_get(categories, (size_t)c);
+        char badge[16] = "";
+        if (searching && matches[c]) {
+            snprintf(badge, sizeof badge, "%d", matches[c]);
+        }
+        changed |= put_bool(item, "hidden", studio_settings_categories[c].project != project);
+        changed |= put_bool(item, "dim", searching && !matches[c]);
+        changed |= put_bool(item, "dot", modified[c]);
+        changed |= put_text(doc, item, "badge", badge);
+    }
+    changed |= put_number(page, "matches", shown);
+    return changed;
+}
+
+bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool wrote)
+{
+    yyjson_mut_val *page = settings_page(doc);
+    yyjson_mut_val *rows = yyjson_mut_obj_get(page, "rows");
+    bool built = (int)yyjson_mut_arr_size(rows) !=
+                 studio_setting_count + view->command_count + 1;
+    if (built) {
+        build_rows(view, doc, rows);
+    } else if (wrote) {
+        apply_rows(view, doc, rows);
+    }
+    bool changed = show_values(view, doc, rows);
+    changed |= put_text(doc, page, "project", view->project);
+    return show_visible(view, doc, page) || changed || built;
+}
+
+/* The open project's ui documents, sorted by name. */
+static int by_name(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+static const char **ui_documents(const studio *s)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    const char **names = NULL;
+    for (int i = 0; index && i < reference_index_asset_count(index); i++) {
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        if (asset->kind == REFERENCE_ASSET_UI && !asset->unresolved && asset->name) {
+            apush(names, asset->name);
+        }
+    }
+    if (acount(names)) {
+        qsort(names, (size_t)acount(names), sizeof *names, by_name);
+    }
+    return names;
+}
+
+/* The open project's name, from its manifest when the workspace lists it. */
+static const char *project_name(const studio *s)
+{
+    for (int i = 0; i < acount(s->projects); i++) {
+        if (studio_project_current(s, i)) {
+            return s->projects[i].name;
+        }
+    }
+    const char *slash = strrchr(s->project_root, '/');
+    return slash ? slash + 1 : s->project_root;
+}
+
+static void settings_error(studio *s, const char *message)
+{
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_ERROR, .title = "Settings", .description = message });
+    studio_record(s, KIT_TOAST_ERROR, message);
+}
+
+/* Writes the project's root document to its project.yaml, and gives it to
+ * the open scenes. */
+static void set_project_root(studio *s, const char *root)
+{
+    char path[1024], error[256] = "cannot be read";
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, s->project_root);
+    char *text = text_file_read(path);
+    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
+    free(text);
+    yyjson_mut_doc *doc = manifest ? yyjson_doc_mut_copy(manifest, NULL) : NULL;
+    yyjson_doc_free(manifest);
+    yyjson_mut_val *object = yyjson_mut_doc_get_root(doc);
+    if (!yyjson_mut_is_obj(object)) {
+        char message[1400];
+        snprintf(message, sizeof message, "%s %s", path, error);
+        settings_error(s, message);
+        yyjson_mut_doc_free(doc);
+        return;
+    }
+    yyjson_mut_obj_remove_key(object, "ui");
+    if (root[0]) {
+        yyjson_mut_obj_add_strcpy(doc, object, "ui", root);
+    }
+    char *json = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    char *yaml = asset_text_to_disk(json, error, sizeof error);
+    free(json);
+    if (!yaml || write_file_atomic(path, yaml) != 0) {
+        char message[1100];
+        snprintf(message, sizeof message, "Could not save %s", path);
+        settings_error(s, message);
+    }
+    free(yaml);
+    app_scene_authoring_set_default_ui(s->scene, root);
+}
+
+static void sync_settings(studio *s, ui_data *data, bool wrote)
+{
+    studio_command_info commands[STUDIO_COMMAND_COUNT];
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        commands[c] = studio_command_describe(s, (studio_command)c);
+    }
+    const char *root = s->scene->default_ui ? s->scene->default_ui : "";
+    studio_settings_view view = { .prefs = &s->prefs,
+                                  .commands = commands,
+                                  .command_count = STUDIO_COMMAND_COUNT,
+                                  .project = project_name(s),
+                                  .documents = ui_documents(s) };
+    snprintf(view.root, sizeof view.root, "%s", root);
+    if (studio_settings_sync(&view, data->doc, wrote)) {
+        rml_data_model_dirty(data->model, "settings");
+    }
+    if (strcmp(view.root, root) != 0) {
+        set_project_root(s, view.root);
+    }
+    afree(view.documents);
+}
+
 void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
 {
     uint64_t writes = rml_data_model_writes(data->model);
@@ -314,6 +950,7 @@ void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
     sync_world(s, src, data, wrote);
     sync_theme(s, src, data, wrote);
     sync_inspector(s, data);
+    sync_settings(s, data, wrote);
 }
 
 void studio_sources_free(studio_sources *src)

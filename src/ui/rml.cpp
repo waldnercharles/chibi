@@ -626,8 +626,12 @@ void rml_renderer_destroy(rml_renderer *renderer)
     delete unwrap<Renderer>(renderer);
 }
 
+/* Workstream I: rml_font_generation's count. */
+static unsigned font_generation;
+
 void rml_release_render_managers()
 {
+    font_generation++;
     Rml::ReleaseRenderManagers();
 }
 
@@ -1434,4 +1438,26 @@ rml_vec2 rml_event_wheel(const rml_event *event)
 {
     auto *e = static_cast<Rml::Event *>(event->native);
     return { e->GetParameter<float>("wheel_delta_x", 0), e->GetParameter<float>("wheel_delta_y", 0) };
+}
+
+/* ---------- Code intelligence (workstream I) ---------- */
+
+SAME_KEY(OEM_1);
+SAME_KEY(OEM_COMMA);
+SAME_KEY(OEM_4);
+SAME_KEY(OEM_6);
+
+bool rml_property_describe(const char *name, char *initial, size_t size, bool *inherited, bool *shorthand)
+{
+    const Rml::PropertyDefinition *property = Rml::StyleSheetSpecification::GetProperty(name);
+    *shorthand = !property && Rml::StyleSheetSpecification::GetShorthand(name);
+    *inherited = property && property->IsInherited();
+    const Rml::Property *value = property ? property->GetDefaultValue() : nullptr;
+    copy(value ? value->ToString() : Rml::String(), initial, size);
+    return property || *shorthand;
+}
+
+unsigned rml_font_generation()
+{
+    return font_generation;
 }

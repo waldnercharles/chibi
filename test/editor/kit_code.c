@@ -380,6 +380,147 @@ static bool completions(fixture *f)
     return ok;
 }
 
+/* Workstream I: the undo keys ask a host that keeps the history, and change
+   nothing themselves; F12, Shift+F12 and Control+Space ask the host too. */
+static bool host_keys(fixture *f)
+{
+    bool ok = true;
+    f->desc.vim = false;
+    f->desc.history = true;
+    kit_code_set_text(f->e, "one two");
+    frame(f);
+    type(f, "x");
+    clear_events(f);
+    press(f, RML_KEY_Z, RML_KM_CTRL);
+    frame(f);
+    ok &= check((f->events & KIT_CODE_UNDO) && !strcmp(text(f), "xone two"), "with the host keeping the history, the primary modifier and Z ask it to undo");
+    clear_events(f);
+    press(f, RML_KEY_Y, RML_KM_CTRL);
+    frame(f);
+    ok &= check(f->events & KIT_CODE_REDO, "and Y asks it to redo");
+    kit_code_undo(f->e);
+    frame(f);
+    ok &= check(!strcmp(text(f), "xone two"), "the editor keeps no history of its own for such a host");
+    f->desc.vim = true;
+    frame(f);
+    press(f, RML_KEY_ESCAPE, 0);
+    clear_events(f);
+    keys(f, "u");
+    frame(f);
+    ok &= check((f->events & KIT_CODE_UNDO) && !strcmp(text(f), "xone two"), "Vim's u asks the host to undo");
+    clear_events(f);
+    keys(f, "<C-r>");
+    frame(f);
+    ok &= check(f->events & KIT_CODE_REDO, "Vim's Control+R asks it to redo");
+    keys(f, "i");
+    press(f, RML_KEY_OEM_4, RML_KM_CTRL);
+    keys(f, "x");
+    frame(f);
+    ok &= check(!strcmp(text(f), "one two") && !strcmp(kit_code_mode(f->e), "NORMAL"), "Control+[ leaves insert mode in Vim");
+    f->desc.history = false;
+    clear_events(f);
+    press(f, RML_KEY_F12, 0);
+    frame(f);
+    ok &= check(f->events & KIT_CODE_DEFINITION, "F12 asks for the definition");
+    clear_events(f);
+    press(f, RML_KEY_F12, RML_KM_SHIFT);
+    frame(f);
+    ok &= check(f->events & KIT_CODE_REFERENCES, "Shift+F12 asks for the references");
+    clear_events(f);
+    press(f, RML_KEY_SPACE, RML_KM_CTRL);
+    frame(f);
+    ok &= check((f->events & KIT_CODE_SUGGEST) && !strcmp(text(f), "one two"), "Control+Space asks for completions");
+    clear_events(f);
+    press(f, RML_KEY_OEM_COMMA, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!strcmp(f->chord, "Mod+,"), "Mod+, goes to the host, as Settings");
+    /* Command copies and cuts Vim's selection on a Mac. */
+    f->desc.mac = true;
+    kit_code_set_text(f->e, "one two");
+    frame(f);
+    press(f, RML_KEY_ESCAPE, 0);
+    keys(f, "ve");
+    press(f, RML_KEY_C, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!strcmp(text(f), "one two") && !strcmp(kit_code_mode(f->e), "NORMAL"), "Command+C copies Vim's selection");
+    keys(f, "ve");
+    press(f, RML_KEY_X, RML_KM_CTRL);
+    frame(f);
+    ok &= check(!strcmp(text(f), " two"), "Command+X cuts it");
+    f->desc.mac = false;
+    f->desc.vim = false;
+    frame(f);
+    return ok;
+}
+
+/* The caret of `byte` in the context's pixels. */
+static rml_vec2 caret_at(fixture *f, int byte)
+{
+    kit_code_set_cursor(f->e, byte);
+    settle(f);
+    kit_rect caret;
+    kit_wants_text(f->k, &caret);
+    return (rml_vec2){ caret.x + caret.w / 2 + 1, caret.y + caret.h / 2 };
+}
+
+/* Workstream I: a double click selects a word; a resting pointer names its
+   byte and shows the host's card with its line's diagnostics; long lines
+   scroll sideways instead of wrapping. */
+static bool pointer_features(fixture *f)
+{
+    bool ok = true;
+    kit_code_set_text(f->e, "alpha beta-gamma delta\nsecond line");
+    f->focus = true;
+    settle(f);
+    rml_vec2 at = caret_at(f, 8);
+    rml_context_process_mouse_move(f->context, (int)at.x, (int)at.y, 0);
+    rml_context_process_mouse_button_down(f->context, 0, 0);
+    rml_context_process_mouse_button_up(f->context, 0, 0);
+    rml_context_process_mouse_button_down(f->context, 0, 0);
+    rml_context_process_mouse_button_up(f->context, 0, 0);
+    frame(f);
+    press(f, RML_KEY_BACK, 0);
+    frame(f);
+    ok &= check(!strcmp(text(f), "alpha  delta\nsecond line"), "a double click selects a word, - and all");
+    const kit_code_marker markers[] = { { 1, KIT_CODE_WARNING, "unknown class" } };
+    f->desc.markers = markers;
+    f->desc.marker_count = 1;
+    at = caret_at(f, 2);
+    rml_context_process_mouse_move(f->context, (int)at.x + 1, (int)at.y, 0);
+    for (int i = 0; i < 40 && kit_code_hover(f->e) < 0; i++) {
+        frame(f);
+    }
+    ok &= check(kit_code_hover(f->e) >= 0 && kit_code_hover(f->e) <= 3, "a resting pointer names the byte under it");
+    f->desc.hover = "Word alpha\nits detail";
+    settle(f);
+    kit_rect card;
+    ok &= check(kit_find(f->k, "layer/@hover:app/code", &card) && card.h > 0, "the host's card shows under the pointer");
+    ok &= check(kit_find(f->k, "layer/@hover:app/code/m0", &card), "with the diagnostics of the line");
+    press(f, RML_KEY_RIGHT, 0);
+    settle(f);
+    ok &= check(kit_code_hover(f->e) < 0, "a key hides the card until the pointer moves");
+    f->desc.hover = NULL;
+    f->desc.markers = NULL;
+    f->desc.marker_count = 0;
+    char line[400] = "long";
+    for (int i = 0; i < 70; i++) {
+        strcat(line, " word");
+    }
+    kit_rect code;
+    kit_find(f->k, "app/code", &code);
+    f->desc.no_wrap = true;
+    kit_code_set_text(f->e, "short");
+    rml_vec2 top = caret_at(f, 0);
+    ok &= check(top.y < code.y + 20 && top.x < code.x + 80, "without wrapping, short text still starts at the top left");
+    kit_code_set_text(f->e, line);
+    at = caret_at(f, (int)strlen(line));
+    ok &= check(at.x > code.x && at.x < code.x + code.w, "without wrapping, lines scroll sideways to the cursor");
+    rml_vec2 start = caret_at(f, 0);
+    ok &= check(start.x > code.x && start.x < at.x, "and back");
+    f->desc.no_wrap = false;
+    return ok;
+}
+
 static bool rendering(fixture *f)
 {
     bool ok = true;
@@ -481,7 +622,9 @@ bool test_kit_code()
     ok &= edits(&f);
     ok &= commands(&f);
     ok &= completions(&f);
+    ok &= host_keys(&f);
     ok &= rendering(&f);
+    ok &= pointer_features(&f);
     /* The element outlives its editor until the next frame drops it. */
     kit_code_editor_destroy(f.e);
     rml_context_render(f.context);

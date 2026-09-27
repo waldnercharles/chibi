@@ -170,6 +170,9 @@ extern "C"
         /* True to draw the text at a byte in `color`; false draws it in
          * the text role. */
         bool (*syntax)(void *user, long byte, zep_rgba *color);
+        /* Undo or redo was asked for, by a key or a command; true when the
+         * host keeps the history and took it, false to replay Zep's own. */
+        bool (*history)(void *user, bool redo);
     } zep_host;
 
     /* The host must outlive the editor. */
@@ -189,6 +192,7 @@ extern "C"
     void zep_insert(zep_editor *z, long at, const char *text);
     void zep_delete(zep_editor *z, long start, long end);
     void zep_replace(zep_editor *z, long start, long end, const char *text);
+    /* Replay Zep's own history, whatever zep_host.history says. */
     void zep_undo(zep_editor *z);
     void zep_redo(zep_editor *z);
 
@@ -225,6 +229,15 @@ extern "C"
     /* The cursor blinks while focused. */
     void zep_set_focused(zep_editor *z, bool focused);
     void zep_render(zep_editor *z);
+    /* The byte whose glyph the pointer rested on as last rendered, or -1. */
+    long zep_hover_byte(const zep_editor *z);
+    /* Lines that do not wrap scroll left by `offset` pixels; the text region
+     * spans left to right. */
+    void zep_set_text_offset_x(zep_editor *z, float offset);
+    void zep_text_region_x(const zep_editor *z, float *left, float *right);
+    /* With `hide`, the command line and the status line under the text take
+     * no room while the command line is empty, as outside an ex command. */
+    void zep_hide_idle_command_line(zep_editor *z, bool hide);
 
     /* Marks over the text, as diagnostics: ZEP_MARK_* display bits, the role
      * that colors the mark and a message for its tooltip. */

@@ -644,6 +644,25 @@ extern "C"
     /* A mousescroll event's wheel delta; positive y scrolls down. */
     rml_vec2 rml_event_wheel(const rml_event *event);
 
+    /* ---------- Code intelligence (workstream I) ---------- */
+
+    /* Punctuation keys the Text Editor's chords name, with rml_key's values
+     * (RmlUi 6.3's Input::KeyIdentifier). */
+    enum
+    {
+        RML_KEY_OEM_1 = 38,     /* ; */
+        RML_KEY_OEM_COMMA = 40, /* , */
+        RML_KEY_OEM_4 = 45,     /* [ */
+        RML_KEY_OEM_6 = 47,     /* ] */
+    };
+    /* What StyleSheetSpecification knows of RCSS property or shorthand
+     * `name`: a property's initial value, and whether it inherits; false for
+     * a name it does not know. */
+    bool rml_property_describe(const char *name, char *initial, size_t size, bool *inherited, bool *shorthand);
+    /* Changes each time rml_release_render_managers releases the font
+     * resources: face handles from before are gone. */
+    unsigned rml_font_generation();
+
 #ifdef __cplusplus
 }
 #endif

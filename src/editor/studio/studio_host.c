@@ -58,6 +58,12 @@ static rml_input_key input_key(SDL_Keycode key)
         case SDLK_MINUS: return RML_INPUT_KEY_OEM_MINUS;
         case SDLK_PERIOD: return RML_INPUT_KEY_OEM_PERIOD;
         case SDLK_EQUALS: return RML_INPUT_KEY_OEM_PLUS;
+        /* Workstream I: Settings (Mod+,) and Vim's Control+[ from the Text
+           Editor. */
+        case SDLK_COMMA: return RML_INPUT_KEY_OEM_COMMA;
+        case SDLK_SEMICOLON: return RML_INPUT_KEY_OEM_1;
+        case SDLK_LEFTBRACKET: return RML_INPUT_KEY_OEM_4;
+        case SDLK_RIGHTBRACKET: return RML_INPUT_KEY_OEM_6;
         case SDLK_KP_MINUS: return RML_INPUT_KEY_SUBTRACT;
         case SDLK_LSHIFT: return RML_INPUT_KEY_LEFT_SHIFT;
         case SDLK_RSHIFT: return RML_INPUT_KEY_RIGHT_SHIFT;

@@ -458,16 +458,31 @@ static rml_element *studio_element(studio *s, const char *selector)
     return found;
 }
 
-/* The Scene's zoom readout shows the camera the scene draws: nothing before
-   the first draw fits it to the Vault, which the reset camera does not frame,
-   then its zoom, so it never rolls from the reset camera's. */
+/* Whether the Scene's last draw framed the camera it holds now, as the
+   pointer it measured shows. */
+static bool drew_camera(const studio_fixture *f)
+{
+    engine_viewport_camera camera;
+    engine_viewport_pointer pointer;
+    engine_viewport_get_camera(f->viewport, &camera);
+    engine_viewport_get_pointer(f->viewport, &pointer);
+    float width = f->studio->surface.rect.w * f->studio->prefs.ui_scale;
+    return fabsf(pointer.world_per_pixel * width - camera.span_width) <
+           0.01f * camera.span_width;
+}
+
+/* The Scene draws the camera its first draw fits to the Vault, which the
+   reset camera does not frame, and its zoom readout shows nothing before
+   then and that camera's zoom after, so it never rolls from the reset
+   camera's. */
 static void readout_follows_camera()
 {
     studio_fixture f = vault_open();
     studio *s = f.studio;
-    bool shown = false, current = true;
+    bool shown = false, current = true, drawn = true;
     for (int i = 0; i < 6; i++) {
         frames(&f, 1);
+        drawn &= f.scene->camera_target < 0 || drew_camera(&f);
         rml_element *readout = studio_element(s, ".readout");
         if (!readout) {
             continue;
@@ -480,7 +495,7 @@ static void readout_follows_camera()
         current &= !strcmp(value, expected);
         shown = true;
     }
-    test_check(shown && current, "the Scene's zoom readout shows the camera the scene draws, from its first value");
+    test_check(shown && current && drawn, "the Scene draws the camera it fits from its first frame, and its zoom readout shows that camera");
     fixture_free(&f);
 }
 

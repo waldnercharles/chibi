@@ -456,6 +456,15 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     ecs_entity fit_entity = scene->reveal_actor;
     fit |= fit_entity.slot != 0;
     scene->reveal_actor = (ecs_entity){ 0 };
+    /* Before the draw, so the frame that fits the camera shows it. */
+    if (fit) {
+        fit_scene_view(
+            viewport,
+            preview ? game_prototype_preview_world(scene->prototype_preview)
+                    : scene->world,
+            fit_entity
+        );
+    }
     if (preview && scene->preview_follow &&
         (scene->preview_playing || scene->preview_step)) {
         ecs_world *world = game_prototype_preview_world(scene->prototype_preview);
@@ -497,14 +506,6 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     }
     int drawn = engine_viewport_draw(viewport, &controls);
     edit_scene_pointer(scene, viewport);
-    if (fit) {
-        fit_scene_view(
-            viewport,
-            preview ? game_prototype_preview_world(scene->prototype_preview)
-                    : scene->world,
-            fit_entity
-        );
-    }
     engine_viewport_get_view(viewport, &camera->view);
     camera->saved = true;
     return drawn;

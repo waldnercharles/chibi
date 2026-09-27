@@ -99,6 +99,14 @@ void engine_viewport_set_host_input(engine_viewport *viewport, const engine_view
     viewport->host_delta = (CF_V2){ input->x - viewport->host_input.x,
                                     input->y - viewport->host_input.y };
     viewport->host_input = *input;
+    /* The canvas takes the image's shape now, so the camera frames it before
+       the draw, as a fit does. */
+    float resolution = fmaxf(input->resolution, 1);
+    engine_viewport_request_resize(
+        viewport,
+        (int)(input->width * resolution),
+        (int)(input->height * resolution)
+    );
 }
 
 uint64_t engine_viewport_texture(const engine_viewport *viewport)
@@ -578,7 +586,6 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
         cancel_viewport_pointer(viewport);
         return 0;
     }
-    engine_viewport_request_resize(viewport, width, height);
     if (viewport->stable_resize_frames >= 2 && commit_resize(viewport) != 0) {
         return -1;
     }

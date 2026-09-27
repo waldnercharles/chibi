@@ -2,7 +2,10 @@
  * window): problems appear and go as the part is typed and once RmlUi checks
  * it, a completion typed and accepted steps back with the typing through one
  * history from the editor's keys and Studio's Undo, F12 opens a widget's
- * asset, and Shift+F12 lists a class's places in Output's Find view. */
+ * asset, and Shift+F12 lists a class's places in Output's Find view.
+ * Workstream Q: Output lists the problems, Back and Forward follow F12, and
+ * the Hierarchy moves a row with the keyboard. */
+#include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/input.h"
@@ -182,6 +185,34 @@ static void cursor_at(fixture *f, const char *needle, int skip)
     frames(f, 1);
 }
 
+/* Workstream Q: whether rows hold the RCSS warning about `colour`, at the
+   bytes the Text Editor underlines. */
+static bool lists_colour(const studio_ui_problem *rows, const char *path)
+{
+    const char *part = ".shared { margin: 2dp; }\n.shared { colour: red; }\n";
+    int offset = (int)(strstr(part, "colour") - part);
+    for (int i = 0; i < acount(rows); i++) {
+        const studio_ui_problem *p = &rows[i];
+        if (!strcmp(p->at.path, path) && p->at.part == UI_PART_RCSS && p->at.line == 2 &&
+            p->at.offset == offset && !p->error && strstr(p->message, "colour")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Output's Problems list the shown document's problems, and the project's
+   every ui asset's; a row opens its place in the Text Editor. */
+static void output_problems(fixture *f)
+{
+    studio *s = f->studio;
+    test_check(lists_colour(studio_code_problems(s), f->doc), "Output's Problems list the shown UI document's RmlUi warning at its place");
+    studio_ui_problem *project = NULL;
+    studio_code_project_problems(s, &project);
+    test_check(lists_colour(project, f->doc), "and the project's, every ui asset checked");
+    afree(project);
+}
+
 static void problems(fixture *f)
 {
     studio *s = f->studio;
@@ -191,6 +222,7 @@ static void problems(fixture *f)
             acount(s->code.markers[UI_PART_RML]) == 0,
         "RmlUi's warning marks its RCSS line once the document rests"
     );
+    output_problems(f);
     cursor_at(f, "Hi", 0);
     type(f, "<span class=");
     test_check(
@@ -259,6 +291,19 @@ static void navigation(fixture *f)
         !strcmp(s->code.path, f->dialog) && studio_ui_buffer(s)->part == UI_PART_RML,
         "F12 on a widget opens its ui asset in the Text Editor"
     );
+    /* Workstream Q: Back and Forward follow the jump. */
+    press(f, RML_INPUT_KEY_OEM_4, RML_INPUT_MOD_CONTROL);
+    frames(f, 3);
+    const char *text = shown_text(s);
+    test_check(
+        !strcmp(s->code.path, f->doc) && kit_code_cursor(s->code.editor) ==
+                                             (int)(strstr(text, "Dialog") - text) + 2,
+        "Back (Mod+[) after F12 returns to the place it left"
+    );
+    test_check(studio_nav_can_step(s, 1), "and Forward can go again");
+    studio_nav_step(s, 1);
+    frames(f, 3);
+    test_check(!strcmp(s->code.path, f->dialog), "Forward returns to where it landed");
     test_check(studio_open_ui_source(s, f->doc, 1), "the document opens again");
     frames(f, 4);
     cursor_at(f, "shared", 1);
@@ -294,6 +339,35 @@ static void navigation(fixture *f)
     }
 }
 
+/* Workstream Q: dnd-kit's keyboard sensor over the Hierarchy. */
+static void keyboard_reorder(fixture *f)
+{
+    studio *s = f->studio;
+    test_check(studio_open_ui_source(s, f->doc, 1), "the document opens for the designer");
+    frames(f, 4);
+    ui_buffer *b = studio_ui_buffer(s);
+    char *before = xstrdup(ui_buffer_text(b, UI_PART_RML));
+    designer_select(s, 1);
+    studio_designer_key(s, STUDIO_EDITOR_OUTLINER, SDLK_SPACE, 0);
+    studio_designer_key(s, STUDIO_EDITOR_OUTLINER, SDLK_ESCAPE, 0);
+    frames(f, 1);
+    test_check(!strcmp(ui_buffer_text(b, UI_PART_RML), before), "Escape puts a carried row back unmoved");
+    studio_designer_key(s, STUDIO_EDITOR_OUTLINER, SDLK_SPACE, 0);
+    studio_designer_key(s, STUDIO_EDITOR_OUTLINER, SDLK_UP, 0);
+    studio_designer_key(s, STUDIO_EDITOR_OUTLINER, SDLK_SPACE, 0);
+    frames(f, 1);
+    test_check(
+        !strncmp(ui_buffer_text(b, UI_PART_RML), "<div class=\"shared\">", 20) &&
+            !strcmp(shown_text(s), ui_buffer_text(b, UI_PART_RML)),
+        "Space picks the selected row up, Up moves it before its parent, and "
+        "Space drops it there"
+    );
+    studio_history(s, false);
+    frames(f, 1);
+    test_check(!strcmp(ui_buffer_text(b, UI_PART_RML), before), "the move is one undo step");
+    free(before);
+}
+
 void test_code_intelligence_studio()
 {
     fixture f = fixture_new();
@@ -302,6 +376,7 @@ void test_code_intelligence_studio()
     problems(&f);
     completion_and_undo(&f);
     navigation(&f);
+    keyboard_reorder(&f);
     text_overlay_clear();
     fixture_free(&f);
 }

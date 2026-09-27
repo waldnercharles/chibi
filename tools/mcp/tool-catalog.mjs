@@ -180,7 +180,7 @@ const entries = [
     operation: "inspect_ui",
     adapter: "native",
     title: "Inspect a UI document",
-    description: "Read a ui asset's outline (elements with index, tag, attributes and line; rules with declarations), the props its bindings read, the events it emits, its slots, the widgets it uses and the props it passes them, the custom properties, classes and save keys it names, its syntax errors, and its content hash. Call it before buildUi.",
+    description: "Read a ui asset's outline (elements with index, tag, attributes and line; rules with declarations), the props its bindings read, the events it emits, its slots, the widgets it uses and the props it passes them, the custom properties, classes and save keys it names, its syntax errors, and its content hash. With complete: {line, column}, also the completions Studio's Text Editor offers there (tags, attributes, widgets, classes, properties, custom properties, save keys). Call it before buildUi.",
     intentTerms: ["inspect", "ui"],
     candidates: ["inspectUi", "readUi", "outlineUi"],
     legacyName: "inspect_ui",

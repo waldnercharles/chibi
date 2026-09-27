@@ -57,6 +57,9 @@ const char *ui_buffer_text(const ui_buffer *b, ui_part part);
 
 /* Applies `edits` to a part as one undo step. */
 void ui_buffer_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count);
+/* Applies `edits` to a part within the last undo step, so a change of both
+ * parts, as ui_design_extract_class makes, undoes as one. */
+void ui_buffer_join_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count);
 /* Replaces a part's text as typed `now`, in seconds: a change within a second
  * of the last one typed into the same part joins its undo step. */
 void ui_buffer_type(ui_buffer *b, ui_part part, const char *text, double now);

@@ -38,7 +38,8 @@ struct studio_node_layout
 };
 typedef struct studio_node_layout node_layout;
 
-/* A graph Back and Forward return to (studio_graph_nav.c). */
+/* A graph Back and Forward return to (studio_graph_nav.c), or with kind
+ * APP_EDITOR_DOCUMENT_UI a place in the Text Editor (workstream Q). */
 struct studio_visit
 {
     int kind; /* app_editor_document_kind */
@@ -47,6 +48,7 @@ struct studio_visit
     uint64_t graph_id;
     int caller_count; /* the calls entered to reach it, for the breadcrumb */
     ed_graph_caller callers[ED_CALLER_LIMIT];
+    ui_code_place place; /* a UI document's */
 };
 
 typedef enum

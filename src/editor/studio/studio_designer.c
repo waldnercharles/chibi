@@ -1,9 +1,11 @@
 /* The visual designer (workstream H). While a ui asset's UI document is
  * active, the Outliner is its Hierarchy, as Unity's UI Builder and Unreal's
  * UMG Designer list a widget's tree: rows select and fold, drag to reorder
- * and reparent, and a menu adds, duplicates, wraps and deletes. The Canvas
- * in the Scene area outlines the selection and the element under the
- * pointer, selects with a click and takes Library drops. Selecting in the
+ * and reparent, or move with the keyboard as dnd-kit's keyboard sensor
+ * moves them (workstream Q), and a menu adds, duplicates, wraps and
+ * deletes. The Canvas in the Scene area outlines the selection and the
+ * element under the pointer, selects with a click and takes Library drops,
+ * marking where between siblings they land. Selecting in the
  * Hierarchy, in the Canvas or with the Text Editor's cursor selects in all
  * of them. Every change is a text edit of the document
  * (editor/documents/ui_design.h): one undo step that keeps the author's
@@ -174,18 +176,6 @@ uint32_t designer_element_icon(const ui_source *rml, int element)
     return KIT_ICON_ELEMENT;
 }
 
-bool designer_container(const ui_source *rml, int element)
-{
-    static const char *const EMPTY[] = { "input", "img",      "br",
-                                         "hr",    "progress", "slot" };
-    for (size_t i = 0; i < sizeof EMPTY / sizeof *EMPTY; i++) {
-        if (!strcmp(rml->elements[element].tag, EMPTY[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static bool has_children(const ui_source *rml, int element)
 {
     return element + 1 < acount(rml->elements) &&
@@ -294,7 +284,7 @@ void designer_add(studio *s, int target, const char *markup, const char *label)
 {
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
-    ui_source_place place = target < 0 || designer_container(d->rml, target)
+    ui_source_place place = target < 0 || ui_design_container(d->rml, target)
                               ? UI_SOURCE_INSIDE
                               : UI_SOURCE_AFTER;
     char error[192] = "", failed[128];
@@ -519,7 +509,7 @@ static void row_drop(studio *s, const studio_designer *d, int element, tree_requ
     kit *k = s->kit;
     ui_source_place place = element < 0
                               ? UI_SOURCE_INSIDE
-                              : drop_place(s, kit_item_rect(k), designer_container(d->rml, element));
+                              : drop_place(s, kit_item_rect(k), ui_design_container(d->rml, element));
     bool over = kit_dragging(k, DESIGNER_DRAG) && kit_item_hovered(k);
     kit_attr(k, "data-drop", over ? PLACE_NAMES[place] : "none");
     char payload[sizeof request->payload];
@@ -527,6 +517,33 @@ static void row_drop(studio *s, const studio_designer *d, int element, tree_requ
         *request = (tree_request){ .action = DO_DROP, .element = element, .place = place };
         snprintf(request->payload, sizeof request->payload, "%s", payload);
     }
+}
+
+/* The slots a carried row steps through, as the Hierarchy shows its rows:
+   what folded rows hold is left out. */
+static ui_design_slot *carry_slots(const studio_designer *d, int *home)
+{
+    int count = acount(d->rml->elements);
+    bool *folded = xcalloc((size_t)count + 1, sizeof *folded);
+    for (int i = 0; i < count; i++) {
+        folded[i] = fold_index(d, i) >= 0;
+    }
+    ui_design_slot *slots = NULL;
+    *home = ui_design_slots(d->rml, d->carry.element, folded, &slots);
+    free(folded);
+    return slots;
+}
+
+/* While a row is carried, the row its slot names shows where the drop
+   goes, as a pointer drag marks it, and the carried row is dimmed. */
+static void carry_marks(kit *k, const studio_designer *d, int element)
+{
+    if (!d->carry.active) {
+        return;
+    }
+    const ui_design_slot *slot = &d->carry.at;
+    kit_attr(k, "data-drop", slot->target == element ? PLACE_NAMES[slot->place] : "none");
+    kit_flag(k, "data-dragging", element >= 0 && element == d->carry.element);
 }
 
 static void open_menu(studio *s, studio_designer *d, int element, const char *menu)
@@ -548,6 +565,7 @@ static void document_row(studio *s, studio_designer *d, const char *menu, tree_r
     unsigned events = kit_row_begin(k, "document", &row);
     kit_row_end(k);
     row_drop(s, d, -1, request);
+    carry_marks(k, d, -1);
     if (events & KIT_ROW_TWISTY) {
         d->closed = !d->closed;
     } else if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
@@ -586,6 +604,7 @@ static void element_row(studio *s, studio_designer *d, const tree_row *row, cons
         ){ .type = DESIGNER_DRAG, .payload = payload, .label = name, .icon = desc.icon }
     );
     row_drop(s, d, e, request);
+    carry_marks(k, d, e);
     d->hovered = kit_item_hovered(k) ? e : d->hovered;
     if (events & KIT_ROW_TWISTY) {
         set_folded(d, e, desc.twisty == 1);
@@ -727,6 +746,13 @@ void studio_designer_hierarchy_header(studio *s, int area)
     }
 }
 
+/* The row to scroll to: the selection, or while a row is carried the row
+   its slot names. */
+static int revealed_element(const studio_designer *d)
+{
+    return d->carry.active ? d->carry.at.target : d->selected;
+}
+
 void studio_designer_hierarchy(studio *s, int area)
 {
     kit *k = s->kit;
@@ -734,9 +760,9 @@ void studio_designer_hierarchy(studio *s, int area)
     studio_designer *d = designer_state(s, &b);
     assert(d);
     tree_row *rows = tree_rows(d);
-    int reveal = -1;
+    int reveal = -1, shown = revealed_element(d);
     for (int r = 1; r < acount(rows); r++) {
-        reveal = rows[r].element == d->selected ? r : reveal;
+        reveal = rows[r].element == shown ? r : reveal;
     }
     kit_list_desc list = { .count = acount(rows),
                            .row_height = s->prefs.comfortable ? 26 : 22,
@@ -781,6 +807,112 @@ static void step(studio *s, studio_designer *d, int direction)
         designer_select(s, rows[next].element);
     }
     afree(rows);
+}
+
+/* ---------- Keyboard reordering (workstream Q) ---------- */
+
+/* dnd-kit's keyboard sensor over the Hierarchy: Space or Enter picks the
+   selected row up, Up and Down move it through the gaps between rows at
+   each depth, Space, Enter or Tab drops it and Escape cancels. Each step is
+   announced in the status bar, as dnd-kit announces pickup, over, drop and
+   cancel. */
+
+static void announce_slot(studio *s, const studio_designer *d, const ui_design_slot *slot, int index, int count)
+{
+    static const char *const VERBS[] = { "Into", "Before", "After" };
+    char name[96], message[192];
+    if (slot->target >= 0) {
+        designer_element_name(d->rml, slot->target, name, sizeof name);
+    } else {
+        snprintf(name, sizeof name, "%s", d->asset);
+    }
+    snprintf(message, sizeof message, "%s %s \xc2\xb7 %d of %d", VERBS[slot->place], name, index + 1, count);
+    studio_report(s, message);
+}
+
+static void pick_up(studio *s, studio_designer *d, const ui_buffer *b)
+{
+    if (d->selected < 0 || d->filter[0]) {
+        studio_report(s, d->filter[0] ? "Clear the filter to move a row with the keyboard" : "Select a row to move");
+        return;
+    }
+    d->closed = false;
+    for (int a = d->rml->elements[d->selected].parent; a >= 0;
+         a = d->rml->elements[a].parent) {
+        set_folded(d, a, false);
+    }
+    d->carry.active = true;
+    d->carry.element = d->selected;
+    d->carry.revision = b->revision;
+    ui_design_slot *slots = carry_slots(d, &d->carry.slot);
+    d->carry.at = slots[d->carry.slot];
+    afree(slots);
+    char name[96], message[192];
+    designer_element_name(d->rml, d->selected, name, sizeof name);
+    snprintf(message, sizeof message, "Picked up %s \xc2\xb7 arrows move it, Space drops, Escape cancels", name);
+    studio_report(s, message);
+}
+
+static void move_carried(studio *s, studio_designer *d, int direction)
+{
+    int home;
+    ui_design_slot *slots = carry_slots(d, &home);
+    int next = d->carry.slot + direction;
+    d->carry.slot = next >= 0 && next < acount(slots) ? next : d->carry.slot;
+    d->carry.at = slots[d->carry.slot];
+    announce_slot(s, d, &d->carry.at, d->carry.slot, acount(slots));
+    d->reveal_row = true;
+    afree(slots);
+}
+
+static void drop_carried(studio *s, studio_designer *d, ui_buffer *b)
+{
+    int home;
+    ui_design_slot *slots = carry_slots(d, &home);
+    ui_design_slot slot = slots[d->carry.slot];
+    bool stays = d->carry.slot == home;
+    int element = d->carry.element;
+    afree(slots);
+    d->carry.active = false;
+    if (stays) {
+        studio_report(s, "Dropped where it was");
+        return;
+    }
+    char error[192] = "";
+    int moved = ui_design_move(b, element, slot.target, slot.place, error, sizeof error);
+    changed(s, moved, error, "Could not move", "Moved");
+}
+
+static void cancel_carry(studio *s, studio_designer *d, const char *why)
+{
+    d->carry.active = false;
+    d->reveal_row = true;
+    studio_report(s, why);
+}
+
+/* The carried row's keys; any other is swallowed while it is carried. */
+static void carry_key(studio *s, studio_designer *d, ui_buffer *b, SDL_Keycode key)
+{
+    switch (key) {
+        case SDLK_UP:
+        case SDLK_DOWN: move_carried(s, d, key == SDLK_DOWN ? 1 : -1); break;
+        case SDLK_SPACE:
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+        case SDLK_TAB: drop_carried(s, d, b); break;
+        case SDLK_ESCAPE: cancel_carry(s, d, "Cancelled the move"); break;
+        default: break;
+    }
+}
+
+/* A change to the text, or a selection elsewhere, puts a carried row down
+   where it was. */
+static void keep_carry(studio *s, studio_designer *d, const ui_buffer *b)
+{
+    if (d->carry.active &&
+        (b->revision != d->carry.revision || d->selected != d->carry.element)) {
+        cancel_carry(s, d, "Cancelled the move");
+    }
 }
 
 /* ---------- Text Editor ---------- */
@@ -1085,25 +1217,90 @@ static void outline(
     kit_highlight(s->kit, cls, &desc, cls);
 }
 
-/* A drop on the Canvas goes into the element under it, or after one that
- * holds no elements; on nothing, into the document. */
-static void canvas_drop(
-    studio *s,
-    studio_designer *d,
-    ui_buffer *b,
+/* Where a drop on the Canvas lands (workstream Q), as a Hierarchy row
+ * splits: along the flow of the element's parent, its edges go before and
+ * after it and its middle inside a container; on nothing, into the
+ * document. */
+typedef struct
+{
+    int target;
+    ui_source_place place;
+    kit_rect box;
+    bool across; /* its siblings run across, as in a flex row */
+} canvas_target;
+
+/* Whether siblings lay out across: a flex row's items, or inline boxes in
+ * a block. */
+static bool flows_across(rml_element *el)
+{
+    rml_element *parent = rml_element_parent(el);
+    char display[32] = "", direction[32] = "";
+    if (parent) {
+        rml_element_property(parent, "display", display, sizeof display);
+        rml_element_property(parent, "flex-direction", direction, sizeof direction);
+    }
+    if (!strcmp(display, "flex") || !strcmp(display, "inline-flex")) {
+        return !strncmp(direction, "row", 3);
+    }
+    rml_element_property(el, "display", display, sizeof display);
+    return !strncmp(display, "inline", 6);
+}
+
+static canvas_target canvas_target_at(
+    const studio *s,
+    const studio_designer *d,
     rml_context *context,
-    canvas_map m,
-    const char *payload
+    canvas_map m
 )
 {
-    int target = source_under(s, d, context, m);
-    bool inside = target < 0 || designer_container(d->rml, target);
-    drop(s, d, b, payload, target, inside ? UI_SOURCE_INSIDE : UI_SOURCE_AFTER);
+    canvas_target t = { .target = source_under(s, d, context, m),
+                        .place = UI_SOURCE_INSIDE };
+    rml_element *el = t.target >= 0
+                        ? studio_designer_shown(context, d->rml, d->asset, t.target)
+                        : NULL;
+    if (!el) {
+        return t;
+    }
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    t.box = (kit_rect){ m.x + at.x * m.sx, m.y + at.y * m.sy, size.x * m.sx, size.y * m.sy };
+    t.across = flows_across(el);
+    float u = t.across ? (s->in.mouse_x - t.box.x) / fmaxf(t.box.w, 1)
+                       : (s->in.mouse_y - t.box.y) / fmaxf(t.box.h, 1);
+    bool container = ui_design_container(d->rml, t.target);
+    t.place = u < DROP_EDGE || (!container && u < 0.5f) ? UI_SOURCE_BEFORE
+            : u > 1 - DROP_EDGE || !container           ? UI_SOURCE_AFTER
+                                                        : UI_SOURCE_INSIDE;
+    return t;
+}
+
+/* The line between siblings where a drop before or after lands, across
+ * the element's edge, kept within the Canvas. */
+static void drop_line(kit *k, const canvas_target *t, kit_rect clip)
+{
+    enum
+    {
+        THICK = 2,
+    };
+    kit_rect r = t->box;
+    bool after = t->place == UI_SOURCE_AFTER;
+    if (t->across) {
+        r = (kit_rect){ r.x + (after ? r.w : 0) - THICK / 2.0f, r.y, THICK, r.h };
+    } else {
+        r = (kit_rect){ r.x, r.y + (after ? r.h : 0) - THICK / 2.0f, r.w, THICK };
+    }
+    float x = fmaxf(r.x, clip.x), y = fmaxf(r.y, clip.y);
+    float right = fminf(r.x + r.w, clip.x + clip.w),
+          bottom = fminf(r.y + r.h, clip.y + clip.h);
+    kit_leaf(k, "drop-line", NULL, "designer-drop-line");
+    place(k, (kit_rect){ x, y, fmaxf(right - x, 0), fmaxf(bottom - y, 0) });
 }
 
 /* Outlines the selection and the element under the pointer or its row,
  * selects with a click, and takes drops through a zone over the frame that
- * only takes the pointer while a Hierarchy row or a Library item drags. */
+ * only takes the pointer while a Hierarchy row or a Library item drags.
+ * Over the Canvas a drag marks where it lands: the element it goes into,
+ * or the line between siblings it goes between. */
 static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
 {
     canvas_map m;
@@ -1113,10 +1310,15 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     }
     kit *k = s->kit;
     bool dragging = kit_dragging(k, DESIGNER_DRAG);
-    bool pointed = s->surface.hovered || (dragging && pointer_in(s, m.clip));
-    int under = pointed ? source_under(s, d, context, m) : -1;
+    bool over = dragging && pointer_in(s, m.clip) && d->hovered < 0;
+    bool pointed = s->surface.hovered || over;
+    canvas_target t = over
+                        ? canvas_target_at(s, d, context, m)
+                        : (canvas_target){
+                              .target = pointed ? source_under(s, d, context, m) : -1
+                          };
     if (s->surface.hovered && s->surface.pressed[0]) {
-        designer_select(s, under);
+        designer_select(s, t.target);
     }
     kit_inspect_begin(k, "designer", false);
     kit_leaf(k, "drop", NULL, "designer-drop");
@@ -1124,16 +1326,21 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     kit_flag(k, "data-active", dragging);
     char payload[512];
     bool dropped = kit_drop_target(k, DESIGNER_DRAG, payload, sizeof payload);
-    int hover = d->hovered >= 0 ? d->hovered : under;
+    int hover = d->hovered >= 0 ? d->hovered : t.target;
+    bool between = over && t.target >= 0 && t.place != UI_SOURCE_INSIDE;
     if (hover >= 0 && hover != d->selected) {
-        outline(s, d, context, m, hover, dragging ? "designer-target" : "designer-hover");
+        outline(s, d, context, m, hover, dragging && !between ? "designer-target" : "designer-hover");
+    }
+    if (between) {
+        drop_line(k, &t, m.clip);
     }
     if (d->selected >= 0) {
         outline(s, d, context, m, d->selected, "selected");
     }
     kit_inspect_end(k);
     if (dropped) {
-        canvas_drop(s, d, b, context, m, payload);
+        t = canvas_target_at(s, d, context, m);
+        drop(s, d, b, payload, t.target, t.place);
     }
 }
 
@@ -1147,6 +1354,7 @@ void studio_designer_frame(studio *s)
         return;
     }
     undo_delete(s, d, b);
+    keep_carry(s, d, b);
     follow_cursor(s, d, b);
     canvas_frame(s, d, b);
     d->hovered = -1;
@@ -1161,6 +1369,15 @@ bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_K
         (!hierarchy && !(editor == STUDIO_EDITOR_SCENE && shows_document(s, d))) ||
         studio_primary(s, mod) || (mod & SDL_KMOD_ALT)) {
         return false;
+    }
+    if (hierarchy && d->carry.active) {
+        carry_key(s, d, b, key);
+        return true;
+    }
+    if (hierarchy && !(mod & SDL_KMOD_SHIFT) &&
+        (key == SDLK_SPACE || key == SDLK_RETURN)) {
+        pick_up(s, d, b);
+        return true;
     }
     if (mod & SDL_KMOD_SHIFT) {
         if (key == SDLK_D) {

@@ -206,6 +206,13 @@ void ui_buffer_edit(ui_buffer *b, ui_part part, const text_edit *edits, int coun
     apply(b, part, edits, count, false);
 }
 
+void ui_buffer_join_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count)
+{
+    assert(ui_buffer_can_undo(b));
+    b->typed = -1;
+    apply(b, part, edits, count, true);
+}
+
 void ui_buffer_type(ui_buffer *b, ui_part part, const char *text, double now)
 {
     const char *old = b->parts[part];

@@ -52,6 +52,19 @@ struct studio_designer
         bool focus; /* focus the field on its first frame */
         char text[192];
     } add; /* the field of an Add popover (class, attribute) */
+    /* Workstream Q: a Hierarchy row carried with the keyboard, as dnd-kit's
+       keyboard sensor carries one: the element, the slot it would drop in
+       (an index of ui_design_slots', and that slot), and the buffer's
+       revision when it was picked up, since a change to the text puts it
+       down. */
+    struct
+    {
+        bool active;
+        int element;
+        int slot;
+        ui_design_slot at;
+        unsigned revision;
+    } carry;
 };
 
 /* The active UI document with markup and its designer state, parsed as its
@@ -65,8 +78,6 @@ void designer_warn(studio *s, const char *title, const char *error);
 /* An element's name as the Hierarchy shows it: its tag, or a <use>'s widget. */
 void designer_element_name(const ui_source *rml, int element, char *out, size_t size);
 uint32_t designer_element_icon(const ui_source *rml, int element);
-/* Whether elements dropped on it go inside it. */
-bool designer_container(const ui_source *rml, int element);
 /* Adds markup for element `target` (-1 the document): inside a container,
  * else after it; selects what it added. */
 void designer_add(studio *s, int target, const char *markup, const char *label);

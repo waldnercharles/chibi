@@ -6,6 +6,7 @@
 #include "render/ui_check.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "ui/rml_backend.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -836,5 +837,92 @@ int automation_ui_references(
     free(description);
     ui_source_locations_free(found);
     ui_source_project_free(&project);
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* ---------- Completion (workstream Q) ---------- */
+
+/* The most items a completion lists; `total` counts them all. */
+#define UI_COMPLETE_MAX 200
+
+static const char *completion_kind(ui_source_completion_kind kind)
+{
+    switch (kind) {
+        case UI_COMPLETE_TAG: return "tag";
+        case UI_COMPLETE_ATTRIBUTE: return "attribute";
+        case UI_COMPLETE_WIDGET: return "widget";
+        case UI_COMPLETE_CLASS: return "class";
+        case UI_COMPLETE_VARIABLE: return "custom_property";
+        case UI_COMPLETE_PROPERTY: return "property";
+        case UI_COMPLETE_SAVE_KEY: return "save_key";
+    }
+    return "unknown";
+}
+
+/* The project's ui assets and stylesheets, with the properties RmlUi
+ * registers, as Studio's Text Editor completes from them (ui_code_scan). */
+static void scan_project(ui_source_project *project, const char *content_root)
+{
+    ui_source_project_scan(project, content_root);
+    rml_backend *backend = rml_backend_create(64, 64, 1);
+    char **names = NULL;
+    ui_check_property_names(&names);
+    rml_backend_destroy(backend);
+    for (int i = 0; i < acount(names); i++) {
+        ui_source_list_add(&project->properties, names[i]);
+    }
+    free_names(names);
+}
+
+static void add_position(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const char *key,
+    const ui_source *source,
+    int offset
+)
+{
+    int line, column;
+    ui_source_position(source, offset, &line, &column);
+    yyjson_mut_val *at = yyjson_mut_obj_add_obj(doc, object, key);
+    yyjson_mut_obj_add_int(doc, at, "line", line);
+    yyjson_mut_obj_add_int(doc, at, "column", column);
+}
+
+int automation_ui_complete(
+    const char *content_root,
+    const char *text,
+    yyjson_val *at,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    char *error,
+    size_t error_size
+)
+{
+    yyjson_val *line = yyjson_obj_get(at, "line"),
+               *column = yyjson_obj_get(at, "column");
+    if (!yyjson_is_obj(at) || !yyjson_is_int(line) || !yyjson_is_int(column) ||
+        yyjson_get_int(line) < 1 || yyjson_get_int(column) < 1) {
+        return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "complete takes a 1-based line and column");
+    }
+    ui_source *source = ui_source_parse(text, false);
+    int offset = ui_source_offset(source, yyjson_get_int(line), yyjson_get_int(column));
+    ui_source_project project = { 0 };
+    scan_project(&project, content_root);
+    ui_source_completions found = { 0 };
+    ui_source_complete(source, offset, &project, &found);
+    yyjson_mut_val *completion = yyjson_mut_obj_add_obj(doc, result, "completion");
+    add_position(doc, completion, "at", source, offset);
+    add_position(doc, completion, "from", source, found.start);
+    yyjson_mut_val *items = yyjson_mut_obj_add_arr(doc, completion, "items");
+    for (int i = 0; i < acount(found.items) && i < UI_COMPLETE_MAX; i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, items);
+        yyjson_mut_obj_add_strcpy(doc, item, "label", found.items[i].label);
+        yyjson_mut_obj_add_str(doc, item, "kind", completion_kind(found.items[i].kind));
+    }
+    yyjson_mut_obj_add_int(doc, completion, "total", acount(found.items));
+    ui_source_completions_free(&found);
+    ui_source_project_free(&project);
+    ui_source_free(source);
     return CHIBI_AUTOMATION_OK;
 }

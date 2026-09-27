@@ -613,13 +613,16 @@ extern "C"
         KIT_CODE_WARNING,
         KIT_CODE_INFO,
     } kit_code_severity;
-    /* A diagnostic: a gutter mark and an underlined line whose message shows
-     * in the hover card when the pointer rests on the line. */
+    /* A diagnostic: a gutter mark and an underline whose message shows in
+     * the hover card when the pointer rests on the line. */
     typedef struct kit_code_marker
     {
         int line; /* 1-based */
         kit_code_severity severity;
         const char *message;
+        /* Workstream Q: bytes [start, end) of the text it is about, which
+         * the underline spans; the whole line when end <= start. */
+        int start, end;
     } kit_code_marker;
     /* Highlighting, as Shiki's tokens carry classes: bytes [start, end)
      * draw in the color the theme gives `cls`, tok-* classes such as

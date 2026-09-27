@@ -74,6 +74,46 @@ bool ui_design_set_declaration(
     char *error,
     size_t size
 );
+/* Adds `property: value;` after the rule's last declaration: on a line of
+ * its own, indented as the rule's lines are, when the rule spans lines. */
+bool ui_design_add_declaration(
+    ui_buffer *b,
+    int rule,
+    const char *property,
+    const char *value,
+    char *error,
+    size_t size
+);
+/* Removes a rule's declaration, and its line when it has one of its own. */
+bool ui_design_remove_declaration(ui_buffer *b, int rule, int declaration, char *error, size_t size);
+/* Extract to class: the element's inline style becomes a new rule for class
+ * `name` at the end of the RCSS, written as its rules are, and the element
+ * takes the class in place of its style attribute; one undo step over both
+ * parts. */
+bool ui_design_extract_class(ui_buffer *b, int element, const char *name, char *error, size_t size);
+
+/* ---------- Keyboard reordering ---------- */
+
+/* Whether elements dropped on it go inside it: tags that hold no content,
+ * as input and img, do not. */
+bool ui_design_container(const ui_source *source, int element);
+
+/* A place a carried element drops, as ui_design_move takes it: before an
+ * element, after the last of its parent's children, or inside a container
+ * holding none (a target of -1 is the markup). */
+typedef struct ui_design_slot
+{
+    int target;
+    ui_source_place place;
+} ui_design_slot;
+
+/* The places the Hierarchy's keyboard sensor steps through with the arrows,
+ * as dnd-kit's sortable tree does, in the order its rows show them: each
+ * gap between rows at each depth, leaving out the carried `element` with
+ * what it holds and what folded elements hold (`folded[i]` for element i,
+ * or NULL for none). Appends them to `slots` and returns the index of the
+ * one where the element lies now. */
+int ui_design_slots(const ui_source *source, int element, const bool *folded, ui_design_slot **slots);
 
 /* ---------- Selection ---------- */
 

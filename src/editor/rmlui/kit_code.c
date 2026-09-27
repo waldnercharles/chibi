@@ -1685,6 +1685,8 @@ static uint64_t markers_hash(const kit_code_desc *d)
     for (int i = 0; i < d->marker_count; i++) {
         const kit_code_marker *m = &d->markers[i];
         h = h * 31 + cf_fnv1a(&m->line, sizeof m->line);
+        h = h * 31 + cf_fnv1a(&m->start, sizeof m->start);
+        h = h * 31 + cf_fnv1a(&m->end, sizeof m->end);
         h = h * 31 + (uint64_t)m->severity;
         h = h * 31 + (m->message ? str_hash(m->message) : 0);
     }
@@ -1701,8 +1703,20 @@ static zep_color severity_role(kit_code_severity severity)
     return ZEP_COLOR_INFO;
 }
 
-/* Diagnostics: a gutter mark and an underline over the line; the hover card
-   shows the message. */
+/* The bytes a marker underlines: its range within the text, else its line. */
+static void marked_range(const kit_code_marker *m, const char *text, size_t length, long *start, long *end)
+{
+    if (m->end > m->start && (size_t)m->start < length) {
+        *start = m->start;
+        *end = math_min((long)m->end, (long)length);
+        return;
+    }
+    *start = line_start(text, length, m->line);
+    *end = math_max(line_start(text, length, m->line + 1), *start + 1);
+}
+
+/* Diagnostics: a gutter mark and an underline over the range the caller
+   knows, else the line; the hover card shows the message. */
 static void diagnose(kit_code_editor *e, const kit_code_desc *d)
 {
     uint64_t hash = markers_hash(d);
@@ -1716,12 +1730,12 @@ static void diagnose(kit_code_editor *e, const kit_code_desc *d)
     const char *text = kit_code_text(e, &length);
     for (int i = 0; i < d->marker_count; i++) {
         const kit_code_marker *m = &d->markers[i];
-        long start = line_start(text, length, m->line);
-        long end = line_start(text, length, m->line + 1);
+        long start, end;
+        marked_range(m, text, length, &start, &end);
         zep_add_marker(
             e->zep,
             start,
-            math_max(end, start + 1),
+            end,
             ZEP_MARK_UNDERLINE | ZEP_MARK_INDICATOR,
             severity_role(m->severity),
             m->message ? m->message : ""

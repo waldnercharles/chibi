@@ -3,6 +3,7 @@
 #include "assets/ui_document.h"
 #include "render/ui.h"
 #include "support/array.h"
+#include "support/rcss.h"
 #include "support/xalloc.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
@@ -277,17 +278,17 @@ static void check_expanded(
     afree(warnings);
 }
 
-/* The asset's RCSS, imports read and nesting flattened; each warning at the
- * line it came from, in the asset's rcss block or an imported file. */
-static void check_style(rml_context *context, const ui_document *document, ui_check_message **out)
+/* RCSS with its imports read and nesting flattened (rcss_expand); each
+ * warning at the line it came from, in the text `map` traces or an
+ * imported file. */
+static void check_style(rml_context *context, const char *rcss, const rcss_map *map, ui_check_message **out)
 {
     rml_element *sheet = rml_context_load_document_from_memory(context, "<rml><head></head><body/></rml>", "style");
     rml_backend_keep_warnings();
-    rml_document_set_named_style_sheet(sheet, "style", document->rcss);
+    rml_document_set_named_style_sheet(sheet, "style", rcss);
     char **warnings = joined_warnings(rml_backend_take_warnings());
-    const rcss_map *map = &document->map;
     for (int i = 0; i < acount(warnings); i++) {
-        int line = warning_line(warnings[i], document->rcss, 0);
+        int line = warning_line(warnings[i], rcss, 0);
         rcss_origin origin = line > 0 && line <= acount(map->lines)
                                ? map->lines[line - 1]
                                : (rcss_origin){ -1, 0 };
@@ -378,13 +379,33 @@ bool ui_check_in(
     ui_data data;
     ui_data_init(&data, context, NULL, ignore_emit, NULL);
     char **shown = check_markup(context, &document, messages);
-    check_style(context, &document, messages);
+    check_style(context, document.rcss, &document.map, messages);
     /* A scene's page shows its markup as written; a GameUi expands widgets. */
     bool ok = document.body ||
               check_widgets(context, &document, name, directory, shown, messages, error, error_size);
     free_names(shown);
     ui_data_free(&data);
     ui_document_free(&document);
+    return ok;
+}
+
+bool ui_check_stylesheet(
+    rml_context *context,
+    const char *directory,
+    const char *text,
+    ui_check_message **messages,
+    char *error,
+    size_t error_size
+)
+{
+    rcss_map map = { 0 };
+    char *rcss = rcss_expand(text, directory, &map, error, error_size);
+    if (rcss) {
+        check_style(context, rcss, &map, messages);
+    }
+    rcss_map_free(&map);
+    bool ok = rcss != NULL;
+    free(rcss);
     return ok;
 }
 

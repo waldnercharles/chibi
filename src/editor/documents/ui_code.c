@@ -62,10 +62,25 @@ void ui_code_scan(ui_source_project *project, const char *content_root)
     afree(names);
 }
 
+/* A stylesheet's own lines, its imports resolved beside it. */
+static bool check_stylesheet(
+    const ui_buffer *b,
+    rml_context *context,
+    ui_check_message **messages,
+    char *error,
+    size_t size
+)
+{
+    char folder[PATH_MAX];
+    snprintf(folder, sizeof folder, "%.*s", (int)(base_name(b->path) - b->path), b->path);
+    const char *text = ui_buffer_text(b, UI_PART_RCSS);
+    return ui_check_stylesheet(context, folder, text, messages, error, size);
+}
+
 bool ui_code_check(const ui_buffer *b, rml_context *context, ui_check_message **messages, char *error, size_t size)
 {
     if (b->stylesheet) {
-        return true;
+        return check_stylesheet(b, context, messages, error, size);
     }
     /* Outside a ui folder, widgets and imports have nowhere to resolve. */
     char root[PATH_MAX], name[128];
@@ -123,23 +138,53 @@ static bool unchanged(ui_code_change d)
     return d.start == d.end && !d.inserted;
 }
 
-ui_code_change ui_code_record(ui_buffer *b, ui_part part, kit_code_editor *e, double now, bool step)
+/* What typing changed from `base`, as an edit of `now`, the part as it
+   stands: where another change of `base` made meanwhile left the typed
+   bytes alone, the typing moves with it; where both changed the same bytes,
+   the editor's text stands. */
+static text_edit rebased(const char *base, ui_code_change typed, const char *text, int length, const char *now)
+{
+    int base_length = (int)strlen(base), now_length = (int)strlen(now);
+    ui_code_change other = difference(base, base_length, now, now_length);
+    int shift = other.inserted - (other.end - other.start);
+    if (typed.end <= other.start) {
+        return edit_of(typed, text);
+    }
+    if (typed.start >= other.end) {
+        text_edit edit = edit_of(typed, text);
+        edit.start += shift;
+        edit.end += shift;
+        return edit;
+    }
+    return edit_of(difference(now, now_length, text, length), text);
+}
+
+ui_code_change ui_code_record(
+    ui_buffer *b,
+    ui_part part,
+    kit_code_editor *e,
+    const char *base,
+    double now,
+    bool step
+)
 {
     size_t length;
     const char *text = kit_code_text(e, &length);
     const char *old = ui_buffer_text(b, part);
-    ui_code_change d = difference(old, (int)strlen(old), text, (int)length);
-    if (!step) {
-        ui_buffer_type(b, part, text, now);
-        return d;
+    ui_code_change typed = difference(base, (int)strlen(base), text, (int)length);
+    if (unchanged(typed)) {
+        return typed;
     }
-    if (unchanged(d)) {
-        return d;
+    text_edit edit = rebased(base, typed, text, (int)length, old);
+    if (step) {
+        ui_buffer_edit(b, part, &edit, 1);
+    } else {
+        char *composed = text_edits_apply(old, &edit, 1);
+        ui_buffer_type(b, part, composed, now);
+        free(composed);
     }
-    text_edit edit = edit_of(d, text);
-    ui_buffer_edit(b, part, &edit, 1);
     free((char *)edit.text);
-    return d;
+    return typed;
 }
 
 bool ui_code_follow(kit_code_editor *e, const char *text, bool land)
@@ -174,6 +219,69 @@ bool ui_code_replay(ui_buffer *b, bool redo)
 
 /* ---------- Diagnostics ---------- */
 
+/* The bytes of 1-based line `line`, its '\n' left out. */
+static void line_bytes(const char *text, int line, int *start, int *end)
+{
+    int at = 0;
+    for (int n = 1; n < line && text[at]; n++) {
+        at += (int)strcspn(text + at, "\n");
+        at += text[at] == '\n';
+    }
+    *start = at;
+    *end = at + (int)strcspn(text + at, "\n");
+}
+
+/* Where `needle` first lies in bytes [from, to), as the range the marker
+   underlines, on the line holding it; false when they do not hold it. */
+static bool found_in(const char *text, int from, int to, const char *needle, kit_code_marker *m)
+{
+    int length = (int)strlen(needle);
+    for (int at = from; length && at + length <= to; at++) {
+        if (!strncmp(text + at, needle, (size_t)length)) {
+            m->start = at;
+            m->end = at + length;
+            m->line = 1;
+            for (int i = 0; i < at; i++) {
+                m->line += text[i] == '\n';
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool on_line(const char *text, const char *needle, kit_code_marker *m)
+{
+    int start, end;
+    line_bytes(text, m->line, &start, &end);
+    return found_in(text, start, end, needle, m);
+}
+
+/* The marker's range: the first text the message quotes that its line
+   holds, as RmlUi quotes a declaration or a data expression; or, since
+   RmlUi places a rule's warnings at its selector's line, the rule's lines
+   that follow, up to its '}'. */
+static void quoted_range(const char *text, const char *message, kit_code_marker *m)
+{
+    int start, end;
+    line_bytes(text, m->line, &start, &end);
+    int rule_end = start + (int)strcspn(text + start, "}");
+    for (const char *open = strpbrk(message, "'\""); open;
+         open = strpbrk(open + 1, "'\"")) {
+        const char *close = strchr(open + 1, *open);
+        if (!close) {
+            return;
+        }
+        char quoted[256];
+        snprintf(quoted, sizeof quoted, "%.*s", (int)(close - open - 1), open + 1);
+        if (found_in(text, start, end, quoted, m) ||
+            found_in(text, start, rule_end, quoted, m)) {
+            return;
+        }
+        open = close;
+    }
+}
+
 /* The 1-based line of the first place `text` holds `needle`; 1 without. */
 static int line_naming(const char *text, const char *needle)
 {
@@ -206,16 +314,22 @@ static char *first_line(const char *prefix, const char *text)
     return line;
 }
 
-static void add_marker(kit_code_marker **markers, int line, kit_code_severity severity, char *message)
+/* A marker of the whole line, until a range is found. */
+static kit_code_marker line_marker(int line, kit_code_severity severity, char *message)
 {
-    apush(*markers, ((kit_code_marker){ line > 0 ? line : 1, severity, message }));
+    return (kit_code_marker){ .line = line > 0 ? line : 1,
+                              .severity = severity,
+                              .message = message };
 }
 
-/* A widget's or an import's message marks where the part names it. */
+/* A widget's or an import's message marks where the part names it; another
+   the text it quotes on its line. */
 static void add_message(kit_code_marker **markers, const char *text, const ui_check_message *m)
 {
     if (!m->source) {
-        add_marker(markers, m->line, KIT_CODE_WARNING, first_line("", m->text));
+        kit_code_marker marker = line_marker(m->line, KIT_CODE_WARNING, first_line("", m->text));
+        quoted_range(text, m->text, &marker);
+        apush(*markers, marker);
         return;
     }
     char needle[256], prefix[160];
@@ -225,7 +339,13 @@ static void add_message(kit_code_marker **markers, const char *text, const ui_ch
         snprintf(needle, sizeof needle, "%s", base_name(m->source));
     }
     snprintf(prefix, sizeof prefix, "%s: ", base_name(m->source));
-    add_marker(markers, line_naming(text, needle), KIT_CODE_WARNING, first_line(prefix, m->text));
+    kit_code_marker marker = line_marker(
+        line_naming(text, needle),
+        KIT_CODE_WARNING,
+        first_line(prefix, m->text)
+    );
+    on_line(text, needle, &marker);
+    apush(*markers, marker);
 }
 
 static int by_line(const void *a, const void *b)
@@ -246,7 +366,10 @@ void ui_code_markers(
 {
     for (int i = 0; i < acount(source->diagnostics); i++) {
         const ui_source_diagnostic *d = &source->diagnostics[i];
-        add_marker(markers, d->line, KIT_CODE_ERROR, xstrdup(d->message));
+        kit_code_marker marker = line_marker(d->line, KIT_CODE_ERROR, xstrdup(d->message));
+        marker.start = d->start;
+        marker.end = d->end;
+        apush(*markers, marker);
     }
     for (int i = 0; i < acount(messages); i++) {
         const ui_check_message *m = &messages[i];
@@ -258,11 +381,16 @@ void ui_code_markers(
     if (failure && failure[0] && part == UI_PART_RML) {
         char name[128];
         first_quoted(failure, name, sizeof name);
-        add_marker(markers, line_naming(source->text, name), KIT_CODE_ERROR, xstrdup(failure));
+        kit_code_marker marker = line_marker(
+            line_naming(source->text, name),
+            KIT_CODE_ERROR,
+            xstrdup(failure)
+        );
+        on_line(source->text, name, &marker);
+        apush(*markers, marker);
     }
     qsort(*markers, (size_t)acount(*markers), sizeof **markers, by_line);
 }
-
 void ui_code_markers_free(kit_code_marker *markers)
 {
     for (int i = 0; i < acount(markers); i++) {

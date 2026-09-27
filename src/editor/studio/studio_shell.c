@@ -1252,15 +1252,16 @@ void studio_shortcuts(studio *s)
             studio_history(s, true);
         } else if ((s->keys[i].mod & SDL_KMOD_CTRL) && key == SDLK_SPACE) {
             studio_toggle_maximized(s, s->hover_area);
+        } else if (studio_designer_key(s, editor, key, s->keys[i].mod)) {
+            /* Visual designer (workstreams H and Q): the Hierarchy's and the
+               Canvas's keys, before Space plays, as it carries a row. */
+            continue;
         } else if (!mod && key == SDLK_SPACE && editor != STUDIO_EDITOR_BEHAVIOR) {
             studio_runtime(s, APP_RUNTIME_PLAY);
         } else if (
             editor == STUDIO_EDITOR_MEMBERS &&
             studio_members_key(s, key, s->keys[i].mod)
         ) {
-            continue;
-        } else if (studio_designer_key(s, editor, key, s->keys[i].mod)) {
-            /* Visual designer (workstream H): the Hierarchy's and the Canvas's keys. */
             continue;
         } else if (
             editor == STUDIO_EDITOR_ASSETS &&

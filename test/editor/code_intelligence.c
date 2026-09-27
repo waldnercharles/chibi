@@ -102,15 +102,32 @@ static int offset_of(const char *text, const char *needle, int nth)
 
 /* ---------- Problems ---------- */
 
-static bool has_marker(const kit_code_marker *markers, int line, kit_code_severity severity, const char *text)
+static const kit_code_marker *find_marker(
+    const kit_code_marker *markers,
+    int line,
+    kit_code_severity severity,
+    const char *text
+)
 {
     for (int i = 0; i < acount(markers); i++) {
         if (markers[i].line == line && markers[i].severity == severity &&
             strstr(markers[i].message, text)) {
-            return true;
+            return &markers[i];
         }
     }
-    return false;
+    return NULL;
+}
+
+static bool has_marker(const kit_code_marker *markers, int line, kit_code_severity severity, const char *text)
+{
+    return find_marker(markers, line, severity, text) != NULL;
+}
+
+/* Workstream Q: whether the marker underlines exactly `needle` in `text`. */
+static bool underlines(const kit_code_marker *m, const char *text, const char *needle)
+{
+    return m && m->end - m->start == (int)strlen(needle) &&
+           !strncmp(text + m->start, needle, strlen(needle));
 }
 
 static void problems(scratch *s)
@@ -130,6 +147,10 @@ static void problems(scratch *s)
     ui_source *rml = ui_source_parse_block(markup, UI_SOURCE_RML);
     ui_code_markers(broken, UI_PART_RML, NULL, NULL, &markers);
     test_check(acount(markers) > 0 && markers[0].severity == KIT_CODE_ERROR, "a syntax error marks its line as an error");
+    test_check(
+        acount(markers) > 0 && underlines(&markers[0], broken->text, "<div class=\"a\">"),
+        "a syntax error underlines the range tree-sitter gives it"
+    );
     ui_code_markers_free(markers);
     markers = NULL;
     ui_code_markers(rml, UI_PART_RML, listed, "no widget \"Dialog\" here", &markers);
@@ -144,6 +165,11 @@ static void problems(scratch *s)
             has_marker(markers, 1, KIT_CODE_ERROR, "no widget"),
         "a widget's warning, and why the asset cannot be checked, mark where "
         "the part names the widget"
+    );
+    test_check(
+        underlines(find_marker(markers, 1, KIT_CODE_WARNING, "Dialog: inside"), markup, "ui=\"Dialog\"") &&
+            underlines(find_marker(markers, 1, KIT_CODE_ERROR, "no widget"), markup, "Dialog"),
+        "they underline the text naming the widget, not the whole line"
     );
     ui_code_markers_free(markers);
     afree(listed);
@@ -162,9 +188,45 @@ static void problems(scratch *s)
     markers = NULL;
     ui_code_markers(rcss, UI_PART_RCSS, checked, NULL, &markers);
     test_check(has_marker(markers, 3, KIT_CODE_WARNING, "colour"), "an unknown property marks its line of the RCSS");
+    test_check(
+        underlines(find_marker(markers, 3, KIT_CODE_WARNING, "colour"), rcss->text, "colour: red;"),
+        "RmlUi's warning underlines the declaration it quotes"
+    );
     ui_code_markers_free(markers);
     ui_source_free(rcss);
     ui_check_messages_free(checked);
+}
+
+/* Workstream Q: a stylesheet gets RmlUi's check too, its own lines and,
+   at the import naming it, what an import it reads logs. */
+static void stylesheet_problems(scratch *s)
+{
+    char sheet[PATH_MAX], imported[PATH_MAX], error[256] = "";
+    snprintf(sheet, sizeof sheet, "%s/ui/theme/sheet.rcss", s->root);
+    snprintf(imported, sizeof imported, "%s/ui/theme/loud.rcss", s->root);
+    write_file(imported, ".loud { colour: blue; }\n");
+    write_file(sheet, "@import \"loud.rcss\";\n.a {\n  colour: red;\n}\n");
+    ui_buffer *b = ui_buffer_open(sheet, error, sizeof error);
+    assert(b);
+    ui_check_message *checked = NULL;
+    rml_backend *checker = rml_backend_create(64, 64, 1);
+    bool ok = ui_code_check(b, rml_backend_context(checker), &checked, error, sizeof error);
+    rml_backend_destroy(checker);
+    const char *text = ui_buffer_text(b, UI_PART_RCSS);
+    ui_source *rcss = ui_source_parse_block(text, UI_SOURCE_RCSS);
+    kit_code_marker *markers = NULL;
+    ui_code_markers(rcss, UI_PART_RCSS, checked, NULL, &markers);
+    test_check(ok && underlines(find_marker(markers, 3, KIT_CODE_WARNING, "colour"), text, "colour: red;"), "a stylesheet's unknown property marks its line, underlining the declaration");
+    test_check(
+        underlines(find_marker(markers, 1, KIT_CODE_WARNING, "loud.rcss: "), text, "loud.rcss"),
+        "an imported stylesheet's warning marks the import"
+    );
+    ui_code_markers_free(markers);
+    ui_source_free(rcss);
+    ui_check_messages_free(checked);
+    ui_buffer_free(b);
+    remove(sheet);
+    remove(imported);
 }
 
 /* ---------- Navigation ---------- */
@@ -343,6 +405,7 @@ typedef struct editing
     kit *k;
     kit_frame_input in;
     kit_code_editor *e;
+    char *synced; /* the text the editor and the buffer last shared */
     kit_code_desc desc;
     unsigned events;
 } editing;
@@ -378,17 +441,51 @@ static void type(editing *f, const char *text)
 static void answer(editing *f, ui_buffer *b)
 {
     if (f->events & (KIT_CODE_CHANGED | KIT_CODE_COMPLETED)) {
-        ui_code_record(b, b->part, f->e, f->in.time, f->events & KIT_CODE_COMPLETED);
+        ui_code_record(b, b->part, f->e, f->synced, f->in.time, f->events & KIT_CODE_COMPLETED);
     }
     bool replayed = (f->events & (KIT_CODE_UNDO | KIT_CODE_REDO)) &&
                     ui_code_replay(b, f->events & KIT_CODE_REDO);
     ui_code_follow(f->e, ui_buffer_text(b, b->part), replayed);
+    free(f->synced);
+    f->synced = xstrdup(ui_buffer_text(b, b->part));
 }
 
 static void step(editing *f, ui_buffer *b)
 {
     frame(f);
     answer(f, b);
+}
+
+/* Workstream Q: a designer edit that reaches the buffer in the frame the
+   editor was typed in, before the Text Editor records the typing, composes
+   with it instead of being overwritten. */
+static void same_frame(editing *f, ui_buffer *b)
+{
+    f->desc.vim = false;
+    step(f, b);
+    const char *text = ui_buffer_text(b, UI_PART_RML);
+    kit_code_set_cursor(f->e, offset_of(text, "</use>", 0) + 6);
+    step(f, b);
+    type(f, "<p/>");
+    frame(f);
+    text_edit designer = { 4, 4, " id=\"d\"" };
+    ui_buffer_edit(b, UI_PART_RML, &designer, 1);
+    answer(f, b);
+    const char *both = ui_buffer_text(b, UI_PART_RML);
+    test_check(
+        !strncmp(both, "<use id=\"d\" ui=\"Dialog\">", 24) &&
+            strstr(both, "</use><p/>") && !strcmp(kit_code_text(f->e, NULL), both),
+        "typing and a designer edit in the same frame compose, and the editor "
+        "shows both"
+    );
+    ui_buffer_undo(b);
+    step(f, b);
+    both = ui_buffer_text(b, UI_PART_RML);
+    test_check(
+        !strncmp(both, "<use id=\"d\"", 11) && !strstr(both, "<p/>") &&
+            !strcmp(kit_code_text(f->e, NULL), both),
+        "the typing stays a step of its own after the designer's"
+    );
 }
 
 static void one_history(scratch *s)
@@ -402,6 +499,7 @@ static void one_history(scratch *s)
     const char *original = ui_buffer_text(b, UI_PART_RML);
     char *before = xstrdup(original);
     f.e = kit_code_editor_create(original);
+    f.synced = xstrdup(original);
     f.desc.history = true;
     int end = offset_of(original, "</use>", 0) + 6;
     kit_code_set_cursor(f.e, end);
@@ -459,7 +557,9 @@ static void one_history(scratch *s)
     ui_buffer_undo(b);
     step(&f, b);
     test_check(!strcmp(kit_code_text(f.e, NULL), before), "Studio's Undo, stepping the buffer, reaches the editor");
+    same_frame(&f, b);
     free(before);
+    free(f.synced);
     kit_code_editor_destroy(f.e);
     rml_context_render(f.context);
     kit_destroy(f.k);
@@ -473,6 +573,7 @@ void test_code_intelligence()
     rml_backend *backend = rml_backend_create(64, 64, 1);
     scratch s = scratch_new();
     problems(&s);
+    stylesheet_problems(&s);
     definitions(&s);
     hovers(&s);
     one_history(&s);

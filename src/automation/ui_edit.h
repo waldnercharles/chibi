@@ -45,6 +45,23 @@ int automation_ui_edit(
  * errors. */
 void automation_ui_inspect(const char *text, yyjson_mut_doc *doc, yyjson_mut_val *result);
 
+/* Workstream Q: inspectUi's `complete`, {line, column} of the file,
+ * 1-based: what Studio's Text Editor offers there (ui_source_complete) from
+ * the project's ui assets and stylesheets under `content_root` and the
+ * properties RmlUi registers. Adds `completion` to `result`: the position
+ * `at`, `from` where each item's label replaces the word typed so far,
+ * the `items` (label and kind) and their `total`. Returns
+ * CHIBI_AUTOMATION_OK, or another status with a message in `error`. */
+int automation_ui_complete(
+    const char *content_root,
+    const char *text,
+    yyjson_val *at,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    char *error,
+    size_t error_size
+);
+
 /* Whether a findReferences request names what ui assets and stylesheets
  * name: a class ("ui_class"), a custom property ("token", with its --) or a
  * save key ("save_key"). */

@@ -133,7 +133,7 @@ saving them. Tool results include complete `structuredContent` and
 - `searchAssets`: find catalog entries by kind, name, path, or description.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
-- `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash.
+- `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics; for a ui asset, its syntax errors and every warning RmlUi logs, with lines.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
@@ -297,6 +297,14 @@ file's own lines.
   the `props` it passes; `slots`; and `events`, as `searchNodes` lists them.
 - `tokens` (the custom properties it reads), `declared_tokens`, `classes`,
   `styled_classes`, `save_keys`, `diagnostics` and the content `hash`.
+
+With `"complete": {"line": 6, "column": 5}`, a 1-based line and byte column
+of the file, it adds `completion`: what Studio's Text Editor offers there,
+from the same language service. `items` lists each choice's `label` and
+`kind` (`tag`, `attribute`, `widget`, `class`, `property`,
+`custom_property` or `save_key`); each label replaces the text from `from`
+to `at`, the word typed so far. `total` counts them all; at most 200 are
+listed.
 
 `buildUi` applies `operations` in order, each to the text the one before it
 left, and names an element by its `inspectUi` index or by a selector exactly

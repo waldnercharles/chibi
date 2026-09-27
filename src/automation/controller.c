@@ -225,6 +225,14 @@ static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "kind", "string", false, "Asset family, required with name when path is omitted." },
     { "name", "string", false, "Asset name, required with kind when path is omitted." },
 };
+/* Workstream Q: inspect_ui completes at a position too. */
+static const contract_field CONTRACT_INSPECT_UI[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
+    { "kind", "string", false, "ui." },
+    { "name", "string", false, "UI asset name." },
+    { "complete", "object", false, "A 1-based file line and column; adds the completions Studio's Text Editor offers there." },
+};
 static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "query", "string", false, "Case-insensitive text matched against asset metadata." },
@@ -805,10 +813,9 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     {
         "inspect_ui",
         "Inspect a ui asset's outline, props, events, slots, widgets, tokens "
-        "and "
-        "syntax errors.",
-        CONTRACT_ASSET_REFERENCE,
-        CONTRACT_FIELD_COUNT(CONTRACT_ASSET_REFERENCE),
+        "and syntax errors, and complete at a position.",
+        CONTRACT_INSPECT_UI,
+        CONTRACT_FIELD_COUNT(CONTRACT_INSPECT_UI),
         1,
         true,
         true,
@@ -9960,7 +9967,17 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     automation_ui_inspect(text, result->doc, value);
+    yyjson_val *complete = yyjson_obj_get(request, "complete");
+    if (complete) {
+        char content[1024];
+        snprintf(content, sizeof content, "%s/content", root);
+        status = automation_ui_complete(content, text, complete, result->doc, value, error, sizeof error);
+    }
     free(text);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
     return 0;
 }
 

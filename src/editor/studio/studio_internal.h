@@ -355,9 +355,13 @@ typedef struct
     } find;
     studio_visit *visits; /* graphs visited, for Back and Forward */
     int visit;            /* the current one */
-    uint64_t menu_pin;    /* the menu's pin on menu_node, or 0 */
-    bool box_subtract;    /* a Ctrl marquee removes what it touches */
-    bool frame_pending;   /* F frames on release unless it placed a node */
+    /* Workstream Q: the graph Back and Forward last saw shown (an array of
+       one, or none), so a Text Editor place in the history leaves the
+       graph shown alone. */
+    studio_visit *shown;
+    uint64_t menu_pin;  /* the menu's pin on menu_node, or 0 */
+    bool box_subtract;  /* a Ctrl marquee removes what it touches */
+    bool frame_pending; /* F frames on release unless it placed a node */
 } studio_graph;
 
 typedef enum
@@ -472,6 +476,9 @@ typedef struct
     char path[1024];
     ui_part part;
     kit_code_editor *editor;
+    /* Workstream Q: the text the editor and its part last shared, owned;
+       typing records from it (ui_code_record). */
+    char *synced;
 } studio_code_editor;
 
 /* UI documents (workstream D). The Text Editor (studio_code.c) shows the
@@ -522,6 +529,15 @@ typedef struct
     int hover_at;
     const ui_source *hover_source;
     bool replayed; /* Undo or Redo from the editor changed the text */
+    /* Workstream Q: the shown document's problems for Output
+       (studio_code_problems), and the revisions of the text and the check
+       they describe. */
+    struct
+    {
+        struct studio_ui_problem *rows; /* array */
+        char path[1024];
+        unsigned revision, checked;
+    } problems;
 } studio_code;
 
 /* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
@@ -676,6 +692,9 @@ struct studio
     } add_menu;
     /* Visual designer (workstream H): NULL until a UI document is active. */
     struct studio_designer *designer;
+    /* Workstream Q: Problems ▸ Project's ui problems as of its last check
+       (studio_code_project_problems). */
+    struct studio_ui_problem *ui_project_problems; /* array */
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1452,8 +1471,9 @@ void studio_designer_library(studio *s, int area);
  * takes Library drops in the Canvas. */
 void studio_designer_frame(studio *s);
 /* Keys over the Hierarchy or the Canvas: X or Delete deletes, Shift D
- * duplicates, and in the Hierarchy the arrows walk and fold. True when one
- * was taken. */
+ * duplicates, and in the Hierarchy the arrows walk and fold; Space or Enter
+ * picks the selected row up to move with the arrows, as dnd-kit's keyboard
+ * sensor does (workstream Q). True when one was taken. */
 bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_Keymod mod);
 void studio_designer_free(studio *s);
 /* The element of `rml`, the markup of ui asset `asset`, that the shown
@@ -1467,5 +1487,32 @@ int studio_designer_shown_source(
 );
 /* The first shown element of `context` written as element `source`, or NULL. */
 rml_element *studio_designer_shown(rml_context *context, const ui_source *rml, const char *asset, int source);
+
+/* ---------- Designer and editor polish (workstream Q) ---------- */
+
+/* Back and Forward (studio_graph_nav.c) cover the Text Editor's jumps as
+ * well as the graphs visited, as VS Code's Go Back crosses editors: Go to
+ * Definition records the place it leaves and the one it lands on. */
+void studio_nav_jump(studio *s, const ui_code_place *from, const ui_code_place *to);
+bool studio_nav_can_step(const studio *s, int direction);
+void studio_nav_step(studio *s, int direction);
+
+/* A problem of a UI document in Output's Problems (studio_output.c): a
+ * part's syntax error or RmlUi warning, where a row opens it. */
+typedef struct studio_ui_problem
+{
+    ui_code_place at;
+    bool error;
+    char message[256];
+} studio_ui_problem;
+
+/* The problems of the UI document the Text Editor shows, as its markers
+ * mark them: its syntax errors as it stands and RmlUi's warnings as last
+ * checked. An array (support/array.h) valid until the next call. */
+const studio_ui_problem *studio_code_problems(studio *s);
+/* Every ui asset and stylesheet of the project, with the unsaved text of
+ * open documents, checked as the Text Editor checks one; appended to
+ * `out`. */
+void studio_code_project_problems(studio *s, studio_ui_problem **out);
 
 #endif

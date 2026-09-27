@@ -72,6 +72,10 @@ function uiDocuments() {
   const panel = request("inspectUi", { kind: "ui", name: "Panel" });
   assert.deepEqual(panel.elements.map(item => item.tag), ["div", "span"]);
   assert.deepEqual(panel.tokens, ["--accent"]);
+  const completing = request("inspectUi", { kind: "ui", name: "Panel", complete: { line: 6, column: 5 } });
+  assert.deepEqual(completing.completion.from, { line: 6, column: 4 });
+  assert.ok(completing.completion.items.some(item => item.label === "title" && item.kind === "class"),
+    "inspectUi completes the classes Studio's Text Editor offers");
   const rack = request("inspectUi", { kind: "ui", name: "Rack" });
   assert.deepEqual(rack.widgets.map(item => item.name), ["Slot"]);
   assert.deepEqual(rack.events.map(item => [item.name, item.key]), [["Award", "Enter"]]);

@@ -1066,9 +1066,14 @@ const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_
         studio_command_describe(s, STUDIO_COMMAND_INSPECT).shortcut
     );
     uint64_t hash = model_hash(m);
-    m->changed = hash != in->seen;
+    m->revision += hash != in->seen;
     in->seen = hash;
     return m;
+}
+
+const studio_inspect_model *studio_inspect_shown(const studio *s)
+{
+    return s->inspect ? &s->inspect->model : NULL;
 }
 
 static kit_rect box_rect(rml_element *el, rml_box_area area, mapping m)

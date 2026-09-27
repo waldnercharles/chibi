@@ -151,8 +151,14 @@ void ui_page_free(ui_page *page);
  * pixels being 1. */
 typedef struct render_ui render_ui;
 
-render_ui *render_ui_new(const char *content_root);
+/* `data`, NULL for none, gives the documents its root's members as
+ * variables beside `save` and `system` (ui_data_init), so a caller can show
+ * them its own state; the new host takes it. */
+render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data);
 void render_ui_free(render_ui *ui);
+/* The documents' data model, in which the host shows the variables it gave
+ * render_ui_new. */
+ui_data *render_ui_data(render_ui *ui);
 /* Shows `world`'s GameUi documents. An input's change first stores its value
  * in the model under `#id` for Get UI Value. */
 void render_ui_update(render_ui *ui, const ui_world *world, int width, int height, double dt);

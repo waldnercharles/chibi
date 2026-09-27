@@ -63,6 +63,21 @@ bool ui_check_in(
     size_t error_size
 );
 
+/* Workstream Q: a stylesheet (.rcss) checked as a page importing it reads
+ * it: its @imports resolved beside it in `directory`, nesting flattened, and
+ * loaded in a scratch document in `context`. Each warning is at a line of
+ * the stylesheet (UI_CHECK_RCSS without a source) or, with a `source`, of
+ * an imported file. Returns false with a message in `error` when it cannot
+ * be expanded. */
+bool ui_check_stylesheet(
+    rml_context *context,
+    const char *directory,
+    const char *text,
+    ui_check_message **messages,
+    char *error,
+    size_t error_size
+);
+
 /* Appends a copy of the name of each property and shorthand RCSS takes, as
  * RmlUi registers them, to `names` (support/array.h); a ui_source_project's
  * `properties`. RmlUi must be initialized. */

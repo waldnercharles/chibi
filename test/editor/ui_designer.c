@@ -366,6 +366,185 @@ static void keeps_indentation(const char *folder)
     ui_buffer_free(b);
 }
 
+/* Workstream Q: Details adds and removes a matched rule's declarations,
+ * written as the rule is, one undo step each. */
+static void declarations(const char *folder)
+{
+    ui_buffer *b = open_document(folder, "Declarations.yaml", ASSET);
+    char error[192] = "";
+    const char
+        *added = ".panel { display: block; width: 200dp; height: 40dp; }\n"
+                 ".row button { color: #ff0000; }\n";
+    test_check(
+        ui_design_add_declaration(b, 0, "height", "40dp", error, sizeof error) &&
+            one_step(b, RML, added, RML, RCSS),
+        "Details: a declaration added to a rule on one line joins its line"
+    );
+    const char *removed = ".panel { width: 200dp; }\n"
+                          ".row button { color: #ff0000; }\n";
+    test_check(
+        ui_design_remove_declaration(b, 0, 0, error, sizeof error) &&
+            one_step(b, RML, removed, RML, RCSS),
+        "Details: a declaration removed from a rule on one line leaves the rest"
+    );
+    test_check(
+        !ui_design_add_declaration(b, 0, "height", "1dp; color: red", error, sizeof error) &&
+            !ui_design_add_declaration(b, 0, "9lives", "1", error, sizeof error) &&
+            !ui_design_remove_declaration(b, 1, 3, error, sizeof error) &&
+            !acount(b->undo),
+        "Details: a declaration that is not one, or is not there, is refused"
+    );
+    ui_buffer_free(b);
+    b = open_document(
+        folder,
+        "Lines.yaml",
+        "rml: |\n"
+        "  <div class=\"card\"/>\n"
+        "rcss: |\n"
+        "  .card {\n"
+        "      color: red;\n"
+        "  }\n"
+        "  .empty {\n"
+        "  }\n"
+    );
+    const char *rml = "<div class=\"card\"/>\n";
+    const char *before = ".card {\n    color: red;\n}\n.empty {\n}\n";
+    test_check(
+        ui_design_add_declaration(b, 0, "margin", "2dp", error, sizeof error) &&
+            one_step(b, rml, ".card {\n    color: red;\n    margin: 2dp;\n}\n.empty {\n}\n", rml, before),
+        "Details: a declaration added to a rule of many lines takes a line "
+        "indented as its others"
+    );
+    test_check(
+        ui_design_add_declaration(b, 1, "--gap", "4dp", error, sizeof error) &&
+            one_step(b, rml, ".card {\n    color: red;\n}\n.empty {\n  --gap: 4dp;\n}\n", rml, before),
+        "Details: a custom property added to an empty rule takes a line of its "
+        "own"
+    );
+    test_check(
+        ui_design_remove_declaration(b, 0, 0, error, sizeof error) &&
+            one_step(b, rml, ".card {\n}\n.empty {\n}\n", rml, before),
+        "Details: a declaration removed from its own line takes the line"
+    );
+    ui_buffer_free(b);
+}
+
+/* Extract to class moves the inline style into a rule written as the
+ * RCSS's rules are, as one step over both parts. */
+static void extraction(const char *folder)
+{
+    const char *styled_rml = "<div id=\"root\" class=\"panel\" style=\"width: "
+                             "130dp; color: red;\">\n"
+                             "  <span class=\"title\">Title</span>\n"
+                             "</div>\n";
+    ui_buffer *b = open_document(
+        folder,
+        "Extract.yaml",
+        "rml: |\n"
+        "  <div id=\"root\" class=\"panel\" style=\"width: 130dp; color: "
+        "red;\">\n"
+        "    <span class=\"title\">Title</span>\n"
+        "  </div>\n"
+        "rcss: |\n"
+        "  .panel { display: block; }\n"
+    );
+    char error[192] = "";
+    const char *classed = "<div id=\"root\" class=\"panel wide\">\n"
+                          "  <span class=\"title\">Title</span>\n"
+                          "</div>\n";
+    test_check(
+        ui_design_extract_class(b, 0, "wide", error, sizeof error) &&
+            one_step(b, classed, ".panel { display: block; }\n.wide { width: 130dp; color: red; }\n", styled_rml, ".panel { display: block; }\n"),
+        "Details: Extract to class moves the inline style into a new rule and "
+        "applies the class, one undo step over both parts"
+    );
+    test_check(
+        !ui_design_extract_class(b, 1, "plain", error, sizeof error) &&
+            !ui_design_extract_class(b, 0, "2wide", error, sizeof error) &&
+            !acount(b->undo),
+        "Details: an element without inline style, or a name that is no class, "
+        "extracts nothing"
+    );
+    ui_buffer_free(b);
+    b = open_document(
+        folder,
+        "ExtractLines.yaml",
+        "rml: |\n"
+        "  <span style=\"color: red\">x</span>\n"
+        "rcss: |\n"
+        "  .panel {\n"
+        "    display: block;\n"
+        "  }\n"
+    );
+    test_check(
+        ui_design_extract_class(b, 0, "alert", error, sizeof error) &&
+            one_step(
+                b,
+                "<span class=\"alert\">x</span>\n",
+                ".panel {\n  display: block;\n}\n\n.alert {\n  color: "
+                "red;\n}\n",
+                "<span style=\"color: red\">x</span>\n",
+                ".panel {\n  display: block;\n}\n"
+            ),
+        "Details: an extracted rule takes lines of its own after rules that do"
+    );
+    ui_buffer_free(b);
+}
+
+/* dnd-kit's keyboard sensor over the sortable tree: the arrows step through
+ * each gap between rows at each depth. */
+static void keyboard_slots(const char *folder)
+{
+    ui_source *source = ui_source_parse_block(RML, UI_SOURCE_RML);
+    ui_design_slot *slots = NULL;
+    int home = ui_design_slots(source, OK, NULL, &slots);
+    const ui_design_slot expected[] = {
+        { ROOT, UI_SOURCE_BEFORE },   { TITLE, UI_SOURCE_BEFORE },
+        { TITLE, UI_SOURCE_INSIDE },  { ROW, UI_SOURCE_BEFORE },
+        { CANCEL, UI_SOURCE_BEFORE }, { CANCEL, UI_SOURCE_INSIDE },
+        { CANCEL, UI_SOURCE_AFTER },  { ROW, UI_SOURCE_AFTER },
+        { ROOT, UI_SOURCE_AFTER },
+    };
+    bool listed = acount(slots) == (int)(sizeof expected / sizeof *expected) &&
+                  home == 4;
+    for (int i = 0; listed && i < acount(slots); i++) {
+        listed = slots[i].target == expected[i].target &&
+                 slots[i].place == expected[i].place;
+    }
+    test_check(listed, "Hierarchy: the keyboard steps through every gap between rows, at each depth, leaving out the carried row");
+    asetlen(slots, 0);
+    bool folded[] = { false, false, true, false, false };
+    home = ui_design_slots(source, TITLE, folded, &slots);
+    test_check(
+        acount(slots) == 4 && home == 1 && slots[2].target == ROW &&
+            slots[2].place == UI_SOURCE_AFTER,
+        "Hierarchy: a folded row's children are left out"
+    );
+    asetlen(slots, 0);
+    home = ui_design_slots(source, OK, folded, &slots);
+    test_check(acount(slots) == 9 && home == 4, "Hierarchy: the carried row's own parent stays open");
+    ui_buffer *b = open_document(folder, "Slots.yaml", ASSET);
+    char error[192] = "";
+    const ui_design_slot last = slots[6];
+    test_check(
+        ui_design_move(b, OK, last.target, last.place, error, sizeof error) == CANCEL &&
+            markup_step(
+                b,
+                "<div id=\"root\" class=\"panel\">\n"
+                "  <span class=\"title\">Title</span>\n"
+                "  <div class=\"row\">\n"
+                "    <button id=\"cancel\">Cancel</button>\n"
+                "    <button id=\"ok\">OK</button>\n"
+                "  </div>\n"
+                "</div>\n"
+            ),
+        "Hierarchy: a keyboard drop moves the element to its slot as one step"
+    );
+    ui_buffer_free(b);
+    afree(slots);
+    ui_source_free(source);
+}
+
 /* ---------- Selection ---------- */
 
 static int offset_of(const char *text, const char *needle)
@@ -525,13 +704,17 @@ void test_ui_designer()
     attributes(folder);
     styles(folder);
     keeps_indentation(folder);
+    declarations(folder);
+    extraction(folder);
+    keyboard_slots(folder);
     selection_maps();
     shown_maps(folder);
-    static const char *const FILES[] = { "Moves.yaml",
-                                         "Structure.yaml",
-                                         "Attributes.yaml",
-                                         "Styles.yaml",
-                                         "Wide.yaml" };
+    static const char *const FILES[] = {
+        "Moves.yaml",  "Structure.yaml", "Attributes.yaml",
+        "Styles.yaml", "Wide.yaml",      "Declarations.yaml",
+        "Lines.yaml",  "Extract.yaml",   "ExtractLines.yaml",
+        "Slots.yaml",
+    };
     for (size_t i = 0; i < sizeof FILES / sizeof *FILES; i++) {
         char path[PATH_MAX];
         snprintf(path, sizeof path, "%s/%s", folder, FILES[i]);

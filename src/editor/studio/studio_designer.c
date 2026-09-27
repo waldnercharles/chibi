@@ -174,18 +174,6 @@ uint32_t designer_element_icon(const ui_source *rml, int element)
     return KIT_ICON_ELEMENT;
 }
 
-bool designer_container(const ui_source *rml, int element)
-{
-    static const char *const EMPTY[] = { "input", "img",      "br",
-                                         "hr",    "progress", "slot" };
-    for (size_t i = 0; i < sizeof EMPTY / sizeof *EMPTY; i++) {
-        if (!strcmp(rml->elements[element].tag, EMPTY[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static bool has_children(const ui_source *rml, int element)
 {
     return element + 1 < acount(rml->elements) &&
@@ -294,7 +282,7 @@ void designer_add(studio *s, int target, const char *markup, const char *label)
 {
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
-    ui_source_place place = target < 0 || designer_container(d->rml, target)
+    ui_source_place place = target < 0 || ui_design_container(d->rml, target)
                               ? UI_SOURCE_INSIDE
                               : UI_SOURCE_AFTER;
     char error[192] = "", failed[128];
@@ -519,7 +507,7 @@ static void row_drop(studio *s, const studio_designer *d, int element, tree_requ
     kit *k = s->kit;
     ui_source_place place = element < 0
                               ? UI_SOURCE_INSIDE
-                              : drop_place(s, kit_item_rect(k), designer_container(d->rml, element));
+                              : drop_place(s, kit_item_rect(k), ui_design_container(d->rml, element));
     bool over = kit_dragging(k, DESIGNER_DRAG) && kit_item_hovered(k);
     kit_attr(k, "data-drop", over ? PLACE_NAMES[place] : "none");
     char payload[sizeof request->payload];
@@ -1097,7 +1085,7 @@ static void canvas_drop(
 )
 {
     int target = source_under(s, d, context, m);
-    bool inside = target < 0 || designer_container(d->rml, target);
+    bool inside = target < 0 || ui_design_container(d->rml, target);
     drop(s, d, b, payload, target, inside ? UI_SOURCE_INSIDE : UI_SOURCE_AFTER);
 }
 

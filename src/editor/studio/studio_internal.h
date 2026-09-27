@@ -472,6 +472,9 @@ typedef struct
     char path[1024];
     ui_part part;
     kit_code_editor *editor;
+    /* Workstream Q: the text the editor and its part last shared, owned;
+       typing records from it (ui_code_record). */
+    char *synced;
 } studio_code_editor;
 
 /* UI documents (workstream D). The Text Editor (studio_code.c) shows the

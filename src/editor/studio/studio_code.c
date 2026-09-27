@@ -183,7 +183,8 @@ static studio_code_editor *part_editor(studio *s, const scene_document_tab *tab)
     }
     studio_code_editor made = {
         .part = b->part,
-        .editor = kit_code_editor_create(ui_buffer_text(b, b->part))
+        .editor = kit_code_editor_create(ui_buffer_text(b, b->part)),
+        .synced = xstrdup(ui_buffer_text(b, b->part)),
     };
     snprintf(made.path, sizeof made.path, "%s", tab->path);
     apush(c->editors, made);
@@ -202,6 +203,7 @@ static void prune_editors(studio *s)
             c->editor = NULL;
         }
         kit_code_editor_destroy(c->editors[i].editor);
+        free(c->editors[i].synced);
         adel(c->editors, i);
     }
 }
@@ -211,6 +213,7 @@ void studio_code_free(studio *s)
     studio_code *c = &s->code;
     for (int i = 0; i < acount(c->editors); i++) {
         kit_code_editor_destroy(c->editors[i].editor);
+        free(c->editors[i].synced);
     }
     afree(c->editors);
     c->editor = NULL;
@@ -453,12 +456,17 @@ void studio_code_header(studio *s, int)
     kit_pop(k);
 }
 
-/* The editor shows its part as the buffer holds it; after an undo or redo
-   from the editor, its cursor lands on the change. */
-static void follow_text(studio_code *c, kit_code_editor *e, const char *text)
+/* The editor shows its part as the buffer holds it, the text they then
+   share; after an undo or redo from the editor, its cursor lands on the
+   change. */
+static void follow_text(studio_code *c, studio_code_editor *shown, const char *text)
 {
-    if (ui_code_follow(e, text, c->replayed)) {
+    if (ui_code_follow(shown->editor, text, c->replayed)) {
         c->replayed = false;
+    }
+    if (strcmp(shown->synced, text)) {
+        free(shown->synced);
+        shown->synced = xstrdup(text);
     }
 }
 
@@ -698,22 +706,24 @@ static void run_chord(studio *s, const char *chord)
 }
 
 /* The editor's text into the buffer, the undo keys through it, and the
-   buffer back to the editor: one history. Returns what typing changed. */
-static ui_code_change take_edits(studio *s, ui_buffer *b, kit_code_editor *e, ui_part part, unsigned events)
+   buffer back to the editor: one history. Typing composes with what
+   changed the buffer since they last shared its text, as a designer edit
+   in the same frame. Returns what typing changed. */
+static ui_code_change take_edits(studio *s, ui_buffer *b, studio_code_editor *shown, ui_part part, unsigned events)
 {
     studio_code *c = &s->code;
     c->replayed = false;
     bool completed = events & KIT_CODE_COMPLETED;
     ui_code_change typed = { 0 };
     if (events & (KIT_CODE_CHANGED | KIT_CODE_COMPLETED)) {
-        typed = ui_code_record(b, part, e, s->time, completed);
+        typed = ui_code_record(b, part, shown->editor, shown->synced, s->time, completed);
     }
     bool redo = events & KIT_CODE_REDO;
     if ((events & (KIT_CODE_UNDO | KIT_CODE_REDO)) && ui_code_replay(b, redo)) {
         c->replayed = true;
         studio_report(s, redo ? "Redo" : "Undo");
     }
-    follow_text(c, e, ui_buffer_text(b, part));
+    follow_text(c, shown, ui_buffer_text(b, part));
     return typed;
 }
 
@@ -741,15 +751,22 @@ static void follow_completion(
     }
 }
 
-static void respond(studio *s, scene_document_tab *tab, kit_code_editor *e, ui_part part, const kit_code_result *r)
+static void respond(
+    studio *s,
+    scene_document_tab *tab,
+    studio_code_editor *shown,
+    ui_part part,
+    const kit_code_result *r
+)
 {
     ui_buffer *b = tab->ui;
+    kit_code_editor *e = shown->editor;
     unsigned events = r->events;
     /* Its text in focus makes the document active, so Save and Undo reach it. */
     if ((r->focused || (events & KIT_CODE_CHANGED)) && tab != active_ui(s)) {
         scene_tabs_activate(s->scene, (int)(tab - s->scene->tabs));
     }
-    ui_code_change typed = take_edits(s, b, e, part, events);
+    ui_code_change typed = take_edits(s, b, shown, part, events);
     follow_completion(s, b, e, part, events, typed);
     if (events & KIT_CODE_SAVED) {
         studio_save(s);
@@ -786,11 +803,12 @@ void studio_code_body(studio *s, int)
     ui_buffer *b = tab->ui;
     kit_push(k, "code", NULL, "code-editor");
     ui_part part = b->part;
-    kit_code_editor *e = part_editor(s, tab)->editor;
+    studio_code_editor *shown_editor = part_editor(s, tab);
+    kit_code_editor *e = shown_editor->editor;
     /* An editor coming into view catches up with its part; the one in view
        may hold typing that kit_code has yet to report. */
     if (e != c->editor) {
-        follow_text(c, e, ui_buffer_text(b, part));
+        follow_text(c, shown_editor, ui_buffer_text(b, part));
         c->editor = e;
         snprintf(c->editor_path, sizeof c->editor_path, "%s", tab->path);
         c->editor_part = part;
@@ -813,7 +831,7 @@ void studio_code_body(studio *s, int)
     };
     kit_code_result r = kit_code(k, "text", e, &desc);
     reveal(s, e, b);
-    respond(s, tab, e, part, &r);
+    respond(s, tab, shown_editor, part, &r);
     if (b->error[0]) {
         kit_push(k, "status", NULL, "code-status");
         kit_icon(k, "icon", NULL, KIT_ICON_ERROR);

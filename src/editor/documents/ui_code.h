@@ -27,10 +27,22 @@ typedef struct ui_code_change
 {
     int start, end, inserted;
 } ui_code_change;
-/* Records the editor's text as the buffer's `part`: typed text joins the
- * step being typed (ui_buffer_type), a `step` is one of its own
- * (ui_buffer_edit). Returns what changed in the part. */
-ui_code_change ui_code_record(ui_buffer *b, ui_part part, kit_code_editor *e, double now, bool step);
+/* Records what the editor's text changed from `base`, the text the editor
+ * and the buffer's `part` last shared, into the part as it stands: a change
+ * made meanwhile elsewhere, as a designer edit in the same frame, composes
+ * with the typing instead of being overwritten, unless both changed the
+ * same bytes, when the editor's text stands. Typed text joins the step
+ * being typed (ui_buffer_type), a `step` is one of its own
+ * (ui_buffer_edit). Returns what changed from `base`, in the editor's
+ * text. */
+ui_code_change ui_code_record(
+    ui_buffer *b,
+    ui_part part,
+    kit_code_editor *e,
+    const char *base,
+    double now,
+    bool step
+);
 /* Shows `text` in the editor through the one edit that makes it, as
  * kit_code_apply takes edits; with `land`, the cursor lands at the end of
  * the change, as after an undo. True when the text changed. */
@@ -54,9 +66,10 @@ bool ui_code_content_root(const char *path, char *root, size_t size);
 void ui_code_scan(ui_source_project *project, const char *content_root);
 
 /* RmlUi's warnings for a ui asset's text as it stands, loaded in
- * `context`, a scratch context the caller keeps (ui_check_in); false with
- * why in `error` when it cannot be checked. A stylesheet has none, nor a
- * document outside a ui folder. */
+ * `context`, a scratch context the caller keeps (ui_check_in), or a
+ * stylesheet's, its imports resolved beside it (ui_check_stylesheet);
+ * false with why in `error` when it cannot be checked. A ui asset outside
+ * a ui folder has none. */
 bool ui_code_check(
     const ui_buffer *b,
     rml_context *context,
@@ -69,7 +82,9 @@ bool ui_code_check(
  * the part parsed alone, then each of RmlUi's `messages` about the part
  * (ui_code_check), and `failure`, why it could not be checked, on the
  * markup. A message about a widget or an import marks the line that uses
- * it. Markers own their messages. */
+ * it. Each spans what it is about where that is known: a syntax error's
+ * range, the text naming the widget or import, or the text RmlUi quotes
+ * on the line; else the line. Markers own their messages. */
 void ui_code_markers(
     const ui_source *source,
     ui_part part,

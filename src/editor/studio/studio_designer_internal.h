@@ -65,8 +65,6 @@ void designer_warn(studio *s, const char *title, const char *error);
 /* An element's name as the Hierarchy shows it: its tag, or a <use>'s widget. */
 void designer_element_name(const ui_source *rml, int element, char *out, size_t size);
 uint32_t designer_element_icon(const ui_source *rml, int element);
-/* Whether elements dropped on it go inside it. */
-bool designer_container(const ui_source *rml, int element);
 /* Adds markup for element `target` (-1 the document): inside a container,
  * else after it; selects what it added. */
 void designer_add(studio *s, int target, const char *markup, const char *label);

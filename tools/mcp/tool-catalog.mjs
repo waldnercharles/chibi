@@ -336,7 +336,7 @@ const entries = [
     operation: "runtime_snapshot",
     adapter: "native",
     title: "Capture a runtime snapshot",
-    description: "Capture bounded deterministic entities, reflected fields, attached behaviors, and timing after running a prototype or scene. Use this to verify runtime state after authoring changes. Call runScenario first when broader evidence is needed.",
+    description: "Capture bounded deterministic entities, reflected fields, attached behaviors, game UI state, and timing after running a prototype or scene. Use this to verify runtime state after authoring changes. Call runScenario first when broader evidence is needed.",
     intentTerms: ["capture", "runtime", "snapshot"],
     candidates: ["getRuntimeSnapshot", "captureRuntimeSnapshot"],
     legacyName: "runtime_snapshot",

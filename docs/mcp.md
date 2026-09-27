@@ -146,7 +146,7 @@ saving them. Tool results include complete `structuredContent` and
 - `inspectSystem`: inspect a typed system query, compiled graph, inferred effects, and diagnostics.
 - `getExecutionStatus`: report the backend selected for a behavior or system.
 - `runScenario`: run a bounded deterministic prototype or scene scenario; `behavior_failures` lists runs that stopped on an error, by node and message.
-- `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, and timing.
+- `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, what behaviors set on `GameUi` documents, and timing.
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
@@ -726,7 +726,11 @@ instead of being silently ignored.
 entity and component records with reflected field values, attached behavior
 state, and timing data. `entity_limit`, `component_limit`, `field_limit`, and
 `behavior_limit` bound the response; `fields` can restrict reflected field
-selection. The operation is read-only and does not write authored content.
+selection. `ui` lists what behaviors set on `GameUi` documents, which the
+game shows: each record names its `entity` and `element` selector with the
+`text`, `value`, `visible` and `classes` set under it, so a scenario can
+check a HUD headless. The operation is read-only and does not write authored
+content.
 
 `runScenario` and `captureRuntimeSnapshot` accept up to 600 input changes across a
 run lasting up to 30 simulated minutes. Use `inputs` for consecutive frames or

@@ -38,6 +38,7 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "runtime/systems/system.h"
+#include "runtime/ui.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
@@ -6791,6 +6792,41 @@ static void add_snapshot_behavior(
     }
 }
 
+/* What behaviors set on GameUi documents, as a presenter would show it: each
+ * entity's selectors with the text, value, visibility and classes set under
+ * them. */
+static void add_snapshot_ui(yyjson_mut_doc *doc, yyjson_mut_val *object, game_behavior_world *behaviors)
+{
+    game_ui *ui = game_behavior_ui(behaviors);
+    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, "ui");
+    for (int i = 0; i < game_ui_element_count(ui); i++) {
+        const game_ui_element *e = game_ui_element_at(ui, i);
+        yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, array);
+        yyjson_mut_obj_add_uint(doc, record, "entity", e->entity);
+        yyjson_mut_obj_add_strcpy(doc, record, "element", e->selector);
+        if (e->text) {
+            yyjson_mut_obj_add_strcpy(doc, record, "text", e->text);
+        }
+        if (e->has_value) {
+            yyjson_mut_obj_add_real(doc, record, "value", e->value);
+        }
+        if (e->visible >= 0) {
+            yyjson_mut_obj_add_bool(doc, record, "visible", e->visible == 1);
+        }
+        if (!acount(e->classes)) {
+            continue;
+        }
+        yyjson_mut_val *classes = yyjson_mut_obj_add_obj(doc, record, "classes");
+        for (int c = 0; c < acount(e->classes); c++) {
+            yyjson_mut_obj_add(
+                classes,
+                yyjson_mut_strcpy(doc, e->classes[c].name),
+                yyjson_mut_bool(doc, e->classes[c].on)
+            );
+        }
+    }
+}
+
 static yyjson_mut_val *add_snapshot_entity(
     yyjson_mut_doc *doc,
     yyjson_mut_val *array,
@@ -7002,6 +7038,7 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         emitted_entities++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
+    add_snapshot_ui(result->doc, value, behaviors);
     int log_count = game_behavior_log_count(behaviors);
     yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
     yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
@@ -7173,6 +7210,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         emitted_entities++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
+    add_snapshot_ui(result->doc, value, behaviors);
     int log_count = game_behavior_log_count(behaviors);
     yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
     yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");

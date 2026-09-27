@@ -1,0 +1,3 @@
+name: TopBar
+components:
+  GAME.GameUi: {document: TopBar, hidden: true}

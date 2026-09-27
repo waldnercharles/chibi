@@ -5,32 +5,9 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 
 #app { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; }
 
-/* Top bar: menus, documents, transport, search. */
-.topbar { height: 30dp; flex: 0 0 auto; display: flex; align-items: center; gap: 2dp; padding: 0dp 6dp; background-color: var(--muted); border-bottom: 1dp var(--edge); }
-.topbar .brand { width: 22dp; height: 22dp; display: flex; align-items: center; justify-content: center; margin-right: 4dp; }
-.topbar .brand .mark { width: 11dp; height: 11dp; border-radius: 3dp; background-color: var(--primary); transform: rotate(45deg); }
-.topbar .menus { display: flex; flex: 0 0 auto; }
-.topbar .brand, .topbar .sep, .topbar .btn { flex-shrink: 0; }
-.topbar .trigger { color: var(--foreground); padding: 0dp 7dp; }
-.topbar .sep { width: 1dp; height: 14dp; background-color: var(--border); margin: 0dp 6dp; }
-/* Tabs give way first when the window narrows; menus and transport keep their size. */
-.doc-tabs { display: flex; align-items: center; gap: 1dp; height: 100%; flex: 0 1 auto; min-width: 96dp; overflow: hidden; }
-.doc-tab { gap: 6dp; height: 24dp; padding: 0dp 6dp 0dp 8dp; color: var(--muted-foreground); }
-.doc-tab[data-state=on] { background-color: var(--background); color: var(--foreground); border-color: var(--border); }
-.doc-tab[data-state=on] .icon { color: var(--foreground); }
+/* The top bar is projects/studio's TopBar, and each area's header its
+   AreaHeader. A modified document's dot, as the Text Editor shows it. */
 .dirty-dot { width: 6dp; height: 6dp; border-radius: 3dp; background-color: var(--muted-foreground); }
-.transport { display: flex; align-items: center; gap: 4dp; flex: 0 0 auto; }
-.transport .target { width: 168dp; flex: 0 0 auto; }
-.transport .group { display: flex; background-color: var(--secondary); border-radius: var(--r); }
-.transport .group .btn { border-radius: 0dp; width: 26dp; padding: 0dp; }
-.transport .group .btn[data-state=on] { background-color: var(--primary); }
-.transport .group .btn[data-state=on] .icon { color: var(--primary-foreground); }
-.transport .clock { width: 64dp; text-align: right; color: var(--faint-foreground); font-family: InterNumeric; }
-.transport .clock.running { color: var(--foreground); }
-.topbar .search-trigger { flex: 0 4 220dp; min-width: 28dp; overflow: hidden; }
-.search-trigger { width: 220dp; justify-content: flex-start; background-color: var(--field-edit); color: var(--faint-foreground); padding: 0dp 6dp 0dp 7dp; }
-.search-trigger:hover { background-color: var(--input-hover); color: var(--muted-foreground); }
-.search-trigger .label { flex: 1 1 0dp; }
 
 /* Workspace and areas. */
 .workspace { flex: 1 1 0dp; display: flex; padding: 2dp; }
@@ -38,9 +15,7 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 .column.main { flex: 1 1 0dp; }
 .area { position: relative; display: flex; flex-direction: column; background-color: var(--background); border-radius: var(--r-lg); overflow: hidden; }
 .area.fill { flex: 1 1 0dp; }
-.area-head { height: var(--header-h); flex: 0 0 auto; display: flex; align-items: center; gap: 2dp; padding: 0dp 4dp; background-color: var(--muted); border-bottom: 1dp var(--edge); }
-.area-head .btn { height: 22dp; }
-.area-head .editor-type { gap: 2dp; padding: 0dp 3dp 0dp 5dp; }
+/* Editors' controls in their area's header. */
 .area-head .menu-btn { color: var(--foreground); padding: 0dp 6dp; }
 /* Breadcrumbs (studio_graph_nav.c): the behavior, the calls entered and the open graph. */
 .area-head .crumbs { display: flex; align-items: center; gap: 2dp; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; flex: 0 1 auto; min-width: 0dp; }
@@ -49,7 +24,6 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 .area-head .crumbs .crumb-sep { color: var(--disabled-foreground); font-size: 10dp; width: 10dp; flex: 0 0 auto; }
 .area-body { flex: 1 1 0dp; position: relative; overflow: hidden; }
 .area-panel { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; overflow-y: auto; padding: 4dp 6dp; }
-.area.live .area-head { border-bottom-color: var(--primary-edge); }
 
 /* Splitters: 4 dp hit area. */
 .split-v { width: 4dp; flex: 0 0 auto; cursor: ew-resize; drag: drag; }
@@ -58,7 +32,6 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 
 /* Drawer: the collapsible bottom area of the main column. */
 .area.drawer { flex: 0 0 auto; }
-.area-head .drawer-close { margin-left: 2dp; }
 
 /* Scene viewport. */
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: var(--viewport); }
@@ -242,9 +215,6 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .code-editor kit-code { flex: 1 1 0dp; min-height: 0dp; }
 .code-status { display: flex; align-items: center; gap: 6dp; height: 22dp; flex: 0 0 auto; padding: 0dp 8dp; border-top: 1dp var(--edge); background-color: var(--muted); color: var(--destructive); white-space: nowrap; overflow: hidden; }
 .code-status .message { overflow: hidden; text-overflow: ellipsis; }
-/* A UI document's tab closes from its hover-revealed button. */
-.doc-tab .doc-close { width: 16dp; height: 16dp; margin-right: -2dp; opacity: 0; }
-.doc-tab:hover .doc-close, .doc-tab[data-state=on] .doc-close { opacity: 1; }
 /* Assets ▸ New: the name of the new asset. */
 .popup.new-ui { width: 260dp; }
 .new-ui-field { display: block; padding: 2dp 4dp 4dp; }

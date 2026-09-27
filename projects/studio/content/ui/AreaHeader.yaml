@@ -1,0 +1,26 @@
+rml: |
+  <header class="area-head" data-class-maximized="area.maximized">
+    <div id="editor-type"/>
+    <div id="controls"/>
+    <button class="btn icon-only maximize" data-attr-data-tip="area.maximized ? 'Restore Area' : commands.maximize.label" data-attr-data-kbd="commands.maximize.shortcut" data-event-click="emit('studio.maximize', area.index)"><span class="icon" data-if="!area.maximized">&#xeb4c;</span><span class="icon" data-if="area.maximized">&#xeb4d;</span></button>
+    <button class="btn icon-only close" data-if="area.drawer" data-attr-data-tip="commands.closeDrawer.label" data-event-click="emit('studio.closeDrawer')"><span class="icon">&#xea76;</span></button>
+  </header>
+rcss: |
+  /* An area's header, as Blender's (studio_shell.c hosts one per area and
+     binds `area`, its item of editor.areas): the editor type menu and the
+     editor's own controls, native in the #editor-type and #controls slots,
+     then Maximize, which turns to Restore while its area fills the
+     workspace, and the drawer's Close. */
+  body { flex: 0 0 auto; }
+  .area-head {
+    height: var(--header-h); display: flex; align-items: center; gap: 2dp; padding: 0dp 4dp;
+    background-color: var(--muted); border-bottom: 1dp var(--edge);
+  }
+  .btn { height: 22dp; }
+  #editor-type { display: flex; flex: 0 0 auto; }
+  .editor-type { gap: 2dp; padding: 0dp 3dp 0dp 5dp; }
+  #controls { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; min-width: 0dp; height: 100%; }
+  // Maximize stays quiet until it is hovered or its area fills the workspace.
+  .maximize .icon { color: var(--faint-foreground); }
+  .maximize:hover .icon, .area-head.maximized .maximize .icon { color: var(--foreground); }
+  .close { margin-left: 2dp; }

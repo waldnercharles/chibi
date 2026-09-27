@@ -43,6 +43,7 @@ struct studio_ui
     ui_data data; /* what the kit's hosted panels bind */
     studio_sources sources;
     ui_mount *areas[STUDIO_AREA_COUNT]; /* each area's panel, when it shows one */
+    ui_mount *headers[STUDIO_AREA_COUNT]; /* each area's header */
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
 
@@ -57,6 +58,9 @@ static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         if (ui->areas[i] && ui_mount_holds(ui->areas[i], element)) {
             return ui->areas[i];
+        }
+        if (ui->headers[i] && ui_mount_holds(ui->headers[i], element)) {
+            return ui->headers[i];
         }
     }
     return NULL;
@@ -173,7 +177,8 @@ static void free_world(studio_ui *ui)
     }
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         ui_mount_free(ui->areas[i]);
-        ui->areas[i] = NULL;
+        ui_mount_free(ui->headers[i]);
+        ui->areas[i] = ui->headers[i] = NULL;
     }
     afree(ui->panels);
     game_prototype_preview_free(ui->world);
@@ -297,9 +302,9 @@ static panel *find_panel(studio_ui *ui, const char *name)
     return NULL;
 }
 
-/* Sends a mount's activations to its entity, an input's value first. */
-/* Sends a panel's events to its entity's behaviors; emit('studio.<id>') runs
- * Studio's command `id` instead. */
+/* Sends a panel's events to its entity's behaviors, an input's value first;
+ * emit('studio.<id>') runs Studio's command `id` instead, and
+ * emit('studio.<id>', index) runs it on the tab or area `index` names. */
 static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
 {
     studio_ui *ui = s->ui;
@@ -309,7 +314,11 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
                         ? -1
                         : studio_command_named(a.event + 7);
         if (command >= 0) {
-            studio_command_run(s, (studio_command)command);
+            studio_command_run_with(
+                s,
+                (studio_command)command,
+                a.has_value ? (int)a.value : -1
+            );
             continue;
         }
         if (a.has_value && a.id[0]) {
@@ -377,15 +386,44 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     report(s, p, *mount);
 }
 
-rml_element *studio_ui_panel(studio *s, const char *key, const char *name)
+/* The document panel `name` shows, with the panel in `out`; NULL when it
+ * has none. */
+static const char *panel_document(studio *s, const char *name, panel **out)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
     const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
-    if (!component || !component->document || !component->document[0]) {
+    *out = p;
+    return component && component->document && component->document[0]
+             ? component->document
+             : NULL;
+}
+
+rml_element *studio_ui_panel(studio *s, const char *key, const char *name)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
         return NULL;
     }
     rml_element *host = kit_host(s->kit, key, "panel-host");
-    show_panel(s, p, &p->mount, host, component->document);
+    show_panel(s, p, &p->mount, host, document);
+    return host;
+}
+
+/* The alias takes when the mount binds the host to the data model, as a
+ * widget's data-alias-* attributes do. */
+rml_element *studio_ui_area_header(studio *s, int area, const char *name)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
+        return NULL;
+    }
+    rml_element *host = kit_host(s->kit, "head", "panel-host");
+    char alias[32];
+    snprintf(alias, sizeof alias, "editor.areas[%d]", area);
+    kit_attr(s->kit, "data-alias-area", alias);
+    show_panel(s, p, &s->ui->headers[area], host, document);
     return host;
 }
 
@@ -406,16 +444,10 @@ const char *studio_ui_panel_name(const studio *s, int index)
 
 void studio_ui_area(studio *s, int area, const char *name)
 {
-    panel *p = s->ui ? find_panel(s->ui, name) : NULL;
-    const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
-    if (component && component->document && component->document[0]) {
-        show_panel(
-            s,
-            p,
-            &s->ui->areas[area],
-            kit_host(s->kit, "panel", "area-panel"),
-            component->document
-        );
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (document) {
+        show_panel(s, p, &s->ui->areas[area], kit_host(s->kit, "panel", "area-panel"), document);
     }
 }
 

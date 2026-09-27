@@ -11,3 +11,5 @@ entities:
 - {name: Theme, prototype: Theme}
 - {name: Inspector, prototype: Inspector}
 - {name: StatusBar, prototype: StatusBar}
+- {name: TopBar, prototype: TopBar}
+- {name: AreaHeader, prototype: AreaHeader}

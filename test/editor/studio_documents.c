@@ -506,6 +506,105 @@ static void readout_follows_camera()
     fixture_free(&f);
 }
 
+/* ---------- Authored top bar and area headers (workstream T) ---------- */
+
+/* The elements of Studio's `panel` that `selector` matches, up to 8. */
+static int panel_elements(studio *s, const char *panel, const char *selector, rml_element **found)
+{
+    char query[128];
+    snprintf(query, sizeof query, "[data-ui=%s] %s", panel, selector);
+    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
+    return rml_element_query_selector_all(doc, query, found, 8);
+}
+
+/* A press and release on `el`, which focuses it as a click does. */
+static void press(studio *s, rml_element *el)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    rml_input input = { .x = at.x + size.x * 0.5f, .y = at.y + size.y * 0.5f };
+    rml_input_type types[] = { RML_INPUT_POINTER_MOVE,
+                               RML_INPUT_POINTER_DOWN,
+                               RML_INPUT_POINTER_UP };
+    for (size_t i = 0; i < sizeof types / sizeof *types; i++) {
+        input.type = types[i];
+        rml_backend_process_input(s->backend, &input);
+    }
+}
+
+static int tab_named(const app_scene_authoring *scene, const char *label)
+{
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        if (scene->tabs[i].label && !strcmp(scene->tabs[i].label, label)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Studio shows its authored top bar and area headers over its own state:
+   the menubar, the play target and each area's editor type menu and
+   controls in their native slots, the document tabs, whose faces and close
+   buttons run their commands with the tab's index, the transport's
+   commands, and each header's Maximize. */
+static void chrome_follows_studio()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    char path[PATH_MAX];
+    /* The Text Editor shows the document, so the Scene gives up the workspace. */
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 3);
+    kit_rect r;
+    rml_element *heads[8], *tabs[8], *play[8];
+    int shown = panel_elements(s, "AreaHeader", ".area-head", heads);
+    bool slots = kit_find(s->kit, "app/topbar/menus/file", &r) &&
+                 kit_find(s->kit, "app/topbar/target/target", &r) &&
+                 kit_find(s->kit, "app/workspace/main/top/head/type/type", &r) &&
+                 kit_find(s->kit, "app/workspace/main/top/head/controls", &r) &&
+                 s->maximized < 0 && shown >= STUDIO_AREA_COUNT - 1;
+    int count = panel_elements(s, "TopBar", ".doc-tab", tabs) - 1;
+    int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
+    rml_element *close = bank >= 0
+                           ? rml_element_query_selector(tabs[bank], ".doc-close")
+                           : NULL;
+    bool listed = count == acount(f.scene->tabs) && f.scene->active_tab == bank &&
+                  close && rml_element_is_visible(close, true) &&
+                  !rml_element_is_visible(rml_element_query_selector(tabs[scene], ".doc-close"), true);
+    /* The press takes the keyboard from the Text Editor, whose focused text
+       would make its document active again. */
+    press(s, rml_element_query_selector(tabs[scene], ".face"));
+    frames(&f, 2);
+    bool selected = f.scene->active_tab == scene && !kit_wants_keyboard(s->kit);
+    /* This narrow window clips the last tab, so the click goes to it. */
+    rml_element_click(close);
+    frames(&f, 2);
+    bool closed = tab_named(f.scene, "Bank") < 0 &&
+                  panel_elements(s, "TopBar", ".doc-tab", tabs) - 1 ==
+                      acount(f.scene->tabs);
+
+    panel_elements(s, "TopBar", ".group > .btn", play);
+    rml_element_click(play[0]);
+    frames(&f, 2);
+    bool playing = app_scene_authoring_runtime_state(f.scene).playing;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(&f, 1);
+
+    rml_element_click(rml_element_query_selector(heads[0], ".maximize"));
+    frames(&f, 2);
+    bool maximized = s->maximized == STUDIO_AREA_TOP &&
+                     panel_elements(s, "AreaHeader", ".area-head", heads) == 1;
+    rml_element_click(rml_element_query_selector(heads[0], ".maximize"));
+    frames(&f, 2);
+    bool restored = maximized && s->maximized < 0 &&
+                    panel_elements(s, "AreaHeader", ".area-head", heads) == shown;
+    if (!(slots && listed && selected && closed && playing && restored)) {
+        printf("  %d %d %d %d %d %d\n", slots, listed, selected, closed, playing, restored);
+    }
+    test_check(slots && listed && selected && closed && playing && restored, "Studio's authored top bar and area headers host their native slots and run tab, transport and area commands");
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -535,6 +634,8 @@ int studio_documents_run(const char *program)
     /* Wave 2 follow-ups (workstream P) */
     preview_hears_keys();
     readout_follows_camera();
+    /* Authored top bar and area headers (workstream T) */
+    chrome_follows_studio();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

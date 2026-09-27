@@ -684,9 +684,10 @@ extern "C"
      * does; its own children stay, before the kit's. */
     bool kit_slot_begin(kit *k, const char *key, rml_element *host, const char *selector);
     void kit_slot_end(kit *k);
-    /* Moves keyboard focus out of `host` when it is inside: RmlUi focuses
-     * what is clicked, and chrome such as the status bar leaves the keyboard
-     * to the editor's shortcuts. */
+    /* Moves keyboard focus out of `host` when its authored content holds
+     * it: RmlUi focuses what is clicked, and chrome such as the status bar
+     * leaves the keyboard to the editor's shortcuts. Kit content in the
+     * host's slots keeps focus, as a field there takes typing. */
     void kit_release_focus(kit *k, rml_element *host);
 
 #ifdef __cplusplus

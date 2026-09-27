@@ -992,7 +992,9 @@ void studio_debug_call_stack(studio *s);
 
 /* Commands (studio_commands.c): one table the menus, the command palette,
  * shortcuts and authored UI share, as VS Code's command registry. Authored
- * UI runs one with emit('studio.<id>'). */
+ * UI runs one with emit('studio.<id>'), or on a tab or an area with
+ * emit('studio.<id>', index), and binds its state as `commands.<id>`
+ * (studio_sources.c). */
 typedef enum
 {
     STUDIO_COMMAND_SEARCH,
@@ -1022,26 +1024,36 @@ typedef enum
     STUDIO_COMMAND_THEME,
     STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
     STUDIO_COMMAND_PREVIEW_UI,
+    /* Authored top bar and area headers (workstream T) */
+    STUDIO_COMMAND_SELECT_TAB,
+    STUDIO_COMMAND_CLOSE_TAB,
+    STUDIO_COMMAND_CLOSE_DRAWER,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
 typedef struct
 {
-    const char *id; /* stable, as in emit('studio.save') */
+    const char *id; /* stable, camelCase, as in emit('studio.toggleAssets') */
     const char *label;
     const char *menu;     /* the label in a menu */
     const char *shortcut; /* in the platform's notation, or NULL */
     const char *keywords; /* more words the palette matches */
     uint32_t icon;
+    bool indexed; /* runs only on the tab its argument names; not in the palette */
 } studio_command_info;
 
-/* How the command reads now: Play reads Pause while a scene plays. */
+/* How the command reads now: Play reads Pause while a scene plays, and
+ * Resume while a run is paused at a breakpoint. */
 studio_command_info studio_command_describe(studio *s, studio_command command);
 bool studio_command_enabled(studio *s, studio_command command);
 /* 1 or 0 for a command that toggles something, else -1. */
 int studio_command_checked(studio *s, studio_command command);
 /* Runs the command when it is enabled. */
 void studio_command_run(studio *s, studio_command command);
+/* Runs the command on the tab or area `argument` names, as
+ * emit('studio.closeTab', i) does; -1 acts on the active one, as
+ * studio_command_run does. */
+void studio_command_run_with(studio *s, studio_command command, int argument);
 /* The command whose id is `id`, or -1. */
 int studio_command_named(const char *id);
 const char *studio_command_id(studio_command command);
@@ -1427,20 +1439,33 @@ typedef struct studio_hint
 
 #define STUDIO_HINT_MAX 4
 
-/* What the status bar shows: Studio's `editor` variable (studio_sources.c),
- * which projects/studio's StatusBar binds. */
+/* An open document as the top bar's tabs show it (workstream T). */
+typedef struct studio_tab_view
+{
+    const char *label;
+    const char *path; /* its file, the tab's tooltip */
+    uint32_t icon;    /* a kit icon */
+    bool dirty, active;
+    bool closable; /* a UI document; others stay for the session */
+} studio_tab_view;
+
+/* What the editor's authored chrome shows: Studio's `editor` variable
+ * (studio_sources.c), which projects/studio's StatusBar, TopBar and
+ * AreaHeader bind. Commands' states are `commands`. */
 typedef struct studio_status
 {
     studio_hint hints[STUDIO_HINT_MAX]; /* the editor's under the pointer */
     int hint_count;
-    const char *report; /* the last operation */
-    bool reporting;     /* while the report shows, three seconds */
-    bool assets, output, performance;    /* the drawer shows that editor */
-    const char *assets_key, *output_key; /* the drawer toggles' shortcuts */
-    const char *scene;                   /* the scene's title */
-    const char *selection;               /* the selected object, "" for none */
+    const char *report;    /* the last operation */
+    bool reporting;        /* while the report shows, three seconds */
+    const char *scene;     /* the scene's title */
+    const char *selection; /* the selected object, "" for none */
     int objects;
     bool playing;
+    bool paused;                 /* the run is paused at a breakpoint */
+    const studio_tab_view *tabs; /* the open documents */
+    int tab_count;
+    int maximized; /* the area filling the workspace, or -1 */
 } studio_status;
 
 /* Adds the `editor` variable to a data model's JSON. */
@@ -1514,5 +1539,34 @@ const studio_ui_problem *studio_code_problems(studio *s);
  * open documents, checked as the Text Editor checks one; appended to
  * `out`. */
 void studio_code_project_problems(studio *s, studio_ui_problem **out);
+
+/* ---------- Authored top bar and area headers (workstream T) ---------- */
+
+/* A command as authored UI binds it: `commands.<id>` (studio_sources.c),
+ * with its label, menu label, shortcut, icon glyph, enabled and checked,
+ * so a button reads data-attrif-data-disabled="!commands.save.enabled". */
+typedef struct studio_command_state
+{
+    studio_command_info info;
+    bool enabled;
+    bool checked; /* a toggle that is on */
+} studio_command_state;
+
+/* Adds `commands`, a member per command id, to a data model's JSON. */
+void studio_commands_add(yyjson_mut_doc *doc);
+/* Shows the STUDIO_COMMAND_COUNT states in it, by command; true when
+ * anything changed. */
+bool studio_commands_show(yyjson_mut_doc *doc, const studio_command_state *states);
+/* Whether document tab `tab` closes: UI documents do, and the others stay
+ * for the session. */
+bool studio_tab_closes(const studio *s, int tab);
+/* The open documents as the top bar's tabs show them (support/array.h; the
+ * caller frees it with afree). */
+studio_tab_view *studio_document_tabs(studio *s);
+/* Shows panel `name` as area `area`'s header in a host keyed "head": a
+ * mount per area, whose root binds `area` to `editor.areas[area]`
+ * (data-alias-area), as a prop. Returns the host, or NULL when the panel
+ * has no document. */
+rml_element *studio_ui_area_header(studio *s, int area, const char *name);
 
 #endif

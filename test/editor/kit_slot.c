@@ -1,6 +1,7 @@
 /* Native slots: kit content inside a kit_host's authored content, rebuilt
- * when the content replaces its element; and the authored status bar, which
- * hosts one, over Studio's `editor` variable. */
+ * when the content replaces its element; and the authored status bar, top
+ * bar and area header, which host them, over Studio's `editor` and
+ * `commands` variables. */
 #include "editor/studio/studio_internal.h"
 #include "render/ui.h"
 #include "support/text_overlay.h"
@@ -275,25 +276,46 @@ static bool state_is(rml_element *el, const char *state)
     return !strcmp(value, state);
 }
 
-static void status_checks()
+/* Studio's `editor` and `commands` variables, every command enabled and
+   labeled by its id. */
+static yyjson_mut_doc *chrome_doc(studio_command_state *commands)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
     studio_status_add(doc);
+    studio_commands_add(doc);
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        const char *id = studio_command_id((studio_command)c);
+        commands[c] = (studio_command_state){
+            .info = { .id = id, .label = id, .menu = id, .icon = KIT_ICON_FILE },
+            .enabled = true,
+        };
+    }
+    return doc;
+}
+
+#define ASSETS_KEY "\xe2\x87\xa7\xe2\x8c\x98"
+
+static void status_checks()
+{
+    studio_command_state commands[STUDIO_COMMAND_COUNT];
+    yyjson_mut_doc *doc = chrome_doc(commands);
+    commands[STUDIO_COMMAND_TOGGLE_ASSETS].checked = true;
+    commands[STUDIO_COMMAND_TOGGLE_ASSETS].info.shortcut = ASSETS_KEY "A";
     studio_status status = {
         .hints = { { KIT_ICON_MOUSE, NULL, "Select" }, { 0, "F", "Frame" } },
         .hint_count = 2,
         .report = "Saved",
         .reporting = true,
-        .assets = true,
-        .assets_key = "\xe2\x87\xa7\xe2\x8c\x98"
-                      "A",
         .scene = "Sandbox",
         .selection = "Player",
         .objects = 12,
+        .maximized = -1,
     };
-    bool shown = studio_status_show(doc, &status);
-    bool same = !studio_status_show(doc, &status);
+    bool shown = studio_status_show(doc, &status) &&
+                 studio_commands_show(doc, commands);
+    bool same = !studio_status_show(doc, &status) &&
+                !studio_commands_show(doc, commands);
     slot_fixture f = { 0 };
     open_fixture(&f, "projects/studio/content", "StatusBar", doc);
     status_frames(&f, 3);
@@ -311,19 +333,20 @@ static void status_checks()
             !rml_element_is_visible(rml_element_query_selector(hints[1], ".icon"), false) &&
             rml_element_is_class_set(rml_element_query_selector(f.host, ".report"), "shown") &&
             toggle_count == 3 && state_is(toggles[0], "on") &&
-            state_is(toggles[1], "off") && !strcmp(kbd, status.assets_key) &&
+            state_is(toggles[1], "off") && !strcmp(kbd, ASSETS_KEY "A") &&
+            text_is(rml_element_query_selector(toggles[1], ".label"), "toggleOutput") &&
             text_is(rml_element_query_selector(f.host, ".count"), "Objects 1/12") &&
             count(&f, "#ui-scale .ui-scale") == 1 &&
             rml_element_box_size(bar, RML_BOX_BORDER).y == 24,
-        "the authored status bar shows the editor variable, with UI Scale in "
-        "its native slot"
+        "the authored status bar shows the editor and commands variables, "
+        "with UI Scale in its native slot"
     );
 
     click(&f, toggles[1]);
     status_frame(&f);
     ui_activation a;
     bool emitted = ui_mount_take(f.mount, &a) &&
-                   !strcmp(a.event, "studio.toggle-output") &&
+                   !strcmp(a.event, "studio.toggleOutput") && !a.has_value &&
                    studio_command_named(a.event + strlen("studio.")) ==
                        STUDIO_COMMAND_TOGGLE_OUTPUT;
     test_check(emitted && !kit_wants_keyboard(f.k), "a status bar toggle emits its Studio command and leaves the keyboard to Studio");
@@ -344,6 +367,206 @@ static void status_checks()
     close_fixture(&f);
 }
 
+/* ---------- The authored top bar and area header (workstream T) ---------- */
+
+static void topbar_frame(slot_fixture *f)
+{
+    kit *k = f->k;
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    host(f, "topbar");
+    kit_release_focus(k, f->host);
+    if (kit_slot_begin(k, "menus", f->host, "#menubar")) {
+        assert(!kit_menubar_trigger(k, "file", "File"));
+        kit_slot_end(k);
+    }
+    if (kit_slot_begin(k, "target", f->host, "#play-target")) {
+        kit_button(
+            k,
+            "target",
+            &(kit_button_desc){ .label = "Scene", .variant = KIT_SUBTLE, .cls = "target" }
+        );
+        kit_slot_end(k);
+    }
+    end_frame(f);
+}
+
+static void topbar_frames(slot_fixture *f, int count)
+{
+    for (int i = 0; i < count; i++) {
+        topbar_frame(f);
+    }
+}
+
+/* The single activation a click made. */
+static bool emitted_once(slot_fixture *f, const char *event, int value)
+{
+    ui_activation a, more;
+    bool one = ui_mount_take(f->mount, &a) && !ui_mount_take(f->mount, &more);
+    return one && !strcmp(a.event, event) &&
+           (value < 0 ? !a.has_value : a.has_value && (int)a.value == value);
+}
+
+static const studio_tab_view TABS[] = {
+    { "Sandbox", "scenes/Sandbox.yaml", KIT_ICON_SCENE, false, false, false },
+    { "Player", "prototypes/Player.yaml", KIT_ICON_PROTOTYPE, true, true, false },
+    { "Hud", "ui/Hud.yaml", KIT_ICON_LAYOUT, false, false, true },
+};
+
+/* The top bar lists `editor.tabs` with their state, runs a tab's commands
+   with its index, reads its transport from `commands`, and hosts the
+   menubar and the play target natively. */
+static void topbar_checks()
+{
+    studio_command_state commands[STUDIO_COMMAND_COUNT];
+    yyjson_mut_doc *doc = chrome_doc(commands);
+    commands[STUDIO_COMMAND_STOP].enabled = false;
+    studio_status status = { .report = "",
+                             .scene = "",
+                             .selection = "",
+                             .playing = true,
+                             .tabs = TABS,
+                             .tab_count = 3,
+                             .maximized = -1 };
+    studio_status_show(doc, &status);
+    studio_commands_show(doc, commands);
+    slot_fixture f = { 0 };
+    open_fixture(&f, "projects/studio/content", "TopBar", doc);
+    topbar_frames(&f, 3);
+    rml_element *tabs[4], *buttons[4];
+    int tab_count = rml_element_query_selector_all(f.host, ".doc-tab", tabs, 4);
+    int button_count = rml_element_query_selector_all(f.host, ".group > .btn", buttons, 4);
+    /* Three tabs and data-for's hidden template; play, stop and step. */
+    assert(tab_count == 4 && button_count == 3);
+    char tip[64] = "";
+    rml_element_attribute(rml_element_query_selector(tabs[0], ".face"), "data-tip", tip, sizeof tip);
+    kit_rect rect;
+    test_check(
+        !ui_mount_error(f.mount)[0] && count(&f, ".doc-tab") == 3 &&
+            state_is(tabs[1], "on") && state_is(tabs[0], "off") &&
+            !strcmp(tip, "scenes/Sandbox.yaml") &&
+            text_is(rml_element_query_selector(tabs[1], ".label"), "Player") &&
+            count(&f, ".dirty-dot") == 1 && count(&f, ".doc-close") == 1 &&
+            rml_element_query_selector(tabs[2], ".doc-close") &&
+            state_is(buttons[0], "on") &&
+            rml_element_has_attribute(buttons[1], "data-disabled") &&
+            !rml_element_has_attribute(buttons[0], "data-disabled") &&
+            kit_find(f.k, "app/topbar/menus/file", &rect) &&
+            kit_find(f.k, "app/topbar/target/target", &rect),
+        "the authored top bar shows editor.tabs and the transport's commands, "
+        "with the menubar and the play target in its native slots"
+    );
+
+    click(&f, rml_element_query_selector(tabs[0], ".face"));
+    topbar_frame(&f);
+    bool selected = emitted_once(&f, "studio.selectTab", 0);
+    click(&f, rml_element_query_selector(tabs[2], ".doc-close"));
+    topbar_frame(&f);
+    bool closed = emitted_once(&f, "studio.closeTab", 2);
+    click(&f, buttons[0]);
+    topbar_frame(&f);
+    bool played = emitted_once(&f, "studio.play", -1);
+    test_check(selected && closed && played && !kit_wants_keyboard(f.k), "a tab emits selectTab and its close button closeTab, each with the tab's index, and the transport emits its commands");
+
+    status.paused = true;
+    status.tab_count = 1;
+    studio_status_show(doc, &status);
+    rml_data_model_dirty(f.data.model, "editor");
+    topbar_frames(&f, 2);
+    rml_element_query_selector_all(f.host, ".group > .btn", buttons, 4);
+    test_check(
+        count(&f, ".doc-tab") == 1 && count(&f, ".group > .btn") == 2 &&
+            state_is(buttons[0], "off"),
+        "the top bar follows editor.tabs, and a paused run leaves the step "
+        "to the debugger's steps"
+    );
+    close_fixture(&f);
+}
+
+/* Area `area`'s header, with a filter field in its controls. */
+static void header_frame(slot_fixture *f, int area, char *filter, size_t size)
+{
+    kit *k = f->k;
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    f->host = kit_host(k, "head", NULL);
+    char alias[32];
+    snprintf(alias, sizeof alias, "editor.areas[%d]", area);
+    kit_attr(k, "data-alias-area", alias);
+    if (ui_mount_sync(f->mount, f->host, f->listener, f->in.time)) {
+        kit_style_sheet(k, ui_mount_name(f->mount), ui_mount_style(f->mount));
+    }
+    kit_release_focus(k, f->host);
+    if (kit_slot_begin(k, "type", f->host, "#editor-type")) {
+        kit_button(k, "type", &(kit_button_desc){ .icon = KIT_ICON_VIEWPORT, .cls = "editor-type" });
+        kit_slot_end(k);
+    }
+    if (kit_slot_begin(k, "controls", f->host, "#controls")) {
+        kit_search(k, "filter", filter, size, "Filter");
+        kit_slot_end(k);
+    }
+    end_frame(f);
+}
+
+/* Area `area`'s header over editor.areas as `status` shows them. */
+static void open_header(slot_fixture *f, int area, const studio_status *status, char *filter, size_t size)
+{
+    studio_command_state commands[STUDIO_COMMAND_COUNT];
+    yyjson_mut_doc *doc = chrome_doc(commands);
+    studio_status_show(doc, status);
+    studio_commands_show(doc, commands);
+    open_fixture(f, "projects/studio/content", "AreaHeader", doc);
+    for (int i = 0; i < 3; i++) {
+        header_frame(f, area, filter, size);
+    }
+}
+
+/* An area header binds its own item of editor.areas: Maximize runs with
+   the area's index and turns to Restore, the drawer's alone closes, and a
+   field in its controls keeps the keyboard while a click on its chrome
+   leaves it to Studio. */
+static void header_checks()
+{
+    studio_status status = { .report = "", .scene = "", .selection = "", .maximized = -1 };
+    char filter[32] = "";
+    slot_fixture top = { 0 }, drawer = { 0 };
+    open_header(&top, STUDIO_AREA_TOP, &status, filter, sizeof filter);
+    kit_rect rect;
+    bool shown = !ui_mount_error(top.mount)[0] && count(&top, ".close") == 0 &&
+                 kit_find(top.k, "app/head/type/type", &rect) &&
+                 kit_find(top.k, "app/head/controls/filter", &rect);
+    rml_element *input = rml_element_query_selector(top.host, "#controls input");
+    rml_element_focus(input, false);
+    header_frame(&top, STUDIO_AREA_TOP, filter, sizeof filter);
+    bool typing = kit_wants_keyboard(top.k);
+    click(&top, rml_element_query_selector(top.host, ".maximize"));
+    header_frame(&top, STUDIO_AREA_TOP, filter, sizeof filter);
+    bool maximized = emitted_once(&top, "studio.maximize", STUDIO_AREA_TOP) &&
+                     !kit_wants_keyboard(top.k);
+    status.maximized = STUDIO_AREA_TOP;
+    studio_status_show(top.data.doc, &status);
+    rml_data_model_dirty(top.data.model, "editor");
+    header_frame(&top, STUDIO_AREA_TOP, filter, sizeof filter);
+    maximized &= rml_element_is_class_set(rml_element_query_selector(top.host, ".area-head"), "maximized") &&
+                 count(&top, ".maximize .icon") == 1;
+    close_fixture(&top);
+
+    status.maximized = -1;
+    open_header(&drawer, STUDIO_AREA_DRAWER, &status, filter, sizeof filter);
+    bool closes = count(&drawer, ".close") == 1;
+    click(&drawer, rml_element_query_selector(drawer.host, ".close"));
+    header_frame(&drawer, STUDIO_AREA_DRAWER, filter, sizeof filter);
+    closes &= emitted_once(&drawer, "studio.closeDrawer", -1);
+    click(&drawer, rml_element_query_selector(drawer.host, ".maximize"));
+    header_frame(&drawer, STUDIO_AREA_DRAWER, filter, sizeof filter);
+    closes &= emitted_once(&drawer, "studio.maximize", STUDIO_AREA_DRAWER);
+    close_fixture(&drawer);
+    if (!(shown && typing && maximized && closes)) {
+        printf("  %d %d %d %d\n", shown, typing, maximized, closes);
+    }
+    test_check(shown && typing && maximized && closes, "an area header binds its area: Maximize runs on it and turns to Restore, the drawer's closes, and its slots keep a field's keyboard");
+}
+
 void test_kit_slot()
 {
     char root[] = "/tmp/chibi-kit-slot-XXXXXX", folder[64];
@@ -354,4 +577,7 @@ void test_kit_slot()
     rmdir(folder);
     rmdir(root);
     status_checks();
+    /* Authored top bar and area headers (workstream T) */
+    topbar_checks();
+    header_checks();
 }

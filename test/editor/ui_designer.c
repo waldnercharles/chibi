@@ -18,18 +18,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static const char ASSET[] = "rml: |\n"
-                            "  <div id=\"root\" class=\"panel\">\n"
-                            "    <span class=\"title\">Title</span>\n"
-                            "    <div class=\"row\">\n"
-                            "      <button id=\"ok\">OK</button>\n"
-                            "      <button id=\"cancel\">Cancel</button>\n"
-                            "    </div>\n"
-                            "  </div>\n"
-                            "rcss: |\n"
-                            "  .panel { display: block; width: 200dp; }\n"
-                            "  .row button { color: #ff0000; }\n";
-
 static const char RML[] = "<div id=\"root\" class=\"panel\">\n"
                           "  <span class=\"title\">Title</span>\n"
                           "  <div class=\"row\">\n"
@@ -50,18 +38,12 @@ enum
     CANCEL,
 };
 
-static void write_text(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    assert(file && fputs(text, file) >= 0 && fclose(file) == 0);
-}
-
-/* The document opened fresh from `text`. */
-static ui_buffer *open_document(const char *folder, const char *name, const char *text)
+/* The document opened fresh from its markup and styles. */
+static ui_buffer *open_document(const char *folder, const char *name, const char *rml, const char *rcss)
 {
     char path[PATH_MAX], error[256];
-    snprintf(path, sizeof path, "%s/%s", folder, name);
-    write_text(path, text);
+    test_write_ui(folder, name, rml, rcss);
+    snprintf(path, sizeof path, "%s/%s.rml", folder, name);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
     assert(b);
     return b;
@@ -94,7 +76,7 @@ static bool markup_step(ui_buffer *b, const char *rml)
 
 static void moves(const char *folder)
 {
-    ui_buffer *b = open_document(folder, "Moves.yaml", ASSET);
+    ui_buffer *b = open_document(folder, "Moves", RML, RCSS);
     char error[192] = "";
     test_check(
         ui_design_move(b, CANCEL, OK, UI_SOURCE_BEFORE, error, sizeof error) == OK &&
@@ -154,7 +136,7 @@ static void moves(const char *folder)
 
 static void structure(const char *folder)
 {
-    ui_buffer *b = open_document(folder, "Structure.yaml", ASSET);
+    ui_buffer *b = open_document(folder, "Structure", RML, RCSS);
     char error[192] = "";
     test_check(
         ui_design_insert(b, ROW, UI_SOURCE_INSIDE, "<use ui=\"Chip\"/>", error, sizeof error) ==
@@ -234,7 +216,7 @@ static void structure(const char *folder)
 
 static void attributes(const char *folder)
 {
-    ui_buffer *b = open_document(folder, "Attributes.yaml", ASSET);
+    ui_buffer *b = open_document(folder, "Attributes", RML, RCSS);
     char error[192] = "";
     const char *renamed = "<div id=\"root\" class=\"panel\">\n"
                           "  <span class=\"title\">Title</span>\n"
@@ -306,7 +288,7 @@ static void attributes(const char *folder)
 /* A scrub's changes, joined, stay one step whose undo is the text before. */
 static void styles(const char *folder)
 {
-    ui_buffer *b = open_document(folder, "Styles.yaml", ASSET);
+    ui_buffer *b = open_document(folder, "Styles", RML, RCSS);
     char error[192] = "";
     const char
         *styled = "<div id=\"root\" class=\"panel\" style=\"width: 130dp;\">\n"
@@ -337,14 +319,7 @@ static void styles(const char *folder)
 /* Insertions indent as the markup around them does, four spaces here. */
 static void keeps_indentation(const char *folder)
 {
-    ui_buffer *b = open_document(
-        folder,
-        "Wide.yaml",
-        "rml: |\n"
-        "    <div class=\"a\">\n"
-        "        <span>x</span>\n"
-        "    </div>\n"
-    );
+    ui_buffer *b = open_document(folder, "Wide", "<div class=\"a\">\n    <span>x</span>\n</div>\n", NULL);
     char error[192] = "";
     test_check(
         ui_design_insert(b, 0, UI_SOURCE_INSIDE, "<button>Button</button>", error, sizeof error) ==
@@ -370,7 +345,7 @@ static void keeps_indentation(const char *folder)
  * written as the rule is, one undo step each. */
 static void declarations(const char *folder)
 {
-    ui_buffer *b = open_document(folder, "Declarations.yaml", ASSET);
+    ui_buffer *b = open_document(folder, "Declarations", RML, RCSS);
     char error[192] = "";
     const char
         *added = ".panel { display: block; width: 200dp; height: 40dp; }\n"
@@ -395,18 +370,7 @@ static void declarations(const char *folder)
         "Details: a declaration that is not one, or is not there, is refused"
     );
     ui_buffer_free(b);
-    b = open_document(
-        folder,
-        "Lines.yaml",
-        "rml: |\n"
-        "  <div class=\"card\"/>\n"
-        "rcss: |\n"
-        "  .card {\n"
-        "      color: red;\n"
-        "  }\n"
-        "  .empty {\n"
-        "  }\n"
-    );
+    b = open_document(folder, "Lines", "<div class=\"card\"/>\n", ".card {\n    color: red;\n}\n.empty {\n}\n");
     const char *rml = "<div class=\"card\"/>\n";
     const char *before = ".card {\n    color: red;\n}\n.empty {\n}\n";
     test_check(
@@ -437,17 +401,7 @@ static void extraction(const char *folder)
                              "130dp; color: red;\">\n"
                              "  <span class=\"title\">Title</span>\n"
                              "</div>\n";
-    ui_buffer *b = open_document(
-        folder,
-        "Extract.yaml",
-        "rml: |\n"
-        "  <div id=\"root\" class=\"panel\" style=\"width: 130dp; color: "
-        "red;\">\n"
-        "    <span class=\"title\">Title</span>\n"
-        "  </div>\n"
-        "rcss: |\n"
-        "  .panel { display: block; }\n"
-    );
+    ui_buffer *b = open_document(folder, "Extract", styled_rml, ".panel { display: block; }\n");
     char error[192] = "";
     const char *classed = "<div id=\"root\" class=\"panel wide\">\n"
                           "  <span class=\"title\">Title</span>\n"
@@ -466,16 +420,7 @@ static void extraction(const char *folder)
         "extracts nothing"
     );
     ui_buffer_free(b);
-    b = open_document(
-        folder,
-        "ExtractLines.yaml",
-        "rml: |\n"
-        "  <span style=\"color: red\">x</span>\n"
-        "rcss: |\n"
-        "  .panel {\n"
-        "    display: block;\n"
-        "  }\n"
-    );
+    b = open_document(folder, "ExtractLines", "<span style=\"color: red\">x</span>\n", ".panel {\n  display: block;\n}\n");
     test_check(
         ui_design_extract_class(b, 0, "alert", error, sizeof error) &&
             one_step(
@@ -495,7 +440,7 @@ static void extraction(const char *folder)
  * each gap between rows at each depth. */
 static void keyboard_slots(const char *folder)
 {
-    ui_source *source = ui_source_parse_block(RML, UI_SOURCE_RML);
+    ui_source *source = ui_source_parse(RML, UI_SOURCE_RML);
     ui_design_slot *slots = NULL;
     int home = ui_design_slots(source, OK, NULL, &slots);
     const ui_design_slot expected[] = {
@@ -523,7 +468,7 @@ static void keyboard_slots(const char *folder)
     asetlen(slots, 0);
     home = ui_design_slots(source, OK, folded, &slots);
     test_check(acount(slots) == 9 && home == 4, "Hierarchy: the carried row's own parent stays open");
-    ui_buffer *b = open_document(folder, "Slots.yaml", ASSET);
+    ui_buffer *b = open_document(folder, "Slots", RML, RCSS);
     char error[192] = "";
     const ui_design_slot last = slots[6];
     test_check(
@@ -556,7 +501,7 @@ static int offset_of(const char *text, const char *needle)
 
 static void selection_maps()
 {
-    ui_source *source = ui_source_parse_block(RML, UI_SOURCE_RML);
+    ui_source *source = ui_source_parse(RML, UI_SOURCE_RML);
     test_check(
         ui_design_source_line("Card:12", "Card") == 12 &&
             !ui_design_source_line("Cards:3", "Card") &&
@@ -585,7 +530,7 @@ static void selection_maps()
     size_t length = strlen(RML) + strlen(insert) + 1;
     char *typed = malloc(length);
     snprintf(typed, length, "%.*s%s%s", at, RML, insert, RML + at);
-    ui_source *after = ui_source_parse_block(typed, UI_SOURCE_RML);
+    ui_source *after = ui_source_parse(typed, UI_SOURCE_RML);
     test_check(
         ui_design_follow(source, after, TITLE) == TITLE &&
             ui_design_follow(source, after, ROW) == ROW + 1 &&
@@ -600,7 +545,7 @@ static void selection_maps()
     length = strlen(RML) + 5;
     typed = malloc(length);
     snprintf(typed, length, "%.*s big%s", at, RML, RML + at);
-    after = ui_source_parse_block(typed, UI_SOURCE_RML);
+    after = ui_source_parse(typed, UI_SOURCE_RML);
     test_check(
         ui_design_follow(source, after, TITLE) == TITLE &&
             ui_design_follow(source, after, OK) == OK,
@@ -615,25 +560,22 @@ static void selection_maps()
 /* A shown document: two elements on one line, a widget whose own element
  * is not the document's, and the use's child in the widget's slot. */
 static const char
-    CARD[] = "rml: |\n"
-             "  <div id=\"card\">\n"
-             "    <span class=\"a\">A</span><span class=\"b\">B</span>\n"
-             "    <use ui=\"Chip\" id=\"chip\">\n"
-             "      <span class=\"inside\">Slot</span>\n"
-             "    </use>\n"
-             "  </div>\n"
-             "rcss: |\n"
-             "  #card { display: block; width: 300dp; height: 200dp; }\n"
-             "  span { display: inline-block; width: 20dp; height: 20dp; }\n";
+    CARD_RML[] = "<div id=\"card\">\n"
+                 "  <span class=\"a\">A</span><span class=\"b\">B</span>\n"
+                 "  <use ui=\"Chip\" id=\"chip\">\n"
+                 "    <span class=\"inside\">Slot</span>\n"
+                 "  </use>\n"
+                 "</div>\n";
+static const char CARD_RCSS
+    [] = "#card { display: block; width: 300dp; height: 200dp; }\n"
+         "span { display: inline-block; width: 20dp; height: 20dp; }\n";
 
+static const char CHIP_RML[] = "<div class=\"chip\">\n"
+                               "  <span class=\"dot\"/>\n"
+                               "  <slot/>\n"
+                               "</div>\n";
 static const char
-    CHIP[] = "rml: |\n"
-             "  <div class=\"chip\">\n"
-             "    <span class=\"dot\"/>\n"
-             "    <slot/>\n"
-             "  </div>\n"
-             "rcss: |\n"
-             "  .chip { display: block; width: 100dp; height: 40dp; }\n";
+    CHIP_RCSS[] = ".chip { display: block; width: 100dp; height: 40dp; }\n";
 
 static rml_element *query(rml_context *context, const char *selector)
 {
@@ -651,10 +593,8 @@ static void shown_maps(const char *folder)
     char ui[PATH_MAX], path[PATH_MAX];
     snprintf(ui, sizeof ui, "%s/ui", folder);
     assert(mkdir(ui, 0700) == 0);
-    snprintf(path, sizeof path, "%s/Card.yaml", ui);
-    write_text(path, CARD);
-    snprintf(path, sizeof path, "%s/Chip.yaml", ui);
-    write_text(path, CHIP);
+    test_write_ui(ui, "Card", CARD_RML, CARD_RCSS);
+    test_write_ui(ui, "Chip", CHIP_RML, CHIP_RCSS);
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
@@ -665,7 +605,7 @@ static void shown_maps(const char *folder)
     render_ui_update(shown, &w, 1280, 720, 1.0 / 60);
     rml_context *context = render_ui_context(shown);
     char error[256];
-    snprintf(path, sizeof path, "%s/Card.yaml", ui);
+    snprintf(path, sizeof path, "%s/Card.rml", ui);
     ui_buffer *b = ui_buffer_open(path, error, sizeof error);
     assert(b);
     ui_source *rml = ui_design_parse(b, UI_PART_RML);
@@ -689,9 +629,8 @@ static void shown_maps(const char *folder)
     ui_buffer_free(b);
     render_ui_free(shown);
     ecs_world_free(world);
-    unlink(path);
-    snprintf(path, sizeof path, "%s/Chip.yaml", ui);
-    unlink(path);
+    test_remove_ui(ui, "Card");
+    test_remove_ui(ui, "Chip");
     rmdir(ui);
 }
 
@@ -709,16 +648,12 @@ void test_ui_designer()
     keyboard_slots(folder);
     selection_maps();
     shown_maps(folder);
-    static const char *const FILES[] = {
-        "Moves.yaml",  "Structure.yaml", "Attributes.yaml",
-        "Styles.yaml", "Wide.yaml",      "Declarations.yaml",
-        "Lines.yaml",  "Extract.yaml",   "ExtractLines.yaml",
-        "Slots.yaml",
+    static const char *const NAMES[] = {
+        "Moves",        "Structure", "Attributes", "Styles",       "Wide",
+        "Declarations", "Lines",     "Extract",    "ExtractLines", "Slots",
     };
-    for (size_t i = 0; i < sizeof FILES / sizeof *FILES; i++) {
-        char path[PATH_MAX];
-        snprintf(path, sizeof path, "%s/%s", folder, FILES[i]);
-        unlink(path);
+    for (size_t i = 0; i < sizeof NAMES / sizeof *NAMES; i++) {
+        test_remove_ui(folder, NAMES[i]);
     }
     rmdir(folder);
 }

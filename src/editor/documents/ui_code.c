@@ -2,9 +2,8 @@
  * RmlUi's check, turned from files into the part the editor shows. */
 #include "editor/documents/ui_code.h"
 
+#include "assets/ui_document.h"
 #include "support/array.h"
-#include "support/asset_text.h"
-#include "support/text_file.h"
 #include "support/xalloc.h"
 #include "ui/rml.h"
 
@@ -13,16 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *const PART_KEYS[UI_PART_COUNT] = { "rml", "rcss" };
-
 ui_source_language ui_code_language(ui_part part)
 {
     return part == UI_PART_RML ? UI_SOURCE_RML : UI_SOURCE_RCSS;
-}
-
-static ui_part language_part(ui_source_language language)
-{
-    return language == UI_SOURCE_RML ? UI_PART_RML : UI_PART_RCSS;
 }
 
 static bool ends_with(const char *text, const char *suffix)
@@ -88,11 +80,17 @@ bool ui_code_check(const ui_buffer *b, rml_context *context, ui_check_message **
         return true;
     }
     snprintf(name, sizeof name, "%s", base_name(b->path));
-    name[strcspn(name, ".")] = '\0';
-    char *text = ui_buffer_compose(b);
-    bool ok = ui_check_in(context, root, name, text, messages, error, size);
-    free(text);
-    return ok;
+    name[strlen(name) - strlen(UI_MARKUP_EXTENSION)] = '\0';
+    return ui_check_in(
+        context,
+        root,
+        name,
+        ui_buffer_text(b, UI_PART_RML),
+        ui_buffer_text(b, UI_PART_RCSS),
+        messages,
+        error,
+        size
+    );
 }
 
 /* ---------- The editor over a buffer ---------- */
@@ -524,7 +522,7 @@ static void own_places(
         if (!text) {
             continue;
         }
-        ui_source *part = ui_source_parse_block(text, ui_code_language((ui_part)p));
+        ui_source *part = ui_source_parse(text, ui_code_language((ui_part)p));
         ui_source_symbol *found = NULL;
         ui_source_symbols(part, &found);
         for (int i = 0; i < acount(found); i++) {
@@ -544,86 +542,15 @@ static void own_places(
     }
 }
 
-/* A block's value as YAML means it, owned; NULL when the text is not a ui
-   asset. */
-static char *block_value(const char *text, ui_source_language language)
+/* Whether `path` is one of the buffer's files, which its parts stand for. */
+static bool own_file(const ui_buffer *b, const char *path)
 {
-    char error[128];
-    yyjson_doc *doc = asset_text_read(text, error, sizeof error);
-    const char *value = yyjson_get_str(
-        yyjson_obj_get(yyjson_doc_get_root(doc), PART_KEYS[language_part(language)])
-    );
-    char *copy = value ? xstrdup(value) : NULL;
-    yyjson_doc_free(doc);
-    return copy;
-}
-
-/* An occurrence of the symbol that defines it or not, as `definition`
-   says, within [start, end). */
-static bool occurrence(
-    const ui_source_symbol *o,
-    const ui_source_symbol *symbol,
-    bool definition,
-    int start,
-    int end
-)
-{
-    return same_symbol(o, symbol) && o->definition == definition &&
-           o->start >= start && o->start < end;
-}
-
-/* How many such occurrences in `block` of `source` start before `before`. */
-static int occurrences_before(
-    const ui_source *source,
-    const ui_source_block *block,
-    const ui_source_symbol *symbol,
-    bool definition,
-    int before
-)
-{
-    ui_source_symbol *found = NULL;
-    ui_source_symbols(source, &found);
-    int count = 0;
-    for (int i = 0; i < acount(found); i++) {
-        count += occurrence(&found[i], symbol, definition, block->start, before);
-    }
-    afree(found);
-    return count;
-}
-
-/* Where the `nth` such occurrence in `source` starts, or -1. */
-static int nth_occurrence(const ui_source *source, const ui_source_symbol *symbol, bool definition, int nth)
-{
-    ui_source_symbol *found = NULL;
-    ui_source_symbols(source, &found);
-    int at = -1;
-    for (int i = 0; i < acount(found) && at < 0; i++) {
-        if (occurrence(&found[i], symbol, definition, 0, INT_MAX) && nth-- == 0) {
-            at = found[i].start;
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        if (b->files[p] && same_file(path, b->files[p])) {
+            return true;
         }
     }
-    afree(found);
-    return at;
-}
-
-/* A location in a ui asset's file as a place in one of its parts: the same
-   occurrence of the symbol, counted in order, in the part's text. */
-static void place_in_part(const ui_source_location *l, const ui_source_symbol *symbol, ui_code_place **places)
-{
-    char *text = text_file_read(l->path);
-    ui_source *file = text ? ui_source_parse(text, false) : NULL;
-    const ui_source_block *block = file ? ui_source_block_at(file, l->start) : NULL;
-    char *value = block ? block_value(text, block->language) : NULL;
-    if (value) {
-        int nth = occurrences_before(file, block, symbol, l->definition, l->start);
-        ui_source *part = ui_source_parse_block(value, block->language);
-        int offset = nth_occurrence(part, symbol, l->definition, nth);
-        add_place(places, l->path, language_part(block->language), part, offset < 0 ? 0 : offset, l->definition);
-        ui_source_free(part);
-    }
-    free(value);
-    ui_source_free(file);
-    free(text);
+    return false;
 }
 
 static void other_places(
@@ -638,24 +565,19 @@ static void other_places(
     ui_source_references(project, symbol, &found);
     for (int i = 0; i < acount(found); i++) {
         const ui_source_location *l = &found[i];
-        ui_code_place **places = l->definition ? definitions : uses;
-        if (same_file(l->path, b->path)) {
+        if (own_file(b, l->path)) {
             continue;
         }
-        if (ends_with(l->path, ".rcss")) {
-            ui_code_place place = { .part = UI_PART_RCSS,
-                                    .offset = l->start,
-                                    .line = l->line,
-                                    .definition = l->definition };
-            snprintf(place.path, sizeof place.path, "%s", l->path);
-            apush(*places, place);
-        } else if (symbol->kind == UI_SYMBOL_WIDGET && l->definition) {
-            ui_code_place place = { .part = UI_PART_RML, .line = 1, .definition = true };
-            snprintf(place.path, sizeof place.path, "%s", l->path);
-            apush(*places, place);
-        } else {
-            place_in_part(l, symbol, places);
-        }
+        ui_code_place place = {
+            .part = ends_with(l->path, UI_STYLE_EXTENSION) ? UI_PART_RCSS : UI_PART_RML,
+            .offset = l->start,
+            .line = l->line,
+            .definition = l->definition,
+        };
+        char *document = ui_buffer_document(l->path);
+        snprintf(place.path, sizeof place.path, "%s", document);
+        free(document);
+        apush(*(l->definition ? definitions : uses), place);
     }
     ui_source_locations_free(found);
 }

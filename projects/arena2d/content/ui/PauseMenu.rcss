@@ -1,0 +1,11 @@
+body { background-color: #0004087d; pointer-events: auto; }
+#panel {
+  position: absolute; left: 50%; top: 50%; width: 312dp; height: 193dp;
+  margin-left: -180dp; margin-top: -120.5dp; padding: 24dp;
+  background-color: #050e15f5; border: 1dp #416f7eb9; border-radius: 8dp;
+}
+.title { display: none; height: 35dp; margin-bottom: 2dp; line-height: 35dp; font-size: 27dp; color: #ccf8fb; }
+body.paused #paused, body.cleared #cleared, body.defeated #defeated { display: block; }
+#defeated { color: #ff8c96; }
+body.cleared #resume, body.defeated #resume { display: none; }
+body.cleared #panel, body.defeated #panel { height: 141dp; margin-top: -94.5dp; }

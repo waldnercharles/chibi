@@ -1,7 +1,6 @@
 #include "assets/ui_document.h"
 
 #include "support/array.h"
-#include "support/asset_text.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
@@ -92,8 +91,9 @@ static bool split_body(const char *rml, ui_document *out, char *error, size_t er
     return true;
 }
 
-static bool read_root(
-    yyjson_val *root,
+static bool read_parts(
+    const char *rml,
+    const char *rcss,
     const char *directory,
     char ***imports,
     ui_document *out,
@@ -101,29 +101,13 @@ static bool read_root(
     size_t error_size
 )
 {
-    if (!yyjson_is_obj(root)) {
-        return fail(error, error_size, "a ui asset must be a mapping");
-    }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(root);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const char *name = yyjson_get_str(key);
-        if (strcmp(name, "rml") != 0 && strcmp(name, "rcss") != 0) {
-            return fail(error, error_size, "unknown key %s", name);
-        }
-    }
-    yyjson_val *rml = yyjson_obj_get(root, "rml");
-    yyjson_val *rcss = yyjson_obj_get(root, "rcss");
-    if (!yyjson_is_str(rml) || !yyjson_get_len(rml)) {
+    if (!rml[strspn(rml, " \t\r\n")]) {
         return fail(error, error_size, "rml must be nonempty markup");
     }
-    if (rcss && !yyjson_is_str(rcss)) {
-        return fail(error, error_size, "rcss must be text");
-    }
-    if (rcss && strstr(yyjson_get_str(rcss), "</style")) {
+    if (strstr(rcss, "</style")) {
         return fail(error, error_size, "rcss must not close its style block");
     }
-    if (!split_body(yyjson_get_str(rml), out, error, error_size)) {
+    if (!split_body(rml, out, error, error_size)) {
         return false;
     }
     for (size_t i = 0; i < sizeof DOCUMENT_TAGS / sizeof *DOCUMENT_TAGS; i++) {
@@ -132,7 +116,7 @@ static bool read_root(
         }
     }
     char message[200];
-    char *flat = rcss_expand(rcss ? yyjson_get_str(rcss) : "", directory, &out->map, message, sizeof message);
+    char *flat = rcss_expand(rcss, directory, &out->map, message, sizeof message);
     for (int i = 0; imports && i < acount(out->map.files); i++) {
         apush(*imports, xstrdup(out->map.files[i]));
     }
@@ -144,7 +128,8 @@ static bool read_root(
 }
 
 bool ui_document_read(
-    const char *text,
+    const char *rml,
+    const char *rcss,
     const char *directory,
     char ***imports,
     ui_document *out,
@@ -152,21 +137,45 @@ bool ui_document_read(
     size_t error_size
 )
 {
-    assert(text && out);
-    yyjson_doc *doc = asset_text_read(text, error, error_size);
-    if (!doc) {
-        return false;
-    }
+    assert(rml && out);
     ui_document next = { 0 };
-    bool ok = read_root(yyjson_doc_get_root(doc), directory, imports, &next, error, error_size);
-    yyjson_doc_free(doc);
-    if (!ok) {
+    if (!read_parts(rml, rcss ? rcss : "", directory, imports, &next, error, error_size)) {
         ui_document_free(&next);
         return false;
     }
     ui_document_free(out);
     *out = next;
     return true;
+}
+
+char *ui_document_path(const char *ui_root, const char *name, bool style)
+{
+    const char *extension = style ? UI_STYLE_EXTENSION : UI_MARKUP_EXTENSION;
+    size_t size = strlen(ui_root) + strlen(name) + strlen(extension) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s%s", ui_root, name, extension);
+    return path;
+}
+
+bool ui_document_load(
+    const char *ui_root,
+    const char *name,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size
+)
+{
+    char *rml_path = ui_document_path(ui_root, name, false);
+    char *rcss_path = ui_document_path(ui_root, name, true);
+    char *rml = text_file_read(rml_path), *rcss = text_file_read(rcss_path);
+    bool ok = rml ? ui_document_read(rml, rcss, ui_root, imports, out, error, error_size)
+                  : fail(error, error_size, "is missing");
+    free(rcss);
+    free(rml);
+    free(rcss_path);
+    free(rml_path);
+    return ok;
 }
 
 /* ---------- Widgets ---------- */
@@ -328,13 +337,8 @@ static const ui_document *widget_named(expansion *x, const char *name)
     }
     apush(x->names, xstrdup(name));
     apush(x->widgets, (ui_document){ 0 });
-    char path[1024];
-    snprintf(path, sizeof path, "%s/%s.yaml", x->ui_root, name);
-    char *text = text_file_read(path);
-    char why[160] = "is missing";
-    bool read = text &&
-                ui_document_read(text, x->ui_root, NULL, &alast(x->widgets), why, sizeof why);
-    free(text);
+    char why[160];
+    bool read = ui_document_load(x->ui_root, name, NULL, &alast(x->widgets), why, sizeof why);
     if (read && alast(x->widgets).body) {
         snprintf(why, sizeof why, "has a <body>, which only a scene's root document has");
         read = false;
@@ -691,9 +695,9 @@ static void put_scoped(expansion *x, ui_document *asset, const char *name)
     if (!asset->rcss[0]) {
         return;
     }
-    char path[1024];
-    snprintf(path, sizeof path, "%s/%s.yaml", x->ui_root, name);
+    char *path = ui_document_path(x->ui_root, name, true);
     rcss_map_own(&asset->map, path);
+    free(path);
     char *scoped = ui_document_scope(asset->rcss, name);
     assert(line_breaks(scoped) == line_breaks(asset->rcss)); /* so the map holds */
     rcss_join(&x->rcss, &x->map, scoped, &asset->map);

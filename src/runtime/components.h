@@ -696,7 +696,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 }
 GameActionBinding;
 
-/* Shows the ui asset content/ui/<document>.yaml over the game view, above
+/* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in
  * data-event-click="emit('Resume')", sends that event to this entity; an
  * emitting input's value is read with Get UI Value and `#id`. UI nodes set

@@ -1,5 +1,6 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
+#include "assets/ui_document.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
@@ -66,9 +67,12 @@ static char *tab_label(app_editor_document_kind kind, const char *id, const char
     }
     char *label = xstrdup(value);
     size_t length = strlen(label);
-    size_t extension = strlen(ASSET_EXTENSION);
-    if (length > extension && !strcmp(label + length - extension, ASSET_EXTENSION)) {
-        label[length - extension] = '\0';
+    const char *extension = kind == APP_EDITOR_DOCUMENT_UI ? UI_MARKUP_EXTENSION
+                                                           : ASSET_EXTENSION;
+    size_t extension_length = strlen(extension);
+    if (length > extension_length &&
+        !strcmp(label + length - extension_length, extension)) {
+        label[length - extension_length] = '\0';
     }
     return label;
 }
@@ -916,10 +920,20 @@ int scene_tabs_discard(app_scene_authoring *scene, int index)
 
 /* ---------- UI documents ---------- */
 
-scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path)
+/* The owned absolute path of the document `path` belongs to
+   (ui_buffer_document); NULL when it does not exist. */
+static char *ui_tab_path(const char *path)
 {
     char *absolute = realpath(path, NULL);
-    const char *key = absolute ? absolute : path;
+    char *document = absolute ? ui_buffer_document(absolute) : NULL;
+    free(absolute);
+    return document;
+}
+
+scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path)
+{
+    char *document = ui_tab_path(path);
+    const char *key = document ? document : path;
     scene_document_tab *found = NULL;
     for (int i = 0; i < acount(scene->tabs); i++) {
         scene_document_tab *tab = &scene->tabs[i];
@@ -928,7 +942,7 @@ scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path)
             break;
         }
     }
-    free(absolute);
+    free(document);
     return found;
 }
 
@@ -936,7 +950,7 @@ scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path)
 static int add_ui_tab(app_scene_authoring *scene, const char *path)
 {
     char error[256] = "no such file";
-    char *absolute = realpath(path, NULL);
+    char *absolute = ui_tab_path(path);
     ui_buffer *buffer = absolute ? ui_buffer_open(absolute, error, sizeof error) : NULL;
     if (!buffer) {
         snprintf(scene->message, sizeof scene->message, "Could not open %s: %s", content_basename(path), error);

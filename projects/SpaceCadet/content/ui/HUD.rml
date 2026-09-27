@@ -1,0 +1,15 @@
+<div id="panel"/>
+<div class="row title" id="space">SPACE</div>
+<div class="row title" id="cadet">CADET</div>
+<div class="row small" id="flight">FLIGHT COMMAND</div>
+<div class="row caption" id="caption">SCORE</div>
+<div class="row" id="score">00000000</div>
+<div class="row stat" id="lives">BALLS   3</div>
+<div class="row stat" id="rank">RANK   1</div>
+<div class="row" id="mission">TARGET PRACTICE
+0 / 8 HITS</div>
+<progress id="charge" value="0" max="1"/>
+<div class="row small" id="plunger">PLUNGER</div>
+<div class="row hint" id="flippers">A / L   FLIPPERS</div>
+<div class="row hint" id="launch">SPACE   LAUNCH</div>
+<div class="row hint" id="restart">R   NEW GAME     X   NUDGE</div>

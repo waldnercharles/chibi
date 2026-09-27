@@ -332,14 +332,19 @@ static bool create(studio *s)
     if (!path) {
         return false;
     }
-    char *text = ui_buffer_template((ui_new_kind)n->kind);
-    if (write_file_atomic(path, text) != 0) {
+    int result = 0;
+    for (int p = 0; p < UI_PART_COUNT && !result; p++) {
+        const char *text = ui_buffer_template((ui_new_kind)n->kind, (ui_part)p);
+        char *file = text ? ui_buffer_part_file(path, (ui_part)p) : NULL;
+        result = file ? write_file_atomic(file, text) : 0;
+        free(file);
+    }
+    if (result != 0) {
         studio_error(s, "Could not create", content_basename(path));
     } else {
         content_refresh(s->scene);
         studio_open_ui_source(s, path, 1);
     }
-    free(text);
     free(path);
     return true;
 }

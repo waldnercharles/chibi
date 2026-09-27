@@ -74,23 +74,24 @@ typedef struct
 {
     const char *kind;
     const char *folder;
+    const char *extension; /* of its files: YAML, or a ui asset's markup */
     asset_loader loader;
     reference_asset_kind reference; /* KIND_COUNT for assets nothing references */
 } asset_family;
 
 static const asset_family ASSET_FAMILIES[] = {
-    { "behavior", "behaviors", ASSET_GRAPH, REFERENCE_ASSET_BEHAVIOR },
-    { "event", "events", ASSET_GRAPH, REFERENCE_ASSET_EVENT },
-    { "library", "libraries", ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
-    { "material", "materials", ASSET_GRAPH, REFERENCE_ASSET_MATERIAL },
-    { "shape", "shapes", ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
-    { "field", "fields", ASSET_GRAPH, REFERENCE_ASSET_FIELD },
-    { "shader-library", "shader-libraries", ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
-    { "system", "systems", ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
-    { "prototype", "prototypes", ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
-    { "scene", "scenes", ASSET_SCENE, REFERENCE_ASSET_SCENE },
-    { "editor", "editor", ASSET_EDITOR, REFERENCE_ASSET_KIND_COUNT },
-    { "ui", "ui", ASSET_UI, REFERENCE_ASSET_UI },
+    { "behavior", "behaviors", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_BEHAVIOR },
+    { "event", "events", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_EVENT },
+    { "library", "libraries", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "material", "materials", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_MATERIAL },
+    { "shape", "shapes", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
+    { "field", "fields", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_FIELD },
+    { "shader-library", "shader-libraries", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "system", "systems", ASSET_EXTENSION, ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
+    { "prototype", "prototypes", ASSET_EXTENSION, ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
+    { "scene", "scenes", ASSET_EXTENSION, ASSET_SCENE, REFERENCE_ASSET_SCENE },
+    { "editor", "editor", ASSET_EXTENSION, ASSET_EDITOR, REFERENCE_ASSET_KIND_COUNT },
+    { "ui", "ui", UI_MARKUP_EXTENSION, ASSET_UI, REFERENCE_ASSET_UI },
 };
 
 typedef struct
@@ -876,15 +877,35 @@ static const asset_family *family_by_kind(const char *kind)
     return NULL;
 }
 
-static bool valid_asset_filename(const char *filename)
+static bool valid_asset_filename(const asset_family *family, const char *filename)
 {
     if (!filename || !filename[0] || filename[0] == '.' || strchr(filename, '/') ||
         strchr(filename, '\\') || strstr(filename, "..")) {
         return false;
     }
-    size_t length = strlen(filename);
-    return length > sizeof ASSET_EXTENSION - 1 &&
-           !strcmp(filename + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION);
+    size_t length = strlen(filename), extension = strlen(family->extension);
+    return length > extension &&
+           !strcmp(filename + length - extension, family->extension);
+}
+
+/* Sets `ref`'s file name to `name`, with its family's extension unless it
+ * has it; NULL, or why the name is refused. */
+static const char *name_asset_file(asset_ref *ref, const char *name)
+{
+    const char *extension = ref->family->extension;
+    if (strstr(name, extension)) {
+        if (!valid_asset_filename(ref->family, name) ||
+            strlen(name) >= sizeof ref->filename) {
+            return "asset name is invalid";
+        }
+        snprintf(ref->filename, sizeof ref->filename, "%s", name);
+        return NULL;
+    }
+    if (strlen(name) + strlen(extension) >= sizeof ref->filename) {
+        return "asset name is too long";
+    }
+    snprintf(ref->filename, sizeof ref->filename, "%s%s", name, extension);
+    return NULL;
 }
 
 static bool valid_relative_asset_path(const char *path)
@@ -1106,7 +1127,7 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
             set_error(error, error_size, "asset not found");
             return -2;
         }
-        if (!valid_asset_filename(slash + 1)) {
+        if (!valid_asset_filename(out->family, slash + 1)) {
             return set_error(error, error_size, "unknown or invalid asset path");
         }
         if (strlen(slash + 1) >= sizeof out->filename ||
@@ -1131,15 +1152,9 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
         strchr(name, '\\') || strstr(name, "..")) {
         return set_error(error, error_size, "asset requires a known kind and safe name");
     }
-    if (strstr(name, ASSET_EXTENSION)) {
-        if (!valid_asset_filename(name) || strlen(name) >= sizeof out->filename) {
-            return set_error(error, error_size, "asset name is invalid");
-        }
-        snprintf(out->filename, sizeof out->filename, "%s", name);
-    } else if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof out->filename) {
-        return set_error(error, error_size, "asset name is too long");
-    } else {
-        snprintf(out->filename, sizeof out->filename, "%s" ASSET_EXTENSION, name);
+    const char *refused = name_asset_file(out, name);
+    if (refused) {
+        return set_error(error, error_size, refused);
     }
     snprintf(out->relative, sizeof out->relative, "content/%s/%s", out->family->folder, out->filename);
     return 0;
@@ -1219,9 +1234,12 @@ static void free_asset_entries(asset_entry *entries)
     afree(entries);
 }
 
+/* The asset name a file name holds before its extension. */
 static char *asset_name_from_filename(const char *filename)
 {
-    size_t length = strlen(filename) - (sizeof ASSET_EXTENSION - 1);
+    const char *extension = strrchr(filename, '.');
+    assert(extension);
+    size_t length = (size_t)(extension - filename);
     char *name = xmalloc(length + 1);
     memcpy(name, filename, length);
     name[length] = '\0';
@@ -1386,21 +1404,42 @@ static bool read_editor_asset(const char *json, char *error, size_t error_size)
     return ok;
 }
 
-/* UI assets hold RML markup and RCSS that GameUi components show. */
-static bool read_ui_asset(const char *json, char *error, size_t error_size)
+/* The ui folder of the project at `root`. */
+static void ui_folder(const char *root, char *out, size_t size)
 {
+    snprintf(out, size, "%s/content/ui", root);
+}
+
+/* A ui asset's styles beside its markup, owned; NULL when it has none. */
+static char *ui_styles(const char *root, const char *name)
+{
+    char folder[1024];
+    ui_folder(root, folder, sizeof folder);
+    char *path = ui_document_path(folder, name, true);
+    char *text = text_file_read(path);
+    free(path);
+    return text;
+}
+
+/* UI assets hold RML markup, and RCSS beside it, that GameUi components
+ * show. */
+static bool read_ui_asset(const char *root, const char *name, char *error, size_t error_size)
+{
+    char folder[1024];
+    ui_folder(root, folder, sizeof folder);
     ui_document document = { 0 };
-    bool ok = ui_document_read(json, NULL, NULL, &document, error, error_size);
+    bool ok = ui_document_load(folder, name, NULL, &document, error, error_size);
     ui_document_free(&document);
     return ok;
 }
 
-/* UI language service (workstream B): validateAsset for a ui asset, its
- * syntax, widgets, imports and RmlUi's warnings. Returns the error count. */
+/* UI language service (workstream B): validateAsset for a ui asset whose
+ * markup is `rml`: its syntax, widgets, imports and RmlUi's warnings.
+ * Returns the error count. */
 static int validate_ui(
     const char *root,
     const asset_ref *ref,
-    const char *text,
+    const char *rml,
     yyjson_mut_doc *doc,
     yyjson_mut_val *diagnostics
 )
@@ -1408,7 +1447,9 @@ static int validate_ui(
     char *name = asset_name_from_filename(ref->filename);
     char content[1024];
     snprintf(content, sizeof content, "%s/content", root);
-    int errors = automation_ui_validate(content, name, text, doc, diagnostics);
+    char *rcss = ui_styles(root, name);
+    int errors = automation_ui_validate(content, name, rml, rcss, doc, diagnostics);
+    free(rcss);
     free(name);
     return errors;
 }
@@ -1525,12 +1566,9 @@ static void catalog_validate_asset(const catalog_links *links, catalog_asset *as
         } else {
             game_prototype_free(prototype);
         }
-    } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_UI) {
+    } else if (family->loader == ASSET_EDITOR) {
         char error[256] = { 0 };
-        bool ok = family->loader == ASSET_EDITOR
-                    ? read_editor_asset(json, error, sizeof error)
-                    : read_ui_asset(json, error, sizeof error);
-        if (!ok) {
+        if (!read_editor_asset(json, error, sizeof error)) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         }
@@ -1669,14 +1707,9 @@ static void catalog_add_content(
             game_scene_document_free(scene);
             return;
         }
-        case ASSET_UI: {
-            ui_document document = { 0 };
-            if (ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
-                reference_index_add_ui(index, asset->reference, document.rml);
-            }
-            ui_document_free(&document);
+        case ASSET_UI:
+            reference_index_add_ui(index, asset->reference, text);
             return;
-        }
         case ASSET_EDITOR: return;
     }
 }
@@ -1794,6 +1827,18 @@ static yyjson_doc *parse_asset_text(const char *text)
     return asset_text_read(text, error, sizeof error);
 }
 
+/* A ui asset's markup and styles, which are not YAML, load as a GameUi
+ * shows them. */
+static void catalog_validate_ui(const char *root, catalog_asset *asset)
+{
+    char error[256] = { 0 };
+    if (!read_ui_asset(root, asset->name, error, sizeof error)) {
+        asset->valid = false;
+        asset->errors = 1;
+        catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+    }
+}
+
 static int load_catalog_asset(
     const char *root,
     const catalog_links *links,
@@ -1823,6 +1868,11 @@ static int load_catalog_asset(
     if (!json) {
         free_catalog_assets(asset);
         return set_error(error, error_size, read_error);
+    }
+    if (entry->family->loader == ASSET_UI) {
+        catalog_validate_ui(root, asset);
+        free(json);
+        return 0;
     }
     yyjson_doc *document = parse_asset_text(json);
     if (!document) {
@@ -1970,7 +2020,8 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         }
         struct dirent *entry;
         while ((entry = readdir(directory))) {
-            if (entry->d_name[0] == '.' || !valid_asset_filename(entry->d_name)) {
+            if (entry->d_name[0] == '.' ||
+                !valid_asset_filename(family, entry->d_name)) {
                 continue;
             }
             size_t full_size = strlen(directory_path) + strlen(entry->d_name) + 2;
@@ -2099,10 +2150,7 @@ static void add_hash(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t hash)
 static yyjson_mut_val *add_asset_entry(yyjson_mut_doc *doc, yyjson_mut_val *array, const asset_entry *entry)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    size_t name_size = strlen(entry->filename) - (sizeof ASSET_EXTENSION - 1) + 1;
-    char *name = xmalloc(name_size);
-    memcpy(name, entry->filename, name_size - 1);
-    name[name_size - 1] = '\0';
+    char *name = asset_name_from_filename(entry->filename);
     yyjson_mut_obj_add_strcpy(doc, object, "kind", entry->family->kind);
     yyjson_mut_obj_add_strcpy(doc, object, "name", name);
     yyjson_mut_obj_add_strcpy(doc, object, "path", entry->relative);
@@ -2307,10 +2355,7 @@ static void add_asset_identity(
     uint64_t hash
 )
 {
-    size_t name_size = strlen(ref->filename) - (sizeof ASSET_EXTENSION - 1) + 1;
-    char *name = xmalloc(name_size);
-    memcpy(name, ref->filename, name_size - 1);
-    name[name_size - 1] = '\0';
+    char *name = asset_name_from_filename(ref->filename);
     yyjson_mut_obj_add_strcpy(doc, object, "kind", ref->family->kind);
     yyjson_mut_obj_add_strcpy(doc, object, "name", name);
     yyjson_mut_obj_add_strcpy(doc, object, "path", ref->relative);
@@ -3872,17 +3917,9 @@ static int load_named_asset(
     }
     memset(ref, 0, sizeof *ref);
     ref->family = family;
-    if (strstr(name, ASSET_EXTENSION)) {
-        if (!valid_asset_filename(name) || strlen(name) >= sizeof ref->filename) {
-            return set_error(error, error_size, "asset name is invalid"),
-                   CHIBI_AUTOMATION_INVALID_REQUEST;
-        }
-        snprintf(ref->filename, sizeof ref->filename, "%s", name);
-    } else if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof ref->filename) {
-        return set_error(error, error_size, "asset name is too long"),
-               CHIBI_AUTOMATION_INVALID_REQUEST;
-    } else {
-        snprintf(ref->filename, sizeof ref->filename, "%s" ASSET_EXTENSION, name);
+    const char *refused = name_asset_file(ref, name);
+    if (refused) {
+        return set_error(error, error_size, refused), CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
     int directory_status = verify_asset_directory(root, family, error, error_size);
@@ -3974,8 +4011,7 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
         case ASSET_EDITOR:
             /* Validated as written; the shared YAML writer canonicalizes it. */
             return read_editor_asset(json, error, error_size) ? xstrdup(json) : NULL;
-        case ASSET_UI:
-            return read_ui_asset(json, error, error_size) ? xstrdup(json) : NULL;
+        case ASSET_UI: break; /* markup, kept as written */
     }
     return NULL;
 }
@@ -3990,6 +4026,9 @@ int chibi_automation_format_assets(const char *root, bool check)
     }
     int differing = 0;
     for (int i = 0; i < acount(entries) && differing >= 0; i++) {
+        if (entries[i].family->loader == ASSET_UI) {
+            continue;
+        }
         size_t size = strlen(root) + strlen(entries[i].relative) + 2;
         char *path = xmalloc(size);
         snprintf(path, size, "%s/%s", root, entries[i].relative);
@@ -4030,6 +4069,26 @@ int chibi_automation_format_assets(const char *root, bool check)
     return differing;
 }
 
+/* A ui asset as readAsset shows it: its markup, and its styles when it has
+ * them. */
+static yyjson_doc *ui_asset_document(const char *root, const asset_ref *ref, const char *rml)
+{
+    char *name = asset_name_from_filename(ref->filename);
+    char *rcss = ui_styles(root, name);
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *object = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, object);
+    yyjson_mut_obj_add_strcpy(doc, object, "rml", rml);
+    if (rcss) {
+        yyjson_mut_obj_add_strcpy(doc, object, "rcss", rcss);
+    }
+    yyjson_doc *document = yyjson_mut_doc_imut_copy(doc, NULL);
+    yyjson_mut_doc_free(doc);
+    free(rcss);
+    free(name);
+    return document;
+}
+
 static int handle_read_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -4042,7 +4101,9 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
         response_error(result, exit_code, status, error);
         return -1;
     }
-    yyjson_doc *document = parse_asset_text(json);
+    yyjson_doc *document = ref.family->loader == ASSET_UI
+                             ? ui_asset_document(root, &ref, json)
+                             : parse_asset_text(json);
     if (!document) {
         free(json);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset is not valid JSON");
@@ -6506,11 +6567,7 @@ static yyjson_mut_val *add_recording(
                        : "";
     yyjson_mut_obj_add_strcpy(doc, recording, "id", id);
     yyjson_mut_obj_add_strcpy(doc, recording, "kind", context->scene_target ? "scene" : "prototype");
-    size_t name_size = strlen(context->prototype_ref.filename) -
-                       (sizeof ASSET_EXTENSION - 1) + 1;
-    char *name = xmalloc(name_size);
-    memcpy(name, context->prototype_ref.filename, name_size - 1);
-    name[name_size - 1] = '\0';
+    char *name = asset_name_from_filename(context->prototype_ref.filename);
     yyjson_mut_obj_add_strcpy(doc, recording, "name", name);
     free(name);
     add_hash_named(doc, recording, "content_hash", context->prototype_hash);
@@ -7880,19 +7937,21 @@ static int load_ui_events(
     }
     const asset_family *family = family_by_kind("ui");
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
-        char document[256], path[1024];
-        const char *filename = entries[i].filename;
-        int length = (int)(strlen(filename) - strlen(ASSET_EXTENSION));
-        snprintf(document, sizeof document, "%.*s", length, filename);
-        if (entries[i].family != family || !strcmp(document, UI_DOCUMENT_PAUSE_MENU) ||
-            (behavior && !among_names(reached, document))) {
+        if (entries[i].family != family) {
             continue;
         }
+        char *document = asset_name_from_filename(entries[i].filename);
+        if (!strcmp(document, UI_DOCUMENT_PAUSE_MENU) ||
+            (behavior && !among_names(reached, document))) {
+            free(document);
+            continue;
+        }
+        char path[1024];
         snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
         char *text = read_file(path, NULL, NULL, error, error_size);
         ui_document_event *found = NULL;
         if (text) {
-            ui_events_read(text, &found);
+            ui_document_events(text, &found);
         }
         /* Host events and definitions already offer their own names. */
         for (int e = 0; e < acount(found); e++) {
@@ -7902,6 +7961,7 @@ static int load_ui_events(
         }
         status = text ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
         ui_document_events_free(found);
+        free(document);
         free(text);
     }
     free_asset_entries(entries);
@@ -9577,9 +9637,10 @@ static void add_refactor_edit(
         snprintf(
             path,
             sizeof path,
-            "content/%s/%s" ASSET_EXTENSION,
+            "content/%s/%s%s",
             asset->asset.family->folder,
-            edit->name
+            edit->name,
+            asset->asset.family->extension
         );
         yyjson_mut_obj_add_strcpy(doc, item, "new_name", edit->name);
         yyjson_mut_obj_add_strcpy(doc, item, "new_path", path);
@@ -9698,6 +9759,58 @@ static int refactor_invalid(
     return failed;
 }
 
+/* A ui asset's styles, which follow its markup when a plan renames or
+   deletes it. */
+typedef struct
+{
+    char filename[256], rename[256], hash[17];
+    char *text;
+} refactor_styles;
+
+/* The styles of a ui asset `edit` renames or deletes, as its change; false
+   when it has none, or is no ui asset. */
+static bool styles_change(
+    const char *root,
+    const catalog_asset *asset,
+    const refactor_edit *edit,
+    refactor_styles *styles,
+    automation_asset_change *change
+)
+{
+    if (asset->asset.family->loader != ASSET_UI || (edit->text && !edit->name)) {
+        return false;
+    }
+    snprintf(
+        styles->filename,
+        sizeof styles->filename,
+        "%s" UI_STYLE_EXTENSION,
+        asset->name
+    );
+    char path[1024], error[160];
+    snprintf(
+        path,
+        sizeof path,
+        "%s/content/%s/%s",
+        root,
+        asset->asset.family->folder,
+        styles->filename
+    );
+    struct stat info;
+    if (lstat(path, &info) != 0) {
+        return false;
+    }
+    uint64_t hash = 0;
+    styles->text = read_file(path, NULL, &hash, error, sizeof error);
+    hash_text(hash, styles->hash);
+    snprintf(styles->rename, sizeof styles->rename, "%s" UI_STYLE_EXTENSION, edit->name ? edit->name : "");
+    *change = (automation_asset_change){ .folder = asset->asset.family->folder,
+                                         .filename = styles->filename,
+                                         .rename_to = edit->name ? styles->rename : NULL,
+                                         .text = edit->name ? styles->text : NULL,
+                                         .expected_hash = styles->hash };
+    return styles->text != NULL;
+}
+
 /* Publishes a plan's edits as one batch, validates each asset it changed,
    and puts every original back when one that validated no longer does. */
 static int refactor_publish(
@@ -9711,8 +9824,9 @@ static int refactor_publish(
     size_t size
 )
 {
-    int count = acount(plan->edits);
-    automation_asset_change *changes = xcalloc((size_t)count, sizeof *changes);
+    int count = acount(plan->edits), total = count;
+    automation_asset_change *changes = xcalloc((size_t)count * 2, sizeof *changes);
+    refactor_styles *styles = xcalloc((size_t)count, sizeof *styles);
     refactor_published *published = xcalloc((size_t)count, sizeof *published);
     char (*hashes)[17] = xcalloc((size_t)count, sizeof *hashes);
     char (*names)[256] = xcalloc((size_t)count, sizeof *names);
@@ -9720,7 +9834,13 @@ static int refactor_publish(
         const refactor_edit *edit = &plan->edits[i];
         const catalog_asset *asset = &view->assets[view->catalog[edit->asset]];
         hash_text(view->hashes[edit->asset], hashes[i]);
-        snprintf(names[i], sizeof names[i], "%s" ASSET_EXTENSION, edit->name ? edit->name : "");
+        snprintf(
+            names[i],
+            sizeof names[i],
+            "%s%s",
+            edit->name ? edit->name : "",
+            asset->asset.family->extension
+        );
         const char *filename = edit->name ? names[i] : asset->asset.filename;
         changes[i] = (automation_asset_change){ .folder = asset->asset.family->folder,
                                                 .filename = asset->asset.filename,
@@ -9736,9 +9856,10 @@ static int refactor_publish(
         );
         published[i].valid = asset->valid;
         published[i].deleted = !edit->text;
+        total += styles_change(root, asset, edit, &styles[i], &changes[total]);
     }
     automation_asset_batch *batch = NULL;
-    int status = automation_assets_publish(root, changes, count, &batch, error, size);
+    int status = automation_assets_publish(root, changes, total, &batch, error, size);
     /* The catalog is rebuilt from here on; the view is stale. */
     int invalid = status == CHIBI_AUTOMATION_OK && revalidate
                     ? refactor_invalid(root, published, count, result, value, error, size)
@@ -9756,6 +9877,10 @@ static int refactor_publish(
     } else if (status == CHIBI_AUTOMATION_OK) {
         automation_assets_commit(batch);
     }
+    for (int i = 0; i < count; i++) {
+        free(styles[i].text);
+    }
+    free(styles);
     free(changes);
     free(published);
     free(hashes);
@@ -9867,13 +9992,17 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
-    automation_ui_inspect(text, result->doc, value);
+    char *name = asset_name_from_filename(ref.filename);
+    char *rcss = ui_styles(root, name);
+    automation_ui_inspect(name, text, rcss, result->doc, value);
     yyjson_val *complete = yyjson_obj_get(request, "complete");
     if (complete) {
         char content[1024];
         snprintf(content, sizeof content, "%s/content", root);
-        status = automation_ui_complete(content, text, complete, result->doc, value, error, sizeof error);
+        status = automation_ui_complete(content, text, rcss, complete, result->doc, value, error, sizeof error);
     }
+    free(rcss);
+    free(name);
     free(text);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);

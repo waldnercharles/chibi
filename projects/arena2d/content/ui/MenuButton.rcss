@@ -1,0 +1,7 @@
+.menu-button {
+  display: block; height: 40dp; margin-top: 12dp; padding: 0 12dp; line-height: 40dp;
+  background-color: #173744; border-radius: 4dp;
+}
+.menu-button:hover { background-color: #205363; }
+.menu-button:active { background-color: #2d6a79; }
+.menu-button .key { float: right; color: #7fa6b3; }

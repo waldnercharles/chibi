@@ -104,10 +104,10 @@ domain:
 - Studio's component tabs, prototype icons, and number ranges and units:
   edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
   call `validateAsset`.
-- Game UI documents (`content/ui/<Name>.yaml`, kind `ui`, with `rml` body
-  markup and optional `rcss` styles): write its RML and RCSS in the file, run
-  `--format`, then call `validateAsset`; `inspectUi` summarizes one and
-  completes at a position. See [Author a UI document](#author-a-ui-document).
+- Game UI documents (kind `ui`): write `content/ui/<Name>.rml`, its body
+  markup, and `content/ui/<Name>.rcss`, its styles, when it has any; then call
+  `validateAsset`. `inspectUi` summarizes one and completes at a position. See
+  [Author a UI document](#author-a-ui-document).
 
 Before changing or removing a function, variable, event, component field or
 shared asset, check what the edit affects with `findReferences`, and trace
@@ -280,17 +280,18 @@ uses never dangle. Deleting an asset or an event definition removes its file.
 
 ## Author a UI document
 
-A ui asset is YAML with an `rml` block of body markup and an optional `rcss`
-block of styles (see [Player-facing capabilities](#player-facing-capabilities)
-for bindings, widgets and pages). tree-sitter parses the markup with the HTML
-grammar and the styles with the CSS grammar, so every result points at the
-file's own lines.
+A ui asset `Name` is two files in `content/ui`: `Name.rml`, its body markup,
+and `Name.rcss`, the styles scoped to it, when it has any (see
+[Player-facing capabilities](#player-facing-capabilities) for bindings,
+widgets and pages). Other `.rcss` files there are stylesheets that `@import`
+reads. tree-sitter parses the markup with the HTML grammar and the styles with
+the CSS grammar, so every result points at a file's own lines.
 
 `inspectUi` with `{"kind": "ui", "name": "PauseMenu"}` returns:
 
-- `elements`: each element in document order with its `index`, `tag`,
-  `attributes`, `line` and `parent` index; `rules`: each rule with its
-  `selector`, `line`, `parent` rule and `declarations`.
+- `elements`: each element of the `.rml` in document order with its `index`,
+  `tag`, `attributes`, `line` and `parent` index; `rules`: each rule of the
+  `.rcss` with its `selector`, `line`, `parent` rule and `declarations`.
 - `props`: the names the bindings read that the document does not define,
   which hosts pass with `data-alias-<name>`; `widgets`: each `<use ui>` with
   the `props` it passes; `slots`; and `events`, as `searchNodes` lists them.
@@ -298,41 +299,43 @@ file's own lines.
   `styled_classes`, `save_keys`, `diagnostics` and the content `hash`.
 
 With `"complete": {"line": 6, "column": 5}`, a 1-based line and byte column
-of the file, it adds `completion`: what Studio's Text Editor offers there,
+of the `.rml`, or with `"file": "rcss"` of the `.rcss`, it adds `completion`:
+what Studio's Text Editor offers there,
 from the same language service. `items` lists each choice's `label` and
 `kind` (`tag`, `attribute`, `widget`, `class`, `property`,
 `custom_property` or `save_key`); each label replaces the text from `from`
 to `at`, the word typed so far. `total` counts them all; at most 200 are
 listed.
 
-Write the asset as you would HTML and CSS:
+Write the asset as you would HTML and CSS. `content/ui/Panel.rml`:
 
-```yaml
-rml: |
-  <div id="panel">
-    <span class="title">{{ save.name }}</span>
-  </div>
-rcss: |
-  .title { color: var(--accent); }
+```html
+<div id="panel">
+  <span class="title">{{ save.name }}</span>
+</div>
 ```
 
-Then run `build/chibi_ctl --project-root <root> --format`, which rewrites it
-in canonical form, and call `validateAsset`.
+`content/ui/Panel.rcss`:
 
-`validateAsset` on a ui asset reports, as `rule_name`:
+```css
+.title { color: var(--accent); }
+```
+
+Then call `validateAsset`. The files are kept as written; `--format` leaves
+them alone. `readAsset` returns a ui asset as its `rml` and `rcss` texts.
+
+`validateAsset` on a ui asset reports, as `rule_name`, each at the `path` of
+the file it is about with its `line` and `column` when it has them:
 
 - `SYNTAX`: what the grammars reject, as an element left open (RML closes
-  every element, as XML does) or a declaration missing its value, with its
-  file `line`, `column`, `block` and `block_line`.
-- `LOAD`: what the asset loader rejects, as an unknown key, a missing widget
-  or an unreadable `@import`.
+  every element, as XML does) or a declaration missing its value.
+- `LOAD`: what the asset loader rejects, as empty markup, a missing widget or
+  an unreadable `@import`.
 - `RMLUI`: every warning RmlUi logs loading the asset in a scratch document
   with the ui data model, as a binding expression it cannot parse or an RCSS
-  property it rejects, at the line that wrote it. `block` is `rml` for the
-  markup and `rcss` for the styles, with the file `line`; a warning about an
-  imported stylesheet names it as `source`, with its `block_line` in that
-  file. `widgets` is what only the markup with its widgets expanded shows,
-  with the widget as `source` and its line in the widget's `rml` block.
+  property it rejects, at the line that wrote it: in the asset's `.rml` or
+  `.rcss`, an imported stylesheet, or, for what only the markup with its
+  widgets expanded shows, the widget's `.rml`.
 
 ## Check adapter distribution
 
@@ -776,7 +779,7 @@ extraction policy.
 | --- | --- |
 | Camera | One enabled `GameCamera` plus `GameTransform`. Positive width/height set the logical span; offset follows the entity. Disable it to release the camera. |
 | Controls | `GameActionBinding` maps one physical source to an event name. Multiple entities can bind the same action; their held states combine. `firing` also sets GameAim.firing. Remove GameInput while fitting to suspend ship controls. |
-| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and an emitting input's value under `#id`. `data-event-click="emit('Resume')"` sends that event to the entity when clicked; on an input, `data-event-change` sends it with the input's value. |
+| Player UI | `GameUi` shows `content/ui/<document>.rml` (RML markup, styled by the `.rcss` beside it) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and an emitting input's value under `#id`. `data-event-click="emit('Resume')"` sends that event to the entity when clicked; on an input, `data-event-change` sends it with the input's value. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
 | Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
@@ -870,7 +873,7 @@ animations do: `.toast { transition: opacity 0.2s; }` with
 `.toast[data-starting-style], .toast[data-ending-style] { opacity: 0; }`.
 All three change at once under the `reduced-motion` theme and while hidden.
 
-The player shows `content/ui/PauseMenu.yaml` while paused. Its `body` has the
+The player shows `content/ui/PauseMenu.rml` while paused. Its `body` has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
 events control the session.
 

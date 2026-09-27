@@ -19,12 +19,12 @@ static int by_name(const void *a, const void *b)
 
 bool studio_asset_nameable(const reference_asset *asset, int kind)
 {
-    size_t length = asset->path ? strlen(asset->path) : 0,
-           extension = strlen(ASSET_EXTENSION);
+    const char *suffix = kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION
+                                                    : ASSET_EXTENSION;
+    size_t length = asset->path ? strlen(asset->path) : 0, extension = strlen(suffix);
     return (int)asset->kind == kind && !asset->unresolved &&
-           (!asset->path ||
-            (length > extension &&
-             !strcmp(asset->path + length - extension, ASSET_EXTENSION)));
+           (!asset->path || (length > extension &&
+                             !strcmp(asset->path + length - extension, suffix)));
 }
 
 const char **studio_asset_names(const reference_index *index, int kind)

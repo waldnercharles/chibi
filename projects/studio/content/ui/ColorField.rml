@@ -1,0 +1,4 @@
+<div class="field text swatched">
+  <span class="swatch" data-style-background-color="color"/>
+  <input type="text" class="value" data-value-lazy="color"/>
+</div>

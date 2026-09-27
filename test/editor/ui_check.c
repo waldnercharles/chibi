@@ -23,17 +23,15 @@ static void write_file(const char *root, const char *name, const char *text)
     fclose(file);
 }
 
-static const char BROKEN[] = "rml: |\n"
-                             "  <div id=\"a\">\n"
-                             "    <p data-if=\"save.x +\">x</p>\n"
-                             "    <span>open\n"
-                             "  </div>\n"
-                             "rcss: |\n"
-                             "  @import \"theme/bad.rcss\";\n"
-                             "  .a {\n"
-                             "    color: red;\n"
-                             "    .b { width: 10bogus; }\n"
-                             "  }\n";
+static const char BROKEN_RML[] = "<div id=\"a\">\n"
+                                 "  <p data-if=\"save.x +\">x</p>\n"
+                                 "  <span>open\n"
+                                 "</div>\n";
+static const char BROKEN_RCSS[] = "@import \"theme/bad.rcss\";\n"
+                                  ".a {\n"
+                                  "  color: red;\n"
+                                  "  .b { width: 10bogus; }\n"
+                                  "}\n";
 
 /* A warning expected in order: its part, the end of its source's name
  * ("" for the checked asset), its line, and how its text starts. */
@@ -98,29 +96,22 @@ void test_ui_check()
     snprintf(folder, sizeof folder, "%s/ui/theme", root);
     assert(!mkdir(folder, 0700));
     write_file(root, "theme/bad.rcss", "body { color: red; }\n.c { height: 3bogus; }\n");
-    write_file(root, "Button.yaml", "rml: |\n  <button>\n    <span data-if=\"open +\"><slot/></span>\n  </button>\n");
+    write_file(root, "Button.rml", "<button>\n  <span data-if=\"open +\"><slot/></span>\n</button>\n");
 
     ui_check_message *messages = NULL;
     char error[200] = "";
-    bool ok = ui_check(root, "Broken", BROKEN, &messages, error, sizeof error);
+    bool ok = ui_check(root, "Broken", BROKEN_RML, BROKEN_RCSS, &messages, error, sizeof error);
     static const expected BROKEN_MESSAGES[] = {
         { UI_CHECK_RML, "", 4, "Closing tag 'div' mismatched on line 4 was expecting 'span'." },
         { UI_CHECK_RML, "", 2, "Error in data expression at 8." },
         { UI_CHECK_RCSS, "theme/bad.rcss", 2, "Syntax error parsing property declaration 'height: 3bogus;'" },
         { UI_CHECK_RCSS, "", 4, "Syntax error parsing property declaration 'width: 10bogus;'" },
     };
-    test_check(ok && messages_are(messages, BROKEN_MESSAGES, 4), "ui_check reports every RmlUi warning at its block's line, or its import's");
+    test_check(ok && messages_are(messages, BROKEN_MESSAGES, 4), "ui_check reports every RmlUi warning at its file's line, or its import's");
     ui_check_messages_free(messages);
 
     messages = NULL;
-    ok = ui_check(
-        root,
-        "Host",
-        "rml: |\n  <div>\n    <use ui=\"Button\">Go</use>\n  </div>\n",
-        &messages,
-        error,
-        sizeof error
-    );
+    ok = ui_check(root, "Host", "<div>\n  <use ui=\"Button\">Go</use>\n</div>\n", NULL, &messages, error, sizeof error);
     static const expected HOST_MESSAGES[] = {
         { UI_CHECK_WIDGETS, "Button", 2, "Error in data expression at 6." },
     };
@@ -128,7 +119,7 @@ void test_ui_check()
     ui_check_messages_free(messages);
 
     messages = NULL;
-    ok = ui_check(root, "Lost", "rml: <use ui=\"Missing\"/>\n", &messages, error, sizeof error);
+    ok = ui_check(root, "Lost", "<use ui=\"Missing\"/>\n", NULL, &messages, error, sizeof error);
     test_check(!ok && strstr(error, "Missing"), "ui_check refuses an asset whose widget is missing");
     ui_check_messages_free(messages);
 
@@ -136,9 +127,8 @@ void test_ui_check()
     ok = ui_check(
         "projects/studio/content",
         "Shell",
-        "rml: |\n"
-        "  <body data-class-dark=\"save.theme == 'dark'\"><slot/></body>\n"
-        "rcss: '@import \"theme/tokens.rcss\";'\n",
+        "<body data-class-dark=\"save.theme == 'dark'\"><slot/></body>\n",
+        "@import \"theme/tokens.rcss\";\n",
         &messages,
         error,
         sizeof error

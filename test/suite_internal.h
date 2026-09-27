@@ -228,6 +228,11 @@ void run_runtime_catalog_checks();
 void run_support_format_checks();
 void run_content_catalog_checks();
 
+/* Writes ui asset `name` in `folder`: its .rml and, when `rcss` is not NULL,
+ * its .rcss, removing an old one otherwise (test/support/ui_files.c). */
+void test_write_ui(const char *folder, const char *name, const char *rml, const char *rcss);
+void test_remove_ui(const char *folder, const char *name);
+
 #endif
 
 void test_parallel_ticks();

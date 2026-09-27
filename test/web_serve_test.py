@@ -69,6 +69,10 @@ class WorkspaceSaves(unittest.TestCase):
         self.save('projects/bloom/content/ui/theme/tokens.rcss', ':root { --primary: #c2453b; }\n')
         self.assertEqual((self.content / 'ui/theme/tokens.rcss').read_text(), ':root { --primary: #c2453b; }\n')
 
+    def test_markup_saves_as_written(self):
+        self.save('projects/bloom/content/ui/Hud.rml', '<div class="hud">{{ save.score }}</div>\n')
+        self.assertEqual((self.content / 'ui/Hud.rml').read_text(), '<div class="hud">{{ save.score }}</div>\n')
+
     def test_paths_stay_inside_content(self):
         (self.content / 'escape').symlink_to(self.project, target_is_directory=True)
         for path in ('projects/bloom/content/../outside.yaml', 'projects/bloom/outside.yaml',

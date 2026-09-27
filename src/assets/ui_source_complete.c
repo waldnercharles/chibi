@@ -1,7 +1,7 @@
 /* The ui language service's project knowledge, completion, and definitions
  * and references. */
+#include "assets/ui_document.h"
 #include "assets/ui_source.h"
-#include "assets/ui_source_internal.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
@@ -167,14 +167,14 @@ static void list_files(const char *folder, const char *suffix, bool deep, char *
     afree(found);
 }
 
-static void add_file(ui_source_project *project, char *path, bool stylesheet)
+static void add_file(ui_source_project *project, char *path, bool markup)
 {
     char *name = NULL;
-    if (!stylesheet) {
+    if (markup) {
         const char *base = strrchr(path, '/');
         base = base ? base + 1 : path;
         name = xstrdup(base);
-        name[strlen(name) - strlen(".yaml")] = '\0';
+        name[strlen(name) - strlen(UI_MARKUP_EXTENSION)] = '\0';
         ui_source_list_add(&project->widgets, name);
     }
     apush(project->files, ((ui_source_file){ .path = path, .name = name }));
@@ -200,7 +200,8 @@ static void learn(ui_source_project *project, const ui_source *source)
 static ui_source *parse_file(const ui_source_file *file)
 {
     char *text = text_file_read(file->path);
-    ui_source *source = text ? ui_source_parse(text, !file->name) : NULL;
+    ui_source *source = text ? ui_source_parse(text, file->name ? UI_SOURCE_RML : UI_SOURCE_RCSS)
+                             : NULL;
     free(text);
     return source;
 }
@@ -209,17 +210,17 @@ void ui_source_project_scan(ui_source_project *project, const char *content_root
 {
     char folder[1024];
     snprintf(folder, sizeof folder, "%s/ui", content_root);
-    char **assets = NULL, **sheets = NULL;
-    list_files(folder, ".yaml", false, &assets);
-    list_files(folder, ".rcss", true, &sheets);
-    for (int i = 0; i < acount(assets); i++) {
-        add_file(project, assets[i], false);
+    char **markup = NULL, **styles = NULL;
+    list_files(folder, UI_MARKUP_EXTENSION, false, &markup);
+    list_files(folder, UI_STYLE_EXTENSION, true, &styles);
+    for (int i = 0; i < acount(markup); i++) {
+        add_file(project, markup[i], true);
     }
-    for (int i = 0; i < acount(sheets); i++) {
-        add_file(project, sheets[i], true);
+    for (int i = 0; i < acount(styles); i++) {
+        add_file(project, styles[i], false);
     }
-    afree(assets);
-    afree(sheets);
+    afree(markup);
+    afree(styles);
     for (int i = 0; i < acount(project->files); i++) {
         ui_source *source = parse_file(&project->files[i]);
         if (source) {
@@ -249,7 +250,7 @@ void ui_source_project_free(ui_source_project *project)
 typedef struct request
 {
     const char *value;
-    int at; /* the offset completing, in the value */
+    int at; /* the offset completing */
     ui_source_completions *out;
 } request;
 
@@ -303,7 +304,7 @@ static void offer_list(request *r, ui_source_completion_kind kind, char **list, 
     }
 }
 
-/* The completion's replaced range, as file offsets later. */
+/* The completion's replaced range. */
 static void settle(request *r, int start)
 {
     r->out->start = start;
@@ -554,22 +555,6 @@ static int completion_order(const void *a, const void *b)
     return strcmp(x->label, y->label);
 }
 
-/* The block value offset of a file offset in `m`: the first value byte at
- * or after it. */
-static int value_offset(const block_map *m, int offset)
-{
-    int low = 0, high = m->length;
-    while (low < high) {
-        int middle = (low + high) / 2;
-        if (m->offsets[middle] < offset) {
-            low = middle + 1;
-        } else {
-            high = middle;
-        }
-    }
-    return low;
-}
-
 void ui_source_complete(
     const ui_source *source,
     int offset,
@@ -578,19 +563,12 @@ void ui_source_complete(
 )
 {
     *out = (ui_source_completions){ .start = offset, .end = offset };
-    const ui_source_block *block = ui_source_block_at(source, offset);
-    const block_map *m = block ? ui_source_map(source, block->language) : NULL;
-    if (!m || m->style == SCALAR_OTHER) {
-        return;
-    }
-    request r = { m->value, value_offset(m, offset), out };
-    if (m->language == UI_SOURCE_RML) {
+    request r = { source->text, offset, out };
+    if (source->language == UI_SOURCE_RML) {
         complete_markup(&r, project);
     } else {
         complete_css(&r, project, 0, 0);
     }
-    out->start = ui_source_file_offset(m, out->start);
-    out->end = ui_source_file_offset(m, out->end);
     qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
 }
 

@@ -15,10 +15,8 @@ static void composed_document()
     ui_document d = { 0 };
     char error[256] = { 0 };
     bool ok = ui_document_read(
-        "rml: |\n"
-        "  <div id=\"score\">0</div>\n"
-        "rcss: |\n"
-        "  #score { font-size: 24dp; }\n",
+        "<div id=\"score\">0</div>\n",
+        "#score { font-size: 24dp; }\n",
         NULL,
         NULL,
         &d,
@@ -45,28 +43,25 @@ static void rejected_documents()
 {
     static const struct
     {
-        const char *yaml;
+        const char *rml, *rcss;
         const char *error;
     } cases[] = {
-        { "[rml]", "must be a mapping" },
-        { "rcss: 'div {}'", "rml must be nonempty" },
-        { "rml: ''", "rml must be nonempty" },
-        { "rml: '<div/>'\nstyle: dark", "unknown key style" },
-        { "rml: '<div/>'\nrcss: [1]", "rcss must be text" },
-        { "rml: '<div/>'\nrcss: '</style><div>'", "must not close its style" },
-        { "rml: '<div/>'\nrcss: '.a { color: red;'", "rcss line 1: missing }" },
-        { "rml: '<body class=\"x\"><p/></body><p/>'", "must hold all the markup" },
-        { "rml: '<div><body/></div>'", "remove <body>" },
+        { "", "div {}", "rml must be nonempty" },
+        { " \n", NULL, "rml must be nonempty" },
+        { "<div/>", "</style><div>", "must not close its style" },
+        { "<div/>", ".a { color: red;", "rcss line 1: missing }" },
+        { "<body class=\"x\"><p/></body><p/>", NULL, "must hold all the markup" },
+        { "<div><body/></div>", NULL, "remove <body>" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         ui_document d = { 0 };
         char error[256] = { 0 };
-        bool ok = ui_document_read(cases[i].yaml, NULL, NULL, &d, error, sizeof error);
+        bool ok = ui_document_read(cases[i].rml, cases[i].rcss, NULL, NULL, &d, error, sizeof error);
         test_check(!ok && strstr(error, cases[i].error) && !d.rml, cases[i].error);
     }
     ui_document d = { 0 };
     char error[256] = { 0 };
-    bool ok = ui_document_read("rml: '<header><nav/></header>'", NULL, NULL, &d, error, sizeof error);
+    bool ok = ui_document_read("<header><nav/></header>", NULL, NULL, NULL, &d, error, sizeof error);
     test_check(ok, "a <header> is markup, not the document's <head>");
     ui_document_free(&d);
 }
@@ -85,9 +80,8 @@ static void page_document()
     ui_document d = { 0 };
     char error[256] = { 0 }, **imports = NULL;
     bool ok = ui_document_read(
-        "rml: '<body class=\"page\" "
-        "data-class-dark=\"system.dark\"><slot/></body>'\n"
-        "rcss: '@import \"tokens.rcss\";'\n",
+        "<body class=\"page\" data-class-dark=\"system.dark\"><slot/></body>",
+        "@import \"tokens.rcss\";",
         root,
         &imports,
         &d,
@@ -119,10 +113,9 @@ static void nested_rcss()
     ui_document d = { 0 };
     char error[256] = { 0 };
     bool ok = ui_document_read(
-        "rml: <div class=\"menu\"/>\n"
-        "rcss: |\n"
-        "  // rows\n"
-        "  .menu { .item { margin: 0; &:hover { color: var(--fg); } } }\n",
+        "<div class=\"menu\"/>\n",
+        "// rows\n"
+        ".menu { .item { margin: 0; &:hover { color: var(--fg); } } }\n",
         NULL,
         NULL,
         &d,
@@ -144,10 +137,10 @@ static void last_valid_document()
 {
     ui_document d = { 0 };
     char error[256] = { 0 };
-    bool first = ui_document_read("rml: '<p>one</p>'", NULL, NULL, &d, error, sizeof error);
-    bool rejected = !ui_document_read("rml: ''", NULL, NULL, &d, error, sizeof error);
+    bool first = ui_document_read("<p>one</p>", NULL, NULL, NULL, &d, error, sizeof error);
+    bool rejected = !ui_document_read("", NULL, NULL, NULL, &d, error, sizeof error);
     bool kept = d.rml && strcmp(d.rml, "<p>one</p>") == 0;
-    bool replaced = ui_document_read("rml: '<p>two</p>'", NULL, NULL, &d, error, sizeof error);
+    bool replaced = ui_document_read("<p>two</p>", NULL, NULL, NULL, &d, error, sizeof error);
     test_check(
         first && rejected && kept && replaced && strcmp(d.rml, "<p>two</p>") == 0,
         "an invalid ui asset keeps the last valid document"
@@ -155,14 +148,36 @@ static void last_valid_document()
     ui_document_free(&d);
 }
 
-static void write_widget(const char *root, const char *name, const char *yaml)
+static void write_text(const char *path, const char *text)
 {
-    char path[256];
-    snprintf(path, sizeof path, "%s/%s.yaml", root, name);
     FILE *file = fopen(path, "wb");
     assert(file);
-    fputs(yaml, file);
+    fputs(text, file);
     fclose(file);
+}
+
+/* Widget `name`'s markup and, when `rcss` is not NULL, its styles. */
+static void write_widget(const char *root, const char *name, const char *rml, const char *rcss)
+{
+    for (int style = 0; style < 2; style++) {
+        char *path = ui_document_path(root, name, style);
+        if (style ? rcss : rml) {
+            write_text(path, style ? rcss : rml);
+        }
+        free(path);
+    }
+}
+
+static void remove_widgets(const char *root, const char *const *names, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        for (int style = 0; style < 2; style++) {
+            char *path = ui_document_path(root, names[i], style);
+            unlink(path);
+            free(path);
+        }
+    }
+    rmdir(root);
 }
 
 static void free_names(char **names)
@@ -189,10 +204,10 @@ static void expanded_widgets()
 {
     char root[] = "/tmp/chibi-ui-widgets-XXXXXX";
     assert(mkdtemp(root));
-    write_widget(root, "Meter", "rml: <div class=\"fill\"/><slot/>\nrcss: '.fill { height: 4dp; }'\n");
-    write_widget(root, "Row", "rml: <span><slot/></span>\n");
-    write_widget(root, "Loop", "rml: <use ui=\"Loop\"/>\n");
-    write_widget(root, "Option", "rml: <label><input type=\"radio\" attrs/><slot/></label>\n");
+    write_widget(root, "Meter", "<div class=\"fill\"/><slot/>", ".fill { height: 4dp; }");
+    write_widget(root, "Row", "<span><slot/></span>", NULL);
+    write_widget(root, "Loop", "<use ui=\"Loop\"/>", NULL);
+    write_widget(root, "Option", "<label><input type=\"radio\" attrs/><slot/></label>", NULL);
     char text[512];
     char **uses = NULL;
     bool ok = expand_text(root, "<use ui=\"Meter\" id=\"hull\" class=\"wide\"/>", text, sizeof text, &uses);
@@ -280,13 +295,8 @@ static void expanded_widgets()
         "a ui asset names the widgets its markup uses"
     );
     free_names(names);
-    for (size_t i = 0; i < 4; i++) {
-        static const char *const files[] = { "Meter", "Row", "Loop", "Option" };
-        char path[256];
-        snprintf(path, sizeof path, "%s/%s.yaml", root, files[i]);
-        unlink(path);
-    }
-    rmdir(root);
+    static const char *const files[] = { "Meter", "Row", "Loop", "Option" };
+    remove_widgets(root, files, sizeof files / sizeof *files);
 }
 
 /* Whether line `line` of the map came from the file ending in `file` at
@@ -320,35 +330,31 @@ static void expanded_sources()
     write_widget(
         root,
         "Meter",
-        "rml: |\n"
-        "  <div class=\"meter\">\n"
-        "    <div class=\"fill\" attrs/>\n"
-        "    <slot/>\n"
-        "  </div>\n"
-        "rcss: |\n"
-        "  .meter { height: 4dp; }\n"
+        "<div class=\"meter\">\n"
+        "  <div class=\"fill\" attrs/>\n"
+        "  <slot/>\n"
+        "</div>\n",
+        ".meter { height: 4dp; }\n"
         "\n"
-        "  .fill {\n"
-        "    width: 50%;\n"
-        "  }\n"
+        ".fill {\n"
+        "  width: 50%;\n"
+        "}\n"
     );
-    write_widget(root, "Row", "rml: <p class=\"row\"><slot/></p>\n");
+    write_widget(root, "Row", "<p class=\"row\"><slot/></p>", NULL);
     ui_document d = { 0 };
     char error[256] = "", **uses = NULL;
     bool ok = ui_document_read(
-                  "rml: |\n"
-                  "  <div id=\"hud\">\n"
-                  "    <use ui=\"Meter\" id=\"hull\"\n"
-                  "         class=\"wide\">\n"
-                  "      <span>Hull</span>\n"
-                  "    </use>\n"
-                  "    <use ui=\"Row\" id=\"row\"/>\n"
-                  "  </div>\n"
-                  "rcss: |\n"
-                  "  #hud { display: block; }\n"
-                  "  #hull {\n"
-                  "    color: red;\n"
-                  "  }\n",
+                  "<div id=\"hud\">\n"
+                  "  <use ui=\"Meter\" id=\"hull\"\n"
+                  "       class=\"wide\">\n"
+                  "    <span>Hull</span>\n"
+                  "  </use>\n"
+                  "  <use ui=\"Row\" id=\"row\"/>\n"
+                  "</div>\n",
+                  "#hud { display: block; }\n"
+                  "#hull {\n"
+                  "  color: red;\n"
+                  "}\n",
                   root,
                   NULL,
                   &d,
@@ -364,7 +370,7 @@ static void expanded_sources()
             strstr(rml, "<span data-src=\"Hud:4\">Hull</span>") &&
             strstr(rml, "<div data-src=\"Hud:6\" data-ui=\"Row\" id=\"row\"><p data-src=\"Row:1\" class=\"row\"></p></div>") &&
             count_of(rml, "data-src") == 7 && !strstr(rml, "<slot"),
-        "an expanded element carries the asset and rml line that wrote it, a "
+        "an expanded element carries the asset and .rml line that wrote it, a "
         "widget's its widget's"
     );
     test_check(
@@ -378,18 +384,19 @@ static void expanded_sources()
                 "#hull { "
                 "color: red; }\n"
             ) &&
-            acount(d.map.lines) == 4 && traced(&d.map, 1, "/Meter.yaml", 1) &&
-            traced(&d.map, 2, "/Meter.yaml", 3) &&
-            traced(&d.map, 3, "/Hud.yaml", 1) && traced(&d.map, 4, "/Hud.yaml", 2),
-        "an expanded document's RCSS lines trace to each widget's rcss block, "
-        "then the document's"
+            acount(d.map.lines) == 4 && traced(&d.map, 1, "/Meter.rcss", 1) &&
+            traced(&d.map, 2, "/Meter.rcss", 3) &&
+            traced(&d.map, 3, "/Hud.rcss", 1) && traced(&d.map, 4, "/Hud.rcss", 2),
+        "an expanded document's RCSS lines trace to each widget's .rcss, then "
+        "the document's"
     );
     ui_document_free(&d);
     free_names(uses);
 
     ok = ui_document_read(
-        "rml: |\n  <body\n    class=\"page\">\n    <!-- <b/> -->\n    <p "
-        "data-if=\"a <b\"/>\n  </body>\n",
+        "<body\n  class=\"page\">\n  <!-- <b/> -->\n  <p data-if=\"a "
+        "<b\"/>\n</body>\n",
+        NULL,
         NULL,
         NULL,
         &d,
@@ -401,18 +408,13 @@ static void expanded_sources()
         marked && d.rml_line == 2 &&
             strstr(marked, "<p data-src=\"Page:4\" data-if=\"a <b\"/>") &&
             count_of(marked, "data-src") == 1,
-        "a page's markup counts its lines from the rml block, past its <body>, "
+        "a page's markup counts its lines from its file's, past its <body>, "
         "and marks no comment or attribute value"
     );
     free(marked);
     ui_document_free(&d);
     static const char *const files[] = { "Meter", "Row" };
-    for (size_t i = 0; i < sizeof files / sizeof *files; i++) {
-        char path[256];
-        snprintf(path, sizeof path, "%s/%s.yaml", root, files[i]);
-        unlink(path);
-    }
-    rmdir(root);
+    remove_widgets(root, files, sizeof files / sizeof *files);
 }
 
 static void scoped_styles()

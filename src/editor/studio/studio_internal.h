@@ -936,7 +936,8 @@ void studio_record(studio *s, kit_toast_type kind, const char *text);
    popover with the new name and the assets it rewrites; a delete of what is
    still used lists the uses and asks. Applied changes offer Undo in a toast. */
 /* Whether an asset renames and deletes as a file: scenes and systems are
-   named elsewhere, and a missing asset has no file. */
+   named elsewhere, a missing asset has no file, and nothing indexes the
+   imports of a stylesheet. */
 bool studio_asset_refactorable(const reference_asset *asset);
 /* Renames an event, its definition when it has one, and what sends and
    handles it; host events keep their names. */
@@ -1090,10 +1091,10 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype);
 /* Before the areas: applies UI edits live (the code_apply_live preference)
  * and shows the Text Editor when a UI document becomes active. */
 void studio_code_frame(studio *s);
-/* Opens a UI document's part at a 1-based line of that part's text, as a
- * style origin names a line of a ui asset's rcss block (UI_PART_RCSS); false
- * when it cannot be opened. studio_open_ui_source opens the rml block, whose
- * lines data-src names; a stylesheet has only its RCSS, numbered by file. */
+/* Opens the UI document `path` belongs to (ui_buffer_document) at a 1-based
+ * line of its part, as a style origin names a line of a ui asset's .rcss
+ * (UI_PART_RCSS); false when it cannot be opened. studio_open_ui_source opens
+ * the part `path` is: a .rml's lines, which data-src names, or a .rcss's. */
 bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line);
 /* The active UI document's text, or NULL when another kind is active. */
 ui_buffer *studio_ui_buffer(studio *s);
@@ -1268,7 +1269,7 @@ void studio_pick_open(studio *s, const char *key, const char *current, const stu
 bool studio_pick_palette(studio *s);
 
 /* Game UI errors (studio_canvas.c): the shown documents' error, the scene's
- * or the preview's, as "ui/Name.yaml message". A change is recorded in
+ * or the preview's, as "ui/Name.rml message". A change is recorded in
  * Output once; the Scene's notice and Output's Problems show it while it
  * lasts. */
 void studio_ui_error(studio *s, const char *error);

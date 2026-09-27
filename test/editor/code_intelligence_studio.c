@@ -27,19 +27,11 @@
 #define FRAME_SECONDS (1.0 / 60.0)
 #define PROJECT "test/fixtures/studio"
 
-static const char *const DIALOG = "rml: |\n"
-                                  "  <div class=\"dialog\"><slot/></div>\n";
-static const char *const OTHER = "rml: |\n"
-                                 "  <div class=\"shared\">x</div>\n"
-                                 "rcss: |\n"
-                                 "  .shared { color: #f00; }\n";
-static const char *const DOC = "rml: |\n"
-                               "  <use ui=\"Dialog\">\n"
-                               "    <div class=\"shared\">Hi</div>\n"
-                               "  </use>\n"
-                               "rcss: |\n"
-                               "  .shared { margin: 2dp; }\n"
-                               "  .shared { colour: red; }\n";
+static const char *const DOC_RML = "<use ui=\"Dialog\">\n"
+                                   "  <div class=\"shared\">Hi</div>\n"
+                                   "</use>\n";
+static const char *const DOC_RCSS = ".shared { margin: 2dp; }\n"
+                                    ".shared { colour: red; }\n";
 
 typedef struct
 {
@@ -54,12 +46,6 @@ typedef struct
     char root[PATH_MAX], doc[PATH_MAX], dialog[PATH_MAX], other[PATH_MAX];
 } fixture;
 
-static void write_file(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    assert(file && fputs(text, file) >= 0 && fclose(file) == 0);
-}
-
 static int remove_entry(const char *path, const struct stat *, int, struct FTW *)
 {
     return remove(path);
@@ -71,12 +57,12 @@ static void write_project(fixture *f)
     assert(mkdtemp(pattern) && realpath(pattern, f->root));
     snprintf(folder, sizeof folder, "%s/ui", f->root);
     assert(mkdir(folder, 0777) == 0);
-    snprintf(f->doc, sizeof f->doc, "%s/ui/Doc.yaml", f->root);
-    snprintf(f->dialog, sizeof f->dialog, "%s/ui/Dialog.yaml", f->root);
-    snprintf(f->other, sizeof f->other, "%s/ui/Other.yaml", f->root);
-    write_file(f->doc, DOC);
-    write_file(f->dialog, DIALOG);
-    write_file(f->other, OTHER);
+    snprintf(f->doc, sizeof f->doc, "%s/ui/Doc.rml", f->root);
+    snprintf(f->dialog, sizeof f->dialog, "%s/ui/Dialog.rml", f->root);
+    snprintf(f->other, sizeof f->other, "%s/ui/Other.rml", f->root);
+    test_write_ui(folder, "Doc", DOC_RML, DOC_RCSS);
+    test_write_ui(folder, "Dialog", "<div class=\"dialog\"><slot/></div>\n", NULL);
+    test_write_ui(folder, "Other", "<div class=\"shared\">x</div>\n", ".shared { color: #f00; }\n");
 }
 
 static fixture fixture_new()

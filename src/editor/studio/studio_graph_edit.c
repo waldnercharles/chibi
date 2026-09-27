@@ -755,13 +755,13 @@ static const char *match_about(studio *s, const editor *e, const ed_search_match
 /* ---------- UI events ---------- */
 
 /* The events a ui asset's markup sends that no host event or event
- * definition names already. An invalid document sends none until it reads. */
+ * definition names already. */
 static void add_document_events(ui_event **events, const reference_index *index, const reference_asset *asset)
 {
     char *text = text_file_read(asset->path);
     ui_document_event *found = NULL;
     if (text) {
-        ui_events_read(text, &found);
+        ui_document_events(text, &found);
     }
     for (int i = 0; i < acount(found); i++) {
         if (!graph_event_host_name(found[i].name) &&

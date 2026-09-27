@@ -200,7 +200,9 @@ static void apply_rename(studio *s)
 bool studio_asset_refactorable(const reference_asset *asset)
 {
     return asset && !asset->unresolved && asset->kind != REFERENCE_ASSET_SCENE &&
-           asset->kind != REFERENCE_ASSET_SYSTEM;
+           asset->kind != REFERENCE_ASSET_SYSTEM &&
+           (asset->kind != REFERENCE_ASSET_UI ||
+            studio_asset_nameable(asset, REFERENCE_ASSET_UI));
 }
 
 /* Deletes an asset's file, or an event definition's. */

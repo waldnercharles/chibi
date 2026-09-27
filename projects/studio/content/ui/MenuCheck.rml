@@ -1,0 +1,1 @@
+<label class="menu-item menu-check"><input type="checkbox" attrs/><span class="icon lead">&#xeab2;</span><span class="label"><slot/></span></label>

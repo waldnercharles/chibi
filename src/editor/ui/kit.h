@@ -568,6 +568,8 @@ extern "C"
     void kit_code_redo(kit_code_editor *e);
     int kit_code_cursor(const kit_code_editor *e);
     void kit_code_set_cursor(kit_code_editor *e, int byte);
+    /* Selects [start, end), the cursor at its end, as Find shows a match. */
+    void kit_code_select(kit_code_editor *e, int start, int end);
     /* The byte whose glyph the pointer has rested on, or -1: what the next
      * frame's desc.hover describes. */
     int kit_code_hover(const kit_code_editor *e);

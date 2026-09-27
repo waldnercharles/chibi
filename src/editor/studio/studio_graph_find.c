@@ -133,7 +133,7 @@ static void emit_bar(studio *s)
 {
     studio_graph *g = &s->graph;
     kit *k = s->kit;
-    kit_push(k, "bar", NULL, "graph-find-bar");
+    kit_push(k, "bar", NULL, "find-widget-bar");
     kit_search(k, "query", g->find.query, sizeof g->find.query, "Find");
     /* Escape clears and blurs the field in the frame it arrives, so the
        field's focus a frame ago counts too. */
@@ -152,7 +152,7 @@ static void emit_bar(studio *s)
     } else if (count) {
         snprintf(label, sizeof label, "%d", count);
     }
-    kit_label(k, "count", "graph-find-count", label);
+    kit_label(k, "count", "find-widget-count", label);
     kit_button_desc previous = { .icon = KIT_ICON_UP,
                                  .tip = "Previous",
                                  .shortcut = "\xe2\x86\x91",
@@ -238,7 +238,7 @@ void sg_find_panel(studio *s)
     }
     collect(s);
     kit *k = s->kit;
-    kit_push(k, "find", NULL, "graph-find");
+    kit_push(k, "find", NULL, "find-widget");
     emit_bar(s);
     if (g->find.open) {
         emit_results(s);

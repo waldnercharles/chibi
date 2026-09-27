@@ -531,6 +531,14 @@ typedef struct
     bool replayed;      /* Undo or Redo from the editor changed the text */
     bool following;     /* a UI document was active last frame */
     bool opened_drawer; /* following it opened the drawer */
+    /* Find (Mod+F): the query, where its shown match starts and how many
+       the part holds. */
+    struct
+    {
+        bool open, focus, typing, refocus;
+        char query[128], seen[128];
+        int at, count, index;
+    } find;
     /* Workstream Q: the shown document's problems for Output
        (studio_code_problems), and the revisions of the text and the check
        they describe. */

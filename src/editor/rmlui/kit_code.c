@@ -761,6 +761,14 @@ void kit_code_set_cursor(kit_code_editor *e, int byte)
     e->cursor = zep_cursor(e->zep);
 }
 
+void kit_code_select(kit_code_editor *e, int start, int end)
+{
+    /* Vim's selection holds the glyph under its cursor; the standard keys'
+       ends before it. */
+    zep_select(e->zep, start, e->vim ? end - 1 : end);
+    e->cursor = zep_cursor(e->zep);
+}
+
 int kit_code_hover(const kit_code_editor *e)
 {
     return e->hover;

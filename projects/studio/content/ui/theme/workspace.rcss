@@ -142,14 +142,17 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .find-count { display: block; line-height: 16dp; color: var(--faint-foreground); font-family: InterNumeric; }
 .output-list.find-list { top: 24dp; padding: 2dp 4dp 6dp; }
 
-/* Find in graph (studio_graph_find.c): floats over the canvas's top right. */
-.graph-find {
+/* Find in the graph (studio_graph_find.c) and in the Text Editor
+   (studio_code.c): floats over the canvas's or the text's top right, as VS
+   Code's find widget does. */
+.find-widget {
     position: absolute; top: 8dp; right: 8dp; width: 340dp; display: flex; flex-direction: column; gap: 4dp;
     padding: 4dp; background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
+    z-index: 5;
 }
-.graph-find-bar { display: flex; align-items: center; gap: 2dp; }
-.graph-find-bar .search { flex: 1 1 0dp; min-width: 0dp; }
-.graph-find-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: 16dp; color: var(--faint-foreground); font-size: 11dp; font-family: InterNumeric; white-space: nowrap; }
+.find-widget-bar { display: flex; align-items: center; gap: 2dp; }
+.find-widget-bar .search { flex: 1 1 0dp; min-width: 0dp; }
+.find-widget-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: 16dp; color: var(--faint-foreground); font-size: 11dp; font-family: InterNumeric; white-space: nowrap; }
 .graph-find-list { position: relative; }
 .graph-find-list .tree-row .meta { display: block; flex: 0 1 auto; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 

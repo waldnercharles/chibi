@@ -358,10 +358,13 @@ static void status_bar_follows_studio()
     studio_report(s, "Saved");
     frames(&f, 2);
     rml_element *report = rml_element_query_selector(status_bar(s), ".report");
-    bool reported = rml_element_is_class_set(report, "shown");
+    char said[32] = "";
+    rml_element_attribute(rml_element_query_selector(report, "morph-text"), "aria-label", said, sizeof said);
+    bool reported = rml_element_is_visible(report, false) && !strcmp(said, "Saved");
     s->status_time = s->time - 4;
     frames(&f, 2);
-    reported &= !rml_element_is_class_set(report, "shown");
+    reported &= rml_element_has_attribute(report, "data-ending-style") ||
+                !rml_element_is_visible(report, false);
 
     int before = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_ASSETS);
     bool shown_before = toggle_on(s) == (before == 1);

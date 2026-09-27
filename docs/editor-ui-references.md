@@ -27,7 +27,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | `kit_morph`, `kit_button_desc.morph` | Done; place-value numbers open |
 | [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
 | [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list` (`kit_list.c`), fixed row height | Done; measured heights open |
-| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.c`) | Done; keyboard sensor and auto-scroll open |
+| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.c`); the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a kit keyboard sensor for other lists and auto-scroll open |
 | [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, JSON, expressions |
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
@@ -37,7 +37,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
 | [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): the status bar's UI Scale | Done |
-| [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; `kit_drag_source`/`kit_drop_target` for the tree, `kit_highlight` for the Canvas outlines | Done; keyboard reordering and resize handles in the Canvas open |
+| [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; `kit_drag_source`/`kit_drop_target` for the tree, `kit_highlight` for the Canvas outlines | Done; resize handles in the Canvas open |
 | [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion, hover | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h`; the Text Editor's language glue in `editor/documents/ui_code.h` | Done; highlighting, diagnostics, completion items and hover text come from the caller |
 
 ## Contracts
@@ -241,9 +241,10 @@ control's contract.
 
 - Text stays the source of truth: every designer change is a `text_edit` of the document through `ui_source`, one undo step shared with the Text Editor. A scrub or a picker session joins one step.
 - Hierarchy rows follow dnd-kit's sortable tree: the top and bottom quarters of a row drop before and after it, its middle inside it; an element that holds no elements takes halves. The dragged row's target shows as a line or a filled row.
-- The Canvas outlines the element under the pointer, and the selection with its name and size in dp, as UMG labels its selected widget; a click there selects, and a Library drop goes into the element under the pointer.
+- The keyboard sensor, over the Hierarchy: Space or Enter picks the selected row up, Up and Down step through every gap between rows at each depth (`ui_design_slots`, folded rows' children left out), Space, Enter or Tab drops and Escape cancels. Pickup, each place and the drop are announced in the status bar; a change to the text puts the row down.
+- The Canvas outlines the element under the pointer, and the selection with its name and size in dp, as UMG labels its selected widget; a click there selects. A drag over it splits the element under the pointer as a row splits, along its parent's flow (a flex row's, or inline boxes', runs across): its edges drop before and after it, marked by a line between siblings, and its middle inside it, outlined.
 - Selection is shared: the Hierarchy, the Canvas and the Text Editor's cursor select the same element, found through `data-src` lines.
-- Details shows the rules that match the selection's tag, id and classes, pseudo classes included; their values edit in place.
+- Details shows the rules that match the selection's tag, id and classes, pseudo classes included; their values edit in place, and declarations are added and removed there, written as the rule is. Extract to Class moves the inline style into a new rule, written as the RCSS's rules are, and gives the element the class: one undo step over both parts.
 
 ### Zep (kit_code)
 
@@ -261,7 +262,7 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 - A press places the cursor and dragging selects; a double click selects the word, names with `-` whole; a press with the primary modifier reports `KIT_CODE_DEFINITION` there. The wheel scrolls by three lines a notch.
 - With `desc.no_wrap`, lines run on past the edge: the view scrolls sideways to keep the cursor in view, and with the wheel's sideways turn.
 - Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes. The list scrolls to its choice.
-- Diagnostics mark the gutter and underline their line.
+- Diagnostics mark the gutter and underline the range the caller gives (`kit_code_marker.start`, `end`), else their line.
 - Hover: once the pointer rests on a glyph for the tooltips' delay, `kit_code_hover` names its byte, and the caller describes it in `desc.hover` (a title line, then detail lines). A card in the overlay layer shows that under the pointer, after the diagnostics of its line, so it never clips at the editor's edge. A key or a press hides it until the pointer moves.
 - After RmlUi releases its font resources (`rml_font_generation`), as destroying a backend does, the editor fetches its face again.
 - Text is JetBrains Mono through RmlUi's font engine, a mesh per run of one color, cached until a render no longer draws it. Colors come from `theme/code.rcss`.

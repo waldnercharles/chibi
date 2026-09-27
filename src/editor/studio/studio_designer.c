@@ -541,12 +541,9 @@ static void carry_marks(kit *k, const studio_designer *d, int element)
     if (!d->carry.active) {
         return;
     }
-    int home;
-    ui_design_slot *slots = carry_slots(d, &home);
-    const ui_design_slot *slot = &slots[d->carry.slot];
+    const ui_design_slot *slot = &d->carry.at;
     kit_attr(k, "data-drop", slot->target == element ? PLACE_NAMES[slot->place] : "none");
     kit_flag(k, "data-dragging", element >= 0 && element == d->carry.element);
-    afree(slots);
 }
 
 static void open_menu(studio *s, studio_designer *d, int element, const char *menu)
@@ -753,14 +750,7 @@ void studio_designer_hierarchy_header(studio *s, int area)
    its slot names. */
 static int revealed_element(const studio_designer *d)
 {
-    if (!d->carry.active) {
-        return d->selected;
-    }
-    int home;
-    ui_design_slot *slots = carry_slots(d, &home);
-    int target = slots[d->carry.slot].target;
-    afree(slots);
-    return target;
+    return d->carry.active ? d->carry.at.target : d->selected;
 }
 
 void studio_designer_hierarchy(studio *s, int area)
@@ -855,6 +845,7 @@ static void pick_up(studio *s, studio_designer *d, const ui_buffer *b)
     d->carry.element = d->selected;
     d->carry.revision = b->revision;
     ui_design_slot *slots = carry_slots(d, &d->carry.slot);
+    d->carry.at = slots[d->carry.slot];
     afree(slots);
     char name[96], message[192];
     designer_element_name(d->rml, d->selected, name, sizeof name);
@@ -868,7 +859,8 @@ static void move_carried(studio *s, studio_designer *d, int direction)
     ui_design_slot *slots = carry_slots(d, &home);
     int next = d->carry.slot + direction;
     d->carry.slot = next >= 0 && next < acount(slots) ? next : d->carry.slot;
-    announce_slot(s, d, &slots[d->carry.slot], d->carry.slot, acount(slots));
+    d->carry.at = slots[d->carry.slot];
+    announce_slot(s, d, &d->carry.at, d->carry.slot, acount(slots));
     d->reveal_row = true;
     afree(slots);
 }

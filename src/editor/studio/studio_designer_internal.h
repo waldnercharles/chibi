@@ -54,13 +54,15 @@ struct studio_designer
     } add; /* the field of an Add popover (class, attribute) */
     /* Workstream Q: a Hierarchy row carried with the keyboard, as dnd-kit's
        keyboard sensor carries one: the element, the slot it would drop in
-       (an index of ui_design_slots'), and the buffer's revision when it was
-       picked up, since a change to the text puts it down. */
+       (an index of ui_design_slots', and that slot), and the buffer's
+       revision when it was picked up, since a change to the text puts it
+       down. */
     struct
     {
         bool active;
         int element;
         int slot;
+        ui_design_slot at;
         unsigned revision;
     } carry;
 };

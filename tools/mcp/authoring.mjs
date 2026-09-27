@@ -466,6 +466,7 @@ const sceneOperationSchema = object({
     enum: [
       "set_presentation",
       "add_entity",
+      "rename_entity",
       "remove_entity",
       "set_entity_prototype",
       "set_entity_components",
@@ -478,11 +479,11 @@ const sceneOperationSchema = object({
   },
   name: {
     type: "string",
-    description: "Entity name for add_entity.",
+    description: "Entity name for add_entity or the new name for rename_entity.",
   },
   entity: {
     type: "string",
-    description: "Existing entity name.",
+    description: "Existing entity name; later operations in the same batch use its new name after rename_entity.",
   },
   prototype: {
     type: "string",

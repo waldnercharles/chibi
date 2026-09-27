@@ -123,7 +123,7 @@ saving them. Tool results include complete `structuredContent` and
 - `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
-- `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
+- `buildScene`: create or edit named entities, prototype instances, overrides, and attachments; `rename_entity` renames an entity within the scene.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
 - `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
 - `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
@@ -388,6 +388,16 @@ editor values, and behavior attachments are semantic JSON objects. The scene
 loader validates every prototype, override, and behavior before publication.
 Scene scenarios use the authored entity list, so a test can include a target,
 enemy, and support entity without constructing a second JSON fixture by hand.
+Use `rename_entity` with `entity` set to the current name and `name` set to the
+new name. Renames reject empty and duplicate names, accept an unchanged name,
+and take effect in operation order, so later operations in the same batch use
+the new name. A failed operation rejects the whole batch; dry runs report the
+proposed hash without publishing it.
+
+In a project named Studio, a successful scene object rename includes a
+`warnings` array. Studio's C code looks up chrome entities such as `TopBar`,
+`StatusBar` and `AreaHeader` by name, and name-based references elsewhere are
+not rewritten.
 
 ## Author a graph or shader
 

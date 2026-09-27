@@ -30,8 +30,102 @@ static int edit_request(const char *source, const char *request_json, char **edi
     return status;
 }
 
+static void rename_entities()
+{
+    const char
+        *source = "{\"version\":1,\"name\":\"Rename\",\"entities\":["
+                  "{\"name\":\"First\",\"prototype\":\"Point\","
+                  "\"components\":{\"GAME.GameTransform\":{\"x\":3}},"
+                  "\"retained_components\":{\"GAME.GameTransform\":{\"x\":5}},"
+                  "\"behaviors\":[\"Pulse\"]},"
+                  "{\"name\":\"Second\",\"prototype\":\"Point\"}]}";
+    char *edited = NULL;
+    yyjson_mut_doc *response = NULL;
+    int status = edit_request(
+        source,
+        "{\"operations\":[{\"op\":\"rename_entity\",\"entity\":\"First\","
+        "\"name\":\"Hero\"},"
+        "{\"op\":\"rename_entity\",\"entity\":\"Hero\",\"name\":\"Hero\"},"
+        "{\"op\":\"add_behavior\",\"entity\":\"Hero\",\"behavior\":\"Move\"}]}",
+        &edited,
+        &response
+    );
+    char error[256] = { 0 };
+    game_scene_document *scene = edited
+                                   ? game_scene_document_load(edited, error, sizeof error)
+                                   : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && scene &&
+            game_scene_document_entity_index(scene, "First") == -1 &&
+            game_scene_document_entity_index(scene, "Hero") == 0 &&
+            game_scene_document_entity_index(scene, "Second") == 1 &&
+            !strcmp(scene->entities[0].prototype, "Point") &&
+            strstr(scene->entities[0].components_json, "\"x\": 3") &&
+            strstr(scene->entities[0].retained_json, "\"x\": 5") &&
+            acount(scene->entities[0].behaviors) == 2 &&
+            !strcmp(scene->entities[0].behaviors[0], "Pulse") &&
+            !strcmp(scene->entities[0].behaviors[1], "Move"),
+        "MCP rename preserves object data and order, accepts its own name, and "
+        "supports later edits by the new name"
+    );
+    game_scene_document_free(scene);
+    free(edited);
+    yyjson_mut_doc_free(response);
+
+    const struct
+    {
+        const char *operation;
+        const char *error;
+        int status;
+    } invalid[] = {
+        { "{\"op\":\"rename_entity\",\"entity\":\"Hero\",\"name\":\"Second\"}",
+          "Another object",
+          CHIBI_AUTOMATION_VALIDATION_ERROR },
+        { "{\"op\":\"rename_entity\",\"entity\":\"Hero\",\"name\":\"\"}",
+          "needs a name",
+          CHIBI_AUTOMATION_VALIDATION_ERROR },
+        { "{\"op\":\"rename_entity\",\"entity\":\"First\",\"name\":\"Other\"}",
+          "does not exist",
+          CHIBI_AUTOMATION_VALIDATION_ERROR },
+        { "{\"op\":\"rename_entity\",\"entity\":\"Hero\"}",
+          "name must be",
+          CHIBI_AUTOMATION_INVALID_REQUEST },
+        { "{\"op\":\"rename_entity\",\"entity\":\"Hero\",\"name\":4}",
+          "name must be",
+          CHIBI_AUTOMATION_INVALID_REQUEST },
+        { "{\"op\":\"rename_entity\",\"entity\":\"Hero\",\"name\":"
+          "\"Other\\u0000Hidden\"}",
+          "name must be",
+          CHIBI_AUTOMATION_INVALID_REQUEST },
+    };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        char request[512];
+        snprintf(
+            request,
+            sizeof request,
+            "{\"operations\":[{\"op\":\"rename_entity\",\"entity\":\"First\","
+            "\"name\":\"Hero\"},%s]}",
+            invalid[i].operation
+        );
+        edited = NULL;
+        status = edit_request(source, request, &edited, &response);
+        yyjson_mut_val *result = yyjson_mut_doc_get_root(response);
+        const char *message = yyjson_mut_get_str(yyjson_mut_obj_get(result, "error"));
+        test_check(
+            status == invalid[i].status && !edited && message &&
+                strstr(message, invalid[i].error) &&
+                yyjson_mut_get_int(yyjson_mut_obj_get(result, "failed_operation")) == 1,
+            "MCP invalid rename rejects the entire batch with the failing "
+            "operation and reason"
+        );
+        free(edited);
+        yyjson_mut_doc_free(response);
+    }
+}
+
 void test_automation_scene_edit(void)
 {
+    rename_entities();
     const char *source = "{\"version\":1,\"name\":\"SceneEdit\","
                          "\"presentation\":\"2d\","
                          "\"entities\":[]}";

@@ -1629,19 +1629,18 @@ static void catalog_reference_add(
     apush(*references, reference);
 }
 
-/* The project's default page, the ui asset project.yaml's ui: names, owned;
- * NULL for none. */
-static char *manifest_page(const char *root)
+/* An owned string from project.yaml, or NULL for none. */
+static char *manifest_string(const char *root, const char *key)
 {
     char path[1024], error[128];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     char *text = text_file_read(path);
     yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
     free(text);
-    const char *ui = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), "ui"));
-    char *page = ui && ui[0] ? xstrdup(ui) : NULL;
+    const char *value = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), key));
+    char *copy = value && value[0] ? xstrdup(value) : NULL;
     yyjson_doc_free(manifest);
-    return page;
+    return copy;
 }
 
 /* Adds what an asset holds to the index, with `page` the project's default
@@ -1796,7 +1795,7 @@ static int catalog_index_references(
                            : reference_index_add_asset(index, kind, assets[i].name, path, NULL);
         free(path);
     }
-    char *page = manifest_page(root);
+    char *page = manifest_string(root, "ui");
     for (int i = 0; i < acount(assets); i++) {
         if (assets[i].reference < 0) {
             continue;
@@ -6317,7 +6316,7 @@ const char *chibi_preview_page(const chibi_preview_run *run)
 /* The scene's root ui document, else the default in the manifest at `root`. */
 static char *preview_page(const char *root, const game_scene_document *scene)
 {
-    return scene && scene->ui ? xstrdup(scene->ui) : manifest_page(root);
+    return scene && scene->ui ? xstrdup(scene->ui) : manifest_string(root, "ui");
 }
 
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
@@ -9260,6 +9259,29 @@ static char *scene_request_defaults(const char *root, yyjson_val *request, char 
     return json;
 }
 
+static void warn_studio_scene_rename(const char *root, yyjson_val *request, response *result, yyjson_mut_val *value)
+{
+    yyjson_arr_iter iterator = yyjson_arr_iter_with(yyjson_obj_get(request, "operations"));
+    yyjson_val *operation;
+    bool rename = false;
+    while ((operation = yyjson_arr_iter_next(&iterator))) {
+        const char *op = request_string(operation, "op");
+        if (op && !strcmp(op, "rename_entity")) {
+            rename = true;
+            break;
+        }
+    }
+    if (!rename) {
+        return;
+    }
+    char *name = manifest_string(root, "name");
+    if (name && !strcmp(name, "Studio")) {
+        yyjson_mut_val *warnings = yyjson_mut_obj_add_arr(result->doc, value, "warnings");
+        yyjson_mut_arr_add_strcpy(result->doc, warnings, "Studio looks up chrome objects such as TopBar, StatusBar and AreaHeader by name in C. Renaming them breaks the editor chrome; these lookups are not rewritten.");
+    }
+    free(name);
+}
+
 static int handle_edit_scene(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     yyjson_val *create_value = yyjson_obj_get(request, "create");
@@ -9354,6 +9376,7 @@ static int handle_edit_scene(const char *root, yyjson_val *request, response *re
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
     bool changed = !source || strcmp(source, edited);
+    warn_studio_scene_rename(root, request, result, value);
     yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
     yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
     add_hash_named(result->doc, value, "after_hash", after);

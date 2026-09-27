@@ -1,3 +1,4 @@
+#include "assets/scene_document.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 
@@ -489,12 +490,12 @@ int app_scene_authoring_rename_instance(app_scene_authoring *scene, ecs_entity e
     if (!strcmp(scene->actors[index].name, name)) {
         return 0;
     }
-    if (!name[0]) {
-        snprintf(scene->message, sizeof scene->message, "An object needs a name.");
-        return -1;
-    }
-    if (actor_name_used(scene, name)) {
-        snprintf(scene->message, sizeof scene->message, "Another object is named %s.", name);
+    if (game_scene_entity_validate_name(
+            name,
+            actor_name_used(scene, name),
+            scene->message,
+            sizeof scene->message
+        )) {
         return -1;
     }
     finish_transform_edit(scene, false);

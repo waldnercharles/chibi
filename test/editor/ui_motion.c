@@ -102,9 +102,6 @@ static void open_fixture(motion_fixture *f)
 {
     f->backend = rml_backend_create(640, 480, 1);
     f->context = rml_backend_context(f->backend);
-    /* Contexts share RmlUi's clock, which follows the backend that has run
-       furthest, so earlier tests' backends may lead it: start from there. */
-    rml_backend_update(f->backend, rml_elapsed_time());
     f->json = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(f->json);
     yyjson_mut_doc_set_root(f->json, root);
@@ -323,6 +320,20 @@ static void rapid_checks(motion_fixture *f)
     );
 }
 
+/* Opening another project closes every context, which shuts RmlUi down,
+ * and opens new ones: their transitions run from the first frame rather
+ * than waiting out the time the last session ran. */
+static void restart_checks()
+{
+    motion_fixture f = { 0 };
+    open_fixture(&f);
+    set_shown(&f, true);
+    frames(&f, 5);
+    float entering = property(by_id(&f, "report"), "opacity");
+    close_fixture(&f);
+    test_check(entering > 0 && entering < 1, "transitions run at once after RmlUi starts over");
+}
+
 void test_ui_motion()
 {
     motion_fixture f = { 0 };
@@ -332,4 +343,5 @@ void test_ui_motion()
     presence_checks(&f);
     rapid_checks(&f);
     close_fixture(&f);
+    restart_checks();
 }

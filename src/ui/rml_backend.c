@@ -650,6 +650,15 @@ static void free_backend(rml_backend *backend)
     free(backend);
 }
 
+/* RmlUi starts over when its last context goes, as opening another project
+   does, and so does its clock: a clock left at the last session's time would
+   hold every transition of the next session until it caught up. */
+static void shut_down()
+{
+    rml_shutdown();
+    elapsed_seconds = 0;
+}
+
 rml_backend *rml_backend_create(int logical_width, int logical_height, float framebuffer_scale)
 {
     static int context_serial;
@@ -672,6 +681,8 @@ rml_backend *rml_backend_create(int logical_width, int logical_height, float fra
         return NULL;
     }
     backend_count++;
+    /* A later context joins the shared clock where it stands. */
+    backend->elapsed = elapsed_seconds;
     backend->context = rml_create_context(
         backend->context_name,
         backend->physical_width,
@@ -680,7 +691,7 @@ rml_backend *rml_backend_create(int logical_width, int logical_height, float fra
     );
     if (!backend->context) {
         if (--backend_count == 0) {
-            rml_shutdown();
+            shut_down();
         }
         free_backend(backend);
         return NULL;
@@ -700,7 +711,7 @@ void rml_backend_destroy(rml_backend *backend)
         /* Drops this renderer's manager while the renderer is still alive. */
         rml_release_render_managers();
         if (--backend_count == 0) {
-            rml_shutdown();
+            shut_down();
         }
     }
     free_backend(backend);

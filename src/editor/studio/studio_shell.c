@@ -619,10 +619,12 @@ static uint32_t tab_icon(const scene_document_tab *tab)
     return KIT_ICON_FILE;
 }
 
+/* Every document but a scene closes from its tab, as in VS Code; a scene is
+   the root the other documents open over. */
 bool studio_tab_closes(const studio *s, int tab)
 {
     return tab >= 0 && tab < acount(s->scene->tabs) &&
-           s->scene->tabs[tab].kind == APP_EDITOR_DOCUMENT_UI;
+           s->scene->tabs[tab].kind != APP_EDITOR_DOCUMENT_SCENE;
 }
 
 /* The top bar's TopBar lists these from `editor.tabs`; a tab runs

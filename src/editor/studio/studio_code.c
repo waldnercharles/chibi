@@ -122,12 +122,23 @@ void studio_code_save(studio *s)
     );
 }
 
-void studio_code_close(studio *s, int index)
+/* A UI document's tab closes with its text; another discards what its
+   document has unsaved, as reverting it would. */
+static void close_tab(studio *s, int index)
 {
     scene_document_tab *tab = &s->scene->tabs[index];
-    assert(tab->kind == APP_EDITOR_DOCUMENT_UI);
-    if (!ui_buffer_dirty(tab->ui)) {
+    if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
         scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, tab->path);
+        return;
+    }
+    scene_tabs_discard(s->scene, index);
+}
+
+void studio_close_tab(studio *s, int index)
+{
+    scene_document_tab *tab = &s->scene->tabs[index];
+    if (!scene_tabs_dirty(s->scene, tab)) {
+        close_tab(s, index);
         return;
     }
     char title[160];
@@ -139,7 +150,7 @@ void studio_code_close(studio *s, int index)
         .duration = 6,
     };
     kit_toast_dismiss(s->kit, s->code.close_toast);
-    snprintf(s->code.close, sizeof s->code.close, "%s", tab->path);
+    snprintf(s->code.close, sizeof s->code.close, "%s", tab->key);
     s->code.close_toast = kit_toast(s->kit, 0, &ask);
 }
 
@@ -155,8 +166,11 @@ static void toast_actions(studio *s)
     }
     if (s->code.close_toast && kit_toast_action(k, s->code.close_toast)) {
         s->code.close_toast = 0;
-        if (ui_tab(s, s->code.close)) {
-            scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, s->code.close);
+        for (int i = 0; i < acount(s->scene->tabs); i++) {
+            if (!strcmp(s->scene->tabs[i].key, s->code.close)) {
+                close_tab(s, i);
+                break;
+            }
         }
     }
 }

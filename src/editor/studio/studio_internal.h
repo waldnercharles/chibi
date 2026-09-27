@@ -492,7 +492,7 @@ typedef struct
     int overwrite_toast;  /* offers to save over a file changed on disk */
     char overwrite[1024]; /* that file */
     int close_toast;      /* confirms closing a document with unsaved edits */
-    char close[1024];     /* that document */
+    char close[1024];     /* that document's tab key */
     /* Workstream I: a code editor (kit_code) per open document part, and
        the one shown with the document and part it holds (the designer
        follows its cursor). */
@@ -1148,8 +1148,9 @@ ui_buffer *studio_ui_buffer(studio *s);
 /* Saves the active UI document, offering to save over a file that changed
  * on disk. */
 void studio_code_save(studio *s);
-/* Closes a UI document's tab, asking first when it has unsaved edits. */
-void studio_code_close(studio *s, int tab);
+/* Closes a document's tab, asking first when it has unsaved edits, which
+ * closing discards. */
+void studio_close_tab(studio *s, int tab);
 /* Workstream C: frees the Text Editor's code editor. */
 void studio_code_free(studio *s);
 /* Workstream I: opens a place in a UI document's part, as Go to Definition

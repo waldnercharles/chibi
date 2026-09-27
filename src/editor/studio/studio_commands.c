@@ -268,7 +268,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             scene_tabs_activate(s->scene, argument);
             break;
         case STUDIO_COMMAND_CLOSE_TAB:
-            studio_code_close(s, tab_at(s, argument));
+            studio_close_tab(s, tab_at(s, argument));
             break;
         case STUDIO_COMMAND_CLOSE_DRAWER: s->prefs.drawer_open = false; break;
         /* Rename objects and prototype components */

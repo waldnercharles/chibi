@@ -110,18 +110,25 @@ static int refresh_prototype_actor(
             continue;
         }
         scene_retention_remove(&actor->retained, desc->name);
-        scene_retained_component retained = {
-            .name = xstrdup(desc->name),
-            .values_json = game_prototype_entity_component_json(
-                scene->world,
-                actor->entity,
-                desc,
-                &scene->registry
-            ),
-            .defaults_json = game_prototype_component_json(actor->base, desc->name),
-            .automatic = true,
-        };
-        assert(retained.values_json && retained.defaults_json);
+        char *values = game_prototype_entity_component_json(
+            scene->world,
+            actor->entity,
+            desc,
+            &scene->registry
+        );
+        char *defaults = game_prototype_component_json(actor->base, desc->name);
+        assert(values && defaults);
+        /* Only the instance's own values are worth keeping for the
+           component's return; the prototype's come back with it. */
+        if (!strcmp(values, defaults)) {
+            free(values);
+            free(defaults);
+            continue;
+        }
+        scene_retained_component retained = { .name = xstrdup(desc->name),
+                                              .values_json = values,
+                                              .defaults_json = defaults,
+                                              .automatic = true };
         apush(actor->retained, retained);
         scene->scene_dirty = true;
     }
@@ -328,27 +335,50 @@ int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, 
     return 0;
 }
 
+/* Adds or removes a component as one step of the prototype's Undo; its
+   instances follow. */
+static int edit_components(
+    app_scene_authoring *scene,
+    scene_prototype_asset *asset,
+    const ecs_component_desc *desc,
+    bool add
+)
+{
+    prototype_history_before(scene, asset->prototype);
+    int result = add ? game_prototype_add_component(asset->prototype, desc)
+                     : game_prototype_remove_component(asset->prototype, desc->name);
+    assert(result == 0);
+    asset->dirty = 1;
+    asset_index_invalidate(scene);
+    return refresh_prototype_instances(scene, asset);
+}
+
 int app_scene_authoring_add_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *component_name
 )
 {
-    if (!scene || !prototype_name || !component_name) {
-        return -1;
-    }
     scene_prototype_asset *asset = find_prototype(scene, prototype_name);
     const ecs_component_desc *desc = component_descriptor(scene, component_name);
-    if (!asset || !desc) {
+    if (!asset || !desc || prototype_has_component_id(asset->prototype, desc->id)) {
         return -1;
     }
-    prototype_history_before(scene, asset->prototype);
-    if (game_prototype_add_component(asset->prototype, desc) != 0) {
+    return edit_components(scene, asset, desc, true);
+}
+
+int app_scene_authoring_remove_prototype_component(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component_name
+)
+{
+    scene_prototype_asset *asset = find_prototype(scene, prototype_name);
+    const ecs_component_desc *desc = component_descriptor(scene, component_name);
+    if (!asset || !desc || !prototype_has_component_id(asset->prototype, desc->id)) {
         return -1;
     }
-    asset->dirty = 1;
-    asset_index_invalidate(scene);
-    return refresh_prototype_instances(scene, asset);
+    return edit_components(scene, asset, desc, false);
 }
 
 static int restore_prototype(

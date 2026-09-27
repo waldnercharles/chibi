@@ -94,10 +94,24 @@ const scene_behavior_edit *scene_history_peek_behaviors(
 );
 void scene_history_complete_behaviors(scene_history *history, bool redo);
 
+/* Records an already-applied rename of the entity's object; history owns
+ * copies of the names. An unchanged name preserves both stacks. The app
+ * replays it: peek returns the name the head gives the object (before on
+ * Undo, after on Redo), or NULL unless the head is a rename; complete only
+ * after success. */
+bool scene_history_push_rename(
+    scene_history *history,
+    ecs_entity entity,
+    const char *before,
+    const char *after
+);
+const char *scene_history_peek_rename(const scene_history *history, bool redo, ecs_entity *entity);
+void scene_history_complete_rename(scene_history *history, bool redo);
+
 bool scene_history_can_undo(const scene_history *history);
 bool scene_history_can_redo(const scene_history *history);
 /* Returns 1 after applying, 0 when empty, or -1 if the entity/component/field
- * is missing, its scalar schema no longer matches, or the head requires app-owned actor/behavior replay. Failure preserves both
+ * is missing, its scalar schema no longer matches, or the head requires app-owned actor/behavior/rename replay. Failure preserves both
  * stacks and all component values. out_entity is
  * optional and is assigned only after applying. Entities are never recreated. */
 int scene_history_undo(scene_history *history, ecs_world *world, ecs_entity *out_entity);

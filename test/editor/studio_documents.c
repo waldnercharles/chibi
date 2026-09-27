@@ -141,11 +141,13 @@ void test_code_intelligence_studio();
 #define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
 /* Studio over `project`'s scene `scene` with `behavior` open and the Scene
-   filling the workspace. Preferences stay as saved. */
+   filling the workspace. Preferences stay as saved, but for UI Scale 1, so
+   the layout the checks click is the same whatever the user's scale. */
 static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = fixture_open(project, scene, behavior);
     f.studio = studio_new(f.scene, f.viewport, project);
+    f.studio->prefs.ui_scale = f.studio->applied.ui_scale = 1;
     f.studio->prefs.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
     f.studio->applied.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
     f.studio->maximized = STUDIO_AREA_TOP;
@@ -602,12 +604,15 @@ static int panel_elements(studio *s, const char *panel, const char *selector, rm
     return rml_element_query_selector_all(doc, query, found, 8);
 }
 
-/* A press and release on `el`, which focuses it as a click does. */
+/* A press and release on `el`, which focuses it as a click does. Input is
+   in dp, and the element's box in pixels. */
 static void press(studio *s, rml_element *el)
 {
     rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
     rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    rml_input input = { .x = at.x + size.x * 0.5f, .y = at.y + size.y * 0.5f };
+    float ratio = studio_pixel_ratio(s);
+    rml_input input = { .x = (at.x + size.x * 0.5f) / ratio,
+                        .y = (at.y + size.y * 0.5f) / ratio };
     rml_input_type types[] = { RML_INPUT_POINTER_MOVE,
                                RML_INPUT_POINTER_DOWN,
                                RML_INPUT_POINTER_UP };

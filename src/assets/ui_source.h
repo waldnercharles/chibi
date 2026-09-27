@@ -359,4 +359,14 @@ void ui_source_set_block(
 );
 void ui_source_edits_free(text_edit *edits);
 
+/* ---------- Hover (workstream I) ---------- */
+
+/* What the text names at `offset`, as an editor's hover shows it, owned: a
+ * title line ("Class .panel", "Custom property --gap", "Widget Dialog",
+ * "Property color"), then where the project defines it, each place with
+ * its line's text, and how often it is used; NULL where it names nothing. */
+char *ui_source_hover(const ui_source *source, int offset, const ui_source_project *project);
+/* The same for a symbol by kind and name, as findReferences names one. */
+char *ui_source_describe(const ui_source_project *project, const ui_source_symbol *symbol);
+
 #endif

@@ -919,3 +919,7 @@ target_sources(chibi_ui PRIVATE ${GEN_CODE_FONT})
 add_dependencies(chibi_ui generate_editor_code_font)
 # Zep, its C binding and the kit_code primitive.
 include(cmake/zep.cmake)
+
+# --- Code intelligence in the Text Editor (workstream I) ----------------------
+# Hover descriptions of ui symbols, for Studio's Text Editor and the MCP.
+target_sources(ui_source PRIVATE src/assets/ui_source_hover.c)

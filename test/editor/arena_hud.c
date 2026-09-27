@@ -17,8 +17,10 @@
 #include <string.h>
 
 #define ROOT "projects/arena2d"
-/* A Material Impact of 15 takes the Player's hull from 20 to 5. */
+/* The Player flies right from the first frame, and at frame 5 a Material
+   Impact of 15 takes its hull from 20 to 5. */
 #define HIT                                                                    \
+    "{\"frame\":0,\"input\":{\"movement\":{\"x\":1,\"y\":0}}},"                \
     "{\"frame\":5,\"input\":{\"events\":[{\"name\":\"Material Impact\","       \
     "\"target\":\"Player\",\"values\":[{\"type\":\"float\",\"value\":15},"     \
     "{\"type\":\"int\",\"value\":0}]}]}}"
@@ -243,12 +245,14 @@ void test_arena_hud()
     yyjson_val *damaged = result_of(hit);
     yyjson_val *bar = ui_record(damaged, "#hull .bar");
     yyjson_val *critical = yyjson_obj_get(ui_record(damaged, "#hull"), "classes");
+    double speed = yyjson_get_num(yyjson_obj_get(ui_record(damaged, "#speed"), "value"));
     test_check(
-        hull(damaged) == 5 && bar &&
+        hull(damaged) == 5 && bar && speed > 100 &&
             yyjson_get_num(yyjson_obj_get(bar, "value")) == 0.25 &&
             yyjson_get_bool(yyjson_obj_get(critical, "critical")) &&
             yyjson_equals_str(yyjson_obj_get(ui_record(damaged, "#hull .readout"), "text"), "5 / 20"),
-        "arena2d: HudDisplay sets the damaged Player's hull on the Sandbox HUD"
+        "arena2d: HudDisplay sets the flying, damaged Player's hull and speed "
+        "on the Sandbox HUD"
     );
 
     hud_view v = hud_open();

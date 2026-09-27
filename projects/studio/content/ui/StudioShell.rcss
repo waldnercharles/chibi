@@ -20,3 +20,5 @@
 @import "theme/drag.rcss";
 @import "theme/chart.rcss";
 @import "theme/inspect.rcss";
+@import "theme/workspace.rcss";
+@import "theme/graph.rcss";

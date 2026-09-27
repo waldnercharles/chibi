@@ -4,14 +4,11 @@
  * They implement the Base UI contracts recorded in
  * docs/prototypes/studio/kit.html; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
-#include "support/rcss.h"
-#include "support/text_file.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <ctype.h>
-#include <dirent.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -918,73 +915,31 @@ static const rml_event_id kit_events[] = {
 
 #define KIT_EVENT_COUNT (sizeof kit_events / sizeof *kit_events)
 
-/* ---------- Stylesheet reload ---------- */
-
-/* RCSS edits apply without a rebuild: the document restyles when a resource
-   stylesheet or the theme changes. */
-static void watch_styles(kit *k)
-{
-    DIR *dir = opendir(CHIBI_RMLUI_RESOURCE_DIR);
-    assert(dir);
-    struct dirent *entry;
-    while ((entry = readdir(dir))) {
-        const char *dot = strrchr(entry->d_name, '.');
-        if (!dot || strcmp(dot, ".rcss") != 0) {
-            continue;
-        }
-        file_watch w = { 0 };
-        char path[sizeof w.path];
-        snprintf(path, sizeof path, "%s/%s", CHIBI_RMLUI_RESOURCE_DIR, entry->d_name);
-        file_watch_changed(&w, path, 0);
-        apush(k->styles, w);
-    }
-    closedir(dir);
-}
+/* ---------- Stylesheets ---------- */
 
 /* The name RmlUi reports for the kit's sheet, "kit-<document>", or with a
  * key, for that extra sheet, "kit-<document>-<key>" (support/ui_style.h). */
 static void sheet_name(const kit *k, const char *key, char *name, size_t size)
 {
-    const char *file = strrchr(k->sheet, '/');
-    file = file ? file + 1 : k->sheet;
-    int stem = (int)strcspn(file, ".");
-    snprintf(name, size, "kit-%.*s%s%s", stem, file, key ? "-" : "", key ? key : "");
+    int stem = (int)strcspn(k->document, ".");
+    snprintf(name, size, "kit-%.*s%s%s", stem, k->document, key ? "-" : "", key ? key : "");
     for (char *c = name; *c; c++) {
         *c = isalnum((unsigned char)*c) || *c == '-' ? *c : '_';
     }
 }
 
-/* The theme, then the document's own stylesheet, as one sheet; then the
- * extra ones. Each is recorded with where its lines came from: the theme's
- * as its maker recorded them (ui_style_map). */
+/* The theme is the document's stylesheet: the Studio project styles every
+ * kit document, so Studio edits its own chrome. Each sheet is recorded with
+ * where its lines came from, as its maker recorded them (ui_style_map). */
 static void restyle(kit *k)
 {
-    char *source = text_file_read(k->sheet), error[200], name[160];
-    assert(source);
-    rcss_map own_map = { 0 };
-    char *own = rcss_expand(source, CHIBI_RMLUI_RESOURCE_DIR, &own_map, error, sizeof error);
-    if (!own) {
-        fprintf(stderr, "%s %s\n", k->sheet, error);
-        own = source;
-        source = NULL;
-    }
-    free(source);
-    rcss_map_own(&own_map, k->sheet);
+    char name[160];
     const char *theme = k->theme ? k->theme : "";
-    char *rcss = NULL;
-    rcss_map map = { 0 };
-    rcss_join(&rcss, &map, theme, ui_style_map(theme));
-    rcss_join(&rcss, &map, own, &own_map);
-    apush(rcss, '\0');
     sheet_name(k, NULL, name, sizeof name);
-    if (!rml_document_set_named_style_sheet(k->doc, name, rcss)) {
-        fprintf(stderr, "RmlUi could not read %s\n", k->sheet);
+    if (!rml_document_set_named_style_sheet(k->doc, name, theme) && theme[0]) {
+        fprintf(stderr, "RmlUi could not read the theme of %s\n", k->document);
     }
-    ui_style_set(name, rcss, &map);
-    afree(rcss);
-    free(own);
-    rcss_map_free(&own_map);
-    rcss_map_free(&map);
+    ui_style_set(name, theme, ui_style_map(theme));
     for (int i = 0; i < acount(k->extra_styles); i++) {
         const char *extra = k->extra_styles[i].value;
         sheet_name(k, k->extra_styles[i].name, name, sizeof name);
@@ -998,17 +953,6 @@ static void restyle(kit *k)
         ui_style_set(name, extra, ui_style_map(extra));
     }
     k->restyle = false;
-}
-
-static void sync_styles(kit *k)
-{
-    bool changed = false;
-    for (int i = 0; i < acount(k->styles); i++) {
-        changed |= file_watch_changed(&k->styles[i], k->styles[i].path, k->in.time);
-    }
-    if (changed || k->restyle) {
-        restyle(k);
-    }
 }
 
 void kit_theme(kit *k, const char *rcss)
@@ -1052,9 +996,7 @@ kit *kit_create(void *context, const char *document_path)
     k->doc = rml_context_load_document(k->context, path);
     free(path);
     assert(k->doc);
-    size_t stem = strlen(document_path) - strlen(".rml");
-    assert(!strcmp(document_path + stem, ".rml"));
-    str_catf(&k->sheet, "%s/%.*s.rcss", CHIBI_RMLUI_RESOURCE_DIR, (int)stem, document_path);
+    k->document = xstrdup(document_path);
     k->restyle = true; /* on the first frame, after the owner sets a theme */
     rml_document_show(k->doc, RML_MODAL_NONE, RML_FOCUS_AUTO, RML_SCROLL_FLAG_AUTO);
     register_chart_element();
@@ -1074,7 +1016,6 @@ kit *kit_create(void *context, const char *document_path)
     apush(k->roots, k->layer);
     k->tooltip = raw(layer, "div", "tooltip", NULL);
     rml_element_set_property(k->tooltip, "display", "none");
-    watch_styles(k);
     return k;
 }
 
@@ -1123,8 +1064,7 @@ static void kit_free(kit *k)
     afree(k->emitting);
     afree(k->entering);
     afree(k->layout_nodes);
-    afree(k->styles);
-    free(k->sheet);
+    free(k->document);
     free(k->theme);
     pairs_free(k->extra_styles);
     free(k);
@@ -1165,7 +1105,9 @@ void kit_begin(kit *k, const kit_frame_input *input)
 {
     k->in = *input;
     check_slots(k);
-    sync_styles(k);
+    if (k->restyle) {
+        restyle(k);
+    }
     aclear(k->triggers);
     place_popups(k);
     drag_begin_frame(k);

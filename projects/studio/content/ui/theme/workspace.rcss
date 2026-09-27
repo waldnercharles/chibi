@@ -1,7 +1,8 @@
-/* Studio workspace, ported from docs/prototypes/studio/studio.css. Areas are
-   Blender-style splits, each with a header and an editor type. */
+/* Studio workspace (the kit's studio.rml), ported from
+   docs/prototypes/studio/studio.css. Areas are Blender-style splits, each with
+   a header and an editor type. */
 
-body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: var(--app); overflow: hidden; }
+body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: var(--app); overflow: hidden; }
 
 #app { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; }
 
@@ -31,7 +32,7 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 .split-v:hover, .split-v[data-dragging], .split-h:hover, .split-h[data-dragging] { background-color: var(--primary-wash); }
 
 /* Drawer: the collapsible bottom area of the main column. */
-.area.drawer { flex: 0 0 auto; }
+.area.drawer:not(.fill) { flex: 0 0 auto; }
 
 /* Scene viewport. */
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: var(--viewport); }
@@ -46,7 +47,7 @@ body:not(.dark) .viewport {
 .viewport .toolshelf .btn .icon { font-size: 15dp; width: 18dp; }
 .viewport .toolshelf .btn[data-state=on] { background-color: var(--primary); }
 .viewport .toolshelf .btn[data-state=on] .icon { color: var(--primary-foreground); }
-.viewport .view-label { position: absolute; left: 50dp; top: 10dp; color: var(--foreground); font-size: 11dp; pointer-events: none; }
+.viewport .view-label { position: absolute; left: 50dp; bottom: 10dp; color: var(--foreground); font-size: 11dp; pointer-events: none; }
 .viewport .view-label .dim { display: block; }
 /* They leave the game's view to its HUD while a session runs. */
 .viewport .toolshelf, .viewport .view-label { opacity: 1; transition: opacity 0.14s cubic-out; }

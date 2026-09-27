@@ -53,6 +53,7 @@ These are on `main` and used by more than one workstream.
 | `ui_buffer` | `src/editor/documents/ui_buffer.h` | A UI document's text (`APP_EDITOR_DOCUMENT_UI` tabs): parts changed through `text_edit`s with undo, checked, published as overlays, saved as canonical YAML |
 | `studio_preview_ui(s, asset)` | `studio_canvas.c` (K) | Shows one ui asset alone in the Scene area (the Canvas); NULL returns the area to the scene. The Scene area follows the active UI document with it |
 | `render_ui_context(ui)` | `src/render/ui.h` | The game UI's RmlUi context, for the Inspector |
+| Game UI keyboard (X) | `render_ui_wants_text` in `src/render/ui.h`; `engine_viewport_ui_keys`, `engine_viewport_ui_typing` and the host input's `keys` in `src/runtime/engine.h` | Hosts give game documents key presses and typed text, in order, while the game plays: Studio's Scene and Canvas preview through the host input, the standalone player from ImGui and Cute. While a text field has focus (`engine_viewport_ui_typing`), gameplay and single-key shortcuts leave its letters alone and the host starts SDL text input |
 | Text Editor preferences | `studio_prefs`: `code_vim`, `code_font_size`, `code_apply_live`, `code_wrap` | Mirrored to `save.codeVim`, `save.codeFontSize`, `save.codeApplyLive` and `save.codeWrap` |
 | Settings table (F) | `studio_settings[]` in `studio_settings.c`, `studio_setting_*` in `studio_internal.h` | Add a preference by adding a `studio_prefs` field and a row; the preferences file, its saved key and the Settings page follow |
 | Text Editor intelligence (I) | `src/editor/documents/ui_code.h` | A part's problems as `kit_code_marker`s (`ui_code_markers`, over `ui_code_check`), completions as `kit_code_completion`s, Go to Definition's and Find References' places in a part's text (`ui_code_definition`, `ui_code_places`), and the one history over a code editor and its buffer (`ui_code_record`, `ui_code_replay`, `ui_code_follow`) |
@@ -114,11 +115,12 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 ### Wave 3
 
 - Top bar, document tabs, transport and area headers become authored layouts (T): `TopBar` and an `AreaHeader` per area, with the menubar, the play target's menu, a paused run's steps, the editor type menus and the editors' own controls native in their slots.
-- End to end on arena2d: New Widget → edit → `<use ui>` in a HUD → pick it in Play → handle its event in a graph.
+- End to end on arena2d (X): the Sandbox's `HUD` document uses a `Meter` widget, `HudDisplay` sets it and handles its `Repair` event (`test/editor/arena_hud.c`); game UI hears keys and typed text in the standalone player and text in the Scene.
 
 | | Workstream | Owns |
 |---|---|---|
 | Q | Designer and editor polish: the Hierarchy's keyboard sensor, Canvas drop lines, a rule's declarations and Extract to Class, typing that composes with designer edits, diagnostic ranges, stylesheet checks, UI problems in Output, Back after Go to Definition, MCP completion | `studio_designer*.c`, `ui_design.[ch]`, `studio_code.c`, `kit_code.c`'s markers, `ui_code.[ch]`, the UI parts of `studio_output.c` and `studio_find.c`, `inspectUi`'s completion |
+| X | arena2d end to end: the Sandbox HUD and its behavior, game UI keys and typed text in the standalone player and the Scene, game UI state in runtime snapshots | `projects/arena2d`'s `HUD`, `Meter` and `HudDisplay`, `game_presentation.c`'s input routing, `render_ui_wants_text`, `engine_viewport_ui_keys` and `engine_viewport_ui_typing`, `test/editor/arena_hud.c` |
 
 ## Rules for every workstream
 

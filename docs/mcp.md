@@ -859,7 +859,11 @@ Keys are A-Z, 0-9, Space, Enter, Escape, Tab, Backspace, Delete, Up, Down,
 Left, Right, Home, End, PageUp and PageDown. A document focuses its first
 `autofocus` element when it is shown. RmlUi gives `:focus` to every element on
 the way to the focused one, so pick the focused row with a class, such as
-`.row:focus`.
+`.row:focus`. Studio's Scene and the standalone player give the documents
+the keyboard while the game plays, so a HUD that autofocuses its panel hears
+`data-keys="H:Repair"`. A focused text input or textarea also takes typed
+text, and with it the letters gameplay and single-key shortcuts would take;
+Escape and chords with the primary modifier stay the host's.
 
 Documents bind data with RmlUi's data bindings, which follow Vue: `{{ save.name }}`
 in text, `data-for="item : list"`, `data-if`, `data-class-active="expr"`,

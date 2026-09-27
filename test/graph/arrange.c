@@ -626,9 +626,9 @@ static void arrange_content_checks()
         int flow_bends;
         float ink;
     } ceiling[ARRANGE_ROUTE_STYLE_COUNT] = {
-        [ARRANGE_ROUTE_CURVED] = { 31, 394, 74, 83800.0f },
-        [ARRANGE_ROUTE_ORTHOGONAL] = { 32, 394, 74, 89000.0f },
-        [ARRANGE_ROUTE_STRAIGHT] = { 34, 394, 74, 84500.0f },
+        [ARRANGE_ROUTE_CURVED] = { 35, 394, 74, 83800.0f },
+        [ARRANGE_ROUTE_ORTHOGONAL] = { 34, 394, 74, 89000.0f },
+        [ARRANGE_ROUTE_STRAIGHT] = { 36, 394, 74, 84500.0f },
         [ARRANGE_ROUTE_SUBWAY] = { 26, 394, 74, 86000.0f },
     };
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {

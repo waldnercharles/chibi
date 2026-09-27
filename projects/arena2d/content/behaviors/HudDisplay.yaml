@@ -1,6 +1,6 @@
 version: 3
 name: HudDisplay
-id_counter: 213
+id_counter: 214
 description: Shows the Player's hull and speed on the HUD document, and repairs the hull when the player asks.
 owner_type: ecs.entity
 graphs:
@@ -23,7 +23,11 @@ graphs:
       Component: GAME.GameHealth
       Entity:
         binding: {kind: local, local_id: 61}
-  - {id: 11, type: Branch}
+  - id: 11
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: local, local_id: 213}
   - id: 16
     type: Get Component
     inputs:
@@ -120,7 +124,11 @@ graphs:
     type: Set UI Text
     inputs: {Element: '#status', Text: Ship lost}
   - {id: 175, type: Event, reference_name: Repair}
-  - {id: 177, type: Branch}
+  - id: 177
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: local, local_id: 213}
   - id: 182
     type: Set Component
     inputs:
@@ -166,6 +174,7 @@ graphs:
   - {id: 68, name: hull, from: 38.Result}
   - {id: 190, name: current, from: 16.Value.current}
   - {id: 191, name: maximum, from: 16.Value.maximum}
+  - {id: 213, name: alive, from: 7.Value}
 - id: 20
   kind: function
   math_expression: current / max(maximum, 1)

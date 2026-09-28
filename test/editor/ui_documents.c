@@ -624,8 +624,8 @@ static void text_editor(const char *folder)
     frames(&f, 3);
     bool shown = false;
     for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
-        shown |= s->prefs.editors[area] == STUDIO_EDITOR_CODE &&
-                 (area != STUDIO_AREA_DRAWER || s->prefs.drawer_open);
+        shown |= studio_active_layout(s)->editors[area] == STUDIO_EDITOR_CODE &&
+                 (area != STUDIO_AREA_DRAWER || studio_active_layout(s)->drawer_open);
     }
     test_check(shown && !strcmp(s->code.path, path), "the Text Editor shows the opened document");
     ui_buffer *b = studio_ui_buffer(s);

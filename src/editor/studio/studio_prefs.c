@@ -54,19 +54,39 @@ static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
     "assets", "performance", "members",  "code",       "panel"
 };
 
-studio_prefs studio_prefs_default()
+static const char *const WORKSPACES[STUDIO_WORKSPACE_COUNT] = { "layout", "ui" };
+
+/* Layout stacks Scene over Behavior; UI sets the Canvas (the Scene area on a
+   ui document) beside the Text Editor, half and half. */
+studio_layout studio_layout_default(studio_workspace workspace)
 {
-    studio_prefs p = {
-        .side_width = 372,
-        .main_split = 0.62f,
+    assert(workspace >= 0 && workspace < STUDIO_WORKSPACE_COUNT);
+    bool ui = workspace == STUDIO_WORKSPACE_UI;
+    return (studio_layout){
+        .side_open = true,
+        .side_width = ui ? 320 : 372,
+        .main_split = ui ? 0.5f : 0.62f,
         .side_split = 0.38f,
         .drawer_height = 240,
         .editors = { STUDIO_EDITOR_SCENE,
-                     STUDIO_EDITOR_BEHAVIOR,
+                     ui ? STUDIO_EDITOR_CODE : STUDIO_EDITOR_BEHAVIOR,
                      STUDIO_EDITOR_OUTLINER,
                      STUDIO_EDITOR_PROPERTIES,
                      STUDIO_EDITOR_OUTPUT },
     };
+}
+
+studio_layout *studio_active_layout(studio *s)
+{
+    return &s->prefs.layouts[s->prefs.workspace];
+}
+
+studio_prefs studio_prefs_default()
+{
+    studio_prefs p = { 0 };
+    for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
+        p.layouts[w] = studio_layout_default(w);
+    }
     for (int i = 0; i < studio_setting_count; i++) {
         studio_setting_set(&p, &studio_settings[i], studio_settings[i].fallback);
     }
@@ -89,14 +109,20 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
             return false;
         }
     }
-    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (a->editors[i] != b->editors[i] || strcmp(a->panels[i], b->panels[i]) != 0) {
+    for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
+        const studio_layout *x = &a->layouts[w], *y = &b->layouts[w];
+        for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+            if (x->editors[i] != y->editors[i] || strcmp(x->panels[i], y->panels[i])) {
+                return false;
+            }
+        }
+        if (x->side_open != y->side_open || x->side_width != y->side_width ||
+            x->main_split != y->main_split || x->side_split != y->side_split ||
+            x->drawer_open != y->drawer_open || x->drawer_height != y->drawer_height) {
             return false;
         }
     }
-    return a->side_width == b->side_width && a->main_split == b->main_split &&
-           a->side_split == b->side_split && a->drawer_open == b->drawer_open &&
-           a->drawer_height == b->drawer_height;
+    return a->workspace == b->workspace;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -166,6 +192,36 @@ static char *read_json()
 #endif
 }
 
+static void read_layout(studio_layout *l, yyjson_val *layout)
+{
+    yyjson_val *side_open = yyjson_obj_get(layout, "sideOpen");
+    if (yyjson_is_bool(side_open)) {
+        l->side_open = yyjson_get_bool(side_open);
+    }
+    l->side_width = number(yyjson_obj_get(layout, "sideWidth"), l->side_width, 200, 1600);
+    l->main_split = number(yyjson_obj_get(layout, "mainSplit"), l->main_split, 0.05f, 0.95f);
+    l->side_split = number(yyjson_obj_get(layout, "sideSplit"), l->side_split, 0.05f, 0.95f);
+    yyjson_val *drawer = yyjson_obj_get(layout, "drawer");
+    yyjson_val *open = yyjson_obj_get(drawer, "open");
+    if (yyjson_is_bool(open)) {
+        l->drawer_open = yyjson_get_bool(open);
+    }
+    l->drawer_height = number(yyjson_obj_get(drawer, "height"), l->drawer_height, 80, 2000);
+    yyjson_val *areas = yyjson_obj_get(layout, "areas");
+    for (int i = 0; i < STUDIO_AREA_COUNT && i < (int)yyjson_arr_size(areas); i++) {
+        yyjson_val *area = yyjson_arr_get(areas, (size_t)i);
+        const char *panel = yyjson_get_str(yyjson_obj_get(area, "panel"));
+        if (panel && panel[0] && strlen(panel) < sizeof l->panels[i]) {
+            l->editors[i] = STUDIO_EDITOR_PANEL;
+            snprintf(l->panels[i], sizeof l->panels[i], "%s", panel);
+            continue;
+        }
+        int editor = name_index(EDITORS, STUDIO_EDITOR_COUNT, area, l->editors[i]);
+        l->editors[i] = editor == STUDIO_EDITOR_PANEL ? l->editors[i]
+                                                      : (studio_editor)editor;
+    }
+}
+
 studio_prefs studio_prefs_read(const char *json)
 {
     studio_prefs p = studio_prefs_default();
@@ -189,27 +245,19 @@ studio_prefs studio_prefs_read(const char *json)
         }
     }
     yyjson_val *layout = yyjson_obj_get(root, "layout");
-    p.side_width = number(yyjson_obj_get(layout, "sideWidth"), p.side_width, 200, 1600);
-    p.main_split = number(yyjson_obj_get(layout, "mainSplit"), p.main_split, 0.05f, 0.95f);
-    p.side_split = number(yyjson_obj_get(layout, "sideSplit"), p.side_split, 0.05f, 0.95f);
-    yyjson_val *drawer = yyjson_obj_get(layout, "drawer");
-    yyjson_val *open = yyjson_obj_get(drawer, "open");
-    if (yyjson_is_bool(open)) {
-        p.drawer_open = yyjson_get_bool(open);
+    p.workspace = name_index(
+        WORKSPACES,
+        STUDIO_WORKSPACE_COUNT,
+        yyjson_obj_get(layout, "workspace"),
+        STUDIO_WORKSPACE_LAYOUT
+    );
+    yyjson_val *presets = yyjson_obj_get(layout, "presets");
+    for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
+        read_layout(&p.layouts[w], yyjson_obj_get(presets, WORKSPACES[w]));
     }
-    p.drawer_height = number(yyjson_obj_get(drawer, "height"), p.drawer_height, 80, 2000);
-    yyjson_val *areas = yyjson_obj_get(layout, "areas");
-    for (int i = 0; i < STUDIO_AREA_COUNT && i < (int)yyjson_arr_size(areas); i++) {
-        yyjson_val *area = yyjson_arr_get(areas, (size_t)i);
-        const char *panel = yyjson_get_str(yyjson_obj_get(area, "panel"));
-        if (panel && panel[0] && strlen(panel) < sizeof p.panels[i]) {
-            p.editors[i] = STUDIO_EDITOR_PANEL;
-            snprintf(p.panels[i], sizeof p.panels[i], "%s", panel);
-            continue;
-        }
-        int editor = name_index(EDITORS, STUDIO_EDITOR_COUNT, area, p.editors[i]);
-        p.editors[i] = editor == STUDIO_EDITOR_PANEL ? p.editors[i]
-                                                     : (studio_editor)editor;
+    /* A file from before presets holds one arrangement: Layout's. */
+    if (!presets) {
+        read_layout(&p.layouts[STUDIO_WORKSPACE_LAYOUT], layout);
     }
     yyjson_doc_free(doc);
     return p;
@@ -282,6 +330,25 @@ static void keep_unknown(yyjson_mut_doc *doc, yyjson_mut_val *into, yyjson_val *
     }
 }
 
+static void write_layout(const studio_layout *l, yyjson_mut_doc *doc, yyjson_mut_val *layout)
+{
+    yyjson_mut_obj_add_bool(doc, layout, "sideOpen", l->side_open);
+    yyjson_mut_obj_add_real(doc, layout, "sideWidth", l->side_width);
+    yyjson_mut_obj_add_real(doc, layout, "mainSplit", l->main_split);
+    yyjson_mut_obj_add_real(doc, layout, "sideSplit", l->side_split);
+    yyjson_mut_val *drawer = yyjson_mut_obj_add_obj(doc, layout, "drawer");
+    yyjson_mut_obj_add_bool(doc, drawer, "open", l->drawer_open);
+    yyjson_mut_obj_add_real(doc, drawer, "height", l->drawer_height);
+    yyjson_mut_val *areas = yyjson_mut_obj_add_arr(doc, layout, "areas");
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        if (l->editors[i] == STUDIO_EDITOR_PANEL) {
+            yyjson_mut_obj_add_str(doc, yyjson_mut_arr_add_obj(doc, areas), "panel", l->panels[i]);
+            continue;
+        }
+        yyjson_mut_arr_add_str(doc, areas, EDITORS[l->editors[i]]);
+    }
+}
+
 char *studio_prefs_write(const studio_prefs *p, const char *saved)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
@@ -298,19 +365,10 @@ char *studio_prefs_write(const studio_prefs *p, const char *saved)
         }
     }
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
-    yyjson_mut_obj_add_real(doc, layout, "sideWidth", p->side_width);
-    yyjson_mut_obj_add_real(doc, layout, "mainSplit", p->main_split);
-    yyjson_mut_obj_add_real(doc, layout, "sideSplit", p->side_split);
-    yyjson_mut_val *drawer = yyjson_mut_obj_add_obj(doc, layout, "drawer");
-    yyjson_mut_obj_add_bool(doc, drawer, "open", p->drawer_open);
-    yyjson_mut_obj_add_real(doc, drawer, "height", p->drawer_height);
-    yyjson_mut_val *areas = yyjson_mut_obj_add_arr(doc, layout, "areas");
-    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (p->editors[i] == STUDIO_EDITOR_PANEL) {
-            yyjson_mut_obj_add_str(doc, yyjson_mut_arr_add_obj(doc, areas), "panel", p->panels[i]);
-            continue;
-        }
-        yyjson_mut_arr_add_str(doc, areas, EDITORS[p->editors[i]]);
+    yyjson_mut_obj_add_str(doc, layout, "workspace", WORKSPACES[p->workspace]);
+    yyjson_mut_val *presets = yyjson_mut_obj_add_obj(doc, layout, "presets");
+    for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
+        write_layout(&p->layouts[w], doc, yyjson_mut_obj_add_obj(doc, presets, WORKSPACES[w]));
     }
     yyjson_doc *previous = saved ? yyjson_read(saved, strlen(saved), 0) : NULL;
     if (yyjson_is_obj(yyjson_doc_get_root(previous))) {

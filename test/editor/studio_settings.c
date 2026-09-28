@@ -18,7 +18,7 @@ static const char *text_at(yyjson_val *root, const char *pointer)
 }
 
 /* A file the previous build saved still loads, every setting round-trips
- * under its old key, and the layout keeps its hand-written fields. */
+ * under its old key, and its one arrangement becomes Layout's. */
 static void prefs_round_trip()
 {
     const char
@@ -34,6 +34,7 @@ static void prefs_round_trip()
                     "\"areas\":[\"scene\",\"behavior\",\"outliner\","
                     "\"properties\",{\"panel\":\"Data\"}]}}";
     studio_prefs p = studio_prefs_read(old_file);
+    const studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_LAYOUT];
     studio_prefs defaults = studio_prefs_default();
     studio_prefs with_override = defaults;
     snprintf(with_override.shortcuts[STUDIO_COMMAND_SAVE], STUDIO_CHORD_SIZE, "Ctrl+Shift+S");
@@ -43,9 +44,11 @@ static void prefs_round_trip()
                   !p.title_flow && !p.compact_nodes && p.code_vim &&
                   !p.code_apply_live && p.code_font_size == 20 &&
                   !strcmp(p.shortcuts[STUDIO_COMMAND_SAVE], "Ctrl+Shift+S") &&
-                  p.side_width == 400 && p.drawer_open &&
-                  p.editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_PANEL &&
-                  !strcmp(p.panels[STUDIO_AREA_DRAWER], "Data");
+                  p.workspace == STUDIO_WORKSPACE_LAYOUT && layout->side_open &&
+                  layout->side_width == 400 && layout->drawer_open &&
+                  layout->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_PANEL &&
+                  !strcmp(layout->panels[STUDIO_AREA_DRAWER], "Data") &&
+                  p.follow_documents;
     char *json = studio_prefs_write(&p, NULL);
     studio_prefs back = studio_prefs_read(json);
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
@@ -97,16 +100,65 @@ static void invalid_values()
     studio_prefs out_of_range = studio_prefs_read("{\"uiScale\":9,\"code\":{\"fontSize\":99}}");
     studio_prefs garbage = studio_prefs_read("not json");
     studio_prefs none = studio_prefs_read(NULL);
+    studio_prefs unknown_workspace = studio_prefs_read("{\"layout\":{\"workspace\":\"missing\"}}");
+    studio_prefs invalid_layout = studio_prefs_read(
+        "{\"layout\":{\"workspace\":\"ui\",\"presets\":{\"ui\":{"
+        "\"sideOpen\":\"closed\",\"sideWidth\":99,\"mainSplit\":0.99,"
+        "\"sideSplit\":1.5,\"drawer\":{\"open\":\"yes\",\"height\":20},"
+        "\"areas\":[\"unknown\"]}}}}"
+    );
+    studio_prefs on_ui = defaults;
+    on_ui.workspace = STUDIO_WORKSPACE_UI;
     test_check(
         studio_prefs_equal(&p, &defaults) &&
             studio_prefs_equal(&out_of_range, &defaults) &&
             studio_prefs_equal(&garbage, &defaults) &&
             studio_prefs_equal(&none, &defaults) &&
+            studio_prefs_equal(&unknown_workspace, &defaults) &&
             !p.shortcuts[STUDIO_COMMAND_SAVE][0] &&
-            !p.shortcuts[STUDIO_COMMAND_SEARCH][0],
+            !p.shortcuts[STUDIO_COMMAND_SEARCH][0] &&
+            studio_prefs_equal(&invalid_layout, &on_ui),
         "a preference of the wrong type, out of range or not a choice keeps "
-        "its default"
+        "its default, a workspace's arrangement included"
     );
+}
+
+/* Each workspace keeps its own arrangement through the file, and which
+   one is active. */
+static void workspace_presets_round_trip()
+{
+    studio_prefs p = studio_prefs_default();
+    p.workspace = STUDIO_WORKSPACE_UI;
+    p.follow_documents = false;
+    studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_LAYOUT];
+    layout->side_open = false;
+    layout->side_width = 448;
+    layout->main_split = 0.67f;
+    layout->drawer_open = true;
+    layout->editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
+    snprintf(layout->panels[STUDIO_AREA_DRAWER], sizeof layout->panels[0], "%s", "Data");
+    studio_layout *ui = &p.layouts[STUDIO_WORKSPACE_UI];
+    ui->side_width = 336;
+    ui->main_split = 0.56f;
+    ui->drawer_height = 190;
+    char *json = studio_prefs_write(&p, NULL);
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    studio_prefs back = studio_prefs_read(json);
+    bool encoded = !strcmp(text_at(root, "/layout/workspace"), "ui") &&
+                   yyjson_is_false(yyjson_ptr_get(root, "/layout/presets/layout/sideOpen")) &&
+                   !strcmp(text_at(root, "/layout/presets/layout/areas/4/panel"), "Data") &&
+                   !strcmp(text_at(root, "/layout/presets/ui/areas/1"), "code") &&
+                   yyjson_is_false(yyjson_ptr_get(root, "/followDocuments"));
+    studio_prefs other = back;
+    other.layouts[STUDIO_WORKSPACE_LAYOUT].side_open = true;
+    test_check(
+        encoded && studio_prefs_equal(&p, &back) && !studio_prefs_equal(&back, &other),
+        "each workspace keeps its own arrangement through the preferences "
+        "file, and the active one stays active"
+    );
+    yyjson_doc_free(doc);
+    free(json);
 }
 
 static void shortcut_chords()
@@ -438,7 +490,7 @@ static void page_rows()
     int rows = (int)yyjson_mut_arr_size(member(f.page, "rows"));
     test_check(
         rows == studio_setting_count + f.view.command_count + STUDIO_PROJECT_FIELD_COUNT &&
-            !strcmp(keys, "theme density uiScale reduceMotion") &&
+            !strcmp(keys, "theme density uiScale reduceMotion followDocuments") &&
             !strcmp(yyjson_mut_get_str(member(f.page, "title")), "Appearance") &&
             category_flag(&f, STUDIO_SETTINGS_PROJECT, "hidden"),
         "the Settings page shows the first category's settings under the "
@@ -706,7 +758,7 @@ static void page_mount()
     }
     rml_element *first = NULL;
     int rows = visible(&f, ".setting", &first);
-    bool loaded = !ui_mount_error(f.mount)[0] && rows == 4 &&
+    bool loaded = !ui_mount_error(f.mount)[0] && rows == 5 &&
                   f.page.prefs.code_font_size == 13;
     set_text(&f.page, f.page.page, "query", "vim");
     rml_data_model_dirty(f.data.model, "settings");
@@ -859,6 +911,7 @@ void test_studio_settings()
 {
     prefs_round_trip();
     invalid_values();
+    workspace_presets_round_trip();
     shortcut_chords();
     shortcut_dispatch();
     shortcut_recording();

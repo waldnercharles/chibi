@@ -276,6 +276,30 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                        .keywords = "prototype attach",
                                        .icon = KIT_ICON_ADD,
                                        .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_WORKSPACE_LAYOUT] = { .id = "workspaceLayout",
+                                          .label = "Layout Workspace",
+                                          .menu = "Layout",
+                                          .context = "Global",
+                                          .keywords = "preset scene behavior "
+                                                      "areas",
+                                          .icon = KIT_ICON_LAYOUT,
+                                          .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_WORKSPACE_UI] = { .id = "workspaceUi",
+                                      .label = "UI Workspace",
+                                      .menu = "UI",
+                                      .context = "Global",
+                                      .keywords = "preset canvas text editor "
+                                                  "source",
+                                      .icon = KIT_ICON_LAYOUT,
+                                      .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_TOGGLE_SIDE_PANE] = { .id = "toggleSidePane",
+                                          .label = "Hide Side Pane",
+                                          .context = "Global",
+                                          .keywords = "sidebar outliner "
+                                                      "properties hierarchy "
+                                                      "details column",
+                                          .icon = KIT_ICON_SIDE_PANE,
+                                          .phase = SHORTCUT_EARLY },
     /* Authored top bar and area headers (workstream T): the document tabs'
        commands take the tab's index, emit('studio.selectTab', i). */
     [STUDIO_COMMAND_SELECT_TAB] = { .id = "selectTab",
@@ -530,6 +554,11 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
                 info.icon = KIT_ICON_PAUSE;
             }
             break;
+        case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
+            info.label = info.menu = studio_active_layout(s)->side_open
+                                       ? e->label
+                                       : "Show Side Pane";
+            break;
         case STUDIO_COMMAND_DENSITY:
             info.label = info.menu = s->prefs.comfortable ? "Compact Density"
                                                           : e->label;
@@ -548,7 +577,8 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
 
 static bool drawer_showing(const studio *s, studio_editor editor)
 {
-    return s->prefs.drawer_open && s->prefs.editors[STUDIO_AREA_DRAWER] == editor;
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
+    return layout->drawer_open && layout->editors[STUDIO_AREA_DRAWER] == editor;
 }
 
 int studio_command_checked(studio *s, studio_command command)
@@ -562,6 +592,12 @@ int studio_command_checked(studio *s, studio_command command)
             return drawer_showing(s, STUDIO_EDITOR_PERFORMANCE);
         case STUDIO_COMMAND_MAXIMIZE: return s->maximized >= 0;
         case STUDIO_COMMAND_INSPECT: return studio_inspect_picking(s);
+        case STUDIO_COMMAND_WORKSPACE_LAYOUT:
+            return s->prefs.workspace == STUDIO_WORKSPACE_LAYOUT;
+        case STUDIO_COMMAND_WORKSPACE_UI:
+            return s->prefs.workspace == STUDIO_WORKSPACE_UI;
+        case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
+            return studio_active_layout(s)->side_open;
         default: return -1;
     }
 }
@@ -602,7 +638,8 @@ static bool enabled_with(studio *s, studio_command command, int argument)
                    argument != s->scene->active_tab;
         case STUDIO_COMMAND_CLOSE_TAB:
             return studio_tab_closes(s, tab_at(s, argument));
-        case STUDIO_COMMAND_CLOSE_DRAWER: return s->prefs.drawer_open;
+        case STUDIO_COMMAND_CLOSE_DRAWER:
+            return studio_active_layout(s)->drawer_open;
         case STUDIO_COMMAND_SAVE: return studio_active_dirty(s);
         case STUDIO_COMMAND_RELOAD: return editable;
         case STUDIO_COMMAND_UNDO:
@@ -684,6 +721,13 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             studio_toggle_maximized(s, argument >= 0 ? argument : s->focus_area);
             break;
         case STUDIO_COMMAND_RESET_LAYOUT: studio_reset_layout(s); break;
+        case STUDIO_COMMAND_WORKSPACE_LAYOUT:
+            studio_set_workspace(s, STUDIO_WORKSPACE_LAYOUT);
+            break;
+        case STUDIO_COMMAND_WORKSPACE_UI:
+            studio_set_workspace(s, STUDIO_WORKSPACE_UI);
+            break;
+        case STUDIO_COMMAND_TOGGLE_SIDE_PANE: studio_toggle_side_pane(s); break;
         case STUDIO_COMMAND_ZOOM_IN: studio_zoom(s, 1); break;
         case STUDIO_COMMAND_ZOOM_OUT: studio_zoom(s, -1); break;
         case STUDIO_COMMAND_ZOOM_RESET: studio_zoom(s, 0); break;
@@ -736,7 +780,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_CLOSE_TAB:
             studio_close_tab(s, tab_at(s, argument));
             break;
-        case STUDIO_COMMAND_CLOSE_DRAWER: s->prefs.drawer_open = false; break;
+        case STUDIO_COMMAND_CLOSE_DRAWER:
+            studio_active_layout(s)->drawer_open = false;
+            break;
         /* Rename objects and prototype components */
         case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
         case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
@@ -776,8 +822,9 @@ bool studio_command_item(studio *s, studio_command command)
 
 void studio_shortcuts(studio *s)
 {
-    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
-                                              : STUDIO_EDITOR_COUNT;
+    studio_editor editor = s->hover_area >= 0
+                             ? studio_active_layout(s)->editors[s->hover_area]
+                             : STUDIO_EDITOR_COUNT;
     /* A game in the focused viewport owns keys without its primary modifier. */
     bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
     for (int i = 0; i < acount(s->keys); i++) {

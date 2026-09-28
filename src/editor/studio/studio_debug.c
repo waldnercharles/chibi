@@ -13,17 +13,27 @@
 
 /* ---------- Jumping to a node ---------- */
 
-/* A Behavior area shows the graph: a maximized area gives way to it, and
-   without one the bottom area becomes one. */
-static void show_behavior_area(studio *s)
+static int behavior_area(const studio_layout *layout)
 {
     int area = -1;
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        area = s->prefs.editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+        area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
     }
+    return area;
+}
+
+/* A Behavior area shows the graph: Layout's, when the workspace has none, a
+   maximized area gives way to it, and without one the bottom area becomes
+   one. */
+static void show_behavior_area(studio *s)
+{
+    if (behavior_area(studio_active_layout(s)) < 0) {
+        studio_set_workspace(s, STUDIO_WORKSPACE_LAYOUT);
+    }
+    int area = behavior_area(studio_active_layout(s));
     if (area < 0) {
         area = STUDIO_AREA_BOTTOM;
-        s->prefs.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+        studio_active_layout(s)->editors[area] = STUDIO_EDITOR_BEHAVIOR;
     }
     if (s->maximized >= 0 && s->maximized != area) {
         s->maximized = -1;

@@ -568,25 +568,53 @@ void studio_output_body(studio *s, int area)
 }
 
 /* A maximized area gives way so the editor shows. */
-bool studio_editor_shown(const studio *s, studio_editor editor)
+/* The area of the active workspace that holds `editor`, whether or not it
+   shows, or -1. */
+static int area_of(const studio_layout *layout, studio_editor editor)
 {
     for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
-        bool shown = area != STUDIO_AREA_DRAWER || s->prefs.drawer_open;
-        if (shown && s->prefs.editors[area] == editor) {
+        if (layout->editors[area] == editor) {
+            return area;
+        }
+    }
+    return -1;
+}
+
+static bool side_area(int area)
+{
+    return area == STUDIO_AREA_OUTLINER || area == STUDIO_AREA_PROPERTIES;
+}
+
+bool studio_editor_shown(const studio *s, studio_editor editor)
+{
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
+    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
+        bool shown = area == STUDIO_AREA_DRAWER
+                       ? layout->drawer_open
+                       : !side_area(area) || layout->side_open;
+        if (shown && layout->editors[area] == editor) {
             return true;
         }
     }
     return false;
 }
 
+/* A hidden side pane opens for its editors; any other editor not in view
+   takes the drawer. */
 void studio_show_editor(studio *s, studio_editor editor)
 {
-    if (s->maximized >= 0 && s->prefs.editors[s->maximized] != editor) {
+    studio_layout *layout = studio_active_layout(s);
+    if (s->maximized >= 0 && layout->editors[s->maximized] != editor) {
         s->maximized = -1;
     }
-    if (!studio_editor_shown(s, editor)) {
-        studio_toggle_drawer(s, editor);
+    if (studio_editor_shown(s, editor)) {
+        return;
     }
+    if (side_area(area_of(layout, editor))) {
+        layout->side_open = true;
+        return;
+    }
+    studio_toggle_drawer(s, editor);
 }
 
 void studio_output_find(studio *s)

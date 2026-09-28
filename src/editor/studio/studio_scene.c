@@ -332,14 +332,10 @@ static scene_actor *actor_of(studio *s, uint64_t entity)
 
 static bool editor_shown(const studio *s, studio_editor editor)
 {
-    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
-        bool shown = (s->maximized < 0 || s->maximized == area) &&
-                     (area != STUDIO_AREA_DRAWER || s->prefs.drawer_open);
-        if (shown && s->prefs.editors[area] == editor) {
-            return true;
-        }
+    if (s->maximized >= 0) {
+        return s->prefs.layouts[s->prefs.workspace].editors[s->maximized] == editor;
     }
-    return false;
+    return studio_editor_shown(s, editor);
 }
 
 void studio_rename_object(studio *s)

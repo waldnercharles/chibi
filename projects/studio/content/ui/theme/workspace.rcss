@@ -14,6 +14,11 @@ body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-c
 .workspace { flex: 1 1 0dp; display: flex; padding: 2dp; }
 .column { display: flex; flex-direction: column; }
 .column.main { flex: 1 1 0dp; }
+/* The top and bottom areas: stacked in Layout, a row in UI. */
+.main-editors { display: flex; flex-direction: column; flex: 1 1 0dp; min-width: 0dp; min-height: 0dp; }
+.main-editors.across { flex-direction: row; }
+/* The side column keeps the width it eases to, clipping while it closes. */
+.column.side { flex: 0 0 auto; overflow: hidden; }
 .area { position: relative; display: flex; flex-direction: column; background-color: var(--background); border-radius: var(--r-lg); overflow: hidden; }
 .area.fill { flex: 1 1 0dp; }
 /* Editors' controls in their area's header. */

@@ -1,6 +1,7 @@
 /* Studio frames over a project on disk: drawing a graph never changes what its
  * asset saves, so reloading a viewed asset leaves it saved. */
 #include "assets/ui_events.h"
+#include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/input.h"
@@ -141,15 +142,20 @@ void test_code_intelligence_studio();
 #define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
 /* Studio over `project`'s scene `scene` with `behavior` open and the Scene
-   filling the workspace. Preferences stay as saved, but for UI Scale 1, so
-   the layout the checks click is the same whatever the user's scale. */
+   filling the workspace. Preferences stay as saved but for the layout: UI
+   Scale 1 and the default workspaces, following the active tab, so the
+   areas the checks click are the same whatever the user's. */
 static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = fixture_open(project, scene, behavior);
     f.studio = studio_new(f.scene, f.viewport, project);
-    f.studio->prefs.ui_scale = f.studio->applied.ui_scale = 1;
-    f.studio->prefs.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
-    f.studio->applied.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
+    studio_prefs defaults = studio_prefs_default();
+    studio_prefs *p = &f.studio->prefs;
+    p->ui_scale = 1;
+    p->workspace = defaults.workspace;
+    memcpy(p->layouts, defaults.layouts, sizeof defaults.layouts);
+    p->follow_documents = true;
+    f.studio->applied = *p;
     f.studio->maximized = STUDIO_AREA_TOP;
     return f;
 }
@@ -792,8 +798,8 @@ static void chrome_follows_studio()
     int shown = panel_elements(s, "AreaHeader", ".area-head", heads);
     bool slots = kit_find(s->kit, "app/topbar/menus/file", &r) &&
                  kit_find(s->kit, "app/topbar/target/target", &r) &&
-                 kit_find(s->kit, "app/workspace/main/top/head/type/type", &r) &&
-                 kit_find(s->kit, "app/workspace/main/top/head/controls", &r) &&
+                 kit_find(s->kit, "app/workspace/main/editors/top/head/type/type", &r) &&
+                 kit_find(s->kit, "app/workspace/main/editors/top/head/controls", &r) &&
                  s->maximized < 0 && shown >= STUDIO_AREA_COUNT - 1;
     int count = panel_elements(s, "TopBar", ".doc-tab", tabs) - 1;
     int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
@@ -834,6 +840,145 @@ static void chrome_follows_studio()
         printf("  %d %d %d %d %d %d\n", slots, listed, selected, closed, playing, restored);
     }
     test_check(slots && listed && selected && closed && playing && restored, "Studio's authored top bar and area headers host their native slots and run tab, transport and area commands");
+    fixture_free(&f);
+}
+
+static bool beside(const studio *s)
+{
+    kit_rect top = s->areas[STUDIO_AREA_TOP].rect,
+             bottom = s->areas[STUDIO_AREA_BOTTOM].rect;
+    return bottom.w > 0 && fabsf(bottom.y - top.y) < 1 && bottom.x >= top.x + top.w;
+}
+
+static bool stacked(const studio *s)
+{
+    kit_rect top = s->areas[STUDIO_AREA_TOP].rect,
+             bottom = s->areas[STUDIO_AREA_BOTTOM].rect;
+    return bottom.w > 0 && fabsf(bottom.x - top.x) < 1 && bottom.y >= top.y + top.h;
+}
+
+static bool side_shown(const studio *s)
+{
+    return s->areas[STUDIO_AREA_OUTLINER].rect.w > 0 &&
+           s->areas[STUDIO_AREA_PROPERTIES].rect.w > 0;
+}
+
+static void select_tab(studio_fixture *f, int tab)
+{
+    studio_command_run_with(f->studio, STUDIO_COMMAND_SELECT_TAB, tab);
+    frames(f, 3);
+}
+
+/* The workspace follows the active tab: a UI document's shows Canvas beside
+   the Text Editor, any other tab's Layout, each as it was left, and neither
+   touches documents, selections, history or playback. A workspace chosen by
+   hand holds until the tab changes. */
+static void workspaces_follow_tabs()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_layout *layout = &s->prefs.layouts[STUDIO_WORKSPACE_LAYOUT];
+    studio_layout *ui = &s->prefs.layouts[STUDIO_WORKSPACE_UI];
+    layout->side_width = 416;
+    layout->main_split = 0.66f;
+    s->prefs.code_apply_live = false;
+    s->applied = s->prefs;
+    frames(&f, 2);
+    select_instance(f.scene, 0);
+    int actor = f.scene->selected;
+
+    char path[PATH_MAX];
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 4);
+    int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
+    kit_rect r;
+    bool ui_shown = s->prefs.workspace == STUDIO_WORKSPACE_UI && beside(s) &&
+                    kit_find(s->kit, "app/workspace/main/editors/bottom/body/code/text", &r) &&
+                    !ui->drawer_open && !layout->drawer_open &&
+                    layout->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_OUTPUT;
+    ui_buffer *buffer = studio_ui_buffer(s);
+    studio_designer *designer = designer_state(s, &buffer);
+    assert(buffer && designer && acount(designer->rml->elements) > 0);
+    designer_select(s, 0);
+    int length = (int)strlen(ui_buffer_text(buffer, UI_PART_RML));
+    text_edit edit = { length, length, "<!-- workspace -->\n" };
+    ui_buffer_edit(buffer, UI_PART_RML, &edit, 1);
+    frames(&f, 2);
+    kit_code_editor *code = s->code.editor;
+    int cursor = kit_code_cursor(code);
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 2);
+
+    select_tab(&f, scene);
+    bool layout_shown = s->prefs.workspace == STUDIO_WORKSPACE_LAYOUT &&
+                        stacked(s) && layout->side_width == 416 &&
+                        layout->main_split == 0.66f && !layout->drawer_open;
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_UI);
+    frames(&f, 3);
+    bool chosen_holds = s->prefs.workspace == STUDIO_WORKSPACE_UI;
+    select_tab(&f, bank);
+    bool returned = s->prefs.workspace == STUDIO_WORKSPACE_UI && beside(s) &&
+                    studio_ui_buffer(s) == buffer && s->code.editor == code &&
+                    kit_code_cursor(code) == cursor &&
+                    designer->selected == 0 && f.scene->selected == actor &&
+                    app_scene_authoring_runtime_state(f.scene).playing;
+
+    rml_element *toggles[2];
+    assert(panel_elements(s, "TopBar", ".side-pane", toggles) == 1);
+    press(s, rml_element_query_selector(toggles[0], ".icon"));
+    frames(&f, 30);
+    bool side_hidden = !ui->side_open && !side_shown(s) && layout->side_open;
+    select_tab(&f, scene);
+    frames(&f, 30);
+    bool side_kept = layout->side_open && side_shown(s);
+    select_tab(&f, bank);
+    frames(&f, 30);
+    bool side_remembered = !ui->side_open && !side_shown(s);
+    studio_show_editor(s, STUDIO_EDITOR_OUTLINER);
+    frames(&f, 30);
+    bool side_reopened = ui->side_open && side_shown(s);
+
+    ui->main_split = 0.75f;
+    studio_command_run(s, STUDIO_COMMAND_RESET_LAYOUT);
+    frames(&f, 2);
+    bool reset_one = ui->main_split == 0.5f && layout->main_split == 0.66f &&
+                     layout->side_width == 416;
+    studio_history(s, false);
+    bool undone = !strstr(ui_buffer_text(buffer, UI_PART_RML), "<!-- workspace -->");
+    studio_history(s, true);
+    bool redone = strstr(ui_buffer_text(buffer, UI_PART_RML), "<!-- workspace -->") !=
+                  NULL;
+    bool playing = app_scene_authoring_runtime_state(f.scene).playing;
+
+    s->prefs.follow_documents = false;
+    select_tab(&f, scene);
+    bool unfollowed = s->prefs.workspace == STUDIO_WORKSPACE_UI;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(&f, 1);
+    if (!(ui_shown && layout_shown && chosen_holds && returned && side_hidden &&
+          side_kept && side_remembered && side_reopened && reset_one &&
+          undone && redone && playing && unfollowed)) {
+        printf(
+            "  %d %d %d %d | %d %d %d %d | %d %d %d %d %d\n",
+            ui_shown,
+            layout_shown,
+            chosen_holds,
+            returned,
+            side_hidden,
+            side_kept,
+            side_remembered,
+            side_reopened,
+            reset_one,
+            undone,
+            redone,
+            playing,
+            unfollowed
+        );
+    }
+    test_check(ui_shown && layout_shown && chosen_holds && returned, "the workspace follows the active tab, each as it was left, and a workspace chosen by hand holds until the tab changes");
+    test_check(side_hidden && side_kept && side_remembered && side_reopened, "the top bar hides the side pane per workspace, and showing one of its editors reopens it");
+    test_check(reset_one && undone && redone && playing && unfollowed, "Reset Layout resets the active workspace only; switching keeps history and playback; with Workspace Follows Tab off the workspace stays");
     fixture_free(&f);
 }
 
@@ -974,9 +1119,6 @@ static studio_fixture side_open()
     studio_fixture f = vault_open();
     studio *s = f.studio;
     s->maximized = -1;
-    s->prefs.editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_OUTLINER;
-    s->prefs.editors[STUDIO_AREA_PROPERTIES] = STUDIO_EDITOR_PROPERTIES;
-    memcpy(s->applied.editors, s->prefs.editors, sizeof s->prefs.editors);
     s->focus_area = STUDIO_AREA_OUTLINER;
     frames(&f, 3);
     return f;
@@ -1022,8 +1164,7 @@ static void rename_objects()
     tap(SDL_SCANCODE_RETURN);
     frames(&f, 2);
     bool refused = named(scene, "Vault_1") && strstr(scene->message, "Strongroom");
-    s->prefs.editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_ASSETS;
-    s->applied.editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_ASSETS;
+    studio_active_layout(s)->editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_ASSETS;
     frames(&f, 2);
     mouse_over(&f, STUDIO_AREA_TOP);
     tap(SDL_SCANCODE_F2);
@@ -1149,6 +1290,7 @@ int studio_documents_run(const char *program)
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */
     chrome_follows_studio();
+    workspaces_follow_tabs();
     /* arena2d end to end (wave 3, workstream X) */
     scene_text_field();
     /* Rename objects and prototype components */

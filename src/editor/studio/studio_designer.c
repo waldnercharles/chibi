@@ -1065,8 +1065,9 @@ typedef struct
 
 static bool scene_shown(const studio *s)
 {
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->prefs.editors[i] == STUDIO_EDITOR_SCENE && s->areas[i].rect.w > 0) {
+        if (layout->editors[i] == STUDIO_EDITOR_SCENE && s->areas[i].rect.w > 0) {
             return true;
         }
     }

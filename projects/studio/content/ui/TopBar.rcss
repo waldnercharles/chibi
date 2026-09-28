@@ -21,6 +21,17 @@ body { flex: 0 0 auto; }
 #menus { display: none; }
 .btn { flex-shrink: 0; }
 .trigger { color: var(--foreground); padding: 0dp 7dp; }
+// Workspace tabs: the active one reads as a selected document tab does.
+.workspaces { display: flex; align-items: center; gap: 1dp; flex: 0 0 auto; }
+.workspace-tab {
+  height: 24dp; padding: 0dp 8dp; color: var(--muted-foreground);
+  &:hover { color: var(--foreground); }
+  &[data-state=on] { background-color: var(--background); color: var(--foreground); border-color: var(--border); }
+}
+// The side pane's toggle shows its state by the icon alone, as VS Code's layout toggles do.
+.btn.side-pane[data-state=on] { background-color: transparent; }
+.btn.side-pane[data-state=on] .icon { color: var(--foreground); }
+.btn.side-pane[data-state=off] .icon { color: var(--muted-foreground); }
 .sep { width: 1dp; height: 14dp; background-color: var(--border); margin: 0dp 6dp; flex-shrink: 0; }
 // Tabs give way first when the window narrows; menus and transport keep their size.
 .doc-tabs { display: flex; align-items: center; gap: 1dp; height: 100%; flex: 0 1 auto; min-width: 96dp; overflow: hidden; }

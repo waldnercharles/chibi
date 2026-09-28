@@ -32,6 +32,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
 | [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs`, whose preferences are rows of `studio_settings[]` | Done |
+| [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html), [Godot main screens](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html) | Named arrangements of areas for a task, switched without touching documents; Godot follows the selection | `studio_prefs.layouts` per `studio_workspace`, the top bar's workspace tabs, and `studio_follow_document` (Workspace Follows Tab) | Done; two fixed presets |
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |

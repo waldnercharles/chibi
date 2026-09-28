@@ -516,7 +516,8 @@ static void sync_text_input(studio *s)
 static int area_showing(const studio *s, studio_editor editor)
 {
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->prefs.editors[i] == editor) {
+        if (s->prefs.layouts[s->prefs.workspace].editors[i] == editor &&
+            s->areas[i].rect.w > 0) {
             return i;
         }
     }
@@ -682,6 +683,7 @@ static studio *create(
     s->assets_hover = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->maximized = -1;
+    s->followed_tab = s->followed_kind = -1;
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;

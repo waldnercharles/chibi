@@ -30,6 +30,12 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   - Properties is its Details;
   - Assets is its Library;
   - the Text Editor area (`STUDIO_EDITOR_CODE`) shows its source.
+- **A UI document's tab selects the UI workspace**: Canvas beside the Text
+  Editor, Hierarchy and Details on the right. Any other tab selects Layout.
+  Each workspace remembers its sizes, editors, drawer and side pane; View ▸
+  Workspace or the top bar's tabs switch by hand until the tab changes, and
+  Settings ▸ Workspace Follows Tab turns following off. Switching changes only
+  the areas: documents, selection, history and playback stay.
 - **Live apply is an overlay.** `src/support/text_overlay.h` holds unsaved text:
   - `text_file_read` returns it in place of the file;
   - `file_watch_changed` sees each change at once.

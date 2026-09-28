@@ -896,9 +896,10 @@ static studio_inspect *inspector(studio *s)
 
 static int panel_area(const studio *s)
 {
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->prefs.editors[i] == STUDIO_EDITOR_PANEL &&
-            !strcmp(s->prefs.panels[i], INSPECT_PANEL) && s->areas[i].rect.w > 0) {
+        if (layout->editors[i] == STUDIO_EDITOR_PANEL &&
+            !strcmp(layout->panels[i], INSPECT_PANEL) && s->areas[i].rect.w > 0) {
             return i;
         }
     }
@@ -911,9 +912,10 @@ static void show_panel(studio *s)
     if (panel_area(s) >= 0) {
         return;
     }
-    s->prefs.editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
-    snprintf(s->prefs.panels[STUDIO_AREA_DRAWER], sizeof s->prefs.panels[STUDIO_AREA_DRAWER], "%s", INSPECT_PANEL);
-    s->prefs.drawer_open = true;
+    studio_layout *layout = studio_active_layout(s);
+    layout->editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
+    snprintf(layout->panels[STUDIO_AREA_DRAWER], sizeof layout->panels[STUDIO_AREA_DRAWER], "%s", INSPECT_PANEL);
+    layout->drawer_open = true;
 }
 
 bool studio_inspect_picking(const studio *s)
@@ -933,8 +935,9 @@ void studio_inspect_toggle(studio *s)
 bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key)
 {
     bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
-    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
-                                              : STUDIO_EDITOR_COUNT;
+    studio_editor editor = s->hover_area >= 0
+                             ? studio_active_layout(s)->editors[s->hover_area]
+                             : STUDIO_EDITOR_COUNT;
     bool typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
     bool chord = (!(gameplay || typing) || studio_primary(s, key->mod)) &&
                  studio_command_for_key(&s->prefs, key->key, key->mod, editor, s->mac) ==

@@ -1600,8 +1600,9 @@ static hint_list editor_hints(studio *s)
     static const studio_hint MOVING[] = { { 0, "Ctrl", "Snap" } };
     static const studio_hint OTHER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                          { 0, NULL, "Search", STUDIO_COMMAND_SEARCH + 1 } };
-    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
-                                              : STUDIO_EDITOR_COUNT;
+    studio_editor editor = s->hover_area >= 0
+                             ? studio_active_layout(s)->editors[s->hover_area]
+                             : STUDIO_EDITOR_COUNT;
     switch (editor) {
         case STUDIO_EDITOR_SCENE: return HINT_LIST(SCENE);
         case STUDIO_EDITOR_PROPERTIES: return HINT_LIST(PROPERTIES);

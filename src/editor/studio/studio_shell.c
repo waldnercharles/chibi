@@ -99,7 +99,7 @@ static bool graph_focused(const studio *s)
     if (!studio_graph_active(s) || s->focus_area < 0) {
         return false;
     }
-    studio_editor editor = s->prefs.editors[s->focus_area];
+    studio_editor editor = s->prefs.layouts[s->prefs.workspace].editors[s->focus_area];
     return s->focus_area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
            (editor == STUDIO_EDITOR_PROPERTIES &&
             (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
@@ -415,10 +415,10 @@ static void add_menu_items(studio *s)
 
 void studio_toggle_drawer(studio *s, studio_editor editor)
 {
-    bool showing = s->prefs.drawer_open &&
-                   s->prefs.editors[STUDIO_AREA_DRAWER] == editor;
-    s->prefs.editors[STUDIO_AREA_DRAWER] = editor;
-    s->prefs.drawer_open = !showing;
+    studio_layout *layout = studio_active_layout(s);
+    bool showing = layout->drawer_open && layout->editors[STUDIO_AREA_DRAWER] == editor;
+    layout->editors[STUDIO_AREA_DRAWER] = editor;
+    layout->drawer_open = !showing;
 }
 
 void studio_toggle_maximized(studio *s, int area)
@@ -426,14 +426,53 @@ void studio_toggle_maximized(studio *s, int area)
     s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
+/* A new arrangement starts unmaximized, with no area focused or hovered
+   until the pointer finds one. */
+static void forget_areas(studio *s)
+{
+    s->maximized = s->focus_area = s->hover_area = -1;
+    memset(s->areas, 0, sizeof s->areas);
+    s->main_rect = s->side_rect = (kit_rect){ 0 };
+    s->drawer_dragging = s->side_dragging = false;
+}
+
 void studio_reset_layout(studio *s)
 {
-    studio_prefs layout = studio_prefs_default();
-    s->prefs.side_width = layout.side_width;
-    s->prefs.main_split = layout.main_split;
-    s->prefs.side_split = layout.side_split;
-    memcpy(s->prefs.editors, layout.editors, sizeof layout.editors);
-    memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
+    *studio_active_layout(s) = studio_layout_default(s->prefs.workspace);
+    forget_areas(s);
+}
+
+void studio_set_workspace(studio *s, studio_workspace workspace)
+{
+    assert(workspace >= 0 && workspace < STUDIO_WORKSPACE_COUNT);
+    if (s->prefs.workspace == workspace) {
+        return;
+    }
+    s->prefs.workspace = workspace;
+    forget_areas(s);
+}
+
+void studio_follow_document(studio *s)
+{
+    const app_scene_authoring *scene = s->scene;
+    int tab = scene->active_tab;
+    int kind = tab >= 0 && tab < acount(scene->tabs) ? (int)scene->tabs[tab].kind
+                                                     : -1;
+    if (tab == s->followed_tab && kind == s->followed_kind) {
+        return;
+    }
+    s->followed_tab = tab;
+    s->followed_kind = kind;
+    if (s->prefs.follow_documents && kind >= 0) {
+        studio_set_workspace(s, kind == APP_EDITOR_DOCUMENT_UI ? STUDIO_WORKSPACE_UI : STUDIO_WORKSPACE_LAYOUT);
+    }
+}
+
+void studio_toggle_side_pane(studio *s)
+{
+    studio_layout *layout = studio_active_layout(s);
+    layout->side_open = !layout->side_open;
+    s->maximized = -1;
 }
 
 /* The menus' UI Scale choices. */
@@ -768,6 +807,7 @@ static bool drawer_editor(studio_editor editor)
 static void panel_types(studio *s, int area)
 {
     kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
     int count = studio_ui_panel_count(s);
     if (count) {
         kit_menu_separator(k, "panels-sep");
@@ -781,35 +821,37 @@ static void panel_types(studio *s, int area)
             .label = name,
             .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
             .checked = -1,
-            .current = s->prefs.editors[area] == STUDIO_EDITOR_PANEL &&
-                       !strcmp(s->prefs.panels[area], name),
+            .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
+                       !strcmp(layout->panels[area], name),
         };
         if (kit_menu_item(k, item_key, &item)) {
-            s->prefs.editors[area] = STUDIO_EDITOR_PANEL;
-            snprintf(s->prefs.panels[area], sizeof s->prefs.panels[area], "%s", name);
+            layout->editors[area] = STUDIO_EDITOR_PANEL;
+            snprintf(layout->panels[area], sizeof layout->panels[area], "%s", name);
         }
     }
 }
 
 void studio_maximize_graph(studio *s)
 {
+    studio_layout *layout = studio_active_layout(s);
     int area = STUDIO_AREA_TOP;
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        area = s->prefs.editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+        area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
     }
-    s->prefs.editors[area] = STUDIO_EDITOR_BEHAVIOR;
-    s->applied.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    layout->editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->applied.layouts[s->prefs.workspace].editors[area] = STUDIO_EDITOR_BEHAVIOR;
     s->maximized = area;
 }
 
 static void editor_type_menu(studio *s, int area)
 {
     kit *k = s->kit;
-    studio_editor *editor = &s->prefs.editors[area];
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor *editor = &layout->editors[area];
     kit_button_desc d = { .icon = EDITOR_ICONS[*editor],
                           .cls = "editor-type",
                           .tip = *editor == STUDIO_EDITOR_PANEL
-                                   ? s->prefs.panels[area]
+                                   ? layout->panels[area]
                                    : EDITOR_LABELS[*editor] };
     char key[24];
     snprintf(key, sizeof key, "type:%d", area);
@@ -840,7 +882,7 @@ static void editor_type_menu(studio *s, int area)
 /* The editor's own header controls. */
 static void editor_header(studio *s, int index)
 {
-    switch (s->prefs.editors[index]) {
+    switch (studio_active_layout(s)->editors[index]) {
         case STUDIO_EDITOR_SCENE: studio_scene_header(s, index); break;
         case STUDIO_EDITOR_BEHAVIOR: studio_behavior_header(s, index); break;
         case STUDIO_EDITOR_OUTLINER: studio_outliner_header(s, index); break;
@@ -855,7 +897,7 @@ static void editor_header(studio *s, int index)
         case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
         case STUDIO_EDITOR_CODE: studio_code_header(s, index); break;
         case STUDIO_EDITOR_PANEL:
-            kit_label(s->kit, "title", NULL, s->prefs.panels[index]);
+            kit_label(s->kit, "title", NULL, studio_active_layout(s)->panels[index]);
             break;
         default: break;
     }
@@ -884,16 +926,20 @@ static void area_header(studio *s, int index)
     }
 }
 
-static void area(studio *s, int index, const char *key, float size, bool fill)
+/* An area `size` dp along `axis` (0 across, 1 down), or filling what its
+   row or column leaves. */
+static void area(studio *s, int index, const char *key, int axis, float size, bool fill)
 {
     kit *k = s->kit;
-    studio_editor editor = s->prefs.editors[index];
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor editor = layout->editors[index];
     kit_push(k, key, NULL, KIT_CX(k, "area", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }));
-    if (!fill) {
-        char height[32];
-        dp(height, sizeof height, size);
-        kit_style(k, "height", height);
-    }
+    /* Styles persist across frames, so the other axis and a filling area
+       reset theirs as a workspace changes. */
+    char extent[32];
+    dp(extent, sizeof extent, size);
+    kit_style(k, "width", !fill && !axis ? extent : "auto");
+    kit_style(k, "height", !fill && axis ? extent : "auto");
     area_header(s, index);
     kit_push(k, "body", NULL, "area-body");
     switch (editor) {
@@ -909,13 +955,61 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_MEMBERS: studio_members_body(s, index); break;
         case STUDIO_EDITOR_CODE: studio_code_body(s, index); break;
         case STUDIO_EDITOR_PANEL:
-            studio_ui_area(s, index, s->prefs.panels[index]);
+            studio_ui_area(s, index, layout->panels[index]);
             break;
         default: break;
     }
     kit_pop(k);
     kit_pop(k);
     s->areas[index].rect = kit_item_rect(k);
+}
+
+/* The top and bottom areas: stacked in Layout, side by side in UI. */
+static void main_areas(studio *s, float size)
+{
+    kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
+    int axis = s->prefs.workspace == STUDIO_WORKSPACE_UI ? 0 : 1;
+    float minimum = axis ? 80 : 160;
+    kit_push(k, "editors", NULL, KIT_CX(k, "main-editors", { "across", !axis }));
+    float first = floorf((size - 4) * layout->main_split);
+    area(s, STUDIO_AREA_TOP, "top", axis, first, false);
+    if (kit_splitter(k, "split", axis, &first, minimum, fmaxf(minimum, size - minimum - 4), false)) {
+        layout->main_split = first / fmaxf(1, size - 4);
+    }
+    area(s, STUDIO_AREA_BOTTOM, "bottom", axis, 0, true);
+    kit_pop(k);
+}
+
+/* The right column eases closed and open, at its last width, and follows
+   its splitter directly while dragged. */
+static void side_areas(studio *s)
+{
+    kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
+    float target = layout->side_open ? layout->side_width : 0;
+    float width = kit_spring(k, "side-width", target, s->side_dragging ? 0 : 0.2f);
+    if (width <= 0.5f) {
+        s->side_rect = s->areas[STUDIO_AREA_OUTLINER]
+                           .rect = s->areas[STUDIO_AREA_PROPERTIES].rect = (kit_rect){ 0 };
+        s->side_dragging = false;
+        return;
+    }
+    kit_splitter(k, "split", 0, &layout->side_width, 260, fmaxf(260, s->in.width - 320), true);
+    s->side_dragging = kit_item_active(k);
+    kit_push(k, "side", NULL, "column side");
+    char extent[32];
+    dp(extent, sizeof extent, width);
+    kit_style(k, "width", extent);
+    float height = s->side_rect.h > 0 ? s->side_rect.h : s->in.height - 60;
+    float outliner = floorf((height - 4) * layout->side_split);
+    area(s, STUDIO_AREA_OUTLINER, "outliner", 1, outliner, false);
+    if (kit_splitter(k, "split", 1, &outliner, 80, fmaxf(80, height - 120), false)) {
+        layout->side_split = outliner / fmaxf(1, height - 4);
+    }
+    area(s, STUDIO_AREA_PROPERTIES, "properties", 1, 0, true);
+    kit_pop(k);
+    s->side_rect = kit_item_rect(k);
 }
 
 static void workspace(studio *s)
@@ -926,11 +1020,12 @@ static void workspace(studio *s)
                                                               "properties",
                                                               "drawer" };
     kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
     kit_push(k, "workspace", "main", "workspace");
     kit_push(k, "main", NULL, "column main");
     if (s->maximized >= 0) {
         memset(s->areas, 0, sizeof s->areas);
-        area(s, s->maximized, AREA_KEYS[s->maximized], 0, true);
+        area(s, s->maximized, AREA_KEYS[s->maximized], 1, 0, true);
         kit_pop(k);
         s->main_rect = kit_item_rect(k);
         kit_pop(k);
@@ -939,52 +1034,39 @@ static void workspace(studio *s)
     float column_height = s->main_rect.h > 0 ? s->main_rect.h : s->in.height - 60;
     /* The drawer eases open in 200 ms and closed in 100 ms, and follows its
        splitter directly while dragged. */
-    float drawer_target = s->prefs.drawer_open
-                            ? fminf(s->prefs.drawer_height, fmaxf(80, column_height - 200))
+    float drawer_target = layout->drawer_open
+                            ? fminf(layout->drawer_height, fmaxf(80, column_height - 200))
                             : 0;
     float drawer = kit_spring(
         k,
         "drawer",
         drawer_target,
-        s->drawer_dragging     ? 0
-        : s->prefs.drawer_open ? 0.2f
-                               : 0.1f
+        s->drawer_dragging    ? 0
+        : layout->drawer_open ? 0.2f
+                              : 0.1f
     );
     bool drawer_shown = drawer > 0.5f;
-    float main_height = column_height - (drawer_shown ? drawer + 4 : 0);
-    float top = floorf((main_height - 4) * s->prefs.main_split);
-    area(s, STUDIO_AREA_TOP, "top", top, false);
-    if (kit_splitter(k, "split", 1, &top, 80, fmaxf(80, main_height - 80), false)) {
-        s->prefs.main_split = top / fmaxf(1, main_height - 4);
-    }
-    area(s, STUDIO_AREA_BOTTOM, "bottom", 0, true);
+    float main_width = s->main_rect.w > 0 ? s->main_rect.w : s->in.width;
+    main_areas(
+        s,
+        s->prefs.workspace == STUDIO_WORKSPACE_UI
+            ? main_width
+            : column_height - (drawer_shown ? drawer + 4 : 0)
+    );
     if (drawer_shown) {
-        float height = s->prefs.drawer_height;
+        float height = layout->drawer_height;
         if (kit_splitter(k, "drawer-split", 1, &height, 80, fmaxf(80, column_height - 200), true)) {
-            s->prefs.drawer_height = height;
+            layout->drawer_height = height;
         }
         s->drawer_dragging = kit_item_active(k);
-        area(s, STUDIO_AREA_DRAWER, "drawer", drawer, false);
+        area(s, STUDIO_AREA_DRAWER, "drawer", 1, drawer, false);
     } else {
         s->areas[STUDIO_AREA_DRAWER].rect = (kit_rect){ 0 };
         s->drawer_dragging = false;
     }
     kit_pop(k);
     s->main_rect = kit_item_rect(k);
-    kit_splitter(k, "split", 0, &s->prefs.side_width, 260, fmaxf(260, s->in.width - 320), true);
-    kit_push(k, "side", NULL, "column side");
-    char width[32];
-    dp(width, sizeof width, s->prefs.side_width);
-    kit_style(k, "width", width);
-    float side_height = s->side_rect.h > 0 ? s->side_rect.h : s->in.height - 60;
-    float outliner = floorf((side_height - 4) * s->prefs.side_split);
-    area(s, STUDIO_AREA_OUTLINER, "outliner", outliner, false);
-    if (kit_splitter(k, "split", 1, &outliner, 80, fmaxf(80, side_height - 120), false)) {
-        s->prefs.side_split = outliner / fmaxf(1, side_height - 4);
-    }
-    area(s, STUDIO_AREA_PROPERTIES, "properties", 0, true);
-    kit_pop(k);
-    s->side_rect = kit_item_rect(k);
+    side_areas(s);
     kit_pop(k);
 }
 
@@ -1279,6 +1361,7 @@ void studio_emit(studio *s)
 {
     sync_presentation(s);
     studio_disk_frame(s);
+    studio_follow_document(s);
     studio_code_frame(s);
     studio_canvas_follow(s);
     track_pointer(s);

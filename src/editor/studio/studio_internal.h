@@ -126,10 +126,35 @@ typedef enum
     STUDIO_COMMAND_NEW_STYLESHEET,
     STUDIO_COMMAND_RENAME,
     STUDIO_COMMAND_ADD_COMPONENT,
+    STUDIO_COMMAND_WORKSPACE_LAYOUT,
+    STUDIO_COMMAND_WORKSPACE_UI,
+    STUDIO_COMMAND_TOGGLE_SIDE_PANE,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
 #define STUDIO_CHORD_SIZE 64
+
+/* Workspace presets (Blender's workspaces): each arranges the areas for a
+ * task, and switching one never touches documents, selection or playback. */
+typedef enum
+{
+    STUDIO_WORKSPACE_LAYOUT, /* Scene over Behavior */
+    STUDIO_WORKSPACE_UI,     /* Canvas beside the Text Editor */
+    STUDIO_WORKSPACE_COUNT,
+} studio_workspace;
+
+/* A workspace's arrangement, as the user last left it. */
+typedef struct
+{
+    bool side_open; /* the right column shows */
+    float side_width;
+    float main_split;
+    float side_split;
+    bool drawer_open;
+    float drawer_height;
+    studio_editor editors[STUDIO_AREA_COUNT];
+    char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
+} studio_layout;
 
 /* Editor preferences (studio_prefs.c). The one store for view settings and the
  * area layout; everything else is authoring state owned by the C model. */
@@ -140,14 +165,10 @@ typedef struct
     bool comfortable;
     bool reduced_motion;
     float ui_scale; /* the editor's size, as Blender's Resolution Scale; games' UI keeps its own */
-    float side_width;
-    float main_split;
-    float side_split;
-    bool drawer_open;
-    float drawer_height;
-    studio_editor editors[STUDIO_AREA_COUNT];
-    char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
-    kit_wire_style wires;               /* graph wire routing */
+    studio_workspace workspace;
+    studio_layout layouts[STUDIO_WORKSPACE_COUNT];
+    bool follow_documents; /* the active tab's kind picks the workspace */
+    kit_wire_style wires;  /* graph wire routing */
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
     bool title_flow;      /* unlabeled execution pins sit in node titles */
     bool compact_nodes;   /* operators as symbols, one-output reads as pills */
@@ -591,9 +612,7 @@ typedef struct
     char *hover;
     int hover_at;
     const ui_source *hover_source;
-    bool replayed;      /* Undo or Redo from the editor changed the text */
-    bool following;     /* a UI document was active last frame */
-    bool opened_drawer; /* following it opened the drawer */
+    bool replayed; /* Undo or Redo from the editor changed the text */
     /* Find (Mod+F): the query, where its shown match starts and how many
        the part holds. */
     struct
@@ -659,6 +678,8 @@ struct studio
     bool light;
     int theme_switching; /* frames left with transitions suspended */
     bool drawer_dragging;
+    bool side_dragging;
+    int followed_tab, followed_kind; /* the active tab the workspace last followed */
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT];
     int cursor_shown; /* SDL_SystemCursor applied, -1 before the first frame */
     kit_rect main_rect;
@@ -817,6 +838,9 @@ const char *studio_chord(const studio *s, const char *chord);
 
 /* Preferences. */
 studio_prefs studio_prefs_default();
+studio_layout studio_layout_default(studio_workspace workspace);
+/* The arrangement the areas show: the active workspace's. */
+studio_layout *studio_active_layout(studio *s);
 studio_prefs studio_prefs_load();
 bool studio_prefs_save(const studio_prefs *prefs);
 bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
@@ -1173,8 +1197,16 @@ bool studio_can_replay(studio *s, bool redo);
 bool studio_active_dirty(studio *s);
 /* Fills the workspace with one area, or restores the layout; -1 is no area. */
 void studio_toggle_maximized(studio *s, int area);
-/* The default split sizes and area editors. */
+/* The active workspace's default split sizes and area editors. */
 void studio_reset_layout(studio *s);
+/* Shows `workspace`'s arrangement as it was left. */
+void studio_set_workspace(studio *s, studio_workspace workspace);
+/* With Follow Documents, the workspace for the active tab's kind: UI for a
+ * ui document, Layout for any other. Runs when the active tab changes, so a
+ * workspace chosen by hand holds until then. */
+void studio_follow_document(studio *s);
+/* Hides or shows the right column, at its last width. */
+void studio_toggle_side_pane(studio *s);
 void studio_toggle_drawer(studio *s, studio_editor editor);
 /* Steps UI Scale up (1) or down (-1), or restores it (0), within
  * [STUDIO_UI_SCALE_MIN, STUDIO_UI_SCALE_MAX]. */

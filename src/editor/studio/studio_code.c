@@ -287,27 +287,13 @@ static void check_shown(studio *s)
     c->markers_stale = true;
 }
 
-/* The Text Editor follows the active UI document as the other areas do: a
-   document opens it, and a drawer it opened closes when no UI document is
-   active, leaving the graph its room. */
+/* The Text Editor shows the active UI document; the workspace that shows
+   the Text Editor follows the tab (studio_follow_document). */
 static void follow_active(studio *s, const scene_document_tab *active)
 {
-    studio_code *c = &s->code;
-    if (!active) {
-        if (c->opened_drawer &&
-            s->prefs.editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_CODE) {
-            s->prefs.drawer_open = false;
-        }
-        c->following = c->opened_drawer = false;
-        return;
+    if (active) {
+        snprintf(s->code.path, sizeof s->code.path, "%s", active->path);
     }
-    if (c->following && !strcmp(active->path, c->path)) {
-        return;
-    }
-    snprintf(c->path, sizeof c->path, "%s", active->path);
-    c->opened_drawer |= !studio_editor_shown(s, STUDIO_EDITOR_CODE);
-    c->following = true;
-    studio_show_editor(s, STUDIO_EDITOR_CODE);
 }
 
 void studio_code_frame(studio *s)
@@ -329,7 +315,8 @@ void studio_code_frame(studio *s)
     toast_actions(s);
     /* Mouse buttons 4 and 5 over the Text Editor step Back and Forward. */
     int over = s->hover_area;
-    if (s->nav_button && over >= 0 && s->prefs.editors[over] == STUDIO_EDITOR_CODE) {
+    if (s->nav_button && over >= 0 &&
+        studio_active_layout(s)->editors[over] == STUDIO_EDITOR_CODE) {
         studio_nav_step(s, s->nav_button);
         s->nav_button = 0;
     }
@@ -349,6 +336,8 @@ bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line)
     s->code.reveal = line;
     s->code.reveal_offset = -1;
     s->code.reveal_wait = REVEAL_FRAMES;
+    /* The UI workspace, when it follows, has the Text Editor in place. */
+    studio_follow_document(s);
     studio_show_editor(s, STUDIO_EDITOR_CODE);
     return true;
 }

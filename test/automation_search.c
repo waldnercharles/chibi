@@ -539,9 +539,34 @@ static void text_search_scores()
     assert(text_search_score("cot", "Cat", NULL) < 0);
 }
 
+/* Asset search ranks as Studio's palette does: a name that is the query
+   first, then names that start with it, then matches in paths. */
+static void assets_rank()
+{
+    int exit_code = 0;
+    char *response = chibi_automation_handle(
+        "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"health "
+        "behavior\","
+        "\"summary\":true}",
+        ".",
+        &exit_code
+    );
+    yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
+    yyjson_val *assets = yyjson_ptr_get(yyjson_doc_get_root(doc), "/result/assets");
+    const char *first = yyjson_get_str(yyjson_obj_get(yyjson_arr_get(assets, 0), "name"));
+    bool ranked = exit_code == 0 && first && !strcmp(first, "HealthBehavior");
+    if (!ranked) {
+        printf("  assets: first %s of %zu\n", first ? first : "(none)", yyjson_arr_size(assets));
+    }
+    test_check(ranked, "searchAssets ranks the asset its name matches first, as Studio's palette does");
+    yyjson_doc_free(doc);
+    free(response);
+}
+
 void test_automation_search()
 {
     text_search_scores();
+    assets_rank();
     intents_rank();
     behavior_vocabulary();
     expression_forms();

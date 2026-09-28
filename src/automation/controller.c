@@ -2474,61 +2474,59 @@ static uint64_t catalog_content_hash(const catalog_asset *assets)
     return hash;
 }
 
-static bool text_contains_casefold(const char *text, const char *query)
+/* How well an asset matches the request, as Studio's palette ranks
+   (support/text_search.h): a word of its name above one of its kind, path,
+   description or members; -1 when it does not match, 0 without a query. */
+static int catalog_search_score(yyjson_val *request, const catalog_asset *asset)
 {
+    yyjson_val *kinds = yyjson_obj_get(request, "kinds");
+    bool kind = !kinds;
+    size_t index, count;
+    yyjson_val *wanted;
+    yyjson_arr_foreach(kinds, index, count, wanted)
+    {
+        kind |= yyjson_is_str(wanted) &&
+                family_by_kind(yyjson_get_str(wanted)) == asset->asset.family;
+    }
+    if (!kind) {
+        return -1;
+    }
+    const char *query = request_string(request, "query");
     if (!query || !query[0]) {
-        return true;
+        return 0;
     }
-    if (!text) {
-        return false;
+    /* Members past the buffer's end go unsearched. */
+    char secondary[4096];
+    int length = snprintf(
+        secondary,
+        sizeof secondary,
+        "%s %s %s",
+        asset->asset.family->kind,
+        asset->asset.relative,
+        asset->description ? asset->description : ""
+    );
+    for (int i = 0; i < acount(asset->members) && length < (int)sizeof secondary; i++) {
+        length += snprintf(
+            secondary + length,
+            sizeof secondary - (size_t)length,
+            " %s",
+            asset->members[i].name
+        );
     }
-    size_t query_length = strlen(query);
-    size_t text_length = strlen(text);
-    if (query_length > text_length) {
-        return false;
-    }
-    for (size_t i = 0; i + query_length <= text_length; i++) {
-        size_t j = 0;
-        while (j < query_length && tolower((unsigned char)text[i + j]) ==
-                                       tolower((unsigned char)query[j])) {
-            j++;
-        }
-        if (j == query_length) {
-            return true;
-        }
-    }
-    return false;
+    return text_search_word_score(query, asset->name, secondary);
 }
 
-static bool catalog_search_match(yyjson_val *request, const catalog_asset *asset)
+typedef struct
 {
-    const char *query = request_string(request, "query");
-    if (query && query[0]) {
-        bool match = text_contains_casefold(asset->asset.family->kind, query) ||
-                     text_contains_casefold(asset->name, query) ||
-                     text_contains_casefold(asset->asset.relative, query) ||
-                     text_contains_casefold(asset->description, query);
-        for (int i = 0; !match && i < acount(asset->members); i++) {
-            match = text_contains_casefold(asset->members[i].name, query);
-        }
-        if (!match) {
-            return false;
-        }
-    }
-    yyjson_val *kinds = yyjson_obj_get(request, "kinds");
-    if (!kinds) {
-        return true;
-    }
-    size_t index, count;
-    yyjson_val *kind;
-    yyjson_arr_foreach(kinds, index, count, kind)
-    {
-        if (yyjson_is_str(kind) &&
-            family_by_kind(yyjson_get_str(kind)) == asset->asset.family) {
-            return true;
-        }
-    }
-    return false;
+    int index; /* into the catalog */
+    int score;
+} catalog_match;
+
+/* Best first; the catalog's order breaks ties. */
+static int compare_matches(const void *a, const void *b)
+{
+    const catalog_match *x = a, *y = b;
+    return x->score != y->score ? y->score - x->score : x->index - y->index;
 }
 
 static int handle_catalog(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -2599,10 +2597,17 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     const char *query = request_string(request, "query");
     yyjson_mut_obj_add_strcpy(result->doc, value, "query", query ? query : "");
     yyjson_mut_obj_add_bool(result->doc, value, "summary", page.summary);
-    int total = 0;
+    catalog_match *found = NULL;
     for (int i = 0; i < acount(assets); i++) {
-        total += catalog_search_match(request, &assets[i]);
+        int score = catalog_search_score(request, &assets[i]);
+        if (score >= 0) {
+            apush(found, ((catalog_match){ i, score }));
+        }
     }
+    if (acount(found) > 1) {
+        qsort(found, (size_t)acount(found), sizeof *found, compare_matches);
+    }
+    int total = acount(found);
     uint64_t start = page.cursor < (uint64_t)total ? page.cursor : (uint64_t)total;
     uint64_t count = (uint64_t)total - start;
     if (page.has_limit && page.limit < count) {
@@ -2610,15 +2615,10 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     }
     add_page_metadata(result->doc, value, total, start, count);
     yyjson_mut_val *matches = yyjson_mut_obj_add_arr(result->doc, value, "assets");
-    uint64_t match_index = 0;
-    for (int i = 0; i < acount(assets); i++) {
-        if (catalog_search_match(request, &assets[i])) {
-            if (match_index >= start && match_index < start + count) {
-                add_catalog_asset(result->doc, matches, &assets[i], assets, acount(assets), page.summary);
-            }
-            match_index++;
-        }
+    for (uint64_t i = start; i < start + count; i++) {
+        add_catalog_asset(result->doc, matches, &assets[found[i].index], assets, acount(assets), page.summary);
     }
+    afree(found);
     return 0;
 }
 

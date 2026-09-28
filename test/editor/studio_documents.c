@@ -668,6 +668,115 @@ static void palette_finds_settings()
     fixture_free(&f);
 }
 
+/* The palette's first row's label, without its highlighting, and the group
+   it heads, or "". */
+static void first_row(studio *s, char *label, char *group, size_t size)
+{
+    label[0] = group[0] = '\0';
+    char rml[256] = "";
+    rml_element *row = studio_element(s, ".cmd-item .label");
+    if (row) {
+        rml_element_inner_rml(row, rml, sizeof rml);
+    }
+    size_t n = 0;
+    bool tag = false;
+    for (const char *c = rml; *c && n + 1 < size; c++) {
+        tag = *c == '<' || (tag && *c != '>');
+        if (!tag && *c != '>') {
+            label[n++] = *c;
+        }
+    }
+    label[n] = '\0';
+    rml_element *heading = studio_element(s, ".cmd-group");
+    if (heading) {
+        rml_element_inner_rml(heading, group, size);
+    }
+}
+
+static void search_for(studio_fixture *f, const char *query)
+{
+    /* The last palette finishes leaving first. */
+    frames(f, 20);
+    studio_command_run(f->studio, STUDIO_COMMAND_SEARCH);
+    frames(f, 2);
+    if (query[0]) {
+        text_event(query);
+    }
+    frames(f, 2);
+}
+
+/* The palette puts what was chosen lately first, alone while nothing is
+   typed and above equal matches after; '>' keeps commands and settings, '@'
+   the open behavior's graphs and nodes, and '?' lists the prefixes, one of
+   which types itself. */
+static void palette_recent_and_prefixes()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    studio_prefs saved = s->prefs;
+    memset(s->prefs.recent, 0, sizeof s->prefs.recent);
+    frames(&f, 2);
+    char label[128], group[64];
+    search_for(&f, "toggle");
+    first_row(s, label, group, sizeof label);
+    bool unranked = !strcmp(label, "Toggle Assets");
+    tap(SDL_SCANCODE_DOWN);
+    tap(SDL_SCANCODE_DOWN);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool remembered = !strcmp(s->prefs.recent[0].key, "command:togglePerformance") &&
+                      s->prefs.recent[0].uses == 1;
+    search_for(&f, "toggle");
+    first_row(s, label, group, sizeof label);
+    bool boosted = !strcmp(label, "Toggle Performance");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    search_for(&f, "");
+    first_row(s, label, group, sizeof label);
+    bool recent_first = !strcmp(label, "Toggle Performance") &&
+                        !strcmp(group, "Recent");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+
+    search_for(&f, ">weapons");
+    first_row(s, label, group, sizeof label);
+    bool commands_only = strcmp(group, "Assets") != 0;
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    search_for(&f, "@");
+    first_row(s, label, group, sizeof label);
+    bool symbols = !strcmp(group, "In This Behavior") && label[0];
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    search_for(&f, "?");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    bool prefix = kit_command_is_open(s->kit) &&
+                  !strcmp(kit_command_query(s->kit), ">");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    if (!(unranked && remembered && boosted && recent_first && commands_only &&
+          symbols && prefix)) {
+        printf(
+            "  %d %d %d %d %d %d %d '%s' '%s'\n",
+            unranked,
+            remembered,
+            boosted,
+            recent_first,
+            commands_only,
+            symbols,
+            prefix,
+            label,
+            group
+        );
+    }
+    test_check(unranked && remembered && boosted && recent_first, "the palette ranks what was chosen lately first, and leads with it while nothing is typed");
+    test_check(commands_only && symbols && prefix, "'>' keeps commands and settings, '@' the open behavior's symbols, and '?' types a prefix");
+    s->prefs = saved;
+    s->applied = saved;
+    fixture_free(&f);
+}
+
 /* Repeats remain limited to commands that are useful while held. */
 static void shortcut_repeat_policy()
 {
@@ -1286,6 +1395,7 @@ int studio_documents_run(const char *program)
     preview_hears_keys();
     settings_records_shortcut();
     palette_finds_settings();
+    palette_recent_and_prefixes();
     shortcut_repeat_policy();
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */

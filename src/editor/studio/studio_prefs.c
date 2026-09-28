@@ -109,6 +109,12 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
             return false;
         }
     }
+    for (int i = 0; i < STUDIO_RECENT_COUNT; i++) {
+        if (strcmp(a->recent[i].key, b->recent[i].key) ||
+            a->recent[i].uses != b->recent[i].uses) {
+            return false;
+        }
+    }
     for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
         const studio_layout *x = &a->layouts[w], *y = &b->layouts[w];
         for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
@@ -244,6 +250,18 @@ studio_prefs studio_prefs_read(const char *json)
             snprintf(p.shortcuts[c], sizeof p.shortcuts[c], "%s", chord);
         }
     }
+    yyjson_val *recent = yyjson_obj_get(yyjson_obj_get(root, "palette"), "recent");
+    for (int i = 0, n = 0; n < STUDIO_RECENT_COUNT && i < (int)yyjson_arr_size(recent);
+         i++) {
+        yyjson_val *item = yyjson_arr_get(recent, (size_t)i);
+        const char *key = yyjson_get_str(yyjson_obj_get(item, "key"));
+        yyjson_val *uses = yyjson_obj_get(item, "uses");
+        if (key && key[0] && strlen(key) < sizeof p.recent[n].key &&
+            yyjson_is_int(uses) && yyjson_get_int(uses) > 0) {
+            snprintf(p.recent[n].key, sizeof p.recent[n].key, "%s", key);
+            p.recent[n++].uses = yyjson_get_int(uses);
+        }
+    }
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.workspace = name_index(
         WORKSPACES,
@@ -363,6 +381,13 @@ char *studio_prefs_write(const studio_prefs *p, const char *saved)
         if (p->shortcuts[c][0]) {
             yyjson_mut_obj_add_str(doc, shortcuts, studio_command_id(c), p->shortcuts[c]);
         }
+    }
+    yyjson_mut_val *palette = yyjson_mut_obj_add_obj(doc, root, "palette");
+    yyjson_mut_val *recent = yyjson_mut_obj_add_arr(doc, palette, "recent");
+    for (int i = 0; i < STUDIO_RECENT_COUNT && p->recent[i].key[0]; i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, recent);
+        yyjson_mut_obj_add_strcpy(doc, item, "key", p->recent[i].key);
+        yyjson_mut_obj_add_int(doc, item, "uses", p->recent[i].uses);
     }
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_str(doc, layout, "workspace", WORKSPACES[p->workspace]);

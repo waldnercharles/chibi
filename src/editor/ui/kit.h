@@ -301,7 +301,9 @@ extern "C"
     bool kit_menubar_trigger(kit *k, const char *key, const char *label);
 
     /* Command palette (cmdk). Emit items while open; returns the chosen index
-     * or -1. A description shows as a muted second line under the label. */
+     * or -1. A description shows as a muted second line under the label.
+     * Items rank by text_search_score on their label, then their keywords,
+     * plus their boost, as for items used recently. */
     typedef struct kit_command_item
     {
         const char *label;
@@ -311,14 +313,20 @@ extern "C"
         const char *keywords;
         uint32_t icon;
         const char *description;
+        int boost;
     } kit_command_item;
     void kit_command_open(kit *k, const char *placeholder);
     bool kit_command_is_open(const kit *k);
     int kit_command(kit *k, const kit_command_item *items, int count);
+    /* The same, ranked against `query` rather than the typed text, as the
+     * text after a prefix such as '>'. */
+    int kit_command_filtered(kit *k, const kit_command_item *items, int count, const char *query);
     /* Items already filtered and ranked by the caller for the current query,
      * shown in order and grouped by first appearance. */
     int kit_command_ranked(kit *k, const kit_command_item *items, int count);
     const char *kit_command_query(const kit *k);
+    /* Replaces the typed text, as choosing a prefix does. */
+    void kit_command_set_query(kit *k, const char *query);
 
     /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes. */
     bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);

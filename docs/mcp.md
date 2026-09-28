@@ -129,7 +129,9 @@ saving them. Tool results include complete `structuredContent` and
 - `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
 - `previewShader`: compile and render a material or shape graph.
 - `previewScene`: render a prototype or scene with its authored presentation.
-- `searchAssets`: find catalog entries by kind, name, path, or description.
+- `searchAssets`: find catalog entries by kind, name, path, description, or
+  member names, best match first: every query word must start a word, and a
+  word of the name ranks above one elsewhere, as Studio's palette ranks.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.

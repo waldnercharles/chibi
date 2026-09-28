@@ -20,7 +20,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | --- | --- | --- | --- |
 | [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
-| [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.c`) | Done; pages and group jumps open |
+| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
 | [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout` (`kit_motion.c`); springs in `src/ui/motion.c`. Authored UI, the editor's and games': `presence` on a `data-if` element | Done |
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
@@ -59,11 +59,14 @@ control's contract.
 
 ### cmdk
 
-- Ranking follows `command-score`:
-  - A continuous match scores 1, a match after a space 0.9 and after another separator 0.8.
-  - A mid-word jump scores 0.17 and a transposition 0.1.
-  - Each skipped character multiplies the score by 0.999 and a case mismatch by 0.9999.
-- Zero scores are hidden. Items sort within groups, and groups sort by their best item.
+- Ranking is `text_search_score` (`src/support/text_search.h`), the search the
+  graph's Add menu uses and, in its whole-word form, the MCP's `searchNodes` and
+  `searchAssets`. Every query word must match: a word start in the label ranks
+  above a match inside a word, then initials, then letters in order, and the
+  keywords score half. An item's `boost` adds to its score; Studio gives recently
+  and often chosen items up to 300, as Raycast's frecency does.
+- Items that do not match are hidden. Items sort within groups, and groups sort
+  by their best item. Matched words show in bold, or else their letters in order.
 - Selection resets to the first item when the query changes.
 - Keys:
   - Up and Down move; Home and End jump.

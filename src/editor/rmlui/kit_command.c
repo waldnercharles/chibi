@@ -1,113 +1,21 @@
-/* The command palette after cmdk: a modal list filtered and ranked with
- * command-score as the query changes, groups ordered by their best match, and
- * the matched characters in bold, over an item's description. Up, Down,
- * Ctrl+N/P and Ctrl+J/K move the selection; Enter chooses and Escape closes. */
+/* The command palette after cmdk: a modal list filtered and ranked as the
+ * query changes, by the search Studio's other lists and the MCP share
+ * (support/text_search.h), groups ordered by their best match, and the matched
+ * words in bold, over an item's description. Up, Down, Ctrl+N/P and Ctrl+J/K
+ * move the selection; Enter chooses and Escape closes. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/ui/kit_icons.h"
 #include "support/math.h"
+#include "support/text_search.h"
 #include "support/xalloc.h"
 
 #include <ctype.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 /* Rows kept per group while filtering. */
 #define GROUP_LIMIT 8
-
-/* ---------- command-score ---------- */
-
-/* command-score (cmdk): continuous 1, word start 0.9, separator 0.8, jump
- * 0.17. The folded strings are lower case with '-' as ' '. */
-typedef struct scorer
-{
-    const char *text, *query;
-    char *folded, *abbr;
-    size_t length, abbr_length;
-    double *memo; /* (length + 1) * (abbr_length + 1) scores, -1 unknown */
-} scorer;
-
-static char *fold(const char *s)
-{
-    char *out = xstrdup(s);
-    for (char *c = out; *c; c++) {
-        *c = *c == '-' ? ' ' : (char)tolower((unsigned char)*c);
-    }
-    return out;
-}
-
-static bool gap(char c)
-{
-    return strchr("\\/_+.#\"@[({&", c) != NULL;
-}
-
-/* A match at index after a match ending at si: continuous, at a word start
- * or separator, or a jump that fades with its distance. */
-static double weigh(const scorer *s, size_t si, size_t index, double score)
-{
-    if (index == si) {
-        return score;
-    }
-    char before = s->folded[index - 1];
-    if (before == ' ') {
-        return score * 0.9;
-    }
-    if (gap(before)) {
-        return score * 0.8;
-    }
-    score *= 0.17;
-    return si > 0 ? score * pow(0.999, (double)(index - si)) : score;
-}
-
-/* The best score for abbr from ai matched in the text from si. */
-static double score_from(const scorer *s, size_t si, size_t ai)
-{
-    double *memo = &s->memo[si * (s->abbr_length + 1) + ai];
-    if (*memo >= 0) {
-        return *memo;
-    }
-    if (ai == s->abbr_length) {
-        return si == s->length ? 1.0 : 0.99;
-    }
-    double best = 0;
-    char c = s->abbr[ai];
-    for (char *at = strchr(s->folded + si, c); at; at = strchr(at + 1, c)) {
-        size_t index = (size_t)(at - s->folded);
-        double score = score_from(s, index + 1, ai + 1);
-        if (score > best) {
-            score = weigh(s, si, index, score);
-            if (s->text[index] != s->query[ai]) {
-                score *= 0.9999;
-            }
-        }
-        best = math_max(best, score);
-    }
-    *memo = best;
-    return best;
-}
-
-static double command_score(const char *text, const char *query)
-{
-    scorer s = {
-        .text = text,
-        .query = query,
-        .folded = fold(text),
-        .abbr = fold(query),
-        .length = strlen(text),
-        .abbr_length = strlen(query),
-    };
-    size_t cells = (s.length + 1) * (s.abbr_length + 1);
-    s.memo = xmalloc(cells * sizeof *s.memo);
-    for (size_t i = 0; i < cells; i++) {
-        s.memo[i] = -1;
-    }
-    double score = score_from(&s, 0, 0);
-    free(s.memo);
-    free(s.abbr);
-    free(s.folded);
-    return score;
-}
 
 /* ---------- Ranking ---------- */
 
@@ -119,16 +27,11 @@ typedef struct command_row
     double group_score; /* the best score in its group */
 } command_row;
 
+/* -1 when the item does not match. */
 static double item_score(const kit_command_item *item, const char *query)
 {
-    char *text = NULL;
-    str_cat(&text, item->label);
-    if (item->keywords) {
-        str_catf(&text, " %s", item->keywords);
-    }
-    double score = command_score(text, query);
-    free(text);
-    return score;
+    int score = text_search_score(query, item->label, item->keywords);
+    return score < 0 ? -1 : score + item->boost;
 }
 
 /* Numbers the rows' groups and gives each row its group's best score. */
@@ -186,21 +89,20 @@ static void limit_groups(command_row *rows)
     asetlen(rows, kept);
 }
 
-/* The rows to show in order. A query filters unranked items by
- * command-score, orders groups by their best match and keeps each group's
- * best GROUP_LIMIT. Otherwise scores fall with item order, so groups keep
- * their first appearance and rows their order. */
+/* The rows to show in order. A query filters unranked items, orders groups
+ * by their best match and keeps each group's best GROUP_LIMIT. Otherwise
+ * scores fall with item order, so groups keep their first appearance and
+ * rows their order. */
 static command_row *rank_rows(const kit_command_item *items, int count, bool ranked, const char *query)
 {
-    bool filter = !ranked && query[0];
-    double threshold = strlen(query) > 1 ? 0.02 : 0;
+    bool filter = !ranked && query[strspn(query, " ")];
     command_row *rows = NULL;
     for (int i = 0; i < count; i++) {
         double score = ranked ? count - i : 1;
         if (filter) {
             score = item_score(&items[i], query);
         }
-        if (filter && score <= threshold) {
+        if (filter && score < 0) {
             continue;
         }
         apush(rows, (command_row){ .index = i, .score = score });
@@ -321,6 +223,19 @@ const char *kit_command_query(const kit *k)
     return k->command.query ? k->command.query : "";
 }
 
+void kit_command_set_query(kit *k, const char *query)
+{
+    command_state *c = &k->command;
+    str_set(&c->query, query);
+    c->selected = 0;
+    c->reveal = true;
+    if (c->input) {
+        rml_element_set_value(c->input, query);
+        int end = (int)strlen(query);
+        rml_element_set_selection_range(c->input, end, end);
+    }
+}
+
 static void build_palette(node *n)
 {
     rml_element *row = raw(n->el, "div", "cmd-input", NULL);
@@ -356,7 +271,7 @@ static node *emit_palette(kit *k)
     rml_element_set_attribute(c->input, "placeholder", c->placeholder);
     if (c->focus) {
         c->focus = false;
-        rml_element_set_value(c->input, "");
+        rml_element_set_value(c->input, kit_command_query(k));
     }
     /* The dialog is modal: focus stays in its input (cmdk). A focus request
        made while the input was being created can be refused, which dropped the
@@ -372,8 +287,60 @@ static bool same_letter(char a, char b)
     return tolower((unsigned char)a) == tolower((unsigned char)b);
 }
 
+static bool word_start(const char *label, size_t i)
+{
+    return !i || !isalnum((unsigned char)label[i - 1]) ||
+           (isupper((unsigned char)label[i]) && islower((unsigned char)label[i - 1]));
+}
+
+/* Where `word` (`length` bytes) is in the label, at a word start if it can
+   be, or -1. */
+static long find_word(const char *label, const char *word, size_t length)
+{
+    long anywhere = -1;
+    for (size_t i = 0; label[i]; i++) {
+        size_t n = 0;
+        while (n < length && label[i + n] && same_letter(label[i + n], word[n])) {
+            n++;
+        }
+        if (n < length) {
+            continue;
+        }
+        if (word_start(label, i)) {
+            return (long)i;
+        }
+        anywhere = anywhere < 0 ? (long)i : anywhere;
+    }
+    return anywhere;
+}
+
+/* Marks each query word where the label holds it, or else its letters in
+   order; false when some word is in neither form. */
+static bool mark_words(const char *label, const char *query, bool *hits)
+{
+    for (const char *word = query; *word;) {
+        size_t length = strcspn(word, " ");
+        long at = length ? find_word(label, word, length) : 0;
+        for (size_t i = 0; length && at >= 0 && i < length; i++) {
+            hits[at + (long)i] = true;
+        }
+        for (size_t i = 0, matched = 0; length && at < 0 && label[i]; i++) {
+            bool hit = matched < length && same_letter(label[i], word[matched]);
+            hits[i] |= hit;
+            matched += hit;
+            at = matched == length ? 0 : at;
+        }
+        if (length && at < 0) {
+            return false;
+        }
+        word += length;
+        word += strspn(word, " ");
+    }
+    return true;
+}
+
 /* Appends label[start, end). RmlUi drops a text node of only whitespace, so
- * such a run keeps its spaces as &nbsp;. */
+ * such a run keeps its spaces as no-break spaces. */
 static void match_run(char **rml, const char *label, size_t start, size_t end)
 {
     bool blank = true;
@@ -382,28 +349,29 @@ static void match_run(char **rml, const char *label, size_t start, size_t end)
     }
     for (size_t i = start; i < end; i++) {
         if (blank) {
-            str_cat(rml, "&nbsp;");
+            str_cat(rml, "\xc2\xa0");
             continue;
         }
         escape(rml, (char[]){ label[i], 0 });
     }
 }
 
-/* The label with the query's characters in bold when they all appear in
- * order, else the plain label. Consecutive matches share one <b>. */
+/* The label with the query's words in bold where it holds them, or their
+   letters in order, else the plain label, as when only keywords matched.
+   Consecutive matches share one <b>. */
 static char *match_rml(const char *label, const char *query)
 {
-    size_t count = strlen(label), length = strlen(query), matched = 0;
+    size_t count = strlen(label);
     bool *hits = xcalloc(count + 1, sizeof *hits);
-    for (size_t i = 0; i < count; i++) {
-        hits[i] = matched < length && same_letter(label[i], query[matched]);
-        matched += hits[i];
-    }
     char *rml = NULL;
-    if (matched < length) {
+    if (!mark_words(label, query, hits)) {
         free(hits);
         escape(&rml, label);
         return rml;
+    }
+    /* A space between two matches joins them in one run. */
+    for (size_t i = 1; i + 1 < count; i++) {
+        hits[i] |= label[i] == ' ' && hits[i - 1] && hits[i + 1];
     }
     size_t start = 0;
     while (start < count) {
@@ -420,7 +388,7 @@ static char *match_rml(const char *label, const char *query)
     return rml;
 }
 
-static void emit_row(kit *k, const kit_command_item *it, int index, bool selected)
+static void emit_row(kit *k, const kit_command_item *it, int index, bool selected, const char *query)
 {
     command_state *c = &k->command;
     char key[32];
@@ -442,7 +410,7 @@ static void emit_row(kit *k, const kit_command_item *it, int index, bool selecte
         utf8(text, it->icon);
         rml_element_set_inner_rml(w->icon_el, text);
     }
-    char *rml = match_rml(it->label ? it->label : "", kit_command_query(k));
+    char *rml = match_rml(it->label ? it->label : "", query);
     if (str_set(&w->label, rml)) {
         rml_element_set_inner_rml(w->label_el, w->label);
     }
@@ -460,7 +428,7 @@ static void emit_row(kit *k, const kit_command_item *it, int index, bool selecte
     set_flag(item, "data-selected", selected);
 }
 
-static void emit_rows(kit *k, const kit_command_item *items, const command_row *rows)
+static void emit_rows(kit *k, const kit_command_item *items, const command_row *rows, const char *query)
 {
     int group = -1;
     for (int r = 0; r < acount(rows); r++) {
@@ -471,7 +439,7 @@ static void emit_rows(kit *k, const kit_command_item *items, const command_row *
             set_text(heading, it->group);
         }
         group = rows[r].group;
-        emit_row(k, it, rows[r].index, r == k->command.selected);
+        emit_row(k, it, rows[r].index, r == k->command.selected, query);
     }
     if (!acount(rows)) {
         node *empty = emit(k, "@empty", KIND_BOX, "div", "cmd-empty");
@@ -480,21 +448,21 @@ static void emit_rows(kit *k, const kit_command_item *items, const command_row *
     }
 }
 
-static int command(kit *k, const kit_command_item *items, int count, bool ranked)
+static int command(kit *k, const kit_command_item *items, int count, bool ranked, const char *query)
 {
     command_state *c = &k->command;
     if (!c->open) {
         return -1;
     }
     node *n = emit_palette(k);
-    command_row *rows = rank_rows(items, count, ranked, kit_command_query(k));
+    command_row *rows = rank_rows(items, count, ranked, query);
     aclear(c->shown);
     for (int r = 0; r < acount(rows); r++) {
         apush(c->shown, rows[r].index);
     }
     c->selected = math_clamp(c->selected, 0, math_max(0, acount(c->shown) - 1));
     push_node(k, n);
-    emit_rows(k, items, rows);
+    emit_rows(k, items, rows, query);
     pop_node(k);
     afree(rows);
     int chosen = c->chosen;
@@ -508,10 +476,15 @@ static int command(kit *k, const kit_command_item *items, int count, bool ranked
 
 int kit_command(kit *k, const kit_command_item *items, int count)
 {
-    return command(k, items, count, false);
+    return command(k, items, count, false, kit_command_query(k));
+}
+
+int kit_command_filtered(kit *k, const kit_command_item *items, int count, const char *query)
+{
+    return command(k, items, count, false, query);
 }
 
 int kit_command_ranked(kit *k, const kit_command_item *items, int count)
 {
-    return command(k, items, count, true);
+    return command(k, items, count, true, kit_command_query(k));
 }

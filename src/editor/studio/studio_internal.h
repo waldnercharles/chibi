@@ -156,11 +156,21 @@ typedef struct
     char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
 } studio_layout;
 
+#define STUDIO_RECENT_COUNT 32
+
+/* An item chosen in the palette: its key ("command:save") and how often. */
+typedef struct
+{
+    char key[96];
+    int uses;
+} studio_recent;
+
 /* Editor preferences (studio_prefs.c). The one store for view settings and the
  * area layout; everything else is authoring state owned by the C model. */
 typedef struct
 {
     char shortcuts[STUDIO_COMMAND_COUNT][STUDIO_CHORD_SIZE]; /* empty uses the default */
+    studio_recent recent[STUDIO_RECENT_COUNT]; /* most recent first; an empty key ends them */
     studio_theme theme;
     bool comfortable;
     bool reduced_motion;
@@ -908,6 +918,11 @@ void studio_ui_modal(studio *s, const char *name);
 void studio_ui_show(studio *s, const char *name);
 /* Shows Settings searching for `query`. */
 void studio_ui_show_settings(studio *s, const char *query);
+
+/* The command palette (studio_palette.c), while open. */
+#define STUDIO_PALETTE_PLACEHOLDER                                             \
+    "Search, or type > for commands, @ for symbols, ? for help"
+void studio_palette(studio *s);
 
 /* Content changed on disk (studio_disk.c): reloads it and raises failures and
    unsaved conflicts as toasts. */

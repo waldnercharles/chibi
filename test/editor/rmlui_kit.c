@@ -500,7 +500,7 @@ bool test_rmlui_kit()
     frame(&f);
     key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
-    ok &= check(f.chosen == 2, "command-score ranks Frame Selected for \"fs\"");
+    ok &= check(f.chosen == 2, "the palette ranks Frame Selected by its initials, \"fs\"");
     ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
 
     /* Rows a new query brings under a still pointer leave the selection on

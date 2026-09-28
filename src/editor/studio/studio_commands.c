@@ -689,7 +689,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
     }
     switch (command) {
         case STUDIO_COMMAND_SEARCH:
-            kit_command_open(s->kit, "Search objects, assets and commands");
+            kit_command_open(s->kit, STUDIO_PALETTE_PLACEHOLDER);
             break;
         case STUDIO_COMMAND_SETTINGS: studio_ui_show(s, "Settings"); break;
         case STUDIO_COMMAND_SAVE: studio_save(s); break;
